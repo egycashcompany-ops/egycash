@@ -7,7 +7,9 @@
 //   · an earlier day's row keeps the close control and the checkbox (D4), as today's does;
 //   · the head's «select all» is not drawn until F8 asks for it; the row boxes stay;
 //   · only the copy columns take a text selection — bank, code, name, and the schedule time
-//     (replenishment) or the open time (maintenance);
+//     (replenishment) or the service type (maintenance);
+//   · the rows are grouped by area, the areas alphabetical, each under a line that names and
+//     counts it; the area's arrow is lit and first, and the reader's column orders inside each area;
 //   · the leader edit carries the «الوردية» box, ticked;
 //   · Excel and PDF sit above the table.
 //
@@ -325,6 +327,113 @@ describe.each([
     });
   },
 );
+
+describe.each([
+  {
+    kind: 'replenishments' as const,
+    make: rep,
+    keys: ['atmReplenishment.view'],
+  },
+  {
+    kind: 'maintenances' as const,
+    make: maint,
+    keys: ['atmMaintenance.view'],
+  },
+])('the $kind board, area by area (2026-11-02)', ({ kind, make, keys }) => {
+  // Today's rows, in the order the server sent them. Area names are common place names.
+  const inArea = (id: string, code: string, area: string) => ({ ...make(id, code, NOW), area });
+  const rows = [
+    inArea('650000000000000000000c01', '99990101', 'زايد'),
+    inArea('650000000000000000000c02', '99990102', 'الدقي'),
+    inArea('650000000000000000000c03', '99990103', ''),
+    inArea('650000000000000000000c04', '99990104', 'زايد'),
+    inArea('650000000000000000000c05', '99990105', 'أكتوبر'),
+    inArea('650000000000000000000c06', '99990106', ' الدقي '),
+  ];
+  /** The group lines, then the codes, in the order the board draws them. */
+  const drawn = (search = ''): string[] =>
+    [
+      ...table(renderBoard(kind, rows, keys, search)).matchAll(
+        /data-row-group="([^"]*)"|>(9999\d{4})</g,
+      ),
+    ].map((m) => (m[1] === undefined ? (m[2] as string) : `[${m[1]}]`));
+  /** The area head's sort button, from its tag to its end. */
+  const areaHead = (search = ''): string => {
+    const board = table(renderBoard(kind, rows, keys, search));
+    const at = board.indexOf(`>${t('atm.common.area')}<svg`);
+    expect(at, 'the area head is a sort button').toBeGreaterThan(-1);
+    return board.slice(board.lastIndexOf('<button', at), board.indexOf('</button>', at));
+  };
+
+  it('draws each area under its own line, areas alphabetical, no area last', () => {
+    expect(drawn()).toEqual([
+      '[أكتوبر]',
+      '99990105',
+      '[الدقي]',
+      '99990102',
+      '99990106',
+      '[زايد]',
+      '99990101',
+      '99990104',
+      '[]',
+      '99990103',
+    ]);
+  });
+
+  it('names and counts each area on its line — «بدون منطقة» for a row with none', () => {
+    const board = table(renderBoard(kind, rows, keys));
+    expect(board).toMatch(new RegExp(`الدقي<span[^>]*>${formatNumber(2, 'ar')}</span>`));
+    expect(board).toMatch(
+      new RegExp(`${t('atm.board.noArea')}<span[^>]*>${formatNumber(1, 'ar')}</span>`),
+    );
+  });
+
+  it('lights the area’s arrow — the board’s real order — and turns the areas round on ?sort=area:desc', () => {
+    expect(areaHead()).toContain('rotate-180');
+    expect(areaHead()).toContain('opacity-100');
+    expect(drawn('sort=area:desc')).toEqual([
+      '[زايد]',
+      '99990101',
+      '99990104',
+      '[الدقي]',
+      '99990102',
+      '99990106',
+      '[أكتوبر]',
+      '99990105',
+      '[]',
+      '99990103',
+    ]);
+    expect(areaHead('sort=area:desc')).not.toContain('rotate-180');
+  });
+
+  it('orders inside each area by the reader’s column, the area first on the head', () => {
+    expect(drawn('sort=code:desc')).toEqual([
+      '[أكتوبر]',
+      '99990105',
+      '[الدقي]',
+      '99990106',
+      '99990102',
+      '[زايد]',
+      '99990104',
+      '99990101',
+      '[]',
+      '99990103',
+    ]);
+    // Two columns decide: each arrow carries its place.
+    expect(areaHead('sort=code:desc')).toContain('data-sort-order="1"');
+    expect(table(renderBoard(kind, rows, keys, 'sort=code:desc'))).toContain('data-sort-order="2"');
+  });
+
+  it('keeps the area lines out of a copy — only the copy columns take a selection', () => {
+    const board = table(renderBoard(kind, rows, keys));
+    const at = board.indexOf('<tr data-row-group');
+    const line = board.slice(at, board.indexOf('</tr>', at));
+    expect(line).toContain('أكتوبر');
+    expect(line).not.toContain('select-text');
+    // The copy columns of every row still do: one cell each, and none on a line.
+    expect(count(board, 'select-text')).toBe(rows.length * 4);
+  });
+});
 
 describe('the leader field carries the «الوردية» box, ticked by default', () => {
   const ATM_PEOPLE = [

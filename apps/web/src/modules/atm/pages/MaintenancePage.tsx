@@ -3,11 +3,12 @@
 // and a CLOSE that requires assigning an employee (the modal). Rows can also arrive from an
 // accepted mail ticket — the badge names that source. As on replenishments (2026-10-27): one day
 // at a time, today's by default, with a switch to tomorrow, everything scheduled ahead or the
-// earlier days left open (an earlier day's row keeps its close control and checkbox, D4); every
-// column sorts; only the bank, the code, the name and the open time — when it is due — take a
-// text selection; the head's «select all» appears on F8 only, and there is no bulk bar — a button
-// on a checked row acts on every checked row (`actionTargets`); the leader edit carries the
-// «الوردية» box; and the table leaves as Excel and PDF, «بيان صيانة ماكينات الصراف الآلي عن يوم …».
+// earlier days left open (an earlier day's row keeps its close control and checkbox, D4); the
+// rows are grouped by area, the areas in alphabetical order (2026-11-02, `lib/area-groups.ts`),
+// and every column sorts inside each area; only the bank, the code, the name and the service
+// type take a text selection; the head's «select all» appears on F8 only, and there is no bulk
+// bar — a button on a checked row acts on every checked row (`actionTargets`); the leader edit
+// carries the «الوردية» box; and the table leaves as Excel and PDF, «بيان صيانة ماكينات الصراف الآلي عن يوم …».
 // The bank/area filters work the same way — an area on its own, a bank change dropping the areas
 // it orphaned, every matching row read whole past one page (port doc D8) — and one reset clears
 // them.
@@ -37,6 +38,7 @@ import {
 import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
+import { areaGroupLine } from '../lib/area-groups';
 import { maintenanceColumns, statementFilterLine } from '../lib/operation-sheet';
 import { actionTargets } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
@@ -267,6 +269,7 @@ export const MaintenancePage = (): JSX.Element => {
             selectAll={selectAllShown}
             sort={board.sorts}
             onSortChange={board.changeSort}
+            group={areaGroupLine(t, locale)}
             stickyHead
           />
         </div>

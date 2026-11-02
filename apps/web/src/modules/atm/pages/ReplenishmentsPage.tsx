@@ -13,7 +13,10 @@
 //     header filter row), a bank change drops the areas it orphaned, and the board is read WHOLE —
 //     every open row the filters match, past the hundred one page holds (`lib/board-filters.ts`,
 //     `lib/whole-board.ts`, port doc D8) — and one reset clears them;
-//   · every column sorts, in the browser — the board is whole (`lib/useBoardView.ts`);
+//   · grouped by area, the areas in alphabetical order, each under a line that names it and
+//     counts its rows (2026-11-02, «Group by المناطق + Sorting بالمناطق» — `lib/area-groups.ts`);
+//     every column sorts, in the browser, inside each area — the board is whole
+//     (`lib/useBoardView.ts`);
 //   · only the bank, the code, the name and the schedule take a text selection, so a drag or
 //     Ctrl+A copies exactly those (`lib/board-copy.ts`);
 //   · row actions: close, edit (schedule/open time/leader, the shift cascade behind the «الوردية»
@@ -49,6 +52,7 @@ import { actionTargets, cairoToday } from '../lib/operation-view';
 import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
+import { areaGroupLine } from '../lib/area-groups';
 import { replenishmentColumns, statementFilterLine } from '../lib/operation-sheet';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenReplenishmentsForm } from '../components/OpenReplenishmentsForm';
@@ -281,6 +285,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
             selectAll={selectAllShown}
             sort={board.sorts}
             onSortChange={board.changeSort}
+            group={areaGroupLine(t, locale)}
             stickyHead
           />
         </div>

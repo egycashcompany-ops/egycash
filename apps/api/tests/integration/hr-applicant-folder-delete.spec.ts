@@ -275,8 +275,9 @@ let subjectFiles: { card: FileDto; attachment: FileDto; handedIn: string };
 /** The control: never named in any request, and must come out untouched. */
 let bystander: ApplicantDto;
 let bystanderFile: FileDto;
-/** Hired. Their folder is a kept record. */
+/** Hired. Their folder is a kept record, and this is the file that must survive every delete. */
 let hired: ApplicantDto;
+let hiredFile: FileDto;
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -355,6 +356,11 @@ beforeAll(async () => {
   subject = await registerApplicant('29001011590011', '01099880011');
   bystander = await registerApplicant('29001011590022', '01099880022');
   hired = await registerApplicant('29001011590033', '01099880033');
+
+  // The hired candidate gets a file of their own. Without one, «their folder was not touched»
+  // would be asserted as `fileCount === 0` against a folder that was empty to begin with — true
+  // whether the bulk delete refused them or emptied them, which is the opposite of a proof.
+  hiredFile = await attach(hired.id, generalCategoryId, 'kept-record.png');
 
   subjectFiles = {
     card: await attach(subject.id, cardCategoryId, 'card-front.png', ['nid:front']),
@@ -501,9 +507,27 @@ describe('emptying one folder', () => {
     ).toBe(0);
   });
 
-  it('zeroes the attachment counter on the applicant’s own record', async () => {
-    const row = await ApplicantModel.findById(subject.id).lean<{ attachmentCount: number }>();
-    expect(row?.attachmentCount).toBe(0);
+  /**
+   * `markDocumentsFolderEmptied` writes two fields in one update, and the DATE is the one worth
+   * asserting here. The counter is zero by construction for everything this spec files: it is only
+   * ever moved by `POST /hr/applicants/:id/attachments`, and both of this spec's upload paths go
+   * through the platform Files route instead — so `attachmentCount === 0` would read as proof while
+   * passing identically if the delete had never run.
+   *
+   * The date is asserted against the BYSTANDER, who was never named in any request. Two-sided: it
+   * fails if the marker is never written, and it fails if it is written for everybody.
+   */
+  it('marks the folder emptied on the applicant’s own record, and only theirs', async () => {
+    const emptied = await ApplicantModel.findById(subject.id)
+      .lean<{ attachmentCount: number; documentsFolderDeletedAt: Date | null }>()
+      .exec();
+    expect(emptied?.documentsFolderDeletedAt).toBeInstanceOf(Date);
+    expect(emptied?.attachmentCount).toBe(0);
+
+    const untouched = await ApplicantModel.findById(bystander.id)
+      .lean<{ documentsFolderDeletedAt: Date | null }>()
+      .exec();
+    expect(untouched?.documentsFolderDeletedAt).toBeNull();
   });
 
   it('soft-deletes, never destroys — the rows and their bytes are still recoverable', async () => {
@@ -569,8 +593,9 @@ describe('emptying several at once', () => {
 
     expect(await live(firstFile.id)).toBe(false);
     expect(await live(secondFile.id)).toBe(false);
-    // The hired candidate's folder was not touched at all.
-    expect((await folder(hired.id)).fileCount).toBe(0);
+    // The hired candidate's folder was not touched at all — their file is still on it.
+    expect(await live(hiredFile.id)).toBe(true);
+    expect((await folder(hired.id)).fileCount).toBe(1);
   });
 
   it('needs the delete key for the bulk route too', async () => {
@@ -605,6 +630,10 @@ describe('emptying several at once', () => {
 describe('the handed-in document’s type reaches the folder', () => {
   it('names each portal upload by the catalogue type it was handed in for', async () => {
     const applicant = await registerApplicant('29001011590088', '01099880088');
+    // An attachment of HR's own, so «nothing else claims a type» has a subject. Without it this
+    // applicant holds exactly one file — the hand-in — and the loop at the end of this test runs
+    // zero times, asserting nothing at all.
+    const hrFile = await attach(applicant.id, generalCategoryId, 'hr-note.png');
     await handInDocument(applicant, '29001011590088', '01099880088');
     const types = await request(app)
       .get('/api/v1/hr/applicant-documents/types')
@@ -621,8 +650,11 @@ describe('the handed-in document’s type reaches the folder', () => {
     expect(handed).toBeDefined();
     expect(handed?.documentType).not.toBeNull();
     expect(catalogue.map((row) => row.name.ar)).toContain(handed?.documentType?.ar);
-    // Nothing else claims a type.
-    for (const file of open.files.filter((f) => f.kind !== 'document')) {
+    // Nothing else claims a type — and the set is pinned first, because a loop over an empty
+    // array is a sentence that reads as proof and is not one.
+    const others = open.files.filter((f) => f.kind !== 'document');
+    expect(others.map((f) => f.file.id)).toEqual([hrFile.id]);
+    for (const file of others) {
       expect(file.documentType).toBeNull();
     }
   });

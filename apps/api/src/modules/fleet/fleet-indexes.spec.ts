@@ -152,6 +152,8 @@ describe('the real Fleet schemas, planned', () => {
       'fleet_vehicle_types.ux_name_ar',
       'fleet_violation_grievances.ux_vehicle_year',
       'fleet_sweep_marks.ux_key',
+      // One meaning per spelling of a fuel company's car code (batch 3, 6b).
+      'fleet_fuel_sheet_codes.ux_fuel_sheet_code_key',
     ]) {
       expect(unique.has(name), name).toBe(true);
     }

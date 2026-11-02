@@ -3,12 +3,16 @@
 // is a workType-only fact (closing a visit of such a type resets the alarm baseline) and the
 // form offers it only there, mirroring the schema's own refinement. The vehicle type carries
 // the §2.2 maintenance rule: interval km, 0 = no periodic-maintenance rule — the wording the
-// hint uses, because the ALARM engine reads exactly that.
+// hint uses, because the ALARM engine reads exactly that. A licensing-expenses item also says how
+// it is paid («طريقة الصرف»); one somebody added is deleted on «إعداد النماذج», and its form's line
+// says so — the shared «تُؤرشف ولا تُحذف» alone would deny that page's bin.
 import { useEffect, useState } from 'react';
 import {
   FLEET_LICENSE_EXPENSE_KINDS,
+  FLEET_LICENSE_EXPENSE_PAYMENTS,
   type FleetCatalogItemDto,
   type FleetLicenseExpenseKind,
+  type FleetLicenseExpensePaidBy,
   type FleetViolationSide,
   type FleetCatalogKind,
   type FleetVehicleTypeDto,
@@ -51,6 +55,11 @@ export const CatalogItemDialog = ({
   const [memo, setMemo] = useState<FleetLicenseExpenseKind | null>(
     item?.licenseExpenseKind ?? null,
   );
+  // «طريقة الصرف»: which group of a memo offers it. `null` is both — what every item says until
+  // somebody says otherwise.
+  const [paid, setPaid] = useState<FleetLicenseExpensePaidBy | null>(
+    item?.licenseExpensePaidBy ?? null,
+  );
   const [isActive, setIsActive] = useState(true);
   useEffect(() => {
     if (!open) return;
@@ -59,6 +68,7 @@ export const CatalogItemDialog = ({
     setCountsForAlarm(item?.countsForAlarm ?? false);
     setViolationSide(item?.violationSide ?? 'company');
     setMemo(item?.licenseExpenseKind ?? null);
+    setPaid(item?.licenseExpensePaidBy ?? null);
     setIsActive(item?.isActive ?? true);
   }, [open, item]);
 
@@ -85,7 +95,9 @@ export const CatalogItemDialog = ({
         // Required for a violation type and refused for every other kind — the server says so,
         // and sending it anywhere else would be a 422 the reader could do nothing about.
         ...(kind === 'violationType' ? { violationSide } : {}),
-        ...(kind === 'licenseExpenseItem' ? { licenseExpenseKind: memo } : {}),
+        ...(kind === 'licenseExpenseItem'
+          ? { licenseExpenseKind: memo, licenseExpensePaidBy: paid }
+          : {}),
       });
     } else {
       await update.mutateAsync({
@@ -101,6 +113,9 @@ export const CatalogItemDialog = ({
             : {}),
           ...(kind === 'licenseExpenseItem' && memo !== (item.licenseExpenseKind ?? null)
             ? { licenseExpenseKind: memo }
+            : {}),
+          ...(kind === 'licenseExpenseItem' && paid !== (item.licenseExpensePaidBy ?? null)
+            ? { licenseExpensePaidBy: paid }
             : {}),
           ...(isActive !== item.isActive ? { isActive } : {}),
         },
@@ -120,7 +135,11 @@ export const CatalogItemDialog = ({
           ? t('fleet.catalogs.addItem', { kind: t(`fleet.catalogs.kind.${kind}`) })
           : t('fleet.catalogs.editItem')
       }
-      description={t('fleet.catalogs.archiveHint')}
+      description={
+        kind === 'licenseExpenseItem'
+          ? t('fleet.catalogs.licenseExpenseItemArchiveHint')
+          : t('fleet.catalogs.archiveHint')
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -191,6 +210,32 @@ export const CatalogItemDialog = ({
                   {value === null
                     ? t('fleet.catalogs.licenseExpenseKind.both')
                     : t(`fleet.licenseExpenses.kinds.${value}`)}
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
+        {/* How it is paid: by the card, in cash, or both — which group of a memo offers it. */}
+        {kind === 'licenseExpenseItem' && (
+          <Field label={t('fleet.catalogs.fields.licenseExpensePaidBy')}>
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-sm font-bold dark:border-slate-600">
+              {[...FLEET_LICENSE_EXPENSE_PAYMENTS, null].map((value) => (
+                <button
+                  key={value ?? 'both'}
+                  type="button"
+                  aria-pressed={paid === value}
+                  data-license-expense-paid-option={value ?? 'both'}
+                  onClick={() => setPaid(value)}
+                  className={cn(
+                    'px-4 py-2 transition',
+                    paid === value
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800',
+                  )}
+                >
+                  {value === null
+                    ? t('fleet.catalogs.licenseExpenseKind.both')
+                    : t(`fleet.licenseExpenses.paidBy.${value}`)}
                 </button>
               ))}
             </div>

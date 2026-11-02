@@ -245,6 +245,73 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
       .exec();
     return result.modifiedCount;
   }
+
+  /**
+   * «حذف العملية» of a replenishment — held, transferred, or from before the hold: every live memo
+   * it STILL holds is free again, back to «لم تُستعَض بعد», editable and offered to the next
+   * replenishment. Found by query (`replenishmentId`), never by the letter's snapshot, so a
+   * cancelled replenishment frees nothing and a memo a later replenishment re-took is never stolen.
+   * A memo stored before the hold has no `replenishmentHeld` and does not gain one here (absent
+   * already reads as not held). Returns what each memo was, for its audit row.
+   */
+  async releaseReplenishment(
+    operationId: Types.ObjectId,
+    by: string | null,
+    session: ClientSession,
+  ): Promise<ReleasedMemo[]> {
+    const filter: FilterQuery<FleetCustodyMemoDoc> = {
+      isDeleted: false,
+      replenishmentId: operationId,
+    };
+    const rows = await this.model
+      .find(filter)
+      .select({ no: 1, replenishedAt: 1, replenishmentHeld: 1 })
+      .sort({ no: 1 })
+      .session(session)
+      .lean<
+        {
+          _id: Types.ObjectId;
+          no: number;
+          replenishedAt?: Date | null;
+          replenishmentHeld?: boolean;
+        }[]
+      >()
+      .exec();
+    if (rows.length === 0) return [];
+    const freed = {
+      replenishmentId: null,
+      replenishedAt: null,
+      updatedBy: by === null || !Types.ObjectId.isValid(by) ? null : new Types.ObjectId(by),
+    };
+    await this.model
+      .updateMany(
+        { ...filter, replenishmentHeld: { $exists: true } },
+        { $set: { ...freed, replenishmentHeld: false }, $inc: { __v: 1 } },
+        { session },
+      )
+      .exec();
+    await this.model
+      .updateMany(
+        { ...filter, replenishmentHeld: { $exists: false } },
+        { $set: freed, $inc: { __v: 1 } },
+        { session },
+      )
+      .exec();
+    return rows.map((row) => ({
+      id: String(row._id),
+      no: row.no,
+      replenishedAt: row.replenishedAt ?? null,
+      held: row.replenishmentHeld === true,
+    }));
+  }
+}
+
+/** A memo a deleted replenishment freed, as it was just before. */
+export interface ReleasedMemo {
+  id: string;
+  no: number;
+  replenishedAt: Date | null;
+  held: boolean;
 }
 
 /**

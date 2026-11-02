@@ -43,7 +43,8 @@ export const toCatalogItemDto = (doc: FleetCatalogItemDoc): FleetCatalogItemDto 
   countsForAlarm: doc.countsForAlarm,
   violationSide: doc.violationSide,
   licenseExpenseKind: doc.licenseExpenseKind ?? null,
-  licenseExpensePaidBy: null, // B3-F0 stub: A-CAT — «طريقة الصرف» from the stored item
+  // `?? null`: an item older than «طريقة الصرف» has no key at all — and is in both groups.
+  licenseExpensePaidBy: doc.licenseExpensePaidBy ?? null,
   // Seeded by the boot: no one created it. Such an item is archived, never deleted.
   builtIn: doc.createdBy == null,
   isActive: doc.isActive,

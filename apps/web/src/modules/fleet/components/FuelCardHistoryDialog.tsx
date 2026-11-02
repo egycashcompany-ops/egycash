@@ -8,9 +8,18 @@
 // الشركة» (the balance set to the sheet's — from, to) and «رفض تعديل الشيت» (nothing moved: what the
 // sheet said, what stayed), each naming its file. Every line says who made it («بواسطة …»), and the
 // strip at the top shows the card's NAME over its number — the name the company's sheet calls it.
+//
+// Batch 3: a charge the company's sheet cancelled («أُلغي بشيت الشركة») stays here, struck, with a
+// violet chip naming the sheet and when — and no ✎ 🗑 (it is changed nowhere); the adjustment that
+// cancelled it adds «وأُلغي شحن …». A card moved car by a sheet decision has its own line, «نُقل من
+// … إلى … — شيت الشركة», amount 0. Every file name is set in order («وطنية 4-10-2026.xlsx»).
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type FleetFuelCardDto, type FleetFuelCardMovementDto } from '@ecms/contracts';
+import {
+  type FleetFuelCardDto,
+  type FleetFuelCardMovementDto,
+  type FleetFuelLinkPlaceDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
@@ -26,6 +35,7 @@ import {
 } from '../api/fleet-queries';
 import { CLOSE_PATH, DesignLogo, LOOK, MONO, SANS, Stroke } from './FuelCardDialog';
 import { groupCardNumber } from '../lib/fuel-card-number';
+import { FileName, Filled } from './fuel-reconcile/reconcile-cells';
 
 const stamp = (iso: string): string => {
   const at = new Date(iso);
@@ -38,9 +48,8 @@ const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
     'border-violet-300 dark:border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300',
   sheetReject:
     'border-rose-300 dark:border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
-  // B3-F0 stub: W-REC — the `sheetLink` tone (sheetReject's until the real one)
   sheetLink:
-    'border-rose-300 dark:border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+    'border-cyan-300 dark:border-cyan-500/40 bg-cyan-500/15 text-cyan-800 dark:text-cyan-300',
   charge:
     'border-emerald-300 dark:border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   transferIn: 'border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300',
@@ -49,9 +58,15 @@ const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
     'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
 };
 
-/** The sheet's two lines — a decision on «مطابقة أرصدة الكروت»; never changed here. */
+/** The sheet's three lines — a decision on «مطابقة أرصدة الكروت»; never changed here. */
 const isSheetLine = (line: FleetFuelCardMovementDto): boolean =>
-  line.kind === 'sheetAdjust' || line.kind === 'sheetReject';
+  line.kind === 'sheetAdjust' || line.kind === 'sheetReject' || line.kind === 'sheetLink';
+/** Σ the charges a sheet line cancelled with it, to the piastre. */
+const cancelledWith = (line: FleetFuelCardMovementDto): number =>
+  (line.sheet?.cancelledCharges ?? []).reduce(
+    (sum, charge) => sum + Math.round(charge.amount * 100),
+    0,
+  ) / 100;
 
 /** A line's amount: signed, green in and red out, struck through while it is being changed. */
 const Amount = ({ value, struck }: { value: number; struck: boolean }): JSX.Element => {
@@ -107,7 +122,7 @@ export const FuelCardHistoryDialog = ({
   // Who may change a line: the one who may charge for a charge, the one who may transfer for a
   // transfer. A receipt line and the sheet's two lines are never changed here.
   const mayChange = (line: FleetFuelCardMovementDto): boolean =>
-    isSheetLine(line)
+    isSheetLine(line) || line.cancelledBySheet !== null
       ? false
       : line.kind === 'charge'
         ? can('fleetFuelCharge.approve')
@@ -120,6 +135,11 @@ export const FuelCardHistoryDialog = ({
     line.kind === 'receipt' &&
     line.receiptVehicleId !== null &&
     line.receiptVehicleId !== card.vehicleId;
+  /** «سيارة 285» or «سفر 1» — where a `sheetLink` line moved the card from or to. */
+  const placeWords = (place: FleetFuelLinkPlaceDto): string =>
+    place.vehicleCode !== null
+      ? t('fleet.fuelCards.reconcile.links.placeCar', { code: place.vehicleCode })
+      : t('fleet.fuelCards.reconcile.links.placeLabel', { label: place.label ?? '—' });
   const what = (line: FleetFuelCardMovementDto): string =>
     line.kind === 'transferIn'
       ? t('fleet.fuelCards.history.kind.transferIn', { place: placeOf(line.counterpartCardId) })
@@ -128,8 +148,29 @@ export const FuelCardHistoryDialog = ({
         : forAnotherCar(line)
           ? t('fleet.fuelCards.history.kind.receiptFor', { place: line.receiptVehicleCode ?? '—' })
           : t(`fleet.fuelCards.history.kind.${line.kind}`);
-  /** A sheet line's own words under it — the two balances, then the file. */
-  const sheetWords = (line: FleetFuelCardMovementDto): string | null => {
+  /** «الشيت: وطنية 1-11-2026.xlsx» — the file's name in order. */
+  const fileWords = (fileName: string): JSX.Element => (
+    <Filled
+      template={t('fleet.fuelCards.history.sheetFile')}
+      values={{ file: <FileName name={fileName} /> }}
+    />
+  );
+  /**
+   * A sheet line's own words under it — the two balances (and the charges the same ✓ cancelled),
+   * then the file; a `sheetLink` line's move, then the file.
+   */
+  const sheetWords = (line: FleetFuelCardMovementDto): JSX.Element | null => {
+    if (line.kind === 'sheetLink' && line.link !== null) {
+      return (
+        <>
+          {t('fleet.fuelCards.history.sheetLink', {
+            from: placeWords(line.link.from),
+            to: placeWords(line.link.to),
+          })}{' '}
+          · {fileWords(line.link.fileName)}
+        </>
+      );
+    }
     if (line.sheet === null) return null;
     const balances =
       line.kind === 'sheetReject'
@@ -141,7 +182,16 @@ export const FuelCardHistoryDialog = ({
             from: figure(line.sheet.systemBalance),
             to: figure(line.sheet.sheetBalance),
           });
-    return `${balances} · ${t('fleet.fuelCards.history.sheetFile', { file: line.sheet.fileName })}`;
+    // «… وأُلغي شحن 1,000.00» — the charges the same ✓ cancelled.
+    const cancelled = cancelledWith(line);
+    return (
+      <>
+        {balances}
+        {cancelled > 0 &&
+          ` ${t('fleet.fuelCards.history.sheetCancelled', { amount: figure(cancelled) })}`}{' '}
+        · {fileWords(line.sheet.fileName)}
+      </>
+    );
   };
 
   const cents = (n: number): number => Math.round(n * 100) / 100;
@@ -286,17 +336,22 @@ export const FuelCardHistoryDialog = ({
                 const moves =
                   active && amountOk ? effects(line, isRemoving ? null : newAmount) : [];
                 const negative = moves.some((move) => move.to < 0);
+                const cancelled = line.cancelledBySheet;
+                const words = sheetWords(line);
                 return (
                   <li
                     key={line.id}
                     data-fuel-history-line={line.id}
+                    data-fuel-history-cancelled={cancelled === null ? undefined : 'sheet'}
                     className={cn(
                       'rounded-xl border px-4 py-3 transition',
-                      isRemoving
-                        ? 'border-red-500/60 bg-red-500/10 shadow-[0_0_22px_-8px_rgba(239,68,68,0.6)]'
-                        : isEditing
-                          ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
-                          : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60',
+                      cancelled !== null
+                        ? 'border-dashed border-violet-300 bg-violet-50/50 dark:border-violet-500/40 dark:bg-violet-500/[0.06]'
+                        : isRemoving
+                          ? 'border-red-500/60 bg-red-500/10 shadow-[0_0_22px_-8px_rgba(239,68,68,0.6)]'
+                          : isEditing
+                            ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
+                            : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60',
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -310,21 +365,28 @@ export const FuelCardHistoryDialog = ({
                         className={cn(
                           'rounded-md border px-2 py-0.5 text-xs font-bold',
                           KIND_TONE[line.kind],
+                          // The kind stays readable; only the amount is struck.
+                          cancelled !== null && 'opacity-60',
                         )}
                       >
                         {what(line)}
                       </span>
                       <span className="ms-auto flex items-center gap-4">
-                        {line.kind === 'sheetReject' ? (
-                          // Nothing moved: the sheet's figure was refused.
+                        {line.kind === 'sheetReject' || line.kind === 'sheetLink' ? (
+                          // Nothing moved: the sheet's figure was refused, or the card changed car.
                           <span className="text-base font-black text-slate-400 dark:text-slate-500">
                             —
                           </span>
                         ) : (
-                          <Amount value={line.amount} struck={active} />
+                          <Amount value={line.amount} struck={active || cancelled !== null} />
                         )}
                         {!active && (
-                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                          <span
+                            className={cn(
+                              'text-xs text-slate-500 dark:text-slate-400',
+                              cancelled !== null && 'opacity-60',
+                            )}
+                          >
                             {t('fleet.fuelCards.history.after')}{' '}
                             <b className={cn('text-slate-800 dark:text-slate-200', MONO)} dir="ltr">
                               {figure(line.balanceAfter)}
@@ -369,22 +431,66 @@ export const FuelCardHistoryDialog = ({
                         )}
                       </span>
                     </div>
-                    {(line.byName !== null || line.sheet !== null) && (
+                    {(line.byName !== null || words !== null || cancelled !== null) && (
                       <div
                         data-fuel-history-by={line.id}
                         className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
                       >
-                        {sheetWords(line) !== null && (
+                        {words !== null && (
                           <span
                             data-fuel-history-sheet={line.id}
                             className={cn(
                               'font-bold',
                               line.kind === 'sheetReject'
                                 ? 'text-rose-700 dark:text-rose-300'
-                                : 'text-violet-700 dark:text-violet-300',
+                                : line.kind === 'sheetLink'
+                                  ? 'text-cyan-800 dark:text-cyan-300'
+                                  : 'text-violet-700 dark:text-violet-300',
                             )}
                           >
-                            {sheetWords(line)}
+                            {words}
+                          </span>
+                        )}
+                        {cancelled !== null && (
+                          <span
+                            data-fuel-history-cancelled-chip={line.id}
+                            className="inline-flex max-w-full rounded-md border border-violet-300 bg-violet-500/15 px-2 py-0.5 text-xs font-bold text-violet-700 dark:border-violet-500/40 dark:text-violet-300"
+                          >
+                            {/* «أُلغي بشيت الشركة · file · date»: each piece whole, and a piece that
+                                wraps to a new line starts it without its «·» (the separator sits in
+                                the negative start margin, which the chip clips). */}
+                            <span className="overflow-hidden">
+                              <span className="-ms-3 flex flex-wrap items-center">
+                                {[
+                                  <span key="what">
+                                    {t('fleet.fuelCards.history.cancelledBySheet')}
+                                  </span>,
+                                  <FileName
+                                    key="file"
+                                    name={cancelled.fileName}
+                                    className="font-semibold"
+                                  />,
+                                  <span key="at" dir="ltr" className={cn('font-semibold', MONO)}>
+                                    {stamp(cancelled.at)}
+                                  </span>,
+                                ].map((piece, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center whitespace-nowrap before:inline-block before:w-3 before:text-center before:font-semibold before:opacity-80 before:content-['·']"
+                                  >
+                                    {piece}
+                                  </span>
+                                ))}
+                              </span>
+                            </span>
+                          </span>
+                        )}
+                        {cancelled !== null && (
+                          <span
+                            data-fuel-history-cancelled-note={line.id}
+                            className="font-bold text-violet-700 dark:text-violet-300"
+                          >
+                            {t('fleet.fuelCards.history.cancelledNote')}
                           </span>
                         )}
                         {line.byName !== null && (

@@ -36,10 +36,12 @@ describe('what the model lets a row be', () => {
   });
 
   it('the open-period index skips it, or a car could never have a real open period again', () => {
-    const [, options] = (FleetOdometerLogModel.schema.indexes() as [
-      Record<string, unknown>,
-      Record<string, unknown> | undefined,
-    ][]).find(([, o]) => o?.name === 'ux_open_period') as [
+    const [, options] = (
+      FleetOdometerLogModel.schema.indexes() as [
+        Record<string, unknown>,
+        Record<string, unknown> | undefined,
+      ][]
+    ).find(([, o]) => o?.name === 'ux_open_period') as [
       Record<string, unknown>,
       Record<string, unknown>,
     ];
@@ -96,9 +98,7 @@ describe('when a reading may be left out — and the whole of the rule', () => {
   });
 
   it('the correction flow refuses to put a reading on it — recording the day is the way', () => {
-    expect(service).toContain(
-      'record the reading for that date instead of correcting this row',
-    );
+    expect(service).toContain('record the reading for that date instead of correcting this row');
   });
 });
 
@@ -106,12 +106,11 @@ describe('the row is on NO chain, and every question the chain asks must skip it
   const repository = source('odometer.repository.ts');
 
   it('there is ONE clause for it, not one condition copied eight times', () => {
-    expect(repository).toContain("const ON_THE_CHAIN = { outReading: { $ne: null } } as const;");
+    expect(repository).toContain('const ON_THE_CHAIN = { outReading: { $ne: null } } as const;');
   });
 
   it.each([
     ['findOpen', 'the car’s open period'],
-    ['findLatest', 'how far the car has got'],
     ['findNeighbors', 'the correction flow’s two sides'],
     ['findPriorByDate', 'the row a new reading follows'],
     ['findChainHead', 'the row a new head hands on to'],
@@ -124,6 +123,16 @@ describe('the row is on NO chain, and every question the chain asks must skip it
     // The clause has to be inside that method's own body, not merely somewhere in the file.
     const body = repository.slice(at, at + 1400);
     expect(body, `${method} must skip a day with no reading`).toContain('ON_THE_CHAIN');
+  });
+
+  it('how far the car has got — the expected reading asks `latestReadings`, which carries it', () => {
+    // Batch 3 (rewritten on purpose): `findLatest` is gone. It ranked rows by the opening reading,
+    // so a parked day could hide the next day's closing one; the expected reading now asks the
+    // alarm's own read, `latestReadings`, which is in the list above and skips such a day.
+    expect(repository).not.toContain('async findLatest(');
+    expect(source('odometer.service.ts')).toContain(
+      'await fleetOdometerRepository.latestReadings([vehicleId])',
+    );
   });
 
   it('MISSING one is wrong in the expensive direction, and the file says why', () => {

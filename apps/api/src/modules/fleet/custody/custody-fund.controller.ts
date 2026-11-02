@@ -6,11 +6,14 @@ import {
   type CreateFleetCustodyCharge,
   type CreateFleetCustodyReplenishment,
   type CreateFleetCustodySettlement,
+  type DeleteFleetCustodyOperation,
   type FleetCustodyLedgerSummaryQuery,
+  type ListFleetCustodyDeletedQuery,
   type ListFleetCustodyLedgerQuery,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { fleetCustodyDeleteService } from './custody-fund-delete';
 import { fleetCustodyHoldService } from './custody-fund-hold';
 import { fleetCustodyFundService } from './custody-fund.service';
 
@@ -66,4 +69,20 @@ export const confirmCustodyTransfer = async (req: Request, res: Response): Promi
 export const cancelCustodyReplenishment = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<CancelFleetCustodyReplenishment, never, IdParam>(req);
   ok(res, await fleetCustodyHoldService.cancelHeld(params.id, body, authContext(req).userId));
+};
+
+export const deleteCustodyOperation = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<DeleteFleetCustodyOperation, never, IdParam>(req);
+  await fleetCustodyDeleteService.remove(params.id, body, authContext(req).userId);
+  noContent(res);
+};
+
+export const listCustodyDeleted = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListFleetCustodyDeletedQuery>(req);
+  okPage(res, await fleetCustodyDeleteService.deletedList(query), (row) => row);
+};
+
+export const getCustodyDeletedOperation = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await fleetCustodyDeleteService.deletedOne(params.id));
 };

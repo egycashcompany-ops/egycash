@@ -339,6 +339,23 @@ export const useUpdateCatalogItem = () =>
   useCatalogItemMutation(({ id, body }: { id: string; body: UpdateFleetCatalogItem }) =>
     api.updateCatalogItem(id, body),
   );
+/**
+ * Delete an item somebody added to «بنود مصروفات التراخيص». The lists move as on every catalog
+ * write, and so does the set-up: the server reads its templates without the deleted item's lines.
+ * The set-up's own key only (`exact`) — the memos' board and records do not move with it.
+ */
+export const useDeleteCatalogItem = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCatalogItem(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.catalogs });
+      void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
+      void qc.invalidateQueries({ queryKey: licenseExpenseSettingsKey, exact: true });
+    },
+  });
+};
 
 /**
  * Fleet settings write: the platform owns the endpoint; what FLEET knows is which of its

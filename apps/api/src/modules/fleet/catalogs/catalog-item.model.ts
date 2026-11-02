@@ -5,9 +5,11 @@ import { Schema, model } from 'mongoose';
 import {
   FLEET_CATALOG_KINDS,
   FLEET_LICENSE_EXPENSE_KINDS,
+  FLEET_LICENSE_EXPENSE_PAYMENTS,
   FLEET_VIOLATION_SIDES,
   type FleetCatalogKind,
   type FleetLicenseExpenseKind,
+  type FleetLicenseExpensePaidBy,
   type FleetViolationSide,
   type LocalizedString,
 } from '@ecms/contracts';
@@ -25,6 +27,12 @@ export interface FleetCatalogItemDoc extends BaseDocFields {
    * an item older than the question) is both.
    */
   licenseExpenseKind?: FleetLicenseExpenseKind | null;
+  /**
+   * `licenseExpenseItem` only: «طريقة الصرف» — the memo group that offers it: the traffic
+   * department's card («فيزا») or cash («نقدي»). Null (or absent, on an item older than the
+   * question) is both («كليهما»), as every item was offered before.
+   */
+  licenseExpensePaidBy?: FleetLicenseExpensePaidBy | null;
   isActive: boolean;
   /** Place in its list, as dragged on the catalogs screen. Absent/null until arranged once. */
   sortOrder?: number | null;
@@ -39,6 +47,11 @@ const catalogItemSchema = new Schema<FleetCatalogItemDoc>(
     licenseExpenseKind: {
       type: String,
       enum: [...FLEET_LICENSE_EXPENSE_KINDS, null],
+      default: null,
+    },
+    licenseExpensePaidBy: {
+      type: String,
+      enum: [...FLEET_LICENSE_EXPENSE_PAYMENTS, null],
       default: null,
     },
     isActive: { type: Boolean, required: true, default: true },

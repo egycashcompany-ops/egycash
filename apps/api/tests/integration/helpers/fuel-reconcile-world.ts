@@ -36,7 +36,7 @@ let actor = '';
 /** The app and the tokens, filled by `useFuelReconcileWorld()`'s beforeAll. */
 export const world = {
   app: undefined as unknown as Express,
-  tokens: { cardsOnly: '', viewer: '', clerk: '' },
+  tokens: { cardsOnly: '', viewer: '', clerk: '', linker: '' },
 };
 
 const resolveMongoUri = async (tag: string): Promise<string> => {
@@ -114,14 +114,33 @@ export const upload = (
   company: string,
   rows: (FuelSheetCell[] | null)[],
   fileName = 'أرصدة وطنية.xlsx',
+) => uploadSheet(token, company, [FUEL_SHEET_HEADER, ...rows], { fileName });
+
+/** Any layout — the header row is the caller's — with an optional «تاريخ الشيت». */
+export const uploadSheet = (
+  token: string,
+  company: string,
+  rows: (FuelSheetCell[] | null)[],
+  options: { fileName?: string; sheetDate?: string } = {},
 ) =>
-  buildFuelSheet({ rows: [FUEL_SHEET_HEADER, ...rows] }).then((file) =>
-    request(world.app)
+  buildFuelSheet({ rows }).then((file) => {
+    const req = request(world.app)
       .post(RECONCILE)
       .set(...auth(token))
-      .field('company', company)
-      .attach('file', file, fileName),
-  );
+      .field('company', company);
+    return (
+      options.sheetDate === undefined ? req : req.field('sheetDate', options.sheetDate)
+    ).attach('file', file, options.fileName ?? 'أرصدة وطنية.xlsx');
+  });
+export const readSheet = async (
+  company: string,
+  rows: (FuelSheetCell[] | null)[],
+  options: { fileName?: string; sheetDate?: string } = {},
+): Promise<FleetFuelReconcileDto> => {
+  const res = await uploadSheet(world.tokens.clerk, company, rows, options);
+  expect(res.status, res.text).toBe(200);
+  return data<FleetFuelReconcileDto>(res);
+};
 export const read = async (
   company: string,
   rows: (FuelSheetCell[] | null)[],
@@ -135,11 +154,12 @@ export const decide = (
   decision: 'apply' | 'reject',
   cardIds: string[],
   token = world.tokens.clerk,
+  extra: { cancelCharges?: string[]; approveRequests?: string[] } = {},
 ) =>
   request(world.app)
     .post(`${RECONCILE}/${id}/decisions`)
     .set(...auth(token))
-    .send({ decision, cardIds });
+    .send({ decision, cardIds, ...extra });
 export const card = async (id: Types.ObjectId | string) =>
   (await FleetFuelCardModel.findById(id).lean<FleetFuelCardDoc>().exec()) as FleetFuelCardDoc;
 export const log = async (cardId: Types.ObjectId | string): Promise<FleetFuelCardMovementDto[]> =>
@@ -192,6 +212,18 @@ export const useFuelReconcileWorld = (tag: string): void => {
         'fleetFuelCharge.transfer',
       ],
       { ar: 'سامح', last: 'علي' },
+    );
+    // «ربط الكروت بالسيارات» and «إضافة»: the cards screen's own edit and create grants.
+    world.tokens.linker = await tokenWith(
+      'reconcile-linker@ecms.local',
+      [
+        'fleetFuelCard.view',
+        'fleetFuelCard.edit',
+        'fleetFuelCard.create',
+        'fleetFuelCharge.view',
+        'fleetFuelCharge.approve',
+      ],
+      { ar: 'منى', last: 'حسن' },
     );
   }, 240_000);
 

@@ -168,6 +168,12 @@ export const updateCatalogItem = (
   id: string,
   body: UpdateFleetCatalogItem,
 ): Promise<FleetCatalogItemDto> => patch<FleetCatalogItemDto>(`/fleet/catalog-items/${id}`, body);
+/**
+ * «او امسح بند انا ضيفته»: a licensing-expenses item somebody added, deleted (soft — the audit
+ * keeps it). 204, no body. A seeded item or another list's is refused (409): those archive.
+ */
+export const deleteCatalogItem = (id: string): Promise<void> =>
+  del<void>(`/fleet/catalog-items/${id}`);
 
 // ── Vehicle registry (§2.1/§4.1 — `inWorkshop` arrives DERIVED from the server) ─
 export const listVehicles = (params: FleetListParams): Promise<Paginated<FleetVehicleDto>> =>

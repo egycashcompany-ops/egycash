@@ -74,8 +74,19 @@ describe('the projection judges each counter before its own day, through the one
   const chooser = readFileSync(join(HERE, 'measure-from-visit.ts'), 'utf8');
 
   it('three bound questions: the two counters cut BEFORE their day (R4), the stand-in keeps it', () => {
-    expect(body.match(/fleetOdometerRepository\.lowerBoundsAt\(/g)).toHaveLength(3);
-    expect(body.match(/\{ includeDay: false \}/g), 'exit and entry counters').toHaveLength(2);
+    // Batch 3: the three questions moved into `visitBounds`, which the projection and the per-row
+    // gap (`odometer/service-gap.ts`) both ask — so a row's figure and the car's are judged by one
+    // rule. Rewritten on purpose to read them there; the projection must still go through it.
+    const start = engine.indexOf('export const visitBounds');
+    expect(start, 'visitBounds exists').toBeGreaterThan(-1);
+    const bounds = engine.slice(start, engine.indexOf('\n};', start));
+    expect(bounds.match(/fleetOdometerRepository\.lowerBoundsAt\(/g)).toHaveLength(3);
+    expect(bounds.match(/\{ includeDay: false \}/g), 'exit and entry counters').toHaveLength(2);
+    expect(body, 'the projection asks them through it').toContain('visitBounds(');
+    expect(body, 'and asks nothing of its own').not.toContain('lowerBoundsAt(');
+    const gap = readFileSync(join(HERE, '../odometer/service-gap.ts'), 'utf8');
+    expect(gap, 'the per-row gap asks the same questions').toContain('visitBounds(round)');
+    expect(gap, 'and no private copy of them').not.toContain('lowerBoundsAt(');
   });
 
   it('the counter is chosen by `measureFromVisit`, handed `computeAlarm` itself', () => {

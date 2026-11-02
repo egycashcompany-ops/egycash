@@ -1215,6 +1215,13 @@ export interface FleetAlarmUncountedVisitDto {
   workType: FleetAlarmNamedDto | null;
   /** The visit's workshop; `null` when it has none or the workshop is gone. */
   workshop: FleetAlarmNamedDto | null;
+  /**
+   * Does the visit's work type count for the alarm — today's «يُحتسب للإنذار» list? `false` for
+   * `notCounting` and `true` for `checkedOutEarlier` by definition; for an `open` visit it says
+   * whether closing it would make it the one measured from, so the card can say «لا يُحتسب حتى بعد
+   * إغلاقها» without guessing from the work type's name.
+   */
+  counts: boolean;
 }
 
 /**

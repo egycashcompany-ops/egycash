@@ -41,6 +41,8 @@ export interface AlarmBaseline {
    */
   entryCounter: number | null;
   exitCounter: number | null;
+  /** The visit's work type — what «كيف حُسب الفارق» names the counted visit by. */
+  workTypeId: string;
 }
 
 /** A car's newest visit by check-in day, whatever its state — see `newestVisits`. */
@@ -50,6 +52,21 @@ export interface NewestVisit {
   /** `null` while the visit is open. */
   outDate: Date | null;
   workTypeId: string;
+  /** Where it is — «التوكيل» — so the card can say where the car went. */
+  workshopId: string;
+}
+
+/**
+ * A closed visit that counts for the alarm, as the per-row gap measures from it — see
+ * `countingVisitsOf`. The counters exactly as stored, `null` where not written.
+ */
+export interface CountingVisit {
+  vehicleId: string;
+  visitId: string;
+  inDate: Date;
+  outDate: Date;
+  entryCounter: number | null;
+  exitCounter: number | null;
 }
 
 /** A visit as the list answers with it. The drivers are stored on the document itself now. */
@@ -181,6 +198,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       inDate: Date;
       exitOdometer?: number | null;
       entryOdometer?: number | null;
+      workTypeId: Types.ObjectId;
     }>([
       {
         $match: {
@@ -224,6 +242,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           // The entry counter as stored, beside the exit one — so the alarm can say which of the two
           // it measured from, and fall back to this one when the exit counter is contradicted (R3).
           entryOdometer: { $first: '$odometerAtService' },
+          workTypeId: { $first: '$workTypeId' },
         },
       },
     ]);
@@ -245,15 +264,69 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           inDate: row.inDate,
           entryCounter: row.entryOdometer ?? null,
           exitCounter: row.exitOdometer ?? null,
+          workTypeId: String(row.workTypeId),
         },
       ]),
     );
   }
 
   /**
+   * EVERY closed, alarm-counting, live visit of these cars checked out strictly before `before`,
+   * newest check-out first — the per-row gap's read (`odometer/service-gap.ts`).
+   *
+   * «مش بيخصم الكيلومترات اللى بتخش كل يوم»: each reading row is measured from the service IN
+   * FORCE ON ITS DAY, so the page needs every service a row on it could fall after, not only the
+   * car's latest. The filter and the order are `alarmBaselines`' own — counting work type, closed,
+   * not deleted; `outDate` then `_id` descending — so the first visit of a car checked out before a
+   * row's day is exactly the baseline the alarm would have used on that day.
+   *
+   * Only the fields the counter choice reads come back; one query for the whole page.
+   */
+  async countingVisitsOf(
+    vehicleIds: readonly string[],
+    countingWorkTypeIds: readonly string[],
+    before: Date,
+  ): Promise<CountingVisit[]> {
+    if (vehicleIds.length === 0 || countingWorkTypeIds.length === 0) return [];
+    const rows = await this.model
+      .find(
+        {
+          vehicleId: { $in: vehicleIds.map(oid) },
+          workTypeId: { $in: countingWorkTypeIds.map(oid) },
+          outDate: { $ne: null, $lt: before },
+          isDeleted: false,
+        },
+        { vehicleId: 1, inDate: 1, outDate: 1, odometerAtService: 1, exitOdometer: 1 },
+      )
+      .sort({ outDate: -1, _id: -1 })
+      .lean<
+        {
+          _id: Types.ObjectId;
+          vehicleId: Types.ObjectId;
+          inDate: Date;
+          outDate: Date;
+          odometerAtService?: number | null;
+          exitOdometer?: number | null;
+        }[]
+      >()
+      .exec();
+    // `?? null`, as `alarmBaselines`: a visit written before a counter field existed has none.
+    return rows.map((row) => ({
+      vehicleId: String(row.vehicleId),
+      visitId: String(row._id),
+      inDate: row.inDate,
+      outDate: row.outDate,
+      entryCounter: row.odometerAtService ?? null,
+      exitCounter: row.exitOdometer ?? null,
+    }));
+  }
+
+  /**
    * Each car's NEWEST live visit by check-in day, open or closed, counting or not — so the alarm can
-   * say when the visit a reader expects to be measured from is not the one it uses (still open, or
-   * of a work type that does not count). Read-only; a soft-deleted visit is never answered.
+   * say when the visit a reader expects to be measured from is not the one it uses (still open, of
+   * a work type that does not count, or checked out before the one that is). Read-only; a
+   * soft-deleted visit is never answered. Its work type and workshop come along, so the card can
+   * name the visit («إصلاح» at «التوكيل») without a second question.
    */
   async newestVisits(vehicleIds: readonly string[]): Promise<Map<string, NewestVisit>> {
     if (vehicleIds.length === 0) return new Map();
@@ -263,6 +336,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       inDate: Date;
       outDate: Date | null;
       workTypeId: Types.ObjectId;
+      workshopId: Types.ObjectId;
     }>([
       {
         $match: {
@@ -280,6 +354,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           inDate: { $first: '$inDate' },
           outDate: { $first: '$outDate' },
           workTypeId: { $first: '$workTypeId' },
+          workshopId: { $first: '$workshopId' },
         },
       },
     ]);
@@ -291,6 +366,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           inDate: row.inDate,
           outDate: row.outDate ?? null,
           workTypeId: String(row.workTypeId),
+          workshopId: String(row.workshopId),
         },
       ]),
     );

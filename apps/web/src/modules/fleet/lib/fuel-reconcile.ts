@@ -8,14 +8,18 @@
 // it leaves the selection and «تحديد الكل» passes it by; the sheet must be read again.
 import {
   ErrorCodes,
+  type DecideFleetFuelReconcile,
   type FleetFuelCardCompany,
+  type FleetFuelReconcileChargeDto,
   type FleetFuelReconcileDto,
   type FleetFuelReconcileLineDto,
   type FleetFuelReconcileResultDto,
+  type FleetFuelSheetConflict,
   type FleetFuelSheetConflictDto,
   type FleetFuelSheetDuplicateDto,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
+import { cairoDayOf } from './custody-hold';
 
 // ── Figures ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -79,6 +83,154 @@ export const timeOf = (iso: string): string => {
 export const lastFour = (number: string): string => number.replace(/\s+/gu, '').slice(-4);
 /** A hidden number as the boards write it: «•••• 0021». */
 export const dots = (number: string): string => `•••• ${lastFour(number)}`;
+/**
+ * A sheet's number as the sheet shows it: «548 •••• 0021» — its printed start, then the last four —
+ * for a masked number («548**********0021»); any other number as the boards hide one.
+ */
+export const maskedOf = (number: string): string => {
+  const masked = /^(\d*)[*xX•●·#]+(\d{4,})$/u.exec(number.replace(/\s+/gu, ''));
+  return masked === null || masked[1] === ''
+    ? dots(number)
+    : `${masked[1]} •••• ${lastFour(number)}`;
+};
+/** The printed start of a masked number («548»); '' for any other. */
+export const maskedPrefixOf = (number: string): string =>
+  /^(\d*)[*xX•●·#]+\d{4,}$/u.exec(number.replace(/\s+/gu, ''))?.[1] ?? '';
+
+// ── «تاريخ الشيت» (M23) ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * The day a sheet's file name holds — «رصيد وطنيه 4-10-2026.xlsx» → `2026-10-04`, with the text it
+ * was read from («4-10-2026») — day first, as he names his files; `null` when the name holds none.
+ */
+export const sheetDateOfName = (name: string): { day: string; text: string } | null => {
+  const found = /(\d{1,2})[-_.](\d{1,2})[-_.](\d{4})/u.exec(name);
+  if (found === null) return null;
+  const [text = '', d = '', m = '', y = ''] = found;
+  const day = Number(d);
+  const month = Number(m);
+  const ymd = `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // A real calendar day only — «31-2-2026» is not one.
+  const at = new Date(`${ymd}T00:00:00Z`);
+  if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== ymd) return null;
+  return { day: ymd, text };
+};
+/** «2026/10/04» from «2026-10-04». */
+export const dayText = (ymd: string): string => ymd.slice(0, 10).replace(/-/gu, '/');
+/** Whole days from one calendar day to another (`YYYY-MM-DD`); negative when `to` is earlier. */
+export const daysBetween = (from: string, to: string): number =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+/** Today's Cairo calendar day, `YYYY-MM-DD` — the day «اليوم» means. */
+export const cairoToday = (now: Date = new Date()): string => cairoDayOf(now.toISOString());
+
+// ── 6a: a charge the sheet does not show, a request the difference equals ──────────────────────
+
+/** Charges on or before the sheet's date — the only ones that may be pre-ticked. */
+export const datedCharges = (line: FleetFuelReconcileLineDto): FleetFuelReconcileChargeDto[] =>
+  line.charges.filter((charge) => !charge.afterSheetDate);
+/** Charges after the sheet's date — listed apart, never pre-ticked. */
+export const laterCharges = (line: FleetFuelReconcileLineDto): FleetFuelReconcileChargeDto[] =>
+  line.charges.filter((charge) => charge.afterSheetDate);
+/**
+ * What the confirm ticks before the reader does (M16): the one charge whose amount is exactly
+ * what the sheet is short, or all of them when together they are; never a charge after the
+ * sheet's date, and nothing when the sheet is not lower.
+ */
+export const preTickedCharges = (line: FleetFuelReconcileLineDto): string[] => {
+  if (line.difference >= 0) return [];
+  const short = -piastres(line.difference);
+  const dated = datedCharges(line);
+  const one = dated.find((charge) => piastres(charge.amount) === short);
+  if (one !== undefined) return [one.id];
+  const all = dated.reduce((sum, charge) => sum + piastres(charge.amount), 0);
+  return dated.length > 0 && all === short ? dated.map((charge) => charge.id) : [];
+};
+/** The sheet is HIGHER by exactly the card's pending «طلب رصيد» (M17). */
+export const requestMatches = (line: FleetFuelReconcileLineDto): boolean =>
+  line.card.requestedAmount !== null &&
+  line.difference > 0 &&
+  piastres(line.card.requestedAmount) === piastres(line.difference);
+/** The charges a ✓ may ask about — only when the sheet is lower. */
+export const unseenCharges = (line: FleetFuelReconcileLineDto): FleetFuelReconcileChargeDto[] =>
+  line.difference < 0 ? line.charges : [];
+/** A row whose ✓ asks first: a charge the sheet does not show, or a request to approve. */
+export const asksFirst = (line: FleetFuelReconcileLineDto): boolean =>
+  unseenCharges(line).length > 0 || requestMatches(line);
+
+/** M17's two answers when the sheet is higher by exactly the pending request. */
+export type RequestChoice = 'approve' | 'adjust';
+/** What the confirm holds for one card: the charges ticked to cancel, and the request answer. */
+export interface LineChoices {
+  cancel: ReadonlySet<string>;
+  request: RequestChoice | null;
+}
+/** A card's choices as the confirm opens: the pre-ticked charges, «اعتماد طلب الرصيد» suggested. */
+export const defaultChoices = (line: FleetFuelReconcileLineDto): LineChoices => ({
+  cancel: new Set(preTickedCharges(line)),
+  request: requestMatches(line) ? 'approve' : null,
+});
+/** Σ the ticked charges of a card, to the piastre. */
+export const markedOf = (line: FleetFuelReconcileLineDto, choice: LineChoices): number =>
+  sumOf(
+    unseenCharges(line)
+      .filter((c) => choice.cancel.has(c.id))
+      .map((c) => c.amount),
+  );
+/** The ticked charges are more than the sheet takes off the card — the server would refuse. */
+export const markedTooMuch = (line: FleetFuelReconcileLineDto, choice: LineChoices): boolean =>
+  piastres(markedOf(line, choice)) > -piastres(line.difference);
+
+/**
+ * A ✓'s body additions: the ticked charges of each card, and the cards whose request is approved —
+ * each list only when it names something, so a ✓ that asks nothing sends exactly batch 2's body.
+ */
+export const decideExtrasOf = (
+  lines: readonly FleetFuelReconcileLineDto[],
+  choiceOf: (line: FleetFuelReconcileLineDto) => LineChoices,
+): Pick<DecideFleetFuelReconcile, 'cancelCharges' | 'approveRequests'> => {
+  const cancelCharges = lines.flatMap((line) =>
+    unseenCharges(line)
+      .filter((charge) => choiceOf(line).cancel.has(charge.id))
+      .map((charge) => charge.id),
+  );
+  const approveRequests = lines
+    .filter((line) => requestMatches(line) && choiceOf(line).request === 'approve')
+    .map((line) => line.card.id.toLowerCase());
+  return {
+    ...(cancelCharges.length > 0 ? { cancelCharges } : {}),
+    ...(approveRequests.length > 0 ? { approveRequests } : {}),
+  };
+};
+
+// ── 6c: how the sheet was read ──────────────────────────────────────────────────────────────────
+
+/** Rows the reader is asked to choose between — a number with no name that fits a card or more. */
+export const CHOOSE_CONFLICTS: readonly FleetFuelSheetConflict[] = [
+  'ambiguousNumber',
+  'lastFourOnly',
+];
+/** The conflicts that list candidates («تحتاج اختيارًا»), and the rest («صفوف لا تُطابَق»). */
+export const chooseConflictsOf = (
+  conflicts: readonly FleetFuelSheetConflictDto[],
+): FleetFuelSheetConflictDto[] => conflicts.filter((c) => CHOOSE_CONFLICTS.includes(c.reason));
+export const plainConflictsOf = (
+  conflicts: readonly FleetFuelSheetConflictDto[],
+): FleetFuelSheetConflictDto[] => conflicts.filter((c) => !CHOOSE_CONFLICTS.includes(c.reason));
+/** The card rows a name or a number tied to a card — the differing and the equal. */
+export const matchedRowsOf = (result: FleetFuelReconcileDto): number =>
+  result.differs.length + result.equal.length;
+/**
+ * More than half the card rows found no card — the layout was likely misread, or the sheet is
+ * another company's: the guard banner says so before anything is applied.
+ */
+export const mostUnmatched = (result: FleetFuelReconcileDto): boolean =>
+  result.cardRows > 0 && matchedRowsOf(result) * 2 < result.cardRows;
+/** How the sheet prints its numbers — from its first card row. */
+export const numberKindOf = (result: FleetFuelReconcileDto): 'full' | 'masked' | null => {
+  const kind =
+    [...result.differs, ...result.equal][0]?.sheet.numberKind ?? result.sheetOnly[0]?.numberKind;
+  return kind === 'full' || kind === 'masked' ? kind : null;
+};
 
 // ── Refusals ────────────────────────────────────────────────────────────────────────────────────
 

@@ -77,8 +77,9 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/components/UnavailabilityDialog.tsx': { arabic: 1 },
   // «تسجيل استلام»: the cars received now on each line.
   'modules/fleet/components/VehicleContractDeliveryDialog.tsx': { integer: 1 },
-  // A supply contract's line: how many cars, and the unit price.
-  'modules/fleet/components/VehicleContractLinesEditor.tsx': { integer: 1, money: 1 },
+  // A supply contract's line: how many cars, how many already received («عقد جديد»), and the unit
+  // price.
+  'modules/fleet/components/VehicleContractLinesEditor.tsx': { integer: 2, money: 1 },
   // Plate; chassis, motor and Motorola SN; ISSI.
   'modules/fleet/components/VehicleFormDialog.tsx': { plate: 1, english: 3, integer: 1 },
   // Year and count; unit value and the grievance total.

@@ -16,7 +16,8 @@
 //
 // A «استعاضة» is recorded HELD: its letter is printed and its memos are taken, but its money is not
 // in the fund until «تأكيد التحويل» names the day it arrived — or it is cancelled and its memos are
-// free again (`custody-fund-hold.ts`, under the same lock).
+// free again (`custody-fund-hold.ts`, under the same lock). «حذف العملية» takes any operation off
+// the ledger and frees what it claimed (`custody-fund-delete.ts`, under the same lock too).
 import { Types, type ClientSession } from 'mongoose';
 import {
   FLEET_LICENSE_EXPENSE_KINDS,
@@ -41,6 +42,7 @@ import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { ConflictError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
+import { actorNameOf } from '../fleet-actor-name';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { type FleetLicenseExpenseDoc } from '../license-expenses/license-expense.model';
 import { fleetLicenseExpenseRepository } from '../license-expenses/license-expense.repository';
@@ -73,6 +75,7 @@ import {
 } from './custody-ledger';
 import {
   cancellationDtoOf,
+  deletionDtoOf,
   operationStatusOf,
   transferDtoOf,
   type FleetCustodyOperationDoc,
@@ -131,9 +134,11 @@ const signaturesOf = (
   note: value?.note ?? '',
 });
 
+/** An operation on the wire — `createdByName` («سجّلها») is resolved by the caller, a page at once. */
 export const toCustodyOperationDto = (
   doc: FleetCustodyOperationDoc,
   ledger: { before: number; after: number } | null,
+  createdByName: string | null,
 ): FleetCustodyOperationDto => ({
   id: String(doc._id),
   kind: doc.kind,
@@ -170,15 +175,15 @@ export const toCustodyOperationDto = (
   letterFigure: doc.letterFigure ?? null,
   signatures: signaturesOf(doc.signatures),
   ledger,
-  deletion: null, // B3-F0 stub: A-CUST — the deletion of a deleted operation
-  createdByName: null, // B3-F0 stub: A-CUST — who recorded it («سجّلها»)
+  deletion: deletionDtoOf(doc),
+  createdByName,
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
 });
 
 /** What the audit trail keeps of an operation. */
-const snapshot = (doc: FleetCustodyOperationDoc) => ({
+export const operationSnapshot = (doc: FleetCustodyOperationDoc) => ({
   kind: doc.kind,
   status: operationStatusOf(doc),
   transfer: transferDtoOf(doc),
@@ -281,10 +286,11 @@ class FleetCustodyFundService {
 
   /** The fund's figures — the ledger's tiles, the tabs' badges, the dialogs' «الآن». Unfiltered. */
   async summary(): Promise<FleetCustodyFundSummaryDto> {
-    const [terms, memos, outside] = await Promise.all([
+    const [terms, memos, outside, deleted] = await Promise.all([
       readCustodyFundTerms(),
       fleetCustodyMemoService.counts(),
       fleetCustodyMemoService.outside(),
+      fleetCustodyOperationRepository.countDeleted(),
     ]);
     return {
       fundTotal: terms.fundTotal,
@@ -303,7 +309,8 @@ class FleetCustodyFundService {
         terms.settled.count,
       memos,
       outside,
-      deleted: { count: 0 }, // B3-F0 stub: A-CUST — Σ the operations in «العمليات المحذوفة»
+      // «العمليات المحذوفة» — they count nowhere else.
+      deleted: { count: deleted },
     };
   }
 
@@ -329,7 +336,11 @@ class FleetCustodyFundService {
   /** One operation — what its letter printed, and its place in the fund («قبلها» / «بعدها»). */
   async operation(id: string): Promise<FleetCustodyOperationDto> {
     const doc = await fleetCustodyOperationRepository.getById(id);
-    return toCustodyOperationDto(doc, ledgerPlaceOf(await this.ledgerRows(), String(doc._id)));
+    const [rows, createdByName] = await Promise.all([
+      this.ledgerRows(),
+      actorNameOf(doc.createdBy == null ? null : String(doc.createdBy)),
+    ]);
+    return toCustodyOperationDto(doc, ledgerPlaceOf(rows, String(doc._id)), createdByName);
   }
 
   /** «استعاضة عهدة» offers the memos no replenishment has taken — held ones are taken — oldest first. */
@@ -633,7 +644,7 @@ class FleetCustodyFundService {
     await auditService.record({
       entityRef: operationRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: diffChanges({}, operationSnapshot(doc)),
     });
   }
 }

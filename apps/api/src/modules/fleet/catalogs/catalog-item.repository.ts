@@ -124,6 +124,24 @@ class FleetCatalogItemRepository extends BaseRepository<FleetCatalogItemDoc> {
     );
   }
 
+  /**
+   * Which of `ids` name a DELETED item — in one read. «إعداد النماذج» drops a deleted item's lines
+   * from the saved templates when it reads them, so the read asks only for the deleted ones: an
+   * id that names no item at all is not this method's to judge, and its line stays.
+   */
+  async deletedAmong(ids: readonly string[]): Promise<Set<string>> {
+    const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return new Set();
+    const rows = await this.model
+      .find(
+        { _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: true },
+        { _id: 1 },
+      )
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
   async findActiveOfKind(id: string, kind: FleetCatalogKind): Promise<FleetCatalogItemDoc | null> {
     const doc = await this.findById(id);
     return doc !== null && doc.kind === kind && doc.isActive ? doc : null;

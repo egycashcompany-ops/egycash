@@ -2,8 +2,9 @@
 //
 // The balance is STORED here and every change to it is a movement in `fleet_fuel_card_movements`:
 // a charge the clerk approved, a transfer from or to another card, a fuel receipt, a company
-// sheet's figure taken (✓) — and a sheet's figure refused (✗), a line that moves nothing. The two
-// are written in one transaction, so the balance and its log cannot disagree.
+// sheet's figure taken (✓) — and a sheet's figure refused (✗), or a card moved car by a sheet
+// decision (`sheetLink`), lines that move nothing. The two are written in one transaction, so the
+// balance and its log cannot disagree.
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_CARD_COMPANIES,
@@ -105,6 +106,38 @@ export interface FleetFuelMovementReconciliation {
   systemBalance: number;
   /** The Excel row the sheet's figure came from. */
   sheetRow: number | null;
+  /** The charges this ✓ cancelled («وأُلغي شحن …»); ABSENT on a line that cancelled none. */
+  cancelled?: { movementId: Types.ObjectId; amount: number }[];
+}
+
+/**
+ * «أُلغي بشيت الشركة» — a `charge` the company's sheet does not show, cancelled by a ✓ on it. The
+ * line stays in the card's log; it no longer colours the row, counts in «شحن اليوم», or may be
+ * changed or removed.
+ */
+export interface FleetFuelMovementCancelledBySheet {
+  reconciliationId: Types.ObjectId;
+  /** The `sheetAdjust` line that cancelled it. */
+  movementId: Types.ObjectId;
+  fileName: string;
+  at: Date;
+  by: Types.ObjectId | null;
+}
+
+/** A place a card can be: on a car, or on none under a label. */
+export interface FleetFuelMovementPlace {
+  vehicleId: Types.ObjectId | null;
+  vehicleCode: string | null;
+  label: string | null;
+}
+
+/** A `sheetLink` line's move — «نُقل من … إلى … — شيت الشركة». */
+export interface FleetFuelMovementLink {
+  from: FleetFuelMovementPlace;
+  to: FleetFuelMovementPlace;
+  sheetCode: string | null;
+  reconciliationId: Types.ObjectId;
+  fileName: string;
 }
 
 export interface FleetFuelCardMovementDoc extends BaseDocFields {
@@ -119,6 +152,10 @@ export interface FleetFuelCardMovementDoc extends BaseDocFields {
   at: Date;
   /** Only on the two sheet kinds; ABSENT on every other line (and on every line before them). */
   reconciliation?: FleetFuelMovementReconciliation | null;
+  /** Only on a `charge` a sheet cancelled; ABSENT on every other line. */
+  cancelledBySheet?: FleetFuelMovementCancelledBySheet | null;
+  /** Only on a `sheetLink` line; ABSENT on every other line. */
+  link?: FleetFuelMovementLink | null;
 }
 
 const movementReconciliationSchema = new Schema<FleetFuelMovementReconciliation>(
@@ -128,6 +165,50 @@ const movementReconciliationSchema = new Schema<FleetFuelMovementReconciliation>
     sheetBalance: { type: Number, required: true },
     systemBalance: { type: Number, required: true },
     sheetRow: { type: Number, default: null },
+    // NO default: absent on a line that cancelled nothing.
+    cancelled: {
+      type: [
+        new Schema(
+          {
+            movementId: { type: Schema.Types.ObjectId, required: true },
+            amount: { type: Number, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
+    },
+  },
+  { _id: false },
+);
+
+const movementCancelledSchema = new Schema<FleetFuelMovementCancelledBySheet>(
+  {
+    reconciliationId: { type: Schema.Types.ObjectId, required: true },
+    movementId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, default: '' },
+    at: { type: Date, required: true },
+    by: { type: Schema.Types.ObjectId, default: null },
+  },
+  { _id: false },
+);
+
+const movementPlaceSchema = new Schema<FleetFuelMovementPlace>(
+  {
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    vehicleCode: { type: String, default: null },
+    label: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const movementLinkSchema = new Schema<FleetFuelMovementLink>(
+  {
+    from: { type: movementPlaceSchema, required: true },
+    to: { type: movementPlaceSchema, required: true },
+    sheetCode: { type: String, default: null },
+    reconciliationId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, default: '' },
   },
   { _id: false },
 );
@@ -144,6 +225,10 @@ const movementSchema = new Schema<FleetFuelCardMovementDoc>(
     // NO default: a line written without it — every line before the sheet kinds, and every other
     // kind since — stays without the field; read as `null`. Nothing is backfilled.
     reconciliation: { type: movementReconciliationSchema, required: false },
+    // NO default either: only a charge a sheet cancelled carries it (`{ cancelledBySheet: null }`
+    // matches every other line, absent included), only a `sheetLink` line a link.
+    cancelledBySheet: { type: movementCancelledSchema, required: false },
+    link: { type: movementLinkSchema, required: false },
     ...baseFields,
   },
   baseSchemaOptions,

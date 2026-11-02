@@ -2,7 +2,8 @@
 // straight from the API — the same rows every fleet form's select reads, managed here behind
 // `fleetCatalog.manage`. Items ARCHIVE instead of delete (history references them), so the row
 // action is edit only and the status column tells the truth. `countsForAlarm` renders only on
-// the workType tab, exactly where the schema allows it.
+// the workType tab, exactly where the schema allows it. The licensing-expenses items say where
+// each shows and how it is paid («طريقة الصرف»); one somebody added is deleted on «إعداد النماذج».
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -194,6 +195,31 @@ export const CatalogsPage = (): JSX.Element => {
                   : t(`fleet.licenseExpenses.kinds.${r.licenseExpenseKind}`)}
               </span>
             ),
+          } satisfies Column<FleetCatalogItemDto>,
+          // «طريقة الصرف»: which group of a memo offers it — the same choice «إعداد النماذج» makes.
+          {
+            key: 'licenseExpensePaidBy',
+            header: t('fleet.catalogs.fields.licenseExpensePaidBy'),
+            render: (r: FleetCatalogItemDto) => {
+              const paid = r.licenseExpensePaidBy ?? null;
+              return (
+                <span
+                  data-license-expense-paid-by={paid ?? 'both'}
+                  className={cn(
+                    'inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold',
+                    paid === 'visa'
+                      ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                      : paid === 'cash'
+                        ? 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300'
+                        : 'bg-slate-500/15 text-slate-600 dark:text-slate-300',
+                  )}
+                >
+                  {paid === null
+                    ? t('fleet.catalogs.licenseExpenseKind.both')
+                    : t(`fleet.licenseExpenses.paidBy.${paid}`)}
+                </span>
+              );
+            },
           } satisfies Column<FleetCatalogItemDto>,
         ]
       : []),

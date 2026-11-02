@@ -35,10 +35,13 @@ import {
   BOARD_FONT,
   BoardIcon,
   CHARGE_COLUMNS,
-  NAME_CELL,
   BoardKpi,
-  CompanyBadge,
   EmptySlotRow,
+  FIELD_BOX,
+  FIELD_CAPTION,
+  FIELD_VALUE,
+  FuelCardNameCell,
+  FuelCardNumberBox,
   NUM,
   PATH,
   VehicleFuelGroup,
@@ -47,17 +50,18 @@ import { saveSheet } from '../lib/fleet-sheet';
 import {
   CHARGING_STATES,
   cardsInStates,
+  chargedToday,
   readChargingStates,
   type ChargingState,
 } from '../lib/charging-state';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
-import { groupCardNumber } from '../lib/fuel-card-number';
 
 const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state'] as const;
 const STATE_LABEL: Record<ChargingState, string> = {
   requested: 'fleet.fuelCards.filters.requested',
-  charged: 'fleet.fuelCards.filters.chargedToday',
+  // «شُحنت اليوم»: today's Cairo date, as the row's green (`chargedToday`).
+  charged: 'fleet.fuelCards.filters.chargedOnCairoDay',
   low: 'fleet.fuelCards.filters.low',
 };
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -71,7 +75,8 @@ const REQUEST_BOX_TONE =
 
 /**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
- * A request already on the row is shown in the box with its ✓ ✕ until somebody decides.
+ * A request already on the row is shown in the box with its ✓ ✕ until somebody decides. A field
+ * of the row: its caption on top, the amount with ✓ ✕ under it.
  */
 const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const t = useT();
@@ -107,51 +112,53 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const showButtons = waiting || (typed !== '' && Number.isFinite(value) && value > 0);
   return (
     <div
+      data-fuel-request-box={card.id}
       className={cn(
-        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors fuel-grid:justify-self-stretch',
-        'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
-        'border-slate-200 dark:border-slate-800',
+        FIELD_BOX,
+        'transition-colors focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
       )}
     >
-      <span className="whitespace-nowrap text-sm text-slate-500">
-        {t('fleet.fuelCards.fields.request')}
+      <span className={FIELD_CAPTION}>
+        <span>{t('fleet.fuelCards.fields.request')}</span>
       </span>
-      <MoneyInput
-        value={shown}
-        onChange={setTyped}
-        disabled={waiting || !can('fleetFuelCharge.request')}
-        aria-label={t('fleet.fuelCards.fields.request')}
-        data-fuel-request={card.id}
-        placeholder="0.00"
-        tone={REQUEST_BOX_TONE}
-        className="!h-6 !w-24 !px-0 !py-0"
-      />
-      {showButtons && canDecide && (
-        <>
-          <button
-            type="button"
-            data-fuel-tick={card.id}
-            aria-label={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
-            title={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
-            disabled={busy}
-            onClick={() => void tick()}
-            className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1.5 text-sm font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
-          >
-            ✓
-          </button>
-          <button
-            type="button"
-            data-fuel-cross={card.id}
-            aria-label={t('fleet.fuelCards.cancelRequest')}
-            title={t('fleet.fuelCards.cancelRequest')}
-            disabled={busy}
-            onClick={() => void cross()}
-            className="rounded border border-red-500/30 bg-red-600/20 px-1.5 text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-600/30 disabled:opacity-50"
-          >
-            ✕
-          </button>
-        </>
-      )}
+      <span className="flex items-center gap-1">
+        <MoneyInput
+          value={shown}
+          onChange={setTyped}
+          disabled={waiting || !can('fleetFuelCharge.request')}
+          aria-label={t('fleet.fuelCards.fields.request')}
+          data-fuel-request={card.id}
+          placeholder="0.00"
+          tone={REQUEST_BOX_TONE}
+          className="!h-5 !w-16 !px-0 !py-0"
+        />
+        {showButtons && canDecide && (
+          <>
+            <button
+              type="button"
+              data-fuel-tick={card.id}
+              aria-label={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
+              title={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
+              disabled={busy}
+              onClick={() => void tick()}
+              className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1 text-xs font-bold leading-4 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              data-fuel-cross={card.id}
+              aria-label={t('fleet.fuelCards.cancelRequest')}
+              title={t('fleet.fuelCards.cancelRequest')}
+              disabled={busy}
+              onClick={() => void cross()}
+              className="rounded border border-red-500/30 bg-red-600/20 px-1 text-xs font-bold leading-4 text-red-600 dark:text-red-400 hover:bg-red-600/30 disabled:opacity-50"
+            >
+              ✕
+            </button>
+          </>
+        )}
+      </span>
     </div>
   );
 };
@@ -172,20 +179,18 @@ const ChargeRow = ({
   const t = useT();
   const low = card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
   const waiting = card.requestedAmount !== null;
-  // «الاخضر فى حالة لو اتشحن اليوم» — charged on today's date, not within the last 24 hours.
-  const charged =
-    card.lastChargedAt !== null &&
-    new Date(card.lastChargedAt).toDateString() === new Date().toDateString();
+  // «الاخضر فى حالة لو اتشحن اليوم» — charged on today's date in Cairo, the filter's rule too.
+  const charged = chargedToday(card);
   return (
     <div
       data-fuel-line={card.company}
       data-fuel-card={card.id}
       className={cn(
-        // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — one line on a computer's screen; a
-        // tablet or a phone, too narrow for it, lets the line wrap rather than hide half of it.
-        'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2 transition hover:shadow-md',
-        // A computer's screen: the board's columns («اكنهم جدول») — the card, its number, its
-        // balance, its request, its log — each under the line above's.
+        // «كل الداتا تكون جمب بعض على صف واحد» — one row on a computer's screen: the card, its
+        // number, its balance, its request, its log; a tablet or a phone, too narrow for it, lets
+        // the line wrap rather than hide half of it.
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-2.5 py-2 transition hover:shadow-md fuel-grid:py-1.5',
+        // The board's columns («اكنهم جدول») — each figure under the line above's.
         CHARGE_COLUMNS,
         // The whole line carries its state: amber while a request waits, green when charged today,
         // red when the balance is about to run out.
@@ -198,53 +203,35 @@ const ChargeRow = ({
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] hover:border-slate-300 dark:hover:border-slate-700/80',
       )}
     >
-      <div className={cn('flex min-w-[190px] shrink-0 items-center gap-3', NAME_CELL)}>
-        <CompanyBadge company={card.company} />
-        <div className="flex min-w-0 flex-col">
-          <span
-            title={card.name}
-            className="whitespace-nowrap font-figures text-base font-bold tracking-wide text-slate-900 dark:text-white"
-          >
-            {card.name}
-          </span>
-          <span
-            className={cn(
-              'mt-0.5 flex items-center gap-1 text-sm font-medium',
-              card.company === 'wataniya'
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-amber-600 dark:text-amber-400',
+      <FuelCardNameCell card={card} />
+      <div className="my-auto flex flex-wrap items-center gap-2 fuel-grid:contents">
+        {/* «عاوز شكل رقم الكارت يكون زى بطاقات الوقود»: the fuel cards screen's own box. */}
+        <FuelCardNumberBox card={card} />
+        <div data-fuel-balance={card.id} className={FIELD_BOX}>
+          <span className={FIELD_CAPTION}>
+            <span>{t('fleet.fuelCards.fields.balance')}</span>
+            {low !== null && (
+              <span
+                className={cn(
+                  'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-3',
+                  low === 'red'
+                    ? 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
+                    : 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
+                )}
+              >
+                {t(
+                  low === 'red'
+                    ? 'fleet.fuelCards.board.charge.critical'
+                    : 'fleet.fuelCards.balanceYellow',
+                )}
+              </span>
             )}
-          >
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                card.company === 'wataniya' ? 'bg-emerald-400' : 'bg-amber-400',
-              )}
-            />
-            {t(`fleet.fuelCards.company.${card.company}`)}
           </span>
-        </div>
-      </div>
-      <div className="my-auto flex flex-wrap items-center gap-2.5 fuel-grid:contents">
-        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
           <span
             dir="ltr"
             className={cn(
-              'text-base font-bold tracking-wider text-slate-800 dark:text-slate-200',
-              NUM,
-            )}
-          >
-            {groupCardNumber(card.number)}
-          </span>
-        </div>
-        <div
-          data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch"
-        >
-          <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
-          <span
-            className={cn(
-              'text-base font-black',
+              FIELD_VALUE,
+              'font-black',
               NUM,
               low === 'red'
                 ? 'text-red-600 dark:text-red-400'
@@ -258,22 +245,6 @@ const ChargeRow = ({
               maximumFractionDigits: 2,
             })}
           </span>
-          {low !== null && (
-            <span
-              className={cn(
-                'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
-                low === 'red'
-                  ? 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
-                  : 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
-              )}
-            >
-              {t(
-                low === 'red'
-                  ? 'fleet.fuelCards.board.charge.critical'
-                  : 'fleet.fuelCards.balanceYellow',
-              )}
-            </span>
-          )}
         </div>
         <ChargeRequest card={card} />
       </div>
@@ -471,13 +442,13 @@ export const FuelChargingPage = (): JSX.Element => {
             testId="charged"
             tone="cyan"
             icon={PATH.trend}
-            label={t('fleet.fuelCards.totals.chargedToday')}
+            label={t('fleet.fuelCards.totals.chargedOnCairoDay')}
             value={summary.data === undefined ? '—' : latin(summary.data.chargedTodayAmount)}
             unit={t('fleet.fuelCards.board.kpi.currency')}
             unitClass="font-bold text-cyan-600 dark:text-cyan-400"
             note={
               <span className="text-slate-500 dark:text-slate-400">
-                {t('fleet.fuelCards.board.charge.chargedNote')}
+                {t('fleet.fuelCards.board.charge.chargedTodayNote')}
               </span>
             }
           />

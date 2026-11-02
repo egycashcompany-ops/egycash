@@ -11,6 +11,9 @@ import { Types } from 'mongoose';
 const vehicleId = new Types.ObjectId('650000000000000000000001');
 const typeId = new Types.ObjectId('650000000000000000000011');
 const workTypeId = new Types.ObjectId('650000000000000000000021');
+/** A work type that does not count, and the dealer — named by the stubbed catalog below. */
+const repairId = new Types.ObjectId('650000000000000000000022');
+const dealerId = new Types.ObjectId('650000000000000000000031');
 const VISIT = '650000000000000000000091';
 const LOG = '650000000000000000000071';
 
@@ -31,12 +34,14 @@ interface Baseline {
   inDate: Date;
   entryCounter: number | null;
   exitCounter: number | null;
+  workTypeId: string;
 }
 interface Newest {
   visitId: string;
   inDate: Date;
   outDate: Date | null;
   workTypeId: string;
+  workshopId: string;
 }
 
 /** A visit as `alarmBaselines` answers it — its derived fields worked out the way the repository does. */
@@ -48,6 +53,7 @@ const visit = (over: Partial<Baseline> = {}): Baseline => {
     inDate: IN,
     entryCounter: null,
     exitCounter: 50_000,
+    workTypeId: String(workTypeId),
     ...over,
   };
   return {
@@ -63,7 +69,24 @@ const visit = (over: Partial<Baseline> = {}): Baseline => {
 };
 
 const state = {
-  latestReading: { reading: 59_850, date: D('2026-09-05'), logId: LOG },
+  /** `null` = the car has no reading on the chain at all. */
+  latestReading: { reading: 59_850, date: D('2026-09-05'), logId: LOG } as {
+    reading: number;
+    date: Date;
+    logId: string;
+  } | null,
+  /** The newest-dated reading (C6); `null` = the same point as the highest, a healthy chain. */
+  newestReading: null as Point | null,
+  /** The car's make as `findById` answers it; `null` = the make is gone. */
+  make: {
+    _id: typeId,
+    name: { ar: 'مرسيدس اسبرانتر 516', en: 'Mercedes Sprinter 516' },
+    maintenanceIntervalKm: 5000,
+  } as {
+    _id: Types.ObjectId;
+    name: { ar: string; en: string };
+    maintenanceIntervalKm: number;
+  } | null,
   baseline: visit() as Baseline | null,
   /** The car's chain — the stubbed `lowerBoundsAt` cuts it by day, as the repository does. */
   chain: [] as Point[],
@@ -106,10 +129,18 @@ vi.mock('../catalogs/catalog-item.repository', () => ({
     // repository owns the filter. Stubbing that method rather than `list` keeps the mock honest
     // about the seam the engine actually uses.
     countingWorkTypeIds: async () => [String(workTypeId)],
+    // …and, for the card, the names of the work types and workshops it mentions — by id, in any
+    // state. An id the catalog does not hold is simply not answered.
+    findByIdsSystem: async (ids: readonly string[]) =>
+      [
+        { _id: workTypeId, name: { ar: 'صيانة', en: 'Service' } },
+        { _id: repairId, name: { ar: 'إصلاح', en: 'Repair' } },
+        { _id: dealerId, name: { ar: 'التوكيل', en: 'Dealer' } },
+      ].filter((item) => ids.includes(String(item._id))),
   },
 }));
 vi.mock('../vehicle-types/vehicle-type.repository', () => ({
-  fleetVehicleTypeRepository: { findById: async () => ({ maintenanceIntervalKm: 5000 }) },
+  fleetVehicleTypeRepository: { findById: async () => state.make },
 }));
 vi.mock('../vehicles/vehicle.repository', () => ({
   fleetVehicleRepository: {
@@ -119,7 +150,21 @@ vi.mock('../vehicles/vehicle.repository', () => ({
 vi.mock('../odometer/odometer.repository', () => ({
   fleetOdometerRepository: {
     latestReadings: async () =>
-      new Map([[String(vehicleId), { vehicleId: String(vehicleId), ...state.latestReading }]]),
+      state.latestReading === null
+        ? new Map()
+        : new Map([
+            [
+              String(vehicleId),
+              {
+                vehicleId: String(vehicleId),
+                ...state.latestReading,
+                newest: state.newestReading ?? {
+                  reading: state.latestReading.reading,
+                  date: state.latestReading.date,
+                },
+              },
+            ],
+          ]),
     lowerBoundsAt: (pairs: readonly Pair[], options?: Options) => lowerBoundsAt(pairs, options),
     daysWithoutReadingSince: (pairs: readonly { vehicleId: string; since: Date | null }[]) =>
       daysWithoutReadingSince(pairs),
@@ -159,7 +204,13 @@ beforeEach(() => {
   state.chain = [];
   state.newest = null;
   state.latestReading = { reading: 59_850, date: D('2026-09-05'), logId: LOG };
+  state.newestReading = null;
   state.baseline = visit();
+  state.make = {
+    _id: typeId,
+    name: { ar: 'مرسيدس اسبرانتر 516', en: 'Mercedes Sprinter 516' },
+    maintenanceIntervalKm: 5000,
+  };
 });
 
 describe('the projection actually resolves the bracket bound and passes it on', () => {
@@ -389,6 +440,7 @@ describe('the facts the screens read', () => {
       inDate: D('2026-09-01'),
       outDate: null,
       workTypeId: String(workTypeId),
+      workshopId: String(dealerId),
     };
     const row = await only();
     expect(row.noAlarmReason).toBe('noService');
@@ -399,8 +451,11 @@ describe('the facts the screens read', () => {
       inDate: D('2026-09-01').toISOString(),
       outDate: null,
       why: 'open',
-      workType: null,
-      workshop: null,
+      // Batch 3: the card names the visit — its work and where the car is.
+      workType: { id: String(workTypeId), name: { ar: 'صيانة', en: 'Service' } },
+      workshop: { id: String(dealerId), name: { ar: 'التوكيل', en: 'Dealer' } },
+      // Its work type counts: closing it makes it the visit measured from.
+      counts: true,
     });
   });
 
@@ -411,24 +466,182 @@ describe('the facts the screens read', () => {
       inDate: D('2026-09-02'),
       outDate: out,
       workTypeId: 'not-counting',
+      workshopId: 'unknown-workshop',
     };
     const row = await only();
     expect(row.newerUncountedVisit).toMatchObject({
       visitId: 'v-wash',
       outDate: out.toISOString(),
       why: 'notCounting',
+      // Ids the catalog does not hold stay unnamed rather than inventing a name.
+      workType: null,
+      workshop: null,
+      counts: false,
     });
   });
 
-  it('nothing is named when the newest visit IS the baseline, or counts and is closed', async () => {
+  it('nothing is named when the newest visit IS the baseline', async () => {
     state.newest = {
       visitId: VISIT,
       inDate: IN,
       outDate: SERVICE_DATE,
       workTypeId: 'not-counting',
+      workshopId: String(dealerId),
     };
     expect((await only()).newerUncountedVisit).toBeNull();
-    state.newest = { visitId: 'v-other', inDate: IN, outDate: IN, workTypeId: String(workTypeId) };
-    expect((await only()).newerUncountedVisit).toBeNull();
+  });
+
+  // REWRITTEN ON PURPOSE (batch 3, C8). This used to pin `null` for a newest visit that counts and
+  // is closed. It is not the baseline, so another counting visit was checked out after it — and
+  // saying nothing is exactly what hid that case from the reader. It is now named.
+  it('a newer visit that counts and is closed, but is NOT the baseline, is «checked out earlier»', async () => {
+    state.newest = {
+      visitId: 'v-other',
+      inDate: IN,
+      outDate: IN,
+      workTypeId: String(workTypeId),
+      workshopId: String(dealerId),
+    };
+    expect((await only()).newerUncountedVisit).toMatchObject({
+      visitId: 'v-other',
+      why: 'checkedOutEarlier',
+    });
+  });
+});
+
+describe('the «كيف حُسب الفارق» card’s facts come from the server (batch 3)', () => {
+  it('rule: the make by name, its interval, and the two thresholds as resolved', async () => {
+    const row = await only();
+    expect(row.rule).toEqual({
+      vehicleType: {
+        id: String(typeId),
+        name: { ar: 'مرسيدس اسبرانتر 516', en: 'Mercedes Sprinter 516' },
+      },
+      intervalKm: 5000,
+      yellowKm: 1000,
+      redKm: 300,
+    });
+    // The remaining figure is the interval less the distance — «المتبقي X من Y كم».
+    expect(row.remainingKm).toBe(row.rule.intervalKm - (row.sinceServiceKm ?? 0));
+  });
+
+  it('a make that is gone names nothing and has no interval — the alarm says «noInterval»', async () => {
+    state.make = null;
+    const row = await only();
+    expect(row.rule).toEqual({ vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 });
+    expect(row.noAlarmReason).toBe('noInterval');
+  });
+
+  it('the counted visit is named by its work type', async () => {
+    const row = await only();
+    expect(row.baseline?.workType).toEqual({
+      id: String(workTypeId),
+      name: { ar: 'صيانة', en: 'Service' },
+    });
+  });
+
+  it('car 157: the newer open visit names its work and its workshop — «إصلاح» at «التوكيل»', async () => {
+    state.newest = {
+      visitId: 'v-dealer',
+      inDate: D('2026-09-10'),
+      outDate: null,
+      workTypeId: String(repairId),
+      workshopId: String(dealerId),
+    };
+    expect((await only()).newerUncountedVisit).toEqual({
+      visitId: 'v-dealer',
+      inDate: D('2026-09-10').toISOString(),
+      outDate: null,
+      why: 'open',
+      workType: { id: String(repairId), name: { ar: 'إصلاح', en: 'Repair' } },
+      workshop: { id: String(dealerId), name: { ar: 'التوكيل', en: 'Dealer' } },
+      // «إصلاح» is not on the counting list: the card may say it will not count even once closed
+      // (sample A/04), from this fact and never from the work type's name.
+      counts: false,
+    });
+  });
+
+  it('C6: on a healthy chain the newest reading IS the highest', async () => {
+    const row = await only();
+    expect(row.newestReading).toEqual({
+      reading: row.latestReading,
+      date: row.latestReadingAt,
+    });
+  });
+
+  it('C6: a typo-high reading in the past — the highest is not the newest, and both are told', async () => {
+    // 79,200 typed for 30 July (car 295's old typo); the car has really been read at 59,850 since.
+    state.latestReading = { reading: 79_200, date: D('2026-09-02'), logId: LOG };
+    state.newestReading = { reading: 59_850, date: D('2026-09-05') };
+    const row = await only();
+    expect(row.latestReading).toBe(79_200);
+    expect(row.newestReading).toEqual({ reading: 59_850, date: D('2026-09-05').toISOString() });
+    expect(row.newestReading?.date).not.toBe(row.latestReadingAt);
+  });
+
+  it('no reading at all → no newest reading either', async () => {
+    state.latestReading = null;
+    const row = await only();
+    expect(row.newestReading).toBeNull();
+    expect(row.latestReading).toBeNull();
+  });
+});
+
+/**
+ * C8 — the 295 shape the critic found (H2e). Visit A went in on 26 September at 19,790 and was
+ * closed on 20 October; visit B went in and out on 6 October at 22,790, counting. The baseline is
+ * the latest CHECK-OUT (A, measured from its entry counter), the newest visit the latest CHECK-IN
+ * (B) — and B is named, so the reader sees why the figure is not measured from 6 October.
+ */
+describe('C8 — a counting visit checked out before the one measured from', () => {
+  const A = visit({
+    visitId: 'visit-a',
+    inDate: D('2026-09-26'),
+    serviceDate: D('2026-10-20'),
+    entryCounter: 19_790,
+    exitCounter: null,
+  });
+  const B: Newest = {
+    visitId: 'visit-b',
+    inDate: D('2026-10-06'),
+    outDate: D('2026-10-06'),
+    workTypeId: String(workTypeId),
+    workshopId: String(dealerId),
+  };
+
+  beforeEach(() => {
+    state.latestReading = { reading: 28_297, date: D('2026-11-01'), logId: LOG };
+  });
+
+  it('A is the baseline; B is named «checkedOutEarlier», with its work type and workshop', async () => {
+    state.baseline = A;
+    state.newest = B;
+    const row = await only();
+    expect(row.lastServiceVisitId).toBe('visit-a');
+    expect(row.baseline).toMatchObject({ source: 'entry', counter: 19_790 });
+    expect(row.sinceServiceKm).toBe(28_297 - 19_790);
+    expect(row.newerUncountedVisit).toEqual({
+      visitId: 'visit-b',
+      inDate: D('2026-10-06').toISOString(),
+      outDate: D('2026-10-06').toISOString(),
+      why: 'checkedOutEarlier',
+      workType: { id: String(workTypeId), name: { ar: 'صيانة', en: 'Service' } },
+      workshop: { id: String(dealerId), name: { ar: 'التوكيل', en: 'Dealer' } },
+      counts: true,
+    });
+  });
+
+  it('when B is the baseline, nothing is named', async () => {
+    state.baseline = visit({
+      visitId: 'visit-b',
+      inDate: D('2026-10-06'),
+      serviceDate: D('2026-10-06'),
+      entryCounter: 22_790,
+      exitCounter: null,
+    });
+    state.newest = B;
+    const row = await only();
+    expect(row.sinceServiceKm).toBe(28_297 - 22_790);
+    expect(row.newerUncountedVisit).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 // «حفظ العقد» as one ordered sequence: the contract first, then its files one by one in the tray's
 // order, then — on an edit — the order, only when it differs. A refused contract sends nothing
-// else; a failed file never undoes the contract; a cancelled file is simply not added.
+// else; a failed file never undoes the contract; a cancelled file is simply not added. A new
+// contract's «المستلم حتى الآن» rides in the create body itself (the server records it as the first
+// delivery), so no delivery call follows.
 import { describe, expect, it } from 'vitest';
 import { type FleetVehicleContractDto, type FleetVehicleContractFileDto } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -85,6 +87,24 @@ const CREATE_BODY = {
 };
 
 describe('a new contract', () => {
+  it('cars already received go in the one create — no delivery call follows', async () => {
+    const { api, calls } = fakeApi();
+    const sent: unknown[] = [];
+    const create = api.create;
+    api.create = async (body) => {
+      sent.push(body);
+      return create(body);
+    };
+    const body = {
+      ...BODY,
+      lines: [{ ...BODY.lines[0]!, received: 2 }],
+      receivedDate: new Date('2026-11-01'),
+    };
+    await saveContractWithFiles(api, { mode: 'create', body, items: [pending('p1')] });
+    expect(sent).toEqual([body]);
+    expect(calls).toEqual(['create', 'upload p1.png']);
+  });
+
   it('is created, then its files go up one by one in the order the tray shows', async () => {
     const { api, calls } = fakeApi();
     const progress: string[] = [];

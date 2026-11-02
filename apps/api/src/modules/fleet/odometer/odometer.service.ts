@@ -27,6 +27,7 @@ import { fleetOdometerRepository } from './odometer.repository';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 import { planCorrection } from './correction-rules';
+import { loadServiceGaps } from './service-gap';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
 
@@ -68,6 +69,8 @@ interface RecordOutcome {
 export interface OdometerLogWithCode {
   doc: FleetOdometerLogDoc;
   vehicleCode: string | null;
+  /** «فارق عداد الصيانة» at this row — see `service-gap.ts`. */
+  serviceGapKm: number | null;
 }
 
 /** The FR-2 floor, and the date of the reading it came from. Both from one document. */
@@ -84,10 +87,18 @@ export interface OdometerBracket {
   upperBoundAt: Date | null;
 }
 
-/** A page of logs plus the codes for exactly the vehicles ON that page — one lookup, not one per row. */
+/**
+ * A page of logs plus the codes for exactly the vehicles ON that page — one lookup, not one per
+ * row — and each row's «فارق عداد الصيانة» (D1), keyed by row id, computed for the page.
+ */
 export type OdometerLogPage = Paginated<FleetOdometerLogDoc> & {
   codes: ReadonlyMap<string, string>;
+  gaps: ReadonlyMap<string, number | null>;
 };
+
+/** The gap of the one row a write answers with. */
+const gapOf = async (doc: FleetOdometerLogDoc): Promise<number | null> =>
+  (await loadServiceGaps([doc])).get(String(doc._id)) ?? null;
 
 class FleetOdometerService {
   /** §4.3 — one reading closes the open period and opens the next, atomically. */
@@ -159,7 +170,9 @@ class FleetOdometerService {
           session,
         );
         if (already !== null) {
-          throw new ConflictError('this day is already recorded for this vehicle without a reading');
+          throw new ConflictError(
+            'this day is already recorded for this vehicle without a reading',
+          );
         }
         const day = await fleetOdometerRepository.create(
           {
@@ -315,7 +328,11 @@ class FleetOdometerService {
       outReading: outcome.created.outReading,
       closedKm: outcome.closed?.km ?? null,
     });
-    return { doc: outcome.created, vehicleCode: outcome.code };
+    return {
+      doc: outcome.created,
+      vehicleCode: outcome.code,
+      serviceGapKm: await gapOf(outcome.created),
+    };
   }
 
   /**
@@ -331,13 +348,13 @@ class FleetOdometerService {
    * those. Nothing here is a rule: `expectedReading` is a hint, and `record` is the authority.
    */
   async expectedReading(vehicleId: string): Promise<ExpectedReading> {
-    const latest = await fleetOdometerRepository.findLatest(vehicleId);
-    if (latest === null) return { reading: null, asOf: null };
-    return {
-      // `findLatest` answers with a row that is ON THE CHAIN — a day with no reading is not one.
-      reading: Math.max(latest.outReading as number, latest.inReading ?? (latest.outReading as number)),
-      asOf: latest.date,
-    };
+    // The alarm's own read, so the hint and «فارق عداد الصيانة» name the same reading: ranked by
+    // each row's EFFECTIVE reading, `max(out, in)`, never by the opening one alone — a parked day
+    // that shares the top opening reading must not hide the next day's closing one. Days with no
+    // reading are on no chain and never answer.
+    const latest = (await fleetOdometerRepository.latestReadings([vehicleId])).get(vehicleId);
+    if (latest === undefined) return { reading: null, asOf: null };
+    return { reading: latest.reading, asOf: latest.date };
   }
 
   /**
@@ -396,9 +413,13 @@ class FleetOdometerService {
       sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
     });
     // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
-    // many vehicles the registry holds.
-    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
-    return { ...page, codes };
+    // many vehicles the registry holds. And each row's gap AT ITS READING (D1), for the page only:
+    // sorting by the column above still orders by the CAR's current figure.
+    const [codes, gaps] = await Promise.all([
+      fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items)),
+      loadServiceGaps(page.items),
+    ]);
+    return { ...page, codes, gaps };
   }
 
   /** What the page is cut from — the two resolved filters `list` describes, folded into one. */
@@ -469,7 +490,10 @@ class FleetOdometerService {
        * that date, which splices into the chain properly; everything else about the day (who
        * drove, the note) is corrected exactly as on any other row.
        */
-      if (entry.outReading === null && (input.outReading !== undefined || input.inReading !== undefined)) {
+      if (
+        entry.outReading === null &&
+        (input.outReading !== undefined || input.inReading !== undefined)
+      ) {
         throw invalid(
           'outReading',
           'this day was recorded without a reading — record the reading for that date instead of correcting this row',
@@ -563,11 +587,13 @@ class FleetOdometerService {
         new: change.new,
       });
     }
-    // A reading kept from the old book for a car the registry never had names its car itself.
-    if (vehicleId === null) return { doc: updated, vehicleCode: bookCode };
+    // A reading kept from the old book for a car the registry never had names its car itself
+    // (and, on no car's chain, carries no gap).
+    if (vehicleId === null) return { doc: updated, vehicleCode: bookCode, serviceGapKm: null };
     return {
       doc: updated,
       vehicleCode: (await fleetVehicleRepository.codesByIds([vehicleId])).get(vehicleId) ?? null,
+      serviceGapKm: await gapOf(updated),
     };
   }
 

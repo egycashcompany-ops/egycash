@@ -11,8 +11,17 @@
 // itself is `noAlarmReason` as it came.
 //
 // A car the projection leaves out — not active — gets its own card: «السيارة غير نشطة».
+//
+// A figure the projection DID compute gets «كيف حُسب الفارق» (`figureFacts`): «مفيش إنذار والمسافة
+// كبيرة» — the reading, the counted visit and its counters, the subtraction, the make's interval,
+// what is left of it, the two thresholds and the level they give, and a newer visit that does not
+// count yet. Every figure is the server's (`rule`, `baseline`, `newestReading` and friends): the
+// card lays the server's own numbers side by side and decides nothing.
 import {
+  type FleetAlarmBaselineDto,
   type FleetAlarmChainPointDto,
+  type FleetAlarmLevel,
+  type FleetAlarmNamedDto,
   type FleetAlarmUncountedWhy,
   type FleetMaintenanceAlarmDto,
   type FleetNoAlarmReason,
@@ -51,6 +60,15 @@ export const templateParts = (template: string): TemplatePart[] =>
       const name = /^\{\{(\w+)\}\}$/u.exec(part)?.[1];
       return name === undefined ? { text: part } : { name };
     });
+
+/**
+ * A short line of figures — «المتبقي 1,993 من 7,500 كم» — bound so it breaks only between its
+ * phrases: the space BEFORE each figure, and the one before a closing unit word, become
+ * unbreakable. «المتبقي 1,993 | من 7,500 كم» may take two lines; «من» never ends one alone and
+ * «كم» never starts one. (The dictionary keeps plain spaces; the binding is presentation.)
+ */
+export const bindFigures = (template: string): string =>
+  template.replace(/ (?=\{\{\w+\}\})/gu, '\u00A0').replace(/(\}\}) (\S+)$/u, '$1\u00A0$2');
 
 // ── The way to fix it ───────────────────────────────────────────────────────────────────────────
 
@@ -135,6 +153,36 @@ export type CardFact =
   | { kind: 'judged'; point: FleetAlarmChainPointDto; conflict: boolean }
   | { kind: 'newer'; why: FleetAlarmUncountedWhy; date: string };
 
+/** A line about the counted visit's counters — the same on both cards. */
+export type CounterFact = Extract<CardFact, { kind: 'counter' } | { kind: 'standIn' }>;
+
+/**
+ * The counted visit's entry and exit counters, the one USED marked and an exit counter SET ASIDE
+ * kept with the reading against it — or, when neither was usable, the reading standing in for
+ * both. `above`: the used counter is above the latest reading (`baselineAboveReading`).
+ */
+const counterFacts = (base: FleetAlarmBaselineDto, above: boolean): CounterFact[] => {
+  const facts: CounterFact[] = [];
+  const counter = (which: 'entry' | 'exit', value: number | null): void => {
+    if (value === null) return;
+    const used = base.source === which;
+    facts.push({
+      kind: 'counter',
+      which,
+      value,
+      used,
+      conflict: used && above,
+      setAside: which === 'exit' ? base.exitSetAside : null,
+    });
+  };
+  counter('entry', base.entryCounter);
+  counter('exit', base.exitCounter);
+  if (base.source === 'reading' && base.counter !== null) {
+    facts.push({ kind: 'standIn', value: base.counter });
+  }
+  return facts;
+};
+
 /**
  * The facts, ordered: the car, its latest reading, the counted visit, its entry and exit counters
  * (or the reading standing in for both), the reading the used counter was judged against, and a
@@ -169,23 +217,7 @@ export const cardFacts = (
       outDate: base.outDate,
       outFlagged: waiting,
     });
-    const counter = (which: 'entry' | 'exit', value: number | null): void => {
-      if (value === null) return;
-      const used = base.source === which;
-      facts.push({
-        kind: 'counter',
-        which,
-        value,
-        used,
-        conflict: used && above,
-        setAside: which === 'exit' ? base.exitSetAside : null,
-      });
-    };
-    counter('entry', base.entryCounter);
-    counter('exit', base.exitCounter);
-    if (base.source === 'reading' && base.counter !== null) {
-      facts.push({ kind: 'standIn', value: base.counter });
-    }
+    facts.push(...counterFacts(base, above));
     if (base.judgedAgainst !== null) {
       facts.push({ kind: 'judged', point: base.judgedAgainst, conflict: below });
     }
@@ -193,6 +225,130 @@ export const cardFacts = (
   const newer = alarm.newerUncountedVisit;
   if (newer !== null) facts.push({ kind: 'newer', why: newer.why, date: newer.inDate });
   return facts;
+};
+
+// ── «كيف حُسب الفارق» — a COMPUTED figure, explained ─────────────────────────────────────────────
+
+/** The car's newest visit when the cycle is not measured from it — the card's amber box. */
+export interface FigureNewer {
+  why: FleetAlarmUncountedWhy;
+  inDate: string;
+  outDate: string | null;
+  workType: FleetAlarmNamedDto | null;
+  workshop: FleetAlarmNamedDto | null;
+  /**
+   * Does its work type count for the alarm — as the server says (`newerUncountedVisit.counts`)?
+   * `false` for `notCounting`, `true` for `checkedOutEarlier`; for a visit still OPEN it tells
+   * «counts once closed» from «does not count even once closed» (car 157's «إصلاح»), never guessed
+   * from the work type's name.
+   */
+  counts: boolean;
+  /** `checkedOutEarlier`: the counted visit's check-out day, which came after this visit's. */
+  countedOut: string | null;
+}
+
+/** What «كيف حُسب الفارق» lays out, every number as the server sent it. */
+export interface FigureFacts {
+  code: string;
+  /** The car's make as the rule names it; `null` when it has none. */
+  vehicleType: FleetAlarmNamedDto | null;
+  /** The HIGHEST reading on the chain — the figure is measured to it. */
+  latest: { reading: number; date: string | null } | null;
+  /**
+   * C6 — the NEWEST-dated reading, only when it is not the highest one («أعلى قراءة ليست أحدث
+   * قراءة»): a reading typed too high, or one of another car, then silently sets the figure.
+   */
+  newest: FleetAlarmChainPointDto | null;
+  /** The counted visit: both its days and its work type. */
+  service: { inDate: string; outDate: string; workType: FleetAlarmNamedDto | null } | null;
+  counters: CounterFact[];
+  daysWithoutReading: number;
+  /** «28,297 − 22,790 = 5,507»: the latest reading, the counter used, the figure. */
+  subtraction: { latest: number; counter: number; since: number } | null;
+  /** The make's «فترة الصيانة»; `null` when there is no rule. */
+  intervalKm: number | null;
+  /** «7,500 − 5,507 = 1,993»: the interval, the figure, what is left (the server's remainder). */
+  remaining: { interval: number; since: number; left: number } | null;
+  thresholds: { yellowKm: number; redKm: number };
+  level: FleetAlarmLevel;
+  newer: FigureNewer | null;
+}
+
+/** Two instants on the same calendar day, as the server writes days (UTC midnight). */
+const sameDay = (a: string | null, b: string | null): boolean =>
+  a !== null && b !== null && a.slice(0, 10) === b.slice(0, 10);
+
+const newerFacts = (alarm: FleetMaintenanceAlarmDto): FigureNewer | null => {
+  const newer = alarm.newerUncountedVisit;
+  if (newer === null) return null;
+  return {
+    why: newer.why,
+    inDate: newer.inDate,
+    outDate: newer.outDate,
+    workType: newer.workType,
+    workshop: newer.workshop,
+    counts: newer.counts,
+    countedOut: newer.why === 'checkedOutEarlier' ? (alarm.baseline?.outDate ?? null) : null,
+  };
+};
+
+/**
+ * «كيف حُسب الفارق» for a figure the projection computed; `null` for one it refused (that car
+ * gets the reason card, `cardFacts`). Nothing here is re-derived: the subtraction and the
+ * remainder are the server's own three numbers each, laid side by side, and the level is the
+ * server's — the thresholds are shown, never compared with.
+ */
+export const figureFacts = (alarm: FleetMaintenanceAlarmDto): FigureFacts | null => {
+  const since = alarm.sinceServiceKm;
+  if (since === null) return null;
+  const base = alarm.baseline;
+  const interval = alarm.rule.intervalKm > 0 ? alarm.rule.intervalKm : null;
+  const newest = alarm.newestReading;
+  const highestIsNewest =
+    newest === null ||
+    alarm.latestReading === null ||
+    (newest.reading === alarm.latestReading && sameDay(newest.date, alarm.latestReadingAt));
+  return {
+    code: alarm.code,
+    vehicleType: alarm.rule.vehicleType,
+    latest:
+      alarm.latestReading === null
+        ? null
+        : { reading: alarm.latestReading, date: alarm.latestReadingAt },
+    newest: highestIsNewest ? null : newest,
+    service:
+      base === null
+        ? null
+        : { inDate: base.inDate, outDate: base.outDate, workType: base.workType },
+    counters: base === null ? [] : counterFacts(base, false),
+    daysWithoutReading: alarm.daysWithoutReading,
+    subtraction:
+      base?.counter == null || alarm.latestReading === null
+        ? null
+        : { latest: alarm.latestReading, counter: base.counter, since },
+    intervalKm: interval,
+    remaining:
+      interval === null || alarm.remainingKm === null
+        ? null
+        : { interval, since, left: alarm.remainingKm },
+    thresholds: { yellowKm: alarm.rule.yellowKm, redKm: alarm.rule.redKm },
+    level: alarm.level,
+    newer: newerFacts(alarm),
+  };
+};
+
+/**
+ * «المتبقي 1,993 من 7,500 كم» beside the figure: the server's remainder and the make's interval.
+ * `overdue` reads the remainder's SIGN only, for the words («متأخر … كم عن …»); `null` when there
+ * is no rule or no remainder.
+ */
+export const remainingOf = (
+  alarm: Pick<FleetMaintenanceAlarmDto, 'remainingKm' | 'rule'>,
+): { left: number; interval: number; overdue: boolean } | null => {
+  const interval = alarm.rule.intervalKm;
+  const left = alarm.remainingKm;
+  if (interval <= 0 || left === null) return null;
+  return { left, interval, overdue: left < 0 };
 };
 
 // ── «السيارة غير نشطة» ──────────────────────────────────────────────────────────────────────────

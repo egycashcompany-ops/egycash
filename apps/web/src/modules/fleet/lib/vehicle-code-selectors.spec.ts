@@ -398,6 +398,9 @@ const CAR_BOX_SCOPES: readonly {
   { file: 'modules/fleet/components/ViolationDialogs.tsx', scope: 'any', boxes: 2 },
   { file: 'modules/fleet/pages/NoticeEditorPage.tsx', scope: 'any' },
   { file: 'modules/fleet/components/FuelCardDialog.tsx', scope: 'active' },
+  // «ربط الكروت بالسيارات»: the car an unknown sheet code is put on — a car that may hold a card,
+  // the same list as «إضافة كارت».
+  { file: 'modules/fleet/components/fuel-reconcile/ReconcileLinks.tsx', scope: 'active' },
   { file: 'modules/fleet/components/MaintenanceDialogs.tsx', scope: 'checkIn' },
 ];
 

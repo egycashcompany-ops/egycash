@@ -55,6 +55,64 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
       .exec();
     return result.modifiedCount === 1;
   }
+
+  /** «ربط الكروت بالسيارات» — one link row's decision, written once (`false` when it already was). */
+  async decideLink(
+    id: Types.ObjectId,
+    cardId: Types.ObjectId,
+    decision: {
+      decision: FleetFuelReconcileDecision;
+      at: Date;
+      by: string;
+      movementId: Types.ObjectId | null;
+    },
+    session: ClientSession,
+  ): Promise<boolean> {
+    const by = new Types.ObjectId(decision.by);
+    const result = await this.model
+      .updateOne(
+        { _id: id, isDeleted: false, links: { $elemMatch: { cardId, decision: null } } },
+        {
+          $set: {
+            'links.$.decision': decision.decision,
+            'links.$.decidedAt': decision.at,
+            'links.$.decidedBy': by,
+            'links.$.movementId': decision.movementId,
+            updatedBy: by,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  /** «إضافة» — the card a sheet-only row became, written once (`false` when it already was). */
+  async addNewCard(
+    id: Types.ObjectId,
+    sheetRow: number,
+    added: { cardId: Types.ObjectId; at: Date; by: string },
+    session: ClientSession,
+  ): Promise<boolean> {
+    const by = new Types.ObjectId(added.by);
+    const result = await this.model
+      .updateOne(
+        { _id: id, isDeleted: false, newCards: { $elemMatch: { sheetRow, cardId: null } } },
+        {
+          $set: {
+            'newCards.$.cardId': added.cardId,
+            'newCards.$.decidedAt': added.at,
+            'newCards.$.decidedBy': by,
+            updatedBy: by,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
 }
 
 export const fleetFuelReconciliationRepository = new FleetFuelReconciliationRepository();

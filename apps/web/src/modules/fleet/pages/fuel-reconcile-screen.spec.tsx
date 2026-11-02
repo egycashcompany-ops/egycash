@@ -34,7 +34,13 @@ import {
   type ReconcileSelection,
   type ReconcileSelectionAction,
 } from '../lib/fuel-reconcile';
-import { FuelReconcilePage, ReconcileResult } from './FuelReconcilePage';
+import { FuelReconcilePage, NO_SHEET_STATE, ReconcileResult } from './FuelReconcilePage';
+import { ReconcileUploadCard } from '../components/fuel-reconcile/ReconcileUploadCard';
+import {
+  ChooseTable,
+  ConflictTable,
+  NumbersTable,
+} from '../components/fuel-reconcile/reconcile-folds-parts';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -240,20 +246,31 @@ const renderResult = ({
   confirming?: FleetFuelReconcileDecision | null;
 } = {}): string => {
   const selection: ReconcileSelection = actions.reduce(reconcileSelection, NO_SELECTION);
+  // Batch 3: the links' car picker reads the vehicles, so the answer is drawn under a client.
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+  });
   return renderToStaticMarkup(
-    <Provider store={storeOf(ALL)}>
-      <ReconcileResult
-        result={result}
-        selection={selection}
-        dispatch={() => undefined}
-        mayDecide={mayDecide}
-        deciding={false}
-        confirming={confirming}
-        onConfirming={() => undefined}
-        onDecide={() => undefined}
-        onAnother={() => undefined}
-        onHistory={() => undefined}
-      />
+    <Provider store={storeOf([...ALL, 'fleetFuelCard.edit', 'fleetFuelCard.create'])}>
+      <QueryClientProvider client={qc}>
+        <ReconcileResult
+          result={result}
+          selection={selection}
+          dispatch={() => undefined}
+          mayDecide={mayDecide}
+          deciding={false}
+          confirming={confirming}
+          onConfirming={() => undefined}
+          onDecide={() => undefined}
+          onAnother={() => undefined}
+          onHistory={() => undefined}
+          onSwitch={() => undefined}
+          onUpdateNumber={() => undefined}
+          sheet={NO_SHEET_STATE}
+          onDecideLinks={() => undefined}
+          onAdd={() => undefined}
+        />
+      </QueryClientProvider>
     </Provider>,
   );
 };
@@ -397,7 +414,9 @@ describe('the answer', () => {
     expect(renderResult()).not.toContain('data-recon-wrong-company');
     const html = renderResult({ result: { ...RESULT, sheetCompany: 'chillout' } });
     expect(html).toContain('data-recon-wrong-company="true"');
-    expect(html).toContain('EGYCASHTCS-');
+    // Rewritten on purpose (batch 3, sample F1/06): the company's statements print the BARE
+    // prefix («EGYCASHTCS»), so the stop names it without batch 2's trailing «-».
+    expect(html).toContain('«EGYCASHTCS»');
   });
 });
 
@@ -538,14 +557,445 @@ describe('the folds', () => {
   });
 
   it('the conflicts table says each reason in words, and a balance it cannot read', () => {
-    const FOLDS = readFileSync(
-      join(HERE, '../components/fuel-reconcile/ReconcileFolds.tsx'),
-      'utf8',
-    );
+    // Batch 3 moved the conflicts table into the folds' parts file — both are read.
+    const FOLDS = ['ReconcileFolds.tsx', 'reconcile-folds-parts.tsx']
+      .map((name) => readFileSync(join(HERE, '../components/fuel-reconcile', name), 'utf8'))
+      .join('\n');
     expect(FOLDS).toContain('t(`fleet.fuelCards.reconcile.conflict.${conflict.reason}`)');
     expect(FOLDS).toContain("t('fleet.fuelCards.reconcile.unreadable')");
     for (const reason of ['sheetRowsDiffer', 'systemNameTwice', 'badBalance', 'noName']) {
       expect(ar(`${R}conflict.${reason}`)).not.toBe(`${R}conflict.${reason}`);
     }
+  });
+});
+
+// ── Batch 3 — 6c: reading the sheet ─────────────────────────────────────────────────────────────
+
+/** The 4-10 statement's reading (sample F1/02): masked numbers, the bare «EGYCASH» rebuilt from
+ *  the plate and the chassis, the car code, «قيمه الشحن» and the PIN recognised and never read. */
+const READ: FleetFuelReconcileDto = {
+  ...RESULT,
+  fileName: 'رصيد وطنيه 4-10-2026.xlsx',
+  rows: 219,
+  cardRows: 216,
+  layout: [
+    { role: 'number', column: 'A', header: 'Card Number', assumed: false },
+    { role: 'name', column: 'B', header: 'Card Name', assumed: false },
+    { role: 'plate', column: 'C', header: 'لوحه', assumed: false },
+    { role: 'chassis', column: 'D', header: 'شاسيه', assumed: false },
+    { role: 'balance', column: 'E', header: 'Card Balance', assumed: false },
+    { role: 'code', column: 'F', header: 'كود', assumed: false },
+    { role: 'ignored', column: 'G', header: 'قيمه الشحن', assumed: false },
+    { role: 'secret', column: 'H', header: 'pass', assumed: false },
+  ],
+  nameRebuilt: true,
+  example: { row: 2, builtName: 'EGYCASH-3674-B257539' },
+  skipped: [
+    { row: 218, text: 'رصيد الكروت', figure: 963194.66 },
+    { row: 219, text: 'قيمه الشحن', figure: 1030000 },
+    { row: 220, text: 'الرصيد المتوقع', figure: 700000 },
+  ],
+  totalCheck: { row: 218, text: 'رصيد الكروت', figure: 963194.66, sum: 963194.66, agrees: true },
+  sheetDate: '2026-10-04',
+  carColumn: true,
+};
+const matchedAll = (html: string): void => {
+  expect(html).toContain('data-recon-matched-chip="true"');
+};
+
+describe('6c: how the sheet was read', () => {
+  it('names each column’s role — the name rebuilt from the company, the plate and the chassis', () => {
+    const html = renderResult({ result: READ });
+    const line = html.slice(
+      html.indexOf('data-recon-layout="true"'),
+      html.indexOf('</section>', html.indexOf('data-recon-layout="true"')),
+    );
+    expect(line).toContain(ar(`${R}layout.title`));
+    expect(line).toContain('data-recon-layout-role="number"');
+    expect(line).toContain(ar(`${R}layout.role.number`));
+    // The number's kind is told from the first card row: here it is not told.
+    expect(line).not.toContain(ar(`${R}layout.masked`));
+    expect(line).toContain(ar(`${R}layout.companyWord`));
+    expect(line).toContain(ar(`${R}layout.role.plate`));
+    expect(line).toContain(ar(`${R}layout.role.chassis`));
+    expect(line).toContain('data-recon-layout-role="code"');
+    // Recognised and never read: «قيمه الشحن» and the PIN column, named by their header only.
+    expect(line).toContain('data-recon-layout-not-read="true"');
+    expect(line).toContain('قيمه الشحن');
+    expect(line).toContain(ar(`${R}layout.neverPin`));
+    expect(line).toContain('EGYCASH-3674-B257539');
+    expect(line).toContain(ar(`${R}layout.example`, { row: 2 }));
+  });
+
+  it('untitled columns read by their content are flagged; an old session draws no layout line', () => {
+    const assumed = renderResult({
+      result: {
+        ...READ,
+        layout: READ.layout.map((c) =>
+          c.role === 'plate' || c.role === 'chassis' ? { ...c, header: null, assumed: true } : c,
+        ),
+      },
+    });
+    expect(assumed).toContain('data-recon-layout-assumed="true"');
+    const masked = renderResult({
+      result: {
+        ...READ,
+        differs: READ.differs.map((one) => ({
+          ...one,
+          sheet: { ...one.sheet, numberKind: 'masked' as const },
+        })),
+      },
+    });
+    expect(masked).toContain(`· ${ar(`${R}layout.masked`)}`);
+    expect(assumed).toContain(ar(`${R}layout.untitled`));
+    const old = renderResult();
+    expect(old).not.toContain('data-recon-layout=');
+    expect(old).not.toContain('data-recon-matched-chip');
+  });
+
+  it('the strip counts the CARD rows and shows the sheet’s date; the chips check the totals row', () => {
+    const html = renderResult({ result: READ });
+    expect(html).toContain('216 صفًّا');
+    expect(html).toContain('data-recon-sheet-date="true"');
+    expect(html).toContain('2026/10/04');
+    matchedAll(html);
+    expect(html).toContain('data-recon-total-chip="agrees"');
+    expect(html).toContain('963,194.66');
+    expect(html).toContain('data-recon-skipped-chip="true"');
+    expect(html).toContain(ar(`${R}secSkippedChip`, { rows: '3 صفوف' }));
+    const off = renderResult({
+      result: { ...READ, totalCheck: { ...READ.totalCheck!, sum: 963000, agrees: false } },
+    });
+    expect(off).toContain('data-recon-total-chip="differs"');
+    // The rows that are not cards have a fold of their own.
+    expect(html).toContain('data-recon-fold="skipped" data-open="false"');
+    expect(html).toContain(ar(`${R}secSkipped`));
+  });
+
+  it('raises the guard banner when fewer than half the card rows found a card', () => {
+    // Four cards found (three differ, one equal): of 8 card rows that is half — no banner.
+    expect(renderResult({ result: { ...READ, cardRows: 8 } })).not.toContain('data-recon-guard');
+    const mass = renderResult({ result: { ...READ, cardRows: 9 } });
+    expect(mass).toContain('data-recon-guard="true"');
+    expect(mass).toContain(ar(`${R}guard`, { matched: 4, rows: '9 صفوف' }));
+  });
+
+  it('a sheet of the other company STOPS the comparison, with a one-click switch', () => {
+    const html = renderResult({ result: { ...READ, sheetCompany: 'chillout' } });
+    expect(html).toContain('data-recon-page="wrong-company"');
+    expect(html).toContain('data-recon-switch="chillout"');
+    expect(html).toContain(ar(`${R}wrongCompanySwitch`, { sheet: 'شل أوت' }));
+    // Nothing is compared under it.
+    expect(html).not.toContain('data-recon-table');
+    expect(html).not.toContain('data-recon-counts');
+    expect(html).not.toContain('data-recon-folds');
+    // How the sheet was read stays, so the reader sees why.
+    expect(html).toContain('data-recon-layout="true"');
+  });
+});
+
+describe('6c: the rows that are never decided — one table row per sheet row', () => {
+  const T = (rows: number): FleetFuelReconcileDto['conflicts'][number] => ({
+    reason: 'sheetRowsDiffer',
+    name: 'EGYCASH',
+    cardId: null,
+    candidateIds: [],
+    rows: Array.from({ length: rows }, (_, i) => ({
+      row: i + 2,
+      number: '548**********0021',
+      balance: 100 + i,
+    })),
+  });
+  const conflictsOf = (conflicts: FleetFuelReconcileDto['conflicts']): string =>
+    renderToStaticMarkup(
+      <Provider store={storeOf(ALL)}>
+        <ConflictTable conflicts={conflicts} />
+      </Provider>,
+    );
+
+  it('the name and the reason on the conflict’s first row, every row top-aligned', () => {
+    const html = conflictsOf([T(3)]);
+    expect(html.match(/data-recon-conflict="sheetRowsDiffer"/gu)).toHaveLength(3);
+    expect(html.match(/class="align-top/gu)).toHaveLength(3);
+    expect(html.match(/EGYCASH</gu)).toHaveLength(1);
+    expect(html.match(new RegExp(ar(`${R}conflict.sheetRowsDiffer`), 'gu'))).toHaveLength(1);
+    expect(html).toContain('548 •••• 0021');
+  });
+
+  it('a conflict longer than ten rows shows ten and «و N أخرى»', () => {
+    const html = conflictsOf([T(216)]);
+    expect(html.match(/data-recon-conflict-row=/gu)).toHaveLength(10);
+    expect(html).toContain('data-recon-conflict-more="206"');
+    expect(html).toContain(ar(`${R}moreRows`, { rows: '206 صفوف' }));
+  });
+
+  it('a negative balance is said as one', () => {
+    const html = conflictsOf([
+      {
+        reason: 'badBalance',
+        name: 'EGYCASHTCS-4811-48358',
+        cardId: null,
+        candidateIds: [],
+        rows: [{ row: 188, number: '548**********6617', balance: -2214.66 }],
+      },
+    ]);
+    expect(html).toContain(ar(`${R}negativeBalance`));
+    expect(html).toContain('−2,214.66');
+  });
+
+  it('«تحتاج اختيارًا»: a number with no name, the cards its last four fit — nothing decided', () => {
+    const withChoice = renderResult({
+      result: {
+        ...RESULT,
+        conflicts: [
+          {
+            reason: 'ambiguousNumber',
+            name: '',
+            cardId: null,
+            candidateIds: [A, 's1'],
+            rows: [{ row: 9, number: '548**********7868', balance: 50 }],
+          },
+        ],
+      },
+    });
+    expect(withChoice).toContain('data-recon-fold="choose" data-open="false"');
+    expect(withChoice).toContain(ar(`${R}secChoose`));
+    // Not among the rows that never match.
+    expect(withChoice).not.toContain('data-recon-fold="conflicts"');
+    const table = renderToStaticMarkup(
+      <Provider store={storeOf(ALL)}>
+        <ChooseTable
+          conflicts={[
+            {
+              reason: 'ambiguousNumber',
+              name: '',
+              cardId: null,
+              candidateIds: [A, 'gone'],
+              rows: [{ row: 9, number: '548**********7868', balance: 50 }],
+            },
+          ]}
+          cardOf={(id) => (id === A ? card(A, 795) : undefined)}
+        />
+      </Provider>,
+    );
+    expect(table).toContain(`data-recon-candidate="${A}"`);
+    expect(table).toContain(`EGYCASH-${A}`);
+    expect(table).toContain(ar(`${R}conflict.ambiguousNumber`));
+    expect(table).not.toContain('data-recon-apply');
+  });
+});
+
+describe('6c: «أرقام مختلفة» — who holds the sheet’s number', () => {
+  const numbersOf = (lines: FleetFuelReconcileLineDto[], mayEdit = true): string =>
+    renderToStaticMarkup(
+      <Provider store={storeOf(ALL)}>
+        <NumbersTable
+          lines={lines}
+          cardNow={(c) => c}
+          onUpdateNumber={mayEdit ? () => undefined : null}
+        />
+      </Provider>,
+    );
+
+  it('names the card the sheet’s number is on, with its car', () => {
+    const html = numbersOf([
+      line(A, 1469.52, 129.52, {
+        numberMatches: false,
+        numberHolder: { id: 'h1', name: 'EGYCASH-4822-48085', place: '800' },
+      }),
+    ]);
+    expect(html).toContain(ar(`${R}numberHolder`));
+    expect(html).toContain('data-recon-holder="h1"');
+    expect(html).toContain('EGYCASH-4822-48085');
+    expect(html).toContain('>800<');
+    expect(html).toContain('548 •••• 7868');
+    expect(html).not.toContain('data-recon-update-number');
+  });
+
+  it('no card holds it: «تحديث رقم الكارت», for those who may edit cards', () => {
+    const lone = [line(A, 6785.22, 385.22, { numberMatches: false })];
+    expect(numbersOf(lone)).toContain(`data-recon-update-number="${A}"`);
+    expect(numbersOf(lone)).toContain(ar(`${R}numberHolderNone`));
+    expect(numbersOf(lone, false)).not.toContain('data-recon-update-number');
+  });
+
+  it('the sheet’s code beside the car when it names another place — a hint only', () => {
+    const html = numbersOf([
+      line(A, 10, 20, {
+        numberMatches: false,
+        placeMatches: false,
+        sheet: { ...line(A, 10, 20).sheet, code: '209' },
+      }),
+    ]);
+    expect(html).toContain(`data-recon-place-in-sheet="${A}"`);
+    expect(html).toContain(ar(`${R}placeInSheet`, { code: '209' }));
+  });
+
+  it('the table row offers «تحديث رقم الكارت» too, when no card holds the number', () => {
+    const html = renderResult({
+      result: { ...RESULT, differs: [line(C, 6785.22, 385.22, { numberMatches: false })] },
+    });
+    expect(rowOf(html, C)).toContain(`data-recon-update-number="${C}"`);
+    expect(rowOf(renderResult(), A)).not.toContain('data-recon-update-number');
+  });
+});
+
+describe('6c / M23: the upload card', () => {
+  const uploadOf = (fileName: string | null, sheetDate: string): string =>
+    renderToStaticMarkup(
+      <Provider store={storeOf(ALL)}>
+        <QueryClientProvider client={new QueryClient()}>
+          <ReconcileUploadCard
+            company="wataniya"
+            file={fileName === null ? null : ({ name: fileName, size: 24576 } as File)}
+            reading={false}
+            onCompany={() => undefined}
+            onFile={() => undefined}
+            onCompare={() => undefined}
+            sheetDate={sheetDate}
+            onSheetDate={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+  it('names the layouts it reads — and what it never reads', () => {
+    const html = uploadOf(null, '');
+    expect(html).toContain('data-recon-layouts="true"');
+    expect(html).toContain(ar(`${R}dropNoteLayouts`));
+    expect(html).toContain(ar(`${R}layouts.name`));
+    expect(html).toContain(ar(`${R}layouts.never`));
+    expect(html).toContain('data-recon-sheet-date-field="true"');
+    expect(html).toContain(ar(`${R}sheetDateOptional`));
+  });
+
+  it('the sheet’s date from the file name, said so; none when the name holds none', () => {
+    const named = uploadOf('رصيد وطنيه 4-10-2026.xlsx', '2026-10-04');
+    expect(named).toContain('value="2026-10-04"');
+    expect(named).toContain('data-recon-sheet-date-from="4-10-2026"');
+    const changed = uploadOf('رصيد وطنيه 4-10-2026.xlsx', '2026-10-05');
+    expect(changed).not.toContain('data-recon-sheet-date-from');
+    const plain = uploadOf('بيانات شركه وطنيه.xlsx', '');
+    expect(plain).toContain('value=""');
+    expect(plain).not.toContain('data-recon-sheet-date-from');
+    // The file's name in order: the Arabic head right to left, its date and extension isolated.
+    expect(named).toContain('<span dir="ltr">4-10-2026.xlsx</span>');
+  });
+
+  it('the page fills the date from the file it is given (`sheetDateOfName`)', () => {
+    const PAGE = readFileSync(join(HERE, 'FuelReconcilePage.tsx'), 'utf8');
+    expect(PAGE).toContain(
+      "setSheetDate(picked === null ? '' : (sheetDateOfName(picked.name)?.day ?? ''))",
+    );
+    expect(PAGE).toContain('{ company: picked, file, sheetDate }');
+  });
+});
+
+// ── Batch 3 — 6a: a top-up the sheet does not show, a request the difference equals ────────────
+
+const CH = '650000000000000000000d04';
+const RQ = '650000000000000000000e05';
+const charge = (id: string, amount: number, afterSheetDate = false) => ({
+  id,
+  amount,
+  at: '2026-11-01T08:05:00.000Z',
+  byName: 'مدير الحركة',
+  afterSheetDate,
+});
+const SIXA: FleetFuelReconcileDto = {
+  ...RESULT,
+  fileName: 'وطنية 1-11-2026.xlsx',
+  sheetDate: '2026-10-04',
+  differs: [
+    {
+      ...line(RQ, 77.48, 1577.48),
+      card: card(RQ, 77.48, { requestedAmount: 1500, requestedAt: '2026-10-31T09:00:00.000Z' }),
+    },
+    line(CH, 11203.43, 10203.43, {
+      charges: [charge('m1', 1000), charge('m2', 250, true)],
+    }),
+  ],
+};
+
+describe('6a: what a ✓ will ask about', () => {
+  it('chips under the card: the charge the sheet does not show, and the request it equals', () => {
+    const html = renderResult({ result: SIXA });
+    const lower = rowOf(html, CH);
+    expect(lower).toContain('data-recon-unseen-chip="m1"');
+    expect(lower).toContain('data-recon-unseen-chip="m2"');
+    expect(lower).toContain('1,000.00');
+    expect(lower).toContain(ar(`${R}afterSheetDate`));
+    expect(lower).toContain(`title="${ar(`${R}asksFirst`)}"`);
+    const higher = rowOf(html, RQ);
+    expect(higher).toContain(`data-recon-request-chip="${RQ}"`);
+    expect(higher).toContain('1,500.00');
+    expect(higher).toContain(`title="${ar(`${R}asksFirstRequest`)}"`);
+    // A plain row keeps batch 2's one-click words.
+    expect(rowOf(renderResult(), A)).toContain(
+      `title="${ar(`${R}apply`, { balance: '16,745.12' })}"`,
+    );
+  });
+
+  it('the confirm: the sheet’s date, the checklist pre-ticked, the later charge apart, the warning', () => {
+    const html = renderResult({
+      result: SIXA,
+      actions: [{ type: 'toggle', id: CH, on: true }],
+      confirming: 'apply',
+    });
+    expect(html).toContain('data-recon-confirm-sheet-date="2026-10-04"');
+    expect(html).toContain('2026/10/04');
+    expect(html).toContain('data-recon-confirm-block="unseen"');
+    expect(html).toContain('data-recon-confirm-charge="m1" data-recon-confirm-charge-on="yes"');
+    expect(html).toContain('data-recon-confirm-pre-ticked="m1"');
+    // After the sheet's date: listed apart, never pre-ticked.
+    expect(html).toContain('data-recon-confirm-later="true"');
+    expect(html).toContain('data-recon-confirm-charge="m2" data-recon-confirm-charge-on="no"');
+    expect(html).not.toContain('data-recon-confirm-pre-ticked="m2"');
+    expect(html).toContain('data-recon-confirm-moved-after="true"');
+    expect(html).toContain(ar(`${R}movedAfterSheetDate`));
+    expect(html).toContain('data-recon-confirm-marked="1000"');
+    expect(html).not.toContain('data-recon-confirm-block="request"');
+  });
+
+  it('the confirm: «اعتماد طلب الرصيد» suggested and chosen, «تسوية فقط» beside it', () => {
+    const html = renderResult({
+      result: SIXA,
+      actions: [{ type: 'toggle', id: RQ, on: true }],
+      confirming: 'apply',
+    });
+    expect(html).toContain('data-recon-confirm-block="request"');
+    expect(html).toContain(
+      'data-recon-confirm-request="approve" data-recon-confirm-request-on="yes"',
+    );
+    expect(html).toContain(
+      'data-recon-confirm-request="adjust" data-recon-confirm-request-on="no"',
+    );
+    expect(html).toContain(ar(`${R}approveRequest`));
+    expect(html).not.toContain('data-recon-confirm-block="unseen"');
+  });
+
+  it('a ✗ asks nothing; a sheet without a date says so', () => {
+    const reject = renderResult({
+      result: SIXA,
+      actions: [{ type: 'toggle', id: CH, on: true }],
+      confirming: 'reject',
+    });
+    expect(reject).not.toContain('data-recon-confirm-block');
+    expect(reject).not.toContain('data-recon-confirm-sheet-date');
+    const undated = renderResult({
+      result: { ...SIXA, sheetDate: null },
+      actions: [{ type: 'toggle', id: CH, on: true }],
+      confirming: 'apply',
+    });
+    expect(undated).toContain('data-recon-confirm-sheet-date="none"');
+    expect(undated).toContain(ar(`${R}sheetDateNone`));
+    expect(undated).not.toContain('data-recon-confirm-moved-after');
+  });
+
+  it('a row that asks first opens the confirm for itself; the body carries only what is chosen', () => {
+    const PAGE = readFileSync(join(HERE, 'FuelReconcilePage.tsx'), 'utf8');
+    expect(PAGE).toContain("if (decision === 'apply' && line !== undefined && asksFirst(line)) {");
+    expect(PAGE).toContain("confirming === 'apply' ? decideExtrasOf(asked, choiceOf) : undefined");
+    expect(PAGE).toContain('body: { decision: chosen, cardIds: [...ids], ...extras }');
   });
 });

@@ -40,6 +40,8 @@ const at = (iso: string): string => day(iso).toISOString();
 let typeId: Types.ObjectId;
 let countingId: Types.ObjectId;
 let washId: Types.ObjectId;
+/** A workshop the catalog names — «التوكيل». */
+let dealerId: Types.ObjectId;
 let carNo = 0;
 
 /** A car of the 5,000 km type; `active` unless said otherwise. */
@@ -91,13 +93,14 @@ const visitOf = async (
     entry?: number | null;
     exit?: number | null;
     workTypeId?: Types.ObjectId;
+    workshopId?: Types.ObjectId;
   },
 ): Promise<string> => {
   const doc = await FleetMaintenanceVisitModel.create({
     vehicleId,
     inDate: day(v.inDate),
     outDate: v.outDate === null ? null : day(v.outDate),
-    workshopId: new Types.ObjectId(),
+    workshopId: v.workshopId ?? new Types.ObjectId(),
     workTypeId: v.workTypeId ?? countingId,
     odometerAtService: v.entry ?? null,
     exitOdometer: v.exit ?? null,
@@ -126,6 +129,12 @@ beforeAll(async () => {
     )._id as Types.ObjectId;
   countingId = await workType('صيانة دورية للإنذار', true);
   washId = await workType('غسيل للإنذار', false);
+  dealerId = (
+    await FleetCatalogItemModel.create({
+      kind: 'workshop',
+      name: { ar: 'التوكيل للإنذار', en: 'Dealer (alarm)' },
+    })
+  )._id as Types.ObjectId;
 }, 120_000);
 
 afterAll(async () => {
@@ -264,14 +273,63 @@ describe('a newer visit the alarm cannot measure from', () => {
       outDate: '2026-09-02',
       exit: 10_000,
     });
-    const openId = await visitOf(id, { inDate: '2026-10-01', outDate: null, entry: 11_000 });
+    const openId = await visitOf(id, {
+      inDate: '2026-10-01',
+      outDate: null,
+      entry: 11_000,
+      workshopId: dealerId,
+    });
     const row = await alarmOf(id);
     expect(row?.lastServiceVisitId).toBe(baselineId);
+    // Batch 3 (real values now, replacing F0's neutral nulls): the card names the visit — its
+    // work type and its workshop, read from the catalog.
     expect(row?.newerUncountedVisit).toEqual({
       visitId: openId,
       inDate: at('2026-10-01'),
       outDate: null,
       why: 'open',
+      workType: {
+        id: String(countingId),
+        name: { ar: 'صيانة دورية للإنذار', en: 'صيانة دورية للإنذار' },
+      },
+      workshop: { id: String(dealerId), name: { ar: 'التوكيل للإنذار', en: 'Dealer (alarm)' } },
+      // Its work type is on the counting list: once closed, it is the visit measured from.
+      counts: true,
+    });
+    // The counted visit is named too; a workshop the catalog does not hold stays unnamed.
+    expect(row?.baseline?.workType).toEqual({
+      id: String(countingId),
+      name: { ar: 'صيانة دورية للإنذار', en: 'صيانة دورية للإنذار' },
+    });
+  });
+
+  it('closed and counting, but checked out BEFORE the visit measured from — named (C8)', async () => {
+    // The 295 shape the critic found: A in on 26 September at 19,790, closed on 20 October; B in
+    // and out on 6 October at 22,790. The baseline is the latest CHECK-OUT (A); the newest by
+    // CHECK-IN is B, and the reader is told why it is not the one measured from.
+    const id = await car();
+    await readings(id, [
+      ['2026-09-25', 19_700],
+      ['2026-10-21', 22_900],
+    ]);
+    const a = await visitOf(id, { inDate: '2026-09-26', outDate: '2026-10-20', entry: 19_790 });
+    const b = await visitOf(id, {
+      inDate: '2026-10-06',
+      outDate: '2026-10-06',
+      entry: 22_790,
+      workshopId: dealerId,
+    });
+    const row = await alarmOf(id);
+    expect(row?.lastServiceVisitId).toBe(a);
+    expect(row?.sinceServiceKm).toBe(22_900 - 19_790);
+    expect(row?.newerUncountedVisit).toMatchObject({
+      visitId: b,
+      inDate: at('2026-10-06'),
+      outDate: at('2026-10-06'),
+      why: 'checkedOutEarlier',
+      workType: { id: String(countingId) },
+      workshop: { id: String(dealerId) },
+      counts: true,
     });
   });
 
@@ -285,7 +343,22 @@ describe('a newer visit the alarm cannot measure from', () => {
       workTypeId: washId,
     });
     const row = await alarmOf(id);
-    expect(row?.newerUncountedVisit).toMatchObject({ visitId: washVisit, why: 'notCounting' });
+    expect(row?.newerUncountedVisit).toMatchObject({
+      visitId: washVisit,
+      why: 'notCounting',
+      counts: false,
+    });
+  });
+
+  it('open, of a work type that does not count — says so, so the card need not guess (A/04)', async () => {
+    // Car 157: the newest visit is «إصلاح» at the dealer, still open. Closing it would not reset
+    // the cycle, because its work type is not on the counting list.
+    const id = await car();
+    await readings(id, [['2026-09-20', 11_000]]);
+    await visitOf(id, { inDate: '2026-09-01', outDate: '2026-09-02', exit: 10_000 });
+    const openId = await visitOf(id, { inDate: '2026-09-25', outDate: null, workTypeId: washId });
+    const row = await alarmOf(id);
+    expect(row?.newerUncountedVisit).toMatchObject({ visitId: openId, why: 'open', counts: false });
   });
 
   it('with no counting visit at all, the open one is what the car is waiting on', async () => {
@@ -295,7 +368,7 @@ describe('a newer visit the alarm cannot measure from', () => {
     const row = await alarmOf(id);
     expect(row?.noAlarmReason).toBe('noService');
     expect(row?.baseline).toBeNull();
-    expect(row?.newerUncountedVisit).toMatchObject({ visitId: openId, why: 'open' });
+    expect(row?.newerUncountedVisit).toMatchObject({ visitId: openId, why: 'open', counts: true });
   });
 
   it('a soft-deleted visit is never answered', async () => {
@@ -341,6 +414,105 @@ describe('the reading the alarm measured', () => {
       22_830,
     );
     expect((await fleetOdometerRepository.lowerBoundsAt(pair, { includeDay: false })).size).toBe(0);
+  });
+});
+
+/**
+ * THE OWNER'S REPORT AFTER APPROVAL (batch 3, A-ODO step 0): «لو ماشية مثلا 150 دخول وأنا كتبت بعد
+ * كده دخول بتاع تاني يوم 200، يبقى هي مشيت 50، بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق
+ * الصيانة». Two rows sharing the top OPENING reading — a parked day (150 → 150) and the next day
+ * (150 → 200) — used to be told apart by `_id` alone, so when the 0-km row was written last the
+ * car's reading stayed 150. It is ranked by the row's effective reading now.
+ */
+describe('the day’s km reach the gap — two rows share the top opening reading', () => {
+  /** A counting service on 1 October at 100 km, the chain at 90 the day before. */
+  const serviced = async (): Promise<Types.ObjectId> => {
+    const id = await car();
+    await FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-09-30'),
+      outReading: 90,
+      inReading: 150,
+    });
+    await visitOf(id, { inDate: '2026-10-01', outDate: '2026-10-01', entry: 100 });
+    return id;
+  };
+  const parkedDay = (id: Types.ObjectId) =>
+    FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-10-10'),
+      outReading: 150,
+      inReading: 150,
+    });
+  const movingDay = (id: Types.ObjectId) =>
+    FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-10-11'),
+      outReading: 150,
+      inReading: 200,
+    });
+
+  it.each([
+    ['the parked day written first', true],
+    ['the parked day written LAST (back-dated, or re-created by a correction)', false],
+  ])('%s → the car reads 200, and the 50 km are in the gap', async (_label, parkedFirst) => {
+    const id = await serviced();
+    let moving;
+    if (parkedFirst) {
+      await parkedDay(id);
+      moving = await movingDay(id);
+    } else {
+      moving = await movingDay(id);
+      await parkedDay(id);
+    }
+    const row = await alarmOf(id);
+    expect(row?.latestReading).toBe(200);
+    expect(row?.latestReadingAt).toBe(at('2026-10-11'));
+    expect(row?.latestReadingLogId).toBe(String(moving._id));
+    expect(row?.sinceServiceKm).toBe(100);
+    // C6: on this healthy chain the newest-dated row is the same point.
+    expect(row?.newestReading).toEqual({ reading: 200, date: at('2026-10-11') });
+  });
+
+  it('a tie on the effective reading goes to the later DAY, whatever was written last', async () => {
+    const id = await car();
+    const later = await FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-10-12'),
+      outReading: 200,
+      inReading: null,
+    });
+    // A parked day typed in afterwards for the 11th: the same opening AND closing reading, and the
+    // newer `_id` — which used to make it «the latest reading», dated a day too early.
+    await FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-10-11'),
+      outReading: 200,
+      inReading: 200,
+    });
+    const latest = (await fleetOdometerRepository.latestReadings([String(id)])).get(String(id));
+    expect(latest).toMatchObject({ reading: 200, logId: String(later._id) });
+    expect(latest?.date.toISOString()).toBe(at('2026-10-12'));
+  });
+
+  it('C6: a typo-high reading in the past is the HIGHEST, the newest is told beside it', async () => {
+    const id = await car();
+    await FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-07-30'),
+      outReading: 79_200,
+      inReading: 79_200,
+    });
+    await FleetOdometerLogModel.create({
+      vehicleId: id,
+      date: day('2026-10-26'),
+      outReading: 25_631,
+      inReading: null,
+    });
+    const row = await alarmOf(id);
+    expect(row?.latestReading).toBe(79_200);
+    expect(row?.latestReadingAt).toBe(at('2026-07-30'));
+    expect(row?.newestReading).toEqual({ reading: 25_631, date: at('2026-10-26') });
   });
 });
 

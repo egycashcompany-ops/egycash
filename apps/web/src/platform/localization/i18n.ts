@@ -3773,6 +3773,10 @@ const en: Record<string, string> = {
   'fleet.fuelCards.board.charge.transfer': 'Transfer balance',
   'fleet.fuelCards.board.charge.stateAny': 'All states',
   'fleet.fuelCards.board.charge.critical': 'Nearly empty',
+  'fleet.fuelCards.board.pinCaption': 'PIN',
+  'fleet.fuelCards.board.charge.chargedTodayNote': 'Added to balances today',
+  'fleet.fuelCards.totals.chargedOnCairoDay': 'Charged today',
+  'fleet.fuelCards.filters.chargedOnCairoDay': 'Charged today',
   'fleet.fuelCards.copyNumber': 'Copy the card number',
   'fleet.fuelCards.numberCopied': 'Card number copied.',
   'fleet.fuelCards.image.none': 'No photo',
@@ -4034,6 +4038,209 @@ const en: Record<string, string> = {
   'fleet.fuelCards.reconcile.count.times.few': '{{count}} times',
   'fleet.fuelCards.reconcile.count.times.many': '{{count}} times',
   'fleet.fuelCards.reconcile.count.times.other': '{{count}} times',
+  'fleet.fuelCards.reconcile.layout.title': 'How the sheet was read',
+  'fleet.fuelCards.reconcile.layout.role.number': 'Card number',
+  'fleet.fuelCards.reconcile.layout.role.name': 'Name',
+  'fleet.fuelCards.reconcile.layout.role.plate': 'Plate',
+  'fleet.fuelCards.reconcile.layout.role.chassis': 'Chassis',
+  'fleet.fuelCards.reconcile.layout.role.balance': 'Balance',
+  'fleet.fuelCards.reconcile.layout.role.code': 'Car code',
+  'fleet.fuelCards.reconcile.layout.role.secret': 'Password',
+  'fleet.fuelCards.reconcile.layout.role.ignored': 'Not read',
+  'fleet.fuelCards.reconcile.layout.masked': 'masked',
+  'fleet.fuelCards.reconcile.layout.full': 'full',
+  'fleet.fuelCards.reconcile.layout.companyWord': 'Company',
+  'fleet.fuelCards.reconcile.layout.and': 'and',
+  'fleet.fuelCards.reconcile.layout.untitled': 'untitled in the sheet — read by their content',
+  'fleet.fuelCards.reconcile.layout.untitledOne': 'untitled in the sheet — read by its content',
+  'fleet.fuelCards.reconcile.layout.example': 'Example, row {{row}}:',
+  'fleet.fuelCards.reconcile.layout.notRead': 'Not read:',
+  'fleet.fuelCards.reconcile.layout.neverPin': 'The password is never read from a sheet or kept',
+  'fleet.fuelCards.reconcile.matchedChip': 'Card found by name in {{matched}} of {{rows}}',
+  'fleet.fuelCards.reconcile.totalCheck.agrees':
+    'The card balances add up to {{sum}} — the same as the «{{text}}» row (row {{row}})',
+  'fleet.fuelCards.reconcile.totalCheck.differs':
+    'The card balances add up to {{sum}} — not the «{{text}}» row’s {{figure}} (row {{row}})',
+  'fleet.fuelCards.reconcile.totalCheck.matches': 'Equals the sum of the card balances',
+  'fleet.fuelCards.reconcile.totalCheck.notMatches': 'Does not equal the sum of the card balances',
+  'fleet.fuelCards.reconcile.secSkippedChip': '{{rows}} are not cards — not matched',
+  'fleet.fuelCards.reconcile.secSkipped': 'Rows that are not cards',
+  'fleet.fuelCards.reconcile.secSkippedNote':
+    'Rows with no card number and no name — a total or a note. Not matched, and nothing changes by them.',
+  'fleet.fuelCards.reconcile.colText': 'What the row says',
+  'fleet.fuelCards.reconcile.colFigure': 'Figure in the balance column',
+  'fleet.fuelCards.reconcile.colCheck': 'Check',
+  'fleet.fuelCards.reconcile.numberHolder': 'The sheet’s number is on this card in the system',
+  'fleet.fuelCards.reconcile.numberHolderNone': 'No card has this number',
+  'fleet.fuelCards.reconcile.updateNumber': 'Update card number',
+  'fleet.fuelCards.reconcile.updateNumberTitle':
+    'Opens «Edit card» on «Fuel cards» to type the new number',
+  'fleet.fuelCards.reconcile.negativeBalance': 'Negative balance',
+  'fleet.fuelCards.reconcile.moreRows': 'and {{rows}} more',
+  'fleet.fuelCards.reconcile.placeInSheet': 'In the sheet: {{code}}',
+  'fleet.fuelCards.reconcile.conflict.ambiguousNumber': 'Its last four fit more than one card',
+  'fleet.fuelCards.reconcile.conflict.lastFourOnly': 'Only its last four fit a card',
+  'fleet.fuelCards.reconcile.conflict.cardTwice': 'One card in more than one row',
+  'fleet.fuelCards.reconcile.secChoose': 'Need a choice',
+  'fleet.fuelCards.reconcile.secChooseNote':
+    'A number with no name whose last four fit a card or more — the candidates are shown; nothing is decided from here.',
+  'fleet.fuelCards.reconcile.colCandidates': 'Candidate cards',
+  'fleet.fuelCards.reconcile.guard':
+    'Only {{matched}} of {{rows}} were found — less than half. Check «How the sheet was read» and the company chosen before applying anything.',
+  'fleet.fuelCards.reconcile.wrongCompanyTitle':
+    'This sheet is for {{sheet}} cards, and the company chosen is {{picked}}',
+  'fleet.fuelCards.reconcile.wrongCompanyBody':
+    'The card names in {{rows}} of the sheet start with «{{prefix}}» — {{sheet}} cards. Nothing was compared, so no card shows as only in the sheet or only in the system.',
+  'fleet.fuelCards.reconcile.wrongCompanySwitch': 'Compare with {{sheet}} cards',
+  'fleet.fuelCards.reconcile.dropNoteLayouts': 'Reads the data sheet and the company statement:',
+  'fleet.fuelCards.reconcile.layouts.number': 'Card number, full or masked (⁦548••••0021⁩)',
+  'fleet.fuelCards.reconcile.layouts.name':
+    'The full name, or «EGYCASH» with the plate and chassis columns',
+  'fleet.fuelCards.reconcile.layouts.balance': 'Balance',
+  'fleet.fuelCards.reconcile.layouts.code': 'Car code (optional)',
+  'fleet.fuelCards.reconcile.layouts.never': 'Never read: the password (pass) and «قيمه الشحن»',
+  'fleet.fuelCards.reconcile.sheetDate': 'Sheet date',
+  'fleet.fuelCards.reconcile.sheetDateOptional': '(optional)',
+  'fleet.fuelCards.reconcile.sheetDateFromName':
+    'Taken from the file name «{{text}}» — it can be changed or cleared.',
+  'fleet.fuelCards.reconcile.sheetDateHint':
+    'The day the sheet’s balances describe. A top-up after it is never ticked in advance, and the confirmation warns you when the card moved after it.',
+  'fleet.fuelCards.reconcile.sheetDateToday': 'Today',
+  'fleet.fuelCards.reconcile.sheetDateAgo': '{{days}} ago',
+  'fleet.fuelCards.reconcile.sheetDateFromFile': 'Taken from the file name «{{text}}»',
+  'fleet.fuelCards.reconcile.sheetDateNone':
+    'Not given — each top-up’s date and time are written beside it',
+  'fleet.fuelCards.reconcile.unseenCharges': 'Top-up not in the sheet: {{amount}} · {{at}}',
+  'fleet.fuelCards.reconcile.afterSheetDate': 'After the sheet date',
+  'fleet.fuelCards.reconcile.afterSheetDateTag': 'After the sheet date — not ticked in advance',
+  'fleet.fuelCards.reconcile.requestMatches':
+    'The difference equals the pending balance request: {{amount}}',
+  'fleet.fuelCards.reconcile.asksFirst':
+    'Apply the sheet balance — asks first about the top-up the sheet does not show',
+  'fleet.fuelCards.reconcile.asksFirstRequest':
+    'Apply the sheet balance — asks first about the pending balance request',
+  'fleet.fuelCards.reconcile.unseenTitle': 'Top-ups not in the sheet',
+  'fleet.fuelCards.reconcile.unseenNote':
+    'The sheet balance is below the system’s. Tick the top-up that never reached the card: it leaves «Top up cards», its row is no longer green and it does not count in «Charged today»; it stays in «Card log» only, struck through.',
+  'fleet.fuelCards.reconcile.cancelCharge':
+    'Cancel this top-up on the top-up screen (it stays in the card log only)',
+  'fleet.fuelCards.reconcile.preTicked': 'Its amount is the difference — ticked in advance',
+  'fleet.fuelCards.reconcile.markedSum':
+    'Ticked to cancel {{marked}} of a {{difference}} difference',
+  'fleet.fuelCards.reconcile.noSecondDeduction':
+    'Cancelling takes nothing off a second time: the balance becomes the sheet’s only.',
+  'fleet.fuelCards.reconcile.movedAfterSheetDate':
+    'The card log has movements after the sheet date',
+  'fleet.fuelCards.reconcile.movedAfterSheetDateBody':
+    'The sheet describes the balances of {{date}}, and this card was topped up after it. Applying the sheet balance makes the card {{balance}}, as it was that day — without this top-up. If the top-up reached the card, upload a newer sheet.',
+  'fleet.fuelCards.reconcile.requestTitle': 'The difference equals the pending balance request',
+  'fleet.fuelCards.reconcile.requestNote':
+    'The sheet balance is above the system’s by exactly the balance request waiting for approval — the company most likely loaded it.',
+  'fleet.fuelCards.reconcile.requestStrip': 'Balance request',
+  'fleet.fuelCards.reconcile.approveRequest': 'Approve the balance request',
+  'fleet.fuelCards.reconcile.approveRequestNote':
+    'A «Balance added» line is written for the request and the request is closed: the row turns green on «Top up cards» and counts in «Charged today».',
+  'fleet.fuelCards.reconcile.adjustOnly': 'Adjust only',
+  'fleet.fuelCards.reconcile.adjustOnlyNote':
+    'An «Adjusted from the company sheet» line is written and the request stays pending — if it is approved later, its amount is added to the card a second time.',
+  'fleet.fuelCards.reconcile.suggested': 'Suggested',
+  'fleet.fuelCards.reconcile.links.title': 'Cards and cars',
+  'fleet.fuelCards.reconcile.links.note':
+    'The sheet names each card’s car in its «{{column}}» column. Nothing changes without your approval on each row, and every change is written in «Card log».',
+  'fleet.fuelCards.reconcile.links.chip': '{{cards}} placed differently in the sheet',
+  'fleet.fuelCards.reconcile.links.noCarColumn':
+    'The sheet has no car code column — card places are not compared.',
+  'fleet.fuelCards.reconcile.links.group.attach': 'On a car in the sheet, on none in the system',
+  'fleet.fuelCards.reconcile.links.group.move': 'On another car in the sheet',
+  'fleet.fuelCards.reconcile.links.group.detach': 'On no car in the sheet',
+  'fleet.fuelCards.reconcile.links.group.unknownCode':
+    'A code in the sheet the system does not know',
+  'fleet.fuelCards.reconcile.links.ask.attach': 'Update?',
+  'fleet.fuelCards.reconcile.links.ask.move': 'Move?',
+  'fleet.fuelCards.reconcile.links.ask.detach': 'Detach?',
+  'fleet.fuelCards.reconcile.links.ask.unknownCode': 'Choose the car',
+  'fleet.fuelCards.reconcile.links.colInSystem': 'In the system',
+  'fleet.fuelCards.reconcile.links.colInSheet': 'In the sheet',
+  'fleet.fuelCards.reconcile.links.colEvidence': 'Chassis in the card name',
+  'fleet.fuelCards.reconcile.links.noCar': 'No car',
+  'fleet.fuelCards.reconcile.links.placeCar': 'car {{code}}',
+  'fleet.fuelCards.reconcile.links.placeLabel': '«{{label}}»',
+  'fleet.fuelCards.reconcile.links.sheetSays': 'Sheet: «{{code}}»',
+  'fleet.fuelCards.reconcile.links.sheetSaysNothing': 'Sheet: no code',
+  'fleet.fuelCards.reconcile.links.resolvedAlias': 'Saved code',
+  'fleet.fuelCards.reconcile.links.chassisCar': 'Belongs to car {{code}}',
+  'fleet.fuelCards.reconcile.links.chassisNone': 'No car has this chassis',
+  'fleet.fuelCards.reconcile.links.chassisAgreesNote': 'as in the sheet',
+  'fleet.fuelCards.reconcile.links.chassisDiffersNote': 'as in the system',
+  'fleet.fuelCards.reconcile.links.swap': 'A swap between two cars — both cards move together',
+  'fleet.fuelCards.reconcile.links.exchange': 'An exchange between {{a}} and {{b}} — both together',
+  'fleet.fuelCards.reconcile.links.update': 'Update',
+  'fleet.fuelCards.reconcile.links.move': 'Move',
+  'fleet.fuelCards.reconcile.links.moveBoth': 'Move both cards',
+  'fleet.fuelCards.reconcile.links.detach': 'Detach from the car',
+  'fleet.fuelCards.reconcile.links.keep': 'Keep',
+  'fleet.fuelCards.reconcile.links.inRepair': 'Part of the number repair',
+  'fleet.fuelCards.reconcile.links.inRepairNote':
+    'Both cards end in 0849, and each one’s name and balance are on the other card in the system — they are corrected with the 15 cards in «Number repair» after your approval, and are not moved from here.',
+  'fleet.fuelCards.reconcile.links.pickCar': 'Choose the car',
+  'fleet.fuelCards.reconcile.links.remember': 'Remember this code',
+  'fleet.fuelCards.reconcile.links.toastApplied': 'Card places updated: {{cards}}',
+  'fleet.fuelCards.reconcile.links.toastAppliedNote': 'Each move is written in «Card log».',
+  'fleet.fuelCards.reconcile.links.toastKept': 'Kept as in the system: {{cards}}',
+  'fleet.fuelCards.reconcile.newCards.title': 'Cards in the sheet, not in the system',
+  'fleet.fuelCards.reconcile.newCards.note':
+    'No card is added on its own. «Add» opens «Add card» filled from the sheet; you type the full number, the expiry date and the password.',
+  'fleet.fuelCards.reconcile.newCards.noneNote':
+    'No card is added on its own — a new card in the sheet is added from here with «Add», filled from the sheet.',
+  'fleet.fuelCards.reconcile.newCards.add': 'Add',
+  'fleet.fuelCards.reconcile.newCards.added': 'Added',
+  'fleet.fuelCards.reconcile.newCards.colCarInSheet': 'Car in the sheet',
+  'fleet.fuelCards.reconcile.newCards.codeUnknown': 'Code {{code}} is not a registered car',
+  'fleet.fuelCards.reconcile.newCards.slotFree': 'It has no {{company}} card',
+  'fleet.fuelCards.reconcile.newCards.slotHeld': 'It already has a {{company}} card: {{name}}',
+  'fleet.fuelCards.reconcile.newCards.addTitle': 'Add a card from the company sheet',
+  'fleet.fuelCards.reconcile.newCards.addSubtitle':
+    'From row {{row}} of the company sheet — {{company}}',
+  'fleet.fuelCards.reconcile.newCards.fromSheet': 'From the sheet',
+  'fleet.fuelCards.reconcile.newCards.numberHint':
+    'The sheet shows only {{masked}} — type the full number as on the card; it must end in {{last4}}.',
+  'fleet.fuelCards.reconcile.newCards.numberMismatch':
+    'This is not the sheet’s number — it must end in {{last4}}.',
+  'fleet.fuelCards.reconcile.newCards.opening': 'Opening balance',
+  'fleet.fuelCards.reconcile.newCards.openingNote':
+    'The card’s balance in the sheet — written in «Card log» as «Adjusted from the company sheet».',
+  'fleet.fuelCards.reconcile.newCards.save': 'Add the card',
+  'fleet.fuelCards.reconcile.newCards.toastAdded': 'Card added with its sheet balance.',
+  'fleet.fuelCards.reconcile.refusal.cancelNotCandidate':
+    'A ticked top-up is not one this sheet may cancel — nothing was written. Upload the sheet again.',
+  'fleet.fuelCards.reconcile.refusal.cancelCancelled':
+    'A ticked top-up was already cancelled — nothing was written. Upload the sheet again.',
+  'fleet.fuelCards.reconcile.refusal.cancelExceeds':
+    'The ticked top-ups add up to more than the sheet takes off the card — nothing was written.',
+  'fleet.fuelCards.reconcile.refusal.linkChanged':
+    'The card’s car changed after the sheet was read — nothing was written. Upload the sheet again.',
+  'fleet.fuelCards.reconcile.refusal.linkDecided':
+    'A decision was already taken on this card’s place.',
+  'fleet.fuelCards.reconcile.refusal.slotHeld':
+    'The car already has a card of this company that does not move away — nothing was written.',
+  'fleet.fuelCards.reconcile.refusal.inRepair':
+    'This card waits for the number repair — nothing was written.',
+  'fleet.fuelCards.reconcile.refusal.pickRequired': 'Choose the car first.',
+  'fleet.fuelCards.reconcile.refusal.numberRequired':
+    'The sheet does not show the full number — type it.',
+  'fleet.fuelCards.reconcile.refusal.numberMismatch':
+    'The number typed is not the one the sheet shows.',
+  'fleet.fuelCards.reconcile.refusal.cardAdded': 'This card was already added from the sheet.',
+  'fleet.fuelCards.reconcile.count.daysAgo.one': '1 day',
+  'fleet.fuelCards.reconcile.count.daysAgo.two': '2 days',
+  'fleet.fuelCards.reconcile.count.daysAgo.few': '{{count}} days',
+  'fleet.fuelCards.reconcile.count.daysAgo.many': '{{count}} days',
+  'fleet.fuelCards.reconcile.count.daysAgo.other': '{{count}} days',
+  'fleet.fuelCards.history.cancelledBySheet': 'Cancelled by the company sheet',
+  'fleet.fuelCards.history.sheetCancelled': 'and a {{amount}} top-up cancelled',
+  'fleet.fuelCards.history.cancelledNote': 'Not changed or removed',
+  'fleet.fuelCards.history.kind.sheetLink': 'Moved by the company sheet',
+  'fleet.fuelCards.history.sheetLink': 'Moved from {{from}} to {{to}} — company sheet',
   'fleet.fuelCards.history.kind.sheetAdjust': 'Adjusted from the company sheet',
   'fleet.fuelCards.history.kind.sheetReject': 'Sheet adjustment rejected',
   'fleet.fuelCards.history.by': 'By {{name}}',
@@ -4798,6 +5005,85 @@ const en: Record<string, string> = {
   'fleet.custody.ledger.drawer.intro.replenishCancelled':
     'The replenishment of {{amount}} for {{memos}} ({{kinds}}){{period}} was cancelled.',
   'fleet.custody.dashboard.waiting.held': 'Waiting for the transfer',
+  'fleet.custody.delete.action': 'Delete the operation',
+  'fleet.custody.delete.binTitle': 'Delete the operation from «Custody log»',
+  'fleet.custody.delete.title.charge': 'Delete the custody request',
+  'fleet.custody.delete.title.replenish': 'Delete the replenishment',
+  'fleet.custody.delete.title.settle': 'Delete the settlement',
+  'fleet.custody.delete.title.replenishHeld': 'Delete the held replenishment',
+  'fleet.custody.delete.subtitle': '{{op}} — letter {{date}} · {{amount}}',
+  'fleet.custody.delete.subtitleMemos': '{{op}} — letter {{date}} · {{memos}} · {{amount}}',
+  'fleet.custody.delete.body.charge':
+    'The custody request leaves «Custody log» and the totals, and its amount is taken off the custody fund. It stays in «Deleted operations» with who deleted it and when.',
+  'fleet.custody.delete.body.replenish':
+    'The replenishment leaves «Custody log» and the totals, and its amount is taken off the custody fund. Its memos ({{memos}}) go back to «Not replenished yet», so they can enter another replenishment. It stays in «Deleted operations» with who deleted it and when.',
+  'fleet.custody.delete.body.replenishHeld':
+    'The held replenishment leaves «Custody log», and the custody fund does not change. Its reserved memos ({{memos}}) go back to «Not replenished yet». It stays in «Deleted operations» with who deleted it and when.',
+  'fleet.custody.delete.heldOrCancel':
+    'To keep it in «Custody log» as a cancelled replenishment instead of deleting it, use «Cancel the held replenishment».',
+  'fleet.custody.delete.body.replenishCancelled':
+    'The cancelled replenishment leaves «Custody log»; neither the custody fund nor any memo changes.',
+  'fleet.custody.delete.body.settle':
+    'The settlement leaves «Custody log» and the totals, and its amount is added back to the custody fund. Its licensing expenses ({{parts}}) go back to «Not settled yet». It stays in «Deleted operations» with who deleted it and when.',
+  'fleet.custody.delete.fundNow': 'Custody fund now',
+  'fleet.custody.delete.fundAfter': 'After the delete',
+  'fleet.custody.delete.fundUnchanged': 'The custody fund does not change',
+  'fleet.custody.delete.laterTitle': '{{operations}} recorded after this request',
+  'fleet.custody.delete.laterBody':
+    "Each one's «custody fund after it» in «Custody log» is worked out again as if this request had never been recorded.",
+  'fleet.custody.delete.negative':
+    'And the custody fund goes below zero after the delete: {{amount}}',
+  'fleet.custody.delete.allowed': 'The delete is allowed — check the figures before confirming.',
+  'fleet.custody.delete.lettersKept':
+    'Letters printed after this operation stay as they were printed; their figures do not change.',
+  'fleet.custody.delete.reason': 'Reason for deleting',
+  'fleet.custody.delete.reasonHint': 'Optional — shown in «Deleted operations»',
+  'fleet.custody.delete.memosBack': 'The memos that go back to «Not replenished yet»',
+  'fleet.custody.delete.partsBack': 'The licensing expenses that go back to «Not settled yet»',
+  'fleet.custody.delete.partCol': 'Licensing expense',
+  'fleet.custody.delete.save': 'Delete the operation',
+  'fleet.custody.delete.back': 'Back',
+  'fleet.custody.delete.done':
+    'The operation was deleted — you will find it in «Deleted operations».',
+  'fleet.custody.delete.taken':
+    'This operation changed or was deleted after the window opened, so nothing was deleted. The log was read again.',
+  'fleet.custody.deleted.title': 'Deleted operations',
+  'fleet.custody.deleted.pillTitle':
+    'Every operation deleted from «Custody log» — who deleted it, when and why',
+  'fleet.custody.deleted.back': 'Back to «Custody log»',
+  'fleet.custody.deleted.note':
+    'Who recorded each operation and when, who deleted it, when and why, and the custody fund before and after the delete. Times are Cairo time.',
+  'fleet.custody.deleted.col.op': 'Operation',
+  'fleet.custody.deleted.col.detail': 'Details',
+  'fleet.custody.deleted.col.amount': 'Amount',
+  'fleet.custody.deleted.col.amountShort': 'Amount (EGP)',
+  'fleet.custody.deleted.col.fund': 'Custody fund',
+  'fleet.custody.deleted.col.fundShort': 'Custody fund (EGP)',
+  'fleet.custody.deleted.col.recorded': 'Recorded by',
+  'fleet.custody.deleted.col.deleted': 'Deleted by',
+  'fleet.custody.deleted.col.reason': 'Reason for deleting',
+  'fleet.custody.deleted.chip': 'Deleted',
+  'fleet.custody.deleted.wasHeld': 'Was on hold',
+  'fleet.custody.deleted.wasCancelled': 'Was cancelled',
+  'fleet.custody.deleted.before': 'Before the delete',
+  'fleet.custody.deleted.after': 'After the delete',
+  'fleet.custody.deleted.unchanged': 'Unchanged',
+  'fleet.custody.deleted.noReason': 'No reason given',
+  'fleet.custody.deleted.filters.from': 'Deleted from',
+  'fleet.custody.deleted.filters.to': 'Deleted to',
+  'fleet.custody.deleted.empty': 'There are no deleted operations.',
+  'fleet.custody.deleted.emptyHint':
+    'Every operation deleted from «Custody log» shows here: who recorded it and who deleted it, when, why, and the custody fund before and after the delete.',
+  'fleet.custody.deleted.emptyFiltered': 'No deleted operations match these filters.',
+  'fleet.custody.deleted.drawerTitle':
+    'This operation was deleted — it is not counted in the custody fund',
+  'fleet.custody.deleted.drawerDeleted': 'Deleted by {{by}} on {{date}} at {{time}}, Cairo time.',
+  'fleet.custody.deleted.drawerRecorded': 'It had been recorded by {{by}} on {{date}} at {{time}}.',
+  'fleet.custody.deleted.drawerReason': 'Reason: {{reason}}',
+  'fleet.custody.deleted.drawerBefore': 'Custody fund before the delete',
+  'fleet.custody.deleted.drawerEffect': 'Effect of the delete',
+  'fleet.custody.deleted.drawerAfter': 'Custody fund after the delete',
+  'fleet.custody.deleted.drawerLetter': 'The letter as it was printed — it is not printed again',
   'fleet.receipts.memo.heldTitle':
     'On custody memo no. {{no}}, whose replenishment is on hold waiting for the transfer',
   'fleet.receipts.memo.lockedHeld':
@@ -4961,6 +5247,23 @@ const en: Record<string, string> = {
     '“{{name}}” is already on the list — it is highlighted; set where it shows on its own row.',
   'fleet.licenseExpenses.setup.newItemArchivedToast':
     '“{{name}}” is already on Fleet catalogs, archived — restore it there rather than adding it twice.',
+  'fleet.catalogs.fields.licenseExpensePaidBy': 'Paid by',
+  'fleet.catalogs.licenseExpenseItemArchiveHint':
+    'Items archive here instead of delete — history keeps referencing them. An item somebody added is deleted from the licensing expenses’ set-up.',
+  'fleet.licenseExpenses.setup.itemsTitlePaidBy': 'Items — shows in, and paid by',
+  'fleet.licenseExpenses.setup.itemsHintPaidBy':
+    'Which memo offers each item’s counter, and in which part of it: card, cash or both. The same choice as in Fleet catalogs: a change here shows there.',
+  'fleet.licenseExpenses.setup.itemsDeleteHint':
+    'Items that were added are deleted from here. Built-in items are not deleted; they are archived from Fleet catalogs.',
+  'fleet.licenseExpenses.setup.builtInTag': 'Built-in',
+  'fleet.licenseExpenses.setup.builtInHint':
+    'A built-in item: it is not deleted, it is archived from Fleet catalogs.',
+  'fleet.licenseExpenses.setup.deleteItem': 'Delete the item',
+  'fleet.licenseExpenses.setup.deleteItemTitle': 'Delete the item “{{name}}”?',
+  'fleet.licenseExpenses.setup.deleteItemBody':
+    'The item leaves the list: its counter no longer shows on new memos or in Fleet catalogs. Saved memos stay as they are, and its record stays in the audit log.',
+  'fleet.licenseExpenses.setup.deleteItemTemplates': 'It also leaves: {{templates}}.',
+  'fleet.licenseExpenses.setup.itemDeletedToast': '“{{name}}” was deleted.',
   // «الحالة»: a licence memo the custody fund settled is locked, and says when.
   'fleet.licenseExpenses.settlement.waiting': 'Not settled yet',
   'fleet.licenseExpenses.settlement.settled': 'Settled',
@@ -5216,6 +5519,21 @@ const en: Record<string, string> = {
   'fleet.vehicleContracts.delivery.refusedOver':
     'What remains changed after the window opened, so the contract was read again.',
   'fleet.vehicleContracts.alarm.title': 'Supply alarm',
+  'fleet.vehicleContracts.lines.receivedTop': 'Received',
+  'fleet.vehicleContracts.lines.receivedBottom': 'so far',
+  'fleet.vehicleContracts.lines.receivedOver': 'More than {{count}}',
+  'fleet.vehicleContracts.lines.receivedOverNote':
+    '“Received so far” cannot exceed what the line contracts: {{make}} — only {{count}}.',
+  'fleet.vehicleContracts.lines.receivedHint':
+    'Received so far is optional and is recorded as the “First delivery”; later arrivals are recorded from “Record a delivery”.',
+  'fleet.vehicleContracts.lines.receivedLocked':
+    'Received cars are changed from “Deliveries” on the contract’s page.',
+  'fleet.vehicleContracts.lines.receivedEditHint':
+    'Received cars are not changed here: change them from “Deliveries” on the contract’s page, and add new ones from “Record a delivery”.',
+  'fleet.vehicleContracts.lines.firstDelivery':
+    '“{{first}}” is recorded when the contract is saved: {{received}} of {{total}}',
+  'fleet.vehicleContracts.total.received': 'Received {{received}}',
+  'fleet.vehicleContracts.total.left': 'Remaining {{left}}',
   'fleet.pager.showing.before': 'Showing',
   'fleet.pager.showing.of': 'of',
   'fleet.pager.perPage': 'Rows per page',
@@ -5952,6 +6270,60 @@ const en: Record<string, string> = {
   'fleet.odometer.alarmReason.notActive.todo':
     "If the vehicle is back in service, change its status to «Active» on the vehicle's profile, and the distance is calculated automatically.",
   'fleet.odometer.alarmReason.notActive.fix': 'Vehicle profile',
+  'fleet.odometer.alarmReason.newer.checkedOutEarlier':
+    'Checked out before the counted visit — checked in on {{date}}; the cycle is measured from the visit checked out last.',
+  'fleet.odometer.alarmReason.figure.howComputed': 'How the distance was computed',
+  'fleet.odometer.alarmReason.figure.remainingOf': '{{left}} of {{interval}} km left',
+  'fleet.odometer.alarmReason.figure.overdueOf': '{{over}} km past the {{interval}} km interval',
+  'fleet.odometer.alarmReason.figure.mark.open': 'A newer workshop visit is not closed yet',
+  'fleet.odometer.alarmReason.figure.mark.notCounting':
+    'A newer visit of a work type that does not count',
+  'fleet.odometer.alarmReason.figure.mark.checkedOutEarlier':
+    'A newer visit was checked out before the counted one',
+  'fleet.odometer.alarmReason.figure.serviceWork': '«{{work}}» — in {{in}} · out {{out}}',
+  'fleet.odometer.alarmReason.figure.highestReading': 'Highest reading',
+  'fleet.odometer.alarmReason.figure.newestReading': 'Newest reading',
+  'fleet.odometer.alarmReason.figure.highestNotNewest':
+    'The highest reading is not the newest one. The distance is measured from the highest reading; if it was typed wrongly, fix it with «Correct reading».',
+  'fleet.odometer.alarmReason.figure.daysWithout': '{{days}} days',
+  'fleet.odometer.alarmReason.figure.subtraction': 'Distance',
+  'fleet.odometer.alarmReason.figure.interval': "Maintenance interval of the vehicle's make",
+  'fleet.odometer.alarmReason.figure.remaining': 'Left until the next service',
+  'fleet.odometer.alarmReason.figure.thresholds': 'Alarm thresholds',
+  'fleet.odometer.alarmReason.figure.thresholdsLine':
+    'Yellow at {{yellow}} km left or less · red at {{red}} km or less',
+  'fleet.odometer.alarmReason.figure.level.none':
+    'What is left is above the yellow threshold, so there is no alarm yet.',
+  'fleet.odometer.alarmReason.figure.level.yellow':
+    'What is left has reached the yellow threshold.',
+  'fleet.odometer.alarmReason.figure.level.red': 'What is left has reached the red threshold.',
+  'fleet.odometer.alarmReason.figure.whereSet': 'Where they are set',
+  'fleet.odometer.alarmReason.figure.whereInterval':
+    'Maintenance interval: «Fleet Catalogs» → «Makes»',
+  'fleet.odometer.alarmReason.figure.whereThresholds': 'Alarm thresholds: «Fleet Settings»',
+  'fleet.odometer.alarmReason.figure.newer.workAt': '«{{work}}» at {{place}}',
+  'fleet.odometer.alarmReason.figure.newer.work': '«{{work}}»',
+  'fleet.odometer.alarmReason.figure.newer.at': 'A visit at {{place}}',
+  'fleet.odometer.alarmReason.figure.newer.visit': 'The visit',
+  'fleet.odometer.alarmReason.figure.newer.open':
+    '{{what}} — checked in on {{date}} and not closed yet; it does not count until it is closed with a check-out date.',
+  'fleet.odometer.alarmReason.figure.newer.openUnknown':
+    '{{what}} — checked in on {{date}} and not closed yet; an open visit does not count.',
+  'fleet.odometer.alarmReason.figure.newer.openUnknownNote':
+    'Once closed, it counts only if its work type counts for the alarm; if a service was done in it, give it a work type that counts from «Edit visit».',
+  'fleet.odometer.alarmReason.figure.newer.openNotCountingNote':
+    'Its work type «{{work}}» does not count for the alarm even once it is closed; if a service was done in it, change its work type from «Edit visit» to one that counts for the alarm.',
+  'fleet.odometer.alarmReason.figure.newer.notCounting':
+    '{{what}} — checked in on {{date}}; its work type does not count for the alarm, so the cycle is not measured from it.',
+  'fleet.odometer.alarmReason.figure.newer.notCountingNote':
+    'If a service was done in it, change its work type from «Edit visit» to one that counts for the alarm.',
+  'fleet.odometer.alarmReason.figure.newer.checkedOutEarlier':
+    '{{what}} — checked in on {{in}} and checked out on {{out}}, before the counted visit was checked out on {{counted}}; the cycle is measured from the visit checked out last.',
+  'fleet.odometer.alarmReason.figure.footer':
+    "Each row's distance is that day's reading less the counter of the last counted service before it. The level and what is left are about the vehicle now, so they appear on its newest row only.",
+  'fleet.alarms.figure.footer':
+    'The distance and what is left here are about the vehicle now, from its latest reading.',
+  'fleet.alarms.figure.of': 'of {{interval}} km',
   'fleet.alarms.columns.sinceService': 'Since service (km)',
   'fleet.alarms.columns.remaining': 'Remaining (km)',
   'fleet.alarms.allAlarms': 'All alarms',
@@ -14568,6 +14940,10 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.board.charge.transfer': 'تحويل رصيد',
   'fleet.fuelCards.board.charge.stateAny': 'كل الحالات',
   'fleet.fuelCards.board.charge.critical': 'يوشك على النفاد',
+  'fleet.fuelCards.board.pinCaption': 'PIN',
+  'fleet.fuelCards.board.charge.chargedTodayNote': 'أضيفت للأرصدة اليوم',
+  'fleet.fuelCards.totals.chargedOnCairoDay': 'شُحن اليوم',
+  'fleet.fuelCards.filters.chargedOnCairoDay': 'شُحنت اليوم',
   'fleet.fuelCards.copyNumber': 'نسخ رقم الكارت',
   'fleet.fuelCards.numberCopied': 'تم نسخ رقم الكارت.',
   'fleet.fuelCards.image.none': 'لا توجد صورة',
@@ -14823,6 +15199,198 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.reconcile.count.times.few': '{{count}} مرات',
   'fleet.fuelCards.reconcile.count.times.many': '{{count}} مرة',
   'fleet.fuelCards.reconcile.count.times.other': '{{count}} مرة',
+  'fleet.fuelCards.reconcile.layout.title': 'طريقة قراءة الشيت',
+  'fleet.fuelCards.reconcile.layout.role.number': 'رقم الكارت',
+  'fleet.fuelCards.reconcile.layout.role.name': 'الاسم',
+  'fleet.fuelCards.reconcile.layout.role.plate': 'اللوحة',
+  'fleet.fuelCards.reconcile.layout.role.chassis': 'الشاسيه',
+  'fleet.fuelCards.reconcile.layout.role.balance': 'الرصيد',
+  'fleet.fuelCards.reconcile.layout.role.code': 'كود السيارة',
+  'fleet.fuelCards.reconcile.layout.role.secret': 'كلمة السر',
+  'fleet.fuelCards.reconcile.layout.role.ignored': 'لم يُقرأ',
+  'fleet.fuelCards.reconcile.layout.masked': 'مخفي',
+  'fleet.fuelCards.reconcile.layout.full': 'كامل',
+  'fleet.fuelCards.reconcile.layout.companyWord': 'الشركة',
+  'fleet.fuelCards.reconcile.layout.and': 'و',
+  'fleet.fuelCards.reconcile.layout.untitled': 'بلا عنوان في الشيت — قُرئا من محتواهما',
+  'fleet.fuelCards.reconcile.layout.untitledOne': 'بلا عنوان في الشيت — قُرئ من محتواه',
+  'fleet.fuelCards.reconcile.layout.example': 'مثال صف {{row}}:',
+  'fleet.fuelCards.reconcile.layout.notRead': 'لم يُقرأ:',
+  'fleet.fuelCards.reconcile.layout.neverPin': 'كلمة السر لا تُقرأ من أي شيت ولا تُحفظ',
+  'fleet.fuelCards.reconcile.matchedChip': 'عُرف الكارت بالاسم في {{matched}} من {{rows}}',
+  'fleet.fuelCards.reconcile.totalCheck.agrees':
+    'مجموع أرصدة الكروت {{sum}} يساوي صف «{{text}}» (صف {{row}})',
+  'fleet.fuelCards.reconcile.totalCheck.differs':
+    'مجموع أرصدة الكروت {{sum}} لا يساوي صف «{{text}}» {{figure}} (صف {{row}})',
+  'fleet.fuelCards.reconcile.totalCheck.matches': 'يساوي مجموع أرصدة الكروت',
+  'fleet.fuelCards.reconcile.totalCheck.notMatches': 'لا يساوي مجموع أرصدة الكروت',
+  'fleet.fuelCards.reconcile.secSkippedChip': '{{rows}} ليست كروتًا — لا تُطابَق',
+  'fleet.fuelCards.reconcile.secSkipped': 'صفوف ليست كروتًا',
+  'fleet.fuelCards.reconcile.secSkippedNote':
+    'صفوف بلا رقم كارت ولا اسم — إجمالي أو ملاحظة. لا تُطابَق ولا يتغيّر بها شيء.',
+  'fleet.fuelCards.reconcile.colText': 'المكتوب في الصف',
+  'fleet.fuelCards.reconcile.colFigure': 'الرقم في عمود الرصيد',
+  'fleet.fuelCards.reconcile.colCheck': 'المراجعة',
+  'fleet.fuelCards.reconcile.numberHolder': 'الرقم في الشيت مسجَّل في النظام على',
+  'fleet.fuelCards.reconcile.numberHolderNone': 'لا يوجد كارت بهذا الرقم',
+  'fleet.fuelCards.reconcile.updateNumber': 'تحديث رقم الكارت',
+  'fleet.fuelCards.reconcile.updateNumberTitle':
+    'يفتح «تعديل الكارت» في «بطاقات الوقود» لكتابة الرقم الجديد',
+  'fleet.fuelCards.reconcile.negativeBalance': 'رصيد سالب',
+  'fleet.fuelCards.reconcile.moreRows': 'و{{rows}} أخرى',
+  'fleet.fuelCards.reconcile.placeInSheet': 'في الشيت: {{code}}',
+  'fleet.fuelCards.reconcile.conflict.ambiguousNumber': 'آخر 4 أرقام تطابق أكثر من كارت',
+  'fleet.fuelCards.reconcile.conflict.lastFourOnly': 'تطابق آخر 4 أرقام فقط',
+  'fleet.fuelCards.reconcile.conflict.cardTwice': 'كارت واحد في أكثر من صف',
+  'fleet.fuelCards.reconcile.secChoose': 'تحتاج اختيارًا',
+  'fleet.fuelCards.reconcile.secChooseNote':
+    'رقم بلا اسم يطابق آخره كارتًا أو أكثر — يُعرض المرشّح ولا يُعتمد شيء من هنا.',
+  'fleet.fuelCards.reconcile.colCandidates': 'الكروت المرشّحة',
+  'fleet.fuelCards.reconcile.guard':
+    'عُرف الكارت في {{matched}} فقط من {{rows}} — أقل من النصف. راجع «طريقة قراءة الشيت» والشركة المختارة قبل أي اعتماد.',
+  'fleet.fuelCards.reconcile.wrongCompanyTitle':
+    'هذا الشيت لكروت {{sheet}}، والشركة المختارة {{picked}}',
+  'fleet.fuelCards.reconcile.wrongCompanyBody':
+    'أسماء الكروت في {{rows}} من الشيت تبدأ بـ «{{prefix}}»، وهي كروت {{sheet}}. لم تتم المقارنة، حتى لا تظهر كل الكروت في الشيت فقط أو في النظام فقط.',
+  'fleet.fuelCards.reconcile.wrongCompanySwitch': 'المقارنة على كروت {{sheet}}',
+  'fleet.fuelCards.reconcile.dropNoteLayouts': 'يُقرأ شيت البيانات وكشف الشركة:',
+  'fleet.fuelCards.reconcile.layouts.number': 'رقم الكارت كاملًا أو مخفيًا (⁦548••••0021⁩)',
+  'fleet.fuelCards.reconcile.layouts.name': 'الاسم كاملًا، أو «EGYCASH» مع عمودي اللوحة والشاسيه',
+  'fleet.fuelCards.reconcile.layouts.balance': 'الرصيد',
+  'fleet.fuelCards.reconcile.layouts.code': 'كود السيارة (اختياري)',
+  'fleet.fuelCards.reconcile.layouts.never': 'لا يُقرأ أبدًا: كلمة السر (pass) و«قيمه الشحن»',
+  'fleet.fuelCards.reconcile.sheetDate': 'تاريخ الشيت',
+  'fleet.fuelCards.reconcile.sheetDateOptional': '(اختياري)',
+  'fleet.fuelCards.reconcile.sheetDateFromName':
+    'أُخذ من اسم الملف «{{text}}» — يمكن تغييره أو مسحه.',
+  'fleet.fuelCards.reconcile.sheetDateHint':
+    'اليوم الذي يصف الشيت أرصدته. أي شحن بعده لا يُعلَّم مسبقًا للإلغاء، وينبّهك التأكيد إن كان على الكارت حركات بعده.',
+  'fleet.fuelCards.reconcile.sheetDateToday': 'اليوم',
+  'fleet.fuelCards.reconcile.sheetDateAgo': 'قبل {{days}}',
+  'fleet.fuelCards.reconcile.sheetDateFromFile': 'أُخذ من اسم الملف «{{text}}»',
+  'fleet.fuelCards.reconcile.sheetDateNone': 'لم يُحدَّد — تاريخ كل شحن ووقته مكتوبان بجانبه',
+  'fleet.fuelCards.reconcile.unseenCharges': 'شحن لا يظهر في الشيت: {{amount}} · {{at}}',
+  'fleet.fuelCards.reconcile.afterSheetDate': 'بعد تاريخ الشيت',
+  'fleet.fuelCards.reconcile.afterSheetDateTag': 'بعد تاريخ الشيت — لا يُعلَّم مسبقًا',
+  'fleet.fuelCards.reconcile.requestMatches': 'الفرق يساوي طلب الرصيد المعلّق: {{amount}}',
+  'fleet.fuelCards.reconcile.asksFirst':
+    'اعتماد رصيد الشيت — يُسأل أولًا عن الشحن الذي لا يظهر في الشيت',
+  'fleet.fuelCards.reconcile.asksFirstRequest':
+    'اعتماد رصيد الشيت — يُسأل أولًا عن طلب الرصيد المعلّق',
+  'fleet.fuelCards.reconcile.unseenTitle': 'شحن لا يظهر في الشيت',
+  'fleet.fuelCards.reconcile.unseenNote':
+    'رصيد الشيت أقل من رصيد النظام. علِّم الشحن الذي لم يصل إلى الكارت فعلًا: يُلغى من شاشة «شحن الكروت»، فلا يتلوّن صفه بالأخضر ولا يُحسب في «شُحن اليوم»، ويبقى في «سجل الكارت» فقط مشطوبًا.',
+  'fleet.fuelCards.reconcile.cancelCharge':
+    'إلغاء هذا الشحن من شاشة شحن الكروت (يبقى في سجل الكارت فقط)',
+  'fleet.fuelCards.reconcile.preTicked': 'مبلغه يساوي الفرق — معلَّم مسبقًا',
+  'fleet.fuelCards.reconcile.markedSum': 'المعلَّم للإلغاء {{marked}} من فرق {{difference}}',
+  'fleet.fuelCards.reconcile.noSecondDeduction':
+    'الإلغاء لا يخصم المبلغ مرة ثانية: يصبح الرصيد رصيد الشيت فقط.',
+  'fleet.fuelCards.reconcile.movedAfterSheetDate': 'في سجل الكارت حركات بعد تاريخ الشيت',
+  'fleet.fuelCards.reconcile.movedAfterSheetDateBody':
+    'الشيت يصف أرصدة يوم {{date}}، وعلى هذا الكارت شحن بعده. اعتماد رصيد الشيت يجعل رصيد الكارت {{balance}} كما كان في ذلك اليوم، أي بدون هذا الشحن. إن كان الشحن قد وصل إلى الكارت فارفع شيتًا أحدث.',
+  'fleet.fuelCards.reconcile.requestTitle': 'الفرق يساوي طلب الرصيد المعلّق',
+  'fleet.fuelCards.reconcile.requestNote':
+    'رصيد الشيت أعلى من رصيد النظام بمبلغ طلب الرصيد الذي ينتظر الاعتماد بالضبط، أي أن الشركة شحنته على الأرجح.',
+  'fleet.fuelCards.reconcile.requestStrip': 'طلب رصيد',
+  'fleet.fuelCards.reconcile.approveRequest': 'اعتماد طلب الرصيد',
+  'fleet.fuelCards.reconcile.approveRequestNote':
+    'يُسجَّل «شحن رصيد» بمبلغ الطلب ويُغلق الطلب: يتلوّن الصف بالأخضر في «شحن الكروت» ويُحسب في «شُحن اليوم».',
+  'fleet.fuelCards.reconcile.adjustOnly': 'تسوية فقط',
+  'fleet.fuelCards.reconcile.adjustOnlyNote':
+    'يُسجَّل «تعديل من شيت الشركة» ويبقى الطلب معلّقًا — إن اعتُمد بعد ذلك يُضاف مبلغه إلى الكارت مرة ثانية.',
+  'fleet.fuelCards.reconcile.suggested': 'المقترح',
+  'fleet.fuelCards.reconcile.links.title': 'ربط الكروت بالسيارات',
+  'fleet.fuelCards.reconcile.links.note':
+    'الشيت يذكر سيارة كل كارت في عمود «{{column}}». لا يتغيّر شيء إلا بموافقتك على كل صف، ويُسجَّل في «سجل الكارت».',
+  'fleet.fuelCards.reconcile.links.chip': '{{cards}} مكانها في الشيت غير مكانها في النظام',
+  'fleet.fuelCards.reconcile.links.noCarColumn':
+    'الشيت لا يحتوي على عمود كود السيارة — لا تُقارَن أماكن الكروت.',
+  'fleet.fuelCards.reconcile.links.group.attach': 'على سيارة في الشيت، وبدون سيارة في النظام',
+  'fleet.fuelCards.reconcile.links.group.move': 'على سيارة أخرى في الشيت',
+  'fleet.fuelCards.reconcile.links.group.detach': 'بدون سيارة في الشيت',
+  'fleet.fuelCards.reconcile.links.group.unknownCode': 'كود في الشيت لا يعرفه النظام',
+  'fleet.fuelCards.reconcile.links.ask.attach': 'تحديث؟',
+  'fleet.fuelCards.reconcile.links.ask.move': 'نقل؟',
+  'fleet.fuelCards.reconcile.links.ask.detach': 'فك؟',
+  'fleet.fuelCards.reconcile.links.ask.unknownCode': 'اختر السيارة',
+  'fleet.fuelCards.reconcile.links.colInSystem': 'في النظام',
+  'fleet.fuelCards.reconcile.links.colInSheet': 'في الشيت',
+  'fleet.fuelCards.reconcile.links.colEvidence': 'الشاسيه في اسم الكارت',
+  'fleet.fuelCards.reconcile.links.noCar': 'بدون سيارة',
+  'fleet.fuelCards.reconcile.links.placeCar': 'سيارة {{code}}',
+  'fleet.fuelCards.reconcile.links.placeLabel': '«{{label}}»',
+  'fleet.fuelCards.reconcile.links.sheetSays': 'الشيت: «{{code}}»',
+  'fleet.fuelCards.reconcile.links.sheetSaysNothing': 'الشيت: بلا كود',
+  'fleet.fuelCards.reconcile.links.resolvedAlias': 'كود محفوظ',
+  'fleet.fuelCards.reconcile.links.chassisCar': 'يخص سيارة {{code}}',
+  'fleet.fuelCards.reconcile.links.chassisNone': 'لا توجد سيارة بهذا الشاسيه',
+  'fleet.fuelCards.reconcile.links.chassisAgreesNote': 'كما في الشيت',
+  'fleet.fuelCards.reconcile.links.chassisDiffersNote': 'كما في النظام',
+  'fleet.fuelCards.reconcile.links.swap': 'تبديل بين سيارتين — يُنقل الكارتان معًا',
+  'fleet.fuelCards.reconcile.links.exchange': 'تبديل بين {{a}} و{{b}} — يتمّان معًا',
+  'fleet.fuelCards.reconcile.links.update': 'تحديث',
+  'fleet.fuelCards.reconcile.links.move': 'نقل',
+  'fleet.fuelCards.reconcile.links.moveBoth': 'نقل الكارتين',
+  'fleet.fuelCards.reconcile.links.detach': 'فك من السيارة',
+  'fleet.fuelCards.reconcile.links.keep': 'إبقاء',
+  'fleet.fuelCards.reconcile.links.inRepair': 'ضمن تصحيح الأرقام',
+  'fleet.fuelCards.reconcile.links.inRepairNote':
+    'الكارتان آخرهما 0849، واسم كل منهما ورصيده على الكارت الآخر في النظام — يُصحَّحان مع الـ 15 كارتًا في «تصحيح الأرقام» بعد موافقتك، ولا يُنقلان من هنا.',
+  'fleet.fuelCards.reconcile.links.pickCar': 'اختر السيارة',
+  'fleet.fuelCards.reconcile.links.remember': 'تذكّر هذا الكود',
+  'fleet.fuelCards.reconcile.links.toastApplied': 'تم تحديث مكان {{cards}}',
+  'fleet.fuelCards.reconcile.links.toastAppliedNote': 'كل نقل مسجَّل في «سجل الكارت».',
+  'fleet.fuelCards.reconcile.links.toastKept': 'أُبقي كما في النظام: {{cards}}',
+  'fleet.fuelCards.reconcile.newCards.title': 'كروت في الشيت وليست في النظام',
+  'fleet.fuelCards.reconcile.newCards.note':
+    'لا يُضاف كارت تلقائيًا. «إضافة» تفتح «إضافة كارت» معبّأة من الشيت، وتكتب أنت الرقم كاملًا وتاريخ الانتهاء وكلمة السر.',
+  'fleet.fuelCards.reconcile.newCards.noneNote':
+    'لا يُضاف كارت تلقائيًا — الكارت الجديد في الشيت يُضاف من هنا بزر «إضافة»، معبّأً من الشيت.',
+  'fleet.fuelCards.reconcile.newCards.add': 'إضافة',
+  'fleet.fuelCards.reconcile.newCards.added': 'أُضيف',
+  'fleet.fuelCards.reconcile.newCards.colCarInSheet': 'السيارة في الشيت',
+  'fleet.fuelCards.reconcile.newCards.codeUnknown': 'الكود {{code}} غير مسجّل في السيارات',
+  'fleet.fuelCards.reconcile.newCards.slotFree': 'لا يوجد عليها كارت {{company}}',
+  'fleet.fuelCards.reconcile.newCards.slotHeld': 'عليها كارت {{company}}: {{name}}',
+  'fleet.fuelCards.reconcile.newCards.addTitle': 'إضافة كارت من شيت الشركة',
+  'fleet.fuelCards.reconcile.newCards.addSubtitle': 'من صف {{row}} في شيت الشركة — {{company}}',
+  'fleet.fuelCards.reconcile.newCards.fromSheet': 'من الشيت',
+  'fleet.fuelCards.reconcile.newCards.numberHint':
+    'الشيت يُظهر {{masked}} فقط — اكتب الرقم كاملًا كما على الكارت؛ يجب أن ينتهي بـ {{last4}}.',
+  'fleet.fuelCards.reconcile.newCards.numberMismatch':
+    'هذا ليس رقم الكارت في الشيت — يجب أن ينتهي بـ {{last4}}.',
+  'fleet.fuelCards.reconcile.newCards.opening': 'الرصيد الافتتاحي',
+  'fleet.fuelCards.reconcile.newCards.openingNote':
+    'رصيد الكارت في الشيت — يُسجَّل في «سجل الكارت» «تعديل من شيت الشركة».',
+  'fleet.fuelCards.reconcile.newCards.save': 'إضافة الكارت',
+  'fleet.fuelCards.reconcile.newCards.toastAdded': 'تمت إضافة الكارت برصيده في الشيت.',
+  'fleet.fuelCards.reconcile.refusal.cancelNotCandidate':
+    'شحن معلَّم ليس مما يُلغيه هذا الشيت — لم يُسجَّل شيء. ارفع الشيت مرة أخرى.',
+  'fleet.fuelCards.reconcile.refusal.cancelCancelled':
+    'شحن معلَّم أُلغي من قبل — لم يُسجَّل شيء. ارفع الشيت مرة أخرى.',
+  'fleet.fuelCards.reconcile.refusal.cancelExceeds':
+    'الشحن المعلَّم أكبر من الفرق الذي يخصمه الشيت من الكارت — لم يُسجَّل شيء.',
+  'fleet.fuelCards.reconcile.refusal.linkChanged':
+    'تغيّرت سيارة الكارت بعد قراءة الشيت — لم يُسجَّل شيء. ارفع الشيت مرة أخرى.',
+  'fleet.fuelCards.reconcile.refusal.linkDecided': 'سبق اتخاذ قرار في مكان هذا الكارت.',
+  'fleet.fuelCards.reconcile.refusal.slotHeld':
+    'السيارة عليها كارت من نفس الشركة لا يُنقل منها — لم يُسجَّل شيء.',
+  'fleet.fuelCards.reconcile.refusal.inRepair': 'هذا الكارت ضمن تصحيح الأرقام — لم يُسجَّل شيء.',
+  'fleet.fuelCards.reconcile.refusal.pickRequired': 'اختر السيارة أولًا.',
+  'fleet.fuelCards.reconcile.refusal.numberRequired': 'الشيت لا يُظهر الرقم كاملًا — اكتبه.',
+  'fleet.fuelCards.reconcile.refusal.numberMismatch': 'الرقم المكتوب ليس رقم الكارت في الشيت.',
+  'fleet.fuelCards.reconcile.refusal.cardAdded': 'سبقت إضافة هذا الكارت من الشيت.',
+  'fleet.fuelCards.reconcile.count.daysAgo.one': 'يوم واحد',
+  'fleet.fuelCards.reconcile.count.daysAgo.two': 'يومين',
+  'fleet.fuelCards.reconcile.count.daysAgo.few': '{{count}} أيام',
+  'fleet.fuelCards.reconcile.count.daysAgo.many': '{{count}} يومًا',
+  'fleet.fuelCards.reconcile.count.daysAgo.other': '{{count}} يوم',
+  'fleet.fuelCards.history.cancelledBySheet': 'أُلغي بشيت الشركة',
+  'fleet.fuelCards.history.sheetCancelled': 'وأُلغي شحن {{amount}}',
+  'fleet.fuelCards.history.cancelledNote': 'لا يُعدَّل ولا يُحذف',
+  'fleet.fuelCards.history.kind.sheetLink': 'نقل من شيت الشركة',
+  'fleet.fuelCards.history.sheetLink': 'نُقل من {{from}} إلى {{to}} — شيت الشركة',
   'fleet.fuelCards.history.kind.sheetAdjust': 'تعديل من شيت الشركة',
   'fleet.fuelCards.history.kind.sheetReject': 'رفض تعديل الشيت',
   'fleet.fuelCards.history.by': 'بواسطة {{name}}',
@@ -15563,6 +16131,81 @@ const ar: Record<string, string> = {
   'fleet.custody.ledger.drawer.intro.replenishCancelled':
     'أُلغيت استعاضة مبلغ {{amount}} نظير {{memos}} ({{kinds}}){{period}}.',
   'fleet.custody.dashboard.waiting.held': 'في انتظار التحويل',
+  'fleet.custody.delete.action': 'حذف العملية',
+  'fleet.custody.delete.binTitle': 'حذف العملية من «سجل العهدة»',
+  'fleet.custody.delete.title.charge': 'حذف طلب العهدة',
+  'fleet.custody.delete.title.replenish': 'حذف الاستعاضة',
+  'fleet.custody.delete.title.settle': 'حذف التسوية',
+  'fleet.custody.delete.title.replenishHeld': 'حذف الاستعاضة المعلّقة',
+  'fleet.custody.delete.subtitle': '{{op}} — خطاب {{date}} · {{amount}}',
+  'fleet.custody.delete.subtitleMemos': '{{op}} — خطاب {{date}} · {{memos}} · {{amount}}',
+  'fleet.custody.delete.body.charge':
+    'يُرفع طلب العهدة من «سجل العهدة» ومن الإجماليات، ويُخصم مبلغه من إجمالي العهدة، ويبقى محفوظًا في «العمليات المحذوفة» بمن حذفه ومتى.',
+  'fleet.custody.delete.body.replenish':
+    'تُرفع الاستعاضة من «سجل العهدة» ومن الإجماليات، ويُخصم مبلغها من إجمالي العهدة، وتعود مذكراتها ({{memos}}) إلى «لم تُستعَض بعد» فتدخل استعاضة أخرى. وتبقى محفوظة في «العمليات المحذوفة» بمن حذفها ومتى.',
+  'fleet.custody.delete.body.replenishHeld':
+    'تُرفع الاستعاضة المعلّقة من «سجل العهدة»، ولا يتغيّر إجمالي العهدة، وتعود مذكراتها المحجوزة ({{memos}}) إلى «لم تُستعَض بعد». وتبقى محفوظة في «العمليات المحذوفة» بمن حذفها ومتى.',
+  'fleet.custody.delete.heldOrCancel':
+    'ولإبقائها في «سجل العهدة» استعاضةً ملغاة بدلًا من حذفها، استخدم «إلغاء الاستعاضة المعلّقة».',
+  'fleet.custody.delete.body.replenishCancelled':
+    'تُرفع الاستعاضة الملغاة من «سجل العهدة»، ولا يتغيّر إجمالي العهدة ولا أي مذكرة.',
+  'fleet.custody.delete.body.settle':
+    'تُرفع التسوية من «سجل العهدة» ومن الإجماليات، ويُضاف مبلغها إلى إجمالي العهدة، وتعود مصروفات التراخيص ({{parts}}) إلى «لم تُسوَّ بعد». وتبقى محفوظة في «العمليات المحذوفة» بمن حذفها ومتى.',
+  'fleet.custody.delete.fundNow': 'إجمالي العهدة الآن',
+  'fleet.custody.delete.fundAfter': 'بعد الحذف',
+  'fleet.custody.delete.fundUnchanged': 'إجمالي العهدة لا يتغيّر',
+  'fleet.custody.delete.laterTitle': 'سُجّلت بعد هذا الطلب {{operations}}',
+  'fleet.custody.delete.laterBody':
+    'يُعاد حساب «إجمالي العهدة بعدها» لكل منها في «سجل العهدة» كأن هذا الطلب لم يُسجَّل.',
+  'fleet.custody.delete.negative': 'ويصبح إجمالي العهدة بالسالب بعد الحذف: {{amount}}',
+  'fleet.custody.delete.allowed': 'الحذف مسموح، فراجع الأرقام قبل التأكيد.',
+  'fleet.custody.delete.lettersKept':
+    'الخطابات التي طُبعت بعد هذه العملية تبقى كما طُبعت، ولا تتغيّر أرقامها.',
+  'fleet.custody.delete.reason': 'سبب الحذف',
+  'fleet.custody.delete.reasonHint': 'اختياري — يظهر في «العمليات المحذوفة»',
+  'fleet.custody.delete.memosBack': 'المذكرات التي تعود إلى «لم تُستعَض بعد»',
+  'fleet.custody.delete.partsBack': 'مصروفات التراخيص التي تعود إلى «لم تُسوَّ بعد»',
+  'fleet.custody.delete.partCol': 'مصروف التراخيص',
+  'fleet.custody.delete.save': 'حذف العملية',
+  'fleet.custody.delete.back': 'رجوع',
+  'fleet.custody.delete.done': 'حُذفت العملية، وتجدها في «العمليات المحذوفة».',
+  'fleet.custody.delete.taken':
+    'تغيّرت هذه العملية أو حُذفت بعد فتح النافذة، فلم يُحذف شيء. أُعيدت قراءة السجل.',
+  'fleet.custody.deleted.title': 'العمليات المحذوفة',
+  'fleet.custody.deleted.pillTitle': 'كل عملية حُذفت من «سجل العهدة»، بمن حذفها ومتى ولماذا',
+  'fleet.custody.deleted.back': 'العودة إلى «سجل العهدة»',
+  'fleet.custody.deleted.note':
+    'من سجّل كل عملية ومتى، ومن حذفها ومتى ولماذا، وإجمالي العهدة قبل الحذف وبعده. الأوقات بتوقيت القاهرة.',
+  'fleet.custody.deleted.col.op': 'العملية',
+  'fleet.custody.deleted.col.detail': 'التفاصيل',
+  'fleet.custody.deleted.col.amount': 'المبلغ',
+  'fleet.custody.deleted.col.amountShort': 'المبلغ (ج.م.)',
+  'fleet.custody.deleted.col.fund': 'إجمالي العهدة',
+  'fleet.custody.deleted.col.fundShort': 'إجمالي العهدة (ج.م.)',
+  'fleet.custody.deleted.col.recorded': 'سجّلها',
+  'fleet.custody.deleted.col.deleted': 'حذفها',
+  'fleet.custody.deleted.col.reason': 'سبب الحذف',
+  'fleet.custody.deleted.chip': 'محذوفة',
+  'fleet.custody.deleted.wasHeld': 'كانت معلّقة',
+  'fleet.custody.deleted.wasCancelled': 'كانت ملغاة',
+  'fleet.custody.deleted.before': 'قبل الحذف',
+  'fleet.custody.deleted.after': 'بعد الحذف',
+  'fleet.custody.deleted.unchanged': 'لم يتغيّر',
+  'fleet.custody.deleted.noReason': 'لم يُذكر سبب',
+  'fleet.custody.deleted.filters.from': 'من تاريخ الحذف',
+  'fleet.custody.deleted.filters.to': 'إلى تاريخ الحذف',
+  'fleet.custody.deleted.empty': 'لا توجد عمليات محذوفة.',
+  'fleet.custody.deleted.emptyHint':
+    'تظهر هنا كل عملية تُحذف من «سجل العهدة»: من سجّلها ومن حذفها، ومتى، ولماذا، وإجمالي العهدة قبل الحذف وبعده.',
+  'fleet.custody.deleted.emptyFiltered': 'لا توجد عمليات محذوفة بهذه الفلاتر.',
+  'fleet.custody.deleted.drawerTitle': 'حُذفت هذه العملية — لا تُحسب في إجمالي العهدة',
+  'fleet.custody.deleted.drawerDeleted': 'حذفها {{by}} في {{date}} الساعة {{time}} بتوقيت القاهرة.',
+  'fleet.custody.deleted.drawerRecorded': 'وكان قد سجّلها {{by}} في {{date}} الساعة {{time}}.',
+  'fleet.custody.deleted.drawerReason': 'السبب: {{reason}}',
+  'fleet.custody.deleted.drawerBefore': 'إجمالي العهدة قبل الحذف',
+  'fleet.custody.deleted.drawerEffect': 'أثر الحذف',
+  'fleet.custody.deleted.drawerAfter': 'إجمالي العهدة بعد الحذف',
+  'fleet.custody.deleted.drawerLetter': 'الخطاب كما طُبع — لا يُطبع مرة أخرى',
   'fleet.receipts.memo.heldTitle':
     'ضمن مذكرة العهدة رقم {{no}}، واستعاضتها معلّقة في انتظار التحويل',
   'fleet.receipts.memo.lockedHeld': 'لا يتغيّر ما دامت استعاضة مذكرة العهدة رقم {{no}} معلّقة',
@@ -15723,6 +16366,22 @@ const ar: Record<string, string> = {
     '«{{name}}» موجود بالفعل في القائمة — تم تمييزه، واختر أين يظهر من صفّه.',
   'fleet.licenseExpenses.setup.newItemArchivedToast':
     '«{{name}}» موجود في «قوائم الحركة» لكنه مؤرشف — أعد تفعيله من هناك بدل إضافته مرة ثانية.',
+  'fleet.catalogs.fields.licenseExpensePaidBy': 'طريقة الصرف',
+  'fleet.catalogs.licenseExpenseItemArchiveHint':
+    'البنود تُؤرشف هنا ولا تُحذف — التاريخ يظل يشير إليها. أما البند المضاف فيُحذف من «إعداد النماذج» في «مصروفات التراخيص».',
+  'fleet.licenseExpenses.setup.itemsTitlePaidBy': 'البنود — يظهر في، وطريقة الصرف',
+  'fleet.licenseExpenses.setup.itemsHintPaidBy':
+    'في أي مذكرة يظهر عدّاد كل بند، وفي أي جزء منها: الفيزا أو النقدي أو كليهما. هو نفس الاختيار الموجود في «قوائم الحركة»: ما يتغير هنا يظهر هناك.',
+  'fleet.licenseExpenses.setup.itemsDeleteHint':
+    'البنود المضافة تُحذف من هنا. أما البنود الأساسية فلا تُحذف، وتُؤرشف من «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.builtInTag': 'أساسي',
+  'fleet.licenseExpenses.setup.builtInHint': 'بند أساسي: لا يُحذف، ويُؤرشف من «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.deleteItem': 'حذف البند',
+  'fleet.licenseExpenses.setup.deleteItemTitle': 'حذف البند «{{name}}»؟',
+  'fleet.licenseExpenses.setup.deleteItemBody':
+    'يُحذف البند من القائمة، فلا يظهر عدّاده في المذكرات الجديدة ولا في «قوائم الحركة». المذكرات المحفوظة تبقى كما هي، ويبقى سجله في سجل التدقيق.',
+  'fleet.licenseExpenses.setup.deleteItemTemplates': 'ويُزال كذلك من: {{templates}}.',
+  'fleet.licenseExpenses.setup.itemDeletedToast': 'تم حذف «{{name}}».',
   // «الحالة»: a licence memo the custody fund settled is locked, and says when.
   'fleet.licenseExpenses.settlement.waiting': 'لم تُسوَّ بعد',
   'fleet.licenseExpenses.settlement.settled': 'تمت التسوية',
@@ -15970,6 +16629,20 @@ const ar: Record<string, string> = {
   'fleet.vehicleContracts.delivery.refusedOver':
     'تغيّر المتبقي بعد فتح النافذة، فأُعيدت قراءة العقد.',
   'fleet.vehicleContracts.alarm.title': 'إنذار التوريد',
+  'fleet.vehicleContracts.lines.receivedTop': 'المستلم',
+  'fleet.vehicleContracts.lines.receivedBottom': 'حتى الآن',
+  'fleet.vehicleContracts.lines.receivedOver': 'أكثر من {{count}}',
+  'fleet.vehicleContracts.lines.receivedOverNote':
+    'لا يمكن أن يزيد «المستلم حتى الآن» على المتعاقد عليه من البند: {{make}} — {{count}} فقط.',
+  'fleet.vehicleContracts.lines.receivedHint':
+    'المستلم حتى الآن اختياري، ويُسجَّل بوصفه «الاستلام الأول»؛ وما يصل بعده يُسجَّل من «تسجيل استلام».',
+  'fleet.vehicleContracts.lines.receivedLocked': 'يُعدَّل المستلم من «الاستلامات» في صفحة العقد.',
+  'fleet.vehicleContracts.lines.receivedEditHint':
+    'المستلم لا يُعدَّل هنا؛ يُعدَّل من «الاستلامات» في صفحة العقد، ويُضاف الجديد من «تسجيل استلام».',
+  'fleet.vehicleContracts.lines.firstDelivery':
+    'يُسجَّل «{{first}}» عند حفظ العقد: {{received}} من {{total}}',
+  'fleet.vehicleContracts.total.received': 'المستلم {{received}}',
+  'fleet.vehicleContracts.total.left': 'المتبقي {{left}}',
   'fleet.pager.showing.before': 'عرض',
   'fleet.pager.showing.of': 'من أصل',
   'fleet.pager.perPage': 'الصفوف بالصفحة',
@@ -16691,6 +17364,56 @@ const ar: Record<string, string> = {
   'fleet.odometer.alarmReason.notActive.todo':
     'إن كانت السيارة قد عادت إلى العمل فغيِّر حالتها إلى «نشطة» من ملف السيارة، فيُحسب الفارق تلقائيًا.',
   'fleet.odometer.alarmReason.notActive.fix': 'ملف السيارة',
+  'fleet.odometer.alarmReason.newer.checkedOutEarlier':
+    'خرجت قبل الزيارة المحتسبة — دخلت في {{date}}، فالحساب من الزيارة التي خرجت آخرًا.',
+  'fleet.odometer.alarmReason.figure.howComputed': 'كيف حُسب الفارق',
+  'fleet.odometer.alarmReason.figure.remainingOf': 'المتبقي {{left}} من {{interval}} كم',
+  'fleet.odometer.alarmReason.figure.overdueOf': 'متأخر {{over}} كم عن {{interval}} كم',
+  'fleet.odometer.alarmReason.figure.mark.open': 'زيارة صيانة أحدث لم تُغلق بعد',
+  'fleet.odometer.alarmReason.figure.mark.notCounting': 'زيارة أحدث بنوع عمل لا يُحتسب',
+  'fleet.odometer.alarmReason.figure.mark.checkedOutEarlier':
+    'زيارة أحدث خرجت قبل الزيارة المحتسبة',
+  'fleet.odometer.alarmReason.figure.serviceWork': '«{{work}}» — دخول {{in}} · خروج {{out}}',
+  'fleet.odometer.alarmReason.figure.highestReading': 'أعلى قراءة',
+  'fleet.odometer.alarmReason.figure.newestReading': 'أحدث قراءة',
+  'fleet.odometer.alarmReason.figure.highestNotNewest':
+    'أعلى قراءة ليست أحدث قراءة. يُحسب الفارق من أعلى قراءة؛ فإن كانت مكتوبة خطأً فصحِّحها من «تصحيح القراءة».',
+  'fleet.odometer.alarmReason.figure.daysWithout': '{{days}} يومًا',
+  'fleet.odometer.alarmReason.figure.subtraction': 'الفارق',
+  'fleet.odometer.alarmReason.figure.interval': 'فترة الصيانة لنوع السيارة',
+  'fleet.odometer.alarmReason.figure.remaining': 'المتبقي على الصيانة القادمة',
+  'fleet.odometer.alarmReason.figure.thresholds': 'حدود الإنذار',
+  'fleet.odometer.alarmReason.figure.thresholdsLine':
+    'أصفر عند {{yellow}} كم متبقية أو أقل · أحمر عند {{red}} كم أو أقل',
+  'fleet.odometer.alarmReason.figure.level.none':
+    'المتبقي أكبر من حد الإنذار الأصفر، فلا يوجد إنذار بعد.',
+  'fleet.odometer.alarmReason.figure.level.yellow': 'بلغ المتبقي حد الإنذار الأصفر.',
+  'fleet.odometer.alarmReason.figure.level.red': 'بلغ المتبقي حد الإنذار الأحمر.',
+  'fleet.odometer.alarmReason.figure.whereSet': 'أين تُضبط',
+  'fleet.odometer.alarmReason.figure.whereInterval': 'فترة الصيانة: «قوائم الحركة» ← «الماركة»',
+  'fleet.odometer.alarmReason.figure.whereThresholds': 'حدود الإنذار: «إعدادات الحركة»',
+  'fleet.odometer.alarmReason.figure.newer.workAt': '«{{work}}» في {{place}}',
+  'fleet.odometer.alarmReason.figure.newer.work': '«{{work}}»',
+  'fleet.odometer.alarmReason.figure.newer.at': 'زيارة في {{place}}',
+  'fleet.odometer.alarmReason.figure.newer.visit': 'الزيارة',
+  'fleet.odometer.alarmReason.figure.newer.open':
+    '{{what}} — دخلت في {{date}} ولم تُغلق بعد، فلا تُحتسب حتى تُغلق بتاريخ الخروج.',
+  'fleet.odometer.alarmReason.figure.newer.openUnknown':
+    '{{what}} — دخلت في {{date}} ولم تُغلق بعد، والزيارة المفتوحة لا تُحتسب.',
+  'fleet.odometer.alarmReason.figure.newer.openUnknownNote':
+    'وبعد إغلاقها لا تُحتسب إلا إن كان نوع عملها يُحتسب للإنذار؛ فإن أُجريت فيها صيانة فاختر لها من «تعديل الزيارة» نوع عمل يُحتسب.',
+  'fleet.odometer.alarmReason.figure.newer.openNotCountingNote':
+    'ونوع عملها «{{work}}» لا يُحتسب للإنذار حتى بعد إغلاقها؛ فإن أُجريت فيها صيانة فغيِّر نوع عملها من «تعديل الزيارة» إلى نوع يُحتسب للإنذار.',
+  'fleet.odometer.alarmReason.figure.newer.notCounting':
+    '{{what}} — دخلت في {{date}}، ونوع عملها لا يُحتسب للإنذار، فلا يُقاس الفارق منها.',
+  'fleet.odometer.alarmReason.figure.newer.notCountingNote':
+    'فإن أُجريت فيها صيانة فغيِّر نوع عملها من «تعديل الزيارة» إلى نوع يُحتسب للإنذار.',
+  'fleet.odometer.alarmReason.figure.newer.checkedOutEarlier':
+    '{{what}} — دخلت في {{in}} وخرجت في {{out}}، أي قبل خروج الزيارة المحتسبة في {{counted}}، فالحساب من الزيارة التي خرجت آخرًا.',
+  'fleet.odometer.alarmReason.figure.footer':
+    'يُحسب الفارق في كل صف من قراءة ذلك اليوم وعداد آخر صيانة محتسبة قبله. أما المستوى والمتبقي فهما عن السيارة الآن، فيظهران على أحدث صف لها فقط.',
+  'fleet.alarms.figure.footer': 'الفارق والمتبقي هنا عن السيارة الآن، من آخر قراءة لها.',
+  'fleet.alarms.figure.of': 'من {{interval}} كم',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',
   'fleet.alarms.columns.remaining': 'المتبقي (كم)',
   'fleet.alarms.allAlarms': 'كل الإنذارات',

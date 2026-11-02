@@ -100,6 +100,7 @@ describe('✓ and ✗', () => {
       fileName: 'أرصدة وطنية.xlsx',
       sheetBalance: 150.25,
       systemBalance: 100,
+      cancelledCharges: [],
     });
     const [refusal] = await log(c._id);
     expect(refusal).toMatchObject({ kind: 'sheetReject', amount: 0, balanceAfter: 300 });
@@ -135,8 +136,10 @@ describe('✓ and ✗', () => {
   it('only a card the sheet differs on may be named; an unknown session is 404', async () => {
     const equal = await mkCard('wataniya', 'EGYCASH-EQ', 10);
     const other = await mkCard('chillout', 'EGYCASHTCS-1', 10);
-    const twice = await mkCard('wataniya', 'EGYCASH-2X', 10);
-    await mkCard('wataniya', 'EGYCASH-2X', 11);
+    // Rewritten on purpose (6c): two cards sharing a name are told apart by the number when it fits
+    // one of them — these two share their last four too, so the row stays a conflict.
+    const twice = await mkCard('wataniya', 'EGYCASH-2X', 10, { number: '5485640000990042' });
+    await mkCard('wataniya', 'EGYCASH-2X', 11, { number: '5485640000980042' });
     const dto = await read('wataniya', [rowOf(equal, 10), rowOf(twice, 50)]);
     for (const id of [equal._id, other._id, twice._id]) {
       const res = await decide(dto.id, 'apply', [String(id)]);

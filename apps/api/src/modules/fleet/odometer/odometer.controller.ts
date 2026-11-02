@@ -4,6 +4,7 @@ import { type Request, type Response } from 'express';
 import {
   type CorrectFleetOdometer,
   type FleetOdometerBracketQuery,
+  type FleetOdometerLogDto,
   type FleetVehicleIdQuery,
   type ListFleetOdometerQuery,
   type RecordFleetOdometer,
@@ -12,19 +13,40 @@ import { created, noContent, ok, okPage, validated } from '../../../platform/web
 import { authContext } from '../../../platform/auth';
 import { toOdometerLogDto } from '../fleet.mappers';
 import { fleetOdometerService } from './odometer.service';
+import { type FleetOdometerLogDoc } from './odometer.model';
 
 type IdParam = { id: string };
+
+/**
+ * A row as every odometer answer sends it: the mapper's DTO plus the row's «فارق عداد الصيانة»,
+ * which the service computed for it (D1/D7). The mapper's own `serviceGapKm: null` is only its
+ * default — the list, a recorded reading and a corrected one all carry the computed value.
+ */
+const withGap = (
+  doc: FleetOdometerLogDoc,
+  vehicleCode: string | null,
+  serviceGapKm: number | null,
+): FleetOdometerLogDto => ({ ...toOdometerLogDto(doc, vehicleCode), serviceGapKm });
 
 export const listOdometerLogs = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetOdometerQuery>(req);
   const page = await fleetOdometerService.list(query);
-  okPage(res, page, (doc) => toOdometerLogDto(doc, page.codes.get(String(doc.vehicleId)) ?? null));
+  okPage(res, page, (doc) =>
+    withGap(
+      doc,
+      page.codes.get(String(doc.vehicleId)) ?? null,
+      page.gaps.get(String(doc._id)) ?? null,
+    ),
+  );
 };
 
 export const recordOdometer = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<RecordFleetOdometer>(req);
-  const { doc, vehicleCode } = await fleetOdometerService.record(body, authContext(req).userId);
-  created(res, toOdometerLogDto(doc, vehicleCode));
+  const { doc, vehicleCode, serviceGapKm } = await fleetOdometerService.record(
+    body,
+    authContext(req).userId,
+  );
+  created(res, withGap(doc, vehicleCode, serviceGapKm));
 };
 
 export const expectedOdometerReading = async (req: Request, res: Response): Promise<void> => {
@@ -62,12 +84,12 @@ export const odometerBracket = async (req: Request, res: Response): Promise<void
 
 export const correctOdometer = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<CorrectFleetOdometer, never, IdParam>(req);
-  const { doc, vehicleCode } = await fleetOdometerService.correct(
+  const { doc, vehicleCode, serviceGapKm } = await fleetOdometerService.correct(
     params.id,
     body,
     authContext(req).userId,
   );
-  ok(res, toOdometerLogDto(doc, vehicleCode));
+  ok(res, withGap(doc, vehicleCode, serviceGapKm));
 };
 
 export const deleteOdometer = async (req: Request, res: Response): Promise<void> => {

@@ -14,8 +14,10 @@ import { useAppSelector } from '../../../store';
 import { ApiError } from '../../../shared/lib/api-client';
 import { custodyPlural, type CustodyCountForm } from './custody-words';
 import { decidedCardIds, movedCardIds } from './fuel-reconcile';
+import { addCardRefusalOf, linkRefusalOf } from './fuel-reconcile-links';
 
-export type ReconcileCountNoun = 'card' | 'cardOf' | 'cardUnit' | 'row' | 'repeatedRow' | 'times';
+export type ReconcileCountNoun =
+  'card' | 'cardOf' | 'cardUnit' | 'row' | 'repeatedRow' | 'times' | 'daysAgo';
 export const RECONCILE_COUNT_NOUNS: readonly ReconcileCountNoun[] = [
   'card',
   'cardOf',
@@ -23,6 +25,7 @@ export const RECONCILE_COUNT_NOUNS: readonly ReconcileCountNoun[] = [
   'row',
   'repeatedRow',
   'times',
+  'daysAgo',
 ];
 
 /** The count's key: `fleet.fuelCards.reconcile.count.<noun>.<form>`. */
@@ -44,6 +47,8 @@ export interface ReconcileCount {
   repeatedRows: (n: number) => string;
   /** «مرتين» · «3 مرات». */
   times: (n: number) => string;
+  /** After «قبل»: «يوم واحد» · «يومين» · «3 أيام» · «28 يومًا». */
+  daysAgo: (n: number) => string;
 }
 
 export const useReconcileCount = (): ReconcileCount => {
@@ -60,6 +65,7 @@ export const useReconcileCount = (): ReconcileCount => {
     rows: say('row'),
     repeatedRows: say('repeatedRow'),
     times: say('times'),
+    daysAgo: say('daysAgo'),
   };
 };
 
@@ -109,17 +115,66 @@ export const sheetRefusalOf = (error: unknown): ReconcileWords | null => {
 /** The upload's failures the screen words itself (`toastUnlessSaid`). */
 export const isSheetRefusal = (error: unknown): boolean => sheetRefusalOf(error) !== null;
 
-/** A refused decision: the cards that moved after the read, or that were already decided. */
+/**
+ * A refused decision: the cards that moved after the read (or whose pending request changed —
+ * `REQUEST_CHANGED` is the same 409, read again), that were already decided, or a charge to cancel
+ * the sheet does not allow (`FLEET_FUEL_RECONCILE_CANCEL_REFUSED`: not one of its candidates,
+ * already cancelled, or more than the sheet takes off the card).
+ */
 export interface DecideRefusal {
-  kind: 'moved' | 'decided';
+  kind: 'moved' | 'decided' | 'cancel';
   cardIds: string[];
+  /** For `cancel`: why — `NOT_A_CANDIDATE`, `CANCELLED` or `EXCEEDS_DIFFERENCE`. */
+  code?: string;
 }
 export const decideRefusalOf = (error: unknown): DecideRefusal | null => {
   const moved = movedCardIds(error);
   if (moved.length > 0) return { kind: 'moved', cardIds: moved };
   const decided = decidedCardIds(error);
   if (decided.length > 0) return { kind: 'decided', cardIds: decided };
+  if (error instanceof ApiError && error.code === ErrorCodes.FLEET_FUEL_RECONCILE_CANCEL_REFUSED) {
+    const details = (error.details ?? []).filter((detail) => detail.field === 'cancelCharges');
+    return {
+      kind: 'cancel',
+      cardIds: [],
+      code: details[0]?.code ?? 'NOT_A_CANDIDATE',
+    };
+  }
   return null;
 };
+/** The words of a refused cancel — the reason the server gave. */
+export const cancelRefusalKey = (code: string | undefined): string =>
+  code === 'EXCEEDS_DIFFERENCE'
+    ? 'fleet.fuelCards.reconcile.refusal.cancelExceeds'
+    : code === 'CANCELLED'
+      ? 'fleet.fuelCards.reconcile.refusal.cancelCancelled'
+      : 'fleet.fuelCards.reconcile.refusal.cancelNotCandidate';
 /** The decision's failures the screen words itself (`toastUnlessSaid`). */
 export const isDecideRefusal = (error: unknown): boolean => decideRefusalOf(error) !== null;
+
+/** What the screen says when a link decision is refused; `null` for what the global toast says. */
+export const linkRefusalWords = (error: unknown): ReconcileWords | null => {
+  const refusal = linkRefusalOf(error);
+  if (refusal === null) return null;
+  const key = {
+    changed: 'fleet.fuelCards.reconcile.refusal.linkChanged',
+    decided: 'fleet.fuelCards.reconcile.refusal.linkDecided',
+    slotHeld: 'fleet.fuelCards.reconcile.refusal.slotHeld',
+    inRepair: 'fleet.fuelCards.reconcile.refusal.inRepair',
+    pick: 'fleet.fuelCards.reconcile.refusal.pickRequired',
+  }[refusal.kind];
+  return { key };
+};
+/** What the screen says when «إضافة» is refused; `null` for what the global toast says. */
+export const addCardRefusalWords = (error: unknown): ReconcileWords | null => {
+  const refusal = addCardRefusalOf(error);
+  return refusal === null
+    ? null
+    : {
+        key: {
+          numberRequired: 'fleet.fuelCards.reconcile.refusal.numberRequired',
+          numberMismatch: 'fleet.fuelCards.reconcile.refusal.numberMismatch',
+          added: 'fleet.fuelCards.reconcile.refusal.cardAdded',
+        }[refusal],
+      };
+};

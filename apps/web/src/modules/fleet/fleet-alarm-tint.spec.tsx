@@ -374,16 +374,30 @@ describe('the alarms board tints the ROW — there, a row is a vehicle', () => {
 });
 
 describe('the odometer log tints the CELL — there, a row is a reading', () => {
-  it('two readings of ONE red car tint two cells, and neither row', () => {
+  // REWRITTEN ON PURPOSE (batch 3, unified.md D2): the car's level used to be printed — and so
+  // tinted — on every reading of the car. It is a fact about the car NOW, so it sits on the car's
+  // newest row on the page only; an older reading shows its own gap, untinted. Still never a row.
+  it('two readings of ONE red car: the newest one’s cell is tinted, the older one’s is not, and neither row', () => {
     // The point of the choice: a row tint would show five alarms for a car that has one.
     const markup = odometer(
       [alarm()],
-      [log(), log({ id: 'log-2', date: '2026-08-19T00:00:00.000Z', outReading: 280_100 })],
+      [
+        log(),
+        log({
+          id: 'log-2',
+          date: '2026-08-19T00:00:00.000Z',
+          outReading: 280_100,
+          serviceGapKm: 10_300,
+        }),
+      ],
     );
     const body = rows(markup);
     expect(body.length).toBe(2);
+    const [newest, older] = body as [string, string];
+    expect(newest, 'the car’s cell is tinted').toContain(alarmCellTint('red') as string);
+    expect(older, 'an older reading carries no level').not.toMatch(/bg-(?:red|amber)/);
+    expect(older, 'it shows its own gap').toContain('>10,300<');
     for (const row of body) {
-      expect(row, 'the cell is tinted').toContain(alarmCellTint('red') as string);
       // …and the row itself opens without one. Everything before the first cell is the `<tr>`.
       expect(row.slice(0, row.indexOf('<td')), 'the row is not').not.toMatch(/bg-(?:red|amber)/);
     }

@@ -11,7 +11,14 @@
 //
 // «ضيف كل حاجه كنا عملنها»: the memo editor's design — the forms' header with Save kept on screen,
 // sections headed with their icons, the design's boxes and switches — around the same behaviour.
-import { useMemo, useRef, useState } from 'react';
+//
+// «وعاوز احدد البند كمان هو صرفه بفيزا إدارة الحركة او صرفه نقدًا او كلاهما ف اعدادات النماذج او امسح
+// بند انا ضيفته»: each item's row says where it shows AND how it is paid — «طريقة الصرف», the group of
+// a memo that offers its counter — saved at once, the same field «قوائم الحركة» writes. An item
+// somebody added has a bin for whoever manages the lists; a seeded one is «أساسي» and archives on
+// «قوائم الحركة», as before (the boot would seed it again). A deleted item leaves the list, this
+// page's rows and the held templates; saved memos keep their lines.
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,6 +37,8 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Input, Textarea } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
+import { Dialog } from '../../../shared/ui/Dialog';
+import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
@@ -41,6 +50,7 @@ import { localized } from '../../../shared/lib/format';
 import {
   licenseExpenseSettingsKey,
   useCreateCatalogItem,
+  useDeleteCatalogItem,
   useFleetCatalog,
   useLicenseExpenseSettings,
   useSaveLicenseExpenseSettings,
@@ -56,8 +66,8 @@ import {
   NOTE_BOX,
   PaidGroup,
   SWITCH_TRAY,
-  catalogEntriesOf,
   newKey,
+  offeredEntriesOf,
   switchOption,
   today,
   useAddToCatalog,
@@ -66,6 +76,8 @@ import { DesignSave, DesignSection } from '../components/DesignDialog';
 import { DesignField, LOOK, boxTone } from '../components/FuelCardDialog';
 import { PATH } from '../components/FuelCardBoard';
 import { FILTER_ICON } from '../components/FilterWithIcon';
+import { actionTone } from '../components/row-actions-look';
+import { Trash2Icon } from '../components/row-action-icons';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import {
   type LicenseExpenseItemLine,
@@ -78,8 +90,28 @@ import {
 const PAID: readonly LicenseExpensePaidBy[] = ['visa', 'cash'];
 /** «يظهر في»'s three buttons, in the order they read: the renewal, the extension, both (`null`). */
 const SHOWS_IN: readonly (LicenseExpenseKind | null)[] = [...FLEET_LICENSE_EXPENSE_KINDS, null];
+/** «طريقة الصرف»'s three buttons: by the card, in cash, both (`null`). */
+const PAID_BY: readonly (LicenseExpensePaidBy | null)[] = [...PAID, null];
 /** The design's text box, from the forms' `add` look. */
 const BOX = boxTone(LOOK.add);
+
+/**
+ * The column is half the page, too narrow for a name and two trays on one line: each row is the
+ * name (and its bin), then «يظهر في» and «طريقة الصرف» side by side, each named over its tray. The
+ * trays' buttons a step tighter than the forms' switch, so both sit side by side at 1366 and wider;
+ * a phone puts one under the other.
+ */
+const TIGHT = '!px-2';
+const Choice = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
+  <div className="flex flex-col items-start gap-0.5">
+    <span className="whitespace-nowrap px-1 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+      {label}
+    </span>
+    <div role="group" aria-label={label} className={SWITCH_TRAY}>
+      {children}
+    </div>
+  </div>
+);
 
 /** Each memo's template as the cards hold it: both groups together, each line knowing its group. */
 export type SetupLines = Record<LicenseExpenseKind, { items: LicenseExpenseItemLine[] }>;
@@ -150,6 +182,18 @@ export const showsInBody = (
     ? null
     : { licenseExpenseKind: memo, version: item.version };
 
+/**
+ * What one «طريقة الصرف» click writes, as `showsInBody`: the payment picked (`null` is both) and
+ * the version it was read at — nothing at all when the item already says so.
+ */
+export const paidByBody = (
+  item: Pick<FleetCatalogItemDto, 'licenseExpensePaidBy' | 'version'>,
+  paid: LicenseExpensePaidBy | null,
+): UpdateFleetCatalogItem | null =>
+  (item.licenseExpensePaidBy ?? null) === paid
+    ? null
+    : { licenseExpensePaidBy: paid, version: item.version };
+
 /** The list as the page shows it: what this page just wrote stands until the list is read again. */
 export const withWritten = (
   items: readonly FleetCatalogItemDto[],
@@ -188,13 +232,14 @@ export const sameNamedItem = (
 
 /**
  * What «إضافة» writes: the typed name as both halves — as a part typed on a maintenance visit is,
- * the catalogs screen is where somebody translates it — and the memo it shows in. `null` for an
- * empty name: there is nothing to add. `countsForAlarm` is said, not left to the default: only a
- * work type counts for the alarm.
+ * the catalogs screen is where somebody translates it — the memo it shows in and how it is paid
+ * (both, until another is pressed). `null` for an empty name: there is nothing to add.
+ * `countsForAlarm` is said, not left to the default: only a work type counts for the alarm.
  */
 export const newItemBody = (
   name: string,
   memo: LicenseExpenseKind | null,
+  paid: LicenseExpensePaidBy | null = null,
 ): CreateFleetCatalogItem | null => {
   const typed = name.trim();
   return typed === ''
@@ -204,6 +249,7 @@ export const newItemBody = (
         name: { ar: typed, en: typed },
         countsForAlarm: false,
         licenseExpenseKind: memo,
+        licenseExpensePaidBy: paid,
       };
 };
 
@@ -220,17 +266,43 @@ export const withCreated = (
 ];
 
 /**
+ * The list without what this page just deleted, until the list is read again without it — so the
+ * row goes at once, and its bin cannot be pressed a second time while the list is re-read.
+ */
+export const withoutDeleted = (
+  items: readonly FleetCatalogItemDto[],
+  deleted: ReadonlySet<string>,
+): FleetCatalogItemDto[] => items.filter((item) => !deleted.has(item.id));
+
+/**
+ * The held templates without a deleted item's lines — the server already reads the set-up without
+ * them, and «حفظ الإعداد» must not write them back.
+ */
+export const linesWithout = (lines: SetupLines, itemId: string): SetupLines => ({
+  renewal: { items: lines.renewal.items.filter((line) => line.itemId !== itemId) },
+  extension: { items: lines.extension.items.filter((line) => line.itemId !== itemId) },
+});
+
+/** The templates an item is written in, as `[memo, paid]` pairs in the cards' order. */
+export const templatesWith = (
+  lines: SetupLines,
+  itemId: string,
+): [LicenseExpenseKind, LicenseExpensePaidBy][] =>
+  FLEET_LICENSE_EXPENSE_KINDS.flatMap((memo) =>
+    PAID.filter((paid) =>
+      lines[memo].items.some((line) => line.itemId === itemId && line.paidBy === paid),
+    ).map((paid): [LicenseExpenseKind, LicenseExpensePaidBy] => [memo, paid]),
+  );
+
+/**
  * The counters a template offers: the active items — an archived one only while the template
- * still counts it, so it can be counted out. Filtered after mapping, so each keeps its colour.
+ * still counts it, so it can be counted out. The memo editor offers by the same rule.
  */
 export const setupEntriesOf = (
   items: readonly FleetCatalogItemDto[],
   lines: readonly LicenseExpenseItemLine[],
   locale: Locale,
-): CatalogEntry[] =>
-  catalogEntriesOf(items, locale).filter(
-    (entry, i) => items[i]!.isActive || lines.some((line) => line.itemId === entry.id),
-  );
+): CatalogEntry[] => offeredEntriesOf(items, lines, locale);
 
 export const LicenseExpenseSetupPage = (): JSX.Element => {
   const settings = useLicenseExpenseSettings();
@@ -273,6 +345,7 @@ const LicenseExpenseSetup = ({
   const save = useSaveLicenseExpenseSettings();
   const updateItem = useUpdateCatalogItem();
   const createItem = useCreateCatalogItem();
+  const removeItem = useDeleteCatalogItem();
   const addToCatalog = useAddToCatalog();
   const mayManageList = can('fleetCatalog.manage');
 
@@ -293,19 +366,24 @@ const LicenseExpenseSetup = ({
   const [written, setWritten] = useState<Readonly<Record<string, FleetCatalogItemDto>>>({});
   const [writing, setWriting] = useState<ReadonlySet<string>>(new Set());
   const [created, setCreated] = useState<readonly FleetCatalogItemDto[]>([]);
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const items = useMemo(
-    () => withWritten(withCreated(catalog.data?.items ?? [], created), written),
-    [catalog.data, created, written],
+    () =>
+      withoutDeleted(
+        withWritten(withCreated(catalog.data?.items ?? [], created), written),
+        deleted,
+      ),
+    [catalog.data, created, written, deleted],
   );
   const catalogItems = useMemo(
     () => setupEntriesOf(items, lines[kind].items, locale),
     [items, lines, kind, locale],
   );
-  const showsIn = async (
+  /** «يظهر في» or «طريقة الصرف» — one click, one write, the toast either way. */
+  const writeItem = async (
     item: FleetCatalogItemDto,
-    memo: LicenseExpenseKind | null,
+    body: UpdateFleetCatalogItem | null,
   ): Promise<void> => {
-    const body = showsInBody(item, memo);
     if (body === null) return;
     setWriting((held) => new Set([...held, item.id]));
     try {
@@ -323,13 +401,14 @@ const LicenseExpenseSetup = ({
   // until another is pressed. A name already on the list marks that item's row instead.
   const [newName, setNewName] = useState('');
   const [newMemo, setNewMemo] = useState<LicenseExpenseKind | null>(null);
+  const [newPaid, setNewPaid] = useState<LicenseExpensePaidBy | null>(null);
   const [found, setFound] = useState<string | null>(null);
   const rows = useRef(new Map<string, HTMLLIElement>());
   // Held across renders: a second Enter before the first add returns adds nothing twice.
   const adding = useRef(false);
   const addItem = async (): Promise<void> => {
     if (adding.current) return;
-    const body = newItemBody(newName, newMemo);
+    const body = newItemBody(newName, newMemo, newPaid);
     if (body === null) {
       toast.warning(t('fleet.licenseExpenses.setup.newItemEmpty'));
       return;
@@ -367,6 +446,41 @@ const LicenseExpenseSetup = ({
     memo === null
       ? t('fleet.catalogs.licenseExpenseKind.both')
       : t(`fleet.licenseExpenses.kinds.${memo}`);
+  const paidByLabel = (paid: LicenseExpensePaidBy | null): string =>
+    paid === null
+      ? t('fleet.catalogs.licenseExpenseKind.both')
+      : t(`fleet.licenseExpenses.paidBy.${paid}`);
+
+  // «او امسح بند انا ضيفته»: the item somebody added, gone from the list (a soft delete; the audit
+  // keeps it). Its row leaves at once, and its lines leave the held templates.
+  const [deleting, setDeleting] = useState<FleetCatalogItemDto | null>(null);
+  /** The templates the item is written in, as their cards name them: «نموذج تجديد تراخيص — نقدي». */
+  const templateNames = (id: string): string[] =>
+    templatesWith(lines, id).map(
+      ([memo, paid]) =>
+        `${t('fleet.licenseExpenses.setup.templateTitle', {
+          kind: t(`fleet.licenseExpenses.kinds.${memo}`),
+        })} — ${t(`fleet.licenseExpenses.paidBy.${paid}`)}`,
+    );
+  const deletingTemplates = deleting === null ? [] : templateNames(deleting.id);
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null || removeItem.isPending) return;
+    const gone = deleting;
+    try {
+      await removeItem.mutateAsync(gone.id);
+      setDeleted((held) => new Set([...held, gone.id]));
+      // Else `withCreated` would bring back the row of an item added on this very page.
+      setCreated((held) => held.filter((item) => item.id !== gone.id));
+      setLines((held) => linesWithout(held, gone.id));
+      if (found === gone.id) setFound(null);
+      setDeleting(null);
+      toast.success(
+        t('fleet.licenseExpenses.setup.itemDeletedToast', { name: localized(gone.name, locale) }),
+      );
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
+  };
 
   /** Saved elsewhere meanwhile: overwrite nothing — show theirs, read afresh. */
   const rereadSaved = async (): Promise<void> => {
@@ -440,8 +554,12 @@ const LicenseExpenseSetup = ({
         <section className={DESIGN_COLUMN}>
           {/* First, because it decides which counters the groups below offer. */}
           <div data-license-expense-setup-items="true">
-            <DesignSection title={t('fleet.licenseExpenses.setup.itemsTitle')} icon={PATH.box}>
-              {hint(t('fleet.licenseExpenses.setup.itemsHint'))}
+            <DesignSection
+              title={t('fleet.licenseExpenses.setup.itemsTitlePaidBy')}
+              icon={PATH.box}
+            >
+              {hint(t('fleet.licenseExpenses.setup.itemsHintPaidBy'))}
+              {mayManageList && hint(t('fleet.licenseExpenses.setup.itemsDeleteHint'))}
               {!mayManageList && (
                 <p className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">
                   {t('fleet.licenseExpenses.setup.itemsLocked')}
@@ -460,38 +578,89 @@ const LicenseExpenseSetup = ({
                           else rows.current.set(item.id, node);
                         }}
                         data-license-expense-item-row={item.id}
-                        // The item a new name turned out to be — marked until the name changes.
+                        // Two lines: the name (and the bin), then its two choices. The item a new
+                        // name turned out to be is marked until the name changes.
                         className={cn(
-                          'flex flex-wrap items-center justify-between gap-2 px-3 py-2 transition-colors',
+                          'space-y-2 px-3 py-2.5 transition-colors',
                           found === item.id &&
                             'bg-amber-500/10 ring-2 ring-inset ring-amber-400/70 first:rounded-t-xl last:rounded-b-xl',
                         )}
                       >
-                        <span
-                          className={cn(
-                            'rounded-md border px-2 py-0.5 text-sm font-bold',
-                            violationTypeColour(item.id, { index }),
-                          )}
-                        >
-                          {localized(item.name, locale)}
-                        </span>
-                        <div className={SWITCH_TRAY}>
-                          {SHOWS_IN.map((memo) => {
-                            const picked = (item.licenseExpenseKind ?? null) === memo;
-                            return (
-                              <button
-                                key={memo ?? 'both'}
-                                type="button"
-                                aria-pressed={picked}
-                                data-license-expense-item-kind={`${item.id}:${memo ?? 'both'}`}
-                                disabled={!mayManageList || writing.has(item.id)}
-                                onClick={() => void showsIn(item, memo)}
-                                className={switchOption(picked)}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span
+                              className={cn(
+                                'rounded-md border px-2 py-0.5 text-sm font-bold',
+                                violationTypeColour(item.id, { index }),
+                              )}
+                            >
+                              {localized(item.name, locale)}
+                            </span>
+                            {/* A seeded item: no bin — it archives on «قوائم الحركة». */}
+                            {item.builtIn && (
+                              <span
+                                data-license-expense-item-builtin={item.id}
+                                title={t('fleet.licenseExpenses.setup.builtInHint')}
+                                className="rounded-full border border-slate-300 bg-white px-2 py-px text-[11px] font-bold text-slate-500 dark:border-slate-600 dark:bg-transparent dark:text-slate-400"
                               >
-                                {showsInLabel(memo)}
-                              </button>
-                            );
-                          })}
+                                {t('fleet.licenseExpenses.setup.builtInTag')}
+                              </span>
+                            )}
+                          </span>
+                          {/* The bin: only on a row somebody added, only for whoever manages the
+                              lists (the server refuses everyone else, and every seeded item). */}
+                          {mayManageList && !item.builtIn && (
+                            <button
+                              type="button"
+                              data-license-expense-item-delete={item.id}
+                              aria-label={`${t('fleet.licenseExpenses.setup.deleteItem')} — ${localized(item.name, locale)}`}
+                              title={t('fleet.licenseExpenses.setup.deleteItem')}
+                              disabled={writing.has(item.id)}
+                              onClick={() => setDeleting(item)}
+                              className={actionTone('delete')}
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                          <Choice label={t('fleet.catalogs.fields.licenseExpenseKind')}>
+                            {SHOWS_IN.map((memo) => {
+                              const picked = (item.licenseExpenseKind ?? null) === memo;
+                              return (
+                                <button
+                                  key={memo ?? 'both'}
+                                  type="button"
+                                  aria-pressed={picked}
+                                  data-license-expense-item-kind={`${item.id}:${memo ?? 'both'}`}
+                                  disabled={!mayManageList || writing.has(item.id)}
+                                  onClick={() => void writeItem(item, showsInBody(item, memo))}
+                                  className={cn(switchOption(picked), TIGHT)}
+                                >
+                                  {showsInLabel(memo)}
+                                </button>
+                              );
+                            })}
+                          </Choice>
+                          {/* «طريقة الصرف»: which group of a memo offers its counter. */}
+                          <Choice label={t('fleet.catalogs.fields.licenseExpensePaidBy')}>
+                            {PAID_BY.map((paid) => {
+                              const picked = (item.licenseExpensePaidBy ?? null) === paid;
+                              return (
+                                <button
+                                  key={paid ?? 'both'}
+                                  type="button"
+                                  aria-pressed={picked}
+                                  data-license-expense-item-paid={`${item.id}:${paid ?? 'both'}`}
+                                  disabled={!mayManageList || writing.has(item.id)}
+                                  onClick={() => void writeItem(item, paidByBody(item, paid))}
+                                  className={cn(switchOption(picked), TIGHT)}
+                                >
+                                  {paidByLabel(paid)}
+                                </button>
+                              );
+                            })}
+                          </Choice>
                         </div>
                       </li>
                     ) : null,
@@ -500,62 +669,77 @@ const LicenseExpenseSetup = ({
               )}
               {/* «عاوز اقدر اضيف بند فى اعدادات النماذج»: at the card's end, for whoever manages the
                   lists — the note above tells everyone else who does. Once the list is read, so a
-                  name already on it is known. */}
+                  name already on it is known. Laid out as a row: the name and «إضافة», then the
+                  same two choices (both, until another is pressed). */}
               {mayManageList && catalog.data !== undefined && (
                 <div
                   data-license-expense-new-item="true"
-                  className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
+                  className="space-y-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2.5 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
                 >
-                  <div className="min-w-[10rem] flex-1">
-                    <Input
-                      data-license-expense-new-item-name="true"
-                      aria-label={t('fleet.licenseExpenses.setup.newItem')}
-                      placeholder={t('fleet.licenseExpenses.setup.newItem')}
-                      value={newName}
-                      onChange={(e) => {
-                        setNewName(e.target.value);
-                        setFound(null);
-                      }}
-                      // Enter adds, as Enter adds a part on a maintenance visit.
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-                        e.preventDefault();
-                        void addItem();
-                      }}
-                      density="tight"
-                      tone={CARD_BOX}
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        data-license-expense-new-item-name="true"
+                        aria-label={t('fleet.licenseExpenses.setup.newItem')}
+                        placeholder={t('fleet.licenseExpenses.setup.newItem')}
+                        value={newName}
+                        onChange={(e) => {
+                          setNewName(e.target.value);
+                          setFound(null);
+                        }}
+                        // Enter adds, as Enter adds a part on a maintenance visit.
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                          e.preventDefault();
+                          void addItem();
+                        }}
+                        density="tight"
+                        tone={CARD_BOX}
+                      />
+                    </div>
+                    {/* The look of «+ إضافة للقائمة» on a memo's hand-written line — the same act. */}
+                    <button
+                      type="button"
+                      data-license-expense-new-item-add="true"
+                      aria-busy={createItem.isPending}
+                      disabled={createItem.isPending}
+                      onClick={() => void addItem()}
+                      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-500/20 active:scale-[0.98] disabled:opacity-50 dark:text-brand-200"
+                    >
+                      {createItem.isPending ? <Spinner className="h-3.5 w-3.5" /> : <span>+</span>}
+                      {t('fleet.licenseExpenses.setup.newItemAdd')}
+                    </button>
                   </div>
-                  <div
-                    role="group"
-                    aria-label={t('fleet.licenseExpenses.setup.newItemShowsIn')}
-                    className={SWITCH_TRAY}
-                  >
-                    {SHOWS_IN.map((memo) => (
-                      <button
-                        key={memo ?? 'both'}
-                        type="button"
-                        aria-pressed={newMemo === memo}
-                        data-license-expense-new-item-kind={memo ?? 'both'}
-                        onClick={() => setNewMemo(memo)}
-                        className={switchOption(newMemo === memo)}
-                      >
-                        {showsInLabel(memo)}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                    <Choice label={t('fleet.licenseExpenses.setup.newItemShowsIn')}>
+                      {SHOWS_IN.map((memo) => (
+                        <button
+                          key={memo ?? 'both'}
+                          type="button"
+                          aria-pressed={newMemo === memo}
+                          data-license-expense-new-item-kind={memo ?? 'both'}
+                          onClick={() => setNewMemo(memo)}
+                          className={cn(switchOption(newMemo === memo), TIGHT)}
+                        >
+                          {showsInLabel(memo)}
+                        </button>
+                      ))}
+                    </Choice>
+                    <Choice label={t('fleet.catalogs.fields.licenseExpensePaidBy')}>
+                      {PAID_BY.map((paid) => (
+                        <button
+                          key={paid ?? 'both'}
+                          type="button"
+                          aria-pressed={newPaid === paid}
+                          data-license-expense-new-item-paid={paid ?? 'both'}
+                          onClick={() => setNewPaid(paid)}
+                          className={cn(switchOption(newPaid === paid), TIGHT)}
+                        >
+                          {paidByLabel(paid)}
+                        </button>
+                      ))}
+                    </Choice>
                   </div>
-                  {/* The look of «+ إضافة للقائمة» on a memo's hand-written line — the same act. */}
-                  <button
-                    type="button"
-                    data-license-expense-new-item-add="true"
-                    aria-busy={createItem.isPending}
-                    disabled={createItem.isPending}
-                    onClick={() => void addItem()}
-                    className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 transition hover:bg-brand-500/20 active:scale-[0.98] disabled:opacity-50 dark:text-brand-200"
-                  >
-                    {createItem.isPending ? <Spinner className="h-3.5 w-3.5" /> : <span>+</span>}
-                    {t('fleet.licenseExpenses.setup.newItemAdd')}
-                  </button>
                 </div>
               )}
             </DesignSection>
@@ -649,6 +833,44 @@ const LicenseExpenseSetup = ({
           </div>
         </section>
       </div>
+
+      {/* The confirm, in the pattern of «حذف هذه المذكرة؟»: what goes, and the templates it leaves. */}
+      <Dialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={t('fleet.licenseExpenses.setup.deleteItemTitle', {
+          name: deleting === null ? '' : localized(deleting.name, locale),
+        })}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={removeItem.isPending}
+              data-license-expense-item-delete-confirm="true"
+              onClick={() => void confirmDelete()}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('fleet.licenseExpenses.setup.deleteItemBody')}
+        </p>
+        {deletingTemplates.length > 0 && (
+          <p
+            data-license-expense-item-delete-templates="true"
+            className="mt-2 text-sm text-slate-600 dark:text-slate-300"
+          >
+            {t('fleet.licenseExpenses.setup.deleteItemTemplates', {
+              templates: deletingTemplates.join(locale === 'ar' ? '، ' : ', '),
+            })}
+          </p>
+        )}
+      </Dialog>
     </div>
   );
 };

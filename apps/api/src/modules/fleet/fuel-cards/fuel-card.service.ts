@@ -8,6 +8,7 @@ import {
   type FleetFuelCardMovementDto,
   type FleetFuelCardSummaryQuery,
   type FleetFuelCardTotalsDto,
+  type FleetFuelLinkPlaceDto,
   type FleetFuelTransferResultDto,
   type ListFleetFuelCardMovementsQuery,
   type ListFleetFuelCardsQuery,
@@ -39,6 +40,7 @@ import {
   FleetFuelCardMovementModel,
   type FleetFuelCardDoc,
   type FleetFuelCardMovementDoc,
+  type FleetFuelMovementPlace,
 } from './fuel-card.model';
 import { resolveFuelCardDocsCategoryId } from './fuel-card-files';
 
@@ -49,6 +51,7 @@ export const fuelCardEntityRef = (id: string) => ({
   entityId: id,
 });
 const entityRef = fuelCardEntityRef;
+const snapshot = (doc: FleetFuelCardDoc) => fuelCardSnapshot(doc);
 const piastres = (egp: number): number => Math.round(egp * 100);
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -92,11 +95,20 @@ export interface ReceiptCar {
   vehicleCode: string | null;
 }
 
+/** A `sheetLink` line's place, as answered. */
+const placeDto = (place: FleetFuelMovementPlace): FleetFuelLinkPlaceDto => ({
+  vehicleId: place.vehicleId == null ? null : String(place.vehicleId),
+  vehicleCode: place.vehicleCode ?? null,
+  label: place.label ?? null,
+});
+
 export const toFuelMovementDto = (
   doc: FleetFuelCardMovementDoc,
   counterpartNumber: string | null,
   receiptCar: ReceiptCar | null = null,
   byName: string | null = null,
+  /** Who decided the sheet that cancelled this charge, by name; `null` when unknown. */
+  cancelledByName: string | null = null,
 ): FleetFuelCardMovementDto => ({
   id: String(doc._id),
   cardId: String(doc.cardId),
@@ -119,14 +131,35 @@ export const toFuelMovementDto = (
           fileName: doc.reconciliation.fileName,
           sheetBalance: doc.reconciliation.sheetBalance,
           systemBalance: doc.reconciliation.systemBalance,
-          cancelledCharges: [], // B3-F0 stub: A-REC — the charges this adjustment cancelled
+          // Absent on a line that cancelled nothing, and on every line before 6a.
+          cancelledCharges: (doc.reconciliation.cancelled ?? []).map((charge) => ({
+            id: String(charge.movementId),
+            amount: charge.amount,
+          })),
         },
-  cancelledBySheet: null, // B3-F0 stub: A-REC — the sheet that cancelled a charge
-  link: null, // B3-F0 stub: A-REC — a sheetLink line's move
+  cancelledBySheet:
+    doc.cancelledBySheet == null
+      ? null
+      : {
+          reconciliationId: String(doc.cancelledBySheet.reconciliationId),
+          fileName: doc.cancelledBySheet.fileName,
+          at: doc.cancelledBySheet.at.toISOString(),
+          byName: cancelledByName,
+        },
+  link:
+    doc.link == null
+      ? null
+      : {
+          from: placeDto(doc.link.from),
+          to: placeDto(doc.link.to),
+          sheetCode: doc.link.sheetCode ?? null,
+          reconciliationId: String(doc.link.reconciliationId),
+          fileName: doc.link.fileName,
+        },
 });
 
 /** The password never enters the audit trail. */
-const snapshot = (doc: FleetFuelCardDoc) => ({
+export const fuelCardSnapshot = (doc: FleetFuelCardDoc) => ({
   vehicleId: doc.vehicleId == null ? null : String(doc.vehicleId),
   label: doc.label ?? null,
   company: doc.company,
@@ -630,11 +663,22 @@ class FleetFuelCardService {
         .lean<FleetFuelCardMovementDoc>()
         .exec();
       if (line === null) throw new NotFoundError();
-      // A company sheet's ✓ / ✗ is the record of what was decided against that sheet — it is
-      // never changed or removed (and must not fall into the transfer grant below).
-      if (line.kind === 'sheetAdjust' || line.kind === 'sheetReject') {
+      // A company sheet's ✓ / ✗ / link is the record of what was decided against that sheet — it
+      // is never changed or removed (and must not fall into the transfer grant below).
+      if (line.kind === 'sheetAdjust' || line.kind === 'sheetReject' || line.kind === 'sheetLink') {
         throw new ValidationError([
           { field: 'params.id', code: 'INVALID', message: 'a sheet line is not changed here' },
+        ]);
+      }
+      // «أُلغي بشيت الشركة»: the sheet already took this charge's money back — changing it here
+      // would take it a second time.
+      if (line.cancelledBySheet != null) {
+        throw new ValidationError([
+          {
+            field: 'params.id',
+            code: 'INVALID',
+            message: 'a charge cancelled by a company sheet is not changed here',
+          },
         ]);
       }
       if (line.kind === 'receipt') {
@@ -690,11 +734,13 @@ class FleetFuelCardService {
         }
         const set: Partial<FleetFuelCardDoc> = { balance: after / 100 };
         if (half.doc.kind === 'charge' && newAmount === null) {
-          // The green «charged today» follows the charges that are left.
+          // The green «charged today» follows the charges that are left — a charge a sheet
+          // cancelled is not one of them.
           const latest = await FleetFuelCardMovementModel.findOne({
             cardId: card._id,
             kind: 'charge',
             isDeleted: false,
+            cancelledBySheet: null,
             _id: { $ne: half.doc._id },
           })
             .sort({ at: -1 })
@@ -792,7 +838,13 @@ class FleetFuelCardService {
     const [cards, receipts, names] = await Promise.all([
       fleetFuelCardRepository.findByIdsSystem(counterparts),
       fleetReceiptRepository.findByIdsSystem(receiptIds),
-      actorNamesOf(page.items.map((doc) => (doc.createdBy == null ? null : String(doc.createdBy)))),
+      actorNamesOf([
+        ...page.items.map((doc) => (doc.createdBy == null ? null : String(doc.createdBy))),
+        // Who decided the sheet that cancelled a charge — «أُلغي بشيت الشركة · … · by».
+        ...page.items.map((doc) =>
+          doc.cancelledBySheet?.by == null ? null : String(doc.cancelledBySheet.by),
+        ),
+      ]),
     ]);
     const codes = await fleetVehicleRepository.codesByIds([
       ...new Set(receipts.map((receipt) => String(receipt.vehicleId))),

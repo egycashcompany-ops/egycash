@@ -1,7 +1,7 @@
 // The world «عقود توريد السيارات»'s integration specs run in: a booted platform on a real mongo,
-// a super user, a viewer, a creator, a platform file reader with no contract grant, and three
-// makes (two active, one retired). Shared by `fleet-vehicle-contracts.spec.ts` and
-// `fleet-vehicle-contract-files.spec.ts`.
+// a super user, a viewer, a creator, a creator who may also receive, a platform file reader with
+// no contract grant, and three makes (two active, one retired). Shared by
+// `fleet-vehicle-contracts.spec.ts` and `fleet-vehicle-contract-files.spec.ts`.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { expect } from 'vitest';
@@ -35,6 +35,8 @@ export interface VehicleContractWorld {
   viewer: string;
   /** view + create — and the platform's file.view / file.edit / file.delete. */
   creator: string;
+  /** view + create + receive — no edit: may type «المستلم حتى الآن» on a new contract. */
+  receiver: string;
   /** The platform's file.view, and no contract grant. */
   fileReader: string;
   typeA: string;
@@ -123,6 +125,13 @@ export const bootVehicleContracts = async (): Promise<VehicleContractWorld> => {
         'file.view',
         'file.edit',
         'file.delete',
+      ])
+    ).token,
+    receiver: (
+      await userWith([
+        'fleetVehicleContract.view',
+        'fleetVehicleContract.create',
+        'fleetVehicleContract.receive',
       ])
     ).token,
     fileReader: (await userWith(['file.view'])).token,

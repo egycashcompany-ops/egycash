@@ -16,6 +16,7 @@ import { ensureFuelCardDocsCategory } from './fuel-cards/fuel-card-files';
 import { ensureVehicleContractDocsCategory } from './vehicle-contracts/vehicle-contract-files';
 import { runFleetMigrations } from './fleet.migration';
 import { ensureCustodyMemoCounter } from './custody/custody-memo.service';
+import { seedFuelSheetCodes } from './fuel-cards/reconcile/fuel-sheet-codes';
 
 export const seedFleet = async (): Promise<void> => {
   // THE GO-LIVE RESET, FIRST. Once per database it clears the owner's test data off eight Fleet
@@ -152,6 +153,11 @@ export const seedFleet = async (): Promise<void> => {
   // first upsert and two processes booting on a fresh database cannot write two counters. Raised
   // to the highest number already used, never lowered; create-if-missing, no row is touched.
   await ensureCustodyMemoCounter();
+
+  // The fuel companies' car codes as the go-live sheet spelled them («suz 62» = 62, «سفر 1») — AFTER
+  // the index step, so their unique key exists. INSERT-ONLY: a spelling on file, above all one the
+  // owner taught with «تذكّر هذا الكود», is never touched; the hundredth boot writes nothing.
+  await seedFuelSheetCodes();
 
   // THE VEHICLE REGISTRY IS NOT STARTED HERE, and the reason is worth the paragraph.
   //

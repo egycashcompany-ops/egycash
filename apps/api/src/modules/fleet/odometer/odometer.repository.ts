@@ -8,7 +8,10 @@ import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 
 export interface LatestReading {
   vehicleId: string;
-  /** max(outReading, inReading) of the newest entry — the vehicle's latest known reading. */
+  /**
+   * The car's HIGHEST effective reading — `max(outReading, inReading ?? outReading)` of the row
+   * that ranks first by that figure (see `latestReadings`). The vehicle's latest known reading.
+   */
   reading: number;
   date: Date;
   /**
@@ -16,7 +19,23 @@ export interface LatestReading {
    * the reading the alarm measured rather than work out a «latest row» of its own.
    */
   logId: string;
+  /**
+   * The NEWEST-dated row's effective reading and its day (C6). Equal to `reading`/`date` on a
+   * healthy chain; different only when the highest reading is not the newest — a typo, or a
+   * reading typed on the wrong car — which the alarm card says in so many words.
+   */
+  newest: ChainBound;
 }
+
+/**
+ * A row's EFFECTIVE reading: how far the car had got by the end of that row — the closing reading
+ * of a closed period, the opening one of an open period. The per-row gap reads the same figure off
+ * a document (`rowReading` in `service-gap.ts`), so the alarm's latest reading and a row's gap are
+ * the same number on the same row.
+ */
+const EFFECTIVE_READING = {
+  $max: ['$outReading', { $ifNull: ['$inReading', '$outReading'] }],
+} as const;
 
 /** One end of the bracket: a reading and the date it was taken on. */
 export interface ChainBound {
@@ -31,8 +50,12 @@ export interface ChainBound {
  * accepts one equal to it, so two rows can legitimately share a value. MongoDB's sort is not
  * stable, so at that point "the latest reading" — and the DATE that travels with it — became
  * whichever row the server happened to return. `_id` is monotonic per insert, so it settles the
- * tie the way the chain was actually written, and every query that picks "the highest" uses this
- * same order rather than a private one.
+ * tie the way the chain was actually written, and every date-bounded question that picks "the
+ * highest OPENING reading" uses this same order rather than a private one.
+ *
+ * The car's LATEST reading is a different question and is ranked differently — by the row's
+ * effective reading, then its day, then `_id` (see `latestReadings`): a tie on the opening reading
+ * is ordinary (a parked day), and there the row that got furthest is the one that counts.
  */
 const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
 
@@ -153,18 +176,6 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return docs.map((doc) => doc.toObject() as FleetOdometerLogDoc);
   }
 
-  async findLatest(
-    vehicleId: string,
-    session?: ClientSession,
-  ): Promise<FleetOdometerLogDoc | null> {
-    return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false, ...ON_THE_CHAIN })
-      .sort(NEWEST_FIRST)
-      .session(session ?? null)
-      .lean<FleetOdometerLogDoc>()
-      .exec();
-  }
-
   /**
    * Chain neighbours of an entry — the row dated just before it and the row dated just after it
    * (correction and delete flows, §4.3).
@@ -281,15 +292,35 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       .exec();
   }
 
-  /** Newest entry per vehicle in one pass — the alarm engine's read (§4.4). */
+  /**
+   * The highest — and the newest — reading per vehicle in one pass: the alarm engine's read (§4.4).
+   *
+   * RANKED BY THE ROW'S EFFECTIVE READING, NOT BY `outReading`. «لو ماشية 150 … وكتبت بعد كده
+   * دخول بتاع تاني يوم 200 … بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق الصيانة». Two chain rows
+   * very often share the top OPENING reading: a parked day (150 → 150, 0 km) and the next day
+   * (150 → 200, 50 km), or rows typed out of order or re-created by a correction. Ranked by
+   * `outReading` the tie fell to `_id`, so whichever of the two was WRITTEN last won — and when
+   * that was the 0-km row, the car's reading stayed 150 and the day's 50 km never reached «فارق
+   * عداد الصيانة» nor the alarm level. Ranked by `max(out, in)`, the row that got furthest wins;
+   * a tie on that figure goes to the later DAY, then to the later insert, so the answer is a total
+   * order and, on a healthy chain, the newest row (the open period carries the same figure the row
+   * before it closed on).
+   *
+   * `newest` is the same figure for the newest-dated row (`{date:-1, _id:-1}`), taken by a `$max`
+   * over (date, _id, reading) in the same `$group`: BSON compares documents field by field, so the
+   * maximum is exactly the row that sorts first by date, then by `_id`.
+   *
+   * Only the four fields the answer needs survive to the sort, which is in memory (it is on a
+   * computed figure) and must stay far below the aggregation's memory limit on a fleet's history.
+   */
   async latestReadings(vehicleIds: readonly string[]): Promise<Map<string, LatestReading>> {
     if (vehicleIds.length === 0) return new Map();
     const rows = await this.model.aggregate<{
       _id: Types.ObjectId;
-      outReading: number;
-      inReading: number | null;
+      reading: number;
       date: Date;
       logId: Types.ObjectId;
+      newest: { date: Date; logId: Types.ObjectId; reading: number };
     }>([
       {
         $match: {
@@ -298,16 +329,19 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           ...ON_THE_CHAIN,
         },
       },
-      { $sort: { vehicleId: 1, outReading: -1, _id: -1 } },
+      // `inReading` never sits below `outReading` on a stored row, but the max is taken anyway:
+      // the figure that ranks the row is the one the answer reports, whatever a row holds.
+      { $project: { vehicleId: 1, date: 1, top: EFFECTIVE_READING } },
+      { $sort: { vehicleId: 1, top: -1, date: -1, _id: -1 } },
       {
         $group: {
           _id: '$vehicleId',
-          outReading: { $first: '$outReading' },
-          inReading: { $first: '$inReading' },
+          reading: { $first: '$top' },
           date: { $first: '$date' },
           // The same `$first` on the same total order, so the id is the row the reading and the
           // date were taken from.
           logId: { $first: '$_id' },
+          newest: { $max: { date: '$date', logId: '$_id', reading: '$top' } },
         },
       },
     ]);
@@ -316,9 +350,10 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         String(row._id),
         {
           vehicleId: String(row._id),
-          reading: Math.max(row.outReading, row.inReading ?? row.outReading),
+          reading: row.reading,
           date: row.date,
           logId: String(row.logId),
+          newest: { reading: row.newest.reading, date: row.newest.date },
         },
       ]),
     );

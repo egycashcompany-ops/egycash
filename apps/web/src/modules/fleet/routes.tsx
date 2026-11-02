@@ -37,6 +37,7 @@
 //   /fleet/custody/memos/:id  fleetCustody.view + fleetReceipt.edit              تعديل المذكرة
 //   /fleet/custody/memos/setup (+/:paper) fleetCustody.view + fleetReceipt.edit إعداد المذكرات
 //   /fleet/custody/log        fleetCustody.view            سجل العهدة
+//   /fleet/custody/log/deleted fleetCustody.view           العمليات المحذوفة
 //   /fleet/custody/dashboard  fleetCustody.view            لوحة تحكم العهدة
 //   /fleet/custody-expenses   fleetCustody.view            مصروفات العهدة (CustodyPage)
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
@@ -76,6 +77,7 @@ import { CustodyMemosPage } from './pages/CustodyMemosPage';
 import { CustodyMemoEditorPage } from './pages/CustodyMemoEditorPage';
 import { CustodyPapersSetupPage } from './pages/CustodyPapersSetupPage';
 import { CustodyLedgerPage } from './pages/CustodyLedgerPage';
+import { CustodyDeletedPage } from './pages/CustodyDeletedPage';
 import { CustodyFundDashboardPage } from './pages/CustodyFundDashboardPage';
 import { CustodyEntry } from './components/CustodyEntry';
 import { VehicleContractsPage } from './pages/VehicleContractsPage';
@@ -379,6 +381,15 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetCustody.view">
                 <CustodyLedgerPage />
+              </RequirePermission>
+            }
+          />
+          {/* «العمليات المحذوفة»: what was deleted from the log, read on the fund's own grant. */}
+          <Route
+            path="custody/log/deleted"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyDeletedPage />
               </RequirePermission>
             }
           />

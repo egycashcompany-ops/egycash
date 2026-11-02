@@ -3,6 +3,13 @@
 // «تأكيد التحويل» wear): what will happen in one sentence with the count, the selection's totals —
 // now, the net difference, after — and the list, «name · system ← sheet», in Latin figures. The
 // approved batch-2 sample (b2-cards-confirm-apply / -reject), class for class.
+//
+// 6a (plan §8, M16/M17/M23) adds, for a ✓: the sheet's date, then per card «شحن لا يظهر في الشيت»
+// (the charges the sheet does not show, a checklist pre-ticked when the amount is exactly what the
+// sheet is short; charges after the sheet's date listed apart, never pre-ticked, with the warning
+// «في سجل الكارت حركات بعد تاريخ الشيت») and, when the sheet is higher by exactly the pending «طلب
+// رصيد», the choice «اعتماد طلب الرصيد» / «تسوية فقط». A row with either asks here first, even a
+// single row's ✓. Those pieces are in `reconcile-confirm-parts.tsx`; on a phone the list stacks.
 import {
   type FleetFuelCardCompany,
   type FleetFuelReconcileDecision,
@@ -15,8 +22,28 @@ import { DesignCancel, DesignDialog } from '../DesignDialog';
 import { MONO } from '../FuelCardDialog';
 import { CompanyBadge, NUM } from '../FuelCardBoard';
 import { CodeChip } from '../custody-memo-parts';
-import { confirmTotalsOf, money, signed } from '../../lib/fuel-reconcile';
+import {
+  confirmTotalsOf,
+  laterCharges,
+  markedTooMuch,
+  money,
+  preTickedCharges,
+  requestMatches,
+  signed,
+  unseenCharges,
+  type LineChoices,
+  type RequestChoice,
+} from '../../lib/fuel-reconcile';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
+import { FileName } from './reconcile-cells';
+import {
+  Block,
+  CardTag,
+  MovedAfterWarning,
+  RequestChoiceBox,
+  SheetDateLine,
+  UnseenCharges,
+} from './reconcile-confirm-parts';
 
 /** The check in a circle (✓) and the cross in a circle (✗) — the header's tile. */
 const APPLY_ICON = ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'm8 12 3 3 5-6'];
@@ -110,6 +137,10 @@ export const ReconcileConfirmDialog = ({
   busy,
   onConfirm,
   onClose,
+  sheetDate,
+  choiceOf,
+  onToggleCharge,
+  onRequest,
 }: {
   /** The bulk decision asked about; `null` = closed. */
   decision: FleetFuelReconcileDecision | null;
@@ -120,6 +151,12 @@ export const ReconcileConfirmDialog = ({
   busy: boolean;
   onConfirm: () => void;
   onClose: () => void;
+  /** M23 — the session's `sheetDate`. */
+  sheetDate: string | null;
+  /** A card's choices (lower-case id): the charges ticked to cancel, and the request answer. */
+  choiceOf: (line: FleetFuelReconcileLineDto) => LineChoices;
+  onToggleCharge: (cardId: string, chargeId: string, on: boolean) => void;
+  onRequest: (cardId: string, choice: RequestChoice) => void;
 }): JSX.Element | null => {
   const t = useT();
   const count = useReconcileCount();
@@ -144,6 +181,13 @@ export const ReconcileConfirmDialog = ({
       : 'fleet.fuelCards.reconcile.confirm.rejectLine',
   ).split(/\{\{\w+\}\}/u);
   const colDiff = t('fleet.fuelCards.reconcile.colDiff');
+  // 6a: only a ✓ asks about charges and requests; a ✗ moves nothing.
+  const withCharges = applying ? lines.filter((line) => unseenCharges(line).length > 0) : [];
+  const withRequest = applying ? lines.filter(requestMatches) : [];
+  const movedAfter = withCharges.filter((line) => laterCharges(line).length > 0);
+  // More ticked than the sheet takes off a card: the server would refuse it — fix the ticks first.
+  const overMarked = withCharges.some((line) => markedTooMuch(line, choiceOf(line)));
+  const R = 'fleet.fuelCards.reconcile.';
 
   return (
     <DesignDialog
@@ -159,9 +203,8 @@ export const ReconcileConfirmDialog = ({
       subtitle={
         <span className="inline-flex items-center gap-1.5">
           {t(`fleet.fuelCards.company.${company}`)} ·
-          <span dir="ltr" className="font-semibold">
-            {fileName}
-          </span>
+          {/* The file's name in order — its date as he wrote it. */}
+          <FileName name={fileName} className="font-semibold" />
         </span>
       }
       panelProps={{ 'data-recon-confirm': decision }}
@@ -170,7 +213,7 @@ export const ReconcileConfirmDialog = ({
           <button
             type="button"
             data-recon-confirm-go={decision}
-            disabled={busy}
+            disabled={busy || overMarked}
             onClick={onConfirm}
             className={cn(
               'flex items-center gap-2 rounded-xl px-8 py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60',
@@ -197,6 +240,10 @@ export const ReconcileConfirmDialog = ({
           { cards: count.cardsOf(lines.length) },
         )}
       </p>
+      {applying && <SheetDateLine sheetDate={sheetDate} fileName={fileName} />}
+      {movedAfter.length > 0 && sheetDate !== null && (
+        <MovedAfterWarning lines={movedAfter} sheetDate={sheetDate} />
+      )}
 
       {/* The selection's totals — now, the net difference, after. */}
       <div
@@ -263,7 +310,66 @@ export const ReconcileConfirmDialog = ({
             {count.cards(lines.length)}
           </span>
         </h3>
-        <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200 dark:border-[#2b3b6b]">
+        {/* A phone gets the list as stacked rows — the table would scroll sideways at 375. */}
+        <ul
+          className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white md:hidden dark:divide-[#1c293f] dark:border-[#2b3b6b] dark:bg-[#0a1233]/60"
+          data-recon-confirm-phone-list="true"
+        >
+          {lines.map((line) => (
+            <li key={line.card.id} className="space-y-1.5 px-3 py-2.5">
+              <span className="flex flex-wrap items-center gap-2">
+                <CompanyBadge company={line.card.company} />
+                <span
+                  dir="ltr"
+                  className="whitespace-nowrap font-figures text-[14px] font-bold text-slate-900 dark:text-white"
+                >
+                  {line.card.name}
+                </span>
+                {line.card.vehicleCode !== null && <CodeChip code={line.card.vehicleCode} />}
+              </span>
+              <span className="flex flex-wrap items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                  <span
+                    dir="ltr"
+                    className={cn(
+                      NUM,
+                      'text-[14px] font-bold',
+                      applying ? STRUCK : 'text-slate-900 dark:text-white',
+                    )}
+                  >
+                    {money(line.card.balance)}
+                  </span>
+                  <span aria-hidden className="text-slate-400">
+                    ←
+                  </span>
+                  <span
+                    dir="ltr"
+                    className={cn(
+                      NUM,
+                      'text-[14px] font-bold',
+                      applying ? 'text-emerald-700 dark:text-emerald-300' : STRUCK,
+                    )}
+                  >
+                    {money(line.sheet.balance)}
+                  </span>
+                </span>
+                <span
+                  dir="ltr"
+                  className={cn(
+                    NUM,
+                    'whitespace-nowrap text-[14px] font-black',
+                    line.difference > 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400',
+                  )}
+                >
+                  {signed(line.difference)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden max-h-80 overflow-y-auto rounded-xl border border-slate-200 md:block dark:border-[#2b3b6b]">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 bg-slate-100 text-xs font-bold text-slate-600 dark:bg-[#0c1530] dark:text-slate-300">
               <tr>
@@ -349,6 +455,42 @@ export const ReconcileConfirmDialog = ({
           </table>
         </div>
       </section>
+
+      {withCharges.length > 0 && (
+        <Block mark="unseen" tone="violet" title={t(`${R}unseenTitle`)} note={t(`${R}unseenNote`)}>
+          {withCharges.map((line) => (
+            <div key={line.card.id} className="space-y-2.5">
+              {lines.length > 1 && <CardTag line={line} />}
+              <UnseenCharges
+                line={line}
+                choice={choiceOf(line)}
+                preTicked={new Set(preTickedCharges(line))}
+                sheetDate={sheetDate}
+                onToggle={(id, on) => onToggleCharge(line.card.id.toLowerCase(), id, on)}
+              />
+            </div>
+          ))}
+        </Block>
+      )}
+      {withRequest.length > 0 && (
+        <Block
+          mark="request"
+          tone="amber"
+          title={t(`${R}requestTitle`)}
+          note={t(`${R}requestNote`)}
+        >
+          {withRequest.map((line) => (
+            <div key={line.card.id} className="space-y-2.5">
+              {lines.length > 1 && <CardTag line={line} />}
+              <RequestChoiceBox
+                line={line}
+                choice={choiceOf(line).request ?? 'approve'}
+                onChoice={(choice) => onRequest(line.card.id.toLowerCase(), choice)}
+              />
+            </div>
+          ))}
+        </Block>
+      )}
     </DesignDialog>
   );
 };

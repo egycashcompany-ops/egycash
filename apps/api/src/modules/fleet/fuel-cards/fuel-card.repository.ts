@@ -2,14 +2,13 @@ import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 
 import { type FleetFuelCardCompany, type FleetFuelCardTotalsDto } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { cairoDayOf, cairoDayRange } from '../fleet-cairo-day';
 import {
   FleetFuelCardModel,
   FleetFuelCardMovementModel,
   type FleetFuelCardDoc,
   type FleetFuelCardMovementDoc,
 } from './fuel-card.model';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
   constructor() {
@@ -112,9 +111,18 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
         requestedAmount: number;
       }>(pipeline)
       .exec();
-    const since = new Date(now.getTime() - DAY_MS);
+    // «شُحن اليوم» — the CAIRO day (his «اليوم»), from its midnight; a charge the company's sheet
+    // cancelled («أُلغي بشيت الشركة») is in the card's log only, and not counted here.
+    const today = cairoDayRange(cairoDayOf(now));
     const [charged] = await FleetFuelCardMovementModel.aggregate<{ amount: number }>([
-      { $match: { kind: 'charge', at: { $gte: since }, isDeleted: false } },
+      {
+        $match: {
+          kind: 'charge',
+          at: { $gte: today.start, $lt: today.end },
+          isDeleted: false,
+          cancelledBySheet: null,
+        },
+      },
       { $group: { _id: null, amount: { $sum: '$amount' } } },
     ]).exec();
     const round = (value: number): number => Math.round(value * 100) / 100;
@@ -140,6 +148,9 @@ class FleetFuelCardMovementRepository extends BaseRepository<FleetFuelCardMoveme
    * The cards among `cardIds` whose log changed at or after `since` — a line written, edited or
    * removed (a removed line is still on file, so deleted lines count too), read inside `session`.
    * `updatedAt`, not `at`: a receipt line carries the receipt's own (past) day.
+   *
+   * Loosened on purpose (batch 3): a `sheetLink` line — the card moved car by a decision on the
+   * same sheet — moves no money, and does not refuse the balance ✓ that follows it.
    */
   async cardsMovedSince(
     cardIds: readonly string[],
@@ -151,6 +162,7 @@ class FleetFuelCardMovementRepository extends BaseRepository<FleetFuelCardMoveme
       .distinct('cardId', {
         cardId: { $in: cardIds.map((id) => new Types.ObjectId(id)) },
         updatedAt: { $gte: since },
+        kind: { $ne: 'sheetLink' },
       })
       .session(session)
       .exec();

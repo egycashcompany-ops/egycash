@@ -144,10 +144,18 @@ const buttonTags = (source: string): string[] => {
 };
 
 /**
- * The only `disabled` a guarded Save may carry: a permission the reader lacks, or nothing changed
- * to save — neither is a missing value, and neither is what the press is meant to explain.
+ * The only `disabled` a guarded Save may carry: a permission the reader lacks, nothing changed to
+ * save, or a received figure over its line that the screen already names — none is a missing
+ * value, and none is what the press is meant to explain.
  */
-const ALLOWED_DISABLED = new Set(['disabled={!mayRecord}', 'disabled={!anyDirty}']);
+const ALLOWED_DISABLED = new Set([
+  'disabled={!mayRecord}',
+  'disabled={!anyDirty}',
+  // «عقد جديد»: a received box over its line's count. The box is rose with «أكثر من 22», the note
+  // under the table names the make, and the footer's «المستلم» turns rose, so the reason is on
+  // screen and never a missing value. «تسجيل استلام» waits the same way.
+  'disabled={anyReceivedOver}',
+]);
 
 describe('every Fleet form with required values names what is missing', () => {
   it.each(Object.entries(FORMS).map(([file, forms]) => ({ file, forms })))(

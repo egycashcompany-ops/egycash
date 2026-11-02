@@ -2,7 +2,8 @@
 // alarm (its solid pill, the row held in its colour, `?alarm=` asked of the server), the unnamed
 // contract's fallback name, the faded «تسجيل استلام» once every car arrived, the grants on every
 // button; the contract page's strip in red and yellow; «تسجيل استلام» refusing more than is owed;
-// and the editor, new and on a saved contract.
+// and the editor, new and on a saved contract — with «المستلم حتى الآن» (batch 3): typed on a new
+// contract by a holder of «تسجيل استلام», not drawn without it, locked on an edit.
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -24,6 +25,12 @@ import { VehicleContractsPage } from './VehicleContractsPage';
 import { VehicleContractPage } from './VehicleContractPage';
 import { VehicleContractEditorPage } from './VehicleContractEditorPage';
 import { VehicleContractDeliveryDialog } from '../components/VehicleContractDeliveryDialog';
+import {
+  ReceivedTotals,
+  VehicleContractLinesEditor,
+  lineInvalid,
+} from '../components/VehicleContractLinesEditor';
+import { type EditorLine, type ReceivedMode } from '../lib/vehicle-contract-figures';
 
 // `DesignDialog` and the viewer portal into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -450,5 +457,149 @@ describe('the editor', () => {
     expect(count(html, 'data-locked-action="contract-line-remove"')).toBe(2);
     expect(html).toContain(`data-contract-file="${ID(41)}"`);
     expect(html).toContain('data-contract-total="162800000"');
+  });
+});
+
+describe('«المستلم حتى الآن» in the editor', () => {
+  /** The section width the form takes beside the attachments. */
+  const formWidth = (html: string): string => /lg:w-\[(\d+)%\]/u.exec(html)?.[1] ?? '';
+
+  const renderLines = (lines: EditorLine[], mode: ReceivedMode = 'edit'): string => {
+    const qc = new QueryClient();
+    qc.setQueryData(listKey('fleet', 'vehicleTypes', { pageSize: 100 }), {
+      items: TYPES,
+      meta: { page: 1, pageSize: 100, totalItems: TYPES.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store(ALL)}>
+        <QueryClientProvider client={qc}>
+          <VehicleContractLinesEditor
+            lines={lines}
+            receivedOf={() => 0}
+            receivedMode={mode}
+            receivedDate="2026-11-01"
+            onReceivedDate={() => undefined}
+            isMissing={() => false}
+            showInvalid={false}
+            onChange={() => undefined}
+            onAdd={() => undefined}
+            onRemove={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+  const typed = (key: string, typeId: string, count: string, received: string): EditorLine => ({
+    key,
+    id: null,
+    typeId,
+    count,
+    price: '',
+    received,
+  });
+  /** His new contract: 22 Sprinter with 15 received, 11 Accelo all received. */
+  const HIS = [typed('k1', ID(21), '22', '15'), typed('k2', ID(22), '11', '11')];
+
+  it('a new contract offers the column to a holder of «تسجيل استلام» — empty, nothing promised', () => {
+    const html = render('/fleet/vehicle-contracts/new', () => undefined);
+    expect(html).toContain('data-contract-received-head="edit"');
+    expect(html).toContain('المستلم');
+    expect(html).toContain('حتى الآن');
+    expect(count(html, 'data-contract-received="')).toBe(1);
+    expect(html).toContain('placeholder="0"');
+    expect(html).toContain('data-contract-received-hint="edit"');
+    expect(html).toContain('ويُسجَّل بوصفه «الاستلام الأول»');
+    // Nothing written: no day to ask, nothing under the box, the footer as before.
+    expect(html).not.toContain('data-contract-received-date');
+    expect(html).not.toContain('data-contract-first-delivery');
+    expect(html).not.toContain('data-contract-received-left');
+    expect(html).not.toContain('data-contract-footer-received');
+    expect(formWidth(html)).toBe('68');
+  });
+
+  it('without «تسجيل استلام» the column is not drawn and the form keeps its width', () => {
+    const html = render('/fleet/vehicle-contracts/new', () => undefined, [
+      'fleetVehicleContract.view',
+      'fleetVehicleContract.create',
+    ]);
+    expect(html).toContain('data-contract-editor="new"');
+    expect(html).not.toContain('data-contract-received-head');
+    expect(html).not.toContain('data-contract-received="');
+    expect(html).not.toContain('data-contract-received-hint');
+    expect(formWidth(html)).toBe('62');
+  });
+
+  it('15 and 11 typed: what is left under each box, the day, and what Save records', () => {
+    const html = renderLines(HIS);
+    expect(html).toContain('value="15"');
+    expect(html).toContain('data-contract-received-left="7"');
+    expect(html).toContain('المتبقي 7');
+    expect(html).toContain('data-contract-received-left="0"');
+    expect(html).toContain('data-contract-first-delivery="26"');
+    expect(html).toContain('data-contract-received-date="true"');
+    expect(html).toContain('value="2026-11-01"');
+    expect(html).toContain('تاريخ الاستلام');
+    expect(html).toContain('يُسجَّل «الاستلام الأول» عند حفظ العقد:');
+    expect(html).toContain('26');
+    expect(html).toContain('من 33 سيارة');
+    expect(html).toContain('ويتبقى 7 سيارات');
+    expect(html).not.toContain('data-contract-received-over');
+  });
+
+  it('25 on the line of 22 turns rose, the note names the make, and nothing is promised', () => {
+    const html = renderLines([typed('k1', ID(21), '22', '25'), HIS[1]!]);
+    expect(html).toContain('data-contract-received-over="k1"');
+    expect(html).toContain('أكثر من 22');
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('bg-rose-50/70');
+    expect(html).toContain('data-contract-received-over-note="true"');
+    expect(html).toContain(
+      'لا يمكن أن يزيد «المستلم حتى الآن» على المتعاقد عليه من البند: مرسيدس اسبرانتر 516 — 22 سيارة فقط.',
+    );
+    // The day is still asked; what Save records is not said while a box is over.
+    expect(html).toContain('data-contract-received-date="true"');
+    expect(html).not.toContain('يُسجَّل «الاستلام الأول»');
+    // Save waits: the line is invalid, and the footer shows «المستلم» in rose without a «left».
+    expect(lineInvalid(typed('k1', ID(21), '22', '25'), 0, 'edit')).toBe('receivedOver');
+    expect(lineInvalid(typed('k1', ID(21), '22', '22'), 0, 'edit')).toBeNull();
+    expect(lineInvalid(typed('k1', ID(21), '22', '25'), 0, 'locked')).toBeNull();
+  });
+
+  it('the footer: «— المستلم 26 · المتبقي 7», and only «المستلم» in rose while over', () => {
+    const qc = new QueryClient();
+    const footer = (received: number, left: number, over: boolean): string =>
+      renderToStaticMarkup(
+        <Provider store={store(ALL)}>
+          <QueryClientProvider client={qc}>
+            <ReceivedTotals received={received} left={left} over={over} />
+          </QueryClientProvider>
+        </Provider>,
+      );
+    const fine = footer(26, 7, false);
+    expect(fine).toContain('data-contract-footer-received="26"');
+    expect(fine).toContain('المستلم 26');
+    expect(fine).toContain('المتبقي 7');
+    const over = footer(36, 0, true);
+    expect(over).toContain('المستلم 36');
+    expect(over).toContain('text-rose-600');
+    expect(over).not.toContain('المتبقي');
+  });
+
+  it('an edit shows the saved figure locked, with its reason, and the footer’s received', () => {
+    const html = renderContract(contract(), ALL, true);
+    expect(html).toContain('data-contract-received-head="locked"');
+    expect(html).toContain(`data-contract-received-locked="${ID(11)}"`);
+    expect(html).toContain(`data-contract-received-locked="${ID(12)}"`);
+    expect(html).toContain('title="يُعدَّل المستلم من «الاستلامات» في صفحة العقد."');
+    // No box to type in, and no day: received cars change through «الاستلامات».
+    expect(html).not.toContain('data-contract-received="');
+    expect(html).not.toContain('data-contract-received-date');
+    expect(html).toContain('data-contract-received-left="1"');
+    expect(html).toContain('data-contract-received-hint="locked"');
+    expect(html).toContain('المستلم لا يُعدَّل هنا');
+    expect(html).toContain('data-contract-footer-received="32"');
+    expect(html).toContain('المستلم 32');
+    expect(html).toContain('المتبقي 1');
+    expect(formWidth(html)).toBe('68');
   });
 });

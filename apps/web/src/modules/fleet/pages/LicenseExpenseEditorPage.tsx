@@ -59,8 +59,8 @@ import {
   NOTE_BOX,
   PaidGroup,
   SWITCH_TRAY,
-  catalogEntriesOf,
   newKey,
+  offeredEntriesOf,
   switchOption,
   today,
   useAddToCatalog,
@@ -463,9 +463,17 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     [registry.data],
   );
   const catalog = useFleetCatalog('licenseExpenseItem');
+  // The ACTIVE items: one archived on «قوائم الحركة» is no longer offered on a new memo — only on
+  // one that already counts it (in either memo), so it can be counted out. The rule «إعداد
+  // النماذج» follows.
   const catalogItems = useMemo(
-    () => catalogEntriesOf(catalog.data?.items ?? [], locale),
-    [catalog.data, locale],
+    () =>
+      offeredEntriesOf(
+        catalog.data?.items ?? [],
+        [...drafts.renewal.items, ...drafts.extension.items],
+        locale,
+      ),
+    [catalog.data, drafts.renewal.items, drafts.extension.items, locale],
   );
 
   const toggleKind = (kind: LicenseExpenseKind): void =>

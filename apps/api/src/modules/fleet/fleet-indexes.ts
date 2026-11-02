@@ -55,6 +55,7 @@ import { FleetLicenseExpenseSettingsModel } from './license-expenses/license-exp
 import { FleetDealershipInvoiceModel } from './dealership/dealership.model';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-cards/fuel-card.model';
 import { FleetFuelReconciliationModel } from './fuel-cards/reconcile/fuel-reconcile.model';
+import { FleetFuelSheetCodeModel } from './fuel-cards/reconcile/fuel-sheet-codes.model';
 import { FleetReceiptModel } from './receipts/receipt.model';
 import { FleetCustodyMemoModel } from './custody/custody-memo.model';
 import { FleetCustodyOperationModel } from './custody/custody-operation.model';
@@ -95,6 +96,7 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
       FleetFuelCardModel,
       FleetFuelCardMovementModel,
       FleetFuelReconciliationModel,
+      FleetFuelSheetCodeModel,
       FleetReceiptModel,
       FleetCustodyMemoModel,
       FleetCustodyOperationModel,

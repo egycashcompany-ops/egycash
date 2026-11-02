@@ -308,3 +308,25 @@ def test_one_stray_letter_or_a_split_does_not_cost_a_known_name():
     assert _known_after_one_stray("هدىه") == "هدى"
     assert _known_after_one_stray("هد ى") == "هدى"
     assert _known_after_one_stray("ززززز") is None
+
+
+class CountingReader(PageReader):
+    def __init__(self, lines):
+        super().__init__(lines)
+        self.reads = 0
+
+    def read_page(self, image):  # noqa: ARG002
+        self.reads += 1
+        return list(self._lines)
+
+
+def test_a_weak_read_is_retried_but_not_when_told_the_photo_is_hopeless():
+    """A side with fields missing is read again (zoomed, enhanced). A photo the quality gate already
+    rejected for blur or glare gains nothing from that and cost a live card 25 s: read once."""
+    weak = [line for line in BACK if line[1] not in ("مسلم", "متزوج")]
+    retried = CountingReader(weak)
+    read_by_rows(IMAGE, "back", retried)
+    once = CountingReader(weak)
+    read_by_rows(IMAGE, "back", once, retry=False)
+    assert retried.reads > 1
+    assert once.reads == 1

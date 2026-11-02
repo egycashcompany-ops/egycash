@@ -9,9 +9,15 @@
 // entitled to nobody: it seeds, it stores, and it renders for no one, for ever. A section naming a
 // route the catalog does not seed files nothing. Neither raises anything at boot.
 import { describe, expect, it } from 'vitest';
-import { platformPermissions } from '@ecms/contracts';
+import {
+  HR_SETTINGS_HUB,
+  NAVIGATION_HUBS,
+  hubPermissions,
+  platformPermissions,
+} from '@ecms/contracts';
 import { moduleManifests } from './modules';
 import { NAVIGATION_CATALOG } from './seed-navigation';
+import { hrPages } from './modules/hr/hr.module';
 import { APPLICATION_SECTION_DEFAULTS } from './seed-application-sections';
 
 const rows = NAVIGATION_CATALOG.flatMap((category) =>
@@ -60,7 +66,8 @@ describe('the seeded navigation catalog', () => {
     //
     // 139 → 137: the two batch rows (security check, driving test) left the sidebar — each phase's
     // page links to its own batches — and are RETIRED on live installations (see below).
-    expect(rows).toHaveLength(137);
+    // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
+    expect(rows).toHaveLength(132);
   });
 
   /**
@@ -86,6 +93,42 @@ describe('the seeded navigation catalog', () => {
       const revisions = (category.retired ?? []).map((entry) => entry.revision);
       expect(revisions, category.en).toEqual(revisions.map((_, i) => i + 1));
     }
+  });
+
+  it('retires the six screens that became «الإعدادات» tabs, and seeds the one row over them', () => {
+    const hr = NAVIGATION_CATALOG.find((c) => c.en === 'HR');
+    const tabRoutes = [
+      '/recruitment-form',
+      '/applicant-sources',
+      '/interviews/stages',
+      '/evaluations/phases',
+      '/announcements',
+      '/notification-rules',
+    ];
+    expect(hr?.retired?.find((e) => e.revision === 2)?.routes).toEqual(tabRoutes);
+    const hub = hr?.apps[0];
+    expect(hub?.route).toBe(HR_SETTINGS_HUB.route);
+    expect(hub?.ar).toBe('الإعدادات');
+    // The row's own key is one of the tabs', so it never opens for somebody who holds no tab.
+    expect(hubPermissions(HR_SETTINGS_HUB.route)).toContain(hub?.permission);
+  });
+
+  /** The role matrix links each settings screen to where it lives now, not to a redirect. */
+  it('documents each settings screen at its tab', () => {
+    const tabRoutes = HR_SETTINGS_HUB.tabs.map((tab) => `${HR_SETTINGS_HUB.route}/${tab.key}`);
+    const documented = hrPages.flatMap((page) => (page.route === undefined ? [] : [page.route]));
+    expect(documented).toEqual(expect.arrayContaining(tabRoutes));
+    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap((e) => e.routes)) {
+      expect(documented, retired).not.toContain(retired);
+    }
+  });
+
+  /** A tab keyed on a permission nobody declares shows to nobody — and opens the row for nobody. */
+  it('keys every hub tab on a permission this platform declares', () => {
+    const unknown = NAVIGATION_HUBS.flatMap((hub) => hub.tabs)
+      .filter((tab) => !registry.has(tab.permission))
+      .map((tab) => `${tab.key} → ${tab.permission}`);
+    expect(unknown).toEqual([]);
   });
 
   it('retires the two batch rows from HR', () => {

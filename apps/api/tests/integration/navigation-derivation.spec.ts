@@ -14,7 +14,12 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
-import { SettingKeys, platformPermissions, type MyApplicationCategoryDto } from '@ecms/contracts';
+import {
+  HR_SETTINGS_HUB,
+  SettingKeys,
+  platformPermissions,
+  type MyApplicationCategoryDto,
+} from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -424,5 +429,36 @@ describe('the sidebar never contradicts the server', () => {
         .set('Authorization', `Bearer ${token}`);
       expect(refused.status, `${path} should be refused`).toBe(403);
     }
+  });
+});
+
+// «الإعدادات» — one row over six screens, each still behind its own key. Holding ANY of them is
+// what shows the row; holding none keeps it out, whatever the row's own key is.
+describe('a hub row opens with any of its tabs', () => {
+  beforeAll(async () => {
+    const res = await request(app)
+      .post('/api/v1/platform/applications')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: { ar: 'الإعدادات', en: 'Settings' },
+        icon: 'cog',
+        route: HR_SETTINGS_HUB.route,
+        categoryId: CATEGORY,
+        sortOrder: 0,
+        permissionKey: 'recruitmentForm.manage',
+      });
+    expect(res.status).toBe(201);
+  });
+
+  it('shows the row to somebody holding only a tab that is not the row\'s own key', async () => {
+    const id = await account('hub-1@ecms.local');
+    await giveRole(id, ['announcement.send']);
+    expect(await navigationOf(await tokenOf('hub-1@ecms.local'))).toEqual([HR_SETTINGS_HUB.route]);
+  });
+
+  it('hides it from somebody holding none of the tabs', async () => {
+    const id = await account('hub-2@ecms.local');
+    await giveRole(id, ['branch.view']);
+    expect(await navigationOf(await tokenOf('hub-2@ecms.local'))).toEqual(['/nav-branch']);
   });
 });

@@ -25,11 +25,17 @@
 // Leave screen; scope narrows the rows the screen returns, it does not withhold the screen. That is
 // the same reading `authorize()` gives on the route, which is what keeps the two surfaces agreeing.
 //
+// A HUB ROW IS OPENED BY ANY OF ITS TABS' KEYS (`NAVIGATION_HUBS` in the contracts). «الإعدادات» is
+// one row over six screens that each keep their own permission, and the page shows a reader only
+// the tabs he holds — so holding any one of the six is what makes the row worth showing, and the row
+// advertises nothing the six separate rows did not. Its own stored key still opens it too, so an
+// administrator who edits that key is not silently ignored.
+//
 // A NULL `permissionKey` is entitled to nobody. It means no permission was declared for that screen,
 // and "nobody said who may open this" must not resolve to "everybody may". The caller loading the
 // candidates already excludes them; the check is repeated here so the rule holds for any caller of
 // this function, and so it is visible where the decision is made.
-import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
+import { hubPermissions, type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 
 export interface EffectiveAppInput {
   id: string;
@@ -67,12 +73,18 @@ export const assembleEffectiveApplications = (
   sections: EffectiveSectionInput[] = [],
 ): MyApplicationCategoryDto[] => {
   // Dedupe by id (first wins), keep only active applications, and keep only the ones the caller is
-  // entitled to: a declared permission that they hold. No key declared → nobody is entitled.
+  // entitled to: a declared permission that they hold — or, for a hub, any of its tabs' keys. No
+  // key declared → nobody is entitled, hub or not.
+  const entitled = (app: EffectiveAppInput): boolean => {
+    const key = app.permissionKey;
+    if (key === null) return false;
+    if (permissions[key] !== undefined) return true;
+    return hubPermissions(app.route).some((tabKey) => permissions[tabKey] !== undefined);
+  };
   const active = new Map<string, EffectiveAppInput>();
   for (const app of apps) {
     if (app.status !== 'active' || active.has(app.id)) continue;
-    const key = app.permissionKey;
-    if (key === null || permissions[key] === undefined) continue;
+    if (!entitled(app)) continue;
     active.set(app.id, app);
   }
   const activeApps = [...active.values()];

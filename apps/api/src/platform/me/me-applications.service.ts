@@ -23,7 +23,7 @@
 //
 // Catalog repositories are read directly (not their services), which keeps this a leaf and avoids a
 // service import cycle.
-import { type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
+import { NAVIGATION_HUBS, type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 import { applicationRepository } from '../applications/application.repository';
 import { applicationCategoryRepository } from '../application-categories/application-category.repository';
 import { ApplicationSectionModel } from '../application-sections/application-section.model';
@@ -40,8 +40,13 @@ class MeApplicationsService {
    * so navigation inherits that cache and its invalidation rather than keeping one of its own.
    */
   async listEffective(permissions: Record<string, DataScope>): Promise<MyApplicationCategoryDto[]> {
-    // The catalog is asked only for what this caller could possibly be entitled to.
-    const apps = await applicationRepository.findByPermissionKeys(Object.keys(permissions));
+    // The catalog is asked only for what this caller could possibly be entitled to: the rows keyed
+    // on a permission they hold, and the hubs one of whose tabs they hold (whatever the hub row's
+    // own key is).
+    const hubs = NAVIGATION_HUBS.filter((hub) =>
+      hub.tabs.some((tab) => permissions[tab.permission] !== undefined),
+    ).map((hub) => hub.route);
+    const apps = await applicationRepository.findByPermissionKeys(Object.keys(permissions), hubs);
 
     // Load only the categories those applications reference.
     const categoryIds = new Set(apps.map((app) => String(app.categoryId)));

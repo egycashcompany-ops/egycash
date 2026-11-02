@@ -97,6 +97,9 @@ export const listFuelCardMovements = async (req: Request, res: Response): Promis
       doc.counterpartCardId == null ? null : (numbers.get(String(doc.counterpartCardId)) ?? null),
       doc.receiptId == null ? null : (receiptCars.get(String(doc.receiptId)) ?? null),
       doc.createdBy == null ? null : (names.get(String(doc.createdBy)) ?? null),
+      doc.cancelledBySheet?.by == null
+        ? null
+        : (names.get(String(doc.cancelledBySheet.by)) ?? null),
     ),
   );
 };

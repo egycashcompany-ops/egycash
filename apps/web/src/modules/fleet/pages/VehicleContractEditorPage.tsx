@@ -10,10 +10,18 @@
 // sent and the form stays open — then the files, each showing its percentage as it goes up, then
 // their order. A file that fails does not undo the contract: the screen names it, and it can be
 // added again from the contract's page.
+//
+// «المستلم حتى الآن» (batch 3): on «عقد جديد» a holder of «تسجيل استلام» may write, per line, the
+// cars that already arrived. While anything is written, «تاريخ الاستلام» (today until changed)
+// shows under the lines with what Save records — the contract's «الاستلام الأول» — and the footer
+// adds «— المستلم 26 · المتبقي 7». A box over its line's count turns rose and Save waits. Only the
+// create body carries them; on «تعديل العقد» the column is the saved figure, locked, and the
+// update body is as before (received cars change through «الاستلامات» on the contract's page).
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { type FleetVehicleContractDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
 import { Input } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -32,6 +40,7 @@ import { PATH, ymd } from '../components/FuelCardBoard';
 import { DESIGN_BACK, DesignPageHeader, today } from '../components/LicenseExpensePaidGroup';
 import { MEMO_ICON, Money, SectionHead } from '../components/custody-memo-parts';
 import {
+  ReceivedTotals,
   VehicleContractLinesEditor,
   countKey,
   lineInvalid,
@@ -41,9 +50,14 @@ import { AttachmentsTray, savedFiles } from '../components/VehicleContractTray';
 import { VehicleContractViewer } from '../components/VehicleContractViewer';
 import { type ShownFile } from '../components/VehicleContractAttachments';
 import {
+  createBodyOf,
+  editorReceived,
   editorTotals,
   moveItem,
+  receivedModeOf,
   typedCount,
+  updateBodyOf,
+  type EditorForm,
   type EditorLine,
 } from '../lib/vehicle-contract-figures';
 import { saveContractWithFiles, type TrayItem } from '../lib/vehicle-contract-save';
@@ -62,17 +76,16 @@ const newKey = (): string => {
   nextKey += 1;
   return `k${nextKey}`;
 };
-const emptyLine = (): EditorLine => ({ key: newKey(), id: null, typeId: '', count: '', price: '' });
+const emptyLine = (): EditorLine => ({
+  key: newKey(),
+  id: null,
+  typeId: '',
+  count: '',
+  price: '',
+  received: '',
+});
 
-interface Form {
-  date: string;
-  deadline: string;
-  name: string;
-  supplier: string;
-  lines: EditorLine[];
-}
-
-const formOf = (contract: FleetVehicleContractDto): Form => ({
+const formOf = (contract: FleetVehicleContractDto): EditorForm => ({
   date: contract.date,
   deadline: contract.deadline ?? '',
   name: contract.name,
@@ -83,7 +96,9 @@ const formOf = (contract: FleetVehicleContractDto): Form => ({
     typeId: line.typeId,
     count: String(line.count),
     price: line.unitPrice === null ? '' : String(line.unitPrice),
+    received: String(line.received),
   })),
+  receivedDate: today(),
 });
 
 const trayOf = (contract: FleetVehicleContractDto): TrayItem[] =>
@@ -91,6 +106,7 @@ const trayOf = (contract: FleetVehicleContractDto): TrayItem[] =>
 
 export const VehicleContractEditorPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const words = useVehicleContractWords();
   const navigate = useNavigate();
   const { id = '' } = useParams();
@@ -102,9 +118,16 @@ export const VehicleContractEditorPage = (): JSX.Element => {
   // An edit opens on the contract as it was read (at once when it is already in hand) — and again
   // after a refused, stale save.
   const loaded = contract.data;
-  const [form, setForm] = useState<Form>(() =>
+  const [form, setForm] = useState<EditorForm>(() =>
     loaded === undefined
-      ? { date: today(), deadline: '', name: '', supplier: '', lines: [emptyLine()] }
+      ? {
+          date: today(),
+          deadline: '',
+          name: '',
+          supplier: '',
+          lines: [emptyLine()],
+          receivedDate: today(),
+        }
       : formOf(loaded),
   );
   const [tray, setTray] = useState<TrayItem[]>(() => (loaded === undefined ? [] : trayOf(loaded)));
@@ -150,10 +173,16 @@ export const VehicleContractEditorPage = (): JSX.Element => {
     );
   }
 
-  const set = (change: Partial<Form>): void => setForm((held) => ({ ...held, ...change }));
+  const set = (change: Partial<EditorForm>): void => setForm((held) => ({ ...held, ...change }));
   const receivedOf = (line: EditorLine): number =>
     loaded?.lines.find((each) => each.id === line.id)?.received ?? 0;
   const totals = editorTotals(form.lines);
+  // Typed on a new contract by a holder of «تسجيل استلام»; the saved figure on an edit.
+  const receivedMode = receivedModeOf(editing, can('fleetVehicleContract.receive'));
+  const arrived = editorReceived(form.lines, receivedMode, loaded?.received ?? 0);
+  // A received box over its line's count: the box is rose, the note under the table names the
+  // make, and Save waits — as «تسجيل استلام» does. Never over a missing value.
+  const anyReceivedOver = arrived.over.length > 0;
   const shown: ShownFile[] = tray.map((item) =>
     item.kind === 'saved'
       ? (savedFiles({ id, files: [item.file] })[0] as ShownFile)
@@ -174,21 +203,11 @@ export const VehicleContractEditorPage = (): JSX.Element => {
   };
 
   const onSave = async (): Promise<void> => {
-    const invalid = form.lines.some((line) => lineInvalid(line, receivedOf(line)) !== null);
+    const invalid = form.lines.some(
+      (line) => lineInvalid(line, receivedOf(line), receivedMode) !== null,
+    );
     setShowInvalid(invalid);
     if (invalid || busy) return;
-    const body = {
-      name: form.name.trim(),
-      date: new Date(form.date),
-      deadline: form.deadline === '' ? null : new Date(form.deadline),
-      supplier: form.supplier.trim(),
-      lines: form.lines.map((line) => ({
-        id: line.id,
-        typeId: line.typeId,
-        count: typedCount(line.count),
-        unitPrice: line.price.trim() === '' ? null : Number(line.price),
-      })),
-    };
     for (const item of tray) {
       if (item.kind === 'pending') controllers.current.set(item.key, new AbortController());
     }
@@ -204,11 +223,11 @@ export const VehicleContractEditorPage = (): JSX.Element => {
           order: (contractId, fileIds) => api.orderVehicleContractFiles(contractId, fileIds),
         },
         loaded === undefined
-          ? { mode: 'create', body, items: tray }
+          ? { mode: 'create', body: createBodyOf(form, receivedMode), items: tray }
           : {
               mode: 'update',
               id: loaded.id,
-              body: { ...body, version: loaded.version },
+              body: updateBodyOf(form, loaded.version),
               before: loaded.files,
               items: tray,
             },
@@ -271,7 +290,9 @@ export const VehicleContractEditorPage = (): JSX.Element => {
         <section
           className={cn(
             SANS,
-            'flex flex-col rounded-2xl border text-slate-900 antialiased lg:w-[62%] dark:text-slate-100',
+            'flex flex-col rounded-2xl border text-slate-900 antialiased dark:text-slate-100',
+            // 62% → 68% where the received column shows, so the lines table keeps every box whole.
+            receivedMode === 'hidden' ? 'lg:w-[62%]' : 'lg:w-[68%]',
             'border-slate-200 bg-white dark:border-[#2b3b6b] dark:bg-[#121c3f]/95',
           )}
         >
@@ -293,6 +314,7 @@ export const VehicleContractEditorPage = (): JSX.Element => {
                     value={form.date}
                     onChange={(e) => set({ date: e.target.value })}
                     tone={DATE_BOX}
+                    data-contract-date="true"
                   />
                 </DesignField>
                 <DesignField
@@ -319,6 +341,7 @@ export const VehicleContractEditorPage = (): JSX.Element => {
                     onChange={(e) => set({ name: e.target.value })}
                     placeholder={t('fleet.vehicleContracts.fields.namePlaceholder')}
                     tone={BOX}
+                    data-contract-name-box="true"
                   />
                 </DesignField>
                 <div className="sm:col-span-3">
@@ -332,6 +355,7 @@ export const VehicleContractEditorPage = (): JSX.Element => {
                       onChange={(e) => set({ supplier: e.target.value })}
                       placeholder={t('fleet.vehicleContracts.fields.supplierPlaceholder')}
                       tone={BOX}
+                      data-contract-supplier-box="true"
                     />
                   </DesignField>
                 </div>
@@ -341,6 +365,9 @@ export const VehicleContractEditorPage = (): JSX.Element => {
             <VehicleContractLinesEditor
               lines={form.lines}
               receivedOf={receivedOf}
+              receivedMode={receivedMode}
+              receivedDate={form.receivedDate}
+              onReceivedDate={(day) => set({ receivedDate: day })}
               isMissing={required.isMissing}
               showInvalid={showInvalid}
               onChange={(key, change) =>
@@ -360,7 +387,9 @@ export const VehicleContractEditorPage = (): JSX.Element => {
             data-contract-footer="true"
             className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-b-2xl border-t border-slate-200 bg-slate-50/95 px-4 py-3 backdrop-blur sm:px-6 dark:border-[#2b3b6b] dark:bg-[#0f1838]/95"
           >
-            <p className="flex flex-wrap items-baseline gap-x-2 text-[15px] font-bold text-slate-800 dark:text-slate-100">
+            {/* The figures wrap inside their line on a desk, so Save keeps its place; on a phone
+                Save goes under them, as before. */}
+            <p className="flex min-w-0 flex-1 basis-[24rem] flex-wrap items-baseline gap-x-2 text-[15px] font-bold text-slate-800 dark:text-slate-100">
               <span>{t('fleet.vehicleContracts.total.label')}</span>
               <span data-contract-total={totals.total}>
                 <Money value={totals.total} big className="text-slate-900 dark:text-white" small />
@@ -372,11 +401,20 @@ export const VehicleContractEditorPage = (): JSX.Element => {
               <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                 {words.inLines(totals.priced === 0 ? form.lines.length : totals.priced)}
               </span>
+              {/* «— المستلم 26 · المتبقي 7» once something arrived. */}
+              {arrived.received > 0 && (
+                <ReceivedTotals
+                  received={arrived.received}
+                  left={arrived.left}
+                  over={anyReceivedOver}
+                />
+              )}
             </p>
             <DesignSave
               label={t('fleet.vehicleContracts.save')}
               onClick={required.guard(() => onSave())}
               busy={busy}
+              disabled={anyReceivedOver}
               data-contract-save="true"
             />
           </footer>

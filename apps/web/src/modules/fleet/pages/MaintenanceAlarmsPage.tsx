@@ -50,13 +50,10 @@ import { DARK_TABLE } from './VehiclesListPage';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
+import { BoardRemaining, BoardSinceCell } from '../components/AlarmFigureCell';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'level',
-  'vehicleCodes',
-  'sort',
-] as const;
+const REMEMBERED_FILTERS = ['level', 'vehicleCodes', 'sort'] as const;
 
 const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
 
@@ -246,35 +243,33 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
    * sign keeps its meaning — a negative «المتبقي» is exactly the overdue distance.
    */
   const exportSheet = async (): Promise<void> => {
-    saveSheet(
-      {
-        name: t('fleet.nav.maintenanceAlarms'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.odometer.columns.vehicle'),
-          t('fleet.alarms.columns.level'),
-          t('fleet.vehicle.statusReason'),
-          t('fleet.alarms.columns.sinceService'),
-          t('fleet.alarms.columns.daysWithoutReading'),
-          t('fleet.alarms.columns.remaining'),
-          t('fleet.vehicle.lastService'),
-        ],
-        rows: rows.map((alarm) => [
-          alarm.code,
-          // The screen's OWN vocabulary, read from the very list the filter dropdown is built
-          // from — one table of the three words, not a second copy that could drift from it.
-          levelOptions.find((option) => option.value === alarm.level)?.label ?? '',
-          // AND THE REASON IN THE BADGE'S OWN WORDS. No page writes this text: the server names
-          // the guard that stopped the calculation and `AlarmBadge` is the one place that turns
-          // it into a sentence, so the sheet and the cell beside it cannot say different things.
-          alarm.noAlarmReason === null ? '' : alarmText(t, 'none', alarm.noAlarmReason),
-          alarm.sinceServiceKm ?? '',
-          alarm.daysWithoutReading,
-          alarm.remainingKm ?? '',
-          alarm.lastServiceAt === null ? '' : formatDate(alarm.lastServiceAt, locale),
-        ]),
-      },
-    );
+    saveSheet({
+      name: t('fleet.nav.maintenanceAlarms'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.odometer.columns.vehicle'),
+        t('fleet.alarms.columns.level'),
+        t('fleet.vehicle.statusReason'),
+        t('fleet.alarms.columns.sinceService'),
+        t('fleet.alarms.columns.daysWithoutReading'),
+        t('fleet.alarms.columns.remaining'),
+        t('fleet.vehicle.lastService'),
+      ],
+      rows: rows.map((alarm) => [
+        alarm.code,
+        // The screen's OWN vocabulary, read from the very list the filter dropdown is built
+        // from — one table of the three words, not a second copy that could drift from it.
+        levelOptions.find((option) => option.value === alarm.level)?.label ?? '',
+        // AND THE REASON IN THE BADGE'S OWN WORDS. No page writes this text: the server names
+        // the guard that stopped the calculation and `AlarmBadge` is the one place that turns
+        // it into a sentence, so the sheet and the cell beside it cannot say different things.
+        alarm.noAlarmReason === null ? '' : alarmText(t, 'none', alarm.noAlarmReason),
+        alarm.sinceServiceKm ?? '',
+        alarm.daysWithoutReading,
+        alarm.remainingKm ?? '',
+        alarm.lastServiceAt === null ? '' : formatDate(alarm.lastServiceAt, locale),
+      ]),
+    });
   };
   // What the reader is told while the file is written, and when it fails — NAMED, not swallowed:
   // a button that silently does nothing is read as broken, and the next move is to press it again.
@@ -320,13 +315,13 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.sinceService'),
+      // «كيف حُسب الفارق»: the figure opens the card the odometer register's figure opens — the
+      // reading, the counted visit, the make's interval, what is left and the thresholds.
       render: (alarm) =>
         alarm.sinceServiceKm === null ? (
           DASH
         ) : (
-          <span dir="ltr" className={FIGURE}>
-            {latin(alarm.sinceServiceKm)}
-          </span>
+          <BoardSinceCell alarm={alarm} figureClassName={FIGURE} />
         ),
     },
     {
@@ -363,15 +358,22 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.remaining'),
-      // Drawn by the shared cell, which reads the sign — «متأخر … كم» once the service is missed —
-      // and, handed the car's level, writes the distance in its colour.
+      // «1,993 من 7,500 كم»: what is left, in the car's level colour, beside the make's interval
+      // — a long distance with no alarm explains itself. With no rule, or once the service is
+      // missed, the shared cell as it was: it reads the sign and says «متأخر … كم».
       render: (alarm) => (
-        <RemainingKm
-          remainingKm={alarm.remainingKm}
-          locale={locale}
-          formatNumber={latin}
-          level={alarm.level}
+        <BoardRemaining
+          alarm={alarm}
           figureClassName={FIGURE}
+          fallback={
+            <RemainingKm
+              remainingKm={alarm.remainingKm}
+              locale={locale}
+              formatNumber={latin}
+              level={alarm.level}
+              figureClassName={FIGURE}
+            />
+          }
         />
       ),
     },

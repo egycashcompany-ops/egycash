@@ -50,6 +50,18 @@ import {
   ListFleetCustodyMemosQuerySchema,
   ListFleetLicenseExpensesQuerySchema,
   UpdateFleetCustodyMemoSchema,
+  AddFleetFuelSheetCardSchema,
+  DecideFleetFuelLinksSchema,
+  DeleteFleetCustodyOperationSchema,
+  FLEET_FUEL_SHEET_CONFLICTS,
+  FLEET_FUEL_SHEET_NEVER_READ,
+  FLEET_FUEL_SHEET_ROLES,
+  FLEET_FUEL_SHEET_SYNONYMS,
+  FLEET_LICENSE_EXPENSE_PAYMENTS,
+  FleetLicenseExpensePaidBySchema,
+  ListFleetCustodyDeletedQuerySchema,
+  UpdateFleetCatalogItemSchema,
+  foldSheetHeader,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
 
@@ -1186,7 +1198,8 @@ describe('a held replenishment — «استعاضة معلّقة لحين الت
 
 describe('a fuel-card sheet — «مطابقة أرصدة الكروت»', () => {
   it('the log gains the sheet’s two kinds at the end; the first four keep their order', () => {
-    expect(FLEET_FUEL_MOVEMENT_KINDS).toEqual([
+    // Batch 3 (6b) appended `sheetLink` after these six — pinned whole in the batch-3 block below.
+    expect(FLEET_FUEL_MOVEMENT_KINDS.slice(0, 6)).toEqual([
       'charge',
       'transferIn',
       'transferOut',
@@ -1196,9 +1209,11 @@ describe('a fuel-card sheet — «مطابقة أرصدة الكروت»', () =>
     ]);
   });
 
-  it('a sheet is read for one of the two companies — nothing else rides beside the file', () => {
+  it('a sheet is read for one of the two companies — only its optional day rides beside the file', () => {
+    // Batch 3 (6a) added «تاريخ الشيت»: absent reads as none (`null`), so an old upload is unchanged.
     expect(UploadFleetFuelSheetSchema.parse({ company: 'wataniya' })).toEqual({
       company: 'wataniya',
+      sheetDate: null,
     });
     expect(UploadFleetFuelSheetSchema.parse({ company: 'chillout' }).company).toBe('chillout');
     expect(UploadFleetFuelSheetSchema.safeParse({}).success).toBe(false);
@@ -1251,5 +1266,305 @@ describe('a fuel-card sheet — «مطابقة أرصدة الكروت»', () =>
         balance: 100,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('batch 3 — the contracts the build is frozen on', () => {
+  const ids = (n: number, from = 1) =>
+    Array.from({ length: n }, (_, i) => oid((i + from).toString(16)));
+
+  it('the catalog schemas parse at import, after the paid-by enum moved ahead of them (no TDZ)', () => {
+    expect(FLEET_LICENSE_EXPENSE_PAYMENTS).toEqual(['visa', 'cash']);
+    expect(FleetLicenseExpensePaidBySchema.options).toEqual(['visa', 'cash']);
+    expect(
+      CreateFleetCatalogItemSchema.safeParse({
+        kind: 'licenseExpenseItem',
+        name: { ar: 'رسوم', en: 'Fees' },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('«طريقة الصرف» — visa, cash or both (null) on a licensing item; refused on another kind', () => {
+    const item = (licenseExpensePaidBy: unknown, kind = 'licenseExpenseItem') =>
+      CreateFleetCatalogItemSchema.safeParse({
+        kind,
+        name: { ar: 'رسوم', en: 'Fees' },
+        licenseExpensePaidBy,
+      });
+    expect(item('visa').success).toBe(true);
+    expect(item('cash').success).toBe(true);
+    expect(item(null).success).toBe(true);
+    expect(item(undefined).success).toBe(true);
+    expect(item('card').success).toBe(false);
+    expect(item('visa', 'workshop').success).toBe(false);
+    expect(item(null, 'workshop').success).toBe(true);
+    const refused = item('cash', 'workshop');
+    expect(refused.error?.issues.map((issue) => issue.path.join('.'))).toEqual([
+      'licenseExpensePaidBy',
+    ]);
+    expect(UpdateFleetCatalogItemSchema.parse({ licenseExpensePaidBy: null, version: 0 })).toEqual({
+      licenseExpensePaidBy: null,
+      version: 0,
+    });
+    expect(
+      UpdateFleetCatalogItemSchema.safeParse({ licenseExpensePaidBy: 'visa', version: 0 }).success,
+    ).toBe(true);
+    expect(UpdateFleetCatalogItemSchema.parse({ version: 0 })).toEqual({ version: 0 });
+  });
+
+  it('«حذف العملية» — the reason optional (trimmed, ≤ 500), the version required, nothing else', () => {
+    expect(DeleteFleetCustodyOperationSchema.parse({ version: 3 })).toEqual({
+      reason: '',
+      version: 3,
+    });
+    expect(DeleteFleetCustodyOperationSchema.parse({ reason: '  خطأ  ', version: 0 })).toEqual({
+      reason: 'خطأ',
+      version: 0,
+    });
+    expect(
+      DeleteFleetCustodyOperationSchema.safeParse({ reason: 'x'.repeat(500), version: 0 }).success,
+    ).toBe(true);
+    expect(
+      DeleteFleetCustodyOperationSchema.safeParse({ reason: 'x'.repeat(501), version: 0 }).success,
+    ).toBe(false);
+    expect(DeleteFleetCustodyOperationSchema.safeParse({ reason: 'x' }).success).toBe(false);
+    expect(DeleteFleetCustodyOperationSchema.safeParse({ version: -1 }).success).toBe(false);
+    expect(DeleteFleetCustodyOperationSchema.safeParse({ version: 0, restore: true }).success).toBe(
+      false,
+    );
+  });
+
+  it('«العمليات المحذوفة» — filtered by kind and by the day of the delete', () => {
+    const parsed = ListFleetCustodyDeletedQuerySchema.parse({
+      kind: 'charge,settle',
+      from: '2026-10-01',
+      to: '2026-10-31',
+      sort: 'deletedAt:asc',
+    });
+    expect(parsed.kind).toEqual(['charge', 'settle']);
+    expect(parsed.from).toEqual(new Date('2026-10-01'));
+    expect(parsed.to).toEqual(new Date('2026-10-31'));
+    expect(parsed.sort).toBe('deletedAt:asc');
+    expect(ListFleetCustodyDeletedQuerySchema.safeParse({}).success).toBe(true);
+    expect(ListFleetCustodyDeletedQuerySchema.safeParse({ kind: 'spend' }).success).toBe(false);
+    expect(ListFleetCustodyDeletedQuerySchema.safeParse({ from: 'yesterday' }).success).toBe(false);
+    expect(ListFleetCustodyDeletedQuerySchema.safeParse({ status: 'held' }).success).toBe(false);
+  });
+
+  it('«تاريخ الشيت» — absent or empty is none; a calendar day is that day; anything else is refused', () => {
+    expect(UploadFleetFuelSheetSchema.parse({ company: 'wataniya', sheetDate: '' }).sheetDate).toBe(
+      null,
+    );
+    expect(UploadFleetFuelSheetSchema.parse({ company: 'wataniya' }).sheetDate).toBe(null);
+    expect(
+      UploadFleetFuelSheetSchema.parse({ company: 'chillout', sheetDate: '2026-10-04' }).sheetDate,
+    ).toEqual(new Date(Date.UTC(2026, 9, 4)));
+    for (const bad of ['2026-02-30', '4-10-2026', '2026-10-4', '2026-10-04T10:00', 'today']) {
+      expect(
+        UploadFleetFuelSheetSchema.safeParse({ company: 'wataniya', sheetDate: bad }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('a decision may cancel charges and approve requests — only with ✓, each once; an old body is unchanged', () => {
+    const cardIds = ids(2);
+    expect(DecideFleetFuelReconcileSchema.parse({ decision: 'apply', cardIds })).toEqual({
+      decision: 'apply',
+      cardIds,
+    });
+    expect(
+      DecideFleetFuelReconcileSchema.parse({
+        decision: 'apply',
+        cardIds,
+        cancelCharges: ids(2, 100),
+        approveRequests: [cardIds[1]],
+      }),
+    ).toEqual({
+      decision: 'apply',
+      cardIds,
+      cancelCharges: ids(2, 100),
+      approveRequests: [cardIds[1]],
+    });
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'reject',
+        cardIds,
+        cancelCharges: ids(1, 100),
+      }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'reject',
+        cardIds,
+        approveRequests: [cardIds[0]],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'reject', cardIds, cancelCharges: [] })
+        .success,
+    ).toBe(true);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds,
+        cancelCharges: ['ABCDEF0123456789ABCDEF01', 'abcdef0123456789abcdef01'],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds,
+        approveRequests: [cardIds[0], cardIds[0]],
+      }).success,
+    ).toBe(false);
+    // A request is approved only on a card the same decision names.
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds,
+        approveRequests: ids(1, 50),
+      }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds,
+        cancelCharges: ids(501, 1000),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('«ربط الكروت بالسيارات» — defaults, strict, a pick names a car or a label for a card of the decision', () => {
+    const cardIds = ids(2);
+    expect(DecideFleetFuelLinksSchema.parse({ decision: 'apply', cardIds })).toEqual({
+      decision: 'apply',
+      cardIds,
+      pick: [],
+      remember: false,
+    });
+    expect(
+      DecideFleetFuelLinksSchema.parse({
+        decision: 'apply',
+        cardIds,
+        pick: [
+          { cardId: cardIds[0], vehicleId: oid('aa1') },
+          { cardId: cardIds[1], vehicleId: null, label: ' سفر 3 ' },
+        ],
+        remember: true,
+      }).pick,
+    ).toEqual([
+      { cardId: cardIds[0], vehicleId: oid('aa1'), label: null },
+      { cardId: cardIds[1], vehicleId: null, label: 'سفر 3' },
+    ]);
+    const bad = (body: Record<string, unknown>) =>
+      DecideFleetFuelLinksSchema.safeParse({ decision: 'apply', cardIds, ...body }).success;
+    expect(bad({ pick: [{ cardId: cardIds[0], vehicleId: null }] })).toBe(false);
+    expect(bad({ pick: [{ cardId: cardIds[0] }] })).toBe(false);
+    expect(bad({ pick: [{ cardId: cardIds[0], vehicleId: oid('aa1'), plate: '1' }] })).toBe(false);
+    expect(bad({ pick: [{ cardId: oid('99'), vehicleId: oid('aa1') }] })).toBe(false);
+    expect(
+      bad({
+        pick: [
+          { cardId: cardIds[0], vehicleId: oid('aa1') },
+          { cardId: cardIds[0], vehicleId: oid('aa2') },
+        ],
+      }),
+    ).toBe(false);
+    expect(bad({ cardIds: [cardIds[0], cardIds[0]] })).toBe(false);
+    expect(bad({ cardIds: [] })).toBe(false);
+    expect(bad({ alias: 'x' })).toBe(false);
+    expect(
+      DecideFleetFuelLinksSchema.safeParse({
+        decision: 'reject',
+        cardIds,
+        pick: [{ cardId: cardIds[0], vehicleId: oid('aa1') }],
+      }).success,
+    ).toBe(false);
+    expect(DecideFleetFuelLinksSchema.safeParse({ decision: 'reject', cardIds }).success).toBe(
+      true,
+    );
+  });
+
+  it('«إضافة» a sheet-only card — on a car or named, the expiry and the PIN typed as «إضافة كارت» asks', () => {
+    const base = { sheetRow: 7, expiresAt: '2028-05-31', password: '1234', vehicleId: oid('aa1') };
+    const parsed = AddFleetFuelSheetCardSchema.parse(base);
+    expect(parsed.expiresAt).toEqual(new Date('2028-05-31'));
+    expect(parsed.number).toBeUndefined();
+    expect(
+      AddFleetFuelSheetCardSchema.safeParse({ ...base, number: '7078 1234 5678 0021' }).success,
+    ).toBe(true);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, number: '123' }).success).toBe(false);
+    expect(
+      AddFleetFuelSheetCardSchema.safeParse({ ...base, vehicleId: null, label: 'اسبير' }).success,
+    ).toBe(true);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, vehicleId: null }).success).toBe(false);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, password: '' }).success).toBe(false);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, password: undefined }).success).toBe(
+      false,
+    );
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, expiresAt: null }).success).toBe(false);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, sheetRow: 0 }).success).toBe(false);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, balance: 10 }).success).toBe(false);
+    expect(AddFleetFuelSheetCardSchema.safeParse({ ...base, company: 'wataniya' }).success).toBe(
+      false,
+    );
+  });
+
+  it('the log ends with `sheetLink`; the conflicts keep `noName` and only ever append', () => {
+    expect(FLEET_FUEL_MOVEMENT_KINDS).toEqual([
+      'charge',
+      'transferIn',
+      'transferOut',
+      'receipt',
+      'sheetAdjust',
+      'sheetReject',
+      'sheetLink',
+    ]);
+    expect(FLEET_FUEL_SHEET_CONFLICTS).toEqual([
+      'sheetRowsDiffer',
+      'systemNameTwice',
+      'badBalance',
+      'noName',
+      'ambiguousNumber',
+      'cardTwice',
+      'lastFourOnly',
+    ]);
+  });
+
+  it('a header folds to one spelling — case, spaces, ة/ه, ى/ي, hamzas, tatweel and diacritics', () => {
+    expect(foldSheetHeader('Card  Number')).toBe('cardnumber');
+    expect(foldSheetHeader(' CARD_NO. ')).toBe('cardno');
+    expect(foldSheetHeader('اللوحة')).toBe('اللوحه');
+    expect(foldSheetHeader('قيمه الشحن')).toBe('قيمهالشحن');
+    expect(foldSheetHeader('قيمة  الشحن')).toBe('قيمهالشحن');
+    expect(foldSheetHeader('شاسى')).toBe('شاسي');
+    expect(foldSheetHeader('رقم الكارت (Card)')).toBe('رقمالكارتcard');
+    expect(foldSheetHeader('الرقم السرّي')).toBe('الرقمالسري');
+    expect(foldSheetHeader('إسم الكـــارت')).toBe('اسمالكارت');
+    expect(foldSheetHeader('\u200fرصيد البطاقة')).toBe('رصيدالبطاقه');
+  });
+
+  it('every synonym is already folded, belongs to one role, and the never-read headers are no role', () => {
+    const seen = new Map<string, string>();
+    for (const role of FLEET_FUEL_SHEET_ROLES) {
+      for (const synonym of FLEET_FUEL_SHEET_SYNONYMS[role]) {
+        expect(foldSheetHeader(synonym)).toBe(synonym);
+        expect(seen.get(synonym) ?? role).toBe(role);
+        seen.set(synonym, role);
+      }
+    }
+    expect(Object.keys(FLEET_FUEL_SHEET_SYNONYMS).sort()).toEqual(
+      [...FLEET_FUEL_SHEET_ROLES].sort(),
+    );
+    const neverRead = [
+      ...FLEET_FUEL_SHEET_NEVER_READ.secret,
+      ...FLEET_FUEL_SHEET_NEVER_READ.ignored,
+    ];
+    for (const header of neverRead) {
+      expect(foldSheetHeader(header)).toBe(header);
+      expect(seen.has(header)).toBe(false);
+    }
+    expect(FLEET_FUEL_SHEET_NEVER_READ.secret).toContain('pass');
+    expect(FLEET_FUEL_SHEET_NEVER_READ.ignored).toContain('قيمهالشحن');
   });
 });

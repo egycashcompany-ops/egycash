@@ -7,11 +7,17 @@
 // «عداد الخروج من الصيانة») — never the odometer columns' «عداد الخروج/الدخول», which mean
 // something else. The counter USED is marked, an exit counter SET ASIDE is struck through with the
 // reading that contradicts it, and whatever disagrees wears a «تعارض» tag.
+//
+// Its pieces — the fact line, the tags, the figure, the day, the sentence, the counter line — are
+// exported for «كيف حُسب الفارق» (`alarm-figure-card.tsx`), which draws a computed figure's facts
+// in the same type.
 import { type ReactNode } from 'react';
 import { type FleetVehicleStatus } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { templateParts, type CardFact } from '../lib/alarm-reason-card';
+
+type CardNewerWhy = Extract<CardFact, { kind: 'newer' }>['why'];
 import { NUM, ymd } from './FuelCardBoard';
 
 const LATIN = new Intl.NumberFormat('en-US');
@@ -20,12 +26,12 @@ const CARD = 'fleet.odometer.alarmReason.card.';
 const RED = 'text-red-700 dark:text-red-300';
 const FLAGGED_DAY =
   'rounded bg-amber-100 px-1 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200';
-const FACTS =
+export const FACTS =
   'mt-2.5 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 border-t border-slate-200 pt-2.5 text-[13px] dark:border-[#2b3b6b]';
-const ROW = 'flex flex-wrap items-center gap-1.5';
-const DOT = <span className="text-slate-400">·</span>;
+export const ROW = 'flex flex-wrap items-center gap-1.5';
+export const DOT = <span className="text-slate-400">·</span>;
 
-const Fact = ({
+export const Fact = ({
   label,
   mark,
   children,
@@ -52,7 +58,7 @@ const TAG: Record<TagTone, string> = {
   conflict:
     'border-red-300 bg-red-50 text-red-700 dark:border-red-500/50 dark:bg-red-500/15 dark:text-red-200',
 };
-const Tag = ({ tone }: { tone: TagTone }): JSX.Element => {
+export const Tag = ({ tone }: { tone: TagTone }): JSX.Element => {
   const t = useT();
   return (
     <span
@@ -68,7 +74,13 @@ const Tag = ({ tone }: { tone: TagTone }): JSX.Element => {
 };
 
 /** «25,631 كم»: the figure in Latin digits, the unit in the page's words, in the locale's order. */
-const Km = ({ km, className }: { km: number; className?: string | undefined }): JSX.Element => {
+export const Km = ({
+  km,
+  className,
+}: {
+  km: number;
+  className?: string | undefined;
+}): JSX.Element => {
   const t = useT();
   const [before = '', after = ''] = t('fleet.odometer.kmValue', { km: '\u0000' }).split('\u0000');
   return (
@@ -82,14 +94,20 @@ const Km = ({ km, className }: { km: number; className?: string | undefined }): 
   );
 };
 
-const Day = ({ iso, className }: { iso: string; className?: string | undefined }): JSX.Element => (
+export const Day = ({
+  iso,
+  className,
+}: {
+  iso: string;
+  className?: string | undefined;
+}): JSX.Element => (
   <span dir="ltr" className={cn(NUM, 'whitespace-nowrap', className)}>
     {ymd(iso)}
   </span>
 );
 
 /** A sentence with its `{{placeholders}}` filled by figures and days set apart, left to right. */
-const Sentence = ({
+export const Sentence = ({
   template,
   parts,
 }: {
@@ -103,7 +121,11 @@ const Sentence = ({
   </>
 );
 
-const CounterLine = ({ fact }: { fact: Extract<CardFact, { kind: 'counter' }> }): JSX.Element => {
+export const CounterLine = ({
+  fact,
+}: {
+  fact: Extract<CardFact, { kind: 'counter' }>;
+}): JSX.Element => {
   const t = useT();
   const aside = fact.setAside;
   return (
@@ -140,6 +162,14 @@ const CounterLine = ({ fact }: { fact: Extract<CardFact, { kind: 'counter' }> })
       )}
     </span>
   );
+};
+
+/** The newer visit's line, by why it does not count. */
+const NEWER_WORDS: Record<CardNewerWhy, string> = {
+  open: `${CARD}newerVisitOpen`,
+  notCounting: `${CARD}newerVisitNotCounting`,
+  // C8: closed and counting, but checked out before the visit the cycle is measured from.
+  checkedOutEarlier: 'fleet.odometer.alarmReason.newer.checkedOutEarlier',
 };
 
 const FactLine = ({ fact }: { fact: CardFact }): JSX.Element => {
@@ -220,9 +250,7 @@ const FactLine = ({ fact }: { fact: CardFact }): JSX.Element => {
         <Fact label={t(`${CARD}newerVisit`)} mark="newer">
           <span className="font-semibold leading-relaxed">
             <Sentence
-              template={t(
-                fact.why === 'open' ? `${CARD}newerVisitOpen` : `${CARD}newerVisitNotCounting`,
-              )}
+              template={t(NEWER_WORDS[fact.why])}
               parts={{ date: <Day iso={fact.date} /> }}
             />
           </span>

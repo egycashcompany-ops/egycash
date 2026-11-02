@@ -19,7 +19,12 @@ import '@fontsource/azeret-mono/500.css';
 import '@fontsource/azeret-mono/600.css';
 import '@fontsource/azeret-mono/700.css';
 import '@fontsource/azeret-mono/800.css';
-import { type FleetFuelCardCompany, type FleetFuelCardDto } from '@ecms/contracts';
+import {
+  cairoYmd,
+  expiryStateOn,
+  type FleetFuelCardCompany,
+  type FleetFuelCardDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
@@ -31,20 +36,22 @@ import { groupCardNumber } from '../lib/fuel-card-number';
 import { ACTION_GROUP, actionColour, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export type ExpiryState = 'valid' | 'soon' | 'expired' | 'unknown';
 
-/** Where a card's expiry stands today, against the setting's warning days. */
+/**
+ * Where a card's (or a licence's) expiry stands TODAY, against the setting's warning days — by the
+ * Cairo calendar day, R-02 / Q-02: expired ON its expiry day (`expiryStateOn`, the rule the
+ * dashboard counts with and every list filter's `licExpBefore` applies). The instant comparison it
+ * replaced called a card expiring today «soon» until the stored midnight passed, so a screen's own
+ * «منتهية» was one lower than the dashboard figure that linked to it.
+ */
 export const expiryState = (
   expiresAt: string | null,
   warnDays: number,
   now = Date.now(),
 ): ExpiryState => {
-  if (expiresAt === null) return 'unknown';
-  const left = new Date(expiresAt).getTime() - now;
-  if (left < 0) return 'expired';
-  return left <= warnDays * DAY_MS ? 'soon' : 'valid';
+  const state = expiryStateOn(expiresAt, cairoYmd(new Date(now)), warnDays);
+  return state === 'notRecorded' ? 'unknown' : state === 'expiring' ? 'soon' : state;
 };
 
 /** The design's type: Cairo for the words. */
@@ -201,13 +208,17 @@ export const CompanyBadge = ({
   size = 'sm',
 }: {
   company: FleetFuelCardCompany;
-  size?: 'sm' | 'lg';
+  size?: 'xs' | 'sm' | 'lg';
 }): JSX.Element => (
   <div
     data-fuel-company={company}
     className={cn(
       'flex shrink-0 items-center justify-center overflow-hidden shadow-sm',
-      size === 'sm' ? 'h-8 w-8 rounded-lg' : 'h-11 w-11 rounded-xl',
+      size === 'xs'
+        ? 'h-7 w-7 rounded-lg'
+        : size === 'sm'
+          ? 'h-8 w-8 rounded-lg'
+          : 'h-11 w-11 rounded-xl',
       company === 'wataniya'
         ? 'border border-emerald-300 dark:border-emerald-500/40 bg-white p-0.5'
         : 'border border-red-500/50 bg-[#bf2726]',
@@ -221,7 +232,7 @@ export const CompanyBadge = ({
   </div>
 );
 
-/** «ساري» / «ينتهي قريباً» / «منتهي» beside the date. */
+/** «ساري» / «ينتهي قريباً» / «منتهي» on the expiry's caption line. */
 const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
   const t = useT();
   if (state === 'unknown') return null;
@@ -229,7 +240,7 @@ const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
     <span
       data-fuel-expiry={state}
       className={cn(
-        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
+        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-3',
         state === 'valid' &&
           'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' &&
@@ -258,6 +269,27 @@ const COMPANY_TONE: Record<FleetFuelCardCompany, { text: string; dot: string; ho
   },
 };
 
+/**
+ * «عاوز كل الداتا تكون جمب بعض على صف واحد»: on a computer's screen a card is ONE row — its logo,
+ * its name with the company under it, then every figure side by side. To hold all of it on a 1366
+ * screen with the side menu open, each figure is a FIELD: a small caption on top — with the field's
+ * own button (the copy, the eye) or its state («ساري», «يوشك على النفاد») at the caption's end — and
+ * the value under it, so no label takes the row's width. The same box on both boards.
+ */
+export const FIELD_BOX =
+  'flex flex-col justify-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-0.5 fuel-grid:justify-self-stretch';
+/**
+ * A field's caption line: its word at the start, its button or state at the end. 10px holds
+ * «الرصيد» with «يوشك على النفاد» in the balance's 8rem on a 1366 screen; the light theme reads it
+ * in slate-600 so the small word is not faint on the field's pale ground.
+ */
+export const FIELD_CAPTION =
+  'flex h-3.5 items-center justify-between gap-1.5 whitespace-nowrap text-[10px] font-medium leading-3 text-slate-600 dark:text-slate-400';
+/** A field's value: one line, under the caption's word. */
+export const FIELD_VALUE = 'whitespace-nowrap text-right text-base leading-5';
+/** A small button on a caption line: a 14px icon, an 18px target, in the caption's colour. */
+const CAPTION_BUTTON = '-m-0.5 p-0.5 text-current transition';
+
 /** The PIN behind its eye — fetched under its own grant only when the eye is pressed. */
 const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const t = useT();
@@ -269,92 +301,145 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   };
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
-    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 fuel-grid:justify-self-stretch">
-      <span className="font-figures text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
+    <div data-fuel-pin={card.id} className={FIELD_BOX}>
+      <span className={FIELD_CAPTION}>
+        {/* «PIN» as the other captions read — a word, no colon. */}
+        <span className="font-figures">{t('fleet.fuelCards.board.pinCaption')}</span>
+        {shown !== null ? (
+          <button
+            type="button"
+            data-fuel-hide={card.id}
+            title={t('fleet.fuelCards.hide')}
+            aria-label={t('fleet.fuelCards.hide')}
+            onClick={() => setShown(null)}
+            className={cn(CAPTION_BUTTON, COMPANY_TONE[card.company].hover)}
+          >
+            <Svg d={PATH.eyeOff} className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          mayReveal && (
+            <button
+              type="button"
+              data-fuel-reveal={card.id}
+              title={t('fleet.fuelCards.board.pinToggle')}
+              aria-label={t('fleet.fuelCards.reveal')}
+              onClick={() => void reveal()}
+              className={cn(CAPTION_BUTTON, COMPANY_TONE[card.company].hover)}
+            >
+              <Svg d={PATH.eye} className="h-3.5 w-3.5" />
+            </button>
+          )
+        )}
+      </span>
       <span
         className={cn(
-          'text-base font-bold tracking-widest text-slate-800 dark:text-slate-200',
+          FIELD_VALUE,
+          'font-bold tracking-widest text-slate-800 dark:text-slate-200',
           NUM,
         )}
         dir="ltr"
       >
         {shown === null ? (card.hasPassword ? '••••' : '—') : shown === '' ? '—' : shown}
       </span>
-      {shown !== null ? (
-        <button
-          type="button"
-          data-fuel-hide={card.id}
-          title={t('fleet.fuelCards.hide')}
-          aria-label={t('fleet.fuelCards.hide')}
-          onClick={() => setShown(null)}
-          className={cn('p-0.5 text-slate-500 transition', COMPANY_TONE[card.company].hover)}
-        >
-          <Svg d={PATH.eyeOff} className="h-3.5 w-3.5" />
-        </button>
-      ) : (
-        mayReveal && (
-          <button
-            type="button"
-            data-fuel-reveal={card.id}
-            title={t('fleet.fuelCards.board.pinToggle')}
-            aria-label={t('fleet.fuelCards.reveal')}
-            onClick={() => void reveal()}
-            className={cn('p-0.5 text-slate-500 transition', COMPANY_TONE[card.company].hover)}
-          >
-            <Svg d={PATH.eye} className="h-3.5 w-3.5" />
-          </button>
-        )
-      )}
     </div>
   );
 };
 
-/** The number, in fours, with its copy button. */
-const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
+/**
+ * The number, in fours — the one box both boards draw («شحن الكروت» and «بطاقات الوقود»): its
+ * caption with the copy button, and the number on ONE line, never wrapped.
+ */
+export const FuelCardNumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const t = useT();
   const copy = async (): Promise<void> => {
     await navigator.clipboard.writeText(card.number);
     toast.success(t('fleet.fuelCards.numberCopied'));
   };
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
+    <div className={FIELD_BOX}>
+      <span className={FIELD_CAPTION}>
+        <span>{t('fleet.fuelCards.fields.number')}</span>
+        <button
+          type="button"
+          data-fuel-copy={card.id}
+          title={t('fleet.fuelCards.copyNumber')}
+          aria-label={t('fleet.fuelCards.copyNumber')}
+          onClick={() => void copy()}
+          className={cn(CAPTION_BUTTON, COMPANY_TONE[card.company].hover)}
+        >
+          <Svg d={PATH.copy} className="h-3.5 w-3.5" />
+        </button>
+      </span>
       <span
         data-fuel-number={card.id}
         dir="ltr"
         className={cn(
-          'whitespace-nowrap text-base font-bold tracking-wider text-slate-800 dark:text-slate-200',
+          FIELD_VALUE,
+          'font-bold tracking-wider text-slate-800 dark:text-slate-200',
           NUM,
         )}
       >
         {groupCardNumber(card.number)}
       </span>
-      <button
-        type="button"
-        data-fuel-copy={card.id}
-        title={t('fleet.fuelCards.copyNumber')}
-        aria-label={t('fleet.fuelCards.copyNumber')}
-        onClick={() => void copy()}
-        className={cn('p-0.5 text-slate-500 transition', COMPANY_TONE[card.company].hover)}
-      >
-        <Svg d={PATH.copy} className="h-3.5 w-3.5" />
-      </button>
+    </div>
+  );
+};
+
+/** The row's first column on both boards: the logo, the name, and its company under the name. */
+export const FuelCardNameCell = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
+  const t = useT();
+  const tone = COMPANY_TONE[card.company];
+  return (
+    <div data-fuel-name={card.id} className="flex shrink-0 items-center gap-1.5">
+      <CompanyBadge company={card.company} size="xs" />
+      <div className="flex min-w-0 flex-col">
+        <span
+          title={card.name}
+          className="whitespace-nowrap font-figures text-sm font-bold leading-5 text-slate-900 dark:text-white fuel-grid:text-[13px]"
+        >
+          {card.name}
+        </span>
+        <span
+          data-fuel-company-name={card.company}
+          className={cn('flex items-center gap-1 text-[11px] font-semibold leading-4', tone.text)}
+        >
+          <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} />
+          {t(`fleet.fuelCards.company.${card.company}`)}
+        </span>
+      </div>
     </div>
   );
 };
 
 /**
  * «بيانات الفيزتين اكنهم جدول»: every card line is a row of the same columns, so a card's number,
- * its expiry and its PIN sit under the line above's, each box as wide as its column. Where the
- * line has the room it is one line, the figures in the middle («ف النص»); where it has not
- * («لو الشاشه صغرت»), the card's name sits whole on top and the same columns follow under it —
- * nothing cut, nothing on two lines. A phone keeps the stacked card.
+ * its expiry and its PIN sit under the line above's, each box as wide as its column — and since
+ * «كل الداتا جمب بعض على صف واحد», from `fuel-grid` (a 50rem board: a 1366 screen with the side
+ * menu open) up it is ONE row: the card, its figures in the middle («ف النص»), its actions. A
+ * tablet or a phone, too narrow for it, lets the line wrap.
+ *
+ * The widths, measured in Azeret Mono (another figures font means measuring again):
+ *   · the card            13.75rem — a 28px logo, 6px, the longest name «EGYCASHTCS-8344-250541»
+ *                         at 13px (186px)
+ *   · the number          14.5rem — 19 characters at 16px with `tracking-wider` (212.8px), `px-2`
+ *                         and the border; the copy button rides on the caption line
+ *   · the expiry          7.75rem — «2028/03/31» at 16px (104px); the calendar and its state
+ *                         («ينتهي قريباً», the widest) on the caption line
+ *   · the PIN             4.25rem — four characters with `tracking-widest` (48px)
+ *   · the balance         8rem — «الرصيد» and «يوشك على النفاد» on the caption line (108px)
+ *   · the request         8rem — the amount (64px) with ✓ ✕
+ * The gap between the columns opens with the board, from 6px to 16px, measured on the same
+ * `fuel-rows` container; what is left goes to the card's column and the actions' («ف النص»).
  */
-export const CARD_COLUMNS =
-  'fuel-grid:grid fuel-grid:grid-cols-[15rem_12.5rem_8rem_1fr] fuel-grid:items-center fuel-grid:gap-x-6 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_15rem_12.5rem_8rem_1fr]';
-export const CHARGE_COLUMNS =
-  'fuel-grid:grid fuel-grid:grid-cols-[14rem_12.5rem_15.5rem_1fr] fuel-grid:items-center fuel-grid:gap-x-6 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_14rem_12.5rem_15.5rem_1fr]';
+const ONE_ROW_GAP = 'fuel-grid:gap-x-[clamp(0.375rem,calc((100cqi_-_48.5rem)/4),1rem)]';
+export const CARD_COLUMNS = `fuel-grid:grid fuel-grid:grid-cols-[minmax(13.75rem,1fr)_14.5rem_7.75rem_4.25rem_minmax(6.625rem,1fr)] fuel-grid:items-center ${ONE_ROW_GAP}`;
+export const CHARGE_COLUMNS = `fuel-grid:grid fuel-grid:grid-cols-[minmax(13.75rem,1fr)_14.5rem_8rem_8rem_minmax(2.625rem,1fr)] fuel-grid:items-center ${ONE_ROW_GAP}`;
 
-/** The card's name and company: a whole line above the boxes, or the line's first column. */
+/**
+ * The card's name and company as a whole line above the boxes — the two-row line the boards drew
+ * before they became one row. Neither board uses it now (both draw `FuelCardNameCell`); kept so
+ * nothing that imports it breaks.
+ */
 export const NAME_CELL = 'fuel-grid:col-span-full fuel-grid:min-w-0 fuel-line:col-span-1';
 
 export const FuelCardRow = ({
@@ -372,45 +457,30 @@ export const FuelCardRow = ({
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const tone = COMPANY_TONE[card.company];
   return (
     <div
       data-fuel-line={card.company}
       data-fuel-card={card.id}
       className={cn(
-        'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2.5 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md',
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2.5 py-2 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md fuel-grid:py-1.5',
         CARD_COLUMNS,
       )}
     >
-      <div className={cn('flex min-w-[210px] items-center gap-3', NAME_CELL)}>
-        <CompanyBadge company={card.company} />
-        <div className="flex min-w-0 flex-col">
-          <span
-            title={card.name}
-            className="whitespace-nowrap font-figures text-base font-bold tracking-wide text-slate-900 dark:text-white"
-          >
-            {card.name}
-          </span>
-          <span className={cn('mt-0.5 flex items-center gap-1 text-sm font-medium', tone.text)}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} />
-            {t(`fleet.fuelCards.company.${card.company}`)}
-          </span>
-        </div>
-      </div>
+      <FuelCardNameCell card={card} />
 
-      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4 fuel-grid:contents">
-        <NumberBox card={card} />
-        <div
-          className={cn(
-            'flex items-center gap-1.5 text-base text-slate-600 dark:text-slate-300',
-            NUM,
-          )}
-        >
-          <Svg d={PATH.calendar} className="h-4 w-4 text-slate-500" />
-          <span className="font-semibold text-slate-800 dark:text-slate-200" dir="ltr">
+      <div className="my-auto flex flex-wrap items-center gap-2 fuel-grid:contents">
+        <FuelCardNumberBox card={card} />
+        <div data-fuel-expiry-box={card.id} className={FIELD_BOX}>
+          <span className={FIELD_CAPTION}>
+            <Svg d={PATH.calendar} className="h-3.5 w-3.5" />
+            <ExpiryTag state={expiryState(card.expiresAt, warnDays)} />
+          </span>
+          <span
+            className={cn(FIELD_VALUE, 'font-semibold text-slate-800 dark:text-slate-200', NUM)}
+            dir="ltr"
+          >
             {ymd(card.expiresAt)}
           </span>
-          <ExpiryTag state={expiryState(card.expiresAt, warnDays)} />
         </div>
         <PinBox card={card} />
       </div>

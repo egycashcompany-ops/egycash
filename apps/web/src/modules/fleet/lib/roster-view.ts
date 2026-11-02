@@ -21,11 +21,24 @@
 // which have no dropdown and belong to no vocabulary. They combine with AND, with each other and
 // with the code search: no filter cancels another, and a bar showing two active filters shows
 // their intersection.
-import { type FleetFixedCrewRowDto, type FleetRosterRowDto } from '@ecms/contracts';
+import {
+  FLEET_DRIVER_UNAVAILABLE_REASONS,
+  type FleetDriverUnavailableReason,
+  type FleetFixedCrewRowDto,
+  type FleetRosterDayDto,
+  type FleetRosterRowDto,
+} from '@ecms/contracts';
 import { matchesVehicleCode } from './vehicle-code-match';
 
-/** The two STATE views. A mission is not one of these — it travels as `mission=<id>`. */
-export const ROSTER_VIEWS = ['workshop', 'assigned'] as const;
+/**
+ * The STATE views. A mission is not one of these — it travels as `mission=<id>`.
+ *
+ * The last three are the day's RULES as the server marked each row (R-03, R-06) — what the fleet
+ * dashboard counts and links to: «جاهزة» (`ready`), «بلا سائق» (`unmanned`) and «غياب الطاقم
+ * الثابت» (`crewGap`). The board never re-derives them: each reads the row's own server field, so
+ * the rows a link opens are the rows the dashboard counted.
+ */
+export const ROSTER_VIEWS = ['workshop', 'assigned', 'ready', 'unmanned', 'crewGap'] as const;
 export type RosterView = (typeof ROSTER_VIEWS)[number];
 
 /** `view=` from the URL, or `null` for anything this build does not know. */
@@ -97,6 +110,38 @@ export const matchesMission = (
   return missionTypeId !== null && missions.includes(missionTypeId);
 };
 
+// ── the day's rules, as the server marked each row ─────────────────────────
+//
+// Each reads the server's field and falls back to the meaning the board had before the field
+// existed — an answer from an older server is read exactly as it was read then, never guessed at.
+
+/** R-03 · ready: active, out of the workshop and licensed on the day. Without the field: not in the workshop. */
+export const isReady = (row: FleetRosterRowDto): boolean => row.assignable ?? !row.inMaintenance;
+
+/** R-06 · manned: a seat names a driver available on the day. Without the field: a driver in either seat. */
+export const isManned = (row: FleetRosterRowDto): boolean => row.manned ?? hasDriver(row);
+
+/** T2.5 · «بلا سائق» — a ready car that no available driver mans. */
+export const isUnmanned = (row: FleetRosterRowDto): boolean => isReady(row) && !isManned(row);
+
+/** The two reasons that make a driver ABSENT (R-05). The rest are not absences. */
+export const ABSENCE_REASONS: readonly FleetDriverUnavailableReason[] = [
+  'fleetUnavailability',
+  'hrLeave',
+];
+
+/**
+ * T1.6 · «غياب الطاقم الثابت» — the row has a crew gap whose reason is an ABSENCE. A gap for any
+ * other reason (an expired licence, a suspended or switched-off driver) is not an absence and is
+ * shown on its own (`hasOtherCrewGap`), exactly as the dashboard counts it on its own line.
+ */
+export const hasCrewGap = (row: FleetRosterRowDto): boolean =>
+  (row.crewGaps ?? []).some((gap) => ABSENCE_REASONS.includes(gap.reason));
+
+/** A crew gap for a reason that is not an absence. */
+export const hasOtherCrewGap = (row: FleetRosterRowDto): boolean =>
+  (row.crewGaps ?? []).some((gap) => !ABSENCE_REASONS.includes(gap.reason));
+
 export const visibleRows = (
   rows: readonly FleetRosterRowDto[],
   filters: { term?: string; missions?: readonly string[]; view?: RosterView | null },
@@ -108,8 +153,96 @@ export const visibleRows = (
     if (!matchesMission(row.missionTypeId, filters.missions)) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'assigned' && !carriesPlan(row)) return false;
+    if (view === 'ready' && !isReady(row)) return false;
+    if (view === 'unmanned' && !isUnmanned(row)) return false;
+    if (view === 'crewGap' && !hasCrewGap(row)) return false;
     return true;
   });
+};
+
+// ── the day's drivers: the licence flag and the reasons ────────────────────
+
+/**
+ * Everyone on the day whose licence has EXPIRED (R-02), from the server's answer and nothing else:
+ * an available driver it flagged (`licence: 'expired'`, while the rule only flags), and an
+ * unavailable one it refused for it (`licenceExpired`, once the rule refuses).
+ */
+export const expiredLicenceIds = (
+  day: Pick<FleetRosterDayDto, 'availableDrivers' | 'unavailableDrivers'> | undefined,
+): ReadonlySet<string> =>
+  new Set([
+    ...(day?.availableDrivers ?? [])
+      .filter((driver) => driver.licence === 'expired')
+      .map((driver) => driver.employeeId),
+    ...(day?.unavailableDrivers ?? [])
+      .filter((driver) => driver.reason === 'licenceExpired')
+      .map((driver) => driver.employeeId),
+  ]);
+
+/** The available panel's own list: everyone EXCEPT the licence-expired, who are listed under it. */
+export const withoutExpiredLicence = <T extends { employeeId: string }>(
+  drivers: readonly T[],
+  expired: ReadonlySet<string>,
+): T[] => drivers.filter((driver) => !expired.has(driver.employeeId));
+
+/**
+ * The list the owner checks before switching the refusal on (Q-01): the drivers and the active
+ * vehicles whose licence has expired on the board's day — the expiry day itself included, which is
+ * what `licExpBefore=<day>` means on both screens.
+ */
+export const licenceCheckLinks = (date: string): { drivers: string; vehicles: string } => ({
+  drivers: `${DRIVERS_SCREEN}?${new URLSearchParams({ licExpBefore: date }).toString()}`,
+  vehicles: `${VEHICLES_SCREEN}?${new URLSearchParams({ status: 'active', licExpBefore: date }).toString()}`,
+});
+
+// The two SCREENS' routes, named once. They are pages to open, not the registry's API — which only
+// the module's API layer may name (the registry census in `vehicle-code-selectors.spec.ts`).
+const DRIVERS_SCREEN = '/fleet/drivers';
+const VEHICLES_SCREEN = '/fleet/vehicles';
+
+/**
+ * The unavailable panel narrowed to the reasons asked for (`unavailable=<reason,…>`). Nothing
+ * asked for is everybody — the same rule as the mission filter.
+ */
+export const byReasons = <T extends { reason: string }>(
+  drivers: readonly T[],
+  reasons: readonly string[],
+): T[] =>
+  reasons.length === 0 ? [...drivers] : drivers.filter((driver) => reasons.includes(driver.reason));
+
+/**
+ * One subtotal per reason present on the day, in the seam's own order (its precedence), then any
+ * reason this build does not know, as sent. They add up to the panel's total.
+ */
+export const reasonSubtotals = (
+  drivers: readonly { reason: string }[],
+): { reason: string; count: number }[] => {
+  const counts = new Map<string, number>();
+  for (const driver of drivers) counts.set(driver.reason, (counts.get(driver.reason) ?? 0) + 1);
+  const known = FLEET_DRIVER_UNAVAILABLE_REASONS.filter((reason) => counts.has(reason));
+  const unknown = [...counts.keys()].filter(
+    (reason) => !(FLEET_DRIVER_UNAVAILABLE_REASONS as readonly string[]).includes(reason),
+  );
+  return [...known, ...unknown].map((reason) => ({ reason, count: counts.get(reason) ?? 0 }));
+};
+
+/**
+ * The reason chips: one per subtotal of the day, AND one per reason asked for that nobody has
+ * today (count 0) — the dashboard links every part, zeros included, so `unavailable=hrLeave` can
+ * arrive on a day without leave. Its chip is drawn pressed, so the filter is seen and one click
+ * takes it off; without it the panel emptied with nothing on screen saying why.
+ */
+export const reasonChips = (
+  subtotals: readonly { reason: string; count: number }[],
+  asked: readonly string[],
+): { reason: string; count: number }[] => {
+  const present = new Set(subtotals.map((s) => s.reason));
+  return [
+    ...subtotals,
+    ...[...new Set(asked)]
+      .filter((reason) => !present.has(reason))
+      .map((reason) => ({ reason, count: 0 })),
+  ];
 };
 
 // ── the STANDING board ─────────────────────────────────────────────────────
@@ -187,6 +320,11 @@ export const COUNTER_TONES = {
   workshop: 'bg-rose-100 text-rose-800 ring-rose-500 dark:bg-rose-900/40 dark:text-rose-100',
   assigned:
     'bg-emerald-100 text-emerald-800 ring-emerald-500 dark:bg-emerald-900/40 dark:text-emerald-100',
+  // The day's rules — three more STATES, in hues no mission and no other state wears.
+  ready: 'bg-blue-100 text-blue-800 ring-blue-500 dark:bg-blue-900/40 dark:text-blue-100',
+  unmanned:
+    'bg-yellow-100 text-yellow-900 ring-yellow-500 dark:bg-yellow-900/40 dark:text-yellow-100',
+  crewGap: 'bg-red-100 text-red-800 ring-red-500 dark:bg-red-900/40 dark:text-red-100',
 } as const;
 
 /** Mission hues: distinct from each other and from the three above, none of them a verdict. */

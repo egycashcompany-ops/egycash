@@ -1,17 +1,22 @@
 // «عقود توريد السيارات» against a real mongo: only a date and one line are required; numbers are
 // never reused; an edit cannot drop below what arrived; a delivery cannot go past what is owed —
 // not even two at once; «إنذار التوريد» counts from the server's day and its filter, its sort and
-// the DTO agree; and every delete is soft. The attachments and the grants are
+// the DTO agree; «المستلم حتى الآن» typed on a new contract is its first delivery, read by every
+// figure as one; and every delete is soft. The attachments and the grants are
 // `fleet-vehicle-contract-files.spec.ts`.
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
+  CreateFleetVehicleContractSchema,
   FleetVehicleContractSummaryQuerySchema,
   ListFleetVehicleContractsQuerySchema,
   type FleetVehicleContractDto,
 } from '@ecms/contracts';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { type AuthContext } from '../../src/shared/types';
+import { cairoDayOf } from '../../src/modules/fleet/fleet-cairo-day';
 import { FleetVehicleTypeModel } from '../../src/modules/fleet/vehicle-types/vehicle-type.model';
 import { FleetVehicleContractModel } from '../../src/modules/fleet/vehicle-contracts/vehicle-contract.model';
 import { fleetVehicleContractService as service } from '../../src/modules/fleet/vehicle-contracts/vehicle-contract.service';
@@ -270,6 +275,374 @@ describe('«تسجيل استلام»', () => {
       reason: { httpStatus: 409 },
     });
     expect((await service.get(dto.id, new Date())).received).toBe(5);
+  });
+});
+
+describe('«المستلم حتى الآن» on a new contract — its first delivery, in the same insert', () => {
+  /** A direct caller's context: the admin, holding `receive` or not. */
+  const ctxOf = (receive: boolean): AuthContext => ({
+    userId: adminId,
+    sessionId: 'vc-received',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'ar',
+    permissions: {
+      'fleetVehicleContract.create': 'organization',
+      ...(receive ? { 'fleetVehicleContract.receive': 'organization' } : {}),
+    },
+    permissionVersion: 0,
+    isPrivileged: false,
+  });
+  const patchContract = (id: string, body: Record<string, unknown>) =>
+    request(app).patch(`${URL_}/${id}`).set(auth(admin)).send(body);
+
+  it('records 15 of 22 and 11 of 11 as «الاستلام الأول» on the day given', async () => {
+    // His sample: Sprinter 516 ×22 with 15 received, Axor 915 ×11 with all 11, on 2026/11/01.
+    const dto = await created({
+      date: '2026-01-10',
+      supplier: 'مورد الاستلام الأول',
+      lines: [
+        { typeId: typeA, count: 22, unitPrice: 4_700_000, received: 15 },
+        { typeId: typeB, count: 11, unitPrice: 5_400_000, received: 11 },
+      ],
+      receivedDate: '2026-11-01',
+    });
+    expect(dto).toMatchObject({ contracted: 33, received: 26, remaining: 7, version: 0 });
+    expect(dto.lines.map((l) => [l.count, l.received, l.remaining])).toEqual([
+      [22, 15, 7],
+      [11, 11, 0],
+    ]);
+    expect(dto.deliveries).toHaveLength(1);
+    expect(dto.deliveries[0]).toMatchObject({
+      no: 1,
+      date: '2026-11-01',
+      total: 26,
+      receivedAfter: 26,
+      remainingAfter: 7,
+    });
+    expect(dto.deliveries[0]?.counts).toEqual([
+      { lineId: dto.lines[0]?.id, count: 15 },
+      { lineId: dto.lines[1]?.id, count: 11 },
+    ]);
+    // Stored as «تسجيل استلام» stores one: the UTC midnight of the day, live, by the caller.
+    const raw = await FleetVehicleContractModel.findById(dto.id).lean();
+    expect(raw?.deliveries).toHaveLength(1);
+    expect(raw?.deliveries[0]).toMatchObject({
+      date: new Date('2026-11-01T00:00:00.000Z'),
+      isDeleted: false,
+      deletedAt: null,
+    });
+    expect(String(raw?.deliveries[0]?.createdBy)).toBe(adminId);
+    expect(String(raw?.deliveries[0]?.updatedBy)).toBe(adminId);
+    // …and read back the same way.
+    const read = data<FleetVehicleContractDto>(
+      await request(app).get(`${URL_}/${dto.id}`).set(auth(viewer)),
+    );
+    expect(read).toMatchObject({ received: 26, remaining: 7 });
+    expect(read.deliveries).toEqual(dto.deliveries);
+  });
+
+  it('leaves a line with nothing received out of the delivery, and «تسجيل استلام» adds after it', async () => {
+    const dto = await created({
+      date: '2026-10-01',
+      lines: [
+        { typeId: typeA, count: 5, received: 0 },
+        { typeId: typeB, count: 3, received: 2 },
+      ],
+      receivedDate: '2026-10-02',
+    });
+    const [a, b] = dto.lines;
+    expect(dto.deliveries[0]?.counts).toEqual([{ lineId: b?.id, count: 2 }]);
+    // Only 1 is still owed on that line — the opening delivery counts in «أكثر من المتبقي».
+    const over = await receive(dto.id, {
+      date: '2026-10-05',
+      version: 0,
+      counts: [{ lineId: b?.id, count: 2 }],
+    });
+    expect(over.status).toBe(422);
+    expect(over.body.error.details[0]).toMatchObject({ code: 'OVER_REMAINING' });
+    const next = await receive(dto.id, {
+      date: '2026-10-05',
+      version: 0,
+      counts: [
+        { lineId: a?.id, count: 5 },
+        { lineId: b?.id, count: 1 },
+      ],
+    });
+    expect(next.status, JSON.stringify(next.body)).toBe(201);
+    const after = data<FleetVehicleContractDto>(next);
+    expect(after.deliveries.map((d) => [d.no, d.date, d.total, d.remainingAfter])).toEqual([
+      [1, '2026-10-02', 2, 6],
+      [2, '2026-10-05', 6, 0],
+    ]);
+    expect(after.remaining).toBe(0);
+  });
+
+  it('writes `deliveries: []` exactly as before when nothing is received — untyped or all 0', async () => {
+    const untyped = await created({ date: '2026-10-01', lines: [{ typeId: typeA, count: 2 }] });
+    const zeros = await created({
+      date: '2026-10-01',
+      lines: [
+        { typeId: typeA, count: 2, received: 0 },
+        { typeId: typeB, count: 1, received: 0 },
+      ],
+      receivedDate: '2026-10-05', // ignored: nothing was received
+    });
+    for (const dto of [untyped, zeros]) {
+      expect(dto).toMatchObject({ received: 0, remaining: dto.contracted, deliveries: [] });
+      expect((await FleetVehicleContractModel.findById(dto.id).lean())?.deliveries).toEqual([]);
+    }
+  });
+
+  it('has no alarm once all is received, even three days before the deadline', async () => {
+    const NOW = new Date('2026-10-19T10:00:00.000Z');
+    const S = 'مورد الإنذار والمستلم';
+    const body = (received: number) => ({
+      date: '2026-09-01',
+      deadline: '2026-10-22',
+      supplier: S,
+      lines: [{ typeId: typeA, count: 4, received }],
+      receivedDate: '2026-10-01',
+    });
+    const full = await created(body(4));
+    const part = await created(body(1));
+    expect((await service.get(full.id, NOW)).alarm).toBeNull();
+    expect((await service.get(part.id, NOW)).alarm).toMatchObject({
+      level: 'red',
+      days: 3,
+      left: 3,
+    });
+    // The filter agrees with the DTO.
+    const red = await service.list(
+      ListFleetVehicleContractsQuerySchema.parse({ suppliers: S, alarm: 'red,yellow' }),
+      NOW,
+    );
+    expect(red.items.map((c) => c.id)).toEqual([part.id]);
+  });
+
+  it('counts in the list’s received share and remaining, and in «الإحصائيات»', async () => {
+    const S = 'مورد المستلم عند التسجيل';
+    const half = await created({
+      date: '2026-07-01',
+      supplier: S,
+      lines: [{ typeId: typeA, count: 10, received: 5 }],
+      receivedDate: '2026-07-02',
+    });
+    const most = await created({
+      date: '2026-07-02',
+      supplier: S,
+      lines: [{ typeId: typeA, count: 4, unitPrice: 1_000, received: 3 }],
+      receivedDate: '2026-07-02',
+    });
+    const none = await created({
+      date: '2026-07-03',
+      supplier: S,
+      lines: [{ typeId: typeB, count: 4 }],
+    });
+    const order = async (sort: string) =>
+      data<FleetVehicleContractDto[]>(
+        await request(app).get(URL_).query({ suppliers: S, sort }).set(auth(viewer)),
+      ).map((c) => c.id);
+    expect(await order('receivedShare:desc')).toEqual([most.id, half.id, none.id]);
+    expect(await order('remaining:asc')).toEqual([most.id, none.id, half.id]);
+    const totals = await service.summary(
+      FleetVehicleContractSummaryQuerySchema.parse({ suppliers: S }),
+      new Date(),
+    );
+    expect(totals).toEqual({ count: 3, value: 4_000, contracted: 18, received: 8 });
+  });
+
+  it('takes Cairo’s day when no day is given — at 23:30 UTC that is already tomorrow', async () => {
+    const input = (receivedDate?: string | null) =>
+      CreateFleetVehicleContractSchema.parse({
+        date: '2026-10-31',
+        lines: [{ typeId: typeA, count: 3, received: 2 }],
+        ...(receivedDate === undefined ? {} : { receivedDate }),
+      });
+    const dayOf = async (body: ReturnType<typeof input>, now: string) =>
+      (await service.create(ctxOf(true), body, new Date(now))).deliveries[0]?.date;
+    // Winter (+2): 23:30Z on 10/31 is 01:30 on 11/01 in Cairo; 21:59Z is still 23:59 on 10/31.
+    expect(await dayOf(input(), '2026-10-31T23:30:00.000Z')).toBe('2026-11-01');
+    expect(await dayOf(input(null), '2026-10-31T21:59:00.000Z')).toBe('2026-10-31');
+    expect(await dayOf(input(null), '2026-10-31T22:00:00.000Z')).toBe('2026-11-01');
+    // Summer (+3): 21:30Z on 07/15 is 00:30 on 07/16.
+    expect(await dayOf(input(), '2026-07-15T21:30:00.000Z')).toBe('2026-07-16');
+    // A day the form gives is kept as given, whatever the hour.
+    expect(await dayOf(input('2026-10-31'), '2026-10-31T23:30:00.000Z')).toBe('2026-10-31');
+    // Over HTTP, with no day and with `null`: today, in Cairo.
+    for (const extra of [{}, { receivedDate: null }]) {
+      const before = cairoDayOf(new Date());
+      const dto = await created({
+        date: '2026-10-31',
+        lines: [{ typeId: typeA, count: 3, received: 1 }],
+        ...extra,
+      });
+      const after = cairoDayOf(new Date());
+      expect([before, after]).toContain(dto.deliveries[0]?.date);
+    }
+  });
+
+  it('is refused (403) without `receive` — before a number is spent — and saved without received cars', async () => {
+    const contract = (received: number) =>
+      CreateFleetVehicleContractSchema.parse({
+        date: '2026-10-20',
+        lines: [{ typeId: typeA, count: 3, received }],
+      });
+    const previous = await service.create(ctxOf(false), contract(0));
+    const contracts = await FleetVehicleContractModel.countDocuments();
+    await expect(service.create(ctxOf(false), contract(1))).rejects.toMatchObject({
+      httpStatus: 403,
+    });
+    expect(await FleetVehicleContractModel.countDocuments()).toBe(contracts);
+    const next = await service.create(ctxOf(false), contract(0));
+    expect(next.no).toBe(previous.no + 1); // the refused one took no number
+    expect(next.deliveries).toEqual([]);
+    // With the grant, the same body is a contract and its first delivery.
+    expect((await service.create(ctxOf(true), contract(1))).received).toBe(1);
+  });
+
+  it('refuses over the count, a negative or a fraction, and an unknown key on a line (400)', async () => {
+    const base = { date: '2026-10-20', receivedDate: '2026-10-20' };
+    const over = await create({ ...base, lines: [{ typeId: typeA, count: 22, received: 25 }] });
+    expect(over.status).toBe(400);
+    expect(over.body.error.details).toEqual([
+      expect.objectContaining({ field: 'body.lines.0.received' }),
+    ]);
+    for (const received of [-1, 1.5]) {
+      const res = await create({ ...base, lines: [{ typeId: typeA, count: 3, received }] });
+      expect(res.status).toBe(400);
+    }
+    const stranger = await create({
+      ...base,
+      lines: [{ typeId: typeA, count: 3, received: 1, delivered: 1 }],
+    });
+    expect(stranger.status).toBe(400);
+    expect(
+      (await create({ ...base, lines: [{ typeId: typeA, count: 3 }], receivedDate: 'x' })).status,
+    ).toBe(400);
+  });
+
+  it('locks what arrived; the opening delivery edits and deletes with the existing pen and bin', async () => {
+    const dto = await created({
+      date: '2026-10-03',
+      lines: [
+        { typeId: typeA, count: 10, received: 6 },
+        { typeId: typeB, count: 5 },
+      ],
+      receivedDate: '2026-10-04',
+    });
+    const [a, b] = dto.lines;
+    const opening = dto.deliveries[0];
+    const lines = (count: number) => [
+      { id: a?.id, typeId: typeA, count },
+      { id: b?.id, typeId: typeB, count: 5 },
+    ];
+
+    const below = await patchContract(dto.id, { date: '2026-10-03', version: 0, lines: lines(5) });
+    expect(below.status).toBe(422);
+    expect(below.body.error.details[0]).toMatchObject({
+      field: 'lines.0.count',
+      code: 'BELOW_RECEIVED',
+    });
+    const dropped = await patchContract(dto.id, {
+      date: '2026-10-03',
+      version: 0,
+      lines: [{ id: b?.id, typeId: typeB, count: 5 }],
+    });
+    expect(dropped.status).toBe(422);
+    expect(dropped.body.error.details[0]).toMatchObject({ code: 'LINE_RECEIVED' });
+
+    // The pen: its own 6 are given back, so 10 fits on its line and 11 does not.
+    const pen = (count: number, version: number) =>
+      request(app)
+        .patch(`${URL_}/${dto.id}/deliveries/${opening?.id}`)
+        .set(auth(admin))
+        .send({ date: '2026-10-02', version, counts: [{ lineId: a?.id, count }] });
+    expect((await pen(11, 0)).status).toBe(422);
+    const edited = await pen(4, 0);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    const penned = data<FleetVehicleContractDto>(edited);
+    expect(penned.deliveries.map((d) => [d.id, d.no, d.date, d.total])).toEqual([
+      [opening?.id, 1, '2026-10-02', 4],
+    ]);
+    expect(penned.received).toBe(4);
+
+    // The bin: soft — the cars go back to «المتبقي», the delivery stays in the document.
+    const binned = await request(app)
+      .delete(`${URL_}/${dto.id}/deliveries/${opening?.id}`)
+      .set(auth(admin));
+    expect(binned.status).toBe(200);
+    const left = data<FleetVehicleContractDto>(binned);
+    expect(left).toMatchObject({ received: 0, remaining: 15, deliveries: [] });
+    const raw = await FleetVehicleContractModel.findById(dto.id).lean();
+    expect(raw?.deliveries.map((d) => d.isDeleted)).toEqual([true]);
+    // Nothing arrived now, so the line may go below 6.
+    const freed = await patchContract(dto.id, {
+      date: '2026-10-03',
+      version: left.version,
+      lines: lines(1),
+    });
+    expect(freed.status, JSON.stringify(freed.body)).toBe(200);
+  });
+
+  it('is never typed on an edit — `received` or `receivedDate` on PATCH is a 400', async () => {
+    const dto = await created({
+      date: '2026-10-07',
+      lines: [{ typeId: typeA, count: 3, received: 1 }],
+      receivedDate: '2026-10-07',
+    });
+    const id = dto.lines[0]?.id;
+    const withReceived = await patchContract(dto.id, {
+      date: '2026-10-07',
+      version: 0,
+      lines: [{ id, typeId: typeA, count: 3, received: 3 }],
+    });
+    expect(withReceived.status).toBe(400);
+    const withDay = await patchContract(dto.id, {
+      date: '2026-10-07',
+      version: 0,
+      receivedDate: '2026-10-08',
+      lines: [{ id, typeId: typeA, count: 3 }],
+    });
+    expect(withDay.status).toBe(400);
+    const read = await service.get(dto.id, new Date());
+    expect(read).toMatchObject({ version: 0, received: 1 });
+  });
+
+  it('logs the opening delivery in the create record, as «تسجيل استلام» logs one', async () => {
+    const auditOf = async (id: string) =>
+      (
+        await AuditLogModel.find({
+          'entityRef.entityType': 'vehicleContract',
+          'entityRef.entityId': id,
+        })
+          .lean()
+          .exec()
+      ).map((row) => ({ action: row.action, changes: row.changes }));
+    const dto = await created({
+      date: '2026-10-06',
+      lines: [
+        { typeId: typeA, count: 3 },
+        { typeId: typeB, count: 2, received: 2 },
+      ],
+      receivedDate: '2026-10-06',
+    });
+    const rows = await auditOf(dto.id);
+    expect(rows.map((row) => row.action)).toEqual(['create']);
+    const changes = rows[0]?.changes ?? [];
+    expect(changes.map((c) => c.field)).toEqual(
+      expect.arrayContaining(['no', 'date', 'lines', `deliveries.${dto.deliveries[0]?.id}`]),
+    );
+    expect(changes.find((c) => c.field.startsWith('deliveries.'))).toEqual({
+      field: `deliveries.${dto.deliveries[0]?.id}`,
+      old: null,
+      new: { date: '2026-10-06', counts: [{ lineId: dto.lines[1]?.id, count: 2 }] },
+    });
+    // Nothing received: no delivery in the log either.
+    const plain = await created({ date: '2026-10-06', lines: [{ typeId: typeA, count: 1 }] });
+    const plainChanges = (await auditOf(plain.id))[0]?.changes ?? [];
+    expect(plainChanges.some((c) => c.field.startsWith('deliveries.'))).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 // «عقود توريد السيارات» — how the screens count and say things, proven against the dictionary: every
 // counted form in formal Arabic, the alarm's phrases with their figure set apart, the deliveries'
-// ordinals, the unnamed contract's name, a file's size, and which refusals the screens word.
+// ordinals, the unnamed contract's name, a file's size, «المستلم حتى الآن»'s words, and which
+// refusals the screens word.
 import { describe, expect, it } from 'vitest';
 import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -110,6 +111,63 @@ describe('names', () => {
     expect(ar.fileSize(88_784)).toBe('87 ك.ب');
     expect(ar.fileSize(4_068_245)).toBe('3.9 م.ب');
     expect(ar.fileSize(10)).toBe('1 ك.ب');
+  });
+});
+
+describe('«المستلم حتى الآن» in the editor', () => {
+  const t = (locale: 'ar' | 'en', key: string, params?: Record<string, string>): string =>
+    translate(locale, `fleet.vehicleContracts.${key}`, params);
+
+  it('the column, the note under a box over its line, and the footer — in formal Arabic', () => {
+    expect(`${t('ar', 'lines.receivedTop')} ${t('ar', 'lines.receivedBottom')}`).toBe(
+      'المستلم حتى الآن',
+    );
+    expect(t('ar', 'lines.receivedOver', { count: '22' })).toBe('أكثر من 22');
+    expect(
+      t('ar', 'lines.receivedOverNote', {
+        make: 'مرسيدس اسبرانتر 516',
+        count: ar.count('car', 22),
+      }),
+    ).toBe(
+      'لا يمكن أن يزيد «المستلم حتى الآن» على المتعاقد عليه من البند: مرسيدس اسبرانتر 516 — 22 سيارة فقط.',
+    );
+    expect(t('ar', 'total.received', { received: '26' })).toBe('المستلم 26');
+    expect(t('ar', 'total.left', { left: '7' })).toBe('المتبقي 7');
+  });
+
+  it('what Save records: «الاستلام الأول», 26 of 33 cars', () => {
+    expect(
+      t('ar', 'lines.firstDelivery', {
+        first: ar.deliveryName(1),
+        received: '26',
+        total: ar.count('car', 33),
+      }),
+    ).toBe('يُسجَّل «الاستلام الأول» عند حفظ العقد: 26 من 33 سيارة');
+    expect(
+      t('en', 'lines.firstDelivery', {
+        first: en.deliveryName(1),
+        received: '26',
+        total: en.count('car', 33),
+      }),
+    ).toBe('“First delivery” is recorded when the contract is saved: 26 of 33 cars');
+  });
+
+  it('every new key is in both languages', () => {
+    for (const key of [
+      'lines.receivedTop',
+      'lines.receivedBottom',
+      'lines.receivedOver',
+      'lines.receivedOverNote',
+      'lines.receivedHint',
+      'lines.receivedLocked',
+      'lines.receivedEditHint',
+      'lines.firstDelivery',
+      'total.received',
+      'total.left',
+    ]) {
+      expect(t('ar', key)).not.toBe(`fleet.vehicleContracts.${key}`);
+      expect(t('en', key)).not.toBe(`fleet.vehicleContracts.${key}`);
+    }
   });
 });
 

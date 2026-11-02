@@ -11,7 +11,10 @@ import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
   RECONCILE_COUNT_NOUNS,
+  addCardRefusalWords,
+  cancelRefusalKey,
   decideRefusalOf,
+  linkRefusalWords,
   isDecideRefusal,
   isSheetRefusal,
   reconcileCountKey,
@@ -19,6 +22,7 @@ import {
   useReconcileCount,
   type ReconcileCount,
 } from './fuel-reconcile-words';
+import { isAddCardRefusal } from './fuel-reconcile-links';
 
 /** The hook, read once under a store in `locale`. */
 const countIn = (locale: Locale): ReconcileCount => {
@@ -163,5 +167,113 @@ describe('a refused decision', () => {
     expect(decideRefusalOf(moved)).toEqual({ kind: 'moved', cardIds: ['a1'] });
     expect(decideRefusalOf(decided)).toEqual({ kind: 'decided', cardIds: ['b2', 'c3'] });
     expect(isDecideRefusal(new ApiError(ErrorCodes.VALIDATION_FAILED, 'x', 400))).toBe(false);
+  });
+});
+
+// ── Batch 3 ─────────────────────────────────────────────────────────────────────────────────────
+
+describe('6a: a refused cancel, in the screen’s words', () => {
+  const cancel = (code: string): ApiError =>
+    new ApiError(ErrorCodes.FLEET_FUEL_RECONCILE_CANCEL_REFUSED, 'x', 422, [
+      { field: 'cancelCharges', code, message: '650000000000000000000001' },
+    ]);
+
+  it('not a candidate, already cancelled, more than the sheet takes off — each said', () => {
+    const said = (code: string): string => {
+      const refusal = decideRefusalOf(cancel(code));
+      expect(refusal?.kind).toBe('cancel');
+      return translate('ar', cancelRefusalKey(refusal?.code));
+    };
+    expect(said('NOT_A_CANDIDATE')).toBe(
+      translate('ar', 'fleet.fuelCards.reconcile.refusal.cancelNotCandidate'),
+    );
+    expect(said('CANCELLED')).toBe(
+      translate('ar', 'fleet.fuelCards.reconcile.refusal.cancelCancelled'),
+    );
+    expect(said('EXCEEDS_DIFFERENCE')).toBe(
+      translate('ar', 'fleet.fuelCards.reconcile.refusal.cancelExceeds'),
+    );
+    for (const code of ['NOT_A_CANDIDATE', 'CANCELLED', 'EXCEEDS_DIFFERENCE']) {
+      expect(said(code)).not.toMatch(/^fleet\./u);
+    }
+    // The screen says it, so the global toast stays quiet.
+    expect(isDecideRefusal(cancel('CANCELLED'))).toBe(true);
+  });
+
+  it('a request that changed after the read is the same 409 — read the sheet again', () => {
+    const changed = new ApiError(ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED, 'x', 409, [
+      { field: 'cardIds', code: 'REQUEST_CHANGED', message: 'A1' },
+    ]);
+    expect(decideRefusalOf(changed)).toEqual({ kind: 'moved', cardIds: ['a1'] });
+  });
+});
+
+describe('6b: a refused link or «إضافة», in the screen’s words', () => {
+  const refused = (code: string, detail: string, field = 'cardIds', status = 409): ApiError =>
+    new ApiError(code, 'x', status, [{ field, code: detail, message: 'A1' }]);
+  const said = (
+    words: { key: string; values?: Record<string, string | number> } | null,
+  ): string | null => (words === null ? null : translate('ar', words.key, words.values));
+
+  it('a changed card, one decided, a held slot, the repair, a missing pick', () => {
+    const R = 'fleet.fuelCards.reconcile.refusal.';
+    expect(
+      said(linkRefusalWords(refused(ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED, 'LINK_CHANGED'))),
+    ).toBe(translate('ar', `${R}linkChanged`));
+    expect(
+      said(linkRefusalWords(refused(ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED, 'DECIDED'))),
+    ).toBe(translate('ar', `${R}linkDecided`));
+    expect(said(linkRefusalWords(refused(ErrorCodes.FLEET_FUEL_LINK_SLOT_HELD, 'SLOT_HELD')))).toBe(
+      translate('ar', `${R}slotHeld`),
+    );
+    expect(said(linkRefusalWords(refused(ErrorCodes.FLEET_FUEL_LINK_IN_REPAIR, 'IN_REPAIR')))).toBe(
+      translate('ar', `${R}inRepair`),
+    );
+    expect(
+      said(linkRefusalWords(refused(ErrorCodes.VALIDATION_FAILED, 'REQUIRED', 'body.pick', 400))),
+    ).toBe(translate('ar', `${R}pickRequired`));
+    expect(linkRefusalWords(new ApiError('INTERNAL', 'x', 500))).toBeNull();
+  });
+
+  it('«إضافة»: the number missing, not the sheet’s, or the row already added', () => {
+    const R = 'fleet.fuelCards.reconcile.refusal.';
+    const number = (code: string): ApiError =>
+      new ApiError(ErrorCodes.FLEET_FUEL_SHEET_CARD_NUMBER, 'x', 422, [
+        { field: 'number', code, message: 'number' },
+      ]);
+    expect(said(addCardRefusalWords(number('REQUIRED')))).toBe(
+      translate('ar', `${R}numberRequired`),
+    );
+    expect(said(addCardRefusalWords(number('MISMATCH')))).toBe(
+      translate('ar', `${R}numberMismatch`),
+    );
+    expect(
+      said(addCardRefusalWords(refused(ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED, 'DECIDED'))),
+    ).toBe(translate('ar', `${R}cardAdded`));
+    expect(addCardRefusalWords(new ApiError(ErrorCodes.DUPLICATE, 'x', 409))).toBeNull();
+  });
+
+  it('«إضافة»: a name the server refuses, or another company’s sheet — worded, never English', () => {
+    const R = 'fleet.fuelCards.reconcile.refusal.';
+    const layout = (field: string, code: string): ApiError =>
+      new ApiError(
+        ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+        'the sheet names this card as another company’s — nothing was written',
+        422,
+        [{ field, code, message: field }],
+      );
+    expect(said(addCardRefusalWords(layout('name', 'WRONG_COMPANY')))).toBe(
+      translate('ar', `${R}nameOtherCompany`),
+    );
+    expect(said(addCardRefusalWords(layout('name', 'TOO_LONG')))).toBe(
+      translate('ar', `${R}nameTooLong`, { max: 120 }),
+    );
+    expect(said(addCardRefusalWords(layout('company', 'WRONG_COMPANY')))).toBe(
+      translate('ar', `${R}wrongCompany`),
+    );
+    // So the hook's global toast stays quiet: one refusal, one toast — the dialog's.
+    expect(isAddCardRefusal(layout('name', 'WRONG_COMPANY'))).toBe(true);
+    expect(isAddCardRefusal(layout('name', 'TOO_LONG'))).toBe(true);
+    expect(isAddCardRefusal(layout('company', 'WRONG_COMPANY'))).toBe(true);
   });
 });

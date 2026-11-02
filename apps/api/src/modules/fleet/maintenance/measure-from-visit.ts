@@ -48,10 +48,16 @@ export interface VisitCounters {
   standIn: ChainBound | null;
 }
 
+/**
+ * The baseline as its counters alone tell it. The visit's work type is the caller's to add — it is
+ * read from the catalog, and this step knows only the numbers.
+ */
+export type MeasuredBaseline = Omit<FleetAlarmBaselineDto, 'workType'>;
+
 export interface Measured {
   result: AlarmResult;
   /** `null` exactly when there is no baseline visit. */
-  baseline: FleetAlarmBaselineDto | null;
+  baseline: MeasuredBaseline | null;
 }
 
 const point = (bound: ChainBound | null): FleetAlarmChainPointDto | null =>
@@ -95,7 +101,7 @@ export const measureFromVisit = (
     counterDate: Date,
     judgedAgainst: ChainBound | null,
     exitSetAside: FleetAlarmBaselineDto['exitSetAside'] = null,
-  ): FleetAlarmBaselineDto => ({
+  ): MeasuredBaseline => ({
     visitId: visit.visitId,
     inDate: visit.inDate.toISOString(),
     outDate: visit.outDate.toISOString(),

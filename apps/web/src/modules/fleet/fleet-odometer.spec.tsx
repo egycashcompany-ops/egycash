@@ -73,6 +73,7 @@ const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   outReading: 150000,
   inReading: 150250,
   km: 250,
+  serviceGapKm: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
   driver1Name: null,
@@ -123,8 +124,11 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
     counterDate: '2026-05-30T00:00:00.000Z',
     judgedAgainst: null,
     exitSetAside: null,
+    workType: null,
   },
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 
@@ -396,6 +400,18 @@ describe('the odometer table', () => {
     expect(sheet, 'not the screen’s stacked header').not.toContain(
       "t('fleet.odometer.columns.shiftDrivers')",
     );
+  });
+
+  it('writes each reading’s own gap in the Excel file — the car’s figure and level on its newest row only', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const sheet = source.slice(
+      source.indexOf('const exportSheet'),
+      source.indexOf('const runExport'),
+    );
+    // The screen's own split (`sheetGapOf`, lib/alarm-reason-rows.spec.ts), over the file's rows.
+    expect(sheet).toContain('const newestOf = newestRows(all)');
+    expect(sheet).toContain('sheetGapOf(');
+    expect(sheet, 'never the car’s figure now on every row').not.toContain('sinceServiceKm');
   });
 
   it('prints only the shifts the row actually recorded — never a cell saying «null»', () => {

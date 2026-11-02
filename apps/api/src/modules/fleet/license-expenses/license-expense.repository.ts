@@ -179,6 +179,38 @@ class FleetLicenseExpenseRepository extends BaseRepository<FleetLicenseExpenseDo
     return result.modifiedCount === 1;
   }
 
+  /**
+   * «حذف العملية» of a settlement: one memo of a record is «لم تُسوَّ بعد» again — only while THAT
+   * settlement still holds it (the condition rides inside the write), so a part another settlement
+   * took is never touched. The record unlocks only when its other memo is not settled either (the
+   * lock is the record's). Bypasses `writeConditions` exactly as `markSettled` does, and bumps the
+   * version, so an edit opened before it is told it is stale. `false` when the condition missed.
+   */
+  async releaseSettlement(
+    id: string,
+    part: FleetLicenseExpenseKind,
+    operationId: Types.ObjectId,
+    by: string | null,
+    session: ClientSession,
+  ): Promise<boolean> {
+    if (!Types.ObjectId.isValid(id)) return false;
+    const field = settlementField(part);
+    const result = await this.model
+      .updateOne(
+        { _id: new Types.ObjectId(id), isDeleted: false, [`${field}.operationId`]: operationId },
+        {
+          $set: {
+            [field]: null,
+            updatedBy: by === null || !Types.ObjectId.isValid(by) ? null : new Types.ObjectId(by),
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   /** The table: the date, and every figure the screen derives, each with its arrow. */
   async listExpenses(
     params: ListParams<FleetLicenseExpenseDoc>,

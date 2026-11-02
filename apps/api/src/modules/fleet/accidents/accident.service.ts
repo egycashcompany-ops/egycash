@@ -5,10 +5,14 @@
 // historical paperwork about the day it happened, not a new operational fact about the car.
 import {
   FleetEvents,
+  calendarDayBounds,
   parseFleetSort,
+  ymdOf,
   type CreateFleetAccident,
   type FleetAccidentCarBalanceDto,
   type FleetAccidentCarTransfersDto,
+  type FleetAccidentStatus,
+  type FleetDashboardRecentAccidentDto,
   compareFleetVehicleCodes,
   fleetAccidentRemaining,
   type FleetAccidentSummaryQuery,
@@ -27,7 +31,13 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { userService } from '../../../platform/users';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import {
+  fleetVehicleRepository,
+  intersectVehicleIds,
+  vehicleSetPart,
+  type VehicleFilterQuery,
+} from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetAccidentRepository } from './accident.repository';
 import { culpritIdsOf, vehicleIdOf } from '../fleet.mappers';
 import { type FleetAccidentDoc, type FleetAccidentTransfer } from './accident.model';
@@ -347,8 +357,7 @@ class FleetAccidentService {
   ): Promise<FilterQuery<FleetAccidentDoc>> {
     return fleetAccidentRepository.accidentFilter({
       vehicleId: query.vehicleId,
-      vehicleIds: await this.vehicleScope(query),
-      vehicleCodes: query.vehicleCodes,
+      ...(await this.vehicleClause(query)),
       culprit: query.culprit,
       culpritEmployeeId: query.culpritEmployeeId,
       notes: query.notes,
@@ -375,6 +384,28 @@ class FleetAccidentService {
    * question with a narrower page. `vehicleId` stays its own clause in the repository, where it
    * intersects, because a dropdown pick is a different kind of statement.
    */
+  /**
+   * The vehicle half of the filter: the codes the reader named (`vehicleScope`) intersected with
+   * the vehicle set — «النوع / التشغيل / الفرع» (plan D10), resolved by `resolveVehicleFilterIds`,
+   * deleted cars included, as the other registers resolve them.
+   *
+   * A type, an operation or a branch is a question about REGISTRY cars, so once one is asked the
+   * old book's codes stop reaching rows on their own: a file kept on a car the registry never had
+   * has no type to be of. Without one, the codes keep finding those files exactly as before.
+   */
+  private async vehicleClause(
+    query: VehicleFilterQuery & { code?: string | undefined },
+  ): Promise<{ vehicleIds?: string[] | undefined; vehicleCodes?: readonly string[] | undefined }> {
+    const [byCode, bySet] = await Promise.all([
+      this.vehicleScope(query),
+      resolveVehicleFilterIds(vehicleSetPart(query)),
+    ]);
+    return {
+      vehicleIds: intersectVehicleIds(byCode, bySet),
+      vehicleCodes: bySet === undefined ? query.vehicleCodes : undefined,
+    };
+  }
+
   private async vehicleScope(query: {
     vehicleCodes?: readonly string[] | undefined;
     code?: string | undefined;
@@ -412,7 +443,68 @@ class FleetAccidentService {
    * the page, which is worse than showing none.
    */
   async summary(query: FleetAccidentSummaryQuery): Promise<FleetAccidentTotalsDto> {
+    return this.summaryOver(query);
+  }
+
+  /**
+   * The figures under the table, for ANY caller holding the screen's own query — `/summary`
+   * answers through it, and so does the fleet dashboard (T5.10, T6.5/T6.6, T10.2), which is what
+   * makes its number the number the linked screen prints. One filter (`filterFor`), one total.
+   */
+  async summaryOver(query: FleetAccidentSummaryQuery): Promise<FleetAccidentTotalsDto> {
     return fleetAccidentRepository.totals(await this.filterFor(query));
+  }
+
+  /**
+   * R-23 — the live files with NO accident date (go-live kept them from the old book): never in a
+   * period, so the period card names them «حوادث بلا تاريخ: N». Over the same vehicle filter.
+   */
+  async undatedCount(filter: VehicleFilterQuery): Promise<number> {
+    const vehicle = fleetAccidentRepository.accidentFilter(await this.vehicleClause(filter));
+    return fleetAccidentRepository.count({
+      $and: [vehicle, { occurredAt: null }],
+    } as FilterQuery<FleetAccidentDoc>);
+  }
+
+  /**
+   * R-12 / T4.9 — the most recently WRITTEN files (`createdAt` desc, `_id` desc) whose accident
+   * date is on or after `sinceYmd` (the first of the last 30 Cairo days). An undated file is in no
+   * window and never «recent»: a go-live import is stamped with a recent `createdAt`, and the date
+   * window is what keeps it from reading as news. Each row carries its DATE only — never a time.
+   */
+  async recentWritten(input: {
+    sinceYmd: string;
+    limit: number;
+    filter: VehicleFilterQuery;
+  }): Promise<FleetDashboardRecentAccidentDto[]> {
+    const vehicle = fleetAccidentRepository.accidentFilter(await this.vehicleClause(input.filter));
+    const since = calendarDayBounds(input.sinceYmd, input.sinceYmd).from;
+    const docs = await fleetAccidentRepository.recentWritten(
+      {
+        $and: [vehicle, { occurredAt: { $ne: null, $gte: since } }],
+      } as FilterQuery<FleetAccidentDoc>,
+      input.limit,
+    );
+    const codes = await fleetVehicleRepository.codesByIds([
+      ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
+    ]);
+    return docs.map((doc) => {
+      const vehicleId = vehicleIdOf(doc);
+      return {
+        accidentId: String(doc._id),
+        vehicleId,
+        code: (vehicleId === null ? null : codes.get(vehicleId)) ?? doc.vehicleCode ?? '—',
+        date: ymdOf(doc.occurredAt as Date),
+        culprit: doc.culprit ?? null,
+        culpritEmployeeIds: culpritIdsOf({
+          culpritEmployeeId: doc.culpritEmployeeId ?? null,
+          ...(doc.culpritEmployeeIds === undefined
+            ? {}
+            : { culpritEmployeeIds: doc.culpritEmployeeIds }),
+        }),
+        status: doc.status as FleetAccidentStatus,
+      };
+    });
   }
 
   /**

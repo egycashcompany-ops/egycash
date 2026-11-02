@@ -563,6 +563,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',
     'fleet_fuel_card_reconciliations',
+    'fleet_fuel_sheet_codes',
     'fleet_receipts',
     'fleet_custody_memos',
     'fleet_custody_operations',

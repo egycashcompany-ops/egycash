@@ -29,11 +29,12 @@ let app: Express;
 let admin = '';
 let viewer = '';
 let creator = '';
+let receiver = '';
 let fileReader = '';
 let typeA = '';
 
 beforeAll(async () => {
-  ({ app, admin, viewer, creator, fileReader, typeA } = await bootVehicleContracts());
+  ({ app, admin, viewer, creator, receiver, fileReader, typeA } = await bootVehicleContracts());
 }, 240_000);
 
 afterAll(stopVehicleContracts);
@@ -200,5 +201,30 @@ describe('the grants', () => {
       CreateFleetVehicleContractSchema.safeParse({ date: '2026-10-11', lines: [] }).success,
     ).toBe(false);
     expect(mongoose.connection.readyState).toBe(1);
+  });
+
+  it('lets only a `receive` holder type «المستلم حتى الآن» on a new contract', async () => {
+    const body = (received: number) => ({
+      date: '2026-10-13',
+      lines: [{ typeId: typeA, count: 4, received }],
+      receivedDate: '2026-10-13',
+    });
+    // `create` alone: the contract, yes — the cars, no (as «تسجيل استلام» is refused it).
+    const contracts = await FleetVehicleContractModel.countDocuments();
+    const refused = await create(body(2), creator);
+    expect(refused.status).toBe(403);
+    expect(await FleetVehicleContractModel.countDocuments()).toBe(contracts);
+    const plain = await create(body(0), creator);
+    expect(plain.status, JSON.stringify(plain.body)).toBe(201);
+    expect(data<FleetVehicleContractDto>(plain).deliveries).toEqual([]);
+    expect(
+      (await create({ date: '2026-10-13', lines: [{ typeId: typeA, count: 4 }] }, creator)).status,
+    ).toBe(201);
+    // `create` + `receive`, without `edit`: both.
+    const both = await create(body(2), receiver);
+    expect(both.status, JSON.stringify(both.body)).toBe(201);
+    expect(data<FleetVehicleContractDto>(both)).toMatchObject({ received: 2, remaining: 2 });
+    // `view` alone: nothing, received or not.
+    expect((await create(body(2), viewer)).status).toBe(403);
   });
 });

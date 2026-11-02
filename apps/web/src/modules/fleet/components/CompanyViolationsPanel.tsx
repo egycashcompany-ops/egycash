@@ -48,6 +48,7 @@ import { FilterField } from '../../../shared/ui/FilterField';
 import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
+import { type VehicleSetQuery } from '../lib/vehicle-set-params';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
@@ -100,6 +101,7 @@ export const CompanyViolationsPanel = ({
   years,
   vehicleCodes,
   settled,
+  vehicleSet = {},
   entryVehicleId,
   onEntryVehicleChange,
   onMoved,
@@ -119,6 +121,11 @@ export const CompanyViolationsPanel = ({
   vehicleCodes: string[];
   /** '' = both, 'true' = fully settled, 'false' = anything still outstanding. */
   settled: string;
+  /**
+   * The vehicle set a dashboard link narrowed BOTH ledgers to (type, operation, branch) — the
+   * page's, held above the two halves, so it is not one of this half's own filters.
+   */
+  vehicleSet?: VehicleSetQuery;
   /**
    * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves.
    *
@@ -187,6 +194,8 @@ export const CompanyViolationsPanel = ({
   const rollup = useViolationRollup(
     yearNumbers.length === 0 ? undefined : yearNumbers,
     askedCodes,
+    true,
+    vehicleSet,
   );
   // «الحالة», applied IN HAND. The rollup arrives whole — that is what lets this half count its
   // own groups — so narrowing it here asks the server nothing extra and keeps the totals below

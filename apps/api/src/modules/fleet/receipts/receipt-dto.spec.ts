@@ -226,6 +226,7 @@ describe('a card’s log names the car a receipt line paid for', () => {
       fileName: 'أرصدة وطنية.xlsx',
       sheetBalance: 2031.97,
       systemBalance: 2000,
+      cancelledCharges: [],
     });
     // `line()` carries no `reconciliation` at all — a document written before it existed.
     for (const kind of ['charge', 'transferIn', 'transferOut', 'receipt'] as const) {

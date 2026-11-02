@@ -139,4 +139,27 @@ export const registerFleetSettings = (): void => {
     defaultValue: 100,
     allowedScopes: ['organization'],
   });
+
+  // ── The movement dashboard (Phase 1) ─────────────────────────────────────
+  //
+  // Off by default (owner, Q-01): until it is switched on, the roster only FLAGS a driver or a
+  // vehicle whose licence expired — badges, views and «منهم رخصة منتهية N» — and planning behaves
+  // exactly as before. The owner checks that list first, so a stale date in the registry never
+  // silently takes a car or a driver off the road. A licence with no recorded date never blocks.
+  declareSetting({
+    key: FleetSettingKeys.RosterRefuseExpiredLicence,
+    description:
+      'Roster planning refuses a driver or a vehicle whose licence expired (off: the roster only flags them)',
+    schema: z.boolean(),
+    defaultValue: false,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: FleetSettingKeys.OdometerMissingReadingDays,
+    description:
+      'Days without an odometer reading after which an active vehicle is flagged on the dashboard',
+    schema: z.number().int().min(1).max(30),
+    defaultValue: 3,
+    allowedScopes: ['organization'],
+  });
 };

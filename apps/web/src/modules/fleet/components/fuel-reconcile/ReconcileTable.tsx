@@ -5,6 +5,11 @@
 // class, with batch 2's «تغيّر بعد القراءة»: a card the server refused ✓ for (its balance or log
 // moved after the read) loses its tick and its ✓; its ✗ stays, since nothing moves.
 //
+// Batch 3: a card whose sheet number belongs to no card offers «تحديث رقم الكارت» (6c); under the
+// card, what its ✓ will ask about (6a) — each live charge the sheet does not show («شحن لا يظهر في
+// الشيت: 1,000.00 · 2026/11/01 10:05», tagged when it is after the sheet's date) and a pending
+// «طلب رصيد» the difference equals. Such a row's ✓ opens the confirm instead of writing at once.
+//
 // The small cells it shares with the folds and the dialog are in `reconcile-cells.tsx`.
 import { type ReactNode } from 'react';
 import {
@@ -14,12 +19,14 @@ import {
   type FleetFuelReconcileResultDto,
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { useCan } from '../../../../platform/rbac/Can';
 import { BulkActionBar } from '../../../../shared/ui/BulkActionBar';
 import { cn } from '../../../../shared/lib/cn';
 import { BoardIcon, CompanyBadge, NUM, PATH } from '../FuelCardBoard';
 import { MOVES_CHIP, SECTION_CARD, SECTION_STRIP } from '../custody-board-looks';
 import { TITLE } from '../custody-dashboard-parts';
 import {
+  asksFirst,
   decisionOf,
   dots,
   largestOf,
@@ -27,8 +34,11 @@ import {
   money,
   netOf,
   openLines,
+  requestMatches,
+  stampOf,
   tickedLines,
   timeOf,
+  unseenCharges,
   type ReconcileSelection,
 } from '../../lib/fuel-reconcile';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
@@ -36,19 +46,86 @@ import {
   Check,
   Difference,
   Figure,
+  Filled,
   HistoryButton,
   MOVED_ICON,
   Net,
   Place,
 } from './reconcile-cells';
 
+/**
+ * 6a: under the card, what its ✓ will ask about — each live charge the sheet does not show, and a
+ * pending request the difference equals.
+ */
+const AskChips = ({ line }: { line: FleetFuelReconcileLineDto }): JSX.Element | null => {
+  const t = useT();
+  const charges = unseenCharges(line);
+  const request = requestMatches(line) && line.card.requestedAmount !== null;
+  if (charges.length === 0 && !request) return null;
+  const R = 'fleet.fuelCards.reconcile.';
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {charges.map((charge) => (
+        <span
+          key={charge.id}
+          data-recon-unseen-chip={charge.id}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-violet-300 bg-violet-50 px-1.5 py-px text-[11px] font-bold text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300"
+        >
+          <BoardIcon d={PATH.trend} className="h-3 w-3" />
+          <Filled
+            template={t(`${R}unseenCharges`)}
+            values={{
+              amount: (
+                <span dir="ltr" className={NUM}>
+                  {money(charge.amount)}
+                </span>
+              ),
+              at: (
+                <span dir="ltr" className={NUM}>
+                  {stampOf(charge.at)}
+                </span>
+              ),
+            }}
+          />
+          {charge.afterSheetDate && (
+            <span className="ms-0.5 rounded bg-amber-100 px-1 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
+              {t(`${R}afterSheetDate`)}
+            </span>
+          )}
+        </span>
+      ))}
+      {request && (
+        <span
+          data-recon-request-chip={line.card.id}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-amber-300 bg-amber-50 px-1.5 py-px text-[11px] font-bold text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+        >
+          <BoardIcon d={PATH.warn} className="h-3 w-3" />
+          <Filled
+            template={t(`${R}requestMatches`)}
+            values={{
+              amount: (
+                <span dir="ltr" className={NUM}>
+                  {money(line.card.requestedAmount ?? 0)}
+                </span>
+              ),
+            }}
+          />
+        </span>
+      )}
+    </span>
+  );
+};
+
 /** «الكارت» — its name over its place and its number's end; four digits that differ, in amber. */
 const CardCell = ({
   line,
   moved,
+  onUpdateNumber,
 }: {
   line: FleetFuelReconcileLineDto;
   moved: boolean;
+  /** «تحديث رقم الكارت» — offered when the sheet's number is on no card in the system. */
+  onUpdateNumber: ((card: FleetFuelCardDto) => void) | null;
 }): JSX.Element => {
   const t = useT();
   return (
@@ -84,6 +161,18 @@ const CardCell = ({
             </span>
           </span>
         )}
+        {!line.numberMatches && line.numberHolder === null && onUpdateNumber !== null && (
+          <button
+            type="button"
+            data-recon-update-number={line.card.id}
+            title={t('fleet.fuelCards.reconcile.updateNumberTitle')}
+            onClick={() => onUpdateNumber(line.card)}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-[#6c63ff]/50 bg-[#6c63ff]/10 px-1.5 py-px text-[11px] font-bold text-[#4f3dff] transition hover:bg-[#6c63ff]/20 dark:text-[#a59dff]"
+          >
+            <BoardIcon d={PATH.edit} className="h-3 w-3" />
+            {t('fleet.fuelCards.reconcile.updateNumber')}
+          </button>
+        )}
         {moved && (
           <span
             data-recon-moved-tag={line.card.id}
@@ -94,6 +183,7 @@ const CardCell = ({
           </span>
         )}
       </span>
+      <AskChips line={line} />
     </span>
   );
 };
@@ -157,9 +247,16 @@ const Decision = ({
       </span>
     );
   }
+  // 6a: a ✓ that asks first says so — about the charge, or about the request.
   const apply = moved
     ? t('fleet.fuelCards.reconcile.movedApply')
-    : t('fleet.fuelCards.reconcile.apply', { balance: money(line.sheet.balance) });
+    : asksFirst(line)
+      ? t(
+          requestMatches(line)
+            ? 'fleet.fuelCards.reconcile.asksFirstRequest'
+            : 'fleet.fuelCards.reconcile.asksFirst',
+        )
+      : t('fleet.fuelCards.reconcile.apply', { balance: money(line.sheet.balance) });
   const reject = t('fleet.fuelCards.reconcile.reject', { balance: money(line.card.balance) });
   return (
     <span className="mx-auto inline-flex items-center gap-1.5">
@@ -209,6 +306,7 @@ export const ReconcileTable = ({
   onDecide,
   onBulk,
   onHistory,
+  onUpdateNumber,
 }: {
   lines: readonly FleetFuelReconcileLineDto[];
   selection: ReconcileSelection;
@@ -218,13 +316,18 @@ export const ReconcileTable = ({
   onToggle: (id: string, on: boolean) => void;
   onTickAll: (on: boolean) => void;
   onClear: () => void;
-  /** A single row's ✓ / ✗ — one click, as in the sample. */
+  /** A single row's ✓ / ✗ — one click, as in the sample; 6a: a ✓ that asks first opens the confirm. */
   onDecide: (id: string, decision: FleetFuelReconcileDecision) => void;
   /** The bulk buttons only open the confirmation. */
   onBulk: (decision: FleetFuelReconcileDecision) => void;
   onHistory: (card: FleetFuelCardDto) => void;
+  /** «تحديث رقم الكارت» — the card's own edit dialog, as on «بطاقات الوقود». */
+  onUpdateNumber: (card: FleetFuelCardDto) => void;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  // The edit dialog writes through the card's own PATCH — offered to those who may edit cards.
+  const updateNumber = can('fleetFuelCard.edit') ? onUpdateNumber : null;
   const count = useReconcileCount();
   const tickable = openLines(lines, selection);
   const ticked = tickedLines(lines, selection);
@@ -380,7 +483,7 @@ export const ReconcileTable = ({
                     </span>
                   </td>
                   <td className={cn(TD, 'text-start')}>
-                    <CardCell line={line} moved={isMoved} />
+                    <CardCell line={line} moved={isMoved} onUpdateNumber={updateNumber} />
                   </td>
                   <td className={cn(TD, 'text-center')}>
                     <span className="inline-flex items-center gap-2 whitespace-nowrap">

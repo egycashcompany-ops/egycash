@@ -16,7 +16,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const routes = readFileSync(join(HERE, 'catalog-item.routes.ts'), 'utf8');
 const FLEET = join(HERE, '..');
 
-const handlerBlock = (method: 'get' | 'post' | 'patch'): string => {
+const handlerBlock = (method: 'get' | 'post' | 'patch' | 'delete'): string => {
   const start = routes.indexOf(`router.${method}(`);
   expect(start, `${method} route exists`).toBeGreaterThan(-1);
   return routes.slice(start, routes.indexOf('asyncHandler', start));
@@ -84,7 +84,8 @@ describe('every kind a Fleet screen points at has a reader that can fetch it', (
 });
 
 describe('writing did not move', () => {
-  for (const method of ['post', 'patch'] as const) {
+  // `delete` — «امسح بند انا ضيفته» — is a write like the others: the catalogs' manager only.
+  for (const method of ['post', 'patch', 'delete'] as const) {
     it(`${method} still demands fleetCatalog.manage, and only that`, () => {
       const block = handlerBlock(method);
       expect(block).toContain("authorize('fleetCatalog.manage')");

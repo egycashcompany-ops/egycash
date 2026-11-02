@@ -4,6 +4,7 @@ import {
   type FleetReceiptKind,
   type FleetReceiptSource,
   type FleetReceiptTotalsDto,
+  ymdOf,
 } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
@@ -96,6 +97,23 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
       .session(session)
       .lean<FleetReceiptDoc>()
       .exec();
+  }
+
+  /**
+   * The earliest live receipt's day — R-21's «البيانات متاحة من …». The stored `date` is the day
+   * the receipt was entered for (date-only), read as that calendar day; `null` with no receipts.
+   */
+  async firstDate(): Promise<string | null> {
+    const [first] = await this.model
+      .find({ isDeleted: false })
+      .select({ date: 1 })
+      // `date` alone — the day is all that is asked, and it walks `ix_receipt_date` backwards
+      // rather than sorting the collection.
+      .sort({ date: 1 })
+      .limit(1)
+      .lean<{ date: Date }[]>()
+      .exec();
+    return first === undefined ? null : ymdOf(first.date);
   }
 
   /** The figures over EVERY row `filter` matches — in the database, never over a page. */

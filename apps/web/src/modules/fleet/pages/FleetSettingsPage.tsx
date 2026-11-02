@@ -30,7 +30,20 @@ const NUMBER_KEYS = [
   FleetSettingKeys.VehicleLicenseWarnDays,
   FleetSettingKeys.DriverLicenseWarnDays,
   FleetSettingKeys.FuelCardExpiryWarnDays,
+  // R-07: the dashboard's «بلا قراءة عداد منذ N أيام» — whole days, 1 to 30 (the server's bounds).
+  FleetSettingKeys.OdometerMissingReadingDays,
 ] as const;
+
+/** A number setting's accepted range, where the server declares one narrower than «not below zero». */
+const NUMBER_BOUNDS: Partial<Record<string, { min: number; max: number }>> = {
+  [FleetSettingKeys.OdometerMissingReadingDays]: { min: 1, max: 30 },
+};
+
+/** The number settings that carry a line of explanation under the box. */
+const NUMBER_HINTS: Partial<Record<string, string>> = {
+  [FleetSettingKeys.OdometerMissingReadingDays]:
+    'fleet.settings.keys.odometerMissingReadingDaysHint',
+};
 
 /**
  * Money settings — decimals, not counts: the four fuel prices per litre the receipts screen turns
@@ -85,6 +98,21 @@ const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.FuelCardExpiryWarnDays]: 'fleet.settings.keys.fuelCardExpiryWarnDays',
   [FleetSettingKeys.FuelCardBalanceYellow]: 'fleet.settings.keys.fuelCardBalanceYellow',
   [FleetSettingKeys.FuelCardBalanceRed]: 'fleet.settings.keys.fuelCardBalanceRed',
+  [FleetSettingKeys.RosterRefuseExpiredLicence]: 'fleet.settings.keys.refuseExpiredLicence',
+  [FleetSettingKeys.OdometerMissingReadingDays]: 'fleet.settings.keys.odometerMissingReadingDays',
+};
+
+/**
+ * The on/off settings, each a checkbox: HR leave in availability, and Q-01's refusal. The refusal
+ * is OFF by default and changes what planning accepts the moment it is saved, so its hint sends the
+ * administrator to the roster's «منهم رخصة منتهية» list first.
+ */
+const BOOLEAN_KEYS = [
+  FleetSettingKeys.UseHrLeave,
+  FleetSettingKeys.RosterRefuseExpiredLicence,
+] as const;
+const BOOLEAN_HINTS: Partial<Record<string, string>> = {
+  [FleetSettingKeys.RosterRefuseExpiredLicence]: 'fleet.settings.keys.refuseExpiredLicenceHint',
 };
 
 const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JSX.Element => {
@@ -97,18 +125,23 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
   const [numbers, setNumbers] = useState<Record<string, string>>({});
   const [moneys, setMoneys] = useState<Record<string, string>>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
-  const [useHrLeave, setUseHrLeave] = useState(false);
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
   useEffect(() => {
     setNumbers(Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setTexts(Object.fromEntries(TEXT_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setMoneys(Object.fromEntries(MONEY_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
-    setUseHrLeave(valueOf(FleetSettingKeys.UseHrLeave) === true);
+    setFlags(Object.fromEntries(BOOLEAN_KEYS.map((key) => [key, valueOf(key) === true])));
   }, [resolved]);
 
   const isText = (key: string): boolean => (TEXT_KEYS as readonly string[]).includes(key);
   const isMoney = (key: string): boolean => (MONEY_KEYS as readonly string[]).includes(key);
+  const isFlag = (key: string): boolean => (BOOLEAN_KEYS as readonly string[]).includes(key);
+  const numberHint = (key: string): string | undefined => {
+    const hintKey = NUMBER_HINTS[key];
+    return hintKey === undefined ? undefined : t(hintKey);
+  };
   const dirty = (key: string): boolean => {
-    if (key === FleetSettingKeys.UseHrLeave) return useHrLeave !== (valueOf(key) === true);
+    if (isFlag(key)) return (flags[key] === true) !== (valueOf(key) === true);
     if (isText(key)) return texts[key] !== String(valueOf(key) ?? '');
     if (isMoney(key)) return moneys[key] !== String(valueOf(key) ?? '');
     return numbers[key] !== String(valueOf(key) ?? '');
@@ -121,6 +154,12 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
     // An emptied box is missing, not zero — `Number('')` is 0, and saving it would write 0.
     return trimmed !== '' && (integer ? Number.isInteger(n) : Number.isFinite(n)) && n >= 0;
   };
+  /** Within the server's own bounds, where it declares any — otherwise the save comes back 400. */
+  const inBounds = (key: string, value: string | undefined): boolean => {
+    const bounds = NUMBER_BOUNDS[key];
+    const n = Number((value ?? '').trim());
+    return bounds === undefined || (n >= bounds.min && n <= bounds.max);
+  };
   // Save stays pressable once something changed: pressing it with a box empty or invalid names it
   // and turns it red (`useRequiredFields`) instead of writing it.
   const required = useRequiredFields(
@@ -128,7 +167,7 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
       ...NUMBER_KEYS.map((key) => ({
         key,
         label: t(SETTING_LABELS[key] ?? key),
-        ok: isAmount(numbers[key], true),
+        ok: isAmount(numbers[key], true) && inBounds(key, numbers[key]),
       })),
       ...MONEY_KEYS.map((key) => ({
         key,
@@ -163,12 +202,10 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
           value: (texts[key] ?? '').trim(),
         });
     }
-    if (dirty(FleetSettingKeys.UseHrLeave))
-      await setSetting.mutateAsync({
-        key: FleetSettingKeys.UseHrLeave,
-        scope: 'organization',
-        value: useHrLeave,
-      });
+    for (const key of BOOLEAN_KEYS) {
+      if (dirty(key))
+        await setSetting.mutateAsync({ key, scope: 'organization', value: flags[key] === true });
+    }
     toast.success(t('fleet.settings.saved'));
   };
 
@@ -188,6 +225,7 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
                 label={t(SETTING_LABELS[key] ?? key)}
                 required
                 missing={required.isMissing(key)}
+                hint={numberHint(key)}
               >
                 <Input
                   rule="integer"
@@ -237,12 +275,25 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
               </Field>
             ))}
           </div>
-          <Checkbox
-            label={t(SETTING_LABELS[FleetSettingKeys.UseHrLeave] ?? FleetSettingKeys.UseHrLeave)}
-            checked={useHrLeave}
-            onChange={(e) => setUseHrLeave(e.target.checked)}
-            disabled={!canEdit}
-          />
+          {BOOLEAN_KEYS.map((key) => {
+            const hint = BOOLEAN_HINTS[key];
+            return (
+              <div key={key} data-fleet-setting={key}>
+                <Checkbox
+                  label={t(SETTING_LABELS[key] ?? key)}
+                  checked={flags[key] === true}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFlags((prev) => ({ ...prev, [key]: checked }));
+                  }}
+                  disabled={!canEdit}
+                />
+                {hint !== undefined && (
+                  <p className="ms-6 mt-1 text-xs text-slate-500 dark:text-slate-400">{t(hint)}</p>
+                )}
+              </div>
+            );
+          })}
           {canEdit && (
             <div className="flex justify-end">
               <Button

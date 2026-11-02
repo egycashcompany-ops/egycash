@@ -13,6 +13,7 @@ import {
   type FleetLicenseExpenseSettingsDto,
   type FleetLicenseExpenseSignatures,
   type FleetLicenseExpenseSummaryQuery,
+  type FleetLicenseExpenseTemplateLine,
   type FleetLicenseExpenseTemplates,
   type FleetLicenseExpenseTotalsDto,
   type ListFleetLicenseExpensesQuery,
@@ -24,6 +25,7 @@ import {
 import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetLicenseExpenseRepository } from './license-expense.repository';
 import { fleetLicenseExpenseSettingsRepository } from './license-expense-settings.repository';
 import {
@@ -330,17 +332,44 @@ class FleetLicenseExpenseService {
 
   async getSettings(): Promise<FleetLicenseExpenseSettingsDto> {
     const doc = await fleetLicenseExpenseSettingsRepository.findOne({ key: SETTINGS_KEY });
-    return doc === null
-      ? {
-          signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
-          templates: EMPTY_TEMPLATES,
-          version: null,
-        }
-      : {
-          signatures: signaturesOf(doc.signatures),
-          templates: templatesOf(doc.templates),
-          version: doc.__v,
-        };
+    if (doc === null) {
+      return {
+        signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
+        templates: EMPTY_TEMPLATES,
+        version: null,
+      };
+    }
+    // «امسح بند انا ضيفته»: a deleted item leaves the four templates as they are READ. Nothing
+    // stored changes and the version does not move — a set-up open on another screen saves
+    // without a clash, and the next «حفظ الإعداد» writes the lines out for good.
+    return {
+      signatures: signaturesOf(doc.signatures),
+      templates: await this.liveTemplates(templatesOf(doc.templates)),
+      version: doc.__v,
+    };
+  }
+
+  /**
+   * The four templates without the lines of a DELETED item. A hand-written line (no item) and an
+   * archived item's line stay: archiving only stops new choices.
+   */
+  private async liveTemplates(
+    templates: FleetLicenseExpenseTemplates,
+  ): Promise<FleetLicenseExpenseTemplates> {
+    const deleted = await fleetCatalogItemRepository.deletedAmong(
+      [templates.renewal, templates.extension].flatMap((groups) =>
+        [...groups.visa, ...groups.cash].flatMap((line) =>
+          line.itemId == null ? [] : [String(line.itemId)],
+        ),
+      ),
+    );
+    if (deleted.size === 0) return templates;
+    const live = (lines: FleetLicenseExpenseTemplateLine[]): FleetLicenseExpenseTemplateLine[] =>
+      lines.filter((line) => line.itemId == null || !deleted.has(String(line.itemId)));
+    return {
+      renewal: { visa: live(templates.renewal.visa), cash: live(templates.renewal.cash) },
+      extension: { visa: live(templates.extension.visa), cash: live(templates.extension.cash) },
+    };
   }
 
   async saveSettings(
@@ -348,8 +377,9 @@ class FleetLicenseExpenseService {
     by: string,
   ): Promise<FleetLicenseExpenseSettingsDto> {
     const before = await fleetLicenseExpenseSettingsRepository.findOne({ key: SETTINGS_KEY });
-    // Templates left out of the request stay as they were.
-    const templates = input.templates ?? templatesOf(before?.templates);
+    // Templates left out of the request stay as they were. Either way a deleted item's lines are
+    // written out — also those a page opened before the delete sends back.
+    const templates = await this.liveTemplates(input.templates ?? templatesOf(before?.templates));
     const saved =
       before === null
         ? await fleetLicenseExpenseSettingsRepository.create(

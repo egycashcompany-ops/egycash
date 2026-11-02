@@ -153,6 +153,7 @@ const ROWS: FleetCustodyLedgerRowDto[] = [
 ];
 
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 159974.54,
   charged: { count: 2, amount: 300000 },
   spent: { count: 126, amount: 97794 },
@@ -269,6 +270,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: 100000,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.replenish,
     ledger: { before: 17492, after: 99400 },
+    deletion: null,
+    createdByName: null,
   },
   'op-s1': {
     ...base,
@@ -288,6 +291,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: 299400,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.settle,
     ledger: { before: 299400, after: 175260.54 },
+    deletion: null,
+    createdByName: null,
   },
   'op-c2': {
     ...base,
@@ -302,6 +307,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: null,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.charge,
     ledger: { before: 99400, after: 299400 },
+    deletion: null,
+    createdByName: null,
   },
 };
 
@@ -758,6 +765,103 @@ describe('the ledger’s words, from the facts', () => {
     ).toBe(
       'fleet.custody.ledger.detail.licence{"kind":"fleet.licenseExpenses.kinds.renewal","cars":"15 cars"}، fleet.custody.ledger.detail.licence{"kind":"fleet.licenseExpenses.kinds.extension","cars":"23 cars"}',
     );
+  });
+});
+
+// ── «حذف العملية» ────────────────────────────────────────────────────────────────────────────
+
+describe('«سجل العهدة» — «حذف العملية»', () => {
+  const DELETER = ['fleetCustody.view', 'fleetReceipt.create', 'fleetReceipt.delete'];
+  /** The actions of a line, in the order they are drawn. */
+  const actionsOf = (html: string, id: string): string[] =>
+    [
+      ...element(
+        element(html, `data-ledger-row="${id}"`),
+        'data-row-actions="custody-ledger"',
+      ).matchAll(/data-ledger-(view|confirm|print|delete|receipts)="/gu),
+    ].map((m) => m[1] ?? '');
+
+  it('a red bin, the LAST action of every operation’s line — for whoever may delete', () => {
+    const html = page('/fleet/custody/log', client(), DELETER);
+    for (const id of ['op-s1', 'op-c2', 'op-r1', 'op-c1']) {
+      expect(actionsOf(html, id), id).toEqual(['view', 'print', 'delete']);
+    }
+    const bin = element(element(html, 'data-ledger-row="op-c2"'), 'data-ledger-delete="op-c2"');
+    expect(bin).toContain(`title="${ar('fleet.custody.delete.binTitle')}"`);
+    expect(bin).toContain('text-red-');
+  });
+
+  it('never on «مصروفات الإيصالات» — what was paid is not an operation', () => {
+    const html = page('/fleet/custody/log', client(), DELETER);
+    expect(actionsOf(html, 'spend:2026-10-06:2026-10-18')).toEqual(['receipts']);
+    expect(actionsOf(html, 'spend:2026-09-01:2026-09-28')).toEqual(['receipts']);
+  });
+
+  it('a held line: the eye, «تأكيد التحويل», the printer — and the bin last; a cancelled one the eye and the bin', () => {
+    const rows = [
+      row({ id: 'op-h', op: 'replenish', status: 'held', date: '2026-10-26', amount: 3660 }),
+      row({ id: 'op-x', op: 'replenish', status: 'cancelled', date: '2026-10-25', amount: 3660 }),
+    ];
+    const html = page('/fleet/custody/log', client({ rows }), DELETER);
+    expect(actionsOf(html, 'op-h')).toEqual(['view', 'confirm', 'print', 'delete']);
+    expect(actionsOf(html, 'op-x')).toEqual(['view', 'delete']);
+  });
+
+  it('no bin for a reader who may not delete — the line, its phone card and its drawer', () => {
+    const html = page('/fleet/custody/log?open=op-c2');
+    expect(html).not.toContain('data-ledger-delete=');
+    expect(html).not.toContain('data-ledger-details-delete=');
+  });
+
+  it('the phone card carries it too, last', () => {
+    const html = page('/fleet/custody/log', client(), DELETER);
+    const card = element(html, 'data-ledger-card="op-c2"');
+    const at = (attr: string): number => card.indexOf(attr);
+    expect(at('data-ledger-delete="op-c2"')).toBeGreaterThan(at('data-ledger-print="op-c2"'));
+    expect(element(html, 'data-ledger-card="spend:2026-10-06:2026-10-18"')).not.toContain(
+      'data-ledger-delete=',
+    );
+  });
+
+  it('the drawer’s footer: «حذف العملية» at its start, for whoever may delete', () => {
+    const html = page('/fleet/custody/log?open=op-c2', client(), DELETER);
+    const footer = element(element(html, 'data-ledger-details="op-c2"'), '<footer');
+    expect(text(element(footer, 'data-ledger-details-delete="op-c2"'))).toBe(
+      ar('fleet.custody.delete.action'),
+    );
+    expect(footer.indexOf('data-ledger-details-delete=')).toBeLessThan(
+      footer.indexOf('data-ledger-details-print='),
+    );
+  });
+
+  it('a held replenishment’s drawer: the cancel, then the delete — two red words kept apart', () => {
+    const qc = client();
+    qc.setQueryData(custodyQueryKeys.operation('op-h'), {
+      ...(OPERATIONS['op-r1'] as FleetCustodyOperationDto),
+      id: 'op-h',
+      status: 'held',
+    });
+    const footer = element(
+      element(page('/fleet/custody/log?open=op-h', qc, DELETER), 'data-ledger-details="op-h"'),
+      '<footer',
+    );
+    const cancel = footer.indexOf('data-ledger-details-cancel="op-h"');
+    const remove = footer.indexOf('data-ledger-details-delete="op-h"');
+    expect(cancel).toBeGreaterThan(-1);
+    expect(remove).toBeGreaterThan(cancel);
+    expect(text(footer)).toContain(ar('fleet.custody.hold.cancel'));
+    expect(text(footer)).toContain(ar('fleet.custody.delete.action'));
+  });
+
+  it('the pill «العمليات المحذوفة · N» leads to them — hidden while there is none', () => {
+    const html = page('/fleet/custody/log', client({ fund: { ...FUND, deleted: { count: 2 } } }), [
+      'fleetCustody.view',
+    ]);
+    const pill = element(html, 'data-ledger-deleted-pill="2"');
+    expect(pill).toContain('href="/fleet/custody/log/deleted"');
+    expect(text(pill)).toBe(`${ar('fleet.custody.deleted.title')} 2`);
+    expect(element(html, 'data-ledger-toolbar="true"')).toContain('data-ledger-deleted-pill=');
+    expect(page()).not.toContain('data-ledger-deleted-pill=');
   });
 });
 

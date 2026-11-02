@@ -31,7 +31,14 @@ export const listViolations = async (req: Request, res: Response): Promise<void>
 
 export const getViolationRollup = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, FleetViolationRollupQuery>(req);
-  ok(res, await fleetViolationService.rollup(query.year, query.vehicleId, query.vehicleCodes));
+  ok(
+    res,
+    await fleetViolationService.rollup(query.year, query.vehicleId, query.vehicleCodes, {
+      typeIds: query.typeIds,
+      operationIds: query.operationIds,
+      branchIds: query.branchIds,
+    }),
+  );
 };
 
 export const recordVehicleViolation = async (req: Request, res: Response): Promise<void> => {

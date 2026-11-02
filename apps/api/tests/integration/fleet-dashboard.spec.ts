@@ -1,30 +1,35 @@
-// `GET /fleet/dashboard` against a real database.
+// `GET /fleet/dashboard/now` and `/period` end to end — the doors, the readers, the clock and the
+// old book's rows (plan P1-07, P1-08, P1-13; §8.11).
 //
-// The unit spec pins the SHAPING rules with stubbed repositories; this one asks whether the
-// pipelines actually count what the screen claims. Everything here is built through the real
-// endpoints — vehicles registered, readings recorded, a visit checked in, an accident filed — so
-// a figure on the dashboard is a figure the module itself wrote, reached through the same
-// aggregation the browser hits.
-//
-// Three questions it exists to answer, none of which a mocked test can:
-//   1. do the matrix / stats / km / today numbers match the rows that were really written,
-//   2. does a caller holding ONE fleet grant get that section and `null` for the rest,
-//   3. does a branch-scoped reader see their own branch's fleet and nothing else.
+// The figure-by-figure parity lives in `fleet-dashboard-parity.spec.ts`. This file asks what only a
+// real database WITH REAL ROLES can answer:
+//   1. one Cairo day per request: the clock pinned at 2026-10-31T23:30Z reads 2026-11-01, and the
+//      period presets resolve on it; the period query is refused when it is not a real period;
+//   2. who gets what: a caller with no key is turned away (403 + the audit row); a caller with one
+//      key gets exactly the sections that key opens — and NOT a section whose data key they hold
+//      without the linked screen's guard; a branch-scoped reader sees their branch; an `own` grant
+//      never narrows a company source to what the reader created; the switcher (X-Active-Branch)
+//      narrows the read and is echoed;
+//   3. the old book's rows — an odometer row and a visit with only a code, an undated accident —
+//      count in the company view exactly as on the unfiltered screens, and drop out once a set exists;
+//   4. the old landing read (`GET /fleet/dashboard`) is gone.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   SettingKeys,
   platformPermissions,
   type FleetCatalogItemDto,
-  type FleetDashboardDto,
+  type FleetDashboardNowDto,
+  type FleetDashboardNowSection,
+  type FleetDashboardPeriodDto,
+  type FleetDashboardPeriodSection,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
-import { FleetDriverProfileModel } from '../../src/modules/fleet/driver-profiles/driver-profile.model';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -36,24 +41,18 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
+import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
+import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 
-const PASSWORD = 'Str0ng#Pass!';
+const NOW = new Date('2026-10-31T23:30:00.000Z');
+const TODAY = '2026-11-01';
+const OCT = { preset: 'custom', from: '2026-10-01', to: '2026-10-31' } as const;
+
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
 let adminUserId: string;
-let branchOneId: string;
-let branchTwoId: string;
-let departmentOneId: string;
-let departmentTwoId: string;
-let jobTitleId: string;
-let typeArmoredId: string;
-let typeVanId: string;
-let cashOperationId: string;
-let atmOperationId: string;
-
-const DAY = 24 * 60 * 60 * 1000;
-const iso = (offsetDays: number): string => new Date(Date.now() + offsetDays * DAY).toISOString();
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -67,12 +66,92 @@ const resolveMongoUri = async (): Promise<string> => {
   return replSet.getUri(dbName);
 };
 
-const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
+/** The real clock, captured before the fake one is installed. */
+const RealDate = globalThis.Date;
 
-const mkUser = async (email: string, branchId: string | null = null): Promise<string> => {
+/**
+ * Pin the clock for the rest of the suite — after the connection is up, and without breaking it.
+ *
+ * Mongoose stamps every heartbeat with the GLOBAL clock (faked here) but judges a connection stale
+ * with its own snapshot of the REAL one (`readyState`: no heartbeat for two intervals ⇒
+ * disconnected). With the clock pinned before today, the first heartbeat would make every later
+ * query buffer and time out; so each heartbeat is re-stamped with the real clock. The app's own
+ * reads all see the pinned instant.
+ */
+const pinClock = (at: Date): void => {
+  const connection = mongoose.connection as unknown as { _lastHeartbeatAt: number | null };
+  mongoose.connection.getClient().on('serverHeartbeatSucceeded', () => {
+    connection._lastHeartbeatAt = RealDate.now();
+  });
+  vi.useFakeTimers({ toFake: ['Date'], now: at, shouldAdvanceTime: true });
+};
+
+const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
+const call = (
+  path: string,
+  token: string,
+  query: Record<string, unknown> = {},
+  branch?: string,
+) => {
+  const req = request(app)
+    .get(`/api/v1${path}`)
+    .query(query)
+    .set('Authorization', `Bearer ${token}`);
+  return branch === undefined ? req : req.set('X-Active-Branch', branch);
+};
+const send = (method: 'post' | 'delete', path: string, body: Record<string, unknown> = {}) =>
+  request(app)[method](`/api/v1${path}`).set('Authorization', `Bearer ${adminToken}`).send(body);
+const ok = <T>(res: request.Response, status = 200): T => {
+  expect(res.status, JSON.stringify(res.body)).toBe(status);
+  return data<T>(res);
+};
+const nowOf = async (token: string, branch?: string) =>
+  ok<FleetDashboardNowDto>(await call('/fleet/dashboard/now', token, {}, branch));
+const periodOf = async (token: string, query: Record<string, unknown> = OCT, branch?: string) =>
+  ok<FleetDashboardPeriodDto>(await call('/fleet/dashboard/period', token, query, branch));
+
+const NOW_SECTIONS: readonly FleetDashboardNowSection[] = [
+  'vehicles',
+  'roster',
+  'workshop',
+  'maintenanceAlarm',
+  'noReading',
+  'distributionVehicles',
+  'distributionDrivers',
+  'licenceVehicles',
+  'licenceDrivers',
+  'papers',
+  'fuelCards',
+  'fuelCharging',
+  'recentWorkshop',
+  'recentAccidents',
+  'notices',
+  'dealershipPending',
+  'accidentsOpen',
+  'violationsYear',
+];
+const PERIOD_SECTIONS: readonly FleetDashboardPeriodSection[] = [
+  'km',
+  'visits',
+  'accidents',
+  'accidentList',
+  'opex',
+  'dealership',
+];
+const present = (dto: object, keys: readonly string[]): string[] =>
+  keys.filter((key) => (dto as Record<string, unknown>)[key] !== null);
+
+let mailbox = 0;
+/** A user holding exactly these keys, through a real role at a real scope. */
+const reader = async (
+  keys: string[],
+  scope: 'organization' | 'branch' | 'own' = 'organization',
+  branchId: string | null = null,
+): Promise<{ id: string; token: string }> => {
+  mailbox += 1;
   const { user } = await userService.create(
     {
-      email,
+      email: `dash-reader-${mailbox}@ecms.local`,
       firstName: { ar: 'م', en: 'T' },
       lastName: { ar: 'م', en: 'T' },
       locale: 'en',
@@ -80,168 +159,49 @@ const mkUser = async (email: string, branchId: string | null = null): Promise<st
     },
     null,
   );
-  await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
-  await userService.forceActivate(String(user._id));
-  return String(user._id);
-};
-
-/**
- * A token WITHOUT spending a login: `POST /auth/login` is rate limited per IP and every request
- * in this file shares one, so a fixture that burns a login to assert a PERMISSION spends the
- * budget on the wrong thing. `buildAuthContext` resolves permissions live from the user's roles,
- * so the signed token proves nothing by itself and the authorization assertions are unchanged.
- */
-const tokenFor = async (userId: string): Promise<string> =>
-  authService.signAccessToken(userId, new Types.ObjectId().toString(), 0);
-
-let nidCounter = 0;
-let phoneCounter = 55_000_000;
-const nextNid = (): string => `290010102${String(10_000 + nidCounter++).padStart(5, '0')}`;
-const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
-
-const mkEmployee = async (branchId: string): Promise<string> => {
-  const res = await request(app)
-    .post('/api/v1/hr/employees/direct')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      personal: {
-        identity: { fullNameAr: 'سائق لوحة', nationalId: nextNid(), nationality: 'Egyptian' },
-        contact: { primaryPhone: nextPhone() },
-        experience: [],
-        drivingLicenses: [],
-        certifications: [],
-        references: [],
+  const id = String(user._id);
+  await userService.forceActivate(id);
+  if (keys.length > 0) {
+    const role = await rbacService.createRole(
+      {
+        name: { en: `Dashboard reader ${mailbox}`, ar: `قارئ اللوحة ${mailbox}` },
+        permissionKeys: keys,
       },
-      employment: {
-        jobTitleId,
-        // Direct registration verifies the department belongs to the branch, so each branch
-        // hires through its own.
-        departmentId: branchId === branchOneId ? departmentOneId : departmentTwoId,
-        branchId,
-        employmentType: 'fullTime',
-        probationMonths: 0,
-        startDate: '2026-01-01T00:00:00.000Z',
-      },
-      entryStatus: 'active',
-    });
-  expect(res.status).toBe(201);
-  return (res.body as { data: { id: string } }).data.id;
+      adminUserId,
+    );
+    await rbacService.ensureAssignment(id, String(role._id), scope);
+  }
+  return { id, token: await authService.signAccessToken(id, new Types.ObjectId().toString(), 0) };
 };
 
-/**
- * One driver, classified by the `driverSpecialization` CATALOG — which is what «التخصص» is now.
- *
- * `specializationId: null` records a driver nobody has classified: they count in the total and in
- * neither split, which is the honest answer rather than a guess.
- */
-const mkDriver = async (branchId: string, specializationId: string | null): Promise<string> => {
-  const employeeId = await mkEmployee(branchId);
-  const res = await request(app)
-    .post('/api/v1/fleet/drivers')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      employeeId,
-      licenseNumber: `DSH-LIC-${nidCounter}`,
-      licenseExpiresAt: iso(400),
-      specializationId,
-    });
-  expect(res.status).toBe(201);
-  return employeeId;
-};
-
-/**
- * A driver carrying ONLY the retired enum — the state of every profile recorded before «التخصص»
- * became a catalog, and the one the compatibility shim exists for.
- *
- * Written straight to the collection because no endpoint accepts the enum any more, which is
- * exactly the point: this is a row the database already holds, not a shape the API still admits.
- */
-const mkLegacyDriver = async (branchId: string, specialization: string): Promise<string> => {
-  const employeeId = await mkDriver(branchId, null);
-  await FleetDriverProfileModel.updateOne(
-    { employeeId: new Types.ObjectId(employeeId) },
-    { $set: { specialization } },
-  );
-  return employeeId;
-};
-
-/** The seeded specialization items, by their Arabic name — the seed is what the house starts with. */
-const specializationId = async (ar: string): Promise<string> => {
-  const res = await request(app)
-    .get('/api/v1/fleet/catalog-items?kind=driverSpecialization&pageSize=100')
-    .set('Authorization', `Bearer ${adminToken}`);
-  expect(res.status).toBe(200);
-  const item = (res.body as { data: FleetCatalogItemDto[] }).data.find((i) => i.name.ar === ar);
-  expect(item, `the seed carries «${ar}»`).toBeDefined();
-  return (item as FleetCatalogItemDto).id;
-};
-
-let vehicleCounter = 700;
-const mkVehicle = async (over: Record<string, unknown>): Promise<FleetVehicleDto> => {
-  const n = vehicleCounter++;
-  const res = await request(app)
-    .post('/api/v1/fleet/vehicles')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      code: `D${n}`,
-      typeId: typeArmoredId,
-      plateNumber: `د ش ${n}`,
-      chassisNumber: `DCH-${n}`,
-      motorNumber: `DMO-${n}`,
-      joinedAt: '2025-01-01T00:00:00.000Z',
-      licenseExpiresAt: iso(400),
-      radio: { issi: `DISSI-${n}` },
-      branchId: branchOneId,
-      ...over,
-    });
-  expect(res.status).toBe(201);
-  return data<FleetVehicleDto>(res);
-};
-
-const record = async (vehicleId: string, reading: number, dayOffset: number): Promise<void> => {
-  const res = await request(app)
-    .post('/api/v1/fleet/odometer')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ vehicleId, date: iso(dayOffset), reading });
-  expect(res.status).toBe(201);
-};
-
-const mkCatalog = async (kind: string, ar: string, en: string): Promise<string> => {
-  const res = await request(app)
-    .post('/api/v1/fleet/catalog-items')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ kind, name: { ar, en } });
-  expect(res.status).toBe(201);
-  return data<FleetCatalogItemDto>(res).id;
-};
-
-/** The dashboard as one caller sees it. */
-const dashboard = async (token: string): Promise<FleetDashboardDto> => {
-  const res = await request(app)
-    .get('/api/v1/fleet/dashboard')
-    .set('Authorization', `Bearer ${token}`);
-  expect(res.status).toBe(200);
-  return data<FleetDashboardDto>(res);
-};
-
-/** The three vehicles whose kilometres the ranking assertions are about. */
-let armoredCashOne: FleetVehicleDto; // branch one, 900 km
-let armoredAtmOne: FleetVehicleDto; // branch one, 200 km
-let vanCashOne: FleetVehicleDto; // branch one, no readings — 0 km, licence due
-let armoredAtmTwo: FleetVehicleDto; // branch two, 1400 km
+let B1: string;
+let B2: string;
+let T1: string;
+let car1: FleetVehicleDto; // B1
+let car2: FleetVehicleDto; // B2
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
-
+  pinClock(NOW);
   const superAdmin = await rbacService.ensureSystemRole(
     'super-admin',
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
     [...platformPermissions, ...hrPermissions, ...fleetPermissions].map((p) => p.key),
   );
-  adminUserId = await mkUser('admin@ecms.local');
+  const { user } = await userService.create(
+    {
+      email: 'dash-admin@ecms.local',
+      firstName: { ar: 'م', en: 'T' },
+      lastName: { ar: 'م', en: 'T' },
+      locale: 'en',
+      organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+    },
+    null,
+  );
+  adminUserId = String(user._id);
+  await userService.forceActivate(adminUserId);
   await rbacService.ensureAssignment(adminUserId, String(superAdmin._id), 'organization');
-
   const ctx: AuthContext = {
     userId: adminUserId,
     sessionId: 'seed',
@@ -258,352 +218,304 @@ beforeAll(async () => {
     scope: 'organization',
     value: false,
   });
-  adminToken = await tokenFor(adminUserId);
+  adminToken = await authService.signAccessToken(adminUserId, new Types.ObjectId().toString(), 0);
 
-  const mkBranch = async (code: string, ar: string, en: string): Promise<string> => {
-    const res = await request(app)
-      .post('/api/v1/platform/branches')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code, name: { ar, en } });
-    expect(res.status).toBe(201);
-    return (res.body as { data: { id: string } }).data.id;
+  const mkBranch = async (code: string, ar: string) =>
+    ok<{ id: string }>(
+      await send('post', '/platform/branches', { code, name: { ar, en: ar } }),
+      201,
+    ).id;
+  B1 = await mkBranch('73', 'فرع دمنهور');
+  B2 = await mkBranch('74', 'فرع سوهاج');
+  T1 = ok<FleetVehicleTypeDto>(
+    await send('post', '/fleet/vehicle-types', {
+      name: { ar: 'مصفحة', en: 'Armored' },
+      maintenanceIntervalKm: 10_000,
+    }),
+    201,
+  ).id;
+  const catalog = async (kind: string, ar: string) =>
+    ok<FleetCatalogItemDto[]>(
+      await call('/fleet/catalog-items', adminToken, { kind, pageSize: 100 }),
+    ).find((item) => item.name.ar === ar)?.id ??
+    ok<FleetCatalogItemDto>(
+      await send('post', '/fleet/catalog-items', { kind, name: { ar, en: ar } }),
+      201,
+    ).id;
+  const workshopId = await catalog('workshop', 'ورشة الاختبار');
+  const workTypeId = await catalog('workType', 'صيانة');
+
+  let n = 0;
+  const mkVehicle = async (branchId: string) => {
+    n += 1;
+    return ok<FleetVehicleDto>(
+      await send('post', '/fleet/vehicles', {
+        code: `${880 + n}`,
+        typeId: T1,
+        plateNumber: `ع ت ${n}`,
+        chassisNumber: `ECH-${n}`,
+        motorNumber: `EMO-${n}`,
+        joinedAt: '2025-01-01T00:00:00.000Z',
+        licenseExpiresAt: '2026-10-15T00:00:00.000Z',
+        radio: { issi: `EISSI-${n}` },
+        branchId,
+      }),
+      201,
+    );
   };
-  branchOneId = await mkBranch('70', 'فرع القاهرة', 'Cairo');
-  branchTwoId = await mkBranch('71', 'فرع الجيزة', 'Giza');
+  car1 = await mkVehicle(B1);
+  car2 = await mkVehicle(B2);
+  for (const [car, day, reading] of [
+    [car1, '2026-10-05', 100],
+    [car1, '2026-10-06', 160],
+    [car2, '2026-10-05', 700],
+    [car2, '2026-10-06', 790],
+  ] as const) {
+    ok(await send('post', '/fleet/odometer', { vehicleId: car.id, date: day, reading }), 201);
+  }
+  ok(
+    await send('post', '/fleet/maintenance', {
+      vehicleId: car2.id,
+      inDate: '2026-10-20',
+      workshopId,
+      workTypeId,
+    }),
+    201,
+  );
+  ok(
+    await send('post', '/fleet/accidents', {
+      vehicleId: car1.id,
+      occurredAt: '2026-10-18',
+      culprit: 'طرف ثالث',
+      statement: 'اصطدام',
+      companyCost: 600,
+      amountCollected: 0,
+      paidAmount: 100,
+    }),
+    201,
+  );
 
-  const mkDepartment = async (code: string, branchId: string): Promise<string> => {
-    const res = await request(app)
-      .post('/api/v1/platform/departments')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code, name: { ar: 'الحركة', en: 'Operations' }, branchId });
-    expect(res.status).toBe(201);
-    return (res.body as { data: { id: string } }).data.id;
-  };
-  departmentOneId = await mkDepartment('DSH-OPS-1', branchOneId);
-  departmentTwoId = await mkDepartment('DSH-OPS-2', branchTwoId);
-  const title = await request(app)
-    .post('/api/v1/platform/job-titles')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'DSH-DRV', name: { ar: 'سائق', en: 'Driver' }, jobGrade: 'G1' });
-  expect(title.status).toBe(201);
-  jobTitleId = (title.body as { data: { id: string } }).data.id;
-
-  const armored = await request(app)
-    .post('/api/v1/fleet/vehicle-types')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ name: { ar: 'مصفحة', en: 'Armored' }, maintenanceIntervalKm: 10_000 });
-  expect(armored.status).toBe(201);
-  typeArmoredId = data<FleetVehicleTypeDto>(armored).id;
-  const van = await request(app)
-    .post('/api/v1/fleet/vehicle-types')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ name: { ar: 'ميكروباص', en: 'Van' }, maintenanceIntervalKm: 8000 });
-  expect(van.status).toBe(201);
-  typeVanId = data<FleetVehicleTypeDto>(van).id;
-
-  // The operations the «نقل أموال» / «ATM» counters are read from. Not seeded — the admin names
-  // them, which is exactly why the service matches on the catalog's own name rather than an id.
-  cashOperationId = await mkCatalog('operation', 'نقل أموال', 'Cash in transit');
-  atmOperationId = await mkCatalog('operation', 'ATM', 'ATM');
-
-  armoredCashOne = await mkVehicle({ operationId: cashOperationId });
-  armoredAtmOne = await mkVehicle({ operationId: atmOperationId });
-  vanCashOne = await mkVehicle({
-    typeId: typeVanId,
-    operationId: cashOperationId,
-    licenseExpiresAt: iso(10),
+  // The old book: a closed odometer row, a visit and an undated accident on cars the registry has no
+  // record of (`vehicleId: null`, the book's code kept), as go-live imported them.
+  const legacy = { isDeleted: false, schemaVersion: 1, createdBy: null, updatedBy: null };
+  await FleetOdometerLogModel.create({
+    ...legacy,
+    vehicleId: null,
+    vehicleCode: 'B-9',
+    date: new Date('2026-10-10T00:00:00.000Z'),
+    outReading: 100,
+    inReading: 140,
+    km: 40,
+    driver1EmployeeId: null,
+    driver2EmployeeId: null,
+    driver1Name: null,
+    driver2Name: null,
+    notes: null,
   });
-  armoredAtmTwo = await mkVehicle({ branchId: branchTwoId, operationId: atmOperationId });
-
-  // Two readings per vehicle: the second closes the first's period, and the closed period's `km`
-  // is what the ranking sums. `vanCashOne` gets none — a car that has driven nothing is the
-  // whole point of «أقل ٥ سيارات» and must still appear.
-  await record(armoredCashOne.id, 1000, -8);
-  await record(armoredCashOne.id, 1900, -2);
-  await record(armoredAtmOne.id, 500, -8);
-  await record(armoredAtmOne.id, 700, -2);
-  await record(armoredAtmTwo.id, 100, -8);
-  await record(armoredAtmTwo.id, 1500, -2);
-
-  // Drivers: two «نقل اموال» and one LEGACY «both» in branch one, one «ATM» in branch two. The
-  // legacy row counts in each split and once in the total — the shim keeps the counters covering
-  // the whole registry, not only the profiles that have been through the new form.
-  const cashSpecialization = await specializationId('نقل اموال');
-  const atmSpecialization = await specializationId('ATM');
-  await mkDriver(branchOneId, cashSpecialization);
-  await mkDriver(branchOneId, cashSpecialization);
-  await mkLegacyDriver(branchOneId, 'both');
-  await mkDriver(branchTwoId, atmSpecialization);
+  await FleetMaintenanceVisitModel.create({
+    ...legacy,
+    vehicleId: null,
+    vehicleCode: 'B-9',
+    inDate: new Date('2026-10-12T00:00:00.000Z'),
+    outDate: new Date('2026-10-13T00:00:00.000Z'),
+    workshopId: new Types.ObjectId(workshopId),
+    workTypeId: new Types.ObjectId(workTypeId),
+  });
+  await FleetAccidentModel.create({
+    ...legacy,
+    vehicleId: new Types.ObjectId(car1.id),
+    vehicleCode: null,
+    occurredAt: null,
+    culprit: 'دفتر',
+    culpritEmployeeId: null,
+    statement: 'بلا تاريخ',
+    companyCost: 5,
+    amountCollected: 0,
+    paidAmount: 0,
+    status: 'open',
+    notes: null,
+  });
 }, 240_000);
 
 afterAll(async () => {
+  vi.useRealTimers();
   await getCache().close();
   await disconnectMongo();
   if (replSet !== null) await replSet.stop();
 });
 
-describe('GET /fleet/dashboard — the fleet section', () => {
-  it('counts active vehicles per type per branch, with the row total', async () => {
-    const dto = await dashboard(adminToken);
-    expect(dto.fleet).not.toBeNull();
-    const rows = dto.fleet?.types ?? [];
-    const armoredRow = rows.find((r) => r.typeId === typeArmoredId);
-    const vanRow = rows.find((r) => r.typeId === typeVanId);
-
-    expect(armoredRow?.counts[branchOneId]).toBe(2);
-    expect(armoredRow?.counts[branchTwoId]).toBe(1);
-    expect(armoredRow?.total).toBe(3);
-    expect(vanRow?.counts[branchOneId]).toBe(1);
-    expect(vanRow?.counts[branchTwoId]).toBeUndefined();
-    expect(vanRow?.total).toBe(1);
-    // Busiest type first — the screen reads top-down.
-    expect(rows[0]?.typeId).toBe(typeArmoredId);
+describe('the clock — one Cairo day per request (R-01)', () => {
+  it('2026-10-31T23:30Z is 2026-11-01 on both reads; this month is that one day', async () => {
+    const now = await nowOf(adminToken);
+    expect(now.today).toBe(TODAY);
+    expect(Date.parse(now.asOf)).toBeGreaterThanOrEqual(NOW.getTime());
+    const period = await periodOf(adminToken, {});
+    expect(period.today).toBe(TODAY);
+    expect(period.range).toEqual({
+      preset: 'thisMonth',
+      from: TODAY,
+      to: TODAY,
+      days: 1,
+      granularity: 'day',
+    });
   });
 
-  it('drops a vehicle out of the matrix when it leaves active service', async () => {
-    const extra = await mkVehicle({ operationId: cashOperationId });
-    const before = await dashboard(adminToken);
-    expect(before.fleet?.types.find((r) => r.typeId === typeArmoredId)?.total).toBe(4);
+  it.each([
+    ['lastMonth', { from: '2026-10-01', to: '2026-10-31', days: 31, granularity: 'day' }],
+    ['last30', { from: '2026-10-03', to: TODAY, days: 30, granularity: 'day' }],
+    ['thisYear', { from: '2026-01-01', to: TODAY, days: 305, granularity: 'month' }],
+  ] as const)('%s resolves on the Cairo day', async (preset, range) => {
+    expect((await periodOf(adminToken, { preset })).range).toEqual({ preset, ...range });
+  });
 
-    const res = await request(app)
-      .post(`/api/v1/fleet/vehicles/${extra.id}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'outOfService', reason: 'اختبار اللوحة', version: extra.version });
+  it.each([
+    ['custom without dates', { preset: 'custom' }],
+    ['dates without custom', { from: '2026-10-01', to: '2026-10-02' }],
+    ['from after to', { preset: 'custom', from: '2026-10-05', to: '2026-10-01' }],
+    ['367 inclusive days', { preset: 'custom', from: '2025-10-31', to: '2026-11-01' }],
+    ['an unknown parameter', { preset: 'thisMonth', branch: 'x' }],
+    ['a date that does not exist', { preset: 'custom', from: '2026-02-30', to: '2026-03-01' }],
+  ])('refuses %s with 400', async (_name, query) => {
+    const res = await call('/fleet/dashboard/period', adminToken, query);
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts 366 inclusive days', async () => {
+    const res = await call('/fleet/dashboard/period', adminToken, {
+      preset: 'custom',
+      from: '2025-11-01',
+      to: '2026-11-01',
+    });
     expect(res.status).toBe(200);
-
-    const after = await dashboard(adminToken);
-    expect(after.fleet?.types.find((r) => r.typeId === typeArmoredId)?.total).toBe(3);
-    expect(after.fleet?.types.find((r) => r.typeId === typeArmoredId)?.counts[branchOneId]).toBe(2);
-  });
-
-  it('splits vehicles and drivers by operation and specialization, company row first', async () => {
-    const dto = await dashboard(adminToken);
-    const stats = dto.fleet?.stats ?? [];
-    const company = stats[0];
-    const one = stats.find((s) => s.branchId === branchOneId);
-    const two = stats.find((s) => s.branchId === branchTwoId);
-
-    expect(company?.branchId).toBeNull();
-    expect(company?.vehicles).toBe(4);
-    expect(company?.cashVehicles).toBe(2);
-    expect(company?.atmVehicles).toBe(2);
-    expect(company?.drivers).toBe(4);
-    // The legacy «both» is counted in BOTH splits: 2 cash + 1 both = 3, 1 atm + 1 both = 2.
-    expect(company?.cashDrivers).toBe(3);
-    expect(company?.atmDrivers).toBe(2);
-
-    expect(one?.vehicles).toBe(3);
-    expect(one?.cashVehicles).toBe(2);
-    expect(one?.atmVehicles).toBe(1);
-    expect(one?.drivers).toBe(3);
-    expect(one?.cashDrivers).toBe(3);
-    expect(one?.atmDrivers).toBe(1);
-
-    expect(two?.vehicles).toBe(1);
-    expect(two?.atmVehicles).toBe(1);
-    expect(two?.cashVehicles).toBe(0);
-    expect(two?.drivers).toBe(1);
-    expect(two?.atmDrivers).toBe(1);
-    expect(two?.cashDrivers).toBe(0);
-  });
-
-  it('lists only the licences inside the horizon, soonest first', async () => {
-    const dto = await dashboard(adminToken);
-    const due = dto.fleet?.dueLicenses ?? [];
-    expect(due.map((row) => row.code)).toContain(vanCashOne.code);
-    expect(due.map((row) => row.code)).not.toContain(armoredCashOne.code);
-    expect(due[0]?.branchId).toBe(branchOneId);
-    const dates = due.map((row) => Date.parse(row.licenseExpiresAt));
-    expect([...dates].sort((a, b) => a - b)).toEqual(dates);
-  });
-
-  it('names every branch the matrix has a column for', async () => {
-    const dto = await dashboard(adminToken);
-    const ids = dto.branches.map((b) => b.id);
-    expect(ids).toContain(branchOneId);
-    expect(ids).toContain(branchTwoId);
-    expect(dto.branches.find((b) => b.id === branchOneId)?.name.ar).toBe('فرع القاهرة');
+    expect(data<FleetDashboardPeriodDto>(res).range).toMatchObject({
+      days: 366,
+      granularity: 'month',
+    });
   });
 });
 
-describe('GET /fleet/dashboard — kilometres', () => {
-  it('sums the closed periods per branch and ranks the cars at both ends', async () => {
-    const dto = await dashboard(adminToken);
-    const byBranch = new Map((dto.odometer?.byBranch ?? []).map((row) => [row.branchId, row.km]));
-    expect(byBranch.get(branchOneId)).toBe(1100); // 900 + 200 + 0
-    expect(byBranch.get(branchTwoId)).toBe(1400);
-    // Highest branch first.
-    expect(dto.odometer?.byBranch[0]?.branchId).toBe(branchTwoId);
-
-    const top = dto.odometer?.top ?? [];
-    expect(top[0]).toMatchObject({ code: armoredAtmTwo.code, km: 1400 });
-    expect(top[1]).toMatchObject({ code: armoredCashOne.code, km: 900 });
-    expect(top[2]).toMatchObject({ code: armoredAtmOne.code, km: 200 });
-
-    // A car that has driven nothing is the answer to «أقل ٥ سيارات», not an omission.
-    const bottom = dto.odometer?.bottom ?? [];
-    expect(bottom[0]).toMatchObject({ code: vanCashOne.code, km: 0 });
-    expect(bottom.map((row) => row.km)).toEqual([...bottom.map((row) => row.km)].sort((a, b) => a - b));
-  });
-
-  it('moves a car up the ranking when a new reading closes a period', async () => {
-    await record(armoredAtmOne.id, 5700, 0); // closes 700 → +5000
-    const dto = await dashboard(adminToken);
-    const top = dto.odometer?.top ?? [];
-    expect(top[0]).toMatchObject({ code: armoredAtmOne.code, km: 5200 });
-    const byBranch = new Map((dto.odometer?.byBranch ?? []).map((row) => [row.branchId, row.km]));
-    expect(byBranch.get(branchOneId)).toBe(6100);
-  });
-});
-
-describe('GET /fleet/dashboard — today strips', () => {
-  it('shows a visit checked in today with its workshop, work type and vehicle code', async () => {
-    const workshopId = await mkCatalog('workshop', 'ورشة اللوحة', 'Dashboard shop');
-    const workTypes = await request(app)
-      .get('/api/v1/fleet/catalog-items')
-      .query({ kind: 'workType', pageSize: 50 })
-      .set('Authorization', `Bearer ${adminToken}`);
-    const workTypeId = data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id;
-    expect(workTypeId).toBeDefined();
-    const driverId = await mkEmployee(branchOneId);
-
-    const before = await dashboard(adminToken);
-    const beforeCount = before.maintenance?.monthCount ?? 0;
-
-    const visit = await request(app)
-      .post('/api/v1/fleet/maintenance')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        vehicleId: vanCashOne.id,
-        inDate: iso(0),
-        workshopId,
-        workTypeId,
-        odometerAtService: 4000,
-        driverInEmployeeId: driverId,
+describe('the doors — real roles (R-28, §5.5)', () => {
+  it('turns a caller with no fleet key away from both reads, and audits the denial', async () => {
+    const nobody = await reader([]);
+    expect((await call('/fleet/dashboard/now', nobody.token)).status).toBe(403);
+    expect((await call('/fleet/dashboard/period', nobody.token)).status).toBe(403);
+    let rows: unknown[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt += 1) {
+      const audit = await call('/platform/audit-logs', adminToken, {
+        action: 'permissionDenied',
+        entityType: 'user',
+        entityId: nobody.id,
       });
-    expect(visit.status).toBe(201);
-
-    const after = await dashboard(adminToken);
-    const row = (after.maintenance?.today ?? []).find((v) => v.code === vanCashOne.code);
-    expect(row).toBeDefined();
-    expect(row?.workshop?.ar).toBe('ورشة اللوحة');
-    expect(row?.workType?.ar).toBe('صيانة');
-    expect(after.maintenance?.monthCount).toBe(beforeCount + 1);
+      rows = data<unknown[]>(audit);
+      if (rows.length === 0) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(rows.length).toBeGreaterThan(0);
   });
 
-  it('leaves yesterday out of today while keeping it in the month', async () => {
-    const workshopId = await mkCatalog('workshop', 'ورشة الأمس', 'Yesterday shop');
-    const workTypes = await request(app)
-      .get('/api/v1/fleet/catalog-items')
-      .query({ kind: 'workType', pageSize: 50 })
-      .set('Authorization', `Bearer ${adminToken}`);
-    const workTypeId = data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id;
-    const driverId = await mkEmployee(branchOneId);
-    const yesterdayCar = await mkVehicle({ operationId: cashOperationId });
-
-    const before = await dashboard(adminToken);
-    const beforeMonth = before.maintenance?.monthCount ?? 0;
-
-    const visit = await request(app)
-      .post('/api/v1/fleet/maintenance')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        vehicleId: yesterdayCar.id,
-        inDate: iso(-1),
-        workshopId,
-        workTypeId,
-        odometerAtService: 10,
-        driverInEmployeeId: driverId,
-      });
-    expect(visit.status).toBe(201);
-
-    const after = await dashboard(adminToken);
-    expect((after.maintenance?.today ?? []).map((v) => v.code)).not.toContain(yesterdayCar.code);
-    // Yesterday is only inside this month when the month did not start today.
-    const sameMonth = new Date(Date.now() - DAY).getUTCMonth() === new Date().getUTCMonth();
-    expect(after.maintenance?.monthCount).toBe(beforeMonth + (sameMonth ? 1 : 0));
+  it('a workshop clerk gets the workshop sections only — no alarm line without the alarms screen', async () => {
+    const clerk = await reader(['fleetMaintenance.view']);
+    const now = await nowOf(clerk.token);
+    expect(present(now, NOW_SECTIONS)).toEqual(['workshop', 'recentWorkshop']);
+    expect(now.alerts.map((a) => a.id)).not.toContain('maintenanceRed');
+    expect(present(await periodOf(clerk.token), PERIOD_SECTIONS)).toEqual(['visits']);
   });
 
-  it('shows an accident recorded today and counts it in the month', async () => {
-    const before = await dashboard(adminToken);
-    const beforeCount = before.accidents?.monthCount ?? 0;
-
-    const accident = await request(app)
-      .post('/api/v1/fleet/accidents')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        vehicleId: armoredCashOne.id,
-        occurredAt: iso(0),
-        culprit: 'طرف ثالث',
-        statement: 'اصطدام بسيط في محضر اختبار اللوحة',
-        companyCost: 1500,
-        amountCollected: 0,
-        paidAmount: 0,
-      });
-    expect(accident.status).toBe(201);
-
-    const after = await dashboard(adminToken);
-    const row = (after.accidents?.today ?? []).find((a) => a.code === armoredCashOne.code);
-    expect(row).toBeDefined();
-    expect(row?.culprit).toBe('طرف ثالث');
-    // A third party: no driver of ours behind the name, so the strip draws no driver card on it.
-    expect(row?.culpritEmployeeIds).toEqual([]);
-    expect(row?.status).toBe('open');
-    expect(after.accidents?.monthCount).toBe(beforeCount + 1);
+  it('the cards reader gets the expired cards; the balances need the charging screen too', async () => {
+    const cards = await reader(['fleetFuelCard.view']);
+    expect(present(await nowOf(cards.token), NOW_SECTIONS)).toEqual(['fuelCards']);
+    const charging = await reader(['fleetFuelCard.view', 'fleetFuelCharge.view']);
+    expect(present(await nowOf(charging.token), NOW_SECTIONS)).toEqual([
+      'fuelCards',
+      'fuelCharging',
+    ]);
+    // The charging screen's key alone opens the door and nothing behind it — no 403, nothing shown.
+    const guardOnly = await reader(['fleetFuelCharge.view']);
+    const empty = await nowOf(guardOnly.token);
+    expect(present(empty, NOW_SECTIONS)).toEqual([]);
+    expect(empty.alerts).toEqual([]);
+    expect((await call('/fleet/dashboard/period', guardOnly.token)).status).toBe(403);
   });
-});
 
-describe('GET /fleet/dashboard — permissions and scope', () => {
-  it('gives a workshop-only reader the maintenance section and nothing else', async () => {
-    const role = await rbacService.createRole(
-      { name: { en: 'Workshop clerk', ar: 'كاتب ورشة' }, permissionKeys: ['fleetMaintenance.view'] },
-      adminUserId,
+  it('the odometer reader gets the alarm and no-reading lines now, and the kilometres of a period', async () => {
+    const odo = await reader(['fleetOdometer.view']);
+    expect(present(await nowOf(odo.token), NOW_SECTIONS)).toEqual([
+      'maintenanceAlarm',
+      'noReading',
+    ]);
+    expect(present(await periodOf(odo.token), PERIOD_SECTIONS)).toEqual(['km']);
+  });
+
+  it('a branch-scoped vehicles reader sees their branch: its cars, its column', async () => {
+    const dispatcher = await reader(['fleetVehicle.view'], 'branch', B2);
+    const now = await nowOf(dispatcher.token);
+    expect(now.vehicles?.active).toBe(1);
+    expect(now.distributionVehicles?.branches.map((b) => b.id)).toEqual([B2]);
+    expect(now.distributionVehicles?.totals).toEqual({
+      counts: { [B2]: 1 },
+      noBranch: 0,
+      total: 1,
+    });
+    expect(now.licenceVehicles?.list.map((row) => row.code)).toEqual([car2.code]);
+  });
+
+  it('an `own` grant never turns a company figure into «what I created»', async () => {
+    const own = await reader(['fleetAccident.view'], 'own');
+    const mine = await nowOf(own.token);
+    const admin = await nowOf(adminToken);
+    expect(mine.accidentsOpen).toEqual(admin.accidentsOpen);
+    expect(mine.accidentsOpen?.count).toBe(2);
+    const screen = ok<{ count: number }>(
+      await call('/fleet/accidents/summary', own.token, { status: 'open' }),
     );
-    const userId = await mkUser('clerk@ecms.local');
-    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
-
-    const dto = await dashboard(await tokenFor(userId));
-    expect(dto.maintenance).not.toBeNull();
-    expect(dto.fleet).toBeNull();
-    expect(dto.odometer).toBeNull();
-    expect(dto.accidents).toBeNull();
+    expect(mine.accidentsOpen?.count).toBe(screen.count);
+    const period = await periodOf(own.token);
+    expect(period.accidents?.count).toBe(1);
   });
 
-  it('turns the door away entirely when the caller holds no fleet read at all', async () => {
-    const userId = await mkUser('outsider@ecms.local');
-    const res = await request(app)
-      .get('/api/v1/fleet/dashboard')
-      .set('Authorization', `Bearer ${await tokenFor(userId)}`);
-    expect(res.status).toBe(403);
+  it('the switcher narrows the read to its branch and says so', async () => {
+    const now = await nowOf(adminToken, B1);
+    expect(now.branchId).toBe(B1);
+    expect(now.vehicles?.active).toBe(1);
+    expect(now.vehicleScope).toMatchObject({ branchId: B1, count: 1 });
+    // Both open files are B1's car's — the undated one too: «open now» knows no period (R-23).
+    expect(now.accidentsOpen?.count).toBe(2);
+    const period = await periodOf(adminToken, OCT, B1);
+    expect(period.vehicleScope).toMatchObject({ branchId: B1, count: 1 });
+    expect(period.km?.total).toBe(60);
+    expect(period.visits?.count).toBe(0);
+    // A home branch is not a switch: the whole company.
+    const homed = await reader(['fleetVehicle.view'], 'organization', B1);
+    expect((await nowOf(homed.token)).vehicles?.active).toBe(2);
+  });
+});
+
+describe('the old book’s rows — counted as on the unfiltered screens (R-13, R-23)', () => {
+  it('the company view counts the rows with no car, and names the undated accident', async () => {
+    const dto = await periodOf(adminToken);
+    expect(dto.km?.total).toBe(60 + 90 + 40);
+    expect(dto.km?.unregistered).toBe(40);
+    expect(
+      (dto.km?.byBranch ?? []).reduce((a, b) => a + b.km, 0) + (dto.km?.unregistered ?? 0),
+    ).toBe(dto.km?.total);
+    expect(dto.visits).toMatchObject({ count: 2, unregistered: 1 });
+    expect(dto.accidents).toMatchObject({ count: 1, undated: 1 });
+    expect(dto.accidentList?.rows.map((row) => [row.code, row.date, row.remaining])).toEqual([
+      [car1.code, '2026-10-18', 500],
+    ]);
   });
 
-  it('shows a branch-scoped reader their own branch and no other', async () => {
-    const role = await rbacService.createRole(
-      {
-        name: { en: 'Branch dispatcher', ar: 'مشرف فرع' },
-        permissionKeys: ['fleetVehicle.view', 'fleetOdometer.view'],
-      },
-      adminUserId,
-    );
-    const userId = await mkUser('dispatcher-two@ecms.local', branchTwoId);
-    await rbacService.ensureAssignment(userId, String(role._id), 'branch');
+  it('a set leaves them out: no car, no type', async () => {
+    const dto = await periodOf(adminToken, { ...OCT, typeIds: T1 });
+    expect(dto.vehicleScope).toMatchObject({ typeIds: [T1], count: 2 });
+    expect(dto.km?.total).toBe(150);
+    expect(dto.km?.unregistered).toBeNull();
+    expect(dto.visits).toMatchObject({ count: 1, unregistered: null });
+    expect(dto.accidents?.undated).toBeNull();
+  });
+});
 
-    const dto = await dashboard(await tokenFor(userId));
-    const armoredRow = dto.fleet?.types.find((r) => r.typeId === typeArmoredId);
-    expect(armoredRow?.counts[branchTwoId]).toBe(1);
-    expect(armoredRow?.counts[branchOneId]).toBeUndefined();
-    expect(armoredRow?.total).toBe(1);
-    // The van lives in branch one only, so this reader has no van row at all.
-    expect(dto.fleet?.types.find((r) => r.typeId === typeVanId)).toBeUndefined();
-
-    const company = dto.fleet?.stats[0];
-    expect(company?.vehicles).toBe(1);
-    expect(dto.fleet?.stats.find((s) => s.branchId === branchOneId)?.vehicles).toBe(0);
-
-    // Their kilometres are their own branch's, and only their cars are ranked.
-    const byBranch = new Map((dto.odometer?.byBranch ?? []).map((row) => [row.branchId, row.km]));
-    expect(byBranch.get(branchTwoId)).toBe(1400);
-    expect(byBranch.get(branchOneId)).toBe(0);
-    expect((dto.odometer?.top ?? []).map((row) => row.code)).toEqual([armoredAtmTwo.code]);
+describe('the old landing read is retired (P1-13)', () => {
+  it('GET /fleet/dashboard answers 404', async () => {
+    expect((await call('/fleet/dashboard', adminToken)).status).toBe(404);
   });
 });

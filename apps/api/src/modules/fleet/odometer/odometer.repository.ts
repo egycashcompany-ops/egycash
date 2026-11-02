@@ -1,14 +1,19 @@
-import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { ymdOf, ymdToUtcDate, type FleetOdometerSummaryDto, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
+import { FleetVehicleModel } from '../vehicles/vehicle.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 import { driverNameSorts } from '../fleet-sort-keys';
 import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
+import { KM_ROW_KIND_EXPR, type KmRow } from './km-rules';
 
 export interface LatestReading {
   vehicleId: string;
-  /** max(outReading, inReading) of the newest entry — the vehicle's latest known reading. */
+  /**
+   * The car's HIGHEST effective reading — `max(outReading, inReading ?? outReading)` of the row
+   * that ranks first by that figure (see `latestReadings`). The vehicle's latest known reading.
+   */
   reading: number;
   date: Date;
   /**
@@ -16,7 +21,23 @@ export interface LatestReading {
    * the reading the alarm measured rather than work out a «latest row» of its own.
    */
   logId: string;
+  /**
+   * The NEWEST-dated row's effective reading and its day (C6). Equal to `reading`/`date` on a
+   * healthy chain; different only when the highest reading is not the newest — a typo, or a
+   * reading typed on the wrong car — which the alarm card says in so many words.
+   */
+  newest: ChainBound;
 }
+
+/**
+ * A row's EFFECTIVE reading: how far the car had got by the end of that row — the closing reading
+ * of a closed period, the opening one of an open period. The per-row gap reads the same figure off
+ * a document (`rowReading` in `service-gap.ts`), so the alarm's latest reading and a row's gap are
+ * the same number on the same row.
+ */
+const EFFECTIVE_READING = {
+  $max: ['$outReading', { $ifNull: ['$inReading', '$outReading'] }],
+} as const;
 
 /** One end of the bracket: a reading and the date it was taken on. */
 export interface ChainBound {
@@ -31,8 +52,12 @@ export interface ChainBound {
  * accepts one equal to it, so two rows can legitimately share a value. MongoDB's sort is not
  * stable, so at that point "the latest reading" — and the DATE that travels with it — became
  * whichever row the server happened to return. `_id` is monotonic per insert, so it settles the
- * tie the way the chain was actually written, and every query that picks "the highest" uses this
- * same order rather than a private one.
+ * tie the way the chain was actually written, and every date-bounded question that picks "the
+ * highest OPENING reading" uses this same order rather than a private one.
+ *
+ * The car's LATEST reading is a different question and is ranked differently — by the row's
+ * effective reading, then its day, then `_id` (see `latestReadings`): a tie on the opening reading
+ * is ordinary (a parked day), and there the row that got furthest is the one that counts.
  */
 const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
 
@@ -153,18 +178,6 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return docs.map((doc) => doc.toObject() as FleetOdometerLogDoc);
   }
 
-  async findLatest(
-    vehicleId: string,
-    session?: ClientSession,
-  ): Promise<FleetOdometerLogDoc | null> {
-    return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false, ...ON_THE_CHAIN })
-      .sort(NEWEST_FIRST)
-      .session(session ?? null)
-      .lean<FleetOdometerLogDoc>()
-      .exec();
-  }
-
   /**
    * Chain neighbours of an entry — the row dated just before it and the row dated just after it
    * (correction and delete flows, §4.3).
@@ -281,15 +294,35 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       .exec();
   }
 
-  /** Newest entry per vehicle in one pass — the alarm engine's read (§4.4). */
+  /**
+   * The highest — and the newest — reading per vehicle in one pass: the alarm engine's read (§4.4).
+   *
+   * RANKED BY THE ROW'S EFFECTIVE READING, NOT BY `outReading`. «لو ماشية 150 … وكتبت بعد كده
+   * دخول بتاع تاني يوم 200 … بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق الصيانة». Two chain rows
+   * very often share the top OPENING reading: a parked day (150 → 150, 0 km) and the next day
+   * (150 → 200, 50 km), or rows typed out of order or re-created by a correction. Ranked by
+   * `outReading` the tie fell to `_id`, so whichever of the two was WRITTEN last won — and when
+   * that was the 0-km row, the car's reading stayed 150 and the day's 50 km never reached «فارق
+   * عداد الصيانة» nor the alarm level. Ranked by `max(out, in)`, the row that got furthest wins;
+   * a tie on that figure goes to the later DAY, then to the later insert, so the answer is a total
+   * order and, on a healthy chain, the newest row (the open period carries the same figure the row
+   * before it closed on).
+   *
+   * `newest` is the same figure for the newest-dated row (`{date:-1, _id:-1}`), taken by a `$max`
+   * over (date, _id, reading) in the same `$group`: BSON compares documents field by field, so the
+   * maximum is exactly the row that sorts first by date, then by `_id`.
+   *
+   * Only the four fields the answer needs survive to the sort, which is in memory (it is on a
+   * computed figure) and must stay far below the aggregation's memory limit on a fleet's history.
+   */
   async latestReadings(vehicleIds: readonly string[]): Promise<Map<string, LatestReading>> {
     if (vehicleIds.length === 0) return new Map();
     const rows = await this.model.aggregate<{
       _id: Types.ObjectId;
-      outReading: number;
-      inReading: number | null;
+      reading: number;
       date: Date;
       logId: Types.ObjectId;
+      newest: { date: Date; logId: Types.ObjectId; reading: number };
     }>([
       {
         $match: {
@@ -298,16 +331,19 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           ...ON_THE_CHAIN,
         },
       },
-      { $sort: { vehicleId: 1, outReading: -1, _id: -1 } },
+      // `inReading` never sits below `outReading` on a stored row, but the max is taken anyway:
+      // the figure that ranks the row is the one the answer reports, whatever a row holds.
+      { $project: { vehicleId: 1, date: 1, top: EFFECTIVE_READING } },
+      { $sort: { vehicleId: 1, top: -1, date: -1, _id: -1 } },
       {
         $group: {
           _id: '$vehicleId',
-          outReading: { $first: '$outReading' },
-          inReading: { $first: '$inReading' },
+          reading: { $first: '$top' },
           date: { $first: '$date' },
           // The same `$first` on the same total order, so the id is the row the reading and the
           // date were taken from.
           logId: { $first: '$_id' },
+          newest: { $max: { date: '$date', logId: '$_id', reading: '$top' } },
         },
       },
     ]);
@@ -316,9 +352,10 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         String(row._id),
         {
           vehicleId: String(row._id),
-          reading: Math.max(row.outReading, row.inReading ?? row.outReading),
+          reading: row.reading,
           date: row.date,
           logId: String(row.logId),
+          newest: { reading: row.newest.reading, date: row.newest.date },
         },
       ]),
     );
@@ -558,6 +595,135 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       clauses.push({ date: { $lt: dayAfter } });
     }
     return clauses.length === 0 ? {} : { $and: clauses };
+  }
+
+  // ── The period reads (fleet dashboard plan R-07, R-14, R-15) ────────────────────────────────
+
+  /** A `logFilter` as the register reads it: live rows only, as `listLogs` adds through the base. */
+  private static live(filter: FilterQuery<FleetOdometerLogDoc>): FilterQuery<FleetOdometerLogDoc> {
+    return Object.keys(filter).length === 0
+      ? { isDeleted: false }
+      : { $and: [{ isDeleted: false }, filter] };
+  }
+
+  /**
+   * R-14 — the register's total: ONE `$group` over exactly the rows `listLogs` pages through for the
+   * same filter, so «إجمالي الكيلومترات» is the km column of every matching row, added up — valid
+   * rows only, the negative ones counted apart as «قراءات تحتاج مراجعة» (`km-rules.ts`).
+   */
+  async summaryOf(filter: FilterQuery<FleetOdometerLogDoc>): Promise<FleetOdometerSummaryDto> {
+    const count = (when: unknown) => ({ $sum: { $cond: [when, 1, 0] } });
+    const [row] = await this.model.aggregate<FleetOdometerSummaryDto>([
+      { $match: FleetOdometerRepository.live(filter) },
+      {
+        $group: {
+          _id: null,
+          km: { $sum: { $cond: [KM_ROW_KIND_EXPR.valid, '$km', 0] } },
+          validRows: count(KM_ROW_KIND_EXPR.valid),
+          invalidRows: count(KM_ROW_KIND_EXPR.invalid),
+          openRows: count(KM_ROW_KIND_EXPR.open),
+        },
+      },
+      { $project: { _id: 0, km: 1, validRows: 1, invalidRows: 1, openRows: 1 } },
+    ]);
+    return row ?? { km: 0, validRows: 0, invalidRows: 0, openRows: 0 };
+  }
+
+  /**
+   * The rows a period's kilometres are read from — chain rows AND days recorded without a counter —
+   * for a filter whose dates already name the window [from, to + 1]. No join and no look beyond the
+   * window: a row's successor, when it makes the row single-day, is always inside it (R-15). Exposed
+   * as a query so the plan behind it can be explained.
+   */
+  kmWindowQuery(filter: FilterQuery<FleetOdometerLogDoc>) {
+    return this.model
+      .find(FleetOdometerRepository.live(filter))
+      .select({ vehicleId: 1, vehicleCode: 1, date: 1, outReading: 1, km: 1 });
+  }
+
+  async kmWindowRows(filter: FilterQuery<FleetOdometerLogDoc>): Promise<KmRow[]> {
+    const rows = await this.kmWindowQuery(filter)
+      .lean<
+        Pick<
+          FleetOdometerLogDoc,
+          '_id' | 'vehicleId' | 'vehicleCode' | 'date' | 'outReading' | 'km'
+        >[]
+      >()
+      .exec();
+    return rows.map((row) => ({
+      vehicleId: row.vehicleId === null ? null : String(row.vehicleId),
+      vehicleCode: row.vehicleCode ?? null,
+      date: ymdOf(row.date),
+      outReading: row.outReading ?? null,
+      km: row.km ?? null,
+      order: String(row._id),
+    }));
+  }
+
+  /**
+   * R-07, step 1 — the cars that DO have a chain reading dated on or after `sinceYmd`: one bounded
+   * read over the recent days (the `{date: -1}` index), never a car's whole history.
+   */
+  readSincePipeline(vehicleIds: readonly string[], sinceYmd: string): PipelineStage[] {
+    return [
+      {
+        $match: {
+          vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+          isDeleted: false,
+          ...ON_THE_CHAIN,
+          date: { $gte: ymdToUtcDate(sinceYmd) },
+        },
+      },
+      { $group: { _id: '$vehicleId' } },
+    ];
+  }
+
+  async vehiclesReadSince(vehicleIds: readonly string[], sinceYmd: string): Promise<Set<string>> {
+    if (vehicleIds.length === 0) return new Set();
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId }>(
+      this.readSincePipeline(vehicleIds, sinceYmd),
+    );
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
+   * R-07, step 2 — each car's latest chain-reading DATE (`MAX(date)` over its live rows that carry a
+   * counter; a day recorded without one is not a reading), for the cars step 1 did not find. A car
+   * absent from the answer has never been read at all.
+   *
+   * ONE row per car, whatever its history: the pipeline runs over the REGISTRY (one document per
+   * asked id) and fetches each car's newest chain row through `ix_vehicle_date` with `$limit: 1`.
+   * After a holiday every active car can be unread; a `$sort`+`$group` over the log would then read
+   * every car's whole history on every refresh.
+   */
+  latestChainDatesPipeline(vehicleIds: readonly string[]): PipelineStage[] {
+    return [
+      { $match: { _id: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) } } },
+      {
+        $lookup: {
+          from: this.model.collection.name,
+          localField: '_id',
+          foreignField: 'vehicleId',
+          pipeline: [
+            { $match: { isDeleted: false, ...ON_THE_CHAIN } },
+            { $sort: { date: -1 } },
+            { $limit: 1 },
+            { $project: { _id: 0, date: 1 } },
+          ],
+          as: 'latest',
+        },
+      },
+      { $unwind: '$latest' },
+      { $project: { _id: 1, date: '$latest.date' } },
+    ];
+  }
+
+  async latestChainDates(vehicleIds: readonly string[]): Promise<Map<string, string>> {
+    if (vehicleIds.length === 0) return new Map();
+    const rows = await FleetVehicleModel.aggregate<{ _id: Types.ObjectId; date: Date }>(
+      this.latestChainDatesPipeline(vehicleIds),
+    );
+    return new Map(rows.map((row) => [String(row._id), ymdOf(row.date)]));
   }
 }
 

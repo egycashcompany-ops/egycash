@@ -164,6 +164,8 @@ const chargeDto: FleetCustodyOperationDto = {
   letterFigure: null,
   signatures: DEFAULTS.charge,
   ledger: null,
+  deletion: null,
+  createdByName: null,
   status: 'done',
   transfer: null,
   cancellation: null,

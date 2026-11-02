@@ -104,6 +104,8 @@ const opDto = (patch: Partial<FleetCustodyOperationDto>): FleetCustodyOperationD
   letterFigure: null,
   signatures: DEFAULTS.charge,
   ledger: null,
+  deletion: null,
+  createdByName: null,
   status: 'done',
   transfer: null,
   cancellation: null,

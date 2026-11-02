@@ -1,8 +1,11 @@
 // «مصروفات التراخيص» against a real mongo — a renewal, an extension, or both in one record; nothing
 // in a half is required; a hand-typed plate keeps no car; an edit is versioned; a delete is soft;
-// and the set-up's signatures start from the department's own names.
+// and the set-up's signatures start from the department's own names. Its items: which memo and
+// which group («طريقة الصرف») offer each, and deleting one the owner added («امسح بند انا ضيفته»).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import request from 'supertest';
+import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   CreateFleetCatalogItemSchema,
@@ -10,11 +13,20 @@ import {
   CreateFleetLicenseExpenseSchema,
   FleetLicenseExpenseSummaryQuerySchema,
   ListFleetLicenseExpensesQuerySchema,
+  UpdateFleetCatalogItemSchema,
+  type FleetCatalogItemDto,
   type FleetLicenseExpenseDto,
+  type FleetLicenseExpenseTemplateLine,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { moduleManifests } from '../../src/modules';
+import { buildApp } from '../../src/app';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { rbacService } from '../../src/platform/rbac';
+import { authService } from '../../src/platform/auth';
+import { userService } from '../../src/platform/users';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { FleetLicenseExpenseSettingsModel } from '../../src/modules/fleet/license-expenses/license-expense-settings.model';
 import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
 import {
   DEFAULT_LICENSE_EXPENSE_SIGNATURES,
@@ -36,8 +48,11 @@ const resolveMongoUri = async (): Promise<string> => {
 const ACTOR = new Types.ObjectId().toString();
 const SIGNATURES = { agent: 'أ', director: 'ب', generalManager: 'ج\nد' };
 
+let app: Express;
+
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
+  app = buildApp();
 }, 120_000);
 
 afterAll(async () => {
@@ -294,6 +309,429 @@ describe('a licensing-expenses memo', () => {
         ACTOR,
       ),
     ).rejects.toThrow(/licenseExpenseItem/u);
+  });
+});
+
+describe('«طريقة الصرف» and «امسح بند انا ضيفته» — the memo items', () => {
+  // «وعاوز احدد البند كمان هو صرفه بفيزا إدارة الحركة او صرفه نقدًا او كلاهما ف اعدادات النماذج او
+  // امسح بند انا ضيفته».
+  const PASSWORD = 'Str0ng#Pass!';
+  let people = 0;
+  /** A user holding exactly `permissionKeys`, with a token signed for them. */
+  const personWith = async (permissionKeys: string[]): Promise<{ id: string; token: string }> => {
+    people += 1;
+    const role = await rbacService.createRole(
+      { name: { en: `Items role ${people}`, ar: `دور البنود ${people}` }, permissionKeys },
+      ACTOR,
+    );
+    const { user } = await userService.create(
+      {
+        email: `license-items-${people}@ecms.local`,
+        firstName: { ar: 'ب', en: 'I' },
+        lastName: { ar: 'ن', en: 'T' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    const id = String(user._id);
+    await userService.setPassword(id, PASSWORD, 'passwordReset');
+    await userService.forceActivate(id);
+    await rbacService.ensureAssignment(id, String(role._id), 'organization');
+    return { id, token: authService.signAccessToken(id, new Types.ObjectId().toString(), 0) };
+  };
+
+  let manager: { id: string; token: string };
+  /** Reads the catalogs (the licensing screens' audience), never writes one. */
+  let reader: { id: string; token: string };
+  beforeAll(async () => {
+    manager = await personWith(['fleetCatalog.manage', 'fleetVehicle.view']);
+    reader = await personWith(['fleetVehicle.view', 'fleetLicenseExpense.view']);
+  });
+
+  const body = <T>(res: { body: unknown }): T => (res.body as { data: T }).data;
+  const add = async (ar: string, extra: Record<string, unknown> = {}) => {
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${manager.token}`)
+      .send({ kind: 'licenseExpenseItem', name: { ar, en: ar }, ...extra });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return body<FleetCatalogItemDto>(res);
+  };
+  const remove = (token: string, id: string) =>
+    request(app)
+      .delete(`/api/v1/fleet/catalog-items/${id}`)
+      .set('Authorization', `Bearer ${token}`);
+  const listed = async (): Promise<FleetCatalogItemDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'licenseExpenseItem', pageSize: 100 })
+      .set('Authorization', `Bearer ${manager.token}`);
+    expect(res.status).toBe(200);
+    return body<FleetCatalogItemDto[]>(res);
+  };
+  const seededItem = async () => {
+    const seeded = await FleetCatalogItemModel.findOne({
+      kind: 'licenseExpenseItem',
+      createdBy: null,
+      isDeleted: false,
+    })
+      .lean()
+      .exec();
+    expect(seeded, 'a seeded item').not.toBeNull();
+    return seeded!;
+  };
+  const auditOf = (entityId: string, action: string) =>
+    AuditLogModel.find({
+      'entityRef.moduleId': 'fleet',
+      'entityRef.entityType': 'catalogItem',
+      'entityRef.entityId': entityId,
+      action,
+    })
+      .sort({ _id: 1 })
+      .lean()
+      .exec();
+
+  it('reads a seeded item as both groups and built in — an item added by hand is not', async () => {
+    const seeded = toCatalogItemDto(await seededItem());
+    expect(seeded).toMatchObject({ licenseExpensePaidBy: null, builtIn: true });
+    const added = await add('رسوم فحص فني');
+    expect(added).toMatchObject({ licenseExpensePaidBy: null, builtIn: false });
+  });
+
+  it('reads an item stored before the question — no key at all — as both groups', async () => {
+    const _id = new Types.ObjectId();
+    await FleetCatalogItemModel.collection.insertOne({
+      _id,
+      kind: 'licenseExpenseItem',
+      name: { ar: 'بند قديم', en: 'Old item' },
+      countsForAlarm: false,
+      violationSide: null,
+      licenseExpenseKind: null,
+      isActive: true,
+      sortOrder: null,
+      schemaVersion: 1,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      createdBy: new Types.ObjectId(ACTOR),
+      updatedBy: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      __v: 0,
+    });
+    const old = await FleetCatalogItemModel.findById(_id).lean().exec();
+    expect(old && 'licenseExpensePaidBy' in old ? old.licenseExpensePaidBy : undefined).toBe(
+      undefined,
+    );
+    expect(toCatalogItemDto(old!).licenseExpensePaidBy).toBeNull();
+  });
+
+  it('keeps how an item is paid — card, cash, or both again — and audits each change', async () => {
+    const visa = await add('رسوم بالفيزا', { licenseExpensePaidBy: 'visa' });
+    expect(visa.licenseExpensePaidBy).toBe('visa');
+    const cash = await fleetCatalogItemService.update(
+      visa.id,
+      UpdateFleetCatalogItemSchema.parse({ licenseExpensePaidBy: 'cash', version: visa.version }),
+      manager.id,
+    );
+    expect(toCatalogItemDto(cash).licenseExpensePaidBy).toBe('cash');
+    // The other facts of the item are untouched by the payment way.
+    expect(toCatalogItemDto(cash)).toMatchObject({ licenseExpenseKind: null, isActive: true });
+    const both = await fleetCatalogItemService.update(
+      visa.id,
+      UpdateFleetCatalogItemSchema.parse({ licenseExpensePaidBy: null, version: cash.__v }),
+      manager.id,
+    );
+    expect(toCatalogItemDto(both).licenseExpensePaidBy, 'null puts it back in both').toBeNull();
+    const card = await fleetCatalogItemService.update(
+      visa.id,
+      UpdateFleetCatalogItemSchema.parse({ licenseExpensePaidBy: 'visa', version: both.__v }),
+      manager.id,
+    );
+    // An edit that does not name it — a rename — leaves it alone.
+    const renamed = await fleetCatalogItemService.update(
+      visa.id,
+      UpdateFleetCatalogItemSchema.parse({
+        name: { ar: 'رسوم بالفيزا ٢', en: 'Card fee 2' },
+        version: card.__v,
+      }),
+      manager.id,
+    );
+    expect(toCatalogItemDto(renamed).licenseExpensePaidBy).toBe('visa');
+
+    const changes = (await auditOf(visa.id, 'update')).flatMap((row) =>
+      (row.changes as { field: string; old: unknown; new: unknown }[]).filter(
+        (change) => change.field === 'licenseExpensePaidBy',
+      ),
+    );
+    expect(changes.map((change) => [change.old, change.new])).toEqual([
+      ['visa', 'cash'],
+      ['cash', null],
+      [null, 'visa'],
+    ]);
+    // …and the creation's record names it too.
+    const createdRows = await auditOf(visa.id, 'create');
+    expect(
+      createdRows.flatMap((row) =>
+        (row.changes as { field: string; new: unknown }[])
+          .filter((change) => change.field === 'licenseExpensePaidBy')
+          .map((change) => change.new),
+      ),
+    ).toEqual(['visa']);
+  });
+
+  it('means nothing on any other list — refused on create and on edit, null allowed', async () => {
+    expect(
+      CreateFleetCatalogItemSchema.safeParse({
+        kind: 'workshop',
+        name: { ar: 'ورشة', en: 'Workshop' },
+        licenseExpensePaidBy: 'cash',
+      }).success,
+    ).toBe(false);
+    const refused = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${manager.token}`)
+      .send({
+        kind: 'workshop',
+        name: { ar: 'ورشة الدفع', en: 'Paid shop' },
+        licenseExpensePaidBy: 'visa',
+      });
+    expect(refused.status).toBe(400);
+
+    const workshop = await fleetCatalogItemService.create(
+      CreateFleetCatalogItemSchema.parse({
+        kind: 'workshop',
+        name: { ar: 'ورشة طريقة الصرف', en: 'Workshop P' },
+        licenseExpensePaidBy: null,
+      }),
+      ACTOR,
+    );
+    expect(toCatalogItemDto(workshop).licenseExpensePaidBy).toBeNull();
+    const edit = await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${String(workshop._id)}`)
+      .set('Authorization', `Bearer ${manager.token}`)
+      .send({ licenseExpensePaidBy: 'cash', version: workshop.__v });
+    expect(edit.status).toBe(409);
+    expect(JSON.stringify(edit.body)).toMatch(/licenseExpenseItem/u);
+    const unchanged = await FleetCatalogItemModel.findById(workshop._id).lean().exec();
+    expect(unchanged?.licenseExpensePaidBy ?? null).toBeNull();
+  });
+
+  it('deletes an item the owner added — softly, out of the list, its name free again, audited', async () => {
+    const item = await add('رسوم للحذف', { licenseExpensePaidBy: 'cash' });
+    expect((await listed()).map((row) => row.id)).toContain(item.id);
+
+    const res = await remove(manager.token, item.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
+
+    expect((await listed()).map((row) => row.id)).not.toContain(item.id);
+    // Soft: the row is still in the database, marked deleted, by whom.
+    const raw = await FleetCatalogItemModel.findById(item.id).lean().exec();
+    expect(raw).toMatchObject({ isDeleted: true, licenseExpensePaidBy: 'cash' });
+    expect(String(raw?.deletedBy)).toBe(manager.id);
+    expect(raw?.deletedAt).toBeInstanceOf(Date);
+
+    const [audit] = await auditOf(item.id, 'delete');
+    expect(audit, 'one delete record').toBeDefined();
+    expect(audit?.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'name',
+          old: expect.objectContaining({ ar: 'رسوم للحذف' }),
+        }),
+        expect.objectContaining({ field: 'licenseExpensePaidBy', old: 'cash' }),
+      ]),
+    );
+
+    // Gone is gone: a second delete finds nothing.
+    expect((await remove(manager.token, item.id)).status).toBe(404);
+    // The name is free — he may add it again, as a new item.
+    const again = await add('رسوم للحذف');
+    expect(again.id).not.toBe(item.id);
+    expect(again.builtIn).toBe(false);
+  });
+
+  it('deletes an archived item the owner added, too', async () => {
+    const item = await add('رسوم مؤرشفة');
+    const archived = await fleetCatalogItemService.update(
+      item.id,
+      UpdateFleetCatalogItemSchema.parse({ isActive: false, version: item.version }),
+      manager.id,
+    );
+    expect(archived.isActive).toBe(false);
+    expect((await remove(manager.token, item.id)).status).toBe(204);
+    expect((await FleetCatalogItemModel.findById(item.id).lean().exec())?.isDeleted).toBe(true);
+  });
+
+  it('refuses a built-in item (409) — the boot would only seed it again; it is archived', async () => {
+    const seeded = await seededItem();
+    const res = await remove(manager.token, String(seeded._id));
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).toMatch(/built-in/u);
+    const raw = await FleetCatalogItemModel.findById(seeded._id).lean().exec();
+    expect(raw?.isDeleted).toBe(false);
+    expect(await auditOf(String(seeded._id), 'delete')).toEqual([]);
+  });
+
+  it('refuses every other list (409) — a workshop is pointed at by visits; it is archived', async () => {
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${manager.token}`)
+      .send({ kind: 'workshop', name: { ar: 'ورشة لا تُحذف', en: 'Kept shop' } });
+    expect(res.status).toBe(201);
+    const workshop = body<FleetCatalogItemDto>(res);
+    expect(workshop.builtIn, 'added by a person — still not deletable').toBe(false);
+    const refused = await remove(manager.token, workshop.id);
+    expect(refused.status).toBe(409);
+    expect((await FleetCatalogItemModel.findById(workshop.id).lean().exec())?.isDeleted).toBe(
+      false,
+    );
+  });
+
+  it('demands fleetCatalog.manage (403), a real id (400), and a live item (404)', async () => {
+    const item = await add('رسوم محمية');
+    const denied = await remove(reader.token, item.id);
+    expect(denied.status).toBe(403);
+    expect((await FleetCatalogItemModel.findById(item.id).lean().exec())?.isDeleted).toBe(false);
+    expect((await remove(manager.token, 'not-an-id')).status).toBe(400);
+    expect((await remove(manager.token, new Types.ObjectId().toString())).status).toBe(404);
+  });
+
+  it('leaves a saved memo that counted the item exactly as it was', async () => {
+    const item = await add('رسوم في مذكرة', { licenseExpensePaidBy: 'visa' });
+    const memo = await fleetLicenseExpenseService.create(
+      CreateFleetLicenseExpenseSchema.parse({
+        date: '2026-10-20',
+        renewal: {
+          vehicles: [{ vehicleId: null, plate: 'ب ن 1' }],
+          items: [
+            {
+              itemId: item.id,
+              label: 'رسوم في مذكرة',
+              amount: 75.5,
+              count: 2,
+              paidBy: 'visa',
+              receipt: true,
+            },
+          ],
+        },
+        extension: null,
+        signatures: SIGNATURES,
+      }),
+      ACTOR,
+    );
+    expect((await remove(manager.token, item.id)).status).toBe(204);
+    const read = await fleetLicenseExpenseService.get(memo.id);
+    expect(read.renewal?.items).toEqual([
+      {
+        itemId: item.id,
+        label: 'رسوم في مذكرة',
+        amount: 75.5,
+        count: 2,
+        paidBy: 'visa',
+        receipt: true,
+      },
+    ]);
+    expect(read.version, 'the memo was not touched').toBe(memo.version);
+  });
+
+  it('drops a deleted item from the four templates as they are read — stored and versioned as before', async () => {
+    const gone = await add('رسوم تُحذف من النموذج');
+    const kept = await add('رسوم تبقى في النموذج');
+    const archived = await add('رسوم مؤرشفة في النموذج');
+    await fleetCatalogItemService.update(
+      archived.id,
+      UpdateFleetCatalogItemSchema.parse({ isActive: false, version: archived.version }),
+      manager.id,
+    );
+    const line = (itemId: string | null, label: string): FleetLicenseExpenseTemplateLine => ({
+      itemId,
+      label,
+      amount: 10,
+      count: 1,
+      receipt: true,
+    });
+    const goneLine = line(gone.id, gone.name.ar);
+    const keptLine = line(kept.id, kept.name.ar);
+    const archivedLine = line(archived.id, archived.name.ar);
+    const handLine = line(null, 'مكتوب باليد');
+    const templates = {
+      renewal: { visa: [goneLine, keptLine], cash: [handLine, goneLine] },
+      extension: { visa: [archivedLine], cash: [goneLine] },
+    };
+    const before = await fleetLicenseExpenseService.getSettings();
+    const saved = await fleetLicenseExpenseService.saveSettings(
+      { signatures: SIGNATURES, templates, version: before.version ?? 0 },
+      ACTOR,
+    );
+    expect(saved.templates).toEqual(templates);
+
+    expect((await remove(manager.token, gone.id)).status).toBe(204);
+
+    const read = await fleetLicenseExpenseService.getSettings();
+    expect(read.templates).toEqual({
+      renewal: { visa: [keptLine], cash: [handLine] },
+      // An archived item's line stays — archiving stops new choices, it removes nothing.
+      extension: { visa: [archivedLine], cash: [] },
+    });
+    expect(read.version, 'the version does not move').toBe(saved.version);
+    expect(read.signatures).toEqual(SIGNATURES);
+    // Nothing stored changed: the lines are still there until the next «حفظ الإعداد».
+    const stored = await FleetLicenseExpenseSettingsModel.findOne({ key: 'default' }).lean().exec();
+    expect(stored?.templates).toEqual(templates);
+
+    // Through the route, the set-up reads the same.
+    const viaRoute = await request(app)
+      .get('/api/v1/fleet/license-expenses/settings')
+      .set('Authorization', `Bearer ${reader.token}`);
+    expect(viaRoute.status, JSON.stringify(viaRoute.body)).toBe(200);
+    expect(body<typeof read>(viaRoute).templates).toEqual(read.templates);
+
+    // A page that read them saves without a clash — and writes the lines out for good.
+    const resaved = await fleetLicenseExpenseService.saveSettings(
+      { signatures: SIGNATURES, templates: read.templates, version: read.version ?? 0 },
+      ACTOR,
+    );
+    expect(resaved.templates).toEqual(read.templates);
+    const storedAfter = await FleetLicenseExpenseSettingsModel.findOne({ key: 'default' })
+      .lean()
+      .exec();
+    expect(storedAfter?.templates).toEqual(read.templates);
+  });
+
+  it('a page opened before the delete saves the item back — its lines are written out all the same', async () => {
+    // HUB: the save answers and stores the templates as a read would show them, so a set-up still
+    // open from before the delete neither stores the item again nor shows it until its next read.
+    const gone = await add('رسوم تُحذف قبل الحفظ');
+    const line = (itemId: string | null, label: string): FleetLicenseExpenseTemplateLine => ({
+      itemId,
+      label,
+      amount: 10,
+      count: 1,
+      receipt: true,
+    });
+    const goneLine = line(gone.id, gone.name.ar);
+    const handLine = line(null, 'مكتوب باليد قبل الحذف');
+    const stale = await fleetLicenseExpenseService.getSettings();
+    expect((await remove(manager.token, gone.id)).status).toBe(204);
+
+    const saved = await fleetLicenseExpenseService.saveSettings(
+      {
+        signatures: SIGNATURES,
+        templates: {
+          renewal: { visa: [goneLine, handLine], cash: [] },
+          extension: { visa: [], cash: [goneLine] },
+        },
+        version: stale.version ?? 0,
+      },
+      ACTOR,
+    );
+    const live = { renewal: { visa: [handLine], cash: [] }, extension: { visa: [], cash: [] } };
+    expect(saved.templates).toEqual(live);
+    const stored = await FleetLicenseExpenseSettingsModel.findOne({ key: 'default' }).lean().exec();
+    expect(stored?.templates).toEqual(live);
+    expect((await fleetLicenseExpenseService.getSettings()).templates).toEqual(live);
   });
 });
 

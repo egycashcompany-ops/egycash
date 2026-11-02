@@ -54,6 +54,7 @@ const log = (
   outReading: 25_581,
   inReading: 25_631,
   km: 50,
+  serviceGapKm: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
   driver1Name: null,
@@ -76,6 +77,7 @@ const baseline = (o: Partial<FleetAlarmBaselineDto> = {}): FleetAlarmBaselineDto
   counterDate: day('2026-10-06'),
   judgedAgainst: { reading: 22_830, date: day('2026-10-06') },
   exitSetAside: null,
+  workType: null,
   ...o,
 });
 
@@ -95,6 +97,8 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   latestReadingLogId: 'r26',
   baseline: baseline(),
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 
@@ -186,18 +190,24 @@ describe('which row says it', () => {
     }
   });
 
-  it('the row the SERVER names, even when a later day sits above it', () => {
+  // REWRITTEN ON PURPOSE (batch 3, unified.md D2/C2). The reason used to sit on the row the
+  // SERVER names and nowhere else, so a page without that row said nothing. It is a fact about the
+  // car NOW — as the figure, the level and «كيف حُسب الفارق» of a computed car are — so it sits on
+  // the car's NEWEST row on the page, whichever row the server names.
+  it('the car’s NEWEST row on the page, even when the server names an older one', () => {
     const logs = [
       log('r27', '2026-10-27', { outReading: null, inReading: null, km: null }),
       ...THREE_DAYS,
     ];
     const said = rows(page(client(logs, [alarm()]))).map((row) => row.includes('data-odo-reason='));
-    expect(said).toEqual([false, true, false, false]);
+    expect(said).toEqual([true, false, false, false]);
   });
 
-  it('no row at all when the page does not hold that row — the reason never moves to an older one', () => {
-    const markup = page(client(THREE_DAYS.slice(1), [alarm()]));
-    expect(markup).not.toContain('data-odo-reason');
+  it('the newest row the page holds when the server’s row is off the page (C2) — once', () => {
+    const said = rows(page(client(THREE_DAYS.slice(1), [alarm()]))).map((row) =>
+      row.includes('data-odo-reason="baselineBelowChain"'),
+    );
+    expect(said).toEqual([true, false]);
   });
 
   it('a car with no reading at all: its newest row on the page', () => {
@@ -220,11 +230,29 @@ describe('which row says it', () => {
     expect(page(client(THREE_DAYS, null))).not.toContain('data-odo-reason');
   });
 
-  it('a car whose figure was computed shows the figure, never a reason', () => {
+  // REWRITTEN ON PURPOSE (batch 3, unified.md D1/D2): the car's figure of TODAY used to be
+  // printed down every reading of the car («مش بيزود على فارق الصيانه»). Now the newest row on the
+  // page carries it — with the level and «كيف حُسب الفارق» — and every other row its OWN gap, as
+  // the server measured it at that row's reading, or «—».
+  it('a car whose figure was computed: the figure on its newest row, each other row its own gap', () => {
     const measured = alarm({ noAlarmReason: null, sinceServiceKm: 2_841, remainingKm: 2_159 });
-    const markup = page(client(THREE_DAYS, [measured]));
+    const logs = [
+      log('r26', '2026-10-26', { serviceGapKm: 2_841 }),
+      log('r18', '2026-10-18', { serviceGapKm: 2_000 }),
+      log('r06', '2026-10-06', { serviceGapKm: null }),
+    ];
+    const markup = page(client(logs, [measured]));
     expect(markup).not.toContain('data-odo-reason');
-    expect(markup.split('>2,841<').length - 1).toBe(3);
+    const [newest, older, before] = rows(markup);
+    expect(newest).toContain('data-odo-gap="newest"');
+    expect(newest).toContain('>2,841<');
+    expect(newest, 'the level is said there').toContain(t('fleet.vehicle.alarmNone'));
+    expect(older).toContain('data-odo-gap="row"');
+    expect(older).toContain('>2,000<');
+    expect(older, 'no level on an older reading').not.toContain(t('fleet.vehicle.alarmNone'));
+    expect(older).not.toContain('>2,841<');
+    expect(before).toContain('data-odo-gap="none"');
+    expect(markup.split('>2,841<').length - 1, 'the car’s figure, once').toBe(1);
   });
 
   it('the words are never hung on a `title` — the card says them', () => {
@@ -362,6 +390,9 @@ describe('the card', () => {
           inDate: day('2026-10-24'),
           outDate: null,
           why: 'open',
+          workType: null,
+          workshop: null,
+          counts: false,
         },
       }),
     );
@@ -377,6 +408,9 @@ describe('the card', () => {
           inDate: day('2026-10-20'),
           outDate: day('2026-10-21'),
           why: 'notCounting',
+          workType: null,
+          workshop: null,
+          counts: false,
         },
       }),
     );

@@ -1,8 +1,9 @@
-import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { addDaysYmd, ymdToUtcDate, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { FleetVehicleModel } from '../vehicles/vehicle.model';
 import { byVehicleOrBookCode } from '../odometer/odometer.repository';
 import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 import { driverNameSorts } from '../fleet-sort-keys';
@@ -41,6 +42,8 @@ export interface AlarmBaseline {
    */
   entryCounter: number | null;
   exitCounter: number | null;
+  /** The visit's work type — what «كيف حُسب الفارق» names the counted visit by. */
+  workTypeId: string;
 }
 
 /** A car's newest visit by check-in day, whatever its state — see `newestVisits`. */
@@ -50,6 +53,21 @@ export interface NewestVisit {
   /** `null` while the visit is open. */
   outDate: Date | null;
   workTypeId: string;
+  /** Where it is — «التوكيل» — so the card can say where the car went. */
+  workshopId: string;
+}
+
+/**
+ * A closed visit that counts for the alarm, as the per-row gap measures from it — see
+ * `countingVisitsOf`. The counters exactly as stored, `null` where not written.
+ */
+export interface CountingVisit {
+  vehicleId: string;
+  visitId: string;
+  inDate: Date;
+  outDate: Date;
+  entryCounter: number | null;
+  exitCounter: number | null;
 }
 
 /** A visit as the list answers with it. The drivers are stored on the document itself now. */
@@ -164,6 +182,37 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
   }
 
   /**
+   * The visits that held a car from the first day of [from, to] to the last: checked in on or
+   * before `from`, and still open or checked out on or after `to`. R-16 (d) is asked of the period
+   * itself, so ANY visit answers it — an older one that covered the period is not hidden by a later
+   * one, which is what reading the car's newest visit did. Bounded by `ix_vehicle_in`.
+   */
+  workshopThroughoutFilter(
+    vehicleIds: readonly string[],
+    range: { from: string; to: string },
+  ): FilterQuery<FleetMaintenanceVisitDoc> {
+    return {
+      vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+      isDeleted: false,
+      inDate: { $lt: ymdToUtcDate(addDaysYmd(range.from, 1)) },
+      // `outDate: null` also matches an old row without the field — open, as everywhere here.
+      $or: [{ outDate: null }, { outDate: { $gte: ymdToUtcDate(range.to) } }],
+    };
+  }
+
+  /** The cars `workshopThroughoutFilter` answers for — R-16 (d), «في الورشة طوال الفترة». */
+  async vehicleIdsInWorkshopThroughout(
+    vehicleIds: readonly string[],
+    range: { from: string; to: string },
+  ): Promise<ReadonlySet<string>> {
+    if (vehicleIds.length === 0) return new Set();
+    const ids = await this.model
+      .distinct('vehicleId', this.workshopThroughoutFilter(vehicleIds, range))
+      .exec();
+    return new Set(ids.map(String));
+  }
+
+  /**
    * The alarm baseline per vehicle (owner FL-4 point 5): the latest CLOSED visit whose work type
    * counts for the alarm. An open visit is not a baseline — the cycle resets when the car comes
    * BACK, with the counter that was recorded for the service.
@@ -181,6 +230,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       inDate: Date;
       exitOdometer?: number | null;
       entryOdometer?: number | null;
+      workTypeId: Types.ObjectId;
     }>([
       {
         $match: {
@@ -224,6 +274,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           // The entry counter as stored, beside the exit one — so the alarm can say which of the two
           // it measured from, and fall back to this one when the exit counter is contradicted (R3).
           entryOdometer: { $first: '$odometerAtService' },
+          workTypeId: { $first: '$workTypeId' },
         },
       },
     ]);
@@ -245,44 +296,117 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           inDate: row.inDate,
           entryCounter: row.entryOdometer ?? null,
           exitCounter: row.exitOdometer ?? null,
+          workTypeId: String(row.workTypeId),
         },
       ]),
     );
   }
 
   /**
-   * Each car's NEWEST live visit by check-in day, open or closed, counting or not — so the alarm can
-   * say when the visit a reader expects to be measured from is not the one it uses (still open, or
-   * of a work type that does not count). Read-only; a soft-deleted visit is never answered.
+   * EVERY closed, alarm-counting, live visit of these cars checked out strictly before `before`,
+   * newest check-out first — the per-row gap's read (`odometer/service-gap.ts`).
+   *
+   * «مش بيخصم الكيلومترات اللى بتخش كل يوم»: each reading row is measured from the service IN
+   * FORCE ON ITS DAY, so the page needs every service a row on it could fall after, not only the
+   * car's latest. The filter and the order are `alarmBaselines`' own — counting work type, closed,
+   * not deleted; `outDate` then `_id` descending — so the first visit of a car checked out before a
+   * row's day is exactly the baseline the alarm would have used on that day.
+   *
+   * Only the fields the counter choice reads come back; one query for the whole page.
    */
+  async countingVisitsOf(
+    vehicleIds: readonly string[],
+    countingWorkTypeIds: readonly string[],
+    before: Date,
+  ): Promise<CountingVisit[]> {
+    if (vehicleIds.length === 0 || countingWorkTypeIds.length === 0) return [];
+    const rows = await this.model
+      .find(
+        {
+          vehicleId: { $in: vehicleIds.map(oid) },
+          workTypeId: { $in: countingWorkTypeIds.map(oid) },
+          outDate: { $ne: null, $lt: before },
+          isDeleted: false,
+        },
+        { vehicleId: 1, inDate: 1, outDate: 1, odometerAtService: 1, exitOdometer: 1 },
+      )
+      .sort({ outDate: -1, _id: -1 })
+      .lean<
+        {
+          _id: Types.ObjectId;
+          vehicleId: Types.ObjectId;
+          inDate: Date;
+          outDate: Date;
+          odometerAtService?: number | null;
+          exitOdometer?: number | null;
+        }[]
+      >()
+      .exec();
+    // `?? null`, as `alarmBaselines`: a visit written before a counter field existed has none.
+    return rows.map((row) => ({
+      vehicleId: String(row.vehicleId),
+      visitId: String(row._id),
+      inDate: row.inDate,
+      outDate: row.outDate,
+      entryCounter: row.odometerAtService ?? null,
+      exitCounter: row.exitOdometer ?? null,
+    }));
+  }
+
+  /**
+   * Each car's NEWEST live visit by check-in day, open or closed, counting or not — so the alarm can
+   * say when the visit a reader expects to be measured from is not the one it uses (still open, of
+   * a work type that does not count, or checked out before the one that is). Read-only; a
+   * soft-deleted visit is never answered. Its work type and workshop come along, so the card can
+   * name the visit («إصلاح» at «التوكيل») without a second question.
+   *
+   * ONE visit per car, whatever its history: the pipeline runs over the REGISTRY (one document per
+   * asked id) and takes each car's newest visit through `ix_vehicle_in` with `$limit: 1` — the
+   * alarm board and the period km ask this for every car on every read.
+   */
+  newestVisitsPipeline(vehicleIds: readonly string[]): PipelineStage[] {
+    return [
+      { $match: { _id: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) } } },
+      {
+        $lookup: {
+          from: this.model.collection.name,
+          localField: '_id',
+          foreignField: 'vehicleId',
+          pipeline: [
+            { $match: { isDeleted: false } },
+            // A total order, as every `$sort` here: two visits in on one day are told apart by
+            // `_id`, the later-recorded first.
+            { $sort: { inDate: -1, _id: -1 } },
+            { $limit: 1 },
+            { $project: { _id: 1, inDate: 1, outDate: 1, workTypeId: 1, workshopId: 1 } },
+          ],
+          as: 'newest',
+        },
+      },
+      { $unwind: '$newest' },
+      {
+        $project: {
+          _id: 1,
+          visitId: '$newest._id',
+          inDate: '$newest.inDate',
+          outDate: '$newest.outDate',
+          workTypeId: '$newest.workTypeId',
+          workshopId: '$newest.workshopId',
+        },
+      },
+    ];
+  }
+
   async newestVisits(vehicleIds: readonly string[]): Promise<Map<string, NewestVisit>> {
     if (vehicleIds.length === 0) return new Map();
-    const rows = await this.model.aggregate<{
+    const rows = await FleetVehicleModel.aggregate<{
       _id: Types.ObjectId;
       visitId: Types.ObjectId;
       inDate: Date;
       outDate: Date | null;
       workTypeId: Types.ObjectId;
-    }>([
-      {
-        $match: {
-          vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
-          isDeleted: false,
-        },
-      },
-      // A total order, as every `$sort` here: two visits in on one day are told apart by `_id`,
-      // the later-recorded first.
-      { $sort: { vehicleId: 1, inDate: -1, _id: -1 } },
-      {
-        $group: {
-          _id: '$vehicleId',
-          visitId: { $first: '$_id' },
-          inDate: { $first: '$inDate' },
-          outDate: { $first: '$outDate' },
-          workTypeId: { $first: '$workTypeId' },
-        },
-      },
-    ]);
+      workshopId: Types.ObjectId;
+    }>(this.newestVisitsPipeline(vehicleIds));
     return new Map(
       rows.map((row) => [
         String(row._id),
@@ -291,6 +415,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           inDate: row.inDate,
           outDate: row.outDate ?? null,
           workTypeId: String(row.workTypeId),
+          workshopId: String(row.workshopId),
         },
       ]),
     );
@@ -424,6 +549,197 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     if (query.outTo !== undefined) clauses.push({ outDate: { $lt: dayAfter(query.outTo) } });
     return clauses.length === 0 ? {} : { $and: clauses };
   }
+
+  // ── The fleet dashboard's reads (P1-05, R-09, R-12, R-18) ───────────────────────────────────
+  //
+  // Each one is handed the filter the SERVICE built for the list — `visitFilter` with the vehicle
+  // scope and the driver clause folded in — and adds only the soft delete the list's own base
+  // filter adds. So a figure is counted from exactly the rows its link lists, by construction.
+
+  /**
+   * R-09 — the open visits the filter matches: how many, the oldest by check-in day (the earlier
+   * recorded of two on one day), and the registry cars among them. A car has at most one open
+   * visit (`ux_open_visit`), so the per-car list is bounded by the fleet.
+   */
+  async openFacts(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<OpenVisitFacts> {
+    const [facets] = await this.model.aggregate<{
+      total: { n: number }[];
+      oldest: { vehicleId?: Types.ObjectId | null; vehicleCode?: string | null; inDate: Date }[];
+      cars: { _id: Types.ObjectId; visits: number }[];
+    }>([
+      { $match: this.baseFilter(undefined, filter) },
+      {
+        $facet: {
+          total: [{ $count: 'n' }],
+          oldest: [
+            { $sort: { inDate: 1, _id: 1 } },
+            { $limit: 1 },
+            { $project: { _id: 0, vehicleId: 1, vehicleCode: 1, inDate: 1 } },
+          ],
+          cars: [
+            { $match: { vehicleId: { $type: 'objectId' } } },
+            { $group: { _id: '$vehicleId', visits: { $sum: 1 } } },
+          ],
+        },
+      },
+    ]);
+    const oldest = facets?.oldest[0];
+    return {
+      count: facets?.total[0]?.n ?? 0,
+      oldest:
+        oldest === undefined
+          ? null
+          : {
+              vehicleId: oldest.vehicleId == null ? null : String(oldest.vehicleId),
+              vehicleCode: oldest.vehicleCode ?? null,
+              inDate: oldest.inDate,
+            },
+      cars: (facets?.cars ?? []).map((row) => ({
+        vehicleId: String(row._id),
+        visits: row.visits,
+      })),
+    };
+  }
+
+  /**
+   * R-12 — the most recently WRITTEN visits (`createdAt` desc, then `_id` desc) whose business date
+   * — the check-in day, or the check-out day when later — is on or after `since`. That is «either
+   * day on or after it», which is what the `$or` asks.
+   *
+   * A visit of a car since DELETED from the registry is left out: each row opens the register on
+   * its car's code, and the register resolves a code through the live registry only, so that row
+   * would open an empty list (§8.11 «every figure has a link that reproduces it»). Its visit still
+   * counts in every total. A visit kept from the old book, with no car at all, stays.
+   */
+  async recentWritten(
+    filter: FilterQuery<FleetMaintenanceVisitDoc>,
+    since: Date,
+    limit: number,
+  ): Promise<FleetMaintenanceVisitDoc[]> {
+    // `$limit: 0` is refused by Mongo, so a request for no rows is answered without asking.
+    if (limit <= 0) return [];
+    return this.model.aggregate<FleetMaintenanceVisitDoc>([
+      {
+        $match: this.baseFilter(undefined, {
+          $and: [filter, { $or: [{ inDate: { $gte: since } }, { outDate: { $gte: since } }] }],
+        } as FilterQuery<FleetMaintenanceVisitDoc>),
+      },
+      { $sort: { createdAt: -1, _id: -1 } },
+      {
+        $lookup: {
+          from: FleetVehicleModel.collection.name,
+          localField: 'vehicleId',
+          foreignField: '_id',
+          pipeline: [{ $project: { _id: 0, isDeleted: 1 } }],
+          as: 'registryCar',
+        },
+      },
+      { $match: { 'registryCar.isDeleted': { $ne: true } } },
+      { $limit: limit },
+      { $project: { registryCar: 0 } },
+    ]);
+  }
+
+  /**
+   * R-18 — the visits the filter matches, broken down in ONE `$facet`: the state each is in NOW,
+   * per work type, per workshop and per car. Every facet partitions the same matched rows, so each
+   * one sums to `count`. A row kept from the old book for a car the registry never had is grouped
+   * under the code the book wrote.
+   */
+  async breakdown(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<VisitBreakdownFacts> {
+    // `$ifNull` so a field ABSENT on an old row reads as the `null` the list's `outDate: null`
+    // matches — an aggregation `$eq` would tell missing and null apart, the find filter does not.
+    const isNull = (field: string) => ({ $eq: [{ $ifNull: [field, null] }, null] });
+    const [facets] = await this.model.aggregate<{
+      state: { count: number; open: number; unregistered: number }[];
+      byWorkType: { _id: Types.ObjectId; count: number }[];
+      byWorkshop: { _id: Types.ObjectId; count: number }[];
+      byVehicle: {
+        _id: { vehicleId: Types.ObjectId | null; vehicleCode: string | null };
+        visits: number;
+        lastInDate: Date;
+      }[];
+    }>([
+      { $match: this.baseFilter(undefined, filter) },
+      {
+        $facet: {
+          state: [
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+                open: { $sum: { $cond: [isNull('$outDate'), 1, 0] } },
+                unregistered: { $sum: { $cond: [isNull('$vehicleId'), 1, 0] } },
+              },
+            },
+          ],
+          byWorkType: [{ $group: { _id: '$workTypeId', count: { $sum: 1 } } }],
+          byWorkshop: [{ $group: { _id: '$workshopId', count: { $sum: 1 } } }],
+          byVehicle: [
+            {
+              $group: {
+                _id: {
+                  vehicleId: { $ifNull: ['$vehicleId', null] },
+                  vehicleCode: {
+                    $cond: [isNull('$vehicleId'), { $ifNull: ['$vehicleCode', null] }, null],
+                  },
+                },
+                visits: { $sum: 1 },
+                lastInDate: { $max: '$inDate' },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const state = facets?.state[0];
+    return {
+      count: state?.count ?? 0,
+      open: state?.open ?? 0,
+      unregistered: state?.unregistered ?? 0,
+      byWorkType: (facets?.byWorkType ?? []).map((row) => ({
+        id: String(row._id),
+        count: row.count,
+      })),
+      byWorkshop: (facets?.byWorkshop ?? []).map((row) => ({
+        id: String(row._id),
+        count: row.count,
+      })),
+      byVehicle: (facets?.byVehicle ?? []).map((row) => ({
+        vehicleId: row._id.vehicleId == null ? null : String(row._id.vehicleId),
+        vehicleCode: row._id.vehicleCode ?? null,
+        visits: row.visits,
+        lastInDate: row.lastInDate,
+      })),
+    };
+  }
+}
+
+/** R-09's facts, before the service names the cars. */
+export interface OpenVisitFacts {
+  count: number;
+  /** The oldest open visit by check-in day; `null` when none is open. */
+  oldest: { vehicleId: string | null; vehicleCode: string | null; inDate: Date } | null;
+  /** The registry cars among the open visits, with how many each has (one, by `ux_open_visit`). */
+  cars: { vehicleId: string; visits: number }[];
+}
+
+/** R-18's facets, before the service names the work types, workshops and cars. */
+export interface VisitBreakdownFacts {
+  count: number;
+  /** Visits still open NOW (`outDate` null). */
+  open: number;
+  /** Visits with no registry car (kept from the old book). */
+  unregistered: number;
+  byWorkType: { id: string; count: number }[];
+  byWorkshop: { id: string; count: number }[];
+  /** Per registry car, or per book code for a visit without one. */
+  byVehicle: {
+    vehicleId: string | null;
+    vehicleCode: string | null;
+    visits: number;
+    lastInDate: Date;
+  }[];
 }
 
 export const fleetMaintenanceRepository = new FleetMaintenanceRepository();

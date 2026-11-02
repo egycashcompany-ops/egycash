@@ -246,15 +246,20 @@ class FleetNoticeService {
     return { ...page, items: await withCodes(page.items, ctx) };
   }
 
+  /** The notices the filters leave, each with where its licences come from — one read, shared. */
+  private async liveWithCodes(
+    query: FleetNoticesSummaryQuery,
+    ctx: AuthContext | undefined,
+  ): Promise<FleetNoticeWithCode[]> {
+    return withCodes(await fleetNoticeRepository.findLive(await noticeFilter(query)), ctx);
+  }
+
   /** «الإحصائيات» — over the notices the filters leave. */
   async summary(
     query: FleetNoticesSummaryQuery,
     ctx?: AuthContext,
   ): Promise<FleetNoticesSummaryDto> {
-    const docs = await withCodes(
-      await fleetNoticeRepository.findLive(await noticeFilter(query)),
-      ctx,
-    );
+    const docs = await this.liveWithCodes(query, ctx);
     const byTemplate = new Map<FleetNoticeTemplate, number>();
     const byMonth = new Map<string, number>();
     for (const doc of docs) {
@@ -280,6 +285,22 @@ class FleetNoticeService {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, count]) => ({ month, count })),
     };
+  }
+
+  /**
+   * T1.10 — the OPEN notices missing ANY attachment: a licence image (the car's or the driver's,
+   * by the same source rule `summary` counts `missingLicences` with) OR the cheque image.
+   *
+   * The union, counted once per notice — `missingLicences + missingCheckImage` would count a notice
+   * missing both twice. Same `noticeFilter`, same `withCodes(ctx)` as `summary`, so a reader who may
+   * not open a registry licence is counted as the screen shows it to them; `status` is always
+   * `open` (the alert is about notices still to be completed), whatever else the query narrows.
+   */
+  async missingAnyCount(query: FleetNoticesSummaryQuery, ctx?: AuthContext): Promise<number> {
+    const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);
+    return docs.filter(
+      (doc) => doc.vehicleLicense === null || doc.driverLicense === null || doc.checkImage == null,
+    ).length;
   }
 
   async get(id: string, ctx?: AuthContext): Promise<FleetNoticeWithCode> {

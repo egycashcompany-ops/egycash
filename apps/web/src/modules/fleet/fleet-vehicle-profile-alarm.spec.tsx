@@ -71,6 +71,8 @@ const alarm = (over: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAl
   latestReadingLogId: null,
   baseline: null,
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...over,
 });
 

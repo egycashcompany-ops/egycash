@@ -6,10 +6,12 @@ import {
   FleetSettingKeys,
   odometerBracketBreach,
   type FleetAlarmLevel,
+  type FleetAlarmNamedDto,
   type FleetAlarmUncountedVisitDto,
   type FleetAlarmUncountedWhy,
   type FleetMaintenanceAlarmDto,
   type FleetNoAlarmReason,
+  type LocalizedString,
 } from '@ecms/contracts';
 import { settingsService } from '../../../platform/settings';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
@@ -21,7 +23,7 @@ import {
   type AlarmBaseline,
   type NewestVisit,
 } from './maintenance.repository';
-import { measureFromVisit } from './measure-from-visit';
+import { measureFromVisit, type VisitCounters } from './measure-from-visit';
 
 export interface AlarmInput {
   /** Per vehicle TYPE; 0 = no rule. */
@@ -133,30 +135,141 @@ const allActiveVehicles = async () => {
   }
 };
 
+/** A catalog entry or a make by id, as the card names it — `null` when it is not there at all. */
+type Names = ReadonlyMap<string, LocalizedString>;
+
+const named = (names: Names, id: string | null | undefined): FleetAlarmNamedDto | null => {
+  const name = id == null ? undefined : names.get(id);
+  return name === undefined ? null : { id: id as string, name: { ar: name.ar, en: name.en } };
+};
+
 /**
- * The car's newest visit, when the alarm cannot measure from it — still open, or of a work type
- * that does not count — so a screen can say why the visit a reader expects is not the one used.
- * `null` when the newest visit IS the baseline, or counts and is closed.
+ * The car's newest visit, when the alarm does not measure from it — so a screen can say why the
+ * visit a reader expects is not the one used:
+ *   • `open` — still in the workshop; the cycle resets when the car comes back;
+ *   • `notCounting` — closed, but its work type does not count for the alarm;
+ *   • `checkedOutEarlier` (C8) — closed AND counting, yet not the baseline. The baseline is the
+ *     latest CHECK-OUT, the newest visit the latest CHECK-IN, so another counting visit was checked
+ *     out after this one (or on the same day and recorded after it) and the cycle is measured from
+ *     that one. Nothing used to say so: a visit entered late and closed late silently beat a
+ *     newer one.
+ * `null` when the newest visit IS the baseline, or when there is no visit at all.
  */
 const newerUncounted = (
   newest: NewestVisit | null,
   baseline: AlarmBaseline | null,
   countingIds: readonly string[],
+  names: Names,
 ): FleetAlarmUncountedVisitDto | null => {
   if (newest === null || newest.visitId === baseline?.visitId) return null;
   const why: FleetAlarmUncountedWhy | null =
     newest.outDate === null
       ? 'open'
-      : countingIds.includes(newest.workTypeId)
-        ? null
-        : 'notCounting';
+      : !countingIds.includes(newest.workTypeId)
+        ? 'notCounting'
+        : // A closed counting visit always leaves a baseline; `null` only if the two reads disagree.
+          baseline === null
+          ? null
+          : 'checkedOutEarlier';
   if (why === null) return null;
   return {
     visitId: newest.visitId,
     inDate: newest.inDate.toISOString(),
     outDate: newest.outDate === null ? null : newest.outDate.toISOString(),
     why,
+    workType: named(names, newest.workTypeId),
+    workshop: named(names, newest.workshopId),
+    // Said for every reason, so an OPEN visit's card can tell «counts once closed» from «never».
+    counts: countingIds.includes(newest.workTypeId),
   };
+};
+
+/**
+ * The names of the work types and workshops the card mentions — ONE catalog read by id for the
+ * whole fleet. Archived and retired entries included: the name of the work a visit recorded is
+ * history, and it still names that visit. An id with no catalog entry at all stays unnamed.
+ */
+const catalogNames = async (ids: readonly string[]): Promise<Names> => {
+  const items = await fleetCatalogItemRepository.findByIdsSystem([...new Set(ids)]);
+  return new Map(items.map((item) => [String(item._id), item.name]));
+};
+
+/** A counting visit as the chain is asked about it — the alarm's baseline, or a row's (D1). */
+export interface VisitToJudge {
+  vehicleId: string;
+  visitId: string;
+  inDate: Date;
+  /** The check-out day — the day the cycle starts on. */
+  outDate: Date;
+  entryCounter: number | null;
+  exitCounter: number | null;
+}
+
+/** The chain points a visit's numbers are judged against — `measureFromVisit`'s three bounds. */
+export type VisitBounds = Pick<VisitCounters, 'exitBound' | 'entryBound' | 'standIn'>;
+
+export const NO_BOUNDS: VisitBounds = { exitBound: null, entryBound: null, standIn: null };
+
+const toJudge = (baseline: AlarmBaseline): VisitToJudge => ({
+  vehicleId: baseline.vehicleId,
+  visitId: baseline.visitId,
+  inDate: baseline.inDate,
+  outDate: baseline.serviceDate,
+  entryCounter: baseline.entryCounter,
+  exitCounter: baseline.exitCounter,
+});
+
+/**
+ * Each visit's counters against the chain AS IT STOOD BEFORE THE DAY THEY WERE TAKEN — one query
+ * per kind of counter for the whole set, not one per car. AT MOST ONE VISIT PER CAR per call: the
+ * repository answers by car. Keyed by visit.
+ *
+ * An entry counter is judged on the day the car went IN: it was read then, and readings taken
+ * between check-in and check-out do not make it untrue — asked on the check-out day, car 219's
+ * 84,080 of 25 June was refused because the chain had reached 84,189 by the 28th. And only the
+ * days BEFORE count (R4): the register keeps no time of day, so a reading dated on the service day
+ * may have been taken after the counter — car 295's 22,790 was refused by a reading of its own day.
+ * An exit counter is asked about even when an entry counter exists too, because the entry one is
+ * what R3 falls back to.
+ *
+ * A visit with no counter keeps the day: its stand-in is the reading the car LEFT on.
+ *
+ * Shared by the alarm and the per-row gap (`odometer/service-gap.ts`), so a row's figure and the
+ * car's are judged by one rule.
+ */
+export const visitBounds = async (
+  visits: readonly VisitToJudge[],
+): Promise<Map<string, VisitBounds>> => {
+  const askedOn = (pick: (visit: VisitToJudge) => Date | null) =>
+    visits.flatMap((visit) => {
+      const on = pick(visit);
+      return on === null ? [] : [{ vehicleId: visit.vehicleId, on }];
+    });
+  const [exitBounds, entryBounds, standIns] = await Promise.all([
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) => (visit.exitCounter === null ? null : visit.outDate)),
+      { includeDay: false },
+    ),
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) => (visit.entryCounter === null ? null : visit.inDate)),
+      { includeDay: false },
+    ),
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) =>
+        visit.exitCounter === null && visit.entryCounter === null ? visit.outDate : null,
+      ),
+    ),
+  ]);
+  return new Map(
+    visits.map((visit) => [
+      visit.visitId,
+      {
+        exitBound: exitBounds.get(visit.vehicleId) ?? null,
+        entryBound: entryBounds.get(visit.vehicleId) ?? null,
+        standIn: standIns.get(visit.vehicleId) ?? null,
+      },
+    ]),
+  );
 };
 
 /**
@@ -191,53 +304,34 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
     fleetMaintenanceRepository.newestVisits(ids),
   ]);
 
-  // Each counter against the chain AS IT STOOD BEFORE THE DAY IT WAS TAKEN — one query per kind of
-  // counter for the whole fleet, not one per car. An entry counter is judged on the day the car went
-  // IN: it was read then, and readings taken between check-in and check-out do not make it untrue —
-  // asked on the check-out day, car 219's 84,080 of 25 June was refused because the chain had
-  // reached 84,189 by the 28th. And only the days BEFORE count (R4): the register keeps no time of
-  // day, so a reading dated on the service day may have been taken after the counter — car 295's
-  // 22,790 was refused by a reading of its own day. An exit counter is asked about even when an
-  // entry counter exists too, because the entry one is what R3 falls back to.
-  //
-  // A visit with no counter keeps the day: its stand-in is the reading the car LEFT on.
-  const visits = [...baselines.values()];
-  const askedOn = (pick: (visit: AlarmBaseline) => Date | null) =>
-    visits.flatMap((visit) => {
-      const on = pick(visit);
-      return on === null ? [] : [{ vehicleId: visit.vehicleId, on }];
-    });
   // How many days each car ran since its last service with nobody writing the counter — counted
-  // from each car's own service date. See the DTO field.
-  const [unread, exitBounds, entryBounds, standIns] = await Promise.all([
+  // from each car's own service date (see the DTO field) — and each baseline's chain points.
+  // And the names the card mentions — the counted visits' work types, the newer visits' work types
+  // and workshops — in one catalog read.
+  const [unread, bounds, names] = await Promise.all([
     fleetOdometerRepository.daysWithoutReadingSince(
       vehicles.map((vehicle) => ({
         vehicleId: String(vehicle._id),
         since: baselines.get(String(vehicle._id))?.serviceDate ?? null,
       })),
     ),
-    fleetOdometerRepository.lowerBoundsAt(
-      askedOn((visit) => (visit.exitCounter === null ? null : visit.serviceDate)),
-      { includeDay: false },
-    ),
-    fleetOdometerRepository.lowerBoundsAt(
-      askedOn((visit) => (visit.entryCounter === null ? null : visit.inDate)),
-      { includeDay: false },
-    ),
-    fleetOdometerRepository.lowerBoundsAt(
-      askedOn((visit) =>
-        visit.exitCounter === null && visit.entryCounter === null ? visit.serviceDate : null,
-      ),
-    ),
+    visitBounds([...baselines.values()].map(toJudge)),
+    catalogNames([
+      ...[...baselines.values()].map((visit) => visit.workTypeId),
+      ...[...newest.values()].flatMap((visit) => [visit.workTypeId, visit.workshopId]),
+    ]),
   ]);
 
-  // One interval lookup per distinct TYPE, not per vehicle.
+  // One lookup per distinct TYPE, not per vehicle: its interval, and its name for the card. A make
+  // that is gone (deleted) has neither — no rule, `noInterval` — and the card says so.
   const intervals = new Map<string, number>();
+  const makes = new Map<string, LocalizedString>();
   for (const vehicle of vehicles) {
     const typeId = String(vehicle.typeId);
     if (!intervals.has(typeId)) {
       const type = await fleetVehicleTypeRepository.findById(typeId);
       intervals.set(typeId, type?.maintenanceIntervalKm ?? 0);
+      if (type !== null) makes.set(typeId, type.name);
     }
   }
 
@@ -245,10 +339,11 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
     const id = String(vehicle._id);
     const reading = readings.get(id) ?? null;
     const baseline = baselines.get(id) ?? null;
+    const intervalKm = intervals.get(String(vehicle.typeId)) ?? 0;
     const { result, baseline: used } = measureFromVisit(
       computeAlarm,
       {
-        intervalKm: intervals.get(String(vehicle.typeId)) ?? 0,
+        intervalKm,
         yellowKm,
         redKm,
         latestReading: reading?.reading ?? null,
@@ -256,16 +351,7 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       },
       baseline === null
         ? null
-        : {
-            visitId: baseline.visitId,
-            inDate: baseline.inDate,
-            outDate: baseline.serviceDate,
-            entryCounter: baseline.entryCounter,
-            exitCounter: baseline.exitCounter,
-            exitBound: exitBounds.get(id) ?? null,
-            entryBound: entryBounds.get(id) ?? null,
-            standIn: standIns.get(id) ?? null,
-          },
+        : { ...toJudge(baseline), ...(bounds.get(baseline.visitId) ?? NO_BOUNDS) },
     );
     return {
       vehicleId: id,
@@ -282,8 +368,21 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       latestReading: reading?.reading ?? null,
       latestReadingAt: reading === null ? null : reading.date.toISOString(),
       latestReadingLogId: reading?.logId ?? null,
-      baseline: used,
-      newerUncountedVisit: newerUncounted(newest.get(id) ?? null, baseline, countingIds),
+      // The counted visit, named by its work type — «آخر زيارة خرجت: صيانة».
+      baseline: used === null ? null : { ...used, workType: named(names, baseline?.workTypeId) },
+      newerUncountedVisit: newerUncounted(newest.get(id) ?? null, baseline, countingIds, names),
+      // What the figure was judged by, as THIS answer resolved it — see the DTO.
+      rule: {
+        vehicleType: named(makes, String(vehicle.typeId)),
+        intervalKm,
+        yellowKm,
+        redKm,
+      },
+      // C6 — the newest-dated reading beside the highest; equal on a healthy chain.
+      newestReading:
+        reading === null
+          ? null
+          : { reading: reading.newest.reading, date: reading.newest.date.toISOString() },
     };
   });
 };

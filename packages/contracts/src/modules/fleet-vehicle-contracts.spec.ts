@@ -35,7 +35,9 @@ describe('a vehicle supply contract — «ومش عاوز اى داتا اجبا
       date: new Date('2025-12-01'),
       deadline: null,
       supplier: '',
-      lines: [{ id: null, typeId: oid('a'), count: 22, unitPrice: null }],
+      // Batch 3: «المستلم حتى الآن» — optional, nothing received when left out.
+      lines: [{ id: null, typeId: oid('a'), count: 22, unitPrice: null, received: 0 }],
+      receivedDate: null,
     });
   });
 
@@ -131,6 +133,67 @@ describe('a vehicle supply contract — «ومش عاوز اى داتا اجبا
     expect(UpdateFleetVehicleContractSchema.safeParse({ ...noVersion, version: 0 }).success).toBe(
       true,
     );
+  });
+});
+
+describe('«المستلم حتى الآن» — the cars already received when a contract is registered', () => {
+  const create = (lines: unknown[], extra: Record<string, unknown> = {}) =>
+    CreateFleetVehicleContractSchema.safeParse({ date: '2026-10-01', lines, ...extra });
+
+  it('defaults to nothing received, on the server’s day', () => {
+    const parsed = CreateFleetVehicleContractSchema.parse({
+      date: '2026-10-01',
+      lines: [
+        { typeId: oid('a'), count: 22, received: 15 },
+        { typeId: oid('b'), count: 11 },
+      ],
+    });
+    expect(parsed.lines.map((line) => line.received)).toEqual([15, 0]);
+    expect(parsed.receivedDate).toBeNull();
+    expect(create([{ typeId: oid('a'), count: 1 }], { receivedDate: null }).success).toBe(true);
+    expect(
+      CreateFleetVehicleContractSchema.parse({
+        date: '2026-10-01',
+        receivedDate: '2026-10-20',
+        lines: [{ typeId: oid('a'), count: 22, received: 22 }],
+      }).receivedDate,
+    ).toEqual(new Date('2026-10-20'));
+  });
+
+  it('never more than the line’s count — the issue names the line', () => {
+    expect(create([{ typeId: oid('a'), count: 22, received: 22 }]).success).toBe(true);
+    const over = create([
+      { typeId: oid('a'), count: 22, received: 15 },
+      { typeId: oid('b'), count: 11, received: 12 },
+    ]);
+    expect(over.success).toBe(false);
+    expect(paths(over)).toEqual(['lines.1.received']);
+    expect(over.error?.issues[0]?.message).toBe('more than contracted');
+    expect(paths(create([{ typeId: oid('a'), count: 2, received: 3 }]))).toEqual([
+      'lines.0.received',
+    ]);
+  });
+
+  it('refuses a negative or a fractional count received, a bad day, and an unknown key on a line', () => {
+    expect(create([{ typeId: oid('a'), count: 5, received: -1 }]).success).toBe(false);
+    expect(create([{ typeId: oid('a'), count: 5, received: 1.5 }]).success).toBe(false);
+    expect(create([{ typeId: oid('a'), count: 5, received: '2' }]).success).toBe(false);
+    expect(create([{ typeId: oid('a'), count: 5 }], { receivedDate: 'soon' }).success).toBe(false);
+    // `.extend` keeps the line's `.strict()`.
+    expect(create([{ typeId: oid('a'), count: 5, delivered: 1 }]).success).toBe(false);
+  });
+
+  it('an edit never carries it — deliveries are «تسجيل استلام»’s', () => {
+    const edit = (line: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+      UpdateFleetVehicleContractSchema.safeParse({
+        date: '2026-10-01',
+        version: 0,
+        lines: [{ id: oid('1'), typeId: oid('a'), count: 5, ...line }],
+        ...extra,
+      }).success;
+    expect(edit({})).toBe(true);
+    expect(edit({ received: 2 })).toBe(false);
+    expect(edit({}, { receivedDate: '2026-10-01' })).toBe(false);
   });
 });
 

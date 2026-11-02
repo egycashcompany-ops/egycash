@@ -32,6 +32,7 @@ const snapshot = (doc: FleetCatalogItemDoc) => ({
   countsForAlarm: doc.countsForAlarm,
   violationSide: doc.violationSide,
   licenseExpenseKind: doc.licenseExpenseKind ?? null,
+  licenseExpensePaidBy: doc.licenseExpensePaidBy ?? null,
   isActive: doc.isActive,
 });
 
@@ -53,6 +54,8 @@ class FleetCatalogItemService {
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         licenseExpenseKind: input.licenseExpenseKind ?? null,
+        // «طريقة الصرف»: left out, both groups — as every item was offered before the question.
+        licenseExpensePaidBy: input.licenseExpensePaidBy ?? null,
         isActive: true,
         // A new item joins the END of a list somebody has arranged; an unarranged list stays by
         // name, so there is nothing to append to.
@@ -94,6 +97,8 @@ class FleetCatalogItemService {
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         licenseExpenseKind: input.licenseExpenseKind ?? null,
+        // «طريقة الصرف»: left out, both groups — as every item was offered before the question.
+        licenseExpensePaidBy: input.licenseExpensePaidBy ?? null,
         isActive: true,
         // A new item joins the END of a list somebody has arranged; an unarranged list stays by
         // name, so there is nothing to append to.
@@ -193,11 +198,22 @@ class FleetCatalogItemService {
     ) {
       throw new ConflictError('only a licenseExpenseItem belongs to a licensing-expenses memo');
     }
+    // …and a payment way («طريقة الصرف»), for the same reason and with the same null allowance.
+    if (
+      input.licenseExpensePaidBy !== undefined &&
+      input.licenseExpensePaidBy !== null &&
+      before.kind !== 'licenseExpenseItem'
+    ) {
+      throw new ConflictError('only a licenseExpenseItem is paid by card or in cash');
+    }
     const set: Partial<FleetCatalogItemDoc> = {};
     if (input.name !== undefined) set.name = withEnglishName(input.name);
     if (input.countsForAlarm !== undefined) set.countsForAlarm = input.countsForAlarm;
     if (input.violationSide !== undefined) set.violationSide = input.violationSide;
     if (input.licenseExpenseKind !== undefined) set.licenseExpenseKind = input.licenseExpenseKind;
+    if (input.licenseExpensePaidBy !== undefined) {
+      set.licenseExpensePaidBy = input.licenseExpensePaidBy;
+    }
     if (input.isActive !== undefined) set.isActive = input.isActive;
     const updated = await fleetCatalogItemRepository.updateById(id, set, {
       by,
@@ -209,6 +225,37 @@ class FleetCatalogItemService {
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     return updated;
+  }
+
+  /**
+   * «امسح بند انا ضيفته» — soft-delete an item the owner ADDED to the licensing-expenses list.
+   *
+   * Only that kind: a workshop, a work type, a licence class or a violation type is pointed at by
+   * id from visits, vehicles and violations, and their next save re-checks the id against live
+   * items — deleting one would make those records unsaveable. They are archived («تُؤرشف ولا
+   * تُحذف»).
+   *
+   * Only an item somebody added: a built-in one (`createdBy` null — the boot seeded it) would be
+   * seeded again on the next boot, because the seed looks its name up among live items only. It
+   * is archived instead.
+   *
+   * Nothing that used it changes: a saved memo keeps its line (the label is a copy), and the
+   * set-up drops its template lines when it is next read. The name is free to be added again.
+   */
+  async remove(id: string, by: string): Promise<void> {
+    const before = await fleetCatalogItemRepository.getById(id);
+    if (before.kind !== 'licenseExpenseItem') {
+      throw new ConflictError(`a ${before.kind} is archived, never deleted`);
+    }
+    if (before.createdBy == null) {
+      throw new ConflictError('a built-in item is archived, never deleted');
+    }
+    await fleetCatalogItemRepository.softDeleteById(id, { by });
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'delete',
+      changes: diffChanges(snapshot(before), {}),
+    });
   }
 }
 

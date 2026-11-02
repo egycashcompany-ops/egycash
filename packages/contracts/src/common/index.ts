@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export * from './localized.js';
+export * from './cairo-date.js';
 
 // ── Identifiers ─────────────────────────────────────────────────────────────
 

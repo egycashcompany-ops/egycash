@@ -37,11 +37,13 @@ vi.mock('./fuel-reconcile-api', () => {
     vi.fn(async (...args: unknown[]) => {
       calls.push({ fn, args });
       if (refuse.with !== null) throw refuse.with;
-      return fn === 'decideFuelReconcile' ? [] : { id: ID };
+      return fn === 'decideFuelReconcile' || fn === 'decideFuelLinks' ? [] : { id: ID };
     });
   return {
     uploadFuelSheet: stood('uploadFuelSheet'),
     decideFuelReconcile: stood('decideFuelReconcile'),
+    decideFuelLinks: stood('decideFuelLinks'),
+    addSheetCard: stood('addSheetCard'),
   };
 });
 
@@ -105,6 +107,48 @@ describe('the keys', () => {
     expect(calls).toEqual([{ fn: 'uploadFuelSheet', args: ['wataniya', file] }]);
   });
 
+  it('batch 3: «تاريخ الشيت» rides along with the file only when given', async () => {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    await mount(queries.useUploadFuelSheet, qc).mutateAsync({
+      company: 'chillout',
+      file,
+      sheetDate: '2026-11-01',
+    });
+    await mount(queries.useUploadFuelSheet, qc).mutateAsync({
+      company: 'chillout',
+      file,
+      sheetDate: '',
+    });
+    expect(calls).toEqual([
+      { fn: 'uploadFuelSheet', args: ['chillout', file, '2026-11-01'] },
+      { fn: 'uploadFuelSheet', args: ['chillout', file] },
+    ]);
+  });
+
+  it('batch 3: a link decision and «إضافة» throw the fuel-card subtree away too', async () => {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    const links = { decision: 'apply', cardIds: [CARD], pick: [], remember: false };
+    await mount(queries.useDecideFuelLinks, qc).mutateAsync({ id: ID, body: links });
+    const add = {
+      sheetRow: 60,
+      number: '5485640068837791',
+      expiresAt: new Date('2029-05-31T00:00:00.000Z'),
+      password: '1234',
+      vehicleId: null,
+      label: 'سفر 9',
+    };
+    await mount(queries.useAddSheetCard, qc).mutateAsync({ id: ID, body: add });
+    expect(spy.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey))).toEqual([
+      FUEL_CARDS,
+      FUEL_CARDS,
+    ]);
+    expect(calls).toEqual([
+      { fn: 'decideFuelLinks', args: [ID, links] },
+      { fn: 'addSheetCard', args: [ID, add] },
+    ]);
+  });
+
   it('somebody ELSE’s decision reaches an open screen through the fuel card’s own entity', () => {
     expect(keysForTopic('fleet.fuelCard').map((key) => JSON.stringify(key))).toContain(FUEL_CARDS);
   });
@@ -139,6 +183,25 @@ describe('a failure is said once — by the screen when it names it, by the usua
     notInSheet: new ApiError(ErrorCodes.VALIDATION_FAILED, 'Invalid', 400, [
       { field: 'body.cardIds', code: 'NOT_IN_SHEET', message: CARD },
     ]),
+    cancel: new ApiError(ErrorCodes.FLEET_FUEL_RECONCILE_CANCEL_REFUSED, 'Refused', 422, [
+      { field: 'cancelCharges', code: 'EXCEEDS_DIFFERENCE', message: CARD },
+    ]),
+    linkChanged: new ApiError(ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED, 'Changed', 409, [
+      { field: 'cardIds', code: 'LINK_CHANGED', message: CARD },
+    ]),
+    slotHeld: new ApiError(ErrorCodes.FLEET_FUEL_LINK_SLOT_HELD, 'Held', 409, [
+      { field: 'cardIds', code: 'SLOT_HELD', message: CARD },
+    ]),
+    inRepair: new ApiError(ErrorCodes.FLEET_FUEL_LINK_IN_REPAIR, 'Repair', 409, [
+      { field: 'cardIds', code: 'IN_REPAIR', message: CARD },
+    ]),
+    noPick: new ApiError(ErrorCodes.VALIDATION_FAILED, 'Invalid', 400, [
+      { field: 'body.pick', code: 'REQUIRED', message: CARD },
+    ]),
+    number: new ApiError(ErrorCodes.FLEET_FUEL_SHEET_CARD_NUMBER, 'Number', 422, [
+      { field: 'number', code: 'MISMATCH', message: 'number' },
+    ]),
+    duplicate: new ApiError(ErrorCodes.DUPLICATE, 'Duplicate', 409),
     gone: new ApiError('NOT_FOUND', 'Not found', 404),
     server: new ApiError('INTERNAL', 'Boom', 500),
     network: new TypeError('Failed to fetch'),
@@ -182,6 +245,35 @@ describe('a failure is said once — by the screen when it names it, by the usua
     }
     for (const refusal of ['notInSheet', 'layout', 'gone', 'server', 'network'] as const) {
       expect(await fail(queries.useDecideFuelReconcile, input, refusal), refusal).toEqual([
+        usual(refusal),
+      ]);
+    }
+    // Batch 3: a refused cancel is the screen's to say.
+    expect(await fail(queries.useDecideFuelReconcile, input, 'cancel')).toEqual([]);
+  });
+
+  it('batch 3: a link decision — the screen words a changed card, a held slot, the repair, a pick', async () => {
+    const input = {
+      id: ID,
+      body: { decision: 'apply', cardIds: [CARD], pick: [], remember: false },
+    };
+    for (const refusal of ['linkChanged', 'decided', 'slotHeld', 'inRepair', 'noPick'] as const) {
+      expect(await fail(queries.useDecideFuelLinks, input, refusal), refusal).toEqual([]);
+    }
+    for (const refusal of ['notInSheet', 'gone', 'server', 'network'] as const) {
+      expect(await fail(queries.useDecideFuelLinks, input, refusal), refusal).toEqual([
+        usual(refusal),
+      ]);
+    }
+  });
+
+  it('batch 3: «إضافة» — the screen words the number and a row already added; the rest as usual', async () => {
+    const input = { id: ID, body: { sheetRow: 60 } };
+    for (const refusal of ['number', 'decided'] as const) {
+      expect(await fail(queries.useAddSheetCard, input, refusal), refusal).toEqual([]);
+    }
+    for (const refusal of ['duplicate', 'gone', 'server', 'network'] as const) {
+      expect(await fail(queries.useAddSheetCard, input, refusal), refusal).toEqual([
         usual(refusal),
       ]);
     }

@@ -129,6 +129,39 @@ def _abd_compound(token: str) -> str | None:
     return None
 
 
+#: The commonest name as soft phone photos of real cards misread it: its middle meem lost, or read
+#: as a sad. Spelled out, not searched for: 'محد' is also one letter from 'مجدي', and a rule loose
+#: enough to find this changed real names. Neither spelling is anybody's name.
+_MUHAMMAD_MISREADS = frozenset({"محد", "محصد"})
+
+
+def _blur_misread_name(token: str) -> str | None:
+    """A name misread in one of two ways a soft photo makes, put right only when exactly one listed
+    name results. → the name, or None.
+
+    Both were seen on a live phone photo of a real card: 'اشرف' read 'الشرف' (the alef's foot and
+    the gap after it taken for a lam) and 'فارس' read 'قارص' (the seen's teeth filled in, read as a
+    sad). Anything looser was measured against real names the list does not hold and changed one in
+    seven ('خليل' to 'جلال', 'عدلي' to 'علي'); these two changed none, a real 'صابر' or 'الجندي'
+    included, because a real name is either listed or does not turn into one this way.
+    """
+    known, by_skeleton = _index("name")
+    word = normalize_arabic(token)
+    if len(word) < 4:
+        return None
+    found: set[str] = set()
+    if word.startswith("ال") and normalize_arabic("ا" + word[2:]) in known:
+        found.add("ا" + word[2:])
+    for index, letter in enumerate(word):
+        if letter == "ص":
+            seen = word[:index] + "س" + word[index + 1 :]
+            found |= {normalize_arabic(name) for name in by_skeleton.get(rasm_fold(seen), ())}
+    if len(found) != 1:
+        return None
+    fixed = next(iter(found))
+    return next((name for name in _names() if normalize_arabic(name) == fixed), fixed)
+
+
 def _correct_token(token: str, kind: str) -> str:
     known, by_skeleton = _index(kind)
     if not token or normalize_arabic(token) in known:
@@ -136,6 +169,12 @@ def _correct_token(token: str, kind: str) -> str:
     compound = _abd_compound(token)
     if compound is not None:
         return compound
+    if kind == "name":
+        if normalize_arabic(token) in _MUHAMMAD_MISREADS:
+            return "محمد"
+        blurred = _blur_misread_name(token)
+        if blurred is not None:
+            return blurred
     # The definite article and a leading و are prefixes, not part of the word.
     for prefix in ("", "ال", "و", "وال"):
         if prefix and not token.startswith(prefix):

@@ -12,6 +12,12 @@ describe('transliterateArabicName', () => {
     expect(transliterateArabicName('أحمد علي حسن إبراهيم')).toBe('Ahmed Ali Hassan Ibrahim');
   });
 
+  it('writes the فاعل-shaped names with an e, as records do', () => {
+    expect(transliterateArabicName('حسن علي محمد فارس')).toBe('Hassan Ali Mohamed Fares');
+    expect(transliterateArabicName('ماهر عامر هاشم طاهر')).toBe('Maher Amer Hashem Taher');
+    expect(transliterateArabicName('جاسر فاضل ناجح حاكم')).toBe('Gasser Fadel Nageh Hakem');
+  });
+
   it('handles short given names', () => {
     expect(transliterateArabicName('مي سامح بدوى محمد')).toBe('Mai Sameh Badawy Mohamed');
     expect(transliterateArabicName('علي فؤاد سمير عطية')).toBe('Ali Fouad Samir Attia');

@@ -30,9 +30,15 @@ def test_short_words_are_ignored():
 
 
 def test_a_high_score_near_miss_name_is_capped_at_medium():
-    data = _finalize("fullNameAr", "محد احمد علي", 0.95)
+    data = _finalize("fullNameAr", "محمو احمد علي", 0.95)  # محمود with its د lost
     assert data["confidence"] == "medium"
     assert data.get("nearLexicon") is True
+
+
+def test_a_corrected_name_is_never_presented_as_certainly_read():
+    data = _finalize("fullNameAr", "محد احمد علي", 0.95)
+    assert data["value"] == "محمد احمد علي"
+    assert data["confidence"] == "medium"
 
 
 def test_a_high_score_known_name_stays_high():

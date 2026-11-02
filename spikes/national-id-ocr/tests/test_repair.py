@@ -164,6 +164,27 @@ def test_an_over_long_read_with_no_repeat_still_refuses_when_ambiguous():
     assert fixed.value == VALID or not fixed.repaired
 
 
+#: A number with digits already doubled in it (00, 11): a stray digit elsewhere is then not the
+#: only "repeat", and searching repeats alone never reached it.
+DOUBLED_INSIDE = "29001011234567"
+
+
+@pytest.mark.parametrize("raw", ["029001011234567", "209001011234567", "829001011234567"])
+def test_a_stray_digit_is_dropped_even_when_the_number_has_doubles_of_its_own(raw):
+    """Seen on a phone photo: a 15-digit number came back because '00' and '11' in the date were
+    the only deletions tried, and none of them was the stray 0 in front."""
+    assert is_structurally_valid(DOUBLED_INSIDE, today=TODAY)
+    fixed = _repair(raw)
+    assert fixed.valid and fixed.repaired
+    assert fixed.value == DOUBLED_INSIDE
+
+
+def test_a_stray_digit_among_the_free_digits_is_still_refused():
+    """At the end, any of the last digits could be the stray one: several valid numbers, so none."""
+    fixed = _repair(DOUBLED_INSIDE + "0")
+    assert not fixed.repaired
+
+
 def test_the_number_is_found_beside_the_issue_date_on_one_line():
     """The back prints both on a single row, and detection returns it as a single region."""
     fixed = _repair("٢٠١٥/٠٧    ٢٩٥٠٣١٤١٢٣٤٥٦٧")

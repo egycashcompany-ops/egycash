@@ -450,6 +450,40 @@ export interface OcrFieldDto {
 }
 
 /**
+ * What the reader thought of the PHOTOGRAPH — never of the card or its holder.
+ *
+ *   * `ok`       — read it as it is.
+ *   * `degraded` — read, but the values off this side are worth a careful look.
+ *   * `reject`   — the photograph is not readable. Whatever the reader guessed off this side is
+ *                  a guess, and the review leaves those fields EMPTY rather than filling them in:
+ *                  a wrong religion typed into a record is worse than an empty box, because an
+ *                  empty box is obviously unfinished and a wrong value is not.
+ */
+export const OCR_QUALITY_VERDICTS = ['ok', 'degraded', 'reject'] as const;
+export type OcrQualityVerdict = (typeof OCR_QUALITY_VERDICTS)[number];
+
+/**
+ * Reason codes the reader may give for a verdict below `ok`, worst first. A code the API does not
+ * know is dropped rather than passed on: the review turns each one into words, and a code it
+ * cannot name would reach the screen as itself.
+ */
+export const OCR_QUALITY_REASONS = [
+  'card_not_located',
+  'too_small',
+  'blurred',
+  'glare',
+  'low_contrast',
+  'bad_aspect',
+] as const;
+export type OcrQualityReason = (typeof OCR_QUALITY_REASONS)[number];
+
+export interface OcrSideQualityDto {
+  verdict: OcrQualityVerdict;
+  /** Known reason codes only — see `OCR_QUALITY_REASONS`. Empty when the verdict is `ok`. */
+  reasons: string[];
+}
+
+/**
  * Result of an OCR attempt over the National-ID card (front + back read together). Every
  * field carries a confidence band; NOTHING is trusted — the user reviews and edits every
  * value before it is saved (§2.1 rule 4). Fields that can be computed from the number
@@ -479,6 +513,11 @@ export interface OcrExtractionDto {
    * values read from it. Shown, never stored. Absent when the reader returned none.
    */
   images?: OcrImagesDto;
+  /**
+   * What the reader thought of each photograph it was given. Optional: an older reader sends none,
+   * and then the review behaves exactly as it did before — every field filled, nothing marked.
+   */
+  quality?: { front?: OcrSideQualityDto; back?: OcrSideQualityDto };
 }
 
 export interface OcrImagesDto {

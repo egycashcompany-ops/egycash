@@ -1,8 +1,4 @@
-"""Render a measurement report as Markdown — paste-ready into the spike write-up.
-
-Kept separate from `measure.py` so the JSON is the artefact of record and the prose is a view of
-it. Re-rendering an old JSON must never change the numbers.
-"""
+"""Render a measurement report as Markdown, paste-ready into the spike write-up."""
 
 from __future__ import annotations
 

@@ -119,6 +119,26 @@ describe('PaddleNationalIdOcrProvider — untrusted sidecar output', () => {
     respond({});
     expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
   });
+
+  it('accepts the current sidecar shape, ignoring its additive quality and diagnostics', async () => {
+    respond({
+      fields: { nationalId: { value: '28709011202408', confidence: 'high' } },
+      elapsedMs: 812.4,
+      layoutProfile: 'egypt-nid',
+      quality: {
+        front: { verdict: 'ok', reasons: [], metrics: { sharpness: 412.1 } },
+        back: { verdict: 'rejected', reasons: ['blurred', 42], metrics: {} },
+      },
+      diagnostics: { front: { linesDetected: 9, rotated: 180 } },
+    });
+    const result = await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx });
+    expect(result).toEqual({ nationalId: { value: '28709011202408', confidence: 'high' } });
+  });
+
+  it('tolerates a malformed quality block', async () => {
+    respond({ fields: {}, quality: { front: null, back: { verdict: 7, reasons: 'blurred' } } });
+    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
+  });
 });
 
 describe('PaddleNationalIdOcrProvider — degradation', () => {
@@ -230,5 +250,51 @@ describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () =
       quality: { front: { verdict: 'ok', reasons: [], metrics: {} } },
     });
     expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
+  });
+});
+
+describe('PaddleNationalIdOcrProvider — card images for the review', () => {
+  const JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD';
+
+  it('asks the sidecar for the card as read and the portrait', async () => {
+    respond({ fields: {} });
+    await provider.extract({ frontFileId: 'f1', actor: ctx });
+    const [, init] = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { body: string },
+    ];
+    const body = JSON.parse(init.body) as Record<string, unknown>;
+    expect(body).toMatchObject({ returnOrientedImages: true, returnPortrait: true });
+  });
+
+  it('passes the images on as JPEG data URLs', async () => {
+    respond({
+      fields: { nationalId: { value: '28709011202408', confidence: 'high' } },
+      orientedImages: { front: JPEG, back: JPEG },
+      portraitImage: JPEG,
+    });
+    const result = await provider.extract({ frontFileId: 'f1', actor: ctx });
+    expect(result.images).toEqual({
+      cardFront: `data:image/jpeg;base64,${JPEG}`,
+      cardBack: `data:image/jpeg;base64,${JPEG}`,
+      portrait: `data:image/jpeg;base64,${JPEG}`,
+    });
+    expect(result.nationalId?.value).toBe('28709011202408');
+  });
+
+  it('drops anything that is not plainly a base64 JPEG', async () => {
+    respond({
+      fields: {},
+      orientedImages: { front: 'iVBORw0KGgo=', back: '<svg onload=alert(1)>' },
+      portraitImage: 42,
+    });
+    const result = await provider.extract({ frontFileId: 'f1', actor: ctx });
+    expect(result.images).toBeUndefined();
+  });
+
+  it('drops an image too large to be a preview', async () => {
+    respond({ fields: {}, portraitImage: `/9j/${'A'.repeat(2_000_001)}` });
+    expect((await provider.extract({ frontFileId: 'f1', actor: ctx })).images).toBeUndefined();
+
   });
 });

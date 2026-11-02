@@ -135,10 +135,11 @@ const invalidateMachineWrite = (client: ReturnType<typeof useQueryClient>): void
   }
 };
 
+/** The bulk add, in batches (`bulkCreateMachinesInBatches`) — a stopped run resolves, so lists refresh. */
 export const useBulkCreateAtmMachines = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: BulkCreateAtmMachines) => api.bulkCreateMachines(body),
+    mutationFn: (body: BulkCreateAtmMachines) => api.bulkCreateMachinesInBatches(body),
     onSuccess: () => invalidateMachineWrite(client),
   });
 };
@@ -181,6 +182,18 @@ export const useBulkDeleteAtmMachines = () => {
   return useMutation({
     mutationFn: (body: BulkDeleteAtmMachines) => api.bulkDeleteMachines(body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+  });
+};
+
+/**
+ * The bulk dialog's delete, in batches (`bulkDeleteMachinesInBatches`). A delete also removes the
+ * machine's untouched register entry, so the register lists refresh with the machines.
+ */
+export const useBulkDeleteAtmMachinesInBatches = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (machineCodes: readonly string[]) => api.bulkDeleteMachinesInBatches(machineCodes),
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 
@@ -462,9 +475,10 @@ export const useCloseAtmReplenishments = () => {
 };
 
 /**
- * A reopen — or an edit moving the open time — the owner's rule refused (port doc OD-1: the
- * machine already has another open operation of that kind that day) is worded by its own screen,
- * in the reader's language. Every OTHER
+ * A maintenance reopen — or an edit moving its open time — the owner's rule refused (port doc
+ * OD-1: the machine already has another open maintenance that day) is worded by its own screen,
+ * in the reader's language. Replenishments are outside the rule (OD-1b), so their hooks keep the
+ * global toast. Every OTHER
  * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
  * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
  */
@@ -480,7 +494,6 @@ export const useReopenAtmReplenishment = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenReplenishment(id, version),
     onSuccess: () => invalidateReplenishments(client),
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -501,9 +514,6 @@ export const useUpdateAtmReplenishment = () => {
       };
     }) => api.updateReplenishment(id, body),
     onSuccess: () => invalidateReplenishments(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -512,9 +522,6 @@ export const useBulkUpdateAtmReplenishments = () => {
   return useMutation({
     mutationFn: (body: BulkUpdateAtmReplenishments) => api.bulkUpdateReplenishments(body),
     onSuccess: () => invalidateReplenishments(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 

@@ -17,14 +17,8 @@ import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
-import {
-  alreadyOpenError,
-  decideOpenLines,
-  isOpenOperationDuplicate,
-  openDayOf,
-} from '../shared/open-operation';
+import { openDayOf } from '../shared/open-operation';
 import { cairoDateString, cairoWallClockUtc } from '../shared/cairo-time';
-import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { atmReplenishmentRepository } from './replenishment.repository';
 import { type AtmReplenishmentDoc } from './replenishment.model';
@@ -93,14 +87,12 @@ class AtmReplenishmentService {
    * codes back in the response — the per-request replacement for the legacy's shared
    * `mach_arr_not_found` global (quirk G-race).
    *
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين», narrowed to the day 2026-10-27 —
-   * port doc OD-1) — overriding the legacy, which opened one operation per submitted line with NO
-   * duplicate guard: a machine that already has an open replenishment ON THE BATCH'S DAY, anywhere
-   * in the company, is not opened again (one left open on an earlier day does not block), and a
-   * code pasted twice opens once. Both come back in `alreadyOpenCodes`, one entry per refused line,
-   * while the other lines still open — the partial semantics `unknownCodes` already has. A
-   * concurrent open that wins the race past the check is caught by the unique index and reported
-   * the same way: never a 500, never a half-written line.
+   * MORE THAN ONE OPEN REPLENISHMENT PER MACHINE IS ALLOWED (the owner, 2026-11-01 — port doc
+   * OD-1b: «عايزك تسمح فى التغذيات بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى»). The
+   * one-open-per-day rule (OD-1, OD-1a) is lifted for replenishments and kept for maintenance: every
+   * line of a known code opens its own row — a code pasted twice opens twice, and a machine already
+   * open today opens again — exactly as the legacy did. `alreadyOpenCodes` stays in the answer, and
+   * is always empty here.
    */
   async open(
     input: OpenAtmReplenishments,
@@ -118,54 +110,38 @@ class AtmReplenishmentService {
     const openDay = openDayOf(openedAt);
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
     const machines = await atmMachineRepository.findActiveByCodes(branchId, codes);
-    const decisions = decideOpenLines(
-      codes,
-      (code) => machines.has(code),
-      await atmReplenishmentRepository.openMachineCodes(codes, openDay),
-    );
 
     const opened: AtmReplenishmentDoc[] = [];
     const unknownCodes: string[] = [];
-    const alreadyOpenCodes: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       const code = codes[index] as string;
-      const decision = decisions[index];
-      if (decision === 'unknown') unknownCodes.push(code);
-      if (decision === 'alreadyOpen') alreadyOpenCodes.push(code);
+      if (code === '') continue;
       const machine = machines.get(code);
-      if (decision !== 'open' || machine === undefined) continue;
-      let doc: AtmReplenishmentDoc;
-      try {
-        doc = await atmReplenishmentRepository.create(
-          {
-            branchId: new Types.ObjectId(branchId),
-            machineId: machine._id,
-            machineCode: machine.machineCode,
-            bankName: machine.bankName,
-            machineName: machine.name,
-            zone: machine.zone,
-            area: machine.area,
-            openedAt,
-            openDay,
-            closedAt: null,
-            scheduleTime: row.scheduleTime,
-            leaderName: null,
-            openedById: new Types.ObjectId(ctx.userId),
-            openedByName: actorName(ctx),
-            closedById: null,
-            closedByName: null,
-          },
-          { by: ctx.userId },
-        );
-      } catch (error) {
-        // Lost the race to a concurrent open of the same machine: the index refused the insert,
-        // so nothing was written — the line is reported, not failed.
-        if (isOpenOperationDuplicate(error)) {
-          alreadyOpenCodes.push(code);
-          continue;
-        }
-        throw error;
+      if (machine === undefined) {
+        unknownCodes.push(code);
+        continue;
       }
+      const doc = await atmReplenishmentRepository.create(
+        {
+          branchId: new Types.ObjectId(branchId),
+          machineId: machine._id,
+          machineCode: machine.machineCode,
+          bankName: machine.bankName,
+          machineName: machine.name,
+          zone: machine.zone,
+          area: machine.area,
+          openedAt,
+          openDay,
+          closedAt: null,
+          scheduleTime: row.scheduleTime,
+          leaderName: null,
+          openedById: new Types.ObjectId(ctx.userId),
+          openedByName: actorName(ctx),
+          closedById: null,
+          closedByName: null,
+        },
+        { by: ctx.userId },
+      );
       await auditService.record({
         entityRef: entityRef(String(doc._id)),
         action: 'create',
@@ -173,7 +149,7 @@ class AtmReplenishmentService {
       });
       opened.push(doc);
     }
-    return { opened, unknownCodes, alreadyOpenCodes };
+    return { opened, unknownCodes, alreadyOpenCodes: [] };
   }
 
   /** Close checked rows (contad_app.js:770-801): close time now, closer recorded, leader untouched. */
@@ -202,31 +178,19 @@ class AtmReplenishmentService {
 
   /**
    * Reopen from the done page (contad_app.js:1031-1033): `closedAt` cleared, closer left as-is.
-   * Refused with 409 `ATM_OPERATION_ALREADY_OPEN` when the machine already has ANOTHER open
-   * replenishment on the reopened row's own day (the owner's rule, port doc OD-1) — checked first,
-   * and held by the unique index when two reopens race. The row's `openDay` is written with it, so
-   * a row stored before that field existed joins the index once it is open again.
+   * Never refused for another open replenishment of the machine (OD-1b, 2026-11-01). The row's
+   * `openDay` is written with it, as on every open.
    */
   async reopen(id: string, version: number, ctx: AuthContext): Promise<AtmReplenishmentDoc> {
     // A reopened operation is open work again (`machineTwinOpen`): it waits for a running move.
     await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmReplenishment.complete');
     const row = await atmReplenishmentRepository.getById(id, scope);
-    const openDay = openDayOf(row.openedAt);
-    if (await atmReplenishmentRepository.hasOpenOperation(row.machineCode, openDay, id)) {
-      throw alreadyOpenError('replenishment', row.machineCode);
-    }
-    let updated: AtmReplenishmentDoc;
-    try {
-      updated = await atmReplenishmentRepository.updateById(
-        id,
-        { closedAt: null, openDay },
-        { by: ctx.userId, version, scope },
-      );
-    } catch (error) {
-      if (isOpenOperationDuplicate(error)) throw alreadyOpenError('replenishment', row.machineCode);
-      throw error;
-    }
+    const updated = await atmReplenishmentRepository.updateById(
+      id,
+      { closedAt: null, openDay: openDayOf(row.openedAt) },
+      { by: ctx.userId, version, scope },
+    );
     await auditService.record({ entityRef: entityRef(id), action: 'reopen', changes: [] });
     return updated;
   }
@@ -238,8 +202,7 @@ class AtmReplenishmentService {
    * «الوردية» box unticked (`cascadeLeader: false`, 2026-10-27) there is no cascade: the leader
    * is written on this row alone.
    *
-   * Moving an OPEN row's open time onto another day is held by the per-day rule (OD-1): refused
-   * with 409 when the machine already has another open replenishment that day.
+   * Moving an open row's time onto a day its machine is already open on is allowed (OD-1b).
    */
   async update(
     id: string,
@@ -261,29 +224,11 @@ class AtmReplenishmentService {
     if (changingLeader && !shiftWide) set.leaderName = input.leaderName ?? null;
     const cascading = changingLeader && shiftWide && !movingTime;
 
-    if (movingTime && before.closedAt === null && input.openedAt !== undefined) {
-      const day = openDayOf(input.openedAt);
-      if (
-        day !== openDayOf(before.openedAt) &&
-        (await atmReplenishmentRepository.hasOpenOperation(before.machineCode, day, id))
-      ) {
-        throw alreadyOpenError('replenishment', before.machineCode);
-      }
-    }
-
-    let updated: AtmReplenishmentDoc;
-    try {
-      updated = await atmReplenishmentRepository.updateById(id, set, {
-        by: ctx.userId,
-        version: input.version,
-        scope,
-      });
-    } catch (error) {
-      if (isOpenOperationDuplicate(error)) {
-        throw alreadyOpenError('replenishment', before.machineCode);
-      }
-      throw error;
-    }
+    const updated = await atmReplenishmentRepository.updateById(id, set, {
+      by: ctx.userId,
+      version: input.version,
+      scope,
+    });
     if (cascading) {
       await atmReplenishmentRepository.cascadeLeader({
         branchId: before.branchId,
@@ -313,10 +258,8 @@ class AtmReplenishmentService {
    * (`cascadeLeader: true`, 2026-10-27), over the shift of every checked row too, under the single
    * edit's own rule: not when the open time is moved in the same submit.
    *
-   * Moving the open time sets ONE instant on every checked row, so the per-day rule (OD-1) is
-   * asked first, in the same transaction as the move: refused with 409, nothing written, when two
-   * checked open rows are the same machine or one's machine is already open on the new day in a
-   * row not being moved.
+   * Moving the open time sets ONE instant on every checked row — two of one machine included
+   * (OD-1b: several open replenishments of a machine are allowed).
    */
   async bulkUpdate(
     input: BulkUpdateAtmReplenishments,
@@ -333,33 +276,10 @@ class AtmReplenishmentService {
     if (Object.keys(set).length === 0) {
       throw new BusinessRuleError('لا يوجد تعديل مطلوب.');
     }
-    const write = { by: ctx.userId, scope };
-    let rows: AtmReplenishmentDoc[];
-    if (input.openedAt === undefined) {
-      rows = await atmReplenishmentRepository.updateManyByIds(input.ids, set, write);
-    } else {
-      // ONE TRANSACTION for the rule's check and the move: `updateMany` is not atomic across
-      // documents, so a duplicate the index refuses half-way would otherwise leave the rows before
-      // it moved while the answer says nothing was. Refused, the whole move is rolled back.
-      const day = openDayOf(input.openedAt);
-      try {
-        rows = await unitOfWork(async (session) => {
-          const blocked = await atmReplenishmentRepository.codesBlockedOnDay(
-            input.ids,
-            day,
-            scope,
-            session,
-          );
-          if (blocked.length > 0) throw alreadyOpenError('replenishment', blocked.join(', '));
-          return atmReplenishmentRepository.updateManyByIds(input.ids, set, { ...write, session });
-        });
-      } catch (error) {
-        if (isOpenOperationDuplicate(error)) {
-          throw alreadyOpenError('replenishment', 'one of the checked machines');
-        }
-        throw error;
-      }
-    }
+    let rows = await atmReplenishmentRepository.updateManyByIds(input.ids, set, {
+      by: ctx.userId,
+      scope,
+    });
     // A leader on the checked rows only — never a cascade of «no leader» over a whole shift.
     if (
       input.cascadeLeader === true &&

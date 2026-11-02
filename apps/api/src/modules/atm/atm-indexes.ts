@@ -8,18 +8,21 @@
 // idempotency, and `ux_one_running`, one import at a time. Building them at boot also brings each
 // collection into being BEFORE its first insert, which otherwise happens inside a transaction.
 //
-// The two operation logs joined the list with the owner's rule (2026-10-13, port doc OD-1): their
-// `ux_open_replenishment_per_code_day` / `ux_open_maintenance_per_code_day` are the race-proof
-// half of "a machine is never open twice on one day" (per day since 2026-10-27). Legacy data may
-// already hold two open rows for one code and day (the legacy had no guard), so these are the
-// likeliest to be reported and skipped — and their report names the collection and the counts
-// ONLY (`rowsInLog: false`): an operation row is somebody's work record, and nothing of it belongs
-// in a boot log.
+// The two operation logs joined the list with the owner's rule (2026-10-13, port doc OD-1): the
+// maintenance log's `ux_open_maintenance_per_code_day` is the race-proof half of "a machine's
+// maintenance is never open twice on one day" (per day since 2026-10-27; replenishments left the
+// rule 2026-11-01, OD-1b, and their twin index is retired below). Legacy data may already hold two
+// open rows for one code and day (the legacy had no guard), so it is the likeliest to be reported
+// and skipped — and an operation log's report names the collection and the counts ONLY
+// (`rowsInLog: false`): an operation row is somebody's work record, and nothing of it belongs in a
+// boot log.
 //
 // RETIRED INDEXES ARE DROPPED — the one thing this step removes, and only by name from the list
 // below. The rule's first form was any-day (`ux_open_*_per_code`); a database that built it would
-// go on refusing a machine left open yesterday, which is exactly what the owner withdrew. Dropping
-// an index removes no document.
+// go on refusing a machine left open yesterday, which is exactly what the owner withdrew. The
+// replenishment log's per-day form (`ux_open_replenishment_per_code_day`) goes the same way since
+// OD-1b: kept, it would refuse a second open replenishment of a machine. Dropping an index removes
+// no document.
 //
 // The machine map's three collections joined the first group (docs/12-planning/atm-map-zones.md
 // §3.4): their keys are ids, never a K or S value, and building them here also brings each one into
@@ -88,14 +91,15 @@ export interface AtmIndexedModel {
 
 /**
  * The indexes a collection must not carry any more — the open-operation rule's any-day form on the
- * two operation logs (OD-1a). Read by collection name, so the list below stays one list.
+ * two operation logs (OD-1a), and the replenishment log's per-day form (OD-1b). Read by collection
+ * name, so the list below stays one list.
  */
 const retiredIndexes = (collection: string): readonly string[] => {
   if (collection === AtmReplenishmentModel.collection.name) {
-    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.replenishment];
+    return RETIRED_OPEN_OPERATION_INDEX_NAMES.replenishment;
   }
   if (collection === AtmMaintenanceModel.collection.name) {
-    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.maintenance];
+    return RETIRED_OPEN_OPERATION_INDEX_NAMES.maintenance;
   }
   return [];
 };

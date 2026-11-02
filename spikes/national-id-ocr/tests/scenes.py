@@ -1,30 +1,11 @@
-"""Compose a card into a photographed scene, on purpose badly.
-
-The synthetic fixtures are pictures OF a card — the card fills the frame, flat and square. That is
-the one case the pipeline already handled, and testing against it proves very little. What broke on
-real captures is everything around the card: it lies on a surface, at an angle, under a light, and
-sometimes it is bent. Those are the conditions `geometry` exists for, so they have to be
-constructible in a test rather than described in a comment.
-
-Each scene is built from a known quadrilateral, which makes the assertions exact: the localizer's
-answer is compared against the corners the card was actually pasted at, not eyeballed. That is the
-difference between "detection returned something" and "detection returned the card".
-
-Deliberately not per-pixel noise. A real desk is smooth, a real card casts a shadow, and a real
-photograph of a matte surface has structure rather than static. Testing against uniform noise
-would defeat the texture detector for a reason that never occurs in the field, and would say
-nothing about whether it works.
-"""
+"""Compose a card into a photographed scene, on purpose badly."""
 
 from __future__ import annotations
 
 import cv2
 import numpy as np
 
-#: Where the card is pasted, and what it is lying on. Chosen to cover the failure modes seen on
-#: real captures rather than to span a grid: a card on sand (low contrast, warm background), on a
-#: dark desk, on a pale desk (where the card is the DARKER region — the polarity that a single
-#: brightness threshold gets backwards), on wood, and bent.
+#: Where the card is pasted, and what it is lying on.
 SURFACES = ("sand", "dark", "white", "wood")
 
 
@@ -60,12 +41,7 @@ def compose(
     curl: float = 0.0,
     seed: int = 0,
 ) -> np.ndarray:
-    """Paste `card` into a scene at `quad`, optionally bent and casting a shadow.
-
-    `curl` bows the card about its long axis, which is how a card carried in a wallet actually
-    deforms — it bends one way, it does not crumple. The bow is applied to the card and its mask
-    together so the silhouette bends with the content, as it would in a photograph.
-    """
+    """Paste `card` into a scene at `quad`, optionally bent and casting a shadow."""
     width, height = size
     base = surface(background, width, height, seed=seed)
     card_height, card_width = card.shape[:2]
@@ -104,11 +80,11 @@ def corner_error(found: np.ndarray, truth: list[list[int]]) -> float:
 
 #: A flat, well-framed card. The baseline every other scene is a degradation of.
 FLAT = [[300, 250], [1100, 250], [1100, 755], [300, 755]]
-#: Photographed from an angle — the ordinary hand-held capture.
+#: Photographed from an angle, the ordinary hand-held capture.
 ANGLED = [[330, 300], [1120, 215], [1150, 700], [360, 790]]
 #: Steeply off-normal, the point at which perspective starts compressing the aspect ratio.
 STEEP = [[260, 330], [1090, 190], [1180, 660], [340, 840]]
 #: Rotated far enough that "topmost corner" stops meaning "top-left".
 ROTATED = [[420, 200], [1150, 380], [1010, 880], [280, 700]]
-#: Held too far from the camera. Locatable, but not readable — the distinction the gate exists for.
+#: Held too far from the camera. Locatable, but not readable, the distinction the gate exists for.
 DISTANT = [[560, 430], [900, 430], [900, 645], [560, 645]]

@@ -1,18 +1,4 @@
-"""The national ID is read several times, and the reads are combined.
-
-One read is not enough for this field, and the reason is specific. A real card came back with a
-single digit wrong inside the sequence — a different, equally valid person, accepted by every
-structural check and every confidence score, because the evidence that would separate the two
-numbers is not in the number. It is in the pixels, and using it means looking more than once.
-
-The variants are chosen to fail DIFFERENTLY (adaptive threshold, plain greyscale, Otsu, CLAHE,
-inverted), so a digit that survives all of them is corroborated rather than repeated. That is also
-what makes the older behaviour a special case of the new one: thresholding fragments glyphs printed
-over the card's pyramid watermark and sharpens them on a clean scan, so neither choice is right for
-all inputs and both are still run.
-
-Every number here is synthetic.
-"""
+"""The national ID is read several times, and the reads are combined."""
 
 from __future__ import annotations
 
@@ -44,12 +30,7 @@ EXPIRY_BOX = FieldBox("nationalIdExpiry", x=0.06, y=0.415, w=0.72, h=0.125, kind
 
 
 class SplitByThreshold:
-    """Returns one text for a binarized crop and another otherwise.
-
-    Distinguishes the two by a property binarization actually changes — a threshold leaves only 0
-    and 255 — rather than by call order, so the test cannot pass by accident if the variants are
-    ever reordered.
-    """
+    """Returns one text for a binarized crop and another otherwise."""
 
     id = "split-by-threshold"
 
@@ -86,7 +67,7 @@ class Replay:
 
 
 class Broken:
-    """Raises the way the native predictor does — from inside C++, with no Python-level cause."""
+    """Raises the way the native predictor does, from inside C++, with no Python-level cause."""
 
     id = "broken"
 
@@ -99,7 +80,7 @@ class Broken:
 
 @pytest.fixture()
 def card():
-    """A mid-grey card — not already binary, so thresholding is detectable."""
+    """A mid-grey card, not already binary, so thresholding is detectable."""
     rng = np.random.default_rng(3)
     return rng.integers(60, 200, size=(646, 1024, 3), dtype=np.uint8)
 
@@ -108,13 +89,7 @@ def card():
 
 
 def test_the_number_several_variants_agree_on_beats_one_variant_s_confident_misread(card):
-    """The whole reason this field is read more than once.
-
-    The first variant reads a digit wrong and both readings are structurally valid, so nothing
-    about either string says which is right. Two further variants agreeing settles it — and they
-    are independent evidence, because a threshold that breaks a glyph against the watermark does
-    not break it the same way a plain greyscale read does.
-    """
+    """The whole reason this field is read more than once."""
     recognizer = Replay(NEAR_MISS, VALID, VALID, VALID)
     read = _recognize_box(card, NID_BOX, recognizer)
 
@@ -134,7 +109,7 @@ def test_reading_stops_once_enough_variants_agree(card):
 
 def test_a_contested_field_pays_for_the_whole_ensemble(card):
     """When the variants genuinely disagree, every one of them is worth its latency."""
-    recognizer = Replay(VALID, NEAR_MISS, VALID, NEAR_MISS, VALID)
+    recognizer = Replay(VALID, NEAR_MISS, VALID, NEAR_MISS, "", VALID)
     _recognize_box(card, NID_BOX, recognizer)
     assert recognizer.calls == len(DIGIT_VARIANTS)
 
@@ -166,8 +141,9 @@ def test_thresholding_still_wins_when_it_reads_better(card):
 
 
 def test_the_expiry_is_not_put_through_the_ensemble(card):
-    """It has no fourteen-digit shape, so several reads of it cannot be combined position by
-    position — two dates that disagree cannot be voted on. It keeps the older, cheaper pair."""
+    """It has no fourteen-digit shape, so several reads of it cannot be combined position by position
+, two dates that disagree cannot be voted on. It keeps the older, cheaper pair.
+    """
     recognizer = SplitByThreshold(thresholded="٢٠٢٢/٠٧/٠٤", plain="٢٠٢٢")
     read = _recognize_box(card, EXPIRY_BOX, recognizer)
 
@@ -179,8 +155,9 @@ def test_the_expiry_is_not_put_through_the_ensemble(card):
 
 
 def test_text_fields_are_read_once(card):
-    """The extra passes buy nothing for Arabic prose: two reads that disagree cannot be
-    adjudicated, because unlike the number a name has no structure to check a candidate against."""
+    """The extra passes buy nothing for Arabic prose: two reads that disagree cannot be adjudicated,
+    because unlike the number a name has no structure to check a candidate against.
+    """
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28, kind="text")
     recognizer = SplitByThreshold(thresholded="x", plain="y")
     _recognize_box(card, box, recognizer)
@@ -201,8 +178,9 @@ def test_an_empty_prose_read_is_tried_once_more_with_more_contrast(card):
 
 
 def test_a_recognizer_that_raises_costs_the_field_and_not_the_card(card):
-    """The recognizer is native code and can raise with no Python-level cause. Letting that
-    propagate turns one unreadable crop into a failed scan for a card whose other fields read."""
+    """The recognizer is native code and can raise with no Python-level cause. Letting that propagate
+    turns one unreadable crop into a failed scan for a card whose other fields read.
+    """
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28, kind="text")
     read = _recognize_box(card, box, Broken())
     assert (read.text, read.score) == ("", 0.0)
@@ -217,12 +195,7 @@ def test_binarize_really_does_produce_a_two_valued_image(card):
 
 
 def test_every_crop_takes_a_little_card_around_the_field(card):
-    """A glyph flush against the edge of an image is one a detector drops.
-
-    The probability map it thresholds needs background on both sides to close a contour, and on a
-    right-aligned Arabic line the glyph in that position is the last word of the name. The margin
-    is real card rather than synthetic padding, so nothing about the crop's own statistics changes.
-    """
+    """A glyph flush against the edge of an image is one a detector drops."""
     box = FieldBox("fullNameAr", x=0.36, y=0.30, w=0.40, h=0.20, kind="text")
     tight = card[
         int(0.30 * card.shape[0]) : int(0.50 * card.shape[0]),
@@ -234,12 +207,7 @@ def test_every_crop_takes_a_little_card_around_the_field(card):
 
 
 def test_the_variants_do_not_all_read_the_same_crop(card):
-    """An ensemble is worth exactly as much as its members' independence.
-
-    Five colour transforms of one identical crop share a segmentation, so they tend to share a
-    mistake. Widening the margin changes how detection splits the row, which is the cheapest source
-    of genuine disagreement available here.
-    """
+    """An ensemble is worth exactly as much as its members' independence."""
     box = FieldBox("nationalId", x=0.37, y=0.745, w=0.60, h=0.135, kind="digits")
     shapes = {_crop(card, box, VARIANT_MARGIN[name]).shape for name in DIGIT_VARIANTS}
     assert len(shapes) > 1, "every variant was handed pixels of exactly the same extent"

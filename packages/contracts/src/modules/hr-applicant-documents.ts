@@ -26,6 +26,7 @@ import {
   PaginationQuerySchema,
   type LocalizedString,
 } from '../common/index.js';
+import { type FileDto } from '../platform/files.js';
 
 // ── Closed vocabulary ───────────────────────────────────────────────────────
 
@@ -291,3 +292,50 @@ export const ApplicantDocumentEventPayloadV1 = z.object({
  * people without a scanner to find one.
  */
 export const APPLICANT_DOCUMENT_FILE_CATEGORY = 'hr-applicant-portal-documents';
+
+// ── The applicant's documents folder ────────────────────────────────────────
+
+/**
+ * One folder per applicant on the Applicant documents page: everything kept for that person in one
+ * place — the National-ID card (front, back and the face cut from it), the attachments HR added,
+ * and the documents the candidate handed in through the portal.
+ */
+export const ListApplicantFoldersQuerySchema = PaginationQuerySchema.extend({
+  /** Name (Arabic or English), applicant code or national ID. */
+  search: z.string().max(100).optional(),
+}).strict();
+export type ListApplicantFoldersQuery = z.infer<typeof ListApplicantFoldersQuerySchema>;
+
+export interface ApplicantFolderDto {
+  applicantId: string;
+  applicantCode: string;
+  applicantName: string;
+  /** Every file kept for the applicant. */
+  fileCount: number;
+  /** A side of the National-ID card is on file. */
+  hasCard: boolean;
+  /** The holder's photograph cut from the card, shown on the folder; null when none was kept. */
+  portraitFileId: string | null;
+  registeredAt: string;
+}
+
+/** What a file in the folder is, so the folder can show the card first and name each side. */
+export const APPLICANT_FOLDER_FILE_KINDS = [
+  'cardFront',
+  'cardBack',
+  'portrait',
+  'card',
+  'attachment',
+  'document',
+] as const;
+export type ApplicantFolderFileKind = (typeof APPLICANT_FOLDER_FILE_KINDS)[number];
+
+export interface ApplicantFolderFileDto {
+  kind: ApplicantFolderFileKind;
+  file: FileDto;
+}
+
+export interface ApplicantFolderDetailDto extends ApplicantFolderDto {
+  /** The card first (front, back, face), then attachments and handed-in documents, newest first. */
+  files: ApplicantFolderFileDto[];
+}

@@ -1,25 +1,4 @@
-"""Egypt's governorates in Arabic — for repairing the address line, and for nothing else.
-
-Every Egyptian address printed on a national ID ends with its governorate, drawn from a closed set
-of 27 names (the table below carries 28 entries — the 28th, code 88, is the 'born abroad' marker
-the number can hold rather than a place anyone lives). That makes the last token of the address
-field the one part of it that can be checked against a list, which is worth having: the address is
-the longest, most variable field on the card and the one the recognizer does worst on, so
-recovering even its tail saves a reviewer real typing.
-
-**This is deliberately NOT used to validate the national ID, and that restraint is the point.**
-Digits 8 and 9 of the number encode the governorate of *birth registration*. The address on the
-front is the holder's *residence*. Those are different facts about a person, and in a country where
-internal migration is completely ordinary they disagree for a large share of the population — the
-cards this feature exists to read include several such. Cross-checking them would therefore fire
-constantly on correct reads, and the natural response to a check that cries wolf is to stop
-believing it, which would cost more than it ever caught. The number is validated by its own
-structure; the address is repaired against this list; the two do not talk to each other.
-
-Codes match `EGYPT_GOVERNORATE_CODES` in `packages/contracts/src/common/value-objects.ts`, which
-remains the single source of truth for naming a governorate. This table exists to recognise the
-Arabic strings a recognizer produces, which is a different job from labelling a parsed number.
-"""
+"""Egypt's governorates in Arabic, for repairing the address line, and for nothing else."""
 
 from __future__ import annotations
 
@@ -59,8 +38,6 @@ GOVERNORATES_AR: dict[str, str] = {
 }
 
 #: Spellings that appear on real cards and in real data entry but are not the canonical form.
-#: Mostly the definite article being present or absent, which Egyptian address lines treat as
-#: optional, plus the two governorates whose names are routinely written without the hamza.
 _ALIASES: dict[str, str] = {
     "القاهره": "القاهرة",
     "الاسكندرية": "الإسكندرية",
@@ -82,17 +59,6 @@ _BY_NORMALIZED.update({normalize_arabic(alias): name for alias, name in _ALIASES
 _BY_RASM = {rasm_fold(name): name for name in GOVERNORATES_AR.values()}
 
 #: Governorates far enough from every other one to be matched approximately.
-#:
-#: Fuzzy matching is not uniformly safe here, and the reason is concrete: البحيرة and الجيزة are a
-#: single edit apart once dotting is folded away. A read one edit from البحيرة is therefore also
-#: one edit from a completely different governorate three hundred kilometres away, and snapping to
-#: either one would be a coin flip presented to the reviewer as a fact. Requiring a unique match
-#: does not save this — a read that lands one edit from Beheira and two from Giza is "unique" and
-#: still a guess.
-#:
-#: So approximate matching is offered only where the neighbourhood is empty. Names with no close
-#: relative can absorb a dropped letter safely; the crowded pairs fall back to exact-or-rasm, which
-#: is where they belong. Computed rather than listed, so it stays correct if the table changes.
 _FUZZY_ELIGIBLE: dict[str, str] = {
     folded: name
     for folded, name in _BY_RASM.items()
@@ -103,15 +69,7 @@ _FUZZY_ELIGIBLE: dict[str, str] = {
 
 
 def match_governorate(token: str, *, max_distance: int = 1) -> str | None:
-    """The governorate this text names, or None when it names none unambiguously.
-
-    Three passes, each harder to reach than the last: exact after the standard fold, then after
-    rasm folding (which forgives the dots a recognizer drops first), then a bounded edit distance
-    over the isolated names only. Any pass matching more than one governorate counts as no match —
-    inventing a governorate the pixels do not support puts a wrong address into an employee record,
-    and a reviewer who sees a plausible place name does not question it. Leaving the rough text in
-    place is what makes them read it against the card.
-    """
+    """The governorate this text names, or None when it names none unambiguously."""
     key = normalize_arabic(token)
     if not key:
         return None
@@ -131,19 +89,24 @@ def match_governorate(token: str, *, max_distance: int = 1) -> str | None:
 
 
 def snap_address_tail(address: str) -> tuple[str, bool]:
-    """Repair the governorate at the end of an address line. → (address, snapped).
-
-    Only the tail is touched. Everything before it — building, street, district — is free text with
-    no list to check against, and rewriting any of it would be guessing. The governorate is the one
-    token on the line that comes from a closed set, so it is the one token that can be corrected
-    with evidence rather than by hope.
-
-    The separator is preserved as printed. Egyptian cards use a dash between the district and the
-    governorate, and reformatting it would make the value stop matching the card the reviewer is
-    holding — which is the one comparison they are about to make.
-    """
+    """Repair the governorate at the end of an address line. → (address, snapped)."""
     if not address.strip():
         return address, False
+
+    def as_printed(tail: str, matched: str) -> str:
+        # Right apart from a word-final ى/ي or ة/ه, spellings the card itself uses (بنى سويف):
+        # keep what is printed.
+        printed, official = tail.split(), matched.split()
+        if len(printed) != len(official):
+            return matched
+        for got, want in zip(printed, official):
+            if got == want:
+                continue
+            if len(got) != len(want) or got[:-1] != want[:-1]:
+                return matched
+            if {got[-1], want[-1]} not in ({"ى", "ي"}, {"ة", "ه"}):
+                return matched
+        return tail.strip()
 
     # Split on the printed separators, longest-tail-first: the governorate is what follows the
     # final dash, and where there is no dash, the last whitespace-separated word or two.
@@ -153,7 +116,7 @@ def snap_address_tail(address: str) -> tuple[str, bool]:
             matched = match_governorate(tail)
             if matched is not None:
                 spacing = " " if tail.startswith(" ") or tail.endswith(" ") else ""
-                return f"{head}{separator}{spacing}{matched}".rstrip(), True
+                return f"{head}{separator}{spacing}{as_printed(tail, matched)}".rstrip(), True
             return address, False
 
     words = address.split()
@@ -161,5 +124,5 @@ def snap_address_tail(address: str) -> tuple[str, bool]:
         if len(words) >= count:
             matched = match_governorate(" ".join(words[-count:]))
             if matched is not None:
-                return " ".join([*words[:-count], matched]), True
+                return " ".join([*words[:-count], as_printed(" ".join(words[-count:]), matched)]), True
     return address, False

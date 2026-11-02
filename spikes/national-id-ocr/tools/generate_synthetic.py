@@ -1,22 +1,4 @@
-"""Generate synthetic National-ID fixtures + their ground-truth manifest.
-
-READ THIS BEFORE TRUSTING ANY NUMBER PRODUCED FROM SYNTHETIC FIXTURES.
-
-These cards are rendered from fonts. A real card is printed on polycarbonate with a guilloche
-background, a hologram, an ink profile the renderer cannot imitate, and it reaches the pipeline
-through a phone camera. Recognition accuracy measured on synthetic cards is therefore an UPPER
-BOUND — it tells you the pipeline is wired correctly and the geometry lands, and it tells you
-nothing reliable about field-day accuracy.
-
-What they are genuinely for:
-  * building and regression-testing the pipeline with no real PII anywhere near the repository;
-  * catching structural breakage (a field box drifting, a post-processor regressing);
-  * giving the harness something to run in CI.
-
-The degradations below (rotation, perspective, blur, noise, JPEG, glare) exist to stop the
-fixtures being trivially clean, not to simulate a real card. When real anonymized cards arrive,
-drop them into `fixtures/real/` with a manifest of the same shape and re-run — no code changes.
-"""
+"""Generate synthetic National-ID fixtures + their ground-truth manifest."""
 
 from __future__ import annotations
 
@@ -34,9 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from nidocr.layout import BACK_FIELDS, CANONICAL_SIZE, FRONT_FIELDS, FieldBox  # noqa: E402
 
-# GNU FreeFont carries Arabic coverage and ships in most base images. Pillow must be built with
-# raqm for correct joining/RTL shaping — verified in `check_font()` below, because silently
-# rendering disjoint letterforms would produce fixtures that are unreadable by design.
+# GNU FreeFont carries Arabic coverage and ships in most base images.
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/freefont/FreeSerif.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -52,7 +32,7 @@ OCCUPATIONS = ("معيدة بقسم الصحة العامة", "مهندس مدن
 RELIGIONS = ("مسلم", "مسلمة", "مسيحي", "مسيحية")
 MARITAL = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة")
 
-# Governorate codes the contracts package accepts — keeping fixtures structurally valid means the
+# Governorate codes the contracts package accepts, keeping fixtures structurally valid means the
 # confidence-banding path is exercised for real rather than always vetoing.
 GOV_CODES = ("01", "02", "03", "12", "13", "21", "26", "88")
 
@@ -93,20 +73,14 @@ def make_national_id(rng: random.Random) -> str:
 
 
 def _rtl(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, font, fill=(20, 20, 30)) -> None:
-    """Draw right-anchored Arabic. `direction='rtl'` needs raqm — verified in check_font()."""
+    """Draw right-anchored Arabic. `direction='rtl'` needs raqm, verified in check_font()."""
     draw.text(xy, text, font=font, fill=fill, direction="rtl", language="ar", anchor="rm")
 
 
 def _in_box(
     draw: ImageDraw.ImageDraw, box: FieldBox, lines: list[str], font, fill=(20, 20, 30)
 ) -> None:
-    """Render `lines` inside `box`, right-aligned and vertically distributed.
-
-    Positions are DERIVED from `layout.py` rather than hardcoded here. That makes the geometry
-    single-sourced: a box moves, the fixture text moves with it, and the synthetic set keeps
-    testing the layout module instead of silently drifting away from it. (Real cards still need a
-    calibration pass — see the note in layout.py — but that is a separate, explicit step.)
-    """
+    """Render `lines` inside `box`, right-aligned and vertically distributed."""
     left, top, right, bottom = box.to_pixels((CARD_W, CARD_H))
     # Inset so glyph overhang (descenders, the tail of ي) stays inside the crop the pipeline takes.
     right -= 12
@@ -119,7 +93,7 @@ def render_front(record: dict, font_path: str) -> Image.Image:
     img = Image.new("RGB", (CARD_W, CARD_H), (238, 240, 246))
     draw = ImageDraw.Draw(img)
 
-    # A faint lattice stands in for the guilloche — enough to stop the background being pure flat
+    # A faint lattice stands in for the guilloche, enough to stop the background being pure flat
     # white, which would make thresholding unrealistically easy.
     for x in range(0, CARD_W, 16):
         draw.line([(x, 0), (x - 120, CARD_H)], fill=(228, 232, 240), width=1)
@@ -158,9 +132,7 @@ def render_back(record: dict, font_path: str) -> Image.Image:
     _in_box(draw, boxes["maritalStatus"], [record["maritalStatus"]], mid)
     _in_box(draw, boxes["nationalIdExpiry"], [to_indic(record["expiry_printed"])], mid)
 
-    # A dense high-contrast block, as printed across the lower back of the card. Included only so
-    # the deskew estimator meets the same strong-gradient distraction it meets on a real card;
-    # nothing in this pipeline reads it.
+    # A dense high-contrast block, as printed across the lower back of the card.
     rng = random.Random(record["nationalId"])
     for i in range(120):
         x = 40 + i * 7
@@ -189,7 +161,7 @@ def degrade(img: Image.Image, rng: random.Random, level: str) -> np.ndarray:
     arr = cv2.warpAffine(arr, matrix, (width, height), borderMode=cv2.BORDER_REPLICATE)
 
     if level == "harsh":
-        # An off-centre bright blob — the glare case that defeats global thresholding.
+        # An off-centre bright blob, the glare case that defeats global thresholding.
         overlay = np.zeros_like(arr, dtype=np.float32)
         cv2.circle(
             overlay,

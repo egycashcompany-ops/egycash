@@ -1,30 +1,4 @@
-"""Where the text actually is on a card — the measurement the field boxes were missing.
-
-The built-in geometry in `layout.py` was derived from synthetic fixtures, and the first real
-Egyptian card showed what that is worth: the address box caught two lines and joined them out of
-order, the national-ID box caught a single digit, and the rest landed on blank card. Guessing
-corrections from those symptoms would be the same mistake a second time. This module measures
-instead.
-
-It runs detection over the WHOLE rectified card and reports each detected text line as a
-normalized rectangle — **with no text**. That is the point: correcting the field boxes needs
-coordinates, not content, so a card can be diagnosed and the numbers shared without any of the
-holder's data leaving the container. What each region carries besides its rectangle is
-deliberately minimal and non-identifying:
-
-  * `chars`     — how many characters the line holds. Distinguishes a 14-digit ID from a 4-digit
-                  year without revealing either.
-  * `digits`    — whether the line is entirely digits once Arabic-Indic numerals are folded. The
-                  national ID and the expiry date are the only all-digit lines on the card, and
-                  their character counts separate them.
-  * `confidence`— the recognizer's own score, so a region that is a smudge rather than a line can
-                  be discounted when fitting boxes to it.
-
-`cardDetected` reports whether rectification found a quad or fell back to resizing the frame.
-That fallback is silent by design (a caller who already cropped to the card needs it), but it
-means "boxes are misaligned" and "the card was never located" produce identical symptoms — and
-they have completely different fixes. One bit resolves it.
-"""
+"""Where the text actually is on a card, the measurement the field boxes were missing."""
 
 from __future__ import annotations
 
@@ -53,11 +27,7 @@ class Region:
 
 
 def _normalize(poly: Any, size: tuple[int, int]) -> tuple[float, float, float, float] | None:
-    """A detection polygon → a normalized axis-aligned rectangle.
-
-    Detection returns quadrilaterals, which may be slightly rotated; the bounding box is what a
-    field crop would need anyway, so the rotation is folded away here rather than carried.
-    """
+    """A detection polygon → a normalized axis-aligned rectangle."""
     try:
         points = np.asarray(poly, dtype=float).reshape(-1, 2)
     except (TypeError, ValueError):

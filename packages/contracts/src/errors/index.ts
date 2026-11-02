@@ -132,9 +132,11 @@ export const ErrorCodes = {
 
   // ── ATM operations (docs/12-planning/atm-operations-port.md) ──────────────────────────────────
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): the machine code already has an
-   * OPEN operation of this kind — at most one open replenishment and one open maintenance per
-   * machine, company-wide. Answered by a reopen; the batch opens report such codes instead.
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per Cairo day since 2026-10-27;
+   * maintenance only since 2026-11-01 — port doc OD-1b): the machine code already has an OPEN
+   * maintenance that day — at most one per machine code and day, company-wide. Answered by the
+   * maintenance reopen and by an edit moving its open time; the batch open and the mail accept
+   * report such codes instead. No replenishment path answers it: a machine may have several open.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
 

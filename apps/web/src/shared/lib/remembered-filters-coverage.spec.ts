@@ -466,7 +466,8 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
   ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', 'queue'],
   ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', 'queue'],
   ['modules/hr/payroll/pages/PayrollAdjustmentsPage.tsx', 'queue'],
-  ['modules/hr/recruitment/applicant-documents/pages/ApplicantDocumentsQueuePage.tsx', 'waiting'],
+  // 'folders' since P-HR-APP: the folder wall is the tab the screen now opens on.
+  ['modules/hr/recruitment/applicant-documents/pages/ApplicantDocumentsQueuePage.tsx', 'folders'],
   ['modules/it/pages/SoftwarePage.tsx', 'products'],
 ];
 

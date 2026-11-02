@@ -1,6 +1,8 @@
-// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1) in its pure parts: which lines of a batch open,
-// what counts as the rule's refusal, and that both operation schemas declare the index that makes
-// it race-proof — with the partial filter the service check's own "open" query matches.
+// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1; maintenance only since
+// 2026-11-01, OD-1b) in its pure parts: which lines of a batch open, what counts as the rule's
+// refusal, and that the maintenance schema declares the index that makes it race-proof — with the
+// partial filter the service check's own "open" query matches — while the replenishment schema
+// declares none, and the boot drops the one an older database built.
 import { describe, expect, it } from 'vitest';
 import { ErrorCodes } from '@ecms/contracts';
 import { ConflictError, StaleDocumentError } from '../../../shared/errors';
@@ -9,10 +11,9 @@ import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
 import { atmIndexBuildPlan, atmIndexedModels } from '../atm-indexes';
 import { leaderCascadeGroups } from './operation-log.repository';
 import {
-  OPEN_OPERATION_INDEX_NAMES,
+  OPEN_MAINTENANCE_INDEX_NAME,
   RETIRED_OPEN_OPERATION_INDEX_NAMES,
   alreadyOpenError,
-  codesBlockedByMove,
   decideOpenLines,
   isAlreadyOpenError,
   isOpenOperationDuplicate,
@@ -91,36 +92,46 @@ describe('the refusal and the race', () => {
   });
 });
 
-describe('the race-proof index, declared on both operation logs', () => {
+describe('the race-proof index — on the maintenance log only', () => {
+  it('maintenance: unique on the code AND day, over open live rows with a non-empty code and a stored day', () => {
+    const plan = atmIndexBuildPlan(AtmMaintenanceModel.schema.indexes());
+    const entry = plan.find((p) => p.options['name'] === OPEN_MAINTENANCE_INDEX_NAME);
+    expect(entry).toBeDefined();
+    expect(entry?.keys).toEqual({ machineCode: 1, openDay: 1 });
+    expect(entry?.unique).toBe(true);
+    expect(entry?.options['partialFilterExpression']).toEqual({
+      closedAt: null,
+      isDeleted: false,
+      machineCode: { $gt: '' },
+      openDay: { $gt: '' },
+    });
+  });
+
+  it('replenishment: no unique index at all — a machine may have several open (OD-1b)', () => {
+    const plan = atmIndexBuildPlan(AtmReplenishmentModel.schema.indexes());
+    expect(plan.filter((p) => p.unique)).toEqual([]);
+    // The board's company-wide "open that day" question keeps its non-unique index.
+    expect(plan.some((p) => p.options['name'] === 'ix_open_code_opened')).toBe(true);
+  });
+
   it.each([
     ['replenishment', AtmReplenishmentModel],
     ['maintenance', AtmMaintenanceModel],
-  ] as const)(
-    '%s: unique on the code AND day, over open live rows with a non-empty code and a stored day',
-    (kind, model) => {
-      const plan = atmIndexBuildPlan(model.schema.indexes());
-      const entry = plan.find((p) => p.options['name'] === OPEN_OPERATION_INDEX_NAMES[kind]);
-      expect(entry).toBeDefined();
-      expect(entry?.keys).toEqual({ machineCode: 1, openDay: 1 });
-      expect(entry?.unique).toBe(true);
-      expect(entry?.options['partialFilterExpression']).toEqual({
-        closedAt: null,
-        isDeleted: false,
-        machineCode: { $gt: '' },
-        openDay: { $gt: '' },
-      });
-      // The any-day index of the rule's first form is no longer declared — the boot drops it.
-      expect(plan.some((p) => p.options['name'] === RETIRED_OPEN_OPERATION_INDEX_NAMES[kind])).toBe(
-        false,
-      );
-    },
-  );
+  ] as const)('%s: no retired index is declared any more', (kind, model) => {
+    const plan = atmIndexBuildPlan(model.schema.indexes());
+    for (const name of RETIRED_OPEN_OPERATION_INDEX_NAMES[kind]) {
+      expect(plan.some((p) => p.options['name'] === name)).toBe(false);
+    }
+  });
 
-  it('lists the retired index on each operation log for the boot to drop', () => {
+  it('lists the retired indexes on each operation log for the boot to drop', () => {
     const retired = Object.fromEntries(
       atmIndexedModels().map((entry) => [entry.collection, entry.retired ?? []]),
     );
-    expect(retired['atm_replenishments']).toEqual(['ux_open_replenishment_per_code']);
+    expect(retired['atm_replenishments']).toEqual([
+      'ux_open_replenishment_per_code',
+      'ux_open_replenishment_per_code_day',
+    ]);
     expect(retired['atm_maintenances']).toEqual(['ux_open_maintenance_per_code']);
   });
 
@@ -166,30 +177,6 @@ describe('the day an operation belongs to', () => {
     // 23:30Z on the 26th is 01:30 (EET) or 02:30 (EEST) on the 27th in Cairo.
     expect(openDayOf(new Date('2026-10-26T23:30:00.000Z'))).toBe('2026-10-27');
     expect(openDayOf(new Date('2026-10-27T09:00:00.000Z'))).toBe('2026-10-27');
-  });
-});
-
-describe('codesBlockedByMove — the bulk edit of the open time', () => {
-  const row = (machineCode: string, closedAt: Date | null = null) => ({ machineCode, closedAt });
-
-  it('blocks a code two moved open rows share — one instant, one day', () => {
-    expect(codesBlockedByMove([row('101'), row('102'), row('101')], new Set())).toEqual(['101']);
-  });
-
-  it('blocks a code already open that day in a row not being moved', () => {
-    expect(codesBlockedByMove([row('101'), row('102')], new Set(['102']))).toEqual(['102']);
-  });
-
-  it('ignores closed rows and empty codes — the rule covers neither', () => {
-    expect(
-      codesBlockedByMove([row('101', new Date()), row('101'), row(''), row('')], new Set()),
-    ).toEqual([]);
-  });
-
-  it('names each code once', () => {
-    expect(codesBlockedByMove([row('101'), row('101'), row('101')], new Set(['101']))).toEqual([
-      '101',
-    ]);
   });
 });
 

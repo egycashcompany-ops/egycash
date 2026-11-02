@@ -113,6 +113,12 @@ export interface AtmMachineDto {
 }
 
 /**
+ * The most rows one data-edit bulk add or bulk delete request carries. A paste can hold more; the
+ * dialog sends them in consecutive requests of this size (2026-11-01).
+ */
+export const ATM_MACHINES_BULK_MAX = 500;
+
+/**
  * The legacy bulk add (contad_app.js:2412-2466): code+name line pairs plus one bank and one area
  * for the whole batch. Codes already registered are skipped, not errors (:2429-2451) — the result
  * names them so the operator finally SEES the skip the legacy performed silently.
@@ -124,7 +130,7 @@ export const BulkCreateAtmMachinesSchema = z
     machines: z
       .array(z.object({ machineCode: z.string().min(1), name: z.string().min(1) }).strict())
       .min(1)
-      .max(500),
+      .max(ATM_MACHINES_BULK_MAX),
   })
   .strict();
 export type BulkCreateAtmMachines = z.infer<typeof BulkCreateAtmMachinesSchema>;
@@ -337,7 +343,7 @@ export interface BulkCreateAtmMachinesResultDto {
  * `<code>-D`, which is what lets the same code be registered again later. Both preserved.
  */
 export const BulkDeleteAtmMachinesSchema = z
-  .object({ machineCodes: z.array(z.string().min(1)).min(1).max(500) })
+  .object({ machineCodes: z.array(z.string().min(1)).min(1).max(ATM_MACHINES_BULK_MAX) })
   .strict();
 export type BulkDeleteAtmMachines = z.infer<typeof BulkDeleteAtmMachinesSchema>;
 
@@ -569,6 +575,13 @@ export interface AtmRefLabelOptionsDto {
  */
 export const ATM_BULK_MAX_IDS = 200;
 
+/**
+ * The most lines one open request carries (both open forms). A paste can hold more — the owner
+ * pasted 700 replenishments at once (2026-11-01) — and the form sends them in consecutive requests
+ * of this size, joined as one answer, as the bulk actions do with `ATM_BULK_MAX_IDS`.
+ */
+export const ATM_OPEN_MAX_ROWS = 200;
+
 /** Bulk id selection — the checkbox multi-select every legacy grid action supports. */
 export const AtmOperationIdsSchema = z
   .object({ ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS) })
@@ -784,7 +797,7 @@ export const OpenAtmReplenishmentsSchema = z
           .strict(),
       )
       .min(1)
-      .max(200),
+      .max(ATM_OPEN_MAX_ROWS),
     forceDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -799,12 +812,9 @@ export interface OpenAtmReplenishmentsResultDto {
   opened: AtmReplenishmentDto[];
   unknownCodes: string[];
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27): one entry
-   * per submitted line that was NOT opened because its machine already has an open replenishment
-   * ON THE BATCH'S DAY — anywhere in the company — or because the same code appeared earlier in
-   * this batch (that earlier line opened).
-   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
-   * where the open operation is.
+   * Always empty since 2026-11-01 (port doc OD-1b): a machine may have several open
+   * replenishments, so every line of a known code opens — a code repeated in the batch, or one
+   * already open, included. Kept so the answer has one shape for both kinds.
    */
   alreadyOpenCodes: string[];
 }
@@ -901,7 +911,7 @@ export const OpenAtmMaintenancesSchema = z
           .strict(),
       )
       .min(1)
-      .max(200),
+      .max(ATM_OPEN_MAX_ROWS),
     openedAt: z.coerce.date().nullable().default(null),
   })
   .strict();
@@ -910,7 +920,14 @@ export type OpenAtmMaintenances = z.infer<typeof OpenAtmMaintenancesSchema>;
 export interface OpenAtmMaintenancesResultDto {
   opened: AtmMaintenanceDto[];
   unknownCodes: string[];
-  /** The owner's rule, as on `OpenAtmReplenishmentsResultDto.alreadyOpenCodes` — per kind. */
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27; maintenance
+   * only since 2026-11-01 — port doc OD-1b): one entry per submitted line that was NOT opened
+   * because its machine already has an open maintenance ON THE BATCH'S DAY — anywhere in the
+   * company — or because the same code appeared earlier in this batch (that earlier line opened).
+   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
+   * where the open operation is.
+   */
   alreadyOpenCodes: string[];
 }
 

@@ -38,6 +38,9 @@ import {
   type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
   ATM_BULK_MAX_IDS,
+  ATM_MACHINES_BULK_MAX,
+  ATM_OPEN_MAX_ROWS,
+  normalizeAtmMachineCode,
   joinAtmNameList,
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
@@ -52,6 +55,16 @@ import {
   upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
+import {
+  BranchChangedError,
+  branchPin,
+  firstOfEach,
+  inPasteBatches,
+  refusedBeforeWriting,
+  type PasteRun,
+} from '../lib/paste-batches';
+
+export { refusedBeforeWriting };
 
 export type AtmListParams = QueryParams;
 
@@ -71,6 +84,85 @@ export const inBulkBatches = async <T>(
     answers.push(await send(ids.slice(start, start + ATM_BULK_MAX_IDS)));
   }
   return answers;
+};
+
+/** What an open request answers — the part every batch adds to the joined answer. */
+interface OpenAnswer<Opened> {
+  opened: Opened[];
+  unknownCodes: string[];
+  alreadyOpenCodes: string[];
+}
+
+/** An open form's lines, sent in batches: the joined answer, and where the run stopped. */
+export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
+  /**
+   * Lines certainly NOT opened, safe to send again: the lines after the request that failed, and
+   * that request's own lines when the API refused it (`refusedBeforeWriting`). Empty when every
+   * line went.
+   */
+  unsent: Row[];
+  /**
+   * The lines of a request that failed WITHOUT a refusal — a 5xx, a dropped connection, a page that
+   * is not the API's. The server may have opened some or all of them (it writes row by row), so
+   * they are never handed back to be sent again as if they had not gone.
+   */
+  uncertain: Row[];
+  /** Why the run stopped; `null` when every line went. */
+  failure: unknown;
+}
+
+/**
+ * An open form's lines, sent in consecutive requests of at most `ATM_OPEN_MAX_ROWS` — a paste can
+ * hold more lines than one open request carries (the owner, 2026-11-01: 700 replenishments at once
+ * were refused whole, 100 or 200 at a time opened). In order, one request at a time; the answers
+ * are joined as one, in the lines' order.
+ *
+ * A request the API REFUSES wrote nothing: if it is the first, the open fails exactly as before
+ * (nothing was opened anywhere); if a later one, the run stops and its lines join `unsent` with
+ * the rest. A request that fails WITHOUT an answer stops the run too, but its own lines go to
+ * `uncertain`: some may have opened, and since OD-1b a replenishment opens again on every send, so
+ * the form must not offer them as unsent. Either way what the earlier requests opened stands.
+ */
+export const openInBatches = async <Row, Opened>(
+  rows: readonly Row[],
+  send: (batch: Row[]) => Promise<OpenAnswer<Opened>>,
+): Promise<OpenLinesOutcome<Opened, Row>> => {
+  const outcome: OpenLinesOutcome<Opened, Row> = {
+    opened: [],
+    unknownCodes: [],
+    alreadyOpenCodes: [],
+    unsent: [],
+    uncertain: [],
+    failure: null,
+  };
+  // Each request resolves the acting branch from the top bar: a switch between two requests stops
+  // the run before the next one, whose lines then come back as unsent (they never went).
+  const pin = branchPin();
+  for (let start = 0; start < rows.length; start += ATM_OPEN_MAX_ROWS) {
+    const end = start + ATM_OPEN_MAX_ROWS;
+    if (start > 0 && pin.moved()) {
+      return { ...outcome, unsent: rows.slice(start), failure: new BranchChangedError() };
+    }
+    let answer: OpenAnswer<Opened>;
+    try {
+      answer = await send(rows.slice(start, end));
+    } catch (error) {
+      if (refusedBeforeWriting(error)) {
+        if (start === 0) throw error;
+        return { ...outcome, unsent: rows.slice(start), failure: error };
+      }
+      return {
+        ...outcome,
+        uncertain: rows.slice(start, end),
+        unsent: rows.slice(end),
+        failure: error,
+      };
+    }
+    outcome.opened.push(...answer.opened);
+    outcome.unknownCodes.push(...answer.unknownCodes);
+    outcome.alreadyOpenCodes.push(...answer.alreadyOpenCodes);
+  }
+  return outcome;
 };
 
 // ── Machines (legacy `atm` master — /all_atm + /data_edit_atm) ──────────────
@@ -105,6 +197,43 @@ export const bulkDeleteMachines = (
   body: BulkDeleteAtmMachines,
 ): Promise<BulkDeleteAtmMachinesResultDto> =>
   post<BulkDeleteAtmMachinesResultDto>('/atm/machines/bulk-delete', body);
+
+export type BulkMachineRow = BulkCreateAtmMachines['machines'][number];
+
+/**
+ * The data-edit bulk add for any number of lines (2026-11-01): the first line of each code (the
+ * server keeps the first of a repeated code too — split, a later repeat would read as «مسجلة من
+ * قبل»), in requests of `ATM_MACHINES_BULK_MAX`, one bank and area for all, the acting branch
+ * pinned (`inPasteBatches`). Safe to send again: a machine added already comes back skipped.
+ */
+export const bulkCreateMachinesInBatches = (
+  body: BulkCreateAtmMachines,
+): Promise<PasteRun<BulkMachineRow, BulkCreateAtmMachinesResultDto>> =>
+  inPasteBatches(
+    firstOfEach(body.machines, (row) => normalizeAtmMachineCode(row.machineCode)).kept,
+    ATM_MACHINES_BULK_MAX,
+    (machines) => bulkCreateMachines({ bankName: body.bankName, area: body.area, machines }),
+    // A 423 (a branch move began), 409 or 404 can come after earlier rows were written.
+    { pinBranch: true, refusalWritesNothing: false },
+  );
+
+/**
+ * The data-edit bulk delete for any number of codes: each code once (normalized, as the server
+ * reads it), in requests of `ATM_MACHINES_BULK_MAX`, the acting branch pinned. Safe to send again:
+ * a machine deleted already comes back as an unknown code.
+ */
+export const bulkDeleteMachinesInBatches = (
+  machineCodes: readonly string[],
+): Promise<PasteRun<string, BulkDeleteAtmMachinesResultDto>> =>
+  inPasteBatches(
+    firstOfEach(
+      machineCodes.map(normalizeAtmMachineCode).filter((code) => code !== ''),
+      (code) => code,
+    ).kept,
+    ATM_MACHINES_BULK_MAX,
+    (batch) => bulkDeleteMachines({ machineCodes: batch }),
+    { pinBranch: true, refusalWritesNothing: false },
+  );
 export const reassignMachineArea = (body: ReassignAtmMachineArea): Promise<AtmMachineDto> =>
   post<AtmMachineDto>('/atm/machines/reassign-area', body);
 /**
@@ -166,11 +295,18 @@ export const listDoneReplenishments = (
   params: AtmListParams,
 ): Promise<Paginated<AtmReplenishmentDto>> =>
   getPage<AtmReplenishmentDto>(`/atm/replenishments/done${buildQuery(params)}`);
+export type ReplenishmentOpenRow = { machineCode: string; scheduleTime: string | null };
+/** The open form's lines, in batches of `ATM_OPEN_MAX_ROWS` (`openInBatches`), one date for all. */
 export const openReplenishments = (body: {
-  rows: { machineCode: string; scheduleTime: string | null }[];
+  rows: ReplenishmentOpenRow[];
   forceDate: string | null;
-}): Promise<OpenAtmReplenishmentsResultDto> =>
-  post<OpenAtmReplenishmentsResultDto>('/atm/replenishments/open', body);
+}): Promise<OpenLinesOutcome<AtmReplenishmentDto, ReplenishmentOpenRow>> =>
+  openInBatches(body.rows, (rows) =>
+    post<OpenAtmReplenishmentsResultDto>('/atm/replenishments/open', {
+      rows,
+      forceDate: body.forceDate,
+    }),
+  );
 export const closeReplenishments = async (ids: string[]): Promise<AtmReplenishmentDto[]> =>
   (
     await inBulkBatches(ids, (batch) =>
@@ -224,11 +360,22 @@ export const listDoneMaintenances = (
  */
 export const leaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
   get<AtmLeaderOptionDto[]>('/atm/leaders/options');
+export type MaintenanceOpenRow = {
+  machineCode: string;
+  serviceType: string | null;
+  referenceNumber: string | null;
+};
+/** The open form's lines, in batches of `ATM_OPEN_MAX_ROWS` (`openInBatches`), one time for all. */
 export const openMaintenances = (body: {
-  rows: { machineCode: string; serviceType: string | null; referenceNumber: string | null }[];
+  rows: MaintenanceOpenRow[];
   openedAt: string | null;
-}): Promise<OpenAtmMaintenancesResultDto> =>
-  post<OpenAtmMaintenancesResultDto>('/atm/maintenances/open', body);
+}): Promise<OpenLinesOutcome<AtmMaintenanceDto, MaintenanceOpenRow>> =>
+  openInBatches(body.rows, (rows) =>
+    post<OpenAtmMaintenancesResultDto>('/atm/maintenances/open', {
+      rows,
+      openedAt: body.openedAt,
+    }),
+  );
 export const closeMaintenances = async (
   ids: string[],
   leaderEmployeeId: string,

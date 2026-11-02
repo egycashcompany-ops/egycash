@@ -1,21 +1,4 @@
-"""The measurement harness — the whole point of the spike.
-
-Produces exactly the six numbers the evaluation asks for:
-
-  1. per-field accuracy (exact / normalized / mean CER / missing)
-  2. processing time per image, broken down by stage
-  3. Docker image size          — read from the environment, see `--image-size-mb`
-  4. CPU and memory             — peak RSS and CPU time of this process
-  5. major failure cases        — the worst reads, listed with their truth
-  6. a recommendation           — a mechanical verdict against stated thresholds, not a vibe
-
-Run against any fixture directory containing `manifest.json`. Synthetic and real sets use the same
-manifest shape, which is what lets real anonymized cards be dropped in without touching code.
-
-The report ALWAYS states which fixture set produced it. A number from synthetic fixtures is an
-upper bound and is labelled as such in the output — an unlabelled accuracy figure from rendered
-cards is the single most misleading artefact this spike could produce.
-"""
+"""The measurement harness, the whole point of the spike."""
 
 from __future__ import annotations
 
@@ -34,11 +17,6 @@ from nidocr.scoring import FieldAggregate, score_field  # noqa: E402
 
 # The bar for "production-ready", stated up front so the verdict is mechanical rather than a
 # judgement call made after seeing the numbers.
-#
-# `nationalId` is held to a far higher bar than the prose fields on purpose: it is the only field
-# that is machine-validated downstream and the only one where a single wrong character silently
-# yields a *different valid-looking person*. Names and addresses are reviewed by a human who can
-# see the card, so a rough read that saves typing still earns its place.
 THRESHOLDS = {
     "nationalId": 0.95,
     "nationalIdExpiry": 0.85,
@@ -50,9 +28,8 @@ THRESHOLDS = {
 }
 
 
-#: `paddle` | `paddleocr_vl` | `qwen` are the three configurations compared; `mock` exercises the
-#: pipeline with no weights and no network.
-RECOGNIZERS = ("paddle", "paddleocr_vl", "qwen", "mock")
+#: `paddle` is the reader; `mock` exercises the pipeline with no weights and no network.
+RECOGNIZERS = ("paddle", "mock")
 
 
 def build_recognizer(kind: str, model_dir: str | None):
@@ -60,10 +37,10 @@ def build_recognizer(kind: str, model_dir: str | None):
         from nidocr.engine import MockRecognizer
 
         return MockRecognizer({})
-    if kind in RECOGNIZERS:
-        from nidocr.vlm import build_recognizer as build
+    if kind == "paddle":
+        from nidocr.engine import PaddleRecognizer
 
-        return build(kind, model_dir=model_dir)
+        return PaddleRecognizer(model_dir=model_dir)
     raise SystemExit(f"unknown recognizer: {kind}")
 
 
@@ -95,9 +72,9 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
     for entry in manifest:
         truth: dict[str, str] = entry["truth"]
         # The mock replays ground truth, so the pipeline runs end to end while recognition is
-        # held constant — isolating geometry, preprocessing and post-processing from model quality.
+        # held constant, isolating geometry, preprocessing and post-processing from model quality.
         if recognizer_kind == "mock":
-            recognizer._values = dict(truth)  # noqa: SLF001 — harness-internal by design
+            recognizer._values = dict(truth)  # noqa: SLF001 - harness-internal by design
 
         front = str(fixtures_dir / entry["front"]) if entry.get("front") else None
         back = str(fixtures_dir / entry["back"]) if entry.get("back") else None
@@ -127,9 +104,7 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
 
     wall_seconds = time.perf_counter() - wall_before
     external_cpu_after, external_peak_mb = _external_usage(recognizer)
-    # The model's own work may happen in a child process (llama-server for Qwen). Its CPU time is
-    # counted from the first card to the last, so loading the weights is not billed to the cards;
-    # its peak memory is added to this process's, because both are resident at once.
+    # The model's own work may happen in a child process.
     cpu_seconds = (time.process_time() - cpu_before) + (external_cpu_after - external_cpu_before)
     close = getattr(recognizer, "close", None)
     if close is not None:
@@ -181,11 +156,7 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
 
 
 def _image_size_mb() -> float | None:
-    """Docker image size, when the harness runs inside the built image.
-
-    The Dockerfile writes the size to `/image-size-mb` at build time, so the number reported is
-    the real artefact's size rather than something reconstructed from `pip list`.
-    """
+    """Docker image size, when the harness runs inside the built image."""
     override = os.environ.get("OCR_IMAGE_SIZE_MB")
     if override:
         return float(override)
@@ -199,7 +170,7 @@ def _image_size_mb() -> float | None:
 
 
 def _verdict(aggregates: dict[str, FieldAggregate], sources: set[str]) -> dict:
-    """Mechanical pass/fail against THRESHOLDS, with the synthetic caveat attached."""
+    """Mechanical pass/fail against thresholds, with the synthetic caveat attached."""
     failed = [
         name
         for name, agg in aggregates.items()
@@ -228,7 +199,7 @@ def main() -> None:
     parser.add_argument(
         "--recognizer",
         choices=RECOGNIZERS,
-        default=os.environ.get("OCR_TEXT_RECOGNIZER") or "paddle",
+        default="paddle",
     )
     parser.add_argument("--model-dir", default=os.environ.get("PADDLE_OCR_MODEL_DIR"))
     parser.add_argument("--json-out", default=None)
@@ -240,7 +211,7 @@ def main() -> None:
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    from report import render_markdown  # noqa: PLC0415 — sibling module, CLI-only
+    from report import render_markdown  # noqa: PLC0415 - sibling module, CLI-only
 
     print(render_markdown(report))
 

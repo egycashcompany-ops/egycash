@@ -1,6 +1,12 @@
 // TanStack Query hooks for the review queue.
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { type ApplicantDocumentSetDto, type Paginated } from '@ecms/contracts';
+import {
+  type ApplicantDocumentSetDto,
+  type ApplicantFolderDetailDto,
+  type ApplicantFolderDto,
+  type DownloadTicketDto,
+  type Paginated,
+} from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import * as api from './applicant-document-api';
 
@@ -42,3 +48,30 @@ export const useReviewApplicantDocument = () => {
     },
   });
 };
+
+export const useApplicantFolders = (
+  params: api.ApplicantFolderParams,
+): UseQueryResult<Paginated<ApplicantFolderDto>> =>
+  useQuery({
+    queryKey: listKey(MODULE, 'applicantFolders', params),
+    queryFn: () => api.fetchApplicantFolders(params),
+  });
+
+export const useApplicantFolder = (applicantId: string): UseQueryResult<ApplicantFolderDetailDto> =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'applicantFolders', applicantId),
+    queryFn: () => api.fetchApplicantFolder(applicantId),
+    enabled: applicantId !== '',
+  });
+
+/**
+ * A signed link to show one image. Links are short-lived, so one is asked for when the image is
+ * shown and refreshed well before it runs out.
+ */
+export const useFileTicket = (fileId: string | null): UseQueryResult<DownloadTicketDto> =>
+  useQuery({
+    queryKey: ['platform', 'files', 'ticket', fileId],
+    queryFn: () => api.fileTicket(fileId ?? ''),
+    enabled: fileId !== null,
+    staleTime: 60_000,
+  });

@@ -18,10 +18,11 @@
 //                            Cairo-labelled, so sample a few before trusting the default.
 //   --dry-run                Read and report, write nothing.
 //
-// OPEN DUPLICATES. A machine may have only one OPEN replenishment and one OPEN maintenance (the
-// owner's rule, port doc OD-1, enforced by a unique index). The legacy had no such guard, so the
-// report's `openDuplicate` / `openDuplicateIds` name the open rows the database refused (on a dry
-// run: predicted within the deployment). Close the stale one in the legacy system and re-run.
+// OPEN DUPLICATES. A machine may have only one OPEN maintenance per day (the owner's rule, port doc
+// OD-1, enforced by a unique index); replenishments are outside the rule since OD-1b and are all
+// written. The legacy had no such guard, so the maintenance line's `openDuplicate` /
+// `openDuplicateIds` name the open rows the database refused (on a dry run: predicted within the
+// deployment). Close the stale one in the legacy system and re-run.
 // UNLESS `openIndexMissing: true`: the index is absent (the boot skipped it because the database
 // already holds open duplicates), so nothing was refused — those named rows were WRITTEN, and a
 // warning says so. Resolve the stored duplicates first (the boot log names the collection), let

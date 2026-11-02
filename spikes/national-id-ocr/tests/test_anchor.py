@@ -1,13 +1,4 @@
-"""Moving the field boxes onto the text that is actually there.
-
-A box that misses its line returns an empty string, and in an accuracy table an empty string is
-indistinguishable from "the model cannot read Arabic" — two problems with completely different
-fixes. Anchoring exists so that small geometric error stops producing that symptom, and so that a
-card design the profile was never calibrated against can still give up its most important field.
-
-The tests are about the boundary. Snapping must correct drift without swallowing the neighbouring
-field, and structural assignment must fire only when the evidence is unambiguous.
-"""
+"""Moving the field boxes onto the text that is actually there."""
 
 from __future__ import annotations
 
@@ -23,8 +14,7 @@ from nidocr.layout import FieldBox  # noqa: E402
 SIZE = (1000, 600)
 
 #: An invented name in the shape a real card prints: a given name alone on the first line, then the
-#: father/grandfather/family chain on the second. The shape is what these tests are about; the words
-#: belong to nobody, which is the only acceptable way to keep card text in a repository.
+#: father/grandfather/family chain on the second.
 GIVEN_NAME = "سلمى"
 FAMILY_CHAIN = "إبراهيم عبد الرحمن السيد"
 
@@ -37,11 +27,7 @@ def _line(left, top, right, bottom, text="نص", score=0.9):
 
 
 def test_a_box_is_pulled_onto_a_line_that_drifted_out_of_it():
-    """The whole point: a few percent of rectification error must stop costing a field.
-
-    The nominal box sits at y 0.20-0.30; the text really sits at y 0.26-0.34, overlapping but
-    offset. Cropping the nominal box would shave the line in half.
-    """
+    """The whole point: a few percent of rectification error must stop costing a field."""
     box = FieldBox("fullNameAr", x=0.30, y=0.20, w=0.50, h=0.10)
     lines = [_line(340, 156, 780, 204)]  # y 0.26-0.34 of 600
 
@@ -52,11 +38,7 @@ def test_a_box_is_pulled_onto_a_line_that_drifted_out_of_it():
 
 
 def test_a_snap_that_would_swallow_the_next_field_is_abandoned():
-    """Recognizing two fields as one produces a confident string that is wrong.
-
-    No confidence score reflects that kind of wrong, so the growth guard is the only thing standing
-    between a merged crop and a name field containing half an address.
-    """
+    """Recognizing two fields as one produces a confident string that is wrong."""
     box = FieldBox("fullNameAr", x=0.30, y=0.20, w=0.50, h=0.08)
     lines = [_line(300, 120, 800, 168), _line(300, 300, 800, 400)]  # second is far below
 
@@ -90,11 +72,7 @@ def test_no_detections_at_all_leaves_every_box_untouched():
 
 
 def test_a_fourteen_digit_line_is_the_national_id_wherever_it_sits():
-    """Identified by shape, not position — which is what makes an unfamiliar card design readable.
-
-    Egypt has issued more than one layout, and cards from 2007 are still in circulation. A profile
-    calibrated on current stock lands on blank laminate on those, but a line of fourteen digits is
-    the national ID on any of them.
+    """Identified by shape, not position, which is what makes an unfamiliar card design readable.
     """
     lines = [
         _line(100, 500, 900, 560, "٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧"),
@@ -107,11 +85,7 @@ def test_a_fourteen_digit_line_is_the_national_id_wherever_it_sits():
 
 
 def test_a_full_date_is_the_expiry_and_a_year_month_is_not():
-    """The issue date sits beside the expiry and must not be mistaken for it.
-
-    They are told apart by shape alone — the expiry carries a day, the issue date does not — so
-    nothing depends on correctly recognizing the Arabic label printed next to either.
-    """
+    """The issue date sits beside the expiry and must not be mistaken for it."""
     lines = [
         _line(100, 100, 400, 150, "٢٠١٥/٠٧"),  # issue: year and month only
         _line(100, 300, 500, 350, "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤"),
@@ -122,11 +96,7 @@ def test_a_full_date_is_the_expiry_and_a_year_month_is_not():
 
 
 def test_two_candidate_lines_produce_no_assignment():
-    """Ambiguity is refused rather than broken by position.
-
-    Choosing between two fourteen-digit lines by where they sit would reintroduce exactly the
-    geometric assumption structural assignment exists to avoid.
-    """
+    """Ambiguity is refused rather than broken by position."""
     lines = [
         _line(100, 100, 900, 160, "٢٩٥٠٣١٤١٢٣٤٥٦٧"),
         _line(100, 400, 900, 460, "٢٩٢٠٨١٥١٢٠٣٤٥٧"),
@@ -140,11 +110,7 @@ def test_only_requested_fields_are_assigned():
 
 
 def test_structural_assignment_overrides_a_snapped_box():
-    """Snapping still assumes the nominal box was roughly right; structure does not.
-
-    Where the two disagree, the case is precisely the one where the profile is most wrong — so the
-    layout-independent answer has to win.
-    """
+    """Snapping still assumes the nominal box was roughly right; structure does not."""
     box = FieldBox("nationalId", x=0.05, y=0.05, w=0.30, h=0.08, kind="digits")
     lines = [_line(100, 480, 900, 540, "٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧")]
 
@@ -157,18 +123,7 @@ def test_structural_assignment_overrides_a_snapped_box():
 
 
 def test_a_tall_box_does_not_reach_a_line_beyond_itself():
-    """The exact misread reported from the deployed service.
-
-    The card prints 'بطاقة تحقيق الشخصية' above the name and the address below it. The name box
-    spans two lines — 0.20 of the card's height — and the original selection rule gave it a margin
-    of 35% OF ITS OWN HEIGHT, or 0.07, which on this card is one whole line of print. So the box
-    reached a full line up and a full line down, unioned all three, and the recognizer returned the
-    header, the name and the address as one field. The address box did the same thing one line
-    lower, which is why the address came back beginning with the name.
-
-    Anchoring is supposed to correct drift of a few percent. Tying its reach to a line of text
-    rather than to the box keeps a tall field from being able to travel to its neighbours at all.
-    """
+    """The exact misread reported from the deployed service."""
     header = _line(300, 90, 700, 145, "بطاقة تحقيق الشخصية")
     name_one = _line(300, 160, 700, 215, GIVEN_NAME)
     name_two = _line(300, 225, 700, 280, FAMILY_CHAIN)
@@ -186,11 +141,7 @@ def test_a_tall_box_does_not_reach_a_line_beyond_itself():
 
 
 def test_drift_within_a_line_is_still_corrected():
-    """The tightened rule must not stop anchoring doing its job.
-
-    Half a line of slack is the point: a box that slipped less than that still belongs to its own
-    text and should follow it. Only a box that slipped further is pointing at a neighbour.
-    """
+    """The tightened rule must not stop anchoring doing its job."""
     text = _line(300, 200, 700, 250)  # y 0.333-0.417
     drifted = FieldBox("occupation", x=0.28, y=0.30, w=0.45, h=0.07)  # slipped up by ~half a line
 
@@ -200,19 +151,7 @@ def test_drift_within_a_line_is_still_corrected():
 
 
 def test_the_sex_religion_marital_row_is_found_by_its_words_not_its_position():
-    """The back's layout is variable-height, so fixed geometry cannot address it.
-
-    Occupation is one line on some cards and two on others — Egyptian job titles run long
-    ('معيدة بقسم الصحة العامة وطب المجتمع' over 'كلية الطب - جامعة المنصورة'). Everything printed
-    below it therefore shifts by a line, and the profile, calibrated on a one-line card, put the
-    religion box straight onto the occupation's second line. That is how 'المنصور' — half of
-    'جامعة المنصورة' — arrived in production as somebody's religion.
-
-    Religion and marital status come from vocabularies of four and eight words, so they can be
-    found the same way the national ID and the expiry are: by content. Both share one printed row,
-    and both anchor to it — `clean_religion` and `clean_marital_status` then pull the right word
-    out of the row by vocabulary, which they already did.
-    """
+    """The back's layout is variable-height, so fixed geometry cannot address it."""
     lines = [
         _line(100, 60, 900, 110, "٢٠١٥/٠٧    ٢٩٢٠٨١٥١٢٠٣٤٥٧"),
         _line(100, 130, 900, 180, "معيدة بقسم الصحة العامة وطب المجتمع"),
@@ -235,15 +174,6 @@ def test_the_sex_religion_marital_row_is_found_by_its_words_not_its_position():
 
 def test_a_word_at_the_far_end_of_a_line_is_not_lost():
     """A name's last word arrives as its own detection, and its centre is nowhere near the line's.
-
-    Detection returns text REGIONS, not lines, and how a line breaks into regions depends on how
-    wide its word gaps happen to be. When the family chain came back as two regions, the left one
-    held a single word whose centre sat outside the name box entirely — so the box took the right
-    region, the crop stopped where that region stopped, and the name lost its final word. Every
-    word the pipeline returned was correct, which is exactly why nothing flagged it.
-
-    Merging the fragments back into the line they were printed as is the fix, and it has to happen
-    before anything asks where a line's centre is.
     """
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)
     # One printed line, detected as two regions with an ordinary word gap between them.
@@ -259,19 +189,7 @@ def test_a_word_at_the_far_end_of_a_line_is_not_lost():
 
 
 def test_snapping_never_narrows_a_box_onto_what_detection_happened_to_find():
-    """The failure that outlived two rounds of fixing the name, and the reason it survived them.
-
-    Snapping replaced the field box with the extent of the detected lines — so when detection
-    missed the last word of a right-aligned line, the crop was rewritten to stop where detection
-    stopped. That put the word OUTSIDE the pixels recognition was given, which is why no amount of
-    re-reading, re-thresholding or voting could ever recover it: it was never in the image.
-
-    The two axes are not symmetric. Tightening vertically is the whole point, because fields sit a
-    line apart and a tall crop picks up its neighbour. Tightening horizontally excludes no
-    neighbour — nothing is printed beside the name — and costs exactly this. So the horizontal
-    extent is the union with the nominal box: anchoring may move a crop, and it may grow one, but
-    it may not trim one.
-    """
+    """The failure that outlived two rounds of fixing the name, and the reason it survived them."""
     box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)
     # Detection found only the right-hand part of the line; the final word was missed.
     found = _line(600, 200, 950, 250, "إبراهيم عبد الرحمن")
@@ -288,12 +206,7 @@ def test_snapping_never_narrows_a_box_onto_what_detection_happened_to_find():
 
 
 def test_two_separate_fields_on_one_row_are_not_merged_into_each_other():
-    """The merge is bounded by the gap. A word gap joins; the gap between two fields does not.
-
-    The back prints the issue date and the national ID on one row with a wide space between them,
-    and they are two different fields. Merging on proximity alone would make every row a single
-    region and hand each box the whole row.
-    """
+    """The merge is bounded by the gap. A word gap joins; the gap between two fields does not."""
     lines = [_line(120, 200, 300, 250, "٢٠١٥/٠٧"), _line(700, 200, 950, 250, "٢٩٥٠٣١٤١٢٣٤٥٦٧")]
     box = FieldBox("nationalIdExpiry", x=0.08, y=0.30, w=0.25, h=0.10, kind="digits")
 
@@ -304,15 +217,8 @@ def test_two_separate_fields_on_one_row_are_not_merged_into_each_other():
 
 
 def test_the_cards_own_printed_words_cannot_pull_a_box_onto_them():
-    """'بطاقة تحقيق الشخصية' is printed above the name on every card and belongs to nobody.
-
-    A name box tight enough to exclude it is also tight enough to clip the first line of a name that
-    wraps differently, and clipping is the worse failure: a header glued to a name is removable
-    because the phrase is identical on every card, while a name line that was never cropped in
-    cannot be recovered anywhere. So the box is allowed to be generous and the header stops counting
-    as text.
-    """
-    box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)  # spans the header AND the name
+    """'بطاقة تحقيق الشخصية' is printed above the name on every card and belongs to nobody."""
+    box = FieldBox("fullNameAr", x=0.36, y=0.18, w=0.61, h=0.28)  # spans the header and the name
     header = _line(300, 100, 950, 150, "بطاقة تحقيق الشخصية")
     name = _line(300, 200, 950, 250, FAMILY_CHAIN)
 
@@ -321,17 +227,13 @@ def test_the_cards_own_printed_words_cannot_pull_a_box_onto_them():
 
 
 def test_a_label_that_precedes_its_value_is_not_discarded():
-    """The distinction the boilerplate rule turns on, and the one it would be easy to get wrong.
-
-    'البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤' is a printed label AND the expiry date. Dropping the line for
-    carrying card furniture would take the date with it — and the expiry is found by nothing else.
-    """
+    """The distinction the boilerplate rule turns on, and the one it would be easy to get wrong."""
     lines = [_line(100, 300, 700, 350, "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤")]
     assert "nationalIdExpiry" in structural(lines, SIZE, wanted={"nationalIdExpiry"})
 
 
 def test_a_vocabulary_row_appearing_twice_is_refused():
-    """Same uniqueness rule as everywhere else — two candidates means no evidence, not a coin flip."""
+    """Same uniqueness rule as everywhere else, two candidates means no evidence, not a coin flip."""
     lines = [
         _line(100, 100, 900, 150, "أنثى مسلمة متزوجة"),
         _line(100, 300, 900, 350, "مسلمة"),
@@ -340,11 +242,7 @@ def test_a_vocabulary_row_appearing_twice_is_refused():
 
 
 def test_the_printed_photo_beside_the_name_does_not_widen_the_name_box():
-    """Detection reads text on the photo ('PHOTO' on the fixtures, a pattern on real stock).
-
-    With 35% sideways slack its centre counted as part of the name, the name box grew across the
-    photo, and the photo's edges then joined the name's two lines into one unsplittable strip.
-    """
+    """Detection reads text on the photo ('photo' on the fixtures, a pattern on real stock)."""
     box = FieldBox("fullNameAr", x=0.34, y=0.20, w=0.62, h=0.20)
     name = _line(620, 150, 950, 190, FAMILY_CHAIN)
     photo = _line(90, 220, 180, 250, "PHOTO")  # centre x 0.135, inside the old 35% slack

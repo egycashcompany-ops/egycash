@@ -262,9 +262,10 @@ const usePlanMutation = <V, R>(mutationFn: (variables: V) => Promise<R>) => {
 
 export const useCreatePlan = () => usePlanMutation((body: CreateAtmPlan) => api.createPlan(body));
 
+/** «إضافة ماكينات», in batches (`addPlanLinesInBatches`) — a stopped run resolves, so the plan refreshes. */
 export const useAddPlanLines = () =>
   usePlanMutation(({ planId, body }: { planId: string; body: AddAtmPlanLines }) =>
-    api.addPlanLines(planId, body),
+    api.addPlanLinesInBatches(planId, body),
   );
 
 export const useAddSpareLine = () =>

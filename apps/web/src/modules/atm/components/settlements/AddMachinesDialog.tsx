@@ -4,9 +4,16 @@
 // reads it (§3.6), and one it cannot read refuses that row only (`badTime`), never the batch.
 //
 // THE RESULT STAYS ON SCREEN: «أُضيف n», then every code that was not added with its reason.
+//
+// Any number of lines (2026-11-01, «صلّح كمان إضافة الماكينات»): they go in requests of 200,
+// repeats decided over the whole paste first (`addPlanLinesInBatches`). A run that stops puts
+// every line not confirmed back into the boxes (`PasteStopNotice`) — sending them again is safe, a
+// line added already comes back «موجودة في هذه التغذية». The plan itself still holds at most
+// `ATM_PLAN_LINES_MAX` live lines. The boxes, the run and closing are held while a run goes.
 import { useEffect, useState } from 'react';
 import {
   ATM_PLAN_RUNS,
+  ErrorCodes,
   type AtmPlanAddResultDto,
   type AtmPlanRun,
   type Locale,
@@ -17,8 +24,22 @@ import { Button } from '../../../../shared/ui/Button';
 import { SettlementDialog } from './SettlementDialog';
 import { Field, Select } from '../../../../shared/ui/form';
 import { LineListInput } from '../LineListInput';
-import { buildReplenishmentRows } from '../OpenReplenishmentsForm';
+import { buildReplenishmentRows, replenishmentLines } from '../OpenReplenishmentsForm';
+import { PasteStopNotice } from '../PasteStopNotice';
+import { ApiError } from '../../../../shared/lib/api-client';
+import { useRunUnloadGuard } from '../../lib/useRunUnloadGuard';
+import { BranchChangedError } from '../../lib/paste-batches';
+import { type PlanAddRun } from '../../api/settlements-api';
 import { runLabel } from '../../lib/settlement-view';
+
+/**
+ * Pure: may a stopped run's lines be pressed again as they are? Not after the plan answered full —
+ * a new press is refused the same way until lines are removed or cancelled — nor after the branch
+ * changed under the run (the page must reload onto the new branch first).
+ */
+export const pressAgainAfter = (failure: unknown): boolean =>
+  !(failure instanceof ApiError && failure.code === ErrorCodes.ATM_PLAN_FULL) &&
+  !(failure instanceof BranchChangedError);
 
 export const AddMachinesDialog = ({
   open,
@@ -32,11 +53,11 @@ export const AddMachinesDialog = ({
   locale: Locale;
   busy: boolean;
   error: string | null;
-  /** Resolves with the server's answer, or null when the request failed. */
+  /** Resolves with the joined answer (and what is left if the run stopped), or null on failure. */
   onSubmit: (
     run: AtmPlanRun,
     rows: { machineCode: string; scheduleTime: string | null }[],
-  ) => Promise<AtmPlanAddResultDto | null>;
+  ) => Promise<PlanAddRun | null>;
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
@@ -44,6 +65,8 @@ export const AddMachinesDialog = ({
   const [times, setTimes] = useState('');
   const [run, setRun] = useState<AtmPlanRun>(1);
   const [result, setResult] = useState<AtmPlanAddResultDto | null>(null);
+  const [stop, setStop] = useState({ left: 0, maybeDone: 0, pressAgain: true });
+  useRunUnloadGuard(busy);
 
   useEffect(() => {
     if (!open) return;
@@ -51,17 +74,29 @@ export const AddMachinesDialog = ({
     setTimes('');
     setRun(1);
     setResult(null);
+    setStop({ left: 0, maybeDone: 0, pressAgain: true });
   }, [open]);
 
   const rows = buildReplenishmentRows(codes, times);
   const submit = async (): Promise<void> => {
     if (rows.length === 0) return;
+    setStop({ left: 0, maybeDone: 0, pressAgain: true });
     const answer = await onSubmit(run, rows);
     if (answer === null) return;
-    setResult(answer);
-    // As the board's open form does: once something was added the boxes clear, and what was not
-    // added stays listed below with its reason.
-    if (answer.added.length > 0) {
+    setResult({ added: answer.added, refused: answer.refused });
+    if (answer.left.length > 0) {
+      // Stopped part-way: every line not confirmed goes back, paired line for line.
+      const back = replenishmentLines(answer.left);
+      setCodes(back.codes);
+      setTimes(back.schedules);
+      setStop({
+        left: answer.left.length,
+        maybeDone: answer.maybeDone,
+        pressAgain: pressAgainAfter(answer.failure),
+      });
+    } else if (answer.added.length > 0) {
+      // As the board's open form does: once something was added the boxes clear, and what was not
+      // added stays listed below with its reason.
       setCodes('');
       setTimes('');
     }
@@ -70,13 +105,14 @@ export const AddMachinesDialog = ({
   return (
     <SettlementDialog
       open={open}
-      onClose={onClose}
+      // Held while a run goes: closing would reset the boxes its end writes back into.
+      onClose={busy ? () => {} : onClose}
       title={t('atm.plan.add.title')}
       size="lg"
       dismissOnOutsideClick={false}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
             {t('common.close')}
           </Button>
           <Button loading={busy} disabled={rows.length === 0} onClick={() => void submit()}>
@@ -88,15 +124,22 @@ export const AddMachinesDialog = ({
       <div className="space-y-4">
         <div className="flex flex-wrap items-start gap-3">
           <Field label={t('atm.plan.add.codes')} hint={t('atm.plan.add.codesHint')}>
-            <LineListInput value={codes} onChange={setCodes} placeholder="1001" required />
+            <LineListInput
+              value={codes}
+              onChange={setCodes}
+              placeholder="1001"
+              required
+              disabled={busy}
+            />
           </Field>
           <Field label={t('atm.plan.add.times')}>
-            <LineListInput value={times} onChange={setTimes} placeholder="9:00" />
+            <LineListInput value={times} onChange={setTimes} placeholder="9:00" disabled={busy} />
           </Field>
           <Field label={t('atm.settlement.run')} htmlFor="add-machines-run">
             <Select
               id="add-machines-run"
               value={String(run)}
+              disabled={busy}
               onChange={(e) => setRun(Number(e.target.value) as AtmPlanRun)}
             >
               {ATM_PLAN_RUNS.map((n) => (
@@ -112,6 +155,14 @@ export const AddMachinesDialog = ({
             {error}
           </p>
         )}
+        <PasteStopNotice
+          left={stop.left}
+          maybeDone={stop.maybeDone}
+          action={t('atm.plan.add.submit')}
+          safeHint={t('atm.plan.add.resendSafe')}
+          pressAgain={stop.pressAgain}
+          formatCount={(n) => formatNumber(n, locale)}
+        />
         {result !== null && (
           <div aria-live="polite" className="space-y-2" data-add-result="true">
             <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">

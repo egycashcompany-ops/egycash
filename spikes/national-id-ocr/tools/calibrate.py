@@ -1,16 +1,4 @@
 """Field-box calibration: overlay the boxes on a rectified card, and measure whether they hit ink.
-
-Two modes, and the second is the one that matters.
-
-`--overlay` writes an annotated image so a human can see where the boxes fall. That is how the
-boxes get adjusted for REAL cards, which will not share the synthetic geometry (see the
-calibration note in `layout.py`).
-
-`--check` is mechanical: it rectifies each fixture, crops every field box, and measures ink
-coverage inside it. A box that has drifted off its text produces a near-blank crop, and the
-recognizer would return an empty string — which in an accuracy report looks exactly like "the
-model could not read Arabic". Distinguishing "wrong box" from "bad recognition" is the single most
-useful thing this tool does, because those two failures have completely different fixes.
 """
 
 from __future__ import annotations
@@ -25,26 +13,16 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from nidocr.layout import BACK_FIELDS, FRONT_FIELDS, FieldBox  # noqa: E402
+from nidocr.layout import BACK_FIELDS, FRONT_FIELDS  # noqa: E402
 from nidocr.preprocess import load_bgr, prepare_card  # noqa: E402
 
-#: Minimum ink density of the DENSEST text row for a box to count as "contains text".
+#: Minimum ink density of the densest text row for a box to count as "contains text".
 #: Calibrated against the synthetic set: an empty region sits at ~0.00, a line of Arabic at >0.15.
 MIN_ROW_INK = 0.05
 
 
 def text_presence(crop: np.ndarray) -> float:
-    """Ink density of the densest horizontal band in the crop.
-
-    Deliberately NOT ink-over-area. A short value ("عزباء") inside a box sized for the longest
-    plausible value covers only a few percent of it, so a coverage metric flags a perfectly
-    aligned box as empty — which is how this check first reported false failures. What actually
-    distinguishes "box is on the text" from "box is on blank stock" is whether ANY row is dense:
-    an empty region has a flat, near-zero row profile whatever its size.
-
-    The background level is taken per crop, because the card's two faces differ in tone (pale blue
-    front, warm beige back) and a fixed grey cut would call one of them ink.
-    """
+    """Ink density of the densest horizontal band in the crop."""
     if crop.size == 0:
         return 0.0
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)

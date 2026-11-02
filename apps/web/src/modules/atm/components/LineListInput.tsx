@@ -28,17 +28,21 @@ export const LineListInput = ({
   onChange,
   placeholder,
   required = false,
+  disabled = false,
 }: {
   value: string;
   onChange: (next: string) => void;
   placeholder: string;
   required?: boolean;
+  /** Held while the form's open runs — its several requests end by rewriting the boxes. */
+  disabled?: boolean;
 }): JSX.Element => (
   <Textarea
     value={value}
     onChange={(e) => onChange(e.target.value)}
     rows={1}
     required={required}
+    disabled={disabled}
     placeholder={placeholder}
     className={`resize-none text-center ${WIDTH}`}
   />

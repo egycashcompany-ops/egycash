@@ -5,3 +5,27 @@ build/
 __pycache__/
 *.pyc
 .pytest_cache/
+models/
+
+# The access code for reaching the readers from a phone (see docker-compose.lan.yml)
+.env
+
+# Browser tests: installed packages and run output
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+
+# Operating-system files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Kept on this computer only: development notes, handover notes, and the test page's optional 3D van
+# (the page falls back to its built-in van without it)
+CLAUDE.md
+HANDOVER.md
+HANDOVER.ar.md
+docs/
+tools/van.glb
+tools/van-poster.png
+README.ar.md

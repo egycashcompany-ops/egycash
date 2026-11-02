@@ -1,0 +1,132 @@
+/* Shared tokens for the document readers: colour per theme (light and dark) and motion.
+
+   Themes are set per section with data-theme="nid | egyid | army", and data-state="invalid" on the
+   same element switches it to the invalid palette. The motion tokens are the ones the original
+   test page already used (expo-out .16,1,.3,1; the 45 ms stagger), kept so nothing changes feel.
+
+   Contrast: every --text / --muted / --accent-text pair is checked against its --bg and --surface
+   by tests/test_ui_tokens.py (WCAG AA, 4.5:1 for text). Change a colour, run the test. */
+
+:root {
+  /* Motion */
+  --dur-instant: 80ms;
+  --dur-fast: 180ms;
+  --dur-normal: 350ms;
+  --dur-slow: 600ms;
+  --dur-crawl: 1000ms;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);      /* expo-out: entrances, settles */
+  --ease-smooth: cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);/* soft overshoot: pops, the check */
+  --ease-in-out: cubic-bezier(.45, .05, .55, .95);/* loops: scan line, breathe */
+  --stagger: 45ms;
+  --rise: 16px;
+
+  /* Type and shape */
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, Tahoma, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --arabic: "Segoe UI", "Noto Naskh Arabic", Tahoma, sans-serif;
+  --radius: 18px;
+  --radius-sm: 10px;
+
+  /* Confidence bands, shared by every theme (an icon and a word go with each, never colour alone) */
+  --band-high: #166b45;
+  --band-medium: #7d5700;
+  --band-low: #a3330c;
+
+  color-scheme: light dark;
+}
+
+/* ── Light (default) ───────────────────────────────────────────────────────────────────────── */
+:root, [data-theme] {
+  --bg: #f6f6f8; --surface: #ffffff; --surface-2: #f0f0f4; --line: rgb(0 0 0 / 0.09);
+  --text: #15151c; --muted: #5d5d6c; --accent: #4a49b8; --accent-text: #3f3ea8; --accent-soft: #c9c8ff;
+  --glow: rgb(74 73 184 / 0.28); --on-accent: #ffffff;
+  --ok: #1d7a4f; --bad: #b3261e;
+}
+[data-theme="nid"] {
+  /* Egypt: the flag's red, white and black, with a gold accent. Colour and pattern only: no emblem. */
+  --bg: #faf8f3; --surface: #ffffff; --surface-2: #f3efe4; --line: rgb(40 20 10 / 0.10);
+  --text: #16110e; --muted: #5f564c; --accent: #c8102e; --accent-text: #a30d25; --accent-soft: #f2c9cf;
+  --gold: #a8841c; --gold-soft: #e8d39a; --flag-red: #c8102e; --flag-white: #ffffff; --flag-black: #111111;
+  --glow: rgb(201 162 39 / 0.35);
+}
+[data-theme="egyid"] {
+  /* The company: neutral with the logo's indigo. */
+  --bg: #f6f6fb; --surface: #ffffff; --surface-2: #efeff8; --line: rgb(20 20 60 / 0.09);
+  --text: #12121c; --muted: #5a5a6e; --accent: #4a49b8; --accent-text: #3f3ea8; --accent-soft: #cfceff;
+  --logo-dark: #3e3f98; --logo-light: #5d5faa;
+  --glow: rgb(74 73 184 / 0.32);
+}
+[data-theme="army"] {
+  /* Its own muted palette: sage and sand on stone. No insignia. */
+  --bg: #f3f1ea; --surface: #fbfaf6; --surface-2: #ebe8dc; --line: rgb(40 40 20 / 0.10);
+  --text: #191a14; --muted: #5a5b4e; --accent: #4d6b52; --accent-text: #3f5a44; --accent-soft: #cfdccc;
+  --sand: #b9a774; --paper: #fffdf6;
+  --glow: rgb(77 107 82 / 0.30);
+}
+/* Invalid: a scan that is not this section's document. Distinct palette, plus an icon and words. */
+[data-theme][data-state="invalid"] {
+  --bg: #fff5f3; --surface: #ffffff; --surface-2: #fde8e4; --line: rgb(120 20 10 / 0.14);
+  --text: #1c0f0d; --muted: #6b4a45; --accent: #b3261e; --accent-text: #9b1f18; --accent-soft: #f6c7c1;
+  --glow: rgb(179 38 30 / 0.25);
+}
+
+/* ── Dark ──────────────────────────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color="light"]), :root:not([data-color="light"]) [data-theme] {
+    --bg: #09090f; --surface: #111119; --surface-2: #181822; --line: rgb(255 255 255 / 0.08);
+    --text: #f4f4f7; --muted: #a3a3b3; --accent: #7d7cf2; --accent-text: #b4b3ff; --accent-soft: #2d2c66;
+    --glow: rgb(125 124 242 / 0.35);
+    --ok: #5ad597; --bad: #ff8f86; --on-accent: #0b0b12; --logo-filter: brightness(2.1) saturate(.85);
+    --band-high: #5ad597; --band-medium: #f2c14e; --band-low: #ff9a6b;
+  }
+  :root:not([data-color="light"]) [data-theme="nid"] {
+    --bg: #0e0b0a; --surface: #17120f; --surface-2: #211a15; --line: rgb(255 240 220 / 0.09);
+    --text: #f7f2ea; --muted: #b5a99a; --accent: #ef3b52; --accent-text: #ff8090; --accent-soft: #4a1018;
+    --gold: #d4af37; --gold-soft: #5a4a17; --flag-red: #ce1126; --flag-white: #f5f5f5; --flag-black: #000000;
+    --glow: rgb(212 175 55 / 0.40);
+  }
+  :root:not([data-color="light"]) [data-theme="egyid"] {
+    --bg: #09090f; --surface: #111119; --surface-2: #181822; --line: rgb(255 255 255 / 0.08);
+    --text: #f4f4f7; --muted: #a3a3b3; --accent: #7d7cf2; --accent-text: #b4b3ff; --accent-soft: #2d2c66;
+    --logo-dark: #5a5bd0; --logo-light: #8f90ea;
+    --glow: rgb(125 124 242 / 0.45);
+  }
+  :root:not([data-color="light"]) [data-theme="army"] {
+    --bg: #0f1311; --surface: #161b18; --surface-2: #1e2420; --line: rgb(230 240 220 / 0.08);
+    --text: #eef0e8; --muted: #a9b0a0; --accent: #8fa889; --accent-text: #b5cdae; --accent-soft: #2b3a2d;
+    --sand: #c8b98a; --paper: #1c211d;
+    --glow: rgb(143 168 137 / 0.35);
+  }
+  :root:not([data-color="light"]) [data-theme][data-state="invalid"] {
+    --bg: #160c0d; --surface: #1f1112; --surface-2: #2a1617; --line: rgb(255 200 190 / 0.10);
+    --text: #fbeceb; --muted: #c9a5a1; --accent: #ff6b5e; --accent-text: #ff9b91; --accent-soft: #4a1714;
+    --glow: rgb(255 107 94 / 0.30);
+  }
+}
+/* The page's own toggle wins over the system setting, both ways. */
+:root[data-color="dark"], :root[data-color="dark"] [data-theme] {
+  --bg: #09090f; --surface: #111119; --surface-2: #181822; --line: rgb(255 255 255 / 0.08);
+  --text: #f4f4f7; --muted: #a3a3b3; --accent: #7d7cf2; --accent-text: #b4b3ff; --accent-soft: #2d2c66;
+  --glow: rgb(125 124 242 / 0.35); --ok: #5ad597; --bad: #ff8f86; --on-accent: #0b0b12; --logo-filter: brightness(2.1) saturate(.85);
+  --band-high: #5ad597; --band-medium: #f2c14e; --band-low: #ff9a6b;
+}
+:root[data-color="dark"] [data-theme="nid"] {
+  --bg: #0e0b0a; --surface: #17120f; --surface-2: #211a15; --line: rgb(255 240 220 / 0.09);
+  --text: #f7f2ea; --muted: #b5a99a; --accent: #ef3b52; --accent-text: #ff8090; --accent-soft: #4a1018;
+  --gold: #d4af37; --gold-soft: #5a4a17; --flag-red: #ce1126; --flag-white: #f5f5f5; --flag-black: #000000;
+  --glow: rgb(212 175 55 / 0.40);
+}
+:root[data-color="dark"] [data-theme="egyid"] {
+  --logo-dark: #5a5bd0; --logo-light: #8f90ea; --glow: rgb(125 124 242 / 0.45);
+}
+:root[data-color="dark"] [data-theme="army"] {
+  --bg: #0f1311; --surface: #161b18; --surface-2: #1e2420; --line: rgb(230 240 220 / 0.08);
+  --text: #eef0e8; --muted: #a9b0a0; --accent: #8fa889; --accent-text: #b5cdae; --accent-soft: #2b3a2d;
+  --sand: #c8b98a; --paper: #1c211d; --glow: rgb(143 168 137 / 0.35);
+}
+:root[data-color="dark"] [data-theme][data-state="invalid"] {
+  --bg: #160c0d; --surface: #1f1112; --surface-2: #2a1617; --line: rgb(255 200 190 / 0.10);
+  --text: #fbeceb; --muted: #c9a5a1; --accent: #ff6b5e; --accent-text: #ff9b91; --accent-soft: #4a1714;
+  --glow: rgb(255 107 94 / 0.30);
+}

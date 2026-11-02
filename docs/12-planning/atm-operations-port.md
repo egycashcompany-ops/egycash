@@ -60,7 +60,13 @@ ECMS" means.
   Efficiency register its authority is split between Operations and the administrator (§9);
   nothing was removed. **Amended 2026-10-28:** a machine added here is also recorded in the
   register, an archived code is brought back instead of refused, and a code living in another
-  branch is refused (§9).
+  branch is refused (§9). **Amended 2026-11-01:** the bulk add and the bulk delete take any number
+  of lines — consecutive requests of `ATM_MACHINES_BULK_MAX` (500, unchanged), each code once, the
+  acting branch pinned — the top-bar switch waits while a run goes, and a branch changed under it
+  anyway stops the run before its next request. A run that stops puts
+  every line not confirmed back into its boxes; sending them again is safe (an added machine comes
+  back «مسجلة من قبل», a deleted one as an unknown code), so the failed request's lines go back too,
+  named as possibly done.
 - **D3 — `/reports_atm` DELIVERED** (revised): originally deferred as outside the owner's page
   list, then built under the owner's standing delegation. It rides the existing view grants and
   declares no permission and no page (the operations B5-report precedent).
@@ -126,7 +132,22 @@ ECMS" means.
     all run over the whole set. `MAX_PAGE_SIZE` is unchanged. Since «select all» can now check
     more rows than one bulk request carries (`ATM_BULK_MAX_IDS`, 200 — unchanged), close, edit and
     delete send a larger selection in consecutive requests of that size, joined as one answer; a
-    refused batch fails the action and nothing after it is sent.
+    refused batch fails the action and nothing after it is sent. **The open forms likewise
+    (2026-11-01):** a paste longer than one open request carries (`ATM_OPEN_MAX_ROWS`, 200 —
+    unchanged; the owner pasted 700) goes in consecutive requests of that size, in order, with the
+    form's one date or open time on each, joined as one answer (`openInBatches`); the boxes are
+    held while it runs. A request the API refuses (a 4xx, decided before any row is written) wrote
+    nothing: the first one fails the open as before, a later one stops the run and its lines go
+    back into the boxes with the rest. A request with no answer (a dropped connection, a 5xx — the
+    server writes row by row) may have opened some of its lines, and a replenishment opens again on
+    every send (OD-1b), so its lines are NOT put back: the form names them apart (`OpenStopNotice`),
+    to be checked in the table, keeps them through later presses (a later stop adds to them), and
+    puts them back or hides them only when asked. What earlier requests opened stands either way.
+    Each request resolves the acting branch from the top bar, and a top-bar switch reloads the page,
+    so while a run goes the switch waits and says so, and closing or reloading asks first
+    (`useRunUnloadGuard`, `holdBranchSwitch`). A branch changed under the run anyway (a stored branch
+    retired meanwhile) is caught by the run's pin (`branchPin`): it stops before its next request,
+    its lines back as unsent, without «اضغط … مرة أخرى» (2026-11-01).
   - **A name is matched as the board shows it.** Bank and area are free text, so the filter
     lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
     backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to
@@ -188,7 +209,8 @@ ECMS" means.
 
 **Preserved quirks worth naming** (because a reviewer will ask): ~~a code pasted twice opens two
 operations (no duplicate guard on open — the paste is the operator's statement)~~ — **withdrawn
-2026-10-13 by the owner's decision OD-1 below**; the
+2026-10-13 by the owner's decision OD-1 below, and restored for replenishments 2026-11-01
+(OD-1b)**: a code pasted twice opens two replenishments, never two maintenances; the
 replenishment leader cascade fires only when open-time is NOT moved in the same submit
 (contad_app.js:854-859) while maintenance's cascades unconditionally (:2019-2032); the cascade's
 night window is anchored to the open time's own calendar day even before 06:00 (:815-817) —
@@ -204,27 +226,30 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
 | --- | --- | --- | --- | --- |
 | OD-1 | 2026-10-13 | «في ملحوظه مهمه جداً .. إن مينفعش أضيف ماكينة مرتين سواء فى عملية التغذية أو الصيانة» | No duplicate guard anywhere: the replenishment open (contad_app.js:637-768) and the maintenance open (:1896-1957) inserted one row per submitted line, so a pasted-twice code, a second paste later in the day, or a mail accepted for a machine already in maintenance each opened a second live row | **A machine has at most ONE open replenishment and at most ONE open maintenance** (open = `closedAt: null`, not deleted). The two kinds are independent; after a close the machine may open again. Enforced on every path that creates or re-opens an open row, with a partial unique index per collection behind it |
 | OD-1a | 2026-10-27 | «خلى الرفض دا "لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين" يحصل فقط إذا كانت الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش» | — (OD-1 itself overrode the legacy) | **OD-1 is per Cairo day.** A machine has at most one open replenishment and at most one open maintenance ON ONE DAY — the Cairo calendar day of the open time, the day the boards show it on. One left open on an earlier day does not block a new open, a reopen or a mail accept; a second one on the same day still does. Moving an open operation's time onto a day its machine is already open on is refused too (new: the edits) |
+| OD-1b | 2026-11-01 | «عايزك تسمح فى التغذيات بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى .. لأنه بيمنع دلوقتى» | One row per submitted line, no guard (contad_app.js:637-768) | **OD-1 no longer holds replenishments — the legacy again.** A machine may have several open replenishments on any day: every line of a known code opens (a repeat in the batch, or a machine already open, in any branch, included), a reopen is never refused for it, and an edit moves the open time onto any day. `alreadyOpenCodes` stays in the open's answer, always empty. Maintenance keeps OD-1 and OD-1a as they are, and an open replenishment never blocks a maintenance. The replenishment log's unique index is dropped at boot |
 
-**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`). Since OD-1a every
-"open" below means "open on that day": the day is `openDayOf(openedAt)` (Cairo); the service checks
-ask by the open time's own day range, so a row stored before the day was (`openDay: null`) blocks
-its day all the same.
+**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`). **Since OD-1b
+(2026-11-01) everything below holds for MAINTENANCE only**; the replenishment paths named in it
+open, reopen and move without the check, and their log carries no unique index (the boot drops
+`ux_open_replenishment_per_code_day`). Since OD-1a every "open" below means "open on that day": the
+day is `openDayOf(openedAt)` (Cairo); the service checks ask by the open time's own day range, so a
+row stored before the day was (`openDay: null`) blocks its day all the same.
 
 - **Identity is the machine code, company-wide.** The normalized `machineCode` — the identity the
   mail matcher already uses (§6) — so an operation open in ANOTHER branch blocks too, including a
   code whose master moved branch. Every refusal names only the code the caller typed: never the
   other branch, never the blocking row.
-- **The batch opens** (`POST /atm/replenishments/open`, `POST /atm/maintenances/open`) keep their
-  partial semantics: a code that already has an open operation of that kind, or that repeats
+- **The batch opens** (`POST /atm/maintenances/open`; `POST /atm/replenishments/open` until OD-1b)
+  keep their partial semantics: a code that already has an open operation of that kind, or that repeats
   earlier in the same batch, is not opened and is returned in the NEW response field
   `alreadyOpenCodes` (one entry per refused line, beside `unknownCodes`); the other lines open.
-- **The reopens** (`POST /atm/replenishments/:id/reopen`, `POST /atm/maintenances/:id/reopen`) answer
+- **The reopens** (`POST /atm/maintenances/:id/reopen`; the replenishment reopen until OD-1b) answer
   **409 `ATM_OPERATION_ALREADY_OPEN`** when the machine already has ANOTHER open operation of that
   kind on the reopened row's own day; a reopen writes the row's `openDay`.
-- **The edits that move the open time** (OD-1a — `PATCH /atm/replenishments/:id`, `/bulk`, `PATCH
-  /atm/maintenances/:id`) answer the same 409 when an OPEN row would land on a day its machine is
-  already open on; the bulk edit sets one instant on every checked row, so two checked rows of one
-  machine are refused too, before anything is written (`codesBlockedByMove`).
+- **The edits that move the open time** (OD-1a — `PATCH /atm/maintenances/:id`; the replenishment
+  edits until OD-1b) answer the same 409 when an OPEN row would land on a day its machine is already
+  open on. The replenishment bulk edit's check for two checked rows of one machine
+  (`codesBlockedByMove`) went with OD-1b; the maintenance bulk edit never moves the open time.
 - **The mail accept** (`POST /atm/mail-tickets/accept` → `maintenance.service.openFromMail`) does not
   accept a ticket whose machine already has an open maintenance — including one accepted earlier in
   the same selection. The ticket stays pending; `data` is still the array of accepted tickets
@@ -238,8 +263,8 @@ its day all the same.
   open maintenance ON THE TICKET'S DAY" — the day it was received, which is the day accept opens it
   on (D6) — in any branch, on the pending screen AND as the ingest-time value the log stores. What
   the screen paints is exactly what accept refuses.
-- **Concurrency.** `ux_open_replenishment_per_code_day` / `ux_open_maintenance_per_code_day` (since
-  OD-1a): unique on `{ machineCode, openDay }` where `closedAt: null`, `isDeleted: false`, the code
+- **Concurrency.** `ux_open_maintenance_per_code_day` (since OD-1a; its replenishment twin
+  `ux_open_replenishment_per_code_day` was dropped at boot with OD-1b): unique on `{ machineCode, openDay }` where `closedAt: null`, `isDeleted: false`, the code
   is a non-empty string and `openDay` is a stored day — every write that sets the open time writes
   it. The first form's `ux_open_*_per_code` (unique on the code alone) is DROPPED at boot by name
   (`RETIRED_OPEN_OPERATION_INDEX_NAMES`, `atm-indexes.ts`): kept, it would refuse a machine left open
@@ -264,9 +289,10 @@ its day all the same.
   leave the open time's day alone (since OD-1a an edit that moves it is guarded, above); no path
   brings a deleted operation back — a restored ticket accepted again opens a new one, through the
   guarded accept.
-- **The legacy importer is exempt** (§7): it writes history as it was. A second open row it carries
-  is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed run;
-  where the index is absent the report says so (`openIndexMissing`) and the duplicate lands (§7).
+- **The legacy importer is exempt** (§7): it writes history as it was. A second open maintenance it
+  carries is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed
+  run; where the index is absent the report says so (`openIndexMissing`) and the duplicate lands
+  (§7). Since OD-1b every replenishment row lands, and its line reports no open duplicate.
 
 ## 5. GAPs (no clear legacy implementation — recorded, not guessed)
 
@@ -637,9 +663,11 @@ Properties worth knowing before running it:
 - **Two fields stay null by design**: `actionAt` (the legacy never recorded when a mail was decided
   — GAP G1; stamping the import time would be a false fact) and `providerMessageId` (these rows
   predate the key; NULL is exempt from its partial unique index).
-- **Open duplicates are reported, not imported** (OD-1). The importer is exempt from the
-  one-open-operation rule's service check — it decides nothing about history — but the partial
-  unique index admits one OPEN row per machine code and kind. A legacy row it refuses is counted in
+- **Open maintenance duplicates are reported, not imported** (OD-1). Replenishments are all
+  written since OD-1b — their log has no unique index, and their report line always reads
+  `openDuplicate: 0`, `openIndexMissing: false`. The importer is exempt from the one-open-maintenance
+  rule's service check — it decides nothing about history — but the partial unique index admits one
+  OPEN maintenance per machine code and day. A legacy row it refuses is counted in
   `openDuplicate` and named (first 100) in `openDuplicateIds` by its preserved `_id`; every other
   row still lands (the bulk write is unordered). A dry run PREDICTS the count within the deployment.
   Close the stale row in the legacy database and re-run — the import is idempotent. **Only while
@@ -692,6 +720,7 @@ argument for the suite existing at all:
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |
+| — | OD-1b: the rule lifted for replenishments — several open per machine, the replenishment index dropped at boot, every legacy replenishment imported (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 | — | The bank catalog, bilingual areas and data-edit adds recorded in the register — register spec §1.3 (DEC-35–DEC-41), §9 below; suites `tests/integration/atm-banks.spec.ts`, `atm-area-labels.spec.ts`, `atm-data-edit-register.spec.ts` | in progress (ships as one release) |

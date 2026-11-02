@@ -1,20 +1,4 @@
-"""Accuracy metrics — how a read is judged against ground truth.
-
-Three metrics per field, because one number hides the thing you need to know:
-
-* `exact`      — byte-identical. The strictest bar, and the only one that matters for the national
-                 ID, where a single wrong digit makes the value useless.
-* `normalized` — equal after the Arabic fold the API already applies for search. This is the
-                 honest bar for names and addresses: an OCR that writes أحمد as احمد has not made
-                 a mistake a recruiter would care about, and counting it as one would understate
-                 the pipeline.
-* `cer`        — character error rate (Levenshtein / length of truth). The one that tells you
-                 whether a failure is "one letter off" or "complete garbage", which is the
-                 difference between a field a human fixes in two seconds and one they retype.
-
-The headline number reported per field is `normalized`, with `exact` alongside it. For
-`nationalId` the two are the same by construction, since the value is digits only.
-"""
+"""Accuracy metrics, how a read is judged against ground truth."""
 
 from __future__ import annotations
 
@@ -24,8 +8,9 @@ from .arabic import normalize_arabic
 
 
 def levenshtein(a: str, b: str) -> int:
-    """Edit distance. Iterative two-row form — the strings here are short, but this runs per
-    field per fixture and allocating a full matrix would be pointless."""
+    """Edit distance. Iterative two-row form, the strings here are short, but this runs per field per
+    fixture and allocating a full matrix would be pointless.
+    """
     if a == b:
         return 0
     if not a:

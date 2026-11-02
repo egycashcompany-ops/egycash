@@ -11,6 +11,58 @@ its entry here in the same PR.
 
 ### Added
 
+- **Fleet: «تصحيح أرقام الكروت» — the go-live's 15 crossed Wataniya card numbers and the 0849 pair,
+  repaired once by the owner after he reviews the live dry run; and the full card photo for the
+  PIN's own grant only.** «الـ PIN بيمشي مع الرقم المطبوع على الكارت ولا مع الاسم — الاتنين بس
+  الافضل الرقم» · «الشركة بتشحن الكارت برقمه ولا باسمه — الاتنين بس الافضل الرقم» · «3 ايوه».
+  - **What the go-live left.** Fifteen Wataniya records hold another card's NUMBER, in three closed
+    cycles (239→241→243→209; 233→525→284→269→230; 232→800→256→267→251→246 — car A's record holds
+    car B's physical card number); on the 0849 pair (cars 530 and 283) the number, car, photo,
+    expiry and PIN are right and the NAME and go-live OPENING balance are swapped. The definition is
+    a constant pinned by a spec to the go-live asset, the photos and the analyst's PIN-free table;
+    records are found as «the live Wataniya card on car X» — never by name or last four (names are
+    compared exactly, «S» and all; `548 •••• 2516` is also a Chill Out card).
+  - **The physical card is the number.** A cycle record keeps its name, car, balance and log, and
+    receives the number of the card embossed with its name together with that card's PIN (as
+    stored — never decrypted, shown, logged or returned), photo (its Files rows follow it) and
+    expiry, as they are when it runs. The records of cars 284, 269, 230, 256 and 251 receive a
+    number with no PIN stored and end with none; the owner types those from the card screen. The
+    pair swaps its names and moves each balance by the go-live opening's difference (530
+    −11,872.62 · 283 +11,872.62), noting that the 2026/10/04 statement showed 11,430.62 for car
+    283 and listing every statement adjustment applied to either record since go-live. None of the
+    15 balances changes: the company tops up by number and by name, so the repair claims nothing
+    about past top-ups — the newest Wataniya statement, approved in «مطابقة أرصدة الكروت»
+    afterwards, gives each card the company's figure for its own physical card.
+  - **Reviewed, then run once.** `/fleet/fuel-cards/reconcile/numbers` (from a yellow box on
+    «مطابقة أرصدة الكروت» while the repair is pending, «مراجعة التصحيح») shows the live dry run:
+    each cycle's chain, each record's number before → after, where its PIN goes (yes/no only), the
+    expiry, today's photo ✗ and the right one ✓ (thumbnails), the live balance and its top-ups for
+    information, and the pair. A unit — a cycle, or the pair — runs whole or not at all: a record
+    whose car, number or name changed by hand reads «تغيّر — لن يُلمس» and holds its unit, the
+    others still go. «تنفيذ التصحيح» (`fleetFuelCard.edit` and `fleetFuelCharge.approve`) asks
+    «راجعتُ الصفوف» first; each unit is re-checked and written in one Mongo transaction (cycles
+    through temporary numbers, `ux_fuel_card_number` unchanged), audited (`correct`), and leaves a
+    line in each card's log — «صُحّح رقم الكارت: كان •••• 2813 وأصبح •••• 0935 — تصحيح بيانات
+    التشغيل», or the pair's name and opening swap (`dataFix`, never edited or deleted). Those lines
+    are what make a unit read done: a re-run writes nothing, and a card moved or deleted later
+    never makes it pending again. Once the pair has run, batch 3's lock on the two 0849 cards
+    («ضمن تصحيح الأرقام» — the link ✓, `FLEET_FUEL_LINK_IN_REPAIR`, and the balance ✓, new
+    `FLEET_FUEL_RECONCILE_IN_REPAIR` 409) lifts. `GET /fleet/fuel-cards/number-repair`
+    (`fleetFuelCard.view`), `POST /fleet/fuel-cards/number-repair/execute` (`{ reviewed: true,
+    units }`). Nothing runs at boot or by itself.
+  - **The card photo shows the PIN on its sticker.** The full photo now opens only for a holder of
+    `fleetFuelCard.reveal` — on `GET /fleet/fuel-cards/:id/image` and through the Files
+    authorizer; every other reader of the cards sees a small blurred thumbnail, `GET
+    /fleet/fuel-cards/:id/image/thumb` (`fleetFuelCard.view`). The 406 go-live photos' thumbnails
+    are committed beside the assets (ImageMagick, `scripts/make-fuel-card-thumbs.sh`, 620 KB); a
+    later upload's is made by the browser and sent with it (checked from its header only — the
+    server never decodes an image; `FLEET_FUEL_CARD_THUMB_INVALID` 422), and a photo uploaded
+    without one is back-filled when an edit + reveal holder opens it (`POST
+    /fleet/fuel-cards/:id/image/thumb`). No new dependency.
+  No new permission key, no migration and no backfill; every new field is optional. The platform's
+  Files service gains `reassignEntity` (a module's own correction moves a file group to another
+  record of the same entity type, in its transaction).
+
 - **Fleet: the service gap on every odometer row, the card number on «شحن الكروت», deleting a
   custody operation, cars already received on a new contract, how a forms item is paid, and a
   card-balance reconciliation that reads the companies' real statements.** «295 - 150 -157 دول

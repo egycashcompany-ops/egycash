@@ -418,6 +418,10 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The maintenance board copies the service type, not the open time.** «فى الـ Selection بتاع
+  بيانات الجدول فى الأعطال مش عايز التوقيت .. لكن عايز نوع الخدمة يبقى Selectable معاهم». A drag
+  across the rows of `/atm/maintenance` (or Ctrl+A) now picks up the bank, the code, the machine
+  name and «نوع الخدمة»; the open time stays out, like the box, the timer and the buttons.
 - **A machine may have more than one open replenishment.** «عايزك تسمح فى التغذيات بإنى افتح تغذيه
   أكتر من واحده لنفس الماكينة عادى .. لأنه بيمنع دلوقتى». The rule «a machine is never open twice on
   one day» now holds for maintenance only (port doc OD-1b). On `/atm/replenishments`, every pasted

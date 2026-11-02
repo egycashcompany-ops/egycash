@@ -77,7 +77,7 @@ describe('the columns, in the table’s order', () => {
     ]);
   });
 
-  it('maintenance board: the machine and the open time are copied — it has no schedule', () => {
+  it('maintenance board: the machine and the service type are copied — not the time (2026-11-02)', () => {
     const columns = maintenanceColumns(ar, 'ar', 'open');
     expect(columns.map((c) => c.key)).toEqual([
       'bank',
@@ -95,7 +95,7 @@ describe('the columns, in the table’s order', () => {
       'bank',
       'code',
       'name',
-      'opened',
+      'service',
     ]);
   });
 

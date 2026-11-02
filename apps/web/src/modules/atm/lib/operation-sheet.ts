@@ -122,8 +122,9 @@ export const replenishmentColumns = (
 ];
 
 /**
- * The maintenance tables. The copy columns are the machine and the OPEN TIME — maintenance has no
- * schedule text, and its open time is when it is due (the owner's answer: «وقت الفتح»). Open board:
+ * The maintenance tables. The copy columns are the machine and the SERVICE TYPE — «فى الـ Selection
+ * بتاع بيانات الجدول فى الأعطال مش عايز التوقيت .. لكن عايز نوع الخدمة يبقى Selectable معاهم»
+ * (2026-11-02; the open time was copied before, the owner's first answer «وقت الفتح»). Open board:
  * bank, code, name, service, area, open time, notes, leader, reference, added by. Done page: the
  * same up to the open time, then close, duration, notes, reference, leader, closed by.
  */
@@ -153,13 +154,13 @@ export const maintenanceColumns = (
       key: 'service',
       header: t('atm.maintenance.serviceType'),
       text: (row, empty) => orEmpty(row.serviceType, empty),
+      copy: page === 'open',
     },
     { key: 'area', header: t('atm.common.area'), text: (row) => row.area },
     {
       key: 'opened',
       header: t('atm.common.openTime'),
       text: (row, empty) => instant(row.openedAt, locale, empty),
-      copy: page === 'open',
     },
     ...(page === 'open'
       ? [

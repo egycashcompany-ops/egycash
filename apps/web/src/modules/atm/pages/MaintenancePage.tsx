@@ -75,8 +75,9 @@ export const MaintenancePage = (): JSX.Element => {
   const now = useNowTick();
   const rows = list.data?.items ?? [];
   const sheetColumns = maintenanceColumns(t, locale, 'open');
-  // The row of boxes under the table's head, one per column (2026-11-02, «فلتر لكل عمود»): they
-  // narrow the rows the bank and area filters brought back, before the day view and its counts.
+  // The row of lists under the table's head, one per column (2026-11-02, «فلتر لكل عمود», as
+  // multi-pick drop-downs): they narrow the rows the bank and area filters brought back, before
+  // the day view and its counts.
   const columnFilters = useColumnFilters();
   const board = useBoardView([sp, setSp], rows, sheetColumns, now, columnFilters.values);
 
@@ -233,7 +234,7 @@ export const MaintenancePage = (): JSX.Element => {
                   searching={filters.areasLoading}
                 />
                 {/* One reset for everything that narrows the board: the bank and area filters
-                  and the column boxes. */}
+                  and the column filters. */}
                 <BoardResetButton
                   active={filters.filtered || columnFilters.active}
                   onReset={() => {
@@ -301,9 +302,9 @@ export const MaintenancePage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              choices: board.choices,
               generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
-              placeholder: t('atm.common.filterPlaceholder'),
             }}
             group={areaGroupLine(t, locale)}
             stickyHead

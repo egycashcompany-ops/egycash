@@ -39,10 +39,10 @@
 // machine or a label instead of deleting it (`isActive`) — the row leaves the forms and the mail
 // matcher, which read active only, while its code stays taken and its history stays readable.
 //
-// A ROW OF FILTER BOXES, one per column (2026-11-02, «فلتر لكل عمود»), only on the bank tab: its
-// table is the whole catalog, read at once. The machines, spellings and areas tabs are read a page
-// at a time from the server — a box in the browser would search the page on screen only and pass
-// for a search of them all — so they keep the FilterBar's server search and status alone.
+// A ROW OF FILTER LISTS, one multi-pick drop-down per column (2026-11-02, «فلتر لكل عمود», «يكون
+// Drop Down بـ Multi select»), only on the bank tab: its table is the whole catalog, read at once.
+// The machines, spellings and areas tabs are read a page at a time from the server — a list in the
+// browser would know the page on screen only and pass for a list of them all — so they keep the FilterBar's server search and status alone.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -55,7 +55,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
-import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { cn } from '../../../shared/lib/cn';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
@@ -108,7 +108,7 @@ const actionButton =
 
 /**
  * Pure: what a catalog bank's cell in that column shows, as text (`bankCatalogColumns`) — what the
- * bank tab's filter box matches. Null for a column that shows no text (the edit button).
+ * bank tab's column filter lists. Null for a column that shows no text (the edit button).
  */
 export const bankCellText = (
   bank: AtmBankDto,
@@ -232,7 +232,7 @@ export const DataEditPage = (): JSX.Element => {
   // spellings tab shows for each spelling's bank.
   const catalog = useAtmBanks();
   const lookup = useMemo(() => makeBankLookup(catalog.data), [catalog.data]);
-  // The bank tab's boxes narrow what the status filter kept; a tab change empties them.
+  // The bank tab's column filters narrow what the status filter kept; a tab change empties them.
   const columnFilters = useColumnFilters();
   const bankRowsBeforeBoxes = useMemo(
     () =>
@@ -241,11 +241,9 @@ export const DataEditPage = (): JSX.Element => {
       ),
     [catalog.data, active],
   );
+  const bankText = (bank: AtmBankDto, key: string): string | null => bankCellText(bank, key, t);
   const bankRows = useMemo(
-    () =>
-      filterRowsByColumns(bankRowsBeforeBoxes, columnFilters.values, (bank, key) =>
-        bankCellText(bank, key, t),
-      ),
+    () => filterRowsByColumns(bankRowsBeforeBoxes, columnFilters.values, bankText),
     [bankRowsBeforeBoxes, columnFilters.values, locale],
   );
   // The acting branch's bank texts that link to no bank — the spellings tab's callout — each with
@@ -392,7 +390,7 @@ export const DataEditPage = (): JSX.Element => {
   ];
 
   // The register's «البنوك» dialog shows the same table (`bankCatalogColumns`); here every column
-  // that shows text takes a box.
+  // that shows text takes a list.
   const bankColumns = bankCatalogColumns({
     t,
     onEdit: canEditBank ? setEditingBank : undefined,
@@ -552,7 +550,7 @@ export const DataEditPage = (): JSX.Element => {
           }
         />
 
-        {/* Its clear empties the bank tab's boxes too, and lights up while one narrows the table. */}
+        {/* Its clear empties the bank tab's column filters too, and lights up while one narrows the table. */}
         <FilterBar
           hasActiveFilters={
             active !== '' || search !== '' || (tab === 'bank' && columnFilters.active)
@@ -656,9 +654,9 @@ export const DataEditPage = (): JSX.Element => {
               columnFilters={{
                 values: columnFilters.values,
                 onChange: columnFilters.set,
+                choices: columnFilterChoicesOf(bankRowsBeforeBoxes, columnFilters.values, bankText),
                 generation: columnFilters.generation,
                 label: (header) => t('atm.common.filterColumn', { column: header }),
-                placeholder: t('atm.common.filterPlaceholder'),
               }}
               stickyHead
             />

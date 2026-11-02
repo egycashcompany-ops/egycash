@@ -66,6 +66,13 @@ export const PREPARATION_STATUS_TONE: Readonly<Record<AtmPreparationStatus, Tone
 /** «التغذية الأولى» … «التغذية الثالثة» (S-5, DS-31). */
 export const runLabel = (run: AtmPlanRun, t: Translate): string => t(`atm.settlement.run.${run}`);
 
+/**
+ * A run column's list reads first, second, third — its NUMBER first, then its time — not the
+ * alphabet's first, third, second (`ColumnOrderOf`, `shared/lib/column-filter.ts`).
+ */
+export const runFirst = (line: { run: AtmPlanRun }, key: string): string | null =>
+  key === 'run' ? String(line.run) : null;
+
 /** One issue of §3.7 in the reader's words; a slot issue names its cassette. */
 export const issueText = (issue: AtmPlanLineIssue, t: Translate): string =>
   t(

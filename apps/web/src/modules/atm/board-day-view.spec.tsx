@@ -11,7 +11,13 @@
 //   · the rows are grouped by area, the areas alphabetical, each under a line that names and
 //     counts it; the area's arrow is lit and first, and the reader's column orders inside each area;
 //   · the leader edit carries the «الوردية» box, ticked;
-//   · Excel and PDF sit above the table.
+//   · Excel and PDF sit above the table;
+//   · (2026-11-02) a filter under every text column — «فلتر لكل عمود», then «لأ عايز الفلتر الكبير
+//     اللى فوق الجداول يكون Drop Down بـ Multi select»: a multi-select list of the values the
+//     column's cells show, a row kept when its cell IS one of the picks (any of them), the columns
+//     adding up — narrowing the rows before the day view counts and groups them. Each list offers
+//     the values of the day view's rows only, narrowed by the OTHER columns' picks, never its own,
+//     a stale pick first.
 //
 // Every code and name below is synthetic.
 import { readFileSync } from 'node:fs';
@@ -36,6 +42,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { formatNumber } from '../../shared/lib/format';
+import type * as ColumnFilterSelectModule from '../../shared/ui/ColumnFilterSelect';
 import { ReplenishmentsPage } from './pages/ReplenishmentsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { LeaderField } from './components/ReplenishmentDialogs';
@@ -51,17 +58,39 @@ vi.mock('react-dom', async () => {
   return { ...actual, createPortal: (node: unknown) => node };
 });
 
-// The column boxes' state, set per test: a static render cannot type into them. Empty by default,
-// so every other test renders the board unfiltered.
-let columnValues: Record<string, string> = {};
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the board unfiltered.
+let columnValues: Record<string, string[]> = {};
 vi.mock('../../shared/ui/useColumnFilters', () => ({
   useColumnFilters: () => ({
     values: columnValues,
     set: () => {},
     clear: () => {},
-    active: Object.values(columnValues).some((value) => value.trim() !== ''),
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
   }),
 }));
+
+// A list's values are asked for only when it opens, and a static render never opens one: each
+// column's filter is drawn as it is, beside a hidden mark carrying what its list WOULD offer
+// (`choicesOf`) — so the lists' wiring is pinned, not only their triggers.
+vi.mock('../../shared/ui/ColumnFilterSelect', async () => {
+  const actual = await vi.importActual<typeof ColumnFilterSelectModule>(
+    '../../shared/ui/ColumnFilterSelect',
+  );
+  return {
+    ColumnFilterSelect: (props: Parameters<typeof actual.ColumnFilterSelect>[0]) => (
+      <>
+        <actual.ColumnFilterSelect {...props} />
+        <span
+          hidden
+          data-choices-for={props.columnKey}
+          data-choices={JSON.stringify(props.choices())}
+        />
+      </>
+    ),
+  };
+});
 
 const t = (key: string): string => translate('ar', key);
 
@@ -160,6 +189,39 @@ const table = (markup: string): string => {
   return markup.slice(markup.lastIndexOf('<div', at), markup.indexOf('</table>', at));
 };
 const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+/**
+ * The table's body alone — its rows, without the filter row under the head, whose triggers name
+ * what is picked (a picked code would otherwise read as a row).
+ */
+const bodyOf = (markup: string): string => {
+  const at = markup.indexOf('<tbody>');
+  expect(at, 'the table body is rendered').toBeGreaterThan(-1);
+  return markup.slice(at, markup.indexOf('</tbody>', at));
+};
+/** The row of column filters under the head, from its `<tr` to its end. */
+const filterRowOf = (markup: string): string => {
+  const at = markup.indexOf('data-column-filters="true"');
+  expect(at, 'the column filter row is rendered').toBeGreaterThan(-1);
+  return markup.slice(markup.lastIndexOf('<tr', at), markup.indexOf('</tr>', at));
+};
+/** One column's filter, from its marker to the end of its list's trigger. */
+const filterTrigger = (markup: string, key: string): string => {
+  const at = markup.indexOf(`data-column-filter="${key}"`);
+  expect(at, `the ${key} column filter is rendered`).toBeGreaterThan(-1);
+  return markup.slice(at, markup.indexOf('</button>', at));
+};
+/** What one column's list would offer, in its order — read from the mark the mock draws. */
+const choicesOf = (markup: string, key: string): string[] => {
+  const found = new RegExp(`data-choices-for="${key}" data-choices="([^"]*)"`).exec(markup);
+  expect(found, `the ${key} column's list is rendered`).not.toBeNull();
+  const json = (found?.[1] ?? '[]')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  return JSON.parse(json) as string[];
+};
 
 /** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
 const toolbarOf = (html: string): string => {
@@ -350,21 +412,27 @@ describe.each([
       expect(toolbar).toContain(`>${t('atm.common.area')}<`);
     });
 
-    it('draws a filter box under every text column — none for the timer or the buttons', () => {
+    it('draws a filter list under every text column — none for the timer or the buttons', () => {
       const board = table(renderBoard(kind, rows, keys));
       const columns =
         kind === 'replenishments'
           ? replenishmentColumns(t, 'ar', 'open')
           : maintenanceColumns(t, 'ar', 'open');
-      const boxes = [...board.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
-      expect(boxes).toEqual(columns.map((column) => column.key));
+      const lists = [...board.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+      expect(lists).toEqual(columns.map((column) => column.key));
       for (const column of columns) {
-        expect(board).toContain(
+        // A drop-down, named for its column, saying «الكل» while nothing is picked.
+        const trigger = filterTrigger(board, column.key);
+        expect(trigger).toContain('aria-haspopup="listbox"');
+        expect(trigger).toContain(
           `aria-label="${translate('ar', 'atm.common.filterColumn', { column: column.header })}"`,
         );
+        expect(trigger).toContain(`>${t('common.filters.all')}<`);
       }
-      expect(boxes).not.toContain('timer');
-      expect(boxes).not.toContain('actions');
+      // No box typed into is left.
+      expect(filterRowOf(board)).not.toContain('<input');
+      expect(lists).not.toContain('timer');
+      expect(lists).not.toContain('actions');
     });
 
     it('paints the row’s buttons all the time — not only under the pointer — and has no bulk bar', () => {
@@ -496,98 +564,191 @@ describe.each([
 describe.each([
   { kind: 'replenishments' as const, make: rep, keys: ['atmReplenishment.view'] },
   { kind: 'maintenances' as const, make: maint, keys: ['atmMaintenance.view'] },
-])('the $kind board’s column boxes (2026-11-02, «فلتر لكل عمود»)', ({ kind, make, keys }) => {
+])(
+  'the $kind board’s column filters (2026-11-02, «فلتر لكل عمود» — «يكون Drop Down بـ Multi select»)',
+  ({ kind, make, keys }) => {
+    const rows = [
+      { ...make('650000000000000000000d01', '99990201', NOW), area: 'الدقي' },
+      { ...make('650000000000000000000d02', '99990202', NOW), area: 'زايد' },
+      { ...make('650000000000000000000d03', '99990213', NOW), area: 'الدقي' },
+      { ...make('650000000000000000000d04', '99990204', TOMORROW), area: 'الدقي' },
+    ];
+    const codesShown = (markup: string): string[] =>
+      [...bodyOf(table(markup)).matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
+    const withPicks = (values: Record<string, string[]>, search = ''): string => {
+      columnValues = values;
+      try {
+        return renderBoard(kind, rows, keys, search);
+      } finally {
+        columnValues = {};
+      }
+    };
+
+    it('narrow the rows to the values picked — any of them in a column, and add up across columns', () => {
+      expect(codesShown(withPicks({ code: ['99990201'] }))).toEqual(['99990201']);
+      // Two values in one column: a row whose cell is either.
+      expect(codesShown(withPicks({ code: ['99990201', '99990202'] }))).toEqual([
+        '99990201',
+        '99990202',
+      ]);
+      expect(codesShown(withPicks({ area: ['الدقي', 'زايد'] }))).toEqual([
+        '99990201',
+        '99990213',
+        '99990202',
+      ]);
+      // Two columns: a row both keep.
+      expect(codesShown(withPicks({ code: ['99990201', '99990202'], area: ['الدقي'] }))).toEqual([
+        '99990201',
+      ]);
+      // A pick is the whole cell, not a part of it.
+      expect(codesShown(withPicks({ code: ['9999020'] }))).toEqual([]);
+      expect(codesShown(withPicks({ area: ['دقي'] }))).toEqual([]);
+    });
+
+    it('name what is picked on the list’s trigger, and «الكل» on the others', () => {
+      const markup = table(withPicks({ area: ['الدقي', 'زايد'] }));
+      const area = filterTrigger(markup, 'area');
+      expect(area).toContain('>الدقي, زايد<');
+      expect(area).not.toContain(`>${t('common.filters.all')}<`);
+      expect(filterTrigger(markup, 'code')).toContain(`>${t('common.filters.all')}<`);
+    });
+
+    it('narrow before the day view: its counts and the area lines follow them', () => {
+      const markup = withPicks({ area: ['الدقي'] });
+      expect(dayButton(markup, 'today')).toContain(`>${formatNumber(2, 'ar')}<`);
+      expect(dayButton(markup, 'tomorrow')).toContain(`>${formatNumber(1, 'ar')}<`);
+      expect([...table(markup).matchAll(/data-row-group="([^"]*)"/g)].map((m) => m[1])).toEqual([
+        'الدقي',
+      ]);
+    });
+
+    it('are cleared by the reset, with the bank and area filters', () => {
+      // A static render cannot press it; the wiring is read from the source.
+      const page = kind === 'replenishments' ? 'ReplenishmentsPage' : 'MaintenancePage';
+      const source = readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), `./pages/${page}.tsx`),
+        'utf8',
+      );
+      const reset = source.slice(source.indexOf('<BoardResetButton'));
+      expect(reset.slice(0, reset.indexOf('/>'))).toMatch(
+        /filters\.reset\(\);\s*columnFilters\.clear\(\);/,
+      );
+    });
+
+    it('blame themselves only when they emptied the view — a day with nothing says so', () => {
+      // Tomorrow has one row, in «الدقي»; «زايد» picked empties it — the column filters' message.
+      expect(withPicks({ area: ['زايد'] }, 'day=tomorrow')).toContain(
+        t('atm.common.emptyColumnFiltered'),
+      );
+      // «أيام سابقة» has no row at all: its own message, whatever the lists hold.
+      const earlier = withPicks({ area: ['الدقي'] }, 'day=earlier');
+      expect(earlier).not.toContain(t('atm.common.emptyColumnFiltered'));
+      expect(earlier).toContain(
+        t(`atm.${kind === 'replenishments' ? 'replenishments' : 'maintenance'}.empty.earlier`),
+      );
+    });
+
+    it('light the reset, and say so when they hide every row', () => {
+      // A code no row has: the list would never offer it, but a pick left from before can remain.
+      const none = withPicks({ code: ['99990299'] });
+      expect(none).toContain('data-board-reset');
+      expect(codesShown(none)).toEqual([]);
+      expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+      // …and its trigger still names it, so the reader can see what hid the rows.
+      expect(filterTrigger(table(none), 'code')).toContain('>99990299<');
+      // Without a pick, no reset and no such message.
+      const plain = renderBoard(kind, rows, keys);
+      expect(plain).not.toContain('data-board-reset');
+      expect(plain).not.toContain(t('atm.common.emptyColumnFiltered'));
+    });
+  },
+);
+
+describe.each([
+  { kind: 'replenishments' as const, make: rep, keys: ['atmReplenishment.view'] },
+  { kind: 'maintenances' as const, make: maint, keys: ['atmMaintenance.view'] },
+])('the $kind board’s column lists offer the day view’s values', ({ kind, make, keys }) => {
+  // Three rows today in two areas; one tomorrow, one further ahead, one left from an earlier day —
+  // the earlier one in an area no other row has.
   const rows = [
-    { ...make('650000000000000000000d01', '99990201', NOW), area: 'الدقي' },
-    { ...make('650000000000000000000d02', '99990202', NOW), area: 'زايد' },
-    { ...make('650000000000000000000d03', '99990213', NOW), area: 'الدقي' },
-    { ...make('650000000000000000000d04', '99990204', TOMORROW), area: 'الدقي' },
+    { ...make('650000000000000000000a41', '99990401', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000a42', '99990402', NOW), area: 'زايد' },
+    { ...make('650000000000000000000a43', '99990403', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000a44', '99990404', TOMORROW), area: 'الدقي' },
+    { ...make('650000000000000000000a45', '99990405', IN_FIVE_DAYS), area: 'زايد' },
+    { ...make('650000000000000000000a46', '99990406', THREE_DAYS_AGO), area: 'أكتوبر' },
   ];
-  const codesShown = (markup: string): string[] =>
-    [...table(markup).matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
-  const withBoxes = (values: Record<string, string>, search = ''): string => {
+  const withPicks = (values: Record<string, string[]>, search = ''): string => {
     columnValues = values;
     try {
-      return renderBoard(kind, rows, keys, search);
+      return table(renderBoard(kind, rows, keys, search));
     } finally {
       columnValues = {};
     }
   };
 
-  it('narrow the rows, and add up across columns', () => {
-    expect(codesShown(withBoxes({ code: '9999020' }))).toEqual(['99990201', '99990202']);
-    expect(codesShown(withBoxes({ code: '9999020', area: 'دقي' }))).toEqual(['99990201']);
-    // Arabic digits are the same number.
-    expect(codesShown(withBoxes({ code: '٩٩٩٩٠٢١٣' }))).toEqual(['99990213']);
+  it('on «اليوم», list only today’s values — none of tomorrow’s, the days ahead or the earlier days', () => {
+    const board = withPicks({});
+    expect(choicesOf(board, 'code')).toEqual(['99990401', '99990402', '99990403']);
+    expect(choicesOf(board, 'area')).toEqual(['الدقي', 'زايد']);
+    expect(choicesOf(board, 'bank')).toEqual(['SYN BANK']);
   });
 
-  it('narrow before the day view: its counts and the area lines follow them', () => {
-    const markup = withBoxes({ area: 'دقي' });
-    expect(dayButton(markup, 'today')).toContain(`>${formatNumber(2, 'ar')}<`);
-    expect(dayButton(markup, 'tomorrow')).toContain(`>${formatNumber(1, 'ar')}<`);
-    expect([...table(markup).matchAll(/data-row-group="([^"]*)"/g)].map((m) => m[1])).toEqual([
-      'الدقي',
+  it('follow the day view switched to', () => {
+    expect(choicesOf(withPicks({}, 'day=tomorrow'), 'code')).toEqual(['99990404']);
+    expect(choicesOf(withPicks({}, 'day=upcoming'), 'code')).toEqual(['99990404', '99990405']);
+    const earlier = withPicks({}, 'day=earlier');
+    expect(choicesOf(earlier, 'code')).toEqual(['99990406']);
+    expect(choicesOf(earlier, 'area')).toEqual(['أكتوبر']);
+  });
+
+  it('are not shrunk by their own column’s picks — another column’s picks narrow them', () => {
+    // A code picked: the table shows its row, and the code list still offers the view's others.
+    const onePicked = withPicks({ code: ['99990401'] });
+    expect([...bodyOf(onePicked).matchAll(/>(9999\d{4})</g)].map((m) => m[1])).toEqual([
+      '99990401',
     ]);
+    expect(choicesOf(onePicked, 'code')).toEqual(['99990401', '99990402', '99990403']);
+    // …while the area list holds only the picked code's area.
+    expect(choicesOf(onePicked, 'area')).toEqual(['الدقي']);
+    // An area picked: the code list holds that area's codes of the view, the area list both areas.
+    const zayed = withPicks({ area: ['زايد'] });
+    expect(choicesOf(zayed, 'code')).toEqual(['99990402']);
+    expect(choicesOf(zayed, 'area')).toEqual(['الدقي', 'زايد']);
+    // …on whichever view is shown.
+    expect(choicesOf(withPicks({ area: ['زايد'] }, 'day=upcoming'), 'code')).toEqual(['99990405']);
   });
 
-  it('are cleared by the reset, with the bank and area filters', () => {
-    // A static render cannot press it; the wiring is read from the source.
-    const page = kind === 'replenishments' ? 'ReplenishmentsPage' : 'MaintenancePage';
-    const source = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), `./pages/${page}.tsx`),
-      'utf8',
-    );
-    const reset = source.slice(source.indexOf('<BoardResetButton'));
-    expect(reset.slice(0, reset.indexOf('/>'))).toMatch(
-      /filters\.reset\(\);\s*columnFilters\.clear\(\);/,
-    );
-  });
-
-  it('blame themselves only when they emptied the view — a day with nothing says so', () => {
-    // Tomorrow has one row, in «الدقي»; a box for «زايد» empties it — the boxes' message.
-    expect(withBoxes({ area: 'زايد' }, 'day=tomorrow')).toContain(
-      t('atm.common.emptyColumnFiltered'),
-    );
-    // «أيام سابقة» has no row at all: its own message, whatever the boxes hold.
-    const earlier = withBoxes({ area: 'دقي' }, 'day=earlier');
-    expect(earlier).not.toContain(t('atm.common.emptyColumnFiltered'));
-    expect(earlier).toContain(
-      t(`atm.${kind === 'replenishments' ? 'replenishments' : 'maintenance'}.empty.earlier`),
-    );
-  });
-
-  it('light the reset, and say so when they hide every row', () => {
-    const none = withBoxes({ code: '12345678' });
-    expect(none).toContain('data-board-reset');
-    expect(codesShown(none)).toEqual([]);
-    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
-    // Without a box, no reset and no such message.
-    const plain = renderBoard(kind, rows, keys);
-    expect(plain).not.toContain('data-board-reset');
-    expect(plain).not.toContain(t('atm.common.emptyColumnFiltered'));
+  it('list a stale pick — a value no row has — first, so it can be seen and un-picked', () => {
+    const stale = withPicks({ code: ['99990499'] });
+    expect(choicesOf(stale, 'code')).toEqual(['99990499', '99990401', '99990402', '99990403']);
+    // It narrows the other lists to nothing: no row of the view is left to offer.
+    expect(choicesOf(stale, 'area')).toEqual([]);
   });
 });
 
-describe('the maintenance board’s «نوع الخدمة» box matches the «بريد» badge its cell shows', () => {
-  it('finds the mail-opened maintenances by the badge, and by the service as before', () => {
+describe('the maintenance board’s «نوع الخدمة» list knows the «بريد» badge its cell shows', () => {
+  it('lists a mail-opened service as its own value — picking it keeps the mail rows, the plain service the manual ones', () => {
     const rows = [
       { ...maint('650000000000000000000e01', '99990301', NOW), source: 'mail' as const },
       maint('650000000000000000000e02', '99990302', NOW),
     ];
-    const shown = (values: Record<string, string>): string[] => {
+    const fromMail = `SYN SERVICE ${t('atm.maintenance.fromMail')}`;
+    expect(fromMail).toBe('SYN SERVICE بريد');
+    const render = (values: Record<string, string[]>): string => {
       columnValues = values;
       try {
-        return [
-          ...table(renderBoard('maintenances', rows, ['atmMaintenance.view'])).matchAll(
-            />(9999\d{4})</g,
-          ),
-        ].map((m) => m[1] as string);
+        return table(renderBoard('maintenances', rows, ['atmMaintenance.view']));
       } finally {
         columnValues = {};
       }
     };
-    expect(shown({ service: t('atm.maintenance.fromMail') })).toEqual(['99990301']);
-    expect(shown({ service: 'SYN SERVICE' })).toEqual(['99990301', '99990302']);
+    const shown = (values: Record<string, string[]>): string[] =>
+      [...bodyOf(render(values)).matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
+    expect(shown({ service: [fromMail] })).toEqual(['99990301']);
+    expect(shown({ service: ['SYN SERVICE'] })).toEqual(['99990302']);
+    expect(shown({ service: ['SYN SERVICE', fromMail] })).toEqual(['99990301', '99990302']);
+    expect(filterTrigger(render({ service: [fromMail] }), 'service')).toContain(`>${fromMail}<`);
   });
 });
 

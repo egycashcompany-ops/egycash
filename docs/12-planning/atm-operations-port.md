@@ -932,22 +932,51 @@ answers in the same conversation):
   and find field, the layouts' filters, data-edit's tabs. Left where they were: the machine list's
   and the register's filter bars (they are the table's own filters, over server-paged data), the
   map's bar, and the import pages' upload cards.
-- **A filter box under every column.** «في كل الصفحات بردو عايزك تعمل فلتر لكل الجدول فوق الجدول …
-  بس الفلتر اللى فوق الجدول يتفلتر مع الفلتر اللى فوق», and asked which kind: «فلتر لكل عمود»
-  (2026-11-02). A row of boxes under the table's head (`DataTable` `columnFilters`, or
-  `ColumnFilterBox` in a table built by hand), one per text column: a box keeps the rows whose cell
-  contains what was typed — matched as every search box matches (`fold`: hamza forms, ى/ي, ة/ه,
-  Arabic or Latin digits), several words in one box all in that cell — and the boxes add up with
-  each other and with the filters above (`shared/lib/column-filter.ts`). The PAGE filters, before
-  it counts, groups, selects, sorts or exports: on the boards the day buttons' counts and the area
-  lines follow the boxes, a selection never covers a row they hide, and a statement names them on
-  its filter line («الكود: «70»»). The page's reset clears them; an empty table says «لا توجد سطور
-  تطابق فلاتر الأعمدة». They live in the page's state — not the address, not remembered — so a
-  narrowing typed for a moment never hides rows on tomorrow's visit. On: both boards, both done
-  pages, both mail pages, the plan's lines, preparation, control's data tab, the layouts, the daily
-  report (its totals follow the boxes) and data-edit's bank tab. Not on the server-paged tables
-  (the machine list, the register, data-edit's machines and labels tabs): a browser box there would
-  search one page only — those keep their server filters.
+- **A filter list under every column.** «في كل الصفحات بردو عايزك تعمل فلتر لكل الجدول فوق الجدول …
+  بس الفلتر اللى فوق الجدول يتفلتر مع الفلتر اللى فوق», asked which kind: «فلتر لكل عمود», and then
+  «لأ عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select» (2026-11-02). A row under
+  the table's head (`DataTable` `columnFilters`, or `ColumnFilterSelect` in a table built by hand),
+  one multi-pick drop-down per text column, the way the bank and area filters above are
+  (`shared/lib/column-filter.ts`):
+  - a column's list holds the values its cells SHOW, each once — trimmed, inner spaces one — sorted
+    as the reader reads (`columnSortKey`: Arabic collation, a number with its digit groups closed
+    up, a date year first, a time on the 24-hour clock; a column may put something first —
+    `ColumnOrderOf`: the run column sorts by the run's number, «التغذية الأولى / الثانية /
+    الثالثة», which the alphabet reads first, third, second), an empty cell — blank or «—» — as one
+    «(فارغ)» entry, last;
+  - the list is made from the rows the OTHER columns' picks keep, as a sheet's own filter is, so it
+    never offers a value that would empty the table; a value still picked that no row holds any
+    more (a filter above moved on) is listed first, to be seen and dropped. It is a snapshot taken
+    at the opening and at each pick: a refetch while it is open (preparation and control poll every
+    minute) reaches it on the next pick or the next opening;
+  - a column's picks keep the rows whose cell is any of them; the columns add up with each other
+    and with the filters above;
+  - the list's search finds values as the box typed into did (`columnSearchMatches`: Arabic or
+    Latin digits, any hamza form, several words in any order, a date's «/» and a time's «:» kept —
+    «2/11» never finds 21/10; a search of punctuation only searches nothing), and «كل النتائج» — or
+    Enter — ticks every value found, and unticks them when all are ticked: «704» then Enter ticks
+    every code holding 704 that the column shows at that moment (a row arriving later with another
+    such code is not among the picks); a screen reader hears how many were ticked or unticked;
+  - Tab is led by hand through a floating list — the panel sits at the page's end: from the trigger
+    into the panel, through its own controls (the search, «كل النتائج», the clear button; the options
+    are the arrows'), and out at either end, the list closing and the focus going on from the
+    trigger. A trigger half scrolled past its table's edge is brought into sight when its list
+    opens; a list whose trigger scrolls out of sight closes;
+  - the list is made only when it is opened (`MultiSelect` `loadOptions`): a board re-renders every
+    second for its timers. It opens over the page (`floating`: a portal fixed to the trigger, below
+    it or above it, following it on a scroll), so the table's scrolling box never cuts it off, and
+    the control fills its column without sizing it.
+
+  The PAGE filters, before it counts, groups, selects, sorts or exports: on the boards the day
+  buttons' counts and the area lines follow the picks, a selection never covers a row they hide,
+  and a statement names them on its filter line («الكود: «70493، 70492»»). The page's reset clears
+  them; an empty table says «لا توجد سطور تطابق فلاتر الأعمدة». They live in the page's state — not
+  the address, not remembered — so a narrowing made for a moment never hides rows on tomorrow's
+  visit. On: both boards, both done pages, both mail pages, the plan's lines, preparation,
+  control's data tab, the layouts, the daily report (its totals follow the picks) and data-edit's
+  bank tab. Not on the server-paged tables (the machine list, the register, data-edit's machines
+  and labels tabs): a browser list there would know one page only — those keep their server
+  filters.
 - **The «الوردية» box.** «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه انه
   يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم Select
   فقط». Beside the leader label in both edit dialogs, ticked on open. `cascadeLeader` on the edit

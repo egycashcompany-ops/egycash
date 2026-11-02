@@ -12,10 +12,11 @@
 // before printing when lines are not prepared, and before the route sheets when lines are left
 // undistributed (§8.4, §9.7).
 //
-// A ROW OF FILTER BOXES under the data tab's head, one per column (2026-11-02, «فلتر لكل عمود»),
+// A ROW OF FILTER LISTS under the data tab's head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»),
 // narrows the lines the tab shows. The papers stay whole: the handover is a bank plan's record and
 // the route sheets the day's — neither is a print of the table. The routes tab is a set of lists,
-// not a table, and takes no boxes.
+// not a table, and takes no lists.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -103,7 +104,7 @@ export const ControlPage = (): JSX.Element => {
   const blocked = blockedOf(dayQuery.error);
   const tab = sp.get('tab') === 'routes' && day?.can.manage === true ? 'routes' : 'data';
 
-  // The data tab's boxes, kept while the page is open — across a switch to the routes and back.
+  // The data tab's column filters, kept while the page is open — across a switch to the routes and back.
   const columnFilters = useColumnFilters();
   const shownLines = useMemo(
     () =>

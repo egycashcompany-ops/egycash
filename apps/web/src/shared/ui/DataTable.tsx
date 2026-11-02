@@ -4,7 +4,7 @@
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { hasError } from '../lib/errors';
-import { ColumnFilterBox } from './ColumnFilterBox';
+import { ColumnFilterSelect } from './ColumnFilterSelect';
 import { Skeleton } from './Skeleton';
 import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
@@ -35,7 +35,7 @@ export interface Column<T> {
   className?: string;
   headerClassName?: string;
   /**
-   * The column takes a box in the table's filter row (`columnFilters`). The page filters the rows
+   * The column takes a list in the table's filter row (`columnFilters`). The page filters the rows
    * itself, on the text this column's cell shows (`shared/lib/column-filter.ts`).
    */
   filterable?: boolean;
@@ -158,18 +158,22 @@ export interface DataTableProps<T> {
    */
   rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> | undefined;
   /**
-   * A ROW OF FILTER BOXES UNDER THE HEAD, one per `filterable` column — the ATM tables' «فلتر لكل
-   * عمود» (2026-11-02). The table draws the boxes and reports what is typed (`onChange`, after the
-   * typist pauses); the PAGE filters the rows, before it counts, groups, selects or exports them,
-   * so the rows handed in here are already the filtered ones. The row sticks with the head.
+   * A ROW OF FILTER LISTS UNDER THE HEAD, one per `filterable` column — the ATM tables' «فلتر لكل
+   * عمود», as multi-pick drop-downs (2026-11-02). The table draws the lists and reports what is
+   * picked (`onChange`); the PAGE filters the rows, before it counts, groups, selects or exports
+   * them, so the rows handed in here are already the filtered ones. The row sticks with the head.
    */
   columnFilters?: {
-    values: Readonly<Record<string, string>>;
-    onChange: (key: string, typed: string) => void;
-    /** The box's accessible name, from the column's header — the table holds no locale. */
+    values: Readonly<Record<string, readonly string[]>>;
+    onChange: (key: string, picked: readonly string[]) => void;
+    /**
+     * One column's values to list — asked for when its list opens (`columnFilterChoicesOf`), from
+     * the rows the filters above the table keep, before this row's own picks.
+     */
+    choices: (key: string) => readonly string[];
+    /** The list's accessible name, from the column's header — the table holds no locale. */
     label: (header: string) => string;
-    placeholder?: string;
-    /** `useColumnFilters().generation`: the row remounts on a reset, emptying every box. */
+    /** `useColumnFilters().generation`: the row remounts on a reset, closing an open list. */
     generation?: number;
   };
   /**
@@ -204,6 +208,9 @@ export const groupRuns = <T,>(
   });
   return runs;
 };
+
+/** A column with nothing picked — one array, so its list is not handed a new one each render. */
+const NO_PICKS: readonly string[] = [];
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
   start: 'text-start',
@@ -530,14 +537,12 @@ export const DataTable = <T,>({
                   )}
                 >
                   {c.filterable === true && (
-                    <ColumnFilterBox
-                      value={columnFilters.values[c.key] ?? ''}
-                      onValueChange={(typed) => columnFilters.onChange(c.key, typed)}
+                    <ColumnFilterSelect
+                      value={columnFilters.values[c.key] ?? NO_PICKS}
+                      choices={() => columnFilters.choices(c.key)}
+                      onChange={(picked) => columnFilters.onChange(c.key, picked)}
                       label={columnFilters.label(c.header)}
                       columnKey={c.key}
-                      {...(columnFilters.placeholder === undefined
-                        ? {}
-                        : { placeholder: columnFilters.placeholder })}
                     />
                   )}
                 </th>

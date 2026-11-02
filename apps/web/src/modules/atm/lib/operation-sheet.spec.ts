@@ -217,30 +217,32 @@ describe('the statement', () => {
     expect(statementFilterLine(ar, 'ar', { banks: [], areas: [] })).toBe('');
   });
 
-  it('prints the column boxes in force too, each under its header — never a narrowed page unsaid', () => {
-    // «فلتر لكل عمود» (2026-11-02): a statement of the codes holding «70» says so.
+  it('prints the column filters in force too, each under its header with its picks', () => {
+    // «فلتر لكل عمود», as multi-pick lists (2026-11-02): a statement of two codes says which.
     const columns = replenishmentColumns(ar, 'ar', 'open');
     const entries = columnFilterEntries(columns, {
-      area: ' دقي ',
-      code: '70',
-      nope: 'x',
-      name: ' ',
+      area: ['الدقي'],
+      code: ['70493', '70492'],
+      nope: ['x'],
+      name: [],
     });
-    // In the table's column order, trimmed, only boxes that narrow, only columns the table has.
+    // In the table's column order, only columns that narrow, only columns the table has.
     expect(entries).toEqual([
-      { header: translate('ar', 'atm.common.machineId'), typed: '70' },
-      { header: translate('ar', 'atm.common.area'), typed: 'دقي' },
+      { header: translate('ar', 'atm.common.machineId'), picked: ['70493', '70492'] },
+      { header: translate('ar', 'atm.common.area'), picked: ['الدقي'] },
     ]);
     expect(statementFilterLine(ar, 'ar', { banks: ['SYN NBE'], areas: [], columns: entries })).toBe(
-      `البنك: SYN NBE · ${translate('ar', 'atm.common.machineId')}: «70» · ${translate('ar', 'atm.common.area')}: «دقي»`,
+      `البنك: SYN NBE · ${translate('ar', 'atm.common.machineId')}: «70493، 70492» · ${translate('ar', 'atm.common.area')}: «الدقي»`,
     );
     expect(
       statementFilterLine(en, 'en', {
         banks: [],
         areas: [],
-        columns: columnFilterEntries(replenishmentColumns(en, 'en', 'open'), { code: '70' }),
+        columns: columnFilterEntries(replenishmentColumns(en, 'en', 'open'), {
+          code: ['70', ''],
+        }),
       }),
-    ).toBe(`${translate('en', 'atm.common.machineId')}: “70”`);
+    ).toBe(`${translate('en', 'atm.common.machineId')}: “70, (Blank)”`);
     expect(statementFilterLine(ar, 'ar', { banks: [], areas: [], columns: [] })).toBe('');
   });
 

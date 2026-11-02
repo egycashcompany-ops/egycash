@@ -67,11 +67,11 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
 
   // The table is the sheet's columns, in its order, sortable, with the reopen at the end.
   const sheetColumns = replenishmentColumns(t, locale, 'done');
-  // The boxes under the head (2026-11-02, «فلتر لكل عمود») narrow the range's rows before the
+  // The lists under the head (2026-11-02, «فلتر لكل عمود», drop-downs) narrow the range's rows before the
   // reader's order, so the table and its statement show the same rows.
   const columnFilters = useColumnFilters();
   const items = useMemo(() => list.data?.items ?? [], [list.data]);
-  const kept = useColumnFiltered(items, sheetColumns, columnFilters.values);
+  const { kept, choices } = useColumnFiltered(items, sheetColumns, columnFilters.values);
   const order = useReaderOrder([sp, setSp], kept, sheetColumns);
   const columns: Column<AtmReplenishmentDto>[] = [
     ...sheetColumns.map((column) => ({
@@ -128,7 +128,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
                     range={{ from, to }}
                     rows={order.rows}
                     columns={sheetColumns}
-                    // A statement narrowed by a box says so (`columnFilterEntries`).
+                    // A statement narrowed by a column filter says so (`columnFilterEntries`).
                     filterLine={statementFilterLine(t, locale, {
                       banks: [],
                       areas: [],
@@ -157,9 +157,9 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              choices,
               generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
-              placeholder: t('atm.common.filterPlaceholder'),
             }}
             sort={order.sorts}
             onSortChange={order.changeSort}

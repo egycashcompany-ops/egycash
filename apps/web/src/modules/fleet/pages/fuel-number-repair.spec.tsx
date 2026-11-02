@@ -23,6 +23,7 @@ import {
   REPAIR_CLEAN,
   repairChanged269,
   repairDone,
+  repairPairOnly,
   repairPartial,
 } from '../fuel-number-repair-fixtures';
 import { NUMBER_REPAIR_PATH, REPAIR_AUDIT_PATH } from '../lib/fuel-number-repair';
@@ -342,6 +343,38 @@ describe('the confirmation (sample 05)', () => {
     expect(strayFours(dialog)).toEqual([]);
   });
 
+  it('the pair alone: its own sentence, no crossed numbers, no rules of what moves, no PIN rule', () => {
+    const html = view(repairPairOnly(), { confirming: true, reviewed: true });
+    const dialog = html.slice(html.indexOf('data-repair-confirm="true"'));
+    const at = dialog.indexOf('data-repair-confirm-lead');
+    const lead = plainOf(dialog.slice(at, dialog.indexOf('</p>', at)));
+    expect(dialog).toContain('data-repair-confirm-lead="pair"');
+    expect(lead).toContain(ar(`${N}confirm.leadPairOnly`, { a: '530', b: '283' }));
+    expect(lead).not.toContain('ويتبادل');
+    expect(lead).not.toContain(ar(`${N}confirm.leadCycles`));
+    for (const absent of [
+      'data-repair-confirm-crossed',
+      'data-repair-confirm-pin',
+      ar(`${N}confirm.moves`),
+      ar(`${N}rule.pinRule`),
+      ar(`${N}rule.stays`),
+    ]) {
+      expect(dialog, absent).not.toContain(absent);
+    }
+    // The cycles' table stays, each «صُحِّح من قبل»; the pair's section and Δ are there.
+    for (const n of [1, 2, 3]) {
+      expect(dialog).toContain(`data-repair-confirm-cycle="${n}" data-repair-confirm-state="done"`);
+    }
+    expect(dialog).toContain(ar(`${N}confirm.doneBefore`));
+    expect(dialog).toContain('data-repair-confirm-pair="true"');
+    expect(dialog).toContain('+11,872.62');
+    // With cycles ready, the pair's sentence continues theirs.
+    const both = view(REPAIR_CLEAN, { confirming: true, reviewed: true });
+    expect(both).toContain('data-repair-confirm-lead="cycles"');
+    expect(both).toContain('data-repair-confirm-crossed="15"');
+    expect(plainOf(both)).toContain(ar(`${N}confirm.leadPair`, { a: '530', b: '283' }));
+  });
+
   it('a held cycle is «تُتخطّى: سجل تغيّر», and its records are not named for the PIN', () => {
     const html = view(repairChanged269(), { confirming: true, reviewed: true });
     expect(html).toContain('data-repair-confirm-cycle="2" data-repair-confirm-state="held"');
@@ -367,6 +400,14 @@ describe('after execution (sample 06)', () => {
     expect(html).toContain('href="/fleet/fuel-cards/reconcile"');
     expect(html).toContain(`href="${REPAIR_AUDIT_PATH.replace(/&/gu, '&amp;')}"`);
     expect(view(repairDone())).not.toContain('data-repair-audit');
+  });
+
+  it('the pair’s statement note points at nothing that is gone: no «انظر البديل أدناه» once done', () => {
+    const b = rowOf(html, '283');
+    expect(b).toContain(ar(`${N}pair.statementDiffersDone`));
+    expect(b).not.toContain(ar(`${N}pair.statementDiffers`));
+    expect(html).not.toContain('data-repair-pair-alt');
+    expect(rowOf(html, '530')).toContain(ar(`${N}pair.statementSame`));
   });
 
   it('every row reads «صُحِّح», with one photo and its log; no top-ups, no bar, no refresh', () => {
@@ -467,5 +508,48 @@ describe('a photo in a row', () => {
       'fleetFuelCard.reveal',
     ]);
     expect(revealer).toContain(`data-repair-thumb-open="${photo.cardId}"`);
+  });
+});
+
+describe('every arrow points the way the line reads', () => {
+  // Drawn pointing right and mirrored in Arabic (`rtl:-scale-x-100`): left in Arabic, right in
+  // English — a before → after never drawn backwards. No arrow is fixed to one direction.
+  const markups = {
+    review: view(REPAIR_CLEAN),
+    confirm: view(REPAIR_CLEAN, { confirming: true, reviewed: true }),
+    entry: wrap(<NumberRepairEntry />, VIEW, REPAIR_CLEAN),
+  };
+  it.each(Object.entries(markups))(
+    '%s: each arrow mirrors with the reading direction',
+    (_, html) => {
+      const arrows = [...html.matchAll(/<(?:span|svg)[^>]*data-repair-arrow="true"[^>]*>/gu)].map(
+        (match) => match[0],
+      );
+      expect(arrows.length).toBeGreaterThan(0);
+      for (const arrow of arrows) expect(arrow).toContain('rtl:-scale-x-100');
+      expect(plainOf(html)).not.toContain('←');
+    },
+  );
+  it('the chain, the photo, the pair, the cycles of the confirmation, the crumb: all of them', () => {
+    const count = (html: string): number => html.match(/data-repair-arrow="true"/gu)?.length ?? 0;
+    // 15 chain arrows + 15 photo arrows + 2 × 2 pair arrows + the crumb.
+    expect(count(markups.review)).toBe(15 + 15 + 4 + 1);
+    // …and the confirmation's three chains of cars (3 + 4 + 5 arrows).
+    expect(count(markups.confirm) - count(markups.review)).toBe(12);
+    expect(count(markups.entry)).toBe(1);
+  });
+  it('no number-repair source draws a left arrow of its own', () => {
+    const DIR = join(HERE, '../components/number-repair');
+    for (const file of [
+      'repair-parts.tsx',
+      'RepairCycleSection.tsx',
+      'RepairPairSection.tsx',
+      'RepairConfirmDialog.tsx',
+      'RepairHeader.tsx',
+      'NumberRepairEntry.tsx',
+    ]) {
+      const code = readFileSync(join(DIR, file), 'utf8');
+      expect(code, file).not.toMatch(/>\s*←\s*<|'[^']*←[^']*'|M15 6l-6 6 6 6|M62 5H4/u);
+    }
   });
 });

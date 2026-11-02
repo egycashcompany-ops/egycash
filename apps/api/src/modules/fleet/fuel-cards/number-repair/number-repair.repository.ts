@@ -115,6 +115,8 @@ export const readRepairWorld = async (
             movementId: String(doc._id),
             cardId: String(doc.cardId),
             unit: doc.repair.unit,
+            numberAfter: doc.repair.numberAfter ?? null,
+            nameAfter: doc.repair.nameAfter ?? null,
             at: doc.at,
             by: doc.createdBy == null ? null : String(doc.createdBy),
           },

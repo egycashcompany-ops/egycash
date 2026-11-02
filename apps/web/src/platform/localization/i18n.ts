@@ -4603,6 +4603,10 @@ const en: Record<string, string> = {
     'Approving this card’s balance is locked until the card number repair runs; rejecting (✗) is available.',
   'fleet.fuelCards.reconcile.inRepairLineNote':
     'Cards marked «Part of the number repair» take no balance approval (✓) until the card number repair runs — their names sit on each other’s records, so the sheet’s figure would land on the other card. Rejecting (✗) is available.',
+  'fleet.fuelCards.numberRepair.confirm.leadPairOnly':
+    'The records of cars {{a}} and {{b}} swap name and opening balance.',
+  'fleet.fuelCards.numberRepair.pair.statementDiffersDone':
+    'Differs from the new opening — approving the newest statement sets the balance',
   'fleet.fuelCards.history.kind.sheetAdjust': 'Adjusted from the company sheet',
   'fleet.fuelCards.history.kind.sheetReject': 'Sheet adjustment rejected',
   'fleet.fuelCards.history.by': 'By {{name}}',
@@ -16740,6 +16744,10 @@ const ar: Record<string, string> = {
     'اعتماد رصيد هذا الكارت مقفل حتى يُنفَّذ «تصحيح أرقام الكروت»؛ والرفض (✗) متاح.',
   'fleet.fuelCards.reconcile.inRepairLineNote':
     'الكروت المعلَّمة «ضمن تصحيح الأرقام» لا يُعتمد رصيدها (✓) حتى يُنفَّذ «تصحيح أرقام الكروت» — اسم كل منهما على سجل الآخر، فيقع رقم الشيت على الكارت الآخر. والرفض (✗) متاح.',
+  'fleet.fuelCards.numberRepair.confirm.leadPairOnly':
+    'يتبادل سجلا سيارتي {{a}} و{{b}} الاسم والرصيد الافتتاحي.',
+  'fleet.fuelCards.numberRepair.pair.statementDiffersDone':
+    'يختلف عن الافتتاحي الجديد — يضبط اعتماد أحدث كشف الرصيد',
   'fleet.fuelCards.history.kind.sheetAdjust': 'تعديل من شيت الشركة',
   'fleet.fuelCards.history.kind.sheetReject': 'رفض تعديل الشيت',
   'fleet.fuelCards.history.by': 'بواسطة {{name}}',

@@ -75,10 +75,10 @@ export const useFuelCardImageUrl = (
 };
 
 /** A blob as an object URL for as long as it is shown; revoked when it changes or goes. */
-const useObjectUrl = (blob: Blob | undefined): string | null => {
+const useObjectUrl = (blob: Blob | null | undefined): string | null => {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (blob === undefined) {
+    if (blob === undefined || blob === null) {
       setUrl(null);
       return undefined;
     }
@@ -90,14 +90,16 @@ const useObjectUrl = (blob: Blob | undefined): string | null => {
 };
 
 /**
- * The thumbnail as an object URL (`fleetFuelCard.view`) — `cardId` null, or `enabled` false: none.
- * The bytes are cached under the cards' subtree, so the same card's thumbnail is fetched once.
+ * The thumbnail as an object URL (`fleetFuelCard.view`) — `cardId` null, or `enabled` false: none;
+ * none either when the card has no thumbnail (any more). The bytes are cached under the cards'
+ * subtree and the photo's file id (`photoKey`), so the same photo's thumbnail is fetched once.
  */
 export const useFuelCardThumbUrl = (
   cardId: string | null,
   enabled = true,
+  photoKey: string | null = null,
 ): { url: string | null; loading: boolean; failed: boolean } => {
-  const thumb = useFuelCardThumb(cardId, enabled);
+  const thumb = useFuelCardThumb(cardId, enabled, photoKey);
   const url = useObjectUrl(thumb.data);
   return { url, loading: thumb.isLoading, failed: thumb.isError };
 };
@@ -134,6 +136,7 @@ export const FuelCardThumbOnly = ({ card }: { card: FleetFuelCardDto }): JSX.Ele
   const { url, loading } = useFuelCardThumbUrl(
     card.id,
     card.image !== null && card.imageThumb === true,
+    card.image?.fileId ?? null,
   );
   return (
     <div className="flex flex-col items-center gap-3 py-2" data-fuel-image-thumb-only={card.id}>
@@ -356,7 +359,11 @@ export const FuelCardPhotoPanel = ({
   const t = useT();
   const can = useCan();
   // 6d: the preview box is always the blurred thumbnail (or the icon) — never the full photo.
-  const { url } = useFuelCardThumbUrl(card.id, card.image !== null && card.imageThumb === true);
+  const { url } = useFuelCardThumbUrl(
+    card.id,
+    card.image !== null && card.imageThumb === true,
+    card.image?.fileId ?? null,
+  );
   const image = card.image;
   return (
     <div

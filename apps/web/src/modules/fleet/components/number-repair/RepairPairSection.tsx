@@ -28,6 +28,7 @@ import {
   Masked,
   Money,
   PinNote,
+  ReadArrow,
   Signed,
   StateChip,
   Tag,
@@ -127,9 +128,7 @@ const PairRow = ({
               {t(`${N}pair.opening`)}
             </span>
             <Money value={row.openingBefore} struck className="text-[13px]" />
-            <span aria-hidden className="text-slate-400">
-              ←
-            </span>
+            <ReadArrow className="text-slate-400" />
             <Money
               value={row.openingAfter}
               className="text-[14px] text-emerald-700 dark:text-emerald-300"
@@ -138,9 +137,7 @@ const PairRow = ({
               {t(done ? `${N}pair.balanceDone` : `${N}pair.balanceNow`)}
             </span>
             <Money value={balances.before} struck className="text-[13px]" />
-            <span aria-hidden className="text-slate-400">
-              ←
-            </span>
+            <ReadArrow className="text-slate-400" />
             <span data-repair-balance-after={row.car}>
               <Money
                 value={balances.after}
@@ -174,7 +171,15 @@ const PairRow = ({
                 }}
               />
             </span>
-            <span>{t(differs ? `${N}pair.statementDiffers` : `${N}pair.statementSame`)}</span>
+            <span>
+              {t(
+                !differs
+                  ? `${N}pair.statementSame`
+                  : done
+                    ? `${N}pair.statementDiffersDone`
+                    : `${N}pair.statementDiffers`,
+              )}
+            </span>
           </span>
         </div>
 

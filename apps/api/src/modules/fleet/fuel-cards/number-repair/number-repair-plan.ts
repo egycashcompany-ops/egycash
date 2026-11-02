@@ -3,13 +3,17 @@
 // record reads, what each unit may do, and — for a ready unit — exactly what to write. The service
 // reads and writes; every rule is here, pinned by `number-repair-plan.spec.ts`.
 //
-// A record reads «before» when it is exactly what the owner reviewed (number, name — compared with
-// `===`, «S» and all —, car, expiry, the go-live photo of its number, PIN yes/no), and «after» when
-// it is exactly what the repair leaves. A unit is fixed whole or not at all:
-//   · done   — its `dataFix` lines are on every record (the repair ran: later edits — a PIN typed,
-//              a photo replaced — never undo that), or, for a cycle only, every record reads «after»
-//              (fixed by hand);
-//   · ready  — every record reads «before» (the pair: and has no `dataFix` line);
+// A record reads «before» when the owner's three facts are what he reviewed — the live Wataniya card
+// on its car, holding the number it held at go-live, under its name (compared with `===`, «S» and
+// all) — and «after» when they are what the repair leaves. The expiry, the photo and the PIN are NOT
+// part of it: they belong to the physical card, travel with its number, and may be renewed, replaced
+// or typed at any time (the repair carries whatever the card holds when it runs). A unit is fixed
+// whole or not at all:
+//   · done   — the repair RAN: its `dataFix` line is there for every record (found by what the line
+//              says — the number it gave, the name it gave —, never by the car the card is on now:
+//              a card moved, replaced or deleted later never makes a repaired unit pending again),
+//              or, for a cycle only, every record reads «after» (fixed by hand);
+//   · ready  — every record reads «before», and the unit has no `dataFix` line;
 //   · held   — anything else: the records that read «before» wait with it («موقوف مع الدائرة»), the
 //              others are `changed` («تغيّر — لن يُلمس») with what differs.
 // The pair is never «fixed by hand»: its balances move by the opening's difference, which a hand
@@ -26,7 +30,6 @@ import {
   REPAIR_PAIR,
   REPAIR_RECORDS,
   recordsOf,
-  type RepairCardFacts,
   type RepairCycleRecord,
   type RepairPairRecord,
 } from './number-repair-definition';
@@ -53,6 +56,10 @@ export interface RepairLine {
   movementId: string;
   cardId: string;
   unit: FleetFuelNumberRepairUnit;
+  /** A cycle line: the number it gave the record — which record the line is. */
+  numberAfter: string | null;
+  /** A pair line: the name it gave the record — which record the line is. */
+  nameAfter: string | null;
   at: Date;
   by: string | null;
 }
@@ -92,8 +99,9 @@ export interface CycleWrite {
   numberAfter: string;
   /** The card holding `numberAfter` today — its PIN, photo and expiry move with the number. */
   takeFrom: string;
-  expiryBefore: string;
-  expiryAfter: string;
+  /** The live expiries (`YYYY-MM-DD`) — this record's today, and the one that comes with the number. */
+  expiryBefore: string | null;
+  expiryAfter: string | null;
   balance: number;
 }
 
@@ -146,62 +154,46 @@ export const goLivePhotoNumber = (image: RepairLiveCard['image']): string | null
   return GO_LIVE_PHOTO_BYTES.get(stem) === image.size ? stem : null;
 };
 
-const isPhotoOf = (image: RepairLiveCard['image'], facts: RepairCardFacts): boolean =>
-  image !== null && image.fileName === `${facts.number}.jpg` && image.size === facts.photoBytes;
+/** The live Wataniya card holding `number` under `name` — the owner's facts; the car is the lookup. */
+const reads = (card: RepairLiveCard, name: string, number: string): boolean =>
+  card.company === 'wataniya' && card.number === number && card.name === name;
 
-const reads = (card: RepairLiveCard, name: string, facts: RepairCardFacts): boolean =>
-  card.company === 'wataniya' &&
-  card.number === facts.number &&
-  card.name === name &&
-  card.expiresAt === facts.expiresAt &&
-  card.hasPin === facts.hasPin &&
-  isPhotoOf(card.image, facts);
-
-/** How `card` (or its absence) differs from what the owner reviewed. */
+/** How `card` (or its absence) differs from what the owner reviewed: car, number, name. */
 const changesFrom = (
   car: string,
   card: RepairLiveCard | null,
   name: string,
-  facts: RepairCardFacts,
+  number: string,
   world: RepairWorld,
 ): PlannedChange[] => {
   if (card === null) {
     // The card itself is elsewhere (another car, or none) — or gone.
-    const moved = world.byNumber.get(facts.number);
+    const moved = world.byNumber.get(number);
     return moved === undefined
       ? [{ field: 'missing', expected: car, now: null }]
       : [{ field: 'vehicle', expected: car, now: moved.vehicleCode ?? moved.label }];
   }
   const changes: PlannedChange[] = [];
-  if (card.number !== facts.number) {
-    changes.push({ field: 'number', expected: last4(facts.number), now: last4(card.number) });
+  if (card.number !== number) {
+    changes.push({ field: 'number', expected: last4(number), now: last4(card.number) });
   }
   if (card.name !== name) changes.push({ field: 'name', expected: name, now: card.name });
-  if (card.expiresAt !== facts.expiresAt) {
-    changes.push({ field: 'expiry', expected: facts.expiresAt, now: card.expiresAt });
-  }
-  if (!isPhotoOf(card.image, facts)) {
-    const shown = goLivePhotoNumber(card.image);
-    changes.push({
-      field: 'photo',
-      expected: last4(facts.number),
-      now: card.image === null ? null : shown === null ? 'other' : last4(shown),
-    });
-  }
-  if (card.hasPin !== facts.hasPin) {
-    changes.push({ field: 'pin', expected: yesNo(facts.hasPin), now: yesNo(card.hasPin) });
-  }
   return changes;
 };
 
-const lineOf = (
-  world: RepairWorld,
-  unit: FleetFuelNumberRepairUnit,
-  card: RepairLiveCard | null,
-): RepairLine | null =>
-  card === null
-    ? null
-    : (world.lines.find((line) => line.unit === unit && line.cardId === card.id) ?? null);
+/** Every live card of the world, by id — where a repaired record's card is, whatever car it is on. */
+const cardsById = (world: RepairWorld): Map<string, RepairLiveCard> =>
+  new Map([...world.byCar.values(), ...world.byNumber.values()].map((card) => [card.id, card]));
+
+/**
+ * The card a row shows: once its line is written, the card the line is on (when it is still live
+ * and in the world); otherwise — or when it is gone — the live card on the record's car today.
+ */
+const shownCard = (
+  line: RepairLine | null,
+  onCar: RepairLiveCard | null,
+  byId: ReadonlyMap<string, RepairLiveCard>,
+): RepairLiveCard | null => (line === null ? onCar : (byId.get(line.cardId) ?? onCar));
 
 /** One cycle: its rows' states and, when ready, its writes. */
 export const planCycle = (
@@ -209,34 +201,36 @@ export const planCycle = (
   world: RepairWorld,
 ): PlannedCycle => {
   const records = recordsOf(unit);
+  const unitLines = world.lines.filter((line) => line.unit === unit);
   const rows = records.map((record) => {
     const card = world.byCar.get(record.car) ?? null;
     return {
       record,
       card,
-      readsBefore: card !== null && reads(card, record.name, record.before),
-      readsAfter: card !== null && reads(card, record.name, record.after),
-      line: lineOf(world, unit, card),
+      readsBefore: card !== null && reads(card, record.name, record.before.number),
+      readsAfter: card !== null && reads(card, record.name, record.after.number),
+      line: unitLines.find((line) => line.numberAfter === record.after.number) ?? null,
     };
   });
   const state: FleetFuelNumberRepairUnitState =
     rows.every((row) => row.line !== null) || rows.every((row) => row.readsAfter)
       ? 'done'
-      : rows.every((row) => row.readsBefore)
+      : unitLines.length === 0 && rows.every((row) => row.readsBefore)
         ? 'ready'
         : 'held';
+  const byId = cardsById(world);
   const planned: PlannedRow[] = rows.map((row) => {
     const rowState: FleetFuelNumberRepairRowState =
       state === 'done' ? 'done' : state === 'ready' ? 'ok' : row.readsBefore ? 'held' : 'changed';
     return {
       car: row.record.car,
-      card: row.card,
+      card: state === 'done' ? shownCard(row.line, row.card, byId) : row.card,
       readsBefore: row.readsBefore,
       readsAfter: row.readsAfter,
       state: rowState,
       changes:
         rowState === 'changed'
-          ? changesFrom(row.record.car, row.card, row.record.name, row.record.before, world)
+          ? changesFrom(row.record.car, row.card, row.record.name, row.record.before.number, world)
           : [],
       line: row.line,
     };
@@ -254,40 +248,35 @@ export const planCycle = (
             numberBefore: row.record.before.number,
             numberAfter: row.record.after.number,
             takeFrom: donor.id,
-            expiryBefore: row.record.before.expiresAt,
-            expiryAfter: row.record.after.expiresAt,
+            expiryBefore: card.expiresAt,
+            expiryAfter: donor.expiresAt,
             balance: card.balance,
           };
         });
   return { unit, state, records, rows: planned, writes };
 };
 
-const pairFacts = (record: RepairPairRecord): RepairCardFacts => ({
-  number: record.number,
-  expiresAt: record.expiresAt,
-  hasPin: record.hasPin,
-  photoBytes: record.photoBytes,
-});
-
 /** The 0849 pair: both records or neither. */
 export const planPair = (world: RepairWorld): PlannedPair => {
+  const pairLines = world.lines.filter((line) => line.unit === 'pair');
   const rows = REPAIR_PAIR.map((record) => {
     const card = world.byCar.get(record.car) ?? null;
-    const facts = pairFacts(record);
     return {
       record,
       card,
-      readsBefore: card !== null && reads(card, record.nameBefore, facts),
-      readsAfter: card !== null && reads(card, record.nameAfter, facts),
-      line: lineOf(world, 'pair', card),
+      readsBefore: card !== null && reads(card, record.nameBefore, record.number),
+      readsAfter: card !== null && reads(card, record.nameAfter, record.number),
+      line: pairLines.find((line) => line.nameAfter === record.nameAfter) ?? null,
     };
   });
-  const anyLine = world.lines.some((line) => line.unit === 'pair');
+  // Its two lines are written in one transaction: both there — the pair ran, wherever its cards
+  // are now. One line alone is never «ready»: the pair is never applied twice.
   const state: FleetFuelNumberRepairUnitState = rows.every((row) => row.line !== null)
     ? 'done'
-    : !anyLine && rows.every((row) => row.readsBefore)
+    : pairLines.length === 0 && rows.every((row) => row.readsBefore)
       ? 'ready'
       : 'held';
+  const byId = cardsById(world);
   const planned: PlannedRow[] = rows.map((row) => {
     const waits = row.readsBefore && row.line === null;
     const rowState: FleetFuelNumberRepairRowState =
@@ -302,7 +291,7 @@ export const planPair = (world: RepairWorld): PlannedPair => {
                   row.record.car,
                   row.card,
                   row.record.nameBefore,
-                  pairFacts(row.record),
+                  row.record.number,
                   world,
                 )),
             // Swapped without the repair's line, or the line without the swap: the balances
@@ -319,7 +308,7 @@ export const planPair = (world: RepairWorld): PlannedPair => {
           ];
     return {
       car: row.record.car,
-      card: row.card,
+      card: state === 'done' ? shownCard(row.line, row.card, byId) : row.card,
       readsBefore: row.readsBefore,
       readsAfter: row.readsAfter,
       state: rowState,

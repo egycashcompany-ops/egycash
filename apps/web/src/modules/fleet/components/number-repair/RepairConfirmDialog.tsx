@@ -8,6 +8,7 @@
 // ✓ is off until the owner ticks «راجعتُ الصفوف وصور الكروت، وأوافق على التنفيذ.» — unticked each
 // time the dialog opens — and while the execution is on its way. What it sends is the dry run's
 // own ready units (`executeBodyOf`), never a unit the review did not show ready.
+import { Fragment } from 'react';
 import { type FleetFuelNumberRepairDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
@@ -19,7 +20,7 @@ import { executeBodyOf, noPinReadyOf, readyCyclesOf } from '../../lib/fuel-numbe
 import { N, useRepairWords } from '../../lib/fuel-number-repair-words';
 import { money } from '../../lib/fuel-reconcile';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
-import { CarCode, Dots, ICON, Masked, Signed } from './repair-parts';
+import { CarCode, Dots, ICON, Masked, ReadArrow, Signed } from './repair-parts';
 
 const CHIP =
   'inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-0.5 text-[12px] font-bold';
@@ -88,12 +89,17 @@ export const RepairConfirmDialog = ({
         </>
       }
     >
-      <p className="text-[15px] leading-relaxed text-slate-800 dark:text-slate-100">
+      <p
+        className="text-[15px] leading-relaxed text-slate-800 dark:text-slate-100"
+        data-repair-confirm-lead={ready.length > 0 ? 'cycles' : 'pair'}
+      >
         {ready.length > 0 && t(`${N}confirm.leadCycles`)}
         {ready.length > 0 && pairReady && ' '}
         {pairReady && a !== undefined && b !== undefined && (
           <Filled
-            template={t(`${N}confirm.leadPair`)}
+            // Alone, the pair's sentence stands by itself — not «ويتبادل…», which continues the
+            // cycles' sentence.
+            template={t(ready.length > 0 ? `${N}confirm.leadPair` : `${N}confirm.leadPairOnly`)}
             values={{
               a: <span className={NUM}>{a.car}</span>,
               b: <span className={NUM}>{b.car}</span>,
@@ -103,73 +109,81 @@ export const RepairConfirmDialog = ({
       </p>
 
       <section className="space-y-3">
-        <h3 className="text-[14px] font-bold text-slate-900 dark:text-white">
-          {t(`${N}confirm.crossed`, { cards: count.cards(crossed) })}
-        </h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/[0.08]">
-            <p className="mb-2 text-[13px] font-bold text-indigo-800 dark:text-indigo-200">
-              {t(`${N}confirm.moves`)}
-            </p>
-            <span className="flex flex-wrap gap-1.5">
-              {moving.map((word) => (
-                <span
-                  key={word}
-                  className={cn(
-                    CHIP,
-                    'border-indigo-300 bg-white text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200',
-                  )}
-                >
-                  {word}
+        {/* Nothing of a number moves in a run of the pair alone: no count, no rules, no PIN. */}
+        {ready.length > 0 && (
+          <>
+            <h3
+              className="text-[14px] font-bold text-slate-900 dark:text-white"
+              data-repair-confirm-crossed={crossed}
+            >
+              {t(`${N}confirm.crossed`, { cards: count.cards(crossed) })}
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/[0.08]">
+                <p className="mb-2 text-[13px] font-bold text-indigo-800 dark:text-indigo-200">
+                  {t(`${N}confirm.moves`)}
+                </p>
+                <span className="flex flex-wrap gap-1.5">
+                  {moving.map((word) => (
+                    <span
+                      key={word}
+                      className={cn(
+                        CHIP,
+                        'border-indigo-300 bg-white text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200',
+                      )}
+                    >
+                      {word}
+                    </span>
+                  ))}
                 </span>
-              ))}
-            </span>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80">
-            <p className="mb-2 text-[13px] font-bold text-slate-800 dark:text-slate-100">
-              {t(`${N}rule.stays`)}
-            </p>
-            <span className="flex flex-wrap gap-1.5">
-              {staying.map((word) => (
-                <span
-                  key={word}
-                  className={cn(
-                    CHIP,
-                    'border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
-                  )}
-                >
-                  {word}
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80">
+                <p className="mb-2 text-[13px] font-bold text-slate-800 dark:text-slate-100">
+                  {t(`${N}rule.stays`)}
+                </p>
+                <span className="flex flex-wrap gap-1.5">
+                  {staying.map((word) => (
+                    <span
+                      key={word}
+                      className={cn(
+                        CHIP,
+                        'border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+                      )}
+                    >
+                      {word}
+                    </span>
+                  ))}
                 </span>
-              ))}
-            </span>
-          </div>
-        </div>
-        <div
-          data-repair-confirm-pin={noPin.join(',')}
-          className="space-y-1 rounded-xl border border-indigo-200 bg-white px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-700 dark:border-indigo-400/30 dark:bg-[#0a1233]/60 dark:text-slate-200"
-        >
-          <p className="flex items-center gap-1.5 font-bold text-indigo-800 dark:text-indigo-200">
-            <BoardIcon d={ICON.lock} className="h-3.5 w-3.5" />
-            {t(`${N}rule.pinRule`)}
-          </p>
-          {noPin.length > 0 && (
-            <p>
-              <Filled
-                template={t(
-                  noPin.length === 1
-                    ? `${N}confirm.noPinOne`
-                    : noPin.length === 2
-                      ? `${N}confirm.noPinTwo`
-                      : `${N}confirm.noPin`,
-                )}
-                values={{
-                  numbers: words.numbers(noPin.length),
-                  cars: <span className={NUM}>{words.list(noPin)}</span>,
-                }}
-              />
-            </p>
-          )}
-        </div>
+              </div>
+            </div>
+            <div
+              data-repair-confirm-pin={noPin.join(',')}
+              className="space-y-1 rounded-xl border border-indigo-200 bg-white px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-700 dark:border-indigo-400/30 dark:bg-[#0a1233]/60 dark:text-slate-200"
+            >
+              <p className="flex items-center gap-1.5 font-bold text-indigo-800 dark:text-indigo-200">
+                <BoardIcon d={ICON.lock} className="h-3.5 w-3.5" />
+                {t(`${N}rule.pinRule`)}
+              </p>
+              {noPin.length > 0 && (
+                <p>
+                  <Filled
+                    template={t(
+                      noPin.length === 1
+                        ? `${N}confirm.noPinOne`
+                        : noPin.length === 2
+                          ? `${N}confirm.noPinTwo`
+                          : `${N}confirm.noPin`,
+                    )}
+                    values={{
+                      numbers: words.numbers(noPin.length),
+                      cars: <span className={NUM}>{words.list(noPin)}</span>,
+                    }}
+                  />
+                </p>
+              )}
+            </div>
+          </>
+        )}
         <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-[#2b3b6b]">
           <table className="w-full text-[13px]">
             <tbody className="divide-y divide-slate-200 bg-white dark:divide-[#1c293f] dark:bg-[#0a1233]/60">
@@ -184,7 +198,12 @@ export const RepairConfirmDialog = ({
                   </td>
                   <td className="px-3 py-1.5">
                     <span className={cn(NUM, 'text-slate-600 dark:text-slate-300')}>
-                      {cycle.cars.join(' ← ')}
+                      {cycle.cars.map((car, i) => (
+                        <Fragment key={car}>
+                          {i > 0 && <ReadArrow className="mx-1" />}
+                          {car}
+                        </Fragment>
+                      ))}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-end">

@@ -1135,15 +1135,33 @@ export const useUploadFuelCardImage = () =>
   useFuelCardMutation(({ id, file }: { id: string; file: File }) => uploadPhotoWithThumb(id, file));
 /**
  * The thumbnail's bytes (`fleetFuelCard.view`) — under the cards' subtree, so a card's photo
- * changing (a replace, a delete, the repair moving it) fetches it again. `cardId` null: nothing.
+ * changing (a replace, a delete, the repair moving it) fetches it again; keyed by the photo too
+ * (`photoKey`, its file id), so a replaced or deleted photo never refetches the old one's key.
+ * «This card has no photo / no thumbnail» (404) is an answer, not a failure: `null` — the screen
+ * says «لا توجد صورة مصغّرة», and the global handler never toasts a photo just deleted.
  */
-export const useFuelCardThumb = (cardId: string | null, enabled = true) =>
+export const fuelCardThumbQuery = (cardId: string | null, photoKey: string | null = null) => ({
+  queryKey: listKey(MODULE, 'fuelCards', { thumb: cardId, photo: photoKey }),
+  queryFn: async (): Promise<Blob | null> => {
+    try {
+      return await api.fetchFuelCardThumb(cardId ?? '');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
+  },
+  staleTime: 5 * 60_000,
+  retry: false,
+});
+/** `cardId` null, or `enabled` false: nothing. */
+export const useFuelCardThumb = (
+  cardId: string | null,
+  enabled = true,
+  photoKey: string | null = null,
+) =>
   useQuery({
-    queryKey: listKey(MODULE, 'fuelCards', { thumb: cardId }),
-    queryFn: () => api.fetchFuelCardThumb(cardId ?? ''),
+    ...fuelCardThumbQuery(cardId, photoKey),
     enabled: enabled && cardId !== null && cardId !== '',
-    staleTime: 5 * 60_000,
-    retry: false,
   });
 /**
  * Back-fills the thumbnail of a photo uploaded before 6d, from the full photo an edit + reveal

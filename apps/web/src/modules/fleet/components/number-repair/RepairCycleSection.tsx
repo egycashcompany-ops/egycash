@@ -36,6 +36,7 @@ import {
   CarBox,
   CarCode,
   Chain,
+  ReadArrow,
   DateText,
   Dots,
   ICON,
@@ -376,12 +377,7 @@ const CycleRow = ({
               ) : (
                 <>
                   <RepairThumb photo={row.photoBefore} verdict="no" />
-                  <span
-                    aria-hidden
-                    className="pt-5 text-lg font-black text-slate-400 dark:text-slate-500"
-                  >
-                    ←
-                  </span>
+                  <ReadArrow className="pt-5 text-lg font-black text-slate-400 dark:text-slate-500" />
                   <RepairThumb photo={row.photoAfter} verdict="ok" />
                 </>
               )}

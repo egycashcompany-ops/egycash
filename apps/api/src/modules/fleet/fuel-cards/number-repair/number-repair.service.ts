@@ -8,7 +8,9 @@
 // unit already done is skipped), then written whole. A cycle goes through temporary numbers first
 // (`6d-tmp-<cardId>`): `ux_fuel_card_number` refuses a cycle of numbers moved one at a time. Each
 // record then takes the right number with the PIN (as stored — never decrypted, read out, logged or
-// returned), the photo and the expiry of the card that held it; its name, car, balance and log stay.
+// returned), the photo and the expiry the card that held it has at that moment; its name, car,
+// balance and log stay. The photo's Files rows (and its thumbnail's) are re-pointed at the record
+// that now shows it, in the same transaction — so the Files authorizers ask about that card.
 // The pair swaps its names and moves each balance by the go-live opening's difference. Every record
 // gets one `dataFix` line in the same transaction — the lines are what make a unit read «done», so
 // a re-run is a no-op — and, after the commit, one audit row (which also refreshes every open fuel
@@ -38,6 +40,7 @@ import {
 import { AppError, StaleDocumentError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
+import { fileService } from '../../../../platform/files';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { actorNamesOf } from '../../fleet-actor-name';
@@ -76,7 +79,8 @@ const piastres = (egp: number): number => Math.round(egp * 100);
 const NUMBER_PREFIX = (number: string): string => number.replace(/\D/gu, '').slice(0, 3);
 /** A number no card can hold — letters — while a cycle's numbers change places. */
 const temporaryNumber = (cardId: string): string => `6d-tmp-${cardId}`;
-const dayDate = (day: string): Date => new Date(`${day}T00:00:00.000Z`);
+const dayDate = (day: string | null): Date | null =>
+  day === null ? null : new Date(`${day}T00:00:00.000Z`);
 /** How many times a unit is re-planned after another writer got there first. */
 const UNIT_ATTEMPTS = 3;
 
@@ -113,7 +117,8 @@ class FleetFuelNumberRepairService {
   /**
    * The 0849 pair's numbers while the pair is not repaired — what «مطابقة أرصدة الكروت» holds back
    * («ضمن تصحيح الأرقام»): the link ✓ (6b) and the balance ✓ (6c) of those two cards. `[]` once the
-   * pair's two `dataFix` lines are written. Read live, so the lock lifts with the repair itself.
+   * pair's two `dataFix` lines are written — wherever its two cards are later moved, replaced or
+   * deleted. Read live, so the lock lifts with the repair itself.
    */
   async pairNumbersInRepair(): Promise<string[]> {
     const { world } = await readRepairWorld(
@@ -202,14 +207,17 @@ class FleetFuelNumberRepairService {
             at: row.line.at.toISOString(),
             byName: row.line.by == null ? null : (names.get(row.line.by) ?? null),
           };
-    // A go-live photo is wherever its number's card is now — found by the photo itself.
+    // A go-live photo is wherever its number's card is now — found by the photo itself; one
+    // replaced since (a clearer photo of the same card) is on the card holding the number.
     const photoOf = (
       number: string,
       evidence: RepairPhotoEvidence,
     ): FleetFuelNumberRepairPhotoDto => {
-      const holder = [...world.byCar.values(), ...world.byNumber.values()].find(
-        (card) => goLivePhotoNumber(card.image) === number,
-      );
+      const holding = world.byNumber.get(number);
+      const holder =
+        [...world.byCar.values(), ...world.byNumber.values()].find(
+          (card) => goLivePhotoNumber(card.image) === number,
+        ) ?? (holding?.image == null ? undefined : holding);
       const doc = holder === undefined ? undefined : docs.get(holder.id);
       return {
         cardId: holder?.id ?? null,
@@ -219,15 +227,23 @@ class FleetFuelNumberRepairService {
       };
     };
 
+    // The expiry and the PIN (yes/no) of a physical card as stored today — they travel with its
+    // number; the definition's, should no live card hold the number.
+    const factsOf = (
+      number: string,
+      fallback: { expiresAt: string; hasPin: boolean },
+    ): { expiresAt: string; hasPin: boolean } => {
+      const holding = world.byNumber.get(number);
+      return holding === undefined
+        ? fallback
+        : { expiresAt: holding.expiresAt ?? fallback.expiresAt, hasPin: holding.hasPin };
+    };
+
+    const parts: DtoParts = { topUpsOf, changesOf, logOf, photoOf, factsOf };
     const cycles: FleetFuelNumberRepairCycleDto[] = plan.cycles.map((cycle) =>
-      this.cycleDto(cycle, { topUpsOf, changesOf, logOf, photoOf }),
+      this.cycleDto(cycle, parts),
     );
-    const pair = this.pairDto(plan.pair, adjustments, world, {
-      topUpsOf,
-      changesOf,
-      logOf,
-      photoOf,
-    });
+    const pair = this.pairDto(plan.pair, adjustments, world, parts);
 
     const units = [...plan.cycles, plan.pair];
     const recordsIn = (state: string): number =>
@@ -257,8 +273,11 @@ class FleetFuelNumberRepairService {
           ? []
           : cycle.records.flatMap((record, i) => {
               const card = cycle.rows[i]?.card ?? null;
+              // Ready: the PIN the right number's card holds now is the one that comes with it.
               const none =
-                cycle.state === 'ready' ? !record.after.hasPin : card !== null && !card.hasPin;
+                cycle.state === 'ready'
+                  ? !factsOf(record.after.number, record.after).hasPin
+                  : card !== null && !card.hasPin;
               return none ? [record.car] : [];
             }),
       ),
@@ -280,6 +299,8 @@ class FleetFuelNumberRepairService {
         const row = cycle.rows[i] as PlannedRow;
         const previous = records[(i - 1 + records.length) % records.length] as typeof record;
         const next = records[(i + 1) % records.length] as typeof record;
+        const before = parts.factsOf(record.before.number, record.before);
+        const after = parts.factsOf(record.after.number, record.after);
         return {
           car: record.car,
           name: record.name,
@@ -291,10 +312,10 @@ class FleetFuelNumberRepairService {
           numberAfterLast4: last4(record.after.number),
           afterIsNowOnCar: previous.car,
           beforeGoesToCar: next.car,
-          expiryBefore: record.before.expiresAt,
-          expiryAfter: record.after.expiresAt,
-          pinBefore: record.before.hasPin,
-          pinAfter: record.after.hasPin,
+          expiryBefore: before.expiresAt,
+          expiryAfter: after.expiresAt,
+          pinBefore: before.hasPin,
+          pinAfter: after.hasPin,
           photoBefore: parts.photoOf(record.before.number, record.photoBefore),
           photoAfter: parts.photoOf(record.after.number, record.photoAfter),
           chassisTypo: record.chassisTypo,
@@ -315,14 +336,15 @@ class FleetFuelNumberRepairService {
     const rows = pair.records.map((record, i): FleetFuelNumberRepairPairRowDto => {
       const row = pair.rows[i] as PlannedRow;
       const balance = row.card?.balance ?? null;
+      const facts = parts.factsOf(record.number, record);
       return {
         car: record.car,
         cardId: row.card?.id ?? null,
         state: row.state,
         numberPrefix: NUMBER_PREFIX(record.number),
         numberLast4: last4(record.number),
-        expiry: record.expiresAt,
-        hasPin: record.hasPin,
+        expiry: facts.expiresAt,
+        hasPin: facts.hasPin,
         nameBefore: record.nameBefore,
         nameAfter: record.nameAfter,
         openingBefore: record.openingBefore,
@@ -546,6 +568,22 @@ class FleetFuelNumberRepairService {
     for (const write of planned.writes) {
       const card = docs.get(write.cardId) as FleetFuelCardDoc;
       const donor = donors.get(write.cardId) as NonNullable<ReturnType<typeof donors.get>>;
+      // The photo's Files rows follow it — and its thumbnail's — so every Files check of that
+      // photo asks about the card that shows it from now on, not the card it came from.
+      if (donor.image != null) {
+        await fileService.reassignEntity(
+          String(donor.image.fileId),
+          fuelCardEntityRef(write.cardId),
+          session,
+        );
+        if (donor.image.thumb != null) {
+          await fileService.reassignEntity(
+            String(donor.image.thumb.fileId),
+            { moduleId: 'fleet', entityType: 'fuelCardThumb', entityId: write.cardId },
+            session,
+          );
+        }
+      }
       const updated = await fleetFuelCardRepository.updateById(
         write.cardId,
         {
@@ -609,6 +647,10 @@ interface DtoParts {
   changesOf: (row: PlannedRow) => FleetFuelNumberRepairChangeDto[];
   logOf: (row: PlannedRow) => FleetFuelNumberRepairLogDto | null;
   photoOf: (number: string, evidence: RepairPhotoEvidence) => FleetFuelNumberRepairPhotoDto;
+  factsOf: (
+    number: string,
+    fallback: { expiresAt: string; hasPin: boolean },
+  ) => { expiresAt: string; hasPin: boolean };
 }
 
 export const fleetFuelNumberRepairService = new FleetFuelNumberRepairService();

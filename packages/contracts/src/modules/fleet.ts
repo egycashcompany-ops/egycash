@@ -4340,8 +4340,10 @@ export type AddFleetFuelSheetCard = z.infer<typeof AddFleetFuelSheetCardSchema>;
 //     أرصدة الكروت», gives each card the company's figure for its own physical card;
 //   · the pair keeps number, car, photo, expiry and PIN, swaps the names, and moves each balance by
 //     the go-live opening's difference (530 −11,872.62 · 283 +11,872.62).
-// A unit (one cycle, or the pair) is fixed whole or not at all; a record changed by hand since the
-// go-live holds its whole unit. Nothing runs by itself. Each record gets a `dataFix` log line.
+// A unit (one cycle, or the pair) is fixed whole or not at all; a record whose car, number or name
+// changed by hand since the go-live holds its whole unit (its expiry, photo and PIN belong to the
+// physical card and travel with the number as they are when it runs). Nothing runs by itself. Each
+// record gets a `dataFix` log line — what makes its unit read «done» from then on.
 
 /** The four units, in the order they are executed. */
 export const FLEET_FUEL_NUMBER_REPAIR_UNITS = ['C4', 'C5', 'C6', 'pair'] as const;
@@ -4366,10 +4368,10 @@ export const FLEET_FUEL_NUMBER_REPAIR_STATES = ['pending', 'partial', 'done'] as
 export type FleetFuelNumberRepairState = (typeof FLEET_FUEL_NUMBER_REPAIR_STATES)[number];
 /**
  * What a changed record differs in: `missing` — no live Wataniya card on the car; `vehicle` — the
- * expected card is on another car (or on none); `number`, `name` (compared exactly), `expiry`,
- * `photo` (not the go-live photo of its number), `pin` (a PIN stored, or not, against the
- * definition); `repairLine` — the pair reads swapped without its two `dataFix` lines, or the
- * reverse, so its balances cannot be known to be right.
+ * expected card is on another car (or on none); `number`, `name` (compared exactly); `repairLine` —
+ * the pair reads swapped without its two `dataFix` lines, or the reverse, so its balances cannot be
+ * known to be right. `expiry`, `photo` and `pin` are no longer reported: they belong to the physical
+ * card and never hold a unit (kept in the list so an older reader still parses).
  */
 export const FLEET_FUEL_NUMBER_REPAIR_FIELDS = [
   'missing',
@@ -4470,6 +4472,10 @@ export interface FleetFuelNumberRepairCycleRowDto {
   afterIsNowOnCar: string;
   /** The car whose record receives the number this record holds today. */
   beforeGoesToCar: string;
+  /**
+   * The expiry of the card whose number the record holds today / of the right number's card — as
+   * stored now (it travels with the number); the definition's when no live card holds the number.
+   */
   expiryBefore: string;
   expiryAfter: string;
   /** A PIN is stored with the number held today / with the right number (yes/no — never a PIN). */

@@ -46,8 +46,14 @@ export const RepairHeader = ({
         <span className="flex min-w-0 flex-col gap-1">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500 dark:text-slate-400">
             {t('fleet.fuelCards.reconcile.title')}
-            <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden>
-              <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2" />
+            {/* The crumb's chevron points the way the line reads (mirrored in Arabic). */}
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3 w-3 rtl:-scale-x-100"
+              aria-hidden
+              data-repair-arrow="true"
+            >
+              <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" />
             </svg>
             <span className="text-slate-700 dark:text-slate-200">{t(`${N}crumb`)}</span>
           </span>

@@ -56,8 +56,14 @@ export const NumberRepairEntryBox = ({
         className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-[14px] font-bold text-white shadow-[0_6px_22px_rgba(245,158,11,0.35)] transition hover:bg-amber-400 dark:bg-amber-500 dark:text-slate-950"
       >
         {t(`${N}entry.open`)}
-        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
-          <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2.2" />
+        {/* «onwards»: pointing the way the line reads (mirrored in Arabic). */}
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4 rtl:-scale-x-100"
+          aria-hidden
+          data-repair-arrow="true"
+        >
+          <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.2" />
         </svg>
       </Link>
     </section>

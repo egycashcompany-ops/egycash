@@ -358,17 +358,32 @@ export const StateChip = ({
   );
 };
 
-/** An arrow pointing the way an Arabic line reads, with the number it carries over it. */
+/**
+ * «before → after» the way the line reads: drawn pointing right and mirrored in Arabic (`rtl:`), so
+ * it points left in Arabic, right in English — never against the sentence it illustrates.
+ */
+export const ReadArrow = ({ className }: { className?: string }): JSX.Element => (
+  <span
+    aria-hidden
+    data-repair-arrow="true"
+    className={cn('inline-block rtl:-scale-x-100', className)}
+  >
+    →
+  </span>
+);
+
+/** An arrow pointing the way the line reads, with the number it carries over it. */
 const Arrow = ({ last4 }: { last4: string }): JSX.Element => (
   <span className="inline-flex flex-col items-center gap-0.5 px-0.5">
     <Dots last4={last4} className="text-[11px] text-slate-600 dark:text-slate-300" />
     <svg
       viewBox="0 0 64 10"
-      className="h-2.5 w-12 text-slate-400 sm:w-16 dark:text-slate-500"
+      className="h-2.5 w-12 text-slate-400 rtl:-scale-x-100 sm:w-16 dark:text-slate-500"
       aria-hidden
+      data-repair-arrow="true"
     >
       <path
-        d="M62 5H4m0 0l5-4M4 5l5 4"
+        d="M2 5h58m0 0l-5-4m5 4l-5 4"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.6"

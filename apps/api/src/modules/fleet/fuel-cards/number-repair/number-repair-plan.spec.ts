@@ -64,13 +64,27 @@ const edit = (world: ReturnType<typeof clean>, car: string, over: Partial<Repair
   world.byCar.set(car, { ...(world.byCar.get(car) as RepairLiveCard), ...over });
   return world;
 };
+/** The `dataFix` line the repair writes on car `car`'s record — it names what it gave the record. */
 const lineFor = (car: string, unit: RepairLine['unit']): RepairLine => ({
   movementId: `line-${car}`,
   cardId: idOf(car),
   unit,
+  numberAfter: unit === 'pair' ? null : record(car).after.number,
+  nameAfter: unit === 'pair' ? (REPAIR_PAIR.find((p) => p.car === car)?.nameAfter ?? null) : null,
   at: new Date('2026-11-02T10:00:00Z'),
   by: null,
 });
+/** The world once the whole repair ran: every record «after», the pair swapped, 17 lines. */
+const repaired = () => {
+  const world = worldOf([...REPAIR_RECORDS.map(afterCard), ...pairCards(true)]);
+  return {
+    ...world,
+    lines: [
+      ...REPAIR_RECORDS.map((r) => lineFor(r.car, r.unit)),
+      ...REPAIR_PAIR.map((p) => lineFor(p.car, 'pair')),
+    ],
+  };
+};
 
 describe('the clean go-live world', () => {
   it('three ready cycles and a ready pair; every row `ok`, no change', () => {
@@ -114,8 +128,8 @@ describe('the clean go-live world', () => {
 });
 
 describe('a record changed by hand holds its whole unit — and only it', () => {
-  it('expiry edited on 269 → C5 held (269 changed «expiry», the other four held); the rest ready', () => {
-    const world = edit(clean(), '269', { expiresAt: '2028-01-31' });
+  it('a name edited on 269 → C5 held (269 changed «name», the other four held); the rest ready', () => {
+    const world = edit(clean(), '269', { name: 'EGYCASH-CHANGED' });
     const plan = planRepair(world);
     expect(plan.cycles.map((c) => c.state)).toEqual(['ready', 'held', 'ready']);
     expect(plan.pair.state).toBe('ready');
@@ -128,7 +142,7 @@ describe('a record changed by hand holds its whole unit — and only it', () => 
       ['230', 'held'],
     ]);
     expect(c5?.rows[3]?.changes).toEqual([
-      { field: 'expiry', expected: record('269').before.expiresAt, now: '2028-01-31' },
+      { field: 'name', expected: record('269').name, now: 'EGYCASH-CHANGED' },
     ]);
     expect(c5?.writes).toEqual([]);
   });
@@ -142,26 +156,9 @@ describe('a record changed by hand holds its whole unit — and only it', () => 
     ]);
   });
 
-  it('a replaced photo, a PIN typed, a number edited, a card moved away or gone', () => {
-    const photo = planCycle(
-      'C4',
-      edit(clean(), '241', { image: { fileName: 'IMG_2201.jpg', size: 4000 } }),
-    );
-    expect(photo.rows.find((r) => r.car === '241')?.changes).toEqual([
-      { field: 'photo', expected: '3375', now: 'other' },
-    ]);
-    const noPhoto = planCycle('C4', edit(clean(), '241', { image: null }));
-    expect(noPhoto.rows.find((r) => r.car === '241')?.changes).toEqual([
-      { field: 'photo', expected: '3375', now: null },
-    ]);
-
-    const pin = planCycle('C5', edit(clean(), '525', { hasPin: true }));
-    expect(pin.state).toBe('held');
-    expect(pin.rows.find((r) => r.car === '525')?.changes).toEqual([
-      { field: 'pin', expected: 'no', now: 'yes' },
-    ]);
-
+  it('a number edited, a card moved away or gone', () => {
     const number = planCycle('C4', edit(clean(), '243', { number: '5485640000009999' }));
+    expect(number.state).toBe('held');
     expect(number.rows.find((r) => r.car === '243')?.changes).toEqual([
       { field: 'number', expected: '4116', now: '9999' },
     ]);
@@ -198,6 +195,41 @@ describe('a record changed by hand holds its whole unit — and only it', () => 
   });
 });
 
+describe('the physical card’s own data — expiry, photo, PIN — never holds a unit', () => {
+  // The owner's rule: the PIN, the photo and the expiry belong with the NUMBER. A renewed expiry,
+  // a clearer photo, a PIN typed from the card screen — before «تنفيذ التصحيح» — travel with it.
+  it('a renewed expiry, a new photo and a PIN typed → C5 still ready; each moves with its number', () => {
+    const world = clean();
+    edit(world, '269', { expiresAt: '2028-11-30' });
+    edit(world, '233', { image: { fileName: 'IMG_2201.jpg', size: 4000 }, hasPin: true });
+    edit(world, '230', { image: null });
+    const c5 = planCycle('C5', world);
+    expect(c5.state).toBe('ready');
+    expect(c5.rows.every((r) => r.state === 'ok' && r.changes.length === 0)).toBe(true);
+    // 269's number goes to 230 (the record after it) with 269's live expiry.
+    const to230 = c5.writes.find((w) => w.car === '230');
+    expect([to230?.takeFrom, to230?.numberAfter, to230?.expiryAfter]).toEqual([
+      idOf('269'),
+      record('269').before.number,
+      '2028-11-30',
+    ]);
+    // 269 itself keeps its own record and receives its right number with that card's expiry.
+    const to269 = c5.writes.find((w) => w.car === '269');
+    expect([to269?.expiryBefore, to269?.expiryAfter]).toEqual([
+      '2028-11-30',
+      record('284').before.expiresAt,
+    ]);
+  });
+
+  it('a whole cycle at its «after» numbers and names reads done by hand whatever its PINs and photos', () => {
+    const world = clean();
+    for (const r of REPAIR_RECORDS.filter((x) => x.unit === 'C4')) {
+      world.byCar.set(r.car, { ...afterCard(r), hasPin: !r.after.hasPin, image: null });
+    }
+    expect(planCycle('C4', world).state).toBe('done');
+  });
+});
+
 describe('done', () => {
   it('a whole cycle in the «after» state without lines was fixed by hand → done, nothing to write', () => {
     const world = clean();
@@ -223,6 +255,39 @@ describe('done', () => {
       'done',
       c5.map((r) => `line-${r.car}`),
     ]);
+  });
+
+  it('a repaired unit stays done when its cards are later moved, replaced or deleted', () => {
+    // Moved: car 283's card to car 215; deleted: car 530's; a new card on car 239; 241's moved off.
+    const world = repaired();
+    const c283 = world.byCar.get('283') as RepairLiveCard;
+    world.byCar.delete('283');
+    world.byNumber.set(c283.number, { ...c283, vehicleCode: '215' });
+    const c530 = world.byCar.get('530') as RepairLiveCard;
+    world.byCar.delete('530');
+    world.byNumber.delete(c530.number);
+    world.byCar.set('239', {
+      ...(world.byCar.get('239') as RepairLiveCard),
+      id: 'card-new-239',
+      number: '5485640000001234',
+    });
+    world.byCar.delete('241');
+    const plan = planRepair(world);
+    expect([plan.cycles.map((c) => c.state), plan.pair.state]).toEqual([
+      ['done', 'done', 'done'],
+      'done',
+    ]);
+    const rows = [...plan.cycles.flatMap((c) => c.rows), ...plan.pair.rows];
+    expect(rows.every((r) => r.state === 'done' && r.changes.length === 0)).toBe(true);
+    expect(rows.every((r) => r.line !== null)).toBe(true);
+    // A done row shows the card its line is on — car 283's moved card, not nothing.
+    expect(plan.pair.rows[1]?.card?.id).toBe(idOf('283'));
+    expect(plan.cycles[0]?.rows[0]?.card?.id).toBe(idOf('239'));
+  });
+
+  it('a cycle with a line but not all of them is never ready — it is never applied twice', () => {
+    const c4 = planCycle('C4', { ...clean(), lines: [lineFor('239', 'C4')] });
+    expect([c4.state, c4.writes]).toEqual(['held', []]);
   });
 
   it('the pair is done only by its two lines; swapped by hand without them → held «repairLine»', () => {

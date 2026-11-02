@@ -833,6 +833,8 @@ const donePairRow = (row: FleetFuelNumberRepairPairRowDto): FleetFuelNumberRepai
 /**
  * Sample 04: car 269's expiry was set by hand to the card in the car (2027-11-30, expected
  * 2026-11-30). Its record is changed, the other four of cycle 2 are held with it; 12 of 17 ready.
+ * (The sample's illustration: the server now holds a unit only on a changed car, number or name —
+ * an expiry travels with its number — but a changed row is drawn the same whatever its field.)
  */
 export const repairChanged269 = (): FleetFuelNumberRepairDto => {
   const dto = clone(REPAIR_CLEAN);
@@ -887,5 +889,19 @@ export const repairPartial = (): FleetFuelNumberRepairDto => {
   dto.counts = { ...dto.counts, ready: 13, done: 4 };
   dto.readyUnits = ['C5', 'C6', 'pair'];
   dto.cycles = dto.cycles.map((cycle) => (cycle.unit === 'C4' ? doneCycle(cycle) : cycle));
+  return dto;
+};
+
+/**
+ * The pair alone is ready: the three cycles ran while the pair was held (a record renamed by hand),
+ * and the name was put back since — «تنفيذ التصحيح» now runs the pair only.
+ */
+export const repairPairOnly = (): FleetFuelNumberRepairDto => {
+  const dto = repairDone();
+  dto.state = 'partial';
+  dto.counts = { ...dto.counts, ready: 2, done: 15 };
+  dto.readyUnits = ['pair'];
+  dto.noPinAfterCars = REPAIR_CLEAN.noPinAfterCars;
+  dto.pair = clone(REPAIR_CLEAN).pair;
   return dto;
 };

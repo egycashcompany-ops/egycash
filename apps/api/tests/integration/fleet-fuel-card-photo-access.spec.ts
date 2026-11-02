@@ -208,3 +208,68 @@ describe('an uploaded photo', () => {
     expect([thumb.status, (thumb.body as Buffer).equals(small)]).toEqual([200, true]);
   });
 });
+
+describe('a photo moved by the repair', () => {
+  it('its Files rows follow it — the card that shows it now answers for it, whatever becomes of the old one', async () => {
+    // Real photos (and thumbnails) uploaded on the four C4 cards, each of its own number.
+    const c4 = REPAIR_RECORDS.filter((r) => r.unit === 'C4');
+    const fileOf = new Map<string, { photo: string; thumb: string }>();
+    for (const r of c4) {
+      const card = await cardOnCar(r.car);
+      await FleetFuelCardModel.updateOne({ _id: card._id }, { $set: { image: null } }).exec();
+      const res = await upload(
+        String(card._id),
+        photoOf(r.before.number),
+        `${r.before.number}.jpg`,
+        committedThumbOf(r.before.number),
+      );
+      expect(res.status, res.text).toBe(200);
+      const doc = await live(String(card._id));
+      fileOf.set(r.before.number, {
+        photo: String(doc.image?.fileId),
+        thumb: String(doc.image?.thumb?.fileId),
+      });
+    }
+    const executed = await request(world.app)
+      .post(`${REPAIR}/execute`)
+      .set(...auth(tokens.executor))
+      .send({ reviewed: true, units: ['C4'] });
+    expect(executed.status, executed.text).toBe(200);
+    expect(data<{ executed: string[] }>(executed).executed).toEqual(['C4']);
+
+    // Car 239 shows the photo of its right number, which came from car 209's card.
+    const card239 = await cardOnCar('239');
+    const id239 = String(card239._id);
+    const moved = fileOf.get(r239.after.number) as { photo: string; thumb: string };
+    expect(String(card239.image?.fileId)).toBe(moved.photo);
+    for (const fileId of [moved.photo, moved.thumb]) {
+      const row = await FileModel.findById(fileId).lean().exec();
+      expect(row?.entityRef.entityId).toBe(id239);
+    }
+
+    // Car 209's card is deleted (the car leaves the fleet): 239's photo is still 239's.
+    const card209 = await cardOnCar('209');
+    await FleetFuelCardModel.updateOne({ _id: card209._id }, { $set: { isDeleted: true } }).exec();
+    const full = await image(id239, tokens.revealer);
+    expect([full.status, (full.body as Buffer).equals(photoOf(r239.after.number))]).toEqual([
+      200,
+      true,
+    ]);
+    expect((await image(id239, tokens.viewer, 'image/thumb')).status).toBe(200);
+    expect((await download(moved.photo, tokens.boss)).status).toBe(302);
+    // The Files listing files it under 239.
+    const listed = await request(world.app)
+      .get('/api/v1/platform/files')
+      .query({ moduleId: 'fleet', entityType: 'fuelCard', entityId: id239 })
+      .set(...auth(tokens.boss));
+    expect(listed.status, listed.text).toBe(200);
+    expect(data<{ id: string }[]>(listed).map((file) => file.id)).toEqual([moved.photo]);
+    // …and it can be replaced on 239 — the write is asked of 239, not of the deleted card.
+    const replaced = await upload(id239, photoOf(r239.after.number), 'clearer.jpg');
+    expect(replaced.status, replaced.text).toBe(200);
+    const newest = await FileModel.findById((await live(id239)).image?.fileId)
+      .lean()
+      .exec();
+    expect([newest?.entityRef.entityId, newest?.fileVersion]).toEqual([id239, 2]);
+  });
+});

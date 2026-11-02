@@ -5,12 +5,14 @@
 //   2. execute: every number with its PIN (as stored), photo and expiry; names, cars and balances
 //      kept; the pair's names and openings swapped; 17 `dataFix` lines, 17 audit rows;
 //   3. no PIN in any answer, line, audit row or log call;
-//   4–7. a record changed by hand holds its unit only, re-checked at execution; a re-run is a no-op;
-//      a cycle fixed by hand reads done;
+//   4–7. the physical card's own data (expiry, PIN, photo) never holds a unit — it travels with the
+//      number; a record changed by hand (car, number, name) holds its unit only, re-checked at
+//      execution; a re-run is a no-op; a cycle fixed by hand reads done;
 //   8–9. an error rolls back its unit only; two executes at once apply each unit once;
 //   10–11. Chill Out cards, other Wataniya cards and the «S» names are never touched;
 //   12. the grants; 13. the 0849 lock of «مطابقة أرصدة الكروت» lifts with the repair;
-//   14. the route is not read as a card id; 15. a `dataFix` line is never changed or removed.
+//   14. the route is not read as a card id; 15. a `dataFix` line is never changed or removed;
+//   16. a repaired unit stays done — and the 0849 lock lifted — when its cards are moved or deleted.
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -30,6 +32,7 @@ import {
   type FleetFuelCardMovementDoc,
 } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
 import { fleetFuelCardMovementRepository } from '../../src/modules/fleet/fuel-cards/fuel-card.repository';
+import { fleetFuelNumberRepairService } from '../../src/modules/fleet/fuel-cards/number-repair/number-repair.service';
 import {
   REPAIR_PAIR,
   REPAIR_RECORDS,
@@ -277,8 +280,46 @@ describe('2–3 · execute, and no PIN anywhere', () => {
 });
 
 describe('4–7 · a changed record, re-checked; idempotent; fixed by hand', () => {
-  it('4 · an expiry edited on 269 holds C5 only; restored, C5 runs alone', async () => {
-    await patchCard('269', { expiresAt: '2028-02-29' });
+  it('4a · a renewed expiry and a PIN typed on a card do not hold its cycle — they travel with the number', async () => {
+    // 269 receives a number with no PIN stored; the card holding that number today is 284's
+    // record (the one before it in the chain). The clerk types the PIN from the card screen and the
+    // renewed expiry on it — before «تنفيذ التصحيح».
+    expect(record('269').after.hasPin).toBe(false);
+    const holder = await cardOnCar('284');
+    expect(holder.number).toBe(record('269').after.number);
+    const typed = 'P-typed-284x';
+    await patchCard('284', { expiresAt: '2029-11-30', password: typed });
+    const dto = await dryRun();
+    expect(dto.readyUnits).toEqual(ALL);
+    const row269 = dto.cycles[1]?.rows.find((r) => r.car === '269');
+    expect([row269?.state, row269?.changes, row269?.pinAfter, row269?.expiryAfter]).toEqual([
+      'ok',
+      [],
+      true,
+      '2029-11-30',
+    ]);
+    expect(dto.noPinAfterCars).toEqual(['284', '230', '256', '251']);
+
+    const result = await executeOk(ALL);
+    expect([result.executed, result.held]).toEqual([ALL, []]);
+    const card269 = await cardOnCar('269');
+    expect([
+      card269.number,
+      card269.password,
+      card269.expiresAt?.toISOString().slice(0, 10),
+      card269.name,
+    ]).toEqual([record('269').after.number, typed, '2029-11-30', record('269').name]);
+    const line = (await dataFixLines()).find((l) => String(l.cardId) === String(card269._id));
+    expect([
+      line?.repair?.pinMoved,
+      line?.repair?.expiryBefore?.toISOString().slice(0, 10),
+      line?.repair?.expiryAfter?.toISOString().slice(0, 10),
+    ]).toEqual([true, record('269').before.expiresAt, '2029-11-30']);
+    expect(JSON.stringify(result)).not.toContain(typed);
+  });
+
+  it('4b · a name edited on 269 holds C5 only; restored, C5 runs alone', async () => {
+    await patchCard('269', { name: 'EGYCASH-CHANGED-BY-HAND' });
     const dto = await dryRun();
     const c5 = dto.cycles[1];
     expect(dto.cycles.map((c) => c.state)).toEqual(['ready', 'held', 'ready']);
@@ -287,9 +328,9 @@ describe('4–7 · a changed record, re-checked; idempotent; fixed by hand', () 
     expect(c5?.rows.map((r) => r.state)).toEqual(['held', 'held', 'held', 'changed', 'held']);
     expect(c5?.rows[3]?.changes).toEqual([
       {
-        field: 'expiry',
-        expected: record('269').before.expiresAt,
-        now: '2028-02-29',
+        field: 'name',
+        expected: record('269').name,
+        now: 'EGYCASH-CHANGED-BY-HAND',
         at: expect.any(String),
         byName: 'منى حسن',
       },
@@ -303,7 +344,7 @@ describe('4–7 · a changed record, re-checked; idempotent; fixed by hand', () 
     expect(c5After.map(strip)).toEqual(c5Before.map(strip));
     expect(result.repair.state).toBe('partial');
 
-    await patchCard('269', { expiresAt: record('269').before.expiresAt });
+    await patchCard('269', { name: record('269').name });
     expect((await dryRun()).readyUnits).toEqual(['C5']);
     const rest = await executeOk(['C5']);
     expect([rest.executed, rest.repair.state]).toEqual([['C5'], 'done']);
@@ -530,6 +571,42 @@ describe('13 · the 0849 lock of «مطابقة أرصدة الكروت» lifts 
       409,
       ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR,
     ]);
+  });
+
+  it('16 · repaired, then cards moved and deleted: every unit stays done, the lock stays lifted', async () => {
+    expect((await executeOk(ALL)).repair.state).toBe('done');
+    const c530 = await cardOnCar('530');
+    const c283 = await cardOnCar('283');
+    // Car 283's card moves to car 215 (an ordinary edit); car 241's card is deleted (the car
+    // left the fleet); car 209's card goes to no car, under a label.
+    await patchCard('283', { vehicleId: String(world.vehicles.get('215')) });
+    const c241 = await cardOnCar('241');
+    await FleetFuelCardModel.updateOne({ _id: c241._id }, { $set: { isDeleted: true } }).exec();
+    await patchCard('209', { vehicleId: null, label: 'سفر 9' });
+
+    expect(await fleetFuelNumberRepairService.pairNumbersInRepair()).toEqual([]);
+    const dto = await dryRun();
+    expect([dto.state, dto.readyUnits, dto.cycles.map((c) => c.state), dto.pair.state]).toEqual([
+      'done',
+      [],
+      ['done', 'done', 'done'],
+      'done',
+    ]);
+    const rows = [...dto.cycles.flatMap((c) => c.rows), ...dto.pair.rows];
+    expect(rows.every((r) => r.state === 'done' && r.changes.length === 0 && r.log !== null)).toBe(
+      true,
+    );
+    // The pair row of car 283 still shows its own card — the one now on car 215.
+    expect(dto.pair.rows[1]?.cardId).toBe(String(c283._id));
+
+    const fresh = await readSheet([
+      ['548**********0849', 'EGYCASH-1137-401485', 1400, '530'],
+      ['548**********0849', 'EGYCASH-8616-783211', 11_430.62, '215'],
+    ]);
+    expect(lineOf(fresh, String(c530._id))?.inRepair).toBe(false);
+    expect(lineOf(fresh, String(c283._id))?.inRepair).toBe(false);
+    const applied = await decide(fresh.id, 'apply', [String(c530._id)]);
+    expect(applied.status, applied.text).toBe(200);
   });
 });
 

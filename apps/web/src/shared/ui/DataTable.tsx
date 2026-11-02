@@ -309,7 +309,10 @@ export const DataTable = <T,>({
           >
             {/* A spanning cell, not a `<th>`: one `<tbody>` holds every group (Ctrl+A on the ATM
                 boards selects it whole), and a row-group header there would claim every later
-                row too. The cells' own side gutter, so the name lines up with the column under it. */}
+                row too. The cells' own side gutter, so the name lines up with the column under it.
+                The name STICKS to the start edge: a board wider than the screen scrolls sideways
+                (on a laptop the maintenance board does), and a line whose name scrolled away
+                would be a blank bar over rows nobody could place. */}
             <td
               colSpan={colCount}
               className={cn(
@@ -317,7 +320,12 @@ export const DataTable = <T,>({
                 'py-1.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300',
               )}
             >
-              <span className="inline-flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'sticky inline-flex items-center gap-1.5',
+                  dense ? (tightGutter ? 'start-2' : 'start-3') : 'start-4',
+                )}
+              >
                 {group.label(run.group)}
                 <span className="rounded bg-slate-200 px-1.5 tabular-nums text-slate-600 dark:bg-slate-700 dark:text-slate-200">
                   {group.count(run.size)}

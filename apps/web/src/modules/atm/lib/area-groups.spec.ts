@@ -51,6 +51,23 @@ describe('the areas, in alphabetical order', () => {
     ]);
   });
 
+  it('runs Arabic names first, then Latin ones A → Z', () => {
+    const rows = [
+      row('1', 'MOHNDESSEN'),
+      row('2', 'زايد'),
+      row('3', 'alex'),
+      row('4', 'الدقي'),
+      row('5', 'Faisal'),
+    ];
+    expect(areas(groupRowsByArea(rows, 'asc'))).toEqual([
+      'الدقي',
+      'زايد',
+      'alex',
+      'Faisal',
+      'MOHNDESSEN',
+    ]);
+  });
+
   it('puts a row with no area last, whichever way the areas run', () => {
     const rows = [row('1', ''), row('2', 'الدقي'), row('3', '   '), row('4', 'زايد')];
     expect(ids(groupRowsByArea(rows, 'asc'))).toEqual(['2', '4', '1', '3']);
@@ -75,6 +92,38 @@ describe('one area is one run of rows', () => {
     expect(areaGroupOf(row('1', '  الدقي '))).toBe('الدقي');
     const rows = [row('1', 'الدقي'), row('2', 'زايد'), row('3', ' الدقي ')];
     expect(ids(groupRowsByArea(rows, 'asc'))).toEqual(['1', '3', '2']);
+  });
+
+  it('a spelling with a double space inside is the same area — never split around another', () => {
+    // A page collapses a double space, so two groups for it would read the same. Without the
+    // fold, «EL  MAHALA» sorts before «EL AGOUZA» and «EL MAHALA» after it: one area in two places.
+    expect(areaGroupOf(row('1', 'EL  MAHALA'))).toBe('EL MAHALA');
+    expect(areaGroupOf(row('1', 'مدينة   نصر'))).toBe('مدينة نصر');
+    const rows = [
+      row('1', 'EL MAHALA'),
+      row('2', 'EL  MAHALA'),
+      row('3', 'EL AGOUZA'),
+      row('4', ' EL MAHALA'),
+    ];
+    expect(ids(groupRowsByArea(rows, 'asc'))).toEqual(['3', '1', '2', '4']);
+    expect(areas(groupRowsByArea(rows, 'asc'))).toEqual(['EL AGOUZA', 'EL MAHALA']);
+  });
+
+  it('a spelling the reader can tell apart stays its own area, beside its neighbour', () => {
+    // Case is not folded (EG-6: an area is what was typed). The alphabet still puts the two side
+    // by side, so nothing else comes between them.
+    const rows = [
+      row('1', 'Mohndessen'),
+      row('2', 'ALEX'),
+      row('3', 'MOHNDESSEN'),
+      row('4', 'Faisal'),
+    ];
+    expect(areas(groupRowsByArea(rows, 'asc'))).toEqual([
+      'ALEX',
+      'Faisal',
+      'Mohndessen',
+      'MOHNDESSEN',
+    ]);
   });
 
   it('two names that collate as equal still never interleave', () => {

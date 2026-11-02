@@ -122,6 +122,21 @@ describe('a line above each group of rows', () => {
     expect(markup.indexOf('data-row-group="زايد"')).toBeLessThan(markup.indexOf('r3#2'));
   });
 
+  it('keeps the name in view when a wide table scrolls sideways', () => {
+    // The name sticks to the start edge, at the cell's own gutter — a board wider than the screen
+    // must not turn its group lines into blank bars.
+    const line = (extra: Record<string, unknown> = {}): string => {
+      const markup = render(extra);
+      const at = markup.indexOf('data-row-group="الدقي"');
+      return markup.slice(at, markup.indexOf('</tr>', at));
+    };
+    expect(line()).toMatch(/<span class="sticky inline-flex[^"]*start-4/);
+    expect(line({ dense: true })).toMatch(/<span class="sticky inline-flex[^"]*start-3/);
+    expect(line({ dense: true, tightGutter: true })).toMatch(
+      /<span class="sticky inline-flex[^"]*start-2/,
+    );
+  });
+
   it('leaves the rows’ own index alone — the lines are not rows', () => {
     const markup = render();
     expect(markup).toContain('r1#0');

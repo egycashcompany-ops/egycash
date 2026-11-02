@@ -3,8 +3,8 @@
 // (2026-11-02).
 //
 // On /atm/replenishments and /atm/maintenance a row's area decides FIRST: each area's rows sit
-// together under a line that names it, and the areas run in alphabetical order. A row with no
-// area goes last either way. The reader's columns order the rows INSIDE each area, and the board's
+// together under a line that names it, and the areas run in alphabetical order — Arabic names
+// first, then Latin ones. A row with no area goes last either way. The reader's columns order the rows INSIDE each area, and the board's
 // own order breaks every tie, as before (`useBoardView.ts`).
 //
 // The area keeps its arrow on the head, lit and first: that is the board's real order. A click on
@@ -20,17 +20,26 @@ import { toggleSort, type TableSort } from '../../../shared/lib/table-sort';
 export const AREA_KEY = 'area';
 
 /**
- * The area a row is grouped under, as the board filters name it: the stored text, trimmed. A
- * spelling that differs only by surrounding spaces is the same area (`board-filter.ts` on the
- * server), so the board has one group for it, not two.
+ * The area a row is grouped under: the stored text, trimmed, with every run of spaces folded to
+ * one. A spelling that differs only by spaces is the same area: the board filters already trim
+ * (`board-filter.ts` on the server), and the machine-file compare folds inner spaces too («Omrania
+ * / ElHaram» typed with two spaces is the area the branch already has — `plan-machine-sync.ts`).
+ * A page cannot even show a double space, so two groups for it would carry the same label, and an
+ * area sorting between the two spellings would split one area in two places.
+ *
+ * Nothing else is folded: a spelling the reader can tell apart (case, another letter) stays its
+ * own group, as it stays its own area everywhere else (EG-6). Such groups still sit side by side,
+ * because the alphabet sees them as equal or close (`compareAreas`).
  */
-export const areaGroupOf = (row: { area: string }): string => row.area.trim();
+export const areaGroupOf = (row: { area: string }): string => row.area.trim().replace(/\s+/g, ' ');
 
 /**
  * Pure: two areas in alphabetical order, ASCENDING. Words are compared as words in Arabic
- * collation (`localeCompare(…, 'ar')`, as every ATM sort is). Two names that collate as equal but
- * are written differently are then put in code-point order, so each still forms ONE run of rows
- * and never interleaves with the other. The empty area is not compared here: it goes last.
+ * collation (`localeCompare(…, 'ar')`, as every ATM sort is): Arabic names أ → ي first, then
+ * Latin names A → Z, a capital beside its small letter («ALEX», «Alex», «alex» together). Two
+ * names that collate as equal but are written differently are then put in code-point order, so
+ * each still forms ONE run of rows and never interleaves with the other. The empty area is not
+ * compared here: it goes last.
  */
 export const compareAreas = (left: string, right: string): number => {
   const collated = left.localeCompare(right, 'ar');

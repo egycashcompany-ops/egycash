@@ -43,9 +43,13 @@ const patchParam = ([sp, setSp]: SearchParams, key: string, value: string | null
 };
 
 export interface ReaderOrder<T> {
-  /** The rows, in the reader's order. */
+  /** The rows, in the reader's order — on an open board, grouped by area first. */
   rows: T[];
-  /** The reader's order — empty until they click a header. */
+  /**
+   * What the head's arrows show. On a done page: the reader's order, empty until they click a
+   * header. On an open board (`useAreaGroupedOrder`): the area first — always, an untouched board
+   * included — then the reader's columns.
+   */
   sorts: TableSort[];
   changeSort: (key: string) => void;
 }

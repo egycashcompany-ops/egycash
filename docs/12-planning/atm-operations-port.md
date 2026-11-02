@@ -868,9 +868,14 @@ answers in the same conversation):
 - **Grouped by area.** «عايز كمان إن التغذيات والأعطال يبقي معمولها Group by المناطق + Sorting
   بالمناطق بردو · يعني كل منطقة تظهر اعطالها وتغذياتها تحت بعض + بترتيب ابجدى للمناطق» (2026-11-02).
   On `/atm/replenishments` and `/atm/maintenance` each area's rows sit together under a line that
-  names the area and counts its rows. The areas run in Arabic alphabetical order (`localeCompare`
-  'ar', so «أ» and «إ» read as «ا»), and a row with no area goes last under «بدون منطقة». An area is
-  its trimmed name, as the filters treat it, so « الدقي » and «الدقي» are one group. The area's
+  names the area and counts its rows; the name sticks to the start edge, so it stays in view when
+  a board wider than the screen scrolls sideways. The areas run in alphabetical order
+  (`localeCompare` 'ar', so «أ» and «إ» read as «ا»): Arabic names first, then Latin ones A → Z, a
+  capital beside its small letter. A row with no area goes last under «بدون منطقة». An area is its
+  name with the spaces folded — trimmed, as the filters treat it, and inner runs of spaces as one,
+  as the machine-file compare treats it — so « الدقي » and «الدقي», or «EL  MAHALA» and «EL MAHALA»,
+  are one group. Nothing else is folded: «Mohndessen» and «MOHNDESSEN» stay two groups (EG-6), side
+  by side. The area's
   arrow is always lit and first: a click turns the areas round (ي → أ) and the next turns them
   back; it never lets go. A click on any other column orders the rows inside each area, by the
   usual rule, and the head numbers the two arrows 1 and 2. `?sort=` holds only the reader's

@@ -590,17 +590,18 @@ describe('the odometer table', () => {
     const body = tbody(html);
     expect(body, 'no 12px pill or word left in a cell').not.toContain('text-xs');
     expect(body, 'no size pinned below the row’s').not.toMatch(/text-\[1[1-4](?:\.5)?px\]/u);
-    for (const word of [
-      t('fleet.odometer.noReading'),
-      t('fleet.odometer.openPeriod'),
-      t('fleet.dashboard.level.yellow'),
-    ]) {
+    // The level pill is not among them any more: the newest row's cell is the figure and its ⓘ,
+    // and «كيف حُسب الفارق» says the level.
+    for (const word of [t('fleet.odometer.noReading'), t('fleet.odometer.openPeriod')]) {
       const at = body.indexOf(`>${word}<`);
       expect(at, `${word} is drawn`).toBeGreaterThan(-1);
       expect(body.slice(body.lastIndexOf('<span', at), at), `${word} at the pill size`).toContain(
         'text-[15px]',
       );
     }
+    expect(body, 'no level pill in the cell').not.toContain(
+      `>${t('fleet.dashboard.level.yellow')}<`,
+    );
   });
 
   it('centres every column as the drivers board does — the row’s actions too («تكون متوسطانه»)', () => {
@@ -652,19 +653,37 @@ describe('the distance since the last service', () => {
     expect(body).not.toContain('٢٬٠٠٠');
   });
 
-  it('carries the design system’s own alarm badge for each level', () => {
-    expect(tbody(withAlarm('none', 2000))).toContain(t('fleet.vehicle.alarmNone'));
-    expect(tbody(withAlarm('yellow', 4200))).toContain(t('fleet.dashboard.level.yellow'));
-    expect(tbody(withAlarm('red', 5300))).toContain(t('fleet.dashboard.level.red'));
+  // REWRITTEN ON PURPOSE (the owner, after batch 3: «I want the rest of it removed, leaving only
+  // the exclamation mark next to the reading»): the level badge left the cell — the figure and its
+  // ⓘ stay, and «كيف حُسب الفارق» says the level.
+  it('carries no level badge — the figure and its ⓘ only, whatever the level', () => {
+    for (const [level, km] of [
+      ['none', 2000],
+      ['yellow', 4200],
+      ['red', 5300],
+    ] as const) {
+      const body = tbody(withAlarm(level, km));
+      expect(body, level).toContain('data-odo-figure-trigger="true"');
+      expect(body, level).toContain(`>${km.toLocaleString('en-US')}<`);
+      for (const word of [
+        'fleet.vehicle.alarmNone',
+        'fleet.dashboard.level.yellow',
+        'fleet.dashboard.level.red',
+      ]) {
+        expect(body, `${level}: ${word}`).not.toContain(t(word));
+      }
+    }
   });
 
-  it('colours the badge by severity, not by text alone', () => {
-    // `Badge` maps the tone to its own palette; the claim is that red and yellow do not share one.
+  it('tints the figure by severity, not by text alone', () => {
+    // The page's own cell tint (`alarmCellTint`), on the figure — red and yellow do not share one,
+    // and a car with no alarm has none.
     const red = tbody(withAlarm('red', 5300));
     const yellow = tbody(withAlarm('yellow', 4200));
-    expect(red).toContain('red-');
-    expect(yellow).toContain('amber-');
-    expect(red).not.toBe(yellow);
+    expect(red).toContain('bg-red-100/80');
+    expect(yellow).toContain('bg-amber-100/80');
+    expect(red).not.toContain('bg-amber-100/80');
+    expect(tbody(withAlarm('none', 2000))).not.toMatch(/bg-(?:red|amber)-100\/80/u);
   });
 
   // «بدل «—» يظهر السبب في سطر آخر قراءة لكل عربية» — a REVERSAL, on purpose: this column used to

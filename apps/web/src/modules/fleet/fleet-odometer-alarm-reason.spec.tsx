@@ -232,8 +232,9 @@ describe('which row says it', () => {
 
   // REWRITTEN ON PURPOSE (batch 3, unified.md D1/D2): the car's figure of TODAY used to be
   // printed down every reading of the car («مش بيزود على فارق الصيانه»). Now the newest row on the
-  // page carries it — with the level and «كيف حُسب الفارق» — and every other row its OWN gap, as
-  // the server measured it at that row's reading, or «—».
+  // page carries it — the figure and the ⓘ of «كيف حُسب الفارق», the level in that card (the owner:
+  // «I want the rest of it removed, leaving only the exclamation mark next to the reading») — and
+  // every other row its OWN gap, as the server measured it at that row's reading, or «—».
   it('a car whose figure was computed: the figure on its newest row, each other row its own gap', () => {
     const measured = alarm({ noAlarmReason: null, sinceServiceKm: 2_841, remainingKm: 2_159 });
     const logs = [
@@ -246,7 +247,10 @@ describe('which row says it', () => {
     const [newest, older, before] = rows(markup);
     expect(newest).toContain('data-odo-gap="newest"');
     expect(newest).toContain('>2,841<');
-    expect(newest, 'the level is said there').toContain(t('fleet.vehicle.alarmNone'));
+    expect(newest).toContain('data-odo-figure-trigger="true"');
+    expect(newest, 'the level is the card’s, not a badge').not.toContain(
+      t('fleet.vehicle.alarmNone'),
+    );
     expect(older).toContain('data-odo-gap="row"');
     expect(older).toContain('>2,000<');
     expect(older, 'no level on an older reading').not.toContain(t('fleet.vehicle.alarmNone'));

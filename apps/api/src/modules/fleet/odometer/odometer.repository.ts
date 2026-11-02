@@ -11,8 +11,9 @@ import { KM_ROW_KIND_EXPR, type KmRow } from './km-rules';
 export interface LatestReading {
   vehicleId: string;
   /**
-   * The car's HIGHEST effective reading — `max(outReading, inReading ?? outReading)` of the row
-   * that ranks first by that figure (see `latestReadings`). The vehicle's latest known reading.
+   * The vehicle's latest known reading — `max(outReading, inReading ?? outReading)` of the row with
+   * the HIGHEST OPENING reading (عداد الخروج), the later day and then the later insert first among
+   * rows that share it (see `latestReadings`). The same row the FR-2 floor is taken from.
    */
   reading: number;
   date: Date;
@@ -23,8 +24,8 @@ export interface LatestReading {
   logId: string;
   /**
    * The NEWEST-dated row's effective reading and its day (C6). Equal to `reading`/`date` on a
-   * healthy chain; different only when the highest reading is not the newest — a typo, or a
-   * reading typed on the wrong car — which the alarm card says in so many words.
+   * healthy chain; different only when the highest opening reading is not the newest — a typo, or
+   * a reading typed on the wrong car — which the alarm card says in so many words.
    */
   newest: ChainBound;
 }
@@ -33,7 +34,8 @@ export interface LatestReading {
  * A row's EFFECTIVE reading: how far the car had got by the end of that row — the closing reading
  * of a closed period, the opening one of an open period. The per-row gap reads the same figure off
  * a document (`rowReading` in `service-gap.ts`), so the alarm's latest reading and a row's gap are
- * the same number on the same row.
+ * the same number on the same row. It is what `latestReadings` REPORTS for the row it picks — never
+ * what it picks the row by (see there).
  */
 const EFFECTIVE_READING = {
   $max: ['$outReading', { $ifNull: ['$inReading', '$outReading'] }],
@@ -55,9 +57,9 @@ export interface ChainBound {
  * tie the way the chain was actually written, and every date-bounded question that picks "the
  * highest OPENING reading" uses this same order rather than a private one.
  *
- * The car's LATEST reading is a different question and is ranked differently — by the row's
- * effective reading, then its day, then `_id` (see `latestReadings`): a tie on the opening reading
- * is ordinary (a parked day), and there the row that got furthest is the one that counts.
+ * The car's LATEST reading (`latestReadings`) ranks by the same opening reading, with the row's
+ * DAY between it and `_id`: a tie on the opening reading is ordinary (a parked day, then the next
+ * day opening where it stood), and there the later day is the one that counts.
  */
 const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
 
@@ -295,25 +297,37 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   /**
-   * The highest — and the newest — reading per vehicle in one pass: the alarm engine's read (§4.4).
+   * The latest — and the newest — reading per vehicle in one pass: the alarm engine's read (§4.4),
+   * and the record dialog's «الخادم يتوقع» (`expectedReading`).
    *
-   * RANKED BY THE ROW'S EFFECTIVE READING, NOT BY `outReading`. «لو ماشية 150 … وكتبت بعد كده
-   * دخول بتاع تاني يوم 200 … بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق الصيانة». Two chain rows
-   * very often share the top OPENING reading: a parked day (150 → 150, 0 km) and the next day
-   * (150 → 200, 50 km), or rows typed out of order or re-created by a correction. Ranked by
-   * `outReading` the tie fell to `_id`, so whichever of the two was WRITTEN last won — and when
-   * that was the 0-km row, the car's reading stayed 150 and the day's 50 km never reached «فارق
-   * عداد الصيانة» nor the alarm level. Ranked by `max(out, in)`, the row that got furthest wins;
-   * a tie on that figure goes to the later DAY, then to the later insert, so the answer is a total
-   * order and, on a healthy chain, the newest row (the open period carries the same figure the row
-   * before it closed on).
+   * RANKED BY عداد الخروج (`outReading`), THEN BY DAY, THEN BY INSERT — the order the FR-2 guard
+   * (`chainBounds`, `NEWEST_FIRST`) takes its floor in, so the hint and the guard name one row —
+   * and the row's EFFECTIVE reading, `max(out, in ?? out)`, is what is REPORTED for it.
+   *
+   * WHY NOT RANK BY THE EFFECTIVE READING (PR #639, reverted here). The old book's rows do not
+   * always chain — a row's عداد الدخول can sit above the next row's عداد الخروج (see
+   * `correction-rules.ts`), and the go-live import keeps them as the book wrote them — and a
+   * closing reading can carry a typo or a test figure. Ranked by `max(out, in)`, such an OLD row's
+   * closing reading became the car's latest reading: car 255 read 128,457 and the dialog said
+   * «الخادم يتوقع 1,008,500 كم أو أكثر», dated months back, with a negative km preview, and the
+   * alarm measured from that figure too. An opening reading is the one the chain is guarded by, so
+   * a bad closing reading on an old row can no longer win.
+   *
+   * WHY THE DAY BEFORE `_id` (batch 3, step 0). «لو ماشية 150 … وكتبت بعد كده دخول بتاع تاني يوم
+   * 200 … بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق الصيانة». A parked day (150 → 150) and the
+   * next day (150 → 200) share the top opening reading. By `_id` alone, whichever was WRITTEN last
+   * won — and when that was the parked day, the car read 150 and the day's 50 km never reached
+   * «فارق عداد الصيانة». By day, the later day wins whatever order they were typed in, and its
+   * closing reading — 200 — is the one reported. `_id` settles two rows of one day, so the answer is
+   * a total order.
    *
    * `newest` is the same figure for the newest-dated row (`{date:-1, _id:-1}`), taken by a `$max`
    * over (date, _id, reading) in the same `$group`: BSON compares documents field by field, so the
    * maximum is exactly the row that sorts first by date, then by `_id`.
    *
-   * Only the four fields the answer needs survive to the sort, which is in memory (it is on a
-   * computed figure) and must stay far below the aggregation's memory limit on a fleet's history.
+   * Only the fields the answer needs survive to the sort, which is in memory (no index carries the
+   * day between the reading and `_id`) and must stay far below the aggregation's memory limit on a
+   * fleet's history.
    */
   async latestReadings(vehicleIds: readonly string[]): Promise<Map<string, LatestReading>> {
     if (vehicleIds.length === 0) return new Map();
@@ -332,9 +346,10 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         },
       },
       // `inReading` never sits below `outReading` on a stored row, but the max is taken anyway:
-      // the figure that ranks the row is the one the answer reports, whatever a row holds.
-      { $project: { vehicleId: 1, date: 1, top: EFFECTIVE_READING } },
-      { $sort: { vehicleId: 1, top: -1, date: -1, _id: -1 } },
+      // the answer reports how far the picked row got, whatever a row holds.
+      { $project: { vehicleId: 1, date: 1, outReading: 1, top: EFFECTIVE_READING } },
+      // By the opening reading — never by `top`: an old row's closing reading must not win.
+      { $sort: { vehicleId: 1, outReading: -1, date: -1, _id: -1 } },
       {
         $group: {
           _id: '$vehicleId',

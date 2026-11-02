@@ -338,9 +338,9 @@ export const figureFacts = (alarm: FleetMaintenanceAlarmDto): FigureFacts | null
 };
 
 /**
- * «المتبقي 1,993 من 7,500 كم» beside the figure: the server's remainder and the make's interval.
- * `overdue` reads the remainder's SIGN only, for the words («متأخر … كم عن …»); `null` when there
- * is no rule or no remainder.
+ * «1,993 من 7,500 كم» on the alarms board's «المتبقي»: the server's remainder and the make's
+ * interval. `overdue` reads the remainder's SIGN only — the board keeps its own «متأخر … كم» cell
+ * then; `null` when there is no rule or no remainder.
  */
 export const remainingOf = (
   alarm: Pick<FleetMaintenanceAlarmDto, 'remainingKm' | 'rule'>,

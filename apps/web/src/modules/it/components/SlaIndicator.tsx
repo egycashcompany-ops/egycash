@@ -10,14 +10,30 @@
 //
 // A clock that has stopped (first response given, ticket resolved) shows neither risk nor breach
 // for that phase, because the promise it measured is already kept or already broken.
-import { type ItTicketDto, type ItTicketSlaDto, type Locale } from '@ecms/contracts';
+import {
+  ItSettingKeys,
+  type ItTicketDto,
+  type ItTicketSlaDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
+import { useMySettings } from '../../../platform/settings/settings-api';
 import { Badge } from '../../../shared/ui/Badge';
 import { formatDateTime } from '../../../shared/lib/format';
 
-/** Default matches the platform setting's default; the dashboard reads the real one in IT-6. */
-const AT_RISK_PERCENT = 80;
+/**
+ * The at-risk threshold is the `it.sla.atRiskPercent` setting («إعدادات النظام» → تقنية المعلومات).
+ * It was a constant here, so changing the setting changed nothing. This is the setting's own
+ * default, used only until the caller's settings have loaded or if the value is missing.
+ */
+export const DEFAULT_AT_RISK_PERCENT = 80;
+
+export const useAtRiskPercent = (): number => {
+  const settings = useMySettings();
+  const value = settings.data?.find((entry) => entry.key === ItSettingKeys.SlaAtRiskPercent)?.value;
+  return typeof value === 'number' ? value : DEFAULT_AT_RISK_PERCENT;
+};
 
 type Phase = 'response' | 'resolution';
 
@@ -26,6 +42,7 @@ const phaseState = (
   phase: Phase,
   stopped: boolean,
   now: number,
+  atRiskPercent: number,
 ): 'breached' | 'atRisk' | 'onTrack' | 'done' => {
   const breachedAt = phase === 'response' ? sla.responseBreachedAt : sla.resolutionBreachedAt;
   if (breachedAt !== null) return 'breached';
@@ -34,7 +51,7 @@ const phaseState = (
   const minutes = phase === 'response' ? sla.policy.responseMinutes : sla.policy.resolutionMinutes;
   const startedAt = dueAt - minutes * 60_000;
   const elapsed = ((now - startedAt) / (dueAt - startedAt)) * 100;
-  return elapsed >= AT_RISK_PERCENT ? 'atRisk' : 'onTrack';
+  return elapsed >= atRiskPercent ? 'atRisk' : 'onTrack';
 };
 
 export const SlaIndicator = ({
@@ -46,11 +63,12 @@ export const SlaIndicator = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const atRiskPercent = useAtRiskPercent();
   const stopped =
     phase === 'response'
       ? ticket.sla.firstResponseAt !== null
       : ticket.resolution !== null || ticket.status === 'closed' || ticket.status === 'cancelled';
-  const state = phaseState(ticket.sla, phase, stopped, Date.now());
+  const state = phaseState(ticket.sla, phase, stopped, Date.now(), atRiskPercent);
   const dueAt = phase === 'response' ? ticket.sla.responseDueAt : ticket.sla.resolutionDueAt;
 
   const tone = state === 'breached' ? 'danger' : state === 'atRisk' ? 'warning' : state === 'done' ? 'success' : 'neutral';

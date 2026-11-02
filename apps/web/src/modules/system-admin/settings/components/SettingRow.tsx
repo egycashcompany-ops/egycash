@@ -10,7 +10,13 @@
 // about that type — a minimum length, a regex, an allowed element — lives in the Zod schema on the
 // server and arrives as the message of a 422. Displaying that message verbatim is deliberate: it is
 // the only description of the rule that cannot drift from the rule itself.
-import { useEffect, useId, useState } from 'react';
+//
+// What the row SAYS is in the page's language: its label and its description come from the
+// catalog (`systemAdmin.settings.keys.*` / `.descriptions.*`). The registry's own description is
+// written for developers, in English; it is shown only for a setting the catalog has not caught up
+// with, and then left-to-right. The key stays on the row, small, for whoever searches by it.
+import { useCallback, useEffect, useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useT } from '../../../../platform/localization/useT';
 import { useSetSetting } from '../../../../platform/settings/settings-api';
 import { Badge } from '../../../../shared/ui/Badge';
@@ -18,6 +24,7 @@ import { Button } from '../../../../shared/ui/Button';
 import { Checkbox, Input } from '../../../../shared/ui/form';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { toast } from '../../../../shared/ui/toast/toast-store';
+import { settingDescriptionKey } from '../lib/settings-catalog';
 import {
   parseValue,
   rowEditability,
@@ -34,14 +41,42 @@ const RESOLVED_TONE = {
   default: 'neutral',
 } as const;
 
+/** The label and description a row reads as, falling back to the key and the registry's text. */
+export const useSettingText = (): ((row: SettingRowModel) => {
+  label: string;
+  description: string;
+  describedInCatalog: boolean;
+}) => {
+  const t = useT();
+  return useCallback(
+    (row: SettingRowModel) => {
+      const labelKey = settingLabelKey(row.key);
+      const label = t(labelKey);
+      const descriptionKey = settingDescriptionKey(row.key);
+      const description = t(descriptionKey);
+      return {
+        // A setting declared after this screen was written has no label yet. It keeps its place
+        // and shows its key — hiding it would remove the only way to configure it.
+        label: label === labelKey ? row.key : label,
+        description: description === descriptionKey ? row.definition.description : description,
+        describedInCatalog: description !== descriptionKey,
+      };
+    },
+    [t],
+  );
+};
+
 export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: boolean }): JSX.Element => {
   const t = useT();
+  const textOf = useSettingText();
   const fieldId = useId();
   const errorId = `${fieldId}-error`;
   const hintId = `${fieldId}-hint`;
 
   const editability = rowEditability(row, canEdit);
   const disabled = editability !== 'editable';
+  // Retired and managed-elsewhere rows offer no field at all: there is nothing here to change.
+  const hasField = !row.retired && row.managedAt === null;
   const stored = row.resolved?.value ?? row.definition.defaultValue;
   // Compared and tracked as TEXT, not as the value: a list resolves to a fresh array on every
   // refetch, so an identity comparison would reset the field under a typing administrator each
@@ -59,14 +94,7 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
 
   const save = useSetSetting();
   const serverError = save.error instanceof ApiError ? save.error.message : null;
-
-  const label = (() => {
-    const key = settingLabelKey(row.key);
-    const translated = t(key);
-    // A setting declared after this screen was written has no label yet. It keeps its place and
-    // shows its key — hiding it would remove the only way to configure it.
-    return translated === key ? row.key : translated;
-  })();
+  const { label, description, describedInCatalog } = textOf(row);
 
   const submit = (next: string): void => {
     const parsed = parseValue(next, row.editor, row.definition.defaultValue);
@@ -83,29 +111,35 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
 
   const dirty = draft !== storedText;
   const message = localError ?? serverError;
+  const resolvedFrom = row.resolved?.resolvedFrom ?? 'default';
+  const entries = Array.isArray(stored) ? stored.length : 0;
 
   return (
-    <div className="grid gap-3 border-t border-slate-200 py-4 first:border-t-0 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] dark:border-slate-800">
-      <div className="min-w-0 space-y-1">
-        <label htmlFor={fieldId} className="block text-sm font-medium text-slate-800 dark:text-slate-100">
-          {label}
-        </label>
-        <p className="break-all font-mono text-xs text-slate-500 dark:text-slate-400" dir="ltr">
-          {row.key}
-        </p>
-        <p id={hintId} className="text-xs text-slate-500 dark:text-slate-400" dir="ltr">
-          {row.definition.description}
-        </p>
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <Badge tone={RESOLVED_TONE[row.resolved?.resolvedFrom ?? 'default']}>
-            {t(`systemAdmin.settings.resolvedFrom.${row.resolved?.resolvedFrom ?? 'default'}`)}
-          </Badge>
-          {row.definition.allowedScopes.map((scope) => (
-            <Badge key={scope} tone="neutral">
-              {t(`systemAdmin.settings.scope.${scope}`)}
+    <div className="grid gap-x-8 gap-y-3 border-t border-slate-200 py-4 first:border-t-0 first:pt-1 last:pb-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] dark:border-slate-800">
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {hasField ? (
+            <label htmlFor={fieldId} className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              {label}
+            </label>
+          ) : (
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+          )}
+          {row.retired ? (
+            <Badge tone="neutral">{t('systemAdmin.settings.retiredBadge')}</Badge>
+          ) : (
+            <Badge tone={RESOLVED_TONE[resolvedFrom]}>
+              {t(`systemAdmin.settings.resolvedFrom.${resolvedFrom}`)}
             </Badge>
-          ))}
+          )}
         </div>
+        <p
+          id={hintId}
+          className="text-sm leading-6 text-slate-600 dark:text-slate-400"
+          dir={describedInCatalog ? undefined : 'ltr'}
+        >
+          {description}
+        </p>
         {/* The one thing this screen cannot fix, so it says it instead: the value above is the
             caller's, the write below is the organization's, and here they differ. */}
         {row.shadowed && (
@@ -113,10 +147,43 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
             {t('systemAdmin.settings.shadowed')}
           </p>
         )}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400 dark:text-slate-500">
+          <span className="break-all font-mono" dir="ltr">
+            {row.key}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            {t('systemAdmin.settings.scopes', {
+              scopes: row.definition.allowedScopes
+                .map((scope) => t(`systemAdmin.settings.scope.${scope}`))
+                .join(t('systemAdmin.settings.scopeSeparator')),
+            })}
+          </span>
+        </p>
       </div>
 
       <div className="space-y-2">
-        {row.editor === 'boolean' ? (
+        {row.retired ? (
+          <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            {t('systemAdmin.settings.retiredNote')}
+          </p>
+        ) : row.managedAt !== null ? (
+          // A list of ids or of branch rows means nothing printed raw; its own screen edits it with
+          // names. Say how much is set and go there.
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              {entries > 0
+                ? t('systemAdmin.settings.managed.count', { count: entries })
+                : t('systemAdmin.settings.managed.empty')}
+            </p>
+            <Link
+              to={row.managedAt.route}
+              className="mt-1 inline-flex text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+            >
+              {t('systemAdmin.settings.managed.open', { screen: t(row.managedAt.screen) })}
+            </Link>
+          </div>
+        ) : row.editor === 'boolean' ? (
           <Checkbox
             id={fieldId}
             aria-describedby={hintId}
@@ -145,7 +212,7 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
           />
         )}
 
-        {row.editor !== 'boolean' && (
+        {hasField && row.editor !== 'boolean' && (
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -175,16 +242,17 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
             {message}
           </p>
         )}
-        {editability !== 'editable' && (
+        {hasField && editability !== 'editable' && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {t(`systemAdmin.settings.locked.${editability}`)}
           </p>
         )}
-        <p className="text-xs text-slate-400 dark:text-slate-500" dir="ltr">
-          {t('systemAdmin.settings.defaultValue', {
-            value: serializeValue(row.definition.defaultValue, row.editor),
-          })}
-        </p>
+        {hasField && (
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            {t('systemAdmin.settings.defaultValueLabel')}{' '}
+            <span dir="ltr">{serializeValue(row.definition.defaultValue, row.editor)}</span>
+          </p>
+        )}
       </div>
     </div>
   );

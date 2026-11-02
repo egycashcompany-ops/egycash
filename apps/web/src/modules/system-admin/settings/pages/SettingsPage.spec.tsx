@@ -20,19 +20,30 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  AtmSettingKeys,
   FleetSettingKeys,
+  HrAttendanceSettingKeys,
   HrContractSettingKeys,
   HrLeaveSettingKeys,
   ItSettingKeys,
+  OperationsSettingKeys,
   SettingKeys,
   type Locale,
   type MeDto,
   type ResolvedSettingDto,
   type SettingDefinitionDto,
 } from '@ecms/contracts';
+import { translate } from '../../../../platform/localization/i18n';
 import { localeSlice } from '../../../../store/localeSlice';
 import { authSlice } from '../../../../store/authSlice';
 import { SettingsPage } from './SettingsPage';
+import {
+  MANAGED_ELSEWHERE,
+  RETIRED_SETTINGS,
+  placementOf,
+  settingDescriptionKey,
+} from '../lib/settings-catalog';
+import { settingLabelKey } from '../lib/settings-view';
 
 /**
  * The forty-five, with the type and default each is declared with in the API.
@@ -104,16 +115,37 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [FleetSettingKeys.FuelCardBalanceRed]: { type: 'number', defaultValue: 100 },
   [FleetSettingKeys.RosterRefuseExpiredLicence]: { type: 'boolean', defaultValue: false },
   [FleetSettingKeys.OdometerMissingReadingDays]: { type: 'number', defaultValue: 3 },
+  [HrAttendanceSettingKeys.SelfPunchEnabled]: { type: 'boolean', defaultValue: false },
+  [HrAttendanceSettingKeys.AutoComputeHour]: { type: 'number', defaultValue: 2 },
+  [HrAttendanceSettingKeys.OvertimeRequiresApproval]: { type: 'boolean', defaultValue: true },
+  [HrAttendanceSettingKeys.AbsenceNotify]: { type: 'boolean', defaultValue: true },
+  [OperationsSettingKeys.CashTransferOperationIds]: { type: 'array', defaultValue: [] },
+  [OperationsSettingKeys.CrewDepartmentIds]: { type: 'array', defaultValue: [] },
+  // Structures of ids and rows: each has its own screen, and this one links there.
+  [AtmSettingKeys.MaintenanceLeaderDepartmentIds]: { type: 'array', defaultValue: [] },
+  [AtmSettingKeys.MailBranchCategories]: { type: 'array', defaultValue: [] },
+  [AtmSettingKeys.RegisterBranchCodes]: { type: 'array', defaultValue: [] },
+  [AtmSettingKeys.RegisterBankLabels]: { type: 'array', defaultValue: [] },
+  [AtmSettingKeys.SettlementBanks]: { type: 'array', defaultValue: ['BRK'] },
+  [AtmSettingKeys.BranchLinks]: { type: 'array', defaultValue: [] },
 };
 
 /** Every key the contracts declare, which is what the API registers at boot. */
 const DECLARED_KEYS: string[] = [
   ...Object.values(SettingKeys),
+  ...Object.values(HrAttendanceSettingKeys),
   ...Object.values(HrContractSettingKeys),
   ...Object.values(HrLeaveSettingKeys),
   ...Object.values(ItSettingKeys),
   ...Object.values(FleetSettingKeys),
+  ...Object.values(OperationsSettingKeys),
+  ...Object.values(AtmSettingKeys),
 ];
+
+/** The settings that get a field here: every one but the retired and those edited elsewhere. */
+const FIELD_KEYS = DECLARED_KEYS.filter(
+  (key) => MANAGED_ELSEWHERE[key] === undefined && !RETIRED_SETTINGS.has(key),
+);
 
 const definition = (key: string): SettingDefinitionDto => {
   const shape = SHAPES[key] ?? { type: 'number', defaultValue: 0 };
@@ -208,20 +240,59 @@ const inputs = (markup: string): string[] => [...markup.matchAll(/<input\b[^>]*>
 const isDisabled = (tag: string): boolean => tag.includes('disabled=""');
 
 /**
- * The markup below the filter bar.
- *
- * The owner filter renders every owner name as an `<option>`, so searching the whole page for a
- * card heading finds the dropdown entry instead — an off-by-one-region that would make the grouping
- * assertion pass no matter where the rows landed.
+ * The department and section a key is rendered in: the last section marker before it. Position in
+ * the markup is the only ordering evidence a static render carries, and it is enough.
  */
-const cardsOnly = (markup: string): string => markup.slice(markup.lastIndexOf('</select>'));
+const sectionAround = (markup: string, key: string): string | null => {
+  const at = markup.indexOf(`>${key}<`);
+  if (at === -1) return null;
+  const marker = 'data-settings-section="';
+  const start = markup.lastIndexOf(marker, at);
+  if (start === -1) return null;
+  return markup.slice(start + marker.length, markup.indexOf('"', start + marker.length));
+};
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are forty-seven of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(47);
-    expect(new Set(DECLARED_KEYS).size).toBe(47);
+  it('covers every declared setting key, and there are fifty-nine of them', () => {
+    expect(DECLARED_KEYS).toHaveLength(59);
+    expect(new Set(DECLARED_KEYS).size).toBe(59);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
+  });
+});
+
+// The owner's complaint, pinned: «فى الـ /system/settings في عناوين كتير بالشكل دا
+// atm.mail.branchCategories !! عايز أخليهم بالعربي وأظبطهم بالإنجليزي بردو». Every declared setting
+// has its own title AND its own description, in both languages — a new setting without them fails
+// here, not on the owner's screen.
+describe('every setting is titled and described in both languages', () => {
+  for (const locale of ['ar', 'en'] as const) {
+    it(`titles — ${locale}`, () => {
+      const untitled = DECLARED_KEYS.filter(
+        (key) => translate(locale, settingLabelKey(key)) === settingLabelKey(key),
+      );
+      expect(untitled, `settings with no ${locale} title`).toEqual([]);
+    });
+
+    it(`descriptions — ${locale}`, () => {
+      const undescribed = DECLARED_KEYS.filter(
+        (key) => translate(locale, settingDescriptionKey(key)) === settingDescriptionKey(key),
+      );
+      expect(undescribed, `settings with no ${locale} description`).toEqual([]);
+    });
+  }
+
+  it('shows no raw key as a title, in either language', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const markup = render({ locale });
+      for (const key of DECLARED_KEYS) {
+        // The key itself is printed once, small, in its own LTR span; a title made of it would be a
+        // second occurrence inside the label.
+        expect(markup, `${key} is titled by its key (${locale})`).not.toMatch(
+          new RegExp(`font-semibold[^>]*>${key.replace(/\./g, '\\.')}<`),
+        );
+      }
+    }
   });
 });
 
@@ -230,50 +301,51 @@ describe('every setting reaches the screen', () => {
 
   // The claim the whole slice exists for. Twenty-four of these could previously be changed only by
   // editing the database.
-  it('renders all forty-seven keys', () => {
+  it('renders all fifty-nine keys', () => {
     const missing = DECLARED_KEYS.filter((key) => !markup.includes(key));
     expect(missing, 'a setting is declared but not on screen').toEqual([]);
   });
 
-  it('renders one editable control per setting', () => {
-    // 47 settings + the search box = 48 inputs. The owner filter is a <select>, not an input.
-    expect(inputs(markup)).toHaveLength(48);
+  it('renders one editable control per setting that is edited here', () => {
+    // Every field + the search box. Retired settings and those edited on their own screen get no
+    // field — they say why instead.
+    expect(inputs(markup)).toHaveLength(FIELD_KEYS.length + 1);
   });
 
-  it('groups them under their owners', () => {
-    for (const owner of [
-      'Sign-in &amp; passwords',
-      'Audit &amp; activity',
-      'Notifications',
-      'Contracts',
-      'HR',
-      'Fleet',
-      'IT',
-    ]) {
-      expect(markup, `${owner} has no card`).toContain(owner);
+  it('introduces every department under «all», by its name', () => {
+    for (const department of ['general', 'hr', 'fleet', 'operations', 'atm', 'it']) {
+      const name = translate('en', `systemAdmin.settings.departments.${department}`);
+      expect(markup, `${department} has no heading`).toContain(`data-settings-department="${department}"`);
+      expect(markup, `${department} is not named`).toContain(name.replace(/&/g, '&amp;'));
     }
   });
 
-  // Grouping is only meaningful if a key lands under its own owner. Position in the markup is the
-  // only ordering evidence a static render carries, and it is enough: the auth keys must all appear
-  // after the auth heading and before the next one.
-  it('puts each key inside its owner’s card', () => {
-    const cards = cardsOnly(markup);
-    const authHeading = cards.indexOf('Sign-in &amp; passwords');
-    const auditHeading = cards.indexOf('Audit &amp; activity');
-    expect(authHeading).toBeGreaterThan(-1);
-    expect(auditHeading).toBeGreaterThan(authHeading);
-    const authKeys = Object.values(SettingKeys).filter((key) => key.startsWith('auth.'));
-    expect(authKeys, 'the auth scan matched nothing — it is stale').toHaveLength(8);
-    for (const key of authKeys) {
-      const at = cards.indexOf(key);
-      expect(at, `${key} is outside the auth card`).toBeGreaterThan(authHeading);
-      expect(at, `${key} is outside the auth card`).toBeLessThan(auditHeading);
+  // Grouping is only meaningful if a key lands under its own department and section.
+  it('puts each key inside its own department and section', () => {
+    for (const key of DECLARED_KEYS) {
+      const { department, section } = placementOf(key);
+      expect(sectionAround(markup, key), `${key} is outside its section`).toBe(`${department}.${section}`);
     }
+  });
+
+  it('links a structure edited on its own screen there, and says how much is set', () => {
+    for (const [key, { route }] of Object.entries(MANAGED_ELSEWHERE)) {
+      const at = markup.indexOf(`>${key}<`);
+      const next = markup.indexOf('data-settings-section', at + 1);
+      const row = markup.slice(at, next === -1 ? undefined : next);
+      expect(row, `${key} does not link to ${route}`).toContain(`href="${route}"`);
+    }
+  });
+
+  it('marks a retired setting instead of offering a field for it', () => {
+    for (const key of RETIRED_SETTINGS) {
+      expect(markup).toContain(key);
+    }
+    expect(markup).toContain(translate('en', 'systemAdmin.settings.retiredNote'));
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 47 of 47');
+    expect(markup).toContain('Showing 59 of 59');
   });
 });
 
@@ -328,12 +400,12 @@ describe('the four types each get the control they need', () => {
     expect(markupWithOdd).toContain('this screen cannot edit yet');
   });
 
-  it('sends an unknown owner to Other instead of dropping it', () => {
+  it('sends an unknown department to Other instead of dropping it', () => {
     const markupWithOdd = render({
       definitions: [
         {
           key: 'warehouse.reorderPoint',
-          description: 'an owner this screen does not know',
+          description: 'a department this screen does not know',
           type: 'number',
           defaultValue: 5,
           allowedScopes: ['organization'],
@@ -351,7 +423,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
     const markup = render({ permissions: ['setting.view'] });
     // The search box stays usable — reading is what this actor may do.
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(47);
+    expect(controls).toHaveLength(FIELD_KEYS.length);
     const enabled = controls.filter((tag) => !isDisabled(tag));
     expect(enabled, 'a setting control is editable without setting.edit').toEqual([]);
   });
@@ -365,7 +437,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
   it('leaves the controls enabled for an actor who holds setting.edit', () => {
     const markup = render();
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(47);
+    expect(controls).toHaveLength(FIELD_KEYS.length);
     expect(controls.filter(isDisabled)).toEqual([]);
     expect(markup).not.toContain('do not hold the edit-settings permission');
   });
@@ -373,7 +445,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
 
 describe('where the value came from is on screen, because this screen writes only one layer', () => {
   it('labels a value resolved from the organization', () => {
-    expect(render()).toContain('From the organization');
+    expect(render()).toContain(translate('en', 'systemAdmin.settings.resolvedFrom.organization'));
   });
 
   it('warns when the displayed value is the caller’s own and an org write will not change it', () => {
@@ -384,7 +456,7 @@ describe('where the value came from is on screen, because this screen writes onl
           : entry,
       ),
     });
-    expect(markup).toContain('From your own level');
+    expect(markup).toContain(translate('en', 'systemAdmin.settings.resolvedFrom.user'));
     expect(markup).toContain('Saving here changes the organization value');
   });
 
@@ -394,10 +466,9 @@ describe('where the value came from is on screen, because this screen writes onl
 
   it('shows which scopes a setting may be set at', () => {
     const markup = render();
-    expect(markup).toContain('Settable: organization');
+    expect(markup).toContain('Can be set for: Organization<');
     // Only the email kill switch allows the lower two.
-    expect(markup).toContain('Settable: branch');
-    expect(markup).toContain('Settable: user');
+    expect(markup).toContain('Can be set for: Organization, Branch, User');
   });
 });
 
@@ -417,21 +488,43 @@ describe('accessibility', () => {
     expect(forIds.length).toBeGreaterThanOrEqual(28);
   });
 
-  it('describes every control with its registry description', () => {
-    const described = inputs(markup).filter((tag) => tag.includes('aria-describedby'));
-    expect(described.length).toBeGreaterThanOrEqual(30);
+  it('describes every control with its description', () => {
+    const fields = inputs(markup).filter((tag) => !tag.includes('type="search"'));
+    const described = fields.filter((tag) => tag.includes('aria-describedby'));
+    expect(described).toHaveLength(fields.length);
   });
 
-  it('gives the owner filter an accessible name, since it has no visible label', () => {
-    expect(markup).toContain('aria-label="Owner"');
+  it('presents the departments as labelled tabs that say which is selected', () => {
+    expect(markup).toContain('role="tablist"');
+    expect(markup).toContain(`aria-label="${translate('en', 'systemAdmin.settings.departmentsLabel')}"`);
+    // «All» is selected when the URL names no department.
+    expect(markup).toMatch(/role="tab" aria-selected="true"[^>]*>All/);
   });
 
-  // The key and the server's English description are identifiers and English prose; they stay LTR
-  // inside an Arabic page rather than being mirrored into nonsense.
-  it('keeps keys and English descriptions left-to-right', () => {
+  // The key is an identifier; it stays LTR inside an Arabic page rather than being mirrored.
+  it('keeps keys left-to-right, and describes in Arabic on an Arabic page', () => {
     const arabic = render({ locale: 'ar' });
-    expect(arabic).toContain('dir="ltr"');
-    expect(arabic).toContain(SettingKeys.PasswordMinLength);
+    expect(arabic).toMatch(new RegExp(`dir="ltr">${SettingKeys.PasswordMinLength.replace(/\./g, '\\.')}<`));
+    expect(arabic).toContain(translate('ar', settingDescriptionKey(SettingKeys.PasswordMinLength)));
+    expect(arabic).not.toContain(`English description for ${SettingKeys.PasswordMinLength}`);
+  });
+
+  // A setting the catalog has not caught up with shows the registry's English description — LTR.
+  it('falls back to the registry description, left-to-right, for a setting not yet described', () => {
+    const arabic = render({
+      locale: 'ar',
+      definitions: [
+        {
+          key: 'auth.brandNew',
+          description: 'not described yet',
+          type: 'number',
+          defaultValue: 1,
+          allowedScopes: ['organization'],
+        },
+      ],
+      resolved: [],
+    });
+    expect(arabic).toMatch(/dir="ltr">not described yet</);
   });
 });
 
@@ -445,8 +538,9 @@ describe('both locales', () => {
   it('renders Arabic labels in Arabic', () => {
     const markup = render({ locale: 'ar' });
     expect(markup).toContain('إعدادات النظام');
-    expect(markup).toContain('أقل طول لكلمة المرور');
-    expect(markup).toContain('الدخول وكلمات المرور');
+    expect(markup).toContain(translate('ar', settingLabelKey(AtmSettingKeys.MailBranchCategories)));
+    expect(markup).toContain(translate('ar', 'systemAdmin.settings.sections.general.signIn'));
+    expect(markup).toContain(translate('ar', 'systemAdmin.settings.departments.general'));
   });
 
   // A setting shipped before this screen learns its name keeps its place and shows its key.
@@ -470,17 +564,22 @@ describe('both locales', () => {
 
 describe('the filters are addressable', () => {
   it('reads the search term from the URL rather than component state', () => {
-    const markup = render({ search: '?q=lockout' });
+    const markup = render({ search: '?q=auth.lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 47');
+    expect(markup).toContain('Showing 2 of 59');
   });
 
-  it('reads the owner filter from the URL', () => {
-    const markup = render({ search: '?owner=fleet' });
+  it('reads the department from the URL, and selects its tab', () => {
+    const markup = render({ search: '?dept=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 21 of 47');
+    expect(markup).toContain('Showing 21 of 59');
+    expect(markup).toMatch(new RegExp(`role="tab" aria-selected="true"[^>]*>${translate('en', 'systemAdmin.settings.departments.fleet')}`));
+  });
+
+  it('falls back to all for a department the screen has nothing for', () => {
+    expect(render({ search: '?dept=warehouse' })).toContain('Showing 59 of 59');
   });
 
   it('says so plainly when the filters match nothing', () => {

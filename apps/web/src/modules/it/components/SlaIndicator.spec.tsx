@@ -16,7 +16,14 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import { type ItTicketDto, type ItTicketStatus, type Locale } from '@ecms/contracts';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  ItSettingKeys,
+  type ItTicketDto,
+  type ItTicketStatus,
+  type Locale,
+  type ResolvedSettingDto,
+} from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { SlaIndicator } from './SlaIndicator';
@@ -75,10 +82,15 @@ const ticket = (overrides: {
   updatedAt: iso(-1),
 });
 
+/**
+ * `settings` is the caller's resolved settings, as `/platform/settings/me` answers them; `null`
+ * leaves the query unseeded, as on a first paint before they load.
+ */
 const render = (
   dto: ItTicketDto,
   phase: 'response' | 'resolution',
   locale: Locale = 'en',
+  settings: ResolvedSettingDto[] | null = null,
 ): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer },
@@ -86,9 +98,15 @@ const render = (
       locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
     },
   });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+  });
+  if (settings !== null) qc.setQueryData(['platform', 'settings', 'me'], settings);
   return renderToStaticMarkup(
     <Provider store={store}>
-      <SlaIndicator ticket={dto} phase={phase} />
+      <QueryClientProvider client={qc}>
+        <SlaIndicator ticket={dto} phase={phase} />
+      </QueryClientProvider>
     </Provider>,
   );
 };
@@ -120,6 +138,24 @@ describe('SlaIndicator', () => {
     // screen ahead of the record the reports are built from.
     const dto = ticket({ resolutionDueIn: -10, resolutionBreachedAt: null });
     expect(render(dto, 'resolution')).not.toContain(label('breached'));
+  });
+
+  // The threshold is the setting, not a constant: «عتبة تعرّض اتفاقية الخدمة للخطر» changed on
+  // «إعدادات النظام» used to change nothing at all.
+  it('takes the at-risk threshold from the it.sla.atRiskPercent setting', () => {
+    // 85% of a 100-minute window spent: at risk under the default 80, on track under a 90.
+    const dto = ticket({ resolutionMinutes: 100, resolutionDueIn: 15 });
+    expect(render(dto, 'resolution')).toContain(label('atRisk'));
+    const at90: ResolvedSettingDto[] = [
+      { key: ItSettingKeys.SlaAtRiskPercent, value: 90, resolvedFrom: 'organization' },
+    ];
+    expect(render(dto, 'resolution', 'en', at90)).toContain(label('onTrack'));
+    const at50: ResolvedSettingDto[] = [
+      { key: ItSettingKeys.SlaAtRiskPercent, value: 50, resolvedFrom: 'organization' },
+    ];
+    expect(render(ticket({ resolutionMinutes: 100, resolutionDueIn: 40 }), 'resolution', 'en', at50)).toContain(
+      label('atRisk'),
+    );
   });
 
   it('derives at-risk from how much of the window is spent', () => {

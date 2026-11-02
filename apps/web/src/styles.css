@@ -73,6 +73,9 @@
      rule above stops both for anyone who asked for less motion. */
   .ocr-trace { animation: ocr-trace 1.4s linear infinite; }
   .ocr-scan { animation: ocr-scan 1.8s ease-in-out infinite alternate; }
+  /* The pause between the sides: the card turns over on the spot, so what to do with the real
+     card in hand needs no reading. The reduced-motion rule above stops it too. */
+  .card-flip { animation: card-flip 2.6s ease-in-out infinite; }
 
   /* The applicant form: roomier, friendlier controls. Scoped to this form, so no other screen
      changes; colours are the app's own (slate + brand). */
@@ -93,6 +96,11 @@
 @keyframes ocr-scan {
   from { transform: translateY(-110%); }
   to { transform: translateY(110%); }
+}
+@keyframes card-flip {
+  0%, 20% { transform: rotateY(0deg); }
+  45%, 75% { transform: rotateY(180deg); }
+  100% { transform: rotateY(360deg); }
 }
 
 @layer components {

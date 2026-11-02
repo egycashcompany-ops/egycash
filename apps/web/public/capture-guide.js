@@ -37,7 +37,19 @@
   // How long every check must keep passing before an automatic capture. A single bad frame does
   // not start the count over (a phone's hands shake): see `GRACE_FRAMES`.
   const HOLD_MS = 150;
+  // A card framed right that is still "moving" or "blurred" after this long is taken anyway, the
+  // sharpest of a burst: a steadier hand is not coming, and the read says if it is not enough.
+  const STUCK_MS = 2500;
   const GRACE_FRAMES = 2;
+  // Sharpest of several: a hand-held phone blurs some frames and rarely all, so once the card is
+  // framed the guide takes BURST_FRAMES frames BURST_GAP_MS apart (about half a second) and keeps
+  // the sharpest, judged on the card's crop at BURST_JUDGE px wide.
+  const BURST_FRAMES = 7;
+  const BURST_GAP_MS = 70;
+  const BURST_JUDGE = 480;
+  // Longest side of a photo sent to the reader: it reads at 2400 px (READ_LONG_SIDE) and anything
+  // larger only made the upload and its card finding slower (a 3200 px card took 6 s more).
+  const SEND_LONG_SIDE = 2400;
   // Mean difference (0-255) of block averages under which two frames are the same card.
   const SAME_CARD = 9;
   // A frame at least this share as sharp as the best of the last few is "in focus".
@@ -308,14 +320,19 @@
     const ax1 = Math.min(width, Math.round(area.x + area.w * 0.96));
     const ay0 = Math.max(0, Math.round(area.y + area.h * 0.06));
     const ay1 = Math.min(height, Math.round(area.y + area.h * 0.94));
-    let sum = 0, blown = 0, n = 0, change = 0;
+    // On the back, the barcode stays "sharp" under a blur that has already smeared the text, so
+    // focus is judged on the printed half above it. Movement is too: the barcode's fine stripes
+    // change almost every pixel at the smallest shake of a hand, so a back held as still as a
+    // person can was "moving" for ever and never taken.
+    const sy1 = side === "back" ? Math.round(area.y + area.h * 0.55) : ay1;
+    let sum = 0, blown = 0, n = 0, change = 0, moved = 0;
     for (let y = ay0; y < ay1; y++) {
       for (let x = ax0; x < ax1; x++) {
         const i = y * width + x;
         const v = grey[i];
         sum += v; n++;
         if (v >= 248) blown++;
-        if (previous) change += Math.abs(v - previous[i]);
+        if (previous && y < sy1) { change += Math.abs(v - previous[i]); moved++; }
       }
     }
     // How much print there is inside (mean gradient) and how much of it is card stock (bright, not
@@ -337,10 +354,7 @@
     }
     metrics.brightness = n ? sum / n : 0;
     metrics.glare = n ? blown / n : 0;
-    metrics.motion = previous && n ? change / n : 0;
-    // On the back, the barcode stays "sharp" under a blur that has already smeared the text, so
-    // focus is judged on the printed half above it.
-    const sy1 = side === "back" ? Math.round(area.y + area.h * 0.55) : ay1;
+    metrics.motion = previous && moved ? change / moved : 0;
     metrics.sharpness = laplacianVariance(grey, width, ax0, ay0, ax1, sy1);
 
     // Sides and print that are too faint to be a card: not one (see LIMITS.confidentStep).
@@ -401,6 +415,9 @@
 
   function attach(video, options = {}) {
     const auto = options.auto !== false;
+    // The dashed outline of where the card was found. Off, the fixed frame is the only box on the
+    // screen and its corners alone say how close the card is (white, yellow, green).
+    const showCard = options.showCard !== false;
     const host = video.parentElement;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
     // The video fills its box exactly and is letterboxed inside it. Left to the page's own rule
@@ -461,6 +478,7 @@
     // (This replaced waiting for the frame to be empty once, which left a back held in the frame
     // from the start green and never captured.)
     let previous = null, timer = null, steadySince = null, bad = 0, last = null, captured = false;
+    let nearSince = null;
     let lastShot = null, avoid = null, latestGrey = null;
     let sharpHistory = [];
 
@@ -482,7 +500,7 @@
         `M${f.x + c},${f.y + f.h}H${f.x}V${f.y + f.h - c}`,
       ].join(""));
       const cardEl = overlay.querySelector(".cg-card");
-      if (result.card && !result.ok) {
+      if (showCard && result.card && !result.ok) {
         const r = place(result.card);
         cardEl.setAttribute("x", r.x); cardEl.setAttribute("y", r.y);
         cardEl.setAttribute("width", Math.max(r.w, 0)); cardEl.setAttribute("height", Math.max(r.h, 0));
@@ -538,16 +556,53 @@
       overlay.querySelector(".cg-bar i").style.width = `${Math.min(100, (100 * held) / HOLD_MS)}%`;
       layout(result);
       if (options.onUpdate) options.onUpdate(result);
-      if (result.ok && held >= HOLD_MS && !captured && auto && options.onCapture) {
+      // A card framed right that only wants a steadier hand: once it has wanted one for STUCK_MS,
+      // take the sharpest of a burst anyway — the read, and Part C's retake notice, say whether it
+      // was good enough. Better that than a frame the guide never takes at all.
+      if (near && result.card) {
+        if (nearSince === null) nearSince = now;
+      } else if (!result.ok) {
+        nearSince = null;
+      }
+      const stuck = near && result.card && nearSince !== null && now - nearSince >= STUCK_MS;
+      if (((result.ok && held >= HOLD_MS) || stuck) && !captured && auto && options.onCapture) {
         captured = true;
         lastShot = { grey: latestGrey, side };
-        options.onCapture(capture());
+        captureSharpest().then(options.onCapture);
       }
     }
 
-    // What is sent: the card where it was found (with a margin), else the frame with a wide one, at
-    // the video's full resolution. Cutting to the frame alone cut off a card held a little too close.
+    // What is sent: the card where it was found (with a margin), else the frame with a wide one,
+    // off the stream's own pixels down to SEND_LONG_SIDE at most. Cutting to the frame alone cut
+    // off a card held a little too close.
     function capture(quality = 0.92) {
+      return cropCanvas().toDataURL("image/jpeg", quality);
+    }
+
+    // How sharp a cut is: the variance of its Laplacian at one fixed width, so two cuts of a card
+    // compare on the print and not on their size.
+    const judge = document.createElement("canvas");
+    function sharpnessOf(cut) {
+      const w = BURST_JUDGE, h = Math.max(1, Math.round((BURST_JUDGE * cut.height) / cut.width));
+      const grey = greyOf(cut, w, h, judge);
+      return laplacianVariance(grey, w, Math.round(w * 0.05), Math.round(h * 0.05), Math.round(w * 0.95), Math.round(h * 0.95));
+    }
+
+    // The sharpest of BURST_FRAMES cuts taken BURST_GAP_MS apart, as a JPEG data URL. A hand-held
+    // phone blurs some frames and rarely all of them.
+    async function captureSharpest(quality = 0.92) {
+      let best = null, bestScore = -1;
+      for (let i = 0; i < BURST_FRAMES; i++) {
+        if (i) await new Promise((resolve) => setTimeout(resolve, BURST_GAP_MS));
+        if (!video.videoWidth) break;
+        const cut = cropCanvas();
+        const score = sharpnessOf(cut);
+        if (score > bestScore) { best = cut; bestScore = score; }
+      }
+      return (best || cropCanvas()).toDataURL("image/jpeg", quality);
+    }
+
+    function cropCanvas() {
       const vw = video.videoWidth, vh = video.videoHeight;
       const k = vw / WORK; // analysis px -> video px
       let x, y, w, h;
@@ -562,9 +617,12 @@
       x = Math.max(0, x); y = Math.max(0, y);
       w = Math.min(vw - x, w); h = Math.min(vh - y, h);
       const out = document.createElement("canvas");
-      out.width = Math.round(w); out.height = Math.round(h);
+      // The reader reads at SEND_LONG_SIDE, so anything larger only slows the upload and its own
+      // card finding (a 3200 px card off the 4K stream took 6 s more for nothing).
+      const fit = Math.min(1, SEND_LONG_SIDE / Math.max(w, h));
+      out.width = Math.round(w * fit); out.height = Math.round(h * fit);
       out.getContext("2d").drawImage(video, x, y, w, h, 0, 0, out.width, out.height);
-      return out.toDataURL("image/jpeg", quality);
+      return out;
     }
 
     return {
@@ -572,11 +630,12 @@
       start() {
         const side = typeof options.side === "function" ? options.side() : options.side;
         avoid = lastShot && lastShot.side !== side ? lastShot : null;
-        captured = false; steadySince = null; bad = 0; previous = null; overlay.hidden = false; sharpHistory = [];
+        captured = false; steadySince = null; nearSince = null; bad = 0; previous = null; overlay.hidden = false; sharpHistory = [];
         if (!timer) timer = setInterval(tick, 70);
       },
       stop() { clearInterval(timer); timer = null; overlay.hidden = true; },
       capture,
+      captureSharpest,
       get state() { return last; },
     };
   }

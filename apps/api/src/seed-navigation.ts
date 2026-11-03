@@ -1220,6 +1220,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'users',
         permission: 'user.view',
       },
+      // «المستخدمين النشطين» — who has the system open now and is working, and each person's
+      // time on it. Beside the accounts it describes, behind its own key: knowing an account
+      // exists is not knowing when its holder sat down and for how long.
+      {
+        en: 'Active Users',
+        ar: 'المستخدمون النشطون',
+        route: '/system/active-users',
+        icon: 'monitor',
+        permission: 'activeUser.view',
+      },
       // SA-3. Two rows, not one: an administrator may be allowed to read what a permission key
       // MEANS without being allowed to see who holds it, and each row carries the permission its
       // screen already enforces so the menu never offers a page that then refuses.

@@ -67,7 +67,8 @@ describe('the seeded navigation catalog', () => {
     // 139 → 137: the two batch rows (security check, driving test) left the sidebar — each phase's
     // page links to its own batches — and are RETIRED on live installations (see below).
     // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
-    expect(rows).toHaveLength(132);
+    // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
+    expect(rows).toHaveLength(133);
   });
 
   /**

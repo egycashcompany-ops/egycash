@@ -37,7 +37,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { useAtmMailLog, useRestoreAtmMailTickets } from '../api/atm-queries';
-import { cairoToday, doneRange, joinCodes } from '../lib/operation-view';
+import { cairoToday, doneRange, joinCodes, TIME_CELL_CLASS } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import {
   MAIL_ROW_PAINT,
@@ -154,6 +154,7 @@ export const MailLogPage = (): JSX.Element => {
       filterable: true,
       header: t('atm.mail.receivedAt'),
       render: (row) => formatDateTime(row.receivedAt, locale),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'status',
@@ -174,6 +175,7 @@ export const MailLogPage = (): JSX.Element => {
       filterable: true,
       header: t('atm.mail.actionAt'),
       render: (row) => (row.actionAt === null ? '—' : formatDateTime(row.actionAt, locale)),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'sender',
@@ -273,6 +275,8 @@ export const MailLogPage = (): JSX.Element => {
 
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
+            filtered={isMailFiltered(filters, status)}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

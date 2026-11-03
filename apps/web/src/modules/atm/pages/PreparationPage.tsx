@@ -45,6 +45,7 @@ import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { BOARD_FRAME } from '../../../shared/ui/board-scroll';
 import { ColumnFilterSelect } from '../../../shared/ui/ColumnFilterSelect';
+import { SteadyColGroup, useSteadyColumns } from '../../../shared/ui/useSteadyColumns';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Input, Select } from '../../../shared/ui/form';
@@ -225,6 +226,14 @@ export const PreparationPage = (): JSX.Element => {
     () => filterPrepLines(lines, columnFilters.values, t, locale),
     [lines, columnFilters.values, locale],
   );
+  // The list's columns keep the widths the day's lines first gave them, whatever the lists keep.
+  const steady = useSteadyColumns({
+    ready: shownLines.length > 0,
+    signature: `${locale}|${PREP_LINE_COLUMNS.map((column) => column.key).join('|')}`,
+    count: PREP_LINE_COLUMNS.length,
+    filtered: columnFilters.active,
+    watch: shownLines,
+  });
 
   // ── The form: seeded once per line, kept while unsaved ──────────────────────────────────────
   // What the user holds is `stored`; what the page shows is `seedOnce(stored, line)` — the stored
@@ -547,7 +556,12 @@ export const PreparationPage = (): JSX.Element => {
               aria-label={t('atm.prep.title')}
               className="relative min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:w-[440px] lg:shrink-0 lg:overflow-auto dark:border-slate-800 dark:bg-slate-900"
             >
-              <table className="w-full border-collapse text-sm" data-prep-lines="true">
+              <table
+                ref={steady.ref}
+                className="w-full border-collapse text-sm"
+                data-prep-lines="true"
+              >
+                <SteadyColGroup shares={steady.shares} />
                 <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
                   <tr className="text-xs text-slate-600 dark:text-slate-300">
                     {PREP_LINE_COLUMNS.map((column) => (

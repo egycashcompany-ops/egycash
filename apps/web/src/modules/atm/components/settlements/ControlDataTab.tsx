@@ -18,6 +18,11 @@ import {
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
 import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
+import {
+  SteadyColGroup,
+  useSteadyColumns,
+  type SteadyColumns,
+} from '../../../../shared/ui/useSteadyColumns';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { ChevronIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -167,12 +172,36 @@ const QrCell = ({ line, bag }: { line: ControlLine; bag: 1 | 2 }): JSX.Element =
   );
 };
 
+/**
+ * The data table's columns keep the widths the day's lines first gave them, whatever its lists keep
+ * (`useSteadyColumns`). Called by the PAGE, beside the column filters it already keeps across a
+ * switch to the routes and back: the table is drawn again on the way back, and must find its widths
+ * as it left them.
+ */
+export const useControlLineWidths = ({
+  lines,
+  locale,
+  filtered,
+}: {
+  lines: readonly ControlLine[];
+  locale: Locale;
+  filtered: boolean;
+}): SteadyColumns =>
+  useSteadyColumns({
+    ready: lines.length > 0,
+    signature: `${locale}|${CONTROL_LINE_COLUMNS.map((column) => column.key).join('|')}`,
+    count: CONTROL_LINE_COLUMNS.length + 1,
+    filtered,
+    watch: lines,
+  });
+
 export const ControlDataTab = ({
   day,
   lines,
   locale,
   banks,
   columnFilters,
+  steady,
 }: {
   /**
    * The whole day — `day.lines` is what the column filters narrow and what their lists offer, and
@@ -185,6 +214,8 @@ export const ControlDataTab = ({
   /** The catalog's bank names (DEC-35): a line of a bank added since the workbook is named too. */
   banks: BankLookup;
   columnFilters: ColumnFilters;
+  /** The columns' kept widths (`useControlLineWidths`) — held by the page, beside its filters. */
+  steady: SteadyColumns;
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -204,7 +235,12 @@ export const ControlDataTab = ({
     // the height left and its rows scroll under a head that stays — opaque, as `DataTable
     // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
     <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
-      <table className="w-full min-w-[72rem] border-collapse" data-control-lines="true">
+      <table
+        ref={steady.ref}
+        className="w-full min-w-[72rem] border-collapse"
+        data-control-lines="true"
+      >
+        <SteadyColGroup shares={steady.shares} />
         <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-8')}>

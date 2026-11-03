@@ -702,8 +702,9 @@ offered nobody, and the edit dialogs' leader stayed free text.
   Dialogs and floating lists sit outside the page and keep the app's own look.
 - **A copy of table rows is a table a chat can read.** «لما أخد Copy من الجدول تطلعهولى بشكل جدول …
   عايز حافظ على شكلة كجدول لما أبعته واتساب». The scope listens for a copy: a selection that spans
-  cells of a table on an ATM page is written as text — a line per row, « | » between cells, what
-  WhatsApp pastes — and as an HTML table, what a sheet or a document pastes
+  cells of a table on an ATM page is written as text — a line per row, « | » between cells, a blank
+  line between rows («يسيب مسافة بين كل صف والتاني», `COPY_ROW_SEPARATOR`), what WhatsApp pastes —
+  and as an HTML table, what a sheet or a document pastes
   (`shared/lib/table-copy.ts`). Only cells the reader could select are taken (a board's
   `select-none` timers and buttons stay out), a control's text is left out, a column empty in
   every row is dropped, and a selection inside one cell is the browser's own copy.
@@ -715,6 +716,43 @@ offered nobody, and the edit dialogs' leader stayed free text.
   الشاشة وبيغير الـ UI»): `MultiSelect` no longer `autoFocus`es its search box. It focuses it once
   the list is open and pinned inside the screen, with `preventScroll`, so a list at the left edge
   no longer scrolls the board sideways on opening.
+- **The copy's text, as WhatsApp lays it out.** Each line starts with a right-to-left mark and
+  each cell is isolated (FSI … PDI), so a row that opens with a Latin bank name keeps its cells in
+  order in a right-to-left chat. A head row is copied too where the reader can select it; a board
+  keeps its head out, as its `select-none` frame always did.
+
+### 6g. Columns that keep their widths, and a time on one line (2026-11-03)
+
+- **Steady columns.** «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». A table's
+  automatic layout re-measures every column on the rows it shows, so a filter that drops the
+  longest names moved the grid. `useSteadyColumns` (`shared/ui`) takes the head's cell widths the
+  first time a table is drawn with rows and keeps them as percentages in a `<colgroup>`
+  (`SteadyColGroup`). The layout stays automatic, so the shares follow the window. The decision is
+  a pure function, `nextColumns`:
+  - **Provisional under a filter.** Widths taken while the page's own filters (`DataTable
+    filtered`: the boards' remembered bank and area, the mail pages', the machines', a search) or
+    a column's list narrow the rows are provisional. At the first draw with no filter on they are
+    released, and the browser's own layout of every row is taken. Otherwise a board opened on a
+    remembered area would hand the whole board that area's widths.
+  - **Re-taken on growth.** The shares add up to the whole table, so a cell that outgrows its share
+    (a time that cannot break arriving later, a narrower window, larger text) widens its column and
+    the browser takes the room from the others, giving it back whenever a filter hides that cell.
+    So a column more than a pixel past its share (`outgrown`) re-takes the widths from the table as
+    it then stands, once; only growth does, so they never swing. A `ResizeObserver` on the table
+    runs the same check between renders.
+  - **One set per signature.** The boards' «اليوم» view adds the timer and another language renames
+    the heads: each set of columns keeps its own widths for the table's life, so a round trip
+    between views finds each as it was left, whatever is filtered on the way back.
+
+  `DataTable steadyColumns` turns it on; every ATM `DataTable` passes it. The three filtered
+  tables built by hand call the hook too: control's data (`useControlLineWidths`) and the plan's
+  lines (`usePlanLineWidths`) from their PAGES, beside the column filters, because the tables are
+  drawn again after the routes tab or a plan's loading; preparation from its page. Other modules'
+  tables are unchanged until they ask for it.
+- **A time on one line** («وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض … فى كل الجداول»):
+  `TIME_CELL_CLASS` (`whitespace-nowrap`) on the sheet columns flagged `time` (the schedule, open,
+  close and taken times), the live timer, a run's time (`RunChip`, on control, the plan and
+  preparation), the mail pages' received and action times and a layout's change time.
 
 ## 7. Migration (ATM-7 — delivered)
 

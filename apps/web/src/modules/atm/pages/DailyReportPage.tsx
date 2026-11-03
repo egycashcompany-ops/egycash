@@ -115,6 +115,7 @@ const CountsTable = ({
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       <div className={BOARD_TABLE_FILL}>
         <DataTable
+          steadyColumns
           columns={columns}
           rows={shown.rows}
           rowKey={(row) => row.bankName}

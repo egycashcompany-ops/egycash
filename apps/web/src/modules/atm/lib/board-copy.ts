@@ -5,8 +5,8 @@
 // (`select-none` around it, `select-text` on those cells), so a drag across the rows picks up the
 // bank, the code, the name and the time — and only those. Nothing else on a row — its box, its
 // timer, its buttons — comes along. How the rows land on the clipboard is `shared/lib/table-copy.ts`
-// (2026-11-03, «لما أبعته واتساب»): a line per row with « | » between cells for a chat, and a real
-// table for a sheet.
+// (2026-11-03, «لما أبعته واتساب»): a line per row with « | » between cells and a blank line between
+// rows for a chat, and a real table for a sheet.
 //
 // Ctrl+A (⌘A) outside a field selects the table's rows the same way: «Select All» of the data,
 // without the buttons.

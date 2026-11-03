@@ -145,6 +145,7 @@ export const BankCatalogDialog = ({
             </Can>
           </div>
           <DataTable
+            steadyColumns
             columns={bankCatalogColumns({ t, onEdit: canEdit ? setEditing : undefined })}
             rows={rows}
             rowKey={(r) => r.code}

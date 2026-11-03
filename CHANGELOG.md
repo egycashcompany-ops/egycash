@@ -594,10 +594,11 @@ its entry here in the same PR.
   جدول … فالكلام داخل في بعضه .. عايز حافظ على شكلة كجدول لما أبعته واتساب». The copy put a tab
   between cells, which a chat shows as a narrow space, so «MISR 1150744 فرع القصر العينى مسائي» ran
   together. A copy that covers cells of an ATM table (a drag across rows, or Ctrl+A on a board) is
-  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`. A sheet,
-  a document or an e-mail still pastes real rows and columns. Only what the rows show is copied: a
-  board's timers and buttons stay out, as before. A selection inside one cell copies as it always
-  did.
+  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`, and a
+  blank line between rows («عايز فى موضوع الـ Copy إنه يسيب مسافة بين كل صف والتاني»). A sheet, a
+  document or an e-mail still pastes real rows and columns, row under row. Only what the rows show
+  is copied: a board's timers and buttons stay out, as before. A selection inside one cell copies as
+  it always did.
 - **The area's column filter starts over each time it is opened.** «لما أضغط على فلتر (المنطقة فقط)
   يعمله Reset وأقدر أختار من الأول في كل الصفحات بتاعت ATM». Opening the area list under the head
   clears the areas picked in it, so the table shows every area again and the areas are picked
@@ -609,6 +610,23 @@ its entry here in the same PR.
   the browser scrolled the board sideways to reach it and left the page shifted. The box now takes
   the caret once the list is in place, and moves nothing. This applies to every drop-down filter of
   this kind in the app.
+- **ATM tables keep their column widths when filtered, and a time stays on one line.** «عرض الأعمدة
+  فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته .. وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض بردو
+  فى كل الجداول». A table laid its columns out by the rows it showed, so picking an area, or anything
+  else that drops rows, narrowed some columns and widened others. Each ATM table now takes its
+  column widths the first time it shows rows and keeps them while it is filtered; the widths follow
+  the window.
+  - A page that opens with a remembered filter (an area on the boards, for example) keeps the widths
+    of those rows only until the filter is lifted; the whole table's widths are then taken once.
+  - A value that does not fit its column (a later time, a narrower window, larger text) widens it,
+    and the widths are taken again from there once, so later filters still move nothing.
+  - Each view keeps its own widths: back on «اليوم» from «أيام سابقة», the board is as it was left.
+  - The schedule, the open and close times, the time taken and the live timer («00h : 03m : 42s»),
+    a run's time, the mail's received and action times, and a cassette layout's change time no
+    longer break over two or three lines.
+
+  On the boards, the done pages, both mail pages, the cassette layouts, the machines, data edit,
+  the daily report, the plan, control and preparation.
 - **The daily report covers a period.** «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
   بس الـ Default يكون اليوم». `/atm/reports/daily` now has «من» and «إلى» on the title's line in
   place of the one day, today in both by default. For each bank the two tables count every

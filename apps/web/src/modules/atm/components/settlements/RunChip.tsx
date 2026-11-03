@@ -4,6 +4,7 @@
 import { type AtmPlanRun, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
+import { TIME_CELL_CLASS } from '../../lib/operation-view';
 import { formatTime12 } from '../../lib/settlement-dates';
 import { runLabel } from '../../lib/settlement-view';
 
@@ -35,8 +36,13 @@ export const RunChip = ({
       >
         {runLabel(run, t)}
       </span>
+      {/* The time whole, «10:15 ص» never broken after its digits (`TIME_CELL_CLASS`); the chip may
+          still put it under the run's name in a narrow column. */}
       {at !== '' && (
-        <span dir="ltr" className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+        <span
+          dir="ltr"
+          className={cn('text-xs tabular-nums text-slate-500 dark:text-slate-400', TIME_CELL_CLASS)}
+        >
           {at}
         </span>
       )}

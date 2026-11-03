@@ -5,8 +5,9 @@
 // The browser's own copy puts a TAB between cells. A sheet reads that as columns, but a chat does
 // not: WhatsApp draws a tab as a narrow space, and «MISR 1150744 فرع القصر العينى مسائي» runs
 // together. So a copy that spans cells of a table is written twice on the clipboard:
-//   · as TEXT, each row one line, its cells separated by « | » — what a chat, a note or an SMS
-//     pastes, and still reads as columns there, right to left, each cell whole (`copiedLine`);
+//   · as TEXT, each row one line, its cells separated by « | » and a blank line between rows —
+//     what a chat, a note or an SMS pastes, and still reads as columns there, right to left, each
+//     cell whole (`copiedLine`), each row apart from the next (`COPY_ROW_SEPARATOR`);
 //   · as an HTML TABLE — what a sheet, a document or an e-mail pastes, as real rows and columns.
 // A selection inside one cell — part of a name — is the browser's to copy, as it always was.
 //
@@ -16,6 +17,13 @@
 
 /** Between two cells of a copied row, as text. */
 export const COPY_CELL_SEPARATOR = ' | ';
+
+/**
+ * Between two copied rows, as text: a blank line. «عايز فى موضوع الـ Copy إنه يسيب مسافة بين كل صف
+ * والتاني» (2026-11-03) — in a chat, rows that follow line on line read as one block; a blank line
+ * between them sets each machine apart.
+ */
+export const COPY_ROW_SEPARATOR = '\n\n';
 
 /** One cell of a copied row: its column and the text it shows. */
 export interface CopiedCell {
@@ -64,12 +72,13 @@ export const copiedLine = (row: readonly string[]): string =>
 
 /**
  * Pure: what goes on the clipboard for a grid — the text a chat pastes (a line per row, « | »
- * between cells, right to left) and the table a sheet or a document pastes.
+ * between cells, right to left, a blank line between rows) and the table a sheet or a document
+ * pastes, row under row as it always was.
  */
 export const tableClipboard = (
   grid: readonly (readonly string[])[],
 ): { text: string; html: string } => ({
-  text: grid.map(copiedLine).join('\n'),
+  text: grid.map(copiedLine).join(COPY_ROW_SEPARATOR),
   html:
     '<meta charset="utf-8"><table dir="rtl" border="1" cellpadding="4" style="border-collapse:collapse">' +
     grid

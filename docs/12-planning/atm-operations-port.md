@@ -702,8 +702,9 @@ offered nobody, and the edit dialogs' leader stayed free text.
   Dialogs and floating lists sit outside the page and keep the app's own look.
 - **A copy of table rows is a table a chat can read.** «لما أخد Copy من الجدول تطلعهولى بشكل جدول …
   عايز حافظ على شكلة كجدول لما أبعته واتساب». The scope listens for a copy: a selection that spans
-  cells of a table on an ATM page is written as text — a line per row, « | » between cells, what
-  WhatsApp pastes — and as an HTML table, what a sheet or a document pastes
+  cells of a table on an ATM page is written as text — a line per row, « | » between cells, a blank
+  line between rows («يسيب مسافة بين كل صف والتاني», `COPY_ROW_SEPARATOR`), what WhatsApp pastes —
+  and as an HTML table, what a sheet or a document pastes
   (`shared/lib/table-copy.ts`). Only cells the reader could select are taken (a board's
   `select-none` timers and buttons stay out), a control's text is left out, a column empty in
   every row is dropped, and a selection inside one cell is the browser's own copy.

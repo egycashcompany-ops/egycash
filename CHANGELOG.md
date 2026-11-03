@@ -594,10 +594,11 @@ its entry here in the same PR.
   جدول … فالكلام داخل في بعضه .. عايز حافظ على شكلة كجدول لما أبعته واتساب». The copy put a tab
   between cells, which a chat shows as a narrow space, so «MISR 1150744 فرع القصر العينى مسائي» ran
   together. A copy that covers cells of an ATM table (a drag across rows, or Ctrl+A on a board) is
-  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`. A sheet,
-  a document or an e-mail still pastes real rows and columns. Only what the rows show is copied: a
-  board's timers and buttons stay out, as before. A selection inside one cell copies as it always
-  did.
+  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`, and a
+  blank line between rows («عايز فى موضوع الـ Copy إنه يسيب مسافة بين كل صف والتاني»). A sheet, a
+  document or an e-mail still pastes real rows and columns, row under row. Only what the rows show
+  is copied: a board's timers and buttons stay out, as before. A selection inside one cell copies as
+  it always did.
 - **The area's column filter starts over each time it is opened.** «لما أضغط على فلتر (المنطقة فقط)
   يعمله Reset وأقدر أختار من الأول في كل الصفحات بتاعت ATM». Opening the area list under the head
   clears the areas picked in it, so the table shows every area again and the areas are picked

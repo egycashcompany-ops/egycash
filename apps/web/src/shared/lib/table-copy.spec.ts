@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COPY_CELL_SEPARATOR,
+  COPY_ROW_SEPARATOR,
   copiedCellText,
   copiedLine,
   copiedGrid,
@@ -15,7 +16,7 @@ import {
 const row = (...texts: string[]): CopiedCell[] => texts.map((text, column) => ({ column, text }));
 
 describe('the text a chat pastes', () => {
-  it('a line per row, « | » between its cells — the owner’s three rows no longer run together', () => {
+  it('a line per row, « | » between its cells, a blank line between rows — the owner’s three rows no longer run together', () => {
     const { text } = tableClipboard(
       copiedGrid([
         row('MISR', '1150744', 'SYN فرع القصر العينى', 'مسائي'),
@@ -29,10 +30,34 @@ describe('the text a chat pastes', () => {
         'MISR | 1150744 | SYN فرع القصر العينى | مسائي',
         'MISR | 1150183 | SYN الدواوين 3 | مسائي',
         'NBE | 25990323 | SYN معهد التعاون | مبكر جدا',
-      ].join('\n'),
+      ].join('\n\n'),
     );
     expect(text).not.toContain('\t');
     expect(COPY_CELL_SEPARATOR).toBe(' | ');
+  });
+
+  it('sets each row apart with a blank line — «يسيب مسافة بين كل صف والتاني»', () => {
+    const { text } = tableClipboard([
+      ['MISR', '4680143', 'فرع دار الهلال 2', 'اعطال كاستتات'],
+      ['NBE', '25990345', 'محطة مترو سعد زغلول', 'فحص ادراج'],
+    ]);
+    expect(COPY_ROW_SEPARATOR).toBe('\n\n');
+    const lines = text.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe('');
+    expect(lines[0]).toBe(copiedLine(['MISR', '4680143', 'فرع دار الهلال 2', 'اعطال كاستتات']));
+    expect(lines[2]).toBe(copiedLine(['NBE', '25990345', 'محطة مترو سعد زغلول', 'فحص ادراج']));
+    // No blank line after the last row, nor before the first.
+    expect(text.startsWith('\n')).toBe(false);
+    expect(text.endsWith('\n')).toBe(false);
+  });
+
+  it('pastes into a sheet row under row, with no empty rows between them', () => {
+    const { html } = tableClipboard([
+      ['MISR', '1'],
+      ['NBE', '2'],
+    ]);
+    expect(html).toContain('<tr><td>MISR</td><td>1</td></tr><tr><td>NBE</td><td>2</td></tr>');
   });
 
   it('each line reads right to left with every cell whole — the schedule never lands inside a name', () => {
@@ -46,7 +71,7 @@ describe('the text a chat pastes', () => {
       ['MISR', '1'],
       ['NBE', '2'],
     ]);
-    expect(text.split('\n').every((line) => line.startsWith('\u200F'))).toBe(true);
+    expect(text.split(COPY_ROW_SEPARATOR).every((line) => line.startsWith('\u200F'))).toBe(true);
   });
 
   it('a cell’s text on one line, its spaces one', () => {

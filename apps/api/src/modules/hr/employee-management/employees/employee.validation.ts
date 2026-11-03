@@ -5,6 +5,8 @@ export {
   CreateEmployeeSchema,
   CreateEmployeeLoginSchema,
   DirectRegisterEmployeeSchema,
+  EmployeeCodeCheckQuerySchema,
+  JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,

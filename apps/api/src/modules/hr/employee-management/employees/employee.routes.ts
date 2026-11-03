@@ -11,8 +11,11 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  checkEmployeeCode,
   createEmployee,
   createEmployeeLogin,
+  getJobTitlePlacements,
+  getLastEmployeeCode,
   getEmployee,
   getMyEmployeeProfile,
   getEmployeeTimeline,
@@ -32,7 +35,9 @@ import {
   CreateEmployeeLoginSchema,
   CreateEmployeeSchema,
   DirectRegisterEmployeeSchema,
+  EmployeeCodeCheckQuerySchema,
   EmployeeIdParamSchema,
+  JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
@@ -109,6 +114,28 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.registerDirect'),
     validate({ body: DirectRegisterEmployeeSchema }),
     asyncHandler(registerEmployeeDirect),
+  );
+  // The register screen's three helpers (declared before /:id), behind the permission to register:
+  // the last code issued, what a typed code means, and where a job title's people sit in a branch.
+  router.get(
+    '/last-code',
+    authenticate,
+    authorize('employee.registerDirect'),
+    asyncHandler(getLastEmployeeCode),
+  );
+  router.get(
+    '/code-check',
+    authenticate,
+    authorize('employee.registerDirect'),
+    validate({ query: EmployeeCodeCheckQuerySchema }),
+    asyncHandler(checkEmployeeCode),
+  );
+  router.get(
+    '/job-title-placements',
+    authenticate,
+    authorize('employee.registerDirect'),
+    validate({ query: JobTitlePlacementQuerySchema }),
+    asyncHandler(getJobTitlePlacements),
   );
   // Exited-employee match by national id — powers the Rehire prompt (declared before /:id).
   /**

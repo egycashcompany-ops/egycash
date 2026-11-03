@@ -4,9 +4,17 @@
 // terms are entered directly. Tenured staff may enter straight at `active`; new hires default
 // to probation-first (D1). The server runs the national-id person guard (an exited match must
 // be REHIRED on the same employee number).
+//
+// THE CODE COMES FIRST — «عايز أول حاجة قبل الاسم الكامل (عربي) تبقي كود الموظف». HR types it; the
+// last code issued is stated under the box («xxx2862», the number without its branch); its first
+// three digits ARE the branch, so the branch is read off the code rather than picked, and the
+// department and section lists narrow to that branch. A job title, once picked, fills in the
+// department and section most of that branch's people with the title sit in.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  EMPLOYEE_CODE_PATTERN,
+  maskEmployeeCodeBranch,
   type CredentialsDeliveryResultDto,
   type DirectRegisterEmployee,
   type EmploymentType,
@@ -31,8 +39,15 @@ import {
   useJobTitleReferenceOptions,
   useSectionOptions,
 } from '../../../../organization/shared/references';
-import { useRegisterEmployeeDirect, useRehireCheck } from '../api/employee-queries';
+import {
+  useEmployeeCodeCheck,
+  useJobTitlePlacements,
+  useLastEmployeeCode,
+  useRegisterEmployeeDirect,
+  useRehireCheck,
+} from '../api/employee-queries';
 import { SalaryCard } from '../components/SalaryCard';
+import { branchOfCode, orderTitlesForBranch, placementForTitle } from '../lib/register-code';
 
 const MARITAL: MaritalStatus[] = ['single', 'married', 'divorced', 'widowed'];
 const EMPLOYMENT_TYPES: EmploymentType[] = ['fullTime', 'partTime', 'contract', 'temporary'];
@@ -60,8 +75,9 @@ export const DirectRegisterPage = (): JSX.Element => {
   const [primaryPhone, setPrimaryPhone] = useState('');
   const [secondaryPhone, setSecondaryPhone] = useState('');
   const [email, setEmail] = useState('');
+  // The Employee Code, typed — and the branch it names.
+  const [code, setCode] = useState('');
   // Employment terms.
-  const [branchId, setBranchId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [jobTitleId, setJobTitleId] = useState('');
@@ -73,15 +89,61 @@ export const DirectRegisterPage = (): JSX.Element => {
   const [entryStatus, setEntryStatus] = useState<'probation' | 'active'>('probation');
 
   const { data: branches = [] } = useBranchOptions();
+  // «أول لما أكتب الكود تعرف على طول الفرع بتاعه»: the first three digits are a branch's code.
+  const codeBranch = branchOfCode(code, branches);
+  const branchId = codeBranch?.id ?? '';
+  // Another branch read off the code: what was picked under the old one does not belong to it.
+  const [placedIn, setPlacedIn] = useState(branchId);
+  if (placedIn !== branchId) {
+    setPlacedIn(branchId);
+    setDepartmentId('');
+    setSectionId('');
+  }
+  const lastCode = useLastEmployeeCode();
+  const codeShaped = EMPLOYEE_CODE_PATTERN.test(code);
+  const codeCheck = useEmployeeCodeCheck(code);
+  const checked = codeShaped && codeCheck.data?.code === code ? codeCheck.data : undefined;
+  const codeError =
+    code.length >= 3 && codeBranch === undefined && branches.length > 0
+      ? t('employees.register.codeNoBranch', { prefix: code.slice(0, 3) })
+      : checked?.takenBy != null
+        ? t('employees.register.codeTaken', { code: checked.takenBy })
+        : undefined;
+  const codeHint = [
+    lastCode.data?.code != null
+      ? t('employees.register.lastCode', { code: maskEmployeeCodeBranch(lastCode.data.code) })
+      : null,
+    codeBranch === undefined ? null : t('employees.register.codeBranch', { branch: localized(codeBranch.name, locale) }),
+  ]
+    .filter((line): line is string => line !== null)
+    .join(' · ');
+
   const { data: departments = [] } = useDepartmentOptions(branchId === '' ? undefined : branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
   const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  // Where each job title's people already sit in this branch — job titles belong to no department,
+  // so this is read off the employees, and only ever pre-fills what HR may still change.
+  const { data: placements = [] } = useJobTitlePlacements(branchId);
+  const { here: titlesHere, elsewhere: titlesElsewhere } = orderTitlesForBranch(jobTitles, placements);
+  const pickJobTitle = (id: string): void => {
+    setJobTitleId(id);
+    const placed = placementForTitle(id, placements, departments);
+    if (placed === null) return;
+    setDepartmentId(placed.departmentId);
+    setSectionId(placed.sectionId);
+  };
   const canComp = can('employee.manageCompensation');
 
   // Rehire guard preview (F2): an exited match must be rehired, not re-registered.
   const rehireMatch = useRehireCheck(nationalId);
 
   const submit = async (): Promise<void> => {
+    // The code is the first thing on the form and the first thing checked: a code that names no
+    // branch, or whose number somebody already holds, is refused here rather than by the server.
+    if (!codeShaped || codeBranch === undefined || checked === undefined || checked.takenBy !== null) {
+      toast.error(t('employees.register.codeRequired'));
+      return;
+    }
     // The National ID is required to create an employee, so it is guarded here with the other
     // two: reaching the server to be told would cost a round-trip and land the message on the
     // form rather than the field.
@@ -137,6 +199,7 @@ export const DirectRegisterPage = (): JSX.Element => {
       },
       ...(hiringDate === '' ? {} : { hiringDate: new Date(hiringDate) }),
       entryStatus,
+      code,
     };
     try {
       const created = await register.mutateAsync(body);
@@ -201,6 +264,20 @@ export const DirectRegisterPage = (): JSX.Element => {
           <CardHeader title={t('employees.personal.identity')} />
           <CardBody>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field
+                label={t('employees.register.code')}
+                required
+                hint={codeHint === '' ? undefined : codeHint}
+                error={codeError}
+              >
+                <Input
+                  rule="integer"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  maxLength={12}
+                  data-register-code="true"
+                />
+              </Field>
               <Field label={t('applicants.form.fullNameAr')} required>
                 <Input value={fullNameAr} onChange={(e) => setFullNameAr(e.target.value)} maxLength={200} />
               </Field>
@@ -246,16 +323,10 @@ export const DirectRegisterPage = (): JSX.Element => {
           <CardHeader title={t('employees.detail.employment')} />
           <CardBody>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label={t('offers.form.branch')} required>
-                <Select
-                  value={branchId}
-                  onChange={(e) => {
-                    setBranchId(e.target.value);
-                    setDepartmentId('');
-                    setSectionId('');
-                  }}
-                >
-                  <option value="">{t('common.select')}</option>
+              {/* Read off the code, never picked: the code's first three digits ARE the branch. */}
+              <Field label={t('offers.form.branch')} required hint={t('employees.register.branchFromCode')}>
+                <Select value={branchId} disabled>
+                  <option value="">{t('employees.register.typeCodeFirst')}</option>
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>
                       {localized(b.name, locale)}
@@ -266,6 +337,7 @@ export const DirectRegisterPage = (): JSX.Element => {
               <Field label={t('offers.form.department')} required>
                 <Select
                   value={departmentId}
+                  disabled={branchId === ''}
                   onChange={(e) => {
                     setDepartmentId(e.target.value);
                     setSectionId('');
@@ -280,7 +352,7 @@ export const DirectRegisterPage = (): JSX.Element => {
                 </Select>
               </Field>
               <Field label={t('employees.actions.transfer.section')}>
-                <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
+                <Select value={sectionId} disabled={departmentId === ''} onChange={(e) => setSectionId(e.target.value)}>
                   <option value="">{t('employees.actions.transfer.noSection')}</option>
                   {sections.map((sec) => (
                     <option key={sec.id} value={sec.id}>
@@ -290,13 +362,27 @@ export const DirectRegisterPage = (): JSX.Element => {
                 </Select>
               </Field>
               <Field label={t('offers.form.jobTitle')} required>
-                <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
-                  <option value="">{t('common.select')}</option>
-                  {jobTitles.map((jt) => (
-                    <option key={jt.id} value={jt.id}>
-                      {localized(jt.name, locale)}
-                    </option>
-                  ))}
+                <Select value={jobTitleId} disabled={branchId === ''} onChange={(e) => pickJobTitle(e.target.value)}>
+                  <option value="">{branchId === '' ? t('employees.register.typeCodeFirst') : t('common.select')}</option>
+                  {/* The titles this branch already has people in come first, most-held first. */}
+                  {titlesHere.length > 0 && (
+                    <optgroup label={t('employees.register.titlesInBranch')}>
+                      {titlesHere.map((jt) => (
+                        <option key={jt.id} value={jt.id}>
+                          {localized(jt.name, locale)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {titlesElsewhere.length > 0 && (
+                    <optgroup label={titlesHere.length > 0 ? t('employees.register.titlesOther') : t('offers.form.jobTitle')}>
+                      {titlesElsewhere.map((jt) => (
+                        <option key={jt.id} value={jt.id}>
+                          {localized(jt.name, locale)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </Select>
               </Field>
               <Field label={t('offers.form.employmentType')} required>

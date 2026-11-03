@@ -8,7 +8,7 @@ import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { normalizeArabic } from '../../shared/arabic';
 import { EmployeeModel, type EmployeeDoc, type EmployeeEntity } from './employee.model';
-import { codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
+import { codeNumberExpression, codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
   status?: string | undefined;
@@ -163,6 +163,91 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    */
   async findByCodeAnyState(code: string): Promise<EmployeeDoc | null> {
     return this.model.findOne({ code }).lean<EmployeeDoc>().exec();
+  }
+
+  /**
+   * The code holding the highest NUMBER — what follows the 3-digit branch prefix — over every record
+   * in any state (a deleted employee's code is still taken). «أخر كود موجود بأعتماد xxx0000».
+   */
+  async findHighestNumberedCode(): Promise<string | null> {
+    const [row] = await this.model
+      .aggregate<{ code: string }>([
+        { $match: { code: { $regex: '^[0-9]{7,}$' } } },
+        { $addFields: { _number: codeNumberExpression('code') } },
+        { $match: { _number: { $ne: null } } },
+        { $sort: { _number: -1, code: -1 } },
+        { $limit: 1 },
+        { $project: { _id: 0, code: 1 } },
+      ])
+      .exec();
+    return row?.code ?? null;
+  }
+
+  /**
+   * A record in any state already holding employee NUMBER `number`, under any branch prefix —
+   * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
+   * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
+   */
+  async findHoldingNumber(number: number): Promise<{ code: string } | null> {
+    const [row] = await this.model
+      .aggregate<{ code: string }>([
+        {
+          $addFields: {
+            _codeNumber: codeNumberExpression('code'),
+            _issuedNumber: {
+              $convert: { input: '$employeeNumber', to: 'long', onError: null, onNull: null },
+            },
+          },
+        },
+        { $match: { $or: [{ _codeNumber: number }, { _issuedNumber: number }] } },
+        { $limit: 1 },
+        { $project: { _id: 0, code: 1 } },
+      ])
+      .exec();
+    return row ?? null;
+  }
+
+  /**
+   * Per job title, the department and section most of a branch's current staff with that title sit
+   * in. Read from the employees themselves — job titles are one company-wide catalog and are linked
+   * to no department — so it is a suggestion for a form, not a rule.
+   */
+  async jobTitlePlacements(
+    branchId: string,
+  ): Promise<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }[]> {
+    return this.model
+      .aggregate<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }>([
+        {
+          $match: {
+            isDeleted: false,
+            status: { $in: [...EMPLOYED_STATUSES] },
+            'employment.branchId': new Types.ObjectId(branchId),
+          },
+        },
+        {
+          $group: {
+            _id: {
+              jobTitleId: '$employment.jobTitleId',
+              departmentId: '$employment.departmentId',
+              sectionId: '$employment.sectionId',
+            },
+            count: { $sum: 1 },
+          },
+        },
+        // Largest placement first, so the first row per title below is its most common one.
+        { $sort: { count: -1, '_id.departmentId': 1, '_id.sectionId': 1 } },
+        {
+          $group: {
+            _id: '$_id.jobTitleId',
+            departmentId: { $first: '$_id.departmentId' },
+            sectionId: { $first: '$_id.sectionId' },
+            employees: { $sum: '$count' },
+          },
+        },
+        { $project: { _id: 0, jobTitleId: '$_id', departmentId: 1, sectionId: 1, employees: 1 } },
+        { $sort: { employees: -1 } },
+      ])
+      .exec();
   }
 
   /**

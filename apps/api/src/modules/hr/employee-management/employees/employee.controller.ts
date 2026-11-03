@@ -11,7 +11,9 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
+  type JobTitlePlacementQuery,
   type LinkEmployeeUser,
   type ListEmployeesQuery,
   type RehireCheckQuery,
@@ -93,6 +95,23 @@ export const rehireCheck = async (req: Request, res: Response): Promise<void> =>
   const { query } = validated<never, RehireCheckQuery>(req);
   const match = await employeeService.rehireCheck(query.nationalId);
   ok(res, match === null ? null : toRehireCheckResultDto(match));
+};
+
+/** The register screen's hint under the code: the code holding the highest number. */
+export const getLastEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastCode());
+};
+
+/** A typed code, before it is submitted: the branch it names and whether its number is free. */
+export const checkEmployeeCode = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, EmployeeCodeCheckQuery>(req);
+  ok(res, await employeeService.checkCode(query.code));
+};
+
+/** Per job title, the department and section most of a branch's staff with it work in. */
+export const getJobTitlePlacements = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, JobTitlePlacementQuery>(req);
+  ok(res, await employeeService.jobTitlePlacements(query.branchId));
 };
 
 export const getEmployee = async (req: Request, res: Response): Promise<void> => {

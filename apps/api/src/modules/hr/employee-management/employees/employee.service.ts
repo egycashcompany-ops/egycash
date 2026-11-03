@@ -31,6 +31,11 @@ import {
   type FileDto,
   type EmployeeLoginProvisionDto,
   type JobValueSource,
+  employeeCodeBranchPrefix,
+  employeeCodeSerial,
+  type EmployeeCodeCheckDto,
+  type JobTitlePlacementDto,
+  type LastEmployeeCodeDto,
 } from '@ecms/contracts';
 import {
   BusinessRuleError,
@@ -45,6 +50,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { notificationsService } from '../../../../platform/notifications';
 import {
+  branchRepository,
   branchService,
   departmentService,
   jobTitleService,
@@ -60,7 +66,7 @@ import { jobOfferService } from '../../recruitment/job-offers';
 // File import (not the barrel) — the barrel would close an import cycle via the actions service.
 import { employeeActionRepository } from '../employee-actions/employee-action.repository';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
-import { nextEmployeeNumber } from './employee-sequence';
+import { nextEmployeeNumber, raiseEmployeeSequenceTo } from './employee-sequence';
 import { buildEmployeeCode } from './employee-number';
 import { personalFromApplicant } from './employee.migration';
 import {
@@ -342,6 +348,59 @@ class EmployeeService {
     return { doc, provisionedLogin };
   }
 
+  /** «أخر كود موجود بأعتماد xxx0000» — the code holding the highest number, whatever its branch. */
+  async lastCode(): Promise<LastEmployeeCodeDto> {
+    return { code: await employeeRepository.findHighestNumberedCode() };
+  }
+
+  /**
+   * What a code typed on the register screen means: the active branch its prefix names, and who —
+   * if anybody — already holds its number under any prefix. Answers; refuses nothing.
+   */
+  async checkCode(code: string): Promise<EmployeeCodeCheckDto> {
+    const branch = await branchRepository.findOne({
+      code: employeeCodeBranchPrefix(code),
+      status: 'active',
+    });
+    const holder = await employeeRepository.findHoldingNumber(employeeCodeSerial(code));
+    return {
+      code,
+      branchId: branch === null ? null : String(branch._id),
+      takenBy: holder?.code ?? null,
+    };
+  }
+
+  /**
+   * Per job title, where a branch's current staff with it work — «لو أخترت المسمي الوظيفي يختار
+   * على طول الإدارة والقسم التابع ليها». Job titles belong to no department, so the answer is read
+   * off the people already placed: the department and section most of them sit in.
+   */
+  async jobTitlePlacements(branchId: string): Promise<JobTitlePlacementDto[]> {
+    const rows = await employeeRepository.jobTitlePlacements(branchId);
+    return rows.map((row) => ({
+      jobTitleId: String(row.jobTitleId),
+      departmentId: String(row.departmentId),
+      sectionId: row.sectionId == null ? null : String(row.sectionId),
+      employees: row.employees,
+    }));
+  }
+
+  /**
+   * A code HR typed at registration: its prefix must be the hiring branch's code, and its number
+   * may be held by nobody, under any prefix and in any state.
+   */
+  private async assertTypedCodeFree(code: string, branchCode: string): Promise<void> {
+    if (employeeCodeBranchPrefix(code) !== branchCode) {
+      throw new BusinessRuleError(
+        `the code ${code} starts with ${employeeCodeBranchPrefix(code)}, not the hiring branch's code ${branchCode}`,
+      );
+    }
+    const holder = await employeeRepository.findHoldingNumber(employeeCodeSerial(code));
+    if (holder !== null) {
+      throw new ConflictError(`the employee number in ${code} is already held by ${holder.code}`);
+    }
+  }
+
   /**
    * Direct Registration (D4 — go-live workforce onboarding / walk-in hire). Full personal +
    * employment payload; recruitment references stay null; national-id duplicate guard runs
@@ -501,11 +560,17 @@ class EmployeeService {
     );
 
     const branch = await branchService.getById(e.branchId);
+    // A code HR typed is issued as typed — the number in it IS the employee number — and the
+    // counter is raised past it afterwards, so the next composed code cannot collide with it.
+    const typed = opts.identity === undefined ? input.code : undefined;
+    if (typed !== undefined) await this.assertTypedCodeFree(typed, branch.code);
     const doc = await unitOfWork(async (session) => {
-      const employeeNumber = opts.identity?.employeeNumber ?? (await nextEmployeeNumber(session));
-      // The hiring branch's code, composed once, here (ADR-017) — unless the identity was issued
-      // long before this system existed and is simply being loaded.
-      const code = opts.identity?.code ?? buildEmployeeCode(branch.code, employeeNumber);
+      const employeeNumber =
+        opts.identity?.employeeNumber ??
+        (typed === undefined ? await nextEmployeeNumber(session) : typed.slice(3));
+      // The hiring branch's code, composed once, here (ADR-017) — unless HR typed the code, or the
+      // identity was issued long before this system existed and is simply being loaded.
+      const code = opts.identity?.code ?? typed ?? buildEmployeeCode(branch.code, employeeNumber);
       const hireEvent: EmployeeStatusEvent = {
         from: null,
         to: entry.status,
@@ -575,6 +640,8 @@ class EmployeeService {
         { by: ctx.userId, session },
       );
     });
+    // Raised only once the record exists: a refused registration must not burn a number.
+    if (typed !== undefined) await raiseEmployeeSequenceTo(employeeCodeSerial(typed));
 
     await this.recordHireAction(doc, entry.status, ctx.userId);
     await auditService.record({
@@ -582,6 +649,7 @@ class EmployeeService {
       action: 'create',
       changes: [
         { field: 'code', old: null, new: doc.code },
+        ...(typed === undefined ? [] : [{ field: 'codeTyped', old: null, new: true }]),
         { field: 'origin', old: null, new: 'direct' },
         { field: 'status', old: null, new: entry.status },
       ],

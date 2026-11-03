@@ -316,16 +316,18 @@ export const ActiveUsersPage = (): JSX.Element => {
               ))}
             </Select>
           )}
-          <Input
-            type="date"
-            value={day}
-            max={today}
-            onChange={(event) =>
-              patch({ day: event.target.value === today ? null : event.target.value || null })
-            }
-            aria-label={t('systemAdmin.activeUsers.filters.day')}
-            className="w-auto"
-          />
+          {/* A fixed width: a date is ten characters, and a full-width box would take a row. */}
+          <div className="w-40 shrink-0">
+            <Input
+              type="date"
+              value={day}
+              max={today}
+              onChange={(event) =>
+                patch({ day: event.target.value === today ? null : event.target.value || null })
+              }
+              aria-label={t('systemAdmin.activeUsers.filters.day')}
+            />
+          </div>
         </FilterBar>
 
         <DataTable

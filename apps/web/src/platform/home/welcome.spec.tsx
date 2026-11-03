@@ -54,6 +54,7 @@ const summary = (over: Partial<MyEmployeeSummaryDto> = {}): MyEmployeeSummaryDto
   fullNameEn: 'Ahmed Mahmoud Abdelrahman',
   birthDate: '1990-03-12',
   hasPhoto: false,
+  photoFileId: null,
   jobTitle: { ar: 'محاسب أول', en: 'Senior Accountant' },
   department: { ar: 'الإدارة المالية', en: 'Finance' },
   branch: { ar: 'الفرع الرئيسي', en: 'Head Office' },
@@ -109,22 +110,35 @@ const render = ({
 }: {
   locale?: Locale;
   /** `null`: an account with no employee behind it. */
-  employee?: MyEmployeeSummaryDto | null;
-  menu?: MyApplicationCategoryDto[];
+  /** `'pending'`: an employee account whose card has not arrived yet. */
+  employee?: MyEmployeeSummaryDto | null | 'pending';
+  /** `'pending'` / `'error'`: the menu still on its way, or failed. */
+  menu?: MyApplicationCategoryDto[] | 'pending' | 'error';
 } = {}): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
       locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
-      auth: { me: me(employee === null ? null : employee.employeeId), status: 'signedIn' as const },
+      auth: {
+        me: me(employee === null ? null : employee === 'pending' ? 'e1' : employee.employeeId),
+        status: 'signedIn' as const,
+      },
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-  qc.setQueryData(['me', 'applications'], menu);
-  if (employee !== null) qc.setQueryData(MY_SUMMARY_KEY, employee);
+  if (menu === 'error') {
+    // A failed query is otherwise retried as it mounts — read as «loading» by a static render.
+    qc.setQueryDefaults(['me', 'applications'], { retryOnMount: false });
+    qc.getQueryCache()
+      .build(qc, { queryKey: ['me', 'applications'] })
+      .setState({ status: 'error', error: new Error('menu failed'), fetchStatus: 'idle' });
+  } else if (menu !== 'pending') {
+    qc.setQueryData(['me', 'applications'], menu);
+  }
+  if (employee !== null && employee !== 'pending') qc.setQueryData(MY_SUMMARY_KEY, employee);
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
@@ -254,5 +268,32 @@ describe('the recent pages — this account’s, newest first, each a link', () 
     expect(html).toContain('data-starting-pages="true"');
     expect(html).toContain(translate('ar', 'home.recent.emptyStart'));
     expect(html).toContain('href="/fleet/vehicles"');
+  });
+});
+
+describe('names, waits and failures', () => {
+  it('greets by the whole first name — «عبد الرحمن», not «عبد»', () => {
+    const html = render({ employee: summary({ fullNameAr: 'عبد الرحمن محمد علي' }) });
+    expect(html).toContain(translate('ar', 'home.greeting', { name: 'عبد الرحمن' }));
+  });
+
+  it('holds the birthday’s place while the card is on its way, instead of dropping it', () => {
+    const html = render({ employee: 'pending' });
+    expect(html).toContain(translate('ar', 'home.birthday.title'));
+    expect(html).toContain(translate('ar', 'common.loading'));
+    expect(html).not.toContain('data-birthday');
+  });
+
+  it('waits for the menu before saying anything about the history', () => {
+    const html = render({ menu: 'pending' });
+    expect(html).toContain(translate('ar', 'common.loading'));
+    expect(html).not.toContain(translate('ar', 'home.recent.empty'));
+    expect(html).not.toContain(translate('ar', 'home.recent.emptyStart'));
+  });
+
+  it('says the menu could not be read, with a retry, rather than claim there is no history', () => {
+    const html = render({ menu: 'error' });
+    expect(html).not.toContain(translate('ar', 'home.recent.empty'));
+    expect(html).toContain(translate('ar', 'common.retry'));
   });
 });

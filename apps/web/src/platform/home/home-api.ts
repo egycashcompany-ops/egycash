@@ -11,12 +11,12 @@ import { useAppSelector } from '../../store';
 
 /** Cache keys, exported so a photo upload can refresh every face on screen. */
 export const MY_SUMMARY_KEY = ['hr', 'employees', 'me', 'summary'] as const;
-export const myPhotoKey = (version: string | null): readonly unknown[] => [
+/** The person's own picture, keyed by its file: a new photo is a new key, never a refetch. */
+export const myPhotoKey = (photoFileId: string | null): readonly unknown[] => [
   'hr',
-  'employees',
+  'employeePhotos',
   'me',
-  'photo',
-  version,
+  photoFileId,
 ];
 
 /** An account with an employee behind it — the only kind that has a summary to ask for. */
@@ -47,9 +47,6 @@ export const useMyEmployeeSummary = () => {
 /** The signed-in person's photo as an object URL, or null while there is none. */
 export const useMyPhotoUrl = (): { url: string | null; loading: boolean } => {
   const summary = useMyEmployeeSummary();
-  const has = summary.data?.hasPhoto === true;
-  return useAuthedImage(
-    has ? '/hr/employees/me/photo' : null,
-    myPhotoKey(summary.data?.employeeId ?? null),
-  );
+  const fileId = summary.data?.photoFileId ?? null;
+  return useAuthedImage(fileId === null ? null : '/hr/employees/me/photo', myPhotoKey(fileId));
 };

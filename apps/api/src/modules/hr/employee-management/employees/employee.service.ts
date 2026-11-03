@@ -73,6 +73,7 @@ import {
   assertEmployeePhoto,
   employeePhotoRef,
   isEmployeePhotoFile,
+  sniffEmployeePhotoMime,
   resolveEmployeePhotoCategoryId,
 } from './employee-photo.files';
 import {
@@ -489,7 +490,8 @@ class EmployeeService {
       gender: derived?.gender ?? null,
       nationality: identity.nationality,
       placeOfBirth: derived?.governorate ?? null,
-      photoFileId: identity.photoFileId === undefined ? null : new Types.ObjectId(identity.photoFileId),
+      // Set afterwards through POST /:id/photo, never from a file id sent with the registration.
+      photoFileId: null,
       maritalStatus: identity.maritalStatus ?? null,
       religion: identity.religion ?? null,
       nationalIdExpiry: identity.nationalIdExpiry ?? null,
@@ -721,7 +723,8 @@ class EmployeeService {
       }
       personal.searchName = normalizeArabic([personal.fullNameAr, personal.fullNameEn ?? ''].join(' '));
       if (idn.nationality !== undefined) personal.nationality = idn.nationality;
-      if (idn.photoFileId !== undefined) personal.photoFileId = new Types.ObjectId(idn.photoFileId);
+      // The photo is not edited here: it has its own endpoints (POST/DELETE /:id/photo), which check
+      // the image, file it as this employee's and audit the change. A file id sent here is ignored.
       if (idn.maritalStatus !== undefined) {
         changes.push({ field: 'personal.maritalStatus', old: before.personal.maritalStatus, new: idn.maritalStatus });
         personal.maritalStatus = idn.maritalStatus;
@@ -824,7 +827,7 @@ class EmployeeService {
           ? before.personal.nationalIdExpiry
           : input.identity.nationalIdExpiry;
     }
-    if (input.identity?.photoFileId === undefined) personal.photoFileId = before.personal.photoFileId;
+    personal.photoFileId = before.personal.photoFileId;
     if (input.experience === undefined) personal.experience = before.personal.experience;
     if (input.drivingLicenses === undefined) personal.drivingLicenses = before.personal.drivingLicenses;
     if (input.military === undefined) personal.military = before.personal.military;
@@ -1228,9 +1231,11 @@ class EmployeeService {
   /**
    * The bytes behind the link — only when the link points at a file filed as THIS employee's photo.
    *
-   * `personal.photoFileId` can also be written through the personal-data edit, which takes any file
-   * id. Checking the file's owner first means such a link can never make this endpoint serve some
-   * other document as a face: anything that is not this employee's photo answers «no photo».
+   * Only the photo endpoints write `personal.photoFileId`, but an older record (a hire copied its
+   * applicant's file id) may point elsewhere. Checking the file's owner first means such a link can
+   * never make this endpoint serve some other document as a face: anything that is not this
+   * employee's photo answers «no photo». The bytes are checked again too — a file filed under this
+   * type through the generic Files routes skipped the upload's check — and served as what they ARE.
    *
    * `readEntityOwnedBuffer`, not `readBuffer`: the latter also demands the generic `file.download`
    * grant, which no HR role and no employee holds. The ADR-023 rule is still asked, independently
@@ -1253,7 +1258,9 @@ class EmployeeService {
       throw new NotFoundError('this employee has no photo');
     }
     const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(fileId));
-    return { buffer, mime: doc.mime, fileName: doc.originalName };
+    const mime = sniffEmployeePhotoMime(buffer);
+    if (mime === null) throw new NotFoundError('this employee has no photo');
+    return { buffer, mime, fileName: doc.originalName };
   }
 
   /**

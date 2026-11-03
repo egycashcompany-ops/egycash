@@ -700,6 +700,8 @@ export interface MyEmployeeSummaryDto {
   fullNameEn: string | null;
   birthDate: string | null;
   hasPhoto: boolean;
+  /** The current photo's file — a new photo is a new id, so a cached picture never outlives it. */
+  photoFileId: string | null;
   jobTitle: LocalizedString | null;
   department: LocalizedString | null;
   branch: LocalizedString | null;

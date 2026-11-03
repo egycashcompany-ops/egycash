@@ -49,7 +49,7 @@ const UNPLACED: EmployeePlacementDto = {
 };
 
 describe('the welcome card', () => {
-  it('carries exactly its nine fields — nothing else of the record rides along', () => {
+  it('carries exactly its ten fields — nothing else of the record rides along', () => {
     const card = toMyEmployeeSummaryDto(doc(), PLACED);
     expect(card).toEqual({
       employeeId: String(ID),
@@ -58,6 +58,7 @@ describe('the welcome card', () => {
       fullNameEn: 'Ahmed Mohamed',
       birthDate: '1990-03-07',
       hasPhoto: false,
+      photoFileId: null,
       jobTitle: { ar: 'سائق', en: 'Driver' },
       department: { ar: 'التشغيل', en: 'Operations' },
       branch: { ar: 'الرئيسي', en: 'HQ' },
@@ -83,11 +84,14 @@ describe('the welcome card', () => {
     expect(toMyEmployeeSummaryDto(doc({ birthDate: null }), PLACED).birthDate).toBeNull();
   });
 
-  it('says whether there is a photo, without naming the file', () => {
+  // The file id is the picture's version: a new photo is a new id, so the person's own top bar and
+  // welcome page never keep showing the old face from their cache.
+  it('says whether there is a photo, and which file is the current one', () => {
     const fileId = new Types.ObjectId();
     const card = toMyEmployeeSummaryDto(doc({ photoFileId: fileId }), PLACED);
     expect(card.hasPhoto).toBe(true);
-    expect(JSON.stringify(card)).not.toContain(String(fileId));
+    expect(card.photoFileId).toBe(String(fileId));
+    expect(toMyEmployeeSummaryDto(doc(), PLACED).photoFileId).toBeNull();
     // A record written before the field existed has no `photoFileId` at all: no photo.
     expect(toMyEmployeeSummaryDto(doc({ photoFileId: undefined }), PLACED).hasPhoto).toBe(false);
   });

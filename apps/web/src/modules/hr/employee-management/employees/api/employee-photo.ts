@@ -15,7 +15,7 @@ import {
 import { api, upload } from '../../../../../shared/lib/api-client';
 import { useAuthedImage } from '../../../../../shared/lib/authed-image';
 import { detailKey } from '../../../../../shared/lib/query-keys';
-import { MY_SUMMARY_KEY, myPhotoKey } from '../../../../../platform/home/home-api';
+import { MY_SUMMARY_KEY } from '../../../../../platform/home/home-api';
 
 const MODULE = 'hr';
 const FEATURE = 'employees';
@@ -23,9 +23,8 @@ const FEATURE = 'employees';
 /** Keyed on the file id: a new photo is a new key, so no stale picture survives a change. */
 export const employeePhotoKey = (id: string, photoFileId: string | null): readonly unknown[] => [
   MODULE,
-  FEATURE,
+  'employeePhotos',
   id,
-  'photo',
   photoFileId,
 ];
 
@@ -47,9 +46,9 @@ const useAfterPhotoWrite = (id: string) => {
   return (updated: EmployeeDto): void => {
     qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
     void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
+    // The person's own card names their photo's file: should the face changed be the signed-in
+    // person's, the new file id is a new picture in the top bar and on the welcome page.
     void qc.invalidateQueries({ queryKey: MY_SUMMARY_KEY });
-    // The signed-in person's own face, should it be theirs that changed — keyed by person, not file.
-    void qc.invalidateQueries({ queryKey: myPhotoKey(null).slice(0, 4) });
   };
 };
 
@@ -62,6 +61,8 @@ export const useSetEmployeePhoto = (id: string) => {
       return upload<EmployeeDto>(`/hr/employees/${id}/photo`, form);
     },
     onSuccess: after,
+    // The dialog says what went wrong, in place; the global toast would say it a second time.
+    onError: () => undefined,
   });
 };
 
@@ -70,5 +71,6 @@ export const useRemoveEmployeePhoto = (id: string) => {
   return useMutation({
     mutationFn: () => api<EmployeeDto>(`/hr/employees/${id}/photo`, { method: 'DELETE' }),
     onSuccess: after,
+    onError: () => undefined,
   });
 };

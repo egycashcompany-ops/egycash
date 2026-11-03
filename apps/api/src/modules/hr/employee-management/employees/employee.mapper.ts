@@ -263,6 +263,7 @@ export const toMyEmployeeSummaryDto = (
   fullNameEn: doc.personal.fullNameEn ?? null,
   birthDate: doc.personal.birthDate == null ? null : ymdOf(doc.personal.birthDate),
   hasPhoto: doc.personal.photoFileId != null,
+  photoFileId: doc.personal.photoFileId == null ? null : String(doc.personal.photoFileId),
   jobTitle: unitName(placement.jobTitle),
   department: unitName(placement.department),
   branch: unitName(placement.branch),

@@ -15,6 +15,8 @@ import { Portrait } from '../../../../../shared/ui/Portrait';
 import { PhotoPickButton } from '../../../../../shared/ui/PhotoPick';
 import { CameraIcon } from '../../../../../shared/ui/icons';
 import { ApiError } from '../../../../../shared/lib/api-client';
+import { errorMessage } from '../../../../../shared/lib/errors';
+import { useAppSelector } from '../../../../../store';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import {
   EMPLOYEE_PHOTO_ACCEPT,
@@ -36,6 +38,7 @@ const PhotoDialog = ({
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const save = useSetEmployeePhoto(employee.id);
   const remove = useRemoveEmployeePhoto(employee.id);
   const [picked, setPicked] = useState<File | null>(null);
@@ -71,13 +74,28 @@ const PhotoDialog = ({
       return;
     }
     setLocalError(null);
+    // A refusal of the PREVIOUS pick does not describe this one.
+    save.reset();
+    remove.reset();
     setPicked(file);
   };
 
   const failure = save.error ?? remove.error;
+  // The server's refusals, said in the page's language: its two photo rules by their own words,
+  // anything else as the app says every error.
+  const detail = failure instanceof ApiError ? failure.details?.[0]?.code : undefined;
   const message =
     localError ??
-    (failure instanceof ApiError ? failure.message : failure === null ? null : t('common.error'));
+    (failure === null
+      ? null
+      : detail === 'UNSUPPORTED_MEDIA_TYPE'
+        ? t('employees.photo.wrongType')
+        : detail === 'TOO_LARGE'
+          ? t('employees.photo.tooLarge', { mb: EMPLOYEE_PHOTO_MAX_MB })
+          : errorMessage(failure, locale));
+  const pickLabel = t(
+    currentUrl === null && picked === null ? 'employees.photo.choose' : 'employees.photo.change',
+  );
   const shown = pickedUrl ?? currentUrl;
   const busy = save.isPending || remove.isPending;
 
@@ -124,15 +142,11 @@ const PhotoDialog = ({
             accept={EMPLOYEE_PHOTO_ACCEPT}
             onFile={choose}
             disabled={busy}
-            label={t('employees.photo.choose')}
+            label={pickLabel}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
           >
             <CameraIcon className="h-4 w-4" />
-            {t(
-              currentUrl === null && picked === null
-                ? 'employees.photo.choose'
-                : 'employees.photo.change',
-            )}
+            {pickLabel}
           </PhotoPickButton>
           {employee.personal.photoFileId !== null && picked === null && (
             <Button

@@ -13,7 +13,7 @@
 // Dates are Cairo calendar days: the count turns over at Cairo midnight, wherever the device is.
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { cairoYmd, type Locale } from '@ecms/contracts';
+import { cairoYmd, nameParts, type Locale } from '@ecms/contracts';
 import { useT } from '../localization/useT';
 import { useAppSelector } from '../../store';
 import { useMyApplications } from '../navigation/me-applications-queries';
@@ -26,8 +26,10 @@ import { Portrait } from '../../shared/ui/Portrait';
 import { CakeIcon, FileIcon, HistoryIcon } from '../../shared/ui/icons';
 import { pluralForm } from '../../shared/lib/plural';
 import { cn } from '../../shared/lib/cn';
+import { LoadingState } from '../../shared/ui/states/LoadingState';
+import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { birthdayCountdown } from './birthday';
-import { useMyEmployeeSummary, useMyPhotoUrl } from './home-api';
+import { useHasEmployee, useMyEmployeeSummary, useMyPhotoUrl } from './home-api';
 
 // Western digits, as everywhere in the app; Cairo's calendar, whatever the device's.
 const intlLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB');
@@ -57,7 +59,8 @@ const relativeTime = (at: number, now: number, locale: Locale): string | null =>
   return format.format(0, 'second');
 };
 
-const firstWord = (name: string): string => name.trim().split(/\s+/u)[0] ?? name;
+/** The first NAME, not the first word: «عبد الرحمن» and «نور الدين» stay whole. */
+const firstName = (name: string): string => nameParts(name)[0] ?? name;
 
 // ── The greeting ─────────────────────────────────────────────────────────────
 
@@ -75,7 +78,7 @@ const Greeting = ({ birthdayToday }: { birthdayToday: boolean }): JSX.Element =>
       : locale === 'en' && summary.fullNameEn !== null
         ? summary.fullNameEn
         : summary.fullNameAr;
-  const name = summary === null ? accountName : firstWord(fullName);
+  const name = summary === null ? accountName : firstName(fullName);
   const placement =
     summary === null
       ? []
@@ -88,8 +91,11 @@ const Greeting = ({ birthdayToday }: { birthdayToday: boolean }): JSX.Element =>
       className={cn(
         'relative overflow-hidden rounded-2xl p-6 text-white shadow-card sm:p-8',
         birthdayToday
-          ? 'bg-gradient-to-br from-fuchsia-600 via-rose-500 to-amber-400'
-          : 'bg-gradient-to-br from-brand-700 via-brand-600 to-indigo-500',
+          ? 'bg-gradient-to-br from-fuchsia-700 via-rose-600 to-orange-700'
+          : 'bg-gradient-to-br from-brand-700 via-brand-600 to-indigo-600',
+        // Every stop is dark enough for white text; in Arabic the darkest corner sits behind the
+        // text, which starts on the right.
+        'rtl:bg-gradient-to-bl',
       )}
     >
       {/* Light, not information: two soft circles behind the text. */}
@@ -109,12 +115,12 @@ const Greeting = ({ birthdayToday }: { birthdayToday: boolean }): JSX.Element =>
           className="ring-4 ring-white/40 shadow-lg"
         />
         <div className="min-w-0">
-          <p className="text-sm text-white/80">{longDate(cairoYmd(new Date()), locale, true)}</p>
+          <p className="text-sm text-white/90">{longDate(cairoYmd(new Date()), locale, true)}</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
             {t(birthdayToday ? 'home.greetingBirthday' : 'home.greeting', { name })}
           </h1>
           {placement.length > 0 && (
-            <p className="mt-2 text-sm text-white/85">{placement.join(' · ')}</p>
+            <p className="mt-2 text-sm text-white/90">{placement.join(' · ')}</p>
           )}
         </div>
       </div>
@@ -325,6 +331,25 @@ const RecentPagesCard = ({
       .filter((entry): entry is { visit: RecentVisit; app: NavApp } => entry.app !== undefined);
   }, [applications.data, recentVisits]);
 
+  // The menu decides which pages are still this account's: until it arrives, say so — and if it
+  // cannot be read, say THAT, with a retry, rather than claim there is no history.
+  if (applications.isPending) {
+    return (
+      <Card className={cn(className)}>
+        <CardHeader title={t('home.recent.title')} />
+        <LoadingState />
+      </Card>
+    );
+  }
+  if (applications.isError) {
+    return (
+      <Card className={cn(className)}>
+        <CardHeader title={t('home.recent.title')} />
+        <ErrorState error={applications.error} onRetry={() => void applications.refetch()} />
+      </Card>
+    );
+  }
+
   // Signed in, and holding nothing: a new account whose access has not been set up yet.
   if (applications.data !== undefined && flattenApps(applications.data).length === 0) {
     return (
@@ -379,6 +404,8 @@ const RecentPagesCard = ({
 // ── The page ─────────────────────────────────────────────────────────────────
 
 export const WelcomePage = (): JSX.Element => {
+  const t = useT();
+  const hasEmployee = useHasEmployee();
   const summary = useMyEmployeeSummary();
   const employee = summary.data ?? null;
   const birthdayToday =
@@ -389,12 +416,25 @@ export const WelcomePage = (): JSX.Element => {
     <PageContainer>
       <div className="space-y-6" data-welcome="true">
         <Greeting birthdayToday={birthdayToday} />
-        {employee === null ? (
+        {!hasEmployee || (summary.isSuccess && employee === null) ? (
           // No employee behind the account: nothing personal to show, so the history takes the row.
           <RecentPagesCard wide />
         ) : (
           <div className="grid gap-6 lg:grid-cols-3">
-            <BirthdayCard birthDate={employee.birthDate} />
+            {employee !== null ? (
+              <BirthdayCard birthDate={employee.birthDate} />
+            ) : (
+              // The card's place is held while it loads, and a failure says so with a retry —
+              // never a page that quietly drops the birthday.
+              <Card>
+                <CardHeader title={t('home.birthday.title')} />
+                {summary.isError ? (
+                  <ErrorState error={summary.error} onRetry={() => void summary.refetch()} />
+                ) : (
+                  <LoadingState />
+                )}
+              </Card>
+            )}
             <RecentPagesCard className="lg:col-span-2" />
           </div>
         )}

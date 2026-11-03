@@ -58,8 +58,10 @@ const UserMenu = (): JSX.Element => {
         className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
         aria-haspopup="menu"
         aria-expanded={open}
+        // The name is hidden on a phone, and the picture is decoration: the button says whose it is.
+        aria-label={name}
       >
-        <Portrait url={photo.url} name={name} size="sm" />
+        <Portrait url={photo.url} name={name} size="sm" decorative />
         <span className="hidden text-sm font-medium text-slate-700 dark:text-slate-200 sm:inline">{name}</span>
       </button>
       {open && (

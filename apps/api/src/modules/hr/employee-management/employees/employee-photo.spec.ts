@@ -183,6 +183,26 @@ describe('reading the photo', () => {
     expect(files.readEntityOwnedBuffer).toHaveBeenCalledWith(ctx, String(OLD));
   });
 
+  // A file filed under the photo type by the generic Files routes skipped the upload's check: the
+  // bytes are checked again, and served as what they ARE, never as the label they were filed under.
+  it('serves the bytes as their real type, and answers «no photo» when they are not an image', async () => {
+    repo.getById.mockResolvedValue(employee(OLD));
+    files.getById.mockResolvedValue({ entityRef: OWN_PHOTO });
+    files.readEntityOwnedBuffer.mockResolvedValue({
+      doc: { mime: 'image/svg+xml', originalName: 'face.svg' },
+      buffer: PNG,
+    });
+    expect((await employeeService.readPhoto(ctx, ID, scope)).mime).toBe('image/png');
+
+    files.readEntityOwnedBuffer.mockResolvedValue({
+      doc: { mime: 'image/png', originalName: 'face.png' },
+      buffer: Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+      ),
+    });
+    await expect(employeeService.readPhoto(ctx, ID, scope)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it('answers «no photo» for a link to any other file — and never reads its bytes', async () => {
     repo.getById.mockResolvedValue(employee(OLD));
     files.getById.mockResolvedValue({

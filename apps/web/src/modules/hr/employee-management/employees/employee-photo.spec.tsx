@@ -17,6 +17,7 @@ import { localeSlice } from '../../../../store/localeSlice';
 import { authSlice } from '../../../../store/authSlice';
 import { translate } from '../../../../platform/localization/i18n';
 import { EmployeePhoto } from './components/EmployeePhoto';
+import { myPhotoKey } from '../../../../platform/home/home-api';
 import {
   EMPLOYEE_PHOTO_ACCEPT,
   EMPLOYEE_PHOTO_MAX_MB,
@@ -76,6 +77,15 @@ describe('the employee photo on the profile', () => {
 
   it('keys the picture on its file, so a new photo never shows the old one from the cache', () => {
     expect(employeePhotoKey('e1', 'f1')).not.toEqual(employeePhotoKey('e1', 'f2'));
+  });
+
+  // Every employee query lives under ['hr', 'employees'], and a realtime change or an edit
+  // refreshes that whole prefix. A picture under it would be downloaded again each time — and the
+  // old file asked for after it is gone. Keyed by its file, apart, it never needs a refresh.
+  it('keeps the picture apart from the employee’s data', () => {
+    expect(employeePhotoKey('e1', 'f1').slice(0, 2)).not.toEqual(['hr', 'employees']);
+    expect(myPhotoKey('f1').slice(0, 2)).not.toEqual(['hr', 'employees']);
+    expect(myPhotoKey('f1')).not.toEqual(myPhotoKey('f2'));
   });
 
   it('accepts what the server accepts: JPG, PNG or WebP, up to 5 MB', () => {

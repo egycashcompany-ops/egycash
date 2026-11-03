@@ -22,12 +22,15 @@ export const Portrait = ({
   name,
   size = 'md',
   className,
+  decorative = false,
 }: {
   /** An object URL or any `src`; `null` shows the initial. */
   url: string | null;
   name: string;
   size?: keyof typeof SIZES;
   className?: string;
+  /** Beside the person's name already: the picture adds nothing to read aloud. */
+  decorative?: boolean;
 }): JSX.Element => {
   const [failed, setFailed] = useState(false);
   // A new picture gets a fresh chance to load.
@@ -44,7 +47,7 @@ export const Portrait = ({
       {showImage ? (
         <img
           src={url}
-          alt={name}
+          alt={decorative ? '' : name}
           className="h-full w-full object-cover"
           onError={() => setFailed(true)}
         />

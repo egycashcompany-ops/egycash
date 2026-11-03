@@ -311,6 +311,7 @@ describe('GET /hr/employees/me/summary', () => {
         'fullNameEn',
         'hasPhoto',
         'jobTitle',
+        'photoFileId',
       ].sort(),
     );
     expect(card).toEqual({
@@ -321,6 +322,7 @@ describe('GET /hr/employees/me/summary', () => {
       // Derived from the national id, and given as the calendar day — not an instant.
       birthDate: '1990-03-07',
       hasPhoto: false,
+      photoFileId: null,
       jobTitle: { ar: 'سائق', en: 'Driver' },
       department: { ar: 'التشغيل', en: 'Operations' },
       branch: { ar: 'الرئيسي', en: 'HQ' },
@@ -598,27 +600,28 @@ describe('an employee outside the caller’s reach', () => {
   });
 });
 
-describe('a link that does not point at this employee’s photo', () => {
+describe('the personal-data edit never sets the photo', () => {
   /**
-   * `photoFileId` can also be written through the personal-data edit, with any file id. The photo
-   * endpoint serves only a file filed as THIS employee's photo, so such a link shows «no photo»
-   * rather than whatever document it names.
+   * Only POST/DELETE /:id/photo write `photoFileId`: they check the image, file it as this
+   * employee's and audit the change. A file id sent with the personal-data edit — another
+   * employee's photo, say — is ignored, and the photo endpoint still answers for the real one.
    */
-  it('is answered as «no photo», never with the other file', async () => {
+  it('ignores a file id sent with PATCH /personal', async () => {
     const other = await register('موظف آخر');
     const filed = await uploadPhoto(editorToken, other.id, PNG, 'other.png', 'image/png');
     expect(filed.status).toBe(200);
     const otherFileId = String(data<EmployeeDto>(filed).personal.photoFileId);
 
     const current = data<EmployeeDto>(await asAdmin('get', `/hr/employees/${employee.id}`));
+    const before = current.personal.photoFileId;
     const pointed = await request(app)
       .patch(`/api/v1/hr/employees/${employee.id}/personal`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ identity: { photoFileId: otherFileId }, version: current.version });
     expect(pointed.status, JSON.stringify(pointed.body)).toBe(200);
+    expect(data<EmployeeDto>(pointed).personal.photoFileId).toBe(before);
+    expect(before).not.toBe(otherFileId);
 
-    expect((await getPhoto(viewerToken, photoPath(employee.id))).status).toBe(404);
-    expect((await getPhoto(employeeToken, '/api/v1/hr/employees/me/photo')).status).toBe(404);
     // The other employee's own photo is untouched by any of it.
     expect((await getPhoto(viewerToken, photoPath(other.id))).status).toBe(200);
   });

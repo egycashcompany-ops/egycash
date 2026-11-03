@@ -61,7 +61,7 @@ import { deliverCredentials, userService, type UserDoc } from '../../../../platf
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
 import { resolveNationalIdCardCategoryId } from '../../recruitment/applicants/national-id-card.files';
-import { fileService } from '../../../../platform/files';
+import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { jobOfferService } from '../../recruitment/job-offers';
 // File import (not the barrel) — the barrel would close an import cycle via the actions service.
 import { employeeActionRepository } from '../employee-actions/employee-action.repository';
@@ -69,6 +69,12 @@ import { employeeRepository, type EmployeeListFilter } from './employee.reposito
 import { nextEmployeeNumber, raiseEmployeeSequenceTo } from './employee-sequence';
 import { buildEmployeeCode } from './employee-number';
 import { personalFromApplicant } from './employee.migration';
+import {
+  assertEmployeePhoto,
+  employeePhotoRef,
+  isEmployeePhotoFile,
+  resolveEmployeePhotoCategoryId,
+} from './employee-photo.files';
 import {
   EmployeeModel,
   type EmployeeDoc,
@@ -1107,6 +1113,184 @@ class EmployeeService {
       }
     } catch (error) {
       logger.warn({ err: error, employeeId: String(employee._id) }, 'carrying the national-id card failed');
+    }
+  }
+
+  // ── The personal photo (the Files service owns the bytes, the employee owns the link) ──
+
+  /**
+   * Set or REPLACE the employee's photo — «ويقدر الـ HR يضيفهاله».
+   *
+   * A photo is a personal-data edit like `updatePersonal`, and audited the same way, but it is not
+   * a field of that body: the bytes arrive as a file and are filed with the Files service under the
+   * photo's own entity type, whose ADR-023 rule HR answers (`employee-photo.files.ts`).
+   *
+   * Each photo is a NEW file rather than a new version of the old one. A replaced photo is retired
+   * — soft-deleted, like every deleted entity file — so it is unreachable from that moment, through
+   * this module and through the generic file routes alike. Versioning would have kept it readable
+   * as «version 1» to anybody who can read the current one.
+   *
+   * The link is written under the version just read, so a concurrent edit of the personal data
+   * makes one of the two fail with a 409 rather than silently undoing the other. If the link does
+   * not land, the file just filed is referenced by nothing and is withdrawn.
+   */
+  async setPhoto(
+    ctx: AuthContext,
+    id: string,
+    binary: UploadedBinary,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const photo = assertEmployeePhoto(binary);
+    const file = await fileService.upload(
+      ctx,
+      {
+        ...employeePhotoRef(id),
+        categoryId: await resolveEmployeePhotoCategoryId(),
+        displayName: `${before.code} — photo`,
+        visibility: 'private',
+        tags: [],
+      },
+      photo,
+    );
+    const fileId = String(file._id);
+
+    let updated: EmployeeDoc;
+    try {
+      updated = await employeeRepository.updateById(
+        id,
+        { 'personal.photoFileId': file._id },
+        { by: ctx.userId, version: before.__v, scope },
+      );
+    } catch (error) {
+      await fileService.softDelete(ctx, fileId).catch(() => undefined);
+      throw error;
+    }
+
+    // After the link moved, so a failure here never leaves the employee pointing at a deleted file.
+    await this.retirePhotos(ctx, id, fileId);
+    const previous = before.personal.photoFileId ?? null;
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'personal.photoFileId',
+          old: previous === null ? null : String(previous),
+          new: fileId,
+        },
+      ],
+    });
+    return updated;
+  }
+
+  /**
+   * Remove the employee's photo: the link is cleared and the file retired.
+   *
+   * IDEMPOTENT. An employee with no photo is answered with the record unchanged, and nothing is
+   * audited because nothing changed. The request's purpose — «this person has no photo» — is
+   * already true, and the screen offers removal only when there is a photo, so a refusal could
+   * only ever reach a second tab or a double click, where it would say something false.
+   */
+  async removePhoto(ctx: AuthContext, id: string, scope: ScopeSelector): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const previous = before.personal.photoFileId ?? null;
+    if (previous === null) return before;
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { 'personal.photoFileId': null },
+      { by: ctx.userId, version: before.__v, scope },
+    );
+    await this.retirePhotos(ctx, id, null);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'personal.photoFileId', old: String(previous), new: null }],
+    });
+    return updated;
+  }
+
+  /** The photo's bytes for someone who may see this employee (`employee.view`, within scope). */
+  async readPhoto(
+    ctx: AuthContext,
+    id: string,
+    scope: ScopeSelector,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    return this.photoBytes(ctx, await employeeRepository.getById(id, scope));
+  }
+
+  /** The caller's OWN photo: the employee comes from the token, exactly as `getMine` finds it. */
+  async readMyPhoto(ctx: AuthContext): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    return this.photoBytes(ctx, await this.getMine(ctx.userId));
+  }
+
+  /**
+   * The bytes behind the link — only when the link points at a file filed as THIS employee's photo.
+   *
+   * `personal.photoFileId` can also be written through the personal-data edit, which takes any file
+   * id. Checking the file's owner first means such a link can never make this endpoint serve some
+   * other document as a face: anything that is not this employee's photo answers «no photo».
+   *
+   * `readEntityOwnedBuffer`, not `readBuffer`: the latter also demands the generic `file.download`
+   * grant, which no HR role and no employee holds. The ADR-023 rule is still asked, independently
+   * of the route's own check.
+   */
+  private async photoBytes(
+    ctx: AuthContext,
+    employee: EmployeeDoc,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    const employeeId = String(employee._id);
+    const fileId = employee.personal.photoFileId ?? null;
+    if (fileId === null) throw new NotFoundError('this employee has no photo');
+    const meta = await fileService
+      .getById(String(fileId), undefined, ctx)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundError) return null;
+        throw error;
+      });
+    if (meta === null || !isEmployeePhotoFile(meta.entityRef, employeeId)) {
+      throw new NotFoundError('this employee has no photo');
+    }
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(fileId));
+    return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  /**
+   * Soft-delete every photo filed for this employee except `keep` — the one just filed, or none.
+   *
+   * Listed under the DELETE intent, so the rows are exactly the ones this caller may remove; each
+   * is authorized again as it is removed. Sweeping all of them rather than only the previous link
+   * also clears a photo left behind by an upload whose link never landed. A file the link pointed
+   * at that is NOT filed as this employee's photo is not touched: it belongs to somebody else.
+   *
+   * Never throws. The new state is already written, and a photo that could not be retired is a
+   * clean-up to log, not a reason to report a change that happened as one that did not.
+   */
+  private async retirePhotos(
+    ctx: AuthContext,
+    employeeId: string,
+    keep: string | null,
+  ): Promise<void> {
+    try {
+      const page = await fileService.list(
+        { ...employeePhotoRef(employeeId), page: 1, pageSize: 100, sortDir: 'desc' },
+        FILES_UNSCOPED,
+        ctx,
+        'delete',
+      );
+      for (const file of page.items) {
+        const fileId = String(file._id);
+        if (fileId === keep) continue;
+        await fileService.softDelete(ctx, fileId).catch((error: unknown) => {
+          logger.warn(
+            { err: error, employeeId, fileId },
+            'retiring a replaced employee photo failed',
+          );
+        });
+      }
+    } catch (error) {
+      logger.warn({ err: error, employeeId }, 'listing the employee photos to retire failed');
     }
   }
 

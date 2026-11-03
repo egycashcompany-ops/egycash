@@ -85,6 +85,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // exactly who may fetch them — the images are personal data and the panel is the only screen
   // that refreshes on them.
   'hr.employeeNationalIdCard': { permission: 'employee.view' },
+  // The employee's personal photo, on the profile header. Same reasoning as the card above:
+  // `employee.view` is what `GET /hr/employees/:id/photo` enforces, so the room is exactly who may
+  // fetch it. The employee's own copy refreshes from the write's response, not from a room.
+  'hr.employeePhoto': { permission: 'employee.view' },
   // Compensation is the canonical sensitive case: even the fact that a pay item changed is
   // gated behind the compensation permission, not plain employee.view.
   'hr.employeePayItem': { permission: 'employee.viewCompensation' },

@@ -6,7 +6,14 @@
 // while each caller owns its own object URL and revokes it when it goes away.
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchBlob } from './api-client';
+import { ApiError, fetchBlob } from './api-client';
+
+/**
+ * A picture uploaded a moment ago may still be with the virus scanner, which answers 422 until it
+ * is done. That is a wait, not a refusal: ask again a few times, a few seconds apart.
+ */
+const stillScanning = (failures: number, error: unknown): boolean =>
+  failures < 5 && error instanceof ApiError && error.status === 422;
 
 export const useAuthedImage = (
   path: string | null,
@@ -17,8 +24,10 @@ export const useAuthedImage = (
     queryFn: () => fetchBlob(path ?? ''),
     enabled: path !== null,
     staleTime: 10 * 60_000,
-    // A missing picture is an answer, not an outage: the initial or the silhouette stands in.
-    retry: false,
+    // A missing picture is an answer, not an outage: the initial stands in. Only a scan in progress
+    // is worth asking again.
+    retry: stillScanning,
+    retryDelay: 3_000,
   });
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {

@@ -5,6 +5,10 @@ export { buildEmployeesRouter } from './employee.routes';
 export { employeeService } from './employee.service';
 export { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
 export { employeeRepository } from './employee.repository';
+export {
+  ensureEmployeePhotoCategory,
+  hrEmployeePhotoFileAuthorizers,
+} from './employee-photo.files';
 export { buildEmployeeCode } from './employee-number';
 export {
   applyImportedExit,

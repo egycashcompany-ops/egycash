@@ -7,11 +7,15 @@
 // Every write answers with the whole employee, so the profile updates from the response; the
 // person's own welcome page and top bar refresh too, when the face changed is the signed-in one's.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { type EmployeeDto } from '@ecms/contracts';
+import {
+  EMPLOYEE_PHOTO_MAX_MB,
+  EMPLOYEE_PHOTO_MIME_TYPES,
+  type EmployeeDto,
+} from '@ecms/contracts';
 import { api, upload } from '../../../../../shared/lib/api-client';
 import { useAuthedImage } from '../../../../../shared/lib/authed-image';
 import { detailKey } from '../../../../../shared/lib/query-keys';
-import { MY_SUMMARY_KEY } from '../../../../../platform/home/home-api';
+import { MY_SUMMARY_KEY, myPhotoKey } from '../../../../../platform/home/home-api';
 
 const MODULE = 'hr';
 const FEATURE = 'employees';
@@ -25,9 +29,9 @@ export const employeePhotoKey = (id: string, photoFileId: string | null): readon
   photoFileId,
 ];
 
-/** What a photo upload accepts — checked again, and enforced, by the server. */
-export const EMPLOYEE_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
-export const EMPLOYEE_PHOTO_MAX_MB = 5;
+/** What a photo upload accepts — the server's own rule, checked here before an upload it would refuse. */
+export const EMPLOYEE_PHOTO_ACCEPT = EMPLOYEE_PHOTO_MIME_TYPES.join(',');
+export { EMPLOYEE_PHOTO_MAX_MB };
 
 export const useEmployeePhotoUrl = (
   id: string,
@@ -44,6 +48,8 @@ const useAfterPhotoWrite = (id: string) => {
     qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
     void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
     void qc.invalidateQueries({ queryKey: MY_SUMMARY_KEY });
+    // The signed-in person's own face, should it be theirs that changed — keyed by person, not file.
+    void qc.invalidateQueries({ queryKey: myPhotoKey(null).slice(0, 4) });
   };
 };
 

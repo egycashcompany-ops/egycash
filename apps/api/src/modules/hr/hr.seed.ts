@@ -47,6 +47,7 @@ import {
   ensureApplicantDocsCategory,
 } from './recruitment/applicant-documents';
 import {
+  ensureEmployeePhotoCategory,
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
 } from './employee-management/employees';
@@ -542,6 +543,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureLeaveAttachmentsCategory();
   // Personnel Actions (frozen employee design §3 / HR3-C): the supporting-document category.
   await ensureEmployeeActionAttachmentsCategory();
+  // The employee's personal photo: the category that holds the "JPEG, PNG or WebP, 5 MB" rule.
+  await ensureEmployeePhotoCategory();
   // Payroll adjustments (P-HR-04): the supporting-document category — the memo behind a bonus,
   // the letter behind a penalty.
   await ensureAdjustmentAttachmentsCategory();

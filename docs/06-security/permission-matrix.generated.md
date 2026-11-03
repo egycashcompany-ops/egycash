@@ -15,7 +15,7 @@ synced to the DB registry at boot (Review R18).
 | `applicationCategory` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `approval` | platform |  |  |  |  |  |  |  |  | `approval.configure`, `approval.override` |
 | `auditLog` | platform | ● |  |  |  | ● |  |  |  |  |
-| `branch` | platform | ● | ● | ● | ● |  |  |  |  |  |
+| `branch` | platform | ● | ● | ● | ● |  |  |  |  | `branch.changeCode` |
 | `costCenter` | platform | ● | ● | ● | ● |  |  |  |  | `costCenter.assign` |
 | `delegation` | platform |  |  |  |  |  |  |  |  | `delegation.manage` |
 | `department` | platform | ● | ● | ● | ● |  |  |  |  |  |
@@ -31,4 +31,4 @@ synced to the DB registry at boot (Review R18).
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
 | `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass, `user.setupLink` ⚠️ break-glass |
 
-Total permissions: **67**
+Total permissions: **68**

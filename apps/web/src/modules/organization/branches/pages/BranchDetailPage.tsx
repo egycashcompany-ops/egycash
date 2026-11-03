@@ -1,8 +1,7 @@
 // Branch detail (Phase 3.1). Shows the branch identity (Code, ar/en name, manager, status), address
 // and audit timestamps, plus the branch actions: Edit, Activate/Deactivate (version-checked),
-// Delete (soft, guarded server-side against branches that still have departments) and — for a
-// super-admin only (`me.isPrivileged`, ADR-017) — a dedicated Branch-Code correction dialog, since
-// the code is otherwise immutable after creation (it is part of every employee's identity).
+// Delete (soft, guarded server-side against branches that still have departments) and — behind its
+// own key, `branch.changeCode` (ADR-017, amended 2026-11-03) — the Branch-Code correction dialog.
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { type Locale } from '@ecms/contracts';
@@ -14,7 +13,6 @@ import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { StatusBadge } from '../../../../shared/ui/Badge';
-import { Field, Input } from '../../../../shared/ui/form';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -22,7 +20,7 @@ import { ApiError } from '../../../../shared/lib/api-client';
 import { formatDateTime, localized } from '../../../../shared/lib/format';
 import { UserName } from '../../shared/UserPicker';
 import { branchConfig } from '../../shared/unit-config';
-import { useChangeBranchCode } from '../branch-queries';
+import { ChangeBranchCodeDialog } from '../components/ChangeBranchCodeDialog';
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div>
@@ -34,18 +32,15 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }):
 export const BranchDetailPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const isPrivileged = useAppSelector((state) => state.auth.me?.isPrivileged ?? false);
   const navigate = useNavigate();
   const { id = '' } = useParams();
 
   const { data: branch, isLoading, isError, error, refetch } = branchConfig.queries.useOne(id);
   const update = branchConfig.queries.useUpdate(id);
   const remove = branchConfig.queries.useRemove();
-  const changeCode = useChangeBranchCode(id);
 
   const [confirming, setConfirming] = useState(false);
   const [codeDialog, setCodeDialog] = useState(false);
-  const [nextCode, setNextCode] = useState('');
 
   if (isLoading) {
     return (
@@ -86,35 +81,6 @@ export const BranchDetailPage = (): JSX.Element => {
       } else {
         toast.error(t('organization.delete.failed'));
       }
-    }
-  };
-
-  const openCodeDialog = (): void => {
-    setNextCode(branch.code);
-    setCodeDialog(true);
-  };
-
-  const submitCode = async (): Promise<void> => {
-    const code = nextCode.trim().toUpperCase();
-    if (code === '') {
-      toast.error(t('organization.form.codeRequired'));
-      return;
-    }
-    if (code === branch.code) {
-      setCodeDialog(false);
-      return;
-    }
-    try {
-      await changeCode.mutateAsync({ code, version: branch.version });
-      toast.success(t('organization.branch.codeChanged'));
-      setCodeDialog(false);
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'STALE_DOCUMENT') {
-        toast.error(t('organization.form.stale'));
-      } else if (e instanceof ApiError && e.code === 'DUPLICATE') {
-        toast.error(t('organization.form.duplicateCode'));
-      }
-      // other errors surface globally
     }
   };
 
@@ -166,14 +132,12 @@ export const BranchDetailPage = (): JSX.Element => {
           <CardHeader
             title={t('organization.detail.identity')}
             actions={
-              // The Branch Code is immutable after creation; only a super-admin can correct it.
-              isPrivileged ? (
-                <Can permission="branch.edit">
-                  <Button size="sm" variant="ghost" onClick={openCodeDialog}>
-                    {t('organization.branch.changeCode')}
-                  </Button>
-                </Can>
-              ) : undefined
+              // Its own key: the code heads every employee code the branch issues (ADR-017).
+              <Can permission="branch.changeCode">
+                <Button size="sm" variant="ghost" onClick={() => setCodeDialog(true)}>
+                  {t('organization.branch.changeCode')}
+                </Button>
+              </Can>
             }
           />
           <CardBody>
@@ -241,26 +205,7 @@ export const BranchDetailPage = (): JSX.Element => {
         <p className="text-sm text-slate-600 dark:text-slate-300">{t('organization.delete.body')}</p>
       </Dialog>
 
-      <Dialog
-        open={codeDialog}
-        onClose={() => setCodeDialog(false)}
-        title={t('organization.branch.changeCode')}
-        description={t('organization.branch.changeCodeHint')}
-        footer={
-          <>
-            <Button variant="ghost" size="sm" onClick={() => setCodeDialog(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button size="sm" loading={changeCode.isPending} onClick={() => void submitCode()}>
-              {t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        <Field label={t('organization.field.code')} required>
-          <Input dir="ltr" value={nextCode} onChange={(e) => setNextCode(e.target.value.toUpperCase())} />
-        </Field>
-      </Dialog>
+      {codeDialog && <ChangeBranchCodeDialog branch={branch} onClose={() => setCodeDialog(false)} />}
     </PageContainer>
   );
 };

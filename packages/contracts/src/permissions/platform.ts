@@ -75,7 +75,13 @@ export const branchPermissions = declarePermissions(
   'branch',
   { en: 'branches', ar: 'الفروع' },
   ['view', 'create', 'edit', 'delete'],
-  [],
+  [
+    // Correcting a branch's code — «عايزك تسمحلى أغير كود الفرع». Its own key rather than a power of
+    // `edit`: the code is the first three digits of every employee code issued in the branch, and
+    // registration reads the branch off them, so changing it is not a side effect of renaming one.
+    // Employee codes already issued do not change with it (ADR-017).
+    { action: 'changeCode', name: { en: 'Change branch code', ar: 'تغيير كود الفرع' } },
+  ],
   'platform.branches',
 );
 

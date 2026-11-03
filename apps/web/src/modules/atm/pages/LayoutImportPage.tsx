@@ -373,7 +373,13 @@ export const LayoutImportPage = (): JSX.Element => {
                     `${t(`atm.layoutImport.flag.${flag}`)} ${formatNumber(result.flags[flag], locale)}`,
                 ).join(' · ')}
               </p>
-              <DataTable columns={columns} rows={shown} rowKey={(row) => String(row.row)} dense />
+              <DataTable
+                columns={columns}
+                rows={shown}
+                rowKey={(row) => String(row.row)}
+                dense
+                steadyColumns
+              />
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">

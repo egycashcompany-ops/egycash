@@ -17,6 +17,7 @@ import {
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
 import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
+import { SteadyColGroup, useSteadyColumns } from '../../../../shared/ui/useSteadyColumns';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { AlertIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -148,12 +149,23 @@ export const PlanLinesTable = ({
   columnFilters: ColumnFilters;
 }): JSX.Element => {
   const t = useT();
+  // The columns keep the widths the plan's lines first gave them, whatever the lists below keep.
+  const steady = useSteadyColumns({
+    ready: lines.length > 0,
+    signature: `${locale}|${PLAN_LINE_COLUMNS.map((column) => column.key).join('|')}`,
+    count: PLAN_LINE_COLUMNS.length + 1,
+  });
   return (
     // The board frame's scroll box (`shared/ui/board-scroll.ts`): on a computer the page hands it
     // the height left and its rows scroll under a head that stays — opaque, as `DataTable
     // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
     <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
-      <table className="w-full min-w-[56rem] border-collapse" data-plan-lines="true">
+      <table
+        ref={steady.ref}
+        className="w-full min-w-[56rem] border-collapse"
+        data-plan-lines="true"
+      >
+        <SteadyColGroup shares={steady.shares} />
         <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-10')}>

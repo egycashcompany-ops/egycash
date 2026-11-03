@@ -49,13 +49,14 @@ import {
   useOpenAtmReplenishmentsList,
 } from '../api/atm-queries';
 import { actionTargets, cairoToday } from '../lib/operation-view';
-import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
+import { COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
 import { areaGroupLine } from '../lib/area-groups';
 import {
   columnFilterEntries,
   replenishmentColumns,
+  sheetColumnClass,
   statementFilterLine,
 } from '../lib/operation-sheet';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
@@ -146,7 +147,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
     sortable: true,
     render: (row) => column.text(row, '—'),
     filterable: true,
-    ...(column.copy === true ? { className: COPY_COLUMN_CLASS } : {}),
+    ...sheetColumnClass(column),
   }));
   const timerColumn: Column<AtmReplenishmentDto> = {
     key: 'timer',
@@ -301,6 +302,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
           data-board-view={board.view}
         >
           <DataTable
+            steadyColumns
             columns={columns}
             rows={board.rows}
             rowKey={(row) => row.id}

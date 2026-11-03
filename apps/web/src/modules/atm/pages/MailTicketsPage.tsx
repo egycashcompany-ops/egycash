@@ -48,7 +48,7 @@ import {
 } from '../api/atm-queries';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
-import { acceptConfirmBody, actionTargets } from '../lib/operation-view';
+import { acceptConfirmBody, actionTargets, TIME_CELL_CLASS } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import {
@@ -160,6 +160,7 @@ export const MailTicketsPage = (): JSX.Element => {
       header: t('atm.mail.receivedAt'),
       filterable: true,
       render: (row) => formatDateTime(row.receivedAt, locale),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'sender',
@@ -251,6 +252,7 @@ export const MailTicketsPage = (): JSX.Element => {
 
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

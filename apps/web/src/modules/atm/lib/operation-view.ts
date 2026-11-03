@@ -21,6 +21,13 @@ export const cairoDay = (isoInstant: string | Date): string =>
 export const elapsedSeconds = (openedAt: string, now: Date = new Date()): number =>
   Math.max(0, Math.floor((now.getTime() - new Date(openedAt).getTime()) / 1000));
 
+/**
+ * A time on screen — an open or close time, a duration, the live timer — stays on ONE line, in
+ * every ATM table: «حافظ على الوقت يظهر بالعرض كامل مش تحت بعض … فى كل الجداول» (2026-11-03).
+ * «00h : 03m : 42s» stacked over three lines, or a date over its hour, reads as several values.
+ */
+export const TIME_CELL_CLASS = 'whitespace-nowrap';
+
 export const formatElapsed = (totalSeconds: number): string => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

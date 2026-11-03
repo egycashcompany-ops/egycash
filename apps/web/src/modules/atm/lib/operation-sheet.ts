@@ -21,7 +21,8 @@ import {
   type XlsxGridCell,
   type XlsxGridSheet,
 } from '../../../shared/lib/xlsx-writer';
-import { formatDuration } from './operation-view';
+import { COPY_COLUMN_CLASS } from './board-copy';
+import { formatDuration, TIME_CELL_CLASS } from './operation-view';
 import { listSeparator } from './register-import-view';
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -45,7 +46,25 @@ export interface SheetColumn<T> {
    * board's service with its «بريد» badge, a value of its own. Absent: the list holds `text`.
    */
   filterText?: (row: T) => string;
+  /**
+   * A time — an open or close time, a duration. On screen it stays on ONE line («حافظ على الوقت
+   * يظهر بالعرض كامل مش تحت بعض … فى كل الجداول», 2026-11-03): «٢٠٢٦/١١/٠٣، ١١:٥١ ص» broken
+   * after the date reads as two values.
+   */
+  time?: boolean;
 }
+
+/** What a sheet column's cells carry on screen — a copy column's class, a time's — if anything. */
+export const sheetColumnClass = (column: {
+  copy?: boolean;
+  time?: boolean;
+}): { className?: string } => {
+  const classes = [
+    column.copy === true ? COPY_COLUMN_CLASS : '',
+    column.time === true ? TIME_CELL_CLASS : '',
+  ].filter((name) => name !== '');
+  return classes.length === 0 ? {} : { className: classes.join(' ') };
+};
 
 const orEmpty = (value: string | null, empty: string): string =>
   value === null || value.trim() === '' ? empty : value;
@@ -76,12 +95,14 @@ const closeColumns = <T extends AtmOperationRow>(
     key: 'closed',
     header: t('atm.common.closeTime'),
     text: (row, empty) => instant(row.closedAt, locale, empty),
+    time: true,
   },
   {
     key: 'duration',
     header: t('atm.common.takenTime'),
     text: (row, empty) =>
       row.closedAt === null ? empty : formatDuration(row.openedAt, row.closedAt),
+    time: true,
   },
 ];
 
@@ -107,6 +128,7 @@ export const replenishmentColumns = (
     key: 'opened',
     header: t('atm.common.openTime'),
     text: (row, empty) => instant(row.openedAt, locale, empty),
+    time: true,
   },
   ...(page === 'done' ? closeColumns<AtmReplenishmentDto>(t, locale) : []),
   {
@@ -176,6 +198,7 @@ export const maintenanceColumns = (
       key: 'opened',
       header: t('atm.common.openTime'),
       text: (row, empty) => instant(row.openedAt, locale, empty),
+      time: true,
     },
     ...(page === 'open'
       ? [

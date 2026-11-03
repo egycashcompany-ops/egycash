@@ -300,3 +300,38 @@ describe('a row of filter lists under the head', () => {
     ).not.toContain('data-column-filters');
   });
 });
+
+describe('columns that keep their widths — `steadyColumns` (2026-11-03)', () => {
+  // «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». The widths are taken in the
+  // browser, after the first layout; what the table draws before that is pinned here.
+  const html = (steadyColumns: boolean): string =>
+    renderToStaticMarkup(
+      <DataTable
+        columns={columns(3)}
+        rows={ROWS}
+        rowKey={(row) => row.id}
+        steadyColumns={steadyColumns}
+      />,
+    );
+
+  it('draws the first layout as the browser lays it out — no widths before they are taken', () => {
+    expect(html(true)).not.toContain('<colgroup');
+    expect(html(true)).toContain('<thead');
+  });
+
+  it('is off unless asked for: every other table is laid out exactly as before', () => {
+    expect(html(false)).toBe(
+      renderToStaticMarkup(<DataTable columns={columns(3)} rows={ROWS} rowKey={(row) => row.id} />),
+    );
+  });
+
+  it('measures the table itself and keeps the widths as its first child', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(new URL('./DataTable.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('enabled: steadyColumns,');
+    expect(source).toContain('ref={steady.ref}');
+    expect(source).toMatch(
+      /style=\{\{ minWidth: `\$\{minTableWidth\}rem` \}\}\s*>\s*<SteadyColGroup shares=\{steady\.shares\} \/>/,
+    );
+  });
+});

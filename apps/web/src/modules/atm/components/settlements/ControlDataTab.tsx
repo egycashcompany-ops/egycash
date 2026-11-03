@@ -18,6 +18,7 @@ import {
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
 import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
+import { SteadyColGroup, useSteadyColumns } from '../../../../shared/ui/useSteadyColumns';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { ChevronIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -189,6 +190,12 @@ export const ControlDataTab = ({
   const t = useT();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const routeName = routeNames(day);
+  // The columns keep the widths the day's lines first gave them, whatever the lists below keep.
+  const steady = useSteadyColumns({
+    ready: lines.length > 0,
+    signature: `${locale}|${CONTROL_LINE_COLUMNS.map((column) => column.key).join('|')}`,
+    count: CONTROL_LINE_COLUMNS.length + 1,
+  });
   const text = (line: ControlLine, key: string): string =>
     controlLineText(line, key, { t, locale, banks, routeName }) ?? '';
   const toggle = (id: string): void =>
@@ -204,7 +211,12 @@ export const ControlDataTab = ({
     // the height left and its rows scroll under a head that stays — opaque, as `DataTable
     // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
     <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
-      <table className="w-full min-w-[72rem] border-collapse" data-control-lines="true">
+      <table
+        ref={steady.ref}
+        className="w-full min-w-[72rem] border-collapse"
+        data-control-lines="true"
+      >
+        <SteadyColGroup shares={steady.shares} />
         <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-8')}>

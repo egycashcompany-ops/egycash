@@ -27,6 +27,7 @@ import { cairoToday, doneRange } from '../lib/operation-view';
 import {
   columnFilterEntries,
   replenishmentColumns,
+  sheetColumnClass,
   statementFilterLine,
 } from '../lib/operation-sheet';
 import { useColumnFiltered, useReaderOrder } from '../lib/useBoardView';
@@ -81,6 +82,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       sortable: true,
       render: (row: AtmReplenishmentDto) => column.text(row, '—'),
       filterable: true,
+      ...sheetColumnClass(column),
     })),
     {
       key: 'actions',
@@ -144,6 +146,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
         <DoneRangeCutShort meta={list.data?.meta} />
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
             columns={columns}
             rows={order.rows}
             rowKey={(row) => row.id}

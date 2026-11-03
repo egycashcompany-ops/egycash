@@ -10,6 +10,7 @@ import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
 import { ErrorState } from './states/ErrorState';
 import { type TableSelection } from './useTableSelection';
+import { SteadyColGroup, useSteadyColumns } from './useSteadyColumns';
 
 export interface Column<T> {
   key: string;
@@ -149,6 +150,14 @@ export interface DataTableProps<T> {
   tightGutter?: boolean;
   stickyHead?: boolean;
   /**
+   * KEEP THE COLUMNS' WIDTHS while the rows change — for a table its page filters («عرض الأعمدة
+   * فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته», 2026-11-03). The widths are taken the first
+   * time the table is drawn with rows and kept as shares of its width (`useSteadyColumns`), so a
+   * filter that drops the longest names no longer narrows the columns, and lifting it no longer
+   * widens them. Taken afresh when the columns change (another view, another language).
+   */
+  steadyColumns?: boolean;
+  /**
    * EXTRA ATTRIBUTES FOR ONE ROW, from the row itself — what a table cannot know and its caller
    * can: that this row is a drag source, that it carries a hook a test presses it by.
    *
@@ -241,6 +250,7 @@ export const DataTable = <T,>({
   minColumnWidth = 7.5,
   tightGutter = false,
   stickyHead = false,
+  steadyColumns = false,
   rowProps,
   group,
   columnFilters,
@@ -284,6 +294,12 @@ export const DataTable = <T,>({
    * alternative — a handful of fixed buckets — would be the same arithmetic with worse rounding.
    */
   const minTableWidth = Math.max(40, colCount * minColumnWidth);
+  const steady = useSteadyColumns({
+    enabled: steadyColumns,
+    ready: !loading && !hasError(error) && rows.length > 0,
+    signature: `${isSelectable ? 'select|' : ''}${columns.map((c) => `${c.key}:${c.header}`).join('|')}`,
+    count: colCount,
+  });
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));
 
@@ -436,7 +452,12 @@ export const DataTable = <T,>({
           'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
       )}
     >
-      <table className="w-full border-collapse" style={{ minWidth: `${minTableWidth}rem` }}>
+      <table
+        ref={steady.ref}
+        className="w-full border-collapse"
+        style={{ minWidth: `${minTableWidth}rem` }}
+      >
+        <SteadyColGroup shares={steady.shares} />
         {/* `undefined`, not `cn(false && …)`: that renders `class=""` on every table in the app
             and turns a plain `<thead>` into one nothing else can match on. */}
         <thead className={stickyHead ? 'sticky top-0 z-10' : undefined}>

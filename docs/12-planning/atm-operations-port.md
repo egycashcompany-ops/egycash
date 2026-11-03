@@ -715,6 +715,26 @@ offered nobody, and the edit dialogs' leader stayed free text.
   الشاشة وبيغير الـ UI»): `MultiSelect` no longer `autoFocus`es its search box. It focuses it once
   the list is open and pinned inside the screen, with `preventScroll`, so a list at the left edge
   no longer scrolls the board sideways on opening.
+- **The copy's text, as WhatsApp lays it out.** Each line starts with a right-to-left mark and
+  each cell is isolated (FSI … PDI), so a row that opens with a Latin bank name keeps its cells in
+  order in a right-to-left chat. A head row is copied too where the reader can select it; a board
+  keeps its head out, as its `select-none` frame always did.
+
+### 6g. Columns that keep their widths, and a time on one line (2026-11-03)
+
+- **Steady columns.** «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». A table's
+  automatic layout re-measures every column on the rows it shows, so a filter that drops the
+  longest names moved the grid. `useSteadyColumns` (`shared/ui`) takes the head's cell widths the
+  first time a table is drawn with rows — its column lists start empty on every visit — and keeps
+  them as percentages in a `<colgroup>` (`SteadyColGroup`). The layout stays automatic, so the
+  shares follow the window and a value longer than its share still widens its column. A new set of
+  columns (the boards' «اليوم» view adds the timer; another language renames the heads) is
+  measured afresh. `DataTable steadyColumns` turns it on; every ATM `DataTable` passes it, and the
+  three filtered tables built by hand (control's data, the plan's lines, preparation) call the
+  hook. Other modules' tables are unchanged until they ask for it.
+- **A time on one line** («وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض … فى كل الجداول»):
+  `TIME_CELL_CLASS` (`whitespace-nowrap`) on the sheet columns flagged `time` (open, close, taken),
+  the live timer, the mail pages' received and action times and a layout's change time.
 
 ## 7. Migration (ATM-7 — delivered)
 

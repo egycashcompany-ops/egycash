@@ -609,6 +609,16 @@ its entry here in the same PR.
   the browser scrolled the board sideways to reach it and left the page shifted. The box now takes
   the caret once the list is in place, and moves nothing. This applies to every drop-down filter of
   this kind in the app.
+- **ATM tables keep their column widths when filtered, and a time stays on one line.** «عرض الأعمدة
+  فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته .. وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض بردو
+  فى كل الجداول». A table laid its columns out by the rows it showed, so picking an area, or anything
+  else that drops rows, narrowed some columns and widened others. Each ATM table now takes its
+  column widths the first time it shows rows and keeps them while it is filtered. The widths follow
+  the window, and a value longer than its column still widens it rather than spilling over. The open
+  and close times, the time taken and the live timer («00h : 03m : 42s»), the mail's received and
+  action times, and a cassette layout's change time no longer break over two or three lines. On the
+  boards, the done pages, both mail pages, the cassette layouts, the machines, data edit, the daily
+  report, the plan, control and preparation.
 - **The daily report covers a period.** «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
   بس الـ Default يكون اليوم». `/atm/reports/daily` now has «من» and «إلى» on the title's line in
   place of the one day, today in both by default. For each bank the two tables count every

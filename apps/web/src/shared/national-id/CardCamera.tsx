@@ -61,11 +61,21 @@ const CameraIcon = ({ className }: { className?: string }): JSX.Element => (
   </svg>
 );
 
-/** The live camera needs https (or localhost) and a browser that offers it. */
+/**
+ * An iPhone or iPad. Its browsers give a page only the camera's video (one fixed lens, none of the
+ * phone's photo processing), and the card came out small and soft where the iPhone's own camera
+ * app took a sharp photo of it. There the camera button opens the camera app instead.
+ */
+const appleMobile = (): boolean =>
+  /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/** The live camera needs https (or localhost), a browser that offers it, and not an iPhone. */
 export const liveCameraSupported = (): boolean =>
   typeof window !== 'undefined' &&
   window.isSecureContext &&
-  typeof navigator.mediaDevices?.getUserMedia === 'function';
+  typeof navigator.mediaDevices?.getUserMedia === 'function' &&
+  !appleMobile();
 
 let loading: Promise<CaptureGuideApi | null> | null = null;
 /** Loads the guide once; the camera still works without it (no frame, no automatic photo). */

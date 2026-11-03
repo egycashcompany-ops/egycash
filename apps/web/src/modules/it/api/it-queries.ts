@@ -235,6 +235,33 @@ export const useItAssetNames = (categoryIds: readonly string[] = []) => {
   });
 };
 
+/**
+ * The `/it` dashboard's figures and its latest movements. Both are keyed INSIDE the assets subtree
+ * — every asset, custody and maintenance write already invalidates it, and so does the realtime
+ * `it.asset` signal — so a hand-over somebody makes in another tab moves the counts on this one.
+ * `enabled` mirrors `itAsset.view`: a reader without it never asks.
+ */
+const dashboardKey = (part: 'assets' | 'activity', params?: ItListParams) =>
+  listKey(MODULE, 'assets', { dashboard: part, ...params });
+
+export const useItDashboardAssets = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: dashboardKey('assets', params),
+    queryFn: () => api.getDashboardAssets(params),
+    // The previous filters' figures while the new ones load: the panels keep their shape instead
+    // of flashing to skeletons on every category ticked.
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItDashboardActivity = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: dashboardKey('activity', params),
+    queryFn: () => api.getDashboardActivity(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
 export const useItAsset = (id: string) =>
   useQuery({
     queryKey: detailKey(MODULE, 'assets', id),
@@ -373,13 +400,18 @@ export const useHandOverItAssets = () => {
   });
 };
 
-/** Issuing, filing or withdrawing a receipt's paper changes the register rows that show it. */
+/**
+ * Issuing, filing or withdrawing a receipt's paper changes the register rows that show it — and
+ * the dashboard's «إيصالات استلام بانتظار التوقيع», which counts the receipts with no signed copy.
+ * Only the dashboard's figures, not the whole assets subtree: the paper moves no asset.
+ */
 const useReceiptMutation = <TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: itKeys.custody });
+      void qc.invalidateQueries({ queryKey: dashboardKey('assets') });
     },
   });
 };

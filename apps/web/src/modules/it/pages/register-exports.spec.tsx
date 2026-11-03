@@ -306,6 +306,24 @@ describe('the category and name lists in the files', () => {
   });
 });
 
+// The two filters the `/it` dashboard's «يحتاج متابعة» opens the registers with: the files ask for
+// them as the table does, and the printed line is handed them, so it names them (what it writes is
+// `lib/*-register-export.spec.ts`).
+describe('the dashboard’s filters in the files', () => {
+  const handed = (source: string, fn: string): string =>
+    new RegExp(`${fn}\\(\\{([\\s\\S]*?)\\}\\)`, 'u').exec(source)?.[1] ?? '';
+
+  it('the custody register names «حالة المستلِم»', () => {
+    expect(handed(PAGE, 'custodyRegisterFilters')).toMatch(/\bholderExited,/u);
+    expect(PAGE).toContain('holderExited: holderExited ?? undefined');
+  });
+
+  it('the asset register names «الضمان»', () => {
+    expect(handed(ASSETS, 'assetRegisterFilters')).toMatch(/\bwarranty: warrantyLabel,/u);
+    expect(ASSETS).toContain('warrantyEndsWithinDays: warrantyDays ?? undefined');
+  });
+});
+
 // «حركات المستهلكات» (FR-20) has no form of its own — only the way back to the store — so it is
 // held apart: its two buttons, for everybody who can read the ledger, and nothing else.
 describe('the consumables ledger’s Excel and PDF', () => {

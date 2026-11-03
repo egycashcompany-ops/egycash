@@ -2,6 +2,9 @@
 // Then «وفى /it/custody بردو عايز الصنف يبقي بعد الفئة ... والأتنين يكونوا Multiselect» — several
 // categories, and «الصنف» as several of the register's asset names.
 //
+// Then the dashboard's «أصول مع موظفين تركوا العمل» opened as a list: «حالة المستلِم», the holders
+// HR shows as having left — read live, the holders once and HR once, and only when asked.
+//
 // Four things are pinned here, and the third is the one a later tidy-up would most likely break:
 //   1. how each filter becomes a database condition — pure, so it is asserted on the condition
 //      itself: every filter its own clause, so two that touch one field narrow together;
@@ -22,8 +25,13 @@ const mocks = vi.hoisted(() => ({
   findById: vi.fn(),
   signedIds: vi.fn(),
   listFiltered: vi.fn(),
+  countByHolder: vi.fn(),
+  getDirectoryEmployees: vi.fn(),
 }));
 
+vi.mock('../../../platform/directory', () => ({
+  getDirectoryEmployees: mocks.getDirectoryEmployees,
+}));
 vi.mock('./asset.repository', () => ({
   itAssetRepository: { idsMatching: mocks.idsMatching, findById: mocks.findById },
 }));
@@ -33,11 +41,15 @@ vi.mock('./receipt.repository', () => ({
 // The repository's PAGE read is mocked; its filter translation is the real one, pinned below.
 vi.mock('./assignment.repository', async (importOriginal) => ({
   ...(await importOriginal<typeof AssignmentRepositoryModule>()),
-  itAssetAssignmentRepository: { listFiltered: mocks.listFiltered },
+  itAssetAssignmentRepository: {
+    listFiltered: mocks.listFiltered,
+    countByHolder: mocks.countByHolder,
+  },
 }));
 
 const { assignmentRegisterFilter } = await import('./assignment.repository');
-const { itAssetAssignmentService, registerAssetFilter } = await import('./assignment.service');
+const { exitedHolderIds, itAssetAssignmentService, registerAssetFilter } =
+  await import('./assignment.service');
 
 const NOW = new Date('2026-10-28T10:00:00.000Z');
 const id = (): Types.ObjectId => new Types.ObjectId();
@@ -147,6 +159,36 @@ describe('each register filter as a database condition', () => {
     expect(
       assignmentRegisterFilter({ receipt: { state: 'unsigned', signedReceiptIds: signed } }, NOW),
     ).toEqual({ receiptId: { $ne: null, $nin: signed } });
+  });
+
+  it('reads «حالة المستلِم» as the leavers HR named — and every other holder for «على رأس العمل»', () => {
+    const leavers = [id(), id()];
+    expect(
+      assignmentRegisterFilter({ holderExited: { exited: true, exitedEmployeeIds: leavers } }, NOW),
+    ).toEqual({ assignedToEmployeeId: { $in: leavers } });
+    expect(
+      assignmentRegisterFilter(
+        { holderExited: { exited: false, exitedEmployeeIds: leavers } },
+        NOW,
+      ),
+    ).toEqual({ assignedToEmployeeId: { $nin: leavers } });
+    // Nobody has left: «ترك العمل» is honestly empty, «على رأس العمل» everybody.
+    expect(
+      assignmentRegisterFilter({ holderExited: { exited: true, exitedEmployeeIds: [] } }, NOW),
+    ).toEqual({ assignedToEmployeeId: { $in: [] } });
+    // Beside the holder named outright: both read the holder, so neither overwrites the other.
+    const employee = id();
+    expect(
+      assignmentRegisterFilter(
+        {
+          employeeId: String(employee),
+          holderExited: { exited: true, exitedEmployeeIds: leavers },
+        },
+        NOW,
+      ),
+    ).toEqual({
+      $and: [{ assignedToEmployeeId: employee }, { assignedToEmployeeId: { $in: leavers } }],
+    });
   });
 
   it('combines every filter with the ones the register already had', () => {
@@ -376,6 +418,84 @@ describe('the register reads each set a filter names once, and only when asked',
     await itAssetAssignmentService.list(query({ receipt: 'none' }), scope);
     expect(mocks.signedIds).not.toHaveBeenCalled();
     expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({ receipt: { state: 'none' } });
+  });
+
+  it('asks HR about the holders only when «حالة المستلِم» is set', async () => {
+    await itAssetAssignmentService.list(query({ open: 'true' }), scope);
+    expect(mocks.countByHolder).not.toHaveBeenCalled();
+    expect(mocks.getDirectoryEmployees).not.toHaveBeenCalled();
+    expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({ holderExited: undefined });
+  });
+
+  it('reads the holders of the rows every OTHER filter keeps once, and asks HR about them in one batch', async () => {
+    const leaver = String(id());
+    const employed = String(id());
+    const matched = [id()];
+    mocks.idsMatching.mockResolvedValue(matched);
+    mocks.countByHolder.mockResolvedValue(
+      new Map([
+        [leaver, 2],
+        [employed, 1],
+      ]),
+    );
+    mocks.getDirectoryEmployees.mockResolvedValue(
+      new Map([
+        [leaver, { status: 'exited' }],
+        [employed, { status: 'onLeave' }],
+      ]),
+    );
+    const branch = String(id());
+    for (const [raw, exited] of [
+      ['true', true],
+      ['false', false],
+    ] as const) {
+      vi.clearAllMocks();
+      mocks.listFiltered.mockResolvedValue(page);
+      await itAssetAssignmentService.list(
+        query({ open: 'true', branchId: branch, categoryId: String(id()), holderExited: raw }),
+        scope,
+      );
+      // Narrowed by the others — out, in this branch, in the chosen category — under the scope.
+      expect(mocks.countByHolder).toHaveBeenCalledTimes(1);
+      expect(mocks.countByHolder).toHaveBeenCalledWith(
+        {
+          $and: [
+            { returnedAt: null },
+            { assetId: { $in: matched } },
+            { branchId: new Types.ObjectId(branch) },
+          ],
+        },
+        scope,
+      );
+      expect(mocks.getDirectoryEmployees).toHaveBeenCalledTimes(1);
+      // On leave is still employed: only the leaver is named.
+      expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({
+        holderExited: { exited, exitedEmployeeIds: [new Types.ObjectId(leaver)] },
+      });
+    }
+  });
+
+  it('names nobody a leaver whom HR does not know, nor anything that is not an id', () => {
+    const known = String(id());
+    const stranger = String(id());
+    expect(
+      exitedHolderIds(
+        [known, stranger, 'not-an-id'],
+        new Map([
+          [known, { status: 'exited' as const }],
+          ['not-an-id', { status: 'exited' as const }],
+        ]),
+      ),
+    ).toEqual([new Types.ObjectId(known)]);
+  });
+
+  it('hands an empty set on when nobody holds anything, without asking HR', async () => {
+    mocks.countByHolder.mockResolvedValue(new Map());
+    await itAssetAssignmentService.list(query({ holderExited: 'true' }), scope);
+    expect(mocks.getDirectoryEmployees).not.toHaveBeenCalled();
+    expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({
+      holderExited: { exited: true, exitedEmployeeIds: [] },
+    });
   });
 
   it('leaves an asset’s own custody chain unfiltered by the register’s columns', async () => {

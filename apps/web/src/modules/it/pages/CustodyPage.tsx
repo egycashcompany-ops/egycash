@@ -19,6 +19,10 @@
 // several answers, the items offered being the chosen categories' own (`useCategoryNameFilter`).
 // The free-text box that used to sit under «الصنف» stays first, named «بحث» now, so the bar does
 // not ask «الصنف» twice.
+//
+// «حالة المستلِم» (`holderExited`) beside the holder: whether HR shows the person holding it as
+// having left. The `/it` dashboard's «أصول مع موظفين تركوا العمل» opens here with it set, so the
+// count it showed is a list the reader can work through — and filter, and print.
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
@@ -53,6 +57,7 @@ import {
   custodyRegisterReport,
   custodyRegisterFilters,
   custodyRegisterSubtitle,
+  holderExitedOf,
   receiptStateOf,
 } from '../lib/custody-register-export';
 import {
@@ -74,6 +79,7 @@ const REMEMBERED_FILTERS = [
   'branch',
   'category',
   'employee',
+  'holderExited',
   'open',
   'overdue',
   'q',
@@ -158,6 +164,8 @@ export const CustodyPage = (): JSX.Element => {
   const openParam = custodyStatusOf(sp);
   const branchId = sp.get('branch') ?? '';
   const employeeId = sp.get('employee') ?? '';
+  // «حالة المستلِم»: left (true), still employed (false), or either (null).
+  const holderExited = holderExitedOf(sp.get('holderExited'));
   // «بحث»: the asset's code, name or serial, matched as typed.
   const search = sp.get('q') ?? '';
   // Days as the date boxes write them, `YYYY-MM-DD` — what the request sends, and the server
@@ -209,6 +217,7 @@ export const CustodyPage = (): JSX.Element => {
       ...(openParam === 'all' ? {} : { open: openParam === 'true' }),
       branchId: branchId || undefined,
       employeeId: employeeId || undefined,
+      holderExited: holderExited ?? undefined,
       search: search.trim() || undefined,
       categoryId: categoryQuery(categoryIds),
       assetName: namesQuery(assetNames),
@@ -263,6 +272,7 @@ export const CustodyPage = (): JSX.Element => {
     openParam !== 'true' ||
     branchId !== '' ||
     employeeId !== '' ||
+    holderExited !== null ||
     search !== '' ||
     categoryIds.length > 0 ||
     assetNames.length > 0 ||
@@ -297,6 +307,7 @@ export const CustodyPage = (): JSX.Element => {
           branchName,
           employeeId,
           holderLabel,
+          holderExited,
           search,
           categoryIds,
           categoryName,
@@ -506,6 +517,7 @@ export const CustodyPage = (): JSX.Element => {
               open: null,
               branch: null,
               employee: null,
+              holderExited: null,
               q: null,
               category: null,
               asset: null,
@@ -586,6 +598,23 @@ export const CustodyPage = (): JSX.Element => {
                 patch({ employee: id || null });
               }}
             />
+          </FilterField>
+          {/* Beside the holder, a fact about them: has HR recorded them as having left. Read live
+              from the directory on the server — the register stores no such flag. */}
+          <FilterField
+            label={t('it.custody.filters.holderState')}
+            active={holderExited !== null}
+            className={cn(FIELD, 'sm:w-44')}
+          >
+            <Select
+              aria-label={t('it.custody.filters.holderState')}
+              value={holderExited === null ? '' : String(holderExited)}
+              onChange={(e) => patch({ holderExited: e.target.value || null })}
+            >
+              <option value="">{t('it.custody.filterAll')}</option>
+              <option value="true">{t('it.custody.filters.holderExited')}</option>
+              <option value="false">{t('it.custody.filters.holderEmployed')}</option>
+            </Select>
           </FilterField>
           <FilterField
             label={t('it.assets.columns.branch')}

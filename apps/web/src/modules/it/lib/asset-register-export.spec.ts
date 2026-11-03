@@ -12,6 +12,7 @@ import {
   assetRegisterSubtitle,
   type AssetRegisterContext,
 } from './asset-register-export';
+import { warrantyWithin } from './warranty-window';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -122,6 +123,7 @@ describe('the filters the printed page names', () => {
     branchName: context.branchName,
     holderId: '',
     holderLabel: '',
+    warranty: '',
     rows: [] as ItAssetDto[],
   };
 
@@ -195,6 +197,24 @@ describe('the filters the printed page names', () => {
   it('name the holder from the gathered rows when the chip has no label', () => {
     const filters = assetRegisterFilters({ ...screen, holderId: 'e-1', rows: [asset()] });
     expect(filters.holder).toBe('محمد أحمد علي');
+  });
+
+  // The dashboard's «ضمان ينتهي خلال ٣٠ يومًا», opened as a list and printed as one that says so.
+  it('name the warranty window in the bar’s words, after the holder and before the search', () => {
+    const within = warrantyWithin(t, 'ar', 30);
+    expect(within).toBe('ينتهي خلال ٣٠ يومًا');
+    const filters = assetRegisterFilters({
+      ...screen,
+      search: 'Lenovo',
+      holderId: 'e-1',
+      holderLabel: 'محمد أحمد علي (0100052)',
+      warranty: within,
+    });
+    expect(filters.warranty).toBe(within);
+    expect(assetRegisterSubtitle(t, { ...filters, asOf: 'اليوم' })).toBe(
+      'كل الحالات · كل الفئات · كل الفروع · المستلِم: محمد أحمد علي (0100052) · الضمان: ينتهي خلال ٣٠ يومًا · البحث: Lenovo · بتاريخ اليوم',
+    );
+    expect(assetRegisterFilters(screen).warranty).toBeNull();
   });
 });
 

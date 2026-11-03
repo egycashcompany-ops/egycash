@@ -56,6 +56,8 @@ import {
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
   type ItAssetNamesDto,
+  type ItDashboardActivityDto,
+  type ItDashboardAssetsDto,
   type ItCatalogItemDto,
   type ItVendorDto,
   type ItPersonDto,
@@ -290,6 +292,18 @@ export const listAssignments = (
   params: ItListParams,
 ): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
+
+// ── The IT home dashboard (design §11) ──────────────────────────────────────
+// «عايزك تعمل فى الـ /it الرئيسية.. Dashboard بدل اللى موجود فيها يظهر إجمالى الأصول وإيه فى المخزن
+// وإيه متسلم بس أقدر أفلتر بـالفئة». Both are COUNTED by the server under the reader's data scope —
+// the page never tallies a page of rows. `categoryId` travels as the comma list `listQuery` reads.
+
+/** The status counts — totals, by category, by branch — and «يحتاج متابعة». */
+export const getDashboardAssets = (params: ItListParams): Promise<ItDashboardAssetsDto> =>
+  get<ItDashboardAssetsDto>(`/it/dashboard/assets${buildQuery(params)}`);
+/** «آخر الحركات» — the newest movements under the same filters. */
+export const getDashboardActivity = (params: ItListParams): Promise<ItDashboardActivityDto> =>
+  get<ItDashboardActivityDto>(`/it/dashboard/activity${buildQuery(params)}`);
 
 // ── Mobile lines — خطوط المحمول (FR-19) ─────────────────────────────────────
 // «عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». The register, each

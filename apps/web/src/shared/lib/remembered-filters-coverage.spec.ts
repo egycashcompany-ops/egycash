@@ -148,6 +148,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/it/pages/HelpDeskSettingsPage.tsx', []],
   ['modules/it/pages/ItCatalogsPage.tsx', ['kind']],
   ['modules/it/pages/ItEmployeesPage.tsx', []],
+  // The `/it` dashboard — «أقدر أفلتر بـالفئة»: its categories and branch, the register's names.
+  ['modules/it/pages/ItHomePage.tsx', []],
   ['modules/it/pages/LicensesPage.tsx', []],
   ['modules/it/pages/MaintenanceOrdersPage.tsx', []],
   ['modules/it/pages/MaintenancePlansPage.tsx', []],
@@ -334,7 +336,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/it/pages/AssetDetailPage.tsx'],
   ['modules/it/pages/AssetScanPage.tsx'],
   ['modules/it/pages/ItEmployeeHistoryPage.tsx'],
-  ['modules/it/pages/ItHomePage.tsx'],
   ['modules/it/pages/LicenseDetailPage.tsx'],
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
   ['modules/it/pages/TicketDetailPage.tsx'],
@@ -651,6 +652,17 @@ describe('the IT registers remember both of their lists', () => {
   it('the hook reads the categories from `category`, as both screens remember them', () => {
     expect(text('modules/it/components/useCategoryNameFilter.ts')).toContain(
       "readCategoryIds(sp.get('category'))",
+    );
+  });
+
+  // The `/it` dashboard writes its filters under the registers' own names and opens them with two
+  // more — «حالة المستلِم» on the custody register, «الضمان» on the asset list — each remembered
+  // by the screen that reads it.
+  it('the dashboard remembers `category` and `branch`, and the registers the filters it opens them with', () => {
+    expect(declared(text('modules/it/pages/ItHomePage.tsx'))).toEqual(['branch', 'category']);
+    expect(declared(text('modules/it/pages/CustodyPage.tsx'))).toContain('holderExited');
+    expect(declared(text('modules/it/pages/AssetsListPage.tsx'))).toContain(
+      'warrantyEndsWithinDays',
     );
   });
 });

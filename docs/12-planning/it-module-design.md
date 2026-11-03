@@ -662,7 +662,11 @@ contract-generation precedent). Existing actions cover the rest (`create`, `upda
 ## 11. Dashboards & reports (derived queries — no new collections)
 
 **Asset dashboard:** counts by status/category/branch · assets held by exited employees (§9.1) ·
-warranty expiring 30/60/90 · recently registered/disposed.
+warranty expiring 30/60/90 · recently registered/disposed. *Built as the `/it` home (§17,
+2026-11-03): the counts by status under a category (several) and a branch filter, by category and
+by branch, «يحتاج متابعة» (held by leavers, receipts awaiting signature, overdue returns, warranty
+ending within `it.warrantyWarnDays`), the latest movements, the lines' networks and the consumables
+at their minimum.*
 **Ticket dashboard:** open by priority/technician/category · SLA at-risk (§4.5) and breached ·
 aging buckets · resolved-this-week.
 **Maintenance dashboard:** plans due within horizon · overdue orders · parts below min · cost
@@ -677,8 +681,8 @@ precedent; `itAsset.export`).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
-| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
+| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
+| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
 | `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
@@ -697,7 +701,7 @@ precedent; `itAsset.export`).
 | `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
 | `/it/consumable-movements` | read-only: `GET /` (kind, item, type, employee, asset, branch, from/to, search) — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
-| `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
+| `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
 vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
@@ -1172,4 +1176,19 @@ starts only on an explicit owner GO.
   share. The custody register keeps its free-text box, first, as «بحث» (the asset's code, name or
   serial). The Excel/PDF name every chosen category and name. An old link with one category or one
   name still opens as it did.
+- **The `/it` home is a dashboard** (2026-11-03) — owner request: «عايزك تعمل فى الـ /it الرئيسية..
+  Dashboard بدل اللى موجود فيها يظهر إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر أفلتر بـالفئة..
+  من خلال Drop Down بـ Multiselection · وشوف إيه تانى ممكن يتعمل بس وريني Sample الأول بتاع UI»; the
+  sample was shown and approved with every suggested panel («ماشى تمام كمل»). §11's asset
+  dashboard, derived on read — no collection and no stored figure: the five status counts (total,
+  in stock, handed over, under maintenance, disposed) under a category multi-select and a branch
+  filter, each opening the register with the same filters; the status split; by category (under the
+  branch only, a click adds the category) and by branch (under the categories only, a click picks
+  the branch); «يحتاج متابعة» — assets held by people HR shows as having left (FR-13's panel, read
+  live through the directory: the leaver flag stores nothing), receipts awaiting their signed copy,
+  overdue returns, warranties ending within `it.warrantyWarnDays` — each opening its list (the
+  custody register's new `holderExited` filter, the asset list's `warrantyEndsWithinDays`); the
+  latest movements (history entries and registrations, which write none); the lines' three networks;
+  the consumables at their minimum; the help desk's two counts; and the pages, by grant. Every panel
+  rides its own grant and the reader's data scope. `GET /it/dashboard/assets` and `/activity`.
 

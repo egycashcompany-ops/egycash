@@ -30,6 +30,36 @@ class ItAssetEventRepository extends BaseRepository<ItAssetEventDoc> {
     return this.create(entry as Partial<ItAssetEventDoc>, options);
   }
 
+  /**
+   * The newest entries of these kinds across these assets — the dashboard's «آخر الحركات». The
+   * assets are the ones the reader may see, already read under their scope: this collection carries
+   * no branch of its own, so WHOSE history may be read is decided by the assets, never here. No
+   * assets, no read.
+   */
+  async latestOfTypes(params: {
+    assetIds: readonly Types.ObjectId[];
+    types: readonly ItAssetEventDoc['type'][];
+    limit: number;
+  }): Promise<ItAssetEventDoc[]> {
+    if (params.assetIds.length === 0 || params.types.length === 0) return [];
+    return (
+      this.model
+        .find(
+          this.baseFilter(undefined, {
+            subjectId: { $in: [...params.assetIds] },
+            type: { $in: [...params.types] },
+          }),
+        )
+        // `at` alone, which `ix_type_at` serves for each kind: the read stops at `limit` instead of
+        // sorting every movement the reader's assets ever had. Two entries of the same instant may
+        // come in either order — a list of the newest, not a ledger.
+        .sort({ at: -1 })
+        .limit(params.limit)
+        .lean<ItAssetEventDoc[]>()
+        .exec()
+    );
+  }
+
   async listForAsset(params: {
     assetId: string;
     type?: string | undefined;

@@ -11,7 +11,7 @@
 // whole), beside the other filters; and the names offered are the reader's scope's — narrowed to the
 // chosen categories — in Arabic order, bounded.
 import { Types } from 'mongoose';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ListItAssetNamesQuerySchema,
   ListItAssetsQuerySchema,
@@ -317,6 +317,70 @@ describe('the category and name filters', () => {
     expect(filterSent()).toEqual({ status: 'assigned' });
     await itAssetService.list(fromWire({ status: 'assigned', categoryId: '', name: '' }), scope);
     expect(filterSent()).toEqual({ status: 'assigned' });
+  });
+});
+
+// «الضمان» — the dashboard's «ضمان ينتهي خلال ٣٠ يومًا» opened as the list. The window is the one
+// the dashboard counts with (`warranty-window.ts`), so the row and the list it opens agree.
+describe('the warranty filter', () => {
+  const scope = { scope: 'organization' } as never;
+  const BRANCH = String(new Types.ObjectId());
+  const NOW = new Date('2026-11-03T08:00:00.000Z');
+  const filterSent = (): Record<string, unknown> =>
+    (mocks.list.mock.lastCall?.[0] as { filter: Record<string, unknown> }).filter;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    mocks.list.mockResolvedValue({
+      items: [],
+      meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps the assets whose warranty ends within the days asked, from now — none already ended, none disposed', async () => {
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: '30' }),
+      scope,
+    );
+    expect(filterSent()).toEqual({
+      $and: [
+        {
+          status: { $ne: 'disposed' },
+          'warranty.end': { $gt: NOW, $lte: new Date('2026-12-03T08:00:00.000Z') },
+        },
+      ],
+    });
+  });
+
+  it('narrows the other filters rather than overwriting them — the status among them', async () => {
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({
+        warrantyEndsWithinDays: '90',
+        status: 'assigned',
+        branchId: BRANCH,
+      }),
+      scope,
+    );
+    const filter = filterSent();
+    expect(filter.status).toBe('assigned');
+    expect(filter.branchId).toEqual(new Types.ObjectId(BRANCH));
+    expect(filter.$and).toEqual([
+      {
+        status: { $ne: 'disposed' },
+        'warranty.end': { $gt: NOW, $lte: new Date('2027-02-01T08:00:00.000Z') },
+      },
+    ]);
+  });
+
+  it('asks nothing of the warranty when it is not set, and takes one to 365 days only', async () => {
+    await itAssetService.list(ListItAssetsQuerySchema.parse({}), scope);
+    expect(filterSent()).toEqual({});
+    for (const days of ['0', '366', '1.5', 'soon']) {
+      expect(() => ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: days })).toThrow();
+    }
   });
 });
 

@@ -9532,6 +9532,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.keys.atm.branchLinks': 'Branches that work together',
   'systemAdmin.settings.keys.atm.mail.branchCategories': 'Outlook category per branch',
   'systemAdmin.settings.keys.atm.maintenanceLeaderDepartmentIds': 'Leader list departments',
+  'systemAdmin.settings.keys.atm.display': 'How the ATM pages read',
   'systemAdmin.settings.keys.atm.register.bankLabels': 'Bank names in the Operations list',
   'systemAdmin.settings.keys.atm.register.branchCodes': 'Branch codes in the register workbook',
   'systemAdmin.settings.keys.atm.settlements.banks': 'Banks enabled for settlements',
@@ -9609,6 +9610,8 @@ const en: Record<string, string> = {
     'The Outlook category put on a maintenance mail to show which branch it was filed under. Used only for a branch that has no category of its own in ATM Settings; with none, the mail is still marked read.',
   'systemAdmin.settings.descriptions.atm.maintenanceLeaderDepartmentIds':
     'Employees of these departments are offered as the leader when maintenance is closed and when a replenishment or maintenance is edited. When none is chosen, the department named ATM is used.',
+  'systemAdmin.settings.descriptions.atm.display':
+    'The text size, bold or not, and how dark the tables\' lines are on every ATM page. Set in ATM settings, under «How the pages read».',
   'systemAdmin.settings.descriptions.atm.register.bankLabels':
     'No longer used: each bank\'s name in Operations is now set in Banks, in the ATM Register. Changing this value has no effect.',
   'systemAdmin.settings.descriptions.atm.register.branchCodes':
@@ -12420,6 +12423,21 @@ const en: Record<string, string> = {
   'atm.settings.leaders.unknown': 'Department no longer active',
   'atm.settings.leaders.none': 'There are no active departments to choose from.',
   'atm.settings.leaders.saved': 'The departments of the leader list were saved.',
+  'atm.settings.display.title': 'How the pages read',
+  'atm.settings.display.hint':
+    'The text size, bold or not, and how dark the tables’ lines are — on every ATM page, for everyone. The data does not change, only how the pages draw it.',
+  'atm.settings.display.textSize': 'Text size',
+  'atm.settings.display.size': '{{size}}%',
+  'atm.settings.display.sizeAsIs': '{{size}}% — as it is',
+  'atm.settings.display.bold': 'Bold text',
+  'atm.settings.display.tableLines': 'Table lines',
+  'atm.settings.display.lines.soft': 'Lighter',
+  'atm.settings.display.lines.normal': 'As they are',
+  'atm.settings.display.lines.strong': 'Darker',
+  'atm.settings.display.lines.stronger': 'Darkest',
+  'atm.settings.display.preview': 'How a table will read:',
+  'atm.settings.display.reset': 'Back to how the pages were',
+  'atm.settings.display.saved': 'Saved — every ATM page now reads this way.',
   'atm.settings.leaders.reset': 'Use the ATM department by name',
   'atm.settings.leaders.emptyWarning':
     'With no department ticked, saving returns to the ATM department found by its name.',
@@ -21860,6 +21878,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.atm.branchLinks': 'فروع تعمل معًا',
   'systemAdmin.settings.keys.atm.mail.branchCategories': 'تصنيف Outlook لكل فرع',
   'systemAdmin.settings.keys.atm.maintenanceLeaderDepartmentIds': 'إدارات قائمة القائد',
+  'systemAdmin.settings.keys.atm.display': 'شكل صفحات الصراف الآلي',
   'systemAdmin.settings.keys.atm.register.bankLabels': 'أسماء البنوك في قائمة التشغيل',
   'systemAdmin.settings.keys.atm.register.branchCodes': 'أكواد الفروع في ملف سجل الماكينات',
   'systemAdmin.settings.keys.atm.settlements.banks': 'البنوك المفعّلة في التسويات',
@@ -21939,6 +21958,8 @@ const ar: Record<string, string> = {
     'التصنيف الذي يُضاف في Outlook إلى رسالة الصيانة ليبيّن الفرع الذي سُجِّلت عليه. يُستخدم فقط للفرع الذي ليس له تصنيف في «إعدادات الصراف الآلي»، وإن لم يوجد تصنيف تُعلَّم الرسالة مقروءة دون تصنيف.',
   'systemAdmin.settings.descriptions.atm.maintenanceLeaderDepartmentIds':
     'يظهر موظفو هذه الإدارات في قائمة القائد عند إغلاق الصيانة وعند تعديل التغذية أو الصيانة. إذا لم تُحدَّد أي إدارة، تُستخدم إدارة الصراف الآلي باسمها.',
+  'systemAdmin.settings.descriptions.atm.display':
+    'حجم الكلام، وهل يكون عريضًا، ودرجة لون خطوط الجداول في كل صفحات الصراف الآلي. يُضبط من إعدادات الصراف الآلي، في «شكل الصفحات».',
   'systemAdmin.settings.descriptions.atm.register.bankLabels':
     'لم يعد مستخدمًا؛ إذ يُضبط اسم كل بنك في التشغيل الآن من «البنوك» في سجل الماكينات. تغيير هذه القيمة لا يُحدث أي أثر.',
   'systemAdmin.settings.descriptions.atm.register.branchCodes':
@@ -24675,6 +24696,21 @@ const ar: Record<string, string> = {
   'atm.settings.leaders.unknown': 'إدارة لم تعد نشطة',
   'atm.settings.leaders.none': 'لا توجد إدارات نشطة للاختيار منها.',
   'atm.settings.leaders.saved': 'تم حفظ إدارات قائمة القائد.',
+  'atm.settings.display.title': 'شكل الصفحات',
+  'atm.settings.display.hint':
+    'حجم الكلام، وهل يكون عريضًا، ودرجة لون خطوط الجداول — في كل صفحات الصراف الآلي ولكل المستخدمين. البيانات لا تتغير، يتغير شكل عرضها فقط.',
+  'atm.settings.display.textSize': 'حجم الكلام',
+  'atm.settings.display.size': '{{size}}٪',
+  'atm.settings.display.sizeAsIs': '{{size}}٪ — كما هو',
+  'atm.settings.display.bold': 'كلام عريض (Bold)',
+  'atm.settings.display.tableLines': 'خطوط الجداول',
+  'atm.settings.display.lines.soft': 'أفتح',
+  'atm.settings.display.lines.normal': 'كما هي',
+  'atm.settings.display.lines.strong': 'أغمق',
+  'atm.settings.display.lines.stronger': 'أغمق جدًا',
+  'atm.settings.display.preview': 'شكل الجدول بعد الحفظ:',
+  'atm.settings.display.reset': 'الرجوع لشكل الصفحات الأصلي',
+  'atm.settings.display.saved': 'تم الحفظ — كل صفحات الصراف الآلي تُعرض بهذا الشكل الآن.',
   'atm.settings.leaders.reset': 'استخدام إدارة الصراف الآلي باسمها',
   'atm.settings.leaders.emptyWarning':
     'إذا لم تُحدَّد أي إدارة، فالحفظ يعيد استخدام إدارة الصراف الآلي باسمها.',

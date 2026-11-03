@@ -175,6 +175,8 @@ export interface DataTableProps<T> {
     label: (header: string) => string;
     /** `useColumnFilters().generation`: the row remounts on a reset, closing an open list. */
     generation?: number;
+    /** The columns whose list starts over each time it opens (`ColumnFilterSelect` `freshOnOpen`). */
+    freshOnOpen?: readonly string[];
   };
   /**
    * A HEADER LINE BEFORE EACH RUN OF ROWS THAT SHARE A GROUP. The ATM open boards use it, grouped
@@ -543,6 +545,7 @@ export const DataTable = <T,>({
                       onChange={(picked) => columnFilters.onChange(c.key, picked)}
                       label={columnFilters.label(c.header)}
                       columnKey={c.key}
+                      freshOnOpen={columnFilters.freshOnOpen?.includes(c.key) === true}
                     />
                   )}
                 </th>

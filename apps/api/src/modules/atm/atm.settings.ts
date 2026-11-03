@@ -2,6 +2,8 @@
 import { z } from 'zod';
 import {
   ATM_DEFAULT_BANK_LABELS_SETTING,
+  ATM_DEFAULT_DISPLAY,
+  AtmDisplaySettingSchema,
   AtmBranchLinksSettingSchema,
   AtmRegisterBankLabelsSettingSchema,
   AtmBankCodeSchema,
@@ -12,6 +14,20 @@ import {
 import { declareSetting } from '../../platform/settings';
 
 export const registerAtmSettings = (): void => {
+  declareSetting({
+    key: AtmSettingKeys.Display,
+    // The owner (2026-11-03): «خلى حجم الكلام فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط
+    // الجداول .. أقدر أتحكم فيها من /atm/settings».
+    description:
+      "How every ATM page reads: the text size (a percentage of the app's own, 100 as always), " +
+      "every text bold or not, and how dark the tables' lines are drawn. Set on /atm/settings, " +
+      '«شكل الصفحات»; changes nothing about the data.',
+    schema: AtmDisplaySettingSchema,
+    defaultValue: ATM_DEFAULT_DISPLAY,
+    // Organization only: one look for every ATM page, as the rest of /atm/settings is one fact
+    // about the company.
+    allowedScopes: ['organization'],
+  });
   declareSetting({
     key: AtmSettingKeys.MaintenanceLeaderDepartmentIds,
     description:

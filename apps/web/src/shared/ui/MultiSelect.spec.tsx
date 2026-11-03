@@ -720,3 +720,27 @@ describe('«every match» — what it does to the picks', () => {
     expect(value).toEqual(['a']);
   });
 });
+
+describe('opening a list at the page’s edge moves nothing — «المنيو بيطلع شمال برا الشاشة وبيغير الـ UI»', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+    'utf8',
+  );
+
+  it('focuses the search box after the list is placed, never by autoFocus, never scrolling', () => {
+    // No autoFocus on the search box: it focused the box before the pin moved the list into the
+    // screen, and the browser scrolled the board sideways to reach it.
+    expect(source).not.toMatch(/\n\s*autoFocus\n/);
+    expect(source).toContain('searchRef.current?.focus({ preventScroll: true })');
+    // And after the pin's effect, which places the list.
+    expect(source.indexOf('searchRef.current?.focus({ preventScroll: true })')).toBeGreaterThan(
+      source.indexOf("const [pin, setPin] = useState<'left' | 'right' | null>(null);"),
+    );
+  });
+
+  it('tells its owner as it opens — a click or an arrow key — before anything is picked', () => {
+    expect(source).toContain('if (!open) onOpen?.();');
+    const keyOpen = source.slice(source.indexOf("if (action === 'open') {"));
+    expect(keyOpen.indexOf('onOpen?.();')).toBeLessThan(keyOpen.indexOf('setOpen(true);'));
+  });
+});

@@ -12,6 +12,7 @@
 // The body only names the target the reader confirmed, a precondition the server checks against
 // that stored link (`AtmBranchMoveBodySchema`).
 import {
+  type AtmDisplaySetting,
   type AtmBranchLinksDto,
   type AtmBranchMovePreviewDto,
   type AtmBranchMoveResultDto,
@@ -28,6 +29,7 @@ import { get, post, put } from '../../../shared/lib/api-client';
 const MAILBOX = '/atm/mailbox';
 const BRANCH_LINKS = '/atm/branch-links';
 const LEADER_DEPARTMENTS = '/atm/leaders/departments';
+const DISPLAY = '/atm/display';
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
 /** `null` while no document exists — the reader is still on the deployment's environment. */
@@ -82,3 +84,11 @@ export const getLeaderDepartments = (): Promise<AtmLeaderDepartmentsDto> =>
 export const saveLeaderDepartments = (
   body: SaveAtmLeaderDepartments,
 ): Promise<AtmLeaderDepartmentsDto> => put<AtmLeaderDepartmentsDto>(LEADER_DEPARTMENTS, body);
+
+// ── How the ATM pages read ──────────────────────────────────────────────────
+/** The text size, bold or not, and the tables' lines every ATM page draws with. */
+export const getDisplay = (): Promise<AtmDisplaySetting> => get<AtmDisplaySetting>(DISPLAY);
+
+/** The /atm/settings card's save — the whole value, for the whole company. */
+export const saveDisplay = (body: AtmDisplaySetting): Promise<AtmDisplaySetting> =>
+  put<AtmDisplaySetting>(DISPLAY, body);

@@ -15,6 +15,8 @@
 //     not show yet — either way the dialog's preview and the card's banner read the server again;
 //   · a leader-departments save stales the leader pickers' names (`['atm','leaders']`): the next
 //     close or edit dialog offers the people of the departments just ticked;
+//   · a display save puts its own answer in the cache: every ATM page draws with it at once, the
+//     settings page's own preview included;
 //   · a move preview exists only for a STORED source — any other branch is a 404 — so a links save
 //     forgets the previews of the sources it removed, and a move refused 404 (another administrator
 //     removed the link) forgets its own: a refresh asked while the removed row is still on screen
@@ -26,6 +28,7 @@
 // global toast could only repeat the server's English sentence.
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AtmDisplaySetting,
   type AtmBranchMovePreviewDto,
   type SaveAtmBranchLinks,
   type SaveAtmLeaderDepartments,
@@ -49,6 +52,8 @@ export const atmMailboxKey = (): readonly unknown[] => listKey(MODULE, 'mailbox'
 export const atmBranchLinksKey = (): readonly unknown[] => listKey(MODULE, 'branchLinks');
 export const atmLeaderDepartmentsKey = (): readonly unknown[] =>
   listKey(MODULE, 'leaders', { kind: 'departments' });
+/** How every ATM page reads — one entry for the whole session, read by `AtmDisplayScope`. */
+export const atmDisplayKey = (): readonly unknown[] => listKey(MODULE, 'display');
 export const atmBranchMovePreviewKey = (sourceBranchId: string): readonly unknown[] =>
   detailKey(MODULE, 'branchMove', sourceBranchId);
 
@@ -160,6 +165,28 @@ export const useSaveAtmLeaderDepartments = () => {
       client.setQueryData(atmLeaderDepartmentsKey(), saved);
       // The pickers' names follow the departments just saved.
       void client.invalidateQueries({ queryKey: settingsKeys.leaders });
+    },
+  });
+};
+
+// ── How the ATM pages read ──────────────────────────────────────────────────
+/**
+ * The text size, bold or not, and the tables' lines — read once and kept: it changes only when
+ * the /atm/settings card saves it, and that save puts its answer here.
+ */
+export const useAtmDisplay = () =>
+  useQuery({
+    queryKey: atmDisplayKey(),
+    queryFn: () => api.getDisplay(),
+    staleTime: 5 * 60_000,
+  });
+
+export const useSaveAtmDisplay = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AtmDisplaySetting) => api.saveDisplay(body),
+    onSuccess: (saved) => {
+      client.setQueryData(atmDisplayKey(), saved);
     },
   });
 };

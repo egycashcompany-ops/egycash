@@ -686,6 +686,36 @@ offered nobody, and the edit dialogs' leader stayed free text.
   name typed in full is committed when the box is left (the shared `Combobox`); an empty list says
   where it is set, and a failed one says so.
 
+### 6f. How the pages read, and how a table copies (2026-11-03)
+
+- **«شكل الصفحات» — `atm.display`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط
+  الجداول .. أقدر أتحكم فيها من /atm/settings». One value for the whole company (organization scope,
+  like the rest of /atm/settings): `{ textSize: 90 | 100 | 110 | 125 | 140, bold, tableLines: soft |
+  normal | strong | stronger }`, default the pages as they were (`ATM_DEFAULT_DISPLAY`).
+  `GET /atm/display` is read by every signed-in user (it says how to draw a page, nothing about
+  the data); `PUT /atm/display` is `atmSettings.manage` held company-wide. A layout route inside
+  the module's shell (`AtmDisplayScope`, `display: contents`) carries the value around every ATM
+  page as attributes, and only what differs from the pages' own look (`atmDisplayScopeProps`), so
+  at the defaults no rule applies. `styles.css` reads them: the type scale times the size (spacing
+  untouched), every text a step heavier, every line of a table and its frame in the chosen shade,
+  in both themes. The card's sample sets all three, so it shows the choice before it is saved.
+  Dialogs and floating lists sit outside the page and keep the app's own look.
+- **A copy of table rows is a table a chat can read.** «لما أخد Copy من الجدول تطلعهولى بشكل جدول …
+  عايز حافظ على شكلة كجدول لما أبعته واتساب». The scope listens for a copy: a selection that spans
+  cells of a table on an ATM page is written as text — a line per row, « | » between cells, what
+  WhatsApp pastes — and as an HTML table, what a sheet or a document pastes
+  (`shared/lib/table-copy.ts`). Only cells the reader could select are taken (a board's
+  `select-none` timers and buttons stay out), a control's text is left out, a column empty in
+  every row is dropped, and a selection inside one cell is the browser's own copy.
+- **The area's column filter starts over** («لما أضغط على فلتر (المنطقة فقط) يعمله Reset وأقدر
+  أختار من الأول»): opening the area list under a table's head clears its picks (`FRESH_ON_OPEN`,
+  `ColumnFilterSelect freshOnOpen`, `MultiSelect onOpen`). The area only; every other column keeps
+  its picks when its list opens.
+- **A list at the page's edge opens in place** («فلتر المنطقة (اللى فوق خالص) … المنيو بيطلع شمال برا
+  الشاشة وبيغير الـ UI»): `MultiSelect` no longer `autoFocus`es its search box. It focuses it once
+  the list is open and pinned inside the screen, with `preventScroll`, so a list at the left edge
+  no longer scrolls the board sideways on opening.
+
 ## 7. Migration (ATM-7 — delivered)
 
     npm run atm:import -w apps/api -- --legacy-uri=mongodb://host:27017/egycash \

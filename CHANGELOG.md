@@ -583,6 +583,32 @@ its entry here in the same PR.
 
 ### Changed
 
+- **How the ATM pages read, set on `/atm/settings`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو
+  لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من /atm/settings». A new card, «شكل الصفحات», sets
+  three things for every ATM page and every user: the text size (90, 100, 110, 125 or 140 percent
+  of the app's own), bold text on or off, and how dark the tables' lines are (lighter, as they are,
+  darker, darkest). A sample table under the choices shows the result before it is saved. The side
+  bar and the top bar keep their look; the data does not change. Until the card is saved the pages
+  read as they always did.
+- **Rows copied from an ATM table stay a table in WhatsApp.** «لما أخد Copy من الجدول تطلعهولى بشكل
+  جدول … فالكلام داخل في بعضه .. عايز حافظ على شكلة كجدول لما أبعته واتساب». The copy put a tab
+  between cells, which a chat shows as a narrow space, so «MISR 1150744 فرع القصر العينى مسائي» ran
+  together. A copy that covers cells of an ATM table (a drag across rows, or Ctrl+A on a board) is
+  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`. A sheet,
+  a document or an e-mail still pastes real rows and columns. Only what the rows show is copied: a
+  board's timers and buttons stay out, as before. A selection inside one cell copies as it always
+  did.
+- **The area's column filter starts over each time it is opened.** «لما أضغط على فلتر (المنطقة فقط)
+  يعمله Reset وأقدر أختار من الأول في كل الصفحات بتاعت ATM». Opening the area list under the head
+  clears the areas picked in it, so the table shows every area again and the areas are picked
+  afresh. Every other column keeps its picks when its list opens, so a value can be added to them.
+  On the boards, the done pages, both mail pages, the cassette layouts and control's data tab.
+- **The top area filter opens inside the screen.** «فلتر المنطقة (اللى فوق خالص) بجانب البنك .. على
+  الشمال.. لما بضغط عليه المنيو بيطلع شمال برا الشاشة وبيغير الـ UI». With seven areas or more the list
+  has a search box, and that box took the caret before the list was moved back inside the screen:
+  the browser scrolled the board sideways to reach it and left the page shifted. The box now takes
+  the caret once the list is in place, and moves nothing. This applies to every drop-down filter of
+  this kind in the app.
 - **The daily report covers a period.** «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
   بس الـ Default يكون اليوم». `/atm/reports/daily` now has «من» and «إلى» on the title's line in
   place of the one day, today in both by default. For each bank the two tables count every

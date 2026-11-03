@@ -34,6 +34,7 @@ import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 export const ReplenishmentsDonePage = (): JSX.Element => {
   const t = useT();
@@ -159,6 +160,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices,
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             sort={order.sorts}

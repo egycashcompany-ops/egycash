@@ -32,6 +32,7 @@ import {
 import { type BankLookup } from '../../lib/bank-catalog';
 import { DuplicateNote, duplicateTexts } from './DuplicateNote';
 import { RunChip } from './RunChip';
+import { FRESH_ON_OPEN } from '../../lib/fresh-filters';
 
 type ControlLine = AtmControlDayDto['lines'][number];
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -234,6 +235,7 @@ export const ControlDataTab = ({
                   onChange={(picked) => columnFilters.set(column.key, picked)}
                   label={t('atm.common.filterColumn', { column: t(column.header) })}
                   columnKey={column.key}
+                  freshOnOpen={FRESH_ON_OPEN.includes(column.key)}
                 />
               </th>
             ))}

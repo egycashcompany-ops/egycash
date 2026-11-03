@@ -3169,9 +3169,14 @@ const en: Record<string, string> = {
   'organization.branch.activated': 'Branch activated',
   'organization.branch.deactivated': 'Branch deactivated',
   'organization.branch.changeCode': 'Change branch code',
+  'organization.branch.changeCodeShort': 'Change code',
   'organization.branch.changeCodeHint':
-    'The branch code is part of every employee’s identity and is normally immutable. Only a super-admin may correct it.',
+    'The branch code is the first three digits of every employee code issued in the branch, and registration reads the branch from them. Employee codes already issued do not change.',
   'organization.branch.codeChanged': 'Branch code changed',
+  'organization.branch.codeCurrent': 'Current code: {{code}}',
+  'organization.branch.codeNotThreeDigits':
+    'An employee code begins with a three-digit branch code (such as 010), so no employee code will name this branch.',
+  'organization.branch.codeTaken': 'Another branch already has this code.',
   'organization.department.subtitle':
     'Departments within a branch (a platform-wide unit every module belongs to).',
   'organization.department.nameAr': 'Arabic name',
@@ -15656,10 +15661,15 @@ const ar: Record<string, string> = {
   'organization.branch.deleteTitle': 'حذف الفرع',
   'organization.branch.activated': 'تم تفعيل الفرع',
   'organization.branch.deactivated': 'تم إلغاء تفعيل الفرع',
-  'organization.branch.changeCode': 'تغيير رمز الفرع',
+  'organization.branch.changeCode': 'تغيير كود الفرع',
+  'organization.branch.changeCodeShort': 'تغيير الكود',
   'organization.branch.changeCodeHint':
-    'رمز الفرع جزء من هوية كل موظف ولا يمكن تغييره عادةً. يمكن لمسؤول النظام الأعلى فقط تصحيحه.',
-  'organization.branch.codeChanged': 'تم تغيير رمز الفرع',
+    'كود الفرع هو أول ثلاثة أرقام في كود كل موظف يُعيَّن فيه، ومنه يُعرف الفرع عند تسجيل الموظف. أكواد الموظفين المسجَّلين لا تتغير.',
+  'organization.branch.codeChanged': 'تم تغيير كود الفرع',
+  'organization.branch.codeCurrent': 'الكود الحالي: {{code}}',
+  'organization.branch.codeNotThreeDigits':
+    'كود الموظف يبدأ بكود فرع من ثلاثة أرقام (مثل 010)، فلن يُعرف هذا الفرع من كود أي موظف.',
+  'organization.branch.codeTaken': 'هذا الكود مستخدم لفرع آخر.',
   'organization.department.subtitle':
     'الإدارات داخل الفرع (وحدة على مستوى المنصة تنتمي إليها كل التطبيقات).',
   'organization.department.nameAr': 'الاسم بالعربية',

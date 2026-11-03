@@ -12,12 +12,12 @@ const IdParamSchema = z.object({ id: objectId() }).strict();
 
 export const buildBranchesRouter = (): Router => {
   const router = makeOrgUnitRouter(branchHttpConfig, branchHandlers);
-  // Immutable Branch Code — correctable only by a super-admin (ADR-017). The handler enforces the
-  // privilege; `branch.edit` gates the route so ordinary editors get a 403, not a 404.
+  // The Branch Code, corrected by a holder of its own key, `branch.changeCode` (ADR-017, amended
+  // 2026-11-03). It used to be super-admin only; the owner asked to be allowed to fix it.
   router.patch(
     '/:id/code',
     authenticate,
-    authorize('branch.edit'),
+    authorize('branch.changeCode'),
     validate({ body: ChangeBranchCodeSchema, params: IdParamSchema }),
     asyncHandler(changeBranchCodeHandler),
   );

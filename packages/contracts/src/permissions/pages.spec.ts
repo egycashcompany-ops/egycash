@@ -138,10 +138,12 @@ describe('the platform registry as it actually stands', () => {
     expect(validatePageRegistry(platformPages, platformPermissions)).toEqual([]);
   });
 
-  // ADR-032 added the delegation page and its one key.
-  it('declares 16 pages for 65 permissions', () => {
+  // ADR-032 added the delegation page and its one key. ADR-017's 2026-11-03 amendment added
+  // `branch.changeCode` («عايزك تسمحلى أغير كود الفرع»), on the branches page.
+  it('declares 17 pages for 68 permissions', () => {
     expect(platformPages).toHaveLength(17);
-    expect(platformPermissions).toHaveLength(67);
+    expect(platformPermissions).toHaveLength(68);
+    expect(platformPermissions.find((p) => p.key === 'branch.changeCode')?.pageId).toBe('platform.branches');
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a

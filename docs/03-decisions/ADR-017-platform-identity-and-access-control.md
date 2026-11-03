@@ -111,10 +111,22 @@ issuance, not a rewrite: the code is set once, as the record is created.
 - The screen states the code holding the highest number (`GET /hr/employees/last-code`, shown as
   `xxx2862`) and checks a typed code as it is entered (`GET /hr/employees/code-check`).
 
-### 4. Branch Code is immutable — except super-admin
+### 4. Branch Code is immutable — except through `branch.changeCode`
 
 The Branch Code is required, unique, validated, and immutable after creation (it is part of every
 employee's identity). A **super-admin** may correct it through a dedicated, privileged endpoint.
+
+**Amendment, 2026-11-03 — its own key, not super-admin only.** The owner, finding the Mohandessin
+branch stored as `BR1` while its employees' codes begin `010`: «عايزك تسمحلى أغير كود الفرع». The
+correction (`PATCH /platform/branches/:id/code`) is gated on **`branch.changeCode`** instead of the
+super-admin privilege; `branch.edit` does not carry it. The super-admin role holds it like every key.
+It is offered on the branches list as well as on the branch's own page.
+
+- Nothing propagates: employee codes already issued keep their prefix (§3). What changes is which
+  branch a *newly typed* employee code names at registration — the register screen reads the branch
+  off a code's first three digits, so a branch whose code is not three digits is never named. The
+  dialog warns about such a code; it does not refuse it, since the catalogue allows other shapes.
+- Another branch's code is refused (`ux_code`), and the change is audited as before.
 
 ## Alternatives considered
 

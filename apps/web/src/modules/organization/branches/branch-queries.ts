@@ -1,5 +1,5 @@
 // Branch-only query hooks. The CRUD/list/status hooks come from the shared factory
-// (`branchConfig.queries`); this adds the super-admin Branch-Code change, seeding the detail cache
+// (`branchConfig.queries`); this adds the Branch-Code change (`branch.changeCode`), seeding the detail cache
 // and invalidating the branches subtree on success.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ChangeBranchCode } from '@ecms/contracts';

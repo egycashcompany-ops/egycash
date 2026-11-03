@@ -1212,6 +1212,13 @@ export const AtmSettingKeys = {
    * added once its import profile exists.
    */
   SettlementBanks: 'atm.settlements.banks',
+  /**
+   * How every ATM page reads — the text size, bold or not, and how dark the tables' lines are
+   * (value schema `AtmDisplaySettingSchema` in atm-settings.ts). The owner (2026-11-03): «خلى حجم
+   * الكلام فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من
+   * /atm/settings». DEFAULT the pages as they always read (`ATM_DEFAULT_DISPLAY`).
+   */
+  Display: 'atm.display',
 } as const;
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────────────────────────

@@ -62,6 +62,7 @@ import {
   withMailParam,
   withoutMailFilters,
 } from '../lib/mail-view';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /** Remembered across visits: the filters — the only thing this page keeps in its address bar. */
 const REMEMBERED_FILTERS = ['banks', 'areas', 'q'] as const;
@@ -273,6 +274,7 @@ export const MailTicketsPage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             // The duplicate row paint — the legacy's yellow background (:771), as a row class that

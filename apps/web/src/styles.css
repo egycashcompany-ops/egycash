@@ -123,3 +123,79 @@
   .contract-editor th { @apply bg-slate-100 font-semibold dark:bg-slate-800; }
   .contract-editor .selectedCell { @apply bg-brand-50 dark:bg-brand-950; }
 }
+
+/*
+ * How the ATM pages read — /atm/settings «شكل الصفحات» (`atm.display`, 2026-11-03: «خلى حجم الكلام
+ * فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من /atm/settings»).
+ *
+ * `AtmDisplayScope` sets these attributes around every ATM page, and only for what differs from the
+ * pages' own look (`atmDisplayScopeProps`): at the defaults none is there and nothing below applies.
+ * Outside any layer on purpose: each rule is an attribute and a class, so it outranks the single
+ * Tailwind utility it re-sizes or re-colours wherever the two meet.
+ */
+
+/*
+ * The text size: the page's own type scale, times the setting. Spacing is left as it is. Each size
+ * scales its line too — unless the element sets its own line (`leading-*`), which it keeps. The
+ * sizes written in pixels (`text-[13px]`, a badge's `text-[11px]`) scale with the rest.
+ */
+[data-atm-text] { font-size: calc(1rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-xs { font-size: calc(0.75rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-xs:not([class*='leading-']) { line-height: calc(1rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-sm { font-size: calc(0.875rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-sm:not([class*='leading-']) { line-height: calc(1.25rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-base { font-size: calc(1rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-base:not([class*='leading-']) { line-height: calc(1.5rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-lg { font-size: calc(1.125rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-lg:not([class*='leading-']) { line-height: calc(1.75rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-xl { font-size: calc(1.25rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-xl:not([class*='leading-']) { line-height: calc(1.75rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-2xl { font-size: calc(1.5rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-2xl:not([class*='leading-']) { line-height: calc(2rem * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[9px\] { font-size: calc(9px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[10px\] { font-size: calc(10px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[11px\] { font-size: calc(11px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[12\.5px\] { font-size: calc(12.5px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[13px\] { font-size: calc(13px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[15px\] { font-size: calc(15px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[16px\] { font-size: calc(16px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[17px\] { font-size: calc(17px * var(--atm-text-scale, 1)); }
+[data-atm-text] .text-\[0\.625rem\] { font-size: calc(0.625rem * var(--atm-text-scale, 1)); }
+
+/*
+ * Bold: every text a step heavier — the plain ones bold, the already bold ones bolder. Through a
+ * variable (`--atm-bold`, 1 or 0) rather than the attribute alone, so the settings card's preview,
+ * a scope inside the page's, can show «not bold» inside a page that is.
+ */
+[data-atm-weight] { font-weight: calc(400 + 200 * var(--atm-bold, 0)); }
+[data-atm-weight] .font-normal { font-weight: calc(400 + 200 * var(--atm-bold, 0)); }
+[data-atm-weight] .font-medium { font-weight: calc(500 + 100 * var(--atm-bold, 0)); }
+[data-atm-weight] .font-semibold { font-weight: calc(600 + 100 * var(--atm-bold, 0)); }
+
+/*
+ * The tables' lines: every line of a table, and the frame around it, in the chosen shade. `normal`
+ * is set only by the preview — on the pages it is the tables' own lines, untouched — and is the
+ * tables' own row line, so the preview at «كما هي» shows what the pages show.
+ */
+[data-atm-lines='soft'] { --atm-table-line: rgb(248 250 252); }
+[data-atm-lines='normal'] { --atm-table-line: rgb(241 245 249); }
+[data-atm-lines='strong'] { --atm-table-line: rgb(148 163 184); }
+[data-atm-lines='stronger'] { --atm-table-line: rgb(71 85 105); }
+.dark [data-atm-lines='soft'] { --atm-table-line: rgb(30 41 59 / 0.5); }
+.dark [data-atm-lines='normal'] { --atm-table-line: rgb(30 41 59); }
+.dark [data-atm-lines='strong'] { --atm-table-line: rgb(71 85 105); }
+.dark [data-atm-lines='stronger'] { --atm-table-line: rgb(148 163 184); }
+[data-atm-lines] table :is(thead, tbody, tr, th, td),
+.dark [data-atm-lines] table :is(thead, tbody, tr, th, td) {
+  border-color: var(--atm-table-line);
+}
+/* Rows drawn by `divide-y` take their line from the row group: a stronger rule than the utility's. */
+[data-atm-lines] table :is(thead, tbody) > :not([hidden]) ~ :not([hidden]),
+.dark [data-atm-lines] table :is(thead, tbody) > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--atm-table-line);
+}
+/* The frame: a rule of its own, so a browser without `:has()` loses the frame only, not the lines. */
+[data-atm-lines] :has(> table),
+.dark [data-atm-lines] :has(> table) {
+  border-color: var(--atm-table-line);
+}

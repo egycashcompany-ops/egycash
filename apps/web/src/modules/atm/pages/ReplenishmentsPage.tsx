@@ -67,6 +67,7 @@ import { StatementExportButtons } from '../components/StatementExportButtons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBoardFilters } from '../lib/useBoardFilters';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /**
  * Remembered across visits: this screen's filters and order. `page` is derived, never kept — and
@@ -322,6 +323,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: board.choices,
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             group={areaGroupLine(t, locale)}

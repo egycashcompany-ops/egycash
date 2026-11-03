@@ -3,13 +3,15 @@
 //   · the Banque Misr maintenance mailbox the central reader polls, and the branches it files
 //     mail for — switched on one at a time, Mohandessin first (the owner, 2026-10-28);
 //   · the branches that work as one in ATM — October as Mohandessin;
-//   · whose names the leader pickers offer — the ATM department, by name or as ticked.
+//   · whose names the leader pickers offer — the ATM department, by name or as ticked;
+//   · how every ATM page reads — the text size, bold or not, the tables' lines (2026-11-03).
 // A THIN shell, as the register import page is: the header carries the title only
 // (page-header-has-no-subtitle.spec.ts) and the work lives in `components/settings/*`. It reads no
 // URL parameter, so the remembered-filters census files it as not filter-capable.
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { BranchLinksCard } from '../components/settings/BranchLinksCard';
+import { DisplaySettingsCard } from '../components/settings/DisplaySettingsCard';
 import { LeaderDepartmentsCard } from '../components/settings/LeaderDepartmentsCard';
 import { MailboxSettingsCard } from '../components/settings/MailboxSettingsCard';
 
@@ -22,6 +24,7 @@ export const AtmSettingsPage = (): JSX.Element => {
         <MailboxSettingsCard />
         <BranchLinksCard />
         <LeaderDepartmentsCard />
+        <DisplaySettingsCard />
       </div>
     </PageContainer>
   );

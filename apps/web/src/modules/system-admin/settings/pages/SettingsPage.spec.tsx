@@ -129,6 +129,10 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [AtmSettingKeys.RegisterBankLabels]: { type: 'array', defaultValue: [] },
   [AtmSettingKeys.SettlementBanks]: { type: 'array', defaultValue: ['BRK'] },
   [AtmSettingKeys.BranchLinks]: { type: 'array', defaultValue: [] },
+  [AtmSettingKeys.Display]: {
+    type: 'object',
+    defaultValue: { textSize: 100, bold: false, tableLines: 'normal' },
+  },
 };
 
 /** Every key the contracts declare, which is what the API registers at boot. */
@@ -254,9 +258,9 @@ const sectionAround = (markup: string, key: string): string | null => {
 };
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are fifty-nine of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(59);
-    expect(new Set(DECLARED_KEYS).size).toBe(59);
+  it('covers every declared setting key, and there are sixty of them', () => {
+    expect(DECLARED_KEYS).toHaveLength(60);
+    expect(new Set(DECLARED_KEYS).size).toBe(60);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -416,6 +420,31 @@ describe('every setting reaches the screen', () => {
     });
   });
 
+  it('says a value that is not a list is set once it differs from what ships — how the ATM pages read', () => {
+    const key = AtmSettingKeys.Display;
+    const rowOf = (html: string): string => {
+      const at = html.indexOf(`>${key}<`);
+      const next = html.indexOf('data-settings-section', at + 1);
+      return html.slice(at, next === -1 ? undefined : next);
+    };
+    const saved = rowOf(
+      render({
+        resolved: [
+          ...RESOLVED.filter((entry) => entry.key !== key),
+          {
+            key,
+            value: { textSize: 125, bold: true, tableLines: 'strong' },
+            resolvedFrom: 'organization',
+          },
+        ],
+      }),
+    );
+    expect(saved).toContain(translate('en', 'systemAdmin.settings.managed.set'));
+    expect(saved).not.toContain(translate('en', 'systemAdmin.settings.managed.empty'));
+    const untouched = rowOf(render({ resolved: RESOLVED.filter((entry) => entry.key !== key) }));
+    expect(untouched).toContain(translate('en', 'systemAdmin.settings.managed.empty'));
+  });
+
   it('marks a retired setting instead of offering a field for it', () => {
     for (const key of RETIRED_SETTINGS) {
       expect(markup).toContain(key);
@@ -424,7 +453,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 59 of 59');
+    expect(markup).toContain('Showing 60 of 60');
   });
 });
 
@@ -646,22 +675,22 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=auth.lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 59');
+    expect(markup).toContain('Showing 2 of 60');
   });
 
   it('reads the department from the URL, and selects its tab', () => {
     const markup = render({ search: '?dept=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 21 of 59');
+    expect(markup).toContain('Showing 21 of 60');
     expect(markup).toMatch(new RegExp(`role="tab" aria-selected="true"[^>]*>${translate('en', 'systemAdmin.settings.departments.fleet')}`));
   });
 
   it('falls back to all for a department the screen has nothing for', () => {
-    expect(render({ search: '?dept=warehouse' })).toContain('Showing 59 of 59');
+    expect(render({ search: '?dept=warehouse' })).toContain('Showing 60 of 60');
     // A real department with no setting today (or a stale remembered one) is not a dead end.
     const other = render({ search: '?dept=other' });
-    expect(other).toContain('Showing 59 of 59');
+    expect(other).toContain('Showing 60 of 60');
     expect(other).toMatch(/role="tab" aria-selected="true"[^>]*>All/);
   });
 

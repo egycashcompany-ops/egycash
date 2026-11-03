@@ -58,6 +58,7 @@ import {
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
 import { DoneRangeBar, DoneRangeCutShort } from '../components/DoneRangeBar';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /**
  * Remembered across visits: the filters. Not `from`/`to` — the log opens on today, a day of mail,
@@ -290,6 +291,7 @@ export const MailLogPage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             // The outcome's paint, reaching the pinned button's cell too (`MAIL_ROW_PAINT`).

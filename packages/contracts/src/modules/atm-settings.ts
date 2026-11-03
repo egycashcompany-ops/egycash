@@ -548,3 +548,43 @@ export interface AtmLeaderDepartmentsDto {
   /** The names the pickers offer now, each employee once. */
   employees: number;
 }
+
+// ── How the ATM pages read (2026-11-03) ────────────────────────────────────────────────────────
+// The owner: «خلى حجم الكلام فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط الجداول .. أقدر أتحكم
+// فيها من /atm/settings». One fact for the whole company, as the rest of /atm/settings is: every
+// ATM page reads the same size, weight and table lines (`atm.display`). Nothing about the data
+// changes — only how the page draws it.
+
+/** The text sizes offered, as a percentage of the app's own — 100 is how the pages read today. */
+export const ATM_TEXT_SIZES = [90, 100, 110, 125, 140] as const;
+export type AtmTextSize = (typeof ATM_TEXT_SIZES)[number];
+
+/**
+ * How dark the tables' lines are drawn — `normal` is the app's own line, the others a step lighter
+ * or one or two steps darker.
+ */
+export const ATM_TABLE_LINES = ['soft', 'normal', 'strong', 'stronger'] as const;
+export type AtmTableLines = (typeof ATM_TABLE_LINES)[number];
+
+export const AtmDisplaySettingSchema = z
+  .object({
+    textSize: z.union([
+      z.literal(90),
+      z.literal(100),
+      z.literal(110),
+      z.literal(125),
+      z.literal(140),
+    ]),
+    /** Every text on the pages drawn bold. */
+    bold: z.boolean(),
+    tableLines: z.enum(ATM_TABLE_LINES),
+  })
+  .strict();
+export type AtmDisplaySetting = z.output<typeof AtmDisplaySettingSchema>;
+
+/** The pages as they always read: nothing enlarged, nothing bold, the app's own lines. */
+export const ATM_DEFAULT_DISPLAY: AtmDisplaySetting = {
+  textSize: 100,
+  bold: false,
+  tableLines: 'normal',
+};

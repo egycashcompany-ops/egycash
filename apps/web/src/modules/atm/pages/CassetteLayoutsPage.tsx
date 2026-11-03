@@ -60,6 +60,7 @@ import {
   settlementErrorText,
   toastWords,
 } from '../lib/settlement-view';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /** Remembered across visits: the bank and the status chip. `q` and `machine` are not filters. */
 const REMEMBERED_FILTERS = ['bank', 'status'] as const;
@@ -443,6 +444,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                   onChange: columnFilters.set,
                   choices: columnFilterChoicesOf(rows, columnFilters.values, cellText),
                   generation: columnFilters.generation,
+                  freshOnOpen: FRESH_ON_OPEN,
                   label: (header) => t('atm.common.filterColumn', { column: header }),
                 }}
                 dense

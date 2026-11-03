@@ -54,6 +54,7 @@ import {
   ControlDataTab,
   filterControlLines,
   routeNames,
+  useControlLineWidths,
 } from '../components/settlements/ControlDataTab';
 import { ControlRoutesTab } from '../components/settlements/ControlRoutesTab';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
@@ -118,6 +119,12 @@ export const ControlPage = (): JSX.Element => {
           }),
     [day, columnFilters.values, locale, bankLookup],
   );
+  // The data table's kept widths live here, beside its filters: they outlast a trip to the routes.
+  const lineWidths = useControlLineWidths({
+    lines: shownLines,
+    locale,
+    filtered: columnFilters.active,
+  });
 
   const print = usePrintControl();
   const assign = useAssignRoutes();
@@ -414,6 +421,7 @@ export const ControlPage = (): JSX.Element => {
               locale={locale}
               banks={bankLookup}
               columnFilters={columnFilters}
+              steady={lineWidths}
             />
           </div>
         )}

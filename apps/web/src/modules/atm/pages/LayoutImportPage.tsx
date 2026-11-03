@@ -379,6 +379,7 @@ export const LayoutImportPage = (): JSX.Element => {
                 rowKey={(row) => String(row.row)}
                 dense
                 steadyColumns
+                filtered={outcome !== null}
               />
 
               <div className="grid gap-4 lg:grid-cols-2">

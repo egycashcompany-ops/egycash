@@ -285,6 +285,7 @@ export const MaintenancePage = (): JSX.Element => {
         >
           <DataTable
             steadyColumns
+            filtered={filters.filtered}
             columns={columns}
             rows={board.rows}
             rowKey={(row) => row.id}

@@ -438,6 +438,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
             >
               <DataTable
                 steadyColumns
+                filtered={status !== 'all' || query.trim() !== ''}
                 columns={columns}
                 rows={shown}
                 rowKey={(row) => row.machineId}

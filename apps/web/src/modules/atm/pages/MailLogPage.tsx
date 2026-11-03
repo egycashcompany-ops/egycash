@@ -276,6 +276,7 @@ export const MailLogPage = (): JSX.Element => {
         <div className={BOARD_TABLE_FILL}>
           <DataTable
             steadyColumns
+            filtered={isMailFiltered(filters, status)}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

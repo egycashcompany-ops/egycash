@@ -122,6 +122,8 @@ export const replenishmentColumns = (
     header: t('atm.replenishments.scheduleTime'),
     text: (row, empty) => orEmpty(row.scheduleTime, empty),
     copy: page === 'open',
+    // Free text, but a time: «10:30 PM» or «١٠:٣٠ مساءً» stays on one line.
+    time: true,
   },
   { key: 'area', header: t('atm.common.area'), text: (row) => row.area },
   {

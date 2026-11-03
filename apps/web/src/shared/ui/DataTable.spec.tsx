@@ -7,13 +7,28 @@
 //
 // So the floor follows the column count, and the two ends of that rule are what is pinned here:
 // a narrow table is exactly as wide as it always was, and a wide one asks for the room it needs.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { DataTable, groupRuns, type Column } from './DataTable';
+import type * as SteadyModule from './useSteadyColumns';
+
+// What the table asks `useSteadyColumns` for, render by render — the real hook still runs.
+type SteadyArgs = Parameters<typeof SteadyModule.useSteadyColumns>[0];
+const steadyCalls = vi.hoisted((): SteadyArgs[] => []);
+vi.mock('./useSteadyColumns', async (importOriginal) => {
+  const actual = await importOriginal<typeof SteadyModule>();
+  return {
+    ...actual,
+    useSteadyColumns: (args: SteadyArgs) => {
+      steadyCalls.push(args);
+      return actual.useSteadyColumns(args);
+    },
+  };
+});
 
 interface Row {
   id: string;
@@ -303,32 +318,55 @@ describe('a row of filter lists under the head', () => {
 
 describe('columns that keep their widths — `steadyColumns` (2026-11-03)', () => {
   // «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». The widths are taken in the
-  // browser, after the first layout; what the table draws before that is pinned here.
-  const html = (steadyColumns: boolean): string =>
-    renderToStaticMarkup(
-      <DataTable
-        columns={columns(3)}
-        rows={ROWS}
-        rowKey={(row) => row.id}
-        steadyColumns={steadyColumns}
-      />,
-    );
+  // browser, after the first layout; what the table asks of the hook, and what it draws before the
+  // widths are taken, is pinned here.
+  const html = (props: Record<string, unknown> = {}): string =>
+    inStore(<DataTable columns={columns(3)} rows={ROWS} rowKey={(row) => row.id} {...props} />);
+  const asked = (props: Record<string, unknown> = {}): SteadyArgs => {
+    steadyCalls.length = 0;
+    html(props);
+    const last = steadyCalls[steadyCalls.length - 1];
+    if (last === undefined) throw new Error('the table did not ask for steady columns');
+    return last;
+  };
+  const filters = (values: Record<string, string[]>): Record<string, unknown> => ({
+    columnFilters: { values, onChange: () => {}, choices: () => [], label: (h: string) => h },
+  });
+
+  it('is off unless asked for: every other table in the app is laid out exactly as before', () => {
+    expect(asked().enabled).toBe(false);
+    expect(asked({ steadyColumns: true }).enabled).toBe(true);
+  });
 
   it('draws the first layout as the browser lays it out — no widths before they are taken', () => {
-    expect(html(true)).not.toContain('<colgroup');
-    expect(html(true)).toContain('<thead');
+    expect(html({ steadyColumns: true })).not.toContain('<colgroup');
+    expect(html({ steadyColumns: true })).toContain('<thead');
   });
 
-  it('is off unless asked for: every other table is laid out exactly as before', () => {
-    expect(html(false)).toBe(
-      renderToStaticMarkup(<DataTable columns={columns(3)} rows={ROWS} rowKey={(row) => row.id} />),
-    );
+  it('measures only a table drawn with rows — not while it loads, fails or is empty', () => {
+    expect(asked({ steadyColumns: true }).ready).toBe(true);
+    expect(asked({ steadyColumns: true, loading: true }).ready).toBe(false);
+    expect(asked({ steadyColumns: true, rows: [] }).ready).toBe(false);
+    expect(asked({ steadyColumns: true, error: new Error('x') }).ready).toBe(false);
   });
 
-  it('measures the table itself and keeps the widths as its first child', async () => {
+  it('calls its widths provisional while the page’s filters or a column’s list narrow the rows', () => {
+    expect(asked({ steadyColumns: true }).filtered).toBe(false);
+    expect(asked({ steadyColumns: true, filtered: true }).filtered).toBe(true);
+    expect(asked({ steadyColumns: true, ...filters({ c0: ['x'] }) }).filtered).toBe(true);
+    expect(asked({ steadyColumns: true, ...filters({ c0: [] }) }).filtered).toBe(false);
+  });
+
+  it('names its set of columns by their keys and heads, and counts the selection box', () => {
+    const plain = asked({ steadyColumns: true });
+    expect(plain.signature).toBe('c0:العمود 0|c1:العمود 1|c2:العمود 2');
+    expect(plain.count).toBe(3);
+  });
+
+  it('puts the kept widths first in the table, on the table it measures', async () => {
     const { readFileSync } = await import('node:fs');
     const source = readFileSync(new URL('./DataTable.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('enabled: steadyColumns,');
+    expect(source).toContain('steadyColumns = false,');
     expect(source).toContain('ref={steady.ref}');
     expect(source).toMatch(
       /style=\{\{ minWidth: `\$\{minTableWidth\}rem` \}\}\s*>\s*<SteadyColGroup shares=\{steady\.shares\} \/>/,

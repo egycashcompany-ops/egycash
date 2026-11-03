@@ -6,8 +6,13 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Provider } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+import { type Locale } from '@ecms/contracts';
+import { localeSlice } from '../../store/localeSlice';
 import { translate } from '../../platform/localization/i18n';
 import { LiveTimerCell } from './components/LiveTimer';
+import { RunChip } from './components/settlements/RunChip';
 import { COPY_COLUMN_CLASS } from './lib/board-copy';
 import { maintenanceColumns, replenishmentColumns, sheetColumnClass } from './lib/operation-sheet';
 import { TIME_CELL_CLASS } from './lib/operation-view';
@@ -64,6 +69,34 @@ describe('the columns keep their widths', () => {
     expect(source).toContain('useSteadyColumns({');
     expect(source).toContain('ref={steady.ref}');
     expect(source).toContain('<SteadyColGroup shares={steady.shares} />');
+    // Widths taken while a column's list narrows the lines are provisional.
+    expect(source).toMatch(/filtered(: columnFilters\.active)?,/);
+  });
+
+  it('control and the plan keep their widths in the PAGE, so a table drawn again finds them', () => {
+    // Control's data table is drawn again after the routes tab, the plan's after a bank or a day
+    // loads; the widths live beside the column filters, which outlast both.
+    const control = read('pages/ControlPage.tsx');
+    expect(control).toContain('useControlLineWidths({');
+    expect(control).toContain('steady={lineWidths}');
+    const plan = read('pages/SettlementPlanPage.tsx');
+    expect(plan).toContain('usePlanLineWidths({');
+    expect(plan).toContain('steady={lineWidths}');
+  });
+
+  // A page that remembers its filters can open on a few rows: it tells the table, whose widths are
+  // then provisional until the first draw with no filter on.
+  it.each([
+    ['pages/ReplenishmentsPage.tsx', 'filtered={filters.filtered}'],
+    ['pages/MaintenancePage.tsx', 'filtered={filters.filtered}'],
+    ['pages/MailTicketsPage.tsx', 'filtered={isMailFiltered(filters)}'],
+    ['pages/MailLogPage.tsx', 'filtered={isMailFiltered(filters, status)}'],
+    ['pages/MachinesPage.tsx', 'filtered={filtered}'],
+    ['pages/DataEditPage.tsx', "filtered={active !== '' || search !== ''}"],
+    ['pages/CassetteLayoutsPage.tsx', "filtered={status !== 'all' || query.trim() !== ''}"],
+    ['pages/LayoutImportPage.tsx', 'filtered={outcome !== null}'],
+  ])('%s says when its own filters narrow the rows', (path, prop) => {
+    expect(read(path)).toContain(prop);
   });
 });
 
@@ -72,10 +105,15 @@ describe('a time stays on one line', () => {
   const times = (columns: { key: string; time?: boolean }[]): string[] =>
     columns.filter((column) => column.time === true).map((column) => column.key);
 
-  it('the open time on the boards, and the open, close and taken times on the done pages', () => {
-    expect(times(replenishmentColumns(t, 'ar', 'open'))).toEqual(['opened']);
+  it('the schedule and the open time on the boards, and the open, close and taken times on the done pages', () => {
+    expect(times(replenishmentColumns(t, 'ar', 'open'))).toEqual(['schedule', 'opened']);
     expect(times(maintenanceColumns(t, 'ar', 'open'))).toEqual(['opened']);
-    expect(times(replenishmentColumns(t, 'ar', 'done'))).toEqual(['opened', 'closed', 'duration']);
+    expect(times(replenishmentColumns(t, 'ar', 'done'))).toEqual([
+      'schedule',
+      'opened',
+      'closed',
+      'duration',
+    ]);
     expect(times(maintenanceColumns(t, 'ar', 'done'))).toEqual(['opened', 'closed', 'duration']);
   });
 
@@ -84,6 +122,10 @@ describe('a time stays on one line', () => {
     expect(sheetColumnClass({ time: true })).toEqual({ className: TIME_CELL_CLASS });
     expect(sheetColumnClass({ copy: true })).toEqual({ className: COPY_COLUMN_CLASS });
     expect(sheetColumnClass({})).toEqual({});
+    // The board's schedule is both: copied, and a time.
+    expect(sheetColumnClass({ copy: true, time: true })).toEqual({
+      className: `${COPY_COLUMN_CLASS} ${TIME_CELL_CLASS}`,
+    });
   });
 
   it.each([
@@ -101,6 +143,21 @@ describe('a time stays on one line', () => {
     );
     expect(html).toContain('00h : 03m : 42s');
     expect(html).toContain(TIME_CELL_CLASS);
+  });
+
+  it('a run’s time on control, the plan and preparation — «10:15 ص» never split after its digits', () => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer },
+      preloadedState: { locale: { locale: 'ar' as Locale, dir: 'rtl' as const } },
+    });
+    const html = renderToStaticMarkup(
+      <Provider store={store}>
+        <RunChip run={1} time="10:15" locale="ar" />
+      </Provider>,
+    );
+    const time = /<span dir="ltr" class="([^"]*)">([^<]*)<\/span>/.exec(html);
+    expect(time?.[1]).toContain(TIME_CELL_CLASS);
+    expect(time?.[2]).not.toBe('');
   });
 
   it('the mail’s received and action times, and a layout’s change time', () => {

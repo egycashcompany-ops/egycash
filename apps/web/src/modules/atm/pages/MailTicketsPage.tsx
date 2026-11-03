@@ -253,6 +253,7 @@ export const MailTicketsPage = (): JSX.Element => {
         <div className={BOARD_TABLE_FILL}>
           <DataTable
             steadyColumns
+            filtered={isMailFiltered(filters)}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

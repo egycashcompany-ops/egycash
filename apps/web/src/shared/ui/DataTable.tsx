@@ -3,6 +3,7 @@
 // data fetching/paging is the caller's (a feature api/ hook via TanStack Query).
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { hasColumnFilters } from '../lib/column-filter';
 import { hasError } from '../lib/errors';
 import { ColumnFilterSelect } from './ColumnFilterSelect';
 import { Skeleton } from './Skeleton';
@@ -154,9 +155,17 @@ export interface DataTableProps<T> {
    * فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته», 2026-11-03). The widths are taken the first
    * time the table is drawn with rows and kept as shares of its width (`useSteadyColumns`), so a
    * filter that drops the longest names no longer narrows the columns, and lifting it no longer
-   * widens them. Taken afresh when the columns change (another view, another language).
+   * widens them. Each set of columns (another view, another language) keeps its own; a value
+   * wider than its share takes them again, once, from the table as it then stands.
    */
   steadyColumns?: boolean;
+  /**
+   * The PAGE's own filters narrow the rows (a bank, an area, a search) — for `steadyColumns`:
+   * widths taken from a narrowed table are provisional, and are taken again at the first draw with
+   * no filter on. A page that remembers its filters can open on a few rows, and the full table
+   * must not inherit their widths. The table's own column lists count without being told.
+   */
+  filtered?: boolean;
   /**
    * EXTRA ATTRIBUTES FOR ONE ROW, from the row itself — what a table cannot know and its caller
    * can: that this row is a drag source, that it carries a hook a test presses it by.
@@ -251,6 +260,7 @@ export const DataTable = <T,>({
   tightGutter = false,
   stickyHead = false,
   steadyColumns = false,
+  filtered = false,
   rowProps,
   group,
   columnFilters,
@@ -299,6 +309,8 @@ export const DataTable = <T,>({
     ready: !loading && !hasError(error) && rows.length > 0,
     signature: `${isSelectable ? 'select|' : ''}${columns.map((c) => `${c.key}:${c.header}`).join('|')}`,
     count: colCount,
+    filtered: filtered || (columnFilters !== undefined && hasColumnFilters(columnFilters.values)),
+    watch: rows,
   });
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));

@@ -726,16 +726,33 @@ offered nobody, and the edit dialogs' leader stayed free text.
 - **Steady columns.** «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». A table's
   automatic layout re-measures every column on the rows it shows, so a filter that drops the
   longest names moved the grid. `useSteadyColumns` (`shared/ui`) takes the head's cell widths the
-  first time a table is drawn with rows — its column lists start empty on every visit — and keeps
-  them as percentages in a `<colgroup>` (`SteadyColGroup`). The layout stays automatic, so the
-  shares follow the window and a value longer than its share still widens its column. A new set of
-  columns (the boards' «اليوم» view adds the timer; another language renames the heads) is
-  measured afresh. `DataTable steadyColumns` turns it on; every ATM `DataTable` passes it, and the
-  three filtered tables built by hand (control's data, the plan's lines, preparation) call the
-  hook. Other modules' tables are unchanged until they ask for it.
+  first time a table is drawn with rows and keeps them as percentages in a `<colgroup>`
+  (`SteadyColGroup`). The layout stays automatic, so the shares follow the window. The decision is
+  a pure function, `nextColumns`:
+  - **Provisional under a filter.** Widths taken while the page's own filters (`DataTable
+    filtered`: the boards' remembered bank and area, the mail pages', the machines', a search) or
+    a column's list narrow the rows are provisional. At the first draw with no filter on they are
+    released, and the browser's own layout of every row is taken. Otherwise a board opened on a
+    remembered area would hand the whole board that area's widths.
+  - **Re-taken on growth.** The shares add up to the whole table, so a cell that outgrows its share
+    (a time that cannot break arriving later, a narrower window, larger text) widens its column and
+    the browser takes the room from the others, giving it back whenever a filter hides that cell.
+    So a column more than a pixel past its share (`outgrown`) re-takes the widths from the table as
+    it then stands, once; only growth does, so they never swing. A `ResizeObserver` on the table
+    runs the same check between renders.
+  - **One set per signature.** The boards' «اليوم» view adds the timer and another language renames
+    the heads: each set of columns keeps its own widths for the table's life, so a round trip
+    between views finds each as it was left, whatever is filtered on the way back.
+
+  `DataTable steadyColumns` turns it on; every ATM `DataTable` passes it. The three filtered
+  tables built by hand call the hook too: control's data (`useControlLineWidths`) and the plan's
+  lines (`usePlanLineWidths`) from their PAGES, beside the column filters, because the tables are
+  drawn again after the routes tab or a plan's loading; preparation from its page. Other modules'
+  tables are unchanged until they ask for it.
 - **A time on one line** («وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض … فى كل الجداول»):
-  `TIME_CELL_CLASS` (`whitespace-nowrap`) on the sheet columns flagged `time` (open, close, taken),
-  the live timer, the mail pages' received and action times and a layout's change time.
+  `TIME_CELL_CLASS` (`whitespace-nowrap`) on the sheet columns flagged `time` (the schedule, open,
+  close and taken times), the live timer, a run's time (`RunChip`, on control, the plan and
+  preparation), the mail pages' received and action times and a layout's change time.
 
 ## 7. Migration (ATM-7 — delivered)
 

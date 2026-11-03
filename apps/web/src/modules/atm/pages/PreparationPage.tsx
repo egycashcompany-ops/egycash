@@ -231,6 +231,8 @@ export const PreparationPage = (): JSX.Element => {
     ready: shownLines.length > 0,
     signature: `${locale}|${PREP_LINE_COLUMNS.map((column) => column.key).join('|')}`,
     count: PREP_LINE_COLUMNS.length,
+    filtered: columnFilters.active,
+    watch: shownLines,
   });
 
   // ── The form: seeded once per line, kept while unsaved ──────────────────────────────────────

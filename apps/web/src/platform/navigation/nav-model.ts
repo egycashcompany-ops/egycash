@@ -132,21 +132,21 @@ export const moduleEntryRoute = (module: NavModule, remembered: string | null): 
 const isInAppPath = (route: string): boolean => /^\/[^/\\]/.test(route);
 
 /**
- * Where `/` sends a signed-in person: the first page of their OWN navigation, top to bottom — the
- * very row their sidebar shows first.
+ * A signed-in person's own pages in the order they start from: the first pages of their OWN
+ * navigation, top to bottom — the very rows their sidebar shows first. The welcome page offers
+ * these while the person has no history yet.
  *
  * `/` used to belong to HR. The recruitment routes were the app's catch-all, so their overview was
  * everybody's front door, and somebody granted only the fleet or operations screens signed in to
- * an HR page with nothing on it. Taking the landing from the navigation makes it follow access
- * with nothing to maintain: whatever an administrator puts first in a person's menu is what they
- * open onto, and revoking it moves them to the next page they hold.
- *
- * Null when there is nowhere to go — nothing granted yet — so the caller can say so plainly
- * instead of guessing at a page the server would refuse.
+ * an HR page with nothing on it. Taking the start from the navigation makes it follow access with
+ * nothing to maintain: whatever an administrator puts first in a person's menu is what they start
+ * from, and revoking it moves them to the next page they hold.
  */
-export const landingRoute = (data: MyApplicationCategoryDto[]): string | null => {
+export const startingPages = (data: MyApplicationCategoryDto[], count: number): NavApp[] => {
   const inOrder = visibleModules(data).flatMap((module) =>
-    moduleApps(module).filter((app) => isInAppPath(app.route)),
+    moduleApps(module)
+      .filter((app) => isInAppPath(app.route))
+      .map((app) => ({ ...app, moduleId: module.id, moduleName: module.name })),
   );
   // WORK FIRST, OWN DATA SECOND. The catalogue puts Human Resources first, and «الإجازات» sits in
   // it — a row every employee holds, over himself, to ask for his own leave. So «the first page of
@@ -154,11 +154,20 @@ export const landingRoute = (data: MyApplicationCategoryDto[]): string | null =>
   // showing them nothing but their own leave: «ميجيبش الاتش ار على طول».
   //
   // The server marks those rows per caller (`personal`), because the same row is personal or
-  // administrative depending on the scope the reader holds it at. Here they are simply passed over
-  // — until there is nothing else, which is the whole of a new employee's menu and exactly where
-  // he should land.
-  return inOrder.find((app) => !app.personal)?.route ?? inOrder[0]?.route ?? null;
+  // administrative depending on the scope the reader holds it at. Here they simply come last —
+  // which, for a new employee whose whole menu is his own data, is exactly where he starts.
+  return [...inOrder.filter((app) => !app.personal), ...inOrder.filter((app) => app.personal)].slice(
+    0,
+    count,
+  );
 };
+
+/**
+ * The first of those pages. Null when there is nowhere to go — nothing granted yet — so the caller
+ * can say so plainly instead of guessing at a page the server would refuse.
+ */
+export const landingRoute = (data: MyApplicationCategoryDto[]): string | null =>
+  startingPages(data, 1)[0]?.route ?? null;
 
 /** The id of the module owning the app that best (longest-prefix) matches the current path. */
 export const moduleOfPathname = (modules: NavModule[], pathname: string): string | null => {

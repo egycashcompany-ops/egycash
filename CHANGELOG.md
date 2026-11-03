@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **A welcome page for every account, and a photo on every employee's profile.** «عايزك تضيف فى
+  بروفايل كل شخص صورة شخصية ليه .. ويقدر الـ HR يضيفهاله» · «عايز بقى أى حساب يدخل تظهرله Welcome
+  Page بتقوله أهلاً وتاريخ ميلادة وكام يوم باقى عليه (ولو اليوم عيد ميلاده يقوله كل سنة وأنت طيب)..
+  وتظهرله الـ Recent Pages اللى كان فيها». Approved from a sample by the owner.
+  - **`/` is the welcome page** instead of a jump to the first screen of the menu. It shows «أهلًا،
+    …» with the person's photo (or initial), today's date, and their job title, department and
+    branch.
+  - **The birthday card** shows the date of birth, the days left to the next birthday in Cairo
+    calendar days («غدًا عيد ميلادك» on the eve), and «كل عام وأنت بخير» on the day itself, when
+    the greeting turns festive too. Only the person sees their own date, and an account with no
+    employee behind it gets no card.
+  - **The recent pages** are this account's own history in this browser, newest first, each with
+    when it was opened. A page the account can no longer open drops out. Before there is any
+    history, the first pages of the person's own menu are offered, work before personal pages.
+  - The ECMS mark in the top bar now leads home.
+  - **The employee photo** heads the profile. HR (`employee.editPersonal`) sets, replaces or
+    removes it from one dialog, with a preview before saving; on a phone it can come from the
+    camera or the gallery. Only JPG, PNG or WebP up to 5 MB are accepted, and the server enforces
+    the same limits. The person's own photo shows in the top bar, on the welcome page and on «ملفي».
+  - The recent-pages history is now kept per account, so a shared browser no longer shows one
+    person's pages to another.
 - **The IT home is a dashboard.** «عايزك تعمل فى الـ /it الرئيسية.. Dashboard بدل اللى موجود فيها يظهر
   إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر أفلتر بـالفئة.. من خلال Drop Down بـ
   Multiselection». `/it` now opens on the assets' totals — all, in stock, handed over, under

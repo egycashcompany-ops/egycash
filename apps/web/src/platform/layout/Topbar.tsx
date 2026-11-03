@@ -2,7 +2,7 @@
 // account utilities (theme, language, notifications, user). The page's own title/breadcrumbs live in
 // the page header, so the shell bar stays a clean command surface.
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedOut } from '../../store/authSlice';
 import { toggleSidebar } from '../../store/uiSlice';
@@ -172,13 +172,18 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
         <MenuIcon />
       </button>
 
-      {/* Product identity */}
-      <div className="flex shrink-0 items-center gap-2.5 ps-1">
+      {/* Product identity — and the way home: `/` is the welcome page. */}
+      <Link
+        to="/"
+        aria-label={t('home.goHome')}
+        title={t('home.goHome')}
+        className="flex shrink-0 items-center gap-2.5 rounded-lg ps-1 pe-1.5"
+      >
         <BrandMark size="sm" />
         <span className="hidden text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:block">
           ECMS
         </span>
-      </div>
+      </Link>
 
       {/* Global command / search trigger */}
       <button

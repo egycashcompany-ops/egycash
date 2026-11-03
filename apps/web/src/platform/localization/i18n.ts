@@ -424,6 +424,7 @@ const en: Record<string, string> = {
   'platform.landing.nothingGrantedTitle': 'No screens are assigned to your account yet',
   'platform.landing.nothingGrantedBody':
     'Your account is active, but no screens have been granted to it. Please contact the system administrator to set up your access.',
+  'home.goHome': 'Home',
   'home.greeting': 'Welcome, {{name}}',
   'home.greetingBirthday': 'Happy birthday, {{name}}',
   'home.birthday.title': 'Your birthday',
@@ -442,6 +443,8 @@ const en: Record<string, string> = {
   'home.birthday.notOnFile': 'Your date of birth is not on file yet.',
   'home.recent.title': 'Recent pages',
   'home.recent.empty': 'The pages you open will appear here.',
+  'home.recent.emptyStart':
+    'The pages you open will appear here. To begin, here are some of your pages:',
   'employees.photo.title': 'Employee photo',
   'employees.photo.choose': 'Choose a photo',
   'employees.photo.change': 'Change photo',
@@ -13032,6 +13035,7 @@ const ar: Record<string, string> = {
   'platform.landing.nothingGrantedTitle': 'لم تُخصَّص أي شاشات لحسابك بعد',
   'platform.landing.nothingGrantedBody':
     'حسابك مفعَّل، ولكن لم تُمنح له أي شاشات حتى الآن. يُرجى التواصل مع مسؤول النظام لإعداد صلاحياتك.',
+  'home.goHome': 'الصفحة الرئيسية',
   'home.greeting': 'أهلًا، {{name}}',
   'home.greetingBirthday': 'عيد ميلاد سعيد، {{name}}',
   'home.birthday.title': 'عيد ميلادك',
@@ -13050,6 +13054,7 @@ const ar: Record<string, string> = {
   'home.birthday.notOnFile': 'لم يُسجَّل تاريخ ميلادك بعد.',
   'home.recent.title': 'الصفحات الأخيرة',
   'home.recent.empty': 'ستظهر هنا الصفحات التي تفتحها.',
+  'home.recent.emptyStart': 'ستظهر هنا الصفحات التي تفتحها. يمكنك البدء من إحدى صفحاتك:',
   'employees.photo.title': 'صورة الموظف',
   'employees.photo.choose': 'اختيار صورة',
   'employees.photo.change': 'تغيير الصورة',

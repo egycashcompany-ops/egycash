@@ -17,7 +17,7 @@ import { cairoYmd, type Locale } from '@ecms/contracts';
 import { useT } from '../localization/useT';
 import { useAppSelector } from '../../store';
 import { useMyApplications } from '../navigation/me-applications-queries';
-import { flattenApps, moduleColor, type NavApp } from '../navigation/nav-model';
+import { flattenApps, moduleColor, startingPages, type NavApp } from '../navigation/nav-model';
 import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs, type RecentVisit } from '../navigation/NavPrefs';
 import { PageContainer } from '../layout/PageContainer';
@@ -132,7 +132,7 @@ const BirthdayCard = ({ birthDate }: { birthDate: string | null }): JSX.Element 
     return (
       <Card className="flex flex-col p-5">
         <CardTitle />
-        <p className="mt-6 text-sm text-slate-500 dark:text-slate-400">
+        <p className="mt-6 text-sm text-slate-500 dark:text-slate-400" data-birthday="unknown">
           {t('home.birthday.notOnFile')}
         </p>
       </Card>
@@ -146,7 +146,7 @@ const BirthdayCard = ({ birthDate }: { birthDate: string | null }): JSX.Element 
       <Card className="relative flex flex-col overflow-hidden border-rose-200 bg-gradient-to-br from-rose-50 via-white to-amber-50 p-5 dark:border-rose-900 dark:from-rose-950/60 dark:via-slate-900 dark:to-amber-950/40">
         <Confetti />
         <CardTitle />
-        <div className="relative my-auto py-6 text-center">
+        <div className="relative my-auto py-6 text-center" data-birthday="today">
           <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-rose-500 to-amber-400 text-white shadow-lg">
             <CakeIcon className="h-8 w-8" />
           </span>
@@ -176,7 +176,7 @@ const BirthdayCard = ({ birthDate }: { birthDate: string | null }): JSX.Element 
   return (
     <Card className="flex flex-col p-5">
       <CardTitle />
-      <div className="my-auto py-6 text-center">
+      <div className="my-auto py-6 text-center" data-birthday="countdown">
         {lead.figure !== null && (
           <p className="text-6xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white">
             {lead.figure}
@@ -265,6 +265,45 @@ const Confetti = (): JSX.Element => (
 
 // ── The recent pages ─────────────────────────────────────────────────────────
 
+/** One page as a link: its menu icon on its module's colour, its name, its module, and when. */
+const PageLink = ({
+  app,
+  locale,
+  when,
+}: {
+  app: NavApp;
+  locale: Locale;
+  when: string | null;
+}): JSX.Element => {
+  const Icon = resolveNavIcon(app.icon, FileIcon);
+  return (
+    <li>
+      <Link
+        to={app.route}
+        className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+      >
+        <span
+          className={cn(
+            'grid h-10 w-10 shrink-0 place-items-center rounded-lg text-white',
+            moduleColor(app.moduleId),
+          )}
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-800 group-hover:text-brand-700 dark:text-slate-100 dark:group-hover:text-brand-300">
+            {app.name[locale] || app.name.ar}
+          </span>
+          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+            {app.moduleName[locale] || app.moduleName.ar}
+            {when !== null && ` · ${when}`}
+          </span>
+        </span>
+      </Link>
+    </li>
+  );
+};
+
 const RecentPagesCard = ({
   className,
   wide = false,
@@ -300,47 +339,38 @@ const RecentPagesCard = ({
     );
   }
 
+  const grid = cn('grid gap-1 p-3 sm:grid-cols-2', wide && 'lg:grid-cols-3');
+  // No history yet — the first sign-in: the person's own first pages, so the page is never empty.
+  const starting = visits.length === 0 ? startingPages(applications.data ?? [], 6) : [];
+
   return (
     <Card className={cn(className)}>
       <CardHeader title={t('home.recent.title')} />
-      {visits.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-5 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-          <HistoryIcon className="h-8 w-8 text-slate-300 dark:text-slate-600" />
-          {t('home.recent.empty')}
-        </div>
-      ) : (
-        <ul className={cn('grid gap-1 p-3 sm:grid-cols-2', wide && 'lg:grid-cols-3')}>
-          {visits.map(({ visit, app }) => {
-            const Icon = resolveNavIcon(app.icon, FileIcon);
-            const when = relativeTime(visit.at, now, locale);
-            return (
-              <li key={app.id}>
-                <Link
-                  to={app.route}
-                  className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60"
-                >
-                  <span
-                    className={cn(
-                      'grid h-10 w-10 shrink-0 place-items-center rounded-lg text-white',
-                      moduleColor(app.moduleId),
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-800 group-hover:text-brand-700 dark:text-slate-100 dark:group-hover:text-brand-300">
-                      {app.name[locale] || app.name.ar}
-                    </span>
-                    <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                      {app.moduleName[locale] || app.moduleName.ar}
-                      {when !== null && ` · ${when}`}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+      {visits.length > 0 ? (
+        <ul className={grid} data-recent-pages="true">
+          {visits.map(({ visit, app }) => (
+            <PageLink
+              key={app.id}
+              app={app}
+              locale={locale}
+              when={relativeTime(visit.at, now, locale)}
+            />
+          ))}
         </ul>
+      ) : (
+        <div>
+          <p className="flex items-center gap-2 px-5 pt-4 text-sm text-slate-500 dark:text-slate-400">
+            <HistoryIcon className="h-5 w-5 shrink-0 text-slate-300 dark:text-slate-600" />
+            {t(starting.length > 0 ? 'home.recent.emptyStart' : 'home.recent.empty')}
+          </p>
+          {starting.length > 0 && (
+            <ul className={grid} data-starting-pages="true">
+              {starting.map((app) => (
+                <PageLink key={app.id} app={app} locale={locale} when={null} />
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </Card>
   );
@@ -357,7 +387,7 @@ export const WelcomePage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <div className="space-y-6">
+      <div className="space-y-6" data-welcome="true">
         <Greeting birthdayToday={birthdayToday} />
         {employee === null ? (
           // No employee behind the account: nothing personal to show, so the history takes the row.

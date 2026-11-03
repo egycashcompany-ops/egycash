@@ -688,6 +688,41 @@ export interface EmployeePlacementDto {
   jobTitle: EmployeePlacementUnitDto | null;
 }
 
+/**
+ * The signed-in person's own card for the welcome page (`GET /hr/employees/me/summary`): who they
+ * are, where they sit, and the one personal date the page shows — nothing else of the record.
+ * `birthDate` is a Cairo calendar day, `YYYY-MM-DD`.
+ */
+export interface MyEmployeeSummaryDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  birthDate: string | null;
+  hasPhoto: boolean;
+  /** The current photo's file — a new photo is a new id, so a cached picture never outlives it. */
+  photoFileId: string | null;
+  jobTitle: LocalizedString | null;
+  department: LocalizedString | null;
+  branch: LocalizedString | null;
+}
+
+// ── The employee's personal photo ───────────────────────────────────────────
+
+/**
+ * The entity type an employee's photo is filed under with the Files service (entityId = the
+ * employee id). Its own type, so the Files service asks HR's photo rule before serving or changing
+ * one: reading takes `employee.view` within scope, or being that employee; writing and removing
+ * take `employee.editPersonal` within scope.
+ */
+export const EMPLOYEE_PHOTO_ENTITY_TYPE = 'employeePhoto';
+/** The Files-service category that holds the "an image, and small" rule for employee photos. */
+export const EMPLOYEE_PHOTO_FILE_CATEGORY = 'hr-employee-photo';
+/** What `POST /hr/employees/:id/photo` accepts: a JPEG, PNG or WebP image… */
+export const EMPLOYEE_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+/** …of at most this many megabytes. */
+export const EMPLOYEE_PHOTO_MAX_MB = 5;
+
 export interface EmployeeDto {
   id: string;
   /** Permanent identity: the Global Employee Number, e.g. `0125` — never changes (ADR-017). */

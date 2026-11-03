@@ -15,6 +15,8 @@
 // already knows how to render a salary that was withheld. An employee sees their placement without
 // their pay; a manager who holds `employee.viewCompensation` sees their own pay on the same screen,
 // through the same code, with no exception written for either of them.
+import { Portrait } from '../../../../../shared/ui/Portrait';
+import { useMyPhotoUrl } from '../../../../../platform/home/home-api';
 import { Link } from 'react-router-dom';
 import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
@@ -40,12 +42,15 @@ export const MyProfilePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const { data: employee, isLoading, isError, error, refetch } = useMyEmployeeProfile();
+  // The person's own photo, read through `me` — no HR permission needed to see one's own face.
+  const photo = useMyPhotoUrl();
 
   return (
     <PageContainer>
       <PageHeader
         title={t('employees.mine.title')}
         breadcrumbs={[{ label: t('employees.mine.title') }]}
+        leading={<Portrait url={photo.url} name={employee?.personal.fullNameAr ?? ''} size="lg" />}
       />
       <div className="mb-4 flex flex-wrap gap-2">
         {can('leave.view') && <Shortcut to="/leave" label={t('leave.my.title')} />}

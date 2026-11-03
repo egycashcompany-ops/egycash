@@ -2,7 +2,7 @@
 // account utilities (theme, language, notifications, user). The page's own title/breadcrumbs live in
 // the page header, so the shell bar stays a clean command surface.
 import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedOut } from '../../store/authSlice';
 import { toggleSidebar } from '../../store/uiSlice';
@@ -20,6 +20,8 @@ import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
 import { BranchSwitcher } from './BranchSwitcher';
 import { AppVersion } from '../app/AppVersion';
+import { Portrait } from '../../shared/ui/Portrait';
+import { useMyPhotoUrl } from '../home/home-api';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -30,6 +32,8 @@ const UserMenu = (): JSX.Element => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
+  // The person's own photo once HR has added one; their initial until then.
+  const photo = useMyPhotoUrl();
 
   if (me === null) return <></>;
   const name = fullName(me.name, locale);
@@ -54,10 +58,10 @@ const UserMenu = (): JSX.Element => {
         className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
         aria-haspopup="menu"
         aria-expanded={open}
+        // The name is hidden on a phone, and the picture is decoration: the button says whose it is.
+        aria-label={name}
       >
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900 dark:text-brand-200">
-          {name.charAt(0) || '؟'}
-        </span>
+        <Portrait url={photo.url} name={name} size="sm" decorative />
         <span className="hidden text-sm font-medium text-slate-700 dark:text-slate-200 sm:inline">{name}</span>
       </button>
       {open && (
@@ -170,13 +174,18 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
         <MenuIcon />
       </button>
 
-      {/* Product identity */}
-      <div className="flex shrink-0 items-center gap-2.5 ps-1">
+      {/* Product identity — and the way home: `/` is the welcome page. */}
+      <Link
+        to="/"
+        aria-label={t('home.goHome')}
+        title={t('home.goHome')}
+        className="flex shrink-0 items-center gap-2.5 rounded-lg ps-1 pe-1.5"
+      >
         <BrandMark size="sm" />
         <span className="hidden text-base font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:block">
           ECMS
         </span>
-      </div>
+      </Link>
 
       {/* Global command / search trigger */}
       <button

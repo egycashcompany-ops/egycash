@@ -87,6 +87,8 @@ export const CommandPalette = ({ open, onClose }: { open: boolean; onClose: () =
       const recents = recent
         .map((id) => apps.find((a) => a.id === id))
         .filter((a): a is NavApp => a !== undefined)
+        // The palette keeps its short list; the welcome page shows the longer history.
+        .slice(0, 8)
         .map((a) => appItem(a, 'recent'));
       return [...recents, ...modules.map(moduleItem)];
     }

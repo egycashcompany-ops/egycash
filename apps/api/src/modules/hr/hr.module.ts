@@ -46,7 +46,11 @@ import {
   recordHireAgainstRequisition,
 } from './recruitment/job-requisitions';
 import { setRequisitionValidator } from './recruitment/applicants';
-import { buildEmployeesRouter, employeeService } from './employee-management/employees';
+import {
+  buildEmployeesRouter,
+  employeeService,
+  hrEmployeePhotoFileAuthorizers,
+} from './employee-management/employees';
 import {
   buildEmployeeActionsRouter,
   hrFileEntityAuthorizers,
@@ -1662,6 +1666,9 @@ export const hrModule: ModuleManifest = {
   // file already filed against an employee changes behaviour.
   fileEntityAuthorizers: [
     ...hrFileEntityAuthorizers,
+    // The employee's personal photo: seeing it is seeing the employee — or being them; changing it
+    // is a personal-data edit. Its own entity type, so no file already filed changes behaviour.
+    ...hrEmployeePhotoFileAuthorizers,
     ...hrAdjustmentFileAuthorizers,
     ...hrEmployeeLoanFileAuthorizers,
     // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against

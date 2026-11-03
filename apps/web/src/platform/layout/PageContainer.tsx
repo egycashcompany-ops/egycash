@@ -52,6 +52,7 @@ export const PageHeader = ({
   aside,
   figures,
   toolbar,
+  leading,
 }: {
   title: string;
   breadcrumbs?: Crumb[];
@@ -77,6 +78,11 @@ export const PageHeader = ({
    * never a sentence: the header still has no subtitle. Wraps under the title on a narrow screen.
    */
   figures?: ReactNode;
+  /**
+   * Before the title, on its line — a record's face: the employee's photo on their profile. Only
+   * the header without a toolbar takes one.
+   */
+  leading?: ReactNode;
 }): JSX.Element => (
   // With a toolbar the header already holds the page's row, so it keeps less space under itself:
   // the point of moving the row up is the height it gives back to the table.
@@ -131,16 +137,27 @@ export const PageHeader = ({
         under the title before the actions move, so a header that fit before looks the same. */
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div
-          className={
+          className={cn(
             figures === undefined
               ? 'min-w-0 sm:min-w-[auto] sm:max-w-full sm:flex-1'
-              : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:min-w-[auto] sm:max-w-full sm:flex-1'
-          }
+              : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:min-w-[auto] sm:max-w-full sm:flex-1',
+            leading !== undefined && 'flex min-w-0 items-center gap-4',
+          )}
         >
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            {title}
-          </h1>
-          {figures}
+          {leading}
+          {leading === undefined ? (
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+              {title}
+            </h1>
+          ) : (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+                {title}
+              </h1>
+              {figures}
+            </div>
+          )}
+          {leading === undefined && figures}
         </div>
         {actions !== undefined && (
           <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-auto sm:justify-end">

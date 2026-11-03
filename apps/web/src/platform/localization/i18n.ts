@@ -2946,6 +2946,17 @@ const en: Record<string, string> = {
   'employees.register.employmentRequired':
     'Branch, department, job title and start date are required.',
   'employees.register.done': 'Employee {{code}} registered.',
+  'employees.register.code': 'Employee code',
+  'employees.register.lastCode': 'Last code issued: {{code}}',
+  'employees.register.codeBranch': 'Branch: {{branch}}',
+  'employees.register.codeNoBranch': 'No branch has the code {{prefix}}',
+  'employees.register.codeTaken': 'This number is already held by employee {{code}}',
+  'employees.register.codeRequired':
+    'Type a valid employee code that is not in use: the branch code, then the employee number.',
+  'employees.register.branchFromCode': 'Set by the employee code.',
+  'employees.register.typeCodeFirst': 'Type the employee code first',
+  'employees.register.titlesInBranch': 'Titles in this branch',
+  'employees.register.titlesOther': 'Other titles',
   'employees.register.rehireMatch':
     'This national id belongs to exited employee {{code}} — use Rehire on their profile instead.',
   'employees.register.employedMatch': 'This national id already belongs to employee {{code}}.',
@@ -15444,6 +15455,17 @@ const ar: Record<string, string> = {
     'الاسم الكامل بالعربية والرقم القومي ورقم الهاتف الأساسي مطلوبة.',
   'employees.register.employmentRequired': 'الفرع والإدارة والمسمى الوظيفي وتاريخ البدء مطلوبة.',
   'employees.register.done': 'تم تسجيل الموظف {{code}}.',
+  'employees.register.code': 'كود الموظف',
+  'employees.register.lastCode': 'آخر كود مسجَّل: {{code}}',
+  'employees.register.codeBranch': 'الفرع: {{branch}}',
+  'employees.register.codeNoBranch': 'لا يوجد فرع كوده {{prefix}}',
+  'employees.register.codeTaken': 'هذا الرقم مسجَّل بالفعل للموظف {{code}}',
+  'employees.register.codeRequired':
+    'اكتب كود موظف صحيحًا وغير مستخدم: كود الفرع ثم رقم الموظف.',
+  'employees.register.branchFromCode': 'يُحدَّد من كود الموظف.',
+  'employees.register.typeCodeFirst': 'اكتب كود الموظف أولًا',
+  'employees.register.titlesInBranch': 'مسميات موجودة في هذا الفرع',
+  'employees.register.titlesOther': 'مسميات أخرى',
   'employees.register.rehireMatch':
     'هذا الرقم القومي يخص الموظف منتهي الخدمة {{code}} — استخدم إعادة التعيين من ملفه.',
   'employees.register.employedMatch': 'هذا الرقم القومي يخص الموظف {{code}} بالفعل.',

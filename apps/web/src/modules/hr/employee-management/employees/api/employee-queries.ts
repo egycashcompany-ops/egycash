@@ -4,6 +4,7 @@
 // resolution reuses the Job Offer feature's hooks/component — no new backend API is introduced.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  EMPLOYEE_CODE_PATTERN,
   type CancelEmployeeAction,
   type ChangeEmployeeCode,
   type CompensationAction,
@@ -197,6 +198,32 @@ export const useRehireCheck = (nationalId: string) =>
     queryFn: () => api.rehireCheck(nationalId),
     enabled: nationalId.trim().length >= 5,
     staleTime: 30_000,
+  });
+
+/** «تكتب تحته آخر كود موجود» — fresh on every visit, since another clerk may have just issued one. */
+export const useLastEmployeeCode = () =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'last-code'],
+    queryFn: api.lastEmployeeCode,
+    staleTime: 0,
+  });
+
+/** What a typed code means — asked only once it has the company's shape. */
+export const useEmployeeCodeCheck = (code: string) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'code-check', code],
+    queryFn: () => api.checkEmployeeCode(code),
+    enabled: EMPLOYEE_CODE_PATTERN.test(code),
+    staleTime: 10_000,
+  });
+
+/** Where each job title's people sit in a branch — asked once the branch is known. */
+export const useJobTitlePlacements = (branchId: string) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'job-title-placements', branchId],
+    queryFn: () => api.jobTitlePlacements(branchId),
+    enabled: branchId !== '',
+    staleTime: 60_000,
   });
 
 export const useEmployeeNationalIdCard = (id: string) =>

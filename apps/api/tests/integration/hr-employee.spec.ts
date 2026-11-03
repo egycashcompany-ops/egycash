@@ -609,6 +609,106 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
   });
 });
 
+/**
+ * «عند تسجيل الموظف … أول حاجة قبل الاسم الكامل تبقي كود الموظف». HR types the code; its first three
+ * digits name the hiring branch, and its NUMBER may not be held by anybody under any prefix —
+ * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». The screen states the last code issued, and reads the
+ * department a job title's people sit in off the employees already placed.
+ */
+describe('direct registration with a typed code', () => {
+  const register = (
+    over: Record<string, unknown> = {},
+    placement: { branchId: string; departmentId: string } = { branchId: BRANCH_ID, departmentId: DEPARTMENT_ID },
+  ) =>
+    request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: { fullNameAr: 'موظف بكود مكتوب', nationalId: nextNationalId(), nationality: 'Egyptian' },
+          contact: { primaryPhone: nextPhone() },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID,
+          ...placement,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: START_DATE,
+        },
+        ...over,
+      });
+  const asAdmin = (path: string) => request(app).get(path).set('Authorization', `Bearer ${adminToken}`);
+
+  it('issues the code as typed, and the next composed code lands above it', async () => {
+    const typed = await register({ code: '0018801' });
+    expect(typed.status, JSON.stringify(typed.body)).toBe(201);
+    const emp = typed.body.data as EmployeeDto;
+    expect(emp.code).toBe('0018801');
+    expect(emp.employeeNumber).toBe('8801');
+
+    // Without a code the counter composes one — and it was raised past the typed number.
+    const composed = (await register()).body.data as EmployeeDto;
+    expect(Number(composed.employeeNumber)).toBeGreaterThan(8801);
+    expect(composed.code).toBe(`001${composed.employeeNumber}`);
+  });
+
+  it('refuses a number already held under ANOTHER branch prefix, and a prefix that is not the branch', async () => {
+    // A second branch, coded 002, with a department of its own.
+    const branch = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: '002', name: { ar: 'الفرع الثاني', en: 'Second' } });
+    expect(branch.status).toBe(201);
+    const secondBranch = (branch.body as { data: { id: string } }).data.id;
+    const dept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-002', name: { ar: 'إدارة الفرع الثاني', en: 'Second ops' }, branchId: secondBranch });
+    expect(dept.status).toBe(201);
+    const second = { branchId: secondBranch, departmentId: (dept.body as { data: { id: string } }).data.id };
+
+    const held = (await register({ code: '0018811' })).body.data as EmployeeDto;
+    // Same number under the other branch's own prefix: the number is the employee's, not the branch's.
+    const again = await register({ code: '0028811' }, second);
+    expect(again.status, JSON.stringify(again.body)).toBe(409);
+    // A free number under the right prefix is fine there.
+    expect((await register({ code: '0028812' }, second)).status).toBe(201);
+    // The prefix must be the hiring branch's code: 002 is not branch 001.
+    expect((await register({ code: '0028813' })).status).toBe(422);
+    // Not the company's shape.
+    expect((await register({ code: '12' })).status).toBe(400);
+
+    // The check the screen runs while typing says the same, without refusing anything.
+    const check = await asAdmin('/api/v1/hr/employees/code-check').query({ code: '0028811' });
+    expect(check.status).toBe(200);
+    expect(check.body.data).toEqual({ code: '0028811', branchId: secondBranch, takenBy: held.code });
+    const free = await asAdmin('/api/v1/hr/employees/code-check').query({ code: '0018899' });
+    expect(free.body.data).toEqual({ code: '0018899', branchId: BRANCH_ID, takenBy: null });
+    const nowhere = await asAdmin('/api/v1/hr/employees/code-check').query({ code: '7778899' });
+    expect(nowhere.body.data).toEqual({ code: '7778899', branchId: null, takenBy: null });
+  });
+
+  it('states the code holding the highest number, whatever its prefix', async () => {
+    await register({ code: '0019990' });
+    const last = await asAdmin('/api/v1/hr/employees/last-code');
+    expect(last.status).toBe(200);
+    expect((last.body.data as { code: string | null }).code).toBe('0019990');
+  });
+
+  it('reads where a job title\'s people sit in the branch off the employees there', async () => {
+    const res = await asAdmin('/api/v1/hr/employees/job-title-placements').query({ branchId: BRANCH_ID });
+    expect(res.status).toBe(200);
+    const rows = res.body.data as { jobTitleId: string; departmentId: string; sectionId: string | null; employees: number }[];
+    const driver = rows.find((r) => r.jobTitleId === JOB_TITLE_ID);
+    expect(driver?.departmentId).toBe(DEPARTMENT_ID);
+    expect(driver?.employees).toBeGreaterThan(0);
+  });
+});
+
 describe('employees — lifecycle (probation-first + the deprecated status alias)', () => {
   const hire = async (): Promise<EmployeeDto> => {
     const applicant = await offerReadyApplicant();

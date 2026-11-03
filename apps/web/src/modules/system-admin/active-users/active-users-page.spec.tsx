@@ -123,9 +123,17 @@ const render = ({
 describe('who is on now', () => {
   const html = render();
 
-  it('says each person’s status in words', () => {
+  // On the BADGE in the row — the status filter's options carry the same words, so a match
+  // anywhere on the page would prove nothing.
+  it('says each person’s status in words, on a coloured badge in the row', () => {
+    const dot = {
+      active: 'bg-emerald-500',
+      idle: 'bg-amber-500',
+      offline: 'bg-slate-400',
+    } as const;
     for (const status of ['active', 'idle', 'offline'] as const) {
-      expect(html).toContain(translate('ar', `systemAdmin.activeUsers.status.${status}`));
+      const label = translate('ar', `systemAdmin.activeUsers.status.${status}`);
+      expect(html, status).toMatch(new RegExp(`${dot[status]}[^"]*"></span>${label}`));
     }
   });
 
@@ -175,6 +183,25 @@ describe('another day', () => {
   };
   const html = render({ answer: past, search: '?day=2026-11-01', query: { day: '2026-11-01' } });
 
+  it('shows the day’s average beside its total, and no «now» tiles', () => {
+    expect(html).toContain(translate('ar', 'systemAdmin.activeUsers.totals.average'));
+    // 234 minutes over 3 people.
+    expect(html).toContain(
+      translate('ar', 'systemAdmin.activeUsers.duration.hoursMinutes', { h: 1, m: 18 }),
+    );
+    expect(html).not.toContain(translate('ar', 'systemAdmin.activeUsers.totals.active'));
+  });
+
+  // A status remembered from today must not empty a past day's table: it is not asked for.
+  it('does not ask a past day for a status', () => {
+    const remembered = render({
+      answer: past,
+      search: '?day=2026-11-01&status=active',
+      query: { day: '2026-11-01' },
+    });
+    expect(remembered).toContain('منى');
+  });
+
   it('shows the day’s working time, and no «now»: no status, no sign-in, no devices', () => {
     expect(html).toContain(translate('ar', 'systemAdmin.activeUsers.columns.worked'));
     expect(html).not.toContain(translate('ar', 'systemAdmin.activeUsers.columns.status'));
@@ -195,9 +222,31 @@ describe('the filters live in the address', () => {
   });
 
   it('never asks for a day after today', () => {
-    // A future day in the URL falls back to today — the default query, which has no day.
-    expect(render({ search: '?day=2027-01-01' })).toContain(
-      translate('ar', 'systemAdmin.activeUsers.status.active'),
+    // A future day in the URL falls back to today — the default query, which has no day: the rows
+    // seeded under it are the ones on screen.
+    expect(render({ search: '?day=2027-01-01' })).toContain('0100201 · الفرع الرئيسي');
+  });
+
+  it('says nobody matches the filters, not that nobody used the system', () => {
+    const html = render({
+      search: '?q=zzz',
+      query: { search: 'zzz' },
+      answer: { ...ANSWER, rows: [] },
+    });
+    expect(html).toContain(translate('ar', 'systemAdmin.activeUsers.noMatches'));
+    expect(html).not.toContain(translate('ar', 'systemAdmin.activeUsers.emptyToday'));
+  });
+});
+
+describe('the server’s clock, not this computer’s', () => {
+  it('measures «منذ» from the answer’s own time, however wrong the PC clock is', () => {
+    vi.setSystemTime(new Date('2026-11-03T11:00:00.000Z')); // an hour fast
+    const html = render();
+    vi.setSystemTime(new Date(NOW));
+    expect(html).toContain(
+      translate('ar', 'systemAdmin.activeUsers.signedInFor', {
+        duration: translate('ar', 'systemAdmin.activeUsers.duration.hoursMinutes', { h: 3, m: 20 }),
+      }),
     );
   });
 });

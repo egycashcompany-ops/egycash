@@ -20,7 +20,12 @@ export const useActiveUsers = (query: ListActiveUsersQuery) =>
   useQuery({
     queryKey: ['platform', 'presence', 'active-users', query],
     queryFn: () => listActiveUsers(query),
-    refetchInterval: ACTIVE_USERS_REFRESH_MS,
-    // The page keeps showing the last answer while the next one is on its way.
-    placeholderData: (previous) => previous,
+    // Today is live; a day that is over cannot change, so it is asked once.
+    refetchInterval: query.day === undefined ? ACTIVE_USERS_REFRESH_MS : false,
+    // The last answer stays up while a refresh or a new search is on its way — but never across a
+    // change of DAY: today's «working now» under a past date would be read as that day's.
+    placeholderData: (previous, previousQuery) =>
+      (previousQuery?.queryKey[3] as ListActiveUsersQuery | undefined)?.day === query.day
+        ? previous
+        : undefined,
   });

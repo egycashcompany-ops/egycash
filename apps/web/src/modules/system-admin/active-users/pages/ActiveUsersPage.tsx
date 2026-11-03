@@ -54,13 +54,23 @@ const STATUS_TONE: Record<PresenceStatus, Tone> = {
 
 const intlLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB');
 
+// One formatter per language, made once: the table writes three times per row, for hundreds of
+// rows, every 30 seconds — a new `Intl.DateTimeFormat` for each would be most of the render.
+const CLOCKS = new Map<Locale, Intl.DateTimeFormat>();
+
 /** «10:42 ص» — a time of day in Cairo, whatever the device's clock says. */
-const clockTime = (iso: string, locale: Locale): string =>
-  new Intl.DateTimeFormat(intlLocale(locale), {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'Africa/Cairo',
-  }).format(new Date(iso));
+const clockTime = (iso: string, locale: Locale): string => {
+  let clock = CLOCKS.get(locale);
+  if (clock === undefined) {
+    clock = new Intl.DateTimeFormat(intlLocale(locale), {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Africa/Cairo',
+    });
+    CLOCKS.set(locale, clock);
+  }
+  return clock.format(new Date(iso));
+};
 
 export const ActiveUsersPage = (): JSX.Element => {
   const t = useT();
@@ -87,20 +97,26 @@ export const ActiveUsersPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
 
+  // A status is a fact about NOW: it is asked for today only. A past day reads «offline» for
+  // everyone, so a status remembered from today would empty that day's table.
+  const statusShown = day === today ? status : null;
   const query = useMemo(
     () => ({
       ...(day === today ? {} : { day }),
-      ...(status === null ? {} : { status }),
+      ...(statusShown === null ? {} : { status: statusShown }),
       ...(search.trim() === '' ? {} : { search: search.trim() }),
       ...(branchId === '' ? {} : { branchId }),
     }),
-    [day, today, status, search, branchId],
+    [day, today, statusShown, search, branchId],
   );
-  const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useActiveUsers(query);
+  const { data, isLoading, isError, error, refetch } = useActiveUsers(query);
   const { data: branches = [] } = useBranchOptions();
   const rows = data?.rows ?? [];
   const isToday = data?.today ?? day === today;
-  const now = dataUpdatedAt > 0 ? dataUpdatedAt : Date.now();
+  // The SERVER's instant, not this computer's clock: a PC set an hour wrong would otherwise move
+  // every «منذ» and «آخر نشاط» on the page by that hour.
+  const now = data === undefined ? Date.now() : Date.parse(data.generatedAt);
+  const filtered = search !== '' || statusShown !== null || branchId !== '';
 
   const duration = (minutes: number): string => {
     const { h, m } = hoursAndMinutes(minutes);
@@ -117,9 +133,9 @@ export const ActiveUsersPage = (): JSX.Element => {
           label: t(`systemAdmin.activeUsers.totals.${key}`),
           ...(totals === undefined ? {} : { value: String(totals[key]) }),
           loading: isLoading,
-          active: status === key,
+          active: statusShown === key,
           // A metric that is also a view of the list below.
-          onClick: () => patch({ status: status === key ? null : key }),
+          onClick: () => patch({ status: statusShown === key ? null : key }),
         }))
       : []),
     {
@@ -136,6 +152,21 @@ export const ActiveUsersPage = (): JSX.Element => {
       ...(totals === undefined ? {} : { value: duration(totals.activeMinutes) }),
       loading: isLoading,
     },
+    // A day that is over has no «now» to count — it has the day's average instead.
+    ...(isToday
+      ? []
+      : [
+          {
+            key: 'average',
+            label: t('systemAdmin.activeUsers.totals.average'),
+            ...(totals === undefined
+              ? {}
+              : {
+                  value: duration(totals.offline === 0 ? 0 : totals.activeMinutes / totals.offline),
+                }),
+            loading: isLoading,
+          },
+        ]),
   ];
 
   const columns: Column<ActiveUserRowDto>[] = [
@@ -265,10 +296,10 @@ export const ActiveUsersPage = (): JSX.Element => {
           { label: t('systemAdmin.activeUsers.title') },
         ]}
         aside={
-          isToday && dataUpdatedAt > 0 ? (
+          isToday && data !== undefined ? (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {t('systemAdmin.activeUsers.updated', {
-                time: clockTime(new Date(dataUpdatedAt).toISOString(), locale),
+                time: clockTime(data.generatedAt, locale),
                 seconds: ACTIVE_USERS_REFRESH_MS / 1000,
               })}
             </p>
@@ -280,7 +311,7 @@ export const ActiveUsersPage = (): JSX.Element => {
         <StatStrip items={statItems} columns={isToday ? 4 : 3} />
 
         <FilterBar
-          hasActiveFilters={search !== '' || status !== null || branchId !== '' || day !== today}
+          hasActiveFilters={filtered || day !== today}
           onClear={() => setSp(new URLSearchParams(), { replace: true })}
         >
           <SearchInput
@@ -290,7 +321,7 @@ export const ActiveUsersPage = (): JSX.Element => {
           />
           {isToday && (
             <Select
-              value={status ?? ''}
+              value={statusShown ?? ''}
               onChange={(event) => patch({ status: event.target.value || null })}
               aria-label={t('systemAdmin.activeUsers.columns.status')}
             >
@@ -340,7 +371,12 @@ export const ActiveUsersPage = (): JSX.Element => {
           empty={
             <EmptyState
               title={t(
-                isToday ? 'systemAdmin.activeUsers.emptyToday' : 'systemAdmin.activeUsers.emptyDay',
+                // Nobody matching THESE filters is not nobody at all — the strip above still counts.
+                filtered
+                  ? 'systemAdmin.activeUsers.noMatches'
+                  : isToday
+                    ? 'systemAdmin.activeUsers.emptyToday'
+                    : 'systemAdmin.activeUsers.emptyDay',
               )}
             />
           }

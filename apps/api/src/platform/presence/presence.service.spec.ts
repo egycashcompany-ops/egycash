@@ -15,7 +15,7 @@ const chain = <T>(result: T) => {
   return query;
 };
 
-const activityModel = vi.hoisted(() => ({ updateOne: vi.fn(), find: vi.fn() }));
+const activityModel = vi.hoisted(() => ({ updateOne: vi.fn(), aggregate: vi.fn() }));
 const sessionModel = vi.hoisted(() => ({ find: vi.fn() }));
 const users = vi.hoisted(() => ({ staffAmong: vi.fn() }));
 const branches = vi.hoisted(() => ({ findByIdsSystem: vi.fn() }));
@@ -125,16 +125,17 @@ describe('listActiveUsers — the join', () => {
         },
       ]),
     );
-    activityModel.find.mockReturnValue(
-      chain([
-        {
-          userId: new Types.ObjectId(OTHER),
-          minutes: [480, 481],
-          firstAt: new Date('2026-11-03T06:00:00Z'),
-          lastAt: new Date('2026-11-03T06:01:00Z'),
-        },
-      ]),
-    );
+    activityModel.aggregate.mockReturnValue({
+      exec: () =>
+        Promise.resolve([
+          {
+            userId: new Types.ObjectId(OTHER),
+            activeMinutes: 2,
+            firstAt: new Date('2026-11-03T06:00:00Z'),
+            lastAt: new Date('2026-11-03T06:01:00Z'),
+          },
+        ]),
+    });
     users.staffAmong.mockResolvedValue([staffDoc]);
     branches.findByIdsSystem.mockResolvedValue([
       { _id: BRANCH, name: { ar: 'الرئيسي', en: 'HQ' } },
@@ -195,7 +196,13 @@ describe('listActiveUsers — the join', () => {
     users.staffAmong.mockResolvedValue([{ ...staffDoc, _id: new Types.ObjectId(OTHER) }]);
     const result = await presenceService.listActiveUsers({ day: '2026-11-01' }, scope, 'en', now);
     expect(sessionModel.find).not.toHaveBeenCalled();
-    expect(activityModel.find.mock.calls[0]?.[0]).toEqual({ day: '2026-11-01' });
+    // The day's rows, counted in the database: the minutes never leave it.
+    const [pipeline] = activityModel.aggregate.mock.calls[0] as unknown as [
+      [{ $match: unknown }, { $project: Record<string, unknown> }],
+    ];
+    expect(pipeline[0]).toEqual({ $match: { day: '2026-11-01' } });
+    expect(pipeline[1].$project).not.toHaveProperty('minutes');
+    expect(pipeline[1].$project).toHaveProperty('activeMinutes');
     expect(result.today).toBe(false);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toMatchObject({
@@ -215,7 +222,7 @@ describe('listActiveUsers — the join', () => {
 
   it('nobody on the system: no lookups for names', async () => {
     sessionModel.find.mockReturnValue(chain([]));
-    activityModel.find.mockReturnValue(chain([]));
+    activityModel.aggregate.mockReturnValue({ exec: () => Promise.resolve([]) });
     users.staffAmong.mockResolvedValue([]);
     const result = await presenceService.listActiveUsers({}, scope, 'en', now);
     expect(result.rows).toEqual([]);

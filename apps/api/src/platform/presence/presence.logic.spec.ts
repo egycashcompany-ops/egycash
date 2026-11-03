@@ -76,9 +76,11 @@ describe('liveWindowMinutes — what makes a session OPEN', () => {
     expect(liveWindowMinutes(10, 900)).toBe(10);
   });
 
-  it('is the access token life when idle sign-out is off', () => {
-    expect(liveWindowMinutes(0, 900)).toBe(15);
-    expect(liveWindowMinutes(0, 61)).toBe(2);
+  // Without idle sign-out the browser renews only when a request finds the token expired: the
+  // window must outlast the token by the minute until the next heartbeat makes that request.
+  it('is the access token life plus the gap to the next request when idle sign-out is off', () => {
+    expect(liveWindowMinutes(0, 900)).toBe(19);
+    expect(liveWindowMinutes(0, 61)).toBe(6);
   });
 });
 
@@ -240,7 +242,7 @@ describe('buildActiveUserRow', () => {
   ];
   const activity = {
     userId: 'u1',
-    minutes: [480, 481, 482, 599],
+    activeMinutes: 4,
     firstAt: at('2026-11-03T06:00:10Z'),
     lastAt: at('2026-11-03T09:59:30Z'),
   };
@@ -300,10 +302,10 @@ describe('buildActiveUserRow', () => {
     expect(row.signedInAt).toBeNull();
   });
 
-  it('counts a minute once even if it were stored twice', () => {
+  it('takes the day’s count as the store keeps it — a set of minutes, counted there', () => {
     const row = buildActiveUserRow({
       user: user('u1'),
-      activity: { ...activity, minutes: [10, 10, 11] },
+      activity: { ...activity, activeMinutes: 2 },
       sessions: [],
       today: true,
       now,

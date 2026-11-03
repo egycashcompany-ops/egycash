@@ -177,14 +177,33 @@ class PresenceService {
     }));
   }
 
+  /**
+   * The day's activity, COUNTED in the database: a full day is up to 1,440 minutes per person,
+   * and the page needs only how many — shipping every array on every 30-second poll would be
+   * megabytes decoded to produce one number per row. The minutes are a set (`$addToSet`), so
+   * their size is the count.
+   */
   private async activityOn(day: string): Promise<PresenceActivity[]> {
-    const docs = await UserActivityDayModel.find({ day })
-      .select('userId minutes firstAt lastAt')
-      .lean<{ userId: Types.ObjectId; minutes?: number[]; firstAt: Date; lastAt: Date }[]>()
-      .exec();
+    const docs = await UserActivityDayModel.aggregate<{
+      userId: Types.ObjectId;
+      activeMinutes: number;
+      firstAt: Date;
+      lastAt: Date;
+    }>([
+      { $match: { day } },
+      {
+        $project: {
+          _id: 0,
+          userId: 1,
+          firstAt: 1,
+          lastAt: 1,
+          activeMinutes: { $size: { $ifNull: ['$minutes', []] } },
+        },
+      },
+    ]).exec();
     return docs.map((doc) => ({
       userId: String(doc.userId),
-      minutes: doc.minutes ?? [],
+      activeMinutes: doc.activeMinutes,
       firstAt: doc.firstAt,
       lastAt: doc.lastAt,
     }));

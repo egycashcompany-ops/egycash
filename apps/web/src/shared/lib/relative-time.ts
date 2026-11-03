@@ -4,9 +4,16 @@ import { type Locale } from '@ecms/contracts';
 
 const intlLocale = (locale: Locale): string => (locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB');
 
+// One formatter per language: a table writes this once per row, every few seconds.
+const FORMATS = new Map<Locale, Intl.RelativeTimeFormat>();
+
 export const relativeTimeText = (at: number, now: number, locale: Locale): string => {
   const seconds = Math.round((at - now) / 1000);
-  const format = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: 'auto' });
+  let format = FORMATS.get(locale);
+  if (format === undefined) {
+    format = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: 'auto' });
+    FORMATS.set(locale, format);
+  }
   const steps: [Intl.RelativeTimeFormatUnit, number][] = [
     ['day', 86_400],
     ['hour', 3_600],

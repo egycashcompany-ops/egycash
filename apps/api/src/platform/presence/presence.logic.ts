@@ -40,12 +40,16 @@ export const activityExpiresAt = (day: string): Date =>
  * How recently a session must have been renewed to count as OPEN, in minutes.
  *
  * The idle window when the server enforces one: a session older than that is closed at its next
- * renewal anyway, so it is somebody who walked away. With idle sign-out switched off (`0`), the
- * access token's life — an open tab renews well inside it, so a session renewed longer ago than
- * that has no page holding it.
+ * renewal anyway, so it is somebody who walked away. With idle sign-out switched off (`0`) the
+ * browser does not renew ahead of time: it renews only when a request finds the access token
+ * expired. So the token's life alone would drop a person who is working to «offline» for the
+ * minute between the token expiring and their next request — the window is the token's life plus
+ * that gap (the active span, twice: the heartbeat that makes the request comes within it).
  */
 export const liveWindowMinutes = (idleMinutes: number, accessTtlSeconds: number): number =>
-  idleMinutes > 0 ? idleMinutes : Math.max(1, Math.ceil(accessTtlSeconds / 60));
+  idleMinutes > 0
+    ? idleMinutes
+    : Math.max(1, Math.ceil(accessTtlSeconds / 60)) + Math.ceil((2 * PRESENCE_ACTIVE_SECONDS) / 60);
 
 // ── The user agent, as a reader names it ──────────────────────────────────────────────────────
 
@@ -145,7 +149,8 @@ export interface PresenceSession {
 
 export interface PresenceActivity {
   userId: string;
-  minutes: readonly number[];
+  /** The day's minutes with activity — counted by the store, which keeps them as a set. */
+  activeMinutes: number;
   firstAt: Date;
   lastAt: Date;
 }
@@ -189,7 +194,7 @@ export const buildActiveUserRow = (input: {
     }),
     signedInAt,
     // A set by construction; counted as one anyway, so a duplicate could never inflate the time.
-    activeMinutes: activity === null ? 0 : new Set(activity.minutes).size,
+    activeMinutes: activity === null ? 0 : activity.activeMinutes,
     firstActivityAt: activity?.firstAt.toISOString() ?? null,
     lastActivityAt: activity?.lastAt.toISOString() ?? null,
     devices,

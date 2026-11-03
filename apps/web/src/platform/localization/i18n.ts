@@ -9132,6 +9132,7 @@ const en: Record<string, string> = {
   'systemAdmin.activeUsers.totals.idle': 'Open, not working',
   'systemAdmin.activeUsers.totals.people': 'People on the system',
   'systemAdmin.activeUsers.totals.time': 'Total working time',
+  'systemAdmin.activeUsers.totals.average': 'Average per person',
   'systemAdmin.activeUsers.status.active': 'Working now',
   'systemAdmin.activeUsers.status.idle': 'Idle',
   'systemAdmin.activeUsers.status.offline': 'Signed out',
@@ -9154,6 +9155,7 @@ const en: Record<string, string> = {
   'systemAdmin.activeUsers.mobile': 'mobile',
   'systemAdmin.activeUsers.emptyToday': 'Nobody has used the system today yet.',
   'systemAdmin.activeUsers.emptyDay': 'Nobody used the system on this day.',
+  'systemAdmin.activeUsers.noMatches': 'Nobody matches these filters.',
   'systemAdmin.users.subtitle':
     'Every login account in the system — employees and accounts with no HR record alike.',
   'systemAdmin.users.searchPlaceholder': 'Search by name, username or email',
@@ -21611,6 +21613,7 @@ const ar: Record<string, string> = {
   'systemAdmin.activeUsers.totals.idle': 'متصلون دون نشاط',
   'systemAdmin.activeUsers.totals.people': 'المستخدمون على النظام',
   'systemAdmin.activeUsers.totals.time': 'إجمالي وقت العمل',
+  'systemAdmin.activeUsers.totals.average': 'المتوسط لكل مستخدم',
   'systemAdmin.activeUsers.status.active': 'نشط الآن',
   'systemAdmin.activeUsers.status.idle': 'خامل',
   'systemAdmin.activeUsers.status.offline': 'غير متصل',
@@ -21633,6 +21636,7 @@ const ar: Record<string, string> = {
   'systemAdmin.activeUsers.mobile': 'هاتف',
   'systemAdmin.activeUsers.emptyToday': 'لم يستخدم أحد النظام اليوم بعد.',
   'systemAdmin.activeUsers.emptyDay': 'لم يستخدم أحد النظام في هذا اليوم.',
+  'systemAdmin.activeUsers.noMatches': 'لا يوجد من يطابق عوامل التصفية هذه.',
   'systemAdmin.users.subtitle':
     'كل حسابات الدخول في النظام — الموظفون ومن ليس له ملف موظف على السواء.',
   'systemAdmin.users.searchPlaceholder': 'ابحث بالاسم أو اسم المستخدم أو البريد',

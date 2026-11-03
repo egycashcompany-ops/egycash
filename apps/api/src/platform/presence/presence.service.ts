@@ -180,9 +180,7 @@ class PresenceService {
   private async activityOn(day: string): Promise<PresenceActivity[]> {
     const docs = await UserActivityDayModel.find({ day })
       .select('userId minutes firstAt lastAt')
-      .lean<
-        { userId: Types.ObjectId; minutes?: number[]; firstAt: Date; lastAt: Date }[]
-      >()
+      .lean<{ userId: Types.ObjectId; minutes?: number[]; firstAt: Date; lastAt: Date }[]>()
       .exec();
     return docs.map((doc) => ({
       userId: String(doc.userId),

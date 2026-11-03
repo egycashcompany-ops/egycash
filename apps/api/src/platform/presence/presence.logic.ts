@@ -100,9 +100,10 @@ export const parseUserAgent = (userAgent: string | null): ParsedUserAgent => {
 // ── Status ───────────────────────────────────────────────────────────────────────────────────
 
 /**
- * `active` when the last heartbeat is at most `PRESENCE_ACTIVE_SECONDS` old; else `idle` when a
- * session is open inside the window; else `offline`. Only today has a "now": any other day reads
- * `offline` for everyone, whatever they did on it.
+ * Signed in with a live session: `active` when the last heartbeat is at most
+ * `PRESENCE_ACTIVE_SECONDS` old, `idle` otherwise. No live session — signed out, or the session
+ * ended — is `offline` at once, however recent the last heartbeat. Only today has a "now": any
+ * other day reads `offline` for everyone, whatever they did on it.
  */
 export const presenceStatusOf = (input: {
   today: boolean;
@@ -110,14 +111,14 @@ export const presenceStatusOf = (input: {
   live: boolean;
   now: Date;
 }): PresenceStatus => {
-  if (!input.today) return 'offline';
+  if (!input.today || !input.live) return 'offline';
   if (
     input.lastActivityAt !== null &&
     input.now.getTime() - input.lastActivityAt.getTime() <= PRESENCE_ACTIVE_SECONDS * 1000
   ) {
     return 'active';
   }
-  return input.live ? 'idle' : 'offline';
+  return 'idle';
 };
 
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────

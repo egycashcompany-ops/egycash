@@ -32,9 +32,10 @@ describe('the assembled page registry', () => {
   // page — it is a power over the applicant documents screen (see below).
   // Correcting a branch code (`branch.changeCode`, ADR-017 amended 2026-11-03) added one key and no
   // page — it is a power over the branches screen.
-  it('declares 82 pages over 313 permissions', () => {
-    expect(pages).toHaveLength(82);
-    expect(permissions).toHaveLength(313);
+  // The active users page («المستخدمين النشطين») added one page and its one key, `activeUser.view`.
+  it('declares 83 pages over 314 permissions', () => {
+    expect(pages).toHaveLength(83);
+    expect(permissions).toHaveLength(314);
   });
 
   /**
@@ -105,10 +106,14 @@ describe('the assembled page registry', () => {
    *
    * `branch.changeCode` adds ONE key and no page: correcting a branch code is a power over the
    * branches screen, routed to `platform.branches` with the rest of `branch.*`.
+   *
+   * The active users page adds ONE key and one page: `activeUser.view`, on `platform.active-users`,
+   * built in the same change as the screen it describes. Assigned, so the unassigned count does
+   * not move.
    */
-  it('assigns 284 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 285 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(284);
+    expect(assigned).toHaveLength(285);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -133,7 +138,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 19, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 37, fleet: 19, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

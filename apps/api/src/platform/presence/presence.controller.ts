@@ -24,10 +24,6 @@ export const listActiveUsers = async (req: Request, res: Response): Promise<void
   const { query } = validated<never, ListActiveUsersQuery>(req);
   ok(
     res,
-    await presenceService.listActiveUsers(
-      query,
-      scopeSelector(ctx, 'activeUser.view'),
-      ctx.locale,
-    ),
+    await presenceService.listActiveUsers(query, scopeSelector(ctx, 'activeUser.view'), ctx.locale),
   );
 };

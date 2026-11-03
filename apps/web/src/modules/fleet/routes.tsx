@@ -29,6 +29,8 @@
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
 //   /fleet/fuel-cards/reconcile fleetFuelCharge.view       مطابقة أرصدة الكروت
+//   /fleet/fuel-cards/reconcile/numbers fleetFuelCard.view تصحيح أرقام الكروت (6d — the one-time
+//                                                          repair; «تنفيذ» needs .edit + approve)
 //   /fleet/receipts           fleetReceipt.view            خصم الإيصالات
 //   /fleet/custody            fleetCustody.view            العهدة — opens «سجل العهدة»; old board links
 //                                                          go on to «مصروفات العهدة» (CustodyEntry)
@@ -72,6 +74,7 @@ import { DealershipPage } from './pages/DealershipPage';
 import { FuelCardsPage } from './pages/FuelCardsPage';
 import { FuelChargingPage } from './pages/FuelChargingPage';
 import { FuelReconcilePage } from './pages/FuelReconcilePage';
+import { FuelNumberRepairPage } from './pages/FuelNumberRepairPage';
 import { ReceiptsPage } from './pages/ReceiptsPage';
 import { CustodyPage } from './pages/CustodyPage';
 import { CustodyMemosPage } from './pages/CustodyMemosPage';
@@ -311,6 +314,14 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetFuelCharge.view">
                 <FuelReconcilePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="fuel-cards/reconcile/numbers"
+            element={
+              <RequirePermission permission="fleetFuelCard.view">
+                <FuelNumberRepairPage />
               </RequirePermission>
             }
           />

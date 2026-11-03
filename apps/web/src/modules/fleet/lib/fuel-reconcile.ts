@@ -6,6 +6,11 @@
 // ticked. A card the server refused because its balance or log moved after the sheet was read
 // (409 `FLEET_FUEL_RECONCILE_CARD_CHANGED`) can no longer take the sheet's balance from this read:
 // it leaves the selection and «تحديد الكل» passes it by; the sheet must be read again.
+//
+// 6d: a line read while «تصحيح أرقام الكروت» is pending for its card (the 0849 pair, `inRepair`)
+// takes no ✓ — its name sits on the other card's record, so the sheet's figure would land on the
+// wrong card. «تحديد الكل» passes it by and a bulk ✓ leaves it out; its ✗ stays (nothing moves), so
+// it may still be ticked by hand for a bulk ✗.
 import {
   ErrorCodes,
   type DecideFleetFuelReconcile,
@@ -247,6 +252,16 @@ export const movedCardIds = (error: unknown): string[] =>
 /** The cards already decided in this session. */
 export const decidedCardIds = (error: unknown): string[] =>
   refusedCardIds(error, ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED);
+/** 6d: the cards whose ✓ waits for «تصحيح أرقام الكروت» (the 0849 pair). */
+export const inRepairCardIds = (error: unknown): string[] =>
+  refusedCardIds(error, ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR);
+
+/** 6d: a line whose ✓ waits for «تصحيح أرقام الكروت» — ✗ only. */
+export const waitsForRepair = (line: FleetFuelReconcileLineDto): boolean => line.inRepair;
+/** The lines a ✓ may name — every one but those waiting for the number repair. */
+export const applicableLines = (
+  lines: readonly FleetFuelReconcileLineDto[],
+): FleetFuelReconcileLineDto[] => lines.filter((line) => !waitsForRepair(line));
 
 // ── The selection ───────────────────────────────────────────────────────────────────────────────
 
@@ -291,14 +306,19 @@ export const toggle = (state: ReconcileSelection, id: string, on: boolean): Reco
   else picked.delete(key);
   return { ...state, picked };
 };
-/** «تحديد الكل»: every open card, or none. */
+/** What «تحديد الكل» ticks: every open card but one waiting for the number repair (6d). */
+export const tickAllLines = (
+  lines: readonly FleetFuelReconcileLineDto[],
+  state: ReconcileSelection,
+): FleetFuelReconcileLineDto[] => applicableLines(openLines(lines, state));
+/** «تحديد الكل»: every open card (6d: but the repair's), or none. */
 export const tickAll = (
   state: ReconcileSelection,
   lines: readonly FleetFuelReconcileLineDto[],
   on: boolean,
 ): ReconcileSelection => ({
   ...state,
-  picked: on ? new Set(openLines(lines, state).map(idOf)) : new Set(),
+  picked: on ? new Set(tickAllLines(lines, state).map(idOf)) : new Set(),
 });
 /** The server's answers: each card decided, and out of the selection. */
 export const afterDecisions = (

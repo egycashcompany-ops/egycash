@@ -82,4 +82,36 @@ describe('national-id OCR seam (OQ-30 abstraction)', () => {
     // No number read → no derivation.
     expect(result.derived).toBeNull();
   });
+
+  // The review has to know what the reader thought of each PHOTOGRAPH: a side it rejected still
+  // produces values, and shown as values they are indistinguishable from read ones.
+  it('carries the per-side photo verdicts a provider reports', async () => {
+    setNationalIdOcrProvider({
+      id: 'test',
+      available: true,
+      extract: () =>
+        Promise.resolve({
+          religion: { value: 'ستدم T', confidence: 'low' },
+          quality: {
+            front: { verdict: 'ok' as const, reasons: [] },
+            back: { verdict: 'reject' as const, reasons: ['blurred'] },
+          },
+        }),
+    });
+    const result = await extractNationalIdFields({ frontFileId: 'f', backFileId: 'b' });
+    expect(result.quality).toEqual({
+      front: { verdict: 'ok', reasons: [] },
+      back: { verdict: 'reject', reasons: ['blurred'] },
+    });
+  });
+
+  it('reports no quality when the provider has none — the old shape, unchanged', async () => {
+    setNationalIdOcrProvider({
+      id: 'test',
+      available: true,
+      extract: () => Promise.resolve({ religion: { value: 'مسلم', confidence: 'high' } }),
+    });
+    const result = await extractNationalIdFields({ frontFileId: 'f' });
+    expect(result.quality).toBeUndefined();
+  });
 });

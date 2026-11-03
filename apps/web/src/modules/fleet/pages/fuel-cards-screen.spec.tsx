@@ -656,6 +656,7 @@ describe('the card log — «كارت اخر»: a card that paid for another car
     sheet: null,
     cancelledBySheet: null,
     link: null,
+    repair: null,
     ...over,
   });
   const logOf = (logged: FleetFuelCardDto, lines: FleetFuelCardMovementDto[]): string => {
@@ -723,6 +724,7 @@ describe('the card log — the company sheet’s two lines, and who made each li
     sheet: null,
     cancelledBySheet: null,
     link: null,
+    repair: null,
     ...over,
   });
   const SHEET = {

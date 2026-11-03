@@ -179,6 +179,17 @@ const en: Record<string, string> = {
   'hr.requisitions.priority.normal': 'Normal',
   'hr.requisitions.priority.high': 'High',
   'hr.requisitions.priority.urgent': 'Urgent',
+  // «الإعدادات» — the one HR page whose tabs are the six configuration screens.
+  'hr.settings.title': 'Settings',
+  'hr.settings.navLabel': 'Settings sections',
+  'hr.settings.group.recruitment': 'Recruitment settings',
+  'hr.settings.group.communication': 'Communication',
+  'hr.settings.tab.recruitment-form': 'Application form',
+  'hr.settings.tab.applicant-sources': 'Applicant sources',
+  'hr.settings.tab.interview-stages': 'Interview stages',
+  'hr.settings.tab.evaluation-phases': 'Evaluation phases',
+  'hr.settings.tab.announcements': 'Announcements',
+  'hr.settings.tab.notification-rules': 'Notification rules',
   'hr.rules.title': 'Notification rules',
   'hr.rules.subtitle':
     'When something happens, tell the right people — without anyone having to remember.',
@@ -817,7 +828,6 @@ const en: Record<string, string> = {
   'batches.package.retry': 'Build again',
   'batches.package.downloadFailed': 'The file could not be opened.',
   'batches.columns.code': 'Batch',
-  'batches.columns.phase': 'Check',
   'batches.columns.title': 'Title',
   'batches.columns.status': 'Status',
   'batches.columns.progress': 'Decided',
@@ -1262,6 +1272,25 @@ const en: Record<string, string> = {
   'nationalIdOcr.review.portrait': 'Photo from the card',
   'nationalIdOcr.review.portraitHint': 'Cut from the front, as printed.',
   'nationalIdOcr.review.download': 'Download',
+  'nationalIdOcr.review.quality.sideFront': 'front',
+  'nationalIdOcr.review.quality.sideBack': 'back',
+  'nationalIdOcr.review.quality.reject':
+    'The {{side}} photo cannot be read ({{why}}). Retake it.',
+  'nationalIdOcr.review.quality.rejectFields':
+    'The fields from this side are left empty — a wrong guess typed into a record is harder to catch than an empty box.',
+  'nationalIdOcr.review.quality.retake': 'Retake the {{side}}',
+  'nationalIdOcr.review.quality.degraded':
+    'The {{side}} photo is not sharp ({{why}}) — check these fields against the card carefully.',
+  'nationalIdOcr.review.quality.notRead': 'Not read — retake the photo of this side.',
+  'nationalIdOcr.review.quality.notReadBadge': 'not read',
+  'nationalIdOcr.review.quality.reasonJoin': ', ',
+  'nationalIdOcr.review.quality.reason.blurred': 'too blurred',
+  'nationalIdOcr.review.quality.reason.glare': 'glare on the card',
+  'nationalIdOcr.review.quality.reason.low_contrast': 'too dark',
+  'nationalIdOcr.review.quality.reason.too_small': 'held too far away',
+  'nationalIdOcr.review.quality.reason.card_not_located': 'the card was not found in the photo',
+  'nationalIdOcr.review.quality.reason.bad_aspect': 'the card is not fully in the photo',
+  'nationalIdOcr.review.quality.reason.unclear': 'not clear enough',
   'nationalIdOcr.camera.take': 'Take photo',
   'nationalIdOcr.camera.retake': 'Retake',
   'nationalIdOcr.camera.titleFront': 'Front of the card',
@@ -1271,6 +1300,11 @@ const en: Record<string, string> = {
   'nationalIdOcr.camera.cancel': 'Close',
   'nationalIdOcr.camera.starting': 'Starting the camera…',
   'nationalIdOcr.camera.unavailable': 'The camera could not be opened. Allow camera access for this site, or use Upload.',
+  'nationalIdOcr.camera.flip.frontDone': 'Front captured',
+  'nationalIdOcr.camera.flip.title': 'Now turn the card over',
+  'nationalIdOcr.camera.flip.body': 'Hold the back of the card up to the camera, then press the button below.',
+  'nationalIdOcr.camera.flip.scanBack': 'Scan the back',
+  'nationalIdOcr.camera.flip.retakeFront': 'Retake the front',
   'nationalIdOcr.camera.guide.noCard': 'Place the card inside the frame',
   'nationalIdOcr.camera.guide.tooFar': 'Move closer',
   'nationalIdOcr.camera.guide.tooClose': 'Move back a little',
@@ -4338,6 +4372,291 @@ const en: Record<string, string> = {
     'Not added from here: the sheet names it as another company’s card',
   'fleet.fuelCards.reconcile.newCards.blockedTooLong':
     'Not added from here: its name is longer than {{max}} characters',
+  'fleet.fuelCards.numberRepair.title': 'Card number repair — {{company}}',
+  'fleet.fuelCards.numberRepair.crumb': 'Card number repair',
+  'fleet.fuelCards.numberRepair.pendingTag': 'Not run yet · runs once',
+  'fleet.fuelCards.numberRepair.partialTag': 'Partly run · {{done}} of {{all}} corrected',
+  'fleet.fuelCards.numberRepair.doneTag': 'Run on {{at}} · by {{name}}',
+  'fleet.fuelCards.numberRepair.doneTagNoName': 'Run on {{at}}',
+  'fleet.fuelCards.numberRepair.readNow': 'Reviewed from the system’s data now · {{at}}',
+  'fleet.fuelCards.numberRepair.readDone': 'Reviewed from the system’s data on {{at}}',
+  'fleet.fuelCards.numberRepair.refresh': 'Refresh the review',
+  'fleet.fuelCards.numberRepair.back': 'Back to the reconciliation',
+  'fleet.fuelCards.numberRepair.and': ', ',
+  'fleet.fuelCards.numberRepair.cycleName': 'Cycle {{n}}',
+  'fleet.fuelCards.numberRepair.pairName': 'the 0849 pair',
+  'fleet.fuelCards.numberRepair.now': 'Now',
+  'fleet.fuelCards.numberRepair.after': 'After',
+  'fleet.fuelCards.numberRepair.was': 'Was',
+  'fleet.fuelCards.numberRepair.became': 'Became',
+  'fleet.fuelCards.numberRepair.stays': 'Stays',
+  'fleet.fuelCards.numberRepair.entry.title':
+    'Card number repair — needed once before approving Wataniya balances',
+  'fleet.fuelCards.numberRepair.entry.body':
+    'On {{records}} Wataniya cards a number or a name has not belonged to its record since go-live on {{day}}: {{crossed}} numbers crossed in three cycles, and the 0849 pair swapped name and opening balance. Review the repair and run it, then upload the newest Wataniya statement here.',
+  'fleet.fuelCards.numberRepair.entry.open': 'Review the repair',
+  'fleet.fuelCards.numberRepair.rule.why': 'Why this repair?',
+  'fleet.fuelCards.numberRepair.rule.whyBody':
+    'At go-live on {{day}} the numbers of {{crossed}} Wataniya cards were put on records that are not theirs, and the two 0849 cards swapped name and opening balance. The card photos, the two Wataniya statements and the car registry all agree on this.',
+  'fleet.fuelCards.numberRepair.rule.moves': 'Moves with the physical card (the number)',
+  'fleet.fuelCards.numberRepair.rule.number': 'Card number',
+  'fleet.fuelCards.numberRepair.rule.pin': 'The PIN',
+  'fleet.fuelCards.numberRepair.rule.photo': 'Card photo',
+  'fleet.fuelCards.numberRepair.rule.expiry': 'Expiry date',
+  'fleet.fuelCards.numberRepair.rule.stays': 'Stays on its record',
+  'fleet.fuelCards.numberRepair.rule.name': 'Name',
+  'fleet.fuelCards.numberRepair.rule.car': 'Car',
+  'fleet.fuelCards.numberRepair.rule.balance': 'Balance',
+  'fleet.fuelCards.numberRepair.rule.log': 'Card log',
+  'fleet.fuelCards.numberRepair.rule.balances': 'Balances',
+  'fleet.fuelCards.numberRepair.rule.balancesBody':
+    'The repair does not change card balances; after it runs, upload the newest Wataniya statement in the reconciliation and approve its rows, so each card takes the company’s balance for its own physical card.',
+  'fleet.fuelCards.numberRepair.rule.balancesPair':
+    'Only the 0849 pair swaps its opening balance, as shown below.',
+  'fleet.fuelCards.numberRepair.rule.pinRule': 'The PIN follows the printed number (your decision)',
+  'fleet.fuelCards.numberRepair.rule.photos':
+    'The card photos here are small thumbnails that do not show the full number; the full photo is for holders of the PIN-reveal permission only.',
+  'fleet.fuelCards.numberRepair.kpi.all': 'Cards in the repair',
+  'fleet.fuelCards.numberRepair.kpi.allNote': 'All Wataniya',
+  'fleet.fuelCards.numberRepair.kpi.cycles': 'Numbers crossed in cycles',
+  'fleet.fuelCards.numberRepair.kpi.cyclesNote': '{{count}} cycles: {{sizes}} cards',
+  'fleet.fuelCards.numberRepair.kpi.pair': 'The 0849 pair',
+  'fleet.fuelCards.numberRepair.kpi.pairNote': 'Swap name and opening balance',
+  'fleet.fuelCards.numberRepair.kpi.noPin': 'Right numbers with no PIN stored',
+  'fleet.fuelCards.numberRepair.kpi.noPinNote':
+    'The PIN is left empty on the records of cars {{cars}}',
+  'fleet.fuelCards.numberRepair.kpi.noPinNone': 'No record of the repair is left without a PIN.',
+  'fleet.fuelCards.numberRepair.count.number.one': '1 number',
+  'fleet.fuelCards.numberRepair.count.number.two': '2 numbers',
+  'fleet.fuelCards.numberRepair.count.number.few': '{{count}} numbers',
+  'fleet.fuelCards.numberRepair.count.number.many': '{{count}} numbers',
+  'fleet.fuelCards.numberRepair.count.number.other': '{{count}} numbers',
+  'fleet.fuelCards.numberRepair.count.numberUnit.one': 'number',
+  'fleet.fuelCards.numberRepair.count.numberUnit.two': 'numbers',
+  'fleet.fuelCards.numberRepair.count.numberUnit.few': 'numbers',
+  'fleet.fuelCards.numberRepair.count.numberUnit.many': 'numbers',
+  'fleet.fuelCards.numberRepair.count.numberUnit.other': 'numbers',
+  'fleet.fuelCards.numberRepair.alert.one':
+    'One record differs from the expected value: car {{car}} in {{unit}}, edited by hand. It will not be touched, and the whole of {{unit}} stops with it ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.many':
+    'Several records differ from the expected values in {{unit}}: cars {{cars}}, edited by hand. They will not be touched, and the whole of {{unit}} stops with them ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.pairOne':
+    'One record differs from the expected value: car {{car}} in the 0849 pair, edited by hand. It will not be touched, and the whole pair stops with it ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.pairMany':
+    'Both records of the 0849 pair differ from the expected values, edited by hand. They will not be touched ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.rest': '; the rest is corrected ({{rest}}).',
+  'fleet.fuelCards.numberRepair.alert.end': '.',
+  'fleet.fuelCards.numberRepair.cycle.title': 'Cycle {{n}}: {{cards}}',
+  'fleet.fuelCards.numberRepair.cycle.whole': 'Corrected whole or not at all',
+  'fleet.fuelCards.numberRepair.cycle.ok': 'Matches the review: {{ok}} of {{all}}',
+  'fleet.fuelCards.numberRepair.cycle.held':
+    'Stopped: the record of car {{car}} was edited by hand',
+  'fleet.fuelCards.numberRepair.cycle.heldMany':
+    'Stopped: the records of cars {{cars}} were edited by hand',
+  'fleet.fuelCards.numberRepair.cycle.done': 'Cycle corrected: {{cards}}',
+  'fleet.fuelCards.numberRepair.cycle.explain':
+    'Each car’s record holds the number of the next car’s card, and the last holds the first’s. One card cannot be corrected by hand: its right number is on another record, and the system does not take one number on two records — so the whole cycle is corrected at once.',
+  'fleet.fuelCards.numberRepair.cycle.arrow':
+    'Reading the arrow: the record of car {{from}} holds the card number of car {{to}}, which is {{number}}',
+  'fleet.fuelCards.numberRepair.cycle.backToStart': 'The cycle comes back to where it began',
+  'fleet.fuelCards.numberRepair.col.car': 'Car',
+  'fleet.fuelCards.numberRepair.col.nameBalance': 'Name and balance',
+  'fleet.fuelCards.numberRepair.col.number': 'Card number',
+  'fleet.fuelCards.numberRepair.col.expiry': 'Expiry date',
+  'fleet.fuelCards.numberRepair.col.photo': 'Card photo',
+  'fleet.fuelCards.numberRepair.col.photoPair': 'Photo',
+  'fleet.fuelCards.numberRepair.col.name': 'Name',
+  'fleet.fuelCards.numberRepair.col.balance': 'Balance',
+  'fleet.fuelCards.numberRepair.col.check': 'Check now',
+  'fleet.fuelCards.numberRepair.col.result': 'Result',
+  'fleet.fuelCards.numberRepair.phone.number': 'Card number — moves with the physical card',
+  'fleet.fuelCards.numberRepair.phone.numberStays': 'Card number — stays',
+  'fleet.fuelCards.numberRepair.phone.photoStays': 'Photo — stays',
+  'fleet.fuelCards.numberRepair.row.balance': 'Balance {{amount}} EGP',
+  'fleet.fuelCards.numberRepair.row.stays': 'Name, car and balance stay',
+  'fleet.fuelCards.numberRepair.row.chassisTypo':
+    'The name has a typo in the chassis number; the plate matches the car registry.',
+  'fleet.fuelCards.numberRepair.row.afterIsOn':
+    'The right number is now on the record of car {{car}}',
+  'fleet.fuelCards.numberRepair.pin.moves': 'The PIN moves with the number',
+  'fleet.fuelCards.numberRepair.pin.moved': 'The PIN moved with the number',
+  'fleet.fuelCards.numberRepair.pin.none': 'No PIN is stored for this number — left empty',
+  'fleet.fuelCards.numberRepair.pin.noneDone': 'No PIN is stored for this number — left empty',
+  'fleet.fuelCards.numberRepair.pin.goes':
+    'Today’s PIN goes with {{number}} to the record of car {{car}}',
+  'fleet.fuelCards.numberRepair.pin.went':
+    'The previous PIN went with {{number}} to the record of car {{car}}',
+  'fleet.fuelCards.numberRepair.pin.noneNow': 'This record holds no PIN now.',
+  'fleet.fuelCards.numberRepair.pin.stays': 'The PIN stays with the number',
+  'fleet.fuelCards.numberRepair.expiry.expected': 'Expected {{date}}',
+  'fleet.fuelCards.numberRepair.expiry.changes': 'Changes',
+  'fleet.fuelCards.numberRepair.expiry.same': 'Same date',
+  'fleet.fuelCards.numberRepair.photo.ofCar': 'Card of car {{car}}',
+  'fleet.fuelCards.numberRepair.photo.sticker': 'Sticker of car {{car}}',
+  'fleet.fuelCards.numberRepair.photo.open': 'Open the full photo',
+  'fleet.fuelCards.numberRepair.state.ok': 'Matches the review',
+  'fleet.fuelCards.numberRepair.state.done': 'Corrected',
+  'fleet.fuelCards.numberRepair.state.changed': 'Changed — will not be touched',
+  'fleet.fuelCards.numberRepair.state.held': 'Held with the cycle',
+  'fleet.fuelCards.numberRepair.state.heldPair': 'Held with the pair',
+  'fleet.fuelCards.numberRepair.topUps.title': 'Top-ups logged on this record since go-live:',
+  'fleet.fuelCards.numberRepair.topUps.none': 'No top-ups logged on this record since go-live.',
+  'fleet.fuelCards.numberRepair.topUps.note':
+    'For information only · the repair does not change them',
+  'fleet.fuelCards.numberRepair.topUps.more': '+{{count}}',
+  'fleet.fuelCards.numberRepair.changed.lead':
+    'The {{what}} was edited by hand after go-live: the expected value is {{expected}} and the value now is {{now}}',
+  'fleet.fuelCards.numberRepair.changed.at': '— on {{at}}',
+  'fleet.fuelCards.numberRepair.changed.by': 'by {{by}}',
+  'fleet.fuelCards.numberRepair.changed.stop': '.',
+  'fleet.fuelCards.numberRepair.changed.tail':
+    'This record is not touched, and its cycle is not corrected until the new value is reviewed.',
+  'fleet.fuelCards.numberRepair.changed.tailPair':
+    'This record is not touched, and the pair is not corrected until the new value is reviewed.',
+  'fleet.fuelCards.numberRepair.changed.missing': 'There is no Wataniya card on car {{car}} now.',
+  'fleet.fuelCards.numberRepair.changed.repairLine':
+    'The two records swapped their names by hand without the repair’s lines, so it cannot be known whether their opening balances were corrected.',
+  'fleet.fuelCards.numberRepair.changed.pinYes': 'stored',
+  'fleet.fuelCards.numberRepair.changed.pinNo': 'not stored',
+  'fleet.fuelCards.numberRepair.changed.photoOf': 'the photo of {{number}}',
+  'fleet.fuelCards.numberRepair.changed.photoOther': 'a photo uploaded since go-live',
+  'fleet.fuelCards.numberRepair.changed.none': 'none',
+  'fleet.fuelCards.numberRepair.field.missing': 'card',
+  'fleet.fuelCards.numberRepair.field.vehicle': 'car',
+  'fleet.fuelCards.numberRepair.field.number': 'card number',
+  'fleet.fuelCards.numberRepair.field.name': 'name',
+  'fleet.fuelCards.numberRepair.field.expiry': 'expiry date',
+  'fleet.fuelCards.numberRepair.field.photo': 'card photo',
+  'fleet.fuelCards.numberRepair.field.pin': 'PIN',
+  'fleet.fuelCards.numberRepair.field.repairLine': 'repair line',
+  'fleet.fuelCards.numberRepair.pair.title': 'The 0849 pair: name and opening balance swap',
+  'fleet.fuelCards.numberRepair.pair.ok': 'Match the review: {{ok}} of {{all}}',
+  'fleet.fuelCards.numberRepair.pair.held': 'Stopped: the record of car {{car}} was edited by hand',
+  'fleet.fuelCards.numberRepair.pair.heldBoth': 'Stopped: both records were edited by hand',
+  'fleet.fuelCards.numberRepair.pair.done': 'The two records swapped name and opening balance',
+  'fleet.fuelCards.numberRepair.pair.explain':
+    'Each card’s number and car are right, but each one’s name and opening balance are on the other record. The number, car, photo, expiry date and PIN stay; the two records swap only the name and the opening balance. Both numbers end in 0849, so each is told apart by its car.',
+  'fleet.fuelCards.numberRepair.pair.expires': 'Expires {{date}} · stays',
+  'fleet.fuelCards.numberRepair.pair.embossed':
+    'The name embossed on the card and the sticker of car {{car}}',
+  'fleet.fuelCards.numberRepair.pair.opening': 'Opening',
+  'fleet.fuelCards.numberRepair.pair.balanceNow': 'Balance now',
+  'fleet.fuelCards.numberRepair.pair.balanceDone': 'Balance',
+  'fleet.fuelCards.numberRepair.pair.delta': 'Difference',
+  'fleet.fuelCards.numberRepair.pair.statement': 'In the Wataniya statement of {{day}}: {{amount}}',
+  'fleet.fuelCards.numberRepair.pair.statementSame': 'Equal to the new opening',
+  'fleet.fuelCards.numberRepair.pair.statementDiffers':
+    'Differs from the new opening — see the alternative below',
+  'fleet.fuelCards.numberRepair.pair.swapStrip':
+    'The two records swap name and opening balance; nothing else moves',
+  'fleet.fuelCards.numberRepair.pair.adjustNone':
+    'Company sheet adjustments on these two cards since go-live: none.',
+  'fleet.fuelCards.numberRepair.pair.adjustSome':
+    'Company sheet adjustments on these two cards since go-live (matched by name — the other card’s figure):',
+  'fleet.fuelCards.numberRepair.pair.adjustItem':
+    'Car {{car}} · {{at}} · {{amount}} · balance after {{balance}} · {{file}}',
+  'fleet.fuelCards.numberRepair.pair.adjustNote':
+    'Approving the newest statement after the repair sets the balance of each of them.',
+  'fleet.fuelCards.numberRepair.pair.lock':
+    'In the fuel card reconciliation, approving the balances of these two cards stays locked («Part of the number repair») until this repair runs.',
+  'fleet.fuelCards.numberRepair.pair.alt': 'Alternative:',
+  'fleet.fuelCards.numberRepair.pair.altBody':
+    'the balance of car {{car}} on the Wataniya statement of {{day}} was {{statement}}, not {{opening}}. Its record could open at the statement’s figure instead of the go-live sheet’s; either way, approving the statement (✓) after the repair sets its balance.',
+  'fleet.fuelCards.numberRepair.bar.fix': '{{cards}} of {{all}} will be corrected',
+  'fleet.fuelCards.numberRepair.bar.skip': ' · {{cards}} skipped ({{units}})',
+  'fleet.fuelCards.numberRepair.bar.note':
+    'Runs once · recorded in the audit log and in each card’s log · no balance of the fifteen cards changes',
+  'fleet.fuelCards.numberRepair.bar.run': 'Run the repair',
+  'fleet.fuelCards.numberRepair.bar.noneReady': 'No cycle is ready to run.',
+  'fleet.fuelCards.numberRepair.bar.noGrant':
+    'Running it is for holders of both the edit-cards and approve-charges permissions.',
+  'fleet.fuelCards.numberRepair.done.title':
+    '{{records}} cards corrected: {{crossed}} numbers in three cycles, and the 0849 pair.',
+  'fleet.fuelCards.numberRepair.done.body':
+    'The repair is recorded in the audit log, and a line was written in each card’s log. No balance of the fifteen cards changed, and the two 0849 cards swapped their opening balance.',
+  'fleet.fuelCards.numberRepair.next.tag': 'Next step',
+  'fleet.fuelCards.numberRepair.next.title':
+    'Upload the newest Wataniya statement in the reconciliation and approve its rows',
+  'fleet.fuelCards.numberRepair.next.one':
+    'Each card takes the company’s balance for its own physical card; the repair itself changed no balance.',
+  'fleet.fuelCards.numberRepair.next.two':
+    'The fifteen «different number» marks disappear from the statement, because each card’s number is now on its record.',
+  'fleet.fuelCards.numberRepair.next.three':
+    'The «Part of the number repair» lock lifts from the two 0849 cards (cars 530 and 283), so their balances are approved like the other cards, and the statement sets each one’s balance whatever its opening.',
+  'fleet.fuelCards.numberRepair.next.open': 'Open the reconciliation',
+  'fleet.fuelCards.numberRepair.next.audit': 'Audit log',
+  'fleet.fuelCards.numberRepair.confirm.title': 'Run the card number repair',
+  'fleet.fuelCards.numberRepair.confirm.subtitle': '{{company}} · {{cards}} · runs once',
+  'fleet.fuelCards.numberRepair.confirm.leadCycles':
+    'Each physical card’s number moves to the record that carries its name and car, and with it the photo, the expiry date and the PIN stored for the number, if there is one.',
+  'fleet.fuelCards.numberRepair.confirm.leadPair':
+    'The records of cars {{a}} and {{b}} swap name and opening balance.',
+  'fleet.fuelCards.numberRepair.confirm.crossed': 'Crossed numbers: {{cards}}',
+  'fleet.fuelCards.numberRepair.confirm.moves': 'Moves with the physical card',
+  'fleet.fuelCards.numberRepair.confirm.noPin':
+    '{{numbers}} have no PIN stored, so the PIN is left empty on the records of cars {{cars}}. No PIN is shown on this page.',
+  'fleet.fuelCards.numberRepair.confirm.noPinOne':
+    '{{numbers}} has no PIN stored, so the PIN is left empty on the record of car {{cars}}. No PIN is shown on this page.',
+  'fleet.fuelCards.numberRepair.confirm.noPinTwo':
+    '{{numbers}} have no PIN stored, so the PIN is left empty on the records of cars {{cars}}. No PIN is shown on this page.',
+  'fleet.fuelCards.numberRepair.confirm.skipped': 'Skipped: a record changed',
+  'fleet.fuelCards.numberRepair.confirm.doneBefore': 'Corrected before',
+  'fleet.fuelCards.numberRepair.confirm.pairTitle':
+    'The 0849 pair: the two records swap name and opening balance',
+  'fleet.fuelCards.numberRepair.confirm.pairBody':
+    'The number, car, photo, expiry date and PIN stay. The balance changes by the difference in the opening balance:',
+  'fleet.fuelCards.numberRepair.confirm.pairCar': 'Car {{car}}',
+  'fleet.fuelCards.numberRepair.confirm.onRun': 'When it runs',
+  'fleet.fuelCards.numberRepair.confirm.once':
+    'It runs once. Every record is checked again at the moment it runs, and each cycle is corrected whole or not at all.',
+  'fleet.fuelCards.numberRepair.confirm.audit':
+    'It is recorded in the audit log under your name and the time it ran, with each record’s values before and after.',
+  'fleet.fuelCards.numberRepair.confirm.logLine':
+    'A line is written in each card’s log, such as: {{example}}',
+  'fleet.fuelCards.numberRepair.confirm.balances':
+    'The repair changes no balance of the fifteen cards. After it runs, upload the newest Wataniya statement in the reconciliation and approve its rows, so each card takes the company’s balance for its own physical card. Open balance requests on these cards go out afterwards on the right number.',
+  'fleet.fuelCards.numberRepair.confirm.reviewed':
+    'I reviewed the rows and the card photos, and I agree to run it.',
+  'fleet.fuelCards.numberRepair.confirm.run': 'Confirm and run ✓',
+  'fleet.fuelCards.numberRepair.confirm.back': 'Back',
+  'fleet.fuelCards.numberRepair.toast.done': '{{cards}} corrected.',
+  'fleet.fuelCards.numberRepair.toast.doneNote':
+    'Recorded in the audit log and in each card’s log.',
+  'fleet.fuelCards.numberRepair.toast.held':
+    'Not run: a record changed after the review in {{units}}',
+  'fleet.fuelCards.numberRepair.toast.nothing':
+    'Nothing was written: everything asked was corrected before.',
+  'fleet.fuelCards.history.kind.dataFix': 'Data correction',
+  'fleet.fuelCards.history.dataFix.number':
+    'Card number corrected: was {{before}}, now {{after}} — go-live data correction',
+  'fleet.fuelCards.history.dataFix.nameSwap':
+    'Name corrected: was {{before}}, now {{after}}, and the opening balance from {{from}} to {{to}} — go-live data correction',
+  'fleet.fuelCards.history.dataFix.movedAll':
+    'Moved with the number: the PIN, the photo and the expiry date ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedNoPin':
+    'Moved with the number: the photo and the expiry date ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedNoPhoto':
+    'Moved with the number: the PIN and the expiry date ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedExpiry':
+    'Moved with the number: the expiry date ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.sameDate': 'same date',
+  'fleet.fuelCards.history.dataFix.noPin': 'No PIN is stored for this number — left empty',
+  'fleet.fuelCards.history.dataFix.kept': 'The name, car and balance did not change',
+  'fleet.fuelCards.history.dataFix.nameSwapKept':
+    'The number, car, photo, expiry date and PIN did not change',
+  'fleet.fuelCards.history.beforeRepair': 'Logged before the repair',
+  'fleet.fuelCards.image.thumbOnly':
+    'The full photo is for holders of the PIN-reveal permission only.',
+  'fleet.fuelCards.image.noThumb': 'There is no thumbnail for this card.',
+  'fleet.fuelCards.image.thumbAlt': 'Card photo thumbnail',
+  'fleet.fuelCards.reconcile.inRepairLine':
+    'Approving this card’s balance is locked until the card number repair runs; rejecting (✗) is available.',
+  'fleet.fuelCards.reconcile.inRepairLineNote':
+    'Cards marked «Part of the number repair» take no balance approval (✓) until the card number repair runs — their names sit on each other’s records, so the sheet’s figure would land on the other card. Rejecting (✗) is available.',
+  'fleet.fuelCards.numberRepair.confirm.leadPairOnly':
+    'The records of cars {{a}} and {{b}} swap name and opening balance.',
+  'fleet.fuelCards.numberRepair.pair.statementDiffersDone':
+    'Differs from the new opening — approving the newest statement sets the balance',
   'fleet.fuelCards.history.kind.sheetAdjust': 'Adjusted from the company sheet',
   'fleet.fuelCards.history.kind.sheetReject': 'Sheet adjustment rejected',
   'fleet.fuelCards.history.by': 'By {{name}}',
@@ -12361,6 +12680,16 @@ const ar: Record<string, string> = {
   'hr.requisitions.priority.normal': 'عادية',
   'hr.requisitions.priority.high': 'مرتفعة',
   'hr.requisitions.priority.urgent': 'عاجلة',
+  'hr.settings.title': 'الإعدادات',
+  'hr.settings.navLabel': 'أقسام الإعدادات',
+  'hr.settings.group.recruitment': 'إعدادات التوظيف',
+  'hr.settings.group.communication': 'التواصل',
+  'hr.settings.tab.recruitment-form': 'نموذج التقديم',
+  'hr.settings.tab.applicant-sources': 'مصادر التقديم',
+  'hr.settings.tab.interview-stages': 'مراحل المقابلات',
+  'hr.settings.tab.evaluation-phases': 'مراحل التقييم',
+  'hr.settings.tab.announcements': 'الإعلانات',
+  'hr.settings.tab.notification-rules': 'قواعد الإشعارات',
   'hr.rules.title': 'قواعد الإشعارات',
   'hr.rules.subtitle': 'لما يحصل شيء معين، يوصل الإشعار لمن يهمه — من غير ما حد يفتكر.',
   'hr.rules.new': 'قاعدة جديدة',
@@ -13007,7 +13336,6 @@ const ar: Record<string, string> = {
   'batches.package.retry': 'إعادة الإنشاء',
   'batches.package.downloadFailed': 'تعذّر فتح الملف.',
   'batches.columns.code': 'الدفعة',
-  'batches.columns.phase': 'الفحص',
   'batches.columns.title': 'العنوان',
   'batches.columns.status': 'الحالة',
   'batches.columns.progress': 'تم البت',
@@ -13444,6 +13772,25 @@ const ar: Record<string, string> = {
   'nationalIdOcr.review.portrait': 'الصورة الشخصية من البطاقة',
   'nationalIdOcr.review.portraitHint': 'مقتطعة من الوجه الأمامي كما هي مطبوعة.',
   'nationalIdOcr.review.download': 'تنزيل',
+  'nationalIdOcr.review.quality.sideFront': 'الوجه الأمامي',
+  'nationalIdOcr.review.quality.sideBack': 'الوجه الخلفي',
+  'nationalIdOcr.review.quality.reject':
+    'تعذّرت قراءة صورة {{side}} ({{why}}). أعِد تصويرها.',
+  'nationalIdOcr.review.quality.rejectFields':
+    'تُركت حقول هذا الوجه فارغة؛ فالقيمة الخطأ في السجل أصعب كشفًا من الحقل الفارغ.',
+  'nationalIdOcr.review.quality.retake': 'إعادة تصوير {{side}}',
+  'nationalIdOcr.review.quality.degraded':
+    'صورة {{side}} غير واضحة بالقدر الكافي ({{why}})؛ راجع هذه الحقول أمام البطاقة بعناية.',
+  'nationalIdOcr.review.quality.notRead': 'لم تُقرأ؛ أعِد تصوير هذا الوجه.',
+  'nationalIdOcr.review.quality.notReadBadge': 'لم تُقرأ',
+  'nationalIdOcr.review.quality.reasonJoin': '، ',
+  'nationalIdOcr.review.quality.reason.blurred': 'الصورة مهزوزة',
+  'nationalIdOcr.review.quality.reason.glare': 'انعكاس ضوء على البطاقة',
+  'nationalIdOcr.review.quality.reason.low_contrast': 'الإضاءة غير كافية',
+  'nationalIdOcr.review.quality.reason.too_small': 'البطاقة بعيدة عن الكاميرا',
+  'nationalIdOcr.review.quality.reason.card_not_located': 'لم تظهر البطاقة في الصورة',
+  'nationalIdOcr.review.quality.reason.bad_aspect': 'البطاقة غير مكتملة في الصورة',
+  'nationalIdOcr.review.quality.reason.unclear': 'الوضوح غير كافٍ',
   'nationalIdOcr.camera.take': 'التقاط صورة',
   'nationalIdOcr.camera.retake': 'إعادة الالتقاط',
   'nationalIdOcr.camera.titleFront': 'الوجه الأمامي للبطاقة',
@@ -13453,6 +13800,11 @@ const ar: Record<string, string> = {
   'nationalIdOcr.camera.cancel': 'إغلاق',
   'nationalIdOcr.camera.starting': 'جارٍ تشغيل الكاميرا…',
   'nationalIdOcr.camera.unavailable': 'تعذّر فتح الكاميرا. اسمح لهذا الموقع باستخدام الكاميرا، أو استخدم رفع صورة.',
+  'nationalIdOcr.camera.flip.frontDone': 'تم تصوير الوجه الأمامي',
+  'nationalIdOcr.camera.flip.title': 'اقلب البطاقة الآن',
+  'nationalIdOcr.camera.flip.body': 'وجّه الوجه الخلفي للبطاقة إلى الكاميرا، ثم اضغط الزر أدناه.',
+  'nationalIdOcr.camera.flip.scanBack': 'تصوير الوجه الخلفي',
+  'nationalIdOcr.camera.flip.retakeFront': 'إعادة تصوير الوجه الأمامي',
   'nationalIdOcr.camera.guide.noCard': 'ضع البطاقة داخل الإطار',
   'nationalIdOcr.camera.guide.tooFar': 'اقترب قليلًا',
   'nationalIdOcr.camera.guide.tooClose': 'ابتعد قليلًا',
@@ -16463,6 +16815,275 @@ const ar: Record<string, string> = {
     'لا يُضاف من هنا: الشيت يذكره باسم كارت لشركة أخرى',
   'fleet.fuelCards.reconcile.newCards.blockedTooLong':
     'لا يُضاف من هنا: اسمه أطول من {{max}} حرفًا',
+  'fleet.fuelCards.numberRepair.title': 'تصحيح أرقام الكروت — {{company}}',
+  'fleet.fuelCards.numberRepair.crumb': 'تصحيح أرقام الكروت',
+  'fleet.fuelCards.numberRepair.pendingTag': 'لم يُنفَّذ بعد · يُنفَّذ مرة واحدة',
+  'fleet.fuelCards.numberRepair.partialTag': 'نُفِّذ جزئيًّا · صُحِّح {{done}} من {{all}}',
+  'fleet.fuelCards.numberRepair.doneTag': 'نُفِّذ في {{at}} · بواسطة {{name}}',
+  'fleet.fuelCards.numberRepair.doneTagNoName': 'نُفِّذ في {{at}}',
+  'fleet.fuelCards.numberRepair.readNow': 'مراجعة من بيانات النظام الآن · {{at}}',
+  'fleet.fuelCards.numberRepair.readDone': 'روجع من بيانات النظام في {{at}}',
+  'fleet.fuelCards.numberRepair.refresh': 'تحديث المراجعة',
+  'fleet.fuelCards.numberRepair.back': 'رجوع إلى مطابقة الأرصدة',
+  'fleet.fuelCards.numberRepair.and': ' و',
+  'fleet.fuelCards.numberRepair.cycleName': 'دائرة {{n}}',
+  'fleet.fuelCards.numberRepair.pairName': 'زوج 0849',
+  'fleet.fuelCards.numberRepair.now': 'الآن',
+  'fleet.fuelCards.numberRepair.after': 'بعده',
+  'fleet.fuelCards.numberRepair.was': 'كان',
+  'fleet.fuelCards.numberRepair.became': 'أصبح',
+  'fleet.fuelCards.numberRepair.stays': 'يبقى',
+  'fleet.fuelCards.numberRepair.entry.title':
+    'تصحيح أرقام الكروت — مطلوب مرة واحدة قبل اعتماد أرصدة وطنية',
+  'fleet.fuelCards.numberRepair.entry.body':
+    'في {{records}} كارتًا من وطنية رقمٌ أو اسمٌ لا يخص سجله منذ التشغيل في {{day}}: {{crossed}} رقمًا متبادلًا في ثلاث دوائر، وزوج 0849 تبادل الاسم والرصيد الافتتاحي. راجِع التصحيح ونفِّذه، ثم ارفع أحدث كشف وطنية هنا.',
+  'fleet.fuelCards.numberRepair.entry.open': 'مراجعة التصحيح',
+  'fleet.fuelCards.numberRepair.rule.why': 'لماذا هذا التصحيح؟',
+  'fleet.fuelCards.numberRepair.rule.whyBody':
+    'عند التشغيل في {{day}} سُجِّلت أرقام {{crossed}} كارتًا من وطنية على سجلات غير سجلاتها، وتبادل كارتا 0849 الاسم والرصيد الافتتاحي. صور الكروت وكشفا وطنية وسجل السيارات تتفق على ذلك.',
+  'fleet.fuelCards.numberRepair.rule.moves': 'ينتقل مع الكارت الفعلي (الرقم)',
+  'fleet.fuelCards.numberRepair.rule.number': 'رقم الكارت',
+  'fleet.fuelCards.numberRepair.rule.pin': 'الـ PIN',
+  'fleet.fuelCards.numberRepair.rule.photo': 'صورة الكارت',
+  'fleet.fuelCards.numberRepair.rule.expiry': 'تاريخ الانتهاء',
+  'fleet.fuelCards.numberRepair.rule.stays': 'يبقى في سجله',
+  'fleet.fuelCards.numberRepair.rule.name': 'الاسم',
+  'fleet.fuelCards.numberRepair.rule.car': 'السيارة',
+  'fleet.fuelCards.numberRepair.rule.balance': 'الرصيد',
+  'fleet.fuelCards.numberRepair.rule.log': 'سجل الكارت',
+  'fleet.fuelCards.numberRepair.rule.balances': 'الأرصدة',
+  'fleet.fuelCards.numberRepair.rule.balancesBody':
+    'أرصدة الكروت لا تتغيّر بالتصحيح؛ بعد التنفيذ ارفع أحدث كشف وطنية في مطابقة الأرصدة واعتمد الصفوف، فيأخذ كل كارت رصيده من الشركة لكارته الفعلي.',
+  'fleet.fuelCards.numberRepair.rule.balancesPair':
+    'زوج 0849 وحده يتبادل الرصيد الافتتاحي، كما هو مبيَّن أدناه.',
+  'fleet.fuelCards.numberRepair.rule.pinRule': 'الـ PIN يتبع الرقم المطبوع (قرارك)',
+  'fleet.fuelCards.numberRepair.rule.photos':
+    'صور الكروت هنا رسوم مصغّرة لا تُظهر الرقم الكامل؛ الصورة الكاملة لمن لديه صلاحية إظهار الـ PIN فقط.',
+  'fleet.fuelCards.numberRepair.kpi.all': 'كروت يشملها التصحيح',
+  'fleet.fuelCards.numberRepair.kpi.allNote': 'كلها من وطنية',
+  'fleet.fuelCards.numberRepair.kpi.cycles': 'أرقام متبادلة في دوائر',
+  'fleet.fuelCards.numberRepair.kpi.cyclesNote': '{{count}} دوائر: {{sizes}} كروت',
+  'fleet.fuelCards.numberRepair.kpi.pair': 'زوج 0849',
+  'fleet.fuelCards.numberRepair.kpi.pairNote': 'يتبادلان الاسم والرصيد الافتتاحي',
+  'fleet.fuelCards.numberRepair.kpi.noPin': 'أرقام صحيحة بلا PIN مسجَّل',
+  'fleet.fuelCards.numberRepair.kpi.noPinNote': 'يُترك الـ PIN فارغًا على سجلات سيارات {{cars}}',
+  'fleet.fuelCards.numberRepair.kpi.noPinNone': 'لا يبقى سجل من سجلات التصحيح بلا PIN.',
+  'fleet.fuelCards.numberRepair.count.number.one': 'رقم واحد',
+  'fleet.fuelCards.numberRepair.count.number.two': 'رقمان',
+  'fleet.fuelCards.numberRepair.count.number.few': '{{count}} أرقام',
+  'fleet.fuelCards.numberRepair.count.number.many': '{{count}} رقمًا',
+  'fleet.fuelCards.numberRepair.count.number.other': '{{count}} رقم',
+  'fleet.fuelCards.numberRepair.count.numberUnit.one': 'رقم',
+  'fleet.fuelCards.numberRepair.count.numberUnit.two': 'رقمان',
+  'fleet.fuelCards.numberRepair.count.numberUnit.few': 'أرقام',
+  'fleet.fuelCards.numberRepair.count.numberUnit.many': 'رقمًا',
+  'fleet.fuelCards.numberRepair.count.numberUnit.other': 'رقم',
+  'fleet.fuelCards.numberRepair.alert.one':
+    'سجل واحد يختلف عن القيمة المتوقعة: سيارة {{car}} في {{unit}}، عُدِّل يدويًّا. لن يُلمس، وتتوقف معه {{unit}} كلها ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.many':
+    'أكثر من سجل يختلف عن القيمة المتوقعة في {{unit}}: سيارات {{cars}}، عُدِّلت يدويًّا. لن تُلمس، وتتوقف معها {{unit}} كلها ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.pairOne':
+    'سجل واحد يختلف عن القيمة المتوقعة: سيارة {{car}} في زوج 0849، عُدِّل يدويًّا. لن يُلمس، ويتوقف معه الزوج كله ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.pairMany':
+    'سجلا زوج 0849 يختلفان عن القيمة المتوقعة، عُدِّلا يدويًّا. لن يُلمسا ({{held}})',
+  'fleet.fuelCards.numberRepair.alert.rest': '؛ ويُصحَّح الباقي ({{rest}}).',
+  'fleet.fuelCards.numberRepair.alert.end': '.',
+  'fleet.fuelCards.numberRepair.cycle.title': 'دائرة {{n}}: {{cards}}',
+  'fleet.fuelCards.numberRepair.cycle.whole': 'تُصحَّح كاملة أو لا تُصحَّح',
+  'fleet.fuelCards.numberRepair.cycle.ok': 'مطابقة للمراجعة: {{ok}} من {{all}}',
+  'fleet.fuelCards.numberRepair.cycle.held': 'موقوفة: سجل سيارة {{car}} عُدِّل يدويًّا',
+  'fleet.fuelCards.numberRepair.cycle.heldMany': 'موقوفة: سجلات سيارات {{cars}} عُدِّلت يدويًّا',
+  'fleet.fuelCards.numberRepair.cycle.done': 'صُحِّحت الدائرة: {{cards}}',
+  'fleet.fuelCards.numberRepair.cycle.explain':
+    'سجل كل سيارة يحمل رقم كارت السيارة التالية، وآخرها يحمل رقم كارت الأولى. لا يمكن تصحيح كارت واحد يدويًّا: رقمه الصحيح مسجَّل على سجل آخر، والنظام لا يقبل رقمًا واحدًا على سجلين؛ لذلك تُصحَّح الدائرة كلها دفعة واحدة.',
+  'fleet.fuelCards.numberRepair.cycle.arrow':
+    'يُقرأ السهم: سجل سيارة {{from}} يحمل رقم كارت سيارة {{to}}، وهو {{number}}',
+  'fleet.fuelCards.numberRepair.cycle.backToStart': 'تعود الدائرة إلى أولها',
+  'fleet.fuelCards.numberRepair.col.car': 'السيارة',
+  'fleet.fuelCards.numberRepair.col.nameBalance': 'الاسم والرصيد',
+  'fleet.fuelCards.numberRepair.col.number': 'رقم الكارت',
+  'fleet.fuelCards.numberRepair.col.expiry': 'تاريخ الانتهاء',
+  'fleet.fuelCards.numberRepair.col.photo': 'صورة الكارت',
+  'fleet.fuelCards.numberRepair.col.photoPair': 'الصورة',
+  'fleet.fuelCards.numberRepair.col.name': 'الاسم',
+  'fleet.fuelCards.numberRepair.col.balance': 'الرصيد',
+  'fleet.fuelCards.numberRepair.col.check': 'الفحص الآن',
+  'fleet.fuelCards.numberRepair.col.result': 'النتيجة',
+  'fleet.fuelCards.numberRepair.phone.number': 'رقم الكارت — ينتقل مع الكارت الفعلي',
+  'fleet.fuelCards.numberRepair.phone.numberStays': 'رقم الكارت — يبقى',
+  'fleet.fuelCards.numberRepair.phone.photoStays': 'الصورة — تبقى',
+  'fleet.fuelCards.numberRepair.row.balance': 'الرصيد {{amount}} ج.م',
+  'fleet.fuelCards.numberRepair.row.stays': 'الاسم والسيارة والرصيد تبقى',
+  'fleet.fuelCards.numberRepair.row.chassisTypo':
+    'في الاسم خطأ في رقم الشاسيه؛ اللوحة تطابق سجل السيارات.',
+  'fleet.fuelCards.numberRepair.row.afterIsOn': 'الرقم الصحيح الآن على سجل سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.pin.moves': 'الـ PIN ينتقل مع الرقم',
+  'fleet.fuelCards.numberRepair.pin.moved': 'انتقل الـ PIN مع الرقم',
+  'fleet.fuelCards.numberRepair.pin.none': 'لا يوجد PIN مسجَّل لهذا الرقم — يُترك فارغًا',
+  'fleet.fuelCards.numberRepair.pin.noneDone': 'لا يوجد PIN مسجَّل لهذا الرقم — تُرك فارغًا',
+  'fleet.fuelCards.numberRepair.pin.goes':
+    'الـ PIN الحالي يذهب مع {{number}} إلى سجل سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.pin.went': 'ذهب الـ PIN السابق مع {{number}} إلى سجل سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.pin.noneNow': 'لا يحمل هذا السجل PIN الآن.',
+  'fleet.fuelCards.numberRepair.pin.stays': 'الـ PIN يبقى مع الرقم',
+  'fleet.fuelCards.numberRepair.expiry.expected': 'المتوقع {{date}}',
+  'fleet.fuelCards.numberRepair.expiry.changes': 'يتغيّر',
+  'fleet.fuelCards.numberRepair.expiry.same': 'التاريخ نفسه',
+  'fleet.fuelCards.numberRepair.photo.ofCar': 'كارت سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.photo.sticker': 'ملصق سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.photo.open': 'فتح الصورة الكاملة',
+  'fleet.fuelCards.numberRepair.state.ok': 'مطابق للمراجعة',
+  'fleet.fuelCards.numberRepair.state.done': 'صُحِّح',
+  'fleet.fuelCards.numberRepair.state.changed': 'تغيّر — لن يُلمس',
+  'fleet.fuelCards.numberRepair.state.held': 'موقوف مع الدائرة',
+  'fleet.fuelCards.numberRepair.state.heldPair': 'موقوف مع الزوج',
+  'fleet.fuelCards.numberRepair.topUps.title': 'شحنات سُجِّلت على هذا السجل منذ التشغيل:',
+  'fleet.fuelCards.numberRepair.topUps.none': 'لم تُسجَّل شحنات على هذا السجل منذ التشغيل.',
+  'fleet.fuelCards.numberRepair.topUps.note': 'للعلم فقط · لا يغيّرها التصحيح',
+  'fleet.fuelCards.numberRepair.topUps.more': '+{{count}}',
+  'fleet.fuelCards.numberRepair.changed.lead':
+    'عُدِّل {{what}} يدويًّا بعد التشغيل: القيمة المتوقعة {{expected}} والقيمة الآن {{now}}',
+  'fleet.fuelCards.numberRepair.changed.at': '— في {{at}}',
+  'fleet.fuelCards.numberRepair.changed.by': 'بواسطة {{by}}',
+  'fleet.fuelCards.numberRepair.changed.stop': '.',
+  'fleet.fuelCards.numberRepair.changed.tail':
+    'لا يُلمس هذا السجل، ولا تُصحَّح دائرته حتى تُراجَع القيمة الجديدة.',
+  'fleet.fuelCards.numberRepair.changed.tailPair':
+    'لا يُلمس هذا السجل، ولا يُصحَّح الزوج حتى تُراجَع القيمة الجديدة.',
+  'fleet.fuelCards.numberRepair.changed.missing': 'لا يوجد كارت وطنية على سيارة {{car}} الآن.',
+  'fleet.fuelCards.numberRepair.changed.repairLine':
+    'تبادل السجلان الاسم يدويًّا دون سطري التصحيح، فلا يُعرف إن كان الرصيد الافتتاحي قد صُحِّح.',
+  'fleet.fuelCards.numberRepair.changed.pinYes': 'مسجَّل',
+  'fleet.fuelCards.numberRepair.changed.pinNo': 'غير مسجَّل',
+  'fleet.fuelCards.numberRepair.changed.photoOf': 'صورة {{number}}',
+  'fleet.fuelCards.numberRepair.changed.photoOther': 'صورة رُفعت بعد التشغيل',
+  'fleet.fuelCards.numberRepair.changed.none': 'لا توجد',
+  'fleet.fuelCards.numberRepair.field.missing': 'الكارت',
+  'fleet.fuelCards.numberRepair.field.vehicle': 'السيارة',
+  'fleet.fuelCards.numberRepair.field.number': 'رقم الكارت',
+  'fleet.fuelCards.numberRepair.field.name': 'الاسم',
+  'fleet.fuelCards.numberRepair.field.expiry': 'تاريخ الانتهاء',
+  'fleet.fuelCards.numberRepair.field.photo': 'صورة الكارت',
+  'fleet.fuelCards.numberRepair.field.pin': 'الـ PIN',
+  'fleet.fuelCards.numberRepair.field.repairLine': 'سطر التصحيح',
+  'fleet.fuelCards.numberRepair.pair.title': 'زوج 0849: الاسم والرصيد الافتتاحي يتبادلان',
+  'fleet.fuelCards.numberRepair.pair.ok': 'مطابقان للمراجعة: {{ok}} من {{all}}',
+  'fleet.fuelCards.numberRepair.pair.held': 'موقوف: سجل سيارة {{car}} عُدِّل يدويًّا',
+  'fleet.fuelCards.numberRepair.pair.heldBoth': 'موقوف: السجلان عُدِّلا يدويًّا',
+  'fleet.fuelCards.numberRepair.pair.done': 'تبادل السجلان الاسم والرصيد الافتتاحي',
+  'fleet.fuelCards.numberRepair.pair.explain':
+    'رقم كل كارت وسيارته صحيحان، لكن اسم كل منهما ورصيده الافتتاحي على السجل الآخر. يبقى الرقم والسيارة والصورة وتاريخ الانتهاء والـ PIN، ويتبادل السجلان الاسم والرصيد الافتتاحي فقط. الرقمان ينتهيان بـ 0849، فيُميَّز كل منهما بسيارته.',
+  'fleet.fuelCards.numberRepair.pair.expires': 'ينتهي {{date}} · يبقى',
+  'fleet.fuelCards.numberRepair.pair.embossed': 'الاسم المنقوش على الكارت وملصق سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.pair.opening': 'الافتتاحي',
+  'fleet.fuelCards.numberRepair.pair.balanceNow': 'الرصيد الآن',
+  'fleet.fuelCards.numberRepair.pair.balanceDone': 'الرصيد',
+  'fleet.fuelCards.numberRepair.pair.delta': 'الفرق',
+  'fleet.fuelCards.numberRepair.pair.statement': 'في كشف وطنية {{day}}: {{amount}}',
+  'fleet.fuelCards.numberRepair.pair.statementSame': 'يساوي الافتتاحي الجديد',
+  'fleet.fuelCards.numberRepair.pair.statementDiffers':
+    'يختلف عن الافتتاحي الجديد — انظر البديل أدناه',
+  'fleet.fuelCards.numberRepair.pair.swapStrip':
+    'يتبادل السجلان الاسم والرصيد الافتتاحي؛ لا ينتقل شيء غيرهما',
+  'fleet.fuelCards.numberRepair.pair.adjustNone':
+    'تعديلات شيت الشركة على هذين الكارتين منذ التشغيل: لا توجد.',
+  'fleet.fuelCards.numberRepair.pair.adjustSome':
+    'تعديلات شيت الشركة على هذين الكارتين منذ التشغيل — اعتُمدت بالاسم، فهي رصيد الكارت الآخر:',
+  'fleet.fuelCards.numberRepair.pair.adjustItem':
+    'سيارة {{car}} · {{at}} · {{amount}} · الرصيد بعدها {{balance}} · {{file}}',
+  'fleet.fuelCards.numberRepair.pair.adjustNote': 'يضبط اعتماد أحدث كشف بعد التنفيذ رصيد كل منهما.',
+  'fleet.fuelCards.numberRepair.pair.lock':
+    'في «مطابقة أرصدة الكروت» يبقى اعتماد رصيدي هذين الكارتين مقفلًا («ضمن تصحيح الأرقام») حتى يُنفَّذ هذا التصحيح.',
+  'fleet.fuelCards.numberRepair.pair.alt': 'بديل:',
+  'fleet.fuelCards.numberRepair.pair.altBody':
+    'رصيد سيارة {{car}} في كشف وطنية {{day}} كان {{statement}} لا {{opening}}. يمكن أن يُفتتح سجلها برقم الكشف بدلًا من رقم شيت التشغيل؛ وفي الحالتين يضبط اعتماد الكشف (✓) بعد التنفيذ رصيدها.',
+  'fleet.fuelCards.numberRepair.bar.fix': 'سيُصحَّح {{cards}} من {{all}}',
+  'fleet.fuelCards.numberRepair.bar.skip': ' · يُتخطّى {{cards}} ({{units}})',
+  'fleet.fuelCards.numberRepair.bar.note':
+    'يُنفَّذ مرة واحدة · يُسجَّل في سجل التدقيق وفي سجل كل كارت · لا يتغيّر رصيد أي من الكروت الخمسة عشر',
+  'fleet.fuelCards.numberRepair.bar.run': 'تنفيذ التصحيح',
+  'fleet.fuelCards.numberRepair.bar.noneReady': 'لا توجد دائرة جاهزة للتنفيذ.',
+  'fleet.fuelCards.numberRepair.bar.noGrant':
+    'التنفيذ لمن لديه صلاحيتا تعديل الكروت واعتماد الشحن.',
+  'fleet.fuelCards.numberRepair.done.title':
+    'صُحِّح {{records}} كارتًا: {{crossed}} رقمًا في ثلاث دوائر، وزوج 0849.',
+  'fleet.fuelCards.numberRepair.done.body':
+    'سُجِّل التصحيح في سجل التدقيق، وكُتب سطر في سجل كل كارت. لم يتغيّر رصيد أي من الكروت الخمسة عشر، وتبادل كارتا 0849 الرصيد الافتتاحي.',
+  'fleet.fuelCards.numberRepair.next.tag': 'الخطوة التالية',
+  'fleet.fuelCards.numberRepair.next.title': 'ارفع أحدث كشف وطنية في مطابقة الأرصدة واعتمد الصفوف',
+  'fleet.fuelCards.numberRepair.next.one':
+    'يأخذ كل كارت رصيده من الشركة لكارته الفعلي؛ التصحيح نفسه لم يغيّر أي رصيد.',
+  'fleet.fuelCards.numberRepair.next.two':
+    'تختفي علامات «رقم مختلف» الخمس عشرة من الكشف، لأن رقم كل كارت أصبح على سجله.',
+  'fleet.fuelCards.numberRepair.next.three':
+    'يُرفع القفل «ضمن تصحيح الأرقام» عن كارتي 0849 (سيارتا 530 و283)، فيُعتمد رصيداهما كبقية الكروت، ويضبط الكشف رصيد كل منهما أيًّا كان الرصيد الافتتاحي.',
+  'fleet.fuelCards.numberRepair.next.open': 'فتح مطابقة الأرصدة',
+  'fleet.fuelCards.numberRepair.next.audit': 'سجل التدقيق',
+  'fleet.fuelCards.numberRepair.confirm.title': 'تنفيذ تصحيح أرقام الكروت',
+  'fleet.fuelCards.numberRepair.confirm.subtitle': '{{company}} · {{cards}} · يُنفَّذ مرة واحدة',
+  'fleet.fuelCards.numberRepair.confirm.leadCycles':
+    'سيُنقل رقم كل كارت فعلي إلى السجل الذي يحمل اسمه وسيارته، ومعه الصورة وتاريخ الانتهاء والـ PIN المسجَّل للرقم إن وُجد.',
+  'fleet.fuelCards.numberRepair.confirm.leadPair':
+    'ويتبادل سجلا سيارتي {{a}} و{{b}} الاسم والرصيد الافتتاحي.',
+  'fleet.fuelCards.numberRepair.confirm.crossed': 'الأرقام المتبادلة: {{cards}}',
+  'fleet.fuelCards.numberRepair.confirm.moves': 'ينتقل مع الكارت الفعلي',
+  'fleet.fuelCards.numberRepair.confirm.noPin':
+    '{{numbers}} ليس لها PIN مسجَّل، فيُترك الـ PIN فارغًا على سجلات سيارات {{cars}}. ولا يُعرض أي PIN في هذه الصفحة.',
+  'fleet.fuelCards.numberRepair.confirm.noPinOne':
+    '{{numbers}} ليس له PIN مسجَّل، فيُترك الـ PIN فارغًا على سجل سيارة {{cars}}. ولا يُعرض أي PIN في هذه الصفحة.',
+  'fleet.fuelCards.numberRepair.confirm.noPinTwo':
+    '{{numbers}} ليس لهما PIN مسجَّل، فيُترك الـ PIN فارغًا على سجلي سيارتي {{cars}}. ولا يُعرض أي PIN في هذه الصفحة.',
+  'fleet.fuelCards.numberRepair.confirm.skipped': 'تُتخطّى: سجل تغيّر',
+  'fleet.fuelCards.numberRepair.confirm.doneBefore': 'صُحِّحت من قبل',
+  'fleet.fuelCards.numberRepair.confirm.pairTitle':
+    'زوج 0849: يتبادل السجلان الاسم والرصيد الافتتاحي',
+  'fleet.fuelCards.numberRepair.confirm.pairBody':
+    'يبقى الرقم والسيارة والصورة وتاريخ الانتهاء والـ PIN. ويتغيّر الرصيد بقدر الفرق في الرصيد الافتتاحي:',
+  'fleet.fuelCards.numberRepair.confirm.pairCar': 'سيارة {{car}}',
+  'fleet.fuelCards.numberRepair.confirm.onRun': 'عند التنفيذ',
+  'fleet.fuelCards.numberRepair.confirm.once':
+    'يُنفَّذ مرة واحدة. يُعاد فحص كل سجل لحظة التنفيذ، وتُصحَّح كل دائرة كاملة أو لا تُصحَّح.',
+  'fleet.fuelCards.numberRepair.confirm.audit':
+    'يُسجَّل في سجل التدقيق باسمك ووقت التنفيذ، مع قيم كل سجل قبل التصحيح وبعده.',
+  'fleet.fuelCards.numberRepair.confirm.logLine': 'يُكتب سطر في سجل كل كارت، مثل: {{example}}',
+  'fleet.fuelCards.numberRepair.confirm.balances':
+    'لا يتغيّر رصيد أي من الكروت الخمسة عشر بالتصحيح. بعد التنفيذ ارفع أحدث كشف وطنية في مطابقة الأرصدة واعتمد الصفوف، فيأخذ كل كارت رصيده من الشركة لكارته الفعلي. وطلبات الرصيد المفتوحة على هذه الكروت تخرج بعده على الرقم الصحيح.',
+  'fleet.fuelCards.numberRepair.confirm.reviewed': 'راجعتُ الصفوف وصور الكروت، وأوافق على التنفيذ.',
+  'fleet.fuelCards.numberRepair.confirm.run': 'تأكيد التنفيذ ✓',
+  'fleet.fuelCards.numberRepair.confirm.back': 'رجوع',
+  'fleet.fuelCards.numberRepair.toast.done': 'صُحِّح {{cards}}.',
+  'fleet.fuelCards.numberRepair.toast.doneNote': 'سُجِّل التصحيح في سجل التدقيق وفي سجل كل كارت.',
+  'fleet.fuelCards.numberRepair.toast.held': 'لم يُنفَّذ: تغيّر سجل بعد المراجعة في {{units}}',
+  'fleet.fuelCards.numberRepair.toast.nothing': 'لم يُكتب شيء: كل ما طُلب صُحِّح من قبل.',
+  'fleet.fuelCards.history.kind.dataFix': 'تصحيح بيانات',
+  'fleet.fuelCards.history.dataFix.number':
+    'صُحّح رقم الكارت: كان {{before}} وأصبح {{after}} — تصحيح بيانات التشغيل',
+  'fleet.fuelCards.history.dataFix.nameSwap':
+    'صُحّح الاسم: كان {{before}} وأصبح {{after}}، والرصيد الافتتاحي من {{from}} إلى {{to}} — تصحيح بيانات التشغيل',
+  'fleet.fuelCards.history.dataFix.movedAll':
+    'انتقل مع الرقم: الـ PIN والصورة وتاريخ الانتهاء ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedNoPin':
+    'انتقل مع الرقم: الصورة وتاريخ الانتهاء ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedNoPhoto':
+    'انتقل مع الرقم: الـ PIN وتاريخ الانتهاء ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.movedExpiry': 'انتقل مع الرقم: تاريخ الانتهاء ({{expiry}})',
+  'fleet.fuelCards.history.dataFix.sameDate': 'التاريخ نفسه',
+  'fleet.fuelCards.history.dataFix.noPin': 'لا يوجد PIN مسجَّل لهذا الرقم — تُرك فارغًا',
+  'fleet.fuelCards.history.dataFix.kept': 'الاسم والسيارة والرصيد لم تتغيّر',
+  'fleet.fuelCards.history.dataFix.nameSwapKept':
+    'الرقم والسيارة والصورة وتاريخ الانتهاء والـ PIN لم تتغيّر',
+  'fleet.fuelCards.history.beforeRepair': 'سُجِّلت قبل التصحيح',
+  'fleet.fuelCards.image.thumbOnly': 'الصورة الكاملة لمن لديه صلاحية إظهار الـ PIN فقط.',
+  'fleet.fuelCards.image.noThumb': 'لا توجد صورة مصغّرة لهذا الكارت.',
+  'fleet.fuelCards.image.thumbAlt': 'صورة مصغّرة للكارت',
+  'fleet.fuelCards.reconcile.inRepairLine':
+    'اعتماد رصيد هذا الكارت مقفل حتى يُنفَّذ «تصحيح أرقام الكروت»؛ والرفض (✗) متاح.',
+  'fleet.fuelCards.reconcile.inRepairLineNote':
+    'الكروت المعلَّمة «ضمن تصحيح الأرقام» لا يُعتمد رصيدها (✓) حتى يُنفَّذ «تصحيح أرقام الكروت» — اسم كل منهما على سجل الآخر، فيقع رقم الشيت على الكارت الآخر. والرفض (✗) متاح.',
+  'fleet.fuelCards.numberRepair.confirm.leadPairOnly':
+    'يتبادل سجلا سيارتي {{a}} و{{b}} الاسم والرصيد الافتتاحي.',
+  'fleet.fuelCards.numberRepair.pair.statementDiffersDone':
+    'يختلف عن الافتتاحي الجديد — يضبط اعتماد أحدث كشف الرصيد',
   'fleet.fuelCards.history.kind.sheetAdjust': 'تعديل من شيت الشركة',
   'fleet.fuelCards.history.kind.sheetReject': 'رفض تعديل الشيت',
   'fleet.fuelCards.history.by': 'بواسطة {{name}}',

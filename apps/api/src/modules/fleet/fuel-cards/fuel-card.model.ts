@@ -3,16 +3,31 @@
 // The balance is STORED here and every change to it is a movement in `fleet_fuel_card_movements`:
 // a charge the clerk approved, a transfer from or to another card, a fuel receipt, a company
 // sheet's figure taken (✓) — and a sheet's figure refused (✗), or a card moved car by a sheet
-// decision (`sheetLink`), lines that move nothing. The two are written in one transaction, so the
-// balance and its log cannot disagree.
+// decision (`sheetLink`), lines that move nothing; and «تصحيح أرقام الكروت» (6d, `dataFix`). The two
+// are written in one transaction, so the balance and its log cannot disagree.
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_MOVEMENT_KINDS,
+  FLEET_FUEL_MOVEMENT_REPAIR_KINDS,
+  FLEET_FUEL_NUMBER_REPAIR_UNITS,
   type FleetFuelCardCompany,
   type FleetFuelMovementKind,
+  type FleetFuelMovementRepairKind,
+  type FleetFuelNumberRepairUnit,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+
+/**
+ * The photo's small blurred thumbnail (6d) — its own Files entity (`fuelCardThumb`), readable with
+ * the cards' view grant, while the photo itself shows the PIN sticker and needs the reveal grant.
+ * ABSENT on the go-live photos: theirs ship beside the asset (`fuel-card-thumbs.ts`).
+ */
+export interface FleetFuelCardImageThumb {
+  fileId: Types.ObjectId;
+  mime: string;
+  size: number;
+}
 
 /** The photo of the card — Files owns the bytes, the card owns the link. */
 export interface FleetFuelCardImage {
@@ -21,6 +36,7 @@ export interface FleetFuelCardImage {
   mime: string;
   size: number;
   uploadedAt: Date;
+  thumb?: FleetFuelCardImageThumb | null;
 }
 
 export interface FleetFuelCardDoc extends BaseDocFields {
@@ -40,6 +56,15 @@ export interface FleetFuelCardDoc extends BaseDocFields {
   image?: FleetFuelCardImage | null;
 }
 
+const imageThumbSchema = new Schema<FleetFuelCardImageThumb>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const imageSchema = new Schema<FleetFuelCardImage>(
   {
     fileId: { type: Schema.Types.ObjectId, required: true },
@@ -47,6 +72,8 @@ const imageSchema = new Schema<FleetFuelCardImage>(
     mime: { type: String, required: true },
     size: { type: Number, required: true },
     uploadedAt: { type: Date, required: true },
+    // NO default: absent on every photo written before 6d, and on the go-live photos.
+    thumb: { type: imageThumbSchema, required: false },
   },
   { _id: false },
 );
@@ -140,6 +167,27 @@ export interface FleetFuelMovementLink {
   fileName: string;
 }
 
+/**
+ * A `dataFix` line's correction — «تصحيح أرقام الكروت» (6d). Full numbers (the card holds them in
+ * the clear too); never a PIN — `pinMoved` only says whether one came with the number.
+ */
+export interface FleetFuelMovementRepair {
+  /** The repair («6d:2026-10-04») — what makes the unit read «done». */
+  key: string;
+  unit: FleetFuelNumberRepairUnit;
+  kind: FleetFuelMovementRepairKind;
+  numberBefore: string | null;
+  numberAfter: string | null;
+  pinMoved: boolean | null;
+  photoMoved: boolean | null;
+  expiryBefore: Date | null;
+  expiryAfter: Date | null;
+  nameBefore: string | null;
+  nameAfter: string | null;
+  openingBefore: number | null;
+  openingAfter: number | null;
+}
+
 export interface FleetFuelCardMovementDoc extends BaseDocFields {
   cardId: Types.ObjectId;
   kind: FleetFuelMovementKind;
@@ -156,6 +204,8 @@ export interface FleetFuelCardMovementDoc extends BaseDocFields {
   cancelledBySheet?: FleetFuelMovementCancelledBySheet | null;
   /** Only on a `sheetLink` line; ABSENT on every other line. */
   link?: FleetFuelMovementLink | null;
+  /** Only on a `dataFix` line; ABSENT on every other line. */
+  repair?: FleetFuelMovementRepair | null;
 }
 
 const movementReconciliationSchema = new Schema<FleetFuelMovementReconciliation>(
@@ -213,6 +263,25 @@ const movementLinkSchema = new Schema<FleetFuelMovementLink>(
   { _id: false },
 );
 
+const movementRepairSchema = new Schema<FleetFuelMovementRepair>(
+  {
+    key: { type: String, required: true },
+    unit: { type: String, enum: FLEET_FUEL_NUMBER_REPAIR_UNITS, required: true },
+    kind: { type: String, enum: FLEET_FUEL_MOVEMENT_REPAIR_KINDS, required: true },
+    numberBefore: { type: String, default: null },
+    numberAfter: { type: String, default: null },
+    pinMoved: { type: Boolean, default: null },
+    photoMoved: { type: Boolean, default: null },
+    expiryBefore: { type: Date, default: null },
+    expiryAfter: { type: Date, default: null },
+    nameBefore: { type: String, default: null },
+    nameAfter: { type: String, default: null },
+    openingBefore: { type: Number, default: null },
+    openingAfter: { type: Number, default: null },
+  },
+  { _id: false },
+);
+
 const movementSchema = new Schema<FleetFuelCardMovementDoc>(
   {
     cardId: { type: Schema.Types.ObjectId, required: true },
@@ -229,6 +298,8 @@ const movementSchema = new Schema<FleetFuelCardMovementDoc>(
     // matches every other line, absent included), only a `sheetLink` line a link.
     cancelledBySheet: { type: movementCancelledSchema, required: false },
     link: { type: movementLinkSchema, required: false },
+    // NO default either: only a `dataFix` line carries it.
+    repair: { type: movementRepairSchema, required: false },
     ...baseFields,
   },
   baseSchemaOptions,

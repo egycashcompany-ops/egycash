@@ -1,0 +1,907 @@
+// «تصحيح أرقام الكروت» (6d) — the dry runs the web specs draw: the approved sample's 17 records
+// (scratchpad table → `zz-6d-data`, the names, cars, expiry dates, go-live balances and what each
+// photo shows), as the server sends them. Card numbers are their LAST FOUR only; no PIN exists here
+// (the dry run carries only whether one is stored). The top-ups are the sample's illustrative ones.
+//
+//   REPAIR_CLEAN       every unit ready — sample 01
+//   repairChanged269() a clerk set car 269's expiry by hand: cycle 2 held — sample 04
+//   repairDone()       all four units executed — sample 06
+//   repairPartial()    cycle 1 executed, the rest ready
+import {
+  type FleetFuelNumberRepairCycleDto,
+  type FleetFuelNumberRepairDto,
+  type FleetFuelNumberRepairPairRowDto,
+} from '@ecms/contracts';
+
+export const REPAIR_CLEAN: FleetFuelNumberRepairDto = {
+  key: '6d:2026-10-04',
+  company: 'wataniya',
+  goLiveDay: '2026-10-04',
+  readAt: '2026-11-02T10:20:00.000Z',
+  state: 'pending',
+  executedAt: null,
+  executedByName: null,
+  counts: {
+    records: 17,
+    crossed: 15,
+    pair: 2,
+    ready: 17,
+    held: 0,
+    done: 0,
+  },
+  readyUnits: ['C4', 'C5', 'C6', 'pair'],
+  noPinAfterCars: ['284', '269', '230', '256', '251'],
+  cycles: [
+    {
+      unit: 'C4',
+      n: 1,
+      cars: ['239', '241', '243', '209'],
+      heldLast4: ['2813', '3375', '4116', '0935'],
+      state: 'ready',
+      rows: [
+        {
+          car: '239',
+          name: 'EGYCASH-4643-4209073',
+          cardId: 'card-6d-239',
+          balance: 6549.73,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '2813',
+          numberAfterLast4: '0935',
+          afterIsNowOnCar: '209',
+          beforeGoesToCar: '241',
+          expiryBefore: '2027-03-31',
+          expiryAfter: '2027-03-31',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-239',
+            thumb: true,
+            embossedName: 'EGYCASH-4645-422193',
+            stickerCar: '241',
+            validThru: '03/27',
+            last4: '2813',
+          },
+          photoAfter: {
+            cardId: 'card-6d-209',
+            thumb: true,
+            embossedName: 'EGYCASH-4643-4209073',
+            stickerCar: '239',
+            validThru: '03/27',
+            last4: '0935',
+          },
+          chassisTypo: true,
+          topUps: [
+            {
+              id: 'm-239-0',
+              at: '2026-10-09T10:05:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+            {
+              id: 'm-239-1',
+              at: '2026-10-23T11:40:00.000Z',
+              amount: 1500,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '241',
+          name: 'EGYCASH-4645-422193',
+          cardId: 'card-6d-241',
+          balance: 12594.55,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '3375',
+          numberAfterLast4: '2813',
+          afterIsNowOnCar: '239',
+          beforeGoesToCar: '243',
+          expiryBefore: '2027-03-31',
+          expiryAfter: '2027-03-31',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-241',
+            thumb: true,
+            embossedName: 'EGYCASH-4649-422195',
+            stickerCar: '243',
+            validThru: '03/27',
+            last4: '3375',
+          },
+          photoAfter: {
+            cardId: 'card-6d-239',
+            thumb: true,
+            embossedName: 'EGYCASH-4645-422193',
+            stickerCar: '241',
+            validThru: '03/27',
+            last4: '2813',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-241-0',
+              at: '2026-10-14T09:30:00.000Z',
+              amount: 3000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '243',
+          name: 'EGYCASH-4649-422195',
+          cardId: 'card-6d-243',
+          balance: 7620.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '4116',
+          numberAfterLast4: '3375',
+          afterIsNowOnCar: '241',
+          beforeGoesToCar: '209',
+          expiryBefore: '2028-11-30',
+          expiryAfter: '2027-03-31',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-243',
+            thumb: true,
+            embossedName: 'EGYCASH-1781-312986',
+            stickerCar: '209',
+            validThru: '11/28',
+            last4: '4116',
+          },
+          photoAfter: {
+            cardId: 'card-6d-241',
+            thumb: true,
+            embossedName: 'EGYCASH-4649-422195',
+            stickerCar: '243',
+            validThru: '03/27',
+            last4: '3375',
+          },
+          chassisTypo: false,
+          topUps: [],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '209',
+          name: 'EGYCASH-1781-312986',
+          cardId: 'card-6d-209',
+          balance: 10950.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '0935',
+          numberAfterLast4: '4116',
+          afterIsNowOnCar: '243',
+          beforeGoesToCar: '239',
+          expiryBefore: '2027-03-31',
+          expiryAfter: '2028-11-30',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-209',
+            thumb: true,
+            embossedName: 'EGYCASH-4643-4209073',
+            stickerCar: '239',
+            validThru: '03/27',
+            last4: '0935',
+          },
+          photoAfter: {
+            cardId: 'card-6d-243',
+            thumb: true,
+            embossedName: 'EGYCASH-1781-312986',
+            stickerCar: '209',
+            validThru: '11/28',
+            last4: '4116',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-209-0',
+              at: '2026-10-06T12:10:00.000Z',
+              amount: 1000,
+              cancelledBySheet: false,
+            },
+            {
+              id: 'm-209-1',
+              at: '2026-10-27T10:20:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+      ],
+    },
+    {
+      unit: 'C5',
+      n: 2,
+      cars: ['233', '525', '284', '269', '230'],
+      heldLast4: ['2653', '9096', '8713', '7800', '2179'],
+      state: 'ready',
+      rows: [
+        {
+          car: '233',
+          name: 'EGYCASH-6163-313110',
+          cardId: 'card-6d-233',
+          balance: 15300.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '2653',
+          numberAfterLast4: '2179',
+          afterIsNowOnCar: '230',
+          beforeGoesToCar: '525',
+          expiryBefore: '2028-06-30',
+          expiryAfter: '2026-11-30',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-233',
+            thumb: true,
+            embossedName: 'EGYCASH-6731-350118',
+            stickerCar: '525',
+            validThru: '06/28',
+            last4: '2653',
+          },
+          photoAfter: {
+            cardId: 'card-6d-230',
+            thumb: true,
+            embossedName: 'EGYCASH-6163-313110',
+            stickerCar: '233',
+            validThru: '11/26',
+            last4: '2179',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-233-0',
+              at: '2026-10-11T09:50:00.000Z',
+              amount: 2500,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '525',
+          name: 'EGYCASH-6731-350118',
+          cardId: 'card-6d-525',
+          balance: 13650.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '9096',
+          numberAfterLast4: '2653',
+          afterIsNowOnCar: '233',
+          beforeGoesToCar: '284',
+          expiryBefore: '2029-01-31',
+          expiryAfter: '2028-06-30',
+          pinBefore: false,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-525',
+            thumb: true,
+            embossedName: 'EGYCASH-8618-778864',
+            stickerCar: '284',
+            validThru: '01/29',
+            last4: '9096',
+          },
+          photoAfter: {
+            cardId: 'card-6d-233',
+            thumb: true,
+            embossedName: 'EGYCASH-6731-350118',
+            stickerCar: '525',
+            validThru: '06/28',
+            last4: '2653',
+          },
+          chassisTypo: false,
+          topUps: [],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '284',
+          name: 'EGYCASH-8618-778864',
+          cardId: 'card-6d-284',
+          balance: 9337.9,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '8713',
+          numberAfterLast4: '9096',
+          afterIsNowOnCar: '525',
+          beforeGoesToCar: '269',
+          expiryBefore: '2027-11-30',
+          expiryAfter: '2029-01-31',
+          pinBefore: false,
+          pinAfter: false,
+          photoBefore: {
+            cardId: 'card-6d-284',
+            thumb: true,
+            embossedName: 'EGYCASH-3237-675891',
+            stickerCar: '269',
+            validThru: '11/27',
+            last4: '8713',
+          },
+          photoAfter: {
+            cardId: 'card-6d-525',
+            thumb: true,
+            embossedName: 'EGYCASH-8618-778864',
+            stickerCar: '284',
+            validThru: '01/29',
+            last4: '9096',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-284-0',
+              at: '2026-10-18T10:45:00.000Z',
+              amount: 1500,
+              cancelledBySheet: false,
+            },
+            {
+              id: 'm-284-1',
+              at: '2026-10-30T09:15:00.000Z',
+              amount: 1000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '269',
+          name: 'EGYCASH-3237-675891',
+          cardId: 'card-6d-269',
+          balance: 8008.81,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '7800',
+          numberAfterLast4: '8713',
+          afterIsNowOnCar: '284',
+          beforeGoesToCar: '230',
+          expiryBefore: '2026-11-30',
+          expiryAfter: '2027-11-30',
+          pinBefore: false,
+          pinAfter: false,
+          photoBefore: {
+            cardId: 'card-6d-269',
+            thumb: true,
+            embossedName: 'EGYCASH-6167-2573534',
+            stickerCar: '230',
+            validThru: '11/26',
+            last4: '7800',
+          },
+          photoAfter: {
+            cardId: 'card-6d-284',
+            thumb: true,
+            embossedName: 'EGYCASH-3237-675891',
+            stickerCar: '269',
+            validThru: '11/27',
+            last4: '8713',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-269-0',
+              at: '2026-10-21T11:05:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '230',
+          name: 'EGYCASH-6167-2573534',
+          cardId: 'card-6d-230',
+          balance: 8351.33,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '2179',
+          numberAfterLast4: '7800',
+          afterIsNowOnCar: '269',
+          beforeGoesToCar: '233',
+          expiryBefore: '2026-11-30',
+          expiryAfter: '2026-11-30',
+          pinBefore: true,
+          pinAfter: false,
+          photoBefore: {
+            cardId: 'card-6d-230',
+            thumb: true,
+            embossedName: 'EGYCASH-6163-313110',
+            stickerCar: '233',
+            validThru: '11/26',
+            last4: '2179',
+          },
+          photoAfter: {
+            cardId: 'card-6d-269',
+            thumb: true,
+            embossedName: 'EGYCASH-6167-2573534',
+            stickerCar: '230',
+            validThru: '11/26',
+            last4: '7800',
+          },
+          chassisTypo: true,
+          topUps: [
+            {
+              id: 'm-230-0',
+              at: '2026-10-08T10:30:00.000Z',
+              amount: 1000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+      ],
+    },
+    {
+      unit: 'C6',
+      n: 3,
+      cars: ['232', '800', '256', '267', '251', '246'],
+      heldLast4: ['2516', '9641', '4503', '6548', '4146', '4142'],
+      state: 'ready',
+      rows: [
+        {
+          car: '232',
+          name: 'EGYCASH-6164-313107',
+          cardId: 'card-6d-232',
+          balance: 8280.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '2516',
+          numberAfterLast4: '4142',
+          afterIsNowOnCar: '246',
+          beforeGoesToCar: '800',
+          expiryBefore: '2027-07-31',
+          expiryAfter: '2026-11-30',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-232',
+            thumb: true,
+            embossedName: 'EGYCASH-4822-48085',
+            stickerCar: '800',
+            validThru: '07/27',
+            last4: '2516',
+          },
+          photoAfter: {
+            cardId: 'card-6d-246',
+            thumb: true,
+            embossedName: 'EGYCASH-6164-313107',
+            stickerCar: '232',
+            validThru: '11/26',
+            last4: '4142',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-232-0',
+              at: '2026-10-16T12:00:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '800',
+          name: 'EGYCASH-4822-48085',
+          cardId: 'card-6d-800',
+          balance: 8780.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '9641',
+          numberAfterLast4: '2516',
+          afterIsNowOnCar: '232',
+          beforeGoesToCar: '256',
+          expiryBefore: '2027-07-31',
+          expiryAfter: '2027-07-31',
+          pinBefore: false,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-800',
+            thumb: true,
+            embossedName: 'EGYCASH-9931-450279',
+            stickerCar: '256',
+            validThru: '07/27',
+            last4: '9641',
+          },
+          photoAfter: {
+            cardId: 'card-6d-232',
+            thumb: true,
+            embossedName: 'EGYCASH-4822-48085',
+            stickerCar: '800',
+            validThru: '07/27',
+            last4: '2516',
+          },
+          chassisTypo: false,
+          topUps: [],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '256',
+          name: 'EGYCASH-9931-450279',
+          cardId: 'card-6d-256',
+          balance: 6469.52,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '4503',
+          numberAfterLast4: '9641',
+          afterIsNowOnCar: '800',
+          beforeGoesToCar: '267',
+          expiryBefore: '2027-11-30',
+          expiryAfter: '2027-07-31',
+          pinBefore: true,
+          pinAfter: false,
+          photoBefore: {
+            cardId: 'card-6d-256',
+            thumb: true,
+            embossedName: 'EGYCASH-3235-676916',
+            stickerCar: '267',
+            validThru: '11/27',
+            last4: '4503',
+          },
+          photoAfter: {
+            cardId: 'card-6d-800',
+            thumb: true,
+            embossedName: 'EGYCASH-9931-450279',
+            stickerCar: '256',
+            validThru: '07/27',
+            last4: '9641',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-256-0',
+              at: '2026-10-07T09:40:00.000Z',
+              amount: 3000,
+              cancelledBySheet: false,
+            },
+            {
+              id: 'm-256-1',
+              at: '2026-10-25T10:10:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '267',
+          name: 'EGYCASH-3235-676916',
+          cardId: 'card-6d-267',
+          balance: 7245.0,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '6548',
+          numberAfterLast4: '4503',
+          afterIsNowOnCar: '256',
+          beforeGoesToCar: '251',
+          expiryBefore: '2027-03-31',
+          expiryAfter: '2027-11-30',
+          pinBefore: false,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-267',
+            thumb: true,
+            embossedName: 'EGYCASH-1344-438318',
+            stickerCar: '251',
+            validThru: '03/27',
+            last4: '6548',
+          },
+          photoAfter: {
+            cardId: 'card-6d-256',
+            thumb: true,
+            embossedName: 'EGYCASH-3235-676916',
+            stickerCar: '267',
+            validThru: '11/27',
+            last4: '4503',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-267-0',
+              at: '2026-10-19T11:25:00.000Z',
+              amount: 1500,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '251',
+          name: 'EGYCASH-1344-438318',
+          cardId: 'card-6d-251',
+          balance: 8239.21,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '4146',
+          numberAfterLast4: '6548',
+          afterIsNowOnCar: '267',
+          beforeGoesToCar: '246',
+          expiryBefore: '2027-03-31',
+          expiryAfter: '2027-03-31',
+          pinBefore: true,
+          pinAfter: false,
+          photoBefore: {
+            cardId: 'card-6d-251',
+            thumb: true,
+            embossedName: 'EGYCASH-1337-446321',
+            stickerCar: '246',
+            validThru: '03/27',
+            last4: '4146',
+          },
+          photoAfter: {
+            cardId: 'card-6d-267',
+            thumb: true,
+            embossedName: 'EGYCASH-1344-438318',
+            stickerCar: '251',
+            validThru: '03/27',
+            last4: '6548',
+          },
+          chassisTypo: false,
+          topUps: [],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+        {
+          car: '246',
+          name: 'EGYCASH-1337-446321',
+          cardId: 'card-6d-246',
+          balance: 3785.07,
+          state: 'ok',
+          numberPrefix: '548',
+          numberBeforeLast4: '4142',
+          numberAfterLast4: '4146',
+          afterIsNowOnCar: '251',
+          beforeGoesToCar: '232',
+          expiryBefore: '2026-11-30',
+          expiryAfter: '2027-03-31',
+          pinBefore: true,
+          pinAfter: true,
+          photoBefore: {
+            cardId: 'card-6d-246',
+            thumb: true,
+            embossedName: 'EGYCASH-6164-313107',
+            stickerCar: '232',
+            validThru: '11/26',
+            last4: '4142',
+          },
+          photoAfter: {
+            cardId: 'card-6d-251',
+            thumb: true,
+            embossedName: 'EGYCASH-1337-446321',
+            stickerCar: '246',
+            validThru: '03/27',
+            last4: '4146',
+          },
+          chassisTypo: false,
+          topUps: [
+            {
+              id: 'm-246-0',
+              at: '2026-10-12T10:00:00.000Z',
+              amount: 2000,
+              cancelledBySheet: false,
+            },
+            {
+              id: 'm-246-1',
+              at: '2026-10-29T09:35:00.000Z',
+              amount: 1500,
+              cancelledBySheet: false,
+            },
+          ],
+          topUpsMore: 0,
+          changes: [],
+          log: null,
+        },
+      ],
+    },
+  ],
+  pair: {
+    state: 'ready',
+    rows: [
+      {
+        car: '530',
+        cardId: 'card-6d-530',
+        state: 'ok',
+        numberPrefix: '548',
+        numberLast4: '0849',
+        expiry: '2029-01-31',
+        hasPin: true,
+        nameBefore: 'EGYCASH-8616-783211',
+        nameAfter: 'EGYCASH-1137-401485',
+        openingBefore: 13130.62,
+        openingAfter: 1258.0,
+        delta: -11872.62,
+        balance: 23130.62,
+        balanceAfter: 11258.0,
+        statementOpening: 1258.0,
+        statementDay: '2026-10-04',
+        photo: {
+          cardId: 'card-6d-530',
+          thumb: true,
+          embossedName: 'EGYCASH-1137-401485',
+          stickerCar: '530',
+          validThru: '01/29',
+          last4: '0849',
+        },
+        topUps: [
+          {
+            id: 'm-530-0',
+            at: '2026-10-05T10:15:00.000Z',
+            amount: 10000,
+            cancelledBySheet: false,
+          },
+        ],
+        topUpsMore: 0,
+        changes: [],
+        log: null,
+      },
+      {
+        car: '283',
+        cardId: 'card-6d-283',
+        state: 'ok',
+        numberPrefix: '548',
+        numberLast4: '0849',
+        expiry: '2029-01-31',
+        hasPin: true,
+        nameBefore: 'EGYCASH-1137-401485',
+        nameAfter: 'EGYCASH-8616-783211',
+        openingBefore: 1258.0,
+        openingAfter: 13130.62,
+        delta: 11872.62,
+        balance: 2758.0,
+        balanceAfter: 14630.62,
+        statementOpening: 11430.62,
+        statementDay: '2026-10-04',
+        photo: {
+          cardId: 'card-6d-283',
+          thumb: true,
+          embossedName: 'EGYCASH-8616-783211',
+          stickerCar: '283',
+          validThru: '01/29',
+          last4: '0849',
+        },
+        topUps: [
+          {
+            id: 'm-283-0',
+            at: '2026-10-20T11:50:00.000Z',
+            amount: 1500,
+            cancelledBySheet: false,
+          },
+        ],
+        topUpsMore: 0,
+        changes: [],
+        log: null,
+      },
+    ],
+    sheetAdjustments: [],
+  },
+};
+
+const clone = (dto: FleetFuelNumberRepairDto): FleetFuelNumberRepairDto =>
+  JSON.parse(JSON.stringify(dto)) as FleetFuelNumberRepairDto;
+
+/** When the sample's repair ran, and who ran it. */
+export const EXECUTED_AT = '2026-11-02T10:31:00.000Z';
+export const EXECUTED_BY = 'مدير الحركة';
+
+/** A cycle, corrected: every row reads «after», with its `dataFix` line; the photo is its own now. */
+const doneCycle = (cycle: FleetFuelNumberRepairCycleDto): FleetFuelNumberRepairCycleDto => ({
+  ...cycle,
+  state: 'done',
+  rows: cycle.rows.map((row) => ({
+    ...row,
+    state: 'done',
+    photoAfter: { ...row.photoAfter, cardId: row.cardId },
+    photoBefore: { ...row.photoBefore, cardId: null, thumb: false },
+    log: { movementId: `fix-${row.car}`, at: EXECUTED_AT, byName: EXECUTED_BY },
+  })),
+});
+const donePairRow = (row: FleetFuelNumberRepairPairRowDto): FleetFuelNumberRepairPairRowDto => ({
+  ...row,
+  state: 'done',
+  balance: row.balanceAfter,
+  log: { movementId: `fix-${row.car}`, at: EXECUTED_AT, byName: EXECUTED_BY },
+});
+
+/**
+ * Sample 04: car 269's expiry was set by hand to the card in the car (2027-11-30, expected
+ * 2026-11-30). Its record is changed, the other four of cycle 2 are held with it; 12 of 17 ready.
+ * (The sample's illustration: the server now holds a unit only on a changed car, number or name —
+ * an expiry travels with its number — but a changed row is drawn the same whatever its field.)
+ */
+export const repairChanged269 = (): FleetFuelNumberRepairDto => {
+  const dto = clone(REPAIR_CLEAN);
+  const c5 = dto.cycles[1] as FleetFuelNumberRepairCycleDto;
+  c5.state = 'held';
+  c5.rows = c5.rows.map((row) =>
+    row.car === '269'
+      ? {
+          ...row,
+          state: 'changed',
+          changes: [
+            {
+              field: 'expiry',
+              expected: '2026-11-30',
+              now: '2027-11-30',
+              at: '2026-10-28T10:10:00.000Z',
+              byName: 'مشرف الكروت',
+            },
+          ],
+        }
+      : { ...row, state: 'held' },
+  );
+  dto.counts = { ...dto.counts, ready: 12, held: 5 };
+  dto.readyUnits = ['C4', 'C6', 'pair'];
+  dto.noPinAfterCars = ['256', '251'];
+  return dto;
+};
+
+/** Sample 06: all four units executed. */
+export const repairDone = (): FleetFuelNumberRepairDto => {
+  const dto = clone(REPAIR_CLEAN);
+  dto.state = 'done';
+  dto.executedAt = EXECUTED_AT;
+  dto.executedByName = EXECUTED_BY;
+  dto.counts = { ...dto.counts, ready: 0, held: 0, done: 17 };
+  dto.readyUnits = [];
+  dto.cycles = dto.cycles.map(doneCycle);
+  dto.pair = {
+    ...dto.pair,
+    state: 'done',
+    rows: [donePairRow(dto.pair.rows[0]), donePairRow(dto.pair.rows[1])],
+  };
+  return dto;
+};
+
+/** Cycle 1 executed; cycles 2 and 3 and the pair still ready. */
+export const repairPartial = (): FleetFuelNumberRepairDto => {
+  const dto = clone(REPAIR_CLEAN);
+  dto.state = 'partial';
+  dto.executedAt = EXECUTED_AT;
+  dto.executedByName = EXECUTED_BY;
+  dto.counts = { ...dto.counts, ready: 13, done: 4 };
+  dto.readyUnits = ['C5', 'C6', 'pair'];
+  dto.cycles = dto.cycles.map((cycle) => (cycle.unit === 'C4' ? doneCycle(cycle) : cycle));
+  return dto;
+};
+
+/**
+ * The pair alone is ready: the three cycles ran while the pair was held (a record renamed by hand),
+ * and the name was put back since — «تنفيذ التصحيح» now runs the pair only.
+ */
+export const repairPairOnly = (): FleetFuelNumberRepairDto => {
+  const dto = repairDone();
+  dto.state = 'partial';
+  dto.counts = { ...dto.counts, ready: 2, done: 15 };
+  dto.readyUnits = ['pair'];
+  dto.noPinAfterCars = REPAIR_CLEAN.noPinAfterCars;
+  dto.pair = clone(REPAIR_CLEAN).pair;
+  return dto;
+};

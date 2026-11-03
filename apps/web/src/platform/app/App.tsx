@@ -1,7 +1,7 @@
 // App root: session bootstrap (silent refresh + /auth/me), locale/direction sync, and the top
 // route split — /login vs the authenticated recruitment module (lazy-loaded for code splitting).
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { signedIn, signedOut } from '../../store/authSlice';
@@ -31,8 +31,7 @@ const TrainingRoutes = lazy(() => import('../../modules/hr/training/routes'));
 const PerformanceRoutes = lazy(() => import('../../modules/hr/performance/routes'));
 const MedicalRoutes = lazy(() => import('../../modules/hr/medical/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
-const AnnouncementRoutes = lazy(() => import('../../modules/hr/announcements/routes'));
-const NotificationRuleRoutes = lazy(() => import('../../modules/hr/notification-rules/routes'));
+const HrSettingsRoutes = lazy(() => import('../../modules/hr/settings/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
 const AtmRoutes = lazy(() => import('../../modules/atm/routes'));
@@ -246,8 +245,9 @@ export const App = (): JSX.Element => {
             </RequireAuth>
           }
         />
+        {/* «الإعدادات» — HR's configuration screens, one page of tabs. */}
         <Route
-          path="/announcements/*"
+          path="/hr-settings/*"
           element={
             <RequireAuth>
               <Suspense
@@ -257,26 +257,16 @@ export const App = (): JSX.Element => {
                   </div>
                 }
               >
-                <AnnouncementRoutes />
+                <HrSettingsRoutes />
               </Suspense>
             </RequireAuth>
           }
         />
+        {/* Their old addresses: a bookmark lands on the same screen, now a tab of «الإعدادات». */}
+        <Route path="/announcements/*" element={<Navigate to="/hr-settings/announcements" replace />} />
         <Route
           path="/notification-rules/*"
-          element={
-            <RequireAuth>
-              <Suspense
-                fallback={
-                  <div className="grid min-h-screen place-items-center">
-                    <LoadingState />
-                  </div>
-                }
-              >
-                <NotificationRuleRoutes />
-              </Suspense>
-            </RequireAuth>
-          }
+          element={<Navigate to="/hr-settings/notification-rules" replace />}
         />
         {/* The inbox a push lands on. Every account has one; the server scopes it to the caller. */}
         <Route

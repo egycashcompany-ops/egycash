@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type DataScope } from '@ecms/contracts';
+import { HR_SETTINGS_HUB, type DataScope } from '@ecms/contracts';
 import {
   assembleEffectiveApplications,
   type EffectiveAppInput,
@@ -373,5 +373,48 @@ describe('a row that shows the reader only their own data', () => {
       [sec('s1', 'c1', 0)],
     );
     expect(result[0]?.sections[0]?.applications[0]?.personal).toBe(true);
+  });
+});
+
+// «الإعدادات» is one row over six screens, each still behind its own key.
+describe('a hub row is opened by any of its tabs', () => {
+  const hub = (extra: Partial<EffectiveAppInput> = {}): EffectiveAppInput =>
+    app('hub', 'c1', 0, {
+      route: HR_SETTINGS_HUB.route,
+      permissionKey: 'recruitmentForm.manage',
+      ...extra,
+    });
+  const routes = (perms: Record<string, DataScope>, apps = [hub()]): string[] =>
+    assembleEffectiveApplications(apps, [cat('c1', 0)], perms).flatMap((c) =>
+      c.applications.map((a) => a.route),
+    );
+
+  it('shows the row to somebody holding only one tab — any one', () => {
+    for (const tab of HR_SETTINGS_HUB.tabs) {
+      expect(routes(holding(tab.permission)), tab.key).toEqual([HR_SETTINGS_HUB.route]);
+    }
+  });
+
+  it('hides it from somebody holding none of the tabs', () => {
+    expect(routes(holding('employee.view', 'leave.view'))).toEqual([]);
+  });
+
+  it('still honours the key stored on the row', () => {
+    expect(routes(holding('custom.key'), [hub({ permissionKey: 'custom.key' })])).toEqual([
+      HR_SETTINGS_HUB.route,
+    ]);
+  });
+
+  it('opens no row the same way unless it IS a hub', () => {
+    const plain = app('plain', 'c1', 1, { route: '/applicants', permissionKey: 'applicant.view' });
+    expect(routes(holding('announcement.send'), [plain])).toEqual([]);
+  });
+
+  it('keeps the null-key rule: a hub nobody declared a key for is entitled to nobody', () => {
+    expect(routes(holding('announcement.send'), [hub({ permissionKey: null })])).toEqual([]);
+  });
+
+  it('keeps an inactive hub out of the sidebar', () => {
+    expect(routes(holding('announcement.send'), [hub({ status: 'inactive' })])).toEqual([]);
   });
 });

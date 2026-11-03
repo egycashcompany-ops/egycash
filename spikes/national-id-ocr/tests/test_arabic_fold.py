@@ -76,7 +76,7 @@ def test_no_two_vocabulary_terms_share_a_skeleton():
     """The safety precondition for the whole approach, asserted rather than assumed."""
     for vocabulary in (
         ("مسلم", "مسلمة", "مسيحي", "مسيحية"),
-        ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة"),
+        ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "آنسة"),
     ):
         folded = [rasm_fold(term) for term in vocabulary]
         assert len(set(folded)) == len(folded)
@@ -159,6 +159,14 @@ def test_the_row_corrects_a_dropped_feminine_ending(row, religion, marital):
     """The failure this catches is silent, which is what makes it worth catching."""
     assert clean_religion(row)[0] == religion
     assert clean_marital_status(row)[0] == marital
+
+
+@pytest.mark.parametrize("read", ["آنسة", "آنسه", "انسة", "انسه", "أنسة"])
+def test_an_unmarried_womans_card_prints_anisa_and_it_is_kept(read):
+    """Cards print 'آنسة' for an unmarried woman where a man's say 'أعزب'; it was not a known word,
+    so it came back as raw text the form could not place."""
+    assert clean_marital_status(read)[0] == "آنسة"
+    assert clean_marital_status("أنثى مسلمة " + read)[0] == "آنسة"
 
 
 def test_without_a_sex_word_the_read_is_left_exactly_as_found():

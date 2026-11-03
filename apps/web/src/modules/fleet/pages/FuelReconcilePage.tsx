@@ -14,6 +14,8 @@
 //      the sheet only, in the system only, last four digits that differ, repeated rows, equal.
 //   A sheet whose names are the OTHER company's stops at the header, with one click to read it as
 //   that company.
+//   6d: while «تصحيح أرقام الكروت» is pending, a yellow box above step 1 leads to it; the 0849 pair's
+//   lines keep ✗ but not ✓ («ضمن تصحيح الأرقام») until it has run.
 //
 // The owner's safety rule: a ✓ is all or nothing, and it is refused (409, nothing written) when a
 // chosen card's balance or log moved after the sheet was read. The refused cards are named in a
@@ -55,8 +57,10 @@ import { ReconcileLinks } from '../components/fuel-reconcile/ReconcileLinks';
 import { ReconcileNewCards } from '../components/fuel-reconcile/ReconcileNewCards';
 import { ReconcileTable } from '../components/fuel-reconcile/ReconcileTable';
 import { ReconcileUploadCard } from '../components/fuel-reconcile/ReconcileUploadCard';
+import { NumberRepairEntry } from '../components/number-repair/NumberRepairEntry';
 import {
   NO_SELECTION,
+  applicableLines,
   asksFirst,
   balanceNow,
   decideExtrasOf,
@@ -65,6 +69,7 @@ import {
   reconcileSelection,
   sheetDateOfName,
   tickedLines,
+  waitsForRepair,
   wrongCompanyOf,
   type LineChoices,
   type ReconcileSelection,
@@ -154,8 +159,10 @@ export const ReconcileResult = ({
   // The confirm's choices — a card not touched yet takes its defaults (the pre-ticked charges,
   // «اعتماد طلب الرصيد» suggested).
   const [choices, setChoices] = useState<Record<string, LineChoices>>({});
-  const asked =
+  const chosen =
     single === null ? ticked : lines.filter((line) => line.card.id.toLowerCase() === single);
+  // 6d: a ✓ never names a line waiting for «تصحيح أرقام الكروت»; its ✗ stays.
+  const asked = confirming === 'apply' ? applicableLines(chosen) : chosen;
   const choiceOf = (line: FleetFuelReconcileLineDto): LineChoices =>
     choices[line.card.id.toLowerCase()] ?? defaultChoices(line);
   /** Opens the confirmation for the ticked cards — afresh, with each card's defaults. */
@@ -206,6 +213,8 @@ export const ReconcileResult = ({
           if (decision === 'apply' && !isOpen(selection, id)) return;
           // 6a: a ✓ that asks about a charge or a request opens the confirm for this row.
           const line = lines.find((one) => one.card.id.toLowerCase() === id);
+          // 6d: the 0849 pair's ✓ waits for «تصحيح أرقام الكروت».
+          if (decision === 'apply' && line !== undefined && waitsForRepair(line)) return;
           if (decision === 'apply' && line !== undefined && asksFirst(line)) {
             setChoices({});
             setSingle(id);
@@ -356,7 +365,9 @@ export const FuelReconcilePage = (): JSX.Element => {
           setConfirming(null);
           if (refusal.kind === 'moved') dispatch({ type: 'refused', error: failure });
           else if (refusal.kind === 'cancel') toast.error(t(cancelRefusalKey(refusal.code)));
-          else {
+          else if (refusal.kind === 'inRepair') {
+            toast.error(t('fleet.fuelCards.reconcile.refusal.inRepair'));
+          } else {
             toast.error(
               t('fleet.fuelCards.reconcile.decidedBefore', {
                 cards: count.cardsOf(refusal.cardIds.length),
@@ -430,6 +441,8 @@ export const FuelReconcilePage = (): JSX.Element => {
     return (
       <PageContainer>
         <div className={PAGE} data-recon-page="upload">
+          {/* 6d: «تصحيح أرقام الكروت» while it is pending — nothing at all otherwise. */}
+          <NumberRepairEntry />
           <ReconcileUploadCard
             company={company}
             file={file}

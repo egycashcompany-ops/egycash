@@ -8,6 +8,7 @@
 //
 // `fetch` and the Files service are stubbed, so these run with no sidecar and no database.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { OCR_QUALITY_VERDICTS } from '@ecms/contracts';
 import { setOutboundPolicyForTests } from '../../../../infrastructure/http/outbound';
 
 // The outbound policy pins what the environment configured; this spec configured nothing, so it
@@ -124,19 +125,25 @@ describe('PaddleNationalIdOcrProvider — untrusted sidecar output', () => {
     expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
   });
 
-  it('accepts the current sidecar shape, ignoring its additive quality and diagnostics', async () => {
+  it('accepts the current sidecar shape, keeping the verdicts it knows', async () => {
     respond({
       fields: { nationalId: { value: '28709011202408', confidence: 'high' } },
       elapsedMs: 812.4,
       layoutProfile: 'egypt-nid',
       quality: {
+        // 'rejected' is not a verdict this API knows ('reject' is), so that side is dropped
+        // WHOLE — not read as a rejection, which would empty the review's fields on nothing
+        // but a newer sidecar's vocabulary. The stray 42 beside a known verdict is dropped too.
         front: { verdict: 'ok', reasons: [], metrics: { sharpness: 412.1 } },
         back: { verdict: 'rejected', reasons: ['blurred', 42], metrics: {} },
       },
       diagnostics: { front: { linesDetected: 9, rotated: 180 } },
     });
     const result = await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx });
-    expect(result).toEqual({ nationalId: { value: '28709011202408', confidence: 'high' } });
+    expect(result).toEqual({
+      nationalId: { value: '28709011202408', confidence: 'high' },
+      quality: { front: { verdict: 'ok', reasons: [] } },
+    });
   });
 
   it('tolerates a malformed quality block', async () => {
@@ -182,16 +189,14 @@ describe('PaddleNationalIdOcrProvider — degradation', () => {
   });
 });
 
-// The new sidecar answers `quality`, `diagnostics` and `elapsedMs` alongside the fields it always
-// returned. They are ADDITIVE: the provider reads none of them, and nothing about them reaches
-// `RawOcrResult` or the review dialog.
+// The sidecar answers `quality`, `diagnostics` and `elapsedMs` alongside the fields it always
+// returned. `quality` now reaches the review — it has to, or a side the reader could not read
+// shows its guesses as if they were read — but `diagnostics` and `elapsedMs` still reach nothing.
 //
-// So the thing worth pinning is not that they are read — it is that they are IGNORED, and ignored
-// safely. The failure this guards against is a provider that starts walking the new blocks to
-// surface a quality hint, trusting their shape because the type names them; the sidecar is a
-// separate process on its own release cadence, and a block of it arriving malformed must still
-// leave a good read intact. A card someone photographed well should not stop extracting because
-// the sidecar's quality scorer regressed.
+// So what is pinned here is the FIELDS: whatever shape the new blocks arrive in, a good read comes
+// back whole. The sidecar is a separate process on its own release cadence, and a card someone
+// photographed well must not stop extracting because the sidecar's quality scorer regressed. What
+// survives sanitising beside those fields is a well-formed report or nothing — never the raw block.
 describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () => {
   const fields = {
     nationalId: { value: '28709011202408', confidence: 'high' },
@@ -216,9 +221,15 @@ describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () =
         back: { lines: 7, boxes: { profile: 7 }, detectionFailed: true },
       },
     });
-    expect(await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx })).toEqual(
-      extracted,
-    );
+    // The verdicts come through, without the metrics the review has no use for; the diagnostics
+    // and the timing reach nothing at all.
+    expect(await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx })).toEqual({
+      ...extracted,
+      quality: {
+        front: { verdict: 'ok', reasons: [] },
+        back: { verdict: 'degraded', reasons: ['glare'] },
+      },
+    });
   });
 
   // Each of these is a different way the block can be wrong, and none of them is about the fields.
@@ -236,7 +247,15 @@ describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () =
     ['no metrics at all', { front: { verdict: 'reject' } }],
   ])('still extracts when `quality` is %s', async (_label, quality) => {
     respond({ fields, quality, diagnostics: null, elapsedMs: 'not-a-number' });
-    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual(extracted);
+    const { quality: reported, ...read } = await provider.extract({
+      frontFileId: 'f1',
+      actor: ctx,
+    });
+    expect(read).toEqual(extracted);
+    for (const report of Object.values(reported ?? {})) {
+      expect(OCR_QUALITY_VERDICTS).toContain(report?.verdict);
+      expect(Array.isArray(report?.reasons)).toBe(true);
+    }
   });
 
   // The block being absent is the OLD sidecar's response, which must keep working for exactly as
@@ -253,7 +272,9 @@ describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () =
       fields: { nationalId: { value: '28709011202408', confidence: 'excellent' } },
       quality: { front: { verdict: 'ok', reasons: [], metrics: {} } },
     });
-    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
+    const { quality, ...read } = await provider.extract({ frontFileId: 'f1', actor: ctx });
+    expect(read).toEqual({});
+    expect(quality).toEqual({ front: { verdict: 'ok', reasons: [] } });
   });
 });
 
@@ -300,5 +321,66 @@ describe('PaddleNationalIdOcrProvider — card images for the review', () => {
     respond({ fields: {}, portraitImage: `/9j/${'A'.repeat(2_000_001)}` });
     expect((await provider.extract({ frontFileId: 'f1', actor: ctx })).images).toBeUndefined();
 
+  });
+});
+
+// What the reader thought of each PHOTOGRAPH, on its way to the review.
+//
+// Logging it was never enough. On the card HR photographed on the live site the back came back
+// `reject` and the review filled the form from it anyway: a religion of «ستدم T», a marital
+// status of nothing, no expiry — three wrong answers that look exactly like three read ones. The
+// verdict has to travel with the fields so the review can leave that side empty and ask for
+// another photograph instead.
+//
+// It is still untrusted input, so the same rule as the fields applies: a code this API cannot name
+// is dropped, because the review turns each code into words and has none for a code it has never
+// heard of.
+describe('PaddleNationalIdOcrProvider — the photo verdicts', () => {
+  const fields = { nationalId: { value: '28709011202408', confidence: 'high' } };
+  const JPEG = '/9j/4AAQSkZJRgABAQAAAQABAAD';
+
+  it('passes a verdict and its reasons through to the review', async () => {
+    respond({
+      fields,
+      quality: {
+        front: { verdict: 'ok', reasons: [] },
+        back: { verdict: 'reject', reasons: ['blurred', 'low_contrast'] },
+      },
+    });
+    const result = await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx });
+    expect(result.quality).toEqual({
+      front: { verdict: 'ok', reasons: [] },
+      back: { verdict: 'reject', reasons: ['blurred', 'low_contrast'] },
+    });
+  });
+
+  it('drops a reason code it cannot name, keeping the rest of the report', async () => {
+    respond({
+      fields,
+      quality: { back: { verdict: 'degraded', reasons: ['glare', 'moon_phase', 7, null] } },
+    });
+    const result = await provider.extract({ frontFileId: 'f1', actor: ctx });
+    expect(result.quality).toEqual({ back: { verdict: 'degraded', reasons: ['glare'] } });
+  });
+
+  it('drops a side whose verdict word it does not know, rather than reading it as a rejection', async () => {
+    respond({ fields, quality: { front: { verdict: 'unreadable', reasons: ['blurred'] } } });
+    expect((await provider.extract({ frontFileId: 'f1', actor: ctx })).quality).toBeUndefined();
+  });
+
+  it('reports no quality at all when the sidecar sends none', async () => {
+    respond({ fields });
+    expect((await provider.extract({ frontFileId: 'f1', actor: ctx })).quality).toBeUndefined();
+  });
+
+  it('carries the verdicts beside the images, not instead of them', async () => {
+    respond({
+      fields,
+      orientedImages: { front: JPEG },
+      quality: { front: { verdict: 'degraded', reasons: ['too_small'] } },
+    });
+    const result = await provider.extract({ frontFileId: 'f1', actor: ctx });
+    expect(result.images?.cardFront).toBe(`data:image/jpeg;base64,${JPEG}`);
+    expect(result.quality).toEqual({ front: { verdict: 'degraded', reasons: ['too_small'] } });
   });
 });

@@ -406,6 +406,35 @@ def _known_after_one_stray(text: str) -> str | None:
     return None
 
 
+def _only_name_one_letter_off(text: str) -> str | None:
+    """The one listed name a single word is one letter from (added, lost or changed), else None.
+
+    For a probe's read only: it looks where a given name is printed and nowhere else, so a word
+    there one letter off a name is that name misread ('عمرو' read 'صمرو' on a soft phone photo).
+    Four letters at least, and exactly one such name: a shorter word is one letter from too many
+    ('محد' is 'محمد' and, on a soft photo, also 'مجد'), and two names that close is no answer.
+    """
+    from .arabic import levenshtein  # noqa: PLC0415 - as in `lexicon.near_miss`
+    from .lexicon import _index  # noqa: PLC0415
+
+    words = text.split()
+    if len(words) != 1:
+        return None
+    word = normalize_arabic(words[0])
+    if len(word) < 4:
+        return None
+    known = _index("name")[0]
+    close = {
+        name for name in known
+        if abs(len(name) - len(word)) <= 1 and levenshtein(word, name, limit=1) <= 1
+    }
+    if len(close) != 1:
+        return None
+    name = next(iter(close))
+    from .lexicon import _names  # noqa: PLC0415 - the name as listed, not its folded form
+    return next((listed for listed in _names() if normalize_arabic(listed) == name), name)
+
+
 def _probe(image: np.ndarray, box: tuple[int, int, int, int], recognizer: object) -> tuple[str, float] | None:
     """Read one strip of the card, on its own, for a word page detection dropped."""
     recognize = getattr(recognizer, "recognize", None)
@@ -439,6 +468,10 @@ def _probe(image: np.ndarray, box: tuple[int, int, int, int], recognizer: object
     cleaned = _known_after_one_stray(text)
     if cleaned is not None:
         return (cleaned, float(out.score)) if out.score >= PROBE_SCORE else None
+    if out.score >= PROBE_SCORE:
+        nearest = _only_name_one_letter_off(text)
+        if nearest is not None:
+            return (nearest, float(out.score))
     return (text, float(out.score)) if out.score >= 0.9 else None
 
 
@@ -511,7 +544,13 @@ def _front(rows: list[list[dict[str, Any]]], out: RowRead) -> None:
     elif id_index is not None and body:
         # The card title did not read (on a tiny card its letters are a few pixels tall), so the
         # garbled header would be taken for the first name. Find it by position instead.
-        body = body[_header_rows_by_position(body, rows[id_index]) :]
+        cut = _header_rows_by_position(body, rows[id_index])
+        body = body[cut:]
+        if cut:
+            # Found by position, it still marks where the name's rows are: without it the search
+            # for a given name the detector dropped never ran on exactly the blurred photos that
+            # drop one.
+            header = cut - 1
     text_rows = [_prose_row(row) for row in body]
     text_rows = [row for row in text_rows if row]
     if not text_rows:
@@ -922,8 +961,14 @@ def _as_dicts(read: RowRead) -> list[dict[str, Any]]:
     ]
 
 
-def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | None:
-    """Read every line on this side and assign the fields. None if the recognizer cannot."""
+def read_by_rows(
+    image: np.ndarray, side: str, recognizer: object, *, retry: bool = True
+) -> RowRead | None:
+    """Read every line on this side and assign the fields. None if the recognizer cannot.
+
+    `retry=False` reads once even when fields are missing: for a photo the quality gate already
+    rejected, where a zoomed and an enhanced read again only spend time (25 s on a live card).
+    """
     read = getattr(recognizer, "read_page", None)
     if read is None:
         return None
@@ -941,7 +986,7 @@ def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | 
         _read_religion_gap(image, reads[0], recognizer)
     else:
         _recover_name(image, reads[0], recognizer)
-    if not _weak(reads[0], side):
+    if not _weak(reads[0], side) or not retry:
         return reads[0]
 
     base = image

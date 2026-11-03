@@ -71,6 +71,19 @@ interface CategoryDef {
    * catalog raises the revision again. A tile this seed creates records the revision as it is born.
    */
   iconRevision?: number;
+  /**
+   * Rows this catalog no longer offers, which a live installation still has.
+   *
+   * Removing a row from `apps` stops a FRESH install from creating it, and nothing more: the boot
+   * sync never deletes, so every installation seeded before keeps showing it. Each entry here makes
+   * the named routes INACTIVE on a live installation — once, at its revision, recorded on the module
+   * tile — so the sidebar loses them without anything being destroyed, and an administrator who
+   * switches one back on afterwards is not overruled by the next boot.
+   *
+   * Inactive, not deleted: the page itself may still exist and be reached another way, and an
+   * inactive row is one click from back in the Applications screen.
+   */
+  retired?: readonly { revision: number; routes: readonly string[] }[];
   apps: AppDef[];
 }
 
@@ -86,48 +99,50 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     ar: 'الموارد البشرية',
     icon: 'users',
     sortOrder: 10,
-    apps: [
-      // Three of these rows are catching up with pages that shipped without one. They were routed
-      // and permission-gated but absent from this catalog and unlinked from every screen, so the
-      // only way in was typing the URL — which made a hint unfollowable: registering an applicant
-      // from inside the system says "set the internal source on the Application Form page", and
-      // there was no such page to open. Each sits beside the stage it configures rather than in a
-      // settings group of its own: they are part of the recruitment cycle, not general setup.
+    retired: [
+      // «شيل بقي دفعات الفحص الأمني ودفعات اختبار القيادة من المينو اللى في الجنب (كدا كدا
+      // هنوصلهم بالزرارين من داخل كل صفحة)». Each phase's batches are reached from that phase's
+      // own page now, whose button opens exactly that phase's list.
       {
-        en: 'Announcements',
-        ar: 'الإعلانات',
-        route: '/announcements',
-        icon: 'chat',
-        permission: 'announcement.send',
+        revision: 1,
+        routes: ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'],
       },
-      // Beside Announcements because they are the same act from two directions: a person saying
-      // something once, and the system saying it every time a thing happens.
+      // «الإعدادات» — these six are the tabs of `/hr-settings` now, and their old addresses
+      // redirect into it.
       {
-        en: 'Notification Rules',
-        ar: 'قواعد الإشعارات',
-        route: '/notification-rules',
-        icon: 'bell',
-        permission: 'notificationRule.view',
+        revision: 2,
+        routes: [
+          '/recruitment-form',
+          '/applicant-sources',
+          '/interviews/stages',
+          '/evaluations/phases',
+          '/announcements',
+          '/notification-rules',
+        ],
+      },
+    ],
+    apps: [
+      // «عايز الجزء اللى فالصورة دا يبقي جوا صفحة واحده أسمها إعدادات وتبقي فوق خالص». The six screens
+      // that configure HR rather than run it — the two groups «إعدادات التوظيف» and «التواصل» — are
+      // the tabs of this one page now (`HR_SETTINGS_HUB` in the contracts), and their own rows are
+      // retired below. Holding ANY tab's key shows this row, and the page shows only the tabs held,
+      // so it advertises nothing the six rows did not. The key declared here is the first tab's; it
+      // is what the Applications screen displays.
+      //
+      // FIRST, and in no section: the sidebar draws a module's unsectioned rows above its groups,
+      // and every other HR row is filed in one — which is what puts it «فوق خالص».
+      {
+        en: 'Settings',
+        ar: 'الإعدادات',
+        route: '/hr-settings',
+        icon: 'cog',
+        permission: 'recruitmentForm.manage',
       },
       {
         en: 'Applicants',
         ar: 'المتقدمون',
         route: '/applicants',
         icon: 'users',
-        permission: 'applicant.view',
-      },
-      {
-        en: 'Application Form',
-        ar: 'نموذج التقديم',
-        route: '/recruitment-form',
-        icon: 'inbox',
-        permission: 'recruitmentForm.manage',
-      },
-      {
-        en: 'Applicant Sources',
-        ar: 'مصادر التقديم',
-        route: '/applicant-sources',
-        icon: 'link',
         permission: 'applicant.view',
       },
       {
@@ -145,44 +160,11 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'interview.view',
       },
       {
-        en: 'Interview Stages',
-        ar: 'مراحل المقابلات',
-        route: '/interviews/stages',
-        icon: 'layers',
-        permission: 'interviewStage.manage',
-      },
-      {
         en: 'Evaluations',
         ar: 'التقييمات',
         route: '/evaluations',
         icon: 'clipboard',
         permission: 'evaluation.view',
-      },
-      {
-        en: 'Evaluation Phases',
-        ar: 'مراحل التقييم',
-        route: '/evaluations/phases',
-        icon: 'layers',
-        permission: 'evaluationPhase.manage',
-      },
-      // ONE ROW PER BATCH PHASE, and that is the point (RW7). A security check and a driving test
-      // are two different errands, run by two different people, against two different forms — and
-      // until now they shared a single screen with a `phase` COLUMN as the only thing telling them
-      // apart. Each row carries its own phase's key, so a driving examiner who holds no security
-      // grant sees one row rather than a mixed list they are half-authorized to read.
-      {
-        en: 'Security Check Batches',
-        ar: 'دفعات الفحص الأمني',
-        route: '/evaluation-batches/phase/securityCheck',
-        icon: 'shield',
-        permission: 'securityCheck.view',
-      },
-      {
-        en: 'Driving Test Batches',
-        ar: 'دفعات اختبار القيادة',
-        route: '/evaluation-batches/phase/drivingTest',
-        icon: 'car',
-        permission: 'drivingTest.view',
       },
       {
         en: 'Job Offers',
@@ -1394,6 +1376,37 @@ export const correctCategoryIcon = async (def: CategoryDef, by: string): Promise
   );
 };
 
+/**
+ * Make the rows a catalog entry retired INACTIVE on a live installation — once per revision.
+ *
+ * Through the service, so each lands in the audit log like any edit (the boot, not a person). A row
+ * already inactive is left as it is; a route this installation never had is skipped. The revision is
+ * then recorded on the module tile, so the next boot leaves alone a row an administrator switched
+ * back on — the same bargain `correctCategoryIcon` strikes for icons.
+ */
+export const retireApplications = async (def: CategoryDef, by: string): Promise<void> => {
+  const latest = Math.max(0, ...(def.retired ?? []).map((entry) => entry.revision));
+  if (latest === 0) return;
+  const category = await findCatalogCategory(def);
+  if (category === null) return;
+  const done = category.retiredRevision ?? 0;
+  if (done >= latest) return;
+  for (const entry of def.retired ?? []) {
+    if (entry.revision <= done) continue;
+    for (const route of entry.routes) {
+      const row = await applicationRepository.findOne({ route });
+      if (row === null || row.status !== 'active') continue;
+      await applicationService.update(String(row._id), { status: 'inactive', version: row.__v }, by);
+    }
+  }
+  const current = await applicationCategoryRepository.getById(String(category._id));
+  await applicationCategoryRepository.updateById(
+    String(current._id),
+    { retiredRevision: latest },
+    { by, version: current.__v },
+  );
+};
+
 const ensureApplication = async (
   def: AppDef,
   categoryId: string,
@@ -1526,6 +1539,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   for (const category of NAVIGATION_CATALOG) {
     await backfillCategoryIcon(category, actor);
     await correctCategoryIcon(category, actor);
+    await retireApplications(category, actor);
     for (const app of category.apps) {
       await backfillApplicationPermission(app, actor);
       await backfillApplicationIcon(app, actor);

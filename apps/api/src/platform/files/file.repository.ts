@@ -69,6 +69,44 @@ class FileRepository extends BaseRepository<FileDoc> {
     await FileGroupModel.deleteOne({ _id: groupId }).exec();
   }
 
+  /**
+   * Re-points every version of `fileId`'s group — and the group — at `entityId`, inside `session`.
+   * Only within the same module and entity type (both are part of the filter). Soft-deleted
+   * versions move too: they are the same file's history. `0` when no such file exists.
+   */
+  async reassignGroupEntity(
+    fileId: string,
+    ref: Pick<EntityRef, 'moduleId' | 'entityType'>,
+    entityId: string,
+    session: ClientSession,
+  ): Promise<number> {
+    if (!Types.ObjectId.isValid(fileId)) return 0;
+    const owned = {
+      'entityRef.moduleId': ref.moduleId,
+      'entityRef.entityType': ref.entityType,
+    };
+    const doc = await this.model
+      .findOne({ _id: new Types.ObjectId(fileId), ...owned } as FilterQuery<FileDoc>)
+      .select({ groupId: 1 })
+      .session(session)
+      .lean<{ groupId: Types.ObjectId }>()
+      .exec();
+    if (doc === null) return 0;
+    await FileGroupModel.updateOne(
+      { _id: doc.groupId, ...owned },
+      { $set: { 'entityRef.entityId': entityId } },
+    )
+      .session(session)
+      .exec();
+    const moved = await this.model
+      .updateMany({ groupId: doc.groupId, ...owned } as FilterQuery<FileDoc>, {
+        $set: { 'entityRef.entityId': entityId },
+      })
+      .session(session)
+      .exec();
+    return moved.matchedCount;
+  }
+
   async setScanStatus(id: Types.ObjectId, scanStatus: string): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: { scanStatus } }).exec();
   }

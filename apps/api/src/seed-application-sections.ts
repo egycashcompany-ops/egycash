@@ -80,9 +80,9 @@ interface SectionDef {
  * clearing screening is collected before anybody is hired, so its subject is a candidate and it
  * belongs in Recruitment. Two documents screens, two sections, one test applied twice.
  *
- * `/evaluations` and `/evaluations/phases` stay in Recruitment for the same kind of reason — they
- * evaluate APPLICANTS (the code lives in `modules/hr/recruitment/evaluations`). There is no
- * performance-review feature in this repository, so there is no Performance group to put them in
+ * `/evaluations` stays in Recruitment for the same kind of reason — it
+ * evaluates APPLICANTS (the code lives in `modules/hr/recruitment/evaluations`). There is no
+ * performance-review feature in this repository, so there is no Performance group to put it in
  * and none is invented here.
  *
  * Keyed by the CATEGORY's English name — the same key the navigation seed uses.
@@ -90,18 +90,13 @@ interface SectionDef {
 /** Exported for `seed-navigation.spec.ts`: a section naming an unseeded route groups nothing. */
 export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
   HR: [
-    {
-      // Its own group rather than a corner of Employees: an announcement is not a fact about
-      // anybody's record, it is the company talking to its people. The rules screen sits beside
-      // it — the same act, said once by a person or every time by the system.
-      en: 'Communication',
-      ar: 'التواصل',
-      routes: ['/announcements', '/notification-rules'],
-    },
+    // No Communication group any more: announcements and the notification rules are tabs of the
+    // HR «الإعدادات» page (`HR_SETTINGS_HUB`), which sits above every group, in none.
     {
       en: 'Recruitment',
       ar: 'التوظيف',
-      // Pipeline first, then the two screens that configure it — the order somebody works in.
+      // The pipeline, in the order somebody works it. The screens that configure it (the form, the
+      // sources, the interview and evaluation stages) are tabs of «الإعدادات» now.
       // The requisition opens it: a hire is asked for before anybody applies. Its subject is a
       // REQUEST rather than a person, which is why it is first here and not a pipeline stage.
       routes: [
@@ -109,18 +104,12 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/applicants',
         '/screening',
         '/interviews',
-        '/interviews/stages',
         '/evaluations',
-        '/evaluations/phases',
         // P-HR-APP §5 — sits in Recruitment, not Employees, by the same evidence the note above
         // uses for `/hiring-documents`: its subject is a CANDIDATE, and the set is collected
         // before anybody is hired.
         '/applicant-documents',
-        '/evaluation-batches/phase/securityCheck',
-        '/evaluation-batches/phase/drivingTest',
         '/job-offers',
-        '/applicant-sources',
-        '/recruitment-form',
       ],
     },
     {

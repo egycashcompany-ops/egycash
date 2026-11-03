@@ -72,6 +72,31 @@ def test_a_number_that_contradicts_the_printed_birth_date_is_not_trusted():
     assert data["birthDateMismatch"] and data["confidence"] == "medium"
 
 
+def test_when_the_printed_date_is_misread_too_the_number_nearest_to_it_wins():
+    """As on a live phone photo (numbers made up): the card says 2004/11/15 and 30411150204337.
+    The date read 2004/11/10 and the chosen number 30311150204337; the right number was among the
+    reads but agreed with neither exactly. It is one blur-confusable digit (٥/٠) from the printed
+    date, the other two (٣/٤ and ٥/٠), so it wins — never above medium."""
+    right, wrong = "30411150204337", "30311150204337"
+    data = {"value": wrong, "confidence": "medium", "valid": True, "score": 0.89}
+    candidates = [Candidate("grey", wrong, 0.89), Candidate("thick", right, 0.9), Candidate("clahe", "20411100204330", 0.91)]
+    _check_birth(data, "20041110", candidates)
+    assert data["value"] == right
+    assert data["confidence"] == "medium"
+
+
+def test_a_nearer_read_must_be_strictly_nearer_and_differ_only_by_confusable_digits():
+    wrong = "30307260100015"
+    # The only read is the one already chosen: nothing nearer, so the mismatch stands.
+    data = {"value": wrong, "confidence": "high", "valid": True, "score": 0.95}
+    _check_birth(data, "20030725", [Candidate("grey", wrong, 0.95)])
+    assert data["value"] == wrong and data["birthDateMismatch"]
+    # A read off by a digit no blur makes (٧ for ١) is not "near" at all.
+    data = {"value": "30307260100015", "confidence": "high", "valid": True, "score": 0.95}
+    _check_birth(data, "20030725", [Candidate("grey", "30307260100015", 0.95), Candidate("x", "30301250100015", 0.9)])
+    assert data["value"] == "30307260100015"
+
+
 def _back(width: int = 600, height: int = 378) -> np.ndarray:
     """A card back: print in its upper half, a dense barcode across its lower part."""
     rng = np.random.default_rng(1)
@@ -180,6 +205,38 @@ def test_a_given_name_the_detector_dropped_is_read_from_where_it_is_printed():
     assert out.recovered_name
 
 
+def test_a_given_name_is_recovered_when_the_title_is_too_blurred_to_read():
+    """Seen on a live phone photo: the title read as 'مضوز فضة الجرية' / 'بطاق غفر العحصب', so it was
+    cut by its position, and the search for the dropped given name ('عمرو') never ran because it
+    measured the name's rows from a title it had only looked for by its words."""
+    rows = _front_rows(with_given_name=False)
+    rows[0] = _row("مضوز فضة الجرية", 20)
+    rows[1] = _row("بطاق غفر العحصب", 60)
+    out = RowRead()
+    _front(rows, out)
+    assert out.fields["fullNameAr"][0] == "محمود سيد علي"
+    _recover_name(_card_with_given_name_ink(), out, _Strips({"given": ("منى", 0.8), "tail": ("", 0.0)}))
+    assert out.fields["fullNameAr"][0] == "منى محمود سيد علي"
+    assert out.recovered_name
+
+
+def test_a_given_name_one_letter_off_is_taken_when_only_one_name_is_that_close():
+    """Seen on a live phone photo: the dropped given name 'عمرو' was read 'صمرو' (0.80) and refused."""
+    out = RowRead()
+    _front(_front_rows(with_given_name=False), out)
+    _recover_name(_card_with_given_name_ink(), out, _Strips({"given": ("صمرو", 0.8), "tail": ("", 0.0)}))
+    assert out.fields["fullNameAr"][0] == "عمرو محمود سيد علي"
+
+
+def test_a_short_or_ambiguous_misread_is_still_left_out():
+    """Three letters one off 'محمد' is also 'مجد' on a soft photo; 'منى'-like reads have several names."""
+    for read in ("محد", "مني١", "سمرا"):
+        out = RowRead()
+        _front(_front_rows(with_given_name=False), out)
+        _recover_name(_card_with_given_name_ink(), out, _Strips({"given": (read, 0.8), "tail": ("", 0.0)}))
+        assert out.fields["fullNameAr"][0] == "محمود سيد علي", read
+
+
 def test_what_a_probe_reads_beyond_belief_is_left_out():
     out = RowRead()
     _front(_front_rows(with_given_name=False), out)
@@ -270,3 +327,24 @@ def test_the_whole_submission_is_not_an_id_when_any_side_clearly_is_not():
     assert _card_verdict({"front": "yes", "back": "no"}) == "not_national_id"
     assert _card_verdict({"front": "yes", "back": "unsure"}) == "unsure"
     assert _card_verdict({"front": "yes"}) == "national_id"
+
+
+# ── Speed: a rejected back is not re-read ───────────────────────────────────────────────────────
+from nidocr.extract import SideResult, _row_field  # noqa: E402
+from nidocr.trace import NO_TRACE  # noqa: E402
+
+
+class _NoReads:
+    def recognize(self, crop, *, rtl=True):  # noqa: ARG002
+        raise AssertionError("the number was re-read")
+
+
+def test_the_number_on_a_rejected_back_keeps_the_page_read_and_is_not_re_read():
+    image = np.full((400, 640, 3), 220, np.uint8)
+    result = SideResult()
+    data = _row_field(
+        image, "nationalId", "٢٨٥٠٣١٤١٢٠١٢٣٤", 0.8, (300.0, 20.0, 620.0, 60.0),
+        _NoReads(), result, NO_TRACE, "back", quick=True,
+    )
+    assert data["value"] == "28503141201234"
+    assert [c.variant for c in result.nid_candidates] == ["page"]

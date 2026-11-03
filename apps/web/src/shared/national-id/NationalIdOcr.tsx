@@ -11,7 +11,7 @@ import { useT } from '../../platform/localization/useT';
 import { cn } from '../lib/cn';
 import { Button } from '../ui/Button';
 import { CheckIcon } from '../ui/icons';
-import { CardCamera, type CardSide } from './CardCamera';
+import { CardCamera, liveCameraSupported, type CardSide } from './CardCamera';
 import { CardPhotoPicker } from './CardPhotoPicker';
 import { NationalIdReviewDialog } from './NationalIdReviewDialog';
 import { ocrToMeta, ocrToReview } from './mapping';
@@ -150,6 +150,20 @@ export const NationalIdOcr = ({
     }
   };
 
+  /**
+   * From the review: photograph one side again, because the reader could not read the one it was
+   * given. The review closes (its values came from a photograph that is about to be replaced) and
+   * the camera opens on that side alone. Where there is no live camera, closing it leaves the
+   * person on the two tiles, where the same side can be uploaded again.
+   */
+  const retake = (which: CardSide): void => {
+    setReviewOpen(false);
+    setConfirmed(false);
+    if (which === 'front') setFront(null);
+    else setBack(null);
+    if (liveCameraSupported()) setCameraSide(which);
+  };
+
   const confirm = (data: NationalIdReviewData): void => {
     setReviewOpen(false);
     setConfirmed(true);
@@ -279,6 +293,7 @@ export const NationalIdOcr = ({
           initial={reviewData}
           meta={reviewMeta}
           notice={unavailable ? t('nationalIdOcr.unavailable') : undefined}
+          onRetake={retake}
           onCancel={() => setReviewOpen(false)}
           onConfirm={confirm}
         />

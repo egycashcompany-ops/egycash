@@ -112,7 +112,9 @@ def _yyyymmdd(digits: str) -> str | None:
 # Closed vocabularies. Keys are the normalized (folded) forms so that orthographic variation in
 # the OCR output, which is the common case for Arabic, still matches.
 RELIGION_TERMS = ("مسلم", "مسلمة", "مسيحي", "مسيحية")
-MARITAL_TERMS = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة")
+#: 'آنسة' is what a card prints for an unmarried woman (a man's says 'أعزب'); the form takes both
+#: as single.
+MARITAL_TERMS = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "آنسة")
 
 _RELIGIONS = {normalize_arabic(term): term for term in RELIGION_TERMS}
 _MARITAL = {normalize_arabic(term): term for term in MARITAL_TERMS}

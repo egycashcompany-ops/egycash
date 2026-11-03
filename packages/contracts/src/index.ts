@@ -15,6 +15,7 @@ export * from './platform/approvals.js';
 export * from './platform/organization.js';
 export * from './platform/application.js';
 export * from './platform/department-application.js';
+export * from './platform/navigation-hubs.js';
 export * from './platform/settings.js';
 export * from './platform/audit.js';
 export * from './platform/scheduler.js';

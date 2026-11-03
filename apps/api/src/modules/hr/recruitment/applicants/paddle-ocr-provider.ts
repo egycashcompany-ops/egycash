@@ -19,6 +19,7 @@
 // endpoint answers `available: false` exactly as before — an existing deployment that does not run
 // the sidecar sees no behaviour change at all.
 import { setTimeout as delay } from 'node:timers/promises';
+import { OCR_QUALITY_REASONS, OCR_QUALITY_VERDICTS, type OcrSideQualityDto } from '@ecms/contracts';
 import { OutboundBlockedError, outboundFetch } from '../../../../infrastructure/http/outbound';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { fileService } from '../../../../platform/files';
@@ -64,7 +65,8 @@ interface SidecarQuality {
  *   * `elapsedMs`      — recognition time, already rounded by the sidecar.
  *   * `quality`        — per side ('front' | 'back'), the actionable verdict: reason codes like
  *                        'too_small' or 'blurred', which say what to change about the PHOTOGRAPH.
- *                        Logged, never returned to the caller.
+ *                        Logged AND returned, sanitised — the review has to know that a side was
+ *                        rejected, or it shows the guesses off that side as if they were read.
  *   * `diagnostics`    — per side, counts and coordinates explaining a poor read. Carries no card
  *                        content, by the sidecar's own design. Not consumed here.
  *   * `orientedImages` — each side cut out and turned upright, base64 JPEG. Asked for explicitly.
@@ -138,6 +140,35 @@ const logQuality = (payload: SidecarResponse): void => {
     { quality: summary, elapsedMs: payload.elapsedMs },
     'national-id OCR sidecar read a card',
   );
+};
+
+const VERDICTS = new Set<string>(OCR_QUALITY_VERDICTS);
+const REASONS = new Set<string>(OCR_QUALITY_REASONS);
+
+/**
+ * The photo verdicts, narrowed for the caller. Same untrusted input as `fields`: a verdict this
+ * API does not know is dropped whole (not downgraded to `reject`, which would empty the review's
+ * fields on nothing but a newer sidecar's vocabulary), and an unknown reason code is dropped from
+ * an otherwise good report, because the review turns each code into words and cannot name one it
+ * has never heard of.
+ */
+const sanitizeQuality = (payload: SidecarResponse): RawOcrResult['quality'] => {
+  const quality = payload.quality;
+  if (quality === undefined || quality === null || typeof quality !== 'object') return undefined;
+  const out: { front?: OcrSideQualityDto; back?: OcrSideQualityDto } = {};
+  for (const side of ['front', 'back'] as const) {
+    const report = quality[side];
+    if (report === undefined || report === null) continue;
+    const verdict = typeof report.verdict === 'string' ? report.verdict : '';
+    if (!VERDICTS.has(verdict)) continue;
+    const reasons = Array.isArray(report.reasons)
+      ? report.reasons.filter(
+          (reason): reason is string => typeof reason === 'string' && REASONS.has(reason),
+        )
+      : [];
+    out[side] = { verdict: verdict as OcrSideQualityDto['verdict'], reasons };
+  }
+  return out.front === undefined && out.back === undefined ? undefined : out;
 };
 
 export interface PaddleOcrProviderOptions {
@@ -267,7 +298,12 @@ export class PaddleNationalIdOcrProvider implements NationalIdOcrProvider {
           logQuality(payload);
           const fields = sanitize(payload);
           const shown = sanitizeImages(payload);
-          return shown === undefined ? fields : { ...fields, images: shown };
+          const quality = sanitizeQuality(payload);
+          return {
+            ...fields,
+            ...(shown === undefined ? {} : { images: shown }),
+            ...(quality === undefined ? {} : { quality }),
+          };
         }
       } catch (error) {
         // Refused by the outbound policy: a configuration fault, and retrying cannot change it.

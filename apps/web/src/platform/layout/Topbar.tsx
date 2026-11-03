@@ -20,6 +20,8 @@ import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
 import { BranchSwitcher } from './BranchSwitcher';
 import { AppVersion } from '../app/AppVersion';
+import { Portrait } from '../../shared/ui/Portrait';
+import { useMyPhotoUrl } from '../home/home-api';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -30,6 +32,8 @@ const UserMenu = (): JSX.Element => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
+  // The person's own photo once HR has added one; their initial until then.
+  const photo = useMyPhotoUrl();
 
   if (me === null) return <></>;
   const name = fullName(me.name, locale);
@@ -55,9 +59,7 @@ const UserMenu = (): JSX.Element => {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-900 dark:text-brand-200">
-          {name.charAt(0) || '؟'}
-        </span>
+        <Portrait url={photo.url} name={name} size="sm" />
         <span className="hidden text-sm font-medium text-slate-700 dark:text-slate-200 sm:inline">{name}</span>
       </button>
       {open && (

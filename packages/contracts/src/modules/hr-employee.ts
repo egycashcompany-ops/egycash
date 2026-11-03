@@ -688,6 +688,23 @@ export interface EmployeePlacementDto {
   jobTitle: EmployeePlacementUnitDto | null;
 }
 
+/**
+ * The signed-in person's own card for the welcome page (`GET /hr/employees/me/summary`): who they
+ * are, where they sit, and the one personal date the page shows — nothing else of the record.
+ * `birthDate` is a Cairo calendar day, `YYYY-MM-DD`.
+ */
+export interface MyEmployeeSummaryDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  birthDate: string | null;
+  hasPhoto: boolean;
+  jobTitle: LocalizedString | null;
+  department: LocalizedString | null;
+  branch: LocalizedString | null;
+}
+
 export interface EmployeeDto {
   id: string;
   /** Permanent identity: the Global Employee Number, e.g. `0125` — never changes (ADR-017). */

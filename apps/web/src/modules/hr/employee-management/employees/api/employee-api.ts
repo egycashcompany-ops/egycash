@@ -25,6 +25,9 @@ import {
   type Paginated,
   type RehireAction,
   type RehireCheckResultDto,
+  type EmployeeCodeCheckDto,
+  type JobTitlePlacementDto,
+  type LastEmployeeCodeDto,
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type RoleAssignmentDto,
@@ -113,6 +116,18 @@ export const updateEmployeeOfficer = (
 /** Exited-employee match for a national id (the Rehire prompt). */
 export const rehireCheck = (nationalId: string): Promise<RehireCheckResultDto | null> =>
   get<RehireCheckResultDto | null>(`/hr/employees/rehire-check${buildQuery({ nationalId })}`);
+
+/** The code holding the highest number, any branch — the register screen's hint. */
+export const lastEmployeeCode = (): Promise<LastEmployeeCodeDto> =>
+  get<LastEmployeeCodeDto>('/hr/employees/last-code');
+
+/** A typed code's branch (by its prefix) and whether its number is already held. */
+export const checkEmployeeCode = (code: string): Promise<EmployeeCodeCheckDto> =>
+  get<EmployeeCodeCheckDto>(`/hr/employees/code-check${buildQuery({ code })}`);
+
+/** Per job title, the department and section most of a branch's staff with it work in. */
+export const jobTitlePlacements = (branchId: string): Promise<JobTitlePlacementDto[]> =>
+  get<JobTitlePlacementDto[]>(`/hr/employees/job-title-placements${buildQuery({ branchId })}`);
 
 /** A short-lived signed URL for one file's bytes (the URL itself needs no session). */
 export const fileDownloadTicket = (fileId: string): Promise<DownloadTicketDto> =>

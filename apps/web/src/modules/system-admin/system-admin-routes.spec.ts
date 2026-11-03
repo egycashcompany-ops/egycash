@@ -34,6 +34,7 @@ describe('System Administration routes', () => {
     expect([...new Set(paths)].sort()).toEqual(
       [
         'users',
+        'active-users',
         'roles',
         'permissions',
         'approvals',
@@ -72,6 +73,7 @@ describe('System Administration routes', () => {
   it('gates each subtree behind the permission its API enforces', () => {
     for (const permission of [
       'user.view',
+      'activeUser.view',
       'role.view',
       'permission.view',
       'setting.view',
@@ -90,6 +92,7 @@ describe('System Administration routes', () => {
     for (const page of [
       '<UsersListPage />',
       '<UserDetailPage />',
+      '<ActiveUsersPage />',
       '<RolesListPage />',
       '<RoleDetailPage />',
       '<PermissionCatalogPage />',
@@ -116,7 +119,7 @@ describe('System Administration routes', () => {
     );
     for (const permission of used) {
       expect(permission, 'SA routes gate on a platform RBAC resource').toMatch(
-        /^(user|role|permission|approval|setting|notificationTemplate|auditLog|activityLog)\./,
+        /^(user|activeUser|role|permission|approval|setting|notificationTemplate|auditLog|activityLog)\./,
       );
     }
   });
@@ -138,6 +141,7 @@ describe('System Administration navigation matches the routes that exist', () =>
   it('seeds the shipped rows', () => {
     expect(navRoutes).toEqual([
       '/system/users',
+      '/system/active-users',
       '/system/roles',
       '/system/permissions',
       '/system/approvals',
@@ -159,6 +163,7 @@ describe('System Administration navigation matches the routes that exist', () =>
   // can — both are silent.
   it.each([
     ['/system/users', 'user.view'],
+    ['/system/active-users', 'activeUser.view'],
     ['/system/roles', 'role.view'],
     ['/system/permissions', 'permission.view'],
     ['/system/settings', 'setting.view'],

@@ -25,6 +25,7 @@ import { Card, CardHeader } from '../../shared/ui/Card';
 import { Portrait } from '../../shared/ui/Portrait';
 import { CakeIcon, FileIcon, HistoryIcon } from '../../shared/ui/icons';
 import { pluralForm } from '../../shared/lib/plural';
+import { relativeTimeText } from '../../shared/lib/relative-time';
 import { cn } from '../../shared/lib/cn';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
@@ -43,21 +44,9 @@ const longDate = (ymd: string, locale: Locale, weekday: boolean): string =>
     timeZone: 'UTC',
   }).format(new Date(`${ymd}T00:00:00Z`));
 
-/** «منذ 5 دقائق», «أمس» — or nothing for a visit recorded before visits carried a time. */
-const relativeTime = (at: number, now: number, locale: Locale): string | null => {
-  if (at <= 0) return null;
-  const seconds = Math.round((at - now) / 1000);
-  const format = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: 'auto' });
-  const steps: [Intl.RelativeTimeFormatUnit, number][] = [
-    ['day', 86_400],
-    ['hour', 3_600],
-    ['minute', 60],
-  ];
-  for (const [unit, size] of steps) {
-    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
-  }
-  return format.format(0, 'second');
-};
+/** «قبل 5 دقائق», «أمس» — or nothing for a visit recorded before visits carried a time. */
+const relativeTime = (at: number, now: number, locale: Locale): string | null =>
+  at <= 0 ? null : relativeTimeText(at, now, locale);
 
 /** The first NAME, not the first word: «عبد الرحمن» and «نور الدين» stay whole. */
 const firstName = (name: string): string => nameParts(name)[0] ?? name;

@@ -167,6 +167,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/organization/departments/pages/DepartmentsListPage.tsx', []],
   ['modules/organization/job-titles/pages/JobTitlesListPage.tsx', []],
   ['modules/organization/sections/pages/SectionsListPage.tsx', []],
+  // `day`: the page opens on today; a past day looked at once is not where the next visit starts.
+  ['modules/system-admin/active-users/pages/ActiveUsersPage.tsx', ['day']],
   ['modules/system-admin/audit/pages/ActivityLogPage.tsx', []],
   ['modules/system-admin/audit/pages/AuditLogPage.tsx', ['actorUserId', 'moduleId']],
   ['modules/system-admin/notification-templates/pages/TemplatesListPage.tsx', []],

@@ -148,6 +148,15 @@ const render = (path = '/it/assets'): string => {
     page([PRINTER]),
   );
   qc.setQueryData(listKey('it', 'assets', { ...FIRST_PAGE, categoryId: 'c-pc' }), page([HELD]));
+  // «الضمان»: the bar's own window, and the dashboard's when its setting is another.
+  qc.setQueryData(
+    listKey('it', 'assets', { ...FIRST_PAGE, warrantyEndsWithinDays: 30 }),
+    page([HELD]),
+  );
+  qc.setQueryData(
+    listKey('it', 'assets', { ...FIRST_PAGE, warrantyEndsWithinDays: 45 }),
+    page([IN_STOCK]),
+  );
   qc.setQueryData(
     listKey('it', 'assets', {
       ...FIRST_PAGE,
@@ -304,5 +313,40 @@ describe('the category and name filters', () => {
 
   it('offers no reset while nothing is filtered', () => {
     expect(render()).not.toContain(`aria-label="${ar('common.filters.clear')}"`);
+  });
+});
+
+// The `/it` dashboard's «ضمان ينتهي خلال ٣٠ يومًا» opens this register with
+// `warrantyEndsWithinDays` set — so the register reads it, asks for it, and shows it in its bar.
+describe('«الضمان»', () => {
+  const label = ar('it.assets.warranty.label');
+
+  it('offers every warranty, then 30 and 90 days', () => {
+    const html = render();
+    const select = html.slice(html.indexOf(`aria-label="${label}"`));
+    expect(select).toMatch(
+      /^[^>]*>\s*<option value="" selected="">الضمان: الكل<\/option><option value="30">ينتهي خلال ٣٠ يومًا<\/option><option value="90">ينتهي خلال ٩٠ يومًا<\/option><\/select>/u,
+    );
+  });
+
+  it('reads the window from the URL and asks the register for it', () => {
+    const html = render('/it/assets?warrantyEndsWithinDays=30');
+    expect(html).toContain('AST-00012');
+    expect(html).not.toContain('AST-00014');
+    expect(html).toMatch(/<option value="30" selected="">ينتهي خلال ٣٠ يومًا<\/option>/u);
+    expect(html).toContain(`aria-label="${ar('common.filters.clear')}"`);
+  });
+
+  it('shows a linked window the bar does not offer, rather than reading «الكل» while narrowed', () => {
+    const html = render('/it/assets?warrantyEndsWithinDays=45');
+    expect(html).toContain('AST-00014');
+    expect(html).not.toContain('AST-00012');
+    expect(html).toMatch(/<option value="45" selected="">ينتهي خلال ٤٥ يومًا<\/option>/u);
+  });
+
+  it('reads a window the API would refuse as none', () => {
+    const html = render('/it/assets?warrantyEndsWithinDays=999');
+    expect(html).toContain('AST-00012');
+    expect(html).toContain('AST-00014');
   });
 });

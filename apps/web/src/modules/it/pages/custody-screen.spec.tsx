@@ -110,6 +110,9 @@ const render = (path = '/it/custody'): string => {
   // carries the items as ONE escaped list in `assetName`.
   qc.setQueryData(listKey('it', 'custody', DEFAULT), page([LENOVO, PRINTER, OTHER]));
   qc.setQueryData(listKey('it', 'custody', { ...DEFAULT, categoryId: 'c-pc' }), page([LENOVO]));
+  // «حالة المستلِم»: the intervals whose holder has left — the dashboard's link.
+  qc.setQueryData(listKey('it', 'custody', { ...DEFAULT, holderExited: true }), page([OTHER]));
+  qc.setQueryData(listKey('it', 'custody', { ...DEFAULT, holderExited: false }), page([LENOVO]));
   qc.setQueryData(
     listKey('it', 'custody', {
       ...DEFAULT,
@@ -214,5 +217,36 @@ describe('the lists in the URL', () => {
     expect(html).toContain('title="طابعات, كمبيوتر"');
     expect(html).toContain(`title="${COMMA_NAME}, ${NAME}"`);
     expect(html).toContain(`aria-label="${ar('common.filters.clear')}"`);
+  });
+});
+
+// «أصول مع موظفين تركوا العمل» on the `/it` dashboard opens this register with `holderExited` set —
+// so the register has to read it, ask for it, show it, and let it go with the rest of the filters.
+describe('«حالة المستلِم»', () => {
+  const label = ar('it.custody.filters.holderState');
+
+  it('stands right after the holder — a fact about the person, beside the person', () => {
+    const bar = fields(render());
+    expect(bar[bar.indexOf(ar('it.custody.holder')) + 1]).toBe(label);
+  });
+
+  it('reads `holderExited` from the URL and asks the register for it', () => {
+    const left = render('/it/custody?open=true&holderExited=true');
+    expect(left).toContain('AST-00099');
+    expect(left).not.toContain('AST-00012');
+    expect(left).toMatch(/<option value="true" selected="">ترك العمل<\/option>/u);
+    expect(left).toContain(`aria-label="${ar('common.filters.clear')}"`);
+
+    const employed = render('/it/custody?holderExited=false');
+    expect(employed).toContain('AST-00012');
+    expect(employed).not.toContain('AST-00099');
+    expect(employed).toMatch(/<option value="false" selected="">على رأس العمل<\/option>/u);
+  });
+
+  it('reads a value it does not offer as no filter, rather than a refused request', () => {
+    const html = render('/it/custody?holderExited=maybe');
+    // The unfiltered register's rows — the request carried no `holderExited`.
+    expect(html).toContain('AST-00012');
+    expect(html).toContain('AST-00099');
   });
 });

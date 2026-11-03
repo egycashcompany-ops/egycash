@@ -19,6 +19,7 @@ import {
   IT_CATALOG_KINDS,
   IT_CONSUMABLE_ISSUE_REASONS,
   IT_CONSUMABLE_MOVEMENT_KINDS,
+  IT_DASHBOARD_ACTIVITY_KINDS,
   IT_LICENSE_STATES,
   IT_MAINTENANCE_KINDS,
   IT_MAINTENANCE_ORDER_STATUSES,
@@ -32,6 +33,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
+import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +99,19 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     name: 'consumable issue reason',
     prefix: 'it.consumables.reason',
     values: IT_CONSUMABLE_ISSUE_REASONS,
+  },
+  // The `/it` dashboard. «آخر الحركات» badges each movement by its kind through the history's own
+  // TEMPLATE key, and «الضمان» counts its days in Arabic's five forms through another — neither of
+  // which the source scan below can see.
+  {
+    name: 'dashboard movement kind',
+    prefix: 'it.custody.event',
+    values: IT_DASHBOARD_ACTIVITY_KINDS,
+  },
+  {
+    name: 'warranty window',
+    prefix: 'it.assets.warranty.endsWithin',
+    values: CUSTODY_COUNT_FORMS,
   },
 ];
 

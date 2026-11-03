@@ -11,6 +11,15 @@ its entry here in the same PR.
 
 ### Added
 
+- **The IT home is a dashboard.** «عايزك تعمل فى الـ /it الرئيسية.. Dashboard بدل اللى موجود فيها يظهر
+  إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر أفلتر بـالفئة.. من خلال Drop Down بـ
+  Multiselection». `/it` now opens on the assets' totals — all, in stock, handed over, under
+  maintenance, disposed — filtered by one or more categories and a branch, with the status split,
+  the figures by category and by branch, «يحتاج متابعة» (assets held by leavers, receipts awaiting
+  the signature, overdue returns, warranties ending soon — each opening its list), the latest
+  movements, the mobile lines by network, the consumables at their minimum, the help desk's counts
+  and the IT pages. The custody register gains «حالة المستلِم» (left / still employed) and the asset
+  list «الضمان» (ending within 30 / 90 days) ([IT design §11](docs/12-planning/it-module-design.md)).
 - **Fleet: «تصحيح أرقام الكروت» — the go-live's 15 crossed Wataniya card numbers and the 0849 pair,
   repaired once by the owner after he reviews the live dry run; and the full card photo for the
   PIN's own grant only.** «الـ PIN بيمشي مع الرقم المطبوع على الكارت ولا مع الاسم — الاتنين بس

@@ -28,6 +28,7 @@ import { itAssetEventRepository } from './asset-event.repository';
 import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { itConsumableMovementRepository } from '../consumables/consumable-movement.repository';
 import { nextAssetCode } from './asset-sequence';
+import { warrantyEndingWithin } from './warranty-window';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
 import {
   type ItAssetDoc,
@@ -187,6 +188,12 @@ class ItAssetService {
       // scope still applies to the assets themselves, below.
       const open = await itAssetAssignmentRepository.listOpenForEmployee(query.holderEmployeeId);
       filter.currentAssignmentId = { $in: open.map((assignment) => assignment._id) };
+    }
+    if (query.warrantyEndsWithinDays !== undefined) {
+      // The dashboard's warranty row opened as a list. Its own `$and` clause: the window carries a
+      // status condition of its own (not disposed), which must narrow the status filter above
+      // rather than overwrite it.
+      filter.$and = [warrantyEndingWithin(query.warrantyEndsWithinDays, new Date())];
     }
     if (query.search !== undefined && query.search !== '') {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

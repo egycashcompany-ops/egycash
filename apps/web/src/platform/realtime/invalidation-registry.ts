@@ -456,8 +456,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'assets'],
     ['it', 'custody'],
   ],
-  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
-  'it.custodyReceipt': [['it', 'custody']],
+  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»), and on
+  // the `/it` dashboard's «إيصالات استلام بانتظار التوقيع» — only its figures, as the receipt
+  // mutations say: the paper moves no asset.
+  'it.custodyReceipt': [
+    ['it', 'custody'],
+    ['it', 'assets', 'list', { dashboard: 'assets' }],
+  ],
   // FR-19 — a line moves its register row, its network's card and its history, and its custody
   // intervals (a person's history page reads those).
   'it.mobileLine': [

@@ -11,6 +11,26 @@ its entry here in the same PR.
 
 ### Added
 
+- **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
+  time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
+  دلوقتى وشغال .. ووقت كل واحد على السيستم..».
+  - **The page** is `/system/active-users`, behind a new permission `activeUser.view`; super-admin
+    and platform-admin hold it by default. For each person it shows:
+    - the status: «نشط الآن» (used the system within two minutes), «خامل» (signed in with the
+      page open, nobody touching it) or «غير متصل»;
+    - when they signed in and for how long;
+    - the working time today;
+    - the first and last activity;
+    - the devices, as browser and system only, never an address.
+  - **Summary and controls.** Tiles count who is working, who is idle, how many people used the
+    system and the total time; the two status tiles also filter the list. Search, status and branch
+    filters are kept in the address. The page refreshes every 30 seconds. Any earlier day (kept 90
+    days) shows that day's working time and the average per person.
+  - **How working time is measured.** The browser sends a heartbeat once in each minute of the
+    clock, and only while the person is using the page and it is in front of them. Each minute is
+    counted once however many tabs or devices are open. Heartbeats are not audited and do not
+    extend the session.
+  - Signing out shows as «غير متصل» at once.
 - **A welcome page for every account, and a photo on every employee's profile.** «عايزك تضيف فى
   بروفايل كل شخص صورة شخصية ليه .. ويقدر الـ HR يضيفهاله» · «عايز بقى أى حساب يدخل تظهرله Welcome
   Page بتقوله أهلاً وتاريخ ميلادة وكام يوم باقى عليه (ولو اليوم عيد ميلاده يقوله كل سنة وأنت طيب)..

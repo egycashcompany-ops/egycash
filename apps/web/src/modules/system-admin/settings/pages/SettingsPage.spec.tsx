@@ -420,6 +420,31 @@ describe('every setting reaches the screen', () => {
     });
   });
 
+  it('says a value that is not a list is set once it differs from what ships — how the ATM pages read', () => {
+    const key = AtmSettingKeys.Display;
+    const rowOf = (html: string): string => {
+      const at = html.indexOf(`>${key}<`);
+      const next = html.indexOf('data-settings-section', at + 1);
+      return html.slice(at, next === -1 ? undefined : next);
+    };
+    const saved = rowOf(
+      render({
+        resolved: [
+          ...RESOLVED.filter((entry) => entry.key !== key),
+          {
+            key,
+            value: { textSize: 125, bold: true, tableLines: 'strong' },
+            resolvedFrom: 'organization',
+          },
+        ],
+      }),
+    );
+    expect(saved).toContain(translate('en', 'systemAdmin.settings.managed.set'));
+    expect(saved).not.toContain(translate('en', 'systemAdmin.settings.managed.empty'));
+    const untouched = rowOf(render({ resolved: RESOLVED.filter((entry) => entry.key !== key) }));
+    expect(untouched).toContain(translate('en', 'systemAdmin.settings.managed.empty'));
+  });
+
   it('marks a retired setting instead of offering a field for it', () => {
     for (const key of RETIRED_SETTINGS) {
       expect(markup).toContain(key);

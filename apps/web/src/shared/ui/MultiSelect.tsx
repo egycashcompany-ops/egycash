@@ -491,9 +491,12 @@ export const MultiSelect = ({
       // Where the panel would sit unpinned: from the trigger's start edge, along the text.
       const rtl = getComputedStyle(box).direction === 'rtl';
       const left = rtl ? trigger.right - width : trigger.left;
-      if (left < 8) setPin('left');
-      else if (left + width > window.innerWidth - 8) setPin('right');
-      else setPin(null);
+      const next = left < 8 ? 'left' : left + width > window.innerWidth - 8 ? 'right' : null;
+      // On the panel at once, not only on the next render: the search box is focused and the list
+      // revealed in this same commit (below), and must find the list where it will stay.
+      panel.style.left = next === 'left' ? '0px' : next === 'right' ? 'auto' : '';
+      panel.style.right = next === 'right' ? '0px' : next === 'left' ? 'auto' : '';
+      setPin(next);
     };
     place();
     window.addEventListener('resize', place);
@@ -573,15 +576,20 @@ export const MultiSelect = ({
   const listed = loaded ?? options;
   const remote = onSearch !== undefined;
   const searchable = remote || listed.length >= searchThreshold;
-  // The search box takes the caret once the list is OPEN AND PLACED — never `autoFocus`, and never
-  // scrolling. «لما بضغط عليه المنيو بيطلع شمال برا الشاشة وبيغير الـ UI» (2026-11-03): `autoFocus`
-  // focused the box on the render that drew the list, before the pin (above) moved a list at the
-  // page's left edge back into the screen; the browser scrolled the board sideways to show the box
-  // where it first stood, the pin then moved the list, and the page was left shifted. This runs
-  // after the pin's own effect, and `preventScroll` keeps any box from moving the page under it.
+  // The search box takes the caret once the list is OPEN AND PLACED — never `autoFocus`.
+  // «لما بضغط عليه المنيو بيطلع شمال برا الشاشة وبيغير الـ UI» (2026-11-03): `autoFocus` focused the
+  // box on the render that drew the list, before the pin (above) moved a list at the page's left
+  // edge back into the screen; the browser scrolled the board sideways to show the box where it
+  // first stood, the pin then moved the list, and the page was left shifted. This runs after the
+  // pin's own effect, which has already put the list in place: the box is focused without
+  // scrolling, and the list — now inside the screen — is brought into view only as much as it
+  // needs, which is down (a list opened low in a dialog), never sideways. A floating list is fixed
+  // to the trigger and needs neither.
   useLayoutEffect(() => {
-    if (open && searchable) searchRef.current?.focus({ preventScroll: true });
-  }, [open, searchable]);
+    if (!open || !searchable) return;
+    searchRef.current?.focus({ preventScroll: true });
+    if (!floating) panelRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [open, searchable, floating]);
   const matches = useMemo(
     () =>
       !remote && searchable && query !== ''

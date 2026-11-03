@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COPY_CELL_SEPARATOR,
   copiedCellText,
+  copiedLine,
   copiedGrid,
   tableClipboard,
   type CopiedCell,
@@ -22,7 +23,8 @@ describe('the text a chat pastes', () => {
         row('NBE', '25990323', 'SYN معهد التعاون', 'مبكر جدا'),
       ]),
     );
-    expect(text).toBe(
+    // Read without its direction marks (below), the text is the rows, cell by cell.
+    expect(text.replace(/[\u200F\u2068\u2069]/g, '')).toBe(
       [
         'MISR | 1150744 | SYN فرع القصر العينى | مسائي',
         'MISR | 1150183 | SYN الدواوين 3 | مسائي',
@@ -31,6 +33,20 @@ describe('the text a chat pastes', () => {
     );
     expect(text).not.toContain('\t');
     expect(COPY_CELL_SEPARATOR).toBe(' | ');
+  });
+
+  it('each line reads right to left with every cell whole — the schedule never lands inside a name', () => {
+    // « | » is neutral: unmarked, a line opening with «MISR» reads left to right in WhatsApp and two
+    // Arabic cells side by side run together and swap. A right-to-left mark opens the line, and
+    // each cell is isolated (FSI … PDI).
+    expect(copiedLine(['MISR', 'SYN فرع القصر العينى', 'مسائي'])).toBe(
+      '\u200F\u2068MISR\u2069 | \u2068SYN فرع القصر العينى\u2069 | \u2068مسائي\u2069',
+    );
+    const { text } = tableClipboard([
+      ['MISR', '1'],
+      ['NBE', '2'],
+    ]);
+    expect(text.split('\n').every((line) => line.startsWith('\u200F'))).toBe(true);
   });
 
   it('a cell’s text on one line, its spaces one', () => {

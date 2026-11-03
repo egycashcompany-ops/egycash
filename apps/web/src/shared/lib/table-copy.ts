@@ -6,7 +6,7 @@
 // not: WhatsApp draws a tab as a narrow space, and «MISR 1150744 فرع القصر العينى مسائي» runs
 // together. So a copy that spans cells of a table is written twice on the clipboard:
 //   · as TEXT, each row one line, its cells separated by « | » — what a chat, a note or an SMS
-//     pastes, and still reads as columns there;
+//     pastes, and still reads as columns there, right to left, each cell whole (`copiedLine`);
 //   · as an HTML TABLE — what a sheet, a document or an e-mail pastes, as real rows and columns.
 // A selection inside one cell — part of a name — is the browser's to copy, as it always was.
 //
@@ -46,14 +46,30 @@ export const copiedGrid = (rows: readonly (readonly CopiedCell[])[]): string[][]
 const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** Right-to-left mark: the line reads right to left, whatever its first letter. */
+const RLM = '\u200F';
+/** First-strong isolate and its end: a cell keeps its own direction and its place in the line. */
+const FSI = '\u2068';
+const PDI = '\u2069';
+
+/**
+ * Pure: one copied row as a line of text a chat lays out right. « | » is a neutral character, so
+ * without marks a line opening with a Latin bank code reads left to right, and two Arabic cells
+ * side by side run together and swap — the schedule landing inside the machine's name. The line
+ * opens with a right-to-left mark and each cell is isolated: the cells read right to left in the
+ * table's order, each one whole.
+ */
+export const copiedLine = (row: readonly string[]): string =>
+  RLM + row.map((cell) => FSI + cell + PDI).join(COPY_CELL_SEPARATOR);
+
 /**
  * Pure: what goes on the clipboard for a grid — the text a chat pastes (a line per row, « | »
- * between cells) and the table a sheet or a document pastes. Right to left, as the pages are.
+ * between cells, right to left) and the table a sheet or a document pastes.
  */
 export const tableClipboard = (
   grid: readonly (readonly string[])[],
 ): { text: string; html: string } => ({
-  text: grid.map((row) => row.join(COPY_CELL_SEPARATOR)).join('\n'),
+  text: grid.map(copiedLine).join('\n'),
   html:
     '<meta charset="utf-8"><table dir="rtl" border="1" cellpadding="4" style="border-collapse:collapse">' +
     grid
@@ -64,54 +80,96 @@ export const tableClipboard = (
 
 // ── The page's side: reading the selection ─────────────────────────────────────────────────────
 
-/** The elements whose text is a control's, not the row's. */
-const CONTROL_SELECTOR = 'button, input, select, textarea, [aria-hidden="true"], .sr-only';
+/** Inside a row of data: the elements whose text is a control's, not the row's. */
+const BODY_CONTROLS = 'button, input, select, textarea, [aria-hidden="true"], .sr-only';
+/**
+ * Inside the head: a header's sort button carries the column's name, so it is read — but not the
+ * row of column filters under the names, whose triggers say «الكل».
+ */
+const HEAD_CONTROLS =
+  'input, select, textarea, [aria-hidden="true"], .sr-only, [data-column-filter]';
 
 /**
  * A cell's shown text, read the way the reader sees it: a control's text left out, and a space
  * wherever the layout breaks the text (a badge beside a name in a flex row, a second line) — so
  * «SYN SERVICE» and its «بريد» badge do not run together.
  */
-const shownText = (node: Node): string => {
+const shownText = (node: Node, controls: string): string => {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
   if (!(node instanceof Element)) return '';
-  if (node.matches(CONTROL_SELECTOR)) return '';
-  const inner = [...node.childNodes].map(shownText).join('');
+  if (node.matches(controls)) return '';
+  const inner = [...node.childNodes].map((child) => shownText(child, controls)).join('');
   const display = getComputedStyle(node).display;
   return display === 'inline' || display === 'contents' ? inner : ` ${inner} `;
 };
 
-/** Can the reader select this cell — or does the table keep it out (`select-none`)? */
+/**
+ * Can the reader select this cell — or does the table keep it out? Read from the classes the
+ * table sets (`select-none` around it, `select-text` on the copy columns), not from the computed
+ * value: browsers do not agree on whether `user-select` is inherited, and Firefox reads a cell
+ * under a `select-none` table as selectable.
+ */
 const selectable = (cell: Element): boolean => {
-  const style = getComputedStyle(cell);
-  const userSelect = style.userSelect || style.getPropertyValue('-webkit-user-select');
-  return userSelect !== 'none';
+  const marked = cell.closest('.select-none, .select-text');
+  return marked === null || marked.classList.contains('select-text');
 };
 
 /**
- * The rows of a table a selection covers, each with the cells it reaches — or null when the
- * selection is not one that spans cells (nothing selected, a part of one cell, not in a table).
+ * Does the range cover some of this node's content — not merely touch it at an edge? A drag that
+ * ends past a row's last copy column ends at the very start of the next cell (or the next row's
+ * first cell), which a plain `intersectsNode` counts as reached.
+ */
+const covers = (range: Range, node: Node): boolean => {
+  const inner = node.ownerDocument?.createRange();
+  if (inner === undefined) return false;
+  inner.selectNodeContents(node);
+  return (
+    range.compareBoundaryPoints(Range.END_TO_START, inner) < 0 &&
+    range.compareBoundaryPoints(Range.START_TO_END, inner) > 0
+  );
+};
+
+const elementOf = (node: Node): Element | null =>
+  node instanceof Element ? node : node.parentElement;
+
+/**
+ * The rows of one table a selection covers, head and body, each with the cells it covers — or
+ * null when the selection is not one that spans cells of one table (nothing selected, a part of
+ * one cell, nothing in a table, or two tables at once). Every range of the selection counts:
+ * Firefox splits a drag across unselectable cells into several.
  */
 export const selectedTableRows = (selection: Selection): CopiedCell[][] | null => {
   if (selection.isCollapsed || selection.rangeCount === 0) return null;
-  const range = selection.getRangeAt(0);
-  const common = range.commonAncestorContainer;
-  const at = common instanceof Element ? common : common.parentElement;
-  if (at === null || at.closest('td, th') !== null) return null;
-  const table = at.closest('table');
-  if (table === null) return null;
-  const rows: CopiedCell[][] = [];
-  for (const body of [...table.tBodies]) {
-    for (const row of [...body.rows]) {
-      if (!range.intersectsNode(row)) continue;
-      rows.push(
-        [...row.cells]
-          .filter((cell) => range.intersectsNode(cell) && selectable(cell))
-          .map((cell) => ({ column: cell.cellIndex, text: copiedCellText(shownText(cell)) })),
-      );
-    }
+  const ranges = Array.from({ length: selection.rangeCount }, (_, at) => selection.getRangeAt(at));
+  const tables = new Set<HTMLTableElement>();
+  for (const range of ranges) {
+    const at = elementOf(range.commonAncestorContainer);
+    if (at === null) return null;
+    const host = at.closest('table');
+    if (host !== null) tables.add(host);
+    else
+      for (const table of at.querySelectorAll('table')) if (covers(range, table)) tables.add(table);
   }
-  return rows.length === 0 ? null : rows;
+  if (tables.size !== 1) return null;
+  const [table] = [...tables] as [HTMLTableElement];
+  const rows: CopiedCell[][] = [];
+  let cellsCovered = 0;
+  for (const row of [...table.rows]) {
+    if (!ranges.some((range) => covers(range, row))) continue;
+    const inHead = row.parentElement?.tagName === 'THEAD';
+    const cells = [...row.cells].filter(
+      (cell) => selectable(cell) && ranges.some((range) => covers(range, cell)),
+    );
+    cellsCovered += cells.length;
+    rows.push(
+      cells.map((cell) => ({
+        column: cell.cellIndex,
+        text: copiedCellText(shownText(cell, inHead ? HEAD_CONTROLS : BODY_CONTROLS)),
+      })),
+    );
+  }
+  // A part of one cell is the browser's to copy, as it always was.
+  return cellsCovered <= 1 ? null : rows;
 };
 
 /**
@@ -124,8 +182,7 @@ export const tableCopyHandler =
     const selection = document.getSelection();
     if (selection === null || event.clipboardData === null) return;
     if (selection.rangeCount === 0) return;
-    const common = selection.getRangeAt(0).commonAncestorContainer;
-    const at = common instanceof Element ? common : common.parentElement;
+    const at = elementOf(selection.getRangeAt(0).commonAncestorContainer);
     if (at === null || !isInScope(at)) return;
     const rows = selectedTableRows(selection);
     if (rows === null) return;

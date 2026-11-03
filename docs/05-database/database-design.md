@@ -69,6 +69,21 @@ Indexes: `ux_email`, `ix_companyId_branchId_status`.
   "device": { "userAgent": "…", "ip": "…" },
   "expiresAt": "TTL index", "revokedAt": null, "revokedReason": null }
 ```
+Also `ix_live_lastUsedAt` — `{ lastUsedAt: -1 }`, partial on `revokedAt: null` — for the active users
+page, which reads every session renewed inside the idle window.
+
+### user_activity_days  *(presence)*
+```jsonc
+// One person, one Cairo day. A heartbeat (at most once a minute, only while somebody is using
+// the page) adds the minute of the day it landed in; the minutes are a SET ($addToSet), so two
+// tabs or two devices never count the same minute twice. Time on the system = minutes.length.
+{ "userId": "…", "day": "2026-11-03",
+  "minutes": [480, 481, 482],              // 0‥1439, minute of the Cairo day
+  "firstAt": "…", "lastAt": "…",           // first and last heartbeat ($min / $max)
+  "expiresAt": "TTL index" }               // end of the Cairo day + PRESENCE_RETENTION_DAYS (90)
+```
+Indexes: `ux_userId_day` (the upsert key), `ix_day_lastAt`, `ttl_expiresAt`. Not audited and not
+a session: a heartbeat never touches `sessions.lastUsedAt`, so the idle sign-out is unaffected.
 
 ### permissions / roles / role_assignments  *(rbac)*
 ```jsonc

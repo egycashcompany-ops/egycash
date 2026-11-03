@@ -8,6 +8,7 @@ import { Navigate } from 'react-router-dom';
 import { useAppSelector } from '../../store';
 import { ForcePasswordChangePage } from '../auth/ForcePasswordChangePage';
 import { IdleSessionGuard } from '../auth/IdleSessionGuard';
+import { PresenceHeartbeat } from '../presence/PresenceHeartbeat';
 
 export const RequireAuth = ({ children }: { children: ReactNode }): ReactNode => {
   const status = useAppSelector((state) => state.auth.status);
@@ -18,5 +19,13 @@ export const RequireAuth = ({ children }: { children: ReactNode }): ReactNode =>
   // Mounted HERE rather than higher up, and as its own component rather than hooks in this one:
   // the inactivity count belongs to a session, so it starts when one exists and is torn down
   // with it — and this component's early returns above make it no place for a hook.
-  return <IdleSessionGuard>{children}</IdleSessionGuard>;
+  //
+  // The presence heartbeat lives beside it for the same reason: «who is working now» is asked of
+  // a staff session, and only while one exists.
+  return (
+    <IdleSessionGuard>
+      <PresenceHeartbeat />
+      {children}
+    </IdleSessionGuard>
+  );
 };

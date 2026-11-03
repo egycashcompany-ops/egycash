@@ -10,6 +10,7 @@ synced to the DB registry at boot (Review R18).
 
 | Resource | Module | view | create | edit | delete | export | print | approve | reject | Special actions |
 |---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
+| `activeUser` | platform | ● |  |  |  |  |  |  |  |  |
 | `activityLog` | platform | ● |  |  |  |  |  |  |  |  |
 | `application` | platform | ● | ● | ● | ● |  |  |  |  |  |
 | `applicationCategory` | platform | ● | ● | ● | ● |  |  |  |  |  |
@@ -31,4 +32,4 @@ synced to the DB registry at boot (Review R18).
 | `setting` | platform | ● |  | ● |  |  |  |  |  |  |
 | `user` | platform | ● | ● | ● | ● | ● |  |  |  | `user.resetPassword`, `user.manageSessions` ⚠️ break-glass, `user.setupLink` ⚠️ break-glass |
 
-Total permissions: **68**
+Total permissions: **69**

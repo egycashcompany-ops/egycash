@@ -343,6 +343,11 @@ export const USER_SCOPED_COLLECTIONS: readonly { collection: string; path: strin
       path: 'userId',
       why: 'navigation grants of a deleted account',
     },
+    {
+      collection: 'user_activity_days',
+      path: 'userId',
+      why: 'the minutes a deleted account worked — the active users page has nobody to show them under',
+    },
   ];
 
 /** The roles whose holders survive. Everything else about an account is irrelevant to survival. */

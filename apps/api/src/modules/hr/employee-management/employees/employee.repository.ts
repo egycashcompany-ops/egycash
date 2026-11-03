@@ -31,6 +31,11 @@ export interface EmployeeListFilter {
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** What a directory entry reads (`directory-seams.ts` `toDirectoryEmployee`) — and nothing more. */
+export const DIRECTORY_FIELDS =
+  'code status branchId departmentId hiredAt personal.fullNameAr personal.contact.primaryPhone ' +
+  'personal.officialAddress personal.currentAddress';
+
 class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   constructor() {
     super(EmployeeModel, {
@@ -281,6 +286,22 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /** Batch fetch for display enrichment (AT-6 lists) — ids in, docs out, no scope (labels only). */
+  /**
+   * The same people as `findByIdsSystem`, carrying only what a directory entry is made of. A list
+   * screen asks for a page of them at a time, and the active users page for everyone on the system
+   * every 30 seconds: whole records — addresses, insurance, periods, history — would be megabytes
+   * decoded to print a code and a name.
+   */
+  async findDirectoryByIdsSystem(ids: string[]): Promise<EmployeeDoc[]> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
+      .select(DIRECTORY_FIELDS)
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   async findByIdsSystem(ids: string[]): Promise<EmployeeDoc[]> {
     const valid = ids.filter((id) => Types.ObjectId.isValid(id));
     if (valid.length === 0) return [];

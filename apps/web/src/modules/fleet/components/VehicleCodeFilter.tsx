@@ -20,7 +20,13 @@
 // code, always, with no second reading. A word and its number are one car — «كورولا 1», «MG 2»,
 // «بيجو 5008» (`splitVehicleCodeList`) — so the space after «كورولا» does not tick «كورولا»: the
 // word waits in the box as the search, listing «كورولا 1» and «كورولا 2», until a number, a hard
-// separator, another word, Enter or the list closing settles it (`readTypedVehicleCodes`).
+// separator, another word, Enter or the list closing settles it (`readTypedVehicleCodes`) — or a
+// pick from that list answers it, after which the word alone is never ticked (`readAnsweredBox`).
+//
+// ONE SPELLING PER CAR. A code arrives in whatever spelling carried it — a car's own link writes
+// the stored «فورتشنر 2 », a board offers its rows' raw codes, a hand-written link says `mg 2` — and
+// the control holds each as the list OFFERS it (`heldVehicleCodes`), so the carried code ticks its
+// row rather than standing beside it as a second one.
 //
 // EVERY CAR IS ON OFFER. «اكواد السيارات فى الادخال او الفلاتر لازم لازم تظهر كلها من شاشة
 // السيارات». The options are the WHOLE registry (`useAllVehicles`, every page, every lifecycle
@@ -30,16 +36,18 @@
 // licensing, both rosters) passes its own `options` instead, and is narrowed the same way.
 // `lib/vehicle-code-selectors.spec.ts` keeps new screens on this control.
 import { useMemo, useRef, useState } from 'react';
-import { normalizeVehicleCode } from '@ecms/contracts';
+import { normalizeVehicleCode, sameVehicleCode } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
 import { asciiDigits } from '../../../shared/lib/format';
 import { useAllVehicles } from '../api/fleet-queries';
 import {
+  answersWaitingWord,
   canonicalVehicleCodes,
-  finishTypedVehicleCodes,
-  readTypedVehicleCodes,
+  finishAnsweredBox,
+  heldVehicleCodes,
+  readAnsweredBox,
 } from '../lib/typed-vehicle-codes';
 import { narrowVehicleCodeOptions, registryVehicleCodeOptions } from '../lib/vehicle-code-options';
 
@@ -84,9 +92,9 @@ export const VehicleCodeFilter = ({
   // What is still being TYPED — the trailing fragment, after the completed codes have been taken
   // into the selection. It narrows the list and is the box's text.
   const [search, setSearch] = useState('');
-  // A pick from the list since the box was last typed into: the reader answered the word waiting
-  // there («كورولا » → the row «كورولا 1»), so the list closing takes nothing more from the box.
-  const pickedSinceTyping = useRef(false);
+  // The word waiting in the box that a pick has ANSWERED («كورولا » → the row «كورولا 1»), or null:
+  // Enter, the next word and the list closing then take nothing for it (`answersWaitingWord`).
+  const answered = useRef<string | null>(null);
   const remote = options === undefined;
 
   // The whole registry, only when this control sources its own options; a board passes its own.
@@ -103,12 +111,22 @@ export const VehicleCodeFilter = ({
     [options, vehicles.data],
   );
 
+  // The page's codes as the list offers them — one ticked row per car, however it was carried in.
+  // A list of places (`plainSearch`) is not one of codes, and is held exactly as given.
+  const held = useMemo(
+    () => (plainSearch ? [...value] : heldVehicleCodes(value, offered)),
+    [value.join(','), offered, plainSearch],
+  );
+
   const add = (typed: readonly string[]): void => {
     if (typed.length === 0) return;
     const codes = canonicalVehicleCodes(typed, offered);
-    const merged = [...value];
-    for (const code of codes) if (!merged.includes(code)) merged.push(code);
-    if (merged.length !== value.length) onChange(merged);
+    const merged = [...held];
+    for (const code of codes) {
+      // `mg 2` typed beside a held «MG 2» is the car already there, not a second one.
+      if (!merged.some((one) => sameVehicleCode(one, code))) merged.push(code);
+    }
+    if (merged.length !== held.length) onChange(merged);
   };
 
   /** The rule, and why, live beside their own test in `readTypedVehicleCodes`. */
@@ -120,11 +138,11 @@ export const VehicleCodeFilter = ({
     // `MultiSelect` asks with '' every time it opens: a list loaded a while ago is asked again, so a
     // car registered since — by anyone — is on offer without reloading the page.
     if (raw === '' && remote && vehicles.isStale) void vehicles.refetch();
-    pickedSinceTyping.current = false;
     // A code pasted in Arabic-Indic digits («١٥٠») is the same code (150).
-    const { chosen, typing } = readTypedVehicleCodes(asciiDigits(raw));
-    add(chosen);
-    setSearch(typing);
+    const read = readAnsweredBox(asciiDigits(raw), answered.current);
+    answered.current = read.answered;
+    add(read.chosen);
+    setSearch(read.typing);
   };
 
   // Either way the fragment narrows the list HERE, by CODE alone — `MultiSelect` treats an
@@ -133,15 +151,15 @@ export const VehicleCodeFilter = ({
   const shown = useMemo(
     () =>
       options === undefined
-        ? registryVehicleCodeOptions(vehicles.data?.items ?? [], search, value)
+        ? registryVehicleCodeOptions(vehicles.data?.items ?? [], search, held)
         : plainSearch
           ? options.filter(
               (option) =>
-                value.includes(option.value) ||
+                held.includes(option.value) ||
                 option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
             )
-          : narrowVehicleCodeOptions(options, search, value),
-    [options, vehicles.data, search, value.join(','), plainSearch],
+          : narrowVehicleCodeOptions(options, search, held),
+    [options, vehicles.data, search, held, plainSearch],
   );
 
   return (
@@ -149,9 +167,11 @@ export const VehicleCodeFilter = ({
       clearable
       label={t('fleet.vehicles.fields.code')}
       options={shown}
-      value={value}
+      value={held}
       onChange={(next) => {
-        pickedSinceTyping.current = true;
+        // Ticking or unticking a car the waiting word found answers the word — see `answered`.
+        if (!plainSearch)
+          answered.current = answersWaitingWord(search, held, next) ?? answered.current;
         onChange(next);
       }}
       showSelectedValues
@@ -175,16 +195,18 @@ export const VehicleCodeFilter = ({
           );
           if (exact !== undefined) add([exact.value]);
         } else {
-          add(finishTypedVehicleCodes(raw, 'enter'));
+          add(finishAnsweredBox(raw, 'enter', answered.current));
         }
+        answered.current = null;
         setSearch('');
       }}
-      // The list closing takes a word left waiting for a number (`كولراى `) — it was finished with
-      // a space, which used to take it on its own — unless a row was picked since it was typed. A
-      // fragment still mid-word is dropped, as before.
+      // The list closing — however it closed, the trigger too — takes a word left waiting for a
+      // number (`كولراى `): it was finished with a space, which used to take it on its own. Not a
+      // word a pick answered, and not a fragment still mid-word, which is dropped as before.
       onClose={() => {
-        if (plainSearch || search === '') return;
-        if (!pickedSinceTyping.current) add(finishTypedVehicleCodes(search, 'close'));
+        if (search === '') return;
+        if (!plainSearch) add(finishAnsweredBox(search, 'close', answered.current));
+        answered.current = null;
         setSearch('');
       }}
       {...(placeholder === undefined ? {} : { placeholder })}

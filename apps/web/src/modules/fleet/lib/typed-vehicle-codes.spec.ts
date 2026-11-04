@@ -1,10 +1,17 @@
 // Typing a list of vehicle codes, one keystroke at a time.
 import { describe, expect, it } from 'vitest';
+import { triggerPress } from '../../../shared/ui/MultiSelect';
 import {
+  answersWaitingWord,
   canonicalVehicleCodes,
+  finishAnsweredBox,
   finishTypedVehicleCodes,
+  heldVehicleCodes,
+  readAnsweredBox,
   readTypedVehicleCodes,
+  waitingVehicleWord,
 } from './typed-vehicle-codes';
+import { narrowVehicleCodeOptions, registryVehicleCodeOptions } from './vehicle-code-options';
 
 const read = (raw: string): [string[], string] => {
   const { chosen, typing } = readTypedVehicleCodes(raw);
@@ -124,5 +131,137 @@ describe('canonicalVehicleCodes — a typed code ticks the row the list offers',
   it('keeps a code the list does not offer as it was typed', () => {
     expect(canonicalVehicleCodes(['كورولا 9'], offered)).toEqual(['كورولا 9']);
     expect(canonicalVehicleCodes(['كورولا'], offered)).toEqual(['كورولا']);
+  });
+});
+
+describe('the list closing BY ITS TRIGGER takes the waiting word too', () => {
+  // On any «الكود» filter: open the list, type «كولراى » with its trailing space, click the
+  // «كود السيارة» trigger. The trigger used to empty the box in the same batch as the close, so the
+  // list's `onClose` found nothing to take — no chip, no filter — while a click outside did take it.
+  // What the control does, step by step: the trigger press, then `onClose` with the box as it is.
+  const closeByTrigger = (box: string, answered: string | null = null): string[] => {
+    const press = triggerPress(true);
+    expect(press.open).toBe(false);
+    const left = press.searchAfresh ? '' : box;
+    return finishAnsweredBox(left, 'close', answered);
+  };
+
+  it('ticks «كولراى» — the same as a click outside or Escape', () => {
+    expect(closeByTrigger('كولراى ')).toEqual(['كولراى']);
+    expect(finishAnsweredBox('كولراى ', 'close', null)).toEqual(['كولراى']);
+  });
+
+  it('still drops a fragment mid-word, and a word a pick answered', () => {
+    expect(closeByTrigger('كور')).toEqual([]);
+    expect(closeByTrigger('كورولا ', 'كورولا')).toEqual([]);
+  });
+});
+
+describe('a pick ANSWERS the waiting word — never a junk «كورولا» chip after it', () => {
+  // Type «كورولا » → the list offers «كورولا 1», «كورولا 2» → click «كورولا 1». Enter, or typing
+  // «كوستر», used to tick «كورولا» as well — a car nobody has, beside the one just picked.
+  it('knows a waiting word from anything else in the box', () => {
+    expect(waitingVehicleWord('كورولا ')).toBe('كورولا');
+    expect(waitingVehicleWord('MG ')).toBe('MG');
+    expect(waitingVehicleWord('كورولا')).toBeNull();
+    expect(waitingVehicleWord('كورولا 1')).toBeNull();
+    expect(waitingVehicleWord('150 ')).toBeNull();
+    expect(waitingVehicleWord('')).toBeNull();
+  });
+
+  it('a tick or an untick of a car the word found answers it', () => {
+    expect(answersWaitingWord('كورولا ', ['150'], ['150', 'كورولا 1'])).toBe('كورولا');
+    expect(answersWaitingWord('كورولا ', ['150', 'كورولا 1'], ['150'])).toBe('كورولا');
+    expect(answersWaitingWord('mg ', [], ['MG 2'])).toBe('mg');
+  });
+
+  it('…and nothing else does: a car the word did not find, a box with no waiting word', () => {
+    expect(answersWaitingWord('كورولا ', ['150', 'كوستر 1'], ['كوستر 1'])).toBeNull();
+    expect(answersWaitingWord('كور', [], ['كورولا 1'])).toBeNull();
+    expect(answersWaitingWord('', [], ['كورولا 1'])).toBeNull();
+  });
+
+  it('Enter after the pick takes nothing for the word', () => {
+    expect(finishAnsweredBox('كورولا ', 'enter', 'كورولا')).toEqual([]);
+    // Unanswered, Enter still takes it — «كولراى» is a car.
+    expect(finishAnsweredBox('كولراى ', 'enter', null)).toEqual(['كولراى']);
+  });
+
+  it('typing the next word after the pick takes nothing for the word, and searches the new one', () => {
+    expect(readAnsweredBox('كورولا ك', 'كورولا')).toEqual({
+      chosen: [],
+      typing: 'ك',
+      answered: null,
+    });
+    expect(readAnsweredBox('كورولا , ', 'كورولا')).toEqual({
+      chosen: [],
+      typing: '',
+      answered: null,
+    });
+    // Unanswered, the word is taken as before.
+    expect(readAnsweredBox('كولراى ك', null).chosen).toEqual(['كولراى']);
+  });
+
+  it('the answer stands while the box still holds the word — so «كورولا 2» can be ticked too', () => {
+    expect(readAnsweredBox('كورولا  ', 'كورولا')).toEqual({
+      chosen: [],
+      typing: 'كورولا ',
+      answered: 'كورولا',
+    });
+  });
+
+  it('typing the number makes it that car, to be taken as usual', () => {
+    expect(readAnsweredBox('كورولا 2', 'كورولا')).toEqual({
+      chosen: [],
+      typing: 'كورولا 2',
+      answered: null,
+    });
+    expect(finishAnsweredBox('كورولا 2', 'enter', null)).toEqual(['كورولا 2']);
+    expect(readAnsweredBox('كورولا 2 ', 'كورولا').chosen).toEqual(['كورولا 2']);
+  });
+});
+
+describe('heldVehicleCodes — one ticked row per car, however the code was carried in', () => {
+  it('holds a link’s stored «فورتشنر 2 » as the registry’s offered «فورتشنر 2»', () => {
+    expect(heldVehicleCodes(['فورتشنر 2 '], ['150', 'فورتشنر 2'])).toEqual(['فورتشنر 2']);
+    expect(heldVehicleCodes(['mg 2'], ['MG 2'])).toEqual(['MG 2']);
+  });
+
+  it('holds the URL’s «فورتشنر 2» as a board’s raw «فورتشنر 2 »', () => {
+    expect(heldVehicleCodes(['فورتشنر 2'], ['فورتشنر 2 ', '150'])).toEqual(['فورتشنر 2 ']);
+  });
+
+  it('holds two spellings of one car once', () => {
+    expect(heldVehicleCodes(['فورتشنر 2 ', 'فورتشنر 2', '150'], ['فورتشنر 2', '150'])).toEqual([
+      'فورتشنر 2',
+      '150',
+    ]);
+    expect(heldVehicleCodes(['كورولا  9', 'كورولا 9'], [])).toEqual(['كورولا 9']);
+  });
+
+  it('keeps each spelling a board offers on its own tickable', () => {
+    const board = ['فورتشنر 2 ', 'فورتشنر 2'];
+    expect(heldVehicleCodes(['فورتشنر 2'], board)).toEqual(['فورتشنر 2']);
+    expect(heldVehicleCodes(['فورتشنر 2 ', 'فورتشنر 2'], board)).toEqual(board);
+  });
+
+  it('the registry list then shows that car ONCE, ticked — no second «فورتشنر 2 » row', () => {
+    const held = heldVehicleCodes(['فورتشنر 2 '], ['فورتشنر 2', '150']);
+    const rows = registryVehicleCodeOptions([{ code: 'فورتشنر 2 ' }, { code: '150' }], '', held);
+    expect(rows.map((row) => row.value)).toEqual(['150', 'فورتشنر 2']);
+    expect(rows.filter((row) => held.includes(row.value)).map((row) => row.value)).toEqual([
+      'فورتشنر 2',
+    ]);
+  });
+
+  it('…and a board’s raw row is the ticked one for the URL’s code', () => {
+    const board = [{ value: 'فورتشنر 2 ' }, { value: '150' }];
+    const held = heldVehicleCodes(
+      ['فورتشنر 2'],
+      board.map((option) => option.value),
+    );
+    const rows = narrowVehicleCodeOptions(board, 'فورتشنر', held);
+    expect(rows.map((row) => row.value)).toEqual(['فورتشنر 2 ']);
+    expect(held.includes('فورتشنر 2 ')).toBe(true);
   });
 });

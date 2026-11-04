@@ -248,6 +248,18 @@ export const triggerInSight = (
   );
 };
 
+/**
+ * What a press on the trigger does: open the list and ask its search afresh, or close it.
+ *
+ * Closing is ONLY closing — the search stays as it stands, exactly as a click outside, Escape or
+ * Tab leave it, so an `onClose` owner still reads what was typed; the next opening asks afresh.
+ * The trigger used to ask afresh on the way out too, and that emptied an owner's search in the
+ * same batch as the close: the car filter's word left waiting for its number («كولراى ») was gone
+ * before `onClose` ran, on that one way of closing the list of the four.
+ */
+export const triggerPress = (open: boolean): { open: boolean; searchAfresh: boolean } =>
+  open ? { open: false, searchAfresh: false } : { open: true, searchAfresh: true };
+
 const sameSpot = (a: FloatingSpot | null, b: FloatingSpot): boolean =>
   a !== null &&
   a.left === b.left &&
@@ -430,8 +442,9 @@ export const MultiSelect = ({
   onOpen?: () => void;
   /**
    * Called once the open list CLOSES, however it closed — a click outside, Escape, Tab past it, the
-   * trigger. The car filter takes a word still waiting in its search box here («كولراى » — a space
-   * typed after it, in case a number followed). Opt-in.
+   * trigger — with the search still as it was typed (`triggerPress`). The car filter takes a word
+   * still waiting in its search box here («كولراى » — a space typed after it, in case a number
+   * followed). Opt-in.
    */
   onClose?: () => void;
   /**
@@ -783,10 +796,12 @@ export const MultiSelect = ({
           // can be narrower than the words on it, and then this is the only way to read them.
           title={label}
           onClick={() => {
-            if (!open) onOpen?.();
-            setOpen((o) => !o);
+            const press = triggerPress(open);
+            if (press.open) onOpen?.();
+            setOpen(press.open);
             // The owner's results still hold the last query; ask for the opening answer again.
-            searchFor('');
+            // Only when OPENING — see `triggerPress` for why closing leaves the search alone.
+            if (press.searchAfresh) searchFor('');
           }}
           className={cn(
             'inline-flex items-center rounded-lg border',

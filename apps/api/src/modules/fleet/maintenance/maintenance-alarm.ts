@@ -122,18 +122,8 @@ export const computeAlarm = (input: AlarmInput): AlarmResult => {
   return { level, remainingKm, sinceServiceKm, noAlarmReason: null };
 };
 
-const allActiveVehicles = async () => {
-  const vehicles = [];
-  for (let page = 1; ; page += 1) {
-    const batch = await fleetVehicleRepository.list({
-      filter: { status: 'active' },
-      page,
-      pageSize: 100,
-    });
-    vehicles.push(...batch.items);
-    if (batch.items.length < 100) return vehicles;
-  }
-};
+/** Every ACTIVE live car — id, code and make — in one read (see `activeForAlarm`). */
+const allActiveVehicles = () => fleetVehicleRepository.activeForAlarm();
 
 /** A catalog entry or a make by id, as the card names it — `null` when it is not there at all. */
 type Names = ReadonlyMap<string, LocalizedString>;
@@ -141,6 +131,19 @@ type Names = ReadonlyMap<string, LocalizedString>;
 const named = (names: Names, id: string | null | undefined): FleetAlarmNamedDto | null => {
   const name = id == null ? undefined : names.get(id);
   return name === undefined ? null : { id: id as string, name: { ar: name.ar, en: name.en } };
+};
+
+/**
+ * Every live make's interval and name, in ONE read — the makes are a handful, and asking for each
+ * by id cost a round trip per make, one after another, on every projection. Live only, as the
+ * per-id `findById` answered: a deleted make has no interval (`noInterval`) and no name.
+ */
+const makeRules = async (): Promise<{ intervals: Map<string, number>; makes: Names }> => {
+  const types = await fleetVehicleTypeRepository.listAll();
+  return {
+    intervals: new Map(types.map((type) => [String(type._id), type.maintenanceIntervalKm ?? 0])),
+    makes: new Map(types.map((type) => [String(type._id), type.name])),
+  };
 };
 
 /**
@@ -282,22 +285,28 @@ export const visitBounds = async (
  * nobody ran was the one nobody tested.
  */
 export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
-  const vehicles = await allActiveVehicles();
-  if (vehicles.length === 0) return [];
-
-  const ids = vehicles.map((v) => String(v._id));
-  const [yellowKm, redKm] = await Promise.all([
+  // THREE ROUND TRIPS, each a few reads at once: those that need nothing, those that need the cars,
+  // those that need the cars' baselines. It was a dozen or more in a row — the cars a page at a
+  // time, then the settings, the counting work types, and the makes one after another. A fleet
+  // with no active car now pays for four small reads it did not need; every other fleet stops
+  // waiting for each of them in turn.
+  const [vehicles, yellowKm, redKm, countingIds, { intervals, makes }] = await Promise.all([
+    allActiveVehicles(),
     settingsService.resolve<number>(FleetSettingKeys.AlarmYellowKm, {
       userId: null,
       branchId: null,
     }),
     settingsService.resolve<number>(FleetSettingKeys.AlarmRedKm, { userId: null, branchId: null }),
+    // Archived types included, and no page limit — see `countingWorkTypeIds`. A baseline is a
+    // historical fact, and retiring the vocabulary that named it does not un-make it.
+    fleetCatalogItemRepository.countingWorkTypeIds(),
+    // Its interval, and its name for the card. A make that is gone (deleted) has neither — no
+    // rule, `noInterval` — and the card says so.
+    makeRules(),
   ]);
+  if (vehicles.length === 0) return [];
 
-  // Archived types included, and no page limit — see `countingWorkTypeIds`. A baseline is a
-  // historical fact, and retiring the vocabulary that named it does not un-make it.
-  const countingIds = await fleetCatalogItemRepository.countingWorkTypeIds();
-
+  const ids = vehicles.map((v) => String(v._id));
   const [readings, baselines, newest] = await Promise.all([
     fleetOdometerRepository.latestReadings(ids),
     fleetMaintenanceRepository.alarmBaselines(ids, countingIds),
@@ -321,19 +330,6 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       ...[...newest.values()].flatMap((visit) => [visit.workTypeId, visit.workshopId]),
     ]),
   ]);
-
-  // One lookup per distinct TYPE, not per vehicle: its interval, and its name for the card. A make
-  // that is gone (deleted) has neither — no rule, `noInterval` — and the card says so.
-  const intervals = new Map<string, number>();
-  const makes = new Map<string, LocalizedString>();
-  for (const vehicle of vehicles) {
-    const typeId = String(vehicle.typeId);
-    if (!intervals.has(typeId)) {
-      const type = await fleetVehicleTypeRepository.findById(typeId);
-      intervals.set(typeId, type?.maintenanceIntervalKm ?? 0);
-      if (type !== null) makes.set(typeId, type.name);
-    }
-  }
 
   return vehicles.map((vehicle) => {
     const id = String(vehicle._id);

@@ -762,8 +762,16 @@ class FleetMaintenanceService {
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
     const sorts = parseFleetSort(query.sort);
+    // The filter and the alarm columns need nothing of each other, so neither waits for the other.
+    const [filter, sortDerived] = await Promise.all([
+      this.filterFor(query),
+      // «منذ الخدمة» and «المتبقي» are figures about the CAR, not about the visit — computed for
+      // the fleet and handed to the query as something it can order by, and only when the reader
+      // has asked for one. See the odometer register, which does the same with the same helper.
+      alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+    ]);
     const page = await fleetMaintenanceRepository.listVisits({
-      filter: await this.filterFor(query),
+      filter,
       // Already folded into the filter above; `listVisits` must not fold it twice.
       driverEmployeeIds: undefined,
       page: query.page,
@@ -773,14 +781,14 @@ class FleetMaintenanceService {
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
       sorts,
-      // «منذ الخدمة» and «المتبقي» are figures about the CAR, not about the visit — computed for
-      // the fleet and handed to the query as something it can order by, and only when the reader
-      // has asked for one. See the odometer register, which does the same with the same helper.
-      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+      sortDerived,
     });
+    // The page's cars, asked their codes and their operations at once.
     const onPage = vehicleIdsOf(page.items);
-    const codes = await fleetVehicleRepository.codesByIds(onPage);
-    const operations = await fleetVehicleRepository.operationIdsByIds(onPage);
+    const [codes, operations] = await Promise.all([
+      fleetVehicleRepository.codesByIds(onPage),
+      fleetVehicleRepository.operationIdsByIds(onPage),
+    ]);
     return { ...page, codes, operations };
   }
 }

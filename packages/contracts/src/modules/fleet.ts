@@ -511,8 +511,17 @@ const identifierFilter = () => z.string().trim().min(1).max(60).optional();
 // the search had answered a moment earlier, so a reader who typed the same thing twice could get
 // two different filters.
 
-/** Separators no vehicle code contains: commas, semicolons, newlines, a spaced dash. */
+/**
+ * Separators no vehicle code contains: commas, semicolons, newlines, a spaced dash.
+ *
+ * Only ever run over text whose runs of other whitespace are already ONE space
+ * (`ONE_SPACE_RUNS`): `\s*` and `\s+` then never face a long run with no separator in it, which
+ * they would re-scan from every position of it — quadratic on text the server parses from a query
+ * string before any length limit applies.
+ */
 const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+/;
+/** A run of whitespace that is not a line break — written as one space before splitting. */
+const ONE_SPACE_RUNS = /[^\S\r\n]+/g;
 /** A number — the part of «كورولا 1» that tells two of a model apart. Arabic-Indic digits too. */
 const DIGITS_ONLY = /^[0-9\u0660-\u0669\u06F0-\u06F9]+$/;
 /** A WORD: anything besides digits and dashes, so `215-216` is not one and `A-15` is. */
@@ -566,7 +575,10 @@ export const splitVehicleCodeList = (raw: string | readonly string[]): string[] 
   // An array is already one code per entry (a repeated query parameter): only tidied, not re-read.
   const parts = Array.isArray(raw)
     ? (raw as readonly string[]).map(normalizeVehicleCode)
-    : String(raw).split(CODE_SEPARATORS).flatMap(codesBetweenSeparators);
+    : String(raw)
+        .replace(ONE_SPACE_RUNS, ' ')
+        .split(CODE_SEPARATORS)
+        .flatMap(codesBetweenSeparators);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {

@@ -60,6 +60,30 @@ describe('splitVehicleCodeList — the separators', () => {
   });
 });
 
+describe('splitVehicleCodeList — a long run of whitespace costs a single pass', () => {
+  // The server runs this parser on `?vehicleCodes=` BEFORE any length limit applies, so the time
+  // it takes is the time a request can hold the event loop. A run of whitespace with no separator
+  // in it used to be re-scanned from every position of it — 16,000 spaces took 210 ms, 64,000 took
+  // 3.7 s. The runs are written as one space first; this is the bound that guards it.
+  const within = (budgetMs: number, raw: string): string[] => {
+    const started = performance.now();
+    const codes = splitVehicleCodeList(raw);
+    expect(performance.now() - started, `${String(raw.length)} chars`).toBeLessThan(budgetMs);
+    return codes;
+  };
+
+  it('parses 20,000 spaces in well under 50 ms — and finds no code in them', () => {
+    expect(within(50, ' '.repeat(20_000))).toEqual([]);
+  });
+
+  it('…nor between two codes, or in a run of spaces and line breaks', () => {
+    expect(within(50, `a${' '.repeat(20_000)}b`)).toEqual(['a', 'b']);
+    expect(within(50, `كورولا${'\t '.repeat(10_000)}1`)).toEqual(['كورولا 1']);
+    expect(within(50, `150${' \n'.repeat(10_000)}151`)).toEqual(['150', '151']);
+    expect(within(50, `150${' - '.repeat(7_000)}151`)).toEqual(['150', '151']);
+  });
+});
+
 describe('splitVehicleCodeList — the hyphen, settled by the space around it', () => {
   it('keeps a BARE hyphen inside one code, because a code may genuinely contain one', () => {
     expect(splitVehicleCodeList('A-15')).toEqual(['A-15']);

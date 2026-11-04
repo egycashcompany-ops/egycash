@@ -164,6 +164,10 @@ export const usePasskeySignIn = ({
      */
     const keepFresh = (): void => {
       if (disposed || modalActive.current || !detected.webauthn) return;
+      // A tab nobody is looking at renews nothing: with a ten-minute idle sign-out, sign-in pages
+      // sit open in background tabs all day, and each one renewing would be ~40 requests an hour
+      // for a page nobody can tap. Coming back to the tab (`visibilitychange`, `focus`) renews.
+      if (document.visibilityState === 'hidden') return;
       const field = autofillField();
       if (field === null) return;
       const now = Date.now();

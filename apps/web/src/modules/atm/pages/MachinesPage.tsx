@@ -297,6 +297,8 @@ export const MachinesPage = (): JSX.Element => {
         </div>
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
+            filtered={filtered}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}

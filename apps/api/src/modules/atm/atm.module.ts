@@ -45,6 +45,7 @@ import { buildAtmMailboxRouter } from './mail-tickets/mailbox.routes';
 import { rotateMailboxSecretKey } from './mail-tickets/mailbox-secret-rotation';
 import { buildAtmBranchLinksRouter } from './branch-links/branch-links.routes';
 import { buildAtmLeadersRouter } from './leaders/leaders.routes';
+import { buildAtmDisplayRouter } from './display/display.routes';
 import { refineAtmAuthContext } from './branch-links/link-context';
 
 const replenishmentPermissions = declarePermissions(
@@ -485,6 +486,8 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/branch-links', router: buildAtmBranchLinksRouter() },
     // The leader pickers' names, and the /atm/settings card that says whose they are.
     { prefix: '/atm/leaders', router: buildAtmLeadersRouter() },
+    // How every ATM page reads — read by all of them, written by the /atm/settings card.
+    { prefix: '/atm/display', router: buildAtmDisplayRouter() },
   ],
   collections: [
     'atm_machines',

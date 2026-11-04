@@ -7,6 +7,7 @@
 //   officer            ← employee.viewOfficer       (officerVisible)
 import {
   maskNationalId,
+  ymdOf,
   type EmployeeDto,
   type EmployeePlacementDto,
   type EmployeeInsuranceDto,
@@ -17,6 +18,8 @@ import {
   type EmploymentPeriodDto,
   type EmployeeProbationDto,
   type EmployeeExitDto,
+  type LocalizedString,
+  type MyEmployeeSummaryDto,
   type RehireCheckResultDto,
 } from '@ecms/contracts';
 import {
@@ -234,4 +237,34 @@ export const toRehireCheckResultDto = (doc: EmployeeDoc): RehireCheckResultDto =
   fullNameAr: doc.personal.fullNameAr,
   status: doc.status,
   exit: exitDto(doc),
+});
+
+const unitName = (unit: EmployeePlacementDto['branch']): LocalizedString | null =>
+  unit === null ? null : { ar: unit.name.ar, en: unit.name.en };
+
+/**
+ * The signed-in person's own card for the welcome page (`GET /hr/employees/me/summary`).
+ *
+ * Built field by field and never spread from the record, so nothing reaches the page that is not
+ * named here: no national id, no contact, no salary, no address. The placement names are the ones
+ * the profile shows, resolved by the same `resolvePlacements`.
+ *
+ * `birthDate` is a date-only value — derived from the national id and stored as UTC midnight of
+ * that day — so its calendar day is its UTC date part, which is what `ymdOf` reads. `hasPhoto` is
+ * loose on purpose: a record written before the field existed carries no `photoFileId` at all.
+ */
+export const toMyEmployeeSummaryDto = (
+  doc: EmployeeDoc,
+  placement: EmployeePlacementDto,
+): MyEmployeeSummaryDto => ({
+  employeeId: String(doc._id),
+  code: doc.code,
+  fullNameAr: doc.personal.fullNameAr,
+  fullNameEn: doc.personal.fullNameEn ?? null,
+  birthDate: doc.personal.birthDate == null ? null : ymdOf(doc.personal.birthDate),
+  hasPhoto: doc.personal.photoFileId != null,
+  photoFileId: doc.personal.photoFileId == null ? null : String(doc.personal.photoFileId),
+  jobTitle: unitName(placement.jobTitle),
+  department: unitName(placement.department),
+  branch: unitName(placement.branch),
 });

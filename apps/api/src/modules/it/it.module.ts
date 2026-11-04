@@ -43,6 +43,7 @@ import {
   consumableMemoFileAuthorizer,
 } from './consumables';
 import { buildItPeopleRouter, buildItTechniciansRouter } from './people';
+import { buildItDashboardRouter } from './dashboard';
 import { expirySweep } from './shared/expiry-sweeps';
 import { registerItSettings } from './it.settings';
 import {
@@ -361,6 +362,9 @@ export const itModule: ModuleManifest = {
     // platform directory under IT's own grants (people.service.ts). Read-only, no collection.
     { prefix: '/it/people', router: buildItPeopleRouter() },
     { prefix: '/it/technicians', router: buildItTechniciansRouter() },
+    // §11 — the `/it` home: «Dashboard … يظهر إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر
+    // أفلتر بـالفئة». Derived reads over the collections above, on the assets' read grant.
+    { prefix: '/it/dashboard', router: buildItDashboardRouter() },
   ],
   collections: [
     'it_assets',

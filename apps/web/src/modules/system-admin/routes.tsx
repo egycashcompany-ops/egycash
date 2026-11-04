@@ -16,6 +16,7 @@ import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
 import { SystemAdminLayout } from './SystemAdminLayout';
 import { UsersListPage } from './users/pages/UsersListPage';
 import { UserDetailPage } from './users/pages/UserDetailPage';
+import { ActiveUsersPage } from './active-users/pages/ActiveUsersPage';
 import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
@@ -43,6 +44,17 @@ export default function SystemAdminRoutes(): JSX.Element {
           <Route index element={<UsersListPage />} />
           <Route path=":id" element={<UserDetailPage />} />
         </Route>
+
+        {/* Its own key, not user.view: who is on now and how long each person works is a view of
+            people's working day, not of their accounts. */}
+        <Route
+          path="active-users"
+          element={
+            <RequirePermission permission="activeUser.view">
+              <ActiveUsersPage />
+            </RequirePermission>
+          }
+        />
 
         <Route
           path="roles"

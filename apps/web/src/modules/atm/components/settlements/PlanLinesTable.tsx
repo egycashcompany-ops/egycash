@@ -17,6 +17,11 @@ import {
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
 import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
+import {
+  SteadyColGroup,
+  useSteadyColumns,
+  type SteadyColumns,
+} from '../../../../shared/ui/useSteadyColumns';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { AlertIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -123,6 +128,28 @@ const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:tex
 const FILTER_TH = 'px-3 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
+/**
+ * The plan's columns keep the widths its lines first gave them, whatever its lists keep
+ * (`useSteadyColumns`). Called by the PAGE, beside the column filters: the table is not drawn while
+ * a bank's or a day's plan loads, and must find its widths as it left them when it is drawn again.
+ */
+export const usePlanLineWidths = ({
+  lines,
+  locale,
+  filtered,
+}: {
+  lines: readonly AtmPlanLineDto[];
+  locale: Locale;
+  filtered: boolean;
+}): SteadyColumns =>
+  useSteadyColumns({
+    ready: lines.length > 0,
+    signature: `${locale}|${PLAN_LINE_COLUMNS.map((column) => column.key).join('|')}`,
+    count: PLAN_LINE_COLUMNS.length + 1,
+    filtered,
+    watch: lines,
+  });
+
 export const PlanLinesTable = ({
   lines,
   locale,
@@ -132,6 +159,7 @@ export const PlanLinesTable = ({
   onCheck,
   columnFilters,
   allLines,
+  steady,
 }: {
   /** The lines the column filters keep (`filterPlanLines`) — the page filters, the table shows. */
   lines: readonly AtmPlanLineDto[];
@@ -146,6 +174,8 @@ export const PlanLinesTable = ({
   onSelect: (lineId: string) => void;
   onCheck: (lineId: string, on: boolean) => void;
   columnFilters: ColumnFilters;
+  /** The columns' kept widths (`usePlanLineWidths`) — held by the page, beside its filters. */
+  steady: SteadyColumns;
 }): JSX.Element => {
   const t = useT();
   return (
@@ -153,7 +183,12 @@ export const PlanLinesTable = ({
     // the height left and its rows scroll under a head that stays — opaque, as `DataTable
     // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
     <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
-      <table className="w-full min-w-[56rem] border-collapse" data-plan-lines="true">
+      <table
+        ref={steady.ref}
+        className="w-full min-w-[56rem] border-collapse"
+        data-plan-lines="true"
+      >
+        <SteadyColGroup shares={steady.shares} />
         <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-10')}>

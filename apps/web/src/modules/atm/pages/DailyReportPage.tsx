@@ -2,7 +2,11 @@
 // one row per bank, for each operation kind, showing STILL OPEN over TOTAL opened that day. The
 // legacy painted the open count red and the total green and hard-coded a block per bank name
 // (:296-420); the counts are the same numbers, rendered as a table that needs no edit when a bank
-// is added. The day is a parameter here (port doc D7) — the legacy could only show today.
+// is added. The day is a parameter here (port doc D7) — the legacy could only show today — and
+// since 2026-11-02 a PERIOD, «من … إلى …», today by default: «فى تقرير اليوم بقي عايز كمان تسمح
+// بإنى أختار فترة من إلى .. بس الـ Default يكون اليوم». The done pages' two fields and their
+// ladder (`doneRange`): one bound serves as both, a «إلى» before the «من» reads the days between.
+// A link from before the period (`?date=`) still opens on its day.
 //
 // A ROW OF FILTER LISTS under each table's head, one multi-pick drop-down per column (2026-11-02,
 // «فلتر لكل عمود», «يكون Drop Down بـ Multi select»). The totals line under a table adds up the
@@ -20,10 +24,10 @@ import {
 } from '../../../shared/lib/column-filter';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
-import { Field, Input } from '../../../shared/ui/form';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { useAtmDailyReport } from '../api/atm-queries';
-import { cairoToday } from '../lib/operation-view';
+import { DoneRangeBar } from '../components/DoneRangeBar';
+import { cairoToday, doneRange } from '../lib/operation-view';
 
 /** Legacy footer arithmetic: the report's own totals across banks. */
 export const sumBankCounts = (rows: readonly AtmBankCountsDto[]): { total: number; open: number } =>
@@ -111,6 +115,7 @@ const CountsTable = ({
       <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       <div className={BOARD_TABLE_FILL}>
         <DataTable
+          steadyColumns
           columns={columns}
           rows={shown.rows}
           rowKey={(row) => row.bankName}
@@ -144,31 +149,33 @@ const CountsTable = ({
 export const DailyReportPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
-  const date = sp.get('date') ?? cairoToday();
-  const report = useAtmDailyReport(useMemo(() => date, [date]));
+  // A `?date=` link from before the period is its own one-day period.
+  const day = sp.get('date');
+  const { from, to } = doneRange(sp.get('from') ?? day, sp.get('to') ?? day, cairoToday());
+  const report = useAtmDailyReport(useMemo(() => ({ from, to }), [from, to]));
+  const emptyLabel = t(from === to ? 'atm.reports.empty' : 'atm.reports.emptyPeriod');
 
-  const setDate = (next: string): void => {
+  const setRange = (next: { from: string; to: string }): void => {
     const params = new URLSearchParams(sp);
-    if (next === '') params.delete('date');
-    else params.set('date', next);
+    params.delete('date');
+    params.set('from', next.from);
+    params.set('to', next.to);
     setSp(params);
   };
 
   return (
     <PageContainer fullHeight>
       {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
-          بس هو اللى يعمل Scroll»): on a computer the title and the day keep their place, and the two
+          بس هو اللى يعمل Scroll»): on a computer the title and the period keep their place, and the two
           tables side by side take the height that is left — each column scrolls its own rows. */}
       <div className={BOARD_FRAME}>
-        {/* The day on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب
+        {/* The period on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب
           العنوان عشان نستفيد بالمساحة»): the two tables get that row's height back. */}
         <PageHeader
           title={t('atm.reports.title')}
           toolbar={
-            <div className="flex flex-wrap items-end gap-3" data-report-toolbar="true">
-              <Field label={t('atm.reports.day')}>
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              </Field>
+            <div data-report-toolbar="true">
+              <DoneRangeBar from={from} to={to} onChange={setRange} />
             </div>
           }
         />
@@ -179,7 +186,7 @@ export const DailyReportPage = (): JSX.Element => {
             loading={report.isLoading}
             error={report.error}
             onRetry={() => void report.refetch()}
-            emptyLabel={t('atm.reports.empty')}
+            emptyLabel={emptyLabel}
           />
           <CountsTable
             title={t('atm.reports.maintenance')}
@@ -187,7 +194,7 @@ export const DailyReportPage = (): JSX.Element => {
             loading={report.isLoading}
             error={report.error}
             onRetry={() => void report.refetch()}
-            emptyLabel={t('atm.reports.empty')}
+            emptyLabel={emptyLabel}
           />
         </div>
       </div>

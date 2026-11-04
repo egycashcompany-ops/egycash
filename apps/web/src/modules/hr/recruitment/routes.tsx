@@ -3,24 +3,20 @@
 // permission-gated and renders its real screen — all seven recruitment stages are now built
 // (Applicants → … → Hiring Documents). Employees + Employee Files moved to the
 // employee-management module (frozen Employee design). Default export so React.lazy can import it.
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { RecruitmentLayout } from './RecruitmentLayout';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
-import { RecruitmentFormPage } from './recruitment-form/pages/RecruitmentFormPage';
-import { ApplicantSourcesPage } from './applicant-sources/pages/ApplicantSourcesPage';
 import { ApplicantDetailPage } from './applicants/pages/ApplicantDetailPage';
 import { ApplicantFormPage } from './applicants/pages/ApplicantFormPage';
 import { ScreeningQueuePage } from './screening/pages/ScreeningQueuePage';
 import { ScreeningDetailPage } from './screening/pages/ScreeningDetailPage';
 import { InterviewQueuePage } from './interviews/pages/InterviewQueuePage';
 import { InterviewDetailPage } from './interviews/pages/InterviewDetailPage';
-import { InterviewStagesPage } from './interviews/pages/InterviewStagesPage';
 import { InterviewStageQueuePage } from './interviews/pages/InterviewStageQueuePage';
 import { EvaluationQueuePage } from './evaluations/pages/EvaluationQueuePage';
 import { EvaluationDetailPage } from './evaluations/pages/EvaluationDetailPage';
-import { EvaluationPhasesPage } from './evaluations/pages/EvaluationPhasesPage';
 import { EvaluationPhaseQueuePage } from './evaluations/pages/EvaluationPhaseQueuePage';
 import { EvaluationBatchesPage } from './evaluation-batches/pages/EvaluationBatchesPage';
 import { EvaluationBatchDetailPage } from './evaluation-batches/pages/EvaluationBatchDetailPage';
@@ -37,22 +33,10 @@ export default function RecruitmentRoutes(): JSX.Element {
   return (
     <Routes>
       <Route element={<RecruitmentLayout />}>
-        <Route
-          path="recruitment-form"
-          element={
-            <RequirePermission permission="recruitmentForm.manage">
-              <RecruitmentFormPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="applicant-sources"
-          element={
-            <RequirePermission permission="applicant.view">
-              <ApplicantSourcesPage />
-            </RequirePermission>
-          }
-        />
+        {/* «الإعدادات» — the form and the sources are tabs of the HR settings page now; their old
+            addresses still work for a bookmark. */}
+        <Route path="recruitment-form" element={<Navigate to="/hr-settings/recruitment-form" replace />} />
+        <Route path="applicant-sources" element={<Navigate to="/hr-settings/applicant-sources" replace />} />
         <Route
           path="applicants"
           element={
@@ -100,14 +84,8 @@ export default function RecruitmentRoutes(): JSX.Element {
           }
         >
           <Route index element={<InterviewQueuePage />} />
-          <Route
-            path="stages"
-            element={
-              <RequirePermission permission="interviewStage.manage">
-                <InterviewStagesPage />
-              </RequirePermission>
-            }
-          />
+          {/* A tab of «الإعدادات» now. */}
+          <Route path="stages" element={<Navigate to="/hr-settings/interview-stages" replace />} />
           {/* One page per interview stage (RW11) — the flat stage menu opens these. */}
           <Route path="stage/:stageId" element={<InterviewStageQueuePage />} />
           <Route path=":id" element={<InterviewDetailPage />} />
@@ -121,14 +99,8 @@ export default function RecruitmentRoutes(): JSX.Element {
           }
         >
           <Route index element={<EvaluationQueuePage />} />
-          <Route
-            path="phases"
-            element={
-              <RequirePermission permission="evaluationPhase.manage">
-                <EvaluationPhasesPage />
-              </RequirePermission>
-            }
-          />
+          {/* A tab of «الإعدادات» now. */}
+          <Route path="phases" element={<Navigate to="/hr-settings/evaluation-phases" replace />} />
           {/* One page per evaluation phase (RW6a) — independent phases, independent pages. */}
           <Route path="phase/:phaseId" element={<EvaluationPhaseQueuePage />} />
           <Route path=":id" element={<EvaluationDetailPage />} />
@@ -143,7 +115,9 @@ export default function RecruitmentRoutes(): JSX.Element {
             evaluations subtree next door addresses phases by id because its links are built at
             runtime from the catalog it just read. */}
         <Route path="evaluation-batches">
-          <Route index element={<EvaluationBatchesPage />} />
+          {/* No unscoped list: «شيل دا /evaluation-batches». Every batch belongs to one phase and
+              is reached from that phase's page; an old bookmark lands on the evaluations. */}
+          <Route index element={<Navigate to="/evaluations" replace />} />
           <Route path="phase/:phaseKey" element={<EvaluationBatchesPage />} />
           <Route path=":id" element={<EvaluationBatchDetailPage />} />
         </Route>

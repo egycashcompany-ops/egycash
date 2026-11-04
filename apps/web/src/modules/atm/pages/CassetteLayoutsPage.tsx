@@ -60,6 +60,8 @@ import {
   settlementErrorText,
   toastWords,
 } from '../lib/settlement-view';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
+import { TIME_CELL_CLASS } from '../lib/operation-view';
 
 /** Remembered across visits: the bank and the status chip. `q` and `machine` are not filters. */
 const REMEMBERED_FILTERS = ['bank', 'status'] as const;
@@ -269,7 +271,19 @@ export const CassetteLayoutsPage = (): JSX.Element => {
     {
       key: 'changed',
       header: t('atm.layouts.column.changed'),
-      render: (row) => textOf(row, 'changed'),
+      // The same words as `layoutRowText` (what the column's list holds), with the time kept on one
+      // line (`TIME_CELL_CLASS`) and the name and the source free to wrap after it.
+      render: (row) =>
+        row.layout === null ? (
+          '—'
+        ) : (
+          <>
+            <span className={TIME_CELL_CLASS}>
+              {formatBusinessDateTime(row.layout.changedAt, locale)}
+            </span>
+            {` · ${row.layout.changedByName ?? '—'} · ${t(`atm.layouts.source.${row.layout.source}`)}`}
+          </>
+        ),
       filterable: true,
     },
   ];
@@ -423,6 +437,8 @@ export const CassetteLayoutsPage = (): JSX.Element => {
               className={cn('min-w-0 flex-1', BOARD_TABLE_FILL)}
             >
               <DataTable
+                steadyColumns
+                filtered={status !== 'all' || query.trim() !== ''}
                 columns={columns}
                 rows={shown}
                 rowKey={(row) => row.machineId}
@@ -443,6 +459,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                   onChange: columnFilters.set,
                   choices: columnFilterChoicesOf(rows, columnFilters.values, cellText),
                   generation: columnFilters.generation,
+                  freshOnOpen: FRESH_ON_OPEN,
                   label: (header) => t('atm.common.filterColumn', { column: header }),
                 }}
                 dense

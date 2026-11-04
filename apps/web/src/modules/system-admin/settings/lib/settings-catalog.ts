@@ -138,6 +138,7 @@ export const MANAGED_ELSEWHERE: Readonly<Record<string, ManagedElsewhere>> = {
     fallback: true,
   },
   'atm.branchLinks': { route: '/atm/settings', screen: 'atm.settings.title' },
+  'atm.display': { route: '/atm/settings', screen: 'atm.settings.title' },
   'atm.register.branchCodes': { route: '/atm/register/import', screen: 'atm.registerImport.title' },
   'it.technicianDepartmentIds': {
     route: '/it/helpdesk-settings',

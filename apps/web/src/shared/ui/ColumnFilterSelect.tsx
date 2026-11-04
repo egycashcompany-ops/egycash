@@ -27,6 +27,7 @@ export const ColumnFilterSelect = ({
   label,
   columnKey,
   placeholder,
+  freshOnOpen = false,
 }: {
   value: readonly string[];
   /** The column's values, in the order to list them — `columnFilterChoices`. */
@@ -35,6 +36,12 @@ export const ColumnFilterSelect = ({
   label: string;
   columnKey: string;
   placeholder?: string;
+  /**
+   * Every opening starts over: the column's picks are cleared as its list opens, and the reader
+   * chooses again from every value — the area's list on the ATM tables (2026-11-03, «لما أضغط على
+   * فلتر (المنطقة فقط) يعمله Reset وأقدر أختار من الأول»).
+   */
+  freshOnOpen?: boolean;
 }): JSX.Element => {
   const t = useT();
   // An empty cell is a value too — «(فارغ)» — and it is `''` underneath.
@@ -57,6 +64,7 @@ export const ColumnFilterSelect = ({
           floating
           pickMatches
           match={columnSearchMatches}
+          {...(freshOnOpen && value.length > 0 ? { onOpen: () => onChange([]) } : {})}
           showSelectedValues
           panelWidth="w-64"
           placeholder={placeholder ?? t('common.filters.all')}

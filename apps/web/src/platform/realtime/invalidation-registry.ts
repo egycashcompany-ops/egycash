@@ -227,6 +227,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // it for someone hired earlier, changes the Personal tab's card panel and nothing else. The
   // registry list would be refetched for no reason.
   'hr.employeeNationalIdCard': [['hr', 'employees', 'national-id-card']],
+  // A photo set or removed: the profile (its photoFileId) and every face drawn from it, which all
+  // sit under the employees keys — the person's own summary and photo included.
+  'hr.employeePhoto': [['hr', 'employees']],
   'hr.employeePayItem': [['hr', 'compensation']],
   // P-HR-TRN. Two topics, and the catalogue reaches BOTH key families: retiring a course changes
   // what the session form may offer, so a screen holding the picker open must not go on offering
@@ -456,8 +459,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'assets'],
     ['it', 'custody'],
   ],
-  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
-  'it.custodyReceipt': [['it', 'custody']],
+  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»), and on
+  // the `/it` dashboard's «إيصالات استلام بانتظار التوقيع» — only its figures, as the receipt
+  // mutations say: the paper moves no asset.
+  'it.custodyReceipt': [
+    ['it', 'custody'],
+    ['it', 'assets', 'list', { dashboard: 'assets' }],
+  ],
   // FR-19 — a line moves its register row, its network's card and its history, and its custody
   // intervals (a person's history page reads those).
   'it.mobileLine': [

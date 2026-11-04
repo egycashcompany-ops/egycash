@@ -48,6 +48,7 @@ import {
   ListItAssetsQuerySchema,
   ListItAssetNamesQuerySchema,
   ListItAssignmentsQuerySchema,
+  ItDashboardQuerySchema,
   ListItPeopleQuerySchema,
   ListItTechniciansQuerySchema,
   ReopenItTicketSchema,
@@ -681,3 +682,32 @@ describe('it custody receipt contracts', () => {
     ).toBe(false);
   });
 });
+
+// «Dashboard بدل اللى موجود فيها … أقدر أفلتر بـالفئة.. من خلال Drop Down بـ Multiselection» — the
+// home dashboard's filters, and the two list filters its «يحتاج متابعة» rows open.
+describe('it dashboard contracts', () => {
+  const oid = (n: number) => String(n).padStart(24, '0');
+
+  it('takes several categories and one branch, both optional, and nothing else', () => {
+    expect(ItDashboardQuerySchema.parse({})).toEqual({});
+    const parsed = ItDashboardQuerySchema.parse({ categoryId: `${oid(1)},${oid(2)}`, branchId: oid(3) });
+    expect(parsed).toEqual({ categoryId: [oid(1), oid(2)], branchId: oid(3) });
+    expect(ItDashboardQuerySchema.safeParse({ branchId: 'x' }).success).toBe(false);
+    expect(ItDashboardQuerySchema.safeParse({ status: 'inStock' }).success).toBe(false);
+  });
+
+  it('opens the warranty row as a list: a window of days, bounded', () => {
+    expect(ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: '30' }).warrantyEndsWithinDays).toBe(
+      30,
+    );
+    expect(ListItAssetsQuerySchema.safeParse({ warrantyEndsWithinDays: '0' }).success).toBe(false);
+    expect(ListItAssetsQuerySchema.safeParse({ warrantyEndsWithinDays: '400' }).success).toBe(false);
+  });
+
+  it('opens the leavers row as a list: the holder left, or did not', () => {
+    expect(ListItAssignmentsQuerySchema.parse({ holderExited: 'true' }).holderExited).toBe(true);
+    expect(ListItAssignmentsQuerySchema.parse({ holderExited: 'false' }).holderExited).toBe(false);
+    expect(ListItAssignmentsQuerySchema.safeParse({ holderExited: 'maybe' }).success).toBe(false);
+  });
+});
+

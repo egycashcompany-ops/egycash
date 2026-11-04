@@ -90,3 +90,19 @@ describe('a column filter is a MultiSelect that…', () => {
     expect(onChange).toHaveBeenCalledWith(['70492']);
   });
 });
+
+describe('a list that starts over each time it opens — the area (2026-11-03)', () => {
+  // «لما أضغط على فلتر (المنطقة فقط) يعمله Reset وأقدر أختار من الأول في كل الصفحات بتاعت ATM».
+  it('clears the column’s picks as its list opens', () => {
+    const onChange = vi.fn();
+    const props = render({ value: ['SYN الدقي', 'SYN زايد'], onChange, freshOnOpen: true });
+    expect(typeof props.onOpen).toBe('function');
+    (props.onOpen as () => void)();
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it('has nothing to clear while nothing is picked, and other columns keep their picks', () => {
+    expect(render({ value: [], freshOnOpen: true }).onOpen).toBeUndefined();
+    expect(render({ value: ['70493'] }).onOpen).toBeUndefined();
+  });
+});

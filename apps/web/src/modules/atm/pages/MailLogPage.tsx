@@ -37,7 +37,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { useAtmMailLog, useRestoreAtmMailTickets } from '../api/atm-queries';
-import { cairoToday, doneRange, joinCodes } from '../lib/operation-view';
+import { cairoToday, doneRange, joinCodes, TIME_CELL_CLASS } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import {
   MAIL_ROW_PAINT,
@@ -58,6 +58,7 @@ import {
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
 import { DoneRangeBar, DoneRangeCutShort } from '../components/DoneRangeBar';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /**
  * Remembered across visits: the filters. Not `from`/`to` — the log opens on today, a day of mail,
@@ -153,6 +154,7 @@ export const MailLogPage = (): JSX.Element => {
       filterable: true,
       header: t('atm.mail.receivedAt'),
       render: (row) => formatDateTime(row.receivedAt, locale),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'status',
@@ -173,6 +175,7 @@ export const MailLogPage = (): JSX.Element => {
       filterable: true,
       header: t('atm.mail.actionAt'),
       render: (row) => (row.actionAt === null ? '—' : formatDateTime(row.actionAt, locale)),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'sender',
@@ -272,6 +275,8 @@ export const MailLogPage = (): JSX.Element => {
 
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
+            filtered={isMailFiltered(filters, status)}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}
@@ -290,6 +295,7 @@ export const MailLogPage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             // The outcome's paint, reaching the pinned button's cell too (`MAIL_ROW_PAINT`).

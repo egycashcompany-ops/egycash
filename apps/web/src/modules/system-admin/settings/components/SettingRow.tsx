@@ -196,9 +196,15 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
           // names. Say how much is set and go there.
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/60">
             <p className="text-sm text-slate-700 dark:text-slate-200">
-              {entries > 0
-                ? t('systemAdmin.settings.managed.count', { count: entries })
-                : t('systemAdmin.settings.managed.empty')}
+              {Array.isArray(stored)
+                ? entries > 0
+                  ? t('systemAdmin.settings.managed.count', { count: entries })
+                  : t('systemAdmin.settings.managed.empty')
+                : // A value that is not a list (how the ATM pages read) has nothing to count: it is
+                  // set once it differs from what ships.
+                  resolvedFrom === 'default'
+                  ? t('systemAdmin.settings.managed.empty')
+                  : t('systemAdmin.settings.managed.set')}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
               <Link

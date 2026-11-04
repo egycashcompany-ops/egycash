@@ -637,6 +637,51 @@ describe('the consumables the IT client calls exist on the API, on the assets’
   });
 });
 
+// The `/it` dashboard (design §11) — «عايزك تعمل فى الـ /it الرئيسية.. Dashboard». Two reads, both on
+// the asset register's view grant and both validated against the dashboard's own query schema, so
+// the page's `categoryId` list and `branchId` are what the API reads. The router is found through
+// the manifest, as the consumables' are: the builder a prefix mounts, then its body.
+describe('the dashboard the IT home calls exists on the API, on the asset view grant', () => {
+  const routeFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) return routeFiles(full);
+      return entry.name.endsWith('.routes.ts') ? [full] : [];
+    });
+  const builder = /prefix: '\/it\/dashboard', router: (\w+)\(\)/.exec(MANIFEST)?.[1];
+  const DASHBOARD =
+    builder === undefined
+      ? ''
+      : (routeFiles(API_SRC)
+          .map((file) => readFileSync(file, 'utf8'))
+          .map((text) => new RegExp(`export const ${builder} = [\\s\\S]*?\\n};`).exec(text)?.[0])
+          .find((body) => body !== undefined) ?? '');
+  const route = (path: string): string =>
+    new RegExp(`router\\.get\\(\\s*'${path}'[\\s\\S]*?\\);`).exec(DASHBOARD)?.[0] ?? '';
+
+  it('mounts the dashboard router', () => {
+    expect(MANIFEST, 'manifest does not mount /it/dashboard').toContain("prefix: '/it/dashboard'");
+    expect(DASHBOARD, 'the dashboard router was not found').not.toBe('');
+  });
+
+  it('serves the two reads the page calls — and nothing it writes', () => {
+    expect(declared(DASHBOARD)).toEqual(new Set(['get /assets', 'get /activity']));
+    expect(CLIENT).toContain(
+      'get<ItDashboardAssetsDto>(`/it/dashboard/assets${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain(
+      'get<ItDashboardActivityDto>(`/it/dashboard/activity${buildQuery(params)}`)',
+    );
+  });
+
+  it('gates both on itAsset.view and validates both against the dashboard’s query', () => {
+    for (const path of ['/assets', '/activity']) {
+      expect(route(path), path).toContain("authorize('itAsset.view')");
+      expect(route(path), path).toContain('ItDashboardQuerySchema');
+    }
+  });
+});
+
 describe('the permissions the API enforces are the ones the UI gates on', () => {
   // Matches both `authorize('x')` and every key inside `authorizeAny('x', 'y')`.
   const enforced = (routes: string): Set<string> =>
@@ -1006,11 +1051,46 @@ describe('the client sends only filters the API declares', () => {
         'returnedTo',
         'overdue',
         'receipt',
+        // «حالة المستلِم» — the dashboard's «أصول مع موظفين تركوا العمل», opened as a list.
+        'holderExited',
       ]),
     );
     for (const field of sent) {
       expect(schema, `${field} is not a declared custody register filter`).toContain(`${field}:`);
     }
+  });
+
+  // The same guard over the asset list's own request — «الضمان» joined it for the dashboard.
+  it('asset register: every filter it sends, «الضمان» among them, is one the API declares', () => {
+    const schema = filters('ListItAssetsQuerySchema');
+    const page = readFileSync(resolve(HERE, 'pages/AssetsListPage.tsx'), 'utf8');
+    const request = /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*\[paramsKey\]/;
+    const sent = [...(request.exec(page)?.[1] ?? '').matchAll(/(\w+):/g)]
+      .map((match) => match[1] as string)
+      .filter((key) => !['page', 'pageSize', 'sortBy', 'sortDir'].includes(key));
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        'search',
+        'status',
+        'categoryId',
+        'branchId',
+        'warrantyEndsWithinDays',
+      ]),
+    );
+    for (const field of sent) {
+      expect(schema, `${field} is not a declared asset filter`).toContain(`${field}:`);
+    }
+  });
+
+  // The dashboard's two filters are the request its query builder writes.
+  it('dashboard: the categories and the branch, as its query schema names them', () => {
+    const schema =
+      /ItDashboardQuerySchema = z\s*\.object\(\{([\s\S]*?)\}\)/.exec(CONTRACTS)?.[1] ?? '';
+    expect(schema).toContain('categoryId: listQuery(objectId())');
+    expect(schema).toContain('branchId:');
+    const lib = readFileSync(resolve(HERE, 'lib/it-dashboard.ts'), 'utf8');
+    expect(lib).toContain('{ categoryId: writeCategoryIds(categoryIds) }');
+    expect(lib).toContain('{ branchId }');
   });
 
   // Every filter the queue's FilterBar and its three saved views send. `mine` and `breached` are

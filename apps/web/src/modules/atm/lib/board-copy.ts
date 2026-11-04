@@ -3,9 +3,10 @@
 //
 // The table is unselectable as a whole and only the copy columns take a selection back
 // (`select-none` around it, `select-text` on those cells), so a drag across the rows picks up the
-// bank, the code, the name and the time — and Chromium copies exactly those, a tab between cells
-// and a line per row, ready to paste into a sheet or a message. Nothing else on a row — its box,
-// its timer, its buttons — comes along.
+// bank, the code, the name and the time — and only those. Nothing else on a row — its box, its
+// timer, its buttons — comes along. How the rows land on the clipboard is `shared/lib/table-copy.ts`
+// (2026-11-03, «لما أبعته واتساب»): a line per row with « | » between cells and a blank line between
+// rows for a chat, and a real table for a sheet.
 //
 // Ctrl+A (⌘A) outside a field selects the table's rows the same way: «Select All» of the data,
 // without the buttons.

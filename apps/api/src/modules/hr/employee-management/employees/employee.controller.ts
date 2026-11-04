@@ -11,7 +11,9 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
+  type JobTitlePlacementQuery,
   type LinkEmployeeUser,
   type ListEmployeesQuery,
   type RehireCheckQuery,
@@ -22,9 +24,10 @@ import {
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { userService } from '../../../../platform/users';
+import { ValidationError } from '../../../../shared/errors';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
-import { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
+import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
 
 type IdParam = { id: string };
@@ -93,6 +96,23 @@ export const rehireCheck = async (req: Request, res: Response): Promise<void> =>
   const { query } = validated<never, RehireCheckQuery>(req);
   const match = await employeeService.rehireCheck(query.nationalId);
   ok(res, match === null ? null : toRehireCheckResultDto(match));
+};
+
+/** The register screen's hint under the code: the code holding the highest number. */
+export const getLastEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastCode());
+};
+
+/** A typed code, before it is submitted: the branch it names and whether its number is free. */
+export const checkEmployeeCode = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, EmployeeCodeCheckQuery>(req);
+  ok(res, await employeeService.checkCode(query.code));
+};
+
+/** Per job title, the department and section most of a branch's staff with it work in. */
+export const getJobTitlePlacements = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, JobTitlePlacementQuery>(req);
+  ok(res, await employeeService.jobTitlePlacements(query.branchId));
 };
 
 export const getEmployee = async (req: Request, res: Response): Promise<void> => {
@@ -206,6 +226,88 @@ export const getMyEmployeeProfile = async (req: Request, res: Response): Promise
   const doc = await employeeService.getMine(ctx.userId);
   const placement = await resolvePlacements([doc]);
   ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
+};
+
+/**
+ * The welcome page's card for the signed-in person: who they are, where they sit, their birthday.
+ *
+ * The same token-to-employee lookup as `/me` (and its 404 for a login with no employee behind it),
+ * but a much narrower answer: `toMyEmployeeSummaryDto` names every field it carries, so nothing
+ * else of the record — no national id, no contact, no salary — can ride along.
+ */
+export const getMyEmployeeSummary = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const doc = await employeeService.getMine(ctx.userId);
+  const placement = await resolvePlacements([doc]);
+  ok(res, toMyEmployeeSummaryDto(doc, placement.for(doc)));
+};
+
+/**
+ * A photo goes out as its BYTES, not the JSON envelope and not a signed URL: an `<img>` cannot
+ * carry the bearer token a private picture needs, so the browser fetches the bytes with it and
+ * shows an object URL. Private, and not kept by any cache — a replaced or removed photo must not
+ * outlive the change.
+ */
+const sendPhoto = (
+  res: Response,
+  photo: { buffer: Buffer; mime: string; fileName: string },
+): void => {
+  res.setHeader('Content-Type', photo.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(photo.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(photo.buffer);
+};
+
+/** An employee's photo, for someone who may see the employee — scoped like `GET /:id`. */
+export const getEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = scopeSelector(ctx, 'employee.view');
+  sendPhoto(res, await employeeService.readPhoto(ctx, params.id, scope));
+};
+
+/** The caller's own photo. The employee comes from the token, like every other `/me`. */
+export const getMyEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  sendPhoto(res, await employeeService.readMyPhoto(authContext(req)));
+};
+
+/**
+ * Set or replace the photo. Answers with the whole employee, redacted exactly as
+ * `PATCH /:id/personal` answers, so the profile updates from the response.
+ */
+export const uploadEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  // A request without the part gets a named 400 rather than a crash on `.buffer`.
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    const message = 'a photo is required, in a part named "file"';
+    throw new ValidationError([{ field: 'file', code: 'REQUIRED', message }], message);
+  }
+  const doc = await employeeService.setPhoto(
+    ctx,
+    params.id,
+    {
+      originalName: uploaded.originalname,
+      mime: uploaded.mimetype,
+      size: uploaded.size,
+      buffer: uploaded.buffer,
+    },
+    scopeSelector(ctx, 'employee.editPersonal'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
+};
+
+/** Remove the photo — idempotent: no photo answers with the employee unchanged. */
+export const removeEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const doc = await employeeService.removePhoto(
+    ctx,
+    params.id,
+    scopeSelector(ctx, 'employee.editPersonal'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 export const getEmployeeTimeline = async (req: Request, res: Response): Promise<void> => {

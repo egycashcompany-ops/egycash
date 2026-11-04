@@ -280,6 +280,7 @@ export const MultiSelect = ({
   floating = false,
   pickMatches = false,
   match,
+  onOpen,
   loadOptions,
   size = 'default',
   className,
@@ -421,6 +422,12 @@ export const MultiSelect = ({
    */
   match?: (label: string, query: string) => boolean;
   /**
+   * Called as the list OPENS — by a click on the trigger or an arrow key — before the reader picks
+   * anything. A table's area filter clears its picks here, so each opening starts over (2026-11-03,
+   * «لما أضغط على فلتر (المنطقة فقط) يعمله Reset وأقدر أختار من الأول»). Opt-in.
+   */
+  onOpen?: () => void;
+  /**
    * The list, asked for only while it is OPEN — `options` then needs to name the chosen values
    * only, for the closed trigger. For a list that is costly to make and seldom looked at: a
    * table's filter row has one per column, made from every row, on a board that re-renders every
@@ -484,9 +491,12 @@ export const MultiSelect = ({
       // Where the panel would sit unpinned: from the trigger's start edge, along the text.
       const rtl = getComputedStyle(box).direction === 'rtl';
       const left = rtl ? trigger.right - width : trigger.left;
-      if (left < 8) setPin('left');
-      else if (left + width > window.innerWidth - 8) setPin('right');
-      else setPin(null);
+      const next = left < 8 ? 'left' : left + width > window.innerWidth - 8 ? 'right' : null;
+      // On the panel at once, not only on the next render: the search box is focused and the list
+      // revealed in this same commit (below), and must find the list where it will stay.
+      panel.style.left = next === 'left' ? '0px' : next === 'right' ? 'auto' : '';
+      panel.style.right = next === 'right' ? '0px' : next === 'left' ? 'auto' : '';
+      setPin(next);
     };
     place();
     window.addEventListener('resize', place);
@@ -566,6 +576,20 @@ export const MultiSelect = ({
   const listed = loaded ?? options;
   const remote = onSearch !== undefined;
   const searchable = remote || listed.length >= searchThreshold;
+  // The search box takes the caret once the list is OPEN AND PLACED — never `autoFocus`.
+  // «لما بضغط عليه المنيو بيطلع شمال برا الشاشة وبيغير الـ UI» (2026-11-03): `autoFocus` focused the
+  // box on the render that drew the list, before the pin (above) moved a list at the page's left
+  // edge back into the screen; the browser scrolled the board sideways to show the box where it
+  // first stood, the pin then moved the list, and the page was left shifted. This runs after the
+  // pin's own effect, which has already put the list in place: the box is focused without
+  // scrolling, and the list — now inside the screen — is brought into view only as much as it
+  // needs, which is down (a list opened low in a dialog), never sideways. A floating list is fixed
+  // to the trigger and needs neither.
+  useLayoutEffect(() => {
+    if (!open || !searchable) return;
+    searchRef.current?.focus({ preventScroll: true });
+    if (!floating) panelRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [open, searchable, floating]);
   const matches = useMemo(
     () =>
       !remote && searchable && query !== ''
@@ -689,6 +713,7 @@ export const MultiSelect = ({
     if (action === 'open') {
       // Opened from the keyboard, the arrow lands on the first (or last) option at once — of the
       // fresh list, since opening asks again with nothing typed. See `edge`.
+      onOpen?.();
       setOpen(true);
       searchFor('');
       setEdge(e.key === 'ArrowUp' ? 'ArrowUp' : 'ArrowDown');
@@ -745,6 +770,7 @@ export const MultiSelect = ({
           // can be narrower than the words on it, and then this is the only way to read them.
           title={label}
           onClick={() => {
+            if (!open) onOpen?.();
             setOpen((o) => !o);
             // The owner's results still hold the last query; ask for the opening answer again.
             searchFor('');
@@ -834,7 +860,7 @@ export const MultiSelect = ({
                 ? spot === null
                   ? // Measured before it is painted (a layout effect), so it never flashes at the
                     // page's corner. Transparent, not `visibility: hidden`: a hidden search box
-                    // refuses the focus `autoFocus` gives it on this very render.
+                    // refuses the focus it is given on this very render.
                     { top: 0, left: 0, opacity: 0 }
                   : {
                       left: spot.left,
@@ -867,7 +893,6 @@ export const MultiSelect = ({
                   <input
                     ref={searchRef}
                     type="text"
-                    autoFocus
                     role="combobox"
                     aria-expanded
                     aria-controls={listId}

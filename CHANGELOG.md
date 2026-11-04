@@ -11,6 +11,56 @@ its entry here in the same PR.
 
 ### Added
 
+- **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
+  time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
+  دلوقتى وشغال .. ووقت كل واحد على السيستم..».
+  - **The page** is `/system/active-users`, behind a new permission `activeUser.view`; super-admin
+    and platform-admin hold it by default. For each person it shows:
+    - the status: «نشط الآن» (used the system within two minutes), «خامل» (signed in with the
+      page open, nobody touching it) or «غير متصل»;
+    - when they signed in and for how long;
+    - the working time today;
+    - the first and last activity;
+    - the devices, as browser and system only, never an address.
+  - **Summary and controls.** Tiles count who is working, who is idle, how many people used the
+    system and the total time; the two status tiles also filter the list. Search, status and branch
+    filters are kept in the address. The page refreshes every 30 seconds. Any earlier day (kept 90
+    days) shows that day's working time and the average per person.
+  - **How working time is measured.** The browser sends a heartbeat once in each minute of the
+    clock, and only while the person is using the page and it is in front of them. Each minute is
+    counted once however many tabs or devices are open. Heartbeats are not audited and do not
+    extend the session.
+  - Signing out shows as «غير متصل» at once.
+- **A welcome page for every account, and a photo on every employee's profile.** «عايزك تضيف فى
+  بروفايل كل شخص صورة شخصية ليه .. ويقدر الـ HR يضيفهاله» · «عايز بقى أى حساب يدخل تظهرله Welcome
+  Page بتقوله أهلاً وتاريخ ميلادة وكام يوم باقى عليه (ولو اليوم عيد ميلاده يقوله كل سنة وأنت طيب)..
+  وتظهرله الـ Recent Pages اللى كان فيها». Approved from a sample by the owner.
+  - **`/` is the welcome page** instead of a jump to the first screen of the menu. It shows «أهلًا،
+    …» with the person's photo (or initial), today's date, and their job title, department and
+    branch.
+  - **The birthday card** shows the date of birth, the days left to the next birthday in Cairo
+    calendar days («غدًا عيد ميلادك» on the eve), and «كل عام وأنت بخير» on the day itself, when
+    the greeting turns festive too. Only the person sees their own date, and an account with no
+    employee behind it gets no card.
+  - **The recent pages** are this account's own history in this browser, newest first, each with
+    when it was opened. A page the account can no longer open drops out. Before there is any
+    history, the first pages of the person's own menu are offered, work before personal pages.
+  - The ECMS mark in the top bar now leads home.
+  - **The employee photo** heads the profile. HR (`employee.editPersonal`) sets, replaces or
+    removes it from one dialog, with a preview before saving; on a phone it can come from the
+    camera or the gallery. Only JPG, PNG or WebP up to 5 MB are accepted, and the server enforces
+    the same limits. The person's own photo shows in the top bar, on the welcome page and on «ملفي».
+  - The recent-pages history is now kept per account, so a shared browser no longer shows one
+    person's pages to another.
+- **The IT home is a dashboard.** «عايزك تعمل فى الـ /it الرئيسية.. Dashboard بدل اللى موجود فيها يظهر
+  إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر أفلتر بـالفئة.. من خلال Drop Down بـ
+  Multiselection». `/it` now opens on the assets' totals — all, in stock, handed over, under
+  maintenance, disposed — filtered by one or more categories and a branch, with the status split,
+  the figures by category and by branch, «يحتاج متابعة» (assets held by leavers, receipts awaiting
+  the signature, overdue returns, warranties ending soon — each opening its list), the latest
+  movements, the mobile lines by network, the consumables at their minimum, the help desk's counts
+  and the IT pages. The custody register gains «حالة المستلِم» (left / still employed) and the asset
+  list «الضمان» (ending within 30 / 90 days) ([IT design §11](docs/12-planning/it-module-design.md)).
 - **Fleet: «تصحيح أرقام الكروت» — the go-live's 15 crossed Wataniya card numbers and the 0849 pair,
   repaired once by the owner after he reviews the live dry run; and the full card photo for the
   PIN's own grant only.** «الـ PIN بيمشي مع الرقم المطبوع على الكارت ولا مع الاسم — الاتنين بس
@@ -583,6 +633,58 @@ its entry here in the same PR.
 
 ### Changed
 
+- **How the ATM pages read, set on `/atm/settings`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو
+  لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من /atm/settings». A new card, «شكل الصفحات», sets
+  three things for every ATM page and every user: the text size (90, 100, 110, 125 or 140 percent
+  of the app's own), bold text on or off, and how dark the tables' lines are (lighter, as they are,
+  darker, darkest). A sample table under the choices shows the result before it is saved. The side
+  bar and the top bar keep their look; the data does not change. Until the card is saved the pages
+  read as they always did.
+- **Rows copied from an ATM table stay a table in WhatsApp.** «لما أخد Copy من الجدول تطلعهولى بشكل
+  جدول … فالكلام داخل في بعضه .. عايز حافظ على شكلة كجدول لما أبعته واتساب». The copy put a tab
+  between cells, which a chat shows as a narrow space, so «MISR 1150744 فرع القصر العينى مسائي» ran
+  together. A copy that covers cells of an ATM table (a drag across rows, or Ctrl+A on a board) is
+  now one line per row with « | » between cells: `MISR | 1150744 | فرع القصر العينى | مسائي`, and a
+  blank line between rows («عايز فى موضوع الـ Copy إنه يسيب مسافة بين كل صف والتاني»). A sheet, a
+  document or an e-mail still pastes real rows and columns, row under row. Only what the rows show
+  is copied: a board's timers and buttons stay out, as before. A selection inside one cell copies as
+  it always did.
+- **The area's column filter starts over each time it is opened.** «لما أضغط على فلتر (المنطقة فقط)
+  يعمله Reset وأقدر أختار من الأول في كل الصفحات بتاعت ATM». Opening the area list under the head
+  clears the areas picked in it, so the table shows every area again and the areas are picked
+  afresh. Every other column keeps its picks when its list opens, so a value can be added to them.
+  On the boards, the done pages, both mail pages, the cassette layouts and control's data tab.
+- **The top area filter opens inside the screen.** «فلتر المنطقة (اللى فوق خالص) بجانب البنك .. على
+  الشمال.. لما بضغط عليه المنيو بيطلع شمال برا الشاشة وبيغير الـ UI». With seven areas or more the list
+  has a search box, and that box took the caret before the list was moved back inside the screen:
+  the browser scrolled the board sideways to reach it and left the page shifted. The box now takes
+  the caret once the list is in place, and moves nothing. This applies to every drop-down filter of
+  this kind in the app.
+- **ATM tables keep their column widths when filtered, and a time stays on one line.** «عرض الأعمدة
+  فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته .. وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض بردو
+  فى كل الجداول». A table laid its columns out by the rows it showed, so picking an area, or anything
+  else that drops rows, narrowed some columns and widened others. Each ATM table now takes its
+  column widths the first time it shows rows and keeps them while it is filtered; the widths follow
+  the window.
+  - A page that opens with a remembered filter (an area on the boards, for example) keeps the widths
+    of those rows only until the filter is lifted; the whole table's widths are then taken once.
+  - A value that does not fit its column (a later time, a narrower window, larger text) widens it,
+    and the widths are taken again from there once, so later filters still move nothing.
+  - Each view keeps its own widths: back on «اليوم» from «أيام سابقة», the board is as it was left.
+  - The schedule, the open and close times, the time taken and the live timer («00h : 03m : 42s»),
+    a run's time, the mail's received and action times, and a cassette layout's change time no
+    longer break over two or three lines.
+
+  On the boards, the done pages, both mail pages, the cassette layouts, the machines, data edit,
+  the daily report, the plan, control and preparation.
+- **The daily report covers a period.** «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
+  بس الـ Default يكون اليوم». `/atm/reports/daily` now has «من» and «إلى» on the title's line in
+  place of the one day, today in both by default. For each bank the two tables count every
+  replenishment and maintenance opened from the first day to the last, both included, and how many
+  of them are still open. One day filled in serves as both, a «إلى» before the «من» reads the days
+  between, and a link that names a single day (`?date=`) still opens on that day. An empty period of
+  more than one day says «لا توجد عمليات في هذه الفترة»; a single day, today's included, still says
+  «لا توجد عمليات في هذا اليوم».
 - **System settings: every setting titled and described in Arabic and English, grouped by
   department.** «فى الـ /system/settings في عناوين كتير بالشكل دا atm.mail.branchCategories !! عايز
   أخليهم بالعربي وأظبطهم بالإنجليزي بردو» · «وحاول تظبط الـ UI بتاعت الصفحة دي عموماً وتقسم

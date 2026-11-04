@@ -90,6 +90,7 @@ describe('atm module manifest (ATM Operations port)', () => {
       '/atm/banks',
       '/atm/branch-links',
       '/atm/control',
+      '/atm/display',
       '/atm/leaders',
       '/atm/machines',
       '/atm/mail-tickets',

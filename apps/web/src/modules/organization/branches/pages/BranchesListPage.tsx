@@ -1,7 +1,8 @@
 // Branches Management — list (Phase 3.1). Columns per spec: Branch Code, Arabic Name, English Name,
-// Status, Created, Updated, plus an inline Activate/Deactivate action. Free-text search + status
+// Status, Created, Updated, plus an inline Activate/Deactivate action — and «تغيير الكود» for a holder
+// of `branch.changeCode` («عايزك تسمحلى أغير كود الفرع»). Free-text search + status
 // filter + pagination are URL-synchronized. Reuses the shared org-unit data layer + UI kit.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type BranchDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -19,6 +20,7 @@ import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatDate } from '../../../../shared/lib/format';
 import { branchConfig } from '../../shared/unit-config';
+import { ChangeBranchCodeDialog } from '../components/ChangeBranchCodeDialog';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -65,6 +67,8 @@ export const BranchesListPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
+  // The branch whose code is being corrected, or null.
+  const [recoding, setRecoding] = useState<BranchDto | null>(null);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
@@ -130,7 +134,29 @@ export const BranchesListPage = (): JSX.Element => {
     },
     { key: 'createdAt', header: t('organization.field.created'), sortable: true, render: (b) => formatDate(b.createdAt, locale) },
     { key: 'updatedAt', header: t('organization.field.updated'), render: (b) => formatDate(b.updatedAt, locale) },
-    { key: 'actions', header: '', align: 'end', render: (b) => <StatusToggle branch={b} /> },
+    {
+      key: 'actions',
+      header: '',
+      align: 'end',
+      render: (b) => (
+        <div className="flex items-center justify-end gap-1">
+          <Can permission="branch.changeCode">
+            <Button
+              size="sm"
+              variant="ghost"
+              data-change-branch-code={b.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                setRecoding(b);
+              }}
+            >
+              {t('organization.branch.changeCodeShort')}
+            </Button>
+          </Can>
+          <StatusToggle branch={b} />
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -191,6 +217,7 @@ export const BranchesListPage = (): JSX.Element => {
           embedded
         />
       </ListView>
+      {recoding !== null && <ChangeBranchCodeDialog branch={recoding} onClose={() => setRecoding(null)} />}
     </PageContainer>
   );
 };

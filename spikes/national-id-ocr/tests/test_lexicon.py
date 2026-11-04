@@ -71,3 +71,33 @@ def test_a_name_split_at_the_cards_printed_gap_is_rejoined():
 
 def test_a_vowel_mark_the_recognizer_added_is_dropped_from_a_name():
     assert correct("علْى عبدالمنعم", "name")[0] == "على عبدالمنعم"
+
+
+# ── Two blur misreads seen on a live phone photo of a real card ──────────────────────────────────
+from nidocr.lexicon import correct as _correct_name  # noqa: E402
+
+
+def test_an_extra_lam_after_the_opening_alef_is_dropped_when_that_leaves_a_name():
+    """'اشرف' came back 'الشرف': the alef's foot and the gap after it read as a lam."""
+    assert _correct_name("الشرف", "name")[0] == "اشرف"
+
+
+def test_a_sad_read_for_a_seen_is_put_right_when_one_name_fits():
+    """'فارس' came back 'قارص': the seen's teeth filled in on a soft photo and read as a sad."""
+    assert _correct_name("قارص", "name")[0] == "فارس"
+
+
+def test_names_that_really_have_a_sad_or_an_article_are_left_alone():
+    for name in ("صابر", "صالح", "صبحي", "صلاح", "الشافعي", "الجندي", "السيد", "الحديدى", "خليل", "عدلي", "فالح"):
+        assert _correct_name(name, "name")[0] == name, name
+
+
+def test_the_two_misreads_of_muhammad_seen_live_are_put_right():
+    """The commonest name, its middle meem lost ('محد') or read as a sad ('محصد') on a soft photo.
+    Neither is a name, and a looser rule (one letter from any name) changed real names."""
+    assert _correct_name("حسن علي محد سالم محصد", "name")[0] == "حسن علي محمد سالم محمد"
+
+
+def test_a_real_name_near_muhammad_is_left_alone():
+    for name in ("مجدي", "مجد", "حمد", "محمود", "محمد"):
+        assert _correct_name(name, "name")[0] == name, name

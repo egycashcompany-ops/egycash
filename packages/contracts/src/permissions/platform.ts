@@ -43,6 +43,24 @@ export const userPermissions = declarePermissions(
   'platform.users',
 );
 
+/**
+ * «المستخدمون النشطون» — who has the system open now, and how long each person worked on it today.
+ *
+ * Its own resource rather than one more reading of `user.view`. That key says an account EXISTS;
+ * this one says when a person sat down, which devices they are on and how many minutes they
+ * worked — a fact about somebody's day that an account administrator does not need in order to
+ * create logins. Read-only, so `view` is the whole of it, and not break-glass: it changes nothing.
+ */
+export const activeUserPermissions = declarePermissions(
+  P,
+  'activeUser',
+  // Genitive, like «المستخدمين» above: the key's name reads «عرض المستخدمين النشطين».
+  { en: 'active users', ar: 'المستخدمين النشطين' },
+  ['view'],
+  [],
+  'platform.active-users',
+);
+
 export const rolePermissions = declarePermissions(
   P,
   'role',
@@ -75,7 +93,13 @@ export const branchPermissions = declarePermissions(
   'branch',
   { en: 'branches', ar: 'الفروع' },
   ['view', 'create', 'edit', 'delete'],
-  [],
+  [
+    // Correcting a branch's code — «عايزك تسمحلى أغير كود الفرع». Its own key rather than a power of
+    // `edit`: the code is the first three digits of every employee code issued in the branch, and
+    // registration reads the branch off them, so changing it is not a side effect of renaming one.
+    // Employee codes already issued do not change with it (ADR-017).
+    { action: 'changeCode', name: { en: 'Change branch code', ar: 'تغيير كود الفرع' } },
+  ],
   'platform.branches',
 );
 
@@ -281,6 +305,7 @@ export const approvalPermissions = declarePermissions(
 
 export const platformPermissions: PermissionDef[] = [
   ...userPermissions,
+  ...activeUserPermissions,
   ...rolePermissions,
   ...permissionRegistryPermissions,
   ...organizationPermissions,
@@ -331,6 +356,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'System Users', ar: 'مستخدمو النظام' },
     route: '/system/users',
     sortOrder: 10,
+  },
+  {
+    id: 'platform.active-users',
+    moduleId: P,
+    name: { en: 'Active users', ar: 'المستخدمون النشطون' },
+    route: '/system/active-users',
+    sortOrder: 15,
   },
   {
     id: 'platform.roles',

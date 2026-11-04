@@ -358,7 +358,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('sources.title')}
-        breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('sources.title') }]}
+        breadcrumbs={[{ label: t('hr.settings.title'), to: '/hr-settings' }, { label: t('sources.title') }]}
         actions={
           <Can permission="applicantSource.manage">
             <Button

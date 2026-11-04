@@ -52,6 +52,11 @@ export interface ItAssignmentRegisterFilter {
     | { state: 'none' }
     | { state: 'signed' | 'unsigned'; signedReceiptIds: readonly Types.ObjectId[] }
     | undefined;
+  /**
+   * «حالة المستلِم» — the holders HR shows as having left, already read through the directory
+   * (`exitedHolderIds`). `exited: true` keeps the intervals they hold; `false` every other one.
+   */
+  holderExited?: { exited: boolean; exitedEmployeeIds: readonly Types.ObjectId[] } | undefined;
 }
 
 /**
@@ -105,6 +110,14 @@ export const assignmentRegisterFilter = (
   if (params.receipt?.state === 'unsigned') {
     clauses.push({ receiptId: { $ne: null, $nin: [...params.receipt.signedReceiptIds] } });
   }
+  // FR-13's «assets held by exited employees» and its complement — `false` is every interval whose
+  // holder HR does NOT show as gone, a holder it does not know included (nothing says they left).
+  if (params.holderExited !== undefined) {
+    const ids = [...params.holderExited.exitedEmployeeIds];
+    clauses.push({
+      assignedToEmployeeId: params.holderExited.exited ? { $in: ids } : { $nin: ids },
+    });
+  }
   if (clauses.length === 0) return {};
   return clauses.length === 1
     ? (clauses[0] as FilterQuery<ItAssetAssignmentDoc>)
@@ -153,6 +166,25 @@ class ItAssetAssignmentRepository extends BaseRepository<ItAssetAssignmentDoc> {
             returnedAt: null,
           }),
         },
+        { $group: { _id: '$assignedToEmployeeId', count: { $sum: 1 } } },
+      ])
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.count]));
+  }
+
+  /**
+   * How many of the intervals a filter matches each holder has — ONE `$group`, scoped like every
+   * custody read. It is how a leaver question is asked: the holders come out of this read once, HR
+   * is asked about all of them in one directory batch, and the counts of those who left are summed
+   * — never an interval read, and never a directory read, per row.
+   */
+  async countByHolder(
+    filter: FilterQuery<ItAssetAssignmentDoc>,
+    scope?: ScopeSelector,
+  ): Promise<Map<string, number>> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: this.baseFilter(scope, filter) },
         { $group: { _id: '$assignedToEmployeeId', count: { $sum: 1 } } },
       ])
       .exec();

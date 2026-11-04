@@ -20,6 +20,7 @@ import { lazy, Suspense, useState } from 'react';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
+import { EmployeePhoto } from '../components/EmployeePhoto';
 import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
 import { EmployeeCostCenterCard } from '../components/EmployeeCostCenterCard';
@@ -315,6 +316,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={e.personal.fullNameAr}
+        leading={<EmployeePhoto employee={e} />}
         breadcrumbs={[
           { label: t('employees.module.title'), to: '/employees' },
           { label: e.code },

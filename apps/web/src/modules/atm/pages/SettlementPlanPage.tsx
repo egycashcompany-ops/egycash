@@ -75,6 +75,7 @@ import {
   filterPlanLines,
   printable,
   shownTicks,
+  usePlanLineWidths,
 } from '../components/settlements/PlanLinesTable';
 import { PrintReceiptDialog } from '../components/settlements/PrintReceiptDialog';
 import { ReasonDialog } from '../components/settlements/ReasonDialog';
@@ -184,6 +185,12 @@ export const SettlementPlanPage = (): JSX.Element => {
     () => filterPlanLines(plan?.lines ?? [], columnFilters.values, t, locale),
     [plan, columnFilters.values, locale],
   );
+  // The table's kept widths live here, beside its filters: they outlast the table's loading state.
+  const lineWidths = usePlanLineWidths({
+    lines: shownLines,
+    locale,
+    filtered: columnFilters.active,
+  });
   // «السطور المحددة» prints the ticked lines the table SHOWS (`shownTicks`).
   const checkedShown = useMemo(() => shownTicks(shownLines, checked), [shownLines, checked]);
 
@@ -688,6 +695,7 @@ export const SettlementPlanPage = (): JSX.Element => {
                 lines={shownLines}
                 allLines={plan?.lines ?? NO_LINES}
                 columnFilters={columnFilters}
+                steady={lineWidths}
                 locale={locale}
                 selectedId={selected?.id ?? null}
                 checked={checked}

@@ -214,8 +214,9 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
 
   /**
    * The daily report's one aggregation (legacy /reports_atm, contad_app.js:2234-2320): per bank,
-   * everything opened that day and how much of it is still open. Deleted rows are excluded by
-   * `baseFilter`, exactly as the legacy `deleted: 0` match did.
+   * everything opened in [from, to) — that day, or since 2026-11-02 a period of days — and how much
+   * of it is still open. Deleted rows are excluded by `baseFilter`, exactly as the legacy
+   * `deleted: 0` match did.
    */
   async countsByBankForDay(params: {
     from: Date;

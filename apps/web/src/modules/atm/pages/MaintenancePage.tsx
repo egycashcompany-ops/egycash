@@ -35,13 +35,14 @@ import {
   useDeleteAtmMaintenances,
   useOpenAtmMaintenancesList,
 } from '../api/atm-queries';
-import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
+import { COPY_TABLE_CLASS, useSelectBoardText } from '../lib/board-copy';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
 import { areaGroupLine } from '../lib/area-groups';
 import {
   columnFilterEntries,
   maintenanceColumns,
+  sheetColumnClass,
   statementFilterLine,
 } from '../lib/operation-sheet';
 import { actionTargets } from '../lib/operation-view';
@@ -55,6 +56,7 @@ import { StatementExportButtons } from '../components/StatementExportButtons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBoardFilters } from '../lib/useBoardFilters';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /**
  * Remembered across visits: this screen's filters and order. `page` is derived, never kept — and
@@ -129,7 +131,7 @@ export const MaintenancePage = (): JSX.Element => {
           )
         : (row: AtmMaintenanceDto) => column.text(row, '—'),
     filterable: true,
-    ...(column.copy === true ? { className: COPY_COLUMN_CLASS } : {}),
+    ...sheetColumnClass(column),
   }));
   const timerColumn: Column<AtmMaintenanceDto> = {
     key: 'timer',
@@ -282,6 +284,8 @@ export const MaintenancePage = (): JSX.Element => {
           data-board-view={board.view}
         >
           <DataTable
+            steadyColumns
+            filtered={filters.filtered}
             columns={columns}
             rows={board.rows}
             rowKey={(row) => row.id}
@@ -304,6 +308,7 @@ export const MaintenancePage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: board.choices,
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             group={areaGroupLine(t, locale)}

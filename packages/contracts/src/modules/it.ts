@@ -400,6 +400,11 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
    * name list (`joinNameList`), never a plain comma-split one.
    */
   name: nameListQuery(),
+  /**
+   * The assets whose warranty ends within this many days from today (ended ones excluded) — the
+   * dashboard's «ضمان ينتهي خلال ٣٠ يومًا» opened as a list.
+   */
+  warrantyEndsWithinDays: z.coerce.number().int().min(1).max(365).optional(),
 }).strict();
 export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
 
@@ -606,6 +611,11 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   overdue: booleanQuery().optional(),
   /** «إيصال الاستلام» — signed, waiting for the signature, or none. */
   receipt: ItAssignmentReceiptStateSchema.optional(),
+  /**
+   * `true` → the intervals whose holder HR shows as having left (FR-13's «assets held by exited
+   * employees», the dashboard's panel opened as a list); `false` → the others.
+   */
+  holderExited: booleanQuery().optional(),
 }).strict();
 export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema>;
 
@@ -2526,3 +2536,86 @@ export interface ItConsumableIssueResultDto {
   memo: ItConsumableMemoDto;
   consumables: ItConsumableDto[];
 }
+
+// ── The IT home dashboard (design §11) ──────────────────────────────────────
+//
+// «عايزك تعمل فى الـ /it الرئيسية.. Dashboard بدل اللى موجود فيها يظهر إجمالى الأصول وإيه فى
+// المخزن وإيه متسلم بس أقدر أفلتر بـالفئة.. من خلال Drop Down بـ Multiselection». Derived queries
+// over the live collections — no new collection, no stored figure (§11).
+
+/** The dashboard's filters: one or more categories, one branch — both optional. */
+export const ItDashboardQuerySchema = z
+  .object({
+    categoryId: listQuery(objectId()),
+    branchId: objectId().optional(),
+  })
+  .strict();
+export type ItDashboardQuery = z.infer<typeof ItDashboardQuerySchema>;
+
+/** How many assets are in each state, and all of them. */
+export interface ItAssetStatusCountsDto {
+  inStock: number;
+  assigned: number;
+  underMaintenance: number;
+  disposed: number;
+  total: number;
+}
+
+export interface ItDashboardAssetsDto {
+  /** Under both filters. */
+  totals: ItAssetStatusCountsDto;
+  /**
+   * Every category the reader's assets fall in, under the BRANCH filter only — so the panel can
+   * show the categories not chosen beside the chosen ones.
+   */
+  byCategory: (ItAssetStatusCountsDto & { categoryId: string })[];
+  /** Every branch the reader's assets are in, under the CATEGORY filter only. */
+  byBranch: (ItAssetStatusCountsDto & { branchId: string })[];
+  /** «يحتاج متابعة» — under both filters. */
+  attention: {
+    /** Open custody intervals whose holder HR shows as having left (FR-13). */
+    heldByLeavers: number;
+    /** Open intervals handed over on a receipt whose signed copy is not filed. */
+    receiptsAwaitingSignature: number;
+    /** Open intervals past their «موعد الإعادة». */
+    overdueReturns: number;
+    /** Assets (not disposed) whose warranty ends within `warrantyWindowDays` from today. */
+    warrantyEndingSoon: number;
+    warrantyWindowDays: number;
+  };
+}
+
+/** One line of «آخر الحركات»: an asset registered, handed over, returned, moved, serviced, disposed. */
+export const IT_DASHBOARD_ACTIVITY_KINDS = [
+  'registered',
+  'assigned',
+  'returned',
+  'transferred',
+  'maintenanceStarted',
+  'maintenanceCompleted',
+  'disposed',
+] as const;
+export type ItDashboardActivityKind = (typeof IT_DASHBOARD_ACTIVITY_KINDS)[number];
+
+export interface ItDashboardActivityItemDto {
+  /** The history entry's id, or the asset's own for a registration (which writes none). */
+  id: string;
+  kind: ItDashboardActivityKind;
+  at: string;
+  assetId: string;
+  assetCode: string;
+  assetName: string;
+  branchId: string;
+  /** The person handed to (assigned, transferred to) or returned from; null otherwise. */
+  employeeId: string | null;
+  employeeCode: string | null;
+  employeeName: string | null;
+  /** A move between branches. */
+  fromBranchId: string | null;
+  toBranchId: string | null;
+}
+
+export interface ItDashboardActivityDto {
+  items: ItDashboardActivityItemDto[];
+}
+

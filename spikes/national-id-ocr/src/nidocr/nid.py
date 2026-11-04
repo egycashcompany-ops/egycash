@@ -183,6 +183,19 @@ def _neighbours(candidate: str) -> set[str]:
 def repair(raw: str, *, today: _dt.date | None = None, max_edits: int = MAX_EDITS) -> Repair:
     """Make a misread national ID structurally possible, or refuse, and say so."""
     digits = _fold_glyphs(raw)
+
+    # One digit too many: a doubled glyph first (see `_neighbours`), then any single stray digit.
+    # The search below tries only the doubled glyphs while there are any, so on a number with
+    # doubles of its own (the 00 and 11 of a date) a stray digit elsewhere was never removed and
+    # all fifteen came back. Only a unique valid answer is taken; several is no answer.
+    if len(digits) == 15:
+        for deletions in (_neighbours(digits), {digits[:i] + digits[i + 1 :] for i in range(15)}):
+            valid = {c for c in deletions if is_structurally_valid(c, today=today)}
+            if len(valid) == 1:
+                return Repair(valid.pop(), valid=True, repaired=True, edits=1)
+            if len(valid) > 1:
+                return Repair(digits, valid=False, repaired=False, ambiguous=True)
+
     frontier = {digits}
     seen = {digits}
 

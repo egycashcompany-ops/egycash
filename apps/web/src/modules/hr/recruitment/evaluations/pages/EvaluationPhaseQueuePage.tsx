@@ -193,7 +193,8 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
         actions={
           phase?.kind === 'batch' ? (
             <>
-              <Button variant="secondary" onClick={() => navigate('/evaluation-batches')}>
+              {/* This phase's batches — never the mixed list of every phase («دا تكرار لا حاجة له»). */}
+              <Button variant="secondary" onClick={() => navigate(`/evaluation-batches/phase/${phase.key}`)}>
                 {t('batches.title')}
               </Button>
               <Can permission="evaluation.manage">

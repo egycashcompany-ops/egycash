@@ -200,7 +200,7 @@ export const registerHrDirectorySeams = (): void => {
   // IT-6 — the same fact, in bulk, for list screens. One `$in` per page rather than one query
   // per row; the shape is the single lookup's, so a consumer reads one type either way.
   registerEmployeeBatchLookup(async (employeeIds) => {
-    const docs = await employeeRepository.findByIdsSystem([...new Set(employeeIds)]);
+    const docs = await employeeRepository.findDirectoryByIdsSystem([...new Set(employeeIds)]);
     return new Map(docs.map((employee) => [String(employee._id), toDirectoryEmployee(employee)]));
   });
 

@@ -629,6 +629,8 @@ export const DataEditPage = (): JSX.Element => {
         <div className={BOARD_TABLE_FILL}>
           {tab === 'machines' ? (
             <DataTable
+              steadyColumns
+              filtered={active !== '' || search !== ''}
               columns={machineColumns}
               rows={machines.data?.items ?? []}
               rowKey={(r) => r.id}
@@ -642,6 +644,8 @@ export const DataEditPage = (): JSX.Element => {
           ) : tab === 'bank' ? (
             // The whole catalog in its order, filtered here — it has no pager to wait on.
             <DataTable
+              steadyColumns
+              filtered={active !== ''}
               columns={bankColumns}
               rows={bankRows}
               rowKey={(r) => r.code}
@@ -662,6 +666,8 @@ export const DataEditPage = (): JSX.Element => {
             />
           ) : (
             <DataTable
+              steadyColumns
+              filtered={active !== ''}
               columns={tab === 'area' ? areaColumns : spellingColumns}
               rows={labels.data?.items ?? []}
               rowKey={(r) => r.id}

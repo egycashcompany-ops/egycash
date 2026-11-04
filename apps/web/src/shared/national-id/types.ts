@@ -1,7 +1,12 @@
 // Generic Egyptian National-ID OCR types — module-agnostic so the capture/review flow can be
 // reused by Applicants, Employees, KYC, etc. The extractor is injected by the consuming module
 // (it owns the upload + OCR endpoint binding), keeping this component free of any module coupling.
-import { type Gender, type MaritalStatus, type OcrExtractionDto } from '@ecms/contracts';
+import {
+  type Gender,
+  type MaritalStatus,
+  type OcrExtractionDto,
+  type OcrSideQualityDto,
+} from '@ecms/contracts';
 
 /**
  * The reviewed, normalized National-ID fields handed back on confirm. Editable fields carry the
@@ -52,6 +57,11 @@ export interface NationalIdReviewMeta {
   portrait?: string;
   uploadedFront?: string;
   uploadedBack?: string;
+  /**
+   * What the reader thought of each photograph. A side it rejected has its fields left empty and
+   * marked, with a notice that asks for another photograph of that side — see `SIDE_FIELDS`.
+   */
+  quality?: { front?: OcrSideQualityDto; back?: OcrSideQualityDto };
 }
 
 /**

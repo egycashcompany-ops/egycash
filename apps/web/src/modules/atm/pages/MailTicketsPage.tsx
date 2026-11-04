@@ -48,7 +48,7 @@ import {
 } from '../api/atm-queries';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
-import { acceptConfirmBody, actionTargets } from '../lib/operation-view';
+import { acceptConfirmBody, actionTargets, TIME_CELL_CLASS } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import {
@@ -62,6 +62,7 @@ import {
   withMailParam,
   withoutMailFilters,
 } from '../lib/mail-view';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 /** Remembered across visits: the filters — the only thing this page keeps in its address bar. */
 const REMEMBERED_FILTERS = ['banks', 'areas', 'q'] as const;
@@ -159,6 +160,7 @@ export const MailTicketsPage = (): JSX.Element => {
       header: t('atm.mail.receivedAt'),
       filterable: true,
       render: (row) => formatDateTime(row.receivedAt, locale),
+      className: TIME_CELL_CLASS,
     },
     {
       key: 'sender',
@@ -250,6 +252,8 @@ export const MailTicketsPage = (): JSX.Element => {
 
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
+            filtered={isMailFiltered(filters)}
             columns={columns}
             rows={rows}
             rowKey={(row) => row.id}
@@ -273,6 +277,7 @@ export const MailTicketsPage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             // The duplicate row paint — the legacy's yellow background (:771), as a row class that

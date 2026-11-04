@@ -220,6 +220,19 @@ export type EmployeeInsurance = z.infer<typeof EmployeeInsuranceSchema>;
  */
 export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
 
+/** The branch part of a code: its first three digits (`0702862` → `070`). */
+export const employeeCodeBranchPrefix = (code: string): string => code.slice(0, 3);
+
+/**
+ * The employee's NUMBER inside a code, as a number: everything after the branch prefix
+ * (`0702862` → 2862). Two codes with the same number are the same employee number whatever branch
+ * prefix they wear — «مينفعش أكتب نفس الكود حتى لو لفرع تاني».
+ */
+export const employeeCodeSerial = (code: string): number => Number(code.slice(3));
+
+/** A code with its branch hidden, the way the register screen states the last one: `xxx2862`. */
+export const maskEmployeeCodeBranch = (code: string): string => `xxx${code.slice(3)}`;
+
 export const ChangeEmployeeCodeSchema = z
   .object({
     code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
@@ -360,9 +373,52 @@ export const DirectRegisterEmployeeSchema = z
      */
     insurance: EmployeeInsuranceSchema.optional(),
     officer: EmployeeOfficerSchema.optional(),
+    /**
+     * The Employee Code, typed by HR — «عايز أول حاجة قبل الاسم الكامل تبقي كود الموظف». Its first
+     * three digits name the hiring branch and must be `employment.branchId`'s code; its number may
+     * not be held by anybody under ANY branch prefix. Omitted, the code is composed from the
+     * branch and the next number on the counter, as it always was.
+     */
+    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN).optional(),
   })
   .strict();
 export type DirectRegisterEmployee = z.infer<typeof DirectRegisterEmployeeSchema>;
+
+/** «تكتب تحته آخر كود موجود»: the code holding the highest number, any branch, any state. */
+export interface LastEmployeeCodeDto {
+  /** Null on an empty system. */
+  code: string | null;
+}
+
+export const EmployeeCodeCheckQuerySchema = z
+  .object({ code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN) })
+  .strict();
+export type EmployeeCodeCheckQuery = z.infer<typeof EmployeeCodeCheckQuerySchema>;
+
+/** What a typed code means before it is submitted: whose branch it names, and whether it is free. */
+export interface EmployeeCodeCheckDto {
+  code: string;
+  /** The active branch whose code is the prefix, or null when no branch carries it. */
+  branchId: string | null;
+  /** The code of the employee already holding this NUMBER (under any prefix), or null when free. */
+  takenBy: string | null;
+}
+
+export const JobTitlePlacementQuerySchema = z.object({ branchId: objectId() }).strict();
+export type JobTitlePlacementQuery = z.infer<typeof JobTitlePlacementQuerySchema>;
+
+/**
+ * Where people with a job title work in one branch, read off the employees already there: the
+ * department and section MOST of them sit in. «لو أخترت المسمي الوظيفي يختار على طول الإدارة والقسم».
+ * A suggestion the screen fills in, never a rule the server holds anybody to.
+ */
+export interface JobTitlePlacementDto {
+  jobTitleId: string;
+  departmentId: string;
+  sectionId: string | null;
+  /** Employees holding the title in this branch — how much evidence the suggestion stands on. */
+  employees: number;
+}
 
 // ── Status-change ALIAS (deprecated — superseded by the actions engine) ─────
 /**
@@ -631,6 +687,41 @@ export interface EmployeePlacementDto {
   section: EmployeePlacementUnitDto | null;
   jobTitle: EmployeePlacementUnitDto | null;
 }
+
+/**
+ * The signed-in person's own card for the welcome page (`GET /hr/employees/me/summary`): who they
+ * are, where they sit, and the one personal date the page shows — nothing else of the record.
+ * `birthDate` is a Cairo calendar day, `YYYY-MM-DD`.
+ */
+export interface MyEmployeeSummaryDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  birthDate: string | null;
+  hasPhoto: boolean;
+  /** The current photo's file — a new photo is a new id, so a cached picture never outlives it. */
+  photoFileId: string | null;
+  jobTitle: LocalizedString | null;
+  department: LocalizedString | null;
+  branch: LocalizedString | null;
+}
+
+// ── The employee's personal photo ───────────────────────────────────────────
+
+/**
+ * The entity type an employee's photo is filed under with the Files service (entityId = the
+ * employee id). Its own type, so the Files service asks HR's photo rule before serving or changing
+ * one: reading takes `employee.view` within scope, or being that employee; writing and removing
+ * take `employee.editPersonal` within scope.
+ */
+export const EMPLOYEE_PHOTO_ENTITY_TYPE = 'employeePhoto';
+/** The Files-service category that holds the "an image, and small" rule for employee photos. */
+export const EMPLOYEE_PHOTO_FILE_CATEGORY = 'hr-employee-photo';
+/** What `POST /hr/employees/:id/photo` accepts: a JPEG, PNG or WebP image… */
+export const EMPLOYEE_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+/** …of at most this many megabytes. */
+export const EMPLOYEE_PHOTO_MAX_MB = 5;
 
 export interface EmployeeDto {
   id: string;

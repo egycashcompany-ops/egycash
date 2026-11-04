@@ -66,6 +66,7 @@ import { LayoutImportPage } from './pages/LayoutImportPage';
 import { PreparationPage } from './pages/PreparationPage';
 import { ControlPage } from './pages/ControlPage';
 import { AtmSettingsPage } from './pages/AtmSettingsPage';
+import { AtmDisplayScope } from './components/AtmDisplayScope';
 
 /** Every key that leads to the data-edit page (spec §7.3) — the route guard is any-of. */
 const DATA_EDIT_KEYS = [
@@ -79,173 +80,176 @@ export default function AtmRoutes(): JSX.Element {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<AtmOverviewPage />} />
-        <Route
-          path="replenishments"
-          element={
-            <RequirePermission permission="atmReplenishment.view">
-              <ReplenishmentsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="replenishments/done"
-          element={
-            <RequirePermission permission="atmReplenishment.view">
-              <ReplenishmentsDonePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="maintenance"
-          element={
-            <RequirePermission permission="atmMaintenance.view">
-              <MaintenancePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="maintenance/done"
-          element={
-            <RequirePermission permission="atmMaintenance.view">
-              <MaintenanceDonePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="mail-tickets"
-          element={
-            <RequirePermission permission="atmMailTicket.view">
-              <MailTicketsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="mail-tickets/log"
-          element={
-            <RequirePermission permission="atmMailTicket.viewLog">
-              <MailLogPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="machines"
-          element={
-            <RequirePermission permission="atmMachine.view">
-              <MachinesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="map"
-          element={
-            <RequirePermission permission="atmMap.view">
-              <MachineMapPage />
-            </RequirePermission>
-          }
-        />
-        {/* Both keys: the screen returns coordinates and counts of the map (`atmMap.view`) and
+        {/* How every ATM page reads and copies (`AtmDisplayScope`, /atm/settings «شكل الصفحات»). */}
+        <Route element={<AtmDisplayScope />}>
+          <Route index element={<AtmOverviewPage />} />
+          <Route
+            path="replenishments"
+            element={
+              <RequirePermission permission="atmReplenishment.view">
+                <ReplenishmentsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="replenishments/done"
+            element={
+              <RequirePermission permission="atmReplenishment.view">
+                <ReplenishmentsDonePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="maintenance"
+            element={
+              <RequirePermission permission="atmMaintenance.view">
+                <MaintenancePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="maintenance/done"
+            element={
+              <RequirePermission permission="atmMaintenance.view">
+                <MaintenanceDonePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="mail-tickets"
+            element={
+              <RequirePermission permission="atmMailTicket.view">
+                <MailTicketsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="mail-tickets/log"
+            element={
+              <RequirePermission permission="atmMailTicket.viewLog">
+                <MailLogPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="machines"
+            element={
+              <RequirePermission permission="atmMachine.view">
+                <MachinesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="map"
+            element={
+              <RequirePermission permission="atmMap.view">
+                <MachineMapPage />
+              </RequirePermission>
+            }
+          />
+          {/* Both keys: the screen returns coordinates and counts of the map (`atmMap.view`) and
             every action on it places a pin (`atmMachine.locate`). The guard takes one key or
             any-of, so the two are nested. */}
-        <Route
-          path="map/unlocated"
-          element={
-            <RequirePermission permission="atmMap.view">
-              <RequirePermission permission="atmMachine.locate">
-                <UnlocatedMachinesPage />
+          <Route
+            path="map/unlocated"
+            element={
+              <RequirePermission permission="atmMap.view">
+                <RequirePermission permission="atmMachine.locate">
+                  <UnlocatedMachinesPage />
+                </RequirePermission>
               </RequirePermission>
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="data-edit"
-          element={
-            <RequirePermission anyOf={DATA_EDIT_KEYS}>
-              <DataEditPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="reports/daily"
-          element={
-            <RequirePermission permission="atmReplenishment.view">
-              <DailyReportPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="register"
-          element={
-            <RequirePermission permission="atmRegister.view">
-              <RegisterPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="register/report"
-          element={
-            <RequirePermission permission="atmRegisterReport.view">
-              <RegisterReportPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="register/import"
-          element={
-            <RequirePermission permission="atmRegister.import">
-              <RegisterImportPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="settlements/plans"
-          element={
-            <RequirePermission permission="atmSettlementPlan.view">
-              <SettlementPlanPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="settlements/layouts"
-          element={
-            <RequirePermission permission="atmCassetteLayout.view">
-              <CassetteLayoutsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="settlements/layouts/import"
-          element={
-            <RequirePermission permission="atmCassetteLayout.import">
-              <LayoutImportPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="preparation"
-          element={
-            <RequirePermission permission="atmPreparation.view">
-              <PreparationPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="control"
-          element={
-            <RequirePermission permission="atmControl.view">
-              <ControlPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <RequirePermission permission="atmSettings.manage">
-              <AtmSettingsPage />
-            </RequirePermission>
-          }
-        />
-        <Route path="*" element={<NotFoundPage />} />
+            }
+          />
+          <Route
+            path="data-edit"
+            element={
+              <RequirePermission anyOf={DATA_EDIT_KEYS}>
+                <DataEditPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="reports/daily"
+            element={
+              <RequirePermission permission="atmReplenishment.view">
+                <DailyReportPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="register"
+            element={
+              <RequirePermission permission="atmRegister.view">
+                <RegisterPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="register/report"
+            element={
+              <RequirePermission permission="atmRegisterReport.view">
+                <RegisterReportPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="register/import"
+            element={
+              <RequirePermission permission="atmRegister.import">
+                <RegisterImportPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settlements/plans"
+            element={
+              <RequirePermission permission="atmSettlementPlan.view">
+                <SettlementPlanPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settlements/layouts"
+            element={
+              <RequirePermission permission="atmCassetteLayout.view">
+                <CassetteLayoutsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settlements/layouts/import"
+            element={
+              <RequirePermission permission="atmCassetteLayout.import">
+                <LayoutImportPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="preparation"
+            element={
+              <RequirePermission permission="atmPreparation.view">
+                <PreparationPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="control"
+            element={
+              <RequirePermission permission="atmControl.view">
+                <ControlPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <RequirePermission permission="atmSettings.manage">
+                <AtmSettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
       </Route>
     </Routes>
   );

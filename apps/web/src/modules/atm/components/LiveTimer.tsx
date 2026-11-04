@@ -2,7 +2,13 @@
 // setInterval over all rows too, atm_replenishment.ejs:1902), and the colour ladder from
 // operation-view so the thresholds stay a tested fact.
 import { useEffect, useState } from 'react';
-import { elapsedSeconds, formatElapsed, timerLevel, type TimerLevel } from '../lib/operation-view';
+import {
+  elapsedSeconds,
+  formatElapsed,
+  TIME_CELL_CLASS,
+  timerLevel,
+  type TimerLevel,
+} from '../lib/operation-view';
 
 export const useNowTick = (intervalMs = 1000): Date => {
   const [now, setNow] = useState(() => new Date());
@@ -25,7 +31,7 @@ export const LiveTimerCell = ({ openedAt, now }: { openedAt: string; now: Date }
   const seconds = elapsedSeconds(openedAt, now);
   return (
     <span
-      className={`inline-block rounded px-2 py-0.5 font-mono text-xs tabular-nums ${LEVEL_CLASS[timerLevel(seconds)]}`}
+      className={`inline-block rounded px-2 py-0.5 font-mono text-xs tabular-nums ${TIME_CELL_CLASS} ${LEVEL_CLASS[timerLevel(seconds)]}`}
     >
       {formatElapsed(seconds)}
     </span>

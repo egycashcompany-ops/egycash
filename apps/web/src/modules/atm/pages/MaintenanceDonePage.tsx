@@ -23,6 +23,7 @@ import { cairoToday, doneRange } from '../lib/operation-view';
 import {
   columnFilterEntries,
   maintenanceColumns,
+  sheetColumnClass,
   statementFilterLine,
 } from '../lib/operation-sheet';
 import { useColumnFiltered, useReaderOrder } from '../lib/useBoardView';
@@ -30,6 +31,7 @@ import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
+import { FRESH_ON_OPEN } from '../lib/fresh-filters';
 
 export const MaintenanceDonePage = (): JSX.Element => {
   const t = useT();
@@ -76,6 +78,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
       sortable: true,
       render: (row: AtmMaintenanceDto) => column.text(row, '—'),
       filterable: true,
+      ...sheetColumnClass(column),
     })),
     {
       key: 'actions',
@@ -139,6 +142,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
         <DoneRangeCutShort meta={list.data?.meta} />
         <div className={BOARD_TABLE_FILL}>
           <DataTable
+            steadyColumns
             columns={columns}
             rows={order.rows}
             rowKey={(row) => row.id}
@@ -155,6 +159,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
               onChange: columnFilters.set,
               choices,
               generation: columnFilters.generation,
+              freshOnOpen: FRESH_ON_OPEN,
               label: (header) => t('atm.common.filterColumn', { column: header }),
             }}
             sort={order.sorts}

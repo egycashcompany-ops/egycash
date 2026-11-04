@@ -73,6 +73,17 @@ ECMS" means.
 - **D7 — the report's day is a parameter.** The legacy screen could only ever show today
   (contad_app.js:2244-2249), which made "what did yesterday look like" unanswerable. A date on a
   read-only aggregate changes no behaviour and stores nothing; the default is still today.
+  **Widened 2026-11-02 to a period** — «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
+  بس الـ Default يكون اليوم»: `GET /atm/reports/daily?from=&to=` counts every operation opened
+  from the first Cairo day's midnight to the midnight after the last (`reportPeriod`: one bound
+  serves as both, none is today, a reversed pair is put in order; a bound wins over the older
+  single `date`, which a link from before the period still carries). The answer names the period
+  it counted (`from`, `to`; `date` is the first day, for a screen older than the period). The
+  page takes the done pages' «من / إلى» fields and ladder (`doneRange`, `DoneRangeBar`); an empty
+  period of more than one day says «لا توجد عمليات في هذه الفترة», a single day still «لا توجد
+  عمليات في هذا اليوم». No cap on the period: the answer is one row per bank per kind whatever its
+  length, and the counts are one aggregation per kind over the operations in the caller's scope —
+  one branch, or every branch on «كل الشركة».
 - **D4 — no `openedAt >= today` floor on the open lists.** The legacy floor (contad_app.js:263)
   made an open row with a past open date invisible on every screen forever — un-closable. Open is
   open; the client still renders non-today rows as the grey carried-over group with no timer,
@@ -675,6 +686,74 @@ offered nobody, and the edit dialogs' leader stayed free text.
   name typed in full is committed when the box is left (the shared `Combobox`); an empty list says
   where it is set, and a failed one says so.
 
+### 6f. How the pages read, and how a table copies (2026-11-03)
+
+- **«شكل الصفحات» — `atm.display`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو لأ + درجة لون خطوط
+  الجداول .. أقدر أتحكم فيها من /atm/settings». One value for the whole company (organization scope,
+  like the rest of /atm/settings): `{ textSize: 90 | 100 | 110 | 125 | 140, bold, tableLines: soft |
+  normal | strong | stronger }`, default the pages as they were (`ATM_DEFAULT_DISPLAY`).
+  `GET /atm/display` is read by every signed-in user (it says how to draw a page, nothing about
+  the data); `PUT /atm/display` is `atmSettings.manage` held company-wide. A layout route inside
+  the module's shell (`AtmDisplayScope`, `display: contents`) carries the value around every ATM
+  page as attributes, and only what differs from the pages' own look (`atmDisplayScopeProps`), so
+  at the defaults no rule applies. `styles.css` reads them: the type scale times the size (spacing
+  untouched), every text a step heavier, every line of a table and its frame in the chosen shade,
+  in both themes. The card's sample sets all three, so it shows the choice before it is saved.
+  Dialogs and floating lists sit outside the page and keep the app's own look.
+- **A copy of table rows is a table a chat can read.** «لما أخد Copy من الجدول تطلعهولى بشكل جدول …
+  عايز حافظ على شكلة كجدول لما أبعته واتساب». The scope listens for a copy: a selection that spans
+  cells of a table on an ATM page is written as text — a line per row, « | » between cells, a blank
+  line between rows («يسيب مسافة بين كل صف والتاني», `COPY_ROW_SEPARATOR`), what WhatsApp pastes —
+  and as an HTML table, what a sheet or a document pastes
+  (`shared/lib/table-copy.ts`). Only cells the reader could select are taken (a board's
+  `select-none` timers and buttons stay out), a control's text is left out, a column empty in
+  every row is dropped, and a selection inside one cell is the browser's own copy.
+- **The area's column filter starts over** («لما أضغط على فلتر (المنطقة فقط) يعمله Reset وأقدر
+  أختار من الأول»): opening the area list under a table's head clears its picks (`FRESH_ON_OPEN`,
+  `ColumnFilterSelect freshOnOpen`, `MultiSelect onOpen`). The area only; every other column keeps
+  its picks when its list opens.
+- **A list at the page's edge opens in place** («فلتر المنطقة (اللى فوق خالص) … المنيو بيطلع شمال برا
+  الشاشة وبيغير الـ UI»): `MultiSelect` no longer `autoFocus`es its search box. It focuses it once
+  the list is open and pinned inside the screen, with `preventScroll`, so a list at the left edge
+  no longer scrolls the board sideways on opening.
+- **The copy's text, as WhatsApp lays it out.** Each line starts with a right-to-left mark and
+  each cell is isolated (FSI … PDI), so a row that opens with a Latin bank name keeps its cells in
+  order in a right-to-left chat. A head row is copied too where the reader can select it; a board
+  keeps its head out, as its `select-none` frame always did.
+
+### 6g. Columns that keep their widths, and a time on one line (2026-11-03)
+
+- **Steady columns.** «عرض الأعمدة فى الجدول بيتغير لما بعمل فلتر !! عايزك تثبته». A table's
+  automatic layout re-measures every column on the rows it shows, so a filter that drops the
+  longest names moved the grid. `useSteadyColumns` (`shared/ui`) takes the head's cell widths the
+  first time a table is drawn with rows and keeps them as percentages in a `<colgroup>`
+  (`SteadyColGroup`). The layout stays automatic, so the shares follow the window. The decision is
+  a pure function, `nextColumns`:
+  - **Provisional under a filter.** Widths taken while the page's own filters (`DataTable
+    filtered`: the boards' remembered bank and area, the mail pages', the machines', a search) or
+    a column's list narrow the rows are provisional. At the first draw with no filter on they are
+    released, and the browser's own layout of every row is taken. Otherwise a board opened on a
+    remembered area would hand the whole board that area's widths.
+  - **Re-taken on growth.** The shares add up to the whole table, so a cell that outgrows its share
+    (a time that cannot break arriving later, a narrower window, larger text) widens its column and
+    the browser takes the room from the others, giving it back whenever a filter hides that cell.
+    So a column more than a pixel past its share (`outgrown`) re-takes the widths from the table as
+    it then stands, once; only growth does, so they never swing. A `ResizeObserver` on the table
+    runs the same check between renders.
+  - **One set per signature.** The boards' «اليوم» view adds the timer and another language renames
+    the heads: each set of columns keeps its own widths for the table's life, so a round trip
+    between views finds each as it was left, whatever is filtered on the way back.
+
+  `DataTable steadyColumns` turns it on; every ATM `DataTable` passes it. The three filtered
+  tables built by hand call the hook too: control's data (`useControlLineWidths`) and the plan's
+  lines (`usePlanLineWidths`) from their PAGES, beside the column filters, because the tables are
+  drawn again after the routes tab or a plan's loading; preparation from its page. Other modules'
+  tables are unchanged until they ask for it.
+- **A time on one line** («وحافظ على الوقت يظهر بالعرض كامل مش تحت بعض … فى كل الجداول»):
+  `TIME_CELL_CLASS` (`whitespace-nowrap`) on the sheet columns flagged `time` (the schedule, open,
+  close and taken times), the live timer, a run's time (`RunChip`, on control, the plan and
+  preparation), the mail pages' received and action times and a layout's change time.
+
 ## 7. Migration (ATM-7 — delivered)
 
     npm run atm:import -w apps/api -- --legacy-uri=mongodb://host:27017/egycash \
@@ -748,7 +827,7 @@ argument for the suite existing at all:
 | — | `/atm/settings`: the mailbox on a screen, branches switched on one at a time, branches that work together (§6a–§6c); suites `tests/integration/atm-mailbox.spec.ts`, `atm-branch-links.spec.ts` | delivered |
 | — | The two mail pages' filters and row buttons, and the log's «إسترجاع» (`POST /atm/mail-tickets/restore`, §6d); suite `tests/integration/atm-mail-restore.spec.ts` | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
-| — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
+| — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7; a period since 2026-11-02) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |

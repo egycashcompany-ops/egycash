@@ -118,8 +118,7 @@ export const InterviewStagesPage = (): JSX.Element => {
       <PageHeader
         title={t('interviews.stages.title')}
         breadcrumbs={[
-          { label: t('recruitment.title'), to: '/' },
-          { label: t('recruitment.nav.interviews'), to: '/interviews' },
+          { label: t('hr.settings.title'), to: '/hr-settings' },
           { label: t('interviews.stages.title') },
         ]}
         actions={

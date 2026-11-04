@@ -95,10 +95,38 @@ dedicated permission **`employee.changeCode`** types the new code and a reason, 
 - The audit trail records old code, new code and the reason.
 - The roster import names people by code, so the next roster file must carry the new code.
 
-### 4. Branch Code is immutable — except super-admin
+**Amendment, 2026-11-03 — the code may be typed at direct registration.** The owner: «عند تسجيل
+الموظف … أول حاجة قبل الاسم الكامل تبقي كود الموظف … ومينفعش أكتب نفس الكود حتى لو لفرع تاني».
+`POST /hr/employees/direct` takes an optional `code`; the register screen always sends one. This is
+issuance, not a rewrite: the code is set once, as the record is created.
+
+- Its first three digits must be the hiring branch's code; the screen reads the branch off them.
+- Its **number** (everything after the prefix) may be held by nobody — under any prefix, in any
+  state, matched both on the number inside every stored code and on `employeeNumber`. The full-code
+  rule (`ux_code`) is therefore implied.
+- The number becomes the `employeeNumber`, and the global counter is raised past it afterwards
+  (`raiseEmployeeSequenceTo`), so the next composed code cannot collide with it.
+- Omitted, the code is composed from the branch and the counter exactly as before. Hiring from an
+  accepted offer is unchanged.
+- The screen states the code holding the highest number (`GET /hr/employees/last-code`, shown as
+  `xxx2862`) and checks a typed code as it is entered (`GET /hr/employees/code-check`).
+
+### 4. Branch Code is immutable — except through `branch.changeCode`
 
 The Branch Code is required, unique, validated, and immutable after creation (it is part of every
 employee's identity). A **super-admin** may correct it through a dedicated, privileged endpoint.
+
+**Amendment, 2026-11-03 — its own key, not super-admin only.** The owner, finding the Mohandessin
+branch stored as `BR1` while its employees' codes begin `010`: «عايزك تسمحلى أغير كود الفرع». The
+correction (`PATCH /platform/branches/:id/code`) is gated on **`branch.changeCode`** instead of the
+super-admin privilege; `branch.edit` does not carry it. The super-admin role holds it like every key.
+It is offered on the branches list as well as on the branch's own page.
+
+- Nothing propagates: employee codes already issued keep their prefix (§3). What changes is which
+  branch a *newly typed* employee code names at registration — the register screen reads the branch
+  off a code's first three digits, so a branch whose code is not three digits is never named. The
+  dialog warns about such a code; it does not refuse it, since the catalogue allows other shapes.
+- Another branch's code is refused (`ux_code`), and the change is audited as before.
 
 ## Alternatives considered
 

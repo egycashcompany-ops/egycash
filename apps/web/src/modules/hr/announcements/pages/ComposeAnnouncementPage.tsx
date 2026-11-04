@@ -131,6 +131,10 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hr.announcements.compose.title')}
+        breadcrumbs={[
+          { label: t('hr.settings.title'), to: '/hr-settings' },
+          { label: t('hr.settings.tab.announcements') },
+        ]}
       />
       <div className="space-y-6">
         <Card>

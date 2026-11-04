@@ -10,7 +10,8 @@
 //      know an ObjectId, so the route carries the stable key and the page resolves it.
 //   2. AN UNRESOLVED PHASE NEVER LISTS EVERYTHING. Firing the query before the catalog answers, or
 //      after it fails to match, would show the mixed list this page exists to prevent.
-//   3. THE PHASE COLUMN IS DROPPED WHEN SCOPED. Every row would carry the same value.
+//   3. THERE IS NO PHASE COLUMN. Every list is one phase's, so every row would carry the same
+//      value (and there is no unscoped list left to need one).
 //   4. EVERY KEY IT PRINTS EXISTS IN BOTH LANGUAGES.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -30,7 +31,7 @@ const QUERIES = code(read('./api/evaluation-batch-queries.ts'));
 const ROUTES = code(read('../routes.tsx'));
 
 describe('the list is reached per phase', () => {
-  it('routes a phase KEY, beside the unscoped list and the detail page', () => {
+  it('routes a phase KEY, beside the detail page', () => {
     expect(ROUTES).toContain('path="phase/:phaseKey"');
     expect(ROUTES).toContain('path="evaluation-batches"');
     // The detail route stays a bare `:id`; `phase` is a static segment, so no ObjectId is ever
@@ -66,9 +67,9 @@ describe('an unresolved phase never widens into every phase', () => {
 });
 
 describe('the scoped list drops what it no longer needs', () => {
-  it('renders the phase column only when unscoped', () => {
-    expect(LIST).toContain('phaseKey === undefined');
-    expect(LIST).toContain("key: 'phase'");
+  it('renders no phase column — every row is the same phase', () => {
+    expect(LIST).not.toContain("key: 'phase'");
+    expect(LIST).not.toContain("t('batches.columns.phase')");
   });
 
   it('titles the page with the phase, not with the generic label', () => {

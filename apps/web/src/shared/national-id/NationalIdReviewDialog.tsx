@@ -5,7 +5,7 @@
 // reviewed data handed back to the caller — nothing is saved here. Each side, the photo and the values
 // can be downloaded, as on the Readers page. Module-agnostic (uses the generic `nationalIdOcr.*` catalog), so it is reusable.
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { MARITAL_STATUSES } from '@ecms/contracts';
+import { MARITAL_STATUSES, type OcrSideQualityDto } from '@ecms/contracts';
 import { useT } from '../../platform/localization/useT';
 import { useAppSelector } from '../../store';
 import { cn } from '../lib/cn';
@@ -26,7 +26,7 @@ import {
   UsersIcon,
 } from '../ui/icons';
 import { fileStem, saveCsv, saveUrl } from './download';
-import { deriveFromNationalId } from './mapping';
+import { deriveFromNationalId, unreadFields } from './mapping';
 import { type NationalIdReviewData, type NationalIdReviewMeta, type OcrConfidence } from './types';
 
 const CONFIDENCE_TONE: Record<OcrConfidence, Tone> = {
@@ -47,18 +47,27 @@ const BOX: Record<OcrConfidence | 'edited' | 'none', string> = {
 const BOX_BASE =
   'min-h-[44px] rounded-xl px-3.5 text-[15px] transition-colors focus:ring-4 focus:ring-brand-500/10';
 
-/** A field label with the reader's confidence beside it, or 'edited' once the user changed it. */
-const Labelled = ({
+/**
+ * A field label with the reader's confidence beside it, or 'edited' once the user changed it, or
+ * 'not read' when the photograph it would have come from was rejected.
+ *
+ * Exported for its spec: the dialog itself renders through a portal, which the web suite's node
+ * environment cannot mount, so the parts that carry a rule of their own are asserted directly.
+ */
+export const Labelled = ({
   id,
   label,
   confidence,
   edited = false,
+  notRead = false,
   children,
 }: {
   id: string;
   label: string;
   confidence?: OcrConfidence | undefined;
   edited?: boolean;
+  /** This field's side was rejected: the box is empty on purpose, and says so. */
+  notRead?: boolean;
   children: ReactNode;
 }): JSX.Element => {
   const t = useT();
@@ -75,6 +84,10 @@ const Labelled = ({
           <Badge size="sm" tone="brand">
             {t('nationalIdOcr.review.edited')}
           </Badge>
+        ) : notRead ? (
+          <Badge size="sm" tone="danger">
+            {t('nationalIdOcr.review.quality.notReadBadge')}
+          </Badge>
         ) : (
           confidence !== undefined && (
             <Badge size="sm" tone={CONFIDENCE_TONE[confidence]}>
@@ -84,7 +97,12 @@ const Labelled = ({
         )}
       </div>
       {children}
-      {!edited && (confidence === 'low' || confidence === 'medium') && (
+      {!edited && notRead && (
+        <p className="text-xs text-red-700 dark:text-red-400">
+          {t('nationalIdOcr.review.quality.notRead')}
+        </p>
+      )}
+      {!edited && !notRead && (confidence === 'low' || confidence === 'medium') && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
           {t('nationalIdOcr.review.checkThis')}
         </p>
@@ -220,11 +238,77 @@ const CardPanel = ({ meta, stem }: { meta: NationalIdReviewMeta; stem: string })
   );
 };
 
+/**
+ * What the reader thought of one photograph, where that is something the person must act on.
+ *
+ * `reject` is red and offers another photograph of that side: the fields off it are empty, and no
+ * amount of reading the card beside them helps, because the picture of it cannot be read.
+ * `degraded` is amber and only asks for a careful look — those fields are filled as before.
+ */
+export const QualityNotice = ({
+  side,
+  report,
+  onRetake,
+}: {
+  side: 'front' | 'back';
+  report: OcrSideQualityDto;
+  onRetake?: ((side: 'front' | 'back') => void) | undefined;
+}): JSX.Element | null => {
+  const t = useT();
+  if (report.verdict === 'ok') return null;
+  // A side's name as it reads inside a sentence ('the front photo'), not as the tab above the card.
+  const sideName = t(
+    side === 'front'
+      ? 'nationalIdOcr.review.quality.sideFront'
+      : 'nationalIdOcr.review.quality.sideBack',
+  );
+  // The reader's own words for what is wrong with the picture, or a plain fallback when it gave
+  // none — a verdict with no reason is still a verdict. A code with no word of its own is dropped
+  // rather than printed as itself: the API admits only codes it knows, and this is the belt to
+  // that brace, since an untranslated key reads back as the key.
+  const why = report.reasons
+    .map((reason) => `nationalIdOcr.review.quality.reason.${reason}`)
+    .map((key) => ({ key, word: t(key) }))
+    .filter(({ key, word }) => word !== '' && word !== key)
+    .map(({ word }) => word)
+    .join(t('nationalIdOcr.review.quality.reasonJoin'));
+  const detail = why === '' ? t('nationalIdOcr.review.quality.reason.unclear') : why;
+
+  if (report.verdict === 'degraded') {
+    return (
+      <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>{t('nationalIdOcr.review.quality.degraded', { side: sideName, why: detail })}</span>
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-xl border border-red-300 bg-red-50 px-3.5 py-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200">
+      <p className="flex items-start gap-2 font-semibold">
+        <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>{t('nationalIdOcr.review.quality.reject', { side: sideName, why: detail })}</span>
+      </p>
+      <p className="ps-6 text-[13px] text-red-800/90 dark:text-red-300/90">
+        {t('nationalIdOcr.review.quality.rejectFields')}
+      </p>
+      {onRetake !== undefined && (
+        <div className="ps-6">
+          <Button variant="secondary" className="min-h-[40px]" onClick={() => onRetake(side)}>
+            {t('nationalIdOcr.review.quality.retake', { side: sideName })}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const NationalIdReviewDialog = ({
   open,
   initial,
   meta,
   notice,
+  onRetake,
   onCancel,
   onConfirm,
 }: {
@@ -234,6 +318,11 @@ export const NationalIdReviewDialog = ({
   meta?: NationalIdReviewMeta | undefined;
   /** Optional inline notice (e.g. "OCR unavailable — enter the values manually"). */
   notice?: string | undefined;
+  /**
+   * Photograph one side again: closes the review and takes the person back to the camera (or the
+   * upload tile) for that side. Offered only beside a side the reader could not read.
+   */
+  onRetake?: ((side: 'front' | 'back') => void) | undefined;
   onCancel: () => void;
   onConfirm: (data: NationalIdReviewData) => void;
 }): JSX.Element => {
@@ -290,12 +379,36 @@ export const NationalIdReviewDialog = ({
       (v) => v !== undefined,
     );
 
+  // Fields whose side the reader could not read: empty on purpose, and marked until typed into.
+  const unread = new Set<keyof NationalIdReviewData>(unreadFields(meta?.quality));
+  const notRead = (key: keyof NationalIdReviewData): boolean =>
+    unread.has(key) && d[key] === initial[key];
   const look = (key: keyof NationalIdReviewMeta['confidence']): string =>
-    cn(BOX_BASE, d[key] !== initial[key] ? BOX.edited : BOX[confidence[key] ?? 'none']);
+    cn(
+      BOX_BASE,
+      d[key] !== initial[key]
+        ? BOX.edited
+        : notRead(key)
+          ? BOX.low
+          : BOX[confidence[key] ?? 'none'],
+    );
   const edited = (key: keyof NationalIdReviewData): boolean => d[key] !== initial[key];
   const toCheck = (Object.keys(confidence) as (keyof NationalIdReviewMeta['confidence'])[]).filter(
     (key) => (confidence[key] === 'low' || confidence[key] === 'medium') && d[key] === initial[key],
   ).length;
+
+  const quality = meta?.quality;
+  const notices =
+    quality === undefined ? null : (
+      <>
+        {(['front', 'back'] as const).map((side) => {
+          const report = quality[side];
+          return report === undefined ? null : (
+            <QualityNotice key={side} side={side} report={report} onRetake={onRetake} />
+          );
+        })}
+      </>
+    );
 
   const summary =
     meta === undefined || Object.keys(confidence).length === 0 ? null : toCheck > 0 ? (
@@ -319,6 +432,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.fullNameAr')}
             confidence={sure('fullNameAr')}
             edited={edited('fullNameAr')}
+            notRead={notRead('fullNameAr')}
           >
             <Field>
               <Input
@@ -333,6 +447,7 @@ export const NationalIdReviewDialog = ({
             id={id('nameEn')}
             label={t('nationalIdOcr.field.fullNameEn')}
             edited={edited('fullNameEn')}
+            notRead={notRead('fullNameEn')}
           >
             <Field hint={t('nationalIdOcr.field.fullNameEnHint')}>
               <Input
@@ -340,7 +455,10 @@ export const NationalIdReviewDialog = ({
                 value={d.fullNameEn}
                 onChange={(e) => set({ fullNameEn: e.target.value })}
                 dir="ltr"
-                className={cn(BOX_BASE, edited('fullNameEn') && BOX.edited)}
+                className={cn(
+                  BOX_BASE,
+                  edited('fullNameEn') ? BOX.edited : notRead('fullNameEn') && BOX.low,
+                )}
               />
             </Field>
           </Labelled>
@@ -354,6 +472,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.nationalId')}
             confidence={sure('nationalId')}
             edited={edited('nationalId')}
+            notRead={notRead('nationalId')}
           >
             <Field>
               <Input
@@ -374,6 +493,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.nationalIdExpiry')}
             confidence={sure('nationalIdExpiry')}
             edited={edited('nationalIdExpiry')}
+            notRead={notRead('nationalIdExpiry')}
           >
             <Field>
               <Input
@@ -396,6 +516,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.maritalStatus')}
             confidence={sure('maritalStatus')}
             edited={edited('maritalStatus')}
+            notRead={notRead('maritalStatus')}
           >
             <Field>
               <Select
@@ -420,6 +541,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.religion')}
             confidence={sure('religion')}
             edited={edited('religion')}
+            notRead={notRead('religion')}
           >
             <Field>
               <Input
@@ -441,6 +563,7 @@ export const NationalIdReviewDialog = ({
               label={t('nationalIdOcr.field.address')}
               confidence={sure('addressLine')}
               edited={edited('addressLine')}
+              notRead={notRead('addressLine')}
             >
               <Field>
                 <Input
@@ -457,6 +580,7 @@ export const NationalIdReviewDialog = ({
             label={t('nationalIdOcr.field.city')}
             confidence={sure('city')}
             edited={edited('city')}
+            notRead={notRead('city')}
           >
             <Field>
               <Input
@@ -574,6 +698,7 @@ export const NationalIdReviewDialog = ({
                   {t('nationalIdOcr.review.compareHint')}
                 </p>
               </div>
+              {notices}
               {summary}
               {fields}
               {derivedPanel}
@@ -581,6 +706,7 @@ export const NationalIdReviewDialog = ({
           </div>
         ) : (
           <div className="space-y-4">
+            {notices}
             {summary}
             {fields}
             {derivedPanel}

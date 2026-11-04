@@ -544,15 +544,11 @@ class FleetMaintenanceService {
    */
   private async vehicleScope(query: MaintenanceFilterQuery): Promise<string[] | undefined> {
     const [byCode, bySet] = await Promise.all([
+      // The live cars carrying these codes — whitespace and Latin case aside, so «كورولا 1» is a
+      // stored «كورولا 1 » (`anyVehicleCode`).
       query.vehicleCodes === undefined
         ? undefined
-        : fleetVehicleRepository
-            .list({
-              filter: { code: { $in: [...query.vehicleCodes] } },
-              page: 1,
-              pageSize: query.vehicleCodes.length,
-            })
-            .then((page) => page.items.map((vehicle) => String(vehicle._id))),
+        : fleetVehicleRepository.liveIdsByCodes(query.vehicleCodes),
       // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's operation is the registry's fact too, so it
       // narrows to vehicle ids here exactly as a code does. Both asked means BOTH hold: the cars
       // among those codes that run under one of those operations.

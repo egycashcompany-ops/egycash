@@ -11,6 +11,7 @@ import {
 } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 import { memoisedVehicleIds } from './vehicle-filter-memo';
+import { anyVehicleCode } from './vehicle-code-match';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
 
 /**
@@ -533,7 +534,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
 
   private async readIdsByCodes(codes: readonly string[]): Promise<string[]> {
     const rows = await this.model
-      .find({ code: { $in: [...codes] } })
+      // «كورولا 1» is the stored «كورولا 1 » and «mg 2» the stored «MG 2» — `vehicle-code-match.ts`.
+      .find({ code: anyVehicleCode(codes) })
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => String(row._id));
+  }
+
+  /**
+   * The ids of the LIVE cars (not soft-deleted) carrying these codes — the odometer and
+   * maintenance registers' code filter, which has always left a deleted car out. Unpaginated: a
+   * page sized to the number of codes would cut a code that two stored spellings answer.
+   */
+  async liveIdsByCodes(codes: readonly string[]): Promise<string[]> {
+    if (codes.length === 0) return [];
+    const rows = await this.model
+      .find({ isDeleted: false, code: anyVehicleCode(codes) })
       .select({ _id: 1 })
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
@@ -648,9 +665,10 @@ export const vehicleListFilter = (
     clauses.push({ [field]: { $in: values.map((id) => new Types.ObjectId(id)) } });
   }
   // The vehicle-code picker: the cars named EXACTLY, ORed. Exact where `search` is substring,
-  // because a checkbox can only mean the code it ticks. A code no car carries leaves an empty
-  // `$in`, which matches nothing — the honest answer to a pick the registry does not have.
-  if (query.vehicleCodes !== undefined) clauses.push({ code: { $in: [...query.vehicleCodes] } });
+  // because a checkbox can only mean the code it ticks — exact up to whitespace and Latin case
+  // (`anyVehicleCode`), so a picked «فورتشنر 2» is the stored «فورتشنر 2 ». A code no car carries
+  // matches nothing — the honest answer to a pick the registry does not have.
+  if (query.vehicleCodes !== undefined) clauses.push({ code: anyVehicleCode(query.vehicleCodes) });
   // Per-identifier narrowing, ANDed with everything else — see `vehicleIdentifierFilter`.
   for (const [value, field] of [
     [query.code, 'code'],

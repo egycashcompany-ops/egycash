@@ -22,6 +22,7 @@ import {
   nextActiveOption,
   optionLabel,
   selectionSummary,
+  triggerPress,
 } from './MultiSelect';
 import { FilterBar } from './FilterBar';
 
@@ -454,6 +455,35 @@ describe('what each key does — from the search box and from the trigger alike'
   });
 });
 
+describe('the trigger — opening asks afresh, closing only closes', () => {
+  // «كولراى » with its trailing space waits in the car filter's box for a number, and the list
+  // closing takes it. Closed by its own trigger, the box used to be emptied in the same batch as the
+  // close, so `onClose` found nothing to take — while a click outside or Escape did take it.
+  it('opens a closed list and asks its search afresh — the owner may still hold the last query', () => {
+    expect(triggerPress(false)).toEqual({ open: true, searchAfresh: true });
+  });
+
+  it('closes an open list and leaves its search as typed, for `onClose` to read', () => {
+    expect(triggerPress(true)).toEqual({ open: false, searchAfresh: false });
+  });
+
+  it('is what the trigger does — no second way of clearing the search on the way out', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    const trigger = source.slice(
+      source.indexOf('ref={triggerRef}'),
+      source.indexOf('className=', source.indexOf('ref={triggerRef}')),
+    );
+    expect(trigger).toContain('const press = triggerPress(open);');
+    expect(trigger).toContain("if (press.searchAfresh) searchFor('');");
+    expect(trigger).not.toMatch(/^\s*searchFor\(''\);/mu);
+  });
+});
+
 describe('the caret stays in the search box — «عاوز المؤسر يفضل موجود»', () => {
   /** Source with comments stripped: a call named only in prose must not keep a guard green. */
   const source = readFileSync(
@@ -739,7 +769,10 @@ describe('opening a list at the page’s edge moves nothing — «المنيو �
   });
 
   it('tells its owner as it opens — a click or an arrow key — before anything is picked', () => {
-    expect(source).toContain('if (!open) onOpen?.();');
+    // The trigger opens a closed list (`triggerPress`) — and tells its owner before it does.
+    expect(source).toContain('if (press.open) onOpen?.();');
+    const click = source.slice(source.indexOf('const press = triggerPress(open);'));
+    expect(click.indexOf('onOpen?.();')).toBeLessThan(click.indexOf('setOpen(press.open);'));
     const keyOpen = source.slice(source.indexOf("if (action === 'open') {"));
     expect(keyOpen.indexOf('onOpen?.();')).toBeLessThan(keyOpen.indexOf('setOpen(true);'));
   });

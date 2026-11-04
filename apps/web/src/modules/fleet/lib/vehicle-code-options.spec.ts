@@ -147,6 +147,37 @@ describe('registryVehicleCodeOptions — every car, narrowed by the typed code',
   });
 });
 
+describe('registryVehicleCodeOptions — a code with a space in it', () => {
+  const fleet = [
+    { code: '150' },
+    { code: 'كورولا 1' },
+    { code: 'كورولا 2' },
+    { code: 'فورتشنر 2 ' },
+    { code: 'MG 2' },
+    { code: 'كولراى' },
+  ];
+  const values = (typed: string, selected: string[] = []): string[] =>
+    registryVehicleCodeOptions(fleet, typed, selected).map((option) => option.value);
+
+  it('lists «كورولا 1» and «كورولا 2» for «كورولا», with or without the space after it', () => {
+    expect(values('كورولا')).toEqual(['كورولا 1', 'كورولا 2']);
+    expect(values('كورولا ')).toEqual(['كورولا 1', 'كورولا 2']);
+  });
+
+  it('lists the one car for «كورولا 1»', () => {
+    expect(values('كورولا 1')).toEqual(['كورولا 1']);
+  });
+
+  it('offers a stored «فورتشنر 2 » as «فورتشنر 2» — the spelling a link reloads as', () => {
+    expect(values('فورتشنر')).toEqual(['فورتشنر 2']);
+  });
+
+  it('keeps a picked «كورولا 1» ticked, once, whatever is typed after', () => {
+    expect(values('150', ['كورولا 1'])).toEqual(['كورولا 1', '150']);
+    expect(values('كورولا', ['كورولا 1'])).toEqual(['كورولا 1', 'كورولا 2']);
+  });
+});
+
 describe('vehicleCodeEntries / resolveCarriedVehicleCode — what a single-car box offers', () => {
   const registry = [
     { id: 'a', code: '150' },
@@ -181,5 +212,16 @@ describe('vehicleCodeEntries / resolveCarriedVehicleCode — what a single-car b
       resolveCarriedVehicleCode(registry, '161', { excludeInWorkshop: true }),
       'the check-in cannot take a car already in a workshop',
     ).toBeNull();
+  });
+
+  it('resolves a filter’s «فورتشنر 2» to the registry’s «فورتشنر 2 » — and nothing longer', () => {
+    const spaced = [
+      { id: 'f2', code: 'فورتشنر 2 ' },
+      { id: 'f20', code: 'فورتشنر 20' },
+      { id: 'mg', code: 'MG 2' },
+    ];
+    expect(resolveCarriedVehicleCode(spaced, 'فورتشنر 2')).toBe('f2');
+    expect(resolveCarriedVehicleCode(spaced, 'mg 2')).toBe('mg');
+    expect(resolveCarriedVehicleCode(spaced, 'فورتشنر')).toBeNull();
   });
 });

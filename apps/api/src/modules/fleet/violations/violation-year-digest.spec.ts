@@ -133,7 +133,11 @@ describe('driverFineGroups — the rollup’s own question, narrowed to the driv
     });
     const match = json(pipeline[0]?.['$match']);
     expect(match).toContain(ID(3));
-    expect(match).toContain('"vehicleCode":{"$in":["B-9"]}');
+    // The book's code as a pattern (`anyVehicleCode`) — «B-9» however its whitespace was written.
+    const patterns = JSON.stringify(pipeline[0]?.['$match'], (_key, value: unknown) =>
+      value instanceof RegExp ? String(value) : value,
+    );
+    expect(patterns).toContain('"vehicleCode":{"$in":["/^\\\\s*B-9\\\\s*$/i"]}');
   });
 });
 

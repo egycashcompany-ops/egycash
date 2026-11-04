@@ -52,12 +52,17 @@ const reused = car('101', T2, null, null, { isDeleted: true }); // an old car wh
 const REGISTRY = [c1, c2, c3, c4, gone, reused];
 const idOf = (c: Car): string => String(c._id);
 
-/** Applies every clause: `{field: {$in: [...]}}` or a plain equality. */
+/**
+ * Applies every clause: `{field: {$in: [...]}}` or a plain equality. An `$in` entry may be a
+ * pattern — the code filter's (`anyVehicleCode`) — which matches as Mongo would.
+ */
 const matches = (doc: Car, filter: Record<string, unknown>): boolean =>
   Object.entries(filter).every(([field, wanted]) => {
     const value = (doc as unknown as Record<string, unknown>)[field];
     if (wanted !== null && typeof wanted === 'object' && '$in' in wanted) {
-      return (wanted as { $in: unknown[] }).$in.map(String).includes(String(value));
+      return (wanted as { $in: unknown[] }).$in.some((one) =>
+        one instanceof RegExp ? one.test(String(value)) : String(one) === String(value),
+      );
     }
     return String(value) === String(wanted);
   });

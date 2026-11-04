@@ -78,9 +78,7 @@ describe('the company board’s tick settles the WHOLE group — «يعملى ص
 const sumsPipeline = async (
   scope?: Parameters<typeof fleetViolationRepository.yearSums>[1],
 ): Promise<Record<string, unknown>[]> => {
-  const aggregate = vi
-    .spyOn(FleetViolationModel, 'aggregate')
-    .mockResolvedValue([] as never);
+  const aggregate = vi.spyOn(FleetViolationModel, 'aggregate').mockResolvedValue([] as never);
   await fleetViolationRepository.yearSums([2026], scope);
   return (aggregate.mock.calls[0]?.[0] ?? []) as unknown as Record<string, unknown>[];
 };
@@ -144,9 +142,10 @@ describe('a fine carried onto another year is counted THERE, and only there', ()
     // would be a contradiction rather than an override.
     expect((filter as Record<string, unknown>)['kind']).toBe('driver');
     const set = stageOf(update);
-    expect(Object.keys(set).sort(), 'the car, where it came from, the block, who, and the version').toEqual(
-      ['__v', 'filedYear', 'homeVehicleId', 'updatedBy', 'vehicleId'].sort(),
-    );
+    expect(
+      Object.keys(set).sort(),
+      'the car, where it came from, the block, who, and the version',
+    ).toEqual(['__v', 'filedYear', 'homeVehicleId', 'updatedBy', 'vehicleId'].sort());
     // WHERE IT CAME FROM, KEPT — and kept only the FIRST time. `$ifNull` is the whole guard: a
     // fine carried 150 → 151 and then 151 → 152 still goes home to 150, because the second carry
     // finds a home already recorded and leaves it alone.
@@ -181,9 +180,11 @@ describe('a fine carried onto another year is counted THERE, and only there', ()
       .spyOn(FleetViolationModel, 'updateMany')
       .mockResolvedValue({ modifiedCount: 1 } as never);
     await fleetViolationRepository.fileBackHome(['650000000000000000000031'], { by: null });
-    const fallback = (stageOf(updateMany.mock.calls[0]?.[1])['vehicleId'] as {
-      $ifNull: string[];
-    }).$ifNull[1];
+    const fallback = (
+      stageOf(updateMany.mock.calls[0]?.[1])['vehicleId'] as {
+        $ifNull: string[];
+      }
+    ).$ifNull[1];
     expect(fallback, 'the fallback is the car it is on, never null').toBe('$vehicleId');
   });
 });
@@ -219,8 +220,12 @@ describe('the board can be asked about SEVERAL cars — the filter that stopped 
       '$match'
     ] as Record<string, unknown>;
     // A (code, year) kept from the old book on a car the registry never had has no `vehicleId`,
-    // so an id-only filter would hide it from the very code the reader typed.
-    expect(JSON.stringify(andClauses(match))).toContain('كوستر');
+    // so an id-only filter would hide it from the very code the reader typed. The code is a
+    // pattern (`anyVehicleCode`): the book's «كوستر» however its whitespace was written.
+    const asText = JSON.stringify(andClauses(match), (_key, value: unknown) =>
+      value instanceof RegExp ? String(value) : value,
+    );
+    expect(asText).toContain('كوستر');
   });
 
   it('asks about EVERY car when nothing was picked — and about none when the codes matched none', async () => {

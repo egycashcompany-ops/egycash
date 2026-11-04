@@ -129,6 +129,30 @@ describe('the range committer', () => {
     expect(commits).toEqual([{ from: '2026-10-05', to: '2026-10-31' }]);
   });
 
+  it('a range the page moved to from outside drops the edit made against the old one', () => {
+    const { commits, committer } = build();
+    committer.edit({ from: '2026-11-01', to: TODAY.to });
+    // Back (or a link) lands on another range before the box held still.
+    committer.sync({ from: '2026-10-01', to: '2026-10-31' });
+    vi.advanceTimersByTime(DONE_RANGE_COMMIT_DELAY_MS * 4);
+    committer.flush();
+    expect(commits).toEqual([]);
+  });
+
+  it("the commit's own echo leaves the next edit pending as usual", () => {
+    const { commits, committer } = build();
+    committer.edit({ from: '2026-11-01', to: TODAY.to });
+    vi.advanceTimersByTime(DONE_RANGE_COMMIT_DELAY_MS);
+    committer.edit({ from: '2026-11-01', to: '2026-11-09' });
+    // The URL reports the range just committed while the second edit is still pending.
+    committer.sync({ from: '2026-11-01', to: TODAY.to });
+    vi.advanceTimersByTime(DONE_RANGE_COMMIT_DELAY_MS);
+    expect(commits).toEqual([
+      { from: '2026-11-01', to: '2026-11-04' },
+      { from: '2026-11-01', to: '2026-11-09' },
+    ]);
+  });
+
   it('a cancelled committer never fires', () => {
     const { commits, committer } = build();
     committer.edit({ from: '2026-11-01', to: TODAY.to });

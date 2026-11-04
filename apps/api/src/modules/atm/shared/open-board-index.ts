@@ -25,3 +25,19 @@ export const openBoardIndexFilter = (): Record<string, unknown> => ({
 
 /** The index keys, as a fresh object for `schema.index` — the board order itself. */
 export const openBoardIndexKeys = (): Record<string, 1 | -1> => ({ ...OPEN_BOARD_ORDER });
+
+/** The branch callers' index — the same rows and order, led by the branch (boot-built by name). */
+export const BRANCH_OPEN_BOARD_INDEX_NAME = 'ix_branch_open_board';
+
+/**
+ * The index keys for a branch reader — most ATM staff: `branchId` first, then the board order. A
+ * reader of one branch is one range of it, already sorted; a reader of several is one range per
+ * branch, merged in order (SORT_MERGE). `ix_branch_open_area` holds the branch and the area but not
+ * `_id`, so the board's tiebreak was an in-memory sort of the branch's open rows — and with
+ * `ix_open_board` beside it the planner could take the company-wide index and drop every other
+ * branch's rows one by one instead.
+ */
+export const branchOpenBoardIndexKeys = (): Record<string, 1 | -1> => ({
+  branchId: 1,
+  ...OPEN_BOARD_ORDER,
+});

@@ -165,7 +165,13 @@ Indexes: `ix_entityRef`, `ix_groupId_version`, `ix_checksum`.
 { "entityRef": {…}, "messageKey": "hr.applicants.activity.interviewScheduled",
   "params": { "interviewer": "…" }, "actorId": "…", "at": "Date" }
 ```
-Indexes: `ix_entityRef_at`; audit collection uses a restricted DB role (insert-only).
+Indexes: `ix_entityRef_at`, `ix_actor_at`, `ix_moduleId_at`, `ix_action_at` `{action:1, at:-1}`
+(the hourly security-signal detectors' `{action, at ≥ window}`) and `ix_at` `{at:-1}` (the audit
+list's default order). Production runs with autoIndex off, so `ix_action_at` and `ix_at` are built
+at boot by `platform/audit/audit-indexes.ts` when missing. An unfiltered audit or activity list
+takes its total from the collection's metadata count (`estimatedDocumentCount`), not a scan. Rows
+of one batch write (`auditService.recordMany`) carry instants a millisecond apart, so a list sorted
+on `at` has one order for them. The audit collection uses a restricted DB role (insert-only).
 
 ### workflow_definitions / workflow_instances / workflow_transitions
 ```jsonc

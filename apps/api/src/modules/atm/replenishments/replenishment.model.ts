@@ -9,7 +9,9 @@
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 import {
+  BRANCH_OPEN_BOARD_INDEX_NAME,
   OPEN_BOARD_INDEX_NAME,
+  branchOpenBoardIndexKeys,
   openBoardIndexFilter,
   openBoardIndexKeys,
 } from '../shared/open-board-index';
@@ -80,6 +82,11 @@ replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_bra
 // production by the boot index step (atm-indexes.ts), which reads it from this declaration.
 replenishmentSchema.index(openBoardIndexKeys(), {
   name: OPEN_BOARD_INDEX_NAME,
+  partialFilterExpression: openBoardIndexFilter(),
+});
+// The same board for a branch reader, led by the branch: one sorted range per branch in scope.
+replenishmentSchema.index(branchOpenBoardIndexKeys(), {
+  name: BRANCH_OPEN_BOARD_INDEX_NAME,
   partialFilterExpression: openBoardIndexFilter(),
 });
 // Open rows by code and open time — the index the per-day rule's question ("is this code open on

@@ -34,7 +34,7 @@ const { publishAuditedChange } = await import('../realtime');
 const { enqueue, enqueueMany } = await import('../../infrastructure/queue/jobs');
 const { captureError } = await import('../../infrastructure/observability/sentry');
 const { runWithContext } = await import('../../infrastructure/http/request-context');
-const { auditService } = await import('./audit.service');
+const { auditService, batchInstants } = await import('./audit.service');
 
 const published = vi.mocked(publishAuditedChange);
 const enqueued = vi.mocked(enqueue);
@@ -98,11 +98,22 @@ describe('recordMany — the queue', () => {
     });
   });
 
-  it('stamps the batch with ONE instant — they are one act', async () => {
-    await inRequest(() => auditService.recordMany([opened('r1'), opened('r2')]));
-    const [first, second] = jobsOf();
-    expect(typeof first?.data.at).toBe('string');
-    expect(second?.data.at).toBe(first?.data.at);
+  it('gives each row its own instant, a millisecond apart in batch order — one order when paged', async () => {
+    await inRequest(() => auditService.recordMany([opened('r1'), opened('r2'), opened('r3')]));
+    const stamps = jobsOf().map((job) => Date.parse(String(job.data.at)));
+    expect(stamps.every(Number.isFinite)).toBe(true);
+    expect(stamps[1]! - stamps[0]!).toBe(1);
+    expect(stamps[2]! - stamps[1]!).toBe(1);
+  });
+
+  it('batchInstants: distinct and ascending from the start', () => {
+    const start = new Date('2026-11-04T10:00:00.998Z');
+    expect(batchInstants(start, 3)).toEqual([
+      '2026-11-04T10:00:00.998Z',
+      '2026-11-04T10:00:00.999Z',
+      '2026-11-04T10:00:01.000Z',
+    ]);
+    expect(batchInstants(start, 0)).toEqual([]);
   });
 
   it('honours an entry that names its own actor, as `record` does', async () => {

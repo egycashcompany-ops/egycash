@@ -12,6 +12,8 @@
 //     `ix_branch_open_area` with) reads the board through — declared on both logs in the board
 //     order, and in the boot index step's plan, which is what builds it in production (autoIndex is
 //     off there, and the pre-deploy sync only reports).
+//   · `ix_branch_open_board` — the same rows and order led by the branch, for the branch readers
+//     (most ATM staff): a branch is one range of it already sorted, `_id` included.
 //
 // Every name and id below is synthetic.
 import { Types } from 'mongoose';
@@ -23,7 +25,11 @@ import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
 import { atmReplenishmentRepository } from '../replenishments/replenishment.repository';
 import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
 import { atmMaintenanceRepository } from '../maintenances/maintenance.repository';
-import { OPEN_BOARD_INDEX_NAME, OPEN_BOARD_ORDER } from './open-board-index';
+import {
+  BRANCH_OPEN_BOARD_INDEX_NAME,
+  OPEN_BOARD_INDEX_NAME,
+  OPEN_BOARD_ORDER,
+} from './open-board-index';
 import { distinctOf, type OpenNames } from './operation-log.repository';
 
 const BRANCH = '650000000000000000000104';
@@ -253,6 +259,40 @@ describe('ix_open_board — the index the board is read through', () => {
       ).toContain(OPEN_BOARD_INDEX_NAME);
       // Never one of the names the step drops.
       expect(entry?.retired ?? [], collection).not.toContain(OPEN_BOARD_INDEX_NAME);
+    }
+  });
+
+  it.each([
+    ['replenishment', AtmReplenishmentModel],
+    ['maintenance', AtmMaintenanceModel],
+  ] as const)(
+    '%s: a branch reader has its own — the branch, then the board order, same rows',
+    (_kind, model) => {
+      const plan = atmIndexBuildPlan(model.schema.indexes());
+      const entry = plan.find((item) => item.options['name'] === BRANCH_OPEN_BOARD_INDEX_NAME);
+      expect(BRANCH_OPEN_BOARD_INDEX_NAME).toBe('ix_branch_open_board');
+      // Every key the sort names, `_id` included — no in-memory sort of the branch's open rows.
+      expect(entry?.keys).toEqual({ branchId: 1, area: -1, _id: -1 });
+      expect(Object.keys(entry?.keys ?? {})).toEqual([
+        'branchId',
+        ...Object.keys(OPEN_BOARD_ORDER),
+      ]);
+      expect(entry?.unique).toBe(false);
+      expect(entry?.options['partialFilterExpression']).toEqual({
+        closedAt: null,
+        isDeleted: false,
+      });
+    },
+  );
+
+  it('builds the branch one at boot too, and never drops it', () => {
+    for (const entry of atmIndexedModels()) {
+      if (!['atm_replenishments', 'atm_maintenances'].includes(entry.collection)) continue;
+      const names = atmIndexBuildPlan(entry.model.schema.indexes()).map(
+        (item) => item.options['name'],
+      );
+      expect(names, entry.collection).toContain(BRANCH_OPEN_BOARD_INDEX_NAME);
+      expect(entry.retired ?? [], entry.collection).not.toContain(BRANCH_OPEN_BOARD_INDEX_NAME);
     }
   });
 

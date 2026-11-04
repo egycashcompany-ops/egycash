@@ -29,6 +29,12 @@ export interface AtmMailTicketDoc extends BaseDocFields {
   actionByName: string | null;
   actionAt: Date | null;
   providerMessageId: string | null;
+  /**
+   * The one batch decision that last wrote this ticket — a fresh id per request
+   * (`decidePending`), read back to tell exactly which tickets THAT write decided. Internal: never
+   * mapped to the DTO, absent until a batch decision writes it.
+   */
+  decisionId?: Types.ObjectId | null;
 }
 
 const mailTicketSchema = new Schema<AtmMailTicketDoc>(
@@ -52,6 +58,7 @@ const mailTicketSchema = new Schema<AtmMailTicketDoc>(
     actionByName: { type: String, default: null },
     actionAt: { type: Date, default: null },
     providerMessageId: { type: String, default: null },
+    decisionId: { type: Schema.Types.ObjectId },
     ...baseFields,
   },
   baseSchemaOptions,

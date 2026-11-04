@@ -90,6 +90,13 @@ export const createRangeCommitter = (
 
   return {
     sync: (range) => {
+      // The page moved to another range from outside the boxes (Back, a link): a pending edit was
+      // made against the range it left, so it is dropped — committing it would undo that move.
+      // The commit's own echo (`committed` already equals it) keeps nothing pending either way.
+      if (!sameRange(range, committed)) {
+        stop();
+        draft = null;
+      }
       committed = range;
     },
     edit: (next) => {

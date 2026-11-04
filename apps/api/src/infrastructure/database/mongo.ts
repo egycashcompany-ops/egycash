@@ -19,6 +19,12 @@ const NAMED_BY_THEIR_OWN_KEY = new Set([
   'update',
   'delete',
   'findAndModify',
+  // Index and collection commands — the boot index builds above all, which run far past the
+  // slow threshold on a large collection and should say which one.
+  'createIndexes',
+  'listIndexes',
+  'dropIndexes',
+  'drop',
 ]);
 
 /**

@@ -77,28 +77,48 @@ describe('atmMailTicketRepository.decidePending', () => {
       branchId,
     });
     expect(update).toEqual({
-      $set: { ...decision, updatedBy: new Types.ObjectId(scope.userId) },
+      $set: {
+        ...decision,
+        decisionId: expect.any(Types.ObjectId),
+        updatedBy: new Types.ObjectId(scope.userId),
+      },
       $inc: { __v: 1 },
     });
   });
 
-  it('reads back only what THIS write decided — by its decider and its exact instant', async () => {
-    const { find } = stubModel([]);
+  it('reads back only what THIS write decided — by the stamp only this call wrote', async () => {
+    const { updateMany, find } = stubModel([]);
     const a = ticket();
     await atmMailTicketRepository.decidePending([String(a._id)], decision, {
       by: scope.userId,
       scope,
     });
     expect(find).toHaveBeenCalledTimes(1);
+    const written = (updateMany.mock.calls[0]?.[1] as { $set: { decisionId: Types.ObjectId } }).$set
+      .decisionId;
     // `find` is overloaded, so its recorded calls type as `[]`: read the filter untyped.
-    expect(clausesOf((find.mock.calls[0] as unknown[] | undefined)?.[0])).toMatchObject({
-      _id: { $in: [a._id] },
-      status: 'rejected',
-      actionById: decision.actionById,
-      actionAt: decision.actionAt,
-      isDeleted: false,
-      branchId,
-    });
+    const readBack = clausesOf((find.mock.calls[0] as unknown[] | undefined)?.[0]);
+    expect(readBack).toMatchObject({ _id: { $in: [a._id] }, isDeleted: false, branchId });
+    expect(String(readBack['decisionId'])).toBe(String(written));
+    // Not the decider and instant — two submits in one millisecond would read each other's — and
+    // not the status: a ticket restored before the read is still the one this write rejected.
+    expect(readBack).not.toHaveProperty('actionAt');
+    expect(readBack).not.toHaveProperty('status');
+  });
+
+  it('two calls, even by one person in one millisecond, stamp two different decisions', async () => {
+    const { updateMany } = stubModel([]);
+    const a = ticket();
+    for (let i = 0; i < 2; i += 1) {
+      await atmMailTicketRepository.decidePending([String(a._id)], decision, {
+        by: scope.userId,
+        scope,
+      });
+    }
+    const stamps = updateMany.mock.calls.map((call) =>
+      String((call[1] as { $set: { decisionId: Types.ObjectId } }).$set.decisionId),
+    );
+    expect(new Set(stamps).size).toBe(2);
   });
 
   it('answers in the selection’s order, each ticket once, leaving out what it did not decide', async () => {

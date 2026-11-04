@@ -8,6 +8,13 @@ import { PartialCreateError, type CreateManyResult } from '../../../shared/base/
 
 const recordMany = vi.hoisted(() => vi.fn(async (_entries: readonly AuditEntry[]) => undefined));
 vi.mock('../../../platform/audit', () => ({ auditService: { recordMany } }));
+const alarm = vi.hoisted(() => ({ captureError: vi.fn(), error: vi.fn(), warn: vi.fn() }));
+vi.mock('../../../infrastructure/observability/sentry', () => ({
+  captureError: alarm.captureError,
+}));
+vi.mock('../../../infrastructure/logging/logger', () => ({
+  logger: { error: alarm.error, warn: alarm.warn, info: vi.fn(), debug: vi.fn() },
+}));
 
 const { insertOpenLines } = await import('./open-batch');
 
@@ -26,6 +33,7 @@ const auditOf = (doc: Row, l: { code: string }): AuditEntry => ({
 
 beforeEach(() => {
   recordMany.mockClear();
+  for (const fn of Object.values(alarm)) fn.mockClear();
 });
 
 describe('insertOpenLines', () => {
@@ -59,6 +67,9 @@ describe('insertOpenLines', () => {
       auditOf,
     );
     expect(result).toEqual({ opened: landed, alreadyOpenCodes: ['205'] });
+    // The screen does not show refused codes, and no live index should refuse one: it alarms.
+    expect(alarm.warn).toHaveBeenCalledWith({ codes: ['205'] }, expect.any(String));
+    expect(alarm.captureError).toHaveBeenCalledTimes(1);
     // Each audit row names the code of ITS line — the index, not the position among the landed.
     expect(recordMany.mock.calls[0]?.[0].map((entry) => entry.changes?.[0]?.new)).toEqual([
       '101',
@@ -92,6 +103,12 @@ describe('insertOpenLines', () => {
       ),
     ).rejects.toBe(dropped);
     expect(recordMany).not.toHaveBeenCalled();
+    // Rows may be in the log with no trail, and nothing says which: that is alarmed, not silent.
+    expect(alarm.error).toHaveBeenCalledTimes(1);
+    expect(alarm.captureError).toHaveBeenCalledWith(
+      dropped,
+      expect.objectContaining({ audit: true }),
+    );
   });
 
   it('no lines: nothing opened, an empty trail', async () => {

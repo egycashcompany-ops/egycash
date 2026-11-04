@@ -63,9 +63,11 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
    *
    * `status: 'pending'` rides inside the write's own filter, so a ticket decided a moment earlier
    * (another person, a double click) is not matched and not returned: skipped like any decided
-   * ticket, never overwritten. Which tickets this write decided is read back by its own stamp — the
-   * decider and the exact instant (`decision.actionAt`), the way `close` tells the rows it closed
-   * by its own close time.
+   * ticket, never overwritten. Which tickets this write decided is read back by its own stamp: a
+   * fresh `decisionId` per call, written with the decision. The decider and the instant would not
+   * do — two submits by one person can share a millisecond, and each would read back (and audit)
+   * the other's tickets — and the stamp is read back without the status, so a ticket restored to
+   * pending between the write and the read is still answered and audited as rejected first.
    *
    * Ids are taken in their canonical form (lowercase hex) before anything else: the contract's
    * `objectId()` accepts `[0-9a-fA-F]`, and `'ABC…'` is the very same ticket as `'abc…'` — the write
@@ -92,6 +94,7 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
     ];
     if (order.length === 0) return [];
     const selected = { $in: order.map((id) => new Types.ObjectId(id)) };
+    const decisionId = new Types.ObjectId();
     await this.model
       .updateMany(
         this.baseFilter(meta.scope, {
@@ -99,7 +102,7 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
           status: 'pending',
         } as FilterQuery<AtmMailTicketDoc>),
         {
-          $set: { ...decision, updatedBy: new Types.ObjectId(meta.by) },
+          $set: { ...decision, decisionId, updatedBy: new Types.ObjectId(meta.by) },
           $inc: { __v: 1 },
         } as UpdateQuery<AtmMailTicketDoc>,
       )
@@ -108,9 +111,7 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
       .find(
         this.baseFilter(meta.scope, {
           _id: selected,
-          status: decision.status,
-          actionById: decision.actionById,
-          actionAt: decision.actionAt,
+          decisionId,
         } as FilterQuery<AtmMailTicketDoc>),
       )
       .lean<AtmMailTicketDoc[]>()

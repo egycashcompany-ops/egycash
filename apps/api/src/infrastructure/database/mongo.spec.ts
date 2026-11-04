@@ -13,6 +13,10 @@ describe('the collection a slow operation is charged to', () => {
     ['update', { update: 'atm_replenishments', updates: [] }],
     ['delete', { delete: 'atm_replenishments', deletes: [] }],
     ['findAndModify', { findAndModify: 'atm_replenishments', query: {} }],
+    ['createIndexes', { createIndexes: 'atm_replenishments', indexes: [] }],
+    ['listIndexes', { listIndexes: 'atm_replenishments' }],
+    ['dropIndexes', { dropIndexes: 'atm_replenishments', index: 'ix_old' }],
+    ['drop', { drop: 'atm_replenishments' }],
   ])('reads %s from its own key', (name, command) => {
     expect(commandCollection(name, command)).toBe('atm_replenishments');
   });

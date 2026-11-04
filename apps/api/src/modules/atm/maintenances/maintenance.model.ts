@@ -10,7 +10,9 @@ import { Schema, model, type Types } from 'mongoose';
 import { ATM_MAINTENANCE_SOURCES, type AtmMaintenanceSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 import {
+  BRANCH_OPEN_BOARD_INDEX_NAME,
   OPEN_BOARD_INDEX_NAME,
+  branchOpenBoardIndexKeys,
   openBoardIndexFilter,
   openBoardIndexKeys,
 } from '../shared/open-board-index';
@@ -101,6 +103,11 @@ maintenanceSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branc
 // production by the boot index step (atm-indexes.ts), which reads it from this declaration.
 maintenanceSchema.index(openBoardIndexKeys(), {
   name: OPEN_BOARD_INDEX_NAME,
+  partialFilterExpression: openBoardIndexFilter(),
+});
+// The same board for a branch reader, led by the branch: one sorted range per branch in scope.
+maintenanceSchema.index(branchOpenBoardIndexKeys(), {
+  name: BRANCH_OPEN_BOARD_INDEX_NAME,
   partialFilterExpression: openBoardIndexFilter(),
 });
 // Open rows by code and open time — what the mail `duplication` question runs on ("does this

@@ -24,4 +24,13 @@ describe('rankVehicleCodes — «اكتب الكود»', () => {
   it('offers nothing for a fragment no car carries', () => {
     expect(rankVehicleCodes(CODES, '999')).toEqual([]);
   });
+
+  it("offers a model's cars for its name, and the one car for its name and number", () => {
+    const fleet = ['150', 'MG 1', 'MG 2', 'كورولا 1', 'كورولا 2', 'كولراى', 'كوستر 1'];
+    expect(rankVehicleCodes(fleet, 'كورولا')).toEqual(['كورولا 1', 'كورولا 2']);
+    expect(rankVehicleCodes(fleet, 'كورولا ')).toEqual(['كورولا 1', 'كورولا 2']);
+    expect(rankVehicleCodes(fleet, 'كورولا 1')).toEqual(['كورولا 1']);
+    expect(rankVehicleCodes(fleet, 'كورولا  2')).toEqual(['كورولا 2']);
+    expect(rankVehicleCodes(fleet, 'mg 2')).toEqual(['MG 2']);
+  });
 });

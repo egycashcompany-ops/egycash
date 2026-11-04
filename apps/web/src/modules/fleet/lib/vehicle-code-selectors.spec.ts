@@ -280,7 +280,7 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
 
   it('narrows the registry by the typed code in the filter', () => {
     expect(code('modules/fleet/components/VehicleCodeFilter.tsx')).toMatch(
-      /registryVehicleCodeOptions\(\s*vehicles\.data\?\.items \?\? \[\],\s*search,\s*value\s*\)/u,
+      /registryVehicleCodeOptions\(\s*vehicles\.data\?\.items \?\? \[\],\s*search,\s*held\s*\)/u,
     );
   });
 
@@ -621,8 +621,10 @@ describe('a picker given its own options narrows them itself', () => {
     // a typed code is taken into the selection. Typing on that board narrowed nothing at all.
     expect(FILTER, 'the passed-in list is narrowed here').toContain('narrowVehicleCodeOptions(');
     // …and specifically by what is being typed, not by some other value that happens to be in
-    // scope: `search` is the trailing fragment, the same thing the registry is asked for.
-    expect(FILTER).toMatch(/narrowVehicleCodeOptions\(\s*options,\s*search,\s*value\s*\)/);
+    // scope: `search` is the trailing fragment, the same thing the registry is asked for — and
+    // `held` the selection as the board offers it (`heldVehicleCodes`), so a carried code ticks
+    // the board's own spelling of that car.
+    expect(FILTER).toMatch(/narrowVehicleCodeOptions\(\s*options,\s*search,\s*held\s*\)/);
   });
 
   it('does not hand a passed-in list straight through', () => {

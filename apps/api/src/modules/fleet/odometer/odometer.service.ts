@@ -507,15 +507,11 @@ class FleetOdometerService {
     >,
   ): Promise<OdometerVehicleClause> {
     const [byCode, byLevel, bySet] = await Promise.all([
+      // The live cars carrying these codes — whitespace and Latin case aside, so «كورولا 1» is a
+      // stored «كورولا 1 » (`anyVehicleCode`).
       query.vehicleCodes === undefined
         ? undefined
-        : fleetVehicleRepository
-            .list({
-              filter: { code: { $in: [...query.vehicleCodes] } },
-              page: 1,
-              pageSize: query.vehicleCodes.length,
-            })
-            .then((matched) => matched.items.map((vehicle) => String(vehicle._id))),
+        : fleetVehicleRepository.liveIdsByCodes(query.vehicleCodes),
       query.alerts === undefined
         ? undefined
         : computeAlarms().then((alarms) => {

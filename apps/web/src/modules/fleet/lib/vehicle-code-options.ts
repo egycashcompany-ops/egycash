@@ -9,7 +9,7 @@
 //
 // Kept out of the components because it is the part with a rule in it, and the part a node-env
 // test can reach: a closed dropdown renders no options at all.
-import { compareFleetVehicleCodes } from '@ecms/contracts';
+import { compareFleetVehicleCodes, normalizeVehicleCode, sameVehicleCode } from '@ecms/contracts';
 import { matchesVehicleCode } from './vehicle-code-match';
 import { rankVehicleCodes } from './vehicle-code-rank';
 
@@ -96,13 +96,17 @@ export const narrowVehicleCodeOptions = <T extends { value: string }>(
  * codes it matches, those that START with it first (`rankVehicleCodes`, the single-car picker's
  * order). A code already CHOSEN that the fragment hides — or that the registry no longer carries —
  * is kept in front, so a filter you can set stays one you can unset.
+ *
+ * Each code is offered as `normalizeVehicleCode` writes it — «فورتشنر 2», not a stored
+ * «فورتشنر 2 » — because the option's value is what the URL carries and the parser reads back: a
+ * pick has to survive a reload as the same row, still ticked.
  */
 export const registryVehicleCodeOptions = (
   vehicles: readonly { code: string }[],
   typed: string,
   selected: readonly string[],
 ): VehicleCodeOption[] => {
-  const codes = [...new Set(vehicles.map((vehicle) => vehicle.code))].sort(
+  const codes = [...new Set(vehicles.map((vehicle) => normalizeVehicleCode(vehicle.code)))].sort(
     compareFleetVehicleCodes,
   );
   const matched = rankVehicleCodes(codes, typed);
@@ -145,9 +149,18 @@ export const vehicleCodeEntries = (
  * The id of the car a code carried in from a page's filter names — among the cars the box OFFERS,
  * by the same rule — or `null` when it offers none such, so the dialog lets the code go rather than
  * holding one it cannot save.
+ *
+ * Exact, as the server's code filter is: whitespace and Latin case aside (`sameVehicleCode`), so a
+ * filter's «فورتشنر 2» carries in the registry's «فورتشنر 2 » — and never «فورتشنر 20».
  */
 export const resolveCarriedVehicleCode = (
   items: readonly RegistryVehicle[],
   code: string,
   options: { excludeInWorkshop?: boolean } = {},
-): string | null => vehicleCodeEntries(items, options).get(code) ?? null;
+): string | null => {
+  const entries = vehicleCodeEntries(items, options);
+  const exact = entries.get(code);
+  if (exact !== undefined) return exact;
+  for (const [offered, id] of entries) if (sameVehicleCode(offered, code)) return id;
+  return null;
+};

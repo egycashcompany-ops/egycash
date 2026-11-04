@@ -45,4 +45,19 @@ describe('matchesVehicleCode', () => {
   it('ignores case, as the registry does', () => {
     expect(matchesVehicleCode('FLT-210', 'flt-210')).toBe(true);
   });
+
+  it('reads «كورولا 1» as ONE code — not «كورولا» or «1» — and matches it whatever the spacing', () => {
+    expect(matchesVehicleCode('كورولا 1', 'كورولا 1')).toBe(true);
+    expect(matchesVehicleCode('كورولا 2', 'كورولا 1')).toBe(false);
+    expect(matchesVehicleCode('151', 'كورولا 1')).toBe(false);
+    expect(matchesVehicleCode('فورتشنر 2 ', 'فورتشنر 2')).toBe(true);
+    expect(matchesVehicleCode('كورولا  1', 'كورولا 1')).toBe(true);
+    expect(matchesVehicleCode('MG 2', 'mg 2')).toBe(true);
+  });
+
+  it('lets the bare word find every car of that model', () => {
+    expect(matchesVehicleCode('كورولا 1', 'كورولا')).toBe(true);
+    expect(matchesVehicleCode('كورولا 2', 'كورولا ')).toBe(true);
+    expect(matchesVehicleCode('كوستر 1', 'كورولا')).toBe(false);
+  });
 });

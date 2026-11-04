@@ -1,4 +1,4 @@
-import { type FilterQuery } from 'mongoose';
+import { Types, type FilterQuery, type UpdateQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../shared/types';
@@ -55,6 +55,59 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
 
   async findByProviderMessageId(providerMessageId: string): Promise<AtmMailTicketDoc | null> {
     return this.findOne({ providerMessageId } as FilterQuery<AtmMailTicketDoc>);
+  }
+
+  /**
+   * Decide every still-PENDING ticket of `ids` the scope reaches, in ONE write, and return the
+   * tickets THIS write decided — in the order `ids` names them, each once.
+   *
+   * `status: 'pending'` rides inside the write's own filter, so a ticket decided a moment earlier
+   * (another person, a double click) is not matched and not returned: skipped like any decided
+   * ticket, never overwritten. Which tickets this write decided is read back by its own stamp — the
+   * decider and the exact instant (`decision.actionAt`), the way `close` tells the rows it closed
+   * by its own close time.
+   */
+  async decidePending(
+    ids: readonly string[],
+    decision: {
+      status: 'accepted' | 'rejected';
+      actionById: Types.ObjectId;
+      actionByName: string | null;
+      actionAt: Date;
+    },
+    meta: { by: string; scope: ScopeSelector },
+  ): Promise<AtmMailTicketDoc[]> {
+    const order = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (order.length === 0) return [];
+    const selected = { $in: order.map((id) => new Types.ObjectId(id)) };
+    await this.model
+      .updateMany(
+        this.baseFilter(meta.scope, {
+          _id: selected,
+          status: 'pending',
+        } as FilterQuery<AtmMailTicketDoc>),
+        {
+          $set: { ...decision, updatedBy: new Types.ObjectId(meta.by) },
+          $inc: { __v: 1 },
+        } as UpdateQuery<AtmMailTicketDoc>,
+      )
+      .exec();
+    const decided = await this.model
+      .find(
+        this.baseFilter(meta.scope, {
+          _id: selected,
+          status: decision.status,
+          actionById: decision.actionById,
+          actionAt: decision.actionAt,
+        } as FilterQuery<AtmMailTicketDoc>),
+      )
+      .lean<AtmMailTicketDoc[]>()
+      .exec();
+    const byId = new Map(decided.map((row) => [String(row._id), row]));
+    return order.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined ? [] : [row];
+    });
   }
 }
 

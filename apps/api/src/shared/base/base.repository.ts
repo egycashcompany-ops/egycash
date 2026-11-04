@@ -106,8 +106,107 @@ interface WriteMeta {
   session?: ClientSession | undefined;
 }
 
+/**
+ * What `createManyUnordered` wrote. Every input row is in exactly one of the two lists — when the
+ * call returns at all: a row that failed for any other reason makes it throw `PartialCreateError`,
+ * which carries this same shape for the rows that did land.
+ */
+export interface CreateManyResult<T> {
+  /**
+   * The rows written, in input order: each one's index in the input and the stored document — a
+   * plain object, exactly as `create` returns it.
+   */
+  inserted: { index: number; doc: T }[];
+  /** Input indexes a unique index refused (E11000), ascending. Nothing of them was written. */
+  duplicateIndexes: number[];
+}
+
+/**
+ * `createManyUnordered` hit a failure that is NOT a duplicate key — a validation error, a write
+ * error of another kind. The batch is unordered, so the other rows were written all the same, and
+ * they are in the database whatever the caller does next: `result` names them (and any duplicates)
+ * so the caller can audit them BEFORE rethrowing `cause`, the error `insertMany` threw.
+ *
+ * Thrown only when the error says which rows landed. One that cannot — the connection dropped, a
+ * write concern failed — is rethrown as it is, claiming nothing: the same answer `create` gives
+ * about the row it was writing when the connection went.
+ */
+export class PartialCreateError<T> extends Error {
+  readonly result: CreateManyResult<T>;
+
+  constructor(result: CreateManyResult<T>, cause: unknown) {
+    super('Bulk create failed part-way — the rows it wrote are in `result`', { cause });
+    this.name = 'PartialCreateError';
+    this.result = result;
+  }
+}
+
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+
+/**
+ * The code of one row's write error. Mongoose 8 remaps each driver `WriteError` to the row's INPUT
+ * index with `{ ...writeError, index }` — and the spread keeps only own properties, so the driver's
+ * `code` getter is gone and the code survives only on the raw `err`. Both shapes are read, so a
+ * Mongoose that stops remapping does not turn every duplicate into a failure.
+ */
+const writeErrorCode = (entry: unknown): unknown => {
+  const row = entry as { code?: unknown; err?: { code?: unknown } | null };
+  return row.code ?? row.err?.code;
+};
+
+const isHydratedDocument = (value: unknown): value is { toObject: () => unknown } =>
+  typeof value === 'object' &&
+  value !== null &&
+  !(value instanceof Error) &&
+  typeof (value as { toObject?: unknown }).toObject === 'function';
+
+/**
+ * Read an unordered `insertMany` failure row by row: which rows landed, which a unique index
+ * refused, and whether anything ELSE failed. Null when the error carries no per-row verdict.
+ *
+ * Mongoose's own bookkeeping is the source (8.x, `Model.$__insertMany`): `results` holds, per INPUT
+ * index, the hydrated document, the row's validation error, or its remapped write error; and
+ * `writeErrors` names the refused rows by input index (remapped — the driver counts only the rows
+ * that passed validation). A driver error with no `writeErrors` (a dropped connection, a write
+ * concern) leaves every row's document in `results` whether it landed or not, so it is no verdict.
+ */
+const settleBulkInsert = <T>(
+  error: unknown,
+  count: number,
+): { result: CreateManyResult<T>; failed: boolean } | null => {
+  if (typeof error !== 'object' || error === null) return null;
+  const { writeErrors, results, name } = error as {
+    writeErrors?: unknown;
+    results?: unknown;
+    name?: unknown;
+  };
+  if (!Array.isArray(results) || results.length !== count) return null;
+  const rowErrors: unknown[] = Array.isArray(writeErrors) ? writeErrors : [];
+  // Validation refused some rows and every other row was written — Mongoose's own error for it.
+  const validationOnly = name === 'MongooseBulkWriteError';
+  if (rowErrors.length === 0 && !validationOnly) return null;
+
+  const refused = new Map<number, unknown>();
+  for (const entry of rowErrors) {
+    const index = (entry as { index?: unknown }).index;
+    if (typeof index === 'number') refused.set(index, writeErrorCode(entry));
+  }
+  const inserted: CreateManyResult<T>['inserted'] = [];
+  const duplicateIndexes: number[] = [];
+  let failed = false;
+  results.forEach((row: unknown, index) => {
+    if (refused.has(index)) {
+      if (refused.get(index) === 11000) duplicateIndexes.push(index);
+      else failed = true;
+    } else if (isHydratedDocument(row)) {
+      inserted.push({ index, doc: row.toObject() as T });
+    } else {
+      failed = true; // its validation error
+    }
+  });
+  return { result: { inserted, duplicateIndexes }, failed };
+};
 
 /**
  * Turn `E11000` into a message that says WHICH constraint was violated.
@@ -401,6 +500,49 @@ export class BaseRepository<T extends BaseDocFields> {
     } catch (error) {
       if (isDuplicateKeyError(error)) throw new ConflictError(duplicateMessage(error));
       throw error;
+    }
+  }
+
+  /**
+   * Several rows in ONE round trip — `create` for a batch whose rows stand alone.
+   *
+   * A batch open of fifty lines through `create` was fifty round trips to the database, one after
+   * the other, and the request waited for every one. Here it is one `insertMany`, stamped exactly as
+   * `create` stamps a row (`createdBy`/`updatedBy`; the model's casting, defaults, validation and
+   * timestamps run as they do for `create`).
+   *
+   * UNORDERED, because the rows are independent: one refused row does not stop the rest, as one
+   * line's failure never stopped the lines after it. A row a unique index refuses is not an error
+   * here — it comes back in `duplicateIndexes`, for the caller to report per line where `create`
+   * would have thrown a 409 for the whole request. Any OTHER failure throws `PartialCreateError`,
+   * whose `result` names the rows that landed anyway, so they are audited before the caller rethrows
+   * its `cause`. Fleet's repositories carry a `createMany` of their own, ordered and all-or-error by
+   * design (an import's take-over finds where it stopped); this one is neither, hence its own name.
+   */
+  async createManyUnordered(
+    docs: readonly Partial<T>[],
+    meta: WriteMeta,
+  ): Promise<CreateManyResult<T>> {
+    if (docs.length === 0) return { inserted: [], duplicateIndexes: [] };
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    const payloads = docs.map((data) => ({ ...data, createdBy: by, updatedBy: by }));
+    try {
+      const created = await this.model.insertMany(payloads, {
+        ordered: false,
+        // Without it an unordered insertMany DROPS a row that fails validation and reports
+        // success; `create` would have thrown, and so must this.
+        throwOnValidationError: true,
+        ...(meta.session === undefined ? {} : { session: meta.session }),
+      });
+      return {
+        inserted: created.map((doc, index) => ({ index, doc: doc.toObject() as T })),
+        duplicateIndexes: [],
+      };
+    } catch (error) {
+      const settled = settleBulkInsert<T>(error, payloads.length);
+      if (settled === null) throw error;
+      if (settled.failed) throw new PartialCreateError(settled.result, error);
+      return settled.result;
     }
   }
 

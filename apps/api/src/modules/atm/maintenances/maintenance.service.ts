@@ -23,6 +23,7 @@ import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { atmLeadersService } from '../leaders/leaders.service';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import { openDayOf } from '../shared/open-operation';
+import { insertOpenLines, type OpenLine } from '../shared/open-batch';
 import { cairoDateString } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { atmMaintenanceRepository } from './maintenance.repository';
@@ -115,8 +116,10 @@ class AtmMaintenanceService {
    * OD-1c: «في الصيانة عايزك تسمح إنه يضيف أكتر من صيانة عادي»). The one-open-per-day rule (OD-1,
    * OD-1a) is lifted for maintenance as it was for replenishments (OD-1b): every line of a known
    * code opens its own row — a code pasted twice opens twice, and a machine already in maintenance
-   * opens again — exactly as the legacy did. `alreadyOpenCodes` stays in the answer, and is always
-   * empty.
+   * opens again — exactly as the legacy did. `alreadyOpenCodes` stays in the answer, and is empty
+   * unless a database still carries a retired unique index (`insertOpenLines`).
+   *
+   * Every known line is written in ONE insert, its audit rows in one queue add (`insertOpenLines`).
    */
   async open(
     input: OpenAtmMaintenances,
@@ -130,7 +133,7 @@ class AtmMaintenanceService {
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
     const machines = await atmMachineRepository.findActiveByCodes(branchId, codes);
 
-    const opened: AtmMaintenanceDoc[] = [];
+    const lines: OpenLine<AtmMaintenanceDoc>[] = [];
     const unknownCodes: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       const code = codes[index] as string;
@@ -140,8 +143,9 @@ class AtmMaintenanceService {
         unknownCodes.push(code);
         continue;
       }
-      const doc = await atmMaintenanceRepository.create(
-        {
+      lines.push({
+        code,
+        doc: {
           branchId: new Types.ObjectId(branchId),
           machineId: machine._id,
           machineCode: machine.machineCode,
@@ -164,16 +168,18 @@ class AtmMaintenanceService {
           closedById: null,
           closedByName: null,
         },
-        { by: ctx.userId },
-      );
-      await auditService.record({
+      });
+    }
+    const { opened, alreadyOpenCodes } = await insertOpenLines(
+      lines,
+      (docs) => atmMaintenanceRepository.createManyUnordered(docs, { by: ctx.userId }),
+      (doc, line) => ({
         entityRef: entityRef(String(doc._id)),
         action: 'create',
-        changes: diffChanges({}, { machineCode: code, openedAt: openedAt.toISOString() }),
-      });
-      opened.push(doc);
-    }
-    return { opened, unknownCodes, alreadyOpenCodes: [] };
+        changes: diffChanges({}, { machineCode: line.code, openedAt: openedAt.toISOString() }),
+      }),
+    );
+    return { opened, unknownCodes, alreadyOpenCodes };
   }
 
   /**
@@ -262,15 +268,13 @@ class AtmMaintenanceService {
       },
       { by: ctx.userId, scope: scopeSelector(ctx, 'atmMaintenance.complete'), onlyOpen: true },
     );
-    for (const row of rows) {
-      if (row.closedAt?.getTime() === closedAt.getTime()) {
-        await auditService.record({
-          entityRef: entityRef(String(row._id)),
-          action: 'complete',
-          changes: [],
-        });
-      }
-    }
+    // Only the rows THIS request closed (its instant) — one already closed kept its own; their
+    // trail in one queue add, as the write was one.
+    await auditService.recordMany(
+      rows
+        .filter((row) => row.closedAt?.getTime() === closedAt.getTime())
+        .map((row) => ({ entityRef: entityRef(String(row._id)), action: 'complete', changes: [] })),
+    );
     return rows;
   }
 
@@ -365,13 +369,9 @@ class AtmMaintenanceService {
       // The cascade wrote these rows again: answer with them as stored now (their version moved).
       rows = await atmMaintenanceRepository.findByIds(input.ids, scope);
     }
-    for (const row of rows) {
-      await auditService.record({
-        entityRef: entityRef(String(row._id)),
-        action: 'update',
-        changes: [],
-      });
-    }
+    await auditService.recordMany(
+      rows.map((row) => ({ entityRef: entityRef(String(row._id)), action: 'update', changes: [] })),
+    );
     return rows;
   }
 

@@ -444,6 +444,11 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    *
    * `System` for the same reason its neighbour gives: the caller is another feature reading
    * through a seam, not a person browsing HR.
+   *
+   * Only what a directory entry is made of (`DIRECTORY_FIELDS`): the one reader is the directory
+   * seam, which maps each row through `toDirectoryEmployee`. Fleet asks this for every driver twice
+   * per fleet dashboard refresh (the roster board and the drivers registry) — whole records,
+   * insurance, periods and history included, were decoded to keep the few fields an entry carries.
    */
   async listByJobTitlesSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (jobTitleIds.length === 0) return [];
@@ -453,6 +458,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         status: { $in: [...EMPLOYED_STATUSES] },
         isDeleted: false,
       })
+      .select(DIRECTORY_FIELDS)
       .lean<EmployeeDoc[]>()
       .exec();
   }
@@ -460,7 +466,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   /**
    * Everyone holding one of these job titles, EMPLOYED OR NOT — the same seats with the people
    * who have left them. For a caller recording history against a person who may have since exited
-   * (Fleet's violations). Soft-deleted rows are not included.
+   * (Fleet's violations). Soft-deleted rows are not included. Directory fields only, as above.
    */
   async listByJobTitlesAnyStatusSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (jobTitleIds.length === 0) return [];
@@ -469,6 +475,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         'employment.jobTitleId': { $in: jobTitleIds.map((id) => new Types.ObjectId(id)) },
         isDeleted: false,
       })
+      .select(DIRECTORY_FIELDS)
       .lean<EmployeeDoc[]>()
       .exec();
   }

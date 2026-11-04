@@ -37,7 +37,11 @@ import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
-import { alarmSortsFor } from '../maintenance/alarm-sort';
+import {
+  alarmSortsFor,
+  sharedAlarmProjection,
+  type AlarmProjection,
+} from '../maintenance/alarm-sort';
 import { fleetMaintenanceRepository } from '../maintenance/maintenance.repository';
 import { fleetOdometerRepository } from './odometer.repository';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
@@ -449,8 +453,19 @@ class FleetOdometerService {
    * the system, which reads as "no matches were excluded" and is the one wrong answer available.
    */
   async list(query: ListFleetOdometerQuery): Promise<OdometerLogPage> {
-    const filter = await this.filterFor(query);
     const sorts = parseFleetSort(query.sort);
+    // The «الإنذار» filter and the alarm column both read the whole-fleet projection. One request
+    // computes it once at most — and only if one of them asks — and the two are resolved side by
+    // side: neither needs the other's answer, and they used to run one after the other.
+    const alarms = sharedAlarmProjection();
+    const [filter, sortDerived] = await Promise.all([
+      this.filterFor(query, alarms),
+      // «فارق عداد الصيانة» is a figure about the CAR, not about the reading — so it is computed
+      // for the fleet and handed to the query as something it can order by. Only when the reader
+      // has actually asked for it: on every other request this is an empty list and the register
+      // stays the plain, indexed query it was.
+      alarmSortsFor([...sorts, { by: query.sortBy ?? '' }], alarms),
+    ]);
     const page = await fleetOdometerRepository.listLogs({
       filter,
       page: query.page,
@@ -460,11 +475,7 @@ class FleetOdometerService {
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
       sorts,
-      // «فارق عداد الصيانة» is a figure about the CAR, not about the reading — so it is computed
-      // for the fleet and handed to the query as something it can order by. Only when the reader
-      // has actually asked for it: on every other request this is an empty list and the register
-      // stays the plain, indexed query it was.
-      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+      sortDerived,
     });
     // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
     // many vehicles the registry holds. And each row's gap AT ITS READING (D1), for the page only:
@@ -482,8 +493,9 @@ class FleetOdometerService {
    */
   private async filterFor(
     query: FleetOdometerSummaryQuery,
+    alarms: AlarmProjection = computeAlarms,
   ): Promise<FilterQuery<FleetOdometerLogDoc>> {
-    const clause = await this.vehicleClause(query);
+    const clause = await this.vehicleClause(query, alarms);
     return fleetOdometerRepository.logFilter({ ...query, ...clause });
   }
 
@@ -505,6 +517,8 @@ class FleetOdometerService {
       FleetOdometerSummaryQuery,
       'vehicleCodes' | 'alerts' | 'typeIds' | 'operationIds' | 'branchIds'
     >,
+    // The request's own projection when the request may read it again (`list`'s alarm column).
+    alarms: AlarmProjection = computeAlarms,
   ): Promise<OdometerVehicleClause> {
     const [byCode, byLevel, bySet] = await Promise.all([
       query.vehicleCodes === undefined
@@ -518,9 +532,9 @@ class FleetOdometerService {
             .then((matched) => matched.items.map((vehicle) => String(vehicle._id))),
       query.alerts === undefined
         ? undefined
-        : computeAlarms().then((alarms) => {
+        : alarms().then((projected) => {
             const wanted = new Set<string>(query.alerts);
-            return alarms.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
+            return projected.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
           }),
       resolveVehicleFilterIds(vehicleSetPart(query)),
     ]);

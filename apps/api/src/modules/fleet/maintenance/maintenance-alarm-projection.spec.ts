@@ -77,7 +77,7 @@ const state = {
   } | null,
   /** The newest-dated reading (C6); `null` = the same point as the highest, a healthy chain. */
   newestReading: null as Point | null,
-  /** The car's make as `findById` answers it; `null` = the make is gone. */
+  /** The car's make as `listAll` answers it; `null` = the make is gone (no live make holds the id). */
   make: {
     _id: typeId,
     name: { ar: 'مرسيدس اسبرانتر 516', en: 'Mercedes Sprinter 516' },
@@ -139,13 +139,24 @@ vi.mock('../catalogs/catalog-item.repository', () => ({
       ].filter((item) => ids.includes(String(item._id))),
   },
 }));
+/**
+ * Every live make, as the ONE read of them answers — the car's own (when it is not gone) beside an
+ * unrelated make, so a lookup that ignored the car's `typeId` could not pass by luck.
+ */
+const listAllMakes = vi.fn(async () => [
+  ...(state.make === null ? [] : [state.make]),
+  {
+    _id: new Types.ObjectId('650000000000000000000012'),
+    name: { ar: 'تويوتا هاي إس', en: 'Toyota HiAce' },
+    maintenanceIntervalKm: 10_000,
+  },
+]);
+const activeForAlarm = vi.fn(async () => [{ _id: vehicleId, code: '200', typeId }]);
 vi.mock('../vehicle-types/vehicle-type.repository', () => ({
-  fleetVehicleTypeRepository: { findById: async () => state.make },
+  fleetVehicleTypeRepository: { listAll: () => listAllMakes() },
 }));
 vi.mock('../vehicles/vehicle.repository', () => ({
-  fleetVehicleRepository: {
-    list: async () => ({ items: [{ _id: vehicleId, code: '200', typeId }], meta: {} }),
-  },
+  fleetVehicleRepository: { activeForAlarm: () => activeForAlarm() },
 }));
 vi.mock('../odometer/odometer.repository', () => ({
   fleetOdometerRepository: {
@@ -201,6 +212,8 @@ const asked = () => {
 beforeEach(() => {
   lowerBoundsAt.mockClear();
   daysWithoutReadingSince.mockClear();
+  listAllMakes.mockClear();
+  activeForAlarm.mockClear();
   state.chain = [];
   state.newest = null;
   state.latestReading = { reading: 59_850, date: D('2026-09-05'), logId: LOG };
@@ -643,5 +656,68 @@ describe('C8 — a counting visit checked out before the one measured from', () 
     const row = await only();
     expect(row.sinceServiceKm).toBe(28_297 - 22_790);
     expect(row.newerUncountedVisit).toBeNull();
+  });
+});
+
+/**
+ * The GATHERING, by round trip. The projection is read by the alarm board, the odometer and
+ * workshop registers' alarm columns and filter, the fleet dashboard and both daily sweeps — and it
+ * used to ask for the active cars a page at a time and for each make one after another. What is
+ * pinned here is the shape that replaced it: one read of the cars, one of the makes, and the reads
+ * that need nothing started beside the cars rather than after them.
+ */
+describe('the projection gathers its inputs in a few round trips', () => {
+  const otherTypeId = new Types.ObjectId('650000000000000000000012');
+  const carB = new Types.ObjectId('650000000000000000000002');
+  const carC = new Types.ObjectId('650000000000000000000003');
+
+  it('reads the makes ONCE whatever the fleet holds, and each car still gets its own make', async () => {
+    activeForAlarm.mockResolvedValueOnce([
+      { _id: vehicleId, code: '200', typeId },
+      { _id: carB, code: '201', typeId: otherTypeId },
+      { _id: carC, code: '202', typeId },
+    ]);
+    const rows = await computeAlarms();
+    expect(listAllMakes).toHaveBeenCalledTimes(1);
+    expect(activeForAlarm).toHaveBeenCalledTimes(1);
+    expect(rows.map((row) => [row.code, row.rule.vehicleType?.id, row.rule.intervalKm])).toEqual([
+      ['200', String(typeId), 5000],
+      ['201', String(otherTypeId), 10_000],
+      ['202', String(typeId), 5000],
+    ]);
+  });
+
+  it('answers in the order the cars were read — the registry’s own, untouched', async () => {
+    activeForAlarm.mockResolvedValueOnce([
+      { _id: carC, code: '202', typeId },
+      { _id: vehicleId, code: '200', typeId },
+      { _id: carB, code: '201', typeId },
+    ]);
+    expect((await computeAlarms()).map((row) => row.code)).toEqual(['202', '200', '201']);
+  });
+
+  it('the makes are asked BESIDE the cars, not after them', async () => {
+    // Held open: were the makes still asked only once the cars had answered, nothing would have
+    // asked for them by the time the cars are released.
+    let release: (
+      cars: { _id: Types.ObjectId; code: string; typeId: Types.ObjectId }[],
+    ) => void = () => undefined;
+    activeForAlarm.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const pending = computeAlarms();
+    await Promise.resolve();
+    expect(listAllMakes, 'asked while the cars are still on their way').toHaveBeenCalledTimes(1);
+    release([{ _id: vehicleId, code: '200', typeId }]);
+    expect(await pending).toHaveLength(1);
+  });
+
+  it('no active car: an empty projection, and nothing asked of the chain or the workshop', async () => {
+    activeForAlarm.mockResolvedValueOnce([]);
+    expect(await computeAlarms()).toEqual([]);
+    expect(lowerBoundsAt).not.toHaveBeenCalled();
+    expect(daysWithoutReadingSince).not.toHaveBeenCalled();
   });
 });

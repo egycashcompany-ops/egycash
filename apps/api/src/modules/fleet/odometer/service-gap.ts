@@ -150,21 +150,18 @@ export const loadServiceGaps = async (
   if (measured.length === 0) return none;
 
   // The alarm's scope: ACTIVE, live cars whose make has an interval — as `computeAlarms` reads it.
+  // The cars, the makes and the counting work types in ONE round trip: every live make (a handful,
+  // read whole as `computeAlarms` reads them) rather than the cars' makes once the cars are in,
+  // which was a second round trip before the visits could even be asked. A deleted make has no
+  // interval — it is not among the live ones.
   const carIds = [...new Set(measured.map((row) => String(row.vehicleId)))];
-  const cars = (await fleetVehicleRepository.findByIdsSystem(carIds)).filter(
-    (car) => !car.isDeleted && car.status === 'active',
-  );
-  // The makes in ONE read, with the counting work types beside it. A deleted make has no interval
-  // (as `findById`, which reads live ones only, answered).
-  const [makes, countingIds] = await Promise.all([
-    fleetVehicleTypeRepository.findByIdsSystem([...new Set(cars.map((car) => String(car.typeId)))]),
+  const [found, makes, countingIds] = await Promise.all([
+    fleetVehicleRepository.findByIdsSystem(carIds),
+    fleetVehicleTypeRepository.listAll(),
     fleetCatalogItemRepository.countingWorkTypeIds(),
   ]);
-  const byMake = new Map(
-    makes
-      .filter((make) => !make.isDeleted)
-      .map((make) => [String(make._id), make.maintenanceIntervalKm ?? 0]),
-  );
+  const cars = found.filter((car) => !car.isDeleted && car.status === 'active');
+  const byMake = new Map(makes.map((make) => [String(make._id), make.maintenanceIntervalKm ?? 0]));
   const intervals = new Map<string, number>();
   for (const car of cars) {
     const intervalKm = byMake.get(String(car.typeId)) ?? 0;

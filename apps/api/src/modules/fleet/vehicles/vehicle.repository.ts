@@ -436,6 +436,25 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * Every ACTIVE live car the maintenance alarm projects (FR-3) — its id, code and make, nothing
+   * else — in ONE read.
+   *
+   * It used to page through `list()` a hundred cars at a time: one round trip per page, each with a
+   * `countDocuments` beside it that nobody read, and every field of every car carried across to use
+   * three. Unpaged on purpose — the projection is the whole active fleet by definition, a few hundred
+   * rows of three fields. In `list()`'s own default order (newest first, `_id` closing a tie), so the
+   * projection's rows come back in the order they always have.
+   */
+  async activeForAlarm(): Promise<{ _id: Types.ObjectId; code: string; typeId: Types.ObjectId }[]> {
+    return this.model
+      .find(this.baseFilter(undefined, { status: 'active' }))
+      .select({ code: 1, typeId: 1 })
+      .sort({ createdAt: -1, _id: -1 })
+      .lean<{ _id: Types.ObjectId; code: string; typeId: Types.ObjectId }[]>()
+      .exec();
+  }
+
+  /**
    * The ids of every vehicle whose CODE contains `term`, case-insensitively.
    *
    * The screens that file paperwork against a car — accidents, maintenance — store the car by id

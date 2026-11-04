@@ -508,7 +508,13 @@ class FleetDashboardNowService {
 
   private async compose(ctx: AuthContext, now: Date): Promise<FleetDashboardNowDto> {
     const d = dashboardContext(ctx, now);
-    const { values, unavailable } = await runSections('now', d, NOW_SECTIONS);
+    // The echo needs nothing a section computes — the branch's car set is memoised and shared — so
+    // it is asked beside the sections. Awaited after them, its car count was one more round trip on
+    // the end of every read, after the slowest section had already answered.
+    const [{ values, unavailable }, vehicleScope] = await Promise.all([
+      runSections('now', d, NOW_SECTIONS),
+      this.scopeEcho(d),
+    ]);
     const v = values as { [K in FleetDashboardNowSection]: NowValues[K] | null };
     return {
       today: d.today,
@@ -516,7 +522,7 @@ class FleetDashboardNowService {
       branchId: d.branchId,
       ...v,
       alerts: deriveNowAlerts(v),
-      vehicleScope: await this.scopeEcho(d),
+      vehicleScope,
       unavailable,
     };
   }

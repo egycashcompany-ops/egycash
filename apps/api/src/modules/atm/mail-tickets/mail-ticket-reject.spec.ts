@@ -113,6 +113,23 @@ describe('atmMailTicketRepository.decidePending', () => {
     expect(rows.map((row) => String(row._id))).toEqual([String(a._id), String(b._id)]);
   });
 
+  it('an id sent in UPPERCASE hex is the same ticket: written, read back, answered once', async () => {
+    // `objectId()` accepts `[0-9a-fA-F]`; the database hands `_id` back in lowercase.
+    const [a, b] = [ticket(), ticket()];
+    const { updateMany } = stubModel([a, b]);
+    const upperA = String(a._id).toUpperCase();
+    const rows = await atmMailTicketRepository.decidePending(
+      [upperA, String(b._id), String(a._id)],
+      decision,
+      { by: scope.userId, scope },
+    );
+
+    expect(clausesOf(updateMany.mock.calls[0]?.[0])).toMatchObject({
+      _id: { $in: [a._id, b._id] },
+    });
+    expect(rows.map((row) => String(row._id))).toEqual([String(a._id), String(b._id)]);
+  });
+
   it('no valid id: no write at all', async () => {
     const { updateMany, find } = stubModel([]);
     expect(
@@ -177,6 +194,27 @@ describe('atmMailTicketService.reject', () => {
         changes: [],
       })),
     );
+  });
+
+  it('a ticket selected by its UPPERCASE id is answered and audited like any other', async () => {
+    const a = ticket();
+    vi.spyOn(AtmMailTicketModel, 'updateMany').mockReturnValue({
+      exec: async () => ({ matchedCount: 1 }),
+    } as never);
+    vi.spyOn(AtmMailTicketModel, 'find').mockReturnValue({
+      lean: () => ({ exec: async () => [a] }),
+    } as never);
+
+    const answer = await atmMailTicketService.reject({ ids: [String(a._id).toUpperCase()] }, ctx);
+
+    expect(answer).toEqual([a]);
+    expect(recordMany).toHaveBeenCalledWith([
+      {
+        entityRef: { moduleId: 'atm', entityType: 'mailTicket', entityId: String(a._id) },
+        action: 'reject',
+        changes: [],
+      },
+    ]);
   });
 
   it('nothing decided — every ticket already decided or out of reach: an empty answer and no trail', async () => {

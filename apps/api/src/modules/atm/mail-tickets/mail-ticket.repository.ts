@@ -66,6 +66,12 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
    * ticket, never overwritten. Which tickets this write decided is read back by its own stamp — the
    * decider and the exact instant (`decision.actionAt`), the way `close` tells the rows it closed
    * by its own close time.
+   *
+   * Ids are taken in their canonical form (lowercase hex) before anything else: the contract's
+   * `objectId()` accepts `[0-9a-fA-F]`, and `'ABC…'` is the very same ticket as `'abc…'` — the write
+   * matches it either way, so the read-back (keyed by `String(row._id)`, lowercase) must find it
+   * the same way, or a ticket would be rejected with no answer row, no audit row and no signal. The
+   * two spellings of one id are also one ticket in the dedupe.
    */
   async decidePending(
     ids: readonly string[],
@@ -77,7 +83,13 @@ class AtmMailTicketRepository extends BaseRepository<AtmMailTicketDoc> {
     },
     meta: { by: string; scope: ScopeSelector },
   ): Promise<AtmMailTicketDoc[]> {
-    const order = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    const order = [
+      ...new Set(
+        ids
+          .filter((id) => Types.ObjectId.isValid(id))
+          .map((id) => new Types.ObjectId(id).toHexString()),
+      ),
+    ];
     if (order.length === 0) return [];
     const selected = { $in: order.map((id) => new Types.ObjectId(id)) };
     await this.model

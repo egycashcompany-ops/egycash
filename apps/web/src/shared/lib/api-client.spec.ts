@@ -307,3 +307,42 @@ describe("renewal outcomes: only the server's own refusal signs a person out", (
     expect(authLost).not.toHaveBeenCalled();
   });
 });
+
+// TanStack's AbortSignal on a read: a superseded refetch or a screen left aborts it on the wire
+// (the ATM boards and done pages, 2026-11). A read without one sends exactly what it always did.
+describe('a read carries the query’s AbortSignal to fetch', () => {
+  let mod: ApiClient;
+  let inits: (RequestInit | undefined)[];
+
+  beforeEach(async () => {
+    vi.resetModules();
+    mod = await import('./api-client');
+    inits = [];
+    vi.stubGlobal('fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+      inits.push(init);
+      return envelope(200, {
+        success: true,
+        data: [],
+        meta: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 },
+      });
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('get and getPage hand the signal to fetch', async () => {
+    const controller = new AbortController();
+    await mod.get('/atm/replenishments/board', { signal: controller.signal });
+    await mod.getPage('/atm/replenishments/done', { signal: controller.signal });
+    expect(inits.map((init) => init?.signal)).toEqual([controller.signal, controller.signal]);
+  });
+
+  it('without one, no signal key is sent at all', async () => {
+    await mod.get('/atm/banks');
+    await mod.getPage('/atm/machines');
+    await mod.get('/atm/banks', { signal: undefined });
+    expect(inits.every((init) => init !== undefined && !('signal' in init))).toBe(true);
+  });
+});

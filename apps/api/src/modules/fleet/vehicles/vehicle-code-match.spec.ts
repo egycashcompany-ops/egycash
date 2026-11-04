@@ -19,6 +19,37 @@ describe('vehicleCodePattern — the stored codes a filter code names', () => {
     expect(matches(' كوستر   1 ', 'كوستر 1')).toBe(true);
   });
 
+  it('reads a Unicode space as the browser does — a no-break, thin or ideographic space', () => {
+    // The web normalizes these (JavaScript's `\s`) and offers «كورولا 1»; the database's own `\s`
+    // is ASCII only, so the class names them — or a sheet's no-break space is an empty table.
+    expect(matches('كورولا 1', 'كورولا\u00a01')).toBe(true);
+    expect(matches('فورتشنر 2', 'فورتشنر\u00a02\u00a0')).toBe(true);
+    expect(matches('mg 2', 'MG\u20092')).toBe(true);
+    expect(matches('كوستر 1', '\ufeffكوستر\u30001')).toBe(true);
+    expect(matches('كورولا 1', 'كورولا\u00a010')).toBe(false);
+  });
+
+  it('holds exactly JavaScript’s whitespace — every character, one by one', () => {
+    const pattern = vehicleCodePattern('a b');
+    const differ: string[] = [];
+    for (let point = 0; point <= 0xffff; point += 1) {
+      const char = String.fromCharCode(point);
+      if (pattern.test(`a${char}b`) !== /\s/.test(char)) differ.push(point.toString(16));
+    }
+    expect(differ).toEqual([]);
+  });
+
+  it('spells no character the database refuses — no `\\u`, no NUL, no line separator', () => {
+    // V8 writes U+2028 / U+2029 back as `\u2028` in a pattern's source and the database refuses
+    // `\u` (a 500); the class reaches them through the database's `\v` instead.
+    for (const code of ['كورولا 1', ' MG\u00a0\u20282 ', 'a\u0000b']) {
+      const { source } = vehicleCodePattern(code);
+      expect(source, code).not.toContain('\\u');
+      expect(source, code).not.toMatch(/[\0\u2028\u2029]/);
+      expect(source, code).toContain('\u00a0');
+    }
+  });
+
   it('ignores the case of a Latin letter', () => {
     expect(matches('mg 2', 'MG 2')).toBe(true);
     expect(matches('MG 2', 'mg 2')).toBe(true);
@@ -68,7 +99,6 @@ describe('anyVehicleCode — the `$in` a code field is asked with', () => {
     const asText = JSON.stringify(filter, (_key, value: unknown) =>
       value instanceof RegExp ? String(value) : value,
     );
-    expect(asText).toContain('فورتشنر');
-    expect(asText).toContain('\\\\s+');
+    expect(asText).toContain(JSON.stringify(String(vehicleCodePattern('فورتشنر 2'))));
   });
 });

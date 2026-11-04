@@ -10,11 +10,12 @@
 // rule: the same words in the same order, whitespace between and around them read as one space,
 // Latin case ignored. Stored data is not touched — the comparison is what changes.
 //
-// Each code is an anchored, escaped pattern (`^\s*كورولا\s+1\s*$`, case-insensitive), so «كورولا 1»
-// never matches «كورولا 10» and a `.` or `+` in a code is that character. An anchored pattern
-// that may open with whitespace cannot narrow an index to a prefix: the registry's `code` index is
-// scanned whole — about 220 cars — and an old-book `vehicleCode` index is scanned over its string
-// keys only (registry-linked rows store `null`). Both are small enough that this costs nothing.
+// Each code is an anchored, escaped pattern (`^␣*كورولا␣+1␣*$`, case-insensitive, `␣` the
+// whitespace class below), so «كورولا 1» never matches «كورولا 10» and a `.` or `+` in a code is
+// that character. An anchored pattern that may open with whitespace cannot narrow an index to a
+// prefix: the registry's `code` index is scanned whole — about 220 cars — and an old-book
+// `vehicleCode` index is scanned over its string keys only (registry-linked rows store `null`).
+// Both are small enough that this costs nothing.
 import { normalizeVehicleCode } from '@ecms/contracts';
 
 /**
@@ -26,12 +27,33 @@ import { normalizeVehicleCode } from '@ecms/contracts';
 const escapeRegExp = (text: string): string =>
   text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\0/g, '\\x00');
 
+/**
+ * Whitespace as the BROWSER reads it — the class written out for the database.
+ *
+ * The web reads a code with JavaScript's `\s` (`normalizeVehicleCode`, `sameVehicleCode`, the
+ * parser), which is Unicode whitespace: a no-break space, a thin space, an ideographic space. The
+ * database's `\s` is ASCII only (PCRE without UCP). A go-live sheet out of Excel can carry
+ * «كورولا 1» with a no-break space; the web offers it as «كورولا 1», and a bare `\s` here would
+ * answer that pick with an empty table — the owner's very symptom, in another spelling.
+ *
+ * So the class names the rest of JavaScript's `\s` itself:
+ *   • `\s` — ASCII whitespace, in both engines;
+ *   • `\v` — the line and paragraph separators U+2028 / U+2029 for the database, whose `\v` is
+ *     vertical whitespace (in JavaScript it is the vertical tab, already in `\s`). They cannot be
+ *     written as themselves: V8 spells them `\u2028` in a pattern's source, and the database
+ *     refuses `\u` — a 500. PCRE's `\v` also takes U+0085 (NEL), Unicode whitespace JavaScript's
+ *     `\s` leaves out: the database finds a stored «كورولا<NEL>1» too, never fewer cars;
+ *   • every other Unicode space as the CHARACTER itself (the `\uXXXX` below are string escapes,
+ *     so the pattern holds the characters, which both engines read as themselves).
+ * In JavaScript the class is exactly `\s`, so a unit spec's `.test` is the browser's answer.
+ */
+const SPACE = '[\\s\\v\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]';
+
 /** The pattern a stored code must match to be this code — see the rule above. */
-export const vehicleCodePattern = (code: string): RegExp =>
-  new RegExp(
-    `^\\s*${normalizeVehicleCode(code).split(' ').map(escapeRegExp).join('\\s+')}\\s*$`,
-    'i',
-  );
+export const vehicleCodePattern = (code: string): RegExp => {
+  const words = normalizeVehicleCode(code).split(' ').map(escapeRegExp);
+  return new RegExp(`^${SPACE}*${words.join(`${SPACE}+`)}${SPACE}*$`, 'i');
+};
 
 /**
  * `{ $in: [...] }` for a code field: the stored codes that are ANY of these. Blank codes name no

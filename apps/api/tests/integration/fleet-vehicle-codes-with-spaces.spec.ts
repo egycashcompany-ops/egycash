@@ -9,7 +9,9 @@
 //      whitespace and Latin case aside, exact otherwise; two numbers are still two cars;
 //   2. the odometer register (`GET /fleet/odometer?vehicleCodes=`): the same codes find the same
 //      cars' readings — and a row kept from the old book, matched by the code the book wrote;
-//   3. the dashboard's vehicle set (`idsByCodes`) answers the same.
+//   3. the dashboard's vehicle set (`idsByCodes`) answers the same;
+//   4. a code stored with a Unicode space — a sheet's no-break space, a thin or ideographic one —
+//      is found by the code the web offers for it, which the web reads with JavaScript's `\s`.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -277,5 +279,49 @@ describe('the odometer register — `GET /fleet/odometer?vehicleCodes=`', () => 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.vehicleId).toBeNull();
     expect(rows[0]?.vehicleCode?.trim()).toBe('MG 3');
+  });
+});
+
+describe('a code stored with a Unicode space — what the web offers finds it', () => {
+  // The web reads whitespace as JavaScript's `\s` and offers each of these under its plain
+  // spelling; the database's `\s` is ASCII only. Each sits beside the ASCII car of the same code.
+  const unicode: Record<string, string> = {
+    'nbsp كورولا 1': 'كورولا\u00a01',
+    'nbsp فورتشنر 2': 'فورتشنر\u00a02\u00a0',
+    'thin mg 2': 'mg\u20092',
+    'ideographic كوستر 1': '\ufeffكوستر\u30001',
+    'line-separator كورولا 2': 'كورولا\u20282',
+    'nbsp كورولا 10': 'كورولا\u00a010',
+  };
+
+  beforeAll(async () => {
+    let placeholder = 0;
+    for (const [key, code] of Object.entries(unicode)) {
+      placeholder += 1;
+      cars[key] = await mkVehicle(`UNI-${placeholder}`);
+      await storeCodeAsIs(cars[key] as FleetVehicleDto, code);
+    }
+  });
+
+  it('the registry answers «كورولا 1», «فورتشنر 2», «MG 2», «كوستر 1» with both spellings', async () => {
+    expect(await registry('كورولا 1')).toEqual(ids('كورولا 1', 'nbsp كورولا 1'));
+    expect(await registry('فورتشنر 2')).toEqual(ids('فورتشنر 2', 'nbsp فورتشنر 2'));
+    expect(await registry('MG 2')).toEqual(ids('MG 2', 'thin mg 2'));
+    expect(await registry('كوستر 1')).toEqual(ids('كوستر 1', 'ideographic كوستر 1'));
+    // U+2028 cannot be written into the pattern (a 500); the database's `\v` reaches it.
+    expect(await registry('كورولا 2')).toEqual(ids('كورولا 2', 'line-separator كورولا 2'));
+  });
+
+  it('is still exact — «كورولا 1» is not the no-break «كورولا 10»', async () => {
+    expect(await registry('كورولا 10')).toEqual(ids('كورولا 10', 'nbsp كورولا 10'));
+    expect(await registry('كورولا 1, MG 2')).toEqual(
+      ids('كورولا 1', 'nbsp كورولا 1', 'MG 2', 'thin mg 2'),
+    );
+  });
+
+  it('the dashboard vehicle set resolves them the same way', async () => {
+    expect((await fleetVehicleRepository.idsByCodes(['كورولا 1', 'فورتشنر 2'])).sort()).toEqual(
+      ids('كورولا 1', 'nbsp كورولا 1', 'فورتشنر 2', 'nbsp فورتشنر 2'),
+    );
   });
 });

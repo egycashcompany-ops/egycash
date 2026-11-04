@@ -10,6 +10,7 @@ import { FleetViolationModel } from './violation.model';
 import { type DriverFineGroup, type ViolationYearSums } from './violation.repository';
 import { assembleYearDigest } from './violation-rollup';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { vehicleCodePattern } from '../vehicles/vehicle-code-match';
 
 const ID = (n: number): string => `64b0000000000000000000${String(n).padStart(2, '0')}`;
 const CODE_IDS = [ID(1), ID(2)];
@@ -137,7 +138,9 @@ describe('driverFineGroups — the rollup’s own question, narrowed to the driv
     const patterns = JSON.stringify(pipeline[0]?.['$match'], (_key, value: unknown) =>
       value instanceof RegExp ? String(value) : value,
     );
-    expect(patterns).toContain('"vehicleCode":{"$in":["/^\\\\s*B-9\\\\s*$/i"]}');
+    expect(patterns).toContain(
+      `"vehicleCode":{"$in":[${JSON.stringify(String(vehicleCodePattern('B-9')))}]}`,
+    );
   });
 });
 

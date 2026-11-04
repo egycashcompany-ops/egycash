@@ -483,31 +483,90 @@ const identifierFilter = () => z.string().trim().min(1).max(60).optional();
 // (`z.string().max(20)`), so `A-15` and `FLT-210` are legal codes and `215-216-217` is three cars
 // written together. Nothing about the characters tells them apart.
 //
-// So the separator is not the dash — it is the SPACE around it. `215 - 216 - 217` is three, because
-// a code cannot contain a space; `215-216` is one code, because it might genuinely be one. That
-// keeps every real hyphenated code intact, costs the reader one space when they mean a list, and
-// has no second interpretation to be surprised by: the same text always parses the same way, here,
-// on the URL, and on the server.
+// So the separator is not the dash — it is the SPACE around it. `215 - 216 - 217` is three; `215-216`
+// is one code, because it might genuinely be one. That keeps every real hyphenated code intact,
+// costs the reader one space when they mean a list, and has no second interpretation to be
+// surprised by: the same text always parses the same way, here, on the URL, and on the server.
+//
+// THE SPACE, and the cars that have one. This used to say "a code cannot contain a space", and the
+// registry says otherwise: «MG 1», «MG 2», «بيجو 5008», «تويوتا 1», «فورتشنر 2», «كوستر 1»,
+// «كورولا 1» — a model's name and the number that tells two of them apart. Splitting on every space
+// read «كورولا 1» as two cars nobody has, «كورولا» and «1», whether it was typed, picked from the
+// list, or carried on a link — «مش بيجيب العربيه و بيسرش اكن الاسم بتاع العربيه حاجه والرقم اللى
+// جمبها حاجه تانيه». So:
+//
+//   • commas, semicolons, newlines and a spaced dash ALWAYS separate;
+//   • plain whitespace separates too, EXCEPT that a word followed by a number is one code: a token
+//     with anything in it besides digits and dashes, then whitespace, then a token of digits only,
+//     is that car — written back with a single space. `كورولا 1` and `MG 2` are one code each;
+//     `150 151` is still two cars, and `كورولا 1 150` is «كورولا 1» and 150 (one number per word).
+//
+// Still deterministic, still nothing to look up: the shape of the text decides, never the registry,
+// so the same words mean the same filter on every screen and every reload. Arabic-Indic digits
+// count as digits («كورولا ١»), since a box may be typed on an Arabic keyboard before anything
+// folds them.
 //
 // The alternative — asking the registry whether the whole run happens to be a code — reads better
 // in the easy cases and worse in the hard one: the same string would split or not depending on what
 // the search had answered a moment earlier, so a reader who typed the same thing twice could get
 // two different filters.
 
-/** Separators no vehicle code contains: commas, semicolons, newlines, whitespace, a spaced dash. */
-const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+|\s+/;
+/** Separators no vehicle code contains: commas, semicolons, newlines, a spaced dash. */
+const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+/;
+/** A number — the part of «كورولا 1» that tells two of a model apart. Arabic-Indic digits too. */
+const DIGITS_ONLY = /^[0-9\u0660-\u0669\u06F0-\u06F9]+$/;
+/** A WORD: anything besides digits and dashes, so `215-216` is not one and `A-15` is. */
+const HAS_WORD = /[^0-9\u0660-\u0669\u06F0-\u06F9-]/;
+
+/**
+ * One code as the registry means it: no whitespace at either end, and one space wherever there was
+ * a run of it. `«فورتشنر 2 »` and `«فورتشنر  2»` are both «فورتشنر 2».
+ */
+export const normalizeVehicleCode = (code: string): string => code.trim().replace(/\s+/g, ' ');
+
+/**
+ * Do these two spellings name the same car? Whitespace as `normalizeVehicleCode` reads it, and the
+ * case of a Latin letter ignored (`mg 2` is «MG 2») — the comparison the server's match makes.
+ */
+export const sameVehicleCode = (a: string, b: string): boolean =>
+  normalizeVehicleCode(a).toLowerCase() === normalizeVehicleCode(b).toLowerCase();
+
+/**
+ * Is this token a WORD that a following number joins — see the rule above. Exported for the box
+ * being typed into, which holds such a word back until it knows whether a number follows.
+ */
+export const vehicleCodeTakesNumber = (token: string): boolean =>
+  token.trim() !== '' && !/\s/.test(token.trim()) && HAS_WORD.test(token.trim());
+
+/** The codes in one stretch of text between hard separators: whitespace splits, word + number joins. */
+const codesBetweenSeparators = (segment: string): string[] => {
+  const tokens = segment.split(/\s+/).filter((token) => token !== '');
+  const out: string[] = [];
+  for (let at = 0; at < tokens.length; at += 1) {
+    const token = tokens[at] as string;
+    const next = tokens[at + 1];
+    if (next !== undefined && HAS_WORD.test(token) && DIGITS_ONLY.test(next)) {
+      out.push(`${token} ${next}`);
+      at += 1;
+    } else {
+      out.push(token);
+    }
+  }
+  return out;
+};
 
 /**
  * The vehicle codes a piece of text names — deduplicated, in the order first written.
  *
  * Used for what a person types into the filter box AND for what arrives on the URL, deliberately:
  * one function means `?vehicleCodes=A-15` reloads as the code the reader picked, rather than as two
- * codes nobody has.
+ * codes nobody has — and `?vehicleCodes=كورولا 1` as «كورولا 1».
  */
 export const splitVehicleCodeList = (raw: string | readonly string[]): string[] => {
+  // An array is already one code per entry (a repeated query parameter): only tidied, not re-read.
   const parts = Array.isArray(raw)
-    ? (raw as readonly string[])
-    : String(raw).split(CODE_SEPARATORS);
+    ? (raw as readonly string[]).map(normalizeVehicleCode)
+    : String(raw).split(CODE_SEPARATORS).flatMap(codesBetweenSeparators);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {

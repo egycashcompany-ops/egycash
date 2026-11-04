@@ -411,6 +411,28 @@ describe('R1 — data scope (R-27)', () => {
     });
   });
 
+  it('the echo is asked BESIDE the sections, not after the slowest of them', async () => {
+    // The echo reads the branch's car set (memoised, shared with the sections) and the registry's
+    // count — nothing a section computes. Awaited after them, it was one more round trip on the end
+    // of every narrowed read.
+    let release: (value: unknown) => void = () => undefined;
+    roster.boardWithCrews.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const pending = fleetDashboardNowService.read(ctxWith(ALL_KEYS, { activeBranchId: B2 }), NOW);
+    for (let tick = 0; tick < 10; tick += 1) await Promise.resolve();
+    expect(vehicles.countLive, 'counted while the roster is still answering').toHaveBeenCalledWith([
+      'v1',
+      'v3',
+    ]);
+    release({ board: BOARD, fixedCrews: [] });
+    const dto = await pending;
+    expect(dto.vehicleScope?.count).toBe(2);
+    expect(dto.roster).not.toBeNull();
+  });
+
   it('the home branch alone is the whole company: no set, no echo', async () => {
     const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS, { branchId: B1 }), NOW);
     expect(dto.vehicleScope).toBeNull();

@@ -236,8 +236,13 @@ const report = async (token: string): Promise<AtmRegisterReportDto> => {
   return data<AtmRegisterReportDto>(res);
 };
 
+// Oldest first, said outright: with no sort the order is whatever index the planner picks —
+// `ix_action_at` ({action, at: -1}) hands these rows back newest first.
 const auditRows = async (entityId: string, action: string) =>
-  AuditLogModel.find({ 'entityRef.entityId': entityId, action }).lean().exec();
+  AuditLogModel.find({ 'entityRef.entityId': entityId, action })
+    .sort({ at: 1, _id: 1 })
+    .lean()
+    .exec();
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });

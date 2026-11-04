@@ -238,26 +238,34 @@ class AtmMailTicketService {
     return decided;
   }
 
-  /** Reject (contad_app.js:2761-2783): the ticket flips to rejected; nothing is created. */
+  /**
+   * Reject (contad_app.js:2761-2783): the tickets flip to rejected; nothing is created.
+   *
+   * ONE write for the whole selection, then one read of what it decided (`decidePending`) — it was
+   * a read and a write per ticket, measured at 1.7 s for a screenful. The answer is unchanged: the
+   * selected tickets this request rejected, in the selection's order. One already decided, outside
+   * the caller's scope or not there at all is left out, as it always was; and one decided by
+   * someone else between the screen and this write is left out the same way — the per-ticket loop
+   * answered that race with a 409 for the whole selection.
+   */
   async reject(input: DecideAtmMailTickets, ctx: AuthContext): Promise<AtmMailTicketDoc[]> {
-    const scope = scopeSelector(ctx, 'atmMailTicket.decide');
-    const decided: AtmMailTicketDoc[] = [];
-    for (const id of input.ids) {
-      const ticket = await atmMailTicketRepository.findById(id, scope);
-      if (ticket === null || ticket.status !== 'pending') continue;
-      const updated = await atmMailTicketRepository.updateById(
-        id,
-        {
-          status: 'rejected',
-          actionById: new Types.ObjectId(ctx.userId),
-          actionByName: actorName(ctx),
-          actionAt: new Date(),
-        },
-        { by: ctx.userId, version: ticket.__v, scope },
-      );
-      await auditService.record({ entityRef: entityRef(id), action: 'reject', changes: [] });
-      decided.push(updated);
-    }
+    const decided = await atmMailTicketRepository.decidePending(
+      input.ids,
+      {
+        status: 'rejected',
+        actionById: new Types.ObjectId(ctx.userId),
+        actionByName: actorName(ctx),
+        actionAt: new Date(),
+      },
+      { by: ctx.userId, scope: scopeSelector(ctx, 'atmMailTicket.decide') },
+    );
+    await auditService.recordMany(
+      decided.map((ticket) => ({
+        entityRef: entityRef(String(ticket._id)),
+        action: 'reject',
+        changes: [],
+      })),
+    );
     return decided;
   }
 

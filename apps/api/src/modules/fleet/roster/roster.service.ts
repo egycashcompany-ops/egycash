@@ -144,14 +144,42 @@ class FleetRosterService {
     // The day the board DESCRIBES, as the rules read it (R-02): the date part of `day`. The
     // dashboard hands in the Cairo day; the HTTP route hands in its `?date=`.
     const ymd = ymdOf(day);
-    const vehicles = await this.allActiveVehicles(scope);
-    const vehicleIds = vehicles.map((v) => String(v._id));
-    const [inWorkshop, assignments, fixedCrews, licenceRule] = await Promise.all([
-      fleetVehicleService.openVisitVehicleIds(vehicleIds, day),
+    // Q-01, read ONCE for the whole board and handed to the seam's batched pass.
+    const licenceRuleRead = rosterLicenceRule();
+    // TWO CHAINS SIDE BY SIDE — the CARS (the scoped registry, then which of them the workshop holds
+    // that day) and the DRIVERS (the driving seats, then each one's verdict for the day) — with the
+    // day's plan and the standing crews beside them. Neither chain reads anything of the other; the
+    // board used to walk the drivers' only once the cars' had finished, on the dashboard's every
+    // refresh as well as here.
+    const [
+      { vehicles, inWorkshop },
+      { seatRoster, verdicts },
+      assignments,
+      fixedCrews,
+      licenceRule,
+    ] = await Promise.all([
+      this.allActiveVehicles(scope).then(async (scoped) => ({
+        vehicles: scoped,
+        inWorkshop: await fleetVehicleService.openVisitVehicleIds(
+          scoped.map((v) => String(v._id)),
+          day,
+        ),
+      })),
+      // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset
+      // Fleet has recorded a profile for. See `drivingSeatRoster`.
+      //
+      // ONE batched pass, not one seam call per driver: the roster already carries each driver's
+      // employment status, and the profiles, the التمامات overlay and the leave setting are each
+      // a single query for the whole board. Asked one driver at a time this was four serial
+      // round trips per driver — a cost that grew with the pool the moment the pool became the
+      // registry.
+      Promise.all([drivingSeatRoster(), licenceRuleRead]).then(async ([pool, rule]) => ({
+        seatRoster: pool,
+        verdicts: await driverAvailabilityForRoster(pool, day, rule),
+      })),
       fleetDutyAssignmentRepository.findForDate(day),
       fleetFixedCrewRepository.findAll(),
-      // Q-01, read ONCE for the whole board and handed to the seam's batched pass.
-      rosterLicenceRule(),
+      licenceRuleRead,
     ]);
     const byVehicle = new Map(assignments.map((row) => [String(row.vehicleId), row]));
     const fixedByVehicle = new Map(fixedCrews.map((row) => [String(row.vehicleId), row]));
@@ -165,15 +193,6 @@ class FleetRosterService {
     const availableOrder: string[] = [];
     const licenceOf = new Map<string, FleetDriverLicenceState>();
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
-    // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
-    // has recorded a profile for. See `drivingSeatRoster`.
-    //
-    // ONE batched pass, not one seam call per driver: the roster already carries each driver's
-    // employment status, and the profiles, the التمامات overlay and the leave setting are each a
-    // single query for the whole board. Asked one driver at a time this was four serial round
-    // trips per driver — a cost that grew with the pool the moment the pool became the registry.
-    const seatRoster = await drivingSeatRoster();
-    const verdicts = await driverAvailabilityForRoster(seatRoster, day, licenceRule);
     for (const employee of seatRoster) {
       const availability = verdicts.get(employee.employeeId);
       if (availability?.available === true) {

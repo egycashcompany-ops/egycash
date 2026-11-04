@@ -6,6 +6,7 @@ import { disconnectMongo } from './infrastructure/database/mongo';
 import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues, startWorkers } from './infrastructure/queue/jobs';
 import { bootPlatform } from './platform/kernel/bootstrap';
+import { startAuditIndexBuild } from './platform/audit';
 import { schedulerService } from './platform/scheduler';
 import { moduleManifests } from './modules';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
@@ -39,6 +40,10 @@ import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumable
 const main = async (): Promise<void> => {
   initSentry('worker');
   await bootPlatform({ modules: moduleManifests });
+  // The worker runs the hourly security-signal sweep these audit_logs indexes exist for, so it
+  // builds them too: on a deployment whose api comes up second, or not at all, the sweep still
+  // gets them. Idempotent, and safe beside the api's own call (platform/audit/audit-indexes.ts).
+  startAuditIndexBuild();
 
   // The Fleet go-live import — see `server.ts` for why it is started by the long-running processes
   // and not by the module seed. Both start it and the lease elects one; the worker is here so the

@@ -1,4 +1,11 @@
-// Reading an open board WHOLE, however many pages it takes.
+// Reading a list WHOLE, however many pages it takes — the done pages, the mail pages and the
+// machine export. The two OPEN boards no longer walk: since 2026-11 they read the whole board in
+// one request (`GET /atm/{kind}/board`, `atmOpenBoardQueries`), which is what this walk was the
+// stand-in for — measured in production it was the API's busiest read.
+//
+// The walk takes TanStack's AbortSignal: a walk the cache no longer wants (a superseded refetch, a
+// range typed past, a screen left) stops between steps and aborts the page reads in flight, instead
+// of fetching every remaining page for an answer nobody reads.
 //
 // The boards asked for ONE page of `MAX_PAGE_SIZE` (100) and had no pager. On a busy day there are
 // more open operations than that company-wide, so every row past the hundredth (by area) was not
@@ -39,16 +46,34 @@ export const boardPageCount = (totalPages: number): number =>
  */
 export const MAX_BOARD_WALKS = 3;
 
+/**
+ * One page of the list. `signal` is the walk's own — pass it to the request (`getPage(path,
+ * { signal })`), so an abandoned walk's reads in flight are aborted too.
+ */
+export type BoardPageFetch<T> = (
+  page: number,
+  pageSize: number,
+  signal?: AbortSignal,
+) => Promise<Paginated<T>>;
+
+/** Stop here if the walk was abandoned — with the signal's own reason, as `fetch` does. */
+const stopIfAborted = (signal: AbortSignal | undefined): void => {
+  signal?.throwIfAborted();
+};
+
 /** One walk over every page, and whether its pages agree with each other. */
 const walkBoard = async <T extends { id: string }>(
-  fetchPage: (page: number, pageSize: number) => Promise<Paginated<T>>,
+  fetchPage: BoardPageFetch<T>,
+  signal: AbortSignal | undefined,
 ): Promise<{ board: Paginated<T>; steady: boolean }> => {
-  const first = await fetchPage(1, MAX_PAGE_SIZE);
+  stopIfAborted(signal);
+  const first = await fetchPage(1, MAX_PAGE_SIZE, signal);
   const pages = boardPageCount(first.meta.totalPages);
   if (pages <= 1) return { board: first, steady: true };
+  stopIfAborted(signal);
   const rest = await Promise.all(
     Array.from({ length: pages - 1 }, async (_unused, index) =>
-      fetchPage(index + 2, MAX_PAGE_SIZE),
+      fetchPage(index + 2, MAX_PAGE_SIZE, signal),
     ),
   );
   const seen = new Set<string>();
@@ -66,13 +91,18 @@ const walkBoard = async <T extends { id: string }>(
   return { board: { ...first, items }, steady };
 };
 
-/** Every page, in order, as one `Paginated` whose `items` hold each row once. */
+/**
+ * Every page, in order, as one `Paginated` whose `items` hold each row once. `signal` — TanStack's,
+ * from the `queryFn` context — is handed to every page read and checked between steps: once it
+ * aborts, no further page is asked for and the walk rejects with its reason.
+ */
 export const fetchWholeBoard = async <T extends { id: string }>(
-  fetchPage: (page: number, pageSize: number) => Promise<Paginated<T>>,
+  fetchPage: BoardPageFetch<T>,
+  signal?: AbortSignal,
 ): Promise<Paginated<T>> => {
-  let read = await walkBoard(fetchPage);
+  let read = await walkBoard(fetchPage, signal);
   for (let walks = 1; !read.steady && walks < MAX_BOARD_WALKS; walks += 1) {
-    read = await walkBoard(fetchPage);
+    read = await walkBoard(fetchPage, signal);
   }
   return read.board;
 };

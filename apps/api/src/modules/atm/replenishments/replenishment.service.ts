@@ -3,6 +3,7 @@
 // deviation is a numbered decision in docs/12-planning/atm-operations-port.md.
 import {
   normalizeAtmMachineCode,
+  type AtmOpenBoardQuery,
   type BulkUpdateAtmReplenishments,
   type ListAtmDoneOperationsQuery,
   type ListAtmOpenOperationsQuery,
@@ -18,8 +19,10 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import { openDayOf } from '../shared/open-operation';
+import { insertOpenLines, type OpenLine } from '../shared/open-batch';
 import { cairoDateString, cairoWallClockUtc } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
+import { type OpenBoard } from '../shared/operation-log.repository';
 import { atmReplenishmentRepository } from './replenishment.repository';
 import { type AtmReplenishmentDoc } from './replenishment.model';
 
@@ -52,6 +55,18 @@ class AtmReplenishmentService {
       areas: query.areas,
       page: query.page,
       pageSize: query.pageSize,
+      scope: scopeSelector(ctx, 'atmReplenishment.view'),
+    });
+  }
+
+  /**
+   * The open board whole, in one read — the rows `listOpen` pages through, under the same grant
+   * and scope, without the pages (`listOpenBoard`).
+   */
+  async board(query: AtmOpenBoardQuery, ctx: AuthContext): Promise<OpenBoard<AtmReplenishmentDoc>> {
+    return atmReplenishmentRepository.listOpenBoard({
+      banks: query.banks,
+      areas: query.areas,
       scope: scopeSelector(ctx, 'atmReplenishment.view'),
     });
   }
@@ -92,7 +107,10 @@ class AtmReplenishmentService {
    * one-open-per-day rule (OD-1, OD-1a) is lifted for replenishments (and, since 2026-11-02, for
    * maintenance too — OD-1c): every line of a known code opens its own row — a code pasted twice
    * opens twice, and a machine already open today opens again — exactly as the legacy did.
-   * `alreadyOpenCodes` stays in the answer, and is always empty here.
+   * `alreadyOpenCodes` stays in the answer, and is empty unless a database still carries a retired
+   * unique index (`insertOpenLines`).
+   *
+   * Every known line is written in ONE insert, its audit rows in one queue add (`insertOpenLines`).
    */
   async open(
     input: OpenAtmReplenishments,
@@ -111,7 +129,7 @@ class AtmReplenishmentService {
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
     const machines = await atmMachineRepository.findActiveByCodes(branchId, codes);
 
-    const opened: AtmReplenishmentDoc[] = [];
+    const lines: OpenLine<AtmReplenishmentDoc>[] = [];
     const unknownCodes: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       const code = codes[index] as string;
@@ -121,8 +139,9 @@ class AtmReplenishmentService {
         unknownCodes.push(code);
         continue;
       }
-      const doc = await atmReplenishmentRepository.create(
-        {
+      lines.push({
+        code,
+        doc: {
           branchId: new Types.ObjectId(branchId),
           machineId: machine._id,
           machineCode: machine.machineCode,
@@ -140,16 +159,18 @@ class AtmReplenishmentService {
           closedById: null,
           closedByName: null,
         },
-        { by: ctx.userId },
-      );
-      await auditService.record({
+      });
+    }
+    const { opened, alreadyOpenCodes } = await insertOpenLines(
+      lines,
+      (docs) => atmReplenishmentRepository.createManyUnordered(docs, { by: ctx.userId }),
+      (doc, line) => ({
         entityRef: entityRef(String(doc._id)),
         action: 'create',
-        changes: diffChanges({}, { machineCode: code, openedAt: openedAt.toISOString() }),
-      });
-      opened.push(doc);
-    }
-    return { opened, unknownCodes, alreadyOpenCodes: [] };
+        changes: diffChanges({}, { machineCode: line.code, openedAt: openedAt.toISOString() }),
+      }),
+    );
+    return { opened, unknownCodes, alreadyOpenCodes };
   }
 
   /** Close checked rows (contad_app.js:770-801): close time now, closer recorded, leader untouched. */
@@ -164,15 +185,13 @@ class AtmReplenishmentService {
       },
       { by: ctx.userId, scope: scopeSelector(ctx, 'atmReplenishment.complete'), onlyOpen: true },
     );
-    for (const row of rows) {
-      if (row.closedAt?.getTime() === closedAt.getTime()) {
-        await auditService.record({
-          entityRef: entityRef(String(row._id)),
-          action: 'complete',
-          changes: [],
-        });
-      }
-    }
+    // Only the rows THIS request closed (its instant) — one already closed kept its own; their
+    // trail in one queue add, as the write was one.
+    await auditService.recordMany(
+      rows
+        .filter((row) => row.closedAt?.getTime() === closedAt.getTime())
+        .map((row) => ({ entityRef: entityRef(String(row._id)), action: 'complete', changes: [] })),
+    );
     return rows;
   }
 
@@ -290,13 +309,9 @@ class AtmReplenishmentService {
       // The cascade wrote these rows again: answer with them as stored now (their version moved).
       rows = await atmReplenishmentRepository.findByIds(input.ids, scope);
     }
-    for (const row of rows) {
-      await auditService.record({
-        entityRef: entityRef(String(row._id)),
-        action: 'update',
-        changes: [],
-      });
-    }
+    await auditService.recordMany(
+      rows.map((row) => ({ entityRef: entityRef(String(row._id)), action: 'update', changes: [] })),
+    );
     return rows;
   }
 

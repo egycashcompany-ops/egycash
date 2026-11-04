@@ -643,6 +643,49 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The system made faster for the branch rollout.** «عايزك تتحقق من كفاءة النظام بشكل عام .. وتقترح
+  ما يزيد من الكفاءة .. أو فى حاجة تخلى الدنيا أسرع خصوصاُ مع الشغل التقيل لأنى هشغل الأفرع». Measured
+  on production before the change (Railway logs and metrics, the Atlas alert «Query Targeting: Scanned
+  Objects / Returned has gone above 1000»). The answers on every screen are the same; they arrive in
+  fewer and cheaper database reads.
+  - **ATM open boards read once.** The replenishment and maintenance boards read
+    `GET /atm/{replenishments|maintenances}/board`, every open row in one read, instead of walking
+    the paged list (a find and a count per page, walked again when totals moved). The read stops at
+    5000 rows and says so on screen. New indexes serve the board order for a branch reader
+    (`ix_branch_open_board`) and for a reader of the whole company (`ix_open_board`); the
+    dropdowns' names come from the same open rows instead of a `distinct` that scanned the whole
+    log.
+  - **Live updates on the ATM pages are gathered.** One bulk action is one refresh, not one per
+    row: ATM signals wait 1.5 seconds (4 at most) and each browser adds its own small delay so the
+    screens do not all ask at the same instant. A tab in the background only marks its data old and
+    refreshes once when it is shown again. The dropdowns and the done pages refresh on their next
+    read.
+  - **The done pages' date range** applies a typed day only once it is a complete date from the
+    year 2000, half a second after typing stops or at once on leaving the box. Typing a year no
+    longer read ranges reaching back centuries.
+  - **ATM batch writes in one round trip.** A batch open writes every line in one insert and its
+    audit rows in one queue add (it took 1.2 seconds for replenishments and up to 2.3 for
+    maintenance). The mail reject decides the whole selection in one write (it took 1.7 seconds).
+    Close and the bulk edit record their audit rows in one add too.
+  - **Fleet pages.** The alarms read the cars and makes once instead of page by page; the odometer
+    page, the maintenance page and the dashboard run their reads side by side. New indexes serve the
+    order the odometer, maintenance and accident registers open in, and the reading chain's order.
+  - **Audit log.** Two indexes (`ix_action_at`, `ix_at`) serve the hourly security-signal checks,
+    which scanned the whole audit collection every hour — the cause of the Atlas alert — and the
+    audit page's default order. They are built at boot when missing. An unfiltered audit or activity
+    page takes its total from the collection's own count instead of reading every row.
+  - **`GET /platform/settings/me`** reads every setting in one query instead of one per setting.
+  - **Diagnostics.** The «slow mongo operation» log line names the collection, and each boot logs
+    the database round trip («mongo round trip», median and minimum of five pings).
+  - **Unchanged rules, safer edges.** Each row of a batch keeps its own audit instant, a millisecond
+    apart, so paging the audit list shows each once. A mail reject reads back exactly the tickets its
+    own write decided. A batch open that a leftover unique index refuses, or that fails with no
+    per-row answer, is reported to the error log instead of passing silently.
+- **A sign-in page left in a background tab stops renewing its passkey request.** With the
+  ten-minute idle sign-out, sign-in pages sit open all day; each renewed its fingerprint/face request
+  every few minutes (110 requests in 45 minutes from one browser). It now renews only while the tab
+  is shown, and at once when it is shown again.
+
 - **How the ATM pages read, set on `/atm/settings`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو
   لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من /atm/settings». A new card, «شكل الصفحات», sets
   three things for every ATM page and every user: the text size (90, 100, 110, 125 or 140 percent

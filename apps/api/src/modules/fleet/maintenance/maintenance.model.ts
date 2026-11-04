@@ -93,6 +93,11 @@ maintenanceSchema.index({ vehicleId: 1, inDate: -1, _id: -1 }, { name: 'ix_vehic
 // `since`» (`recentWritten`'s `$or` — each branch needs its own index) and the workshop-now count
 // (`outDate: null`, which also matches an old row without the field). A read index, not a rule.
 maintenanceSchema.index({ outDate: -1 }, { name: 'ix_out_date' });
+// The REGISTER's own order (`GET /fleet/maintenance` opens on «تاريخ الدخول» newest first): live
+// visits by check-in day, and `_id` after it — the tie-break `BaseRepository.list` appends to every
+// sort. `ix_in_date` answers the day but not the tie-break or the soft delete, so each page was a
+// top-k sort in memory and each total read every visit to look at `isDeleted`. A read index.
+maintenanceSchema.index({ isDeleted: 1, inDate: -1, _id: -1 }, { name: 'ix_list_in' });
 
 export const FleetMaintenanceVisitModel = model<FleetMaintenanceVisitDoc>(
   'FleetMaintenanceVisit',

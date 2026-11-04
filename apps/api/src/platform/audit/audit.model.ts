@@ -70,6 +70,16 @@ auditLogSchema.index(
 auditLogSchema.index({ 'actor.userId': 1, at: -1 }, { name: 'ix_actor_at' });
 // F5 (Sprint 3.2): covers moduleId-filtered list/export queries.
 auditLogSchema.index({ 'entityRef.moduleId': 1, at: -1 }, { name: 'ix_moduleId_at' });
+// The hourly security-signal sweep (audit.signals.ts): each of its five detectors asks
+// `{ action, at ≥ window start }` — repeated denials, lockout clusters, export spikes, refresh
+// reuse and break-glass use — and nothing above leads with `action`, so every sweep walked the
+// whole append-only stream (Atlas: "Scanned Objects / Returned > 1000"). Equality first, then
+// the range, so each detector reads only its own window's rows.
+auditLogSchema.index({ action: 1, at: -1 }, { name: 'ix_action_at' });
+// The audit list's default view (`listAuditLogs`): newest first, often with no filter at all.
+auditLogSchema.index({ at: -1 }, { name: 'ix_at' });
+// Production builds neither of these two from the declarations above (`autoIndex` is off and the
+// deploy's index sync only reports); `audit-indexes.ts` builds them at boot.
 
 export const AuditLogModel = model<AuditLogDoc>('AuditLog', auditLogSchema, 'audit_logs');
 

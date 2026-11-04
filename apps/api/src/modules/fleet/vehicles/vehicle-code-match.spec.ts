@@ -38,6 +38,18 @@ describe('vehicleCodePattern — the stored codes a filter code names', () => {
     expect(matches('A+1', 'A+1')).toBe(true);
     expect(matches('(1)', '(1)')).toBe(true);
   });
+
+  it('never puts a NUL byte in the pattern — BSON refuses one, and the request would be a 500', () => {
+    const pattern = vehicleCodePattern('a\u0000b');
+    expect(pattern.source).not.toContain('\u0000');
+    expect(pattern.source).toContain('\\x00');
+    // Still that character, and only it: the stored code with the NUL, never «ab» or «a b».
+    expect(pattern.test('a\u0000b')).toBe(true);
+    expect(pattern.test('ab')).toBe(false);
+    expect(pattern.test('a b')).toBe(false);
+    const [only] = anyVehicleCode(['\u0000']).$in;
+    expect(only?.source).not.toContain('\u0000');
+  });
 });
 
 describe('anyVehicleCode — the `$in` a code field is asked with', () => {

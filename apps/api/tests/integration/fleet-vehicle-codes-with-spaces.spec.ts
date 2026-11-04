@@ -237,6 +237,16 @@ describe('the registry — `GET /fleet/vehicles?vehicleCodes=`', () => {
     expect(await registry('كولراى')).toEqual(ids('كولراى'));
   });
 
+  it('answers «no such car» for a code holding a NUL byte — not a 500 out of the driver', async () => {
+    // BSON refuses a regex whose source holds a null byte; the pattern spells it `\x00` instead.
+    for (const path of ['/fleet/vehicles', '/fleet/odometer']) {
+      const res = await get(path, { vehicleCodes: 'a\u0000b', pageSize: 100 });
+      expect(res.status, `${path} ${JSON.stringify(res.body)}`).toBe(200);
+      expect(data<unknown[]>(res)).toEqual([]);
+    }
+    expect(await fleetVehicleRepository.idsByCodes(['\u0000'])).toEqual([]);
+  });
+
   it('the dashboard vehicle set resolves the same codes to the same cars', async () => {
     expect((await fleetVehicleRepository.idsByCodes(['فورتشنر 2', 'mg 2'])).sort()).toEqual(
       ids('فورتشنر 2', 'MG 2'),

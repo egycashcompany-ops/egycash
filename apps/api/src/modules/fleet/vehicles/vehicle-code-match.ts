@@ -17,7 +17,14 @@
 // keys only (registry-linked rows store `null`). Both are small enough that this costs nothing.
 import { normalizeVehicleCode } from '@ecms/contracts';
 
-const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Every character of a code as itself. A NUL is written `\x00` rather than left in the pattern:
+ * BSON refuses a regex whose source holds a null byte, so a `?vehicleCodes=a%00b` would otherwise
+ * throw in the driver and answer 500 instead of "no such car". PCRE and JavaScript both read
+ * `\x00` as that same character.
+ */
+const escapeRegExp = (text: string): string =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\0/g, '\\x00');
 
 /** The pattern a stored code must match to be this code — see the rule above. */
 export const vehicleCodePattern = (code: string): RegExp =>

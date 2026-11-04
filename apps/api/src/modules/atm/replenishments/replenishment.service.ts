@@ -3,6 +3,7 @@
 // deviation is a numbered decision in docs/12-planning/atm-operations-port.md.
 import {
   normalizeAtmMachineCode,
+  type AtmOpenBoardQuery,
   type BulkUpdateAtmReplenishments,
   type ListAtmDoneOperationsQuery,
   type ListAtmOpenOperationsQuery,
@@ -20,6 +21,7 @@ import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import { openDayOf } from '../shared/open-operation';
 import { cairoDateString, cairoWallClockUtc } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
+import { type OpenBoard } from '../shared/operation-log.repository';
 import { atmReplenishmentRepository } from './replenishment.repository';
 import { type AtmReplenishmentDoc } from './replenishment.model';
 
@@ -52,6 +54,18 @@ class AtmReplenishmentService {
       areas: query.areas,
       page: query.page,
       pageSize: query.pageSize,
+      scope: scopeSelector(ctx, 'atmReplenishment.view'),
+    });
+  }
+
+  /**
+   * The open board whole, in one read — the rows `listOpen` pages through, under the same grant
+   * and scope, without the pages (`listOpenBoard`).
+   */
+  async board(query: AtmOpenBoardQuery, ctx: AuthContext): Promise<OpenBoard<AtmReplenishmentDoc>> {
+    return atmReplenishmentRepository.listOpenBoard({
+      banks: query.banks,
+      areas: query.areas,
       scope: scopeSelector(ctx, 'atmReplenishment.view'),
     });
   }

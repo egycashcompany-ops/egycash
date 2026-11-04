@@ -5,6 +5,7 @@ import {
   ErrorCodes,
   normalizeAtmMachineCode,
   type AtmLeaderOptionDto,
+  type AtmOpenBoardQuery,
   type BulkUpdateAtmMaintenances,
   type CloseAtmMaintenances,
   type ListAtmDoneOperationsQuery,
@@ -25,6 +26,7 @@ import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import { openDayOf } from '../shared/open-operation';
 import { cairoDateString } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
+import { type OpenBoard } from '../shared/operation-log.repository';
 import { atmMaintenanceRepository } from './maintenance.repository';
 import { type AtmMaintenanceDoc } from './maintenance.model';
 
@@ -70,6 +72,18 @@ class AtmMaintenanceService {
       areas: query.areas,
       page: query.page,
       pageSize: query.pageSize,
+      scope: scopeSelector(ctx, 'atmMaintenance.view'),
+    });
+  }
+
+  /**
+   * The open board whole, in one read — the rows `listOpen` pages through, under the same grant
+   * and scope, without the pages (`listOpenBoard`).
+   */
+  async board(query: AtmOpenBoardQuery, ctx: AuthContext): Promise<OpenBoard<AtmMaintenanceDoc>> {
+    return atmMaintenanceRepository.listOpenBoard({
+      banks: query.banks,
+      areas: query.areas,
       scope: scopeSelector(ctx, 'atmMaintenance.view'),
     });
   }

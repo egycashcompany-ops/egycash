@@ -9,6 +9,11 @@
 import { Schema, model, type Types } from 'mongoose';
 import { ATM_MAINTENANCE_SOURCES, type AtmMaintenanceSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+import {
+  OPEN_BOARD_INDEX_NAME,
+  openBoardIndexFilter,
+  openBoardIndexKeys,
+} from '../shared/open-board-index';
 
 export interface AtmMaintenanceDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -88,6 +93,16 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
 maintenanceSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 maintenanceSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 maintenanceSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
+// The open board read whole (`listOpenBoard`, GET /atm/{kind}/board): the open, live rows in the
+// board order. `ix_branch_open_area` leads with the branch, so a caller with NO branch filter — an
+// organization-wide reader on «كل الشركة» — had no index at all and scanned the whole log, closed
+// history included (the Atlas «Scanned Objects / Returned» alert). Partial on exactly the board's
+// own predicate, so it holds only the rows on a board and hands them over already sorted. Built in
+// production by the boot index step (atm-indexes.ts), which reads it from this declaration.
+maintenanceSchema.index(openBoardIndexKeys(), {
+  name: OPEN_BOARD_INDEX_NAME,
+  partialFilterExpression: openBoardIndexFilter(),
+});
 // Open rows by code and open time — what the mail `duplication` question runs on ("does this
 // machine have an open maintenance on the ticket's day?", `openMachineCodes` in
 // shared/operation-log.repository.ts), company-wide, instead of a scan of the whole log. It asks

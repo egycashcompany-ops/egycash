@@ -10992,6 +10992,8 @@ const en: Record<string, string> = {
   'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
   'atm.common.emptyColumnFiltered': 'No row matches the column filters.',
   'atm.common.filterColumn': 'Filter {{column}}',
+  'atm.common.boardCutShort':
+    'The board holds {{total}} open operations and shows the first {{shown}}. Narrow it by bank or area to see the rest.',
   'atm.common.shift': 'Shift',
   'atm.common.leaderShiftHint':
     'Changing the leader applies to every open operation of the same area in the same shift.',
@@ -23439,6 +23441,8 @@ const ar: Record<string, string> = {
   'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
   'atm.common.emptyColumnFiltered': 'لا توجد سطور تطابق فلاتر الأعمدة.',
   'atm.common.filterColumn': 'فلترة {{column}}',
+  'atm.common.boardCutShort':
+    'تضم اللوحة {{total}} عملية مفتوحة، ويُعرض منها أول {{shown}} فقط. يُرجى تضييقها بالبنك أو المنطقة لعرض الباقي.',
   'atm.common.shift': 'الوردية',
   'atm.common.leaderShiftHint':
     'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',

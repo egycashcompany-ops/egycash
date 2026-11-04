@@ -1,13 +1,15 @@
 // The bank and area filters on both live boards — «الفلتر بتاع البنك والمنطقة اتأكد إنه شغال».
 //
 // The cache layer, over a real QueryClient and the very query function the boards run:
-//   · the board is read WHOLE — every page past the hundredth row — with the filters sent as the
-//     API reads them (a bank name holding a comma arrives whole);
-//   · a realtime signal for the kind refreshes that whole board and its dropdowns;
+//   · the board is read WHOLE — every row past the hundredth — in ONE request to the board read
+//     (`GET …/board`, 2026-11), never the page walk it replaced, with the filters sent as the API
+//     reads them (a bank name holding a comma arrives whole) and TanStack's signal on the request;
+//   · a realtime signal for the kind refreshes that whole board — one request — and its dropdowns;
 //   · a bank tick keeps the bank list on offer while the new banks' areas load, and never offers
 //     the previous selection's areas for the new one.
 // The screens, rendered:
 //   · every row of a board past one page is on the screen, in its two groups;
+//   · a board read cut at its cap says so;
 //   · an area chosen with no bank, and a name holding a comma, reach the board they name;
 //   · a filter matching nothing says so, instead of leaving an empty table that looks unfiltered.
 // When a bank change prunes its orphaned areas is `lib/board-filters.spec.ts`.
@@ -21,6 +23,7 @@ import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type AtmMaintenanceDto,
+  type AtmOpenBoardDto,
   type AtmOperationFacetsDto,
   type AtmReplenishmentDto,
   type Locale,
@@ -53,29 +56,50 @@ vi.mock('react-dom', async () => {
 type Kind = 'replenishments' | 'maintenances';
 type Row = AtmReplenishmentDto & AtmMaintenanceDto;
 
-/** What the mocked list endpoints hold, and every page they were asked for. */
+/** What the mocked endpoints hold, and every request they were sent. */
 let served: Row[] = [];
-const asked: { kind: Kind; params: Record<string, unknown> }[] = [];
+const asked: {
+  kind: Kind;
+  endpoint: 'board' | 'page';
+  params: Record<string, unknown>;
+  signal: AbortSignal | undefined;
+}[] = [];
 
-/** The list endpoint over `served`, filtering and paging the way the API does. */
-const answer = (kind: Kind, params: Record<string, unknown>): Promise<Paginated<Row>> => {
-  asked.push({ kind, params });
+/** The rows of `served` a filter matches, the way the API filters them. */
+const matching = (params: Record<string, unknown>): Row[] => {
   const banks = typeof params.banks === 'string' ? params.banks : undefined;
   const areas = typeof params.areas === 'string' ? params.areas : undefined;
-  const matching = served.filter(
+  return served.filter(
     (row) =>
       (banks === undefined || banks.replace(/\\,/g, ',') === row.bankName) &&
       (areas === undefined || areas === row.area),
   );
+};
+
+/** The board read over `served`: every matching row, in one answer. */
+const boardAnswer = (
+  kind: Kind,
+  params: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+): Promise<AtmOpenBoardDto<Row>> => {
+  asked.push({ kind, endpoint: 'board', params, signal });
+  const items = matching(params);
+  return Promise.resolve({ items, truncated: false, totalItems: items.length });
+};
+
+/** The paged list over `served` — the boards must not walk it any more; a call is recorded. */
+const pageAnswer = (kind: Kind, params: Record<string, unknown>): Promise<Paginated<Row>> => {
+  asked.push({ kind, endpoint: 'page', params, signal: undefined });
+  const rows = matching(params);
   const page = Number(params.page);
   const pageSize = Number(params.pageSize);
   return Promise.resolve({
-    items: matching.slice((page - 1) * pageSize, page * pageSize),
+    items: rows.slice((page - 1) * pageSize, page * pageSize),
     meta: {
       page,
       pageSize,
-      totalItems: matching.length,
-      totalPages: Math.max(1, Math.ceil(matching.length / pageSize)),
+      totalItems: rows.length,
+      totalPages: Math.max(1, Math.ceil(rows.length / pageSize)),
     },
   });
 };
@@ -99,8 +123,13 @@ vi.mock('./api/atm-api', async () => {
   const actual = await vi.importActual<typeof AtmApiModule>('./api/atm-api');
   return {
     ...actual,
-    listOpenReplenishments: (params: Record<string, unknown>) => answer('replenishments', params),
-    listOpenMaintenances: (params: Record<string, unknown>) => answer('maintenances', params),
+    replenishmentBoard: (params: Record<string, unknown>, signal?: AbortSignal) =>
+      boardAnswer('replenishments', params, signal),
+    maintenanceBoard: (params: Record<string, unknown>, signal?: AbortSignal) =>
+      boardAnswer('maintenances', params, signal),
+    listOpenReplenishments: (params: Record<string, unknown>) =>
+      pageAnswer('replenishments', params),
+    listOpenMaintenances: (params: Record<string, unknown>) => pageAnswer('maintenances', params),
     replenishmentFacets: (banks: readonly string[]) => facetsAnswer(banks),
     maintenanceFacets: (banks: readonly string[]) => facetsAnswer(banks),
   };
@@ -160,24 +189,32 @@ const NONE: AtmBoardFilters = { banks: [], areas: [] };
 const boardOf = (
   kind: Kind,
   filters: AtmBoardFilters,
-): { queryKey: readonly unknown[]; queryFn: () => Promise<Paginated<Row>> } =>
-  atmOpenBoardQueries[kind](filters) as {
+): {
+  queryKey: readonly unknown[];
+  queryFn: (context: { signal?: AbortSignal }) => Promise<AtmOpenBoardDto<Row>>;
+} =>
+  atmOpenBoardQueries[kind](filters) as unknown as {
     queryKey: readonly unknown[];
-    queryFn: () => Promise<Paginated<Row>>;
+    queryFn: (context: { signal?: AbortSignal }) => Promise<AtmOpenBoardDto<Row>>;
   };
 
 describe.each(['replenishments', 'maintenances'] as const)('the %s board, in the cache', (kind) => {
-  it('is read whole — every page — and holds each row once', async () => {
+  it('is read whole — past one page — in ONE request to the board read, never the walk', async () => {
     served = busyDay();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const board = await qc.fetchQuery(boardOf(kind, NONE));
     expect(board.items).toHaveLength(130);
     expect(new Set(board.items.map((r) => r.id)).size).toBe(130);
-    expect(asked.map((call) => call.params.page).sort()).toEqual([1, 2]);
-    expect(asked.every((call) => call.params.pageSize === 100)).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.endpoint).toBe('board');
+    expect(asked[0]?.kind).toBe(kind);
+    // No pages to ask for: the board read takes the filters and nothing else.
+    expect(asked[0]?.params).toEqual({});
+    // TanStack's signal rides the request, so a superseded refresh stops on the wire.
+    expect(asked[0]?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('sends a bank name holding a comma as ONE name, to every page', async () => {
+  it('sends a bank name holding a comma as ONE name', async () => {
     served = busyDay();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const board = await qc.fetchQuery(boardOf(kind, { banks: ['SYN Bank, Ltd'], areas: [] }));
@@ -218,7 +255,9 @@ describe.each(['replenishments', 'maintenances'] as const)('the %s board, in the
     expect(items).toHaveLength(130);
     expect(items.some((r) => r.machineCode === '99990500')).toBe(true);
     expect(items.some((r) => r.machineCode === '99990001')).toBe(false);
-    expect(asked.map((call) => call.params.page).sort()).toEqual([1, 2]);
+    // One refresh, one request — the walk read every page again, a find and a count each.
+    expect(asked.filter((call) => call.endpoint === 'board')).toHaveLength(1);
+    expect(asked.filter((call) => call.endpoint === 'page')).toEqual([]);
     stop();
   });
 
@@ -281,9 +320,11 @@ const KEYS: Record<Kind, string[]> = {
   maintenances: ['atmMaintenance.view', 'atmMaintenance.complete'],
 };
 
-const page = (items: Row[]): Paginated<Row> => ({
+/** The board read's answer for `items` — cut at its cap when `totalItems` says more are open. */
+const page = (items: Row[], totalItems = items.length): AtmOpenBoardDto<Row> => ({
   items,
-  meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 },
+  truncated: totalItems > items.length,
+  totalItems,
 });
 
 /** One board, as the screen draws it from a cache already holding its answer. */
@@ -293,16 +334,19 @@ const renderBoard = (
     search = '',
     filters = NONE,
     rows,
+    totalItems = rows.length,
     offered = { banks: [], areas: [] },
   }: {
     search?: string;
     filters?: AtmBoardFilters;
     rows: Row[];
+    /** How many rows the board read says are open — more than `rows` is a read cut at its cap. */
+    totalItems?: number;
     offered?: { banks: string[]; areas: string[] };
   },
 ): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(atmBoardKeys.open(kind, filters), page(rows));
+  qc.setQueryData(atmBoardKeys.open(kind, filters), page(rows, totalItems));
   qc.setQueryData(atmBoardKeys.facets(kind, filters.banks), offered);
   const Board = kind === 'replenishments' ? ReplenishmentsPage : MaintenancePage;
   const path = kind === 'replenishments' ? '/atm/replenishments' : '/atm/maintenance';
@@ -338,6 +382,17 @@ describe.each(['replenishments', 'maintenances'] as const)('the %s screen', (kin
     const onEarlier = renderBoard(kind, { search: 'day=earlier', rows });
     for (const r of earlier(rows)) expect(onEarlier).toContain(`>${r.machineCode}<`);
     expect(onEarlier).not.toContain('>99990001<');
+  });
+
+  it('a board whole says nothing about a cap; a board cut at it says how far it runs', () => {
+    const rows = busyDay();
+    expect(renderBoard(kind, { rows })).not.toContain('data-board-cut-short');
+    const cut = renderBoard(kind, { rows, totalItems: 5200 });
+    expect(cut).toContain('data-board-cut-short="true"');
+    expect(cut).toContain(t('atm.common.boardCutShort').split('{{')[0] ?? '');
+    // Arabic-Indic digits in the Arabic screen: the board's total and what is shown of it.
+    expect(cut).toContain('٥٬٢٠٠');
+    expect(cut).toContain('١٣٠');
   });
 
   it('an area chosen with no bank reaches its board, and the trigger counts the choice', () => {

@@ -1,6 +1,7 @@
-// Reading an open board whole: every page at the platform cap, in order, each row once — read
-// again when a write landed between its page reads — and a bound on the requests, so a nonsensical
-// page count, or a board that never holds still, cannot loop.
+// Reading a list whole: every page at the platform cap, in order, each row once — read again when a
+// write landed between its page reads — and a bound on the requests, so a nonsensical page count,
+// or a board that never holds still, cannot loop. And TanStack's signal: a walk the cache dropped
+// stops asking for pages.
 import { describe, expect, it } from 'vitest';
 import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
 import {
@@ -129,6 +130,62 @@ describe('fetchWholeBoard', () => {
     const liar = server(rows(5), 10_000);
     await fetchWholeBoard(liar.fetchPage);
     expect(liar.calls).toHaveLength(MAX_BOARD_PAGES);
+  });
+});
+
+describe('a walk the cache no longer wants (TanStack’s AbortSignal)', () => {
+  it('hands its signal to every page read, so the reads in flight can be aborted on the wire', async () => {
+    const controller = new AbortController();
+    const signals: (AbortSignal | undefined)[] = [];
+    const busy = server(rows(230));
+    await fetchWholeBoard((page, pageSize, signal) => {
+      signals.push(signal);
+      return busy.fetchPage(page, pageSize);
+    }, controller.signal);
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal === controller.signal)).toBe(true);
+  });
+
+  it('asks for nothing once aborted before it starts', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const busy = server(rows(230));
+    await expect(fetchWholeBoard(busy.fetchPage, controller.signal)).rejects.toThrow();
+    expect(busy.calls).toEqual([]);
+  });
+
+  it('stops after the first page when aborted while it was read — no other page is asked for', async () => {
+    const controller = new AbortController();
+    const busy = server(rows(230));
+    const walk = fetchWholeBoard((page, pageSize) => {
+      const answer = busy.fetchPage(page, pageSize);
+      // Superseded while page 1 was on the wire: a newer refresh took its place.
+      if (page === 1) controller.abort();
+      return answer;
+    }, controller.signal);
+    await expect(walk).rejects.toThrow();
+    expect(busy.calls).toEqual([[1, MAX_PAGE_SIZE]]);
+  });
+
+  it('does not read the board again once aborted between walks', async () => {
+    const controller = new AbortController();
+    // The pages disagree (a row closes after page 1), which would start a second walk — and the
+    // walk is superseded while its last page is on the wire.
+    const busy = server(rows(150), undefined, (now, walk) =>
+      walk === 1 ? now.filter((row) => row.id !== 'r10') : now,
+    );
+    const walk = fetchWholeBoard((page, pageSize) => {
+      const answer = busy.fetchPage(page, pageSize);
+      if (page === 2) controller.abort();
+      return answer;
+    }, controller.signal);
+    await expect(walk).rejects.toThrow();
+    expect(busy.calls.map(([page]) => page)).toEqual([1, 2]);
+  });
+
+  it('a walk without a signal reads exactly as before', async () => {
+    const busy = server(rows(230));
+    expect((await fetchWholeBoard(busy.fetchPage)).items).toHaveLength(230);
   });
 });
 

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { Provider } from 'react-redux';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { configureStore } from '@reduxjs/toolkit';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
@@ -29,6 +29,11 @@ import {
 } from './lib/fleet-dashboard-url';
 import { RefreshTools } from './components/fleet-dashboard/dash-shell';
 import { fleetDashboardKeys, invalidateAtCairoMidnight } from './api/fleet-dashboard-queries';
+import { createRealtimeInvalidator } from '../../platform/realtime/invalidator';
+import {
+  THROTTLED_KEY_PREFIXES,
+  isStaleOnlyKey,
+} from '../../platform/realtime/invalidation-registry';
 import { ar } from './fleet-dashboard-fixtures';
 
 const HOUR = 60 * 60 * 1000;
@@ -311,9 +316,45 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     );
   });
 
-  it('a throttled realtime refetch joins a read in flight instead of restarting it', () => {
-    expect(source('../../platform/realtime/RealtimeProvider.tsx')).toContain(
-      "queryClient.refetchQueries({ queryKey, type: 'active' }, { cancelRefetch: false })",
-    );
+  it('a throttled realtime refetch joins a read in flight instead of restarting it', async () => {
+    // R1 on screen, over a real cache, behind the platform's invalidator (the provider's own).
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const reads: { signal: AbortSignal; answer: (n: number) => void }[] = [];
+    const observer = new QueryObserver(qc, {
+      queryKey: fleetDashboardKeys.now,
+      queryFn: ({ signal }) =>
+        new Promise<number>((resolve) => {
+          reads.push({ signal, answer: resolve });
+        }),
+    });
+    const stop = observer.subscribe(() => undefined);
+    const settle = async (ms = 0): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    };
+    await settle();
+    reads[0]?.answer(1);
+    await settle();
+    expect(reads).toHaveLength(1);
+
+    const invalidator = createRealtimeInvalidator(qc, {
+      isHidden: () => false,
+      throttled: THROTTLED_KEY_PREFIXES,
+      isStaleOnly: isStaleOnlyKey,
+      throttleMs: 20,
+    });
+    invalidator.invalidate([fleetDashboardKeys.now]); // the window opens with a refetch now…
+    await settle();
+    expect(reads).toHaveLength(2);
+    invalidator.invalidate([fleetDashboardKeys.now]); // …and owes one more when it closes
+    await settle(40);
+    // The window closed while the read it opened was still in flight: the trailing refetch joins
+    // that read — no third request, and the one in flight is not aborted.
+    expect(reads).toHaveLength(2);
+    expect(reads[1]?.signal.aborted).toBe(false);
+    reads[1]?.answer(2);
+    await settle();
+    expect(qc.getQueryData(fleetDashboardKeys.now)).toBe(2);
+    invalidator.cancel();
+    stop();
   });
 });

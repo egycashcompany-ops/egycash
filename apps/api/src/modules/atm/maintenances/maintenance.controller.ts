@@ -2,6 +2,8 @@
 import { type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
+  type AtmMaintenanceBoardDto,
+  type AtmOpenBoardQuery,
   type AtmOperationFacetsQuery,
   type AtmOperationIds,
   type BulkUpdateAtmMaintenances,
@@ -24,6 +26,17 @@ type MaintReopenBody = z.infer<typeof MaintReopenBodySchema>;
 export const listOpenMaintenances = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListAtmOpenOperationsQuery>(req);
   okPage(res, await atmMaintenanceService.listOpen(query, authContext(req)), toAtmMaintenanceDto);
+};
+
+export const maintenanceBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmOpenBoardQuery>(req);
+  const board = await atmMaintenanceService.board(query, authContext(req));
+  const body: AtmMaintenanceBoardDto = {
+    items: board.items.map(toAtmMaintenanceDto),
+    truncated: board.truncated,
+    totalItems: board.totalItems,
+  };
+  ok(res, body);
 };
 
 export const maintenanceFacets = async (req: Request, res: Response): Promise<void> => {

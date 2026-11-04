@@ -122,6 +122,11 @@ accidentSchema.index({ culpritEmployeeIds: 1, occurredAt: -1 }, { name: 'ix_culp
 accidentSchema.index({ 'transfersIn.fromVehicleId': 1 }, { name: 'ix_transfer_from' });
 // «who drew from this file» — what deleting a file, or moving it to another car, has to find.
 accidentSchema.index({ 'transfersIn.lines.accidentId': 1 }, { name: 'ix_transfer_lines' });
+// The REGISTER's own order (`GET /fleet/accidents` opens on the accident day, newest first): live
+// files by day, and `_id` after it — the tie-break `BaseRepository.list` appends to every sort. Every
+// other index here leads with a car, a driver or a status, so the register's first page was a
+// collection scan and a sort in memory, and its total another scan. A read index.
+accidentSchema.index({ isDeleted: 1, occurredAt: -1, _id: -1 }, { name: 'ix_list_occurred' });
 
 export const FleetAccidentModel = model<FleetAccidentDoc>(
   'FleetAccident',

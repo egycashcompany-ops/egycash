@@ -13,6 +13,7 @@ import {
   ATM_MACHINE_REGISTER_REASONS,
   ATM_REF_LABEL_KINDS,
   ATM_REF_LABEL_ORIGINS,
+  AtmOpenBoardQuerySchema,
   AtmRefLabelOptionsQuerySchema,
   CreateAtmRefLabelSchema,
   ListAtmRefLabelsQuerySchema,
@@ -118,6 +119,21 @@ describe('the label queries', () => {
       branchId: BRANCH_ID,
     });
     expect(AtmRefLabelOptionsQuerySchema.safeParse({ kind: 'bank' }).success).toBe(false);
+  });
+});
+
+describe('the open board read (GET /atm/{kind}/board)', () => {
+  it('takes the open list’s two filters, escaped and split the same way', () => {
+    expect(AtmOpenBoardQuerySchema.parse({})).toEqual({});
+    expect(
+      AtmOpenBoardQuerySchema.parse({ banks: 'SYN Bank\\, Ltd,SYN NBE', areas: 'SYN Smouha' }),
+    ).toEqual({ banks: ['SYN Bank, Ltd', 'SYN NBE'], areas: ['SYN Smouha'] });
+  });
+
+  it('refuses anything about pages — the board is one read, not a walk', () => {
+    expect(AtmOpenBoardQuerySchema.safeParse({ page: '1' }).success).toBe(false);
+    expect(AtmOpenBoardQuerySchema.safeParse({ pageSize: '100' }).success).toBe(false);
+    expect(AtmOpenBoardQuerySchema.safeParse({ sortBy: 'area' }).success).toBe(false);
   });
 });
 

@@ -5,9 +5,10 @@ import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'm
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
-import { type Paginated } from '@ecms/contracts';
+import { ATM_OPEN_BOARD_MAX_ROWS, type Paginated } from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
 import { boardNames, storedSpellingsOf } from './board-filter';
+import { OPEN_BOARD_ORDER } from './open-board-index';
 
 /** The lifecycle fields both operation kinds carry. */
 export interface AtmOperationLogFields extends BaseDocFields {
@@ -29,13 +30,37 @@ export interface AtmOperationLogFields extends BaseDocFields {
   closedByName: string | null;
 }
 
-export interface OpenListParams {
+/** The open board's two filters and the caller's scope — what the list and the board read share. */
+export interface OpenBoardParams {
   banks?: readonly string[] | undefined;
   areas?: readonly string[] | undefined;
-  page: number;
-  pageSize: number;
   scope: ScopeSelector;
 }
+
+export interface OpenListParams extends OpenBoardParams {
+  page: number;
+  pageSize: number;
+}
+
+/** The board read's answer — see `AtmOpenBoardDto` in the contracts. */
+export interface OpenBoard<T> {
+  items: T[];
+  truncated: boolean;
+  totalItems: number;
+}
+
+/** An open row's two filterable names, as `openNames` reads them. */
+export interface OpenNames {
+  bankName: string;
+  area: string;
+}
+
+/** Pure: each stored value of `field` once — what `distinct` answered, read off the rows. */
+export const distinctOf = (rows: readonly OpenNames[], field: keyof OpenNames): string[] => [
+  ...new Set(
+    rows.map((row) => row[field]).filter((value): value is string => typeof value === 'string'),
+  ),
+];
 
 /**
  * Pure: the distinct (branch, area, shift window) groups of a set of rows — one leader cascade per
@@ -74,19 +99,8 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
    * is still a plain `$in` on the stored field, sorted and cut by the same index as before.
    */
   async listOpen(params: OpenListParams): Promise<Paginated<T>> {
-    const filter: FilterQuery<T> = { closedAt: null } as FilterQuery<T>;
-    if (params.banks !== undefined && params.banks.length > 0) {
-      (filter as Record<string, unknown>).bankName = {
-        $in: await this.openSpellings('bankName', params.banks, params.scope),
-      };
-    }
-    if (params.areas !== undefined && params.areas.length > 0) {
-      (filter as Record<string, unknown>).area = {
-        $in: await this.openSpellings('area', params.areas, params.scope),
-      };
-    }
     return this.list({
-      filter,
+      filter: await this.openFilter(params),
       page: params.page,
       pageSize: params.pageSize,
       sortBy: 'area',
@@ -94,6 +108,56 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
       sortableFields: ['area'],
       scope: params.scope,
     });
+  }
+
+  /**
+   * The open board WHOLE, in one read — what the screens show (GET /atm/{kind}/board). The same
+   * rows, filters, scope and order as `listOpen`, without its pages: ONE `find`, lean, no
+   * `countDocuments`. The paged list cost the board a find and a count per page, every page read
+   * again on every realtime signal by every viewer; this is one query per refresh.
+   *
+   * Cut at `cap` rows (`ATM_OPEN_BOARD_MAX_ROWS`): one row past it is asked for, so a board that
+   * fits is never counted, and only a board that does not is — once — to say how far it runs.
+   *
+   * Index: an organization-wide caller has no `branchId` to lead `ix_branch_open_area` with, so
+   * without `ix_open_board` (partial on the open, live rows, keyed in the board order) its read
+   * was a scan of the whole log, closed history included. A branch caller is served by either.
+   */
+  async listOpenBoard(
+    params: OpenBoardParams,
+    cap: number = ATM_OPEN_BOARD_MAX_ROWS,
+  ): Promise<OpenBoard<T>> {
+    const filter = this.baseFilter(params.scope, await this.openFilter(params));
+    const rows = await this.model
+      .find(filter)
+      .sort(OPEN_BOARD_ORDER)
+      .limit(cap + 1)
+      .lean<T[]>()
+      .exec();
+    if (rows.length <= cap) return { items: rows, truncated: false, totalItems: rows.length };
+    const totalItems = await this.model.countDocuments(filter).exec();
+    return { items: rows.slice(0, cap), truncated: true, totalItems };
+  }
+
+  /**
+   * The open rows' filter for a bank and area choice, before scope and soft delete (`baseFilter`
+   * adds both). A requested name is resolved to every stored spelling of it first — over the open
+   * rows in scope, one read for both filters (`openNames`) — so the filter itself is a plain `$in`
+   * on the stored field.
+   */
+  private async openFilter(params: OpenBoardParams): Promise<FilterQuery<T>> {
+    const filter: Record<string, unknown> = { closedAt: null };
+    const banks = params.banks ?? [];
+    const areas = params.areas ?? [];
+    if (banks.length === 0 && areas.length === 0) return filter as FilterQuery<T>;
+    const names = await this.openNames(params.scope);
+    if (banks.length > 0) {
+      filter.bankName = { $in: storedSpellingsOf(distinctOf(names, 'bankName'), banks) };
+    }
+    if (areas.length > 0) {
+      filter.area = { $in: storedSpellingsOf(distinctOf(names, 'area'), areas) };
+    }
+    return filter as FilterQuery<T>;
   }
 
   /**
@@ -148,16 +212,24 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     return open.has(machineCode);
   }
 
-  /** The stored spellings of `field` among the open rows in scope, for `storedSpellingsOf`. */
-  private async openSpellings(
-    field: 'bankName' | 'area',
-    requested: readonly string[],
-    scope: ScopeSelector,
-  ): Promise<string[]> {
-    const stored = (await this.model
-      .distinct(field, this.baseFilter(scope, { closedAt: null } as FilterQuery<T>))
-      .exec()) as string[];
-    return storedSpellingsOf(stored, requested);
+  /**
+   * The bank and area of every open row in scope — what the dropdowns list and a filter's names
+   * resolve against (`storedSpellingsOf`), from ONE read.
+   *
+   * A projected `find` in the board order, not a `distinct` per field: the planner only considers
+   * a partial index for a query that names its keys in a predicate or in the sort, and `distinct`
+   * has no sort — so for an organization-wide caller, with no branch to lead `ix_branch_open_area`
+   * with, every dropdown and every filtered board read scanned the whole log, closed history
+   * included. Sorted in the board order, the same rows come from `ix_open_board`, open rows only,
+   * and are made distinct here (`distinctOf`).
+   */
+  private async openNames(scope: ScopeSelector): Promise<OpenNames[]> {
+    return this.model
+      .find(this.baseFilter(scope, { closedAt: null } as FilterQuery<T>))
+      .select({ bankName: 1, area: 1 })
+      .sort(OPEN_BOARD_ORDER)
+      .lean<OpenNames[]>()
+      .exec();
   }
 
   /**
@@ -175,15 +247,17 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     scope: ScopeSelector,
     selectedBanks: readonly string[],
   ): Promise<{ banks: string[]; areas: string[] }> {
-    const openFilter = this.baseFilter(scope, { closedAt: null } as FilterQuery<T>);
-    const storedBanks = (await this.model.distinct('bankName', openFilter).exec()) as string[];
-    const areaFilter: Record<string, unknown> = { closedAt: null };
-    if (selectedBanks.length > 0) {
-      areaFilter.bankName = { $in: storedSpellingsOf(storedBanks, selectedBanks) };
-    }
-    const storedAreas = (await this.model
-      .distinct('area', this.baseFilter(scope, areaFilter as FilterQuery<T>))
-      .exec()) as string[];
+    // One read of the open rows' bank and area (`openNames`); the cascade narrows it here, to the
+    // rows of the chosen banks' every stored spelling — what a second query over `bankName $in`
+    // used to answer.
+    const names = await this.openNames(scope);
+    const storedBanks = distinctOf(names, 'bankName');
+    const chosen =
+      selectedBanks.length > 0 ? new Set(storedSpellingsOf(storedBanks, selectedBanks)) : null;
+    const storedAreas = distinctOf(
+      chosen === null ? names : names.filter((row) => chosen.has(row.bankName)),
+      'area',
+    );
     return { banks: boardNames(storedBanks), areas: boardNames(storedAreas) };
   }
 

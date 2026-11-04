@@ -8,6 +8,11 @@
 // (:691) — not carried either.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+import {
+  OPEN_BOARD_INDEX_NAME,
+  openBoardIndexFilter,
+  openBoardIndexKeys,
+} from '../shared/open-board-index';
 
 export interface AtmReplenishmentDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -67,6 +72,16 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
 replenishmentSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 replenishmentSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
+// The open board read whole (`listOpenBoard`, GET /atm/{kind}/board): the open, live rows in the
+// board order. `ix_branch_open_area` leads with the branch, so a caller with NO branch filter — an
+// organization-wide reader on «كل الشركة» — had no index at all and scanned the whole log, closed
+// history included (the Atlas «Scanned Objects / Returned» alert). Partial on exactly the board's
+// own predicate, so it holds only the rows on a board and hands them over already sorted. Built in
+// production by the boot index step (atm-indexes.ts), which reads it from this declaration.
+replenishmentSchema.index(openBoardIndexKeys(), {
+  name: OPEN_BOARD_INDEX_NAME,
+  partialFilterExpression: openBoardIndexFilter(),
+});
 // Open rows by code and open time — the index the per-day rule's question ("is this code open on
 // that day?", `openMachineCodes` in shared/operation-log.repository.ts) ran on while the rule held
 // replenishments. Since OD-1b (2026-11-01) a machine may have several open replenishments and no

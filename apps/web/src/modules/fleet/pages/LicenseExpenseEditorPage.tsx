@@ -25,6 +25,7 @@ import {
   type FleetLicenseExpensePartDto,
   type FleetLicenseExpenseSettingsDto,
   type Locale,
+  normalizeVehicleCode,
   type SaveFleetLicenseExpenseSettings,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -109,9 +110,11 @@ const draftOf = (part: FleetLicenseExpensePartDto | null): Draft => {
   if (part === null) return emptyDraft();
   const draft = emptyDraft();
   for (const v of part.vehicles) {
-    if (v.code !== null && !draft.codes.includes(v.code)) {
-      draft.codes.push(v.code);
-      draft.plates[v.code] = v.plate;
+    // The code as the car filter holds it — a stored «فورتشنر 2 » is «فورتشنر 2» there.
+    const code = v.code === null ? null : normalizeVehicleCode(v.code);
+    if (code !== null && !draft.codes.includes(code)) {
+      draft.codes.push(code);
+      draft.plates[code] = v.plate;
     } else {
       draft.manual.push({ key: newKey(), plate: v.plate });
     }
@@ -208,7 +211,9 @@ const MemoBlock = ({
                     requirement: the box may stay empty. */}
                 <Input
                   aria-label={t('fleet.licenseExpenses.plate')}
-                  value={draft.plates[code] ?? byCode.get(code)?.plateNumber ?? ''}
+                  value={
+                    draft.plates[code] ?? byCode.get(normalizeVehicleCode(code))?.plateNumber ?? ''
+                  }
                   onChange={(e) =>
                     setDraft((held) => ({
                       ...held,
@@ -458,8 +463,10 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   };
 
   const registry = useAllVehicles({ anyStatus: true });
+  // Keyed as the car filter writes a code (`normalizeVehicleCode`): it offers the registry's
+  // «فورتشنر 2 » as «فورتشنر 2», and a raw key would lose that car's id on the saved memo.
   const byCode = useMemo(
-    () => new Map((registry.data?.items ?? []).map((v) => [v.code, v])),
+    () => new Map((registry.data?.items ?? []).map((v) => [normalizeVehicleCode(v.code), v])),
     [registry.data],
   );
   const catalog = useFleetCatalog('licenseExpenseItem');
@@ -491,7 +498,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       signatures,
       vehicles: [
         ...draft.codes.map((code) => {
-          const car = byCode.get(code);
+          const car = byCode.get(normalizeVehicleCode(code));
           return {
             vehicleId: car?.id ?? null,
             code,

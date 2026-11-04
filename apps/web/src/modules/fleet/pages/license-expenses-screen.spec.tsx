@@ -727,6 +727,22 @@ describe('an item archived on «قوائم الحركة» is no longer offered o
   });
 });
 
+describe('a car whose stored code has a stray space keeps its id on the memo', () => {
+  // The car filter offers the registry's «فورتشنر 2 » as «فورتشنر 2» and holds a carried code as
+  // it offers it, so the code the memo is built from is the normalized one. Looked up by the raw
+  // stored code, that car would be saved with no id. Every lookup is by the normalized code.
+  it('keys the registry, the saved memo’s cars and every lookup by `normalizeVehicleCode`', () => {
+    const page = code('LicenseExpenseEditorPage.tsx');
+    expect(page).toContain(
+      '(registry.data?.items ?? []).map((v) => [normalizeVehicleCode(v.code), v])',
+    );
+    expect(page).toContain('const car = byCode.get(normalizeVehicleCode(code));');
+    expect(page).toContain('byCode.get(normalizeVehicleCode(code))?.plateNumber');
+    expect(page).toContain('normalizeVehicleCode(v.code)');
+    expect(page).not.toMatch(/byCode\.get\(code\)/u);
+  });
+});
+
 describe('«قوائم الحركة» says how each item is paid', () => {
   const ITEMS = [
     catalogItem('i-1', 'الملصق الإلكتروني', 'renewal', { paidBy: 'visa' }),

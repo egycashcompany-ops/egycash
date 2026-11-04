@@ -485,6 +485,16 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Car codes with a space are filtered as one car.** «لما باجى اعمل فلتر على اى عربيه من اللى
+  بالعربى دى مش بيجيب العربيه و بيسرش اكن الاسم بتاع العربيه حاجه والرقم اللى جمبها حاجه تانيه».
+  The vehicle-code filter split every code on spaces — «كورولا 1» became «كورولا» and «1» — whether
+  it was typed, picked from the list or carried on a link, and the server then matched codes
+  exactly. A word followed by a number is now one code («كورولا 1», «كوستر 2», «فورتشنر 1»,
+  «تويوتا 2», «MG 3», «بيجو 5008»), while «150 151» still names two cars; the filter waits for the
+  number after «كورولا » instead of ticking the word; and the server compares codes ignoring
+  surrounding and repeated spaces of any kind (a stored «فورتشنر 2 » is found) and Latin case
+  («mg 2»), on every screen that filters by code. Stored codes are unchanged.
+
 - **«عدادات السيارات»: the expected reading and the maintenance alarm follow عداد الخروج again,
   and the newest row's «فارق عداد الصيانة» is the figure and its ⓘ.** «فى مشكلة بدات تظهر فى اكتر
   من سيارة قراءات العدادات … يجى يوم جايب رقم كبير ويقولك مينفعش اقل من الرقم دا واخر قراءة اقل منه

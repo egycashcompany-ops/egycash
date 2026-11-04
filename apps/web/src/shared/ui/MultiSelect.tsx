@@ -281,6 +281,7 @@ export const MultiSelect = ({
   pickMatches = false,
   match,
   onOpen,
+  onClose,
   loadOptions,
   size = 'default',
   className,
@@ -427,6 +428,12 @@ export const MultiSelect = ({
    * «لما أضغط على فلتر (المنطقة فقط) يعمله Reset وأقدر أختار من الأول»). Opt-in.
    */
   onOpen?: () => void;
+  /**
+   * Called once the open list CLOSES, however it closed — a click outside, Escape, Tab past it, the
+   * trigger. The car filter takes a word still waiting in its search box here («كولراى » — a space
+   * typed after it, in case a number followed). Opt-in.
+   */
+  onClose?: () => void;
   /**
    * The list, asked for only while it is OPEN — `options` then needs to name the chosen values
    * only, for the closed trigger. For a list that is costly to make and seldom looked at: a
@@ -649,6 +656,12 @@ export const MultiSelect = ({
     setAnnounced((last) => (last === words ? `${words}\u00A0` : words));
     searchRef.current?.focus();
   };
+  // `onClose`: the open → closed edge only, never the first render of a list that starts closed.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) onClose?.();
+    wasOpen.current = open;
+  }, [open]);
   // A closed list keeps nothing to say: reopened, its region starts silent.
   useEffect(() => {
     // Only when there is something to drop: no state is set on the closing of a list that never

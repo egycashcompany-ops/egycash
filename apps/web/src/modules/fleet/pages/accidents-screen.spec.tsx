@@ -535,6 +535,32 @@ describe('the filter bar', () => {
     expect(html).toContain('كلاهما مطبق');
   });
 
+  it('keeps a picked «كورولا 1» ONE car — through the URL the filter writes, and a reload', () => {
+    // «لما باجى اعمل فلتر على اى عربيه من اللى بالعربى دى مش بيجيب العربيه»: the code beside its
+    // number used to come back from the URL as two cars, «كورولا» and «1», and match nothing. The
+    // filter writes its picks comma-joined (`next.join(',')`); the address encodes the space; the
+    // page reads it back with the canonical parser. Seeded ONLY under the whole codes, so a page
+    // that split them would look for a different key and render nothing.
+    const picked = ['كورولا 1', 'MG 2'];
+    const address = new URLSearchParams({ vehicleCodes: picked.join(',') }).toString();
+    const html = render({
+      path: `/fleet/accidents?${address}`,
+      seed: (qc) => {
+        qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
+          items: [vehicle('v-1', 'كورولا 1'), vehicle('v-2', 'كورولا 2'), vehicle('v-3', 'MG 2')],
+          meta: { page: 1, pageSize: 100, totalItems: 3, totalPages: 1 },
+        });
+        withRows([accident({ statement: 'كورولا واحدة بس' })], {
+          list: { vehicleCodes: picked },
+          summary: { vehicleCodes: picked },
+        })(qc);
+      },
+    });
+    expect(html).toContain('كورولا واحدة بس');
+    // The filter's trigger names the car as it was picked — whole.
+    expect(html).toContain('كورولا 1');
+  });
+
   it('sends the NOTE search to the server — «عاوز اقدر ابحث فى الملاحظات»', () => {
     // Over the whole filtered set, not the page in hand: the note that would find a file is
     // usually on a page nobody is looking at, so a browser-side `rows.filter` would answer «لا

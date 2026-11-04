@@ -16,6 +16,7 @@ import {
   paperStage as licensingPaperStage,
   type FleetLicensingMark,
   type FleetLicensingRowDto,
+  sameVehicleCode,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -236,7 +237,8 @@ export const LicensingPage = (): JSX.Element => {
     () =>
       all.filter(
         (row) =>
-          (vehicleCodes.length === 0 || vehicleCodes.includes(row.code)) &&
+          (vehicleCodes.length === 0 ||
+            vehicleCodes.some((code) => sameVehicleCode(code, row.code))) &&
           contains(row.plateNumber, plate) &&
           contains(row.chassisNumber, chassis) &&
           (months.length === 0 || months.some((m) => inMonth(row.licenseExpiresAt, m))) &&

@@ -7,16 +7,18 @@
 //
 // WHICH cars match is `matchesVehicleCode`'s answer — the same one the roster boards give; this
 // only decides the order.
+import { normalizeVehicleCode } from '@ecms/contracts';
 import { fold } from '../../../shared/lib/fold';
 import { matchesVehicleCode } from './vehicle-code-match';
 
 export const rankVehicleCodes = (codes: readonly string[], typed: string): string[] => {
-  const prefix = fold(typed.trim());
+  // Whitespace as one space on both sides: «كورولا  1» typed starts «كورولا 1».
+  const prefix = fold(normalizeVehicleCode(typed));
   const starts: string[] = [];
   const contains: string[] = [];
   for (const code of codes) {
     if (!matchesVehicleCode(code, typed)) continue;
-    if (prefix !== '' && fold(code).startsWith(prefix)) starts.push(code);
+    if (prefix !== '' && fold(normalizeVehicleCode(code)).startsWith(prefix)) starts.push(code);
     else contains.push(code);
   }
   return [...starts, ...contains];

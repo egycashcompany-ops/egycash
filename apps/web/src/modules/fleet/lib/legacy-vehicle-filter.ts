@@ -15,6 +15,7 @@
 //
 // An explicit value already on the link wins in either direction: it is the newer expression of the
 // same intent, and overwriting it would discard what the reader last chose.
+import { sameVehicleCode } from '@ecms/contracts';
 
 /**
  * The rewritten query string for a legacy registry link, or `null` when there is nothing to do.
@@ -39,9 +40,10 @@ export const migrateLegacyVehicleCodeParam = (
  * The registry's answer for `migrateLegacyVehicleCodeParam`: does a car carry EXACTLY this code?
  *
  * Exact, against the whole registry. A substring answer read `?code=61` as car 161 and sent a
- * link that did name car 61 to `search=` instead of ticking it.
+ * link that did name car 61 to `search=` instead of ticking it. Exact as the code filter is —
+ * whitespace and Latin case aside (`sameVehicleCode`) — so `?code=mg 2` names «MG 2».
  */
 export const legacyCodeNamesAVehicle = (
   vehicles: readonly { code: string }[],
   code: string | null,
-): boolean => code !== null && vehicles.some((v) => v.code === code);
+): boolean => code !== null && vehicles.some((v) => sameVehicleCode(v.code, code));

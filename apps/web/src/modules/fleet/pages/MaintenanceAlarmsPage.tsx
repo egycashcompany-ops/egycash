@@ -18,6 +18,7 @@ import {
   fleetVehicleCodeOrderKey,
   type FleetMaintenanceAlarmDto,
   type Locale,
+  sameVehicleCode,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -186,7 +187,12 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     // the rows matching ANY of its answers, and the two run in sequence, which is the AND.
     const shown = all
       .filter((alarm) => levels.length === 0 || levels.includes(alarm.level))
-      .filter((alarm) => vehicleCodes.length === 0 || vehicleCodes.includes(alarm.code));
+      // Whitespace and Latin case aside — the comparison the server's code filter makes.
+      .filter(
+        (alarm) =>
+          vehicleCodes.length === 0 ||
+          vehicleCodes.some((code) => sameVehicleCode(code, alarm.code)),
+      );
     // The remaining distance closes every tie, which is what keeps the default order identical to
     // the triage order this board opened in before it had arrows: reddest first, then nearest due.
     return sortRows(

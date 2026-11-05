@@ -139,3 +139,19 @@ real P-256 key (`tests/integration/helpers/soft-authenticator.ts`), unit and HTT
   for any change yet — design §4.4/§4.5 promise them for resets too).
 - An administrator view of a user's passkeys (lost phone): today the password reset — or the TOTP
   reset — removes them all.
+
+**Open after the fresh-context review of 2026-11-05** (EGM reviewers: design critic, codebase
+details, implementation readiness; every item below was checked against the code):
+
+- Code: a passkey sign-in never resets `security.failedLogins`, so a person who signs in only with
+  a passkey and mistypes the password now and then is eventually locked out, passkey included
+  (`auth.service.ts` resets on the password path only; `completePasskeyLogin` does not).
+- Code: the Security card hides the device list, and with it «حذف», while passkeys are switched off,
+  so the server's rule that a passkey can always be removed cannot be reached from the screen.
+- This page lags the code in five places: §4 lists the account checks before the signature check
+  (the code verifies the signature first); §6 says every endpoint checks the kill switch (DELETE is
+  exempt); §4 says both that the offer reuses the TOTP code just typed and that it asks for a
+  current one (it asks); the button shows wherever WebAuthn and the server's origin allow, not
+  only with a platform authenticator; §2 says renew every four minutes, §4 three, and a hidden tab
+  renews nothing. §7 describes a virtual-authenticator end-to-end run that is not a committed
+  test, and the soft authenticator lives under `apps/api/tests/integration/helpers/`.

@@ -66,6 +66,15 @@ Rules:
   changes, new permissions — documentation PR first (this is how Milestone 1 itself works).
 - **Small PRs**: one feature-layer slice or one concern; > ~500 changed lines should be split.
 - **Docs travel with code**: a PR that changes behavior updates the relevant doc in the same PR.
+- **Fresh-context design review** for the designs where a mistake is expensive (a new module or
+  phase, a new ADR, auth/RBAC/files/migrations/deploy): reviewers that see only the document and
+  the files it names, never the conversation behind it — the
+  [`design-review`](../../.claude/skills/design-review/SKILL.md) skill. Every finding is checked
+  against the code before anything changes, and the review is recorded in the design doc.
+- **Drift check** before building on an existing design: does the page still describe the code?
+  The [`drift-check`](../../.claude/skills/drift-check/SKILL.md) skill, one document at a time.
+  Both use the reviewer personas of Google's Elephant-Goldfish Model, vendored under
+  `.claude/vendor/egm/` (Apache-2.0).
 
 ## 4. Code review
 

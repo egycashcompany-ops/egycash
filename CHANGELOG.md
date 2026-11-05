@@ -11,6 +11,29 @@ its entry here in the same PR.
 
 ### Added
 
+- **Design review with fresh-context reviewers, and a drift check (development tooling).** «شوف
+  دى هتفيد ولا لأ وضيفها عندك لو كويسه» — Google's Elephant-Goldfish Model
+  (github.com/google/elephant-goldfish-model, Apache-2.0), evaluated on two ECMS documents before it
+  was taken:
+  - On the passkey design, its reviewers found two code gaps:
+    - a passkey sign-in never clears the failed-password count;
+    - the Security card hides «حذف» while passkeys are switched off.
+
+    They also found six places where the page no longer matches the code. Half of the remaining
+    findings were noise, so every finding is now checked against the code first.
+  - On `database-design.md`, the drift check found two sections never brought up to date with the
+    code: workflow/approvals and Recruitment.
+  - **Taken:** the seven reviewer personas and their five standards, vendored unchanged under
+    `.claude/vendor/egm/` (licence and provenance in its README). They become subagents in
+    `.claude/agents/egm-*.md`, with only their paths changed. Two ECMS skills run them:
+    `.claude/skills/design-review` and `.claude/skills/drift-check`.
+  - **Not taken:**
+    - the plugin itself, because cloud sessions do not install plugins a repository declares;
+    - its step-by-step approval prompts;
+    - its README-in-every-folder bootstrap;
+    - its report files in the repository root.
+  - [Development Workflow §3](docs/09-guides/development-workflow.md) says when each is used.
+
 - **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
   time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
   دلوقتى وشغال .. ووقت كل واحد على السيستم..».

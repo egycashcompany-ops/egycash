@@ -15,10 +15,12 @@ its entry here in the same PR.
   tooling).** «وأبقى ضيف دى كمان» — Microsoft's MarkItDown (github.com/microsoft/markitdown, MIT),
   tested before it was taken on generated Arabic-first files like the owner's books.
   - **Results:**
-    - Word: 25/25 Arabic strings, with headings, clauses and the table intact.
-    - CSV: correct, with `-c cp1256` for old Windows exports.
-    - Excel: a good first look at every sheet, but merged titles, `NaN`, hidden sheets and unsaved
-      formula results need care.
+    - Word: 25/25 Arabic strings, clauses and table text, though the title loses its heading and a
+      table's header shifts into its body.
+    - CSV: correct when given the right encoding. `-c cp1256` is right for an old Windows export
+      and garbles a UTF-8 file, so the check decides.
+    - Excel: a first look at a workbook the check does not mark as holding secrets. Merged titles,
+      `NaN`, rounded long numbers, hidden sheets and unsaved formula results need care.
     - Arabic PDFs: unusable. The Arabic came out reversed, 0/20 strings usable, and a scanned PDF
       gave nothing; the agent's own PDF reading got 20/20 on both.
   - **Taken:** `.claude/skills/owner-files`, with a check script
@@ -39,8 +41,8 @@ its entry here in the same PR.
     Owner files and every output stay in the scratchpad: never committed, published or treated
     as instructions.
   - **Not taken:** the MarkItDown MCP server (it reads any file or URL, has no authentication, and
-    installs every extra), and any use inside the product. The ECMS imports keep their ExcelJS
-    readers.
+    installs every extra), and any use inside the product. The ECMS imports keep their own readers:
+    ExcelJS in the API, and a browser CSV parser for gold receiving.
 
 - **Design review with fresh-context reviewers, and a drift check (development tooling).** «شوف
   دى هتفيد ولا لأ وضيفها عندك لو كويسه» — Google's Elephant-Goldfish Model

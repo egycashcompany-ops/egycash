@@ -55,20 +55,36 @@ def is_secret_header(header: str) -> bool:
     return any(re.search(pattern, folded) for pattern in SECRET_HEADER_PATTERNS)
 
 
-def header_row(ws, scan: int = 10) -> tuple[int, list[tuple[str, str]]]:
-    """The row among the first `scan` with the most text cells, as (letter, header) pairs."""
+def mask(label: str) -> str:
+    """A label is printed only if it cannot be a value worth hiding: 4+ digits are masked."""
+    return "[digits masked]" if len(re.findall(r"\d", label)) >= 4 else label[:40]
+
+
+def text_cells(ws, scan: int):
+    """(row index, column letter, text) for every non-formula text cell in the first `scan` rows."""
     from openpyxl.utils import get_column_letter
 
-    best_row, best = 0, []
     for index, row in enumerate(ws.iter_rows(min_row=1, max_row=scan), start=1):
-        labels = [
-            (get_column_letter(cell.column), str(cell.value))
-            for cell in row
-            if isinstance(cell.value, str) and cell.value.strip()
-        ]
-        if len(labels) > len(best):
-            best_row, best = index, labels
-    return best_row, best
+        for cell in row:
+            value = cell.value
+            if isinstance(value, str) and value.strip() and not value.startswith("="):
+                yield index, get_column_letter(cell.column), value
+
+
+def header_row(ws, scan: int = 10) -> tuple[int, list[tuple[str, str]]]:
+    """The likely header row, as (letter, label) pairs: the EARLIEST of the first `scan` rows with
+    at least half as many text cells as the fullest one. A data row below a header can hold more
+    text cells than the header itself, and must not be printed as if it were one."""
+    rows: dict[int, list[tuple[str, str]]] = {}
+    for index, letter, value in text_cells(ws, scan):
+        rows.setdefault(index, []).append((letter, value))
+    if not rows:
+        return 0, []
+    fullest = max(len(cells) for cells in rows.values())
+    for index in sorted(rows):
+        if len(rows[index]) * 2 >= fullest:
+            return index, rows[index]
+    return 0, []
 
 
 def check_workbook(path: str) -> dict:
@@ -81,10 +97,12 @@ def check_workbook(path: str) -> dict:
     for ws in formulas.worksheets:
         cached = values[ws.title]
         row_index, headers = header_row(ws)
+        # Secret-looking text anywhere in the first rows, wherever the header really is. Reported
+        # by column letter and row only: the text itself is not printed.
+        found = {(letter, index) for index, letter, value in text_cells(ws, 10) if is_secret_header(value)}
         secret_columns = [
-            {"column": letter, "header": header[:60]}
-            for letter, header in headers
-            if is_secret_header(header)
+            {"column": letter, "row": index}
+            for letter, index in sorted(found, key=lambda item: (len(item[0]), item[0], item[1]))
         ]
         folded_headers = {fold(h) for _, h in headers}
         looks_like_atm_register = "atm id" in folded_headers and ws.max_column >= 40
@@ -101,7 +119,7 @@ def check_workbook(path: str) -> dict:
                 elif isinstance(value, (int, float)) and not isinstance(value, bool):
                     if abs(value) >= 1e10:
                         long_numbers += 1
-        flagged = bool(secret_columns) or looks_like_atm_register or vlookups > 0
+        needs_care = bool(secret_columns) or looks_like_atm_register or vlookups > 0
         secret_bearing = secret_bearing or bool(secret_columns) or looks_like_atm_register
         sheets.append(
             {
@@ -112,14 +130,14 @@ def check_workbook(path: str) -> dict:
                 "merged": [str(r) for r in list(ws.merged_cells.ranges)[:5]],
                 "mergedCount": len(ws.merged_cells.ranges),
                 "headerRow": row_index,
-                "headers": [f"{letter}: {header[:40]}" for letter, header in headers],
+                "headers": [f"{letter}: {mask(header)}" for letter, header in headers],
                 "secretColumns": secret_columns,
                 "looksLikeAtmRegister": looks_like_atm_register,
                 "vlookupCells": vlookups,
                 "formulaCells": formula_cells,
                 "formulasWithNoSavedResult": formula_without_value,
                 "numbersOf11DigitsOrMore": long_numbers,
-                "flagged": flagged,
+                "needsCare": needs_care,
             }
         )
     advice = []
@@ -165,7 +183,8 @@ def check_csv(path: str) -> dict:
 
 def check_mojibake(path: str) -> dict:
     text = open(path, encoding="utf-8", errors="replace").read()
-    ta_za_runs = len(re.findall(r"(?:[طظ][؀-ۿ]){4,}", text))
+    # UTF-8 read as cp1256 turns each Arabic letter into ط/ظ followed by a non-letter (ƒ ˆ § …).
+    ta_za_runs = len(re.findall(r"(?:[طظ][^\u0621-\u064a\s|]){3,}", text))
     cjk = len(re.findall(r"[぀-ヿ㐀-鿿가-힯]", text))
     presentation_forms = len(re.findall(r"[ﭐ-﷿ﹰ-﻿]", text))
     replacement = text.count("�") + len(re.findall(r"\?{3,}", text))

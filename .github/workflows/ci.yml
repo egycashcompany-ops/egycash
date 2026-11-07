@@ -9,9 +9,11 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     # A step that hangs (a test runner that finishes its suites but never exits) used to sit
-    # here until the six-hour default killed it. Fail in thirty minutes instead: a green run now
-    # takes about twenty (the API and web suites have grown), so twenty cut a passing run short.
-    timeout-minutes: 30
+    # here until the six-hour default killed it, so the job has a limit. It must stay well above a
+    # green run: that took about twenty minutes when the limit was thirty, and by 2026-11-07 it took
+    # 29m41s (run 41822187993) while the next was cancelled at 30m13s mid-suite with every test
+    # passing (run 42410786443). Forty-five leaves room for the suites to keep growing.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

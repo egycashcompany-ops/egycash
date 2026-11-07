@@ -488,9 +488,10 @@ class AuthService {
   ): Promise<{ response: LoginResponse; tokens: IssuedTokens }> {
     // A successful sign-in clears the failed-password count, as the password path does. Without
     // it a person who signs in only with a passkey kept every mistyped password, and the count
-    // (which has no time window) eventually locked the account — passkey included. A locked
-    // account never reaches here: the passkey service refuses it first.
-    await userService.resetLoginFailures(String(user._id));
+    // (which has no time window) eventually locked the account — passkey included. Only the
+    // count: the lock was checked on the account as read before the signature, and a lock armed
+    // since then by a concurrent wrong password must stand (`clearFailedLogins`).
+    await userService.clearFailedLogins(String(user._id));
     return this.completeLogin(user, 'passkey', [
       { field: 'method', old: null, new: 'passkey' },
       { field: 'passkeyId', old: null, new: passkeyId },

@@ -31,7 +31,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { goldPortalAccountService } from '../../src/modules/gold/portal-accounts/portal-account.service';
-import { SoftAuthenticator } from './helpers/soft-authenticator';
+import { SoftAuthenticator, type AuthenticationBend } from './helpers/soft-authenticator';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -112,10 +112,14 @@ const addPasskey = async (
   return created.body.data as PasskeyDto;
 };
 
-const passkeySignIn = async (device: SoftAuthenticator) => {
+const passkeySignIn = async (device: SoftAuthenticator, bend: AuthenticationBend = {}) => {
   const options = await request(app).post('/api/v1/auth/passkeys/authentication/options').send({});
   expect(options.status).toBe(200);
-  const answer = device.authenticate(options.body.data as PasskeyAuthenticationOptionsDto, origin);
+  const answer = device.authenticate(
+    options.body.data as PasskeyAuthenticationOptionsDto,
+    origin,
+    bend,
+  );
   const res = await request(app)
     .post('/api/v1/auth/passkeys/authentication/verify')
     .send({ response: answer });
@@ -124,6 +128,20 @@ const passkeySignIn = async (device: SoftAuthenticator) => {
 
 const passkeysOf = (userId: string) =>
   PasskeyModel.countDocuments({ userId: new Types.ObjectId(userId) }).exec();
+
+const securityOf = async (userId: string) =>
+  (await UserModel.findById(userId).lean().exec())?.security;
+
+/** Wrong passwords at the sign-in page, each under a fresh per-address limit. */
+const wrongPasswords = async (email: string, times: number) => {
+  for (let attempt = 0; attempt < times; attempt += 1) {
+    const wrong = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: email, password: 'Wr0ng#Pass!' });
+    expect(wrong.status).toBe(401);
+    await getCache().delByPrefix('rl:');
+  }
+};
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -212,21 +230,45 @@ describe('adding a passkey and signing in with it', () => {
     const device = new SoftAuthenticator();
     await addPasskey(token, device);
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const wrong = await request(app)
-        .post('/api/v1/auth/login')
-        .send({ identifier: staff.email, password: 'Wr0ng#Pass!' });
-      expect(wrong.status).toBe(401);
-    }
-    const failedLogins = async () =>
-      (await UserModel.findById(staff.id).lean().exec())?.security.failedLogins;
-    expect(await failedLogins()).toBe(3);
+    await wrongPasswords(staff.email, 3);
+    expect((await securityOf(staff.id))?.failedLogins).toBe(3);
 
     const { res } = await passkeySignIn(device);
     expect(res.status).toBe(200);
     // Without the reset, a passkey-only person's mistyped passwords added up until the account
     // locked — and the lock refuses the passkey too.
-    expect(await failedLogins()).toBe(0);
+    expect((await securityOf(staff.id))?.failedLogins).toBe(0);
+  });
+
+  it('a locked account stays locked: the passkey is refused and the lock is left in place', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+
+    // Five is the default lockout (auth.lockout.maxAttempts).
+    await wrongPasswords(staff.email, 5);
+    const lockedUntil = (await securityOf(staff.id))?.lockedUntil;
+    expect(lockedUntil?.getTime()).toBeGreaterThan(Date.now());
+
+    const { res } = await passkeySignIn(device);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.AUTH_ACCOUNT_LOCKED);
+    expect((await securityOf(staff.id))?.lockedUntil).toEqual(lockedUntil);
+  });
+
+  it('a refused key neither clears nor adds to the failed-password count', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+    await wrongPasswords(staff.email, 2);
+
+    // Someone with the credential id but not the device: the signature does not verify.
+    const { res } = await passkeySignIn(device, { signWith: new SoftAuthenticator().privateKey });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_INVALID);
+    expect((await securityOf(staff.id))?.failedLogins).toBe(2);
   });
 
   it('refuses the step-up with a wrong password', async () => {

@@ -36,6 +36,7 @@ import {
   renamePasskeyRequest,
 } from '../auth/api';
 import { passkeyFailure } from '../auth/passkey-failure';
+import { canAddPasskey, passkeyCardState } from './passkey-card-state';
 import {
   addPasskey,
   cancelPasskeyPrompt,
@@ -286,7 +287,6 @@ export const PasskeysCard = (): JSX.Element | null => {
     queryFn: listPasskeysRequest,
     retry: false,
   });
-  const passkeys = data?.items ?? [];
 
   useEffect(() => {
     let disposed = false;
@@ -298,19 +298,15 @@ export const PasskeysCard = (): JSX.Element | null => {
     };
   }, []);
 
-  const code = error instanceof ApiError ? error.code : null;
-  // An account that may not hold passkeys (none reach this page today) sees no card at all.
-  if (code === 'AUTH_PASSKEY_NOT_ALLOWED') return null;
-  // Switched off, the list still comes (the server answers it either way) so a device can be
-  // removed; adding and renaming wait for the switch. The error code is what an older API sent.
-  const switchedOff = data?.enabled === false || code === 'AUTH_PASSKEYS_DISABLED';
+  const { hidden, switchedOff, passkeys } = passkeyCardState(data, error);
+  if (hidden) return null;
 
   return (
     <Card>
       <CardHeader
         title={t('account.security.passkeys')}
         actions={
-          !switchedOff && support?.webauthn === true ? (
+          canAddPasskey(switchedOff, support) ? (
             <Button
               size="sm"
               leftIcon={<FingerprintIcon className="h-4 w-4" />}

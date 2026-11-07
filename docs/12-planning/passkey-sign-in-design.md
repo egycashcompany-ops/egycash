@@ -1,8 +1,10 @@
 # Passkey sign-in (fingerprint / Face ID) — Design
 
 **Status: APPROVED** — owner decisions of 2026-11-01 recorded in §1; the architectural decision is
-[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md). Implementation in one PR. Brought back in line with
-the code on 2026-11-07, after a fresh-context review found where it had fallen behind (§8).
+[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md), whose §9 (what the switch covers) is superseded by
+[ADR-036](../03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md). Implementation in one PR.
+Brought back in line with the code on 2026-11-07, after a fresh-context review found where it had
+fallen behind (§8).
 
 ## 1. What the owner decided
 
@@ -110,7 +112,8 @@ WebAuthn, the options prefetch succeeded and the page's origin is the one answer
    audience answer `AUTH_PASSKEY_INVALID`.
 5. Update the counter and `lastUsedAt`.
 6. Clear the failed-password count, as a password sign-in does; otherwise a passkey-only person's
-   mistyped passwords would add up until the account locked.
+   mistyped passwords would add up until the account locked. Only the count: the lock was checked
+   in step 4, and a lock armed since then by a wrong password typed at the same moment stands.
 7. `completeLogin(method: 'passkey')`.
 
 While the page stays open and its tab is shown, both its challenges (the button's and the
@@ -154,18 +157,22 @@ authenticator with a real P-256 key (`apps/api/tests/integration/helpers/soft-au
 It covers:
 - single-use challenges, each gate and the audience;
 - the kill switch: sign-in, registration and rename refused, the list and `DELETE` still open;
-- counter handling and the method on the session;
-- the registration step-up (password, TOTP), session binding, the limit, duplicates;
-- removal on reset and status changes.
+- counter handling (a device-bound key whose counter went backwards is refused);
+- the registration step-up (password, TOTP), session binding, the limit, duplicates.
 
-**HTTP integration** (`auth-passkeys.spec.ts`): the same ceremonies end to end, the failed-password
-count cleared by a passkey sign-in, and listing and removing with the switch off.
+**HTTP integration** (`auth-passkeys.spec.ts`), end to end through Express and MongoDB:
+- the ceremonies, the refresh cookie, a replayed answer, and the method on the session;
+- the failed-password count: cleared by a passkey sign-in, left alone by a refused key, and a
+  locked account still refused with its lock in place;
+- removal on the staff password reset, on suspension, and on the gold portal's «new setup link»;
+- listing and removing with the switch off.
 
 **Web:**
-- support detection and error mapping (a prompt the person cancels gets a message, one the page
-  withdrew gets none);
-- markup of the sign-in buttons and the Security card, including the card with the switch off;
-- the offer reading the switch from the list.
+- error mapping (a prompt the person cancels gets a message, one the page withdrew gets none);
+- the sign-in screens before the browser has answered (no button yet, the autofill hint);
+- the Security card: renaming and removing, the empty list, and the card with the switch off;
+- the card's state and the «add» button as pure functions (`passkey-card-state.ts`);
+- the list request reading the switch from `meta`, and the offer reading it from the list.
 
 The prompts themselves were checked once in Chromium with a virtual authenticator (CDP
 `WebAuthn.addVirtualAuthenticator`) when the feature was built; that is not a committed test.
@@ -176,17 +183,16 @@ The prompts themselves were checked once in Chromium with a virtual authenticato
   for any change yet — design §4.4/§4.5 promise them for resets too).
 - An administrator view of a user's passkeys (lost phone): today the password reset — or the TOTP
   reset — removes them all.
-
 - Tell a device when one of its passkeys was removed (the WebAuthn signal API), so it stops offering
   a key the server no longer knows.
-- ADR-035 §9 says every passkey endpoint checks the kill switch. Listing and removing one's own
-  passkeys do not, on purpose (§2). ADRs are not edited, so the next ADR that touches passkeys
-  states it.
 
 **Fresh-context review of 2026-11-05** (EGM reviewers: design critic, codebase details,
 implementation readiness; every item checked against the code). Fixed on 2026-11-07:
-- **Code:** a passkey sign-in now clears the failed-password count (§4 step 6).
+- **Code:** a passkey sign-in now clears the failed-password count (§4 step 6), and only the count.
 - **Code:** the passkey list answers with the switch off, so «حذف» stays reachable.
 - **This page** (§2, §3, §4, §6, §7): the order of the sign-in checks, the kill-switch and audience
   exemptions, the TOTP code at the offer, when the button shows, the renewal timing, the tests, and
   the error statuses.
+- **ADR:** ADR-035 §9 said every passkey endpoint checks the switch; listing and removing one's own
+  do not, on purpose. [ADR-036](../03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md)
+  supersedes that section.

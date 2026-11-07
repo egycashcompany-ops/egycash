@@ -56,8 +56,8 @@ its entry here in the same PR.
     - 6 places where the page no longer matches the code (one overlaps a code gap).
 
     Every finding is now verified (against the owner's decisions, merged ADRs, the record, and the
-    code where it exists) before anything changes. These items are recorded as open in the
-    design's §8.
+    code where it exists) before anything changes. These items are recorded in the design's §8;
+    the two code gaps and the page are fixed in the same release (see Fixed).
   - **On `database-design.md`**, the upstream drift method found 28 drifts: 15 new, 9 already
     recorded elsewhere, 3 false and 1 unclear. Two parts were never reconciled with the code: §2's
     workflow, approvals, sequences and outbox, and §3 Recruitment; the `users` and `sessions`
@@ -307,8 +307,8 @@ its entry here in the same PR.
   archiving, reactivating or deleting the account, remove the account's passkeys. Every challenge
   is held by the server and used once; a locked or inactive account stays refused; only
   attestation `none` is accepted, so no certificate the client sends can make the server fetch a
-  URL. The organization setting `auth.passkeys.enabled` (on by default) switches it off for every
-  route. The ten-minute idle
+  URL. The organization setting `auth.passkeys.enabled` (on by default) switches off signing in,
+  adding and renaming; people can still see and remove their own passkeys (ADR-036). The ten-minute idle
   sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
 
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
@@ -553,13 +553,16 @@ its entry here in the same PR.
   - **A passkey sign-in now clears the failed-password count**, as a password sign-in does.
     Before, the count was cleared only by a successful password, and it has no time window. So a
     person who signs in only with a fingerprint, and mistypes the password now and then, would
-    eventually be locked out, fingerprint included.
+    eventually be locked out, fingerprint included. Only the count is cleared: a locked account
+    stays locked, and a refused key changes nothing.
   - **«حذف» works while fingerprint sign-in is switched off.** The server already allowed removing
     a passkey with the switch off, but the list was refused, and the Security card hid it. Now:
     - the list answers either way and says whether passkeys are on (`meta.enabled`);
     - with the switch off, the card lists the devices with «حذف» only, and says they can still be
       removed;
     - the offer after a password sign-in reads the same flag, so it is not made while switched off.
+    - Recorded as [ADR-036](docs/03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md),
+      which replaces ADR-035 §9 (that said the switch closed every passkey endpoint).
   - **The passkey design doc matches the code again:** the order of the sign-in checks, which
     endpoints the switch and the audience rule cover, the TOTP code at the offer, when the button
     shows, renewal timing, the tests, and the error statuses.

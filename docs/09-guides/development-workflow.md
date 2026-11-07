@@ -69,8 +69,10 @@ Rules:
 - **Fresh-context design review** for the designs where a mistake is expensive (a new module or
   phase, a new ADR, auth/RBAC/files/migrations/deploy): reviewers that see only the document and
   the files it names, never the conversation behind it — the
-  [`design-review`](../../.claude/skills/design-review/SKILL.md) skill. Every finding is checked
-  against the code before anything changes, and the review is recorded in the design doc.
+  [`design-review`](../../.claude/skills/design-review/SKILL.md) skill. Every finding is verified
+  (against the owner's decisions, merged ADRs, the record, and the code where it exists) before
+  anything changes, and the review is recorded in the design doc (for an ADR with no design doc,
+  in the PR description).
 - **Drift check** before building on an existing design: does the page still describe the code?
   The [`drift-check`](../../.claude/skills/drift-check/SKILL.md) skill, one document (or a short
   named list) at a time. `design-review` runs the reviewer personas of Google's Elephant-Goldfish

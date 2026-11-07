@@ -17,16 +17,18 @@ its entry here in the same PR.
   was taken:
   - **On the passkey design**, its reviewers raised 21 findings after duplicates were merged. 7 were
     worth acting on, and about half were noise:
-    - 2 code gaps: a passkey sign-in never clears the failed-password count, and the Security card
-      hides «حذف» while passkeys are switched off;
+    - 2 code gaps: a passkey sign-in never clears the failed-password count, and «حذف» cannot be
+      reached while passkeys are switched off (the list request is refused and the card hides the
+      list);
     - 6 places where the page no longer matches the code (one overlaps a code gap).
 
-    Every finding is now checked against the code before anything changes. These items are
-    recorded as open in the design's §8.
+    Every finding is now verified (against the owner's decisions, merged ADRs, the record, and the
+    code where it exists) before anything changes. These items are recorded as open in the
+    design's §8.
   - **On `database-design.md`**, the upstream drift method found 28 drifts: 15 new, 9 already
     recorded elsewhere, 3 false and 1 unclear. Two parts were never reconciled with the code: §2's
-    workflow, approvals, sequences and outbox, and §3 Recruitment. Both now carry a dated
-    "out of date" note.
+    workflow, approvals, sequences and outbox, and §3 Recruitment; the `users` and `sessions`
+    fields drifted too. Each of these now carries a dated "out of date" note.
   - **Taken:**
     - the seven reviewer personas and the five upstream standards, vendored unchanged under
       `.claude/vendor/egm/` (licence and provenance in its README);

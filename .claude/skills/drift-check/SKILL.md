@@ -21,9 +21,9 @@ way. It runs in the main session; no reviewer persona is needed.
   (module folder, models, routes). Never "all of docs/12-planning" in one go: 50+ documents is
   hours of reading and mostly noise.
 - **Out of scope:** discovery documents (`*-discovery.md`), port records whose rule is legacy
-  parity, designs marked CLOSED, retrospectives, and ADRs as such. An ADR records what was decided
-  on its date; when the code has moved on, that calls for a new ADR or a dated amendment, not an
-  edit.
+  parity, designs marked CLOSED, retrospectives, and ADRs as such. An ADR records what was
+  decided on its date and is never edited (`docs/README.md` rule 2); when the code has moved on,
+  that calls for a new ADR that supersedes it.
 
 ## Method
 
@@ -67,7 +67,8 @@ way. It runs in the main session; no reviewer persona is needed.
     page is old. Name the drift fixed in the commit message.
   - **fix the code**, when the doc states a decision the code broke. That is a normal change with
     its own tests.
-- Drift that needs the owner's decision goes to him in Arabic, as one short question with your
-  recommendation. Drift you leave unfixed is noted in the document itself, as a dated "out of date"
-  note on the section. It goes into `docs/10-reviews/technical-debt.md` only once someone has
-  decided to defer it.
+- Only a business choice goes to the owner: in Arabic, one short question, your recommendation
+  first. Never an engineering question.
+- Drift you leave unfixed is noted in the document itself, as a dated "out of date" note on the
+  section. It goes into `docs/10-reviews/technical-debt.md` only once someone has decided to defer
+  it.

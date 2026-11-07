@@ -52,6 +52,12 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 ## 2. Platform Core — key schemas (abridged)
 
 ### users
+
+> **Out of date (drift check, 2026-11-05).** There is no `profile.avatarFileId` or
+> `organization.companyId` (the system is single-organization), `status` also has `invited` (the
+> default), and `ix_companyId_branchId_status` does not exist. Read the model under `apps/api/src`
+> until this block is rewritten.
+
 ```jsonc
 { "email": "unique", "phone": "…", "passwordHash": "argon2id",
   "profile": { "firstName": {"ar":"…","en":"…"}, "lastName": {…}, "avatarFileId": null },
@@ -64,6 +70,12 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 Indexes: `ux_email`, `ix_companyId_branchId_status`.
 
 ### sessions  *(auth)*
+
+> **Out of date (drift check, 2026-11-05).** The session holds `currentTokenHash` (unique) and
+> `usedTokenHashes` for replay detection, not `refreshTokenHash`, and records how it was opened
+> (`method`: password, passkey, portal challenge). Read the model under `apps/api/src` until this
+> block is rewritten.
+
 ```jsonc
 { "userId": "…", "refreshTokenHash": "…", "family": "uuid",   // rotation family (ADR-006)
   "device": { "userAgent": "…", "ip": "…" },

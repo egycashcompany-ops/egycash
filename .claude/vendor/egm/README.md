@@ -9,11 +9,14 @@ Not an officially supported Google product.
   - `agents/` — seven reviewer personas, upstream `agents/`: comprehension, zoom_out,
     design_critic, structural, style, codebase_details, implementation_readiness;
   - `resources/document_standards/` — the five upstream document standards (the
-    `design-review` skill uses three: zoom-out, feature-spec, implementation-readiness).
+    `design-review` skill uses four: zoom-out, feature-spec, implementation-readiness and
+    re-implementation; not heilmeier).
 - **Adapted (modified files, Apache-2.0 §4(b)):** the seven subagent definitions in
   [`.claude/agents/egm-*.md`](../../agents/), from upstream `.claude-plugin/agents/`. The only
   change is the path: upstream reads the persona and standards from `${CLAUDE_PLUGIN_ROOT}`, a
   plugin install folder; these read them from this directory. Each file says so in a comment.
+  They keep upstream's `license: Apache-2.0` frontmatter key, which Claude Code does not
+  recognise: the warning it logs about that key is expected and harmless.
 - **Not taken:** everything else in the upstream tree:
   - the seven skills (brainstorm, draft, review, review-loop, resolve, bootstrap, drift-report);
   - the synthesizer and bootstrap agents;

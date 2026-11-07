@@ -366,6 +366,10 @@ describe('signing in with a passkey', () => {
       expect(
         await codeOf(passkeyService.registrationOptions(ctxOf(applicant), { password: PASSWORD })),
       ).toBe(ErrorCodes.AUTH_PASSKEY_NOT_ALLOWED);
+      // Its list is refused too, whatever the switch says: the Security card shows no passkeys there.
+      expect(await codeOf(passkeyService.list(ctxOf(applicant)))).toBe(
+        ErrorCodes.AUTH_PASSKEY_NOT_ALLOWED,
+      );
     });
 
     it('refuses an applicant-portal account at sign-in even holding a valid key', async () => {
@@ -389,7 +393,7 @@ describe('signing in with a passkey', () => {
   });
 
   describe('the organization switch', () => {
-    it('refuses every ceremony while switched off', async () => {
+    it('refuses every ceremony while switched off, but still lists the passkeys so one can be removed', async () => {
       const user = makeUser();
       const { device, dto, ctx } = await enrol(user);
       world.enabled = false;
@@ -406,10 +410,16 @@ describe('signing in with a passkey', () => {
       expect(await codeOf(passkeyService.registrationOptions(ctx, { password: PASSWORD }))).toBe(
         ErrorCodes.AUTH_PASSKEYS_DISABLED,
       );
-      expect(await codeOf(passkeyService.list(ctx))).toBe(ErrorCodes.AUTH_PASSKEYS_DISABLED);
-      // …but a person can always remove their own.
+      expect(await codeOf(passkeyService.rename(ctx, dto.id, 'هاتفي'))).toBe(
+        ErrorCodes.AUTH_PASSKEYS_DISABLED,
+      );
+      // …but a person can always see their own, told the switch is off, and remove one.
+      const listed = await passkeyService.list(ctx);
+      expect(listed.enabled).toBe(false);
+      expect(listed.items.map((p) => p.id)).toEqual([dto.id]);
       await passkeyService.remove(ctx, dto.id);
       expect(world.passkeys).toHaveLength(0);
+      expect(await passkeyService.list(ctx)).toEqual({ items: [], enabled: false });
     });
   });
 });
@@ -642,9 +652,11 @@ describe('managing one’s own passkeys', () => {
     );
     expect(await codeOf(passkeyService.remove(ctxOf(other), dto.id))).toBe(ErrorCodes.NOT_FOUND);
     expect((await passkeyService.rename(ctx, dto.id, 'هاتفي')).name).toBe('هاتفي');
-    expect((await passkeyService.list(ctx)).map((p) => p.name)).toEqual(['هاتفي']);
+    const listed = await passkeyService.list(ctx);
+    expect(listed.enabled).toBe(true);
+    expect(listed.items.map((p) => p.name)).toEqual(['هاتفي']);
     await passkeyService.remove(ctx, dto.id);
-    expect(await passkeyService.list(ctx)).toEqual([]);
+    expect(await passkeyService.list(ctx)).toEqual({ items: [], enabled: true });
     expect(world.audit.map((row) => row.action)).toEqual(
       expect.arrayContaining(['passkeyRenamed', 'passkeyRemoved']),
     );

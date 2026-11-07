@@ -213,13 +213,20 @@ const forLibraryRegistration = (
 };
 
 class PasskeyService {
-  /** Off means off for every route — the button vanishing is not what keeps it off. */
-  private async assertEnabled(): Promise<void> {
-    const enabled = await settingsService.resolve<boolean>(SettingKeys.PasskeysEnabled, {
+  private async isEnabled(): Promise<boolean> {
+    return settingsService.resolve<boolean>(SettingKeys.PasskeysEnabled, {
       userId: null,
       branchId: null,
     });
-    if (!enabled) {
+  }
+
+  /**
+   * Off means off for signing in, adding and renaming — the button vanishing is not what keeps it
+   * off. Listing and removing one's own passkeys stay open (`list`, `remove`): nobody is ever stuck
+   * with a key they cannot see or delete.
+   */
+  private async assertEnabled(): Promise<void> {
+    if (!(await this.isEnabled())) {
       throw new AppError(ErrorCodes.AUTH_PASSKEYS_DISABLED, 403, 'Passkey sign-in is switched off');
     }
   }
@@ -377,10 +384,18 @@ class PasskeyService {
 
   // ── Managing one's own passkeys ───────────────────────────────────────────
 
-  async list(ctx: AuthContext): Promise<PasskeyDto[]> {
-    await this.assertEnabled();
+  /**
+   * The caller's own passkeys, whether or not passkeys are switched on, and whether they are: with
+   * the switch off the Security card still lists them, offering only «حذف» — `remove` already
+   * works then, and a list refused while off left that unreachable.
+   */
+  async list(ctx: AuthContext): Promise<{ items: PasskeyDto[]; enabled: boolean }> {
     this.assertAudience(ctx);
-    return (await passkeyStore.listForUser(ctx.userId)).map(toPasskeyDto);
+    const [stored, enabled] = await Promise.all([
+      passkeyStore.listForUser(ctx.userId),
+      this.isEnabled(),
+    ]);
+    return { items: stored.map(toPasskeyDto), enabled };
   }
 
   /**

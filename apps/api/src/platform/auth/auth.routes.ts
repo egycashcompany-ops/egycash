@@ -203,9 +203,10 @@ export const buildAuthRouter = (): Router => {
   router.post(
     '/passkeys/authentication/options',
     // The renewal ceiling, not the sign-in one: a sign-in page asks for two (the button's and the
-    // autofill's) on every visit and refreshes both every four minutes while it stays open, so an
-    // office behind one address would empty the sign-in bucket — and lose the button — long before
-    // anybody was guessing anything. Each one writes a five-minute key and reveals nothing.
+    // autofill's) on every visit and renews each once it is three minutes old while its tab is
+    // shown (a hidden tab renews nothing), so an office behind one address would empty the sign-in
+    // bucket — and lose the button — long before anybody was guessing anything. Each one writes a
+    // five-minute key and reveals nothing.
     perIpCeiling('auth-passkey-options', env.AUTH_REFRESH_RATE_LIMIT_PER_IP),
     asyncHandler(passkeyAuthenticationOptions),
   );

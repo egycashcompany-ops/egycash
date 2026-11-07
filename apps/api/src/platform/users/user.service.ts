@@ -1095,6 +1095,15 @@ class UserService {
     return { locked: false };
   }
 
+  /**
+   * Clear only the failed-password count — never the lock. Arming a lock zeroes the count itself
+   * (`recordFailedLogin`), so this can never undo a lockout, even one armed a moment ago by a
+   * concurrent wrong password; an expired `lockedUntil` left in place is ignored by every check.
+   */
+  async clearFailedLogins(userId: string): Promise<void> {
+    await userRepository.updateSecurity(userId, { $set: { 'security.failedLogins': 0 } });
+  }
+
   async resetLoginFailures(userId: string): Promise<void> {
     await userRepository.updateSecurity(userId, {
       $set: { 'security.failedLogins': 0, 'security.lockedUntil': null },
@@ -1104,8 +1113,9 @@ class UserService {
   /**
    * Administrative unlock (SA-2): clear the automatic lockout the failed-login counter armed.
    *
-   * It reuses `resetLoginFailures` — the same two fields a SUCCESSFUL login clears — rather than
-   * introducing a second notion of "unlocked", and it deliberately does NOT touch `status`: an
+   * It reuses `resetLoginFailures` — the same two fields a SUCCESSFUL password sign-in clears (a
+   * passkey sign-in clears only the count, `clearFailedLogins`) — rather than introducing a
+   * second notion of "unlocked", and it deliberately does NOT touch `status`: an
    * account can be both suspended and locked out, and clearing the lockout must not quietly
    * re-enable a disabled account.
    *

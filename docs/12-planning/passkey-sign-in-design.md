@@ -1,8 +1,10 @@
 # Passkey sign-in (fingerprint / Face ID) — Design
 
 **Status: APPROVED** — owner decisions of 2026-11-01 recorded in §1; the architectural decision is
-[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md). Implementation in one PR. Parts of §2, §4, §6 and §7
-no longer match the code; §8 lists where.
+[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md), whose §9 (what the switch covers) is superseded by
+[ADR-036](../03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md). Implementation in one PR.
+Brought back in line with the code on 2026-11-07, after a fresh-context review found where it had
+fallen behind (§8).
 
 ## 1. What the owner decided
 
@@ -19,31 +21,38 @@ fetches; an organization kill switch.
 
 ## 2. API
 
-> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
-
-
 All under `/api/v1/auth/passkeys` (the auth router: external accounts reach it by construction, so
-every handler applies the §5 audience rule itself).
+every handler that acts on an account applies the §5 audience rule itself — except `DELETE`, which
+works for any account: nobody is ever stuck with a key. The sign-in challenge names no account; its
+answer applies the rule once the key has found one, §4).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `/authentication/options` | public | A sign-in challenge: `{ challenge, rpId, timeout, userVerification: 'required', allowCredentials: [], origin }` — `origin` is the one page address answers are accepted from; the web offers no button anywhere else |
 | `POST` | `/authentication/verify` | public | The device's answer → the same `LoginResponse` a password sign-in returns (never `totpRequired`) + refresh cookie |
-| `GET` | `/` | session | The caller's passkeys: `{ id, name, createdAt, lastUsedAt, backedUp }` |
+| `GET` | `/` | session | The caller's passkeys `[{ id, name, createdAt, lastUsedAt, backedUp }]`, with `meta: { enabled }` (the kill switch). Answers with the switch off too, so a device can always be seen and removed |
 | `POST` | `/registration/options` | session | Step-up `{ password, totpCode? }` → creation options (excludes the caller's existing passkeys) |
 | `POST` | `/registration/verify` | session | The device's attestation `{ response, name? }` → the new passkey |
 | `PATCH` | `/:id` | session | Rename `{ name }` |
-| `DELETE` | `/:id` | session | Remove one |
+| `DELETE` | `/:id` | session | Remove one — also with the switch off, and for any account |
 
-Error codes: `AUTH_PASSKEYS_DISABLED` (kill switch, 403), `AUTH_PASSKEY_INVALID` (any refused
-assertion — unknown credential, failed signature, an audience refused; one code so none of them can
-be told apart), `AUTH_PASSKEY_EXPIRED` (the challenge is unknown, expired or already used — checked
-before any account is looked at, so it reveals nothing; not a counted failure), `AUTH_PASSKEY_NOT_ALLOWED` (this account may
-not add a passkey), `AUTH_PASSKEY_LIMIT` (ten per account). Locked / not-activated / not-active keep
-their existing codes — they are told apart on the password path already.
+Error codes:
+- `AUTH_PASSKEYS_DISABLED` (403): the kill switch, on sign-in, registration and rename (not on the
+  list or `DELETE`).
+- `AUTH_PASSKEY_INVALID`: any refused assertion — unknown credential, failed signature, a cleared
+  password, an audience refused — one code so none of them can be told apart.
+- `AUTH_PASSKEY_EXPIRED`: the challenge is unknown, expired or already used. It is checked before
+  any account is looked at, so it reveals nothing, and it is not a counted failure.
+- `INVALID` and `EXPIRED` are 401 at sign-in and 422 at registration.
+- `AUTH_PASSKEY_NOT_ALLOWED` (403): this account may not use passkeys.
+- `AUTH_PASSKEY_LIMIT` (422): ten per account.
+- A key already registered is a 409.
+- Locked / not-activated / not-active keep their existing codes. They are told apart on the
+  password path already, and on this path only after the signature is proven (§4).
 
 Rate limits: options — the per-IP renewal ceiling (`AUTH_REFRESH_RATE_LIMIT_PER_IP`: a sign-in
-page asks for two on every visit and renews both every four minutes while open); verify — the per-IP
+page asks for two on every visit and renews each once it is three minutes old while the tab is
+shown; a hidden tab renews nothing); verify — the per-IP
 sign-in ceiling, ten per credential id per five minutes, and the failed-sign-in limit per address
 (`AUTH_PASSKEY_INVALID` counts there, not toward the account lockout; `AUTH_PASSKEY_EXPIRED` does not
 count); the registration steps — ten per access token per five minutes, the per-IP ceiling, and the
@@ -62,19 +71,18 @@ index sync runs in report mode.
 WebAuthn `user.id` = SHA-256(`ecms-passkey-user:<userId>`) — stable per account forever (the device
 replaces rather than duplicates a re-registration, and no configuration change can invalidate the
 passkeys already on people's phones — keying it with a rotatable secret would), and does not spell
-out the id or its creation time. It is not a secret. Sign-in never trusts it: the credential is found by `credentialId`, and the
-`userHandle` returned must match the owner's.
+out the id or its creation time. It is not a secret. Sign-in never trusts it: the credential is found
+by `credentialId` (which must equal `rawId`), and a `userHandle`, when the device returns one, must
+match the owner's.
 
 Sessions gain `method` (`password` · `passkey` · `portalChallenge`; absent on old rows = password),
-shown in the session list. The `login` audit row records `method: passkey` and the credential.
+shown in the session list. The `login` audit row records `method: passkey` and the passkey's record
+id (`passkeyId`).
 
 Challenges in Redis: `passkey:auth:<challenge>` (sign-in, 5 min) and
 `passkey:reg:<sessionId>` (registration, holds the challenge, 5 min), both consumed with `GETDEL`.
 
 ## 4. The two ceremonies
-
-> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
-
 
 **Adding a passkey.** Security page → «إضافة هذا الجهاز» → a dialog asks for the current password
 (and the TOTP code when enabled) → `registration/options` verifies them (a wrong password answers
@@ -85,23 +93,38 @@ user verification and the attestation, stores the credential, audits `passkeyReg
 **The offer after a password sign-in.** On a device with a built-in fingerprint / face / PIN check,
 when passkeys are on, the account has none yet and the forced password change is not pending, the
 sign-in page asks «الدخول أسرع في المرة القادمة؟» before going in. «تفعيل الدخول بالبصمة» runs the
-same step-up with the password just typed (and the TOTP code just typed; if that has expired, it
-asks for the current one). «ليس الآن» is remembered on that browser for thirty days. The gold
-portal's sign-in does the same.
+same step-up with the password just typed; a TOTP account is asked for a current code, because the
+one typed at sign-in has usually rolled over. «ليس الآن» is remembered on that browser for thirty
+days. "Passkeys are on" is read from the list's `meta.enabled`, since the list answers either way.
+The gold portal's sign-in does the same.
 
 **Signing in.** The sign-in page fetches options on load (iOS before 17.4 loses the tap if a network
 call happens between it and the WebAuthn call), offers the passkey in the username field's autofill
-where the browser supports it, and shows «الدخول بالبصمة أو الوجه» everywhere a platform
-authenticator exists → `authentication/verify`: take the challenge once; find the credential; the
-owner's gates (lock, status, cleared password, audience); verify signature, origin, RP ID, user
-verification, counter; update counter and `lastUsedAt`; `completeLogin(method: 'passkey')`. While the
-page stays open both its challenges (the button's and the autofill's) are renewed once they are
-three minutes old — the button never uses one older than four, so a tap always finds a fresh one —
+where the browser supports it, and shows «الدخول بالبصمة أو الوجه» wherever the browser supports
+WebAuthn, the options prefetch succeeded and the page's origin is the one answers are accepted from
+(a phone can then be used through a QR code even where the computer has no reader).
+
+`authentication/verify`, in order:
+1. Take the challenge once.
+2. Find the credential (`id` must equal `rawId`) and check the user handle.
+3. Verify the signature, origin, RP ID, user verification and counter.
+4. Only then apply the account's barriers. Lock, not-activated and not-active have their own codes,
+   so account state is told only to someone who holds the key. A cleared password or a refused
+   audience answer `AUTH_PASSKEY_INVALID`.
+5. Update the counter and `lastUsedAt`.
+6. Clear the failed-password count, as a password sign-in does; otherwise a passkey-only person's
+   mistyped passwords would add up until the account locked. Only the count: the lock was checked
+   in step 4, and a lock armed since then by a wrong password typed at the same moment stands.
+7. `completeLogin(method: 'passkey')`.
+
+While the page stays open and its tab is shown, both its challenges (the button's and the
+autofill's) are renewed once they are three minutes old. A hidden tab renews nothing, and renews at
+once when shown again. The button never uses one older than four minutes, so a tap always finds a
+fresh one —
 and the autofill is never re-armed while its field is focused or the window has handed focus to the
 device's prompt, nor started while the button's prompt is open; nothing is renewed once the form
-has left the screen (TOTP step, offer). The offer asks a TOTP account for a current code rather
-than resending the one typed at sign-in, which has usually rolled over; and once the person has picked a passkey from it, the server's
-answer (locked, rate-limited, offline) is shown like the button's.
+has left the screen (TOTP step, offer). Once the person has picked a passkey from the autofill, the
+server's answer (locked, rate-limited, offline) is shown like the button's.
 
 ## 5. Audience
 
@@ -112,9 +135,6 @@ and at sign-in.
 
 ## 6. Threat-model note (security-architecture §6)
 
-> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
-
-
 | Threat | Control |
 |---|---|
 | Replayed assertion | Server-held challenge, consumed once (`GETDEL`), 5 min; counter regression refused when the device reports one |
@@ -124,27 +144,41 @@ and at sign-in.
 | Admin reset leaves a key working | The staff reset, the TOTP reset and the gold portal's «new setup link» remove all passkeys; sign-in also refuses a cleared password |
 | Rehire revives an old key | Suspend / archive / delete remove passkeys, and reactivation removes any left behind |
 | A rotated JWT secret strands every passkey | `user.id` depends on no secret |
-| Lockout bypass | `lockedUntil` honoured |
+| Lockout bypass | `lockedUntil` honoured; a successful passkey sign-in clears the failed-password count, as a password sign-in does |
 | Lockout abuse via credential ids | Failed assertions never touch the account lockout; they count per address |
 | Account enumeration | Usernameless; options carry nothing per account; one refusal code |
 | Applicant skips the phone check | Audience rule (§5) |
 | Outbound request on attacker input | Only `none` / certificate-less `packed` attestation reaches the library; trust anchors emptied — no CRL / metadata fetch |
-| Kill switch only in the UI | Every endpoint checks the setting |
+| Kill switch only in the UI | Sign-in, registration and rename check the setting on the server; listing and removing one's own passkeys stay open, so nobody is stuck with a key |
 
 ## 7. Tests
 
-> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
+**API unit** (`passkey.service.spec.ts`): the real WebAuthn library, driven by a software
+authenticator with a real P-256 key (`apps/api/tests/integration/helpers/soft-authenticator.ts`).
+It covers:
+- single-use challenges, each gate and the audience;
+- the kill switch: sign-in, registration and rename refused, the list and `DELETE` still open;
+- counter handling (a device-bound key whose counter went backwards is refused);
+- the registration step-up (password, TOTP), session binding, the limit, duplicates.
 
+**HTTP integration** (`auth-passkeys.spec.ts`), end to end through Express and MongoDB:
+- the ceremonies, the refresh cookie, a replayed answer, and the method on the session;
+- the failed-password count: cleared by a passkey sign-in (the count only — an expired lock is
+  left as it was), left alone by a refused key, and a locked account still refused with its lock
+  in place;
+- removal on the staff password reset, on suspension, and on the gold portal's «new setup link»;
+- listing and removing with the switch off.
 
-API: options/verify with the WebAuthn verification seam mocked — single-use challenge, each gate,
-audience, kill switch, counter handling, method on the session; registration step-up (password,
-TOTP), session binding, limit, duplicate; reset / status removal. Web: support detection, error
-mapping (a cancelled prompt is silent), markup of the sign-in buttons and the Security card. End to
-end in Chromium with a virtual authenticator (CDP `WebAuthn.addVirtualAuthenticator`): the offer
-after a password sign-in adds a passkey, then the autofill suggestion and the button each sign in
-with it, a replayed answer is refused — the browser's bodies parsed with the contract schemas and
-verified with the server library. The API ceremonies run against a software authenticator with a
-real P-256 key (`tests/integration/helpers/soft-authenticator.ts`), unit and HTTP.
+**Web:**
+- error mapping (a prompt the person cancels gets a message, one the page withdrew gets none);
+- the sign-in screens before the browser has answered (no button yet, the autofill hint);
+- the Security card's markup: each device with rename and remove (only remove with the switch
+  off), and the empty list;
+- the card's state and the «add» button as pure functions (`passkey-card-state.ts`);
+- the list request reading the switch from `meta`, and the offer reading it from the list.
+
+The prompts themselves were checked once in Chromium with a virtual authenticator (CDP
+`WebAuthn.addVirtualAuthenticator`) when the feature was built; that is not a committed test.
 
 ## 8. Follow-ups (not in this change)
 
@@ -152,32 +186,16 @@ real P-256 key (`tests/integration/helpers/soft-authenticator.ts`), unit and HTT
   for any change yet — design §4.4/§4.5 promise them for resets too).
 - An administrator view of a user's passkeys (lost phone): today the password reset — or the TOTP
   reset — removes them all.
+- Tell a device when one of its passkeys was removed (the WebAuthn signal API), so it stops offering
+  a key the server no longer knows.
 
-**Open after the fresh-context review of 2026-11-05** (EGM reviewers: design critic, codebase
-details, implementation readiness; every item below was checked against the code):
-
-- Code: a passkey sign-in never resets `security.failedLogins`, so a person who signs in only with
-  a passkey and mistypes the password now and then is eventually locked out, passkey included
-  (`auth.service.ts` resets on the password path only; `completePasskeyLogin` does not).
-- Code: «حذف» cannot be reached while passkeys are switched off. The server lets a passkey be
-  removed with the switch off, but `GET /auth/passkeys` is refused then, and the Security card
-  hides the list; both need changing.
-- This page lags the code in six places (the code is right in each):
-  - §4 lists the account checks before the signature check; the code verifies the signature
-    first, so account state is never told to someone who does not hold the key.
-  - §2 and §6 say every endpoint checks the kill switch and applies the §5 audience rule; DELETE
-    does neither, on purpose. ADR-035 §9 says the same and needs a superseding ADR, or a note in
-    the next one that touches passkeys.
-  - §4 says both that the offer reuses the TOTP code just typed and that it asks for a current one;
-    it asks.
-  - §4 says the button shows where a platform authenticator exists; it shows wherever WebAuthn is
-    supported, the options prefetch succeeds and the page's origin is the server's.
-  - §2 says the challenges renew every four minutes, §4 three; it is three, and a hidden tab renews
-    nothing.
-  - §7: no committed test uses a virtual authenticator (that was a one-off check); the unit suite
-    runs the real WebAuthn library against a software authenticator rather than mocking it; a
-    cancelled prompt shows a message; the soft authenticator is at
-    `apps/api/tests/integration/helpers/soft-authenticator.ts`.
-- §2's error list gives a status only for `AUTH_PASSKEYS_DISABLED` (403): `AUTH_PASSKEY_INVALID`
-  and `AUTH_PASSKEY_EXPIRED` are 401 at sign-in and 422 at registration, and a duplicate key is a
-  409.
+**Fresh-context review of 2026-11-05** (EGM reviewers: design critic, codebase details,
+implementation readiness; every item checked against the code). Fixed on 2026-11-07:
+- **Code:** a passkey sign-in now clears the failed-password count (§4 step 6), and only the count.
+- **Code:** the passkey list answers with the switch off, so «حذف» stays reachable.
+- **This page** (§2, §3, §4, §6, §7): the order of the sign-in checks, the kill-switch and audience
+  exemptions, the TOTP code at the offer, when the button shows, the renewal timing, the tests, and
+  the error statuses.
+- **ADR:** ADR-035 §9 said every passkey endpoint checks the switch; listing and removing one's own
+  do not, on purpose. [ADR-036](../03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md)
+  supersedes that section.

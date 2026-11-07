@@ -296,7 +296,8 @@ export const shouldOfferPasskey = async (
   if (!support.platform || response.mustChangePassword) return false;
   if (passkeyOfferSuppressed(response.me.id)) return false;
   try {
-    return (await listPasskeysRequest()).length === 0;
+    const { items, enabled } = await listPasskeysRequest();
+    return enabled && items.length === 0;
   } catch {
     return false;
   }

@@ -7,7 +7,9 @@ import {
   type ChangePassword,
   type Login,
   type PasskeyAuthenticationVerify,
+  type PasskeyDto,
   type PasskeyIdParam,
+  type PasskeyListMetaDto,
   type PasskeyRegistrationOptions,
   type PasskeyRegistrationVerify,
   type RenamePasskey,
@@ -76,7 +78,8 @@ export const passkeyAuthenticationVerify = async (req: Request, res: Response): 
 };
 
 export const listPasskeys = async (req: Request, res: Response): Promise<void> => {
-  ok(res, await passkeyService.list(authContext(req)));
+  const { items, enabled } = await passkeyService.list(authContext(req));
+  ok<PasskeyDto[], PasskeyListMetaDto>(res, items, { enabled });
 };
 
 export const passkeyRegistrationOptions = async (req: Request, res: Response): Promise<void> => {

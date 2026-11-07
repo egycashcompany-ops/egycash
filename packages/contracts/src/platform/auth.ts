@@ -274,6 +274,15 @@ export interface PasskeyDto {
   backedUp: boolean;
 }
 
+/**
+ * `meta` of GET /auth/passkeys. The list answers whether or not passkeys are switched on
+ * (`auth.passkeys.enabled`), so a person can always see their devices and remove one; `enabled`
+ * says whether adding, renaming and signing in are available.
+ */
+export interface PasskeyListMetaDto {
+  enabled: boolean;
+}
+
 /** The most passkeys one account may hold. */
 export const PASSKEYS_PER_ACCOUNT = 10;
 

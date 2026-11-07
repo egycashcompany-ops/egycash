@@ -144,6 +144,8 @@ describe('every new string exists in both languages', () => {
     'platform.auth.passkey.offer.later',
     'platform.auth.passkey.offer.totpHint',
     'platform.auth.passkey.offer.done',
+    'account.security.passkeysOff',
+    'account.security.passkeysOffRemove',
     // Built by interpolation on the session list.
     ...SESSION_METHODS.map((method) => `account.security.signedInWith.${method}`),
   ];
@@ -229,7 +231,7 @@ describe('the Security page', () => {
     },
   ];
   const markup = render(<SecurityPage />, (qc) => {
-    qc.setQueryData(PASSKEYS_QUERY_KEY, passkeys);
+    qc.setQueryData(PASSKEYS_QUERY_KEY, { items: passkeys, enabled: true });
     qc.setQueryData(['platform', 'auth', 'sessions'], sessions);
   });
 
@@ -249,5 +251,39 @@ describe('the Security page', () => {
       m[0].includes('type="password"'),
     );
     expect(fields).toHaveLength(3);
+  });
+});
+
+describe('the Security page with passkeys switched off', () => {
+  const passkey: PasskeyDto = {
+    id: 'p-1',
+    name: 'iPhone',
+    createdAt: '2026-10-01T09:00:00.000Z',
+    lastUsedAt: null,
+    backedUp: false,
+  };
+  const renderOff = (items: PasskeyDto[]): string =>
+    render(<SecurityPage />, (qc) => {
+      qc.setQueryData(PASSKEYS_QUERY_KEY, { items, enabled: false });
+      qc.setQueryData(['platform', 'auth', 'sessions'], []);
+    });
+
+  it('still lists the devices, each with «حذف», and nothing that needs the switch', () => {
+    const markup = renderOff([passkey]);
+    expect(markup).toContain('iPhone');
+    expect(markup).toContain(translate('en', 'account.security.passkeysOff'));
+    expect(markup).toContain(translate('en', 'account.security.passkeysOffRemove'));
+    expect(markup).toContain(`aria-label="${translate('en', 'account.security.passkeyRemove')}"`);
+    expect(markup).not.toContain(
+      `aria-label="${translate('en', 'account.security.passkeyRename')}"`,
+    );
+    expect(markup).not.toContain(translate('en', 'account.security.passkeyAdd'));
+  });
+
+  it('with no device, says only that it is off', () => {
+    const markup = renderOff([]);
+    expect(markup).toContain(translate('en', 'account.security.passkeysOff'));
+    expect(markup).not.toContain(translate('en', 'account.security.passkeysOffRemove'));
+    expect(markup).not.toContain(translate('en', 'account.security.passkeysEmpty'));
   });
 });

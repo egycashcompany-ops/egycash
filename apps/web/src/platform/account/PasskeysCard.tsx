@@ -281,11 +281,12 @@ export const PasskeysCard = (): JSX.Element | null => {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState<PasskeyDto | null>(null);
   const [removing, setRemoving] = useState<PasskeyDto | null>(null);
-  const {
-    data: passkeys = [],
-    error,
-    refetch,
-  } = useQuery({ queryKey: PASSKEYS_QUERY_KEY, queryFn: listPasskeysRequest, retry: false });
+  const { data, error, refetch } = useQuery({
+    queryKey: PASSKEYS_QUERY_KEY,
+    queryFn: listPasskeysRequest,
+    retry: false,
+  });
+  const passkeys = data?.items ?? [];
 
   useEffect(() => {
     let disposed = false;
@@ -300,7 +301,9 @@ export const PasskeysCard = (): JSX.Element | null => {
   const code = error instanceof ApiError ? error.code : null;
   // An account that may not hold passkeys (none reach this page today) sees no card at all.
   if (code === 'AUTH_PASSKEY_NOT_ALLOWED') return null;
-  const switchedOff = code === 'AUTH_PASSKEYS_DISABLED';
+  // Switched off, the list still comes (the server answers it either way) so a device can be
+  // removed; adding and renaming wait for the switch. The error code is what an older API sent.
+  const switchedOff = data?.enabled === false || code === 'AUTH_PASSKEYS_DISABLED';
 
   return (
     <Card>
@@ -321,10 +324,11 @@ export const PasskeysCard = (): JSX.Element | null => {
       <CardBody className="space-y-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {switchedOff ? t('account.security.passkeysOff') : t('account.security.passkeysHint')}
+          {switchedOff && passkeys.length > 0 && ` ${t('account.security.passkeysOffRemove')}`}
         </p>
-        {!switchedOff && (
+        {(!switchedOff || passkeys.length > 0) && (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {passkeys.length === 0 && (
+            {!switchedOff && passkeys.length === 0 && (
               <li className="py-3 text-sm text-slate-400">{t('account.security.passkeysEmpty')}</li>
             )}
             {passkeys.map((passkey) => (
@@ -354,15 +358,17 @@ export const PasskeysCard = (): JSX.Element | null => {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t('account.security.passkeyRename')}
-                    title={t('account.security.passkeyRename')}
-                    onClick={() => setRenaming(passkey)}
-                  >
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
+                  {!switchedOff && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={t('account.security.passkeyRename')}
+                      title={t('account.security.passkeyRename')}
+                      onClick={() => setRenaming(passkey)}
+                    >
+                      <EditIcon className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost-danger"

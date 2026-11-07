@@ -320,6 +320,13 @@ const signalInit = (options: ReadOptions): RequestInit =>
 export const get = <T>(path: string, options: ReadOptions = {}): Promise<T> =>
   api<T>(path, signalInit(options));
 
+/** A GET whose answer carries its own `meta` beside `data` (as `postWithMeta`). Same silent refresh. */
+export const getWithMeta = <T, M>(
+  path: string,
+  options: ReadOptions = {},
+): Promise<DataWithMeta<T, M>> =>
+  withSilentRefresh(path, () => rawEnvelope<T, M>(path, signalInit(options)));
+
 /** List fetch that preserves the pagination `meta` envelope (API Standards §4). */
 const rawPage = async <T>(path: string, options: ReadOptions = {}): Promise<Paginated<T>> => {
   const headers = new Headers({ 'Content-Type': 'application/json' });

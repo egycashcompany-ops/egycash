@@ -549,6 +549,21 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Fingerprint sign-in: two gaps a review found, closed.** «يلا».
+  - **A passkey sign-in now clears the failed-password count**, as a password sign-in does.
+    Before, the count was cleared only by a successful password, and it has no time window. So a
+    person who signs in only with a fingerprint, and mistypes the password now and then, would
+    eventually be locked out, fingerprint included.
+  - **«حذف» works while fingerprint sign-in is switched off.** The server already allowed removing
+    a passkey with the switch off, but the list was refused, and the Security card hid it. Now:
+    - the list answers either way and says whether passkeys are on (`meta.enabled`);
+    - with the switch off, the card lists the devices with «حذف» only, and says they can still be
+      removed;
+    - the offer after a password sign-in reads the same flag, so it is not made while switched off.
+  - **The passkey design doc matches the code again:** the order of the sign-in checks, which
+    endpoints the switch and the audience rule cover, the TOTP code at the offer, when the button
+    shows, renewal timing, the tests, and the error statuses.
+
 - **Car codes with a space are filtered as one car.** «لما باجى اعمل فلتر على اى عربيه من اللى
   بالعربى دى مش بيجيب العربيه و بيسرش اكن الاسم بتاع العربيه حاجه والرقم اللى جمبها حاجه تانيه».
   The vehicle-code filter split every code on spaces — «كورولا 1» became «كورولا» and «1» — whether

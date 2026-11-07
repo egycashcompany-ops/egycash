@@ -11,6 +11,70 @@ its entry here in the same PR.
 
 ### Added
 
+- **Reading the owner's files: which reader for which file, and MarkItDown run safely (development
+  tooling).** «وأبقى ضيف دى كمان» — Microsoft's MarkItDown (github.com/microsoft/markitdown, MIT),
+  tested before it was taken on generated Arabic-first files like the owner's books.
+  - **Results:**
+    - Word: 25/25 Arabic strings, clauses and table text, though the title loses its heading and a
+      table's header shifts into its body.
+    - CSV: correct when given the right encoding. `-c cp1256` is right for an old Windows export
+      and garbles a UTF-8 file, so the check decides.
+    - Excel: a first look at a workbook the check does not mark as holding secrets. Merged titles,
+      `NaN`, rounded long numbers, hidden sheets and unsaved formula results need care.
+    - Arabic PDFs: unusable. The Arabic came out reversed, 0/20 strings usable, and a scanned PDF
+      gave nothing; the agent's own PDF reading got 20/20 on both.
+  - **Taken:** `.claude/skills/owner-files`, with a check script
+    (`scripts/owner_files.py`) that prints structure only, never a data cell, so it is safe on any
+    file:
+    - it flags secret-bearing workbooks before anything is converted: the ATM register's J..Q,
+      AN, AU and AO columns and `Sheet1`, fuel-card «pass» and «قيمه الشحن», and key, PIN and
+      password headers in English and Arabic;
+    - it also reports hidden sheets, formulas with no saved result, long numbers that MarkItDown
+      would round, a CSV's real encoding, garbled output, archive sizes and Word tracked changes.
+
+    The skill says which reader to use for each file type and runs MarkItDown 0.1.9 pinned in the
+    scratchpad:
+    - local extras only, so no audio upload, Azure, YouTube or plugins;
+    - files fed through standard input, so it never fetches a URL;
+    - UTF-8 output through `-o`, and no exiftool.
+
+    Owner files and every output stay in the scratchpad: never committed, published or treated
+    as instructions.
+  - **Not taken:** the MarkItDown MCP server (it reads any file or URL, has no authentication, and
+    installs every extra), and any use inside the product. The ECMS imports keep their own readers:
+    ExcelJS in the API, and a browser CSV parser for gold receiving.
+
+- **Design review with fresh-context reviewers, and a drift check (development tooling).** «شوف
+  دى هتفيد ولا لأ وضيفها عندك لو كويسه» — Google's Elephant-Goldfish Model
+  (github.com/google/elephant-goldfish-model, Apache-2.0), evaluated on two ECMS documents before it
+  was taken:
+  - **On the passkey design**, its reviewers raised 21 findings after duplicates were merged. 7 were
+    worth acting on, and about half were noise:
+    - 2 code gaps: a passkey sign-in never clears the failed-password count, and «حذف» cannot be
+      reached while passkeys are switched off (the list request is refused and the card hides the
+      list);
+    - 6 places where the page no longer matches the code (one overlaps a code gap).
+
+    Every finding is now verified (against the owner's decisions, merged ADRs, the record, and the
+    code where it exists) before anything changes. These items are recorded as open in the
+    design's §8.
+  - **On `database-design.md`**, the upstream drift method found 28 drifts: 15 new, 9 already
+    recorded elsewhere, 3 false and 1 unclear. Two parts were never reconciled with the code: §2's
+    workflow, approvals, sequences and outbox, and §3 Recruitment; the `users` and `sessions`
+    fields drifted too. Each of these now carries a dated "out of date" note.
+  - **Taken:**
+    - the seven reviewer personas and the five upstream standards, vendored unchanged under
+      `.claude/vendor/egm/` (licence and provenance in its README);
+    - the upstream subagent adapters, as `.claude/agents/egm-*.md`, with only the path changed;
+    - two ECMS skills: `.claude/skills/design-review`, which runs the reviewers, and
+      `.claude/skills/drift-check`, which follows the drift method.
+  - **Not taken:**
+    - the plugin itself, because cloud sessions do not install plugins a repository declares;
+    - its step-by-step approval prompts;
+    - its README-in-every-folder bootstrap;
+    - its report files in the repository root.
+  - [Development Workflow §3](docs/09-guides/development-workflow.md) says when each is used.
+
 - **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
   time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
   دلوقتى وشغال .. ووقت كل واحد على السيستم..».

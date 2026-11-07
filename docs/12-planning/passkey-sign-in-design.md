@@ -1,7 +1,8 @@
 # Passkey sign-in (fingerprint / Face ID) — Design
 
 **Status: APPROVED** — owner decisions of 2026-11-01 recorded in §1; the architectural decision is
-[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md). Implementation in one PR.
+[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md). Implementation in one PR. Parts of §2, §4, §6 and §7
+no longer match the code; §8 lists where.
 
 ## 1. What the owner decided
 
@@ -17,6 +18,9 @@ single-use server challenges; RP identity from configuration; attestation `none`
 fetches; an organization kill switch.
 
 ## 2. API
+
+> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
+
 
 All under `/api/v1/auth/passkeys` (the auth router: external accounts reach it by construction, so
 every handler applies the §5 audience rule itself).
@@ -69,6 +73,9 @@ Challenges in Redis: `passkey:auth:<challenge>` (sign-in, 5 min) and
 
 ## 4. The two ceremonies
 
+> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
+
+
 **Adding a passkey.** Security page → «إضافة هذا الجهاز» → a dialog asks for the current password
 (and the TOTP code when enabled) → `registration/options` verifies them (a wrong password answers
 `AUTH_INVALID_CREDENTIALS` and counts toward the account lockout, as on the sign-in page) → the
@@ -105,6 +112,9 @@ and at sign-in.
 
 ## 6. Threat-model note (security-architecture §6)
 
+> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
+
+
 | Threat | Control |
 |---|---|
 | Replayed assertion | Server-held challenge, consumed once (`GETDEL`), 5 min; counter regression refused when the device reports one |
@@ -123,6 +133,9 @@ and at sign-in.
 
 ## 7. Tests
 
+> **Out of date in places (review of 2026-11-05):** see the list at the end of §8.
+
+
 API: options/verify with the WebAuthn verification seam mocked — single-use challenge, each gate,
 audience, kill switch, counter handling, method on the session; registration step-up (password,
 TOTP), session binding, limit, duplicate; reset / status removal. Web: support detection, error
@@ -139,3 +152,32 @@ real P-256 key (`tests/integration/helpers/soft-authenticator.ts`), unit and HTT
   for any change yet — design §4.4/§4.5 promise them for resets too).
 - An administrator view of a user's passkeys (lost phone): today the password reset — or the TOTP
   reset — removes them all.
+
+**Open after the fresh-context review of 2026-11-05** (EGM reviewers: design critic, codebase
+details, implementation readiness; every item below was checked against the code):
+
+- Code: a passkey sign-in never resets `security.failedLogins`, so a person who signs in only with
+  a passkey and mistypes the password now and then is eventually locked out, passkey included
+  (`auth.service.ts` resets on the password path only; `completePasskeyLogin` does not).
+- Code: «حذف» cannot be reached while passkeys are switched off. The server lets a passkey be
+  removed with the switch off, but `GET /auth/passkeys` is refused then, and the Security card
+  hides the list; both need changing.
+- This page lags the code in six places (the code is right in each):
+  - §4 lists the account checks before the signature check; the code verifies the signature
+    first, so account state is never told to someone who does not hold the key.
+  - §2 and §6 say every endpoint checks the kill switch and applies the §5 audience rule; DELETE
+    does neither, on purpose. ADR-035 §9 says the same and needs a superseding ADR, or a note in
+    the next one that touches passkeys.
+  - §4 says both that the offer reuses the TOTP code just typed and that it asks for a current one;
+    it asks.
+  - §4 says the button shows where a platform authenticator exists; it shows wherever WebAuthn is
+    supported, the options prefetch succeeds and the page's origin is the server's.
+  - §2 says the challenges renew every four minutes, §4 three; it is three, and a hidden tab renews
+    nothing.
+  - §7: no committed test uses a virtual authenticator (that was a one-off check); the unit suite
+    runs the real WebAuthn library against a software authenticator rather than mocking it; a
+    cancelled prompt shows a message; the soft authenticator is at
+    `apps/api/tests/integration/helpers/soft-authenticator.ts`.
+- §2's error list gives a status only for `AUTH_PASSKEYS_DISABLED` (403): `AUTH_PASSKEY_INVALID`
+  and `AUTH_PASSKEY_EXPIRED` are 401 at sign-in and 422 at registration, and a duplicate key is a
+  409.

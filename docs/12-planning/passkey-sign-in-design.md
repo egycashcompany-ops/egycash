@@ -22,8 +22,9 @@ fetches; an organization kill switch.
 ## 2. API
 
 All under `/api/v1/auth/passkeys` (the auth router: external accounts reach it by construction, so
-every handler applies the §5 audience rule itself — except `DELETE`, which works for any account:
-nobody is ever stuck with a key).
+every handler that acts on an account applies the §5 audience rule itself — except `DELETE`, which
+works for any account: nobody is ever stuck with a key. The sign-in challenge names no account; its
+answer applies the rule once the key has found one, §4).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -162,15 +163,17 @@ It covers:
 
 **HTTP integration** (`auth-passkeys.spec.ts`), end to end through Express and MongoDB:
 - the ceremonies, the refresh cookie, a replayed answer, and the method on the session;
-- the failed-password count: cleared by a passkey sign-in, left alone by a refused key, and a
-  locked account still refused with its lock in place;
+- the failed-password count: cleared by a passkey sign-in (the count only — an expired lock is
+  left as it was), left alone by a refused key, and a locked account still refused with its lock
+  in place;
 - removal on the staff password reset, on suspension, and on the gold portal's «new setup link»;
 - listing and removing with the switch off.
 
 **Web:**
 - error mapping (a prompt the person cancels gets a message, one the page withdrew gets none);
 - the sign-in screens before the browser has answered (no button yet, the autofill hint);
-- the Security card: renaming and removing, the empty list, and the card with the switch off;
+- the Security card's markup: each device with rename and remove (only remove with the switch
+  off), and the empty list;
 - the card's state and the «add» button as pure functions (`passkey-card-state.ts`);
 - the list request reading the switch from `meta`, and the offer reading it from the list.
 

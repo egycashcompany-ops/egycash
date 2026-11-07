@@ -36,7 +36,7 @@ import {
   renamePasskeyRequest,
 } from '../auth/api';
 import { passkeyFailure } from '../auth/passkey-failure';
-import { canAddPasskey, passkeyCardState } from './passkey-card-state';
+import { canAddPasskey, passkeyCardState, removeConfirmKey } from './passkey-card-state';
 import {
   addPasskey,
   cancelPasskeyPrompt,
@@ -226,10 +226,12 @@ const RenamePasskeyDialog = ({
 
 const RemovePasskeyDialog = ({
   passkey,
+  switchedOff,
   onClose,
   onRemoved,
 }: {
   passkey: PasskeyDto | null;
+  switchedOff: boolean;
   onClose: () => void;
   onRemoved: () => void;
 }): JSX.Element => {
@@ -257,7 +259,7 @@ const RemovePasskeyDialog = ({
       open={passkey !== null}
       onClose={onClose}
       title={t('account.security.passkeyRemoveTitle')}
-      description={t('account.security.passkeyRemoveBody', { name: passkey?.name ?? '' })}
+      description={t(removeConfirmKey(switchedOff), { name: passkey?.name ?? '' })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -402,6 +404,7 @@ export const PasskeysCard = (): JSX.Element | null => {
       />
       <RemovePasskeyDialog
         passkey={removing}
+        switchedOff={switchedOff}
         onClose={() => setRemoving(null)}
         onRemoved={() => {
           setRemoving(null);

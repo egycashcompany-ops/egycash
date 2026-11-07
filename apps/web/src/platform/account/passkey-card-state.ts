@@ -29,6 +29,13 @@ export const passkeyCardState = (
   };
 };
 
+/**
+ * The removal confirmation. «You can add it again at any time» is true only with passkeys on:
+ * switched off, adding is refused until the switch comes back.
+ */
+export const removeConfirmKey = (switchedOff: boolean): string =>
+  switchedOff ? 'account.security.passkeyRemoveBodyOff' : 'account.security.passkeyRemoveBody';
+
 /** «Add» is offered only with passkeys on and once the browser has said it can make one. */
 export const canAddPasskey = (switchedOff: boolean, support: PasskeySupport | null): boolean =>
   !switchedOff && support?.webauthn === true;

@@ -34,9 +34,10 @@ Everything else in ADR-035 stands.
 
 ## Alternatives considered
 
-- **Refuse the list too, and remove keys only through an administrator.** The administrator's
-  password reset already removes every passkey, but it also forces a new password. Making that the
-  only way to drop one lost phone turns a self-service step into a support ticket.
+- **Refuse the list too, and remove keys only through an administrator.** An administrator's
+  password reset or TOTP reset already removes every passkey, but each also costs the person their
+  password or their TOTP enrollment. Making that the only way to drop one lost phone turns a
+  self-service step into a support ticket.
 - **Remove every passkey when the switch is turned off.** Turning a setting off and on again would
   then cost every person their devices. A switch should be reversible.
 

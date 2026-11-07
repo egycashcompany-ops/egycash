@@ -147,6 +147,7 @@ describe('every new string exists in both languages', () => {
     'platform.auth.passkey.offer.done',
     'account.security.passkeysOff',
     'account.security.passkeysOffRemove',
+    'account.security.passkeyRemoveBodyOff',
     // Built by interpolation on the session list.
     ...SESSION_METHODS.map((method) => `account.security.signedInWith.${method}`),
   ];

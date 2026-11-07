@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { type PasskeyDto } from '@ecms/contracts';
 import { ApiError } from '../../shared/lib/api-client';
-import { canAddPasskey, passkeyCardState } from './passkey-card-state';
+import { canAddPasskey, passkeyCardState, removeConfirmKey } from './passkey-card-state';
 
 const passkey: PasskeyDto = {
   id: 'pk1',
@@ -63,5 +63,12 @@ describe('canAddPasskey', () => {
     expect(canAddPasskey(false, support(false))).toBe(false);
     // Not asked yet: no button that might not work.
     expect(canAddPasskey(false, null)).toBe(false);
+  });
+});
+
+describe('removeConfirmKey', () => {
+  it('promises the device can be added again only while adding works', () => {
+    expect(removeConfirmKey(false)).toBe('account.security.passkeyRemoveBody');
+    expect(removeConfirmKey(true)).toBe('account.security.passkeyRemoveBodyOff');
   });
 });

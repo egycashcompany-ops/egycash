@@ -257,6 +257,27 @@ describe('adding a passkey and signing in with it', () => {
     expect((await securityOf(staff.id))?.lockedUntil).toEqual(lockedUntil);
   });
 
+  it('a sign-in clears only the count: a lock it finds is left for the lock checks to judge', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+    // A lock that has run out (so the sign-in goes through) and a count. Clearing the lock as well
+    // would also clear one a wrong password armed while this sign-in was in flight.
+    const expired = new Date(Date.now() - 60_000);
+    await UserModel.updateOne(
+      { _id: new Types.ObjectId(staff.id) },
+      { $set: { 'security.lockedUntil': expired, 'security.failedLogins': 3 } },
+    ).exec();
+    await getCache().del(userSnapshotKey(staff.id));
+
+    const { res } = await passkeySignIn(device);
+    expect(res.status).toBe(200);
+    const security = await securityOf(staff.id);
+    expect(security?.failedLogins).toBe(0);
+    expect(security?.lockedUntil).toEqual(expired);
+  });
+
   it('a refused key neither clears nor adds to the failed-password count', async () => {
     const staff = await makeAccount();
     const token = (await passwordLogin(staff.email)).accessToken ?? '';

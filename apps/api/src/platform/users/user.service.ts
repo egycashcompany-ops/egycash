@@ -1113,8 +1113,9 @@ class UserService {
   /**
    * Administrative unlock (SA-2): clear the automatic lockout the failed-login counter armed.
    *
-   * It reuses `resetLoginFailures` — the same two fields a SUCCESSFUL login clears — rather than
-   * introducing a second notion of "unlocked", and it deliberately does NOT touch `status`: an
+   * It reuses `resetLoginFailures` — the same two fields a SUCCESSFUL password sign-in clears (a
+   * passkey sign-in clears only the count, `clearFailedLogins`) — rather than introducing a
+   * second notion of "unlocked", and it deliberately does NOT touch `status`: an
    * account can be both suspended and locked out, and clearing the lockout must not quietly
    * re-enable a disabled account.
    *

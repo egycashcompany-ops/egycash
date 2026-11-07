@@ -11,6 +11,28 @@ its entry here in the same PR.
 
 ### Added
 
+- **Reading the owner's files: which reader for which file, and MarkItDown run safely (development
+  tooling).** «وأبقى ضيف دى كمان» — Microsoft's MarkItDown (github.com/microsoft/markitdown, MIT),
+  tested before it was taken on generated Arabic-first files like the owner's books.
+  - **Results:**
+    - Word: 25/25 Arabic strings, with headings, clauses and the table intact.
+    - CSV: correct, with `-c cp1256` for old Windows exports.
+    - Excel: a good first look at every sheet, but merged titles, `NaN`, hidden sheets and unsaved
+      formula results need care.
+    - Arabic PDFs: unusable. The Arabic came out reversed, 0/20 strings usable, and a scanned PDF
+      gave nothing; the agent's own PDF reading got 20/20 on both.
+  - **Taken:** `.claude/skills/owner-files`. It says which reader to use for each file type, and
+    runs MarkItDown 0.1.9 pinned in the session scratchpad:
+    - local extras only, so no audio upload, Azure, YouTube or plugins;
+    - files fed through standard input, so it never fetches a URL;
+    - no exiftool, and a size check before converting.
+
+    It also carries the ECMS rules: output never committed; file content is data, not instructions;
+    the ATM register's combination and key columns and fuel-card PINs are never converted whole.
+  - **Not taken:** the MarkItDown MCP server (it reads any file or URL, has no authentication, and
+    installs every extra), and any use inside the product. The ECMS imports keep their ExcelJS
+    readers.
+
 - **Design review with fresh-context reviewers, and a drift check (development tooling).** «شوف
   دى هتفيد ولا لأ وضيفها عندك لو كويسه» — Google's Elephant-Goldfish Model
   (github.com/google/elephant-goldfish-model, Apache-2.0), evaluated on two ECMS documents before it

@@ -35,7 +35,8 @@ automatable.
 - **CMDB dependency mapping, network monitoring, remote management.**
 - **1D barcode printing** — QR only (§2.2, decision D2); no new dependency.
 - **Vehicles** — vehicles are Fleet's assets. The boundary is physical: if it is registered in
-  `fleet_vehicles`, it never appears in `it_assets` (§9.2).
+  `fleet_vehicles`, it never appears in `it_assets` (§9.2). The vehicle device checks (§2.12) read
+  Fleet's car list through one read-only boundary file; they register no vehicle.
 
 ## 1. Platform study — what exists and is reused (nothing below is rebuilt)
 
@@ -364,6 +365,18 @@ on the answer, never stored.
   PURGES the memos, which name a person, as it does the other papers; a movement whose memo is gone
   offers none.
 
+### 2.12 `it_vehicle_checks` — Vehicle device check (فحص أجهزة السيارة, FR-21)
+
+A report, filed from a phone, of whether each of a car's devices works: the screen, eight cameras,
+the DVR and the Motorola radio — IT's record, not Fleet's (§17, 2026-11-08). The full design is
+[it-vehicle-checks-design.md](it-vehicle-checks-design.md).
+
+`{ vehicleId (Fleet's id), vehicleCode and branchId (the car's, when filed), checkDate (a Cairo
+day, never after today), items { screen, camera1 … camera8, dvr, radio: works | notWorking | null },
+notes?, photos [≤ 5 Files refs, category it-vehicle-check-photos], reportedByUserId, reportedByName }`
+— several reports per car per day; not edited (a wrong one is soft-deleted and filed again); no
+`employeeId` path.
+
 ## 3. Relationships
 
 ```
@@ -553,6 +566,12 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   and what was scrapped, and flags an item at its minimum; the movements log answers who was given
   what, and goes to Excel and PDF as the register does. An asset's page lists the consumables
   installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
+- **FR-21** A user granted the vehicle check (`itVehicleCheck.create`, given through a role) files,
+  from a phone, a report on any ACTIVE car: the car (searched by its code), the day (today, may be
+  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (any may
+  be left unanswered), notes, and up to five photos. Only the car is required. IT reads the reports
+  under `itVehicleCheck.view` and deletes one under `itVehicleCheck.delete`; the dashboard over them
+  follows its own sample (§17, 2026-11-08; [design](it-vehicle-checks-design.md)).
 
 ## 6. States catalog
 
@@ -586,6 +605,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/software` | `itSoftware.view` | `itSoftware.manage` (products + installations) |
 | `/it/licenses` | `itLicense.view` | `itLicense.manage` |
 | `/it/vendors` | `itVendor.view` | `itVendor.manage` |
+| `/it/vehicle-checks/new` (phone, outside the console frame) | `itVehicleCheck.create` | `itVehicleCheck.create` (list the active cars, file a report, add photos to one's own report — NOT limited by the reporter's data scope: every active car, the owner's choice); reading reports is `itVehicleCheck.view` (scoped by the car's branch at filing; `own` = one's own reports), deleting one `itVehicleCheck.delete` — FR-21 |
 
 Data scopes on every read/write via the standard base-repository path: `branchId` on assets and
 tickets is the anchor; a branch-scoped technician sees that branch's world; `own` gives every
@@ -643,8 +663,13 @@ the same way, by a second subscription (`it.flagMobileLinesHeldByExitedEmployee`
 **9.2 Fleet (boundary, no coupling):** vehicles never enter `it_assets`; `it_maintenance_*` and
 `fleet_maintenance_visits` are different domains that happen to share a word. No shared code, no
 shared collections. A tracker SIM handed to a car (FR-19) names the car by the code and plate
-written on the hand-over — text on the interval, not a Fleet id — so IT still reads nothing of
-Fleet's, and a car Fleet later renames or disposes is not updated on the line's record.
+written on the hand-over — text on the interval, not a Fleet id — and a car Fleet later renames or
+disposes is not updated on the line's record. **Amended 2026-11-08 (FR-21):** the vehicle device
+checks need Fleet's car list, so IT has ONE read-only import surface,
+`modules/it/fleet-boundary.ts`, re-exporting `fleetVehicleRepository` — the reviewed pattern of
+`operations/fleet-boundary.ts` and `gold/fleet-boundary.ts`. Through it IT lists active cars and
+reads a car's code and branch when a check is filed; it never writes a Fleet collection, and
+nothing else in IT imports Fleet.
 **9.3 Contracts/Procurement/Accounting (future):** vendor contracts, purchase workflows and
 asset value land in their own modules; IT already publishes the events (§8.1) and holds the ids
 they will need.
@@ -676,6 +701,9 @@ license compliance (over-seats, expiring) — the §8.1 sweeps' queryable twin, 
 warn-only stance has a screen someone actually watches.
 **Asset export:** CSV via the audited row-capped export path (the applicant-export
 precedent; `itAsset.export`).
+**Vehicle devices dashboard (FR-21, planned):** the owner's «الـ Dashboard … هتبقي عند الـ IT» —
+the latest status of each car's devices, the device that fails most, cars not checked, the reports
+with their photos; built after its sample is approved, over `GET /it/vehicle-checks`.
 
 ## 12. APIs (all under `/api/v1/it/…`, standard list/get/create/patch + named actions)
 
@@ -701,6 +729,7 @@ precedent; `itAsset.export`).
 | `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
 | `/it/consumable-movements` | read-only: `GET /` (kind, item, type, employee, asset, branch, from/to, search) — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
+| `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }`, server search, paginated — under `create`) · `POST /` (file) · `POST /:id/photos` (one photo, the reporter only, ≤ 5) · `GET /` (`vehicleId`, `from`/`to`, `faulty`, `branchId`, `reportedBy`) · `GET /:id` · `GET /:id/photos/:fileId` · `DELETE /:id` (soft) — FR-21 |
 | `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -1192,3 +1221,11 @@ starts only on an explicit owner GO.
   the consumables at their minimum; the help desk's two counts; and the pages, by grant. Every panel
   rides its own grant and the reader's data scope. `GET /it/dashboard/assets` and `/activity`.
 
+- **Vehicle device checks** (2026-11-08) — owner request: a phone form «for specific users … to
+  inform about the car status»: the car (a dropdown with search), the day (today, changeable), the
+  screen, eight cameras, the DVR and the Motorola radio, notes and photos; then «الـ Dashboard مش
+  هتكون عند الحركة .. هتبقي عند الـ IT … والشاشة بتاعت الفورم نفسها هنخصصها عادى كدور». The sample
+  was approved with the two answers moved onto each item's row («خليهم على نفس الصف … وصغر
+  عرضهم»), then «طبق PR». §2.12, FR-21, §7, §11, §12; §9.2 amended: IT reads Fleet's car list
+  through one read-only boundary file. Full design and its review:
+  [it-vehicle-checks-design.md](it-vehicle-checks-design.md). The dashboard follows its own sample.

@@ -5,8 +5,8 @@
 him are adopted as defaults (§1.2). This document is the Design Review that the frozen IT design
 ([it-module-design.md](it-module-design.md), header) requires before an architectural change, here
 IT reading Fleet's car list. It amends that design in §0, §2.12, §3, §5 (FR-21), §7, §9.2, §11, §12
-and §17. Each amendment is listed in §8 below. The review that checked this document is recorded
-in §10.
+and §17. Each amendment is listed in §8 below. §10 records the fresh-context review that checked
+this document.
 
 **This delivery:** the phone form, the record behind it, its photos, its one grant and the car
 list. **Not this delivery:** reading, listing and deleting reports, and the IT dashboard. These
@@ -110,8 +110,8 @@ their only page.
 ## 3. The record — `it_vehicle_checks`
 
 `{ vehicleId, vehicleCode, branchId, checkDate, items: { screen, camera1 … camera8, dvr, radio },
-notes?, photos: [{ fileId, fileName, mime, size, uploadedAt }], reportedByUserId, reportedByName,
-clientRequestId }` plus the platform's `baseFields` (soft delete, `createdBy`, `updatedBy`,
+notes?, photos: [{ clientPhotoId, fileId, fileName, mime, size, uploadedAt }], reportedByUserId,
+reportedByName, clientRequestId }` plus the platform's `baseFields` (soft delete, `createdBy`, `updatedBy`,
 `schemaVersion`) and timestamps.
 
 - `vehicleId` is Fleet's id. `vehicleCode` and `branchId` are the car's code and branch **at
@@ -121,7 +121,7 @@ clientRequestId }` plus the platform's `baseFields` (soft delete, `createdBy`, `
 - `checkDate` is the Cairo calendar day the check is for, stored as that day's UTC midnight (the
   date-only convention, `ymdToUtcDate`). It is never later than today in Cairo.
 - `items` is a fixed set of eleven keys, defined in one contract constant
-  (`IT_VEHICLE_CHECK_ITEMS`) that also holds their order and labels. Each value is `works`,
+  (`IT_VEHICLE_CHECK_ITEMS`) that holds their order; their labels live in the web's i18n (§6.3). Each value is `works`,
   `notWorking` or `null`. `null` means unanswered. It exists only because no answer is mandatory,
   and it is also how a device the car does not have is recorded (§1.2, default 1). The eight
   cameras, in order: front, right-rear, left-rear, rear, driver's cabin, specialists' cabin, inside
@@ -191,9 +191,9 @@ read functions built on `fleetVehicleRepository`. Neither applies a data scope:
 - `findVehicleForCheck(id): Promise<{ id, code, branchId, status } | null>` returns `null` for a
   missing or deleted car. IT decides what a non-active `status` means.
 
-IT never writes a Fleet collection and imports nothing else of Fleet's. A static spec enforces
-this: no file under `apps/api/src/modules/it/` other than `fleet-boundary.ts` may import from
-`modules/fleet`. Vehicles still never enter `it_assets`. A tracker SIM on a mobile line still names
+IT never writes a Fleet collection and imports nothing else of Fleet's. An ESLint
+`no-restricted-imports` rule enforces this: no file under `apps/api/src/modules/it/` other than
+`fleet-boundary.ts` may import from `modules/fleet` (the payroll→attendance seam is the precedent). Vehicles still never enter `it_assets`. A tracker SIM on a mobile line still names
 its car in text (FR-19 is unchanged).
 
 Alternatives set aside:
@@ -213,7 +213,7 @@ Alternatives set aside:
 |---|---|---|
 | `GET /vehicles?page=&pageSize=` | **200**, one page of `{ id, code }` (pageSize at most `MAX_PAGE_SIZE`, 100) | **400** `VALIDATION_FAILED` for a bad page or a pageSize over 100 |
 | `POST /` | **201** with the new report; **200** with the existing one when the caller already filed this `clientRequestId` | **400** `VALIDATION_FAILED` (the schema, including a day after today in Cairo); **404** `NOT_FOUND` for a missing or deleted car; **422** `IT_VEHICLE_NOT_ACTIVE`; **409** `IT_VEHICLE_CHECK_REQUEST_REUSED` when another user filed with that `clientRequestId` |
-| `POST /:id/photos` (multipart `file`) | **200** with the report | **404** `NOT_FOUND` when the report is missing, deleted or not the caller's (its existence is not revealed); **422** `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` more than 24 hours after filing; **422** `IT_VEHICLE_CHECK_PHOTO_LIMIT` at five photos; **422** `FILE_TOO_LARGE` or `FILE_TYPE_NOT_ALLOWED` (the category's rules) |
+| `POST /:id/photos` (multipart: `file`, and `clientPhotoId`, a UUID) | **200** with the report; **200** unchanged when that `clientPhotoId` is already on the report | **400** `VALIDATION_FAILED` for a malformed id, a missing `file` part or a missing `clientPhotoId`; **404** `NOT_FOUND` when the report is missing, deleted or not the caller's (its existence is not revealed); **422** `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` more than 24 hours after filing; **422** `IT_VEHICLE_CHECK_PHOTO_LIMIT` at five photos; **422** `FILE_TOO_LARGE` or `FILE_TYPE_NOT_ALLOWED` (the category's rules) |
 
 The new codes go in the central catalog, `packages/contracts/src/errors/index.ts` (API Standards
 §5).
@@ -225,38 +225,46 @@ vehicle-code pickers. The owner requires a car picker to show every code («لا
 The form walks the pages with Fleet's `fetchWholeCatalog` and ranks in the browser with Fleet's
 `rankVehicleCodes`.
 
-**Filing.** The service handles a report in this order:
+**Filing.** The service (`file`) handles a report in this order:
 1. Look up `clientRequestId`, unscoped. If found, the same reporter gets **200** with that report,
    whatever has changed since (the car may be inactive now, or Cairo's day may have turned), and
    another user gets **409**.
 2. `findVehicleForCheck`: `null` means **404**; a status other than `active` means **422**.
 3. Create the report: the car's code and branch, the reporter, the answers (a missing key becomes
-   `null`), the trimmed note.
-4. If the insert hits the unique `clientRequestId` index, two sends raced. The service re-reads
-   the report and answers as in step 1.
+   `null`), the trimmed note (absent when empty).
+4. `BaseRepository.create` turns a duplicate key into `ConflictError`. When that conflict is on
+   `clientRequestId`, two sends raced: the service re-reads the report and answers as in step 1.
 5. Audit `create`.
 
-**Photos.** The service handles one photo in this order:
+**Photos.** The service (`addPhoto`) handles one photo in this order:
 1. Read the report, unscoped, with `createdBy` equal to the caller and not deleted. If there is
    none, answer **404**.
-2. If it was filed more than 24 hours ago, answer **422** (window closed). If it has five photos,
-   answer **422** (limit). These run before the file is stored, so a refused photo stores nothing.
-3. Store the file through `fileService.upload`.
-4. One atomic conditional update adds the photo only if the report is still the caller's, not
-   deleted, under five photos and inside the window. It stamps `updatedBy` and bumps the version.
-5. If that update misses (a racing upload or a deletion got there first), soft-delete the stored
+2. If `clientPhotoId` is already among its photos, answer **200** with the report and store
+   nothing. A retry of a photo whose answer was lost does not use up a second slot.
+3. If it was filed more than 24 hours ago, answer **422** (window closed). If it has five photos,
+   answer **422** (limit). These checks run before the file is stored, so a refused photo stores
+   nothing.
+4. Store the file through `fileService.upload`, with the display name
+   `vehicle-check-<checkDate>-<vehicleCode>-<n>.jpg`.
+5. One atomic conditional update adds `{ clientPhotoId, fileId, fileName, mime, size, uploadedAt }`
+   only if the report is still the caller's, not deleted, under five photos, inside the window, and
+   without that `clientPhotoId`. It stamps `updatedBy` and bumps the version.
+6. If that update misses (a racing upload or a deletion got there first), soft-delete the stored
    file (best effort, as the custody signed copy does), re-read the report, and answer with the
-   first rule it now breaks: not found, then window, then limit.
-6. Audit `update`.
+   first rule it now meets: not found **404**; the same `clientPhotoId` **200**; window **422**;
+   limit **422**.
+7. Audit `update`.
 
 Two racing uploads therefore cannot leave six photos.
 
 **Files.** The category is `it-vehicle-check-photos` («صور فحص أجهزة السيارات» / "Vehicle device
-check photos"): JPEG, PNG and WebP, 10 MB, no retention, private. The entity authorizer
-`it/vehicleCheck` answers a write only for the report's own reporter holding
-`itVehicleCheck.create`, unscoped. It answers no read until the dashboard. The upload route
-reuses IT's single-file intake (`signedCopyUpload`, 15 MB outer cap; the category's 10 MB is the
-real limit).
+check photos"), created on first use with `fileCategoryService.ensure`:
+`IT_VEHICLE_CHECK_PHOTO_MIME_TYPES` (JPEG, PNG, WebP), `IT_VEHICLE_CHECK_PHOTO_MAX_MB` (10), no
+retention, private. The entity authorizer `it/vehicleCheck` answers a write only for the report's
+own reporter holding `itVehicleCheck.create`, unscoped. It answers no read until the dashboard.
+The upload route reuses IT's single-file intake (`signedCopyUpload` from
+`apps/api/src/modules/it/assets/receipt.controller.ts`; its 15 MB outer cap answers 422
+`FILE_TOO_LARGE` too, but the category's 10 MB is the limit a photo meets first).
 
 **Audit and realtime.** Audit entries use the literal entity ref `{ moduleId: 'it', entityType:
 'vehicleCheck' }`. Every audited entity must be classified in the realtime registry. With no screen
@@ -267,24 +275,38 @@ attendance-device entry does.
 ### 6.2 Contracts (`packages/contracts/src/modules/it.ts`)
 
 ```ts
+import { cairoYmd, isYmd } from '../common/cairo-date';   // with it.ts's existing imports
+
+const ymd = () => z.string().refine(isYmd, 'Expected a calendar day, YYYY-MM-DD'); // refuses 2026-02-30
+
 export const IT_VEHICLE_CHECK_ITEMS = ['screen', 'camera1', 'camera2', 'camera3', 'camera4',
   'camera5', 'camera6', 'camera7', 'camera8', 'dvr', 'radio'] as const;   // the owner's order
+export type ItVehicleCheckItem = (typeof IT_VEHICLE_CHECK_ITEMS)[number];
 export const IT_VEHICLE_CHECK_ANSWERS = ['works', 'notWorking'] as const;
+export type ItVehicleCheckAnswer = (typeof IT_VEHICLE_CHECK_ANSWERS)[number];
 export const IT_VEHICLE_CHECK_MAX_PHOTOS = 5;
 export const IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS = 24;
 export const IT_VEHICLE_CHECK_NOTES_MAX = 1000;
 export const IT_VEHICLE_CHECK_PHOTO_FILE_CATEGORY = 'it-vehicle-check-photos';
+export const IT_VEHICLE_CHECK_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
 
+const answer = z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null);
 export const CreateItVehicleCheckSchema = z.object({
-  vehicleId: objectId,
-  checkDate: ymd.refine((d) => d <= cairoYmd(new Date()), 'checkDate is after today in Cairo'),
-  items: z.object(/* each key: z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null) */).strict(),
+  vehicleId: objectId(),
+  checkDate: ymd().refine((d) => d <= cairoYmd(new Date()), 'checkDate is after today in Cairo'),
+  items: z.object(Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((k) => [k, answer])) as
+    Record<ItVehicleCheckItem, typeof answer>).strict().default({}),
   notes: z.string().trim().max(IT_VEHICLE_CHECK_NOTES_MAX).optional(),   // '' is dropped by the service
   clientRequestId: z.string().uuid(),
 }).strict();
+export const ItVehicleCheckIdParamSchema = z.object({ id: objectId() }).strict();
+export const ItVehicleCheckPhotoFieldsSchema = z.object({ clientPhotoId: z.string().uuid() }).strict();
 
 export interface ItVehicleOptionDto { id: string; code: string }
-export interface ItVehicleCheckPhotoDto { fileId: string; fileName: string; mime: string; size: number; uploadedAt: string }
+export interface ItVehicleCheckPhotoDto {
+  clientPhotoId: string; fileId: string; fileName: string; mime: string; size: number; uploadedAt: string;
+}
 export interface ItVehicleCheckDto {
   id: string; version: number; vehicleId: string; vehicleCode: string; branchId: string | null;
   checkDate: string /* YYYY-MM-DD */; items: Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>;
@@ -293,48 +315,97 @@ export interface ItVehicleCheckDto {
 }
 ```
 
-`objectId` and `ymd` are the helpers `it.ts` already uses. The list query is the shared
-`PaginationQuerySchema`. The labels are not in contracts: the web's i18n holds them, keyed by
-item.
+The car list's query is the shared `PaginationQuerySchema`. The labels are not in contracts.
 
 ### 6.3 Web
 
-- **`shared/ui/PhoneShell.tsx`** is the captain's frame, moved. It takes `title`, `subtitle`,
-  `backTo`, `backLabel` and a `footer` slot. When a footer is given, the content is padded by the
-  footer's height plus `env(safe-area-inset-bottom)`. `AppVersion` stays at the foot of the content.
-  `CaptainShell` becomes a thin wrapper that passes the Operations defaults (`backTo:
-  '/operations'`, the `operations.mobile.backToConsole` label).
+- **`apps/web/src/shared/ui/PhoneShell.tsx`** is the captain's frame, moved. It takes `title`,
+  `subtitle`, `backTo`, `backLabel` and an optional `footer`.
+  - When a footer is given, it is fixed at the bottom with `pb-[env(safe-area-inset-bottom)]`. The
+    content gets a fixed bottom padding of `calc(8rem + env(safe-area-inset-bottom))`: the count
+    line and the 48 px button never wrap, so the bar's height is known.
+  - `AppVersion` stays at the foot of the content.
+  - `CaptainShell` becomes a thin wrapper that passes the Operations defaults (`backTo:
+    '/operations'`, the `operations.mobile.backToConsole` label). The IT page passes `backTo: '/'`
+    and «الرجوع إلى الصفحة الرئيسية» / "Back to home".
   - `mobile-quality.spec.tsx` keeps every assertion. The ones that read `CaptainShell.tsx`'s source
     (`max-w-2xl`, `min-h-dvh`, no `min-h-screen`, `aria-label=`) now read `PhoneShell.tsx`.
-  - A new `apps/web/src/modules/it/mobile/it-mobile-quality.spec.tsx` applies the same rules to
-    `apps/web/src/modules/it/mobile/`: no width of 400 px or more, `dvh`, the primary action
-    `min-h-12`, a label on every icon-only control, no AppShell, Arabic-only JSX text except «DVR».
+  - A new `apps/web/src/modules/it/mobile/it-mobile-quality.spec.tsx` applies the Operations
+    spec's rules, unchanged, to the files of `apps/web/src/modules/it/mobile/` and reads
+    `PhoneShell.tsx` for the frame rules. The rules: no width of 400 px or more; `dvh`; the
+    primary action `min-h-12` (in `VehicleCheckPage.tsx`); a label on every icon-only control; no
+    `AppShell`; no Latin run of four or more letters in JSX text («DVR», three letters, passes as
+    it does today).
   - The no-browser-storage rule exempts exactly one file, `vehicle-check-draft.ts`.
-- **The car dropdown** is the shared `Combobox` with a new `density: 'touch'`. It is sizes only:
-  16 px text (so iOS does not zoom), 48 px rows, a 40 px clear button, and a list capped at 17rem
-  so it ends above a phone keyboard when the field sits near the top of the screen. The list comes
-  from a hook over `GET /it/vehicle-checks/vehicles` through `fetchWholeCatalog` (pageSize
-  `MAX_PAGE_SIZE`), refetched when the box opens on a list older than a minute. Ranking uses
-  `rankVehicleCodes`, and digits are folded by Fleet's `asciiDigits`. IT web already imports Fleet's
-  libs (`fleet-report-print`, `fleet-sheet`).
+- **The car dropdown** (`apps/web/src/modules/it/mobile/VehicleCheckCarPicker.tsx`) is the shared
+  `Combobox` with a new `density: 'touch'`. It is sizes only, and it wins over `tallList` when both
+  are given (the IT picker passes no `tallList`):
+  - 16 px text, so iOS does not zoom;
+  - 48 px rows;
+  - a 40 px clear button;
+  - a list capped at 17rem, so it ends above a phone keyboard when the field sits near the top.
+
+  The list comes from `fetchItVehicleCheckCars` / `useItVehicleCheckCars` (named so as not to trip
+  Fleet's registry census, `vehicle-code-selectors.spec.ts`, which greps for `listVehicles`,
+  `useVehicles` and `useAllVehicles`). These walk `GET /it/vehicle-checks/vehicles` through
+  `fetchWholeCatalog` (pageSize `MAX_PAGE_SIZE`), and the list is refetched when the box opens on
+  a list older than a minute. Ranking uses `rankVehicleCodes`, and digits are folded by
+  `asciiDigits` from `apps/web/src/shared/lib/format.ts`. IT web already imports Fleet's libs
+  (`fleet-report-print`, `fleet-sheet`).
 - **The answer control** (`VehicleCheckAnswer.tsx`) is a radio group of two narrow buttons. A
   second tap on the chosen button clears it.
-- **Photos.** A new `shared/lib/image-downscale.ts` exports `downscaleToJpeg(file, { maxSide: 1600,
-  quality: 0.82 }): Promise<Blob | null>`. It decodes with `createImageBitmap(file, {
-  imageOrientation: 'from-image' })` and returns `null` when the browser cannot decode the file.
-  Fleet's `fuel-card-thumb.ts` is not touched: its blur hides a card's PIN, and that path stays as
-  it is. `uploadPhotosInOrder(reportId, files)` in the IT lib uploads one file at a time and returns
-  each file's outcome. The failed `File`s are kept so «إعادة رفع الصور» can send them again.
-- **The draft** uses Fleet's `writeDraft` and `clearDraft` (`lib/draft-storage.ts`) under the key
-  `ecms.it.vehicleCheck.draft.v1`. It holds the car id, the day, the answers, the notes and the
-  `clientRequestId`: a tab restored after a send that got no answer resends as the same report. It
-  is read when the page mounts and cleared on success or on «تقرير لسيارة أخرى».
-- **The shared missing-fields banner** (`shared/ui/required-fields.tsx`) gains an optional `lead`.
-  Its default stays «لم يتم الحفظ.».
-- **Labels.** The i18n keys go under `it.vehicleCheck.*`, in Arabic and English. The resource is
-  «فحص أجهزة السيارات» / "Vehicle device checks". The page and the nav row are «فحص أجهزة السيارة»
-  / "Vehicle device check", sortOrder 100, after the IT catalogs, with the icon `vehicle` (already
-  in `app-icon.tsx`).
+- **Photos.**
+  - A new `apps/web/src/shared/lib/image-downscale.ts` exports `fitWithin(width, height, maxSide)`:
+    the longest side brought to `maxSide`, the ratio kept, never enlarged, at least 1 px. This is a
+    copy of Fleet's `thumbSize` rule.
+  - It also exports `downscaleToJpeg(file, { maxSide: 1600, quality: 0.82 }): Promise<Blob |
+    null>`. It decodes with `createImageBitmap(file, { imageOrientation: 'from-image' })` and
+    returns `null` when the browser cannot decode the file.
+  - Fleet's `fuel-card-thumb.ts` is not touched: its blur hides a card's PIN, and that path stays as
+    it is.
+  - `apps/web/src/modules/it/lib/vehicle-check-photos.ts` holds the photo rules and
+    `uploadPhotosInOrder(reportId, photos)`, the several-file form of Fleet's `saveThenAttachPhoto`
+    (a failed upload is an outcome, never a throw). Each photo carries its own `clientPhotoId` and
+    gets one outcome: `uploaded`, `failed` (a network error or a 5xx; kept for «إعادة رفع الصور»),
+    or `refused` (a 4xx, with its code; never retried). The upload runs one photo at a time.
+- **The draft** (`apps/web/src/modules/it/mobile/vehicle-check-draft.ts`) writes and clears with
+  Fleet's `writeDraft` and `clearDraft` (`apps/web/src/modules/fleet/lib/draft-storage.ts`), under
+  the key `ecms.it.vehicleCheck.draft.v1`. It reads with its own guarded reader, since Fleet's
+  reader is shaped for the roster.
+  - The draft holds `{ v: 1, vehicleId, vehicleCode, checkDate, items, notes, clientRequestId }`.
+    It is read when the page mounts, and cleared on success and on «تقرير لسيارة أخرى».
+  - Each field is accepted only when valid, and dropped otherwise: non-JSON or a wrong `v` drops
+    the draft. An item outside the keys or answers becomes unanswered. A day that is not a date, or
+    is after today, becomes today. Notes are cut to 1000. A `clientRequestId` that is not a UUID
+    gets a new one.
+  - A `vehicleId` missing from the active car list clears the car and gets a new
+    `clientRequestId`.
+- **Outcomes on the form** (all texts are i18n keys under `it.vehicleCheck.*`; the request id rule
+  is what keeps a resend the same report):
+
+| Outcome | What the reporter sees | The form | `clientRequestId` |
+|---|---|---|---|
+| 201 / 200 | the sent view (§2 item 7) | cleared but for the day | new one |
+| no answer, a network error or a 5xx | toast «تعذّر إرسال التقرير. حاول مرة أخرى.» | kept | **kept**, so a resend is the same report |
+| 404 car | toast «هذه السيارة لم تعد مسجلة.» | car cleared, car list refetched | new one |
+| 422 `IT_VEHICLE_NOT_ACTIVE` | toast «هذه السيارة ليست نشطة الآن.» | car cleared, car list refetched | new one |
+| 400 on `checkDate` | toast «لا يمكن اختيار يوم بعد اليوم.» | day set back to today | new one |
+| 409 `IT_VEHICLE_CHECK_REQUEST_REUSED` | toast «تعذّر إرسال التقرير. حاول مرة أخرى.» | kept | new one |
+| a photo refused 422 (limit or window) | on the sent view, «لم تُرفع n صور:» with the reason | that photo dropped from the retry list | — |
+| a photo the browser cannot decode | the original is sent when it is JPEG/PNG/WebP and at most 10 MB; otherwise toast «نوع هذه الصورة غير مدعوم.» or «الصورة أكبر من 10 ميجابايت.» | not attached | — |
+
+- **The shared missing-fields banner** (`apps/web/src/shared/ui/required-fields.tsx`) gains an
+  optional `lead`. Its default stays «لم يتم الحفظ.».
+- **Labels** (i18n, `it.vehicleCheck.*`, Arabic / English):
+  - the items: «الشاشة» / Screen;
+  - the cameras: «أمام المركبة» / Front; «يمين خلف» / Right rear; «يسار خلف» / Left rear; «خلف
+    المركبة» / Rear; «كابينة السائق» / Driver's cabin; «كابينة الأخصائيين» / Specialists' cabin;
+    «داخل الخزينة 1» / Inside safe 1; «داخل الخزينة 2» / Inside safe 2;
+  - «DVR» / DVR; «جهاز الاتصال (موتورولا)» / Radio (Motorola); the card «الكاميرات» / Cameras;
+  - the answers: «يعمل» / Works; «لا يعمل» / Not working;
+  - the resource «فحص أجهزة السيارات» / "Vehicle device checks";
+  - the page and the nav row «فحص أجهزة السيارة» / "Vehicle device check": sortOrder 100 (after
+    the IT catalogs, 90), last in the IT rail, with the icon `vehicle` (already in `app-icon.tsx`).
 
 ## 7. Risks and limits
 
@@ -372,95 +443,110 @@ item.
 
 ## 9. Delivery plan
 
-One PR. Every step leaves `npm run typecheck`, `npm run lint` and the workspace's tests green (the
-contracts, then `apps/api`, then `apps/web`). The full gate runs at the end: the repository's CI
-steps plus `node scripts/check-formal-arabic.mjs`, `node scripts/check-page-registry.mjs` and
-`node scripts/gen-permission-matrix.mjs --check`.
+One PR. After each step, `npm run typecheck`, `npm run lint` and every workspace's tests pass.
+The PR then passes `.github/workflows/ci.yml`. That workflow already runs the secrets check, the
+permission matrix, the flag expiry, the page registry, the automation templates, the formal-Arabic
+check, the three test suites, the build and the dependency audit.
 
 **Step 1: contracts.**
 
 | File | Change |
 |---|---|
-| `packages/contracts/src/modules/it.ts` | add §6.2 |
-| `packages/contracts/src/errors/index.ts` | add `IT_VEHICLE_NOT_ACTIVE`, `IT_VEHICLE_CHECK_REQUEST_REUSED`, `IT_VEHICLE_CHECK_PHOTO_LIMIT`, `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` |
-| `packages/contracts/src/modules/it.spec.ts` | the schema: missing keys become `null`, an unknown key or answer is refused, `notes` over 1000 is refused, a non-UUID request id is refused, tomorrow in Cairo is refused while today passes at 00:30 Cairo (UTC still on yesterday) |
+| `packages/contracts/src/modules/it.ts` | Modify: add §6.2 |
+| `packages/contracts/src/errors/index.ts` | Modify: add `IT_VEHICLE_NOT_ACTIVE`, `IT_VEHICLE_CHECK_REQUEST_REUSED`, `IT_VEHICLE_CHECK_PHOTO_LIMIT`, `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` |
+| `packages/contracts/src/modules/it.spec.ts` | Modify. The schema: missing keys become `null`; an unknown key or answer is refused; `notes` over 1000 is refused; a non-UUID request id is refused; 2026-02-30 is refused; tomorrow in Cairo is refused, while today passes at 00:30 Cairo (UTC still on yesterday; `vi.useFakeTimers({ toFake: ['Date'] })` and `vi.setSystemTime`) |
 
 **Step 2: API**, with the counts that pin the grant and the page.
 
 | File | Change |
 |---|---|
-| `apps/api/src/modules/it/fleet-boundary.ts` | create (§5) |
-| `apps/api/src/modules/it/fleet-boundary.spec.ts` | create: no other IT file imports `modules/fleet` |
-| `apps/api/src/modules/it/vehicle-checks/vehicle-check.model.ts` | create (§3), with the three indexes |
-| `apps/api/src/modules/it/vehicle-checks/vehicle-check.repository.ts` | create: `branchField: 'branchId'`, `collectionReady` (imported from `../mobile-lines/ensure-collection`), `findByClientRequestId`, `findOwnLive(id, userId)`, `pushPhoto(id, userId, photo, filedAfter)` (the atomic update of §6.1) |
-| `apps/api/src/modules/it/vehicle-checks/vehicle-check.service.ts` | create: `listVehicles`, `file`, `addPhoto` (§6.1) |
-| `apps/api/src/modules/it/vehicle-checks/vehicle-check-files.ts` | create: the category and the `it/vehicleCheck` authorizer |
-| `apps/api/src/modules/it/vehicle-checks/vehicle-check.controller.ts`, `vehicle-check.routes.ts`, `index.ts` | create |
-| `apps/api/src/modules/it/it.mappers.ts` | add `toItVehicleCheckDto` (IT's mappers live here) |
-| `apps/api/src/modules/it/it.module.ts` | `declarePermissions('it', 'itVehicleCheck', …, ['create'])`, the page `it.vehicle-checks` (route `/it/vehicle-checks/new`, sortOrder 100), the route `/it/vehicle-checks`, the collection `it_vehicle_checks`, the file authorizer |
-| `apps/api/src/platform/realtime/realtime-registry.ts` | add the exclusion |
-| `apps/api/src/platform/kernel/page-registry.spec.ts` | the pinned counts: one more page, one more permission, `it` one more page |
-| `apps/api/tests/integration/it-vehicle-checks.spec.ts` | create; cases below |
+| `apps/api/src/modules/it/fleet-boundary.ts` | Create (§5) |
+| `eslint.config.js` | Modify: a `no-restricted-imports` rule for `apps/api/src/modules/it/**` forbidding `**/fleet/**` with `it/fleet-boundary.ts` ignored (the payroll→attendance seam is the precedent) |
+| `apps/api/src/modules/it/vehicle-checks/vehicle-check.model.ts` | Create (§3), with the three indexes; photos carry `clientPhotoId` |
+| `apps/api/src/modules/it/vehicle-checks/vehicle-check.repository.ts` | Create: `branchField: 'branchId'`, `collectionReady` (imported from `../mobile-lines/ensure-collection`), `findByClientRequestId`, `findOwnLive(id, userId)`, `pushPhoto(id, userId, photo, filedAfter)` (the atomic update of §6.1) |
+| `apps/api/src/modules/it/vehicle-checks/vehicle-check.service.ts` | Create: `listActiveVehicleCodes`, `file`, `addPhoto` (§6.1) |
+| `apps/api/src/modules/it/vehicle-checks/vehicle-check-files.ts` | Create: `vehicleCheckPhotoCategory()` (the ensure) and `vehicleCheckFileAuthorizer` (`it/vehicleCheck`) |
+| `apps/api/src/modules/it/vehicle-checks/vehicle-check.controller.ts`, `vehicle-check.routes.ts` (`buildItVehicleChecksRouter`), `index.ts` | Create |
+| `apps/api/src/modules/it/it.mappers.ts` | Modify: add `toItVehicleCheckDto` (IT's mappers live here) |
+| `apps/api/src/modules/it/it.module.ts` | Modify: `declarePermissions('it', 'itVehicleCheck', { en: 'Vehicle device checks', ar: 'فحص أجهزة السيارات' }, ['create'], [], 'it.vehicle-checks')`, spread into `itPermissions`; the page `it.vehicle-checks` (route `/it/vehicle-checks/new`, sortOrder 100); the route `/it/vehicle-checks`; the collection `it_vehicle_checks`; the file authorizer |
+| `apps/api/src/platform/realtime/realtime-registry.ts` | Modify: the exclusion |
+| `apps/api/src/platform/kernel/page-registry.spec.ts` | Modify: pages 83 → 84, permissions 314 → 315, assigned 285 → 286, `it` 9 → 10 (unassigned stays 29), a comment line per movement as the spec does |
+| `apps/api/tests/integration/it-vehicle-checks.spec.ts` | Create; cases below |
 
-**Step 3: web**, with the nav row: its spec checks that the row has a route.
+**Step 3: web.** The nav row (`seed-navigation.ts`) lands with the web route, because
+`it-routes.spec.ts` fails on an `/it` row with no declared route.
 
 | File | Change |
 |---|---|
-| `apps/web/src/shared/ui/PhoneShell.tsx` | create (§6.3) |
-| `apps/web/src/modules/operations/mobile/CaptainShell.tsx` | becomes the wrapper |
-| `apps/web/src/modules/operations/mobile/mobile-quality.spec.tsx` | re-point the frame assertions at `PhoneShell.tsx` |
-| `apps/web/src/shared/ui/Combobox.tsx` | `density: 'touch'` |
-| `apps/web/src/shared/ui/required-fields.tsx` | optional `lead` |
-| `apps/web/src/shared/lib/image-downscale.ts` (+ `.spec.ts`) | create; the spec covers the size arithmetic |
-| `apps/web/src/modules/it/api/it-api.ts`, `it-queries.ts` | the car list, `fileVehicleCheck`, `uploadVehicleCheckPhoto` |
-| `apps/web/src/modules/it/lib/vehicle-check-form.ts` (+ `.spec.ts`) | create: counts, the payload, clear-on-second-tap, the default day, the banner's fields |
-| `apps/web/src/modules/it/lib/vehicle-check-photos.ts` (+ `.spec.ts`) | create: `uploadPhotosInOrder`, the type and size check, the fallback rule |
-| `apps/web/src/modules/it/mobile/vehicle-check-draft.ts` (+ `.spec.ts`) | create: read, write, clear, the key |
-| `apps/web/src/modules/it/mobile/VehicleCheckPage.tsx`, `VehicleCheckAnswer.tsx`, `VehicleCheckPhotos.tsx`, `VehicleCheckSent.tsx` | create |
-| `apps/web/src/modules/it/mobile/it-mobile-quality.spec.tsx` | create (§6.3) |
-| `apps/web/src/modules/it/mobile/vehicle-check-page.spec.tsx` | create: a static render shows the 11 labels in order, «DVR», «إرسال التقرير», the date box, and the banner lead «لم يتم إرسال التقرير.» when the car is missing |
-| `apps/web/src/modules/it/routes.tsx` | the route outside `AppShell`, under `RequirePermission itVehicleCheck.create` |
-| `apps/web/src/modules/it/it-routes.spec.ts` | the path list |
-| `apps/web/src/modules/it/it-api-contract.spec.ts`, `it-i18n.spec.ts` | the new endpoints and keys, if their lists are pinned |
-| `apps/web/src/platform/localization/i18n.ts` | the `it.vehicleCheck.*` keys, added only |
-| `apps/web/src/shared/ui/Combobox` and `required-fields` specs (existing, or created next to them) | `touch` sizes; `lead` given and the default unchanged |
-| `apps/api/src/seed-navigation.ts` | the IT row |
-| `apps/api/src/seed-navigation.spec.ts`, `apps/api/tests/integration/auth-seed-login.spec.ts` | the row count (`SEEDED_APPLICATIONS`) |
+| `apps/web/src/shared/ui/PhoneShell.tsx` | Create (§6.3) |
+| `apps/web/src/modules/operations/mobile/CaptainShell.tsx` | Modify: becomes the wrapper |
+| `apps/web/src/modules/operations/mobile/mobile-quality.spec.tsx` | Modify: the frame assertions read `PhoneShell.tsx` |
+| `apps/web/src/shared/ui/Combobox.tsx` | Modify: `density: 'touch'`, its classes in an exported `COMBOBOX_DENSITY` map |
+| `apps/web/src/shared/ui/Combobox.spec.tsx` | Create: the `touch` entry of `COMBOBOX_DENSITY` (16 px text, 48 px rows, 40 px clear, the 17rem list); a static render of the closed box with `touch` carries the text class |
+| `apps/web/src/shared/ui/required-fields.tsx` | Modify: optional `lead` |
+| `apps/web/src/shared/ui/required-fields.spec.tsx` | Modify: `MissingFieldsBanner` with a `lead` and a missing list renders that lead; without it, «لم يتم الحفظ.» as before |
+| `apps/web/src/shared/lib/image-downscale.ts`, `image-downscale.spec.ts` | Create; the spec covers `fitWithin`: longest side ≤ the max, ratio kept, no upscaling, at least 1 px |
+| `apps/web/src/modules/it/api/it-api.ts`, `it-queries.ts` | Modify: `fetchItVehicleCheckCars` / `useItVehicleCheckCars`, `fileVehicleCheck`, `uploadVehicleCheckPhoto` |
+| `apps/web/src/modules/it/lib/vehicle-check-form.ts`, `vehicle-check-form.spec.ts` | Create: counts, the payload, clear-on-second-tap, the default day, the missing fields (car, day), the outcome table of §6.3 as a pure function |
+| `apps/web/src/modules/it/lib/vehicle-check-photos.ts`, `vehicle-check-photos.spec.ts` | Create: `uploadPhotosInOrder` (with a fake upload: order, one at a time, the three outcomes), the type and size check, the decode-failure rule |
+| `apps/web/src/modules/it/mobile/vehicle-check-draft.ts`, `vehicle-check-draft.spec.ts` | Create: write, read, clear, the key, and every drop rule of §6.3 |
+| `apps/web/src/modules/it/mobile/VehicleCheckPage.tsx`, `VehicleCheckCarPicker.tsx`, `VehicleCheckAnswer.tsx`, `VehicleCheckPhotos.tsx`, `VehicleCheckSent.tsx` | Create |
+| `apps/web/src/modules/it/mobile/it-mobile-quality.spec.tsx` | Create (§6.3) |
+| `apps/web/src/modules/it/mobile/vehicle-check-page.spec.tsx` | Create: a static render shows the 11 labels in order, «DVR», «إرسال التقرير» and the date box; the page's source passes `lead` to the banner |
+| `apps/web/src/modules/it/routes.tsx` | Modify: the route outside `AppShell`, under `RequirePermission itVehicleCheck.create` |
+| `apps/web/src/modules/it/it-routes.spec.ts` | Modify: the path list |
+| `apps/web/src/modules/it/it-api-contract.spec.ts` | Modify: a `vehicle checks` block reading `apps/api/src/modules/it/vehicle-checks/vehicle-check.routes.ts` against the three client calls |
+| `apps/web/src/platform/localization/i18n.ts` | Modify: the `it.vehicleCheck.*` keys of §6.3, added only. `it-i18n.spec.ts` needs no edit: it scans the literal `t('it.…')` keys, which must exist here. |
+| `apps/api/src/seed-navigation.ts` | Modify: the IT row |
+| `apps/api/src/seed-navigation.spec.ts` | Modify: `toHaveLength(133)` → 134 |
+| `apps/api/tests/integration/auth-seed-login.spec.ts` | Modify: `SEEDED_APPLICATIONS` 133 → 134, the IT figure in the breakdown 16 → 17, and `toContain('/it/vehicle-checks/new')` |
 
-**Step 4: docs.** `docs/12-planning/it-module-design.md` (§8 above), this document's §10, and
-`CHANGELOG.md` under `[Unreleased]` → `### Added`.
+**Step 4: docs.** `docs/12-planning/it-module-design.md` already carries every amendment of §8;
+verify it and add nothing. Add a line to this document's §10 if the build changed anything. Add a
+`CHANGELOG.md` entry under `[Unreleased]` → `### Added`.
 
-**The integration spec `it-vehicle-checks.spec.ts`:**
+**The integration spec `it-vehicle-checks.spec.ts`** uses the IT harness of `it-mobile-lines.spec.ts`
+(an in-process app on a replica set). Cars are planted through Fleet's raw collection, which is
+how a car with no branch gets in, since Fleet's schema requires one.
 
 - **Grants.**
-  - Without `itVehicleCheck.create`, all three routes answer 403.
-  - So they do for a user who holds only `fleetVehicle.view`.
+  - A user without `itVehicleCheck.create` gets 403 on all three routes.
+  - They also answer 403 to a user who holds only `fleetVehicle.view`.
 - **Car list.**
-  - A role holding only `create`, assigned with `own` scope, gets every active car in Fleet's code
-    order, across two pages.
+  - A role holding only `itVehicleCheck.create`, assigned with `own` scope, gets every active car
+    in Fleet's code order, walking pages of 2.
   - Out-of-service, disposed and deleted cars are absent.
-  - A pageSize of 101 is refused.
+  - A pageSize of 101 answers 400.
 - **Filing.**
-  - Filing on a car of another branch works. The report carries the car's code and branch; a car
-    with no branch gives `branchId: null`.
+  - A branch-scoped reporter files on another branch's car: 201. The report carries that car's
+    code and branch.
+  - A car with no branch gives `branchId: null`.
   - Missing item keys are stored as `null`, a note of spaces is absent, and the reporter's name is
     snapshotted.
-  - A missing or deleted car answers 404, and an out-of-service car 422.
-  - Tomorrow in Cairo is refused (400). Today passes at 00:30 Cairo, with the clock pinned.
+  - A missing or deleted car answers 404 `NOT_FOUND`. An out-of-service car answers 422
+    `IT_VEHICLE_NOT_ACTIVE`.
+  - Tomorrow in Cairo answers 400. With `Date` faked to 00:30 Cairo and a fresh login, today
+    answers 201.
 - **Idempotency.**
-  - A repeated `clientRequestId` answers 200 with the same id, even after the car went inactive.
-  - The same id from another user answers 409.
-  - Two concurrent first sends give one 201 and one 200, and a single stored report.
+  - A repeated `clientRequestId` answers 200 with the same id, even after the car went out of
+    service.
+  - The same id from another user answers 409 `IT_VEHICLE_CHECK_REQUEST_REUSED`.
+  - Two concurrent first sends give one 201 and one 200, and one stored report.
 - **Photos.**
-  - Up to five photos are accepted, and the sixth answers 422 (limit).
-  - A photo 24 hours and one minute after filing (clock pinned) answers 422 (window).
-  - A photo on another user's report, or on a deleted one, answers 404, and nothing is stored.
+  - Five photos are accepted. The sixth answers 422 `IT_VEHICLE_CHECK_PHOTO_LIMIT` and stores no
+    file.
+  - A report whose `createdAt` is back-dated 24 hours and one minute in the raw collection answers
+    422 `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` and stores no file.
+  - A photo on another user's report, or on a deleted one, answers 404 and stores no file.
   - A branch-scoped reporter adds photos to a report on another branch's car.
-  - Six concurrent uploads leave exactly five photos, and the loser's file is soft-deleted.
-  - A file over 10 MB or of another type is refused.
+  - The same `clientPhotoId` sent twice gives one photo and two 200s.
+  - Six concurrent uploads leave exactly five photos. The others answer 422
+    `IT_VEHICLE_CHECK_PHOTO_LIMIT`, and no live file remains from them.
+  - An 11 MB JPEG (above the category's 10 MB, under the 15 MB intake cap) answers 422
+    `FILE_TOO_LARGE`. A PDF answers 422 `FILE_TYPE_NOT_ALLOWED`. Neither stores a file.
 - **Audit.** Audit rows exist for `create` and `update`, with the literal entity ref.
-- **Files.** The file authorizer refuses a read, and refuses a write by a non-reporter or by a user
-  without `create`.
+- **Files.** Called directly, `vehicleCheckFileAuthorizer` refuses every read. It refuses a write
+  by a non-reporter, and a write by the reporter without `itVehicleCheck.create`.
 
 **Next delivery: the dashboard**, after its sample is approved. It adds `itVehicleCheck.view` and
 `.delete`; the reads it needs (the latest report per car, faults per device, active cars with no
@@ -470,4 +556,52 @@ showing the car's Motorola serial on the form. None was asked for.
 
 ## 10. Review
 
-To be completed by the review (design-review skill, Full preset).
+Fresh-context reviewers read only this document and the files it names, none of the conversation.
+The review took three rounds on 2026-11-08 (`.claude/skills/design-review`, every stage run, none
+by fallback):
+
+1. **The first draft** got 73 findings: 1 Blocker, 26 Major, 46 Nit. It was read for its scope,
+   for whether a newcomer understands it, for its design, its structure and its writing.
+2. **The revision** got 53. It was read again for scope, plus for readiness to build, for accuracy
+   against the code, and for its writing.
+3. **The plan** got 37, on one more readiness, accuracy and writing pass.
+
+Findings dropped under the review's rules (they contradicted the owner, an ADR, or the code):
+none.
+
+What changed because of the review:
+- **Scope.** Only the form's endpoints and its one grant ship now. Reading, deleting and the
+  realtime topic wait for the dashboard.
+- **Honest record.** The unanswered questions are recorded as defaults with their trade-offs. The
+  scope bypass is recorded as a design decision, not the owner's.
+- **Fleet boundary.** It is two read functions, and one of them returns the car's status, so a
+  missing car (404) and an inactive one (422) are told apart. An ESLint rule keeps the boundary
+  the only door.
+- **The car picker.** It loads every active car, under ADR-037 (new), which records the owner's
+  rule and supersedes ADR-019 rules 4 and 5 for vehicle-code pickers. IT §1 and FR-12 name the
+  exception.
+- **Repeats are safe.** A repeated send (`clientRequestId`) and a repeated photo (`clientPhotoId`)
+  return what exists instead of filing twice.
+- **Photos.** Refusals run before a file is stored. One atomic update guards the five-photo and
+  24-hour limits, so racing uploads cannot exceed them.
+- **The phone frame.** It is shared (`PhoneShell`), and the Operations spec keeps its assertions.
+- **Downscaling** is a new helper. The fuel-card thumbnail, whose blur hides a PIN, is left
+  alone.
+- **The draft** keeps the request id, and it has rules for every field it restores.
+- **Missing pieces were added**: a refusal table with status codes, the form's response to each
+  outcome, risks and limits, links, and IT §3.
+- **The plan** names every file and its change. It moves each pinned count in the step that moves
+  it, and it lists the integration cases.
+
+Accepted (true, changes nothing):
+- The phone-quality rules exist twice in tests, once per module folder. The component they guard
+  exists once.
+- `API Standards §6`'s platform `Idempotency-Key` store does not exist. It is noted in §7, and
+  this entity has its own guard.
+
+Declined (Nit):
+- An earliest allowed day. The owner set none.
+- A per-day cap on reports. The grant bounds who files.
+
+Open: none. The owner still has to confirm the defaults of §1.2 and the scope decision of §4; the
+next message to him names them.

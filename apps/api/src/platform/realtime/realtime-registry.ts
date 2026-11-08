@@ -289,6 +289,11 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // AT-D3's enrolment map is the same shape and leaves at the same moment: it is administered
   // from the device screen, so it has no surface of its own to react.
   'hr.attendanceEnrollment': 'no screen until AT-D4 builds device health',
+  // FR-21's vehicle device checks ship the phone form only (it-vehicle-checks-design.md §6.1): it
+  // files a report and its photos, and no screen reads a report back. It leaves this map in the
+  // change that builds the IT dashboard, which brings `itVehicleCheck.view` and the topic — the
+  // attendance-device discipline above, and never before.
+  'it.vehicleCheck': 'no screen until the dashboard',
   // A decision is audited on the CHAIN, whose id is «type:rung» and not a record anybody lists.
   // The screen that has to refresh is the request's own — a leave request, a regularization — and
   // that request's entity topic already fires from the same decision, because deciding writes the

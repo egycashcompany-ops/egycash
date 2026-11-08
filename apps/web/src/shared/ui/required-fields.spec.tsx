@@ -49,6 +49,22 @@ describe('MissingFieldsBanner', () => {
   it('is nothing at all when nothing is missing — no empty red box', () => {
     expect(render(<MissingFieldsBanner missing={[]} />)).toBe('');
   });
+
+  // A form whose action is not «حفظ» opens its banner with its own words — IT's vehicle check is
+  // SENT («إرسال التقرير»), so it reads «لم يتم إرسال التقرير.» (it-vehicle-checks-design.md §2).
+  it('opens with the lead it is given, then the missing list as usual', () => {
+    const html = render(
+      <MissingFieldsBanner missing={missingFields(FIELDS)} lead="لم يتم إرسال التقرير." />,
+    );
+    expect(html).toContain('<strong>لم يتم إرسال التقرير.</strong>');
+    expect(html, 'the default lead is not added beside it').not.toContain('لم يتم الحفظ.');
+    expect(html).toContain('أدخل البيانات المطلوبة: كود السيارة، رقم اللوحة.');
+  });
+
+  it('without a lead, still opens «لم يتم الحفظ.»', () => {
+    const html = render(<MissingFieldsBanner missing={missingFields(FIELDS)} />);
+    expect(html).toContain('<strong>لم يتم الحفظ.</strong>');
+  });
 });
 
 describe('useRequiredFields — what one press of Save does', () => {

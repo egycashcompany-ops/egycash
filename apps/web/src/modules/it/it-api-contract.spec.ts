@@ -85,7 +85,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
       ]),
     );
     // …and the client calls exactly those.
-    expect(CLIENT).toContain("`/it/assets${buildQuery(params)}`");
+    expect(CLIENT).toContain('`/it/assets${buildQuery(params)}`');
     // Narrowed by the categories chosen — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
     // الفئات» — as the `categoryId` list the names query declares.
     expect(CLIENT).toContain(
@@ -110,7 +110,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
 
   it('mounts the cross-asset custody register', () => {
     expect(MANIFEST).toContain("prefix: '/it/assignments'");
-    expect(CLIENT).toContain("getPage<ItAssetAssignmentDto>(`/it/assignments");
+    expect(CLIENT).toContain('getPage<ItAssetAssignmentDto>(`/it/assignments');
   });
 
   it('catalog items: list, create, update — and no delete, because rows archive (FR-11)', () => {
@@ -153,7 +153,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
       ]),
     );
     expect(MANIFEST).toContain("prefix: '/it/tickets'");
-    expect(CLIENT).toContain("getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`)");
+    expect(CLIENT).toContain('getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`)');
     expect(CLIENT).toContain('`/it/tickets/${id}`');
     for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel', 'comments']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/tickets/\${id}/${action}`);
@@ -195,7 +195,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     // No delete: an order is a business record. It ends by completing or by cancelling.
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/maintenance-orders'");
-    expect(CLIENT).toContain("getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders");
+    expect(CLIENT).toContain('getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders');
     for (const action of ['start', 'complete', 'cancel', 'parts']) {
       expect(CLIENT, `client never calls /${action}`).toContain(
         `/it/maintenance-orders/\${id}/${action}`,
@@ -217,7 +217,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     );
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/maintenance-plans'");
-    expect(CLIENT).toContain("getPage<ItMaintenancePlanDto>(`/it/maintenance-plans");
+    expect(CLIENT).toContain('getPage<ItMaintenancePlanDto>(`/it/maintenance-plans');
     expect(CLIENT).toContain("active ? 'activate' : 'deactivate'");
   });
 
@@ -228,7 +228,14 @@ describe('every endpoint the IT client calls exists on the API', () => {
   it('spare parts: receipts and movements — and NO consumption endpoint anywhere (FR-9)', () => {
     const routes = declared(PART_ROUTES);
     expect(routes).toEqual(
-      new Set(['get /', 'post /', 'get /:id', 'patch /:id', 'post /:id/receipts', 'get /:id/movements']),
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        'post /:id/receipts',
+        'get /:id/movements',
+      ]),
     );
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     for (const route of routes) {
@@ -247,7 +254,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(routes).toEqual(new Set(['get /', 'post /', 'get /:id', 'patch /:id']));
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/software-products'");
-    expect(CLIENT).toContain("getPage<ItSoftwareProductDto>(`/it/software-products");
+    expect(CLIENT).toContain('getPage<ItSoftwareProductDto>(`/it/software-products');
     expect(CLIENT).toContain('`/it/software-products/${id}`');
   });
 
@@ -297,7 +304,7 @@ describe('the people and technicians the IT client reads exist on the API', () =
   });
 
   it('the client calls them — and never HR’s employee endpoint', () => {
-    expect(CLIENT).toContain("getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)");
+    expect(CLIENT).toContain('getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)');
     expect(CLIENT).toContain('`/it/people/${employeeId}`');
     expect(CLIENT).toContain('`/it/technicians${buildQuery(');
     expect(CLIENT).not.toContain('/hr/employees');
@@ -682,6 +689,66 @@ describe('the dashboard the IT home calls exists on the API, on the asset view g
   });
 });
 
+// FR-21 — «فحص أجهزة السيارة» (docs/12-planning/it-vehicle-checks-design.md §6.1): the phone form's
+// three calls — the car list, filing a report, one photo onto it — every one on the form's one
+// grant, so a reporter needs no Fleet or asset grant. Nothing here reads a report back: that comes
+// with the dashboard.
+describe('vehicle checks: the phone form’s calls exist on the API, on itVehicleCheck.create', () => {
+  const FILE = resolve(API_SRC, 'vehicle-checks/vehicle-check.routes.ts');
+  const ROUTES = existsSync(FILE) ? readFileSync(FILE, 'utf8') : '';
+  const route = (verb: string, path: string): string =>
+    new RegExp(`router\\.${verb}\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+      ROUTES,
+    )?.[0] ?? '';
+  /** The grants one route rides — `authorize('x')` and every key of `authorizeAny('x', 'y')`. */
+  const gates = (verb: string, path: string): string[] =>
+    [...route(verb, path).matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+      [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+    );
+
+  it('mounts the router the client targets', () => {
+    expect(ROUTES, 'vehicle-checks/vehicle-check.routes.ts was not found').not.toBe('');
+    expect(MANIFEST).toContain(
+      "prefix: '/it/vehicle-checks', router: buildItVehicleChecksRouter()",
+    );
+    expect(ROUTES).toContain('export const buildItVehicleChecksRouter');
+  });
+
+  it('serves the three calls the form makes — and nothing that reads a report', () => {
+    expect(declared(ROUTES)).toEqual(new Set(['get /vehicles', 'post /', 'post /:id/photos']));
+    // The car list, every page of it (ADR-037), at the path the API serves it on.
+    expect(CLIENT).toContain(
+      'getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`)',
+    );
+    expect(CLIENT).toContain('fetchWholeCatalog(');
+    expect(CLIENT).toContain("post<ItVehicleCheckDto>('/it/vehicle-checks', body)");
+    expect(CLIENT).toContain('upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form)');
+  });
+
+  it('gates all three on itVehicleCheck.create, and on nothing else', () => {
+    for (const [verb, path] of [
+      ['get', '/vehicles'],
+      ['post', '/'],
+      ['post', '/:id/photos'],
+    ] as const) {
+      expect(gates(verb, path), `${verb} ${path}`).toEqual(['itVehicleCheck.create']);
+    }
+    expect(MANIFEST, 'the grant is declared').toContain("'itVehicleCheck'");
+  });
+
+  it('validates what the client sends against the contract', () => {
+    expect(route('get', '/vehicles')).toContain('PaginationQuerySchema');
+    expect(route('post', '/')).toContain('CreateItVehicleCheckSchema');
+    const photos = route('post', '/:id/photos');
+    expect(photos).toContain('ItVehicleCheckIdParamSchema');
+    expect(photos).toContain('ItVehicleCheckPhotoFieldsSchema');
+    // The multipart parts the intake reads: the file, and its `clientPhotoId` beside it.
+    expect(photos).toContain('signedCopyUpload()');
+    expect(CLIENT).toContain("form.append('clientPhotoId', photo.clientPhotoId)");
+    expect(CLIENT).toContain("form.append('file', photo.file, photo.fileName)");
+  });
+});
+
 describe('the permissions the API enforces are the ones the UI gates on', () => {
   // Matches both `authorize('x')` and every key inside `authorizeAny('x', 'y')`.
   const enforced = (routes: string): Set<string> =>
@@ -710,7 +777,8 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
   it('custody: assign/return/transfer share a grant; dispose has its own', () => {
     for (const action of ['assign', 'return', 'transfer']) {
       const route =
-        new RegExp(`router\\.post\\(\\s*'/:id/${action}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ?? '';
+        new RegExp(`router\\.post\\(\\s*'/:id/${action}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ??
+        '';
       expect(route, `${action} must ride itAsset.assign`).toContain("authorize('itAsset.assign')");
     }
     const dispose = /router\.post\(\s*'\/:id\/dispose'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
@@ -803,7 +871,8 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     const list = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(PRIORITY_ROUTES)?.[0] ?? '';
     expect(list).toContain("authorizeAny('itTicket.view', 'itSlaPolicy.manage')");
     for (const verb of ['post', 'patch']) {
-      const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRIORITY_ROUTES)?.[0] ?? '';
+      const write =
+        new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRIORITY_ROUTES)?.[0] ?? '';
       expect(write).toContain("authorize('itSlaPolicy.manage')");
     }
   });

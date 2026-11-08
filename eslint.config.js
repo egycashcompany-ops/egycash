@@ -131,7 +131,7 @@ export default tseslint.config(
             {
               group: ['**/attendance', '**/attendance/**'],
               message:
-                "Payroll reaches attendance through two ports only: compensation/attendance-quantity.port.ts (reads the frozen feed) and runs/attendance-freeze.port.ts (calls the freeze). See the attendance design §15.1, PY-4 and PY-6.",
+                'Payroll reaches attendance through two ports only: compensation/attendance-quantity.port.ts (reads the frozen feed) and runs/attendance-freeze.port.ts (calls the freeze). See the attendance design §15.1, PY-4 and PY-6.',
             },
           ],
         },
@@ -167,7 +167,8 @@ export default tseslint.config(
           message: 'console.* is banned — use the Pino logger (ADR-012).',
         },
         {
-          selector: "MemberExpression[property.name='allowances'][object.property.name='employment']",
+          selector:
+            "MemberExpression[property.name='allowances'][object.property.name='employment']",
           message:
             'PY-10: employment.allowances[] is historical data and never a payroll source. Pay Items are the operational SSoT; the only permitted read is the presence check in compensation.service.ts.',
         },
@@ -175,6 +176,38 @@ export default tseslint.config(
           selector: "MemberExpression[property.name='allowances'][object.name='employment']",
           message:
             'PY-10: employment.allowances[] is historical data and never a payroll source. Pay Items are the operational SSoT; the only permitted read is the presence check in compensation.service.ts.',
+        },
+      ],
+    },
+  },
+
+  // The IT → Fleet seam (docs/12-planning/it-vehicle-checks-design.md §5). The vehicle device checks
+  // read Fleet's car list, and only through `it/fleet-boundary.ts`, which exports two read functions
+  // and no repository. Anywhere else in IT, a Fleet import would hand the module Fleet's write
+  // methods guarded by nothing but a comment — the reason the Operations and Gold boundaries are not
+  // the model here. A rule rather than a convention, as the payroll → attendance seam above is.
+  {
+    files: ['apps/api/src/modules/it/**/*.ts'],
+    ignores: ['apps/api/src/modules/it/fleet-boundary.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            // Flat config REPLACES a rule's options rather than merging them, so the automation
+            // seam's pattern from the block above is restated here — omitting it would quietly
+            // switch that seam off for IT.
+            {
+              group: ['**/platform/automation/*', '**/platform/automation/*/**'],
+              message:
+                "Import from 'platform/automation' (the barrel) — never a provider or internal. See ADR-018 and docs/02-architecture/automation-service.md.",
+            },
+            {
+              group: ['**/fleet', '**/fleet/**'],
+              message:
+                'IT reads Fleet only through modules/it/fleet-boundary.ts (two read functions, no repository). See docs/12-planning/it-vehicle-checks-design.md §5.',
+            },
+          ],
         },
       ],
     },

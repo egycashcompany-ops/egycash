@@ -10,7 +10,7 @@
 // IT-4 adds maintenance and the store, and the guards there are the same shape: the order code, its
 // status, its timestamps and `assetStatusBefore` are server facts; `kind` is not a caller's choice;
 // and `onHandQty` is not a field at all — stock moves only through the ledger (ADR-024).
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AssignItTicketSchema,
   CreateItLicenseSchema,
@@ -60,6 +60,10 @@ import {
   IT_HAND_OVER_MAX_LINES,
   formatCustodyReceiptNumber,
   PreviewItCustodyReceiptSchema,
+  CreateItVehicleCheckSchema,
+  IT_VEHICLE_CHECK_ITEMS,
+  IT_VEHICLE_CHECK_NOTES_MAX,
+  ItVehicleCheckPhotoFieldsSchema,
 } from './it.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -93,9 +97,7 @@ describe('it contracts', () => {
 
   it('accepts only the two declared catalog kinds', () => {
     const name = { ar: 'حواسيب', en: 'Computers' };
-    expect(
-      CreateItCatalogItemSchema.safeParse({ kind: 'assetCategory', name }).success,
-    ).toBe(true);
+    expect(CreateItCatalogItemSchema.safeParse({ kind: 'assetCategory', name }).success).toBe(true);
     expect(CreateItCatalogItemSchema.safeParse({ kind: 'sparePart', name }).success).toBe(false);
   });
 });
@@ -192,9 +194,9 @@ describe('it help-desk contracts (IT-3)', () => {
         .success,
     ).toBe(true);
     expect(CreateItTicketCommentSchema.safeParse({ body: '   ' }).success).toBe(false);
-    expect(
-      CreateItTicketCommentSchema.safeParse({ body: 'x', visibility: 'secret' }).success,
-    ).toBe(false);
+    expect(CreateItTicketCommentSchema.safeParse({ body: 'x', visibility: 'secret' }).success).toBe(
+      false,
+    );
   });
 
   // A resolution target shorter than the response target is a policy that promises to finish
@@ -265,7 +267,7 @@ describe('it help-desk contracts (IT-3)', () => {
 describe('it maintenance contracts', () => {
   const oid = (n: number) => String(n).padStart(24, '0');
 
-  it('keeps the order code, status, timestamps and kind out of a caller\'s hands', () => {
+  it("keeps the order code, status, timestamps and kind out of a caller's hands", () => {
     expect(CreateItMaintenanceOrderSchema.safeParse({ assetId: oid(1) }).success).toBe(true);
     for (const extra of [
       { orderCode: 'MO-00001' },
@@ -330,7 +332,7 @@ describe('it maintenance contracts', () => {
     }
   });
 
-  it('keeps a plan\'s clock and its active flag off the write schemas', () => {
+  it("keeps a plan's clock and its active flag off the write schemas", () => {
     expect(
       CreateItMaintenancePlanSchema.safeParse({ assetId: oid(1), name: 'Q', intervalDays: 90 })
         .success,
@@ -395,7 +397,9 @@ describe('it maintenance contracts', () => {
     });
     expect(orders.success).toBe(true);
     expect(orders.success && orders.data.active).toBe(true);
-    expect(ListItMaintenanceOrdersQuerySchema.safeParse({ status: 'archived' }).success).toBe(false);
+    expect(ListItMaintenanceOrdersQuerySchema.safeParse({ status: 'archived' }).success).toBe(
+      false,
+    );
 
     const parts = ListItSparePartsQuerySchema.safeParse({ belowMin: 'true', search: 'ram' });
     expect(parts.success).toBe(true);
@@ -410,7 +414,6 @@ describe('it maintenance contracts', () => {
     );
   });
 });
-
 
 // ── IT-5: software, installations and licences ──────────────────────────────
 
@@ -450,7 +453,9 @@ describe('it software and licence contracts', () => {
   });
 
   it('keeps a product name a single field, and refuses stock-style extras', () => {
-    expect(CreateItSoftwareProductSchema.safeParse({ name: 'Microsoft Office' }).success).toBe(true);
+    expect(CreateItSoftwareProductSchema.safeParse({ name: 'Microsoft Office' }).success).toBe(
+      true,
+    );
     expect(
       CreateItSoftwareProductSchema.safeParse({ name: 'Office', publisher: 'Microsoft' }).success,
     ).toBe(true);
@@ -664,8 +669,11 @@ describe('it custody receipt contracts', () => {
         .success,
     ).toBe(false);
     expect(
-      PreviewItCustodyReceiptSchema.safeParse({ employeeId: oid(1), lines: [line(2)], formNumber: 7 })
-        .success,
+      PreviewItCustodyReceiptSchema.safeParse({
+        employeeId: oid(1),
+        lines: [line(2)],
+        formNumber: 7,
+      }).success,
     ).toBe(false);
     expect(formatCustodyReceiptNumber(1)).toBe('EGYCASH-IT-F-14-0001');
   });
@@ -690,18 +698,23 @@ describe('it dashboard contracts', () => {
 
   it('takes several categories and one branch, both optional, and nothing else', () => {
     expect(ItDashboardQuerySchema.parse({})).toEqual({});
-    const parsed = ItDashboardQuerySchema.parse({ categoryId: `${oid(1)},${oid(2)}`, branchId: oid(3) });
+    const parsed = ItDashboardQuerySchema.parse({
+      categoryId: `${oid(1)},${oid(2)}`,
+      branchId: oid(3),
+    });
     expect(parsed).toEqual({ categoryId: [oid(1), oid(2)], branchId: oid(3) });
     expect(ItDashboardQuerySchema.safeParse({ branchId: 'x' }).success).toBe(false);
     expect(ItDashboardQuerySchema.safeParse({ status: 'inStock' }).success).toBe(false);
   });
 
   it('opens the warranty row as a list: a window of days, bounded', () => {
-    expect(ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: '30' }).warrantyEndsWithinDays).toBe(
-      30,
-    );
+    expect(
+      ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: '30' }).warrantyEndsWithinDays,
+    ).toBe(30);
     expect(ListItAssetsQuerySchema.safeParse({ warrantyEndsWithinDays: '0' }).success).toBe(false);
-    expect(ListItAssetsQuerySchema.safeParse({ warrantyEndsWithinDays: '400' }).success).toBe(false);
+    expect(ListItAssetsQuerySchema.safeParse({ warrantyEndsWithinDays: '400' }).success).toBe(
+      false,
+    );
   });
 
   it('opens the leavers row as a list: the holder left, or did not', () => {
@@ -711,3 +724,110 @@ describe('it dashboard contracts', () => {
   });
 });
 
+// «فحص أجهزة السيارة» (FR-21, docs/12-planning/it-vehicle-checks-design.md §6.2): the car, the day
+// and the request id are the only required fields; every answer is optional, and the day is the
+// Cairo calendar day — never after today there.
+describe('it vehicle check contracts', () => {
+  const requestId = '6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+  const base = { vehicleId: oid(7), checkDate: '2026-11-01', clientRequestId: requestId };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** 00:30 in Cairo on 2026-11-08 (UTC+2 in November): UTC is still on 2026-11-07. */
+  const atHalfPastMidnightInCairo = () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-07T22:30:00.000Z'));
+  };
+
+  it('lists the eleven devices in the owner’s order', () => {
+    expect(IT_VEHICLE_CHECK_ITEMS).toEqual([
+      'screen',
+      'camera1',
+      'camera2',
+      'camera3',
+      'camera4',
+      'camera5',
+      'camera6',
+      'camera7',
+      'camera8',
+      'dvr',
+      'radio',
+    ]);
+  });
+
+  it('turns every missing item key into null — no answer is mandatory', () => {
+    const allNull = Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((k) => [k, null]));
+    expect(CreateItVehicleCheckSchema.parse(base).items).toEqual(allNull);
+    expect(CreateItVehicleCheckSchema.parse({ ...base, items: {} }).items).toEqual(allNull);
+    const parsed = CreateItVehicleCheckSchema.parse({
+      ...base,
+      items: { screen: 'works', camera3: 'notWorking', radio: null },
+    });
+    expect(parsed.items).toEqual({ ...allNull, screen: 'works', camera3: 'notWorking' });
+    expect(parsed.notes).toBeUndefined();
+  });
+
+  it('refuses an unknown item key or answer, and any field the caller does not own', () => {
+    expect(
+      CreateItVehicleCheckSchema.safeParse({ ...base, items: { camera9: 'works' } }).success,
+    ).toBe(false);
+    expect(
+      CreateItVehicleCheckSchema.safeParse({ ...base, items: { screen: 'broken' } }).success,
+    ).toBe(false);
+    expect(
+      CreateItVehicleCheckSchema.safeParse({ ...base, items: { screen: 'missing' } }).success,
+    ).toBe(false);
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, vehicleCode: 'كورولا 1' }).success).toBe(
+      false,
+    );
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, vehicleId: 'x' }).success).toBe(false);
+  });
+
+  it('trims the note and refuses one over 1000 characters', () => {
+    const max = 'م'.repeat(IT_VEHICLE_CHECK_NOTES_MAX);
+    expect(CreateItVehicleCheckSchema.parse({ ...base, notes: `  ${max}  ` }).notes).toBe(max);
+    expect(CreateItVehicleCheckSchema.parse({ ...base, notes: '   ' }).notes).toBe('');
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, notes: `${max}م` }).success).toBe(false);
+  });
+
+  it('refuses a request id, or a photo id, that is not a UUID', () => {
+    const withoutId = { vehicleId: base.vehicleId, checkDate: base.checkDate };
+    expect(CreateItVehicleCheckSchema.safeParse(withoutId).success).toBe(false);
+    expect(
+      CreateItVehicleCheckSchema.safeParse({ ...base, clientRequestId: 'not-a-uuid' }).success,
+    ).toBe(false);
+    expect(ItVehicleCheckPhotoFieldsSchema.safeParse({ clientPhotoId: requestId }).success).toBe(
+      true,
+    );
+    expect(ItVehicleCheckPhotoFieldsSchema.safeParse({ clientPhotoId: '42' }).success).toBe(false);
+  });
+
+  it('refuses a day that is not a calendar day', () => {
+    atHalfPastMidnightInCairo();
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-02-30' }).success).toBe(
+      false,
+    );
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-11-1' }).success).toBe(
+      false,
+    );
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-02-28' }).success).toBe(
+      true,
+    );
+  });
+
+  it('refuses tomorrow in Cairo, and takes today at 00:30 Cairo while UTC is still on yesterday', () => {
+    atHalfPastMidnightInCairo();
+    expect(new Date().toISOString().slice(0, 10)).toBe('2026-11-07');
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-11-08' }).success).toBe(
+      true,
+    );
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-11-09' }).success).toBe(
+      false,
+    );
+    expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-11-07' }).success).toBe(
+      true,
+    );
+  });
+});

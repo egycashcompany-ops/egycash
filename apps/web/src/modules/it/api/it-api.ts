@@ -90,6 +90,9 @@ import {
   type ReturnItConsumable,
   type ScrapItConsumable,
   type UpdateItConsumable,
+  type CreateItVehicleCheck,
+  type ItVehicleCheckDto,
+  type ItVehicleOptionDto,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -111,6 +114,7 @@ import {
   upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
+import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
 
 export type ItListParams = QueryParams;
 
@@ -226,8 +230,7 @@ export const deleteAsset = (id: string): Promise<void> => del<void>(`/it/assets/
  */
 export const renderAssetLabels = (
   assetIds: readonly string[],
-): Promise<{ contentType: string; blob: Blob }> =>
-  postBinary('/it/assets/labels', { assetIds });
+): Promise<{ contentType: string; blob: Blob }> => postBinary('/it/assets/labels', { assetIds });
 
 // ── Custody (design §4.3) ───────────────────────────────────────────────────
 // Four NAMED actions, matching the API exactly. Each answers with the ASSET in its new state, so
@@ -288,9 +291,7 @@ export const listAssetAssignments = (
   getPage<ItAssetAssignmentDto>(`/it/assets/${id}/assignments${buildQuery(params)}`);
 
 /** The cross-asset custody register — "what is out, and who has it". */
-export const listAssignments = (
-  params: ItListParams,
-): Promise<Paginated<ItAssetAssignmentDto>> =>
+export const listAssignments = (params: ItListParams): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
 
 // ── The IT home dashboard (design §11) ──────────────────────────────────────
@@ -439,19 +440,54 @@ export const fetchConsumableMemoSignedCopy = (id: string): Promise<Blob> =>
 export const deleteConsumableMemoSignedCopy = (id: string): Promise<ItConsumableMemoDto> =>
   del<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`);
 
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
+// The phone form (docs/12-planning/it-vehicle-checks-design.md §6): IT's own list of the active
+// cars, the report, and its photos. Every call rides `itVehicleCheck.create` alone — the reporter
+// needs no Fleet grant to see the cars.
+
+/**
+ * Every active car, by code in Fleet's code order — EVERY page of IT's own list (ADR-037: a car
+ * picker shows every code, «لازم لازم تظهر كلها»). Named apart from Fleet's registry reads, so the
+ * vehicle-code census does not read it as one.
+ */
+export const fetchItVehicleCheckCars = (): Promise<Paginated<ItVehicleOptionDto>> =>
+  fetchWholeCatalog((page, pageSize) =>
+    getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`),
+  );
+
+/**
+ * File one report. A repeated `clientRequestId` from the same reporter answers with the report
+ * that already exists (200) instead of filing a second one.
+ */
+export const fileVehicleCheck = (body: CreateItVehicleCheck): Promise<ItVehicleCheckDto> =>
+  post<ItVehicleCheckDto>('/it/vehicle-checks', body);
+
+/**
+ * One photo onto one's own report, within 24 hours of filing it. A repeated `clientPhotoId`
+ * answers with the report unchanged — a retry never takes a second of its five places.
+ */
+export const uploadVehicleCheckPhoto = (
+  id: string,
+  photo: { clientPhotoId: string; file: Blob; fileName: string },
+): Promise<ItVehicleCheckDto> => {
+  const form = new FormData();
+  // The id before the file, so the server has it in hand when the file part arrives.
+  form.append('clientPhotoId', photo.clientPhotoId);
+  form.append('file', photo.file, photo.fileName);
+  return upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form);
+};
+
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (
   params: ItListParams,
 ): Promise<Paginated<ItTicketPriorityDto>> =>
   getPage<ItTicketPriorityDto>(`/it/ticket-priorities${buildQuery(params)}`);
-export const createTicketPriority = (
-  body: CreateItTicketPriority,
-): Promise<ItTicketPriorityDto> => post<ItTicketPriorityDto>('/it/ticket-priorities', body);
+export const createTicketPriority = (body: CreateItTicketPriority): Promise<ItTicketPriorityDto> =>
+  post<ItTicketPriorityDto>('/it/ticket-priorities', body);
 export const updateTicketPriority = (
   id: string,
   body: UpdateItTicketPriority,
-): Promise<ItTicketPriorityDto> =>
-  patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
+): Promise<ItTicketPriorityDto> => patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
 
 // ── Help desk: tickets (design §4.4) ────────────────────────────────────────
 export const listTickets = (params: ItListParams): Promise<Paginated<ItTicketDto>> =>
@@ -466,10 +502,8 @@ export const updateTicket = (id: string, body: UpdateItTicket): Promise<ItTicket
 // Transitions. Each answers with the ticket in its new state, so nothing is re-derived here.
 export const assignTicket = (id: string, body: AssignItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/assign`, body);
-export const changeTicketStatus = (
-  id: string,
-  body: ChangeItTicketStatus,
-): Promise<ItTicketDto> => post<ItTicketDto>(`/it/tickets/${id}/status`, body);
+export const changeTicketStatus = (id: string, body: ChangeItTicketStatus): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/status`, body);
 export const resolveTicket = (id: string, body: ResolveItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/resolve`, body);
 export const closeTicket = (id: string, body: CloseItTicket): Promise<ItTicketDto> =>

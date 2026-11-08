@@ -27,8 +27,15 @@
 //   /it/mobile-lines       itAsset.view   (the SIM lines and who holds them)     FR-19
 //   /it/consumables        itAsset.view   (each branch's store of consumables)    FR-20
 //   /it/consumables/movements  itAsset.view   (the store's ledger, no nav row)    FR-20
+//   /it/vehicle-checks/new itVehicleCheck.create (the phone form, OUTSIDE AppShell) FR-21
 // The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
 // the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
+//
+// `/it/vehicle-checks/new` («فحص أجهزة السيارة», docs/12-planning/it-vehicle-checks-design.md) is
+// the ONE route here that does not sit inside `AppShell`: it is a phone form, and a topbar, a
+// navigation rail and a command palette are console furniture a 360px screen cannot afford. Same
+// app, same session, same route guard — a different frame (`shared/ui/PhoneShell.tsx`), as the
+// Operations captain's day is.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -55,6 +62,7 @@ import { ItEmployeeHistoryPage } from './pages/ItEmployeeHistoryPage';
 import { MobileLinesPage } from './pages/MobileLinesPage';
 import { ConsumablesPage } from './pages/ConsumablesPage';
 import { ConsumableMovementsPage } from './pages/ConsumableMovementsPage';
+import { VehicleCheckPage } from './mobile/VehicleCheckPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -242,6 +250,19 @@ export default function ItRoutes(): JSX.Element {
         />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
+
+      {/*
+        Outside the AppShell route element on purpose — see the header comment. The permission
+        guard is the same as every page above it; only the chrome differs.
+      */}
+      <Route
+        path="vehicle-checks/new"
+        element={
+          <RequirePermission permission="itVehicleCheck.create">
+            <VehicleCheckPage />
+          </RequirePermission>
+        }
+      />
     </Routes>
   );
 }

@@ -68,7 +68,8 @@ describe('the seeded navigation catalog', () => {
     // page links to its own batches — and are RETIRED on live installations (see below).
     // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
     // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
-    expect(rows).toHaveLength(133);
+    // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
+    expect(rows).toHaveLength(134);
   });
 
   /**
@@ -89,7 +90,7 @@ describe('the seeded navigation catalog', () => {
   });
 
   /** Revisions only climb: a lower one would never be applied on a tile that took a higher one. */
-  it('numbers each module\'s retirements upward, from 1', () => {
+  it("numbers each module's retirements upward, from 1", () => {
     for (const category of NAVIGATION_CATALOG) {
       const revisions = (category.retired ?? []).map((entry) => entry.revision);
       expect(revisions, category.en).toEqual(revisions.map((_, i) => i + 1));
@@ -119,7 +120,9 @@ describe('the seeded navigation catalog', () => {
     const tabRoutes = HR_SETTINGS_HUB.tabs.map((tab) => `${HR_SETTINGS_HUB.route}/${tab.key}`);
     const documented = hrPages.flatMap((page) => (page.route === undefined ? [] : [page.route]));
     expect(documented).toEqual(expect.arrayContaining(tabRoutes));
-    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap((e) => e.routes)) {
+    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap(
+      (e) => e.routes,
+    )) {
       expect(documented, retired).not.toContain(retired);
     }
   });

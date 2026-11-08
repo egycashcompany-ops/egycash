@@ -334,6 +334,25 @@ export const ErrorCodes = {
    */
   FLEET_FUEL_CARD_THUMB_INVALID: 'FLEET_FUEL_CARD_THUMB_INVALID',
 
+  // ── IT vehicle device checks (docs/12-planning/it-vehicle-checks-design.md) ───────────────────
+  /**
+   * 422 — the car exists but its Fleet status is not `active` (out of service, disposed): a report
+   * is filed only on an active car. Nothing was written. A missing or deleted car is 404 instead.
+   */
+  IT_VEHICLE_NOT_ACTIVE: 'IT_VEHICLE_NOT_ACTIVE',
+  /**
+   * 409 — another user already filed a report with this `clientRequestId`. Nothing was written; the
+   * form makes a new id. The same reporter repeating it gets 200 with the report that exists.
+   */
+  IT_VEHICLE_CHECK_REQUEST_REUSED: 'IT_VEHICLE_CHECK_REQUEST_REUSED',
+  /** 422 — the report already holds `IT_VEHICLE_CHECK_MAX_PHOTOS` photos; no file was stored. */
+  IT_VEHICLE_CHECK_PHOTO_LIMIT: 'IT_VEHICLE_CHECK_PHOTO_LIMIT',
+  /**
+   * 422 — the report was filed more than `IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS` hours ago, so no
+   * photo is added to it any more; no file was stored.
+   */
+  IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED: 'IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

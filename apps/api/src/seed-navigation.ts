@@ -105,7 +105,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
       // own page now, whose button opens exactly that phase's list.
       {
         revision: 1,
-        routes: ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'],
+        routes: [
+          '/evaluation-batches/phase/securityCheck',
+          '/evaluation-batches/phase/drivingTest',
+        ],
       },
       // «الإعدادات» — these six are the tabs of `/hr-settings` now, and their old addresses
       // redirect into it.
@@ -927,6 +930,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'folder',
         permission: 'itCatalog.manage',
       },
+      {
+        // FR-21 — «فحص أجهزة السيارة», the phone form (docs/12-planning/it-vehicle-checks-design.md
+        // §4): last in the IT list, on its own grant, so a role that holds only the form sees this
+        // one row. The car glyph, which no other IT row wears.
+        en: 'Vehicle device check',
+        ar: 'فحص أجهزة السيارة',
+        route: '/it/vehicle-checks/new',
+        icon: 'vehicle',
+        permission: 'itVehicleCheck.create',
+      },
     ],
   },
   {
@@ -1406,7 +1419,11 @@ export const retireApplications = async (def: CategoryDef, by: string): Promise<
     for (const route of entry.routes) {
       const row = await applicationRepository.findOne({ route });
       if (row === null || row.status !== 'active') continue;
-      await applicationService.update(String(row._id), { status: 'inactive', version: row.__v }, by);
+      await applicationService.update(
+        String(row._id),
+        { status: 'inactive', version: row.__v },
+        by,
+      );
     }
   }
   const current = await applicationCategoryRepository.getById(String(category._id));

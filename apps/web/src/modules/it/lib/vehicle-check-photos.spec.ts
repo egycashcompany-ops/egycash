@@ -1,13 +1,16 @@
 // The vehicle check's photos (docs/12-planning/it-vehicle-checks-design.md §6.3): the upload loop
 // against a fake upload (the order, one at a time, the three outcomes), the type and size check,
-// and the rule for a photo the browser cannot decode.
+// the rule for a photo the browser cannot decode, the size a row shows, and the queue of picks a
+// send waits for.
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
   VEHICLE_CHECK_MAX_PHOTOS,
   VEHICLE_CHECK_PHOTO_ACCEPT,
   VEHICLE_CHECK_PHOTO_MAX_BYTES,
+  createPhotoQueue,
   photoFileName,
+  photoMegabytes,
   photoRefusalReason,
   photoRoom,
   photoToSend,
@@ -115,6 +118,14 @@ describe('the type and size the server takes', () => {
     expect(photoRoom(7)).toBe(0);
   });
 
+  it('shows a photo’s size to one place, never «0.0» for a small one', () => {
+    expect(photoMegabytes(2.46 * MB)).toBe('2.5');
+    expect(photoMegabytes(0.3 * MB)).toBe('0.3');
+    // A black DVR screen re-encoded to 40 KB: still a photo, not an empty one.
+    expect(photoMegabytes(40 * 1024)).toBe('0.1');
+    expect(photoMegabytes(1)).toBe('0.1');
+  });
+
   it('names a photo by its type', () => {
     expect(photoFileName('image/jpeg', 0)).toBe('photo-1.jpg');
     expect(photoFileName('image/png', 1)).toBe('photo-2.png');
@@ -146,5 +157,103 @@ describe('photoToSend — the decode-failure rule', () => {
     expect(photoToSend({ type: 'image/jpeg', size: 10 * MB + 1 }, null)).toEqual({
       refused: 'size',
     });
+  });
+});
+
+/** A promise the test resolves by hand — a photo the "phone" is still drawing small. */
+const gate = (): { wait: Promise<void>; open: () => void } => {
+  let open = (): void => undefined;
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { wait, open };
+};
+
+describe('createPhotoQueue — the picks a send waits for', () => {
+  it('runs the picks one after another, in the order they were made', async () => {
+    const queue = createPhotoQueue();
+    const log: string[] = [];
+    const first = gate();
+    queue.add(async () => {
+      log.push('a:start');
+      await first.wait;
+      log.push('a:end');
+    });
+    queue.add(async () => {
+      log.push('b:start');
+      await Promise.resolve();
+      log.push('b:end');
+    });
+    await Promise.resolve();
+    expect(log).toEqual(['a:start']);
+    first.open();
+    await queue.settled();
+    expect(log).toEqual(['a:start', 'a:end', 'b:start', 'b:end']);
+  });
+
+  it('settles only once every photo picked so far is drawn — what the send awaits', async () => {
+    const queue = createPhotoQueue();
+    const kept: number[] = [];
+    const drawing = gate();
+    queue.add(async (live) => {
+      for (const n of [1, 2, 3, 4]) {
+        if (n === 3) await drawing.wait; // photos 3 and 4 are still being drawn at the tap
+        if (live()) kept.push(n);
+      }
+    });
+    let settled = false;
+    const send = queue.settled().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled, 'the send does not file while a photo is half-way').toBe(false);
+    drawing.open();
+    await send;
+    expect(kept, 'every photo of the pick goes with the report').toEqual([1, 2, 3, 4]);
+  });
+
+  it('keeps nothing a pick finishes after the form it was made for is gone', async () => {
+    const queue = createPhotoQueue();
+    const kept: number[] = [];
+    const drawing = gate();
+    let begun = false;
+    queue.add(async (live) => {
+      begun = true;
+      await drawing.wait;
+      if (live()) kept.push(1);
+    });
+    let started = false;
+    queue.add(async () => {
+      started = true;
+      await Promise.resolve();
+    });
+    await Promise.resolve();
+    expect(begun, 'photo 1 is half-way').toBe(true);
+    // The report is sent (or «تقرير لسيارة أخرى» is tapped) while photo 1 is still being drawn.
+    queue.reset();
+    drawing.open();
+    await queue.settled();
+    expect(kept, 'not carried to the next car’s form').toEqual([]);
+    expect(started, 'a pick queued for the old form never starts').toBe(false);
+
+    // A pick made after the reset is for the new form, and is kept.
+    queue.add(async (live) => {
+      await Promise.resolve();
+      if (live()) kept.push(2);
+    });
+    await queue.settled();
+    expect(kept).toEqual([2]);
+  });
+
+  it('goes on after a pick that throws', async () => {
+    const queue = createPhotoQueue();
+    let ran = false;
+    queue.add(() => Promise.reject(new Error('decode')));
+    queue.add(async () => {
+      await Promise.resolve();
+      ran = true;
+    });
+    await expect(queue.settled()).resolves.toBeUndefined();
+    expect(ran).toBe(true);
   });
 });

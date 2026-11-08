@@ -1,6 +1,7 @@
 // The vehicle check's form rules (docs/12-planning/it-vehicle-checks-design.md §2, §6.3): the
 // counts, the payload, a second tap clearing an answer, the default day, the two required fields,
-// and the outcome table — what each refused send does to the form and to its request id.
+// and the outcome table — what each refused send does to the form and to its request id, and what
+// an edit does to an id held after an unknown outcome.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CreateItVehicleCheckSchema, IT_VEHICLE_CHECK_ITEMS } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -14,6 +15,7 @@ import {
   emptyVehicleCheck,
   isClientId,
   newClientId,
+  requestIdAfterEdit,
   vehicleCheckPayload,
   vehicleCheckRequired,
   vehicleCheckSendFailure,
@@ -276,5 +278,50 @@ describe('the outcome table — a send that did not file', () => {
       newId: () => 'never',
     });
     expect(lost).toEqual(before);
+  });
+});
+
+describe('requestIdAfterEdit — an edit after an unknown outcome is another report', () => {
+  const sent = form({ items: { camera3: 'notWorking' }, notes: 'الكاميرا 3' });
+  // What went out under the held id: no answer came, so the id is held for a resend.
+  const held = vehicleCheckPayload(sent);
+  const renew = (): string => 'renewed';
+
+  it('keeps the held id while nothing that is sent has changed — a resend is the same report', () => {
+    expect(requestIdAfterEdit(sent, held, renew)).toBe(sent);
+    // Spaces around the note are trimmed away before sending: the same report.
+    const spaced = { ...sent, notes: '  الكاميرا 3  ' };
+    expect(requestIdAfterEdit(spaced, held, renew).clientRequestId).toBe(ID);
+  });
+
+  it('renews it once an answer changes — sent under the held id the edit would be lost', () => {
+    const fixed = { ...sent, items: answerTapped(sent.items, 'camera3', 'works') };
+    expect(requestIdAfterEdit(fixed, held, renew)).toEqual({
+      ...fixed,
+      clientRequestId: 'renewed',
+    });
+    // An answer cleared is a change too.
+    const cleared = { ...sent, items: answerTapped(sent.items, 'camera3', 'notWorking') };
+    expect(requestIdAfterEdit(cleared, held, renew).clientRequestId).toBe('renewed');
+  });
+
+  it('renews it once the car, the day or the note changes', () => {
+    const edits: Partial<VehicleCheckFormState>[] = [
+      { vehicleId: '65a000000000000000000002' },
+      { vehicleId: '' },
+      { checkDate: '2026-11-07' },
+      { notes: 'الكاميرا 3 تعمل' },
+      { notes: '' },
+    ];
+    for (const edit of edits) {
+      expect(requestIdAfterEdit({ ...sent, ...edit }, held, renew).clientRequestId).toBe('renewed');
+    }
+  });
+
+  it('leaves the id alone when none is held, or once it was already renewed', () => {
+    const edited = { ...sent, notes: 'تعديل' };
+    expect(requestIdAfterEdit(edited, null, renew)).toBe(edited);
+    const renewed = { ...edited, clientRequestId: 'renewed' };
+    expect(requestIdAfterEdit(renewed, held, () => 'twice')).toBe(renewed);
   });
 });

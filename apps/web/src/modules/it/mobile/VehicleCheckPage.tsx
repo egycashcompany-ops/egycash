@@ -14,10 +14,15 @@
 // says (`vehicleCheckSendFailure`). While the form is filled, it is kept as a draft in the tab's
 // session storage (`vehicle-check-draft.ts`), so a phone that unloads the tab while its camera app
 // is open gives it back.
+//
+// A photo is drawn small as it is picked, which takes a moment: the send waits for the picks still
+// being drawn (`createPhotoQueue`), and once the report is sent a pick still running is dropped,
+// never carried to the next car's form.
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   IT_VEHICLE_CHECK_ITEMS,
   IT_VEHICLE_CHECK_NOTES_MAX,
+  type CreateItVehicleCheck,
   type ItVehicleCheckAnswer,
   type ItVehicleCheckDto,
   type ItVehicleCheckItem,
@@ -41,6 +46,7 @@ import {
   defaultCheckDate,
   emptyVehicleCheck,
   newClientId,
+  requestIdAfterEdit,
   vehicleCheckPayload,
   vehicleCheckRequired,
   vehicleCheckSendFailure,
@@ -50,6 +56,7 @@ import {
 import {
   VEHICLE_CHECK_MAX_PHOTOS,
   VEHICLE_CHECK_PHOTO_DOWNSCALE,
+  createPhotoQueue,
   photoFileName,
   photoRoom,
   photoToSend,
@@ -78,12 +85,22 @@ interface Sent {
   failed: VehicleCheckPickedPhoto[];
 }
 
-/** The form a reload gives back — the tab's draft, or an empty form on today. */
-const restore = (): { form: VehicleCheckFormState; code: string } => {
+/**
+ * The form a reload gives back — the tab's draft, or an empty form on today. A restored request id
+ * counts as HELD: it may have gone out on a send whose answer never came before the tab was
+ * unloaded, so an edit from here on gives the report a new one (renewing an id that never went out
+ * costs nothing).
+ */
+const restore = (): {
+  form: VehicleCheckFormState;
+  code: string;
+  held: CreateItVehicleCheck | null;
+} => {
   const draft = readVehicleCheckDraft({ today: defaultCheckDate(), newId: newClientId });
-  if (draft === null) return { form: emptyVehicleCheck(), code: '' };
-  const { v: _version, vehicleCode, ...form } = draft;
-  return { form, code: vehicleCode };
+  if (draft === null) return { form: emptyVehicleCheck(), code: '', held: null };
+  const { vehicleId, checkDate, items, notes, clientRequestId, vehicleCode } = draft;
+  const form = { vehicleId, checkDate, items, notes, clientRequestId };
+  return { form, code: vehicleCode, held: vehicleCheckPayload(form) };
 };
 
 export const VehicleCheckPage = (): JSX.Element => {
@@ -100,6 +117,10 @@ export const VehicleCheckPage = (): JSX.Element => {
   // The photos as they are NOW, for the work that outlives a render: a photo is drawn small after
   // an await, and the send reads the list after the report is filed.
   const photosRef = useRef<VehicleCheckPickedPhoto[]>([]);
+  // The picks still being drawn small, one after another: what a send waits for (§6.3).
+  const [photoQueue] = useState(createPhotoQueue);
+  // The body that went out under a HELD request id — a send whose outcome is unknown — or null.
+  const heldRef = useRef<CreateItVehicleCheck | null>(restored.held);
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [sent, setSent] = useState<Sent | null>(null);
@@ -107,9 +128,11 @@ export const VehicleCheckPage = (): JSX.Element => {
   const cars = useItVehicleCheckCars();
 
   const required = useRequiredFields(
+    // Each name held on one line in the banner (no-break spaces): on a 375px phone the banner
+    // wraps, and «كود» at a line's end with «السيارة.» under it reads as two things.
     vehicleCheckRequired(form, {
-      vehicle: t('it.vehicleCheck.vehicle'),
-      date: t('it.vehicleCheck.date'),
+      vehicle: t('it.vehicleCheck.vehicle').replace(/ /gu, '\u00a0'),
+      date: t('it.vehicleCheck.date').replace(/ /gu, '\u00a0'),
     }),
     round,
   );
@@ -152,12 +175,14 @@ export const VehicleCheckPage = (): JSX.Element => {
     else clearVehicleCheckDraft();
   }, [form, vehicleCode, sent]);
 
-  // The previews are object URLs: let them go with the page.
+  // The previews are object URLs: let them go with the page, and keep nothing a pick still running
+  // would add after it.
   useEffect(
     () => () => {
+      photoQueue.reset();
       for (const photo of photosRef.current) URL.revokeObjectURL(photo.url);
     },
-    [],
+    [photoQueue],
   );
 
   const setPhotoList = (next: VehicleCheckPickedPhoto[]): void => {
@@ -165,15 +190,21 @@ export const VehicleCheckPage = (): JSX.Element => {
     setPhotos(next);
   };
 
-  /** Each photo drawn small (a JPEG, its location data left behind), or refused with a toast. */
+  /**
+   * Each photo drawn small (a JPEG, its location data left behind), or refused with a toast. The
+   * picks queue one after another, so the room is counted on a list no other pick is adding to.
+   */
   const addPhotos = (files: readonly File[]): void => {
-    void (async () => {
+    photoQueue.add(async (live) => {
       for (const file of files) {
         if (photoRoom(photosRef.current.length) === 0) {
           toast.error(t('it.vehicleCheck.toast.photoLimit', { max: VEHICLE_CHECK_MAX_PHOTOS }));
           return;
         }
         const downscaled = await downscaleToJpeg(file, VEHICLE_CHECK_PHOTO_DOWNSCALE);
+        // The form this pick was made for is gone (the report was sent, or «تقرير لسيارة أخرى»):
+        // the photo belongs to no form on screen, and is not carried to the next car's.
+        if (!live()) return;
         const choice = photoToSend(file, downscaled);
         if ('refused' in choice) {
           toast.error(
@@ -182,11 +213,6 @@ export const VehicleCheckPage = (): JSX.Element => {
               : t('it.vehicleCheck.toast.photoTooBig'),
           );
           continue;
-        }
-        // Checked again: another pick may have filled the report while this one was drawn.
-        if (photoRoom(photosRef.current.length) === 0) {
-          toast.error(t('it.vehicleCheck.toast.photoLimit', { max: VEHICLE_CHECK_MAX_PHOTOS }));
-          return;
         }
         const blob = choice.blob === 'downscaled' && downscaled !== null ? downscaled : file;
         setPhotoList([
@@ -199,7 +225,7 @@ export const VehicleCheckPage = (): JSX.Element => {
           },
         ]);
       }
-    })();
+    });
   };
 
   const removePhoto = (clientPhotoId: string): void => {
@@ -214,18 +240,31 @@ export const VehicleCheckPage = (): JSX.Element => {
     setPhotoList([]);
   };
 
+  /**
+   * Every edit of the car, the day, an answer or the note. While a request id is held from a send
+   * whose outcome is unknown, an edit makes this another report, with a new id (§6.3).
+   */
+  const edit = (change: (now: VehicleCheckFormState) => VehicleCheckFormState): void =>
+    setForm((now) => requestIdAfterEdit(change(now), heldRef.current, newClientId));
+
   const tap = (item: ItVehicleCheckItem, answer: ItVehicleCheckAnswer): void =>
-    setForm((now) => ({ ...now, items: answerTapped(now.items, item, answer) }));
+    edit((now) => ({ ...now, items: answerTapped(now.items, item, answer) }));
 
   const submit = async (): Promise<void> => {
     if (busy) return;
     setBusy(true);
     try {
+      // A photo still being drawn small was picked for THIS report: wait for it, so it goes up
+      // with the others instead of being left out and dropped.
+      await photoQueue.settled();
+      const payload = vehicleCheckPayload(form);
       let report: ItVehicleCheckDto;
       try {
-        report = await fileVehicleCheck(vehicleCheckPayload(form));
+        report = await fileVehicleCheck(payload);
       } catch (error) {
         const failure = vehicleCheckSendFailure(error);
+        // The id is held exactly when the outcome is unknown; an edit from here on renews it.
+        heldRef.current = failure.newRequestId ? null : payload;
         toast.error(sendToasts[failure.toast]);
         setForm((now) =>
           applySendFailure(now, failure, { today: defaultCheckDate(), newId: newClientId }),
@@ -234,15 +273,16 @@ export const VehicleCheckPage = (): JSX.Element => {
         if (failure.refetchCars) void cars.refetch();
         return;
       }
-      // Filed (201, or 200 for a report this id already filed). Now the photos, one at a time.
+      // Filed (201, or 200 for a report this id already filed). The picks were for this report:
+      // one still running now (a file dialog left open) is not carried to the next form.
+      heldRef.current = null;
+      photoQueue.reset();
+      const picked = photosRef.current;
+      // Now the photos, one at a time.
       let photoCount = report.photos.length;
-      const outcomes = await uploadPhotosInOrder(
-        report.id,
-        photosRef.current,
-        async (id, photo) => {
-          photoCount = (await uploadVehicleCheckPhoto(id, photo)).photos.length;
-        },
-      );
+      const outcomes = await uploadPhotosInOrder(report.id, picked, async (id, photo) => {
+        photoCount = (await uploadVehicleCheckPhoto(id, photo)).photos.length;
+      });
       const tally = tallyPhotos(outcomes);
       clearVehicleCheckDraft();
       dropAllPhotos();
@@ -296,8 +336,11 @@ export const VehicleCheckPage = (): JSX.Element => {
     }
   };
 
-  /** «تقرير لسيارة أخرى»: the form cleared, the day kept. */
+  /** «تقرير لسيارة أخرى»: the form cleared, the day kept — and no photo from the last car. */
   const another = (): void => {
+    photoQueue.reset();
+    dropAllPhotos();
+    heldRef.current = null;
     clearVehicleCheckDraft();
     setSent(null);
     setForm((now) => emptyVehicleCheck(now.checkDate));
@@ -400,7 +443,7 @@ export const VehicleCheckPage = (): JSX.Element => {
             value={form.vehicleId}
             pendingCode={vehicleCode}
             onChange={(vehicleId, code) => {
-              setForm((now) => ({ ...now, vehicleId }));
+              edit((now) => ({ ...now, vehicleId }));
               setVehicleCode(code);
             }}
             disabled={busy}
@@ -420,7 +463,7 @@ export const VehicleCheckPage = (): JSX.Element => {
               max={today}
               onChange={(e) => {
                 const checkDate = e.target.value;
-                setForm((now) => ({ ...now, checkDate }));
+                edit((now) => ({ ...now, checkDate }));
               }}
               disabled={busy}
               textScale="comfortable"
@@ -480,7 +523,7 @@ export const VehicleCheckPage = (): JSX.Element => {
           maxLength={IT_VEHICLE_CHECK_NOTES_MAX}
           onChange={(e) => {
             const notes = e.target.value;
-            setForm((now) => ({ ...now, notes }));
+            edit((now) => ({ ...now, notes }));
           }}
           disabled={busy}
           placeholder={t('it.vehicleCheck.notesPlaceholder')}

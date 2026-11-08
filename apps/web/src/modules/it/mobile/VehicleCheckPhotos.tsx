@@ -11,7 +11,11 @@ import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { CloseIcon, ImageIcon } from '../../../shared/ui/icons';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
-import { VEHICLE_CHECK_MAX_PHOTOS, VEHICLE_CHECK_PHOTO_ACCEPT } from '../lib/vehicle-check-photos';
+import {
+  VEHICLE_CHECK_MAX_PHOTOS,
+  VEHICLE_CHECK_PHOTO_ACCEPT,
+  photoMegabytes,
+} from '../lib/vehicle-check-photos';
 import { CARD, CARD_TITLE } from './vehicle-check-looks';
 
 /** One photo taken onto the form: the bytes that will go up, and a preview of them. */
@@ -22,8 +26,6 @@ export interface VehicleCheckPickedPhoto {
   /** An object URL of `file`, for the thumbnail; revoked when the photo leaves the form. */
   url: string;
 }
-
-const megabytes = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
 
 export const VehicleCheckPhotos = ({
   photos,
@@ -62,7 +64,7 @@ export const VehicleCheckPhotos = ({
                 {t('it.vehicleCheck.photos.number', { n: index + 1 })}
               </p>
               <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                {t('it.vehicleCheck.photos.size', { size: megabytes(photo.file.size) })}
+                {t('it.vehicleCheck.photos.size', { size: photoMegabytes(photo.file.size) })}
               </p>
             </div>
           </div>

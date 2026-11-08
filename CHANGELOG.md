@@ -11,6 +11,24 @@ its entry here in the same PR.
 
 ### Added
 
+- **«فحص أجهزة السيارة»: a phone form for checking a car's devices (FR-21).** «I need to create a
+  new form for specific users to use on Mobile to inform about the car status».
+  `/it/vehicle-checks/new` is a phone screen outside the console frame (the Operations captain's
+  frame, now the shared `PhoneShell`): the car, picked from every active car with search (ADR-037
+  — «لازم لازم تظهر كلها»); the day, today in Cairo by default and never later; «يعمل» / «لا يعمل»
+  on the item's own row for the screen, the eight cameras, the DVR and the Motorola radio, none of
+  them required; one note; and up to five photos, re-drawn on the phone as JPEGs of at most 1600
+  px (which also strips their location). The photos are added to one's own report within 24 hours
+  of filing. The form is kept as a draft in the tab while it is filled. A resend is the same
+  report: each report carries a `clientRequestId` and each photo a `clientPhotoId`, so a lost
+  answer on mobile data or a double tap never files twice. The reports live in IT's new
+  `it_vehicle_checks` collection, with the car's code and branch as they were at filing. IT reads
+  Fleet's car list only through `it/fleet-boundary.ts` (two read functions, enforced by an ESLint
+  rule). One new grant, `itVehicleCheck.create` («فحص أجهزة السيارات»), covers the car list,
+  filing and adding photos. It ignores the reporter's data scope and is given to no role on
+  deploy: an admin builds the role. The IT dashboard that reads the reports comes next, after its
+  sample is approved ([design](docs/12-planning/it-vehicle-checks-design.md)).
+
 - **Reading the owner's files: which reader for which file, and MarkItDown run safely (development
   tooling).** «وأبقى ضيف دى كمان» — Microsoft's MarkItDown (github.com/microsoft/markitdown, MIT),
   tested before it was taken on generated Arabic-first files like the owner's books.

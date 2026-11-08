@@ -8898,6 +8898,10 @@ const en: Record<string, string> = {
   'it.vehicleCheck.sent.reason.badType': 'this photo type is not supported',
   'it.vehicleCheck.sent.reason.other': 'the photo was not accepted',
   'it.vehicleCheck.sent.another': 'Report on another car',
+  'it.vehicleCheck.carsFailed': 'The car list could not be loaded.',
+  'it.vehicleCheck.sent.reason.size': 'larger than 10 MB',
+  'it.vehicleCheck.sent.reason.type': 'type not supported',
+  'it.vehicleCheck.sent.reason.server': 'refused by the server',
   'it.consumables.subtitle':
     'Each branch’s stock of inks, cables, adapters and device accessories, what was issued and to whom, and what was scrapped',
   'it.consumables.create': 'Add item',
@@ -21465,6 +21469,10 @@ const ar: Record<string, string> = {
   'it.vehicleCheck.sent.reason.badType': 'نوع هذه الصورة غير مدعوم',
   'it.vehicleCheck.sent.reason.other': 'لم تُقبل الصورة',
   'it.vehicleCheck.sent.another': 'تقرير لسيارة أخرى',
+  'it.vehicleCheck.carsFailed': 'تعذّر تحميل قائمة السيارات.',
+  'it.vehicleCheck.sent.reason.size': 'الحجم أكبر من 10 ميجابايت',
+  'it.vehicleCheck.sent.reason.type': 'النوع غير مدعوم',
+  'it.vehicleCheck.sent.reason.server': 'رفض الخادم الطلب',
   'it.consumables.subtitle':
     'رصيد كل فرع من الأحبار والكابلات والمحولات وملحقات الأجهزة، وما صُرف منها ولمن، والهالك',
   'it.consumables.create': 'إضافة صنف',

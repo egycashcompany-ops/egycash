@@ -17,6 +17,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { VehicleCheckPage } from './VehicleCheckPage';
+import { VehicleCheckPhotos } from './VehicleCheckPhotos';
 import { VehicleCheckSent } from './VehicleCheckSent';
 import { VEHICLE_CHECK_DRAFT_KEY } from './vehicle-check-draft';
 
@@ -37,7 +38,7 @@ const ITEMS_IN_ORDER = [
   'جهاز الاتصال (موتورولا)',
 ];
 
-const render = (node: JSX.Element): string => {
+const render = (node: JSX.Element, qc: QueryClient = carsLoaded()): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
@@ -65,16 +66,6 @@ const render = (node: JSX.Element): string => {
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
-  });
-  qc.setQueryData(listKey('it', 'vehicleCheckCars'), {
-    items: [
-      { id: CAR, code: 'كورولا 1' },
-      { id: '65a000000000000000000002', code: '150' },
-    ],
-    meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
-  });
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
@@ -88,6 +79,38 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+// `retryOnMount: false` keeps a failed list failed through a static render, as a mounted page
+// keeps it once its load has failed.
+function client(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity, refetchOnMount: false, retryOnMount: false },
+    },
+  });
+}
+
+function carsLoaded(): QueryClient {
+  const qc = client();
+  qc.setQueryData(listKey('it', 'vehicleCheckCars'), {
+    items: [
+      { id: CAR, code: 'كورولا 1' },
+      { id: '65a000000000000000000002', code: '150' },
+    ],
+    meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
+  });
+  return qc;
+}
+
+/** The car list's first load failed — weak mobile data at the car — and nothing is on offer. */
+async function carsFailed(): Promise<QueryClient> {
+  const qc = client();
+  await qc.prefetchQuery({
+    queryKey: listKey('it', 'vehicleCheckCars'),
+    queryFn: () => Promise.reject(new Error('offline')),
+  });
+  return qc;
+}
 
 describe('the form', () => {
   const html = (): string => {
@@ -166,6 +189,32 @@ describe('the form', () => {
   });
 });
 
+describe('a car list that did not load', () => {
+  it('says so under the box, with «إعادة المحاولة» — never «لا توجد سيارة بهذا الكود»', async () => {
+    const page = render(<VehicleCheckPage />, await carsFailed());
+    expect(page).toContain('data-vehicle-check-cars-failed="true"');
+    expect(page).toContain('تعذّر تحميل قائمة السيارات.');
+    expect(page).toContain('data-vehicle-check-cars-retry="true"');
+    expect(page).toContain('إعادة المحاولة');
+  });
+
+  it('shows nothing of the kind when the list is there', () => {
+    const page = render(<VehicleCheckPage />);
+    expect(page).not.toContain('data-vehicle-check-cars-failed');
+    expect(page).not.toContain('تعذّر تحميل قائمة السيارات.');
+  });
+
+  it('reads the failure, not "no such code", in the open list, and asks again on the retry', () => {
+    const picker = readFileSync(
+      fileURLToPath(new URL('./VehicleCheckCarPicker.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(picker).toContain('const unloaded = cars.isError && cars.data === undefined;');
+    expect(picker).toMatch(/unloaded\s*\?\s*t\('common\.error\.title'\)/);
+    expect(picker).toContain('onClick={() => void cars.refetch()}');
+  });
+});
+
 describe('a draft given back after a reload', () => {
   it('restores the car, the day, the answers and the note', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -220,9 +269,67 @@ describe('the banner and the send, read from source', () => {
 
   it('files the report before any photo, and the photos one at a time', () => {
     const file = SOURCE.indexOf('await fileVehicleCheck(');
-    const photos = SOURCE.indexOf('await uploadPhotosInOrder(report.id');
+    const photos = SOURCE.search(/await uploadPhotosInOrder\(\s*report\.id/);
     expect(file).toBeGreaterThan(-1);
     expect(photos).toBeGreaterThan(file);
+  });
+
+  /** The body of one `const name = …` arrow in the page, up to the next blank-line-separated one. */
+  const body = (name: string): string => {
+    const start = SOURCE.indexOf(`const ${name} = `);
+    expect(start, name).toBeGreaterThan(-1);
+    const end = SOURCE.indexOf('\n  };\n', start);
+    return SOURCE.slice(start, end === -1 ? undefined : end);
+  };
+
+  it('waits for the photos still being drawn small before it files', () => {
+    const submit = body('submit');
+    const waited = submit.indexOf('await photoQueue.settled();');
+    expect(waited, 'a photo half-way at the tap goes with the report').toBeGreaterThan(-1);
+    expect(submit.indexOf('await fileVehicleCheck(')).toBeGreaterThan(waited);
+  });
+
+  it('once filed, lets go of any pick still running — it is not the next car’s photo', () => {
+    const submit = body('submit');
+    const filed = submit.indexOf('await fileVehicleCheck(');
+    const reset = submit.indexOf('photoQueue.reset();');
+    const taken = submit.indexOf('const picked = photosRef.current;');
+    const uploads = submit.search(/await uploadPhotosInOrder\(\s*report\.id,\s*picked/);
+    expect(reset).toBeGreaterThan(filed);
+    expect(taken).toBeGreaterThan(reset);
+    expect(uploads).toBeGreaterThan(taken);
+  });
+
+  it('draws each pick in the queue, and keeps nothing once its form is gone', () => {
+    const add = body('addPhotos');
+    expect(add).toContain('photoQueue.add(async (live) => {');
+    const drawn = add.indexOf('await downscaleToJpeg(');
+    const checked = add.indexOf('if (!live()) return;', drawn);
+    const appended = add.indexOf('setPhotoList(', drawn);
+    expect(checked).toBeGreaterThan(drawn);
+    expect(appended).toBeGreaterThan(checked);
+  });
+
+  it('starts «تقرير لسيارة أخرى» with no photo and no pick of the last car', () => {
+    const another = body('another');
+    expect(another).toContain('photoQueue.reset();');
+    expect(another).toContain('dropAllPhotos();');
+    expect(another).toContain('heldRef.current = null;');
+  });
+
+  it('holds the id only after an unknown outcome, and renews it on any edit while held', () => {
+    expect(body('submit')).toContain('heldRef.current = failure.newRequestId ? null : payload;');
+    expect(SOURCE).toContain(
+      'setForm((now) => requestIdAfterEdit(change(now), heldRef.current, newClientId));',
+    );
+    // The car, the day, every answer and the note: each goes through `edit`, none around it.
+    expect(SOURCE).toContain('edit((now) => ({ ...now, vehicleId }));');
+    expect(SOURCE).toContain('edit((now) => ({ ...now, checkDate }));');
+    expect(SOURCE).toContain('edit((now) => ({ ...now, notes }));');
+    expect(SOURCE).toContain('edit((now) => ({ ...now, items: answerTapped(');
+    expect(SOURCE).not.toMatch(
+      /setForm\(\(now\) => \(\{ \.\.\.now, (vehicleId|checkDate|notes|items)/,
+    );
   });
 });
 
@@ -267,5 +374,40 @@ describe('the sent view', () => {
     expect(page).toContain('لم تُرفع صورة واحدة:');
     expect(page).toContain('التقرير يحمل 5 صور بالفعل');
     expect(page, 'a refused photo is not offered again').not.toContain('إعادة رفع الصور');
+  });
+
+  it('gives a reason that agrees with any count — never «الصورة» after «صورتان»', () => {
+    const other = sent(0, ['NOT_FOUND', 'FORBIDDEN']);
+    expect(other).toContain('<strong>لم تُرفع صورتان:</strong> رفض الخادم الطلب.');
+    expect(other).not.toContain('لم تُقبل الصورة');
+    const big = sent(0, ['FILE_TOO_LARGE', 'FILE_TOO_LARGE']);
+    expect(big).toContain('<strong>لم تُرفع صورتان:</strong> الحجم أكبر من 10 ميجابايت.');
+    expect(big).not.toContain('الصورة أكبر');
+    const both = sent(0, ['FILE_TOO_LARGE', 'FILE_TYPE_NOT_ALLOWED', 'FILE_TOO_LARGE']);
+    expect(both).toContain('لم تُرفع 3 صور:</strong> الحجم أكبر من 10 ميجابايت، النوع غير مدعوم.');
+    expect(both).not.toContain('نوع هذه الصورة');
+  });
+});
+
+describe('a photo’s row', () => {
+  it('shows a small photo as «0.1 ميجابايت», never «0.0»', () => {
+    const page = render(
+      <VehicleCheckPhotos
+        photos={[
+          {
+            clientPhotoId: ID,
+            file: new Blob([new Uint8Array(40 * 1024)], { type: 'image/jpeg' }),
+            fileName: 'photo-1.jpg',
+            url: 'blob:photo-1',
+          },
+        ]}
+        onAdd={() => undefined}
+        onRemove={() => undefined}
+        disabled={false}
+      />,
+    );
+    expect(page).toContain('صورة 1');
+    expect(page).toContain('0.1 ميجابايت');
+    expect(page).not.toContain('0.0 ميجابايت');
   });
 });

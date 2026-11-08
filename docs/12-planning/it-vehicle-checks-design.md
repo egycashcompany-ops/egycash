@@ -245,7 +245,9 @@ The form walks the pages with Fleet's `fetchWholeCatalog` and ranks in the brows
    answer **422** (limit). These checks run before the file is stored, so a refused photo stores
    nothing.
 4. Store the file through `fileService.upload`, with the display name
-   `vehicle-check-<checkDate>-<vehicleCode>-<n>.jpg`.
+   `vehicle-check-<checkDate>-<vehicleCode>-<n>`. It has no extension: the Files platform keeps the
+   uploaded name's extension and adds it on download. `n` is the photo's place when the upload
+   begins, so two racing uploads may share it; it is a name, never a key.
 5. One atomic conditional update adds `{ clientPhotoId, fileId, fileName, mime, size, uploadedAt }`
    only if the report is still the caller's, not deleted, under five photos, inside the window, and
    without that `clientPhotoId`. It stamps `updatedBy` and bumps the version.
@@ -386,7 +388,7 @@ The car list's query is the shared `PaginationQuerySchema`. The labels are not i
 | Outcome | What the reporter sees | The form | `clientRequestId` |
 |---|---|---|---|
 | 201 / 200 | the sent view (§2 item 7) | cleared but for the day | new one |
-| no answer, a network error or a 5xx | toast «تعذّر إرسال التقرير. حاول مرة أخرى.» | kept | **kept**, so a resend is the same report |
+| no answer, a network error or a 5xx | toast «تعذّر إرسال التقرير. حاول مرة أخرى.» | kept | **kept**, so a resend is the same report; a new one as soon as the car, the day, an answer or the note is edited, since the edited report is another report |
 | 404 car | toast «هذه السيارة لم تعد مسجلة.» | car cleared, car list refetched | new one |
 | 422 `IT_VEHICLE_NOT_ACTIVE` | toast «هذه السيارة ليست نشطة الآن.» | car cleared, car list refetched | new one |
 | 400 on `checkDate` | toast «لا يمكن اختيار يوم بعد اليوم.» | day set back to today | new one |
@@ -605,3 +607,23 @@ Declined (Nit):
 
 Open: none. The owner still has to confirm the defaults of §1.2 and the scope decision of §4; the
 next message to him names them.
+
+What the build changed (Step 4), each found by the review of the built code:
+- **The photo's display name** has no `.jpg` (§6.1 step 4). The Files platform keeps the extension
+  apart and adds it on download, so a fixed `.jpg` would read «….jpg.jpg», or «….jpg.png» for a
+  photo sent as it was.
+- **The audit row of a photo** takes its old list from the update's own result, not from the first
+  read, which racing uploads make out of date.
+- **`uploadPhotosInOrder(reportId, photos, upload)`** takes the upload as a third argument, so its
+  spec drives it with a fake.
+- **A photo still being re-drawn when «إرسال التقرير» is tapped** goes with the report: the send
+  waits for it. Once the report is filed, a photo still being prepared is dropped, so it never
+  reaches the next car's form. «تقرير لسيارة أخرى» also clears the photos.
+- **An id held after an unknown outcome is renewed on an edit** (§6.3's table). Sent under the held
+  id, the edited report would only bring back the first one. A draft given back after a reload
+  counts as held, since its id may already have been sent.
+- **A car list that fails to load** says «تعذّر تحميل قائمة السيارات.» under the box, with «إعادة
+  المحاولة». The open list reads «تعذّر التحميل», not «لا توجد سيارة بهذا الكود».
+- **The reasons for a refused photo** read for any count («الحجم أكبر من 10 ميجابايت», «النوع غير
+  مدعوم», «رفض الخادم الطلب»), so they agree with «لم تُرفع صورتان:». A photo's size is never shown
+  as «0.0».

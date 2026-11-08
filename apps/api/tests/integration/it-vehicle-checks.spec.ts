@@ -429,6 +429,21 @@ describe('filing a report', () => {
       _id: new Types.ObjectId(report.id),
     });
     expect(raw).not.toBeNull();
+    // STORED as null, every key — not just mapped back to null by the DTO, which fills an absent
+    // key the same way and would hide one.
+    expect(raw?.items).toStrictEqual({
+      screen: 'works',
+      camera1: null,
+      camera2: null,
+      camera3: 'notWorking',
+      camera4: null,
+      camera5: null,
+      camera6: null,
+      camera7: null,
+      camera8: null,
+      dvr: null,
+      radio: null,
+    });
     expect(raw).not.toHaveProperty('notes');
     expect(raw?.reportedByName).toBe('سامح نبيل');
     expect(String(raw?.createdBy)).toBe(reporterId);
@@ -559,6 +574,20 @@ describe('photos', () => {
     expect(String(raw?.updatedBy)).toBe(reporterId);
     const photo = raw?.photos[0];
     expect(photo).toMatchObject({ mime: 'image/png', size: PNG.length, fileName: 'camera.png' });
+
+    // The display name carries no extension: the platform appends the stored one on download
+    // (`${displayName}${extension}`), so a PNG sent as it was downloads as '….png', never '….jpg.png'.
+    const stored = await FileModel.find({ _id: { $in: (raw?.photos ?? []).map((p) => p.fileId) } })
+      .select({ _id: 1, displayName: 1, extension: 1 })
+      .lean<{ _id: Types.ObjectId; displayName: string; extension: string }[]>()
+      .exec();
+    const byId = new Map(stored.map((file) => [String(file._id), file]));
+    expect(
+      (raw?.photos ?? []).map((p) => {
+        const file = byId.get(String(p.fileId));
+        return `${file?.displayName ?? ''}${file?.extension ?? ''}`;
+      }),
+    ).toEqual([1, 2, 3, 4, 5].map((n) => `vehicle-check-${report.checkDate}-61-${String(n)}.png`));
   });
 
   it('refuses a report filed more than 24 hours ago (422) without storing a file', async () => {
@@ -629,6 +658,29 @@ describe('photos', () => {
     expect(live.map((file) => String(file._id)).sort()).toEqual(
       (raw?.photos ?? []).map((photo) => String(photo.fileId)).sort(),
     );
+
+    // Each accepted upload's audit row says it added ONE photo to the list as it then stood — not
+    // to the list its first read saw, which every racing upload read as empty.
+    const rows = await AuditLogModel.find({
+      'entityRef.moduleId': 'it',
+      'entityRef.entityType': 'vehicleCheck',
+      'entityRef.entityId': report.id,
+      action: 'update',
+    })
+      .lean()
+      .exec();
+    expect(rows).toHaveLength(5);
+    const lists = rows
+      .map((row) => {
+        const change = row.changes.find((c) => c.field === 'photos');
+        return { old: change?.old as string[], new: change?.new as string[] };
+      })
+      .sort((a, b) => a.new.length - b.new.length);
+    expect(lists.map((list) => list.old.length)).toEqual([0, 1, 2, 3, 4]);
+    for (const list of lists) {
+      expect(list.new).toHaveLength(list.old.length + 1);
+      expect(list.new.slice(0, list.old.length)).toEqual(list.old);
+    }
   });
 
   it("refuses an 11 MB JPEG and a PDF by the category's rules (422), storing neither", async () => {
@@ -682,7 +734,20 @@ describe('the audit trail', () => {
         .lean()
         .exec();
     expect(await rowsOf('create')).toHaveLength(1);
-    expect(await rowsOf('update')).toHaveLength(1);
+    const [first] = await rowsOf('update');
+    expect(first?.changes).toEqual([
+      { field: 'photos', old: [], new: [expect.any(String) as unknown as string] },
+    ]);
+
+    // A second photo: old is the one photo already there, new adds this one.
+    const second = await upload(report.id);
+    expect(second.status).toBe(200);
+    const fileIds = data<ItVehicleCheckDto>(second).photos.map((photo) => photo.fileId);
+    const updates = await rowsOf('update');
+    expect(updates).toHaveLength(2);
+    expect(updates.map((row) => row.changes)).toContainEqual([
+      { field: 'photos', old: [fileIds[0]], new: fileIds },
+    ]);
   });
 });
 

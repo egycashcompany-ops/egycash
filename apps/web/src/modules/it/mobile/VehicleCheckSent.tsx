@@ -82,12 +82,15 @@ export const VehicleCheckSent = ({
     };
     return words[form(n)];
   };
+  // Each reason reads for ANY count, since the lead before it may count one photo or several: it
+  // speaks of the report, or of the size or type in general, never of «الصورة» in the singular
+  // («لم تُرفع صورتان: الحجم أكبر من 10 ميجابايت.»).
   const reasonWords: Record<PhotoRefusalReason, string> = {
     limit: t('it.vehicleCheck.sent.reason.limit', { max: VEHICLE_CHECK_MAX_PHOTOS }),
     window: t('it.vehicleCheck.sent.reason.window'),
-    tooLarge: t('it.vehicleCheck.sent.reason.tooLarge'),
-    badType: t('it.vehicleCheck.sent.reason.badType'),
-    other: t('it.vehicleCheck.sent.reason.other'),
+    tooLarge: t('it.vehicleCheck.sent.reason.size'),
+    badType: t('it.vehicleCheck.sent.reason.type'),
+    other: t('it.vehicleCheck.sent.reason.server'),
   };
   const reasons = [...new Set(summary.refused.map(photoRefusalReason))].map((r) => reasonWords[r]);
 

@@ -8,6 +8,8 @@
 // lost (mobile data, a double tap) is sent again with the SAME id and the server answers with the
 // report it already filed. So the id is kept exactly when the outcome is unknown, and replaced
 // whenever the server has answered — a refused send filed nothing, and the next one is a new report.
+// A held id is also replaced as soon as the report is EDITED (`requestIdAfterEdit`): the edited
+// report is another report, and sent under the held id it would only bring the first one back.
 import {
   CreateItVehicleCheckSchema,
   IT_VEHICLE_CHECK_ITEMS,
@@ -69,7 +71,9 @@ export const answerTapped = (
   answer: ItVehicleCheckAnswer,
 ): VehicleCheckAnswers => {
   if (items[item] === answer) {
-    const { [item]: _cleared, ...rest } = items;
+    // Unanswered is ABSENT, never a stored null — the draft and the counts read it that way.
+    const rest = { ...items };
+    delete rest[item];
     return rest;
   }
   return { ...items, [item]: answer };
@@ -172,11 +176,13 @@ const refusedDay = (error: ApiError): boolean =>
  * and never reach here.)
  *
  * | the answer                         | toast       | the form            | request id |
- * | no answer, network error, 5xx      | failed      | kept                | KEPT       |
+ * | no answer, network error, 5xx      | failed      | kept                | KEPT ¹     |
  * | 404 (the car)                      | carGone     | car cleared, refetch | new        |
  * | 422 IT_VEHICLE_NOT_ACTIVE          | carInactive | car cleared, refetch | new        |
  * | 400 on checkDate                   | futureDay   | day back to today   | new        |
  * | 409 IT_VEHICLE_CHECK_REQUEST_REUSED| failed      | kept                | new        |
+ *
+ * ¹ Until the report is edited: then `requestIdAfterEdit` gives it a new one.
  *
  * Any other refusal (a 4xx the table does not name — a grant taken away, say) is answered as
  * the 409 is: the generic toast, the form kept, and — since the server answered and filed nothing
@@ -215,6 +221,35 @@ export const vehicleCheckSendFailure = (error: unknown): VehicleCheckSendFailure
     };
   }
   return { toast: 'failed', ...kept, newRequestId: true };
+};
+
+/** Would these two bodies file the same report — the same car, day, answers and note? */
+const sameReport = (a: CreateItVehicleCheck, b: CreateItVehicleCheck): boolean =>
+  a.vehicleId === b.vehicleId &&
+  a.checkDate === b.checkDate &&
+  (a.notes ?? '') === (b.notes ?? '') &&
+  IT_VEHICLE_CHECK_ITEMS.every((item) => (a.items?.[item] ?? null) === (b.items?.[item] ?? null));
+
+/**
+ * The request id after an edit (§6.3, the «kept» row). After an unknown outcome the id is HELD, so
+ * that sending the same report again is that report. But once the car, the day, an answer or the
+ * note differs from what went out under the held id, it is ANOTHER report: sent under that id, the
+ * server would answer with the first report — if it was filed — and the edit would be lost without
+ * a word. So the edited report gets a new id. A possible duplicate is harmless (several reports a
+ * day are allowed, and the latest counts); a silently lost edit is not.
+ *
+ * `held` is the body that went out under the held id, or `null` when no id is held. An edit that
+ * only adds spaces around the note changes nothing that is sent, and keeps the id.
+ */
+export const requestIdAfterEdit = (
+  edited: VehicleCheckFormState,
+  held: CreateItVehicleCheck | null,
+  newId: () => string,
+): VehicleCheckFormState => {
+  if (held === null || held.clientRequestId !== edited.clientRequestId) return edited;
+  return sameReport(vehicleCheckPayload(edited), held)
+    ? edited
+    : { ...edited, clientRequestId: newId() };
 };
 
 /**

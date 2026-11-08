@@ -168,7 +168,12 @@ class ItVehicleCheckService {
     );
     if (report.photos.some((photo) => photo.clientPhotoId === clientPhotoId)) return report;
 
-    // 4. The bytes, through the Files service (whose category refuses a wrong type or size).
+    // 4. The bytes, through the Files service (whose category refuses a wrong type or size). The
+    //    display name carries NO extension: the platform keeps the stored one apart and appends it
+    //    on download (`${displayName}${extension}`), so a fixed '.jpg' would read '….jpg.jpg' — or
+    //    '….jpg.png' for a photo the phone could not re-encode and sent as it was. `n` is the place
+    //    the photo takes when its upload begins; the form sends one photo at a time, so there it
+    //    is the photo's number, but two racing uploads may share one — a name, never a key.
     const file = await fileService.upload(
       ctx,
       {
@@ -176,7 +181,7 @@ class ItVehicleCheckService {
         entityType: 'vehicleCheck',
         entityId: id,
         categoryId: await vehicleCheckPhotoCategory(),
-        displayName: `vehicle-check-${ymdOf(report.checkDate)}-${report.vehicleCode}-${report.photos.length + 1}.jpg`,
+        displayName: `vehicle-check-${ymdOf(report.checkDate)}-${report.vehicleCode}-${report.photos.length + 1}`,
         visibility: 'private',
         tags: [],
       },
@@ -213,14 +218,17 @@ class ItVehicleCheckService {
       throw new StaleDocumentError();
     }
 
-    // 7. The trail.
+    // 7. The trail: this one photo added. `old` comes from the update's own result, not from the
+    //    read in step 1 — under racing uploads that read is out of date by the time the push lands.
     await auditService.record({
       entityRef: vehicleCheckEntityRef(id),
       action: 'update',
       changes: [
         {
           field: 'photos',
-          old: report.photos.map((photo) => String(photo.fileId)),
+          old: updated.photos
+            .filter((photo) => photo.clientPhotoId !== clientPhotoId)
+            .map((photo) => String(photo.fileId)),
           new: updated.photos.map((photo) => String(photo.fileId)),
         },
       ],

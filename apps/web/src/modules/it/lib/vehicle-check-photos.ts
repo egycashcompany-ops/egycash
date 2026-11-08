@@ -52,7 +52,8 @@ export const photoToSend = (
 
 /**
  * The name a photo goes up under. The server names the stored file itself
- * (`vehicle-check-<day>-<car>-<n>.jpg`); this only keeps the extension honest.
+ * (`vehicle-check-<day>-<car>-<n>`) and keeps the extension of THIS name beside it, so this only
+ * keeps the extension honest: a PNG sent as it was downloads as '….png', not '….jpg'.
  */
 export const photoFileName = (type: string, index: number): string => {
   const ext = type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg';
@@ -61,6 +62,52 @@ export const photoFileName = (type: string, index: number): string => {
 
 /** How many more photos the report takes. */
 export const photoRoom = (held: number): number => Math.max(0, VEHICLE_CHECK_MAX_PHOTOS - held);
+
+/**
+ * A photo's size as its row shows it, in megabytes to one place — never «0.0»: a dark, low-detail
+ * shot (a camera screen with no signal) can come out of re-encoding under 52 KB, and «0.0 ميجابايت»
+ * reads as an empty photo that did not attach.
+ */
+export const photoMegabytes = (bytes: number): string =>
+  Math.max(0.1, bytes / (1024 * 1024)).toFixed(1);
+
+// ── Taking photos onto the form, one pick after another ───────────────────────────────────────
+
+/**
+ * The picks still being drawn small (`downscaleToJpeg` takes about a second for a 12 MP photo on a
+ * phone, and one gallery pick can bring several). Without it, a send started while a photo is
+ * half-way leaves that photo out of the upload and then drops it with the rest — or the photo
+ * lands after the report is sent, on the NEXT car's form, and goes up with that car's report.
+ *  • The picks run one after another, in the order they were made: two picks never interleave,
+ *    so the five-photo room is counted on a settled list.
+ *  • `settled()` is what a send waits for before it files: every photo picked by then goes with
+ *    the report.
+ *  • `reset()` is called once the form the picks were made for is gone — sent, «تقرير لسيارة
+ *    أخرى», the page left. A pick still running then reads `live()` as false after its await, and
+ *    keeps nothing; one queued and not yet started never starts.
+ */
+export interface PhotoQueue {
+  add: (work: (live: () => boolean) => Promise<void>) => void;
+  settled: () => Promise<void>;
+  reset: () => void;
+}
+
+export const createPhotoQueue = (): PhotoQueue => {
+  let tail: Promise<void> = Promise.resolve();
+  let generation = 0;
+  return {
+    add: (work) => {
+      const mine = generation;
+      const live = (): boolean => generation === mine;
+      // A pick that throws loses only itself: the picks after it still run.
+      tail = tail.then(() => (live() ? work(live) : undefined)).catch(() => undefined);
+    },
+    settled: () => tail,
+    reset: () => {
+      generation += 1;
+    },
+  };
+};
 
 // ── Uploading, one at a time ──────────────────────────────────────────────────────────────────
 

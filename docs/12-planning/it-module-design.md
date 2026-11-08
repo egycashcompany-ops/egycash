@@ -174,7 +174,8 @@ deviceType?, manufacturer?, model?, specs?, accessories[] }],
 signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
-  holder); the lines and the signer are a snapshot of what was printed.
+  holder); the lines and the signer are a snapshot of what was recorded — what the paper printed
+  for the hand-over shows, or prints later.
 - Each line describes its device as its page prints it: `deviceType` (the asset category's
   Arabic name — the word the statement calls the item by: «شاشة», «ماوس», «لاب توب» …, and «جهاز»
   for a computer or a line with none, §17 2026-10-19), the asset's `manufacturer` and `model` (what
@@ -193,8 +194,9 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   `employeeCode` (the directory's employee code) is printed after the company («كود …»).
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
-  before a hand-over takes the next one; the hand-over records the number of the paper that was
-  signed; printing a stored receipt again keeps its number.
+  before a hand-over takes the next one; the hand-over records the number of the paper printed
+  for it, or takes the next one itself when none was printed or the printed one went stale (§17,
+  2026-11-08); printing a stored receipt again keeps its number.
 - `signedCopy` links the Files document (category `it-custody-receipts`, authorizer
   `it/custodyReceipt`); replacing it adds a file version, withdrawing it soft-deletes the file.
 
@@ -528,16 +530,20 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-18** Every hand-over to a person is made on a custody receipt (إيصال استلام, the paper form
   EGYCASH-IT-F-14-02): one employee, one or more in-stock assets, one receipt, written in the same
   transaction as the intervals it opens (`it_custody_receipts`; every interval names it as
-  `receiptId`). The screen prints the receipt BEFORE it records the hand-over — the print is
-  composed by the server from exactly what will be recorded and writes nothing — and any change
-  after printing withholds the hand-over until it is printed again. A transfer to a new holder is
-  a hand-over and gets its own one-line receipt; a branch move in the same hands keeps the paper
-  already signed. The receipt keeps what it printed (a snapshot) and can be printed again at any
-  time; the employee's signed copy (photo or PDF) is filed against it through Files and can be
+  `receiptId`). The screen offers the print before it records the hand-over — the print is
+  composed by the server from exactly what will be recorded and writes nothing — but the asset
+  hand-over does not wait for it (§17, 2026-11-08): recorded unprinted, or after a change made the
+  printed paper stale, the receipt takes the next number and is printed later from the asset, the
+  custody register or the employee's history; a stale paper's number is never recorded. A transfer
+  to a new holder is a hand-over and gets its own one-line receipt, still printed before the
+  transfer is recorded; a branch move in the same hands keeps the paper already signed. The
+  receipt keeps what it printed (a snapshot) and can be printed again at any time; the employee's
+  signed copy (photo or PDF) is filed against it through Files and can be
   replaced or withdrawn. An interval opened before receipts can be given one while it is open
   (§17, 2026-10-04). Every printed paper carries its own number, `EGYCASH-IT-F-14-0001`, one more
-  on every print; the hand-over records the number of the paper the employee signed (a number the
-  counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
+  on every print; the hand-over records the number of the paper printed for it, or the next one
+  when none was (a number the counter never handed out, or one already on another receipt, is
+  refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
   «إقرار استلام», one page per device: the statement filled with the employee's name and job and
   the item's kind (its category; «جهاز» for a computer) with its make and model (its name when
@@ -552,11 +558,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   (§17, 2026-10-06).
 - **FR-19** Mobile lines are a register of their own (§2.10) under the asset grants
   (`itAsset.*`): registered with their network, number, account, plan and SIM; handed over to a
-  current employee — on a printed «إقرار استلام», print first, as for devices (FR-18) — or to a
-  car by its code and plate, with no paper; returned; suspended and reactivated. The screen
-  filters by network with the networks' logos and shows each network's figures (lines; in stock,
-  handed over, suspended; accounts; plans) under the other filters; the list goes to Excel and
-  PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
+  current employee — on a printed «إقرار استلام», print first (as devices were until §17,
+  2026-11-08) — or to a car by its code and plate, with no paper; returned; suspended and
+  reactivated. The screen filters by network with the networks' logos and shows each network's
+  figures (lines; in stock, handed over, suspended; accounts; plans) under the other filters; the
+  list goes to Excel and PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
   (§17, 2026-10-20).
 - **FR-20** Consumables are a store of their own (§2.11) under the asset grants (`itAsset.*`),
   each branch with its own stock: an item is added with its opening quantity, edited, retired
@@ -1227,6 +1233,17 @@ starts only on an explicit owner GO.
   latest movements (history entries and registrations, which write none); the lines' three networks;
   the consumables at their minimum; the help desk's two counts; and the pages, by grant. Every panel
   rides its own grant and the reader's data scope. `GET /it/dashboard/assets` and `/activity`.
+
+- **A hand-over without a printed receipt** (2026-11-08) — owner request: «فى الـ IT تحديداً فى
+  تسليم العهدة عايزك تسمح عادى بالتسليم حتى لو مطبعش إيصال». FR-18's print-first rule is lifted for
+  the asset hand-over («تسليم عهدة») only: «تسليم» records as soon as the form is complete (it waits
+  only while a paper is being composed), and the print stays on offer beside it. Nothing changes on
+  the server, which already numbered a receipt for a caller that printed nothing: every hand-over
+  still writes its receipt, so the paper prints later from the asset, the custody register or the
+  employee's history, and it counts among the receipts awaiting a signed copy. A paper printed and
+  then made stale by an edit is not recorded — its number is dropped and the receipt takes the next
+  one. The transfer to a new holder and the mobile line's hand-over keep printing first: the owner
+  named the custody hand-over.
 
 - **Vehicle device checks** (2026-11-08) — owner request: a phone form «for specific users … to
   inform about the car status»: the car (a dropdown with search), the day (today, changeable), the

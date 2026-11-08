@@ -743,6 +743,13 @@ its entry here in the same PR.
 
 ### Changed
 
+- **IT: a custody hand-over records without a printed receipt.** «فى الـ IT تحديداً فى تسليم العهدة
+  عايزك تسمح عادى بالتسليم حتى لو مطبعش إيصال». In «تسليم عهدة», «تسليم» works as soon as the form is
+  complete; «طباعة الإيصال» stays beside it. The hand-over still writes its receipt, so the paper
+  prints later from «عهدة الأصول» (Asset custody), the asset's page or the employee's page, and the
+  dashboard counts it among the receipts awaiting a signed copy. A paper printed and then made
+  stale by an edit is not recorded: the receipt takes the next number. A transfer to a new holder
+  and a mobile line's hand-over still print first.
 - **The system made faster for the branch rollout.** «عايزك تتحقق من كفاءة النظام بشكل عام .. وتقترح
   ما يزيد من الكفاءة .. أو فى حاجة تخلى الدنيا أسرع خصوصاُ مع الشغل التقيل لأنى هشغل الأفرع». Measured
   on production before the change (Railway logs and metrics, the Atlas alert «Query Targeting: Scanned

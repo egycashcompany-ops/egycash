@@ -61,13 +61,14 @@ consumes it as-is. This is the section that guarantees the module adds *domain*,
 | **PDF service** | `platform/pdf` (Contracts CT-5 chromium seam) | printable QR label sheets (§4.2) |
 | **QR** | `qrcode` (api) + `qrcode.react` (web) — already dependencies (Contracts A23) | asset QR generation and on-screen rendering; **no new dependency** |
 | **Navigation catalog** | `seed-navigation.ts` additive sync (BF-1) | new `IT` category, icon `monitor` (already in the icon registry); existing installs pick it up at boot |
-| **Web kit** | shared tables/CRUD/pages kit, `UserPicker`, i18n ar/en + RTL | all pages; **every reference picker is server-side search from its first commit (ADR-019 rule 5 — binding)** |
+| **Web kit** | shared tables/CRUD/pages kit, `UserPicker`, i18n ar/en + RTL | all pages; **every reference picker is server-side search from its first commit (ADR-019 rule 5 — binding)**, except a vehicle-code picker, which lists every active car ([ADR-037](../03-decisions/ADR-037-vehicle-code-pickers-list-every-active-car.md), FR-21) |
 | **Workflow engine (ADR-011)** | *accepted as ADR, not built as a platform service* | **not used.** Recruitment built its own module engine; Fleet used code-defined lifecycles in services. Tickets follow the Fleet precedent (§4.4, D4); the gap is recorded in ADR-022 (§13) |
 
 Two hard lessons from production are carried in as design rules:
 **minimize-safety** — any collection whose rows carry a `metadata`/free-object field sets
 `minimize: false` (the recruitment-timeline outage, PR #117); **picker-safety** — no "load all +
-client filter" anywhere in the module (ADR-019 rule 5 blocks it at review).
+client filter" anywhere in the module (ADR-019 rule 5 blocks it at review), the vehicle-code
+picker excepted (ADR-037).
 
 ## 2. Entities (all collections `it_*`, module id `it`)
 
@@ -505,7 +506,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-11** Catalog rows (categories, priorities, products, vendors, parts) referenced by any
   record are archived (`active: false`), never deleted.
 - **FR-12** All list endpoints paginate under `MAX_PAGE_SIZE`; every reference picker in the web
-  app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5).
+  app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5); the one
+  exception is the vehicle-code picker of FR-21, which lists every active car (ADR-037).
 - **FR-13** `hr.employee.exited` never auto-returns assets — physical custody changes only when
   a human records the return (§9.1).
 - **FR-14** A requester may cancel their **own** ticket while it is still `open`, and may add
@@ -672,7 +674,7 @@ written on the hand-over — text on the interval, not a Fleet id — and a car 
 disposes is not updated on the line's record. **Amended 2026-11-08 (FR-21):** the vehicle device
 checks need Fleet's car list, so IT has ONE read-only import surface,
 `modules/it/fleet-boundary.ts` — Operations' and Gold's pattern, narrowed: two read functions over
-`fleetVehicleRepository` (`listActiveVehicleCodes`, `findActiveVehicle`), not the repository
+`fleetVehicleRepository` (`listActiveVehicleCodes`, `findVehicleForCheck`), not the repository
 itself. Through it IT lists active cars and reads a car's code and branch when a check is filed;
 it never writes a Fleet collection, and nothing else in IT imports Fleet.
 **9.3 Contracts/Procurement/Accounting (future):** vendor contracts, purchase workflows and

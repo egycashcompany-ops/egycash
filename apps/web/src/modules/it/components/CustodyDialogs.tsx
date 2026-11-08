@@ -28,6 +28,7 @@ import { PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
 import { EmployeePicker } from './EmployeePicker';
 import { AssetPicker } from './AssetPicker';
 import { useReceiptPrinter } from './CustodyReceipt';
+import { canHandOver, handOverPaper } from '../lib/hand-over-paper';
 import * as api from '../api/it-api';
 import { fromLines, toLines } from '../lib/asset-specs';
 import {
@@ -117,13 +118,16 @@ const Shell = ({
 const message = (err: unknown, fallback: string): string =>
   err instanceof Error ? err.message : fallback;
 
-// ── Assign: the hand-over, receipt first (FR-18) ────────────────────────────
+// ── Assign: the hand-over, receipt printed now or later (FR-18) ──────────────
 //
-// «وأنا بسلم الموظف جهاز او أصل يكون فى طباعة إيصال الأول وبعد الطباعة يسلم الجهاز على السيستم».
-// The dialog has two steps and offers them in that order: «طباعة الإيصال» prints the paper the
-// employee signs — composed by the server from exactly what will be recorded — and only then does
-// «تسليم» record it. Changing anything after printing takes the hand-over away again until the
-// receipt is printed afresh: the system must never record something other than what was signed.
+// «وأنا بسلم الموظف جهاز او أصل يكون فى طباعة إيصال الأول وبعد الطباعة يسلم الجهاز على السيستم» was
+// the rule; «فى الـ IT تحديداً فى تسليم العهدة عايزك تسمح عادى بالتسليم حتى لو مطبعش إيصال» (2026-11-08)
+// relaxed it. «طباعة الإيصال» still prints the paper the employee signs — composed by the server
+// from exactly what will be recorded — but «تسليم» no longer waits for it. Every hand-over still
+// writes its receipt: printed here, it records that paper's number; not printed, the server gives
+// it the next number and the paper prints from «عهدة الأصول», the asset's page or the employee's
+// page. A paper printed and then made stale by an edit is never recorded as what was signed:
+// the hand-over then goes under a fresh number, as if nothing had been printed.
 // Each device is a page of the acknowledgment, and its accessories («ومشتملاته») start as the
 // asset's own list — edited here, they are what that page lists.
 
@@ -244,11 +248,12 @@ export const AssignAssetDialog = ({
     ...(expectedReturnAt === '' ? {} : { expectedReturnAt: new Date(expectedReturnAt) }),
   };
   // What was printed, as the server will be asked to record it. Any edit after printing changes
-  // this and takes «تسليم» away until the paper matches again.
+  // this, and the printed paper then no longer counts as this hand-over's.
   const payloadKey = JSON.stringify(body);
   const ready = employeeId !== '' && lines.length > 0 && !orderWrong;
-  const printed = printedFor === payloadKey;
-  const changedSincePrint = printedFor !== null && !printed;
+  const toRecord = handOverPaper(printedFor, payloadKey, printedNumber);
+  const printed = toRecord.state === 'printed';
+  const changedSincePrint = toRecord.state === 'stale';
 
   const setLine = (index: number, patch: Partial<DraftLine>): void =>
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -273,11 +278,17 @@ export const AssignAssetDialog = ({
   const submit = async (): Promise<void> => {
     setError(null);
     try {
-      await handOver.mutateAsync({
-        ...body,
-        ...(printedNumber === null ? {} : { formNumber: printedNumber }),
-      });
-      toast.success(t('it.custody.receipt.handedOver'));
+      // The printed paper's number only while it still says what is recorded — a stale paper's
+      // number would file a receipt nobody signed for these lines.
+      const { formNumber } = toRecord;
+      await handOver.mutateAsync({ ...body, ...(formNumber === null ? {} : { formNumber }) });
+      toast.success(
+        t(
+          formNumber === null
+            ? 'it.custody.receipt.handedOverUnprinted'
+            : 'it.custody.receipt.handedOver',
+        ),
+      );
       onClose();
     } catch (err) {
       setError(message(err, t('common.error')));
@@ -293,15 +304,15 @@ export const AssignAssetDialog = ({
       {...(asset === null ? {} : { description: `${asset.assetCode} — ${asset.name}` })}
       error={error}
       busy={handOver.isPending}
-      canSubmit={ready && printed}
+      canSubmit={canHandOver(ready, printer.isPrinting)}
       submitLabel={t('it.custody.receipt.handOver')}
       onSubmit={() => void submit()}
       extraAction={
         <Button
-          variant={printed ? 'secondary' : 'primary'}
+          variant="secondary"
           leftIcon={<PrinterIcon className="h-4 w-4" />}
           loading={printer.isPrinting}
-          disabled={!ready}
+          disabled={!ready || handOver.isPending}
           onClick={() => void print()}
         >
           {t('it.custody.receipt.print')}
@@ -310,17 +321,20 @@ export const AssignAssetDialog = ({
     >
       <p
         role="note"
+        data-receipt-state={toRecord.state}
         className={`rounded-lg px-3 py-2 text-sm ${
           printed
             ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
-            : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+            : changedSincePrint
+              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+              : 'bg-slate-50 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200'
         }`}
       >
         {printed
           ? t('it.custody.receipt.printedNowHandOver')
           : changedSincePrint
-            ? t('it.custody.receipt.changedSincePrint')
-            : t('it.custody.receipt.printFirst')}
+            ? t('it.custody.receipt.changedSincePrintHandOver')
+            : t('it.custody.receipt.printOptional')}
       </p>
       <Field label={t('it.custody.holder')} required>
         <EmployeePicker

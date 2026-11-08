@@ -52,6 +52,12 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 ## 2. Platform Core — key schemas (abridged)
 
 ### users
+
+> **Out of date (drift check, 2026-11-05).** There is no `profile.avatarFileId` or
+> `organization.companyId` (the system is single-organization), `status` also has `invited` (the
+> default), and `ix_companyId_branchId_status` does not exist. Read the model under `apps/api/src`
+> until this block is rewritten.
+
 ```jsonc
 { "email": "unique", "phone": "…", "passwordHash": "argon2id",
   "profile": { "firstName": {"ar":"…","en":"…"}, "lastName": {…}, "avatarFileId": null },
@@ -64,6 +70,12 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 Indexes: `ux_email`, `ix_companyId_branchId_status`.
 
 ### sessions  *(auth)*
+
+> **Out of date (drift check, 2026-11-05).** The session holds `currentTokenHash` (unique) and
+> `usedTokenHashes` for replay detection, not `refreshTokenHash`, and records how it was opened
+> (`method`: password, passkey, portal challenge). Read the model under `apps/api/src` until this
+> block is rewritten.
+
 ```jsonc
 { "userId": "…", "refreshTokenHash": "…", "family": "uuid",   // rotation family (ADR-006)
   "device": { "userAgent": "…", "ip": "…" },
@@ -165,9 +177,22 @@ Indexes: `ix_entityRef`, `ix_groupId_version`, `ix_checksum`.
 { "entityRef": {…}, "messageKey": "hr.applicants.activity.interviewScheduled",
   "params": { "interviewer": "…" }, "actorId": "…", "at": "Date" }
 ```
-Indexes: `ix_entityRef_at`; audit collection uses a restricted DB role (insert-only).
+Indexes: `ix_entityRef_at`, `ix_actor_at`, `ix_moduleId_at`, `ix_action_at` `{action:1, at:-1}`
+(the hourly security-signal detectors' `{action, at ≥ window}`) and `ix_at` `{at:-1}` (the audit
+list's default order). Production runs with autoIndex off, so `ix_action_at` and `ix_at` are built
+at boot by `platform/audit/audit-indexes.ts` when missing. An unfiltered audit or activity list
+takes its total from the collection's metadata count (`estimatedDocumentCount`), not a scan. Rows
+of one batch write (`auditService.recordMany`) carry instants a millisecond apart, so a list sorted
+on `at` has one order for them. The audit collection uses a restricted DB role (insert-only).
 
 ### workflow_definitions / workflow_instances / workflow_transitions
+
+> **Out of date (drift check, 2026-11-05).** The workflow, approval, sequence and outbox sections
+> below describe the Milestone-1 plan: the ADR-011 workflow collections were never built,
+> approvals are one `approval_workflows` collection, counters are per module (`hr_sequences`,
+> `it_sequences`), and the outbox fields differ. Read the models under `apps/api/src` until this
+> section is rewritten; a `drift-check` run on this page lists the differences.
+
 ```jsonc
 // workflow_definitions — versioned (ADR-011)
 { "key": "hr.recruitment", "version": 3, "isActive": true,
@@ -220,6 +245,13 @@ Unique: `ux_key_scopeRef_period`.
 full field lists are specified at implementation-PR time per service.)*
 
 ## 3. Recruitment — key schemas
+
+> **Out of date (drift check, 2026-11-05).** This section is the Milestone-1 sketch of
+> Recruitment: the applicant schema, the supporting collections' names and shapes, and the
+> timeline (now the persisted `hr_recruitment_timeline`) no longer match the code. Read the models
+> under `apps/api/src` until this section is rewritten; a `drift-check` run on this page lists the
+> differences.
+
 
 ### hr_applicants
 ```jsonc

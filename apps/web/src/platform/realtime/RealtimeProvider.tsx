@@ -5,6 +5,12 @@
 // notification bell's live push rides; auth is the in-memory access token, re-read on every
 // (re)connect attempt. The few prefixes the registry marks as throttled (D13: the fleet dashboard's
 // live reads) are not swept: they are marked stale at once and refetched at most once per window.
+//
+// Since 2026-11 (the API was measured query-bound, the ATM board its busiest read): the ATM topics
+// ride the client's debounced heavy lane (`HEAVY_REALTIME_TOPICS`); the boards' dropdowns and done
+// ranges are only marked stale (`isStaleOnlyKey`); and a HIDDEN tab refetches nothing — it marks,
+// and refetches what went stale once it is shown again (`invalidator.ts`). The reader's own writes
+// are untouched: their hooks refetch at once, outside realtime.
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
@@ -13,12 +19,21 @@ import { apiOrigin, getAccessToken } from '../../shared/lib/api-client';
 import { createRealtimeClient, NOTIFICATIONS_TOPIC } from './realtime-client';
 import {
   ALL_REALTIME_KEY_PREFIXES,
+  HEAVY_REALTIME_TOPICS,
+  isStaleOnlyKey,
   keysForTopic,
   NOTIFICATION_KEYS,
   THROTTLED_KEY_PREFIXES,
 } from './invalidation-registry';
+import { createRealtimeInvalidator } from './invalidator';
 import { setRealtimeConnected } from './realtime-status';
-import { createRefetchThrottle } from './throttle';
+
+/**
+ * Is the page hidden — another tab, a minimised window? Read at call time and only from effects
+ * and listeners, never at module load or render: the specs render this tree in node.
+ */
+const pageHidden = (): boolean =>
+  typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 export const RealtimeProvider = (): null => {
   const queryClient = useQueryClient();
@@ -27,26 +42,11 @@ export const RealtimeProvider = (): null => {
   useEffect(() => {
     if (!signedIn) return undefined;
 
-    const throttle = createRefetchThrottle(
-      {
-        markStale: (queryKey) =>
-          void queryClient.invalidateQueries({ queryKey, refetchType: 'none' }),
-        // `cancelRefetch: false`: a throttled trailing refetch joins a read already in flight (an
-        // interval or focus refetch) instead of cancelling and restarting it on the server.
-        refetch: (queryKey) =>
-          void queryClient.refetchQueries({ queryKey, type: 'active' }, { cancelRefetch: false }),
-      },
-      THROTTLED_KEY_PREFIXES,
-    );
-
-    const invalidate = (prefixes: Iterable<readonly unknown[]>): void => {
-      const unique = new Map<string, readonly unknown[]>();
-      for (const prefix of prefixes) unique.set(JSON.stringify(prefix), prefix);
-      for (const queryKey of unique.values()) {
-        if (throttle.owns(queryKey)) throttle.push(queryKey);
-        else void queryClient.invalidateQueries({ queryKey });
-      }
-    };
+    const invalidator = createRealtimeInvalidator(queryClient, {
+      isHidden: pageHidden,
+      throttled: THROTTLED_KEY_PREFIXES,
+      isStaleOnly: isStaleOnlyKey,
+    });
 
     const client = createRealtimeClient({
       connectSocket: () =>
@@ -60,12 +60,13 @@ export const RealtimeProvider = (): null => {
         const prefixes = [...topics].flatMap((topic) =>
           topic === NOTIFICATIONS_TOPIC ? NOTIFICATION_KEYS : keysForTopic(topic),
         );
-        invalidate(prefixes);
+        invalidator.invalidate(prefixes);
       },
       // Anything could have changed while the connection was down — stale-mark the whole
       // realtime-covered set once; only mounted screens refetch now, the rest on next open.
-      onReconnect: () => invalidate(ALL_REALTIME_KEY_PREFIXES),
+      onReconnect: () => invalidator.invalidate(ALL_REALTIME_KEY_PREFIXES),
       onConnectedChange: setRealtimeConnected,
+      heavyTopics: HEAVY_REALTIME_TOPICS,
     });
 
     // Realtime is an ENHANCEMENT: without it screens still fetch on navigation and staleness.
@@ -81,8 +82,16 @@ export const RealtimeProvider = (): null => {
       // before realtime existed. There is no user action to prompt and no logger on the web.
       return undefined;
     }
+
+    // Back from hidden: what is on screen and went stale meanwhile is refetched, once.
+    const onVisibility = (): void => {
+      if (!pageHidden()) invalidator.visible();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
-      throttle.cancel();
+      document.removeEventListener('visibilitychange', onVisibility);
+      invalidator.cancel();
       try {
         client.stop();
       } catch {

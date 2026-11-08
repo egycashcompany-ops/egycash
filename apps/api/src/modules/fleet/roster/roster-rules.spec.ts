@@ -524,3 +524,26 @@ describe('the invariants the dashboard counts on', () => {
     expect(ready).toBe(VEHICLES.length - 1 - 2);
   });
 });
+
+describe('the board reads its cars and its drivers side by side', () => {
+  // The dashboard asks for this board on every refresh. The driving seats (two HR reads in a row)
+  // and each driver's verdict need nothing from the cars, and used to start only once the scoped
+  // registry had been paged through and the workshop asked about it.
+  it('the driver pool is asked while the cars are still on their way — and the board is unchanged', async () => {
+    const before = await board();
+    const { fleetVehicleRepository } = await import('../vehicles/vehicle.repository');
+    const { drivingSeatRoster } = await import('../driver-profiles/driving-seat-roster');
+    vi.mocked(drivingSeatRoster).mockClear();
+    let release: (page: { items: typeof VEHICLES }) => void = () => undefined;
+    vi.mocked(fleetVehicleRepository.listVehicles).mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }) as never,
+    );
+    const pending = board();
+    await Promise.resolve();
+    expect(drivingSeatRoster, 'asked before the cars answered').toHaveBeenCalledTimes(1);
+    release({ items: VEHICLES });
+    expect(await pending).toEqual(before);
+  });
+});

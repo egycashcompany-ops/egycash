@@ -11,7 +11,8 @@ import { Types } from 'mongoose';
 const computeAlarms = vi.hoisted(() => vi.fn());
 vi.mock('./maintenance-alarm', () => ({ computeAlarms }));
 
-const { ALARM_SORT_KEYS, alarmSort, alarmSortsFor, isAlarmSortKey } = await import('./alarm-sort');
+const { ALARM_SORT_KEYS, alarmSort, alarmSortsFor, isAlarmSortKey, sharedAlarmProjection } =
+  await import('./alarm-sort');
 
 const CAR_A = new Types.ObjectId();
 const CAR_B = new Types.ObjectId();
@@ -48,40 +49,38 @@ describe('which keys exist at all', () => {
 
 describe('the lookup table handed to the query', () => {
   it('carries a figure per car, in the same positions as the ids', () => {
-    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000), alarm(CAR_B, 9000, -500)]);
-    return alarmSort('alarmSinceService').then((built) => {
-      const parts = (built as unknown as Built).expression.$let;
-      expect(parts.vars.at.$indexOfArray[0], 'one id per car').toHaveLength(2);
-      expect(parts.in.$cond[2].$arrayElemAt[0], 'and the figures beside them').toEqual([
-        4000, 9000,
-      ]);
-    });
+    const built = alarmSort('alarmSinceService', [
+      alarm(CAR_A, 4000, 1000),
+      alarm(CAR_B, 9000, -500),
+    ]) as unknown as Built;
+    const parts = built.expression.$let;
+    expect(parts.vars.at.$indexOfArray[0], 'one id per car').toHaveLength(2);
+    expect(parts.in.$cond[2].$arrayElemAt[0], 'and the figures beside them').toEqual([4000, 9000]);
   });
 
-  it('reads the OTHER figure for the other key', async () => {
-    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000), alarm(CAR_B, 9000, -500)]);
-    const built = (await alarmSort('alarmRemaining')) as unknown as Built;
+  it('reads the OTHER figure for the other key', () => {
+    const built = alarmSort('alarmRemaining', [
+      alarm(CAR_A, 4000, 1000),
+      alarm(CAR_B, 9000, -500),
+    ]) as unknown as Built;
     expect(built.expression.$let.in.$cond[2].$arrayElemAt[0]).toEqual([1000, -500]);
   });
 
   it('compares ObjectIds, not strings — the projection answers in strings', () => {
-    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000)]);
-    return alarmSort('alarmSinceService').then((built) => {
-      const ids = (built as unknown as Built).expression.$let.vars.at.$indexOfArray[0];
-      expect(ids[0]).toBeInstanceOf(Types.ObjectId);
-      expect(String(ids[0])).toBe(String(CAR_A));
-    });
+    const built = alarmSort('alarmSinceService', [alarm(CAR_A, 4000, 1000)]) as unknown as Built;
+    const ids = built.expression.$let.vars.at.$indexOfArray[0];
+    expect(ids[0]).toBeInstanceOf(Types.ObjectId);
+    expect(String(ids[0])).toBe(String(CAR_A));
   });
 
-  it('leaves out a car the projection could not answer for', async () => {
+  it('leaves out a car the projection could not answer for', () => {
     // It must not appear in the table with a null figure either: `$arrayElemAt` would still be
     // asked for a position, and the row would sort among cars that HAVE a figure.
-    computeAlarms.mockResolvedValue([
+    const built = alarmSort('alarmSinceService', [
       alarm(CAR_A, 4000, 1000),
       alarm(CAR_NONE, null, null),
       alarm(CAR_B, 9000, -500),
-    ]);
-    const built = (await alarmSort('alarmSinceService')) as unknown as Built;
+    ]) as unknown as Built;
     const ids = built.expression.$let.vars.at.$indexOfArray[0].map(String);
     expect(ids).toEqual([String(CAR_A), String(CAR_B)]);
     expect(built.expression.$let.in.$cond[2].$arrayElemAt[0]).toEqual([4000, 9000]);
@@ -90,20 +89,17 @@ describe('the lookup table handed to the query', () => {
   it('answers NULL for a row whose car is not in the table — never the last car’s figure', () => {
     // The trap. `$arrayElemAt(arr, -1)` is the LAST element, so without the `$cond` a car with no
     // alarm would be ordered as though it were the last car in the list.
-    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000)]);
-    return alarmSort('alarmSinceService').then((built) => {
-      const cond = (built as unknown as Built).expression.$let.in.$cond;
-      expect(cond[0], 'the guard asks whether the car was found').toEqual({ $eq: ['$$at', -1] });
-      expect(cond[1], 'and answers nothing when it was not').toBeNull();
-    });
+    const built = alarmSort('alarmSinceService', [alarm(CAR_A, 4000, 1000)]) as unknown as Built;
+    const cond = built.expression.$let.in.$cond;
+    expect(cond[0], 'the guard asks whether the car was found').toEqual({ $eq: ['$$at', -1] });
+    expect(cond[1], 'and answers nothing when it was not').toBeNull();
   });
 
-  it('publishes no key at all when the projection can answer for nobody', async () => {
+  it('publishes no key at all when the projection can answer for nobody', () => {
     // A fleet with no service intervals configured: an order over a column of nulls is not an
     // order, and publishing the key would make the arrow look as though it had worked.
-    computeAlarms.mockResolvedValue([alarm(CAR_NONE, null, null)]);
-    expect(await alarmSort('alarmSinceService')).toBeNull();
-    expect(await alarmSort('alarmRemaining')).toBeNull();
+    expect(alarmSort('alarmSinceService', [alarm(CAR_NONE, null, null)])).toBeNull();
+    expect(alarmSort('alarmRemaining', [alarm(CAR_NONE, null, null)])).toBeNull();
   });
 });
 
@@ -126,9 +122,52 @@ describe('what a request actually pays for', () => {
     expect(computeAlarms).toHaveBeenCalledTimes(1);
   });
 
-  it('builds both when the reader ordered by both', async () => {
+  it('builds both when the reader ordered by both — from ONE projection, not one per column', async () => {
     computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000)]);
-    const built = await alarmSortsFor([{ by: 'alarmRemaining' }, { by: 'alarmSinceService' }]);
+    const built = (await alarmSortsFor([
+      { by: 'alarmRemaining' },
+      { by: 'alarmSinceService' },
+    ])) as unknown as Built[];
     expect(built.map((entry) => entry.key)).toEqual(['alarmRemaining', 'alarmSinceService']);
+    expect(computeAlarms).toHaveBeenCalledTimes(1);
+    // …and each still reads its own figure off that one answer.
+    expect(built.map((entry) => entry.expression.$let.in.$cond[2].$arrayElemAt[0])).toEqual([
+      [1000],
+      [4000],
+    ]);
+  });
+
+  it('reads the projection it is handed instead of computing its own', async () => {
+    const handed = vi.fn(async () => [alarm(CAR_B, 9000, -500)]);
+    const built = (await alarmSortsFor(
+      [{ by: 'alarmSinceService' }],
+      handed as never,
+    )) as unknown as Built[];
+    expect(handed).toHaveBeenCalledTimes(1);
+    expect(computeAlarms).not.toHaveBeenCalled();
+    expect(built[0]?.expression.$let.in.$cond[2].$arrayElemAt[0]).toEqual([9000]);
+  });
+});
+
+describe('one projection per request, shared by whoever in it asks', () => {
+  it('computes nothing until somebody asks', () => {
+    sharedAlarmProjection();
+    expect(computeAlarms).not.toHaveBeenCalled();
+  });
+
+  it('every ask of one request gets the first answer — the fleet is projected once', async () => {
+    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000)]);
+    const projection = sharedAlarmProjection();
+    const [first, second] = await Promise.all([projection(), projection()]);
+    expect(await projection()).toBe(first);
+    expect(second).toBe(first);
+    expect(computeAlarms).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second request computes afresh — nothing is kept between requests', async () => {
+    computeAlarms.mockResolvedValue([alarm(CAR_A, 4000, 1000)]);
+    await sharedAlarmProjection()();
+    await sharedAlarmProjection()();
+    expect(computeAlarms).toHaveBeenCalledTimes(2);
   });
 });

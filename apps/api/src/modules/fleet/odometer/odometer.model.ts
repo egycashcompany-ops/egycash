@@ -92,6 +92,20 @@ odometerSchema.index({ vehicleId: 1, date: -1 }, { name: 'ix_vehicle_date' });
 // fall in these days», «which cars were read since that day» — so the date leads here; every index
 // above leads with the car, which answers those only by walking each car's whole history.
 odometerSchema.index({ date: -1 }, { name: 'ix_date' });
+// The REGISTER's own order (`GET /fleet/odometer`): live rows, the newest day first, and `_id` after
+// it — the tie-break `BaseRepository.list` appends to every sort. `ix_date` answers the day but not
+// the tie-break or the soft delete, so every page was a top-k sort in memory and every total read
+// each row to look at `isDeleted`. In this order the page comes off the index already sorted and
+// the total is counted from the index alone; `sortDir=asc` walks it backwards.
+odometerSchema.index({ isDeleted: 1, date: -1, _id: -1 }, { name: 'ix_list_date' });
+// The chain's TOTAL order per car — the opening reading, then the insert (`NEWEST_FIRST` in the
+// repository) — which the FR-2 bracket (`chainBounds`) and the alarm's bounds (`lowerBoundsAt`, three
+// times per projection, for every active car) sort by. `ix_vehicle_reading` stops at the reading, so
+// the `_id` that settles a tie forced a blocking sort over every row asked; with it in the key the
+// rows arrive in order. A NEW name rather than a widened `ix_vehicle_reading`: the boot builder
+// builds by name, so an existing name declared with other keys would be skipped as present and
+// never rebuilt — and reported as drift on every deploy.
+odometerSchema.index({ vehicleId: 1, outReading: -1, _id: -1 }, { name: 'ix_vehicle_chain' });
 
 export const FleetOdometerLogModel = model<FleetOdometerLogDoc>(
   'FleetOdometerLog',

@@ -7,6 +7,7 @@ import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues } from './infrastructure/queue/jobs';
 import { closeSocketServer } from './infrastructure/realtime/socket-server';
 import { bootPlatform } from './platform/kernel/bootstrap';
+import { startAuditIndexBuild } from './platform/audit';
 import { attachNotificationSocket } from './platform/notifications';
 import { attachRealtimeSocket } from './platform/realtime';
 import { moduleManifests } from './modules';
@@ -45,6 +46,10 @@ import { buildApp } from './app';
 const main = async (): Promise<void> => {
   initSentry('api');
   await bootPlatform({ modules: moduleManifests });
+  // The two audit_logs indexes the security-signal sweep and the audit list need, which nothing
+  // else builds in production. NOT AWAITED — a build over a large collection must not stand
+  // between the boot and /health/ready; see platform/audit/audit-indexes.ts.
+  startAuditIndexBuild();
   // Upgrades add navigation catalog entries — existing installs pick them up here (BF-1).
   await syncNavigationCatalog();
   // The same default sections on an EXISTING install — additive and idempotent: it creates a

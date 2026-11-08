@@ -11,8 +11,8 @@
 //   · bank/area narrowing — the legacy saved these per user server-side; the URL carries them
 //     here so a bookmark keeps a desk's view. An area can be chosen with no bank (the legacy
 //     header filter row), a bank change drops the areas it orphaned, and the board is read WHOLE —
-//     every open row the filters match, past the hundred one page holds (`lib/board-filters.ts`,
-//     `lib/whole-board.ts`, port doc D8) — and one reset clears them;
+//     every open row the filters match, past the hundred one page holds, in one request
+//     (`lib/board-filters.ts`, `GET …/board`, port doc D8) — and one reset clears them;
 //   · grouped by area, the areas in alphabetical order, each under a line that names it and
 //     counts its rows (2026-11-02, «Group by المناطق + Sorting بالمناطق» — `lib/area-groups.ts`);
 //     every column sorts, in the browser, inside each area — the board is whole
@@ -64,6 +64,7 @@ import { OpenReplenishmentsForm } from '../components/OpenReplenishmentsForm';
 import { ConfirmActionDialog, EditReplenishmentDialog } from '../components/ReplenishmentDialogs';
 import { BoardDayToggle } from '../components/BoardDayToggle';
 import { BoardResetButton } from '../components/BoardResetButton';
+import { OpenBoardCutShort } from '../components/OpenBoardCutShort';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBoardFilters } from '../lib/useBoardFilters';
@@ -289,6 +290,9 @@ export const ReplenishmentsPage = (): JSX.Element => {
             </div>
           )}
         </div>
+
+        {/* The board's one read was cut at its cap — the table is not the whole board, and says so. */}
+        <OpenBoardCutShort board={list.data} />
 
         {/* Unselectable as a whole; the copy columns take a selection back (`lib/board-copy.ts`). An
           earlier day's rows keep the legacy grey of the «other days» group. */}

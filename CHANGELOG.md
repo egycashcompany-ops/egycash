@@ -11,6 +11,70 @@ its entry here in the same PR.
 
 ### Added
 
+- **Reading the owner's files: which reader for which file, and MarkItDown run safely (development
+  tooling).** «وأبقى ضيف دى كمان» — Microsoft's MarkItDown (github.com/microsoft/markitdown, MIT),
+  tested before it was taken on generated Arabic-first files like the owner's books.
+  - **Results:**
+    - Word: 25/25 Arabic strings, clauses and table text, though the title loses its heading and a
+      table's header shifts into its body.
+    - CSV: correct when given the right encoding. `-c cp1256` is right for an old Windows export
+      and garbles a UTF-8 file, so the check decides.
+    - Excel: a first look at a workbook the check does not mark as holding secrets. Merged titles,
+      `NaN`, rounded long numbers, hidden sheets and unsaved formula results need care.
+    - Arabic PDFs: unusable. The Arabic came out reversed, 0/20 strings usable, and a scanned PDF
+      gave nothing; the agent's own PDF reading got 20/20 on both.
+  - **Taken:** `.claude/skills/owner-files`, with a check script
+    (`scripts/owner_files.py`) that prints structure only, never a data cell, so it is safe on any
+    file:
+    - it flags secret-bearing workbooks before anything is converted: the ATM register's J..Q,
+      AN, AU and AO columns and `Sheet1`, fuel-card «pass» and «قيمه الشحن», and key, PIN and
+      password headers in English and Arabic;
+    - it also reports hidden sheets, formulas with no saved result, long numbers that MarkItDown
+      would round, a CSV's real encoding, garbled output, archive sizes and Word tracked changes.
+
+    The skill says which reader to use for each file type and runs MarkItDown 0.1.9 pinned in the
+    scratchpad:
+    - local extras only, so no audio upload, Azure, YouTube or plugins;
+    - files fed through standard input, so it never fetches a URL;
+    - UTF-8 output through `-o`, and no exiftool.
+
+    Owner files and every output stay in the scratchpad: never committed, published or treated
+    as instructions.
+  - **Not taken:** the MarkItDown MCP server (it reads any file or URL, has no authentication, and
+    installs every extra), and any use inside the product. The ECMS imports keep their own readers:
+    ExcelJS in the API, and a browser CSV parser for gold receiving.
+
+- **Design review with fresh-context reviewers, and a drift check (development tooling).** «شوف
+  دى هتفيد ولا لأ وضيفها عندك لو كويسه» — Google's Elephant-Goldfish Model
+  (github.com/google/elephant-goldfish-model, Apache-2.0), evaluated on two ECMS documents before it
+  was taken:
+  - **On the passkey design**, its reviewers raised 21 findings after duplicates were merged. 7 were
+    worth acting on, and about half were noise:
+    - 2 code gaps: a passkey sign-in never clears the failed-password count, and «حذف» cannot be
+      reached while passkeys are switched off (the list request is refused and the card hides the
+      list);
+    - 6 places where the page no longer matches the code (one overlaps a code gap).
+
+    Every finding is now verified (against the owner's decisions, merged ADRs, the record, and the
+    code where it exists) before anything changes. These items are recorded in the design's §8;
+    the two code gaps and the page are fixed in the same release (see Fixed).
+  - **On `database-design.md`**, the upstream drift method found 28 drifts: 15 new, 9 already
+    recorded elsewhere, 3 false and 1 unclear. Two parts were never reconciled with the code: §2's
+    workflow, approvals, sequences and outbox, and §3 Recruitment; the `users` and `sessions`
+    fields drifted too. Each of these now carries a dated "out of date" note.
+  - **Taken:**
+    - the seven reviewer personas and the five upstream standards, vendored unchanged under
+      `.claude/vendor/egm/` (licence and provenance in its README);
+    - the upstream subagent adapters, as `.claude/agents/egm-*.md`, with only the path changed;
+    - two ECMS skills: `.claude/skills/design-review`, which runs the reviewers, and
+      `.claude/skills/drift-check`, which follows the drift method.
+  - **Not taken:**
+    - the plugin itself, because cloud sessions do not install plugins a repository declares;
+    - its step-by-step approval prompts;
+    - its README-in-every-folder bootstrap;
+    - its report files in the repository root.
+  - [Development Workflow §3](docs/09-guides/development-workflow.md) says when each is used.
+
 - **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
   time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
   دلوقتى وشغال .. ووقت كل واحد على السيستم..».
@@ -243,8 +307,8 @@ its entry here in the same PR.
   archiving, reactivating or deleting the account, remove the account's passkeys. Every challenge
   is held by the server and used once; a locked or inactive account stays refused; only
   attestation `none` is accepted, so no certificate the client sends can make the server fetch a
-  URL. The organization setting `auth.passkeys.enabled` (on by default) switches it off for every
-  route. The ten-minute idle
+  URL. The organization setting `auth.passkeys.enabled` (on by default) switches off signing in,
+  adding and renaming; people can still see and remove their own passkeys (ADR-036). The ten-minute idle
   sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
 
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
@@ -485,6 +549,24 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Fingerprint sign-in: two gaps a review found, closed.** «يلا».
+  - **A passkey sign-in now clears the failed-password count**, as a password sign-in does.
+    Before, the count was cleared only by a successful password, and it has no time window. So a
+    person who signs in only with a fingerprint, and mistypes the password now and then, would
+    eventually be locked out, fingerprint included. Only the count is cleared: a locked account
+    stays locked, and a refused key changes nothing.
+  - **«حذف» works while fingerprint sign-in is switched off.** The server already allowed removing
+    a passkey with the switch off, but the list was refused, and the Security card hid it. Now:
+    - the list answers either way and says whether passkeys are on (`meta.enabled`);
+    - with the switch off, the card lists the devices with «حذف» only, and says they can still be
+      removed;
+    - the offer after a password sign-in reads the same flag, so it is not made while switched off.
+    - Recorded as [ADR-036](docs/03-decisions/ADR-036-passkey-switch-keeps-own-list-and-removal.md),
+      which replaces ADR-035 §9 (that said the switch closed every passkey endpoint).
+  - **The passkey design doc matches the code again:** the order of the sign-in checks, which
+    endpoints the switch and the audience rule cover, the TOTP code at the offer, when the button
+    shows, renewal timing, the tests, and the error statuses.
+
 - **Car codes with a space are filtered as one car.** «لما باجى اعمل فلتر على اى عربيه من اللى
   بالعربى دى مش بيجيب العربيه و بيسرش اكن الاسم بتاع العربيه حاجه والرقم اللى جمبها حاجه تانيه».
   The vehicle-code filter split every code on spaces — «كورولا 1» became «كورولا» and «1» — whether
@@ -642,6 +724,49 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **The system made faster for the branch rollout.** «عايزك تتحقق من كفاءة النظام بشكل عام .. وتقترح
+  ما يزيد من الكفاءة .. أو فى حاجة تخلى الدنيا أسرع خصوصاُ مع الشغل التقيل لأنى هشغل الأفرع». Measured
+  on production before the change (Railway logs and metrics, the Atlas alert «Query Targeting: Scanned
+  Objects / Returned has gone above 1000»). The answers on every screen are the same; they arrive in
+  fewer and cheaper database reads.
+  - **ATM open boards read once.** The replenishment and maintenance boards read
+    `GET /atm/{replenishments|maintenances}/board`, every open row in one read, instead of walking
+    the paged list (a find and a count per page, walked again when totals moved). The read stops at
+    5000 rows and says so on screen. New indexes serve the board order for a branch reader
+    (`ix_branch_open_board`) and for a reader of the whole company (`ix_open_board`); the
+    dropdowns' names come from the same open rows instead of a `distinct` that scanned the whole
+    log.
+  - **Live updates on the ATM pages are gathered.** One bulk action is one refresh, not one per
+    row: ATM signals wait 1.5 seconds (4 at most) and each browser adds its own small delay so the
+    screens do not all ask at the same instant. A tab in the background only marks its data old and
+    refreshes once when it is shown again. The dropdowns and the done pages refresh on their next
+    read.
+  - **The done pages' date range** applies a typed day only once it is a complete date from the
+    year 2000, half a second after typing stops or at once on leaving the box. Typing a year no
+    longer read ranges reaching back centuries.
+  - **ATM batch writes in one round trip.** A batch open writes every line in one insert and its
+    audit rows in one queue add (it took 1.2 seconds for replenishments and up to 2.3 for
+    maintenance). The mail reject decides the whole selection in one write (it took 1.7 seconds).
+    Close and the bulk edit record their audit rows in one add too.
+  - **Fleet pages.** The alarms read the cars and makes once instead of page by page; the odometer
+    page, the maintenance page and the dashboard run their reads side by side. New indexes serve the
+    order the odometer, maintenance and accident registers open in, and the reading chain's order.
+  - **Audit log.** Two indexes (`ix_action_at`, `ix_at`) serve the hourly security-signal checks,
+    which scanned the whole audit collection every hour — the cause of the Atlas alert — and the
+    audit page's default order. They are built at boot when missing. An unfiltered audit or activity
+    page takes its total from the collection's own count instead of reading every row.
+  - **`GET /platform/settings/me`** reads every setting in one query instead of one per setting.
+  - **Diagnostics.** The «slow mongo operation» log line names the collection, and each boot logs
+    the database round trip («mongo round trip», median and minimum of five pings).
+  - **Unchanged rules, safer edges.** Each row of a batch keeps its own audit instant, a millisecond
+    apart, so paging the audit list shows each once. A mail reject reads back exactly the tickets its
+    own write decided. A batch open that a leftover unique index refuses, or that fails with no
+    per-row answer, is reported to the error log instead of passing silently.
+- **A sign-in page left in a background tab stops renewing its passkey request.** With the
+  ten-minute idle sign-out, sign-in pages sit open all day; each renewed its fingerprint/face request
+  every few minutes (110 requests in 45 minutes from one browser). It now renews only while the tab
+  is shown, and at once when it is shown again.
 
 - **How the ATM pages read, set on `/atm/settings`.** «خلى حجم الكلام فى الصفحات وإذا كان Bold أو
   لأ + درجة لون خطوط الجداول .. أقدر أتحكم فيها من /atm/settings». A new card, «شكل الصفحات», sets

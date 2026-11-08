@@ -34,18 +34,23 @@ describe('the alarm projection takes no arguments', () => {
   it('and it always projects every ACTIVE vehicle', () => {
     // The divergence that made the dead branch dangerous: it skipped this filter.
     const body = engine.slice(engine.indexOf('export const computeAlarms'));
-    expect(body).toContain('await allActiveVehicles()');
-
-    // Scoped to the FUNCTION BODY, not to the rest of the file. A slice that ran on to the end
-    // would be satisfied by the prose above `computeAlarms`, which names the filter while
-    // explaining why the dead branch was dangerous — and would then keep passing with the real
-    // filter deleted. Prose is not a query.
-    const start = engine.indexOf('const allActiveVehicles');
-    const fetcher = engine.slice(start, engine.indexOf('\n};', start));
-    expect(fetcher, 'the filter is in the query itself').toContain("filter: { status: 'active' }");
-    expect(fetcher, 'and it pages to exhaustion rather than taking one page').toContain(
-      'for (let page = 1; ; page += 1)',
+    expect(body).toContain('allActiveVehicles()');
+    expect(engine).toContain(
+      'const allActiveVehicles = () => fleetVehicleRepository.activeForAlarm();',
     );
+
+    // Scoped to the METHOD BODY, not to the rest of the file. A slice that ran on to the end
+    // would be satisfied by prose elsewhere that names the filter — and would then keep passing
+    // with the real filter deleted. Prose is not a query.
+    const repository = readFileSync(join(HERE, '../vehicles/vehicle.repository.ts'), 'utf8');
+    const start = repository.indexOf('async activeForAlarm()');
+    expect(start, 'activeForAlarm exists').toBeGreaterThan(-1);
+    const fetcher = repository.slice(start, repository.indexOf('\n  }\n', start));
+    expect(fetcher, 'the filter is in the query itself').toContain("{ status: 'active' }");
+    expect(fetcher, 'live cars only, as the list read them').toContain('this.baseFilter(');
+    // It used to page through `list()` to exhaustion; it is one read now, and must stay one read
+    // of EVERY active car — a page cut here would silently drop the cars past it from the alarm.
+    expect(fetcher, 'never one page of the fleet').not.toMatch(/\.limit\(|\.skip\(/);
   });
 
   it('nothing calls it with arguments', () => {

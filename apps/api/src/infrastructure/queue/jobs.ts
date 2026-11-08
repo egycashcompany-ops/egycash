@@ -1,7 +1,7 @@
 // Background-work wiring (ADR-009). One queue per domain; every payload carries
 // the originating requestId for log correlation. In tests the driver runs jobs
 // inline so suites stay hermetic (no Redis).
-import { Queue, Worker, type JobsOptions } from 'bullmq';
+import { Queue, Worker, type BulkJobOptions, type JobsOptions } from 'bullmq';
 import { z } from 'zod';
 import { env, isTest } from '../config/env';
 import { logger } from '../logging/logger';
@@ -116,6 +116,32 @@ const getQueue = (name: QueueName): Queue => {
   return queue;
 };
 
+const buildEnvelope = (
+  requestId: string,
+  data: unknown,
+  options: JobsOptions | undefined,
+  context: JobContext | undefined,
+): JobEnvelope => ({
+  requestId,
+  data,
+  correlationId: context?.correlationId ?? requestId,
+  enqueuedAt: new Date(),
+  attempt: 1,
+  maxAttempts: (options?.attempts ?? DEFAULT_ATTEMPTS) as number,
+  ...(context?.eventId === undefined ? {} : { eventId: context.eventId }),
+  ...(context?.branchId === undefined ? {} : { branchId: context.branchId }),
+  ...(context?.principal === undefined
+    ? {}
+    : { principal: { userId: context.principal.userId, kind: context.principal.kind ?? 'user' } }),
+});
+
+/** Tests run the handler inline, in the job's own context — what a worker would do with it. */
+const runInline = async (queue: QueueName, jobName: string, envelope: JobEnvelope) => {
+  const handler = getJobHandler(queue, jobName);
+  if (handler === undefined) throw new Error(`no handler for ${handlerKey(queue, jobName)}`);
+  await runWithContext({ requestId: envelope.requestId }, () => handler(envelope.data, jobName));
+};
+
 /**
  * Enqueue a job. Inline in tests (awaited, same process); BullMQ otherwise.
  * Throws when the queue is unreachable — callers that must never fail a business
@@ -128,27 +154,54 @@ export const enqueue = async (
   options?: JobsOptions,
   context?: JobContext,
 ): Promise<void> => {
-  const requestId = getRequestId() ?? newRequestId();
-  const envelope: JobEnvelope = {
-    requestId,
-    data,
-    correlationId: context?.correlationId ?? requestId,
-    enqueuedAt: new Date(),
-    attempt: 1,
-    maxAttempts: (options?.attempts ?? DEFAULT_ATTEMPTS) as number,
-    ...(context?.eventId === undefined ? {} : { eventId: context.eventId }),
-    ...(context?.branchId === undefined ? {} : { branchId: context.branchId }),
-    ...(context?.principal === undefined
-      ? {}
-      : { principal: { userId: context.principal.userId, kind: context.principal.kind ?? 'user' } }),
-  };
+  const envelope = buildEnvelope(getRequestId() ?? newRequestId(), data, options, context);
   if (isTest) {
-    const handler = getJobHandler(queue, jobName);
-    if (handler === undefined) throw new Error(`no handler for ${handlerKey(queue, jobName)}`);
-    await runWithContext({ requestId: envelope.requestId }, () => handler(envelope.data, jobName));
+    await runInline(queue, jobName, envelope);
     return;
   }
   await getQueue(queue).add(jobName, envelope, options);
+};
+
+/** One job of an `enqueueMany` batch — what `enqueue` takes, per job. */
+export interface BatchJob {
+  name: string;
+  data: unknown;
+  /** `enqueue`'s options less `repeat` — a repeatable job is scheduled, never added in bulk. */
+  options?: BulkJobOptions;
+}
+
+/**
+ * Several jobs on one queue in ONE round trip to Redis — BullMQ's `addBulk`, where `enqueue` per
+ * job pays a round trip each. Each job gets exactly the envelope `enqueue` would give it, under the
+ * same request. Inline in tests, in order.
+ *
+ * Throws when the queue is unreachable, like `enqueue`. NOT all-or-nothing: `addBulk` is a Redis
+ * pipeline, not a transaction, so a failure part-way may leave some of the jobs queued. A caller
+ * that falls back by doing the work itself (audit) accepts that some of it may then run twice.
+ */
+export const enqueueMany = async (
+  queue: QueueName,
+  jobs: readonly BatchJob[],
+  context?: JobContext,
+): Promise<void> => {
+  if (jobs.length === 0) return;
+  const requestId = getRequestId() ?? newRequestId();
+  const batch = jobs.map((job) => ({
+    name: job.name,
+    envelope: buildEnvelope(requestId, job.data, job.options, context),
+    options: job.options,
+  }));
+  if (isTest) {
+    for (const job of batch) await runInline(queue, job.name, job.envelope);
+    return;
+  }
+  await getQueue(queue).addBulk(
+    batch.map((job) => ({
+      name: job.name,
+      data: job.envelope,
+      ...(job.options === undefined ? {} : { opts: job.options }),
+    })),
+  );
 };
 
 export const scheduleRepeatable = async (

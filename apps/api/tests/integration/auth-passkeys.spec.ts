@@ -31,7 +31,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { goldPortalAccountService } from '../../src/modules/gold/portal-accounts/portal-account.service';
-import { SoftAuthenticator } from './helpers/soft-authenticator';
+import { SoftAuthenticator, type AuthenticationBend } from './helpers/soft-authenticator';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -112,10 +112,14 @@ const addPasskey = async (
   return created.body.data as PasskeyDto;
 };
 
-const passkeySignIn = async (device: SoftAuthenticator) => {
+const passkeySignIn = async (device: SoftAuthenticator, bend: AuthenticationBend = {}) => {
   const options = await request(app).post('/api/v1/auth/passkeys/authentication/options').send({});
   expect(options.status).toBe(200);
-  const answer = device.authenticate(options.body.data as PasskeyAuthenticationOptionsDto, origin);
+  const answer = device.authenticate(
+    options.body.data as PasskeyAuthenticationOptionsDto,
+    origin,
+    bend,
+  );
   const res = await request(app)
     .post('/api/v1/auth/passkeys/authentication/verify')
     .send({ response: answer });
@@ -124,6 +128,20 @@ const passkeySignIn = async (device: SoftAuthenticator) => {
 
 const passkeysOf = (userId: string) =>
   PasskeyModel.countDocuments({ userId: new Types.ObjectId(userId) }).exec();
+
+const securityOf = async (userId: string) =>
+  (await UserModel.findById(userId).lean().exec())?.security;
+
+/** Wrong passwords at the sign-in page, each under a fresh per-address limit. */
+const wrongPasswords = async (email: string, times: number) => {
+  for (let attempt = 0; attempt < times; attempt += 1) {
+    const wrong = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ identifier: email, password: 'Wr0ng#Pass!' });
+    expect(wrong.status).toBe(401);
+    await getCache().delByPrefix('rl:');
+  }
+};
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -204,6 +222,74 @@ describe('adding a passkey and signing in with it', () => {
       .send({ response: answer });
     expect(replay.status).toBe(401);
     expect(replay.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_EXPIRED);
+  });
+
+  it('a passkey sign-in clears the failed-password count, as a password sign-in does', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+
+    await wrongPasswords(staff.email, 3);
+    expect((await securityOf(staff.id))?.failedLogins).toBe(3);
+
+    const { res } = await passkeySignIn(device);
+    expect(res.status).toBe(200);
+    // Without the reset, a passkey-only person's mistyped passwords added up until the account
+    // locked — and the lock refuses the passkey too.
+    expect((await securityOf(staff.id))?.failedLogins).toBe(0);
+  });
+
+  it('a locked account stays locked: the passkey is refused and the lock is left in place', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+
+    // Five is the default lockout (auth.lockout.maxAttempts).
+    await wrongPasswords(staff.email, 5);
+    const lockedUntil = (await securityOf(staff.id))?.lockedUntil;
+    expect(lockedUntil?.getTime()).toBeGreaterThan(Date.now());
+
+    const { res } = await passkeySignIn(device);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.AUTH_ACCOUNT_LOCKED);
+    expect((await securityOf(staff.id))?.lockedUntil).toEqual(lockedUntil);
+  });
+
+  it('a sign-in clears only the count: a lock it finds is left for the lock checks to judge', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+    // A lock that has run out (so the sign-in goes through) and a count. Clearing the lock as well
+    // would also clear one a wrong password armed while this sign-in was in flight.
+    const expired = new Date(Date.now() - 60_000);
+    await UserModel.updateOne(
+      { _id: new Types.ObjectId(staff.id) },
+      { $set: { 'security.lockedUntil': expired, 'security.failedLogins': 3 } },
+    ).exec();
+    await getCache().del(userSnapshotKey(staff.id));
+
+    const { res } = await passkeySignIn(device);
+    expect(res.status).toBe(200);
+    const security = await securityOf(staff.id);
+    expect(security?.failedLogins).toBe(0);
+    expect(security?.lockedUntil).toEqual(expired);
+  });
+
+  it('a refused key neither clears nor adds to the failed-password count', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+    await wrongPasswords(staff.email, 2);
+
+    // Someone with the credential id but not the device: the signature does not verify.
+    const { res } = await passkeySignIn(device, { signWith: new SoftAuthenticator().privateKey });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_INVALID);
+    expect((await securityOf(staff.id))?.failedLogins).toBe(2);
   });
 
   it('refuses the step-up with a wrong password', async () => {
@@ -320,6 +406,44 @@ describe('who may use passkeys, and the switch', () => {
     await addPasskey(token, device);
     const { res } = await passkeySignIn(device);
     expect(res.status).toBe(200);
+  });
+
+  it('switched off, the passkeys are still listed — with the switch reported — and can be removed', async () => {
+    const staff = await makeAccount();
+    const token = (await passwordLogin(staff.email)).accessToken ?? '';
+    const added = await addPasskey(token, new SoftAuthenticator());
+    await settingsService.set(settingsCtx, {
+      key: SettingKeys.PasskeysEnabled,
+      scope: 'organization',
+      value: false,
+    });
+    try {
+      const listed = await request(app).get('/api/v1/auth/passkeys').set(bearer(token));
+      expect(listed.status).toBe(200);
+      expect((listed.body.data as PasskeyDto[]).map((p) => p.id)).toEqual([added.id]);
+      expect(listed.body.meta).toEqual({ enabled: false });
+
+      const renamed = await request(app)
+        .patch(`/api/v1/auth/passkeys/${added.id}`)
+        .set(bearer(token))
+        .send({ name: 'هاتفي' });
+      expect(renamed.status).toBe(403);
+      expect(renamed.body.error.code).toBe(ErrorCodes.AUTH_PASSKEYS_DISABLED);
+
+      const removed = await request(app)
+        .delete(`/api/v1/auth/passkeys/${added.id}`)
+        .set(bearer(token));
+      expect(removed.status).toBe(204);
+      expect(await passkeysOf(staff.id)).toBe(0);
+    } finally {
+      await settingsService.set(settingsCtx, {
+        key: SettingKeys.PasskeysEnabled,
+        scope: 'organization',
+        value: true,
+      });
+    }
+    const after = await request(app).get('/api/v1/auth/passkeys').set(bearer(token));
+    expect(after.body.meta).toEqual({ enabled: true });
   });
 
   it('switched off, the sign-in challenge is refused', async () => {

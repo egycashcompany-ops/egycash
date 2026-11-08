@@ -28,3 +28,7 @@ apps/api/storage/
 # Redis dumps from a local stack — never part of the repo.
 dump.rdb
 *.rdb
+
+# Python bytecode
+__pycache__/
+*.py[co]

@@ -57,6 +57,47 @@ export const THROTTLED_KEY_PREFIXES: readonly KeyPrefix[] = [
   FLEET_DASHBOARD_LIVE,
 ];
 
+/**
+ * The ATM boards' topics — HEAVY reads: the whole open board, the mail pages read whole. A bulk
+ * close or a long paste is a stream of these, heard by every viewer at once, so the realtime client
+ * batches them in their own debounced lane (`createDebouncedCoalescer`: one refetch per burst, each
+ * client at its own offset) instead of the 300 ms window. Exact topic names — the api's vocabulary.
+ */
+export const HEAVY_REALTIME_TOPICS: ReadonlySet<string> = new Set([
+  'atm.replenishment',
+  'atm.maintenance',
+  'atm.mailTicket',
+]);
+
+/**
+ * List kinds under a prefix that a realtime signal only MARKS STALE (`refetchType: 'none'`), never
+ * refetches: the boards' filter dropdowns (`facets` — distinct names, which another desk's single
+ * write almost never changes) and the done pages' ranges (`done` — whole walks of a day range). A
+ * mounted one keeps what it shows until it is next read — opened again, or its range or banks
+ * changed — and is read fresh then, being stale. The reader's OWN write still refreshes them at
+ * once: the mutation hooks invalidate with a refetch, outside realtime.
+ */
+const STALE_ONLY_LISTS: readonly { prefix: KeyPrefix; kinds: readonly string[] }[] = [
+  { prefix: ['atm', 'replenishments'], kinds: ['facets', 'done'] },
+  { prefix: ['atm', 'maintenances'], kinds: ['facets', 'done'] },
+];
+
+/**
+ * Is this query key one realtime only marks stale? Keys follow the factory's list shape —
+ * `[module, feature, 'list', { kind, … }]` (`shared/lib/query-keys.ts`).
+ */
+export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
+  const params = queryKey[3];
+  if (queryKey[2] !== 'list' || typeof params !== 'object' || params === null) return false;
+  const kind = (params as { kind?: unknown }).kind;
+  return STALE_ONLY_LISTS.some(
+    (entry) =>
+      entry.prefix.every((part, index) => queryKey[index] === part) &&
+      typeof kind === 'string' &&
+      entry.kinds.includes(kind),
+  );
+};
+
 const recruitmentPipeline: readonly KeyPrefix[] = [
   ['hr', 'applicants'],
   ['hr', 'recruitmentStageCounts'],

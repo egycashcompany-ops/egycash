@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  AtmOpenBoardQuerySchema,
   AtmOperationFacetsQuerySchema,
   AtmOperationIdsSchema,
   BulkUpdateAtmMaintenancesSchema,
@@ -24,6 +25,7 @@ import {
   deleteMaintenances,
   listDoneMaintenances,
   listOpenMaintenances,
+  maintenanceBoard,
   maintenanceFacets,
   maintenanceLeaderOptions,
   openMaintenances,
@@ -41,6 +43,15 @@ export const buildAtmMaintenancesRouter = (): Router => {
     authorize('atmMaintenance.view'),
     validate({ query: ListAtmOpenOperationsQuerySchema }),
     asyncHandler(listOpenMaintenances),
+  );
+  // The board WHOLE in one read — the list above without its pages (contracts:
+  // `AtmOpenBoardQuerySchema`). The same grant, so whoever reads the list reads the board.
+  router.get(
+    '/board',
+    authenticate,
+    authorize('atmMaintenance.view'),
+    validate({ query: AtmOpenBoardQuerySchema }),
+    asyncHandler(maintenanceBoard),
   );
   router.get(
     '/facets',

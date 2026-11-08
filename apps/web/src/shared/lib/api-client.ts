@@ -304,14 +304,39 @@ export const postWithMeta = <T, M>(path: string, body: unknown): Promise<DataWit
   return withSilentRefresh(path, () => rawEnvelope<T, M>(path, init));
 };
 
-export const get = <T>(path: string): Promise<T> => api<T>(path);
+/**
+ * What a read may carry beside its path: the AbortSignal TanStack Query hands a `queryFn`. Passed
+ * on to `fetch`, it stops a read the cache no longer wants — a superseded refetch, a screen left —
+ * on the wire, instead of letting it run to the end for an answer nobody reads.
+ */
+export interface ReadOptions {
+  signal?: AbortSignal | undefined;
+}
+
+/** `{ signal }` only when there is one — a read without one sends exactly what it always did. */
+const signalInit = (options: ReadOptions): RequestInit =>
+  options.signal === undefined ? {} : { signal: options.signal };
+
+export const get = <T>(path: string, options: ReadOptions = {}): Promise<T> =>
+  api<T>(path, signalInit(options));
+
+/** A GET whose answer carries its own `meta` beside `data` (as `postWithMeta`). Same silent refresh. */
+export const getWithMeta = <T, M>(
+  path: string,
+  options: ReadOptions = {},
+): Promise<DataWithMeta<T, M>> =>
+  withSilentRefresh(path, () => rawEnvelope<T, M>(path, signalInit(options)));
 
 /** List fetch that preserves the pagination `meta` envelope (API Standards §4). */
-const rawPage = async <T>(path: string): Promise<Paginated<T>> => {
+const rawPage = async <T>(path: string, options: ReadOptions = {}): Promise<Paginated<T>> => {
   const headers = new Headers({ 'Content-Type': 'application/json' });
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
   if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
-  const response = await fetch(`${BASE_URL}${path}`, { headers, credentials: 'include' });
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers,
+    credentials: 'include',
+    ...signalInit(options),
+  });
   const body = (await response.json()) as ApiEnvelope<T[]>;
   if (!body.success) {
     throw new ApiError(
@@ -332,15 +357,18 @@ const rawPage = async <T>(path: string): Promise<Paginated<T>> => {
   return { items, meta };
 };
 
-export const getPage = async <T>(path: string): Promise<Paginated<T>> => {
+export const getPage = async <T>(
+  path: string,
+  options: ReadOptions = {},
+): Promise<Paginated<T>> => {
   try {
-    return await rawPage<T>(path);
+    return await rawPage<T>(path, options);
   } catch (error) {
     if (
       error instanceof ApiError &&
       (error.code === 'AUTH_TOKEN_EXPIRED' || error.code === 'AUTH_TOKEN_INVALID')
     ) {
-      if (await tryRefresh()) return rawPage<T>(path);
+      if (await tryRefresh()) return rawPage<T>(path, options);
     }
     throw error;
   }

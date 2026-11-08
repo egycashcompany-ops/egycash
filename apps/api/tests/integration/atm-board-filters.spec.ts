@@ -11,7 +11,9 @@
 //   · a name holding a comma, a name stored with a stray trailing space, and an Arabic name all
 //     filter to exactly their own rows;
 //   · the dropdowns and the list read the same rows under the same scope, including the command
-//     bar's branch narrowing.
+//     bar's branch narrowing;
+//   · the board read (`GET …/board`, 2026-11) answers what the page walk adds up to — the same rows
+//     in the same order, filtered and scoped the same way — in ONE request, and refuses pages.
 //
 // The rows are written straight into the collections: how an operation is OPENED is proven in
 // atm.spec.ts and atm-no-double-open.spec.ts; this suite is about reading the board back.
@@ -25,6 +27,7 @@ import {
   SettingKeys,
   joinAtmNameList,
   platformPermissions,
+  type AtmOpenBoardDto,
   type AtmOperationFacetsDto,
   type PageMeta,
 } from '@ecms/contracts';
@@ -132,6 +135,18 @@ const wholeBoard = async (
 };
 
 const ids = (rows: readonly BoardRow[]): Set<string> => new Set(rows.map((row) => row.id));
+
+/** The board in ONE read — what the screens ask for since 2026-11 (`GET …/board`). */
+const boardRead = async (
+  token: string,
+  path: string,
+  query: Query = {},
+  branch?: string,
+): Promise<AtmOpenBoardDto<BoardRow>> => {
+  const res = await get(token, `${path}/board`, query, branch);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return (res.body as { data: AtmOpenBoardDto<BoardRow> }).data;
+};
 
 const DAY = 24 * 3600 * 1000;
 
@@ -430,6 +445,51 @@ describe.each([
       const board = await wholeBoard(adminToken, path, { banks: 'SYN NBE' }, tantaBranchId);
       expect(board.rows).toHaveLength(5);
       expect(board.rows.every((row) => row.branchId === tantaBranchId)).toBe(true);
+    });
+  });
+
+  describe('the board read — the whole board in one request', () => {
+    it('answers every open row the page walk adds up to, in the same order, uncut and uncounted', async () => {
+      const walk = await wholeBoard(alexToken, path);
+      const board = await boardRead(alexToken, path);
+      expect(board.truncated).toBe(false);
+      expect(board.totalItems).toBe(ALEX_TOTAL);
+      expect(board.items).toHaveLength(ALEX_TOTAL);
+      // Row for row: area descending, `_id` closing it — the paged list's own order.
+      expect(board.items.map((row) => row.id)).toEqual(walk.rows.map((row) => row.id));
+      expect(board.items.every((row) => row.closedAt === null)).toBe(true);
+    });
+
+    it('filters as the list does — bank, area, both, folded spellings, a comma, Arabic', async () => {
+      const count = async (query: Query): Promise<number> =>
+        (await boardRead(alexToken, path, query)).items.length;
+      expect(await count({ banks: 'SYN NBE' })).toBe(107);
+      expect(await count({ areas: 'SYN Smouha' })).toBe(105);
+      expect(await count({ banks: 'SYN NBE', areas: 'SYN Smouha' })).toBe(101);
+      expect(await count({ banks: 'SYN QNB' })).toBe(3);
+      expect(await count({ areas: 'SYN Agami' })).toBe(3);
+      expect(await count({ banks: joinAtmNameList(['SYN Bank, Ltd']) })).toBe(3);
+      expect(await count({ banks: 'SYN NBE,SYN CIB' })).toBe(107 + 14);
+      expect(await count({ areas: 'سموحة' })).toBe(3);
+      expect(await count({ banks: 'SYN CIB', areas: 'SYN Sidi Gaber' })).toBe(0);
+    });
+
+    it('reads the same scope — a branch reader, the company, and the command bar’s branch', async () => {
+      const tanta = await boardRead(tantaToken, path);
+      expect(tanta.items).toHaveLength(TANTA_TOTAL);
+      expect(tanta.items.every((row) => row.branchId === tantaBranchId)).toBe(true);
+      // Organization-wide: no branch filter at all — the read `ix_open_board` serves.
+      const company = await boardRead(adminToken, path);
+      expect(company.items).toHaveLength(ALEX_TOTAL + TANTA_TOTAL);
+      expect(company.totalItems).toBe(ALEX_TOTAL + TANTA_TOTAL);
+      const narrowed = await boardRead(adminToken, path, { banks: 'SYN NBE' }, tantaBranchId);
+      expect(narrowed.items).toHaveLength(5);
+      expect(narrowed.items.every((row) => row.branchId === tantaBranchId)).toBe(true);
+    });
+
+    it('refuses pages — it is one read, not a walk', async () => {
+      expect((await get(alexToken, `${path}/board`, { page: '1' })).status).toBe(400);
+      expect((await get(alexToken, `${path}/board`, { pageSize: '100' })).status).toBe(400);
     });
   });
 });

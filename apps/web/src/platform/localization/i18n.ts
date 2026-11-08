@@ -302,6 +302,7 @@ const en: Record<string, string> = {
   'account.security.passkeyRemove': 'Remove',
   'account.security.passkeyRemoveTitle': 'Remove this device?',
   'account.security.passkeyRemoveBody': '«{{name}}» will no longer be able to sign in to your account. You can add it again at any time.',
+  'account.security.passkeyRemoveBodyOff': '«{{name}}» will no longer be able to sign in to your account.',
   'account.security.passkeyRemoved': 'Device removed.',
   'account.security.passkeyAddedOn': 'Added {{date}}',
   'account.security.passkeyLastUsed': 'Last used {{date}}',
@@ -310,6 +311,7 @@ const en: Record<string, string> = {
   'account.security.passkeySyncedHint': 'Saved in your iCloud or Google account, so it also works on your other devices.',
   'account.security.passkeyUnsupported': 'This browser cannot add fingerprint or face sign-in. Open this page on your phone, or in an up-to-date browser.',
   'account.security.passkeysOff': 'Fingerprint and face sign-in is turned off for this organization.',
+  'account.security.passkeysOffRemove': 'You can still remove your devices.',
   'account.security.signedInWith.password': 'Password',
   'account.security.signedInWith.passkey': 'Fingerprint or face',
   'account.security.signedInWith.portalChallenge': 'One-time code',
@@ -10992,6 +10994,8 @@ const en: Record<string, string> = {
   'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
   'atm.common.emptyColumnFiltered': 'No row matches the column filters.',
   'atm.common.filterColumn': 'Filter {{column}}',
+  'atm.common.boardCutShort':
+    'The board holds {{total}} open operations and shows the first {{shown}}. Narrow it by bank or area to see the rest.',
   'atm.common.shift': 'Shift',
   'atm.common.leaderShiftHint':
     'Changing the leader applies to every open operation of the same area in the same shift.',
@@ -12945,6 +12949,7 @@ const ar: Record<string, string> = {
   'account.security.passkeyRemove': 'حذف',
   'account.security.passkeyRemoveTitle': 'حذف هذا الجهاز؟',
   'account.security.passkeyRemoveBody': 'لن يتمكن «{{name}}» من الدخول إلى حسابك بعد الآن، ويمكنك إضافته مجددًا في أي وقت.',
+  'account.security.passkeyRemoveBodyOff': 'لن يتمكن «{{name}}» من الدخول إلى حسابك بعد الآن.',
   'account.security.passkeyRemoved': 'حُذف الجهاز.',
   'account.security.passkeyAddedOn': 'أُضيف في {{date}}',
   'account.security.passkeyLastUsed': 'آخر استخدام {{date}}',
@@ -12953,6 +12958,7 @@ const ar: Record<string, string> = {
   'account.security.passkeySyncedHint': 'محفوظ في حسابك على iCloud أو Google، لذا يعمل أيضًا على أجهزتك الأخرى.',
   'account.security.passkeyUnsupported': 'لا يستطيع هذا المتصفح إضافة الدخول بالبصمة أو الوجه. افتح هذه الصفحة من هاتفك أو من متصفح حديث.',
   'account.security.passkeysOff': 'الدخول بالبصمة أو الوجه موقوف في هذه المؤسسة.',
+  'account.security.passkeysOffRemove': 'ويظل بإمكانك حذف أجهزتك.',
   'account.security.signedInWith.password': 'كلمة المرور',
   'account.security.signedInWith.passkey': 'البصمة أو الوجه',
   'account.security.signedInWith.portalChallenge': 'رمز لمرة واحدة',
@@ -23439,6 +23445,8 @@ const ar: Record<string, string> = {
   'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
   'atm.common.emptyColumnFiltered': 'لا توجد سطور تطابق فلاتر الأعمدة.',
   'atm.common.filterColumn': 'فلترة {{column}}',
+  'atm.common.boardCutShort':
+    'تضم اللوحة {{total}} عملية مفتوحة، ويُعرض منها أول {{shown}} فقط. يُرجى تضييقها بالبنك أو المنطقة لعرض الباقي.',
   'atm.common.shift': 'الوردية',
   'atm.common.leaderShiftHint':
     'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',

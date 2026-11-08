@@ -1,6 +1,7 @@
 # ADR-035: Sign-in with a passkey (fingerprint / Face ID), and it counts as the second factor
 
-**Status:** Accepted · **Date:** 2026-11-01 · **Relates to:**
+**Status:** Accepted · **Date:** 2026-11-01 · **§9 superseded by:**
+[ADR-036](ADR-036-passkey-switch-keeps-own-list-and-removal.md) (2026-11-07) · **Relates to:**
 [ADR-006](ADR-006-jwt-refresh-tokens.md) (sessions), [ADR-027](ADR-027-external-identities.md) (external accounts),
 [ADR-033](ADR-033-outbound-http-one-door.md) (outbound HTTP),
 [Review R13](../10-reviews/2026-07-architecture-review-01.md) (mandatory TOTP for privileged accounts),

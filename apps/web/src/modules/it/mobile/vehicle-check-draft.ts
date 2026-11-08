@@ -40,10 +40,7 @@ export interface VehicleCheckDraft extends VehicleCheckFormState {
   vehicleCode: string;
 }
 
-export const writeVehicleCheckDraft = (
-  state: VehicleCheckFormState,
-  vehicleCode: string,
-): void => {
+export const writeVehicleCheckDraft = (state: VehicleCheckFormState, vehicleCode: string): void => {
   const draft: VehicleCheckDraft = {
     v: 1,
     vehicleId: state.vehicleId,

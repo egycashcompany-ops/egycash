@@ -100,7 +100,10 @@ describe('the form', () => {
   it('shows the eleven devices, in the owner’s order', () => {
     const page = html();
     const at = ITEMS_IN_ORDER.map((label) => page.indexOf(label));
-    expect(at.every((i) => i >= 0), `missing: ${String(at)}`).toBe(true);
+    expect(
+      at.every((i) => i >= 0),
+      `missing: ${String(at)}`,
+    ).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
@@ -200,7 +203,10 @@ describe('a draft given back after a reload', () => {
 });
 
 describe('the banner and the send, read from source', () => {
-  const SOURCE = readFileSync(fileURLToPath(new URL('./VehicleCheckPage.tsx', import.meta.url)), 'utf8');
+  const SOURCE = readFileSync(
+    fileURLToPath(new URL('./VehicleCheckPage.tsx', import.meta.url)),
+    'utf8',
+  );
 
   it('opens the missing-fields banner with the form’s own words', () => {
     expect(SOURCE).toMatch(/<MissingFieldsBanner[\s\S]*?lead=\{t\('it\.vehicleCheck\.notSent'\)\}/);

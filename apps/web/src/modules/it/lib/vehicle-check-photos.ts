@@ -124,7 +124,9 @@ export interface PhotoTally<P> {
 export const tallyPhotos = <P>(outcomes: readonly PhotoOutcome<P>[]): PhotoTally<P> => ({
   uploaded: outcomes.filter((o) => o.status === 'uploaded').length,
   failed: outcomes.flatMap((o) => (o.status === 'failed' ? [o.photo] : [])),
-  refused: outcomes.flatMap((o) => (o.status === 'refused' ? [{ photo: o.photo, code: o.code }] : [])),
+  refused: outcomes.flatMap((o) =>
+    o.status === 'refused' ? [{ photo: o.photo, code: o.code }] : [],
+  ),
 });
 
 /** Why a refused photo was refused — one reason per code, for the sent view. */

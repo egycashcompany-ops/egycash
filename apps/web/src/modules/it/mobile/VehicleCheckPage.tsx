@@ -236,9 +236,13 @@ export const VehicleCheckPage = (): JSX.Element => {
       }
       // Filed (201, or 200 for a report this id already filed). Now the photos, one at a time.
       let photoCount = report.photos.length;
-      const outcomes = await uploadPhotosInOrder(report.id, photosRef.current, async (id, photo) => {
-        photoCount = (await uploadVehicleCheckPhoto(id, photo)).photos.length;
-      });
+      const outcomes = await uploadPhotosInOrder(
+        report.id,
+        photosRef.current,
+        async (id, photo) => {
+          photoCount = (await uploadVehicleCheckPhoto(id, photo)).photos.length;
+        },
+      );
       const tally = tallyPhotos(outcomes);
       clearVehicleCheckDraft();
       dropAllPhotos();
@@ -430,9 +434,7 @@ export const VehicleCheckPage = (): JSX.Element => {
       {oneItem('screen')}
 
       <section className={CARD} data-vehicle-check-cameras="true">
-        <h2
-          className={cn(CARD_TITLE, 'border-b border-slate-100 px-4 py-3 dark:border-slate-800')}
-        >
+        <h2 className={cn(CARD_TITLE, 'border-b border-slate-100 px-4 py-3 dark:border-slate-800')}>
           {t('it.vehicleCheck.cameras')}
         </h2>
         <ol className="divide-y divide-slate-100 dark:divide-slate-800">

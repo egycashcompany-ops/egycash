@@ -80,7 +80,9 @@ describe('accessibility and RTL', () => {
   it('gives every icon-only control a label', () => {
     // The back arrow (the frame's) and a photo's ✕ are the controls here with no visible text.
     expect(shellSource()).toContain('aria-label=');
-    expect(sourceOf('VehicleCheckPhotos.tsx')).toMatch(/aria-label=\{t\('it\.vehicleCheck\.photos\.remove'\)\}/);
+    expect(sourceOf('VehicleCheckPhotos.tsx')).toMatch(
+      /aria-label=\{t\('it\.vehicleCheck\.photos\.remove'\)\}/,
+    );
   });
 
   it('names each pair of answers by its device, and tells the answers apart by more than colour', () => {

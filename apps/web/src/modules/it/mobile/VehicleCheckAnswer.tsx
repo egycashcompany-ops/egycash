@@ -54,7 +54,9 @@ export const VehicleCheckAnswer = ({
               // Chosen: the system's success green or danger red. Green is emerald-700, not 600:
               // white 14px bold on emerald-600 is 3.8:1, under the 4.5:1 text needs outdoors; on
               // emerald-700 it is 5.5:1 (red-600 is already 4.8:1).
-              on && answer === 'works' && 'bg-emerald-700 text-white shadow-md shadow-emerald-800/30',
+              on &&
+                answer === 'works' &&
+                'bg-emerald-700 text-white shadow-md shadow-emerald-800/30',
               on && answer === 'notWorking' && 'bg-red-600 text-white shadow-md shadow-red-700/30',
               // Not chosen: neutral, icon and all — colour IS the answer, so an unanswered row
               // carries none.

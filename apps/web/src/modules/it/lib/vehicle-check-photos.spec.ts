@@ -44,9 +44,7 @@ describe('uploadPhotosInOrder', () => {
       if (p.n === 2) return Promise.reject(new TypeError('Failed to fetch'));
       if (p.n === 3) return Promise.reject(new ApiError('INTERNAL', 'boom', 502));
       if (p.n === 4) {
-        return Promise.reject(
-          new ApiError('IT_VEHICLE_CHECK_PHOTO_LIMIT', 'limit', 422),
-        );
+        return Promise.reject(new ApiError('IT_VEHICLE_CHECK_PHOTO_LIMIT', 'limit', 422));
       }
       if (p.n === 5) return Promise.reject(new ApiError('NOT_FOUND', 'gone', 404));
       return Promise.resolve();
@@ -84,7 +82,9 @@ describe('uploadPhotosInOrder', () => {
         : p.n === 3
           ? Promise.reject(new ApiError('IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED', 'late', 422))
           : Promise.resolve();
-    const tally = tallyPhotos(await uploadPhotosInOrder('r1', [photo(1), photo(2), photo(3)], upload));
+    const tally = tallyPhotos(
+      await uploadPhotosInOrder('r1', [photo(1), photo(2), photo(3)], upload),
+    );
     expect(tally.uploaded).toBe(1);
     expect(tally.failed).toEqual([photo(2)]);
     expect(tally.refused).toEqual([

@@ -71,12 +71,23 @@ describe('answerTapped — a tap on «يعمل» or «لا يعمل»', () => {
 
 describe('checkCounts — the bar and the sent view', () => {
   it('counts nothing on an empty form', () => {
-    expect(checkCounts({})).toEqual({ total: 11, done: 0, works: 0, notWorking: 0, unanswered: 11 });
+    expect(checkCounts({})).toEqual({
+      total: 11,
+      done: 0,
+      works: 0,
+      notWorking: 0,
+      unanswered: 11,
+    });
   });
 
   it('counts each answer, and the unanswered rest', () => {
     expect(
-      checkCounts({ screen: 'works', camera1: 'works', camera8: 'notWorking', radio: 'notWorking' }),
+      checkCounts({
+        screen: 'works',
+        camera1: 'works',
+        camera8: 'notWorking',
+        radio: 'notWorking',
+      }),
     ).toEqual({ total: 11, done: 4, works: 2, notWorking: 2, unanswered: 7 });
   });
 });

@@ -230,8 +230,7 @@ export const deleteAsset = (id: string): Promise<void> => del<void>(`/it/assets/
  */
 export const renderAssetLabels = (
   assetIds: readonly string[],
-): Promise<{ contentType: string; blob: Blob }> =>
-  postBinary('/it/assets/labels', { assetIds });
+): Promise<{ contentType: string; blob: Blob }> => postBinary('/it/assets/labels', { assetIds });
 
 // ── Custody (design §4.3) ───────────────────────────────────────────────────
 // Four NAMED actions, matching the API exactly. Each answers with the ASSET in its new state, so
@@ -292,9 +291,7 @@ export const listAssetAssignments = (
   getPage<ItAssetAssignmentDto>(`/it/assets/${id}/assignments${buildQuery(params)}`);
 
 /** The cross-asset custody register — "what is out, and who has it". */
-export const listAssignments = (
-  params: ItListParams,
-): Promise<Paginated<ItAssetAssignmentDto>> =>
+export const listAssignments = (params: ItListParams): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
 
 // ── The IT home dashboard (design §11) ──────────────────────────────────────
@@ -485,14 +482,12 @@ export const listTicketPriorities = (
   params: ItListParams,
 ): Promise<Paginated<ItTicketPriorityDto>> =>
   getPage<ItTicketPriorityDto>(`/it/ticket-priorities${buildQuery(params)}`);
-export const createTicketPriority = (
-  body: CreateItTicketPriority,
-): Promise<ItTicketPriorityDto> => post<ItTicketPriorityDto>('/it/ticket-priorities', body);
+export const createTicketPriority = (body: CreateItTicketPriority): Promise<ItTicketPriorityDto> =>
+  post<ItTicketPriorityDto>('/it/ticket-priorities', body);
 export const updateTicketPriority = (
   id: string,
   body: UpdateItTicketPriority,
-): Promise<ItTicketPriorityDto> =>
-  patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
+): Promise<ItTicketPriorityDto> => patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
 
 // ── Help desk: tickets (design §4.4) ────────────────────────────────────────
 export const listTickets = (params: ItListParams): Promise<Paginated<ItTicketDto>> =>
@@ -507,10 +502,8 @@ export const updateTicket = (id: string, body: UpdateItTicket): Promise<ItTicket
 // Transitions. Each answers with the ticket in its new state, so nothing is re-derived here.
 export const assignTicket = (id: string, body: AssignItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/assign`, body);
-export const changeTicketStatus = (
-  id: string,
-  body: ChangeItTicketStatus,
-): Promise<ItTicketDto> => post<ItTicketDto>(`/it/tickets/${id}/status`, body);
+export const changeTicketStatus = (id: string, body: ChangeItTicketStatus): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/status`, body);
 export const resolveTicket = (id: string, body: ResolveItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/resolve`, body);
 export const closeTicket = (id: string, body: CloseItTicket): Promise<ItTicketDto> =>

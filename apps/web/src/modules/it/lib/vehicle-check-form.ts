@@ -98,7 +98,13 @@ export const checkCounts = (
     else if (items[item] === 'notWorking') notWorking += 1;
   }
   const done = works + notWorking;
-  return { total: VEHICLE_CHECK_TOTAL, done, works, notWorking, unanswered: VEHICLE_CHECK_TOTAL - done };
+  return {
+    total: VEHICLE_CHECK_TOTAL,
+    done,
+    works,
+    notWorking,
+    unanswered: VEHICLE_CHECK_TOTAL - done,
+  };
 };
 
 /**
@@ -182,7 +188,13 @@ export const vehicleCheckSendFailure = (error: unknown): VehicleCheckSendFailure
     return { toast: 'failed', ...kept, newRequestId: false };
   }
   if (error.status === 404) {
-    return { toast: 'carGone', clearCar: true, refetchCars: true, resetDay: false, newRequestId: true };
+    return {
+      toast: 'carGone',
+      clearCar: true,
+      refetchCars: true,
+      resetDay: false,
+      newRequestId: true,
+    };
   }
   if (error.status === 422 && error.code === 'IT_VEHICLE_NOT_ACTIVE') {
     return {
@@ -194,7 +206,13 @@ export const vehicleCheckSendFailure = (error: unknown): VehicleCheckSendFailure
     };
   }
   if (refusedDay(error)) {
-    return { toast: 'futureDay', clearCar: false, refetchCars: false, resetDay: true, newRequestId: true };
+    return {
+      toast: 'futureDay',
+      clearCar: false,
+      refetchCars: false,
+      resetDay: true,
+      newRequestId: true,
+    };
   }
   return { toast: 'failed', ...kept, newRequestId: true };
 };

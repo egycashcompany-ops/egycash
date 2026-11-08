@@ -18,10 +18,7 @@ import { describe, expect, it } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROUTES = readFileSync(resolve(HERE, 'routes.tsx'), 'utf8');
-const SEED = readFileSync(
-  resolve(HERE, '../../../../api/src/seed-navigation.ts'),
-  'utf8',
-);
+const SEED = readFileSync(resolve(HERE, '../../../../api/src/seed-navigation.ts'), 'utf8');
 
 /** `path="x"` → the declared child paths of the IT subtree. */
 const declaredPaths = (): string[] =>

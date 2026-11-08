@@ -8182,6 +8182,10 @@ const en: Record<string, string> = {
     'The receipt is printed — record the hand-over now. Upload its signed copy once the employee signs it.',
   'it.custody.receipt.changedSincePrint':
     'The details changed after printing — print the receipt again before recording.',
+  'it.custody.receipt.printOptional':
+    'Print the receipt now, or record the hand-over and print it later from Asset custody, the asset’s page or the employee’s page. Upload the signed copy once the employee signs it.',
+  'it.custody.receipt.changedSincePrintHandOver':
+    'The details changed after printing, so the printed receipt no longer matches them. Print it again, or record the hand-over: it gets a new receipt you can print later.',
   'it.custody.receipt.transferPrintFirst':
     'The new holder signs a receipt: print it before you record the transfer.',
   'it.custody.receipt.printedNowTransfer': 'The receipt is printed — record the transfer now.',
@@ -8197,6 +8201,8 @@ const en: Record<string, string> = {
     'The national ID was left blank on the paper: showing it on custody receipts needs its own permission.',
   'it.custody.receipt.handedOver':
     'Handed over. Upload the receipt once the employee signs it.',
+  'it.custody.receipt.handedOverUnprinted':
+    'Handed over without a printed receipt. Print it from Asset custody, the asset’s page or the employee’s page, then upload the signed copy.',
   'it.custody.receipt.preparing': 'Preparing the receipt…',
   'it.custody.receipt.popupBlocked':
     'The browser blocked the print window. Allow pop-ups for this site and try again.',
@@ -20689,6 +20695,10 @@ const ar: Record<string, string> = {
     'طُبع الإيصال؛ سجّل التسليم الآن، ثم ارفع صورة الإيصال بعد توقيع الموظف عليه.',
   'it.custody.receipt.changedSincePrint':
     'تغيّرت البيانات بعد الطباعة؛ اطبع الإيصال مرة أخرى قبل التسجيل.',
+  'it.custody.receipt.printOptional':
+    'اطبع إيصال الاستلام الآن، أو سجّل التسليم واطبعه لاحقًا من «عهدة الأصول» أو من صفحة الأصل أو صفحة الموظف، ثم ارفع صورة الإيصال بعد توقيع الموظف عليه.',
+  'it.custody.receipt.changedSincePrintHandOver':
+    'تغيّرت البيانات بعد الطباعة، فلم يعد الإيصال المطبوع مطابقًا لها. اطبعه مرة أخرى، أو سجّل التسليم ويُصدر له إيصال جديد يمكن طباعته لاحقًا.',
   'it.custody.receipt.transferPrintFirst':
     'يوقّع المستلم الجديد على إيصال استلام؛ اطبعه قبل تسجيل النقل.',
   'it.custody.receipt.printedNowTransfer': 'طُبع الإيصال؛ سجّل النقل الآن.',
@@ -20703,6 +20713,8 @@ const ar: Record<string, string> = {
   'it.custody.receipt.nationalIdWithheld':
     'تُرك الرقم القومي فارغًا في الإقرار؛ فعرضه في إقرار الاستلام يحتاج إلى صلاحية خاصة.',
   'it.custody.receipt.handedOver': 'تم التسليم. ارفع صورة الإيصال بعد توقيع الموظف عليه.',
+  'it.custody.receipt.handedOverUnprinted':
+    'تم التسليم دون طباعة الإيصال. اطبعه من «عهدة الأصول» أو من صفحة الأصل أو صفحة الموظف، ثم ارفع صورته بعد توقيع الموظف عليه.',
   'it.custody.receipt.preparing': 'جارٍ تجهيز الإيصال…',
   'it.custody.receipt.popupBlocked':
     'منع المتصفح نافذة الطباعة؛ اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.',

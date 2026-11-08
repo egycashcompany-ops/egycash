@@ -29,6 +29,9 @@ import {
   type ItConsumableDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
+  type ItVehicleCheckDto,
+  IT_VEHICLE_CHECK_ITEMS,
+  ymdOf,
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
@@ -54,6 +57,7 @@ import { type ItMobileLineReceiptDoc } from './mobile-lines/line-receipt.model';
 import { type ItConsumableDoc } from './consumables/consumable.model';
 import { type ItConsumableMovementDoc } from './consumables/consumable-movement.model';
 import { type ItConsumableMemoDoc } from './consumables/consumable-memo.model';
+import { type ItVehicleCheckDoc } from './vehicle-checks/vehicle-check.model';
 // A pure rule, not a model: the register's «below minimum» is the store's arithmetic, said once.
 import { isBelowMin } from './consumables/consumable-stock';
 
@@ -777,9 +781,7 @@ export const toItSparePartDto = (doc: ItSparePartDoc): ItSparePartDto => ({
 });
 
 /** A ledger row carries no `version`: it is append-only, so there is nothing to edit optimistically. */
-export const toItSparePartMovementDto = (
-  doc: ItSparePartMovementDoc,
-): ItSparePartMovementDto => ({
+export const toItSparePartMovementDto = (doc: ItSparePartMovementDoc): ItSparePartMovementDto => ({
   id: String(doc._id),
   partId: String(doc.partId),
   qty: doc.qty,
@@ -880,4 +882,33 @@ export const toItTechnicianDto = (person: DirectoryEmployeeListing): ItTechnicia
   fullNameAr: person.fullNameAr,
   status: person.status,
   userId: person.userId,
+});
+
+/**
+ * A vehicle device check (FR-21). Every one of the eleven items is on the wire, in the contract's
+ * order — unanswered as `null` — and `checkDate` is the date-only day it was filed for.
+ */
+export const toItVehicleCheckDto = (doc: ItVehicleCheckDoc): ItVehicleCheckDto => ({
+  id: String(doc._id),
+  version: doc.__v,
+  vehicleId: String(doc.vehicleId),
+  vehicleCode: doc.vehicleCode,
+  branchId: idOrNull(doc.branchId),
+  checkDate: ymdOf(doc.checkDate),
+  items: Object.fromEntries(
+    IT_VEHICLE_CHECK_ITEMS.map((key) => [key, doc.items?.[key] ?? null]),
+  ) as ItVehicleCheckDto['items'],
+  notes: doc.notes ?? null,
+  photos: doc.photos.map((photo) => ({
+    clientPhotoId: photo.clientPhotoId,
+    fileId: String(photo.fileId),
+    fileName: photo.fileName,
+    mime: photo.mime,
+    size: photo.size,
+    uploadedAt: iso(photo.uploadedAt),
+  })),
+  reportedByUserId: String(doc.reportedByUserId),
+  reportedByName: doc.reportedByName,
+  clientRequestId: doc.clientRequestId,
+  createdAt: iso(doc.createdAt),
 });

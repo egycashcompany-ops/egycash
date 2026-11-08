@@ -927,6 +927,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'folder',
         permission: 'itCatalog.manage',
       },
+      {
+        // FR-21 — «فحص أجهزة السيارة», the phone form (docs/12-planning/it-vehicle-checks-design.md
+        // §4): last in the IT list, on its own grant, so a role that holds only the form sees this
+        // one row. The car glyph, which no other IT row wears.
+        en: 'Vehicle device check',
+        ar: 'فحص أجهزة السيارة',
+        route: '/it/vehicle-checks/new',
+        icon: 'vehicle',
+        permission: 'itVehicleCheck.create',
+      },
     ],
   },
   {

@@ -615,6 +615,21 @@ export const useUploadConsumableMemoSignedCopy = () =>
 export const useDeleteConsumableMemoSignedCopy = () =>
   useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
 
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
+
+/**
+ * The phone form's cars: every active car, by code, every page (`fetchItVehicleCheckCars`). A
+ * minute fresh: the car box asks again when it opens on a list older than that, so a car activated
+ * since is on offer without reloading the page. Filing and photos are plain calls from the page —
+ * each outcome has its own answer on the form (§6.3), not the app's one error toast.
+ */
+export const useItVehicleCheckCars = () =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleCheckCars'),
+    queryFn: api.fetchItVehicleCheckCars,
+    staleTime: 60_000,
+  });
+
 // ── People: the employees IT names ──────────────────────────────────────────
 
 /** Departments and job titles — names for a person's placement. Rarely change: session-cached. */

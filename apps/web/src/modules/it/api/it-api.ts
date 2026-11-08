@@ -90,6 +90,9 @@ import {
   type ReturnItConsumable,
   type ScrapItConsumable,
   type UpdateItConsumable,
+  type CreateItVehicleCheck,
+  type ItVehicleCheckDto,
+  type ItVehicleOptionDto,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -111,6 +114,7 @@ import {
   upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
+import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
 
 export type ItListParams = QueryParams;
 
@@ -438,6 +442,43 @@ export const fetchConsumableMemoSignedCopy = (id: string): Promise<Blob> =>
   fetchBlob(`/it/consumable-memos/${id}/signed-copy`);
 export const deleteConsumableMemoSignedCopy = (id: string): Promise<ItConsumableMemoDto> =>
   del<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`);
+
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
+// The phone form (docs/12-planning/it-vehicle-checks-design.md §6): IT's own list of the active
+// cars, the report, and its photos. Every call rides `itVehicleCheck.create` alone — the reporter
+// needs no Fleet grant to see the cars.
+
+/**
+ * Every active car, by code in Fleet's code order — EVERY page of IT's own list (ADR-037: a car
+ * picker shows every code, «لازم لازم تظهر كلها»). Named apart from Fleet's registry reads, so the
+ * vehicle-code census does not read it as one.
+ */
+export const fetchItVehicleCheckCars = (): Promise<Paginated<ItVehicleOptionDto>> =>
+  fetchWholeCatalog((page, pageSize) =>
+    getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`),
+  );
+
+/**
+ * File one report. A repeated `clientRequestId` from the same reporter answers with the report
+ * that already exists (200) instead of filing a second one.
+ */
+export const fileVehicleCheck = (body: CreateItVehicleCheck): Promise<ItVehicleCheckDto> =>
+  post<ItVehicleCheckDto>('/it/vehicle-checks', body);
+
+/**
+ * One photo onto one's own report, within 24 hours of filing it. A repeated `clientPhotoId`
+ * answers with the report unchanged — a retry never takes a second of its five places.
+ */
+export const uploadVehicleCheckPhoto = (
+  id: string,
+  photo: { clientPhotoId: string; file: Blob; fileName: string },
+): Promise<ItVehicleCheckDto> => {
+  const form = new FormData();
+  // The id before the file, so the server has it in hand when the file part arrives.
+  form.append('clientPhotoId', photo.clientPhotoId);
+  form.append('file', photo.file, photo.fileName);
+  return upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form);
+};
 
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (

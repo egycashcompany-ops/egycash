@@ -30,7 +30,7 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface, and the employees register', () => {
+  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface, the employees register and the vehicle check', () => {
     expect(paths.sort()).toEqual(
       [
         'assets',
@@ -51,6 +51,8 @@ describe('IT routes', () => {
         // FR-20 — the consumables' store and its ledger, on the same grants.
         'consumables',
         'consumables/movements',
+        // FR-21 — the vehicle device check, a phone form on its own grant, outside AppShell.
+        'vehicle-checks/new',
         'software',
         'spare-parts',
         'tickets',

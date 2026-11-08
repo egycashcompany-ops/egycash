@@ -68,7 +68,8 @@ describe('the seeded navigation catalog', () => {
     // page links to its own batches — and are RETIRED on live installations (see below).
     // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
     // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
-    expect(rows).toHaveLength(133);
+    // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
+    expect(rows).toHaveLength(134);
   });
 
   /**

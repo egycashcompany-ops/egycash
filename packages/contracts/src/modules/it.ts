@@ -9,6 +9,7 @@
 // (FR-2) and no endpoint sets it. In IT-1 the only operation is registration, so every asset is
 // `inStock` — the full vocabulary is declared now so IT-2 extends behaviour, not shapes.
 import { z } from 'zod';
+import { cairoYmd, isYmd } from '../common/cairo-date.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 import {
   PaginationQuerySchema,
@@ -425,9 +426,7 @@ export interface ItAssetNamesDto {
  * The name filter's options follow the category filter («والبيانات اللى فى فلتر الفئات هي نفسها
  * تتفلتر بناء على الفئات»): with categories chosen, only the names of assets in them.
  */
-export const ListItAssetNamesQuerySchema = z
-  .object({ categoryId: listQuery(objectId()) })
-  .strict();
+export const ListItAssetNamesQuerySchema = z.object({ categoryId: listQuery(objectId()) }).strict();
 export type ListItAssetNamesQuery = z.infer<typeof ListItAssetNamesQuerySchema>;
 
 /**
@@ -1069,8 +1068,16 @@ export interface ItTicketPriorityDto {
 const priorityCore = {
   name: LocalizedStringSchema,
   rank: z.number().int().min(0).max(1000),
-  responseMinutes: z.number().int().min(1).max(60 * 24 * 365),
-  resolutionMinutes: z.number().int().min(1).max(60 * 24 * 365),
+  responseMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(60 * 24 * 365),
+  resolutionMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(60 * 24 * 365),
 };
 
 export const CreateItTicketPrioritySchema = z
@@ -2619,3 +2626,117 @@ export interface ItDashboardActivityDto {
   items: ItDashboardActivityItemDto[];
 }
 
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ──────────────────────
+//
+// «I need to create a new form for specific users to use on Mobile to inform about the car status»
+// (docs/12-planning/it-vehicle-checks-design.md). One report per send: the car, the Cairo day the
+// check is for, an answer per device, a note and up to five photos. Several reports per car per day
+// are allowed; "the latest" is the latest `checkDate`, then the latest filing time.
+//
+// A report's car, day, answers and notes never change once filed; only photos are added, by the
+// reporter, within `IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS`. `clientRequestId` makes a repeated send
+// return the report that already exists. The car list's query is the shared
+// `PaginationQuerySchema`; the items' labels live in the web's i18n, not here.
+
+/** 'YYYY-MM-DD' that is a real calendar day — refuses 2026-02-30. */
+const ymd = () => z.string().refine(isYmd, 'Expected a calendar day, YYYY-MM-DD');
+
+/**
+ * The eleven devices, in the owner's order: the screen; the eight cameras (front, right rear, left
+ * rear, rear, driver's cabin, specialists' cabin, inside safe 1, inside safe 2); the DVR; the radio
+ * (Motorola).
+ */
+export const IT_VEHICLE_CHECK_ITEMS = [
+  'screen',
+  'camera1',
+  'camera2',
+  'camera3',
+  'camera4',
+  'camera5',
+  'camera6',
+  'camera7',
+  'camera8',
+  'dvr',
+  'radio',
+] as const;
+export type ItVehicleCheckItem = (typeof IT_VEHICLE_CHECK_ITEMS)[number];
+
+/** «يعمل» / «لا يعمل». An item left unanswered is `null` (also a device the car does not have). */
+export const IT_VEHICLE_CHECK_ANSWERS = ['works', 'notWorking'] as const;
+export type ItVehicleCheckAnswer = (typeof IT_VEHICLE_CHECK_ANSWERS)[number];
+
+export const IT_VEHICLE_CHECK_MAX_PHOTOS = 5;
+/** Photos are added to one's own report within this many hours of filing it. */
+export const IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS = 24;
+export const IT_VEHICLE_CHECK_NOTES_MAX = 1000;
+export const IT_VEHICLE_CHECK_PHOTO_FILE_CATEGORY = 'it-vehicle-check-photos';
+export const IT_VEHICLE_CHECK_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
+
+const answer = z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null);
+
+/**
+ * File a report. Every answer is optional — a missing key becomes `null` — and the only required
+ * fields are the car, the day and the request id. The day is never after today in Cairo.
+ */
+export const CreateItVehicleCheckSchema = z
+  .object({
+    vehicleId: objectId(),
+    checkDate: ymd().refine((d) => d <= cairoYmd(new Date()), 'checkDate is after today in Cairo'),
+    items: z
+      .object(
+        Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((k) => [k, answer])) as Record<
+          ItVehicleCheckItem,
+          typeof answer
+        >,
+      )
+      .strict()
+      .default({}),
+    /** Trimmed; '' is dropped by the service (an empty note is absent). */
+    notes: z.string().trim().max(IT_VEHICLE_CHECK_NOTES_MAX).optional(),
+    /** Made once per report by the form, so a repeated send is the same report. */
+    clientRequestId: z.string().uuid(),
+  })
+  .strict();
+export type CreateItVehicleCheck = z.infer<typeof CreateItVehicleCheckSchema>;
+
+export const ItVehicleCheckIdParamSchema = z.object({ id: objectId() }).strict();
+
+/** The multipart field beside `file` on a photo upload; a repeated `clientPhotoId` adds nothing. */
+export const ItVehicleCheckPhotoFieldsSchema = z
+  .object({ clientPhotoId: z.string().uuid() })
+  .strict();
+
+/** One active car in the form's dropdown, in Fleet's code order. */
+export interface ItVehicleOptionDto {
+  id: string;
+  code: string;
+}
+
+export interface ItVehicleCheckPhotoDto {
+  clientPhotoId: string;
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface ItVehicleCheckDto {
+  id: string;
+  version: number;
+  vehicleId: string;
+  /** The car's code and branch at filing: a renamed or moved car keeps its old reports readable. */
+  vehicleCode: string;
+  branchId: string | null;
+  /** YYYY-MM-DD */
+  checkDate: string;
+  items: Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>;
+  notes: string | null;
+  photos: ItVehicleCheckPhotoDto[];
+  /** The reporter's user id and display name at filing. */
+  reportedByUserId: string;
+  reportedByName: string;
+  clientRequestId: string;
+  createdAt: string;
+}

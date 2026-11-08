@@ -6,8 +6,8 @@
 // rendering a landing page: with one section there is nothing for a landing page to choose between,
 // and an index that lists exactly one link is a click that does nothing.
 //
-// This subtree ships users, roles, the permission registry, system settings (P8), the
-// notification-template catalog (P10) and the two log streams (P11). Appearance and colour rules
+// This subtree ships users, roles, the permission registry, system settings (P8), the automatic
+// messages (SMS / WhatsApp), the notification-template catalog (P10) and the two log streams (P11). Appearance and colour rules
 // are later phases, and the owner rule carried from the Fleet FW-1 review holds for them: no
 // unshipped surface is reachable, so nothing routes to them and nothing links to them.
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
@@ -22,6 +22,7 @@ import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
 import { ApprovalWorkflowsPage } from './approvals/pages/ApprovalWorkflowsPage';
 import { SettingsPage } from './settings/pages/SettingsPage';
+import { MessagingSettingsPage } from './messaging/pages/MessagingSettingsPage';
 import { TemplatesListPage } from './notification-templates/pages/TemplatesListPage';
 import { TemplateDetailPage } from './notification-templates/pages/TemplateDetailPage';
 import { AuditLogPage } from './audit/pages/AuditLogPage';
@@ -98,6 +99,17 @@ export default function SystemAdminRoutes(): JSX.Element {
           element={
             <RequirePermission permission="setting.view">
               <SettingsPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* «الرسائل التلقائية» — the settings' own key, as the API's GET enforces; the screen's
+            editing controls and the test button are `setting.edit`, checked inside and by the API. */}
+        <Route
+          path="messaging"
+          element={
+            <RequirePermission permission="setting.view">
+              <MessagingSettingsPage />
             </RequirePermission>
           }
         />

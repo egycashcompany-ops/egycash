@@ -27,6 +27,7 @@ export * from './platform/realtime.js';
 export * from './platform/automation.js';
 export * from './platform/crypto.js';
 export * from './platform/secrets.js';
+export * from './platform/messaging.js';
 export * from './modules/automation.js';
 export * from './modules/hr-recruitment-workflow.js';
 export * from './modules/hr-recruitment.js';

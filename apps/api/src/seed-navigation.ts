@@ -1268,6 +1268,17 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'settings',
         permission: 'setting.view',
       },
+      // «الرسائل التلقائية» — how the messages the system sends by itself travel: SMS (Etisalat
+      // Egypt), WhatsApp or both («عايز أعمل Automation بدل واتساب يبقي SMS»). Right after the
+      // settings, on the settings' own key: it is the same administrator's screen, and
+      // `setting.view` is what its read enforces.
+      {
+        en: 'Automatic Messages',
+        ar: 'الرسائل التلقائية',
+        route: '/system/messaging',
+        icon: 'chat',
+        permission: 'setting.view',
+      },
       // P10. `notificationTemplate.view` is what every read on the screen enforces — the list, the
       // one template, its versions and the preview all gate on it — so the row advertises exactly
       // what the caller can open. Editing and test-sending are separate keys, checked inside.

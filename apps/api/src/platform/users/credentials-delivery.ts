@@ -1,14 +1,15 @@
 // Transient credentials delivery (auth design §12 R3 + §14): composes the bilingual
 // account-setup message (username, Employee Code, one-time setup LINK, expiry) and sends it
-// via WhatsApp + email DIRECTLY through the infrastructure transports. It must NOT go
+// by text message — SMS, WhatsApp or both, as «الرسائل التلقائية» says (platform/messaging) — and
+// by email, DIRECTLY through the transports. It must NOT go
 // through the persisted notifications pipeline — notify() stores rendered bodies, which
 // would persist the one-time link (forbidden by R11/R12). Messages exist only in transit;
 // audits record per-channel outcomes, never the link.
 import { type CredentialsDeliveryResultDto } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
 import { sendMail } from '../../infrastructure/email/mailer';
-import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { auditService } from '../audit';
+import { configuredTransports, sendTextMessage } from '../messaging/text-message';
 import { notificationTemplateRepository } from '../notifications/notification-template.repository';
 import { renderTemplate } from '../notifications/notification.rendering';
 import {
@@ -66,6 +67,17 @@ const FALLBACK = {
 };
 
 /**
+ * The SMS wording — Arabic only and short, because an Arabic SMS is UCS-2: 70 characters in one
+ * part, 67 a part once split, and the setup link alone is a hundred of them. The bilingual
+ * template below runs to ten parts; this keeps what the person needs — who they are, the link and
+ * that it works once — in about three. The expiry is left to the page the link opens, which says
+ * so when it has passed. WhatsApp and email keep the template, word for word.
+ */
+export const credentialsSmsText = (input: DeliverCredentialsInput): string =>
+  `EGYCASH: اسم المستخدم ${input.username}\nكود الموظف ${input.employeeCode ?? '—'}\n` +
+  `لتفعيل حسابك افتح الرابط (لمرة واحدة):\n${setupLinkUrl(input.setupToken)}`;
+
+/**
  * Render the credential message from the ADMIN-EDITABLE template (§13 R15) — in memory only.
  * The persisted notify() pipeline is never used: it would store the password (forbidden, R12).
  */
@@ -110,11 +122,18 @@ export const deliverCredentials = async (
   const { subject, body } = await composeMessage(input);
   const results: CredentialsDeliveryResultDto[] = [];
 
+  // One row per text transport «الرسائل التلقائية» sends on — `both` is two rows — so the account
+  // panel and the audit say which way the link went, or why it did not.
   if (input.phone === null || input.phone.trim() === '') {
-    results.push({ channel: 'whatsapp', ok: false, detail: 'no phone number on file' });
+    for (const channel of await configuredTransports()) {
+      results.push({ channel, ok: false, detail: 'no phone number on file' });
+    }
   } else {
-    const sent = await sendWhatsApp(input.phone, body);
-    results.push({ channel: 'whatsapp', ok: sent.ok, detail: sent.detail });
+    const sent = await sendTextMessage(input.phone, {
+      whatsapp: body,
+      sms: credentialsSmsText(input),
+    });
+    results.push(...sent.results);
   }
 
   if (input.email === null || input.email.trim() === '') {

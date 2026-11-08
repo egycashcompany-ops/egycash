@@ -7,6 +7,7 @@ import { relayOutbox } from '../kernel/event-bus';
 import { rbacService } from '../rbac';
 import { runActivityRetention, runSecuritySignalDetection } from '../audit';
 import { rescanPendingFiles, RESCAN_AFTER_MINUTES } from '../files';
+import { rotateSmsTokenKey } from '../messaging/sms-token-rotation';
 import { userService } from '../users';
 import { schedulerService } from './scheduler.service';
 
@@ -87,6 +88,21 @@ export const registerPlatformScheduledTasks = (): void => {
     handler: async () => {
       const requeued = await rescanPendingFiles();
       if (requeued > 0) logger.info({ requeued }, 'pending virus scans re-queued');
+    },
+  });
+
+  // «الرسائل التلقائية» — the SMS token's share of the nightly re-wrap, the ATM mailbox secret's
+  // shape: the documented key rotation drops the old key after the re-wrap, so a token left on it
+  // would stop every SMS until somebody typed it again. The data key only; no plaintext exists.
+  schedulerService.declareTask({
+    key: 'platform.messaging.rotateSmsTokenKey',
+    description:
+      'Re-wrap the SMS token of the automatic messages still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
+    // Nightly, after the automation (02:30) and ATM (02:45) sweeps.
+    cron: '50 2 * * *',
+    ownerService: 'messaging',
+    handler: async () => {
+      await rotateSmsTokenKey();
     },
   });
 };

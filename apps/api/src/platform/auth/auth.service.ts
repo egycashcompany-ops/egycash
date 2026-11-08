@@ -39,13 +39,13 @@ import {
   touchedBranches,
 } from '../../shared/types';
 import { randomBackupCode, randomToken, sha256 } from '../../shared/utils/crypto';
-import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { verifyPassword } from '../../shared/utils/passwords';
 import { auditService } from '../audit';
 import { rbacService } from '../rbac';
 import { settingsService } from '../settings';
 import { userService, type UserDoc } from '../users';
 import { directoryProfileService } from '../directory/directory-profile.service';
+import { sendTextMessage } from '../messaging/text-message';
 import { emit, subscribe } from '../kernel/event-bus';
 import { resolveExternalSubjectLabel } from './identity-seams';
 import { resolvePortalIdentity } from './portal-identities';
@@ -171,6 +171,13 @@ const randomNumericCode = (length: number): string => {
 
 const portalChallengeMessage = (code: string): string =>
   `رمز الدخول إلى بوابة المتقدمين: ${code}\nصالح لمدة ${PORTAL_CHALLENGE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`;
+
+/**
+ * The SMS wording — one part. An Arabic SMS is UCS-2, 70 characters a part, and the wording above
+ * is 76: a sign-in code split across two parts can arrive as two. WhatsApp keeps its wording.
+ */
+export const portalChallengeSms = (code: string): string =>
+  `رمز دخول بوابة المتقدمين: ${code}\nصالح ${PORTAL_CHALLENGE_TTL_MINUTES} دقائق، لا تشاركه مع أحد.`;
 
 export interface IssuedTokens {
   accessToken: string;
@@ -663,7 +670,11 @@ class AuthService {
     await this.savePortalChallenge(String(user._id), afterIssue(sha256(code), expiresAt, now));
     // The code goes to the number ON FILE, never to one supplied with the request — otherwise the
     // second factor would be something the caller chose, which is not a second factor at all.
-    const sent = await sendWhatsApp(user.phone ?? '', portalChallengeMessage(code));
+    // SMS, WhatsApp or both, as «الرسائل التلقائية» says (platform/messaging).
+    const sent = await sendTextMessage(user.phone ?? '', {
+      whatsapp: portalChallengeMessage(code),
+      sms: portalChallengeSms(code),
+    });
     if (!sent.ok) logger.warn({ userId: String(user._id) }, 'portal challenge delivery failed');
     await auditService.record({
       entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(user._id) },

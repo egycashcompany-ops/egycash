@@ -39,6 +39,7 @@ describe('System Administration routes', () => {
         'permissions',
         'approvals',
         'settings',
+        'messaging',
         'notification-templates',
         'audit',
         'activity',
@@ -97,6 +98,7 @@ describe('System Administration routes', () => {
       '<RoleDetailPage />',
       '<PermissionCatalogPage />',
       '<SettingsPage />',
+      '<MessagingSettingsPage />',
       '<TemplatesListPage />',
       '<TemplateDetailPage />',
       '<AuditLogPage />',
@@ -104,6 +106,13 @@ describe('System Administration routes', () => {
     ]) {
       expect(ROUTES.indexOf(page), `${page} is routed before the guard`).toBeGreaterThan(guardIndex);
     }
+  });
+
+  // «الرسائل التلقائية» rides the system settings' own key — no key of its own — so it is gated on
+  // `setting.view` like the settings screen, and its editing controls on `setting.edit` inside.
+  it('gates the automatic messages screen on setting.view', () => {
+    const block = /path="messaging"[\s\S]{0,200}?permission="([^"]+)"/.exec(ROUTES)?.[1];
+    expect(block).toBe('setting.view');
   });
 
   // The registry is a separate gate on purpose: reading what a key MEANS and reading who HOLDS it
@@ -146,6 +155,7 @@ describe('System Administration navigation matches the routes that exist', () =>
       '/system/permissions',
       '/system/approvals',
       '/system/settings',
+      '/system/messaging',
       '/system/notification-templates',
       '/system/audit',
       '/system/activity',
@@ -167,6 +177,7 @@ describe('System Administration navigation matches the routes that exist', () =>
     ['/system/roles', 'role.view'],
     ['/system/permissions', 'permission.view'],
     ['/system/settings', 'setting.view'],
+    ['/system/messaging', 'setting.view'],
     ['/system/notification-templates', 'notificationTemplate.view'],
     ['/system/audit', 'auditLog.view'],
     ['/system/activity', 'activityLog.view'],

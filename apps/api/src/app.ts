@@ -39,6 +39,7 @@ import { buildUserApplicationsRouter } from './platform/user-applications';
 import { buildMeRouter } from './platform/me';
 import { buildPresenceRouter } from './platform/presence';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
+import { buildMessagingRouter } from './platform/messaging';
 import {
   buildActivityLogsRouter,
   buildAuditLogsRouter,
@@ -236,6 +237,8 @@ export const buildApp = (): Express => {
   api.use('/platform/applications', buildApplicationsRouter());
   api.use('/platform/settings', buildSettingsRouter());
   api.use('/platform/feature-flags', buildFeatureFlagsRouter());
+  // «الرسائل التلقائية» — how the automatic text messages travel (SMS / WhatsApp / both).
+  api.use('/platform/messaging', buildMessagingRouter());
   api.use('/platform/audit-logs', buildAuditLogsRouter());
   // Display identity for anyone already signed in — not user administration (see the router).
   api.use('/platform/directory', buildDirectoryRouter());

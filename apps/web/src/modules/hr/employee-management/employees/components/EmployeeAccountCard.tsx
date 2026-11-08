@@ -32,6 +32,7 @@ import {
   useUpdateUser,
   useUserAssignments,
 } from '../api/employee-queries';
+import { DELIVERY_CHANNEL_LABEL_KEYS } from '../lib/delivery-channel';
 
 type LocalizedValue = { ar: string; en: string };
 
@@ -251,7 +252,7 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
           <ul className="mt-1 space-y-0.5 text-amber-900 dark:text-amber-100">
             {(delivery ?? user?.lastDelivery ?? []).map((d) => (
               <li key={d.channel}>
-                {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                {t(DELIVERY_CHANNEL_LABEL_KEYS[d.channel])}
                 {': '}
                 {d.ok ? t('employees.account.deliverySent') : (d.detail ?? t('employees.account.deliveryFailed'))}
               </li>

@@ -12,9 +12,9 @@
 import { Types } from 'mongoose';
 import { type ApplicantPortalStatusDto } from '@ecms/contracts';
 import { logger } from '../../../../infrastructure/logging/logger';
-import { sendWhatsApp } from '../../../../infrastructure/messaging/whatsapp';
 import { env } from '../../../../infrastructure/config/env';
 import { auditService } from '../../../../platform/audit';
+import { sendTextMessage } from '../../../../platform/messaging';
 import { rbacService } from '../../../../platform/rbac';
 import { userService, type UserDoc } from '../../../../platform/users';
 import { applicantRepository } from '../applicants/applicant.repository';
@@ -38,6 +38,14 @@ export const portalSignInUrl = (): string => `${env.WEB_PUBLIC_URL}/applicant-po
 
 const inviteMessage = (name: string): string =>
   `${name}\nتم قبولك في مرحلة الفرز المبدئي.\nادخل على بوابة المتقدمين لرفع مستنداتك ومتابعة موقفك:\n${portalSignInUrl()}\nالدخول بالرقم القومي ورقم الموبايل، وسيصلك رمز تأكيد.`;
+
+/**
+ * The SMS wording: the link and how to sign in, in two parts. An Arabic SMS is UCS-2 — 70
+ * characters in one part, 67 a part once split — and the WhatsApp wording above runs to four; the
+ * portal itself says what to upload. WhatsApp keeps its wording.
+ */
+export const inviteSmsText = (): string =>
+  `تم قبولك في الفرز المبدئي. ادخل إلى بوابة المتقدمين بالرقم القومي ورقم الموبايل:\n${portalSignInUrl()}`;
 
 class ApplicantPortalService {
   /** The account for this applicant, or null. The single reader — everything else goes through it. */
@@ -156,7 +164,11 @@ class ApplicantPortalService {
     const phone = applicant.contact?.primaryPhone ?? '';
     if (phone.trim() === '') return { ok: false, detail: 'no phone number on file' };
 
-    const sent = await sendWhatsApp(phone, inviteMessage(applicant.fullNameAr));
+    // SMS, WhatsApp or both, as «الرسائل التلقائية» says — delivered when either one delivered.
+    const sent = await sendTextMessage(phone, {
+      whatsapp: inviteMessage(applicant.fullNameAr),
+      sms: inviteSmsText(),
+    });
     await auditService.record({
       entityRef: entityRef(applicantId),
       action: 'update',
@@ -165,7 +177,7 @@ class ApplicantPortalService {
         { field: 'by', old: null, new: by },
       ],
     });
-    return sent;
+    return { ok: sent.ok, detail: sent.detail };
   }
 
   /**

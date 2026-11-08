@@ -16,6 +16,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCOUNT_STATUSES,
   AUDIT_ACTIONS,
+  CREDENTIALS_DELIVERY_CHANNELS,
+  MESSAGE_CHANNELS,
+  SMS_FAILURE_DETAILS,
   DATA_SCOPES,
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CHANNELS,
@@ -49,7 +52,22 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   // Whether a grant applies right now. Driven by the contracts enum (SA-4).
   { name: 'permission state', prefix: 'systemAdmin.effective.state', values: PERMISSION_STATES },
   { name: 'locale', prefix: 'systemAdmin.users.locale', values: ['ar', 'en'] },
-  { name: 'delivery channel', prefix: 'systemAdmin.users.channel', values: ['whatsapp', 'email'] },
+  // Driven by the contract's union: `sms` joined with «الرسائل التلقائية», and a channel added there
+  // cannot ship unlabelled.
+  {
+    name: 'delivery channel',
+    prefix: 'systemAdmin.users.channel',
+    values: CREDENTIALS_DELIVERY_CHANNELS,
+  },
+  // «الرسائل التلقائية» — the channel options and their hints, and every reason the API words
+  // itself for an SMS that did not go: each is shown as a sentence, never as the API's English.
+  { name: 'message channel', prefix: 'systemAdmin.messaging.channels', values: MESSAGE_CHANNELS },
+  { name: 'message channel hint', prefix: 'systemAdmin.messaging.channelHints', values: MESSAGE_CHANNELS },
+  {
+    name: 'sms failure reason',
+    prefix: 'systemAdmin.messaging.detail',
+    values: Object.keys(SMS_FAILURE_DETAILS),
+  },
   { name: 'timeline stream', prefix: 'systemAdmin.users.activity.stream', values: TIMELINE_SOURCES },
   // P10 — all four rendered through TEMPLATE keys, so the source scan below cannot see them. Each
   // is driven by a contracts enum: a value added there cannot ship without a label on both sides.

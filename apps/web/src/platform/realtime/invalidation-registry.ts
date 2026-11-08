@@ -544,6 +544,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'platform.applicationCategory': [['me', 'applications']],
   'platform.applicationSection': [['me', 'applications']],
   'platform.setting': [['platform', 'settings']],
+  'platform.messagingConfig': [['platform', 'messaging']],
   'platform.scheduledTask': [['platform', 'scheduled-tasks']],
   'platform.notificationTemplate': [['platform', 'notification-templates']],
   'platform.file': [['platform', 'fileCategories']],

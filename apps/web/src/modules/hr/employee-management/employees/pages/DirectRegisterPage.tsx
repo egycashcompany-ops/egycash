@@ -48,6 +48,7 @@ import {
 } from '../api/employee-queries';
 import { SalaryCard } from '../components/SalaryCard';
 import { branchOfCode, orderTitlesForBranch, placementForTitle } from '../lib/register-code';
+import { DELIVERY_CHANNEL_LABEL_KEYS } from '../lib/delivery-channel';
 
 const MARITAL: MaritalStatus[] = ['single', 'married', 'divorced', 'widowed'];
 const EMPLOYMENT_TYPES: EmploymentType[] = ['fullTime', 'partTime', 'contract', 'temporary'];
@@ -443,7 +444,7 @@ export const DirectRegisterPage = (): JSX.Element => {
                 <ul className="space-y-0.5">
                   {credentials.delivery.map((d) => (
                     <li key={d.channel}>
-                      {t(d.channel === 'whatsapp' ? 'employees.account.channelWhatsapp' : 'employees.account.channelEmail')}
+                      {t(DELIVERY_CHANNEL_LABEL_KEYS[d.channel])}
                       {': '}
                       {d.ok
                         ? t('employees.account.deliverySent')

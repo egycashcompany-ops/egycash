@@ -61,6 +61,14 @@ const NAMED_SAAS_HOSTS: readonly string[] = [
   'api.twilio.com', // same — the Twilio transport
 ];
 
+/**
+ * Hosts allowed because the operator NAMED them as an integration's endpoint — allowlisted, not
+ * pinned: they must still resolve to public addresses, as a SaaS endpoint does.
+ */
+const CONFIGURED_SAAS_URLS = (): (string | undefined)[] => [
+  env.ETISALAT_SMS_URL, // infrastructure/messaging/sms.ts — Etisalat Egypt's SMS API
+];
+
 const normalizeHost = (hostname: string): string =>
   hostname
     .toLowerCase()
@@ -84,7 +92,13 @@ const parseList = (value: string): string[] =>
 
 /** The deployment's policy, read from the environment. */
 export const outboundPolicyFromEnv = (): OutboundPolicy => ({
-  allowHosts: [...NAMED_SAAS_HOSTS, ...parseList(env.OUTBOUND_HTTP_ALLOWLIST)],
+  allowHosts: [
+    ...NAMED_SAAS_HOSTS,
+    ...CONFIGURED_SAAS_URLS()
+      .map(hostOf)
+      .filter((host): host is string => host !== null),
+    ...parseList(env.OUTBOUND_HTTP_ALLOWLIST),
+  ],
   pinnedHosts: [hostOf(env.N8N_BASE_URL), hostOf(env.NATIONAL_ID_OCR_URL)].filter(
     (host): host is string => host !== null,
   ),

@@ -85,6 +85,22 @@ page, which reads every session renewed inside the idle window.
 Indexes: `ux_userId_day` (the upsert key), `ix_day_lastAt`, `ttl_expiresAt`. Not audited and not
 a session: a heartbeat never touches `sessions.lastUsedAt`, so the idle sign-out is unaffected.
 
+### platform_messaging_config  *(messaging — «الرسائل التلقائية»)*
+```jsonc
+// ONE document (key 'default'): how the automatic text messages travel — login details and setup
+// links, recruitment portal invitations, portal sign-in codes. No document = WhatsApp, as before.
+{ "key": "default", "channel": "sms|whatsapp|both",
+  "sms": { "enabled": false, "provider": "etisalat",
+           "templateId": "12345",                       // Etisalat's API template ({Body})
+           "tokenRef": { "provider": "platformCrypto", "keyId": "…", "ref": "opaque" },
+           "tokenUpdatedAt": "…",                       // shown as «مضبوط منذ …»
+           "lastTest": { "at": "…", "ok": false, "detail": "sms endpoint not configured" } } }
+```
+Index: `ux_messaging_config_key` (partial, `isDeleted: false`). `tokenRef` is the secret store's
+sealed ref bound to the document (`platform_messaging_config:<id>:smsToken`): never returned,
+logged or audited, re-wrapped nightly by `platform.messaging.rotateSmsTokenKey`. `lastTest` is
+written outside the versioned path, so a test never makes the next save stale.
+
 ### permissions / roles / role_assignments  *(rbac)*
 ```jsonc
 // permissions — synced from code at boot; read-only at runtime

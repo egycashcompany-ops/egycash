@@ -317,9 +317,17 @@ export const ListSessionsQuerySchema = z.object({}).strict();
 export const AdminResetPasswordSchema = z.object({}).strict();
 export type AdminResetPassword = z.infer<typeof AdminResetPasswordSchema>;
 
+/**
+ * Where a transient credentials delivery went. `sms` and `whatsapp` are the text transports the
+ * «الرسائل التلقائية» screen chooses between (platform/messaging.ts) — one row each that was used;
+ * `email` is always tried beside them.
+ */
+export const CREDENTIALS_DELIVERY_CHANNELS = ['sms', 'whatsapp', 'email'] as const;
+export type CredentialsDeliveryChannel = (typeof CREDENTIALS_DELIVERY_CHANNELS)[number];
+
 /** Per-channel outcome of a transient credentials delivery (design §12 R3). */
 export interface CredentialsDeliveryResultDto {
-  channel: 'whatsapp' | 'email';
+  channel: CredentialsDeliveryChannel;
   ok: boolean;
   detail: string | null;
 }

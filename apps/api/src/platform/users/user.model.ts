@@ -74,7 +74,7 @@ export interface UserDoc extends BaseDocFields {
     expiresAt: Date | null;
     /** §16.1 — last-invitation metadata SURVIVES consumption/supersession/expiry. */
     sentAt: Date | null;
-    delivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
+    delivery: { channel: 'sms' | 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
   };
   /**
    * The one-time code an EXTERNAL account signs in with (P-HR-APP §4) — a candidate has no

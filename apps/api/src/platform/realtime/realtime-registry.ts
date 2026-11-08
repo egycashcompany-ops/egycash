@@ -247,6 +247,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'platform.applicationCategory': { permission: 'applicationCategory.view' },
   'platform.applicationSection': { permission: 'application.view' },
   'platform.setting': { permission: 'setting.view' },
+  // «الرسائل التلقائية» (/system/messaging): a save or a test refreshes the page for whoever may
+  // read it — the system settings' own key, as the page's route is.
+  'platform.messagingConfig': { permission: 'setting.view' },
   'platform.scheduledTask': { permission: 'scheduledTask.view' },
   'platform.notificationTemplate': { permission: 'notificationTemplate.view' },
   'platform.file': { permission: 'file.view' },

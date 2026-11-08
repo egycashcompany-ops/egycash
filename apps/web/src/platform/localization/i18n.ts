@@ -343,15 +343,16 @@ const en: Record<string, string> = {
   'employees.account.deliveryTitle': 'Credentials delivery',
   'employees.account.resendCredentials': 'Resend setup link',
   'employees.account.resendDone': 'A new setup link was sent to the employee',
+  'employees.account.channelSms': 'SMS',
   'employees.account.channelWhatsapp': 'WhatsApp',
   'employees.account.channelEmail': 'Email',
   'employees.account.deliverySent': 'sent',
   'employees.account.deliveryFailed': 'not delivered',
   'employees.account.resetHint':
-    'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link via WhatsApp and email. Resend issues a new link and invalidates the previous one.',
+    'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link by text message (SMS or WhatsApp, as set on «Automatic messages») and email. Resend issues a new link and invalidates the previous one.',
   'employees.register.credentialsTitle': 'Login credentials created',
   'employees.register.credentialsHint':
-    'A one-time account-setup link was sent to the employee via WhatsApp and email. They choose their own password when opening it; the link expires if unused.',
+    'A one-time account-setup link was sent to the employee by text message and email. They choose their own password when opening it; the link expires if unused.',
   'common.continue': 'Continue',
   'platform.auth.login.password': 'Password',
   'platform.auth.login.submit': 'Sign in',
@@ -411,7 +412,7 @@ const en: Record<string, string> = {
   'platform.auth.activate.invalid':
     'This setup link is invalid or has expired. Ask HR to send a new one.',
   'platform.auth.activate.missing':
-    'This page needs the setup link you received via WhatsApp or email.',
+    'This page needs the setup link you received by text message or email.',
   'platform.auth.login.welcome': 'Welcome back',
   'platform.auth.login.subtitle': 'Sign in to continue to your workspace.',
   'platform.auth.brand.tagline': 'The unified enterprise platform.',
@@ -9211,6 +9212,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.totp.on': 'Authenticator enabled',
   'systemAdmin.users.totp.off': 'No authenticator',
   'systemAdmin.users.totp.requiredBadge': 'Authenticator required',
+  'systemAdmin.users.channel.sms': 'SMS',
   'systemAdmin.users.channel.whatsapp': 'WhatsApp',
   'systemAdmin.users.channel.email': 'Email',
   'systemAdmin.users.lifecycle.title': 'Enable / disable',
@@ -9573,6 +9575,68 @@ const en: Record<string, string> = {
   'systemAdmin.effective.privilegedBecause':
     'Privileged, so two-factor authentication is compulsory. System roles: {{roles}}. Break-glass permissions: {{keys}}.',
   'systemAdmin.effective.none': 'none',
+
+  // «الرسائل التلقائية» — how the automatic messages travel (SMS / WhatsApp / both).
+  'systemAdmin.messaging.title': 'Automatic messages',
+  'systemAdmin.messaging.channelTitle': 'How messages are sent',
+  'systemAdmin.messaging.whatIsSent':
+    'The system sends these to a person’s mobile by itself: login details and account setup links, recruitment portal invitations, and portal sign-in codes. Choose how they are delivered.',
+  'systemAdmin.messaging.channels.sms': 'Text message (SMS)',
+  'systemAdmin.messaging.channels.whatsapp': 'WhatsApp',
+  'systemAdmin.messaging.channels.both': 'Both',
+  'systemAdmin.messaging.channelHints.sms':
+    'Through Etisalat Egypt (etisalat by e&), with the template and the token set below.',
+  'systemAdmin.messaging.channelHints.whatsapp':
+    'Through the WhatsApp service configured on the server, as before.',
+  'systemAdmin.messaging.channelHints.both':
+    'Sent both ways; delivered when either one arrives.',
+  'systemAdmin.messaging.smsOffWarning':
+    'Text messages are switched off: no SMS is sent until you switch them on and save.',
+  'systemAdmin.messaging.whatsappOffWarning':
+    'WhatsApp is not configured on the server, so nothing is sent by WhatsApp.',
+  'systemAdmin.messaging.sms.title': 'Text messages — Etisalat Egypt',
+  'systemAdmin.messaging.sms.on': 'On',
+  'systemAdmin.messaging.sms.off': 'Off',
+  'systemAdmin.messaging.sms.endpointMissing':
+    'The SMS service address is not configured on the server yet, so no SMS — not even the test — is sent until it is. You can enter the template and the token now.',
+  'systemAdmin.messaging.sms.portalHint':
+    'In the Etisalat portal: create an API template whose script is exactly {{script}} (same letter case), bound to your approved sender name, then generate a token for an Agent using the REST protocol.',
+  'systemAdmin.messaging.sms.enabled': 'Send text messages',
+  'systemAdmin.messaging.sms.enabledHint': 'While off, no SMS is sent; the test still works.',
+  'systemAdmin.messaging.sms.templateId': 'Template ID',
+  'systemAdmin.messaging.sms.templateIdHint': 'As shown in the Etisalat portal.',
+  'systemAdmin.messaging.sms.templateIdInvalid': 'Digits only, at most 20.',
+  'systemAdmin.messaging.sms.token': 'Token',
+  'systemAdmin.messaging.sms.tokenInvalid': 'One word, with no spaces.',
+  'systemAdmin.messaging.sms.tokenSetSince': 'Set since {{at}} — leave empty to keep it.',
+  'systemAdmin.messaging.sms.tokenSetShort': 'Set',
+  'systemAdmin.messaging.sms.tokenNotSet': 'Not set',
+  'systemAdmin.messaging.sms.tokenWillClear': 'The stored token is removed when you save.',
+  'systemAdmin.messaging.sms.tokenKeepPlaceholder': 'Set — type a new token to replace it',
+  'systemAdmin.messaging.sms.clearToken': 'Remove',
+  'systemAdmin.messaging.sms.keepToken': 'Undo',
+  'systemAdmin.messaging.save': 'Save',
+  'systemAdmin.messaging.saved': 'Message settings saved.',
+  'systemAdmin.messaging.test.title': 'Send a test message',
+  'systemAdmin.messaging.test.hint':
+    'Sends «{{text}}» with the saved settings, even while text messages are switched off.',
+  'systemAdmin.messaging.test.phone': 'Mobile number',
+  'systemAdmin.messaging.test.phoneHint': 'Like 01012345678 or +201012345678',
+  'systemAdmin.messaging.test.send': 'Send a test message',
+  'systemAdmin.messaging.test.saveFirst':
+    'Save your changes first: the test uses the saved settings.',
+  'systemAdmin.messaging.test.never': 'No test message has been sent yet.',
+  'systemAdmin.messaging.test.lastAt': 'Last test: {{at}}',
+  'systemAdmin.messaging.test.sent': 'The test message was sent.',
+  'systemAdmin.messaging.test.failed': 'The message could not be sent: {{reason}}',
+  'systemAdmin.messaging.detail.disabled': 'Text messages are switched off.',
+  'systemAdmin.messaging.detail.endpointNotConfigured':
+    'The SMS service address is not configured on the server yet.',
+  'systemAdmin.messaging.detail.templateMissing': 'No template ID has been entered yet.',
+  'systemAdmin.messaging.detail.tokenMissing': 'No token has been entered yet.',
+  'systemAdmin.messaging.detail.tokenUnreadable':
+    'The stored token could not be opened; enter it again.',
+  'systemAdmin.messaging.detail.invalidPhone': 'The phone number is not valid.',
 
   // P8 — system settings. The registry declares an English `description` per key, which the row
   // shows verbatim; these labels are the bilingual NAME beside it, not a translation of it.
@@ -12986,15 +13050,16 @@ const ar: Record<string, string> = {
   'employees.account.deliveryTitle': 'إرسال بيانات الدخول',
   'employees.account.resendCredentials': 'إعادة إرسال رابط التفعيل',
   'employees.account.resendDone': 'أُرسل رابط تفعيل جديد إلى الموظف',
+  'employees.account.channelSms': 'رسالة نصية',
   'employees.account.channelWhatsapp': 'واتساب',
   'employees.account.channelEmail': 'البريد الإلكتروني',
   'employees.account.deliverySent': 'تم الإرسال',
   'employees.account.deliveryFailed': 'لم يتم الإرسال',
   'employees.account.resetHint':
-    'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا عبر واتساب والبريد الإلكتروني. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
+    'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا برسالة على الهاتف المحمول (رسالة نصية أو واتساب حسب «الرسائل التلقائية») وعبر البريد الإلكتروني. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
   'employees.register.credentialsTitle': 'تم إنشاء بيانات الدخول',
   'employees.register.credentialsHint':
-    'أُرسل إلى الموظف رابط تفعيل يُستخدم مرة واحدة عبر واتساب والبريد الإلكتروني. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
+    'أُرسل إلى الموظف رابط تفعيل يُستخدم مرة واحدة برسالة على الهاتف المحمول وعبر البريد الإلكتروني. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
   'common.continue': 'متابعة',
   'platform.auth.login.password': 'كلمة المرور',
   'platform.auth.login.submit': 'دخول',
@@ -13054,7 +13119,7 @@ const ar: Record<string, string> = {
   'platform.auth.activate.invalid':
     'رابط التفعيل غير صالح أو انتهت صلاحيته. اطلب من الموارد البشرية إرسال رابط جديد.',
   'platform.auth.activate.missing':
-    'تحتاج هذه الصفحة إلى رابط التفعيل الذي وصلك عبر واتساب أو البريد الإلكتروني.',
+    'تحتاج هذه الصفحة إلى رابط التفعيل الذي وصلك برسالة على الهاتف المحمول أو عبر البريد الإلكتروني.',
   'platform.auth.login.welcome': 'مرحبًا بعودتك',
   'platform.auth.login.subtitle': 'سجّل الدخول للمتابعة إلى مساحة عملك.',
   'platform.auth.brand.tagline': 'المنصة المؤسسية الموحّدة.',
@@ -21692,6 +21757,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.totp.on': 'المصادقة الثنائية مفعّلة',
   'systemAdmin.users.totp.off': 'بلا مصادقة ثنائية',
   'systemAdmin.users.totp.requiredBadge': 'المصادقة الثنائية مطلوبة',
+  'systemAdmin.users.channel.sms': 'رسالة نصية',
   'systemAdmin.users.channel.whatsapp': 'واتساب',
   'systemAdmin.users.channel.email': 'البريد الإلكتروني',
   'systemAdmin.users.lifecycle.title': 'التفعيل والتعطيل',
@@ -22046,6 +22112,66 @@ const ar: Record<string, string> = {
   'systemAdmin.effective.privilegedBecause':
     'حساب ذو امتياز، فالتحقق بخطوتين إلزامي عليه. أدوار النظام: {{roles}}. صلاحيات استثنائية: {{keys}}.',
   'systemAdmin.effective.none': 'لا شيء',
+
+  // «الرسائل التلقائية»
+  'systemAdmin.messaging.title': 'الرسائل التلقائية',
+  'systemAdmin.messaging.channelTitle': 'طريقة الإرسال',
+  'systemAdmin.messaging.whatIsSent':
+    'يُرسل النظام تلقائيًا إلى الهاتف المحمول: بيانات الدخول وروابط تفعيل الحسابات، ودعوات بوابة المتقدمين للتوظيف، ورموز الدخول إلى البوابة. اختر الطريقة التي تصل بها هذه الرسائل.',
+  'systemAdmin.messaging.channels.sms': 'رسالة نصية (SMS)',
+  'systemAdmin.messaging.channels.whatsapp': 'واتساب',
+  'systemAdmin.messaging.channels.both': 'الطريقتان معًا',
+  'systemAdmin.messaging.channelHints.sms':
+    'عبر اتصالات مصر (etisalat by e&) بالقالب والرمز المضبوطين أدناه.',
+  'systemAdmin.messaging.channelHints.whatsapp':
+    'عبر خدمة واتساب المضبوطة على الخادم، كما كان من قبل.',
+  'systemAdmin.messaging.channelHints.both':
+    'تُرسل الرسالة بالطريقتين، وتُعدّ مُسلَّمة إذا وصلت بإحداهما.',
+  'systemAdmin.messaging.smsOffWarning':
+    'الرسائل النصية متوقفة: لن تُرسل أي رسالة نصية حتى تُفعّلها وتحفظ.',
+  'systemAdmin.messaging.whatsappOffWarning':
+    'خدمة واتساب غير مضبوطة على الخادم، فلن تُرسل أي رسالة عبر واتساب.',
+  'systemAdmin.messaging.sms.title': 'الرسائل النصية — اتصالات مصر',
+  'systemAdmin.messaging.sms.on': 'مفعّلة',
+  'systemAdmin.messaging.sms.off': 'متوقفة',
+  'systemAdmin.messaging.sms.endpointMissing':
+    'لم يُضبط عنوان خدمة الرسائل النصية على الخادم بعد، فلن تُرسل أي رسالة نصية — ولا الرسالة التجريبية — حتى يُضبط. يمكنك إدخال القالب والرمز الآن.',
+  'systemAdmin.messaging.sms.portalHint':
+    'من بوابة اتصالات: أنشئ قالبًا من نوع API نصه {{script}} تمامًا وبالحروف نفسها، مربوطًا باسم المرسل المعتمد، ثم أنشئ رمزًا (Token) لوكيل (Agent) ببروتوكول REST.',
+  'systemAdmin.messaging.sms.enabled': 'تفعيل الرسائل النصية',
+  'systemAdmin.messaging.sms.enabledHint': 'عند الإيقاف لا تُرسل أي رسالة نصية، ويظل الاختبار متاحًا.',
+  'systemAdmin.messaging.sms.templateId': 'رقم القالب (Template ID)',
+  'systemAdmin.messaging.sms.templateIdHint': 'كما يظهر في بوابة اتصالات.',
+  'systemAdmin.messaging.sms.templateIdInvalid': 'أرقام فقط، بحد أقصى 20 رقمًا.',
+  'systemAdmin.messaging.sms.token': 'الرمز (Token)',
+  'systemAdmin.messaging.sms.tokenInvalid': 'كلمة واحدة دون مسافات.',
+  'systemAdmin.messaging.sms.tokenSetSince': 'مضبوط منذ {{at}} — اتركه فارغًا للإبقاء عليه.',
+  'systemAdmin.messaging.sms.tokenSetShort': 'مضبوط',
+  'systemAdmin.messaging.sms.tokenNotSet': 'غير مضبوط',
+  'systemAdmin.messaging.sms.tokenWillClear': 'سيُزال الرمز المحفوظ عند الحفظ.',
+  'systemAdmin.messaging.sms.tokenKeepPlaceholder': 'مضبوط — اكتب رمزًا جديدًا لاستبداله',
+  'systemAdmin.messaging.sms.clearToken': 'إزالة',
+  'systemAdmin.messaging.sms.keepToken': 'تراجع',
+  'systemAdmin.messaging.save': 'حفظ',
+  'systemAdmin.messaging.saved': 'تم حفظ إعدادات الرسائل.',
+  'systemAdmin.messaging.test.title': 'إرسال رسالة تجريبية',
+  'systemAdmin.messaging.test.hint':
+    'تُرسل الرسالة «{{text}}» بالإعدادات المحفوظة، حتى لو كانت الرسائل النصية متوقفة.',
+  'systemAdmin.messaging.test.phone': 'رقم الهاتف المحمول',
+  'systemAdmin.messaging.test.phoneHint': 'مثل 01012345678 أو +201012345678',
+  'systemAdmin.messaging.test.send': 'إرسال رسالة تجريبية',
+  'systemAdmin.messaging.test.saveFirst': 'احفظ التغييرات أولًا: الاختبار يستخدم الإعدادات المحفوظة.',
+  'systemAdmin.messaging.test.never': 'لم تُرسل أي رسالة تجريبية بعد.',
+  'systemAdmin.messaging.test.lastAt': 'آخر تجربة: {{at}}',
+  'systemAdmin.messaging.test.sent': 'أُرسلت الرسالة التجريبية.',
+  'systemAdmin.messaging.test.failed': 'تعذّر إرسال الرسالة: {{reason}}',
+  'systemAdmin.messaging.detail.disabled': 'الرسائل النصية متوقفة.',
+  'systemAdmin.messaging.detail.endpointNotConfigured':
+    'لم يُضبط عنوان خدمة الرسائل النصية على الخادم بعد.',
+  'systemAdmin.messaging.detail.templateMissing': 'لم يُدخَل رقم القالب بعد.',
+  'systemAdmin.messaging.detail.tokenMissing': 'لم يُدخَل الرمز (Token) بعد.',
+  'systemAdmin.messaging.detail.tokenUnreadable': 'تعذّر فتح الرمز المحفوظ؛ أدخله مرة أخرى.',
+  'systemAdmin.messaging.detail.invalidPhone': 'رقم الهاتف غير صحيح.',
 
   // P8 — إعدادات النظام
   'systemAdmin.settings.title': 'إعدادات النظام',

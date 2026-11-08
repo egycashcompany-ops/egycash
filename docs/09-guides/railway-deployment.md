@@ -57,6 +57,7 @@ has four packages; the config files above tell it what to build and run.
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SECURE` | your mail provider |
 | `NOTIFICATIONS_EMAIL_FROM` | e.g. `EGYCASH <no-reply@yourdomain>` |
 | `WHATSAPP_PROVIDER` | `disabled` until Meta/Twilio credentials exist (`meta`/`twilio` + `WHATSAPP_API_TOKEN`, `WHATSAPP_ACCOUNT_ID`, `WHATSAPP_FROM_NUMBER`) |
+| `ETISALAT_SMS_URL` | empty until Etisalat Egypt's API page gives the SMS endpoint. The template id and the token are entered on `/system/messaging` («الرسائل التلقائية»), not here; while this is empty every SMS answers `sms endpoint not configured` without a request |
 
 **app only:**
 

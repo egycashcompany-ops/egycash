@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **«الرسائل التلقائية» in Administration: the automatic messages can go by SMS (Etisalat Egypt)
+  instead of WhatsApp, or by both.** «عايز أعمل Automation بدل واتساب يبقي SMS ممكن تشرحلى
+  المطلوب ؟ وتجهز السيستم على كدا».
+  - **What is sent automatically**: login details and account setup links, recruitment portal
+    invitations, and portal sign-in codes. All three now go through one door that sends by the
+    channel chosen on the page — SMS, WhatsApp or both («both» counts as delivered when either one
+    arrived). Until somebody chooses, nothing changes: WhatsApp, as before.
+  - **The page** is `/system/messaging`, on the system settings' own keys (`setting.view` reads,
+    `setting.edit` held company-wide edits and tests; no new permission). It has the channel, the
+    SMS switch, the Etisalat **Template ID** (an "API" template whose script is exactly `{Body}`)
+    and **Token** (generated for an "Agent", REST), and «إرسال رسالة تجريبية» with the last result.
+  - **The token is write-only**: sealed by the platform secret store before it is written, shown
+    only as «مضبوط منذ …», kept when the box is left empty, cleared by «إزالة», audited as
+    «replaced» / «cleared» and never as itself, and re-wrapped nightly with the other secrets.
+  - **Shorter SMS wording** where the WhatsApp text is long (an Arabic SMS is 70 characters a
+    part): the sign-in code in one part, the portal invitation in two, the setup link in about
+    three instead of ten. WhatsApp and email keep their wording.
+  - **Not finished yet — the request format.** Etisalat's API page has not arrived, so the
+    endpoint is not guessed: `ETISALAT_SMS_URL` is empty by default and every SMS answers «لم
+    يُضبط عنوان خدمة الرسائل النصية» with no request made. The request itself is one placeholder
+    function (`buildEtisalatRequest`, infrastructure/messaging/sms.ts) to confirm against that page.
 - **«المستخدمون النشطون» in Administration: who is on the system now, and each person's working
   time.** «عايز فى مديول الإدارة تضيف صفحة جديدة أسمها المستخدمين النشطين .. وتقولى مين فاتح
   دلوقتى وشغال .. ووقت كل واحد على السيستم..».

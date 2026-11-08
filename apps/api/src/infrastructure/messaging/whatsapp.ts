@@ -1,25 +1,23 @@
-// WhatsApp transport (auth design §12 R9) behind one tiny interface — the credentials
-// delivery service is the only caller. Provider-agnostic: `meta` (WhatsApp Cloud API),
+// WhatsApp transport (auth design §12 R9) behind one tiny interface — the automatic text
+// messages' façade (platform/messaging/text-message.ts) is the only caller: it sends here, by SMS
+// (sms.ts), or both, as «الرسائل التلقائية» says. Provider-agnostic: `meta` (WhatsApp Cloud API),
 // `twilio`, or `disabled` (default — keeps dev/CI hermetic: logs a warning and reports
 // not-delivered). Message bodies are never logged (they carry temporary passwords).
 import { env } from '../config/env';
 import { outboundFetch } from '../http/outbound';
 import { logger } from '../logging/logger';
+import { toE164 } from './phone';
+
+// The phone rule lives beside both transports now (phone.ts); exported from here as it always was.
+export { toE164 };
 
 export interface WhatsAppSendResult {
   ok: boolean;
   detail: string | null;
 }
 
-/** Normalize a local Egyptian mobile (01xxxxxxxxx) or an already-international number to E.164. */
-export const toE164 = (phone: string): string | null => {
-  const digits = phone.replace(/[^\d+]/g, '');
-  if (/^\+\d{8,15}$/.test(digits)) return digits;
-  if (/^00\d{8,15}$/.test(digits)) return `+${digits.slice(2)}`;
-  if (/^01\d{9}$/.test(digits)) return `+2${digits}`;
-  if (/^\d{8,15}$/.test(digits)) return `+${digits}`;
-  return null;
-};
+/** Whether the deployment set a WhatsApp provider up at all — «الرسائل التلقائية» shows it. */
+export const whatsappConfigured = (): boolean => env.WHATSAPP_PROVIDER !== 'disabled';
 
 const sendViaMeta = async (toPhone: string, body: string): Promise<WhatsAppSendResult> => {
   const res = await outboundFetch(

@@ -369,6 +369,8 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/organization/job-titles/pages/JobTitleFormPage.tsx'],
   ['modules/organization/sections/pages/SectionDetailPage.tsx'],
   ['modules/organization/shared/UnitFormPage.tsx'],
+  // A settings form: the phone box sends one test message and narrows nothing.
+  ['modules/system-admin/messaging/pages/MessagingSettingsPage.tsx'],
   ['modules/system-admin/notification-templates/pages/TemplateDetailPage.tsx'],
   [
     'modules/system-admin/roles/pages/RoleDetailPage.tsx',

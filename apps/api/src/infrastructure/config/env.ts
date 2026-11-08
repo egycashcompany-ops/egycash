@@ -305,6 +305,13 @@ const EnvSchema = z.object({
   WHATSAPP_ACCOUNT_ID: z.string().default(''),
   /** twilio only: the sending WhatsApp number (E.164). */
   WHATSAPP_FROM_NUMBER: z.string().default(''),
+  /**
+   * Etisalat Egypt's SMS API endpoint (infrastructure/messaging/sms.ts). EMPTY BY DEFAULT, AND
+   * THAT IS A WORKING STATE: every SMS answers `sms endpoint not configured` and no request is
+   * made. Set it from the provider's API page; the template id and the token are typed on
+   * /system/messaging («الرسائل التلقائية»), never here. Its host is allowed outbound by setting it.
+   */
+  ETISALAT_SMS_URL: z.string().default(''),
 
   /** Contracts D8/Q1 — chromium binary for worker-side PDF rendering; '' disables. */
   CHROMIUM_PATH: z.string().default(''),

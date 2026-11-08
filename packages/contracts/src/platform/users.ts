@@ -170,7 +170,8 @@ export interface UserDto {
   lastLoginAt: string | null;
   passwordChangedAt: string | null;
   /** Per-channel outcome of the most recent invitation delivery (§16.4). */
-  lastDelivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
+  lastDelivery:
+    { channel: 'sms' | 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
   totpEnabled: boolean;
   /** D6 — admin-forced TOTP enrollment pending/active. */
   totpRequired: boolean;

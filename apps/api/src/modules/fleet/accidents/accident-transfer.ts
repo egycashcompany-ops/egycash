@@ -109,6 +109,25 @@ export const allocateTransfer = (files: readonly TransferSource[], amount: numbe
   return { ok: true, lines };
 };
 
+/** The facts a file's «المتبقي» is computed from — what the receiving cap reads. */
+export type ReceivingFigures = Parameters<typeof fileRemaining>[0];
+
+export type ReceivingCap = { ok: true } | { ok: false; deficit: number };
+
+/**
+ * May the RECEIVING file take `amount`? — «اعرف المبلغ اللى بالسالب كام وشيله» (owner, 2026-11-09).
+ *
+ * A take brings a file up to zero and never past it: the cap is the file's negative, its
+ * «المتبقي» before this take (`file` carries the figures as the save leaves them: a new file's as
+ * sent, an edit's over the stored file). A file at zero or above has no negative, so any take is
+ * refused with `deficit` 0. In piastres, so an amount equal to the negative is never refused by
+ * binary residue.
+ */
+export const receivingCap = (file: ReceivingFigures, amount: number): ReceivingCap => {
+  const deficit = Math.max(0, -toPiastres(fileRemaining(file)));
+  return toPiastres(amount) <= deficit ? { ok: true } : { ok: false, deficit: toPounds(deficit) };
+};
+
 /** The transfers on a file that still count. */
 export const liveTransfers = (
   doc: Pick<FleetAccidentDoc, 'transfersIn'>,

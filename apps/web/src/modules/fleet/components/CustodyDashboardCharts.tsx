@@ -36,6 +36,7 @@ import { cn } from '../../../shared/lib/cn';
 import { CustodyShare, custodyShare, custodySharePct } from './CustodyFigures';
 import { BOLT, CUSTODY_KIND, CUSTODY_KINDS } from './CustodyKinds';
 import { BoardIcon, NUM } from './FuelCardBoard';
+import { VehicleHoverCode } from './VehicleHoverCard';
 import {
   CAIRO,
   CARD,
@@ -1070,7 +1071,12 @@ export const CustodyTopCars = ({
                 className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-slate-800/60 dark:bg-[#0c1322]/80 dark:p-2 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800/40"
               >
                 <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                  <span
+                  {/* The code carries the car card, by hover only — the tile itself is the Tab
+                      stop, and reads its figures aloud. */}
+                  <VehicleHoverCode
+                    vehicleId={car.vehicleId}
+                    code={car.vehicleCode}
+                    focusable={false}
                     dir="ltr"
                     className={cn(
                       'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
@@ -1078,7 +1084,7 @@ export const CustodyTopCars = ({
                     )}
                   >
                     {car.vehicleCode ?? '—'}
-                  </span>
+                  </VehicleHoverCode>
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(

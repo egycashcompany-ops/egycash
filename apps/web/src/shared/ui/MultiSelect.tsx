@@ -10,7 +10,15 @@
 //    A filter you have forgotten you set is worse than no filter.
 //  • The list is searchable and folds Arabic spelling, because a stage or branch list gets long and
 //    scrolling to find one entry is slower than typing three letters of it.
-import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../lib/cn';
 import { type ControlDensity } from './form';
@@ -34,7 +42,41 @@ export interface MultiSelectOption {
    * but the trigger has one row to work with and the code alone identifies it.
    */
   shortLabel?: string;
+  /**
+   * A small mark drawn AFTER the label in the open list — never in the trigger, never on a chip:
+   * the accident form's «اختيار يدوي» / «اختيار تلقائي» on a car it takes money from. Optional;
+   * an option without one draws as it always did.
+   */
+  tag?: ReactNode;
 }
+
+/**
+ * One option's words in the open list: its label, then its `tag` when it has one. Apart so the
+ * suite, which cannot open the list, can still read what a row says.
+ */
+export const MultiSelectOptionText = ({ option }: { option: MultiSelectOption }): JSX.Element => (
+  <>
+    <span className="truncate">{option.label}</span>
+    {option.tag !== undefined && option.tag !== null && (
+      <span className="shrink-0" data-multiselect-tag="true">
+        {option.tag}
+      </span>
+    )}
+  </>
+);
+
+/**
+ * Clearing EVERY pick — «مسح الكل», the ✕ beside the trigger, the list's «مسح التحديد». The owner's
+ * `onClear` when it gave one (an owner that must tell «start over» from a last pick unticked);
+ * `onChange([])` otherwise, as always.
+ */
+export const clearEveryPick = (
+  onChange: (next: string[]) => void,
+  onClear: (() => void) | undefined,
+): void => {
+  if (onClear === undefined) onChange([]);
+  else onClear();
+};
 
 /**
  * What the trigger says once something is chosen: the choices themselves, not how many.
@@ -296,6 +338,8 @@ export const MultiSelect = ({
   onClose,
   loadOptions,
   size = 'default',
+  summaryMax,
+  onClear,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -461,6 +505,19 @@ export const MultiSelect = ({
    * the trigger's note on why one row of controls must be one height.
    */
   size?: 'default' | 'sm';
+  /**
+   * How many picks the trigger names before the tail collapses to `+n` — three (`SUMMARY_MAX`)
+   * unless given. For a picker of short codes whose ORDER is the point (the accident form's cars,
+   * in the order he picked them): it may then use the trigger's whole width.
+   */
+  summaryMax?: number;
+  /**
+   * Called in place of `onChange([])` when EVERY pick is cleared at once — «مسح الكل», the ✕, the
+   * list's «مسح التحديد» — for an owner that must tell «start over» from unticking the last pick
+   * (the accident form's transfer section resets its amount on the first, not on the second).
+   * Unticking picks one by one still calls `onChange`. Opt-in.
+   */
+  onClear?: () => void;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -640,7 +697,9 @@ export const MultiSelect = ({
   const selected = value.length;
   // `null` = say the label, the way every bar that has not opted in still does.
   const summary =
-    showSelectedValues && selected > 0 ? selectionSummary(options, value, SUMMARY_MAX) : null;
+    showSelectedValues && selected > 0
+      ? selectionSummary(options, value, summaryMax ?? SUMMARY_MAX)
+      : null;
   const toggle = (option: string): void => {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
     if (clearSearchOnPick && query !== '') searchFor('');
@@ -683,7 +742,7 @@ export const MultiSelect = ({
   }, [open]);
 
   const clearAll = (): void => {
-    onChange([]);
+    clearEveryPick(onChange, onClear);
     if (query !== '') searchFor('');
     searchRef.current?.focus();
   };
@@ -844,7 +903,12 @@ export const MultiSelect = ({
               {placeholder ?? label}
             </span>
           ) : (
-            <span id={`${listId}-summary`} className="max-w-48 truncate" title={summary}>
+            <span
+              id={`${listId}-summary`}
+              // A trigger asked to name more picks may use its whole width for them.
+              className={cn(summaryMax === undefined ? 'max-w-48' : 'min-w-0', 'truncate')}
+              title={summary}
+            >
               {summary}
             </span>
           )}
@@ -1074,7 +1138,7 @@ export const MultiSelect = ({
                       >
                         {checked && <CheckIcon className="h-3 w-3" />}
                       </span>
-                      <span className="truncate">{option.label}</span>
+                      <MultiSelectOptionText option={option} />
                     </button>
                   </li>
                 );
@@ -1091,7 +1155,7 @@ export const MultiSelect = ({
                 <button
                   type="button"
                   {...(clearable ? { 'data-multiselect-clear-all': 'true' } : {})}
-                  onClick={clearable ? clearAll : () => onChange([])}
+                  onClick={clearable ? clearAll : () => clearEveryPick(onChange, onClear)}
                   className={cn(
                     'w-full rounded-md px-2 py-1.5 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-700',
                     clearable

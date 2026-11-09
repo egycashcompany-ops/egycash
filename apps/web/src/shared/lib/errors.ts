@@ -13,6 +13,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     CONFLICT: 'That action conflicts with the current state.',
     STALE_DOCUMENT: 'This record changed since you loaded it — please refresh and try again.',
     BUSINESS_RULE: 'That action is not allowed right now.',
+    // An accident's transfer from other cars, refused inside the save (nothing written). The
+    // form words both with their figures (`details`); these are the same refusals without them.
+    FLEET_ACCIDENT_TRANSFER_SHORT:
+      'The selected cars no longer have enough left for this amount — their figures changed since they were shown.',
+    FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT:
+      'The amount taken is more than this accident’s negative remaining.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -35,6 +41,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     CONFLICT: 'هذا الإجراء يتعارض مع الحالة الحالية.',
     STALE_DOCUMENT: 'تم تعديل هذا السجل بعد تحميله — يُرجى التحديث والمحاولة مجددًا.',
     BUSINESS_RULE: 'هذا الإجراء غير مسموح حاليًا.',
+    FLEET_ACCIDENT_TRANSFER_SHORT:
+      'لم يعد في السيارات المحددة ما يكفي لهذا المبلغ، فقد تغيّرت أرقامها منذ عرضها.',
+    FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'المبلغ المأخوذ أكبر من سالب هذا الحادث.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',
@@ -68,7 +77,7 @@ export const hasError = (error: unknown): boolean => error !== undefined && erro
 export const errorMessage = (error: unknown, locale: Locale): string => {
   const table = FRIENDLY[locale];
   if (error instanceof ApiError) {
-    return table[error.code] ?? (error.message !== '' ? error.message : table.UNKNOWN ?? 'Error');
+    return table[error.code] ?? (error.message !== '' ? error.message : (table.UNKNOWN ?? 'Error'));
   }
   if (error instanceof TypeError) return table.NETWORK ?? 'Network error';
   if (error instanceof Error && error.message !== '') return error.message;

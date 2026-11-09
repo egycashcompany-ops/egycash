@@ -231,6 +231,21 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * `codesByIds` for the LIVE cars only (not soft-deleted, any status) — for a list that offers
+   * cars to act on, where a deleted car would be offered and then refused (its `getById` is 404).
+   * History keeps reading `codesByIds`, which a deleted car still answers.
+   */
+  async liveCodesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .select({ code: 1 })
+      .lean<{ _id: Types.ObjectId; code: string }[]>()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.code]));
+  }
+
+  /**
    * «ضيف عمود فى الجدول ب نوع التشغيل» — the car's «التشغيل», for the visits on one page.
    *
    * The same one-lookup-per-page shape as `codesByIds`: a workshop visit does not carry its car's
@@ -250,6 +265,24 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         String(row._id),
         row.operationId == null ? null : String(row.operationId),
       ]),
+    );
+  }
+
+  /**
+   * «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه» — the car's «الفرع», for the
+   * visits on one page: the same one-lookup shape as `operationIdsByIds`, deleted cars included (a
+   * scrapped car's visits are still history, and its branch is still the one `idsInBranches`
+   * files them under). A car with no branch on file maps to `null`.
+   */
+  async branchIdsByIds(ids: readonly string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ branchId: 1 })
+      .lean<{ _id: Types.ObjectId; branchId?: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [String(row._id), row.branchId == null ? null : String(row.branchId)]),
     );
   }
 

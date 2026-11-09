@@ -76,6 +76,8 @@ import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { useVehicleTypeOptions, vehicleSetReaders } from '../lib/vehicle-set-params';
+import { useBranchNames } from '../../organization/shared/references';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -300,6 +302,18 @@ export const MaintenancePage = (): JSX.Element => {
     }
     return map;
   }, [workshops.data, workTypes.data, spareParts.data, operations.data, locale]);
+  // «الفرع» — the CAR's branch, by the id the server joins onto the visit. Named from the list
+  // that also names INACTIVE branches: a car keeps the branch it was given after that branch is
+  // closed, and the active list alone would print a dash for a car that has one.
+  const branches = useBranchNames();
+  const branchName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const branch of branches.data ?? []) map.set(branch.id, localized(branch.name, locale));
+    return map;
+  }, [branches.data, locale]);
+  /** The car's branch by name, or `undefined` for a car with none (or an id no branch answers). */
+  const carBranch = (visit: FleetMaintenanceVisitDto): string | undefined =>
+    visit.branchId === null ? undefined : branchName.get(visit.branchId);
 
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState<FleetMaintenanceVisitDto | null>(null);
@@ -399,6 +413,7 @@ export const MaintenancePage = (): JSX.Element => {
         t('fleet.maintenance.fields.outDate'),
         t('fleet.odometer.columns.vehicle'),
         t('fleet.maintenance.fields.operation'),
+        t('fleet.vehicles.columns.branch'),
         t('fleet.maintenance.fields.driverIn'),
         t('fleet.maintenance.fields.driverOut'),
         t('fleet.maintenance.fields.workshop'),
@@ -414,6 +429,7 @@ export const MaintenancePage = (): JSX.Element => {
           visit.outDate === null ? t('fleet.maintenance.open') : formatDate(visit.outDate, locale),
           visit.vehicleCode ?? '',
           visit.operationId === null ? '' : (catalogName.get(visit.operationId) ?? ''),
+          carBranch(visit) ?? '',
           driverCell(visit.driverInEmployeeId, visit.driverInName, names),
           driverCell(visit.driverOutEmployeeId, visit.driverOutName, names),
           catalogName.get(visit.workshopId) ?? '',
@@ -484,10 +500,16 @@ export const MaintenancePage = (): JSX.Element => {
         visit.vehicleCode === null ? (
           dash
         ) : (
-          // A size over the row, as the alarms board writes the car's code.
-          <span dir="ltr" className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}>
-            {visit.vehicleCode}
-          </span>
+          // A size over the row, as the alarms board writes the car's code. The same element is
+          // the car card's trigger — «عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على
+          // اسم السواق»: the card is the car the row is LINKED to, so a visit from the old books
+          // (`vehicleId` null) keeps its code and gets no card.
+          <VehicleHoverCode
+            vehicleId={visit.vehicleId}
+            code={visit.vehicleCode}
+            dir="ltr"
+            className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}
+          />
         ),
     },
     // «ضيف عمود فى الجدول ب نوع التشغيل» — the CAR's operation, beside its code. The server reads
@@ -501,6 +523,20 @@ export const MaintenancePage = (): JSX.Element => {
       // weight — `PLAIN_CELLS` sets every body cell and what it holds so.
       render: (visit) => {
         const name = visit.operationId === null ? undefined : catalogName.get(visit.operationId);
+        return name === undefined ? dash : <span>{name}</span>;
+      },
+    },
+    // «وشاشة الصيانات احط الفرع فى الجدول … عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه
+    // الصيانه» — the CAR's branch (`vehicle.branchId`, joined by the server like the operation),
+    // never the branch of the workshop it went to. Right after the operation and drawn exactly as
+    // that cell is; a dash for a car with no branch or a visit from the old books. No arrow: the
+    // server would have to join the branch for the whole register before cutting the page.
+    {
+      key: 'branch',
+      align: 'center',
+      header: t('fleet.vehicles.columns.branch'),
+      render: (visit) => {
+        const name = carBranch(visit);
         return name === undefined ? dash : <span>{name}</span>;
       },
     },
@@ -985,8 +1021,9 @@ export const MaintenancePage = (): JSX.Element => {
           className={cn(
             DARK_TABLE,
             BOARD_TABLE_FILL,
-            // Eleven columns on a laptop: the cells take less room between them so the whole row
-            // stays on the screen.
+            // Twelve columns on a laptop: the cells take less room between them so the whole row
+            // stays on the screen. The table's floor grows with its columns (`minColumnWidth`), so
+            // a phone scrolls the table inside its frame rather than squeezing it.
             'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
             // «زى السيارات ما بين العواميد خط»: the vehicles table's faint line between the columns,
             // drawn by `DARK_TABLE` — nothing here takes it off any more.

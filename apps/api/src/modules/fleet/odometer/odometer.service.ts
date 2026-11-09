@@ -17,6 +17,7 @@ import {
   type FleetDashboardPeriodKmDto,
   type FleetOdometerSummaryDto,
   type FleetOdometerSummaryQuery,
+  type FleetVehicleLatestReadingDto,
   type ListFleetOdometerQuery,
   type LocalizedString,
   type Paginated,
@@ -413,6 +414,24 @@ class FleetOdometerService {
     const latest = (await fleetOdometerRepository.latestReadings([vehicleId])).get(vehicleId);
     if (latest === undefined) return { reading: null, asOf: null };
     return { reading: latest.reading, asOf: latest.date };
+  }
+
+  /**
+   * «تمام وزود اخر عداد» — every registry car's last reading, for the car card's «آخر قراءة عداد».
+   *
+   * Every car not soft-deleted, ANY status: the alarm projection reads active cars only, and a car
+   * set out of service after an accident still has its log. The reading is the alarm's own read
+   * (`latestReadings`), so an active car's figure here IS its alarm row's. A car with no reading on
+   * file has no row.
+   */
+  async latestReadingsOfFleet(): Promise<FleetVehicleLatestReadingDto[]> {
+    const ids = (await fleetVehicleRepository.idsMatching({})).map(String);
+    const latest = await fleetOdometerRepository.latestReadings(ids);
+    return [...latest.values()].map((row) => ({
+      vehicleId: row.vehicleId,
+      latestReading: row.reading,
+      latestReadingAt: row.date.toISOString(),
+    }));
   }
 
   /**

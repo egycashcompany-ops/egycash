@@ -12,6 +12,10 @@ import { ORG_MODULE } from './org-unit-resource';
 const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/branches/options');
 
+// The same endpoint with the INACTIVE branches as well — for naming, never for a picker.
+const listBranchNames = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/branches/options?includeInactive=true');
+
 // Department options, like the branch ones above: any authenticated user, decoupled from
 // `department.view`. A module that only needs to NAME a department — Operations picking the one
 // its crew works in — has no business demanding the permission to browse HR's org structure.
@@ -37,6 +41,24 @@ export const useBranchOptions = (enabled = true) =>
   useQuery({
     queryKey: [ORG_MODULE, 'branches', 'options'],
     queryFn: listBranchOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+/**
+ * EVERY branch's name, the inactive ones too — for NAMING the branch a record already points at,
+ * never for a picker (which offers `useBranchOptions`' active branches only).
+ *
+ * A car keeps the branch it was given after that branch is closed, and «الفرع» on the Fleet car
+ * card and the maintenance board is that car's branch: read from the active list alone it printed
+ * a dash, which says «no branch» about a car that has one. Ungated, like every options read, and
+ * a key of its own beneath the active list's, so a branch write that refreshes one refreshes both.
+ */
+export const useBranchNames = (enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'branches', 'options', 'withInactive'],
+    queryFn: listBranchNames,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

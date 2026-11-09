@@ -64,6 +64,7 @@ import { readList, toggleValue, writeList } from '../../../shared/lib/list-param
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import { DateBox } from '../components/DateBox';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import {
   applyEdit,
   changedRows,
@@ -875,10 +876,17 @@ export const RosterPage = (): JSX.Element => {
       // second identifier under every row of a column the eye scans for one, and the code is what
       // this fleet dispatches by. It stays on the vehicle record and on the screens that are ABOUT
       // a car; what it no longer does is decide which rows this board shows.
+      //
+      // The code carries the car card by hover only, as the board's driver chips carry theirs: a
+      // board of drag-and-drop slots keeps its Tab order for the slots and the row's buttons.
       render: (row) => (
-        <span className="font-figures text-xs" dir="ltr">
-          {row.code}
-        </span>
+        <VehicleHoverCode
+          vehicleId={row.vehicleId}
+          code={row.code}
+          focusable={false}
+          className="font-figures text-xs"
+          dir="ltr"
+        />
       ),
     },
     {

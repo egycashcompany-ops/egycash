@@ -635,11 +635,16 @@ describe('the period screens read the vehicle set — type, operation, branch', 
     }
   });
 
-  it('lets the accidents bar wrap while the set is shown — its one row was measured without it', () => {
-    expect(accidentsAt('/fleet/accidents', {})).toContain('min-[1536px]:flex-nowrap');
-    expect(accidentsAt(`/fleet/accidents?${SET_ROUTE}`, SET_QUERY)).not.toContain(
-      'min-[1536px]:flex-nowrap',
-    );
+  it('lets the accidents bar wrap, set or no set — the boards’ dark bar, as on receipts', () => {
+    // The approved board (2026-11-09) dropped the old one-row bar measured at 1536: the dark bar
+    // wraps like every other Fleet board's, so the set's three controls never push it off the page.
+    for (const html of [
+      accidentsAt('/fleet/accidents', {}),
+      accidentsAt(`/fleet/accidents?${SET_ROUTE}`, SET_QUERY),
+    ]) {
+      expect(html).toContain('data-accidents-filters="true"');
+      expect(html).not.toContain('min-[1536px]:flex-nowrap');
+    }
   });
 
   it('remembers the set with each screen’s other filters, and reads it in its own source', () => {

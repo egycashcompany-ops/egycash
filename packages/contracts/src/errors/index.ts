@@ -334,6 +334,27 @@ export const ErrorCodes = {
    */
   FLEET_FUEL_CARD_THUMB_INVALID: 'FLEET_FUEL_CARD_THUMB_INVALID',
 
+  // ── Fleet accident transfers («أخذ مبلغ من متبقي سيارة أخرى») ───────────────────────────────
+  /**
+   * 422 — the cars picked have less left, together, than the amount sent. Read inside the save's
+   * own transaction, so it is what another clerk's take left a moment ago — the screen plans
+   * within what it was shown and never sends more. Nothing was written. Two details, each figure
+   * in pounds as a plain decimal string (`'1200.50'`):
+   * `{ field: 'available', code: 'AVAILABLE', message }` — what the picked cars have together, and
+   * `{ field: 'amount', code: 'AMOUNT', message }` — the amount sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_SHORT: 'FLEET_ACCIDENT_TRANSFER_SHORT',
+  /**
+   * 422 — the amount is more than the receiving file's negative: a take brings a file up to zero
+   * and never past it. The negative is the file's «المتبقي» as this save leaves its facts (a new
+   * file's figures as sent; an edit's figures over the stored file, read in the transaction),
+   * before the take; a file at zero or above has none. Nothing was written. Two details, in pounds
+   * as plain decimal strings: `{ field: 'deficit', code: 'DEFICIT', message }` — the negative
+   * (`'0.00'` when there is none), and `{ field: 'amount', code: 'AMOUNT', message }` — the amount
+   * sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT',
+
   // ── IT vehicle device checks (docs/12-planning/it-vehicle-checks-design.md) ───────────────────
   /**
    * 422 — the car exists but its Fleet status is not `active` (out of service, disposed): a report

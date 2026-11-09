@@ -1071,6 +1071,51 @@ describe('login → permission → scoped data → audit trail', () => {
     expect((await read('branches')).find((o) => o.id === branchAId)?.parentId).toBeNull();
   });
 
+  /**
+   * «الفرع اللى العربيه متعينه عليه»: a car keeps the branch it was given after that branch closes,
+   * and the Fleet car card and the maintenance board still NAME it. A picker must not offer it.
+   */
+  it('names inactive branches on `?includeInactive=true` only — a picker still sees active ones', async () => {
+    const made = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-CLOSED', name: { ar: 'فرع مغلق', en: 'Closed Branch' } });
+    expect(made.status).toBe(201);
+    const closed = (made.body as { data: { id: string; version: number } }).data;
+    const patched = await request(app)
+      .patch(`/api/v1/platform/branches/${closed.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive', version: closed.version });
+    expect(patched.status).toBe(200);
+
+    type Opt = { id: string; code: string; name: { ar: string; en: string } };
+    const read = async (query: string): Promise<Opt[]> => {
+      const res = await request(app)
+        .get(`/api/v1/platform/branches/options${query}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: Opt[] }).data;
+    };
+
+    expect(
+      (await read('')).some((o) => o.id === closed.id),
+      'a picker: active only',
+    ).toBe(false);
+    expect((await read('?includeInactive=false')).some((o) => o.id === closed.id)).toBe(false);
+    const named = await read('?includeInactive=true');
+    expect(named.find((o) => o.id === closed.id)?.name.ar).toBe('فرع مغلق');
+    expect(
+      named.some((o) => o.id === branchAId),
+      'the active ones as well',
+    ).toBe(true);
+
+    // Anything else in the query is refused rather than silently ignored.
+    const odd = await request(app)
+      .get('/api/v1/platform/branches/options?includeInactive=yes')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(odd.status).toBe(400);
+  });
+
   it('serves job-title dropdown options to any authenticated caller, without `jobTitle.view`', async () => {
     // THE DEFECT THIS CLOSES. Branches, departments and sections get `/options` from
     // `makeOrgUnitRouter`; job titles have a hand-written router and never gained it. The

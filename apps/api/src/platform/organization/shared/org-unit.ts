@@ -289,21 +289,33 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
    * Every ACTIVE unit as a dropdown option, organization-wide and NOT gated by the unit's data-scope
    * `view` permission — it exposes only non-sensitive identifiers a form or a filter needs.
    *
+   * `includeInactive`: the inactive units too — for NAMING a unit a record already points at (a car
+   * whose branch has since been closed, on the Fleet car card and the maintenance board's «الفرع»),
+   * never for a picker, which offers active units only. Soft-deleted units stay out either way.
+   *
    * Paged to exhaustion by `collectOptions` — see that file for why a single large page was wrong.
    */
-  async options(): Promise<OrgUnitOptionDto[]> {
+  async options({ includeInactive = false }: { includeInactive?: boolean } = {}): Promise<
+    OrgUnitOptionDto[]
+  > {
     const parentOf = this.hooks.optionParentId;
     const catalogOf = this.hooks.optionCatalogId;
     return collectOptions<TDoc>(
       (page, pageSize) =>
         this.repository.list({
-          filter: { status: 'active' } as FilterQuery<TDoc>,
+          filter: (includeInactive ? {} : { status: 'active' }) as FilterQuery<TDoc>,
           page,
           pageSize,
           sortBy: 'code',
           sortDir: 'asc',
           sortableFields: ['code'],
-          scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+          scope: {
+            scope: 'organization',
+            userId: '',
+            branchId: null,
+            departmentId: null,
+            sectionId: null,
+          },
         }),
       (doc) => (parentOf === undefined ? null : parentOf(doc)),
       (doc) => (catalogOf === undefined ? null : catalogOf(doc)),

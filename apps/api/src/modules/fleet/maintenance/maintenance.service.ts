@@ -51,6 +51,8 @@ export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
   codes: ReadonlyMap<string, string>;
   /** The car's «التشغيل» for the same cars — «ضيف عمود فى الجدول ب نوع التشغيل». */
   operations: ReadonlyMap<string, string | null>;
+  /** The car's «الفرع» for the same cars — the branch it is assigned to, not the workshop's. */
+  branches: ReadonlyMap<string, string | null>;
 };
 
 /**
@@ -63,6 +65,8 @@ export interface MaintenanceVisitWithJoins {
   vehicleCode: string | null;
   /** The car's «التشغيل» — a fact about the CAR, read with its code. */
   operationId: string | null;
+  /** The car's «الفرع» (`vehicle.branchId`) — likewise the CAR's, read with its code. */
+  branchId: string | null;
 }
 
 /**
@@ -222,19 +226,26 @@ class FleetMaintenanceService {
   }
 
   /**
-   * The one read-side fact a visit does not carry itself: the registry's code for its vehicle.
-   * Both drivers are stored on the document now, so nothing else needs resolving.
+   * The read-side facts a visit does not carry itself — all about its CAR, read off the registry:
+   * the code, «التشغيل» and «الفرع». Both drivers are stored on the document now, so nothing else
+   * needs resolving.
    */
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
     const vehicleId = vehicleIdOf(doc);
     // A visit kept from the old book for a car the registry never had names its car itself.
-    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null };
-    const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
-    const operations = await fleetVehicleRepository.operationIdsByIds([vehicleId]);
+    if (vehicleId === null) {
+      return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null, branchId: null };
+    }
+    const [codes, operations, branches] = await Promise.all([
+      fleetVehicleRepository.codesByIds([vehicleId]),
+      fleetVehicleRepository.operationIdsByIds([vehicleId]),
+      fleetVehicleRepository.branchIdsByIds([vehicleId]),
+    ]);
     return {
       doc,
       vehicleCode: codes.get(vehicleId) ?? null,
       operationId: operations.get(vehicleId) ?? null,
+      branchId: branches.get(vehicleId) ?? null,
     };
   }
 
@@ -779,13 +790,14 @@ class FleetMaintenanceService {
       sorts,
       sortDerived,
     });
-    // The page's cars, asked their codes and their operations at once.
+    // The page's cars, asked their codes, their operations and their branches at once.
     const onPage = vehicleIdsOf(page.items);
-    const [codes, operations] = await Promise.all([
+    const [codes, operations, branches] = await Promise.all([
       fleetVehicleRepository.codesByIds(onPage),
       fleetVehicleRepository.operationIdsByIds(onPage),
+      fleetVehicleRepository.branchIdsByIds(onPage),
     ]);
-    return { ...page, codes, operations };
+    return { ...page, codes, operations, branches };
   }
 }
 

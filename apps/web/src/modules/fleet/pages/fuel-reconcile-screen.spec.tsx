@@ -766,18 +766,20 @@ describe('6c: the rows that are never decided — one table row per sheet row', 
     expect(withChoice).not.toContain('data-recon-fold="conflicts"');
     const table = renderToStaticMarkup(
       <Provider store={storeOf(ALL)}>
-        <ChooseTable
-          conflicts={[
-            {
-              reason: 'ambiguousNumber',
-              name: '',
-              cardId: null,
-              candidateIds: [A, 'gone'],
-              rows: [{ row: 9, number: '548**********7868', balance: 50 }],
-            },
-          ]}
-          cardOf={(id) => (id === A ? card(A, 795) : undefined)}
-        />
+        <QueryClientProvider client={new QueryClient()}>
+          <ChooseTable
+            conflicts={[
+              {
+                reason: 'ambiguousNumber',
+                name: '',
+                cardId: null,
+                candidateIds: [A, 'gone'],
+                rows: [{ row: 9, number: '548**********7868', balance: 50 }],
+              },
+            ]}
+            cardOf={(id) => (id === A ? card(A, 795) : undefined)}
+          />
+        </QueryClientProvider>
       </Provider>,
     );
     expect(table).toContain(`data-recon-candidate="${A}"`);
@@ -791,11 +793,14 @@ describe('6c: «أرقام مختلفة» — who holds the sheet’s number', (
   const numbersOf = (lines: FleetFuelReconcileLineDto[], mayEdit = true): string =>
     renderToStaticMarkup(
       <Provider store={storeOf(ALL)}>
-        <NumbersTable
-          lines={lines}
-          cardNow={(c) => c}
-          onUpdateNumber={mayEdit ? () => undefined : null}
-        />
+        {/* The car chip watches the registry for its car card. */}
+        <QueryClientProvider client={new QueryClient()}>
+          <NumbersTable
+            lines={lines}
+            cardNow={(c) => c}
+            onUpdateNumber={mayEdit ? () => undefined : null}
+          />
+        </QueryClientProvider>
       </Provider>,
     );
 

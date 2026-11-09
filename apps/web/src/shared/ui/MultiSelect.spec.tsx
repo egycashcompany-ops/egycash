@@ -14,6 +14,8 @@ import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import {
   MultiSelect,
+  MultiSelectOptionText,
+  clearEveryPick,
   emptyListText,
   floatingSpot,
   triggerInSight,
@@ -775,5 +777,134 @@ describe('opening a list at the page’s edge moves nothing — «المنيو �
     expect(click.indexOf('onOpen?.();')).toBeLessThan(click.indexOf('setOpen(press.open);'));
     const keyOpen = source.slice(source.indexOf("if (action === 'open') {"));
     expect(keyOpen.indexOf('onOpen?.();')).toBeLessThan(keyOpen.indexOf('setOpen(true);'));
+  });
+});
+
+// The accident form's car picker — «ممكن اختار فى الاول عربيتين وبعد كدا اكتب المبلغ … ويكتب جنب
+// العربية انه هو الاختارها او الاختيار كان تلقائى» — asks three things of this control that no
+// other screen does. Each is opt-in: every one of the other bars must read, and behave, as before.
+describe('three opt-ins for the accident form — every other bar exactly as it was', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+    'utf8',
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  /** The opening tag of the trigger's summary — the span the button is described by. */
+  const summarySpan = (html: string): string =>
+    /<span id="[^"]*-summary"[^>]*>/u.exec(html)?.[0] ?? '';
+
+  it('`summaryMax` names more picks before the tail collapses — in the order they were picked', () => {
+    const html = render(
+      <MultiSelect
+        showSelectedValues
+        label="Cars"
+        options={CARS}
+        value={['ZZ0107', 'ZZ0104', 'ZZ0106', 'ZZ0105']}
+        onChange={noop}
+        summaryMax={4}
+      />,
+    );
+    expect(trigger(html)).toBe('ZZ0107, ZZ0104, ZZ0106, ZZ0105');
+    // A trigger asked to name them all may use its width: the filter bar's cap is not on it.
+    expect(summarySpan(html)).not.toContain('max-w-48');
+    expect(summarySpan(html)).toContain('truncate');
+    expect(selectionSummary(CARS, ['ZZ0104', 'ZZ0105', 'ZZ0106'], 2)).toBe('ZZ0104 +2');
+  });
+
+  it('without it, three names and the filter bar’s cap, as before', () => {
+    const html = render(
+      <MultiSelect
+        showSelectedValues
+        label="Cars"
+        options={CARS}
+        value={CARS.map((c) => c.value)}
+        onChange={noop}
+      />,
+    );
+    expect(trigger(html)).toBe('ZZ0104, ZZ0105 +2');
+    expect(summarySpan(html)).toContain('max-w-48 truncate');
+  });
+
+  it('an option’s `tag` is drawn after its label in the open list', () => {
+    const html = renderToStaticMarkup(
+      <MultiSelectOptionText
+        option={{
+          value: 'ZZ0104',
+          label: 'ZZ0104 — 1,250.00',
+          tag: <span data-transfer-tag="auto">اختيار تلقائي</span>,
+        }}
+      />,
+    );
+    expect(html.indexOf('ZZ0104 — 1,250.00')).toBeLessThan(html.indexOf('اختيار تلقائي'));
+    expect(html).toContain('data-multiselect-tag="true"');
+    // Without one, the row's words are exactly what they were.
+    expect(renderToStaticMarkup(<MultiSelectOptionText option={CARS[0]!} />)).toBe(
+      '<span class="truncate">ZZ0104 — س ص 104</span>',
+    );
+    // The list's rows draw it — and only the list's rows.
+    expect(source).toContain('<MultiSelectOptionText option={option} />');
+    expect(source.match(/<MultiSelectOptionText /g)).toHaveLength(1);
+  });
+
+  it('…and never in the trigger', () => {
+    const tagged = CARS.map((car) => ({ ...car, tag: <span>اختيار يدوي</span> }));
+    const html = render(
+      <MultiSelect
+        showSelectedValues
+        label="Cars"
+        options={tagged}
+        value={['ZZ0104']}
+        onChange={noop}
+      />,
+      'ar',
+    );
+    expect(trigger(html)).toBe('ZZ0104');
+    expect(html).not.toContain('اختيار يدوي');
+  });
+
+  it('`onClear` stands in for `onChange([])` when every pick is cleared at once', () => {
+    const calls: string[] = [];
+    clearEveryPick(
+      (next) => calls.push(`change:${next.join(',')}`),
+      () => calls.push('clear'),
+    );
+    expect(calls).toEqual(['clear']);
+    calls.length = 0;
+    clearEveryPick((next) => calls.push(`change:${next.join(',')}`), undefined);
+    expect(calls, 'without it, as always').toEqual(['change:']);
+  });
+
+  it('on all three ways of clearing everything — and unticking one pick still says `onChange`', () => {
+    const clearAll = source.slice(
+      source.indexOf('const clearAll ='),
+      source.indexOf('const onKeyDown ='),
+    );
+    expect(clearAll).toContain('clearEveryPick(onChange, onClear);');
+    expect(clearAll).not.toContain('onChange([])');
+    // The ✕ beside the trigger and the clearable list's «مسح الكل» are `clearAll`; the other
+    // list's «مسح التحديد» clears every pick too.
+    expect(source).toContain(
+      'onClick={clearable ? clearAll : () => clearEveryPick(onChange, onClear)}',
+    );
+    const toggle = source.slice(
+      source.indexOf('const toggle ='),
+      source.indexOf('const clearAll ='),
+    );
+    expect(toggle).toContain('onChange(value.includes(option)');
+    expect(toggle).not.toContain('onClear');
+  });
+
+  it('keeps the «+n» tail as every RTL bar reads it today', () => {
+    // The sample's proposal also held the tail left-to-right; it is NOT shipped — it would change
+    // every Arabic filter bar's trigger, which none of them asked for.
+    expect(
+      selectionSummary(
+        CARS,
+        CARS.map((c) => c.value),
+        3,
+      ),
+    ).toBe('ZZ0104, ZZ0105 +2');
+    expect(source).not.toMatch(/\\u2066/u);
   });
 });

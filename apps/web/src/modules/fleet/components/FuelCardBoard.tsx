@@ -35,6 +35,8 @@ import { FUEL_CARD_LOGO } from './FuelCardTiles';
 import { groupCardNumber } from '../lib/fuel-card-number';
 import { ACTION_GROUP, actionColour, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
+// A type only, erased on build: the card imports this file, so a value import back would be a cycle.
+import type { VehicleCardTriggerProps } from './VehicleHoverCard';
 
 export type ExpiryState = 'valid' | 'soon' | 'expired' | 'unknown';
 
@@ -641,12 +643,18 @@ export const VehicleFuelGroup = ({
   vehicleId,
   code,
   held,
+  car,
   children,
 }: {
   vehicleId: string;
   code: string;
   /** How many of its two slots hold a card. */
   held: number;
+  /**
+   * The car card on the big code (`useVehicleHoverCard`'s answer) — handed in by `FuelCarGroup`,
+   * since this file cannot import the card: the card reads this file's icons.
+   */
+  car?: { triggerProps: VehicleCardTriggerProps; card: ReactNode };
   children: ReactNode;
 }): JSX.Element => {
   const t = useT();
@@ -711,9 +719,11 @@ export const VehicleFuelGroup = ({
                   ? 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
                   : 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
               )}
+              {...car?.triggerProps}
             >
               {code}
             </div>
+            {car?.card}
           </div>
           <div className="w-full space-y-1 border-t border-slate-200 dark:border-slate-800/80 pt-1.5">
             <div className="flex items-center justify-between text-[10px]">

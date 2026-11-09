@@ -11,6 +11,60 @@ its entry here in the same PR.
 
 ### Added
 
+- **Fleet: a car's card on its code, like the driver's card on a name.** «عاوز لما اماوس يقف على كود
+  عربيه يجيب بيانات زى اما اقف على اسم السواق نفس الموضوع كدا». When the mouse rests on a car's
+  code, or Tab reaches it, a card opens after the same short pause as the driver card, in the same
+  frame with a truck icon, in light and dark. It shows:
+  - the code, the car's type, and its state in the registry's words, or «في الورشة» while a
+    workshop visit is open;
+  - «اللوحة», «الفرع» (the car's own branch), «نوع التشغيل» and «السائقون اليوم» (a dash when
+    nobody is on it today);
+  - «انتهاء الترخيص» with the registry's expired / expiring mark;
+  - «آخر قراءة عداد» — «تمام وزود اخر عداد» — such as «154,320 كم · 2026/11/07», or a dash.
+
+  The rules:
+  - **Where.** «زى ما انت اقترحت»: on every Fleet register table and board chip that shows a car
+    code, accidents and maintenance first, the dashboard's car chips and the custody and fuel code
+    chips included. Never inside a picker, a filter or a form dialog; a spec census holds this.
+    Where the code sits in a chip that already takes clicks or drags (the two roster boards,
+    custody «السجل», the fuel card), the card opens on hover and adds no Tab stop.
+  - **Who.** Only a reader with `fleetVehicle.view` gets a card. «السائقون اليوم» also needs
+    `fleetRoster.view` and `fleetDriver.view` (today's Cairo board and the drivers' names), and
+    «آخر قراءة عداد» needs `fleetMaintenance.view` or `fleetOdometer.view`. Without them the line
+    is left out rather than shown empty.
+  - **Which car.** A row from the old book with no registry car keeps its code and gets no card. A
+    chip that carries only a code finds the car by its normalised code, Latin case ignored; an
+    active car wins over a retired one that wore the same code.
+  - **Reads.** Nothing is fetched until a card first opens. It then reads lists the Fleet pages
+    already share: the whole registry, the types, the operations, the branch names, today's
+    roster, the people, and every car's last odometer reading. That last list is one small new
+    read, `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`,
+    the alarms' two audiences): every registry car's last reading whatever its status, the same
+    figure the alarms use. The alarms list covers active cars only, so with it a car taken out of
+    service after an accident read «—» although its log has readings.
+  - **One card at a time**, driver or car. The driver card's open, close and placement moved into
+    one shared layer (`HoverCardLayer`), and the driver card behaves as before. The card now hangs
+    by the page's direction, not the code's: a code is written left to right, and the card hung
+    off the wrong edge.
+  - **Branch names.** `GET /platform/branches/options` (and the departments' and sections') takes
+    `?includeInactive=true` to name inactive units as well; without it the answer is unchanged,
+    active units only, and a deleted unit is never listed. The route now refuses an unknown query
+    parameter (400). The web names a car's branch through it (`useBranchNames`), so a car whose
+    branch was closed still shows it; the pickers keep the active list.
+
+- **«الصيانة»: a «الفرع» column, the car's branch.** «وشاشة الصيانات احط الفرع فى الجدول … عاوز
+  الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه». The workshop register shows the
+  branch the car is assigned to (`vehicle.branchId`), never the branch of the workshop it went to.
+  - The column sits right after «نوع التشغيل» and is drawn like it, with no sort arrow. It shows a
+    dash for a car with no branch, or for a visit from the old book with no registry car. The name
+    comes from the list that also names inactive branches.
+  - The Excel export carries it in the same place.
+  - The table is now twelve columns; on a phone it scrolls inside its frame.
+  - `FleetMaintenanceVisitDto` gains a required `branchId: string | null`: the car's branch as it
+    is today, the same one `?branchIds` filters by. A soft-deleted car keeps its branch. It is on
+    the list rows and on the check-in, check-out, reopen and update answers. Nothing is stored on
+    the visit.
+
 - **«فحص أجهزة السيارة»: a phone form for checking a car's devices (FR-21).** «I need to create a
   new form for specific users to use on Mobile to inform about the car status».
   `/it/vehicle-checks/new` is a phone screen outside the console frame (the Operations captain's
@@ -567,6 +621,39 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«حوادث السيارات»: a transfer can no longer take more than the file's negative, its refusals
+  are in Arabic with their figures, and the car list offers no deleted car.**
+  - **The server caps a take at the receiving file's negative** («اعرف المبلغ اللى بالسالب كام
+    وشيله»): a take brings the file up to zero and never past it. On a new file the negative is
+    read from the figures sent. On an edit it is read from the edit's figures over the stored
+    file, with the transfers already on it, inside the save's transaction. Before, only the screen
+    held to this. The refusal is `FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT` (422, details
+    `{deficit, amount}`; the deficit is 0.00 on a file at zero or above), and nothing is written.
+  - **The refusals are in Arabic, with their figures.** When the cars sent hold less than the
+    amount (another clerk took from them a moment ago), the save answered
+    `BUSINESS_RULE_VIOLATION` with an English sentence. It is now `FLEET_ACCIDENT_TRANSFER_SHORT`
+    (422, details `{available, amount}`). The form reads the accidents again, car balances
+    included, and says «لم يعد في السيارات المحددة ما يكفي: المتاح فيها الآن …، والمطلوب …»; a take
+    over the negative reads «لا يمكن أخذ أكثر من سالب هذا الحادث (…)». Both codes have Arabic and
+    English words in the app's error table. Every other business-rule refusal is unchanged,
+    including a transfer onto a file with no registry car or from the file's own car.
+  - **«كود السيارة المأخوذ منها» no longer offers a deleted car.** The car-balances read
+    (`GET /fleet/accidents/car-balances`) counted soft-deleted cars, so the list could offer a car
+    whose save then answered 404. A file kept from the old book under a code could also count for a
+    deleted car that once wore that code. Deleted cars are now left out before codes are matched,
+    and an old-book code counts for the live car that carries it now. The code is matched by the
+    save's own rule (spaces read as one, Latin case ignored): the registry's «فورتشنر 2 » and the
+    book's «فورتشنر 2», or «MG 2» and «mg 2», are one car. An exact match had left such a file out
+    of the list's figure while the save still counted it, so the list could offer a figure the save
+    then refused. Every car offered can be saved, and the figure shown is the one the save is
+    capped by.
+  - The integration fixtures that took onto a file at zero or above were rewritten so every
+    receiving file is negative. New cases cover the over-deficit refusal on a new file and on an
+    edit, a short refusal after another take, two clerks adding to one file at once (one wins, the
+    other is refused with the deficit left), a deleted car left out of the list, an old-book
+    code reused by a live car, and an old-book code spelled with a trailing space or in another
+    Latin case.
+
 - **Fingerprint sign-in: two gaps a review found, closed.** «يلا».
   - **A passkey sign-in now clears the failed-password count**, as a password sign-in does.
     Before, the count was cleared only by a successful password, and it has no time window. So a
@@ -742,6 +829,55 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **«حوادث السيارات»: the approved board and form, and a transfer from other cars whose amount may
+  now be typed.** «شكل تعديل الشاشه بتاعت الحوادث تمام». Built from the owner-approved samples
+  ([design §4.6](docs/12-planning/fleet-module-design.md)).
+  - **The board.** No page title. A toolbar with «N نتيجة», «الإحصائيات», the Excel pill and the
+    purple «تسجيل حادث». The dark filter bar: من, إلى, كود السيارة, المتسبب, ملاحظات, الحالة. The
+    table is bold like the receipts register («سيب شكل الخط كدا»), with the date first and then
+    «كود السيارة». A closed file's row is tinted, a negative remaining is red with its «−», and the
+    small grey «تحويل وارد» / «تحويل صادر» line under «إجمالي المتبقي» stays. The five totals sit
+    behind «الإحصائيات», closed on the way in. The culprit cell keeps the driver card, and the car's
+    code opens the new car card (see Added). The whole car list is read only for a reader with
+    `fleetVehicle.view`; it was requested for everyone.
+  - **The form**, in the Fleet forms' design: «بيانات الحادث»; «المبالغ», with a read-only
+    «المتبقي على هذا الحادث» under the three amounts; «أخذ مبلغ من متبقي سيارة أخرى (اختياري)»;
+    then «ملاحظات». A refusal shows under its field and in the banner over «حفظ».
+  - **The transfer. This reverses part of the owner's 2026-10-01 rule «مش انا اللى هكتب المبلغ
+    الماخوذ».** Under that rule the amount was never typed: the cars he picked covered the
+    accident's whole negative. He has now approved both ways: «هتسمح انه يدخل المبلغ او انت تلقائى
+    اعرف المبلغ اللى بالسالب كام وشيله», and «ممكن اختار فى الاول عربيتين وبعد كدا اكتب المبلغ
+    ميبقاش جايب ف يكمل هو». The rules:
+    1. The amount may be typed. Left empty with at least one car ticked, it is the accident's
+       whole negative. Nothing ticked and nothing typed is no transfer; the section stays
+       optional. A typed 0 is refused: «اكتب مبلغاً أكبر من صفر، أو اتركه فارغاً». So is a box
+       holding no number, such as a lone «.», which is never planned or sent.
+    2. A typed amount above the accident's negative is refused under the field: «لا يمكن أخذ أكثر
+       من سالب هذا الحادث (…)». An accident that is not negative has nothing to cover, as before.
+    3. His cars give first, in the order he ticked them, each down to 0 before the next. One that
+       is not needed stays listed at 0.00, greyed, «لم يُحتج إليها».
+    4. Still short, the system completes from the other cars with money left: never one he
+       unticked, never the accident's own car. The smallest balance goes first (a tie goes to the
+       lower code), each taken whole to 0, and the last gives only the rest.
+    5. All the cars together short is allowed: «ولو اختار كل العربيات اللى فيها فلوس ولسه العربيه
+       عليها فلوس عادى اسمح انه يكمل». Everything available is taken, and an amber note says what
+       stays on the accident: «يُؤخذ كل المتاح في السيارات (…)، ويبقى على هذا الحادث …», or «…في
+       السيارات المحددة…» when a car he unticked still holds money.
+    6. Every row says who chose it, «اختيار يدوي» or «اختيار تلقائي», in the plan table and on the
+       ticked cars of the open list. A car he unticked is never added back. «مسح الكل» and ✕ clear
+       the cars and the amount.
+    7. «تغطية السالب كله تلقائياً · … ج.م.» («لا سيب الزرار») is offered while the accident is
+       negative and nothing is ticked or typed. It fills the amount with the whole negative.
+    8. At most 20 cars give in one save, the contract's limit («تمام»). If stopping there leaves
+       the accident short, the amber note says so, and saving stays allowed.
+  - **What is sent.** Only the cars that give something, in the plan's order, with the amount equal
+    to what they give. The plan is one pure function, `planTransfer`, which replaces
+    `coverDeficit`; its spec carries the sample's 52 checks and the 20-car stop. The server checks
+    the same figures again inside the save (see Fixed).
+  - **A refused save** of a new or edited file reads the accidents again, car balances included,
+    so the form plans afresh from the server's figures. Close, reopen, delete and removing a
+    transfer keep the shared error handling.
 
 - **IT: a custody hand-over records without a printed receipt.** «فى الـ IT تحديداً فى تسليم العهدة
   عايزك تسمح عادى بالتسليم حتى لو مطبعش إيصال». In «تسليم عهدة», «تسليم» works as soon as the form is

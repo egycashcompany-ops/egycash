@@ -1,8 +1,8 @@
 // «فحص أجهزة السيارة» — the phone form's rules, kept apart from the page because they are the part
 // with a rule in it and the part a node test can reach (docs/12-planning/it-vehicle-checks-design.md
 // §2, §6.3): the counts in the bottom bar, the payload, a second tap clearing an answer, the default
-// day, the two fields a send cannot go without, and what each answer of the server does to the
-// form.
+// day and answers (every device «يعمل»), what a send cannot go without (the car, the day, a note for
+// a fault, a photo), and what each answer of the server does to the form.
 //
 // THE REQUEST ID. A report carries a `clientRequestId` made once per report: a send whose answer was
 // lost (mobile data, a double tap) is sent again with the SAME id and the server answers with the
@@ -12,10 +12,13 @@
 // report is another report, and sent under the held id it would only bring the first one back.
 import {
   CreateItVehicleCheckSchema,
+  ErrorCodes,
   IT_VEHICLE_CHECK_ITEMS,
+  IT_VEHICLE_CHECK_MIN_PHOTOS,
   IT_VEHICLE_CHECK_NOTES_MAX,
   cairoYmd,
   isYmd,
+  vehicleCheckNeedsNotes,
   type CreateItVehicleCheck,
   type ItVehicleCheckAnswer,
   type ItVehicleCheckItem,
@@ -55,15 +58,36 @@ export const newClientId = (): string => {
 /** The day the box opens on: today in Cairo, whatever the phone's own time zone. */
 export const defaultCheckDate = (now: Date = new Date()): string => cairoYmd(now);
 
-/** A form with nothing in it but the day — the page's first state, and «تقرير لسيارة أخرى». */
+/**
+ * Every device at «يعمل» — the answers a form opens on. «عايز هنا /it/vehicle-checks/new التلقائي إن
+ * كله يعمل ولو حاجة لا تعمل يبقى يغيرها» (2026-11-09): the reporter taps only what fails.
+ */
+export const allWorking = (): VehicleCheckAnswers =>
+  Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((item) => [item, 'works'])) as VehicleCheckAnswers;
+
+/** Whether these are the answers a form opens on — every device «يعمل», none left out. */
+export const isAllWorking = (items: VehicleCheckAnswers): boolean =>
+  IT_VEHICLE_CHECK_ITEMS.every((item) => items[item] === 'works');
+
+/**
+ * A fresh form: no car, the day, every device at «يعمل» (`allWorking`), no note — the page's first
+ * state, and «تقرير لسيارة أخرى».
+ */
 export const emptyVehicleCheck = (
   checkDate: string = defaultCheckDate(),
   clientRequestId: string = newClientId(),
-): VehicleCheckFormState => ({ vehicleId: '', checkDate, items: {}, notes: '', clientRequestId });
+): VehicleCheckFormState => ({
+  vehicleId: '',
+  checkDate,
+  items: allWorking(),
+  notes: '',
+  clientRequestId,
+});
 
 /**
- * A tap on one of a row's two buttons. Tapping the answer already chosen clears it: nothing is
- * mandatory, so an answer given by mistake has to be undoable.
+ * A tap on one of a row's two buttons. Tapping the answer already chosen clears it: an answer is
+ * never mandatory, so an answer given by mistake has to be undoable — and a device the car does not have
+ * is left unanswered this way, with a tap on its chosen «يعمل».
  */
 export const answerTapped = (
   items: VehicleCheckAnswers,
@@ -128,16 +152,27 @@ export const vehicleCheckPayload = (state: VehicleCheckFormState): CreateItVehic
   };
 };
 
+/** Does this form need a note — is a device «لا يعمل»? (`vehicleCheckNeedsNotes`, the server's rule.) */
+export const notesNeeded = (state: Pick<VehicleCheckFormState, 'items'>): boolean =>
+  vehicleCheckNeedsNotes(state.items);
+
 /**
- * The two fields a send cannot go without: the car, and a day (the box can be emptied). Every
- * device may be left unanswered, and the note and the photos are optional.
+ * What a send cannot go without: the car; a day (the box can be emptied); a note while a device is
+ * «لا يعمل» («كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل»); and a photo, always («وكمان الصورة
+ * كدا كدا إجبارى فى كل الحالات»). A device may still be left unanswered.
+ *
+ * `photoCount` is the photos on the form now. A photo still being drawn small is not one yet: the
+ * banner names «الصور» until it arrives, and the reporter sends again.
  */
 export const vehicleCheckRequired = (
-  state: Pick<VehicleCheckFormState, 'vehicleId' | 'checkDate'>,
-  labels: { vehicle: string; date: string },
+  state: Pick<VehicleCheckFormState, 'vehicleId' | 'checkDate' | 'items' | 'notes'>,
+  photoCount: number,
+  labels: { vehicle: string; date: string; notes: string; photos: string },
 ): RequiredField[] => [
   { key: 'vehicle', label: labels.vehicle, ok: state.vehicleId !== '' },
   { key: 'date', label: labels.date, ok: isYmd(state.checkDate) },
+  { key: 'notes', label: labels.notes, ok: !notesNeeded(state) || state.notes.trim() !== '' },
+  { key: 'photos', label: labels.photos, ok: photoCount >= IT_VEHICLE_CHECK_MIN_PHOTOS },
 ];
 
 /** Is this a UUID the server takes as a request id? The contract's own rule, not a second one. */
@@ -147,7 +182,8 @@ export const isClientId = (value: unknown): value is string =>
 // ── What a refused send does to the form (§6.3, «Outcomes on the form») ─────────────────────────
 
 /** The toast a failed send shows — each an `it.vehicleCheck.toast.*` key on the page. */
-export type VehicleCheckSendToast = 'failed' | 'carGone' | 'carInactive' | 'futureDay';
+export type VehicleCheckSendToast =
+  'failed' | 'carGone' | 'carInactive' | 'futureDay' | 'notesRequired';
 
 export interface VehicleCheckSendFailure {
   toast: VehicleCheckSendToast;
@@ -180,6 +216,7 @@ const refusedDay = (error: ApiError): boolean =>
  * | 404 (the car)                      | carGone     | car cleared, refetch | new        |
  * | 422 IT_VEHICLE_NOT_ACTIVE          | carInactive | car cleared, refetch | new        |
  * | 400 on checkDate                   | futureDay   | day back to today   | new        |
+ * | 422 IT_VEHICLE_CHECK_NOTES_REQUIRED| notesRequired | kept              | new        |
  * | 409 IT_VEHICLE_CHECK_REQUEST_REUSED| failed      | kept                | new        |
  *
  * ¹ Until the report is edited: then `requestIdAfterEdit` gives it a new one.
@@ -210,6 +247,10 @@ export const vehicleCheckSendFailure = (error: unknown): VehicleCheckSendFailure
       resetDay: false,
       newRequestId: true,
     };
+  }
+  if (error.status === 422 && error.code === ErrorCodes.IT_VEHICLE_CHECK_NOTES_REQUIRED) {
+    // The form asks for the note first; this is the server's word on a form that slipped past.
+    return { toast: 'notesRequired', ...kept, newRequestId: true };
   }
   if (refusedDay(error)) {
     return {

@@ -580,9 +580,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
 - **FR-21** A user granted the vehicle check (`itVehicleCheck.create`, given through a role) files,
   from a phone, a report on any ACTIVE car: the car (searched by its code), the day (today, may be
-  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (any may
-  be left unanswered), notes, and up to five photos. Only the car (and the pre-filled day) is
-  required. Reading and deleting reports (`itVehicleCheck.view`, `.delete`) come with the IT
+  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (every
+  device opens at «يعمل»; any may be left unanswered), notes, and one to five photos. The car (and
+  the pre-filled day) and at least one photo are required, and a note is required while a device is
+  «لا يعمل» — the server refuses a new report without it (§17, 2026-11-09). Reading and deleting
+  reports (`itVehicleCheck.view`, `.delete`) come with the IT
   dashboard over them, which follows its own sample (§17, 2026-11-08;
   [design](it-vehicle-checks-design.md)).
 
@@ -1253,3 +1255,16 @@ starts only on an explicit owner GO.
   عرضهم»), then «طبق PR». §0, §2.12, §3, FR-21, §7, §11, §12; §9.2 amended: IT reads Fleet's car
   list through two read functions in one boundary file. Full design and its review:
   [it-vehicle-checks-design.md](it-vehicle-checks-design.md). The dashboard follows its own sample.
+
+- **The vehicle check opens at «يعمل», with a note for a fault and a photo always** (2026-11-09) —
+  owner request: «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى
+  يغيرها», then «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل
+  الحالات». FR-21 amended: every device opens at «يعمل» (a tap on the chosen «يعمل» still leaves a
+  device the car lacks unanswered); a report with any «لا يعمل» needs a note — on the form, and on the
+  server (`IT_VEHICLE_CHECK_NOTES_REQUIRED`, checked after a repeated request id is answered, so a
+  report filed before the rule still answers 200); and every report needs a photo on the form.
+  The server cannot hold a report to its photo, which is uploaded after the report is filed; a
+  report whose uploads all failed says so in red on its sent screen, which offers «إعادة رفع الصور»
+  while it stays open and asks once before «تقرير لسيارة أخرى» or the back arrow leaves it (a reload
+  asks too while failed photos wait). Design: §1.2, §2, §6.1,
+  §6.2 and §6.3 of [it-vehicle-checks-design.md](it-vehicle-checks-design.md).

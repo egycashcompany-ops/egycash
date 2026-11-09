@@ -830,6 +830,18 @@ its entry here in the same PR.
 
 ### Changed
 
+- **IT vehicle check: every device opens at «يعمل»; a fault needs a note, and every report a
+  photo.** «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها»،
+  «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل الحالات».
+  - The form opens with «يعمل» chosen on all eleven devices; the reporter taps «لا يعمل» on what
+    fails. A tap on the chosen «يعمل» still clears it, for a device the car lacks.
+  - With any device «لا يعمل», «ملاحظات» is required (marked «*», with a hint). The server refuses
+    such a report without a note (422 `IT_VEHICLE_CHECK_NOTES_REQUIRED`); a repeat of a report
+    already filed still answers 200.
+  - At least one photo is required on the form. The server cannot require it, because photos go
+    up after the report is filed. A report whose uploads all failed says so in red on the sent
+    screen, which offers «إعادة رفع الصور» while it stays open; «تقرير لسيارة أخرى» and the back
+    arrow ask once before leaving it, and a reload asks while failed photos wait.
 - **«حوادث السيارات»: the approved board and form, and a transfer from other cars whose amount may
   now be typed.** «شكل تعديل الشاشه بتاعت الحوادث تمام». Built from the owner-approved samples
   ([design §4.6](docs/12-planning/fleet-module-design.md)).

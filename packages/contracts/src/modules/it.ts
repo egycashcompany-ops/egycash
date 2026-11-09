@@ -2669,6 +2669,24 @@ export const IT_VEHICLE_CHECK_MAX_PHOTOS = 5;
 /** Photos are added to one's own report within this many hours of filing it. */
 export const IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS = 24;
 export const IT_VEHICLE_CHECK_NOTES_MAX = 1000;
+
+/**
+ * «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل» (2026-11-09): a report with any device «لا يعمل»
+ * carries a note saying what is wrong. The form asks for it before sending, and the server refuses
+ * a new report without it (`IT_VEHICLE_CHECK_NOTES_REQUIRED`).
+ */
+export const vehicleCheckNeedsNotes = (
+  items: Partial<Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>> | undefined,
+): boolean => IT_VEHICLE_CHECK_ITEMS.some((item) => items?.[item] === 'notWorking');
+
+/**
+ * «وكمان الصورة كدا كدا إجبارى فى كل الحالات» (2026-11-09): every report goes with at least one
+ * photo. The form will not send without one. The server cannot hold a report to it, because photos
+ * are uploaded after the report is filed (design §6.1). A report whose uploads all failed offers
+ * «إعادة رفع الصور» only while its sent screen stays open: «تقرير لسيارة أخرى» and the back arrow
+ * ask once before leaving it, and a reload asks while failed photos wait (a killed tab cannot).
+ */
+export const IT_VEHICLE_CHECK_MIN_PHOTOS = 1;
 export const IT_VEHICLE_CHECK_PHOTO_FILE_CATEGORY = 'it-vehicle-check-photos';
 export const IT_VEHICLE_CHECK_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
@@ -2676,8 +2694,9 @@ export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
 const answer = z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null);
 
 /**
- * File a report. Every answer is optional — a missing key becomes `null` — and the only required
- * fields are the car, the day and the request id. The day is never after today in Cairo.
+ * File a report. Every answer is optional — a missing key becomes `null` — and the schema requires
+ * the car, the day and the request id. The day is never after today in Cairo. The service also
+ * refuses a device «لا يعمل» with no note (`vehicleCheckNeedsNotes`, `IT_VEHICLE_CHECK_NOTES_REQUIRED`).
  */
 export const CreateItVehicleCheckSchema = z
   .object({

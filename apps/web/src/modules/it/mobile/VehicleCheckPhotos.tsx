@@ -1,5 +1,6 @@
-// «الصور» on the phone form — optional, up to five (docs/12-planning/it-vehicle-checks-design.md §2
-// item 5). The dealership invoice's photo box, for several:
+// «الصور» on the phone form — at least one («وكمان الصورة كدا كدا إجبارى فى كل الحالات», 2026-11-09),
+// up to five (docs/12-planning/it-vehicle-checks-design.md §2 item 5). The dealership invoice's
+// photo box, for several:
 //   • each photo is a row with its thumbnail, its place in the report («صورة 2») and its size, and a
 //     ✕ that drops it before sending — never the camera's own file name («IMG_20261108_…»);
 //   • a dashed box «اضغط لإضافة صورة» opens the file dialog on any screen, so a computer can add
@@ -32,19 +33,29 @@ export const VehicleCheckPhotos = ({
   onAdd,
   onRemove,
   disabled,
+  missing = false,
 }: {
   photos: readonly VehicleCheckPickedPhoto[];
   onAdd: (files: readonly File[]) => void;
   onRemove: (clientPhotoId: string) => void;
   disabled: boolean;
+  /** «إرسال التقرير» was pressed with no photo: the title and the box turn red, «حقل مطلوب» under. */
+  missing?: boolean;
 }): JSX.Element => {
   const t = useT();
   // A new input after every pick, so the same picture can be picked again after it was removed.
   const [inputKey, setInputKey] = useState(0);
   const full = photos.length >= VEHICLE_CHECK_MAX_PHOTOS;
   return (
-    <section className={cn(CARD, 'space-y-3 p-4')} data-vehicle-check-photos="true">
-      <h2 className={CARD_TITLE}>{t('it.vehicleCheck.photos')}</h2>
+    <section
+      className={cn(CARD, 'space-y-3 p-4')}
+      data-vehicle-check-photos="true"
+      {...(missing ? { 'data-field-missing': 'true' } : {})}
+    >
+      <h2 className={missing ? 'text-base font-bold text-red-600 dark:text-red-400' : CARD_TITLE}>
+        {t('it.vehicleCheck.photos')}
+        <span className="text-red-500"> *</span>
+      </h2>
       {photos.map((photo, index) => (
         <div
           key={photo.clientPhotoId}
@@ -87,7 +98,14 @@ export const VehicleCheckPhotos = ({
       ) : (
         <>
           {/* The whole dashed box is the file picker, as on the invoice form; several at a time. */}
-          <div className="group relative cursor-pointer rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-3 transition-all hover:border-brand-500/50 dark:border-slate-700 dark:bg-slate-950/60">
+          <div
+            className={cn(
+              'group relative cursor-pointer rounded-xl border-2 border-dashed p-3 transition-all hover:border-brand-500/50',
+              missing
+                ? 'border-red-400 bg-red-50 dark:border-red-500/70 dark:bg-red-950/30'
+                : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/60',
+            )}
+          >
             <input
               key={inputKey}
               type="file"
@@ -123,6 +141,11 @@ export const VehicleCheckPhotos = ({
               </span>
             </div>
           </div>
+          {missing && (
+            <p data-field-missing-note="true" className="text-xs text-red-600 dark:text-red-400">
+              {t('common.validation.required')}
+            </p>
+          )}
           {/* On a touch screen: the camera, or a picture already on the phone. */}
           <PhotoSourceButtons
             accept={VEHICLE_CHECK_PHOTO_ACCEPT}

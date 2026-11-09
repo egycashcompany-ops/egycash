@@ -1,20 +1,23 @@
 // The vehicle check's form rules (docs/12-planning/it-vehicle-checks-design.md §2, §6.3): the
-// counts, the payload, a second tap clearing an answer, the default day, the two required fields,
-// and the outcome table — what each refused send does to the form and to its request id, and what
+// counts, the payload, a second tap clearing an answer, the default day and answers, the required
+// fields, and the outcome table — what each refused send does to the form and to its request id, and what
 // an edit does to an id held after an unknown outcome.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CreateItVehicleCheckSchema, IT_VEHICLE_CHECK_ITEMS } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
   VEHICLE_CHECK_TOTAL,
+  allWorking,
   answerTapped,
   applySendFailure,
   checkCounts,
   dayShown,
   defaultCheckDate,
   emptyVehicleCheck,
+  isAllWorking,
   isClientId,
   newClientId,
+  notesNeeded,
   requestIdAfterEdit,
   vehicleCheckPayload,
   vehicleCheckRequired,
@@ -136,8 +139,36 @@ describe('the default day', () => {
 
   it('is what an empty form opens on, with a fresh request id', () => {
     const empty = emptyVehicleCheck('2026-11-08');
-    expect(empty).toMatchObject({ vehicleId: '', checkDate: '2026-11-08', items: {}, notes: '' });
+    expect(empty).toMatchObject({ vehicleId: '', checkDate: '2026-11-08', notes: '' });
     expect(isClientId(empty.clientRequestId)).toBe(true);
+  });
+});
+
+// «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها».
+describe('the answers a form opens on', () => {
+  it('are every device at «يعمل»', () => {
+    const { items } = emptyVehicleCheck('2026-11-08');
+    expect(IT_VEHICLE_CHECK_ITEMS.map((item) => items[item])).toEqual(
+      IT_VEHICLE_CHECK_ITEMS.map(() => 'works'),
+    );
+    expect(checkCounts(items)).toMatchObject({ done: 11, works: 11, notWorking: 0 });
+    expect(isAllWorking(items)).toBe(true);
+  });
+
+  it('are a fresh copy each time, so one form’s taps never reach the next', () => {
+    const first = allWorking();
+    const tapped = answerTapped(first, 'dvr', 'notWorking');
+    expect(tapped.dvr).toBe('notWorking');
+    expect(allWorking().dvr).toBe('works');
+    expect(first.dvr).toBe('works');
+  });
+
+  it('turn one device to «لا يعمل» with one tap, and leave a missing device out with a tap on its «يعمل»', () => {
+    const { items } = emptyVehicleCheck('2026-11-08');
+    expect(answerTapped(items, 'camera7', 'notWorking').camera7).toBe('notWorking');
+    const cleared = answerTapped(items, 'camera8', 'works');
+    expect(cleared.camera8).toBeUndefined();
+    expect(isAllWorking(cleared)).toBe(false);
   });
 
   it('reads back day first, as the date box shows it', () => {
@@ -166,22 +197,59 @@ describe('newClientId', () => {
   });
 });
 
-describe('vehicleCheckRequired — the car and the day', () => {
-  const labels = { vehicle: 'كود السيارة', date: 'التاريخ' };
+describe('vehicleCheckRequired — the car, the day, a fault’s note and a photo', () => {
+  const labels = { vehicle: 'كود السيارة', date: 'التاريخ', notes: 'ملاحظات', photos: 'الصور' };
+  const missingOf = (state: VehicleCheckFormState, photos = 1): string[] =>
+    vehicleCheckRequired(state, photos, labels)
+      .filter((f) => !f.ok)
+      .map((f) => f.key);
 
   it('names the car when none is chosen', () => {
-    const missing = vehicleCheckRequired(form({ vehicleId: '' }), labels).filter((f) => !f.ok);
+    const missing = vehicleCheckRequired(form({ vehicleId: '' }), 1, labels).filter((f) => !f.ok);
     expect(missing.map((f) => f.label)).toEqual(['كود السيارة']);
   });
 
   it('names the day when the box was emptied', () => {
-    const missing = vehicleCheckRequired(form({ checkDate: '' }), labels).filter((f) => !f.ok);
-    expect(missing.map((f) => f.key)).toEqual(['date']);
+    expect(missingOf(form({ checkDate: '' }))).toEqual(['date']);
   });
 
-  it('asks for nothing else — every device, the note and the photos are optional', () => {
-    expect(vehicleCheckRequired(form(), labels).every((f) => f.ok)).toBe(true);
-    expect(vehicleCheckRequired(form(), labels).map((f) => f.key)).toEqual(['vehicle', 'date']);
+  // «وكمان الصورة كدا كدا إجبارى فى كل الحالات».
+  it('names the photos whenever there is none, whatever the answers', () => {
+    expect(missingOf(form(), 0)).toEqual(['photos']);
+    expect(missingOf(form({ items: allWorking() }), 0)).toEqual(['photos']);
+    expect(missingOf(form(), 1)).toEqual([]);
+    expect(missingOf(form(), 5)).toEqual([]);
+  });
+
+  // «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل».
+  it('names the note only while a device is «لا يعمل» and the note is empty', () => {
+    const fault = { ...allWorking(), radio: 'notWorking' as const };
+    expect(notesNeeded(form({ items: fault }))).toBe(true);
+    expect(missingOf(form({ items: fault }))).toEqual(['notes']);
+    expect(missingOf(form({ items: fault, notes: '   ' }))).toEqual(['notes']);
+    expect(missingOf(form({ items: fault, notes: 'الجهاز لا يرسل.' }))).toEqual([]);
+    expect(notesNeeded(form({ items: allWorking() }))).toBe(false);
+    expect(missingOf(form({ items: allWorking() }))).toEqual([]);
+  });
+
+  it('lists every one that is missing, in the form’s order', () => {
+    const fault = { camera1: 'notWorking' as const };
+    expect(missingOf(form({ vehicleId: '', checkDate: '', items: fault }), 0)).toEqual([
+      'vehicle',
+      'date',
+      'notes',
+      'photos',
+    ]);
+  });
+
+  it('leaves a device unanswered free — only these four are asked for', () => {
+    expect(vehicleCheckRequired(form({ items: {} }), 1, labels).map((f) => f.key)).toEqual([
+      'vehicle',
+      'date',
+      'notes',
+      'photos',
+    ]);
+    expect(missingOf(form({ items: {} }))).toEqual([]);
   });
 });
 
@@ -236,6 +304,16 @@ describe('the outcome table — a send that did not file', () => {
       clearCar: false,
       refetchCars: false,
       resetDay: true,
+      newRequestId: true,
+    });
+  });
+
+  it('422 IT_VEHICLE_CHECK_NOTES_REQUIRED: the note asked for, the form kept, a new id', () => {
+    expect(vehicleCheckSendFailure(api(422, 'IT_VEHICLE_CHECK_NOTES_REQUIRED'))).toEqual({
+      toast: 'notesRequired',
+      clearCar: false,
+      refetchCars: false,
+      resetDay: false,
       newRequestId: true,
     });
   });

@@ -3,7 +3,7 @@
 // server would refuse.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IT_VEHICLE_CHECK_NOTES_MAX } from '@ecms/contracts';
-import { type VehicleCheckFormState } from '../lib/vehicle-check-form';
+import { allWorking, type VehicleCheckFormState } from '../lib/vehicle-check-form';
 import {
   VEHICLE_CHECK_DRAFT_KEY,
   clearVehicleCheckDraft,
@@ -180,10 +180,11 @@ describe('a restored car the active list no longer carries', () => {
 });
 
 describe('draftWorthKeeping', () => {
+  // The form the page opens on: no car, today, every device at «يعمل», no note.
   const blank: VehicleCheckFormState = {
     vehicleId: '',
     checkDate: TODAY,
-    items: {},
+    items: allWorking(),
     notes: '',
     clientRequestId: ID,
   };
@@ -192,8 +193,12 @@ describe('draftWorthKeeping', () => {
     expect(draftWorthKeeping(blank, TODAY)).toBe(false);
   });
 
-  it('writes a form with a car, an answer, a note or another day', () => {
+  it('writes a form with a car, a changed answer, a note or another day', () => {
     expect(draftWorthKeeping({ ...blank, vehicleId: CAR }, TODAY)).toBe(true);
+    expect(
+      draftWorthKeeping({ ...blank, items: { ...allWorking(), dvr: 'notWorking' } }, TODAY),
+    ).toBe(true);
+    // A device left out (a tap on its chosen «يعمل») is a change from the form the page opens on.
     expect(draftWorthKeeping({ ...blank, items: { dvr: 'works' } }, TODAY)).toBe(true);
     expect(draftWorthKeeping({ ...blank, notes: 'x' }, TODAY)).toBe(true);
     expect(draftWorthKeeping({ ...blank, checkDate: '2026-11-07' }, TODAY)).toBe(true);

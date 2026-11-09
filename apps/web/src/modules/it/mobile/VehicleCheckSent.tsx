@@ -6,6 +6,14 @@
 // answer is counted here and «إعادة رفع الصور» sends it again to the SAME report (with its own
 // `clientPhotoId`, so a photo whose answer was lost is not added twice); a photo the server refused
 // is named with the reason and is not offered again.
+//
+// «وكمان الصورة كدا كدا إجبارى فى كل الحالات» (2026-11-09): the form will not send without a photo,
+// but a photo goes up only after the report is filed, so a report can still end with none (every
+// upload lost or refused). Then the photos row says so in red, and «تقرير لسيارة أخرى» — and the
+// header's back arrow, through the page — asks once before it leaves: the failed photos live only
+// on this screen, and once it is left no screen can add one to that report. While failed photos
+// wait, a reload or a closed tab gets the browser's own prompt (the page's `beforeunload`); only a
+// tab the phone kills outright leaves without one.
 import { type ReactNode } from 'react';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -35,19 +43,43 @@ export interface VehicleCheckSentSummary {
   refused: readonly string[];
 }
 
+/**
+ * Did the report end with no photo, though one is required? While photos wait for «إعادة رفع
+ * الصور» this screen can still add them; once it is left, none can be.
+ */
+export const sentWithoutPhoto = (summary: Pick<VehicleCheckSentSummary, 'photoCount'>): boolean =>
+  summary.photoCount === 0;
+
+/**
+ * What a tap that leaves the sent view does — «تقرير لسيارة أخرى» or the back arrow: with no photo
+ * on the report, the first one only asks (`ask`), and the one after it goes (`leave`).
+ */
+export const sentLeaveStep = (
+  summary: Pick<VehicleCheckSentSummary, 'photoCount'>,
+  askedToLeave: boolean,
+): 'ask' | 'leave' => (sentWithoutPhoto(summary) && !askedToLeave ? 'ask' : 'leave');
+
 export const VehicleCheckSent = ({
   summary,
   retrying,
   onRetry,
   onAnother,
+  askedToLeave,
+  onAskToLeave,
 }: {
   summary: VehicleCheckSentSummary;
   retrying: boolean;
   onRetry: () => void;
   onAnother: () => void;
+  /** A tap already tried to leave this report with no photo (here or on the back arrow). */
+  askedToLeave: boolean;
+  onAskToLeave: () => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const noPhoto = sentWithoutPhoto(summary);
+  // The ask is shown only while the report still has no photo: a retry that lands one lifts it.
+  const asking = askedToLeave && noPhoto;
   const form = (n: number): CustodyCountForm => custodyPlural(locale, n);
 
   // Every form written out, so each key is a literal the IT dictionary check can see.
@@ -110,7 +142,20 @@ export const VehicleCheckSent = ({
           ` · ${t('it.vehicleCheck.sent.unanswered', { count: counts.unanswered })}`}
       </>,
     ],
-    [t('it.vehicleCheck.sent.photos'), photoCount(summary.photoCount)],
+    [
+      t('it.vehicleCheck.sent.photos'),
+      noPhoto ? (
+        <span
+          key="photos"
+          className="text-red-600 dark:text-red-400"
+          data-vehicle-check-no-photo="true"
+        >
+          {t('it.vehicleCheck.sent.noPhoto')}
+        </span>
+      ) : (
+        photoCount(summary.photoCount)
+      ),
+    ],
   ];
 
   return (
@@ -160,13 +205,29 @@ export const VehicleCheckSent = ({
             {reasons.join(t('common.validation.separator'))}.
           </p>
         )}
+        {asking && (
+          <p
+            role="alert"
+            data-vehicle-check-leave-warning="true"
+            className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+          >
+            {/* Send them again — when there are photos to send again; else a new report. */}
+            {summary.failed > 0
+              ? t('it.vehicleCheck.sent.leaveWithoutPhoto')
+              : t('it.vehicleCheck.sent.leaveWithoutPhotoRefused')}
+          </p>
+        )}
         <Button
-          onClick={onAnother}
+          variant={asking ? 'danger' : 'primary'}
+          onClick={() => {
+            if (sentLeaveStep(summary, askedToLeave) === 'ask') onAskToLeave();
+            else onAnother();
+          }}
           disabled={retrying}
           className="min-h-12 w-full !text-base"
           data-vehicle-check-another="true"
         >
-          {t('it.vehicleCheck.sent.another')}
+          {asking ? t('it.vehicleCheck.sent.leaveAnyway') : t('it.vehicleCheck.sent.another')}
         </Button>
       </section>
     </div>

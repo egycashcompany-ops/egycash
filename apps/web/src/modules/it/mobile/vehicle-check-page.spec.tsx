@@ -18,7 +18,7 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { VehicleCheckPage } from './VehicleCheckPage';
 import { VehicleCheckPhotos } from './VehicleCheckPhotos';
-import { VehicleCheckSent } from './VehicleCheckSent';
+import { VehicleCheckSent, sentLeaveStep, sentWithoutPhoto } from './VehicleCheckSent';
 import { VEHICLE_CHECK_DRAFT_KEY } from './vehicle-check-draft';
 
 const CAR = '65a000000000000000000001';
@@ -134,11 +134,13 @@ describe('the form', () => {
     expect(html()).toContain('>DVR<');
   });
 
-  it('gives every device its own pair of answers, nothing chosen', () => {
+  // «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها».
+  it('gives every device its own pair of answers, «يعمل» chosen on each', () => {
     const page = html();
     expect(page.match(/role="radiogroup"/g)).toHaveLength(11);
     expect(page.match(/role="radio"/g)).toHaveLength(22);
-    expect(page).not.toContain('aria-checked="true"');
+    expect(page.match(/aria-checked="true"/g)).toHaveLength(11);
+    expect(page.match(/aria-checked="false"/g)).toHaveLength(11);
     expect(page).toContain('يعمل');
     expect(page).toContain('لا يعمل');
   });
@@ -166,7 +168,8 @@ describe('the form', () => {
   it('ends with the bar: the count and «إرسال التقرير»', () => {
     const page = html();
     expect(page).toContain('data-phone-footer="true"');
-    expect(page).toContain('تم فحص 0 من 11');
+    expect(page).toContain('تم فحص 11 من 11');
+    expect(page).not.toContain('لا يعمل</span>');
     expect(page).toContain('إرسال التقرير');
     expect(page.indexOf('إرسال التقرير')).toBeGreaterThan(page.indexOf('الصور'));
   });
@@ -186,6 +189,26 @@ describe('the form', () => {
     expect(page).toContain('accept="image/jpeg,image/png,image/webp"');
     expect(page).toContain('ملاحظات');
     expect(page).toMatch(/maxlength="1000"/i);
+  });
+
+  // «وكمان الصورة كدا كدا إجبارى فى كل الحالات».
+  it('marks the photos required, and says at least one', () => {
+    const card = /<section[^>]*data-vehicle-check-photos="true"[\s\S]*?<\/section>/.exec(
+      html(),
+    )?.[0];
+    expect(card).toBeDefined();
+    expect(card).toMatch(/الصور<span class="text-red-500"> \*<\/span>/);
+    expect(card).toContain('صورة واحدة على الأقل');
+  });
+
+  // «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل» — with every device at «يعمل», it is not.
+  it('leaves the note optional while nothing is «لا يعمل»', () => {
+    const card =
+      /<section[^>]*data-vehicle-check-notes-card="true"[\s\S]*?<\/section>/.exec(html())?.[0] ??
+      '';
+    expect(card).toContain('ملاحظات');
+    expect(card).not.toContain('text-red-500');
+    expect(card).toContain('aria-required="false"');
   });
 });
 
@@ -262,9 +285,11 @@ describe('the banner and the send, read from source', () => {
     expect(translate('ar', 'it.vehicleCheck.notSent')).toBe('لم يتم إرسال التقرير.');
   });
 
-  it('guards the send with the required fields — the car and the day', () => {
+  it('guards the send with the required fields — the car, the day, a fault’s note, a photo', () => {
     expect(SOURCE).toContain('onClick={required.guard(submit)}');
-    expect(SOURCE).toContain('vehicleCheckRequired(form');
+    expect(SOURCE).toContain('vehicleCheckRequired(form, photos.length');
+    expect(SOURCE).toContain("missing={required.isMissing('photos')}");
+    expect(SOURCE).toContain("required.isMissing('notes')");
   });
 
   it('files the report before any photo, and the photos one at a time', () => {
@@ -334,20 +359,22 @@ describe('the banner and the send, read from source', () => {
 });
 
 describe('the sent view', () => {
-  const sent = (failed = 0, refused: string[] = []): string =>
+  const sent = (failed = 0, refused: string[] = [], photoCount = 2, askedToLeave = false): string =>
     render(
       <VehicleCheckSent
         summary={{
           vehicleCode: 'كورولا 1',
           checkDate: '2026-11-08',
           counts: { total: 11, done: 11, works: 10, notWorking: 1, unanswered: 0 },
-          photoCount: 2,
+          photoCount,
           failed,
           refused,
         }}
         retrying={false}
         onRetry={() => undefined}
         onAnother={() => undefined}
+        askedToLeave={askedToLeave}
+        onAskToLeave={() => undefined}
       />,
     );
 
@@ -361,6 +388,61 @@ describe('the sent view', () => {
     expect(page).toContain('صورتان');
     expect(page).toContain('تقرير لسيارة أخرى');
     expect(page, 'nothing to send again').not.toContain('إعادة رفع الصور');
+  });
+
+  // «وكمان الصورة كدا كدا إجبارى فى كل الحالات» — a report every upload of which was lost.
+  it('says in red when the report ended with no photo, and asks nothing before a tap', () => {
+    const page = sent(1, [], 0);
+    expect(page).toContain('data-vehicle-check-no-photo="true"');
+    expect(page).toContain('لا توجد صورة، والتقرير يحتاج صورة');
+    expect(page).not.toContain('بلا صور');
+    expect(page).toContain('إعادة رفع الصور');
+    expect(page).not.toContain('data-vehicle-check-leave-warning');
+    expect(page).toContain('تقرير لسيارة أخرى');
+    expect(sentWithoutPhoto({ photoCount: 0 })).toBe(true);
+    expect(sentWithoutPhoto({ photoCount: 1 })).toBe(false);
+    expect(sent()).not.toContain('data-vehicle-check-no-photo');
+  });
+
+  it('leaves a report with a photo on the first tap; one with none, on the second', () => {
+    expect(sentLeaveStep({ photoCount: 2 }, false)).toBe('leave');
+    expect(sentLeaveStep({ photoCount: 0 }, false)).toBe('ask');
+    expect(sentLeaveStep({ photoCount: 0 }, true)).toBe('leave');
+    // A retry that lands a photo lifts the ask.
+    expect(sentLeaveStep({ photoCount: 1 }, true)).toBe('leave');
+  });
+
+  it('once asked, warns and turns the button into «الانتقال دون صورة»', () => {
+    const page = sent(1, [], 0, true);
+    expect(page).toContain('data-vehicle-check-leave-warning="true"');
+    expect(page).toContain('أعد رفع الصور قبل الانتقال');
+    expect(page).toContain('الانتقال دون صورة');
+    expect(page).not.toContain('>تقرير لسيارة أخرى<');
+  });
+
+  it('with every photo refused, does not point to a retry the screen lacks', () => {
+    const page = sent(0, ['FILE_TYPE_NOT_ALLOWED'], 0, true);
+    expect(page).not.toContain('إعادة رفع الصور');
+    expect(page).toContain('لم تُقبل أي صورة لهذا التقرير');
+    expect(page).not.toContain('أعد رفع الصور قبل الانتقال');
+  });
+
+  it('drops the ask once a retry lands a photo', () => {
+    const page = sent(0, [], 1, true);
+    expect(page).not.toContain('data-vehicle-check-leave-warning');
+    expect(page).toContain('تقرير لسيارة أخرى');
+  });
+
+  it('asks on the back arrow too, and guards a reload while failed photos wait', () => {
+    const PAGE = readFileSync(
+      fileURLToPath(new URL('./VehicleCheckPage.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(PAGE).toMatch(
+      /onBack=\{\(event\) => \{[\s\S]*?sentLeaveStep\(sent\.summary, askedToLeave\)/,
+    );
+    expect(PAGE).toContain("window.addEventListener('beforeunload', onBeforeUnload)");
+    expect(PAGE).toContain('sentWithoutPhoto(sent.summary) && sent.failed.length > 0');
   });
 
   it('counts the photos that did not go up, and offers to send them again', () => {

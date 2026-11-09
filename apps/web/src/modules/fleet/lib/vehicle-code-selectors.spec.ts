@@ -141,6 +141,10 @@ const NOT_A_CODE_SELECTOR = [
     file: 'modules/fleet/components/AlarmReasonCell.tsx',
     why: 'an id→status-and-reason lookup for the odometer’s «السيارة غير نشطة» card, read from the whole registry (every status) VehicleCodeFilter already holds; nothing is picked',
   },
+  {
+    file: 'modules/fleet/components/VehicleHoverCard.tsx',
+    why: 'the car card on a board’s code — the car named by its row’s id (or a chip’s code) in the whole registry (every status), watched and only fetched once a card opens; nothing is picked',
+  },
 ] as const;
 
 /**

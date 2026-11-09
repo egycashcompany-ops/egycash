@@ -1417,6 +1417,23 @@ export interface FleetMaintenanceAlarmDto {
   newestReading: FleetAlarmChainPointDto | null;
 }
 
+/**
+ * One car's last odometer reading — the car card's «آخر قراءة عداد» («تمام وزود اخر عداد»).
+ *
+ * `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`): one
+ * row for EVERY registry car (not soft-deleted, ANY status) that has a reading on file. The alarm
+ * projection covers active cars only, so a car taken out of service after an accident would have
+ * read «—» there although its log has readings. The figure is the alarm's own (`latestReadings`):
+ * `latestReading`/`latestReadingAt` here equal the alarm row's for an active car.
+ */
+export interface FleetVehicleLatestReadingDto {
+  vehicleId: string;
+  /** How far the car's top reading got — `FleetMaintenanceAlarmDto.latestReading`. */
+  latestReading: number;
+  /** The day of `latestReading`, as the alarm row carries it. */
+  latestReadingAt: string;
+}
+
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
 
 export interface FleetMaintenanceVisitDto {
@@ -1440,6 +1457,16 @@ export interface FleetMaintenanceVisitDto {
    * from the old book for a car the registry never had.
    */
   operationId: string | null;
+  /**
+   * The CAR's «الفرع» (`vehicle.branchId`) — «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى
+   * فيه الصيانه».
+   *
+   * Read off the registry for the row like `operationId`, so it names the branch the car is
+   * assigned to TODAY — never the branch whose workshop it went to, and the same branch the
+   * `branchIds` filter matches. A soft-deleted car keeps its branch. `null` when the car has none
+   * on file, and on a visit kept from the old book for a car the registry never had.
+   */
+  branchId: string | null;
   /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
   driverInName: string | null;
   driverOutName: string | null;
@@ -2039,18 +2066,28 @@ export interface FleetAccidentDto {
 }
 
 /**
- * «اختار عربيه و جمبها مبلغ» — take `amount` out of another car's remaining and add it to the file
+ * «اختار عربيه و جمبها مبلغ» — take `amount` out of other cars' remaining and add it to the file
  * being recorded or edited.
  *
- * The amount is capped by what that car has left over ALL its files (the server checks, inside
- * the same transaction as the write) and is drawn from those files oldest first.
+ * Two caps, both checked by the server inside the same transaction as the write, nothing written
+ * when either refuses:
+ * - the RECEIVING file's negative (owner-approved 2026-11-09): a take brings the file up to zero
+ *   and never past it — `FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`, details `{deficit, amount}`;
+ * - what the cars sent have left, together, over ALL their files —
+ *   `FLEET_ACCIDENT_TRANSFER_SHORT`, details `{available, amount}`. The screen plans within what it
+ *   was shown, so this answers a race: another clerk took from one of those cars a moment ago.
+ * Within a car the amount is drawn from its files oldest first.
+ *
+ * The screen's plan (`planTransfer`) decides which cars and how much each gives; the body carries
+ * only the cars that give something, in the plan's row order, with `amount` = Σ of their takes.
  */
 export const FleetAccidentTransferInputSchema = z
   .object({
     /**
-     * The cars to take from, IN THE ORDER PICKED: the first gives all it has left before the
-     * second gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
-     * العربيه التانيه».
+     * The cars to take from, IN THIS ORDER: the first gives all it has left before the second
+     * gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من العربيه
+     * التانيه». The screen sends its plan's rows (his picks first, then the ones it completed with)
+     * and never more than twenty.
      */
     fromVehicleIds: z
       .array(objectId())
@@ -2225,13 +2262,21 @@ export interface FleetAccidentTotalsDto {
 }
 
 /**
- * GET /fleet/accidents/car-balances — every car with MORE THAN ZERO remaining over its files, the
- * list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing to give.
+ * GET /fleet/accidents/car-balances — every registry car with MORE THAN ZERO remaining over its
+ * files, the list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing
+ * to give.
+ *
+ * Only cars a save can take from: a soft-deleted car is left out (the save refuses it, 404), and a
+ * file kept from the old book under a code counts for the LIVE car carrying that code, never a
+ * deleted one that once carried it. Sorted by the fleet's code order.
  */
 export interface FleetAccidentCarBalanceDto {
   vehicleId: string;
   vehicleCode: string;
-  /** Always > 0 — the same figure a transfer from this car is capped by. */
+  /**
+   * Always > 0 — the car's NET «إجمالي المتبقي» over its live files, the same figure a transfer
+   * from this car is capped by when nothing else moved it since this list was read.
+   */
   remaining: number;
 }
 

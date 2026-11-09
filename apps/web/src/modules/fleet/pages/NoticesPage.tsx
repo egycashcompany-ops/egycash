@@ -62,6 +62,7 @@ import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { openDatePicker } from '../../../shared/lib/open-date-picker';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
@@ -254,10 +255,16 @@ export const NoticesPage = (): JSX.Element => {
     {
       key: 'code',
       header: t('fleet.notices.columns.code'),
+      // The code carries the car card — the car the notice is about; none without a registry car.
       render: (row) => (
-        <span className={cn('font-bold', NUMBER_FONT)} dir="ltr">
+        <VehicleHoverCode
+          vehicleId={row.vehicleId}
+          code={row.vehicleCode}
+          className={cn('font-bold', NUMBER_FONT)}
+          dir="ltr"
+        >
           {row.vehicleCode ?? '—'}
-        </span>
+        </VehicleHoverCode>
       ),
     },
     {

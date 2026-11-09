@@ -9,7 +9,9 @@
 //      DELETED CAR, and every breakdown links to a list that shows its count;
 //   2. `openNow` is `/fleet/maintenance?state=open` (`open=true`) with the oldest stay in days;
 //   3. `recentWritten` keeps the window (a row the day before it is out) and the write order;
-//   4. the period read is planned on an index, never a collection scan.
+//   4. the period read is planned on an index, never a collection scan;
+//   5. every row — and every write's answer — carries its CAR's «الفرع», the branch `?branchIds`
+//      matches: null for the old book's car, kept for a deleted one.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -594,5 +596,80 @@ describe('explain() — the period read is an index scan', () => {
       expect(plan).toContain('IXSCAN');
       expect(plan).not.toContain('COLLSCAN');
     }
+  });
+});
+
+// ── 5 · «الفرع» — the CAR's branch on every row ───────────────────────────────────────────────
+
+describe('«الفرع» — every row carries its CAR’s branch, never the workshop’s', () => {
+  // «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه».
+  const rows = async (query: Record<string, unknown>): Promise<FleetMaintenanceVisitDto[]> =>
+    ok<FleetMaintenanceVisitDto[]>(
+      await get('/fleet/maintenance', { ...wire(query), pageSize: 100 }),
+    );
+
+  it('names the branch each car is assigned to', async () => {
+    const branchOf = new Map([
+      [c1.id, B1],
+      [c2.id, B2],
+      [c3.id, B1],
+      [c4.id, B2],
+      [c5.id, B1],
+      [gone.id, B1],
+    ]);
+    const listed = await rows(OCTOBER);
+    expect(listed).toHaveLength(7);
+    for (const row of listed) {
+      if (row.vehicleId === null) continue;
+      expect(row.branchId, row.vehicleCode ?? row.id).toBe(branchOf.get(row.vehicleId));
+    }
+    expect(new Set(listed.map((row) => row.branchId))).toEqual(new Set([B1, B2, null]));
+  });
+
+  it('agrees with ?branchIds — the filter and the column name the same branch', async () => {
+    const all = await rows(OCTOBER);
+    for (const branch of [B1, B2]) {
+      const filtered = await rows({ ...OCTOBER, branchIds: [branch] });
+      expect(filtered.length, branch).toBeGreaterThan(0);
+      expect(filtered.every((row) => row.branchId === branch)).toBe(true);
+      expect(filtered.map((row) => row.id).sort()).toEqual(
+        all
+          .filter((row) => row.branchId === branch)
+          .map((row) => row.id)
+          .sort(),
+      );
+    }
+  });
+
+  it('a visit the old book kept for a car the registry never had has none', async () => {
+    const book = (await rows(OCTOBER)).find((row) => row.vehicleCode === 'B-90');
+    expect(book).toMatchObject({ vehicleId: null, branchId: null });
+  });
+
+  it('a deleted car keeps its branch', async () => {
+    const row = (await rows(OCTOBER)).find((visitRow) => visitRow.id === goneVisit);
+    expect(row).toMatchObject({ vehicleId: gone.id, vehicleCode: gone.code, branchId: B1 });
+  });
+
+  it('the write answers carry it too', async () => {
+    const opened = ok<FleetMaintenanceVisitDto>(
+      await post('/fleet/maintenance', {
+        vehicleId: c2.id,
+        inDate: '2026-11-01',
+        workshopId: WS1,
+        workTypeId: WT1,
+      }),
+      201,
+    );
+    expect(opened.branchId).toBe(B2);
+    const closed = ok<FleetMaintenanceVisitDto>(
+      await post(`/fleet/maintenance/${opened.id}/check-out`, {
+        outDate: '2026-11-01',
+        version: opened.version,
+        driverOutEmployeeId: driver,
+      }),
+    );
+    expect(closed.branchId).toBe(B2);
+    expect([200, 204]).toContain((await del(`/fleet/maintenance/${opened.id}`)).status);
   });
 });

@@ -23,6 +23,7 @@ import { cn } from '../../../../shared/lib/cn';
 import { type DashLink } from '../../lib/fleet-dashboard-links';
 import { BoardIcon, NUM, PATH } from '../FuelCardBoard';
 import { CAIRO, CARD, COMPANY, NOTE, TITLE, TITLE_CHIP } from '../custody-dashboard-parts';
+import { VehicleHoverCode } from '../VehicleHoverCard';
 
 export { cn, NUM, CAIRO, CARD, COMPANY, NOTE, TITLE, TITLE_CHIP };
 
@@ -582,13 +583,22 @@ export const Count = ({ n, tone = 'slate' }: { n: ReactNode; tone?: Tone }): JSX
   </span>
 );
 
-/** A vehicle's code with the little car glyph — the boards' code chip; a link when given one. */
+/**
+ * A vehicle's code with the little car glyph — the boards' code chip; a link when given one.
+ *
+ * The code carries the car card («عاوز لما اماوس يقف على كود عربيه يجيب بيانات»), the car looked
+ * up by its code — the dashboard's rows carry no more. A Tab stop of its own only on a chip that
+ * is no link: a linked chip (or one inside a linked line, `focusable={false}`) is reached as the
+ * link, and hovers.
+ */
 export const CarChip = ({
   code,
   link = null,
+  focusable = link === null,
 }: {
   code: string;
   link?: DashLink | null;
+  focusable?: boolean;
 }): JSX.Element => (
   <Fig
     link={link}
@@ -596,7 +606,7 @@ export const CarChip = ({
     className="mx-0.5 inline-flex items-center gap-1 rounded-md border border-slate-300 bg-slate-50 px-1.5 py-px align-middle text-xs font-bold text-slate-900 shadow-sm transition-colors hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:border-slate-500"
   >
     <Icon d={I.truck} className="h-3 w-3 text-slate-400" />
-    <N>{code}</N>
+    <VehicleHoverCode code={code} focusable={focusable} dir="ltr" className={NUM} />
   </Fig>
 );
 

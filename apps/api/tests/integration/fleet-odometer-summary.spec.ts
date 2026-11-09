@@ -589,3 +589,62 @@ describe('explain() — the period reads never scan the collection', () => {
     expect(Number(lookup?.['totalDocsExamined'])).toBeLessThanOrEqual(ids.length * 2);
   });
 });
+
+describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قراءة عداد», every car', () => {
+  // «تمام وزود اخر عداد». The card read the alarms list, which covers ACTIVE cars only, so a car
+  // out of service after an accident showed «—» («none on file») although its log has readings.
+  type Latest = { vehicleId: string; latestReading: number; latestReadingAt: string };
+  const URL = '/fleet/odometer/latest-readings';
+  const byCar = (rows: readonly Latest[]) => new Map(rows.map((row) => [row.vehicleId, row]));
+  let odometerOnly = '';
+  let maintenanceOnly = '';
+
+  beforeAll(async () => {
+    const reader = async (email: string, key: string): Promise<string> => {
+      const role = await rbacService.createRole(
+        { name: { en: key, ar: key }, permissionKeys: [key] },
+        new Types.ObjectId().toString(),
+      );
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+      return authService.signAccessToken(userId, new Types.ObjectId().toString(), 0);
+    };
+    odometerOnly = await reader('latest-odo@ecms.local', 'fleetOdometer.view');
+    maintenanceOnly = await reader('latest-maint@ecms.local', 'fleetMaintenance.view');
+  });
+
+  it('lists an OUT-OF-SERVICE car’s last reading — the alarms leave it out', async () => {
+    const latest = byCar(ok<Latest[]>(await get(URL)));
+    expect(latest.get(oos.id)).toEqual({
+      vehicleId: oos.id,
+      latestReading: 30_150,
+      latestReadingAt: '2026-10-05T00:00:00.000Z',
+    });
+    const alarms = ok<{ vehicleId: string }[]>(await get('/fleet/odometer/alarms'));
+    expect(alarms.map((row) => row.vehicleId)).not.toContain(oos.id);
+  });
+
+  it('is the alarm’s own figure for an active car, and leaves out a deleted or never-read car', async () => {
+    const latest = byCar(ok<Latest[]>(await get(URL)));
+    const alarms = ok<
+      { vehicleId: string; latestReading: number | null; latestReadingAt: string | null }[]
+    >(await get('/fleet/odometer/alarms'));
+    for (const alarm of alarms.filter((row) => row.latestReading !== null)) {
+      expect(latest.get(alarm.vehicleId), alarm.vehicleId).toEqual({
+        vehicleId: alarm.vehicleId,
+        latestReading: alarm.latestReading,
+        latestReadingAt: alarm.latestReadingAt,
+      });
+    }
+    expect(latest.get(a1.id)?.latestReading).toBe(10_800);
+    expect(latest.has(gone.id), 'a deleted car gets no card').toBe(false);
+    expect(latest.has(never.id), 'no reading on file → no row; the card says «—»').toBe(false);
+  });
+
+  it('answers either audience the alarms serve, and no one else', async () => {
+    expect((await get(URL, {}, odometerOnly)).status).toBe(200);
+    expect((await get(URL, {}, maintenanceOnly)).status).toBe(200);
+    expect((await get(URL, {}, strangerToken)).status).toBe(403);
+    expect((await request(app).get(`/api/v1${URL}`)).status).toBe(401);
+  });
+});

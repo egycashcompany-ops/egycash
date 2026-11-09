@@ -44,8 +44,8 @@ import {
   FuelCardNumberBox,
   NUM,
   PATH,
-  VehicleFuelGroup,
 } from '../components/FuelCardBoard';
+import { FuelCarGroup } from '../components/FuelCarGroup';
 import { saveSheet } from '../lib/fleet-sheet';
 import {
   CHARGING_STATES,
@@ -573,10 +573,11 @@ export const FuelChargingPage = (): JSX.Element => {
         ) : (
           <div className="space-y-3">
             {tiles.map((tile) => (
-              <VehicleFuelGroup
+              <FuelCarGroup
                 key={tile.vehicleId}
                 vehicleId={tile.vehicleId}
                 code={tile.code}
+                noCar={tile.noCar}
                 held={Object.keys(tile.cards).length}
               >
                 {FUEL_CARD_COMPANIES.map((slot) => {
@@ -594,7 +595,7 @@ export const FuelChargingPage = (): JSX.Element => {
                     />
                   );
                 })}
-              </VehicleFuelGroup>
+              </FuelCarGroup>
             ))}
           </div>
         )}

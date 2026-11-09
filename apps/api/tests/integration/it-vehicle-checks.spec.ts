@@ -401,7 +401,8 @@ describe('filing a report', () => {
   it('stores a missing item as null, drops a note of spaces, and snapshots the reporter', async () => {
     const res = await fileReport({
       vehicleId: car('9'),
-      items: { screen: 'works', camera3: 'notWorking', radio: null },
+      // Nothing «لا يعمل»: a note of spaces is then no note, and none is needed.
+      items: { screen: 'works', camera3: 'works', radio: null },
       notes: '    ',
     });
     expect(res.status).toBe(201);
@@ -410,7 +411,7 @@ describe('filing a report', () => {
       screen: 'works',
       camera1: null,
       camera2: null,
-      camera3: 'notWorking',
+      camera3: 'works',
       camera4: null,
       camera5: null,
       camera6: null,
@@ -435,7 +436,7 @@ describe('filing a report', () => {
       screen: 'works',
       camera1: null,
       camera2: null,
-      camera3: 'notWorking',
+      camera3: 'works',
       camera4: null,
       camera5: null,
       camera6: null,
@@ -509,6 +510,52 @@ describe('filing a report', () => {
       const res = await fileReport(body);
       expect(res.status).toBe(400);
     }
+  });
+});
+
+// «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل».
+describe('a device «لا يعمل» needs a note', () => {
+  it('refuses a fault with no note, or a note of spaces (422), and stores nothing', async () => {
+    for (const notes of [undefined, '   ']) {
+      const clientRequestId = randomUUID();
+      const res = await fileReport({
+        vehicleId: car('150'),
+        clientRequestId,
+        items: { screen: 'works', dvr: 'notWorking' },
+        ...(notes === undefined ? {} : { notes }),
+      });
+      expect(res.status).toBe(422);
+      expect(errorCode(res)).toBe(ErrorCodes.IT_VEHICLE_CHECK_NOTES_REQUIRED);
+      expect(await ItVehicleCheckModel.countDocuments({ clientRequestId })).toBe(0);
+    }
+  });
+
+  it('files a fault with its note', async () => {
+    const res = await fileReport({
+      vehicleId: car('150'),
+      items: { dvr: 'notWorking' },
+      notes: '  الـ DVR لا يسجّل.  ',
+    });
+    expect(res.status).toBe(201);
+    const report = data<ItVehicleCheckDto>(res);
+    expect(report.items.dvr).toBe('notWorking');
+    expect(report.notes).toBe('الـ DVR لا يسجّل.');
+  });
+
+  it('still answers a repeat of a report filed before the rule (200), note or none', async () => {
+    const filedBefore = await filed('150');
+    // As a report filed before the rule was: a fault and no note, written straight to the store.
+    await ItVehicleCheckModel.collection.updateOne(
+      { _id: new Types.ObjectId(filedBefore.id) },
+      { $set: { 'items.camera1': 'notWorking' }, $unset: { notes: '' } },
+    );
+    const again = await fileReport({
+      vehicleId: car('150'),
+      clientRequestId: filedBefore.clientRequestId,
+      items: { camera1: 'notWorking' },
+    });
+    expect(again.status).toBe(200);
+    expect(data<ItVehicleCheckDto>(again).id).toBe(filedBefore.id);
   });
 });
 

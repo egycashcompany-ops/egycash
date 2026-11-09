@@ -373,6 +373,11 @@ export const ErrorCodes = {
    * photo is added to it any more; no file was stored.
    */
   IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED: 'IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED',
+  /**
+   * 422 — a device is «لا يعمل» and the report carries no note (`vehicleCheckNeedsNotes`). Nothing
+   * was written. A repeat of a report already filed is answered before this rule.
+   */
+  IT_VEHICLE_CHECK_NOTES_REQUIRED: 'IT_VEHICLE_CHECK_NOTES_REQUIRED',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

@@ -64,6 +64,7 @@ import {
   IT_VEHICLE_CHECK_ITEMS,
   IT_VEHICLE_CHECK_NOTES_MAX,
   ItVehicleCheckPhotoFieldsSchema,
+  vehicleCheckNeedsNotes,
 } from './it.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -783,6 +784,14 @@ describe('it vehicle check contracts', () => {
       false,
     );
     expect(CreateItVehicleCheckSchema.safeParse({ ...base, vehicleId: 'x' }).success).toBe(false);
+  });
+
+  // «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل».
+  it('asks for a note exactly when a device is «لا يعمل»', () => {
+    expect(vehicleCheckNeedsNotes(undefined)).toBe(false);
+    expect(vehicleCheckNeedsNotes({})).toBe(false);
+    expect(vehicleCheckNeedsNotes({ screen: 'works', dvr: null })).toBe(false);
+    expect(vehicleCheckNeedsNotes({ screen: 'works', camera7: 'notWorking' })).toBe(true);
   });
 
   it('trims the note and refuses one over 1000 characters', () => {

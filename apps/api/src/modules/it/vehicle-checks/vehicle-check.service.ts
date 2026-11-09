@@ -10,6 +10,7 @@ import {
   IT_VEHICLE_CHECK_ITEMS,
   IT_VEHICLE_CHECK_MAX_PHOTOS,
   IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS,
+  vehicleCheckNeedsNotes,
   ymdOf,
   ymdToUtcDate,
   type CreateItVehicleCheck,
@@ -72,6 +73,15 @@ class ItVehicleCheckService {
     //    by now, and the report was filed when it was not.
     const existing = await itVehicleCheckRepository.findByClientRequestId(input.clientRequestId);
     if (existing !== null) return this.repeated(existing, ctx);
+
+    // 1b. «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل»: a device «لا يعمل» needs a note saying
+    //     what is wrong. After the repeat, so a report filed before this rule still answers 200.
+    if (vehicleCheckNeedsNotes(input.items) && (input.notes?.trim() ?? '') === '') {
+      throw new BusinessRuleError(
+        'a report with a device «لا يعمل» carries a note',
+        ErrorCodes.IT_VEHICLE_CHECK_NOTES_REQUIRED,
+      );
+    }
 
     // 2. The car, through the Fleet boundary.
     const vehicle = await findVehicleForCheck(input.vehicleId);

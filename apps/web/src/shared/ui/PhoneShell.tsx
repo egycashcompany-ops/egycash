@@ -13,7 +13,7 @@
 // guard as every other page and the same session; what changes is the frame around it, not the
 // identity inside it. The back link is here so the surface is a capability within the employee's
 // console, not a place you get stranded in.
-import { type ReactNode } from 'react';
+import { type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AppVersion } from '../../platform/app/AppVersion';
 import { cn } from '../lib/cn';
@@ -24,6 +24,7 @@ export const PhoneShell = ({
   subtitle,
   backTo,
   backLabel,
+  onBack,
   footer,
   children,
 }: {
@@ -33,6 +34,11 @@ export const PhoneShell = ({
   backTo: string;
   /** The back arrow's name: it is the one control here with no visible text. */
   backLabel: string;
+  /**
+   * Called on a tap on the back arrow, before it navigates; `preventDefault()` keeps the screen
+   * (IT's sent view asks once before a report with no photo is left).
+   */
+  onBack?: (event: MouseEvent<HTMLAnchorElement>) => void;
   /**
    * A bar fixed at the foot of the screen — the count and the one action, under the thumb. Its
    * height is known (one line that never wraps and a 48px button), so the page is padded by that
@@ -55,6 +61,7 @@ export const PhoneShell = ({
       <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
         <Link
           to={backTo}
+          {...(onBack === undefined ? {} : { onClick: onBack })}
           aria-label={backLabel}
           title={backLabel}
           className="-ms-2 rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"

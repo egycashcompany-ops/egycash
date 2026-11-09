@@ -44,9 +44,12 @@ its trade-off, and the next message to the owner names them so he can overturn a
 
 1. **Two answers per item, «يعمل» / «لا يعمل».** The alternative, a third answer «غير موجود» for a
    device a car does not have, would make the counts more honest. It was not chosen because the
-   owner listed two states. A device the car lacks is left unanswered. Adding a third answer later
+   owner listed two states. A device the car lacks is left unanswered. Since every device opens at
+   «يعمل» (2026-11-09), that takes a tap on its chosen «يعمل»; a reporter who skips it files the
+   missing device as working — the price of the owner's default. Adding a third answer later
    adds one value to the item enum and touches no stored report.
-2. **Up to five photos per report.** The alternative was one photo, as the owner's «uploading
+2. **Up to five photos per report** — and, since 2026-11-09, at least one («وكمان الصورة كدا كدا
+   إجبارى فى كل الحالات»; §2 item 5). The alternative was one photo, as the owner's «uploading
    photo» reads. Several were recommended because several cameras can fail at once. Five keeps the
    storage bounded (§7).
 3. **Every active car is offered.** The alternatives were every car of any status (an
@@ -72,7 +75,8 @@ their only page.
 1. **«كود السيارة»** is a single-car dropdown with search, the same one Fleet's forms use. Opening
    it lists every active car by code, in Fleet's code order. Typing narrows the list, and codes
    that start with the typed text come first. Arabic-Indic digits are read as Western digits. A
-   code with a space («كورولا 1») is one car. This is the one required field. Pressing «إرسال
+   code with a space («كورولا 1») is one car. It is required, as are a day, a note while a device
+   is «لا يعمل» and a photo (items 2, 4 and 5; 2026-11-09). Pressing «إرسال
    التقرير» without a car shows the shared missing-fields banner, whose lead reads «لم يتم إرسال
    التقرير.» instead of «لم يتم الحفظ.», followed by the missing fields as usual, and marks the box
    «حقل مطلوب».
@@ -81,13 +85,23 @@ their only page.
    user empties the box, the banner lists «التاريخ» as missing, like the car.
 3. **The items**, in the owner's order: a card «الشاشة»; a card «الكاميرات» with eight numbered
    rows; a card «DVR»; a card «جهاز الاتصال (موتورولا)». Each row carries its label at the start
-   and, on the same row at the end, two narrow buttons: «يعمل» (✓) and «لا يعمل» (✕). Nothing is
-   chosen at first. Tapping the chosen button again clears it. A chosen «يعمل» is green and a
+   and, on the same row at the end, two narrow buttons: «يعمل» (✓) and «لا يعمل» (✕). Every device
+   opens at «يعمل» («التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها», 2026-11-09), so the
+   reporter taps only what fails. Tapping the chosen button again clears it. A chosen «يعمل» is green and a
    chosen «لا يعمل» is red, and the icon tells them apart without the colour. An item left
    unanswered is filed as unanswered («لم يُفحص»). A long label wraps beside its buttons; the
    buttons never drop under it.
-4. **«ملاحظات»** is one text box for the whole report. It is optional, at most 1000 characters.
-5. **«الصور»** is optional, up to five photos. On a touch screen there are two buttons,
+4. **«ملاحظات»** is one text box for the whole report, at most 1000 characters. It is required
+   while any device is «لا يعمل» («كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل», 2026-11-09):
+   its title gains «*», a hint says why, and «إرسال التقرير» without it lists «ملاحظات» in the
+   banner. The server refuses such a report too (§6.1).
+5. **«الصور»** is required, one to five photos («وكمان الصورة كدا كدا إجبارى فى كل الحالات»,
+   2026-11-09): «إرسال التقرير» with none lists «الصور» in the banner and marks the card. A photo
+   still being re-encoded is not yet counted. The server cannot require it (§6.1), so a report
+   whose every upload failed or was refused ends with none: the sent view then says so in red
+   («لا توجد صورة، والتقرير يحتاج صورة»), «إعادة رفع الصور» sends the failed ones again while that
+   view stays open, and «تقرير لسيارة أخرى» asks once before leaving it, since no screen can add a
+   photo to the report afterwards. On a touch screen there are two buttons,
    «تصوير بالكاميرا» and «اختيار من الجهاز» (the shared `PhotoSourceButtons`). On any screen, a
    dashed box «اضغط لإضافة صورة» opens the file dialog, so a computer can add photos too. Each photo
    shows as a row with its thumbnail and a ✕ to drop it before sending. Before upload the phone
@@ -101,7 +115,11 @@ their only page.
 7. **After sending**, the screen shows «تم إرسال التقرير» with the car, the day, «x يعمل · y لا
    يعمل», and the number of photos, plus a «تقرير لسيارة أخرى» button. That button clears the form
    and keeps the day. If a photo failed to upload, the summary says how many, and «إعادة رفع الصور»
-   sends them again to the same report.
+   sends them again to the same report. A report left with no photo (2026-11-09) shows the photos
+   row in red; «تقرير لسيارة أخرى» and the header's back arrow then ask once (a warning, and the
+   button becomes «الانتقال دون صورة»), and a reload or a closed tab gets the browser's prompt
+   while failed photos wait. The warning points to «إعادة رفع الصور» when there are photos to send
+   again, and to a new report when every photo was refused.
 8. **While the form is being filled**, the car, the day, the answers and the notes are kept as a
    draft in the tab's `sessionStorage`. A phone that unloads the tab while the camera app is open
    then brings them back. Photos are not kept, because of their size. The draft is cleared once the
@@ -212,7 +230,7 @@ Alternatives set aside:
 | Method and path | Answer | Refusals |
 |---|---|---|
 | `GET /vehicles?page=&pageSize=` | **200**, one page of `{ id, code }` (pageSize at most `MAX_PAGE_SIZE`, 100) | **400** `VALIDATION_FAILED` for a bad page or a pageSize over 100 |
-| `POST /` | **201** with the new report; **200** with the existing one when the caller already filed this `clientRequestId` | **400** `VALIDATION_FAILED` (the schema, including a day after today in Cairo); **404** `NOT_FOUND` for a missing or deleted car; **422** `IT_VEHICLE_NOT_ACTIVE`; **409** `IT_VEHICLE_CHECK_REQUEST_REUSED` when another user filed with that `clientRequestId` |
+| `POST /` | **201** with the new report; **200** with the existing one when the caller already filed this `clientRequestId` | **400** `VALIDATION_FAILED` (the schema, including a day after today in Cairo); **422** `IT_VEHICLE_CHECK_NOTES_REQUIRED` when a device is «لا يعمل» and the note is empty (2026-11-09); **404** `NOT_FOUND` for a missing or deleted car; **422** `IT_VEHICLE_NOT_ACTIVE`; **409** `IT_VEHICLE_CHECK_REQUEST_REUSED` when another user filed with that `clientRequestId` |
 | `POST /:id/photos` (multipart: `file`, and `clientPhotoId`, a UUID) | **200** with the report; **200** unchanged when that `clientPhotoId` is already on the report | **400** `VALIDATION_FAILED` for a malformed id, a missing `file` part or a missing `clientPhotoId`; **404** `NOT_FOUND` when the report is missing, deleted or not the caller's (its existence is not revealed); **422** `IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED` more than 24 hours after filing; **422** `IT_VEHICLE_CHECK_PHOTO_LIMIT` at five photos; **422** `FILE_TOO_LARGE` or `FILE_TYPE_NOT_ALLOWED` (the category's rules) |
 
 The new codes go in the central catalog, `packages/contracts/src/errors/index.ts` (API Standards
@@ -229,6 +247,11 @@ The form walks the pages with Fleet's `fetchWholeCatalog` and ranks in the brows
 1. Look up `clientRequestId`, unscoped. If found, the same reporter gets **200** with that report,
    whatever has changed since (the car may be inactive now, or Cairo's day may have turned), and
    another user gets **409**.
+   - Then (2026-11-09): a device «لا يعمل» with an empty note means **422**
+     `IT_VEHICLE_CHECK_NOTES_REQUIRED` (`vehicleCheckNeedsNotes`, shared with the form). It runs
+     after the lookup, so a repeat of a report filed before the rule still answers 200. A photo
+     cannot be required here: the photos are uploaded after the report is filed, one request
+     each.
 2. `findVehicleForCheck`: `null` means **404**; a status other than `active` means **422**.
 3. Create the report: the car's code and branch, the reporter, the answers (a missing key becomes
    `null`), the trimmed note (absent when empty).
@@ -292,6 +315,10 @@ export const IT_VEHICLE_CHECK_NOTES_MAX = 1000;
 export const IT_VEHICLE_CHECK_PHOTO_FILE_CATEGORY = 'it-vehicle-check-photos';
 export const IT_VEHICLE_CHECK_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
+// 2026-11-09: a fault needs a note (the service's 422), and the form sends at least one photo.
+export const vehicleCheckNeedsNotes = (items): boolean =>   // any device 'notWorking'
+  IT_VEHICLE_CHECK_ITEMS.some((item) => items?.[item] === 'notWorking');
+export const IT_VEHICLE_CHECK_MIN_PHOTOS = 1;
 
 const answer = z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null);
 export const CreateItVehicleCheckSchema = z.object({
@@ -392,6 +419,7 @@ The car list's query is the shared `PaginationQuerySchema`. The labels are not i
 | 404 car | toast «هذه السيارة لم تعد مسجلة.» | car cleared, car list refetched | new one |
 | 422 `IT_VEHICLE_NOT_ACTIVE` | toast «هذه السيارة ليست نشطة الآن.» | car cleared, car list refetched | new one |
 | 400 on `checkDate` | toast «لا يمكن اختيار يوم بعد اليوم.» | day set back to today | new one |
+| 422 `IT_VEHICLE_CHECK_NOTES_REQUIRED` | toast «اكتب ملاحظة عن الأجهزة التي لا تعمل.» (the form asks first; this is a form that slipped past) | kept | new one |
 | 409 `IT_VEHICLE_CHECK_REQUEST_REUSED` | toast «تعذّر إرسال التقرير. حاول مرة أخرى.» | kept | new one |
 | a photo refused 422 (limit or window) | on the sent view, «لم تُرفع n صور:» with the reason | that photo dropped from the retry list | — |
 | a photo the browser cannot decode | the original is sent when it is JPEG/PNG/WebP and at most 10 MB; otherwise toast «نوع هذه الصورة غير مدعوم.» or «الصورة أكبر من 10 ميجابايت.» | not attached | — |
@@ -424,6 +452,9 @@ The car list's query is the shared `PaginationQuerySchema`. The labels are not i
   grant arrives, a wrong report is corrected by filing again, and the latest one counts.
 - **A car with no branch** is filed with no branch. When the dashboard reads under a branch scope,
   only organization-wide readers will see those reports.
+- **A report can still end with no photo** (2026-11-09): the server cannot require one (§6.1), and
+  a phone that kills the tab on the sent view, or a reporter who leaves past the ask, leaves the
+  report without one. The dashboard should show such reports.
 - **Photos taken before the tab is unloaded are lost.** The draft keeps everything else (§2 item
   8). The reporter takes them again.
 - **No earliest day.** Only a day later than today is refused. The owner set no limit.
@@ -489,7 +520,7 @@ check, the three test suites, the build and the dependency audit.
 | `apps/web/src/shared/ui/required-fields.spec.tsx` | Modify: `MissingFieldsBanner` with a `lead` and a missing list renders that lead; without it, «لم يتم الحفظ.» as before |
 | `apps/web/src/shared/lib/image-downscale.ts`, `image-downscale.spec.ts` | Create; the spec covers `fitWithin`: longest side ≤ the max, ratio kept, no upscaling, at least 1 px |
 | `apps/web/src/modules/it/api/it-api.ts`, `it-queries.ts` | Modify: `fetchItVehicleCheckCars` / `useItVehicleCheckCars`, `fileVehicleCheck`, `uploadVehicleCheckPhoto` |
-| `apps/web/src/modules/it/lib/vehicle-check-form.ts`, `vehicle-check-form.spec.ts` | Create: counts, the payload, clear-on-second-tap, the default day, the missing fields (car, day), the outcome table of §6.3 as a pure function |
+| `apps/web/src/modules/it/lib/vehicle-check-form.ts`, `vehicle-check-form.spec.ts` | Create: counts, the payload, clear-on-second-tap, the default day, the missing fields (car, day; since 2026-11-09 also a fault's note and a photo), the outcome table of §6.3 as a pure function |
 | `apps/web/src/modules/it/lib/vehicle-check-photos.ts`, `vehicle-check-photos.spec.ts` | Create: `uploadPhotosInOrder` (with a fake upload: order, one at a time, the three outcomes), the type and size check, the decode-failure rule |
 | `apps/web/src/modules/it/mobile/vehicle-check-draft.ts`, `vehicle-check-draft.spec.ts` | Create: write, read, clear, the key, and every drop rule of §6.3 |
 | `apps/web/src/modules/it/mobile/VehicleCheckPage.tsx`, `VehicleCheckCarPicker.tsx`, `VehicleCheckAnswer.tsx`, `VehicleCheckPhotos.tsx`, `VehicleCheckSent.tsx` | Create |
@@ -617,7 +648,8 @@ What the build changed (Step 4), each found by the review of the built code:
 - **`uploadPhotosInOrder(reportId, photos, upload)`** takes the upload as a third argument, so its
   spec drives it with a fake.
 - **A photo still being re-drawn when «إرسال التقرير» is tapped** goes with the report: the send
-  waits for it. Once the report is filed, a photo still being prepared is dropped, so it never
+  waits for it — when another photo is already on the form; a lone one is not counted yet, and the
+  required fields name «الصور» until it arrives (2026-11-09). Once the report is filed, a photo still being prepared is dropped, so it never
   reaches the next car's form. «تقرير لسيارة أخرى» also clears the photos.
 - **An id held after an unknown outcome is renewed on an edit** (§6.3's table). Sent under the held
   id, the edited report would only bring back the first one. A draft given back after a reload

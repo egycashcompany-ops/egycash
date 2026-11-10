@@ -634,6 +634,12 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **IT vehicle checks dashboard: the page no longer scrolls into empty space.** «بيعمل Scroll لمساحه
+  فاضية». The matrix's last column has a heading only screen readers hear (`sr-only`, absolutely
+  positioned). Its table's scroll box was not positioned, so the heading took the page as its
+  containing block, sat at the matrix's height and stretched the document: the whole console frame
+  scrolled up by about 170 px into blank space. The box is `relative` now, as DataTable's is
+  (measured in Chromium: the document 1077 px in a 909 px window before, 909 px after).
 - **«حوادث السيارات»: a transfer can no longer take more than the file's negative, its refusals
   are in Arabic with their figures, and the car list offers no deleted car.**
   - **The server caps a take at the receiving file's negative** («اعرف المبلغ اللى بالسالب كام

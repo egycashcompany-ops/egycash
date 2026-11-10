@@ -433,7 +433,17 @@ describe('the panels, in the sample’s order', () => {
 
   it('lets the matrix scroll in its own box at phone width, never the page', () => {
     expect(block(html, 'data-matrix=""', 'table')).toContain('min-w-[68rem]');
-    expect(html).toMatch(/<div class="overflow-x-auto[^"]*"><table[^>]*data-matrix=""/u);
+    expect(html).toMatch(/<div class="relative overflow-x-auto[^"]*"><table[^>]*data-matrix=""/u);
+  });
+
+  // «بيعمل Scroll لمساحه فاضية»: the last column's `sr-only` heading is absolutely positioned. With
+  // no positioned ancestor it took the page as its containing block and stretched the document down
+  // to the matrix, so the whole console frame scrolled up into empty space. The box it scrolls in
+  // is its containing block now; nothing absolutely placed in the table may lie outside one.
+  it('keeps every absolutely placed part of the matrix inside its own box', () => {
+    const box = /<div class="([^"]*)"><table[^>]*data-matrix=""/u.exec(html)?.[1] ?? '';
+    expect(box.split(' ')).toContain('relative');
+    expect(block(html, 'data-matrix=""', 'table')).toContain('class="sr-only"');
   });
 
   // As a header action that does not shrink, the legend squeezed the panel's title to a few

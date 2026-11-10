@@ -567,8 +567,12 @@ const DeviceMatrix = ({
   const head =
     'whitespace-nowrap px-2 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300';
   return (
-    // The table scrolls in its own box on a phone, never the page.
-    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+    // The table scrolls in its own box on a phone, never the page. `relative` IS THE CONTAINING
+    // BLOCK: the last column's `sr-only` heading is absolutely positioned, and with no positioned
+    // ancestor it took the page as its containing block, escaped the console's scroll and stretched
+    // the DOCUMENT down to the matrix — «بيعمل Scroll لمساحه فاضية», the whole frame scrolling up into
+    // empty space (DataTable's own wrapper, for the same reason).
+    <div className="relative overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
       <table className="w-full min-w-[68rem] border-collapse text-sm" data-matrix="">
         <thead>
           <tr className="bg-slate-50 dark:bg-slate-800/60">

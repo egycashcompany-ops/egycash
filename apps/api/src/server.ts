@@ -14,6 +14,7 @@ import { moduleManifests } from './modules';
 import { syncNavigationCatalog } from './seed-navigation';
 import { syncApplicationSections } from './seed-application-sections';
 import { syncHrOnlyAccounts } from './hr-only-access';
+import { syncHiringTemplates } from './modules/hr/contracts/hiring-templates';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
@@ -59,6 +60,9 @@ const main = async (): Promise<void> => {
   // Re-assert the HR-only confinement AFTER boot's own role grants (the Leave module re-grants
   // `employee-self-service` on every start), so it cannot drift back open between seeds.
   await syncHrOnlyAccounts();
+  // The owner's thirteen hiring papers as templates («مستندات التعيين») — written once each, never
+  // over an edit; a job's paper waiting for its job is matched again here. See the file.
+  await syncHiringTemplates();
 
   // The Fleet go-live import — 209 cars and their licence scans, once per database.
   //

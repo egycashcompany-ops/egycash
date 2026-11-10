@@ -119,16 +119,29 @@ export const ContractCreatePage = (): JSX.Element => {
       .catch(() => toast.error(t('contracts.create.employeeLoadFailed')));
   }, [presetEmployeeId]);
 
-  // Only keys with a PUBLISHED version can generate (A17).
+  // Only keys with a PUBLISHED version can generate (A17). Never a hiring form (A27) — a form is
+  // printed beside a contract, it is not one — and, once the employee is chosen, only the
+  // templates of the employee's job, that job's own first («قالب العقد الخاص بوظيفته»).
+  const jobTitleId = employee?.employment.jobTitleId ?? null;
   const publishable = useMemo(
     () =>
-      (templates ?? []).filter(
-        (x): x is ContractTemplateDto & { publishedTemplateId: string } =>
-          typeof x.publishedTemplateId === 'string' &&
-          (typeFilter === '' || x.contractTypeId === typeFilter),
-      ),
-    [templates, typeFilter],
+      (templates ?? [])
+        .filter(
+          (x): x is ContractTemplateDto & { publishedTemplateId: string } =>
+            typeof x.publishedTemplateId === 'string' &&
+            x.kind !== 'form' &&
+            (jobTitleId === null || x.allJobs || x.jobTitleIds.includes(jobTitleId)) &&
+            (typeFilter === '' || x.contractTypeId === typeFilter),
+        )
+        .sort((a, b) => Number(a.allJobs) - Number(b.allJobs) || a.printOrder - b.printOrder),
+    [templates, typeFilter, jobTitleId],
   );
+  // The employee's job's own contract template is chosen for them — still changeable.
+  useEffect(() => {
+    if (jobTitleId === null || templateKey !== '') return;
+    const own = publishable[0];
+    if (own !== undefined) setTemplateKey(own.key);
+  }, [jobTitleId, publishable]);
   const chosen = publishable.find((x) => x.key === templateKey) ?? null;
   // The PUBLISHED version drives placeholders, previews and the create body.
   const { data: published } = useContractTemplate(chosen?.publishedTemplateId ?? '');

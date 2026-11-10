@@ -1,6 +1,6 @@
 // «لو 122 فهيبقا مئة اثنان وعشرون جنيها لا غير».
 import { describe, expect, it } from 'vitest';
-import { amountInArabicWords as words } from './arabic-amount';
+import { amountInArabicWords as words } from './arabic-amount.js';
 
 describe('an amount in Egyptian pounds, written out in Arabic', () => {
   /** The owner's own example — with the «و» Arabic requires between every part. */

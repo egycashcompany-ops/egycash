@@ -11,6 +11,7 @@ import {
   ContractVersionOnlySchema,
   CreateContractSchema,
   DecideContractApprovalSchema,
+  HiringPackRequestSchema,
   ListContractsQuerySchema,
   PreviewContractSchema,
   SignContractBlockSchema,
@@ -22,6 +23,7 @@ import {
   type ContractVersionOnly,
   type CreateContract,
   type DecideContractApproval,
+  type HiringPackRequest,
   type ListContractsQuery,
   type PreviewContract,
   type SignContractBlock,
@@ -39,6 +41,7 @@ import { scopeSelector } from '../../../../shared/types';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { contractTypeService } from '../contract-types';
 import { contractService } from './contract.service';
+import { hiringPackService } from './hiring-pack.service';
 import { verifyContract } from './contract-verify';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -130,6 +133,17 @@ const act =
     ok(res, await withTypeName(params.id, ctx));
   };
 
+/**
+ * «مستندات التعيين» (A27) — the employee's contract and every form for the job, as one printable
+ * document. A POST because it may MAKE the contract when there is none yet (create + generate,
+ * under the caller's own contract keys).
+ */
+const hiringPack = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<HiringPackRequest>(req);
+  ok(res, await hiringPackService.build(ctx, body.employeeId, scopeSelector(ctx, 'contract.print')));
+};
+
 const documentHtml = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
@@ -197,6 +211,8 @@ export const buildContractsRouter = (): Router => {
   // Preview also serves the template editor's sample render (no employeeId in the body).
   router.post('/preview', authenticate, authorizeAny('contract.create', 'contractTemplate.manage'),
     validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
+  router.post('/hiring-pack', ...guard('contract.print'), validate({ body: HiringPackRequestSchema }),
+    asyncHandler(hiringPack));
   router.get('/:id', ...guard('contract.view'), validate({ params: IdParamSchema }), asyncHandler(getContract));
   router.patch('/:id', ...guard('contract.create'), validate({ body: UpdateContractDraftSchema, params: IdParamSchema }),
     asyncHandler(act<UpdateContractDraft>((ctx, id, body) => contractService.updateDraft(ctx, id, body, scopeSelector(ctx, 'contract.create')))));

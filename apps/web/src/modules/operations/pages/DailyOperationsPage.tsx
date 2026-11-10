@@ -428,7 +428,7 @@ export const DailyOperationsPage = (): JSX.Element => {
             …» (main_ops.ejs:262) — and how many shipments the filters left. */}
         <div className="flex items-center justify-between gap-2" data-shipments-toolbar="true">
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-black text-slate-900 dark:text-white">
+            <h1 className="text-base font-black text-slate-900 sm:text-lg dark:text-white">
               {t('operations.board.title', { day: longDay(board.data?.date ?? '', locale) })}
             </h1>
             <span
@@ -641,7 +641,7 @@ export const DailyOperationsPage = (): JSX.Element => {
         {statsOpen && board.data !== undefined && (
           <div
             data-shipment-figures="true"
-            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+            className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
           >
             <FigureChip
               icon={SHIPMENT_PATH.shipment}

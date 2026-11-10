@@ -224,6 +224,26 @@ export const useDeleteOperationsShipment = () => {
     onSuccess: invalidate,
   });
 };
+
+// «صورة الإيصال». The photo is a field of the shipment row, so both acts stale the board and the
+// list like any other shipment write. No `onError` on purpose: the global notifier names the
+// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it.
+export const useUploadShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      api.uploadShipmentReceiptImage(id, file),
+    onSuccess: invalidate,
+  });
+};
+
+export const useDeleteShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteShipmentReceiptImage(id),
+    onSuccess: invalidate,
+  });
+};
 export const useCreateOperationsBank = () => {
   const qc = useQueryClient();
   return useMutation({

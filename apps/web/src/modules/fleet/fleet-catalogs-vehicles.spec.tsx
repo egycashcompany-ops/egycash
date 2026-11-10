@@ -868,7 +868,9 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('the design shell has no click on its backdrop, and closes on Escape', () => {
     expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
     expect(SHELL).not.toContain('useOnClickOutside');
-    expect(SHELL).toContain("if (e.key === 'Escape' && !e.defaultPrevented) onClose()");
+    // Escape closes the dialog on TOP — not one under a dialog opened from it.
+    expect(SHELL).toContain("if (e.key !== 'Escape' || e.defaultPrevented) return;");
+    expect(SHELL).toMatch(/roots\[roots\.length - 1\] !== rootRef\.current\) return;\s*e\.preventDefault\(\);\s*onClose\(\);/u);
   });
 
   it('the reading dialog is drawn in it', () => {

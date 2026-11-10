@@ -71,7 +71,7 @@ import {
   vehiclesOf,
 } from '../lib/dispatch-crew';
 import {
-  areaAfterDestination,
+  areaOfDestination,
   followMainBank,
   secondaryBankFor,
   shipmentSaveErrorKey,
@@ -139,9 +139,17 @@ export const ShipmentFormDialog = ({
   defaultDate,
   banks,
   currencies,
+  createType,
   onClose,
 }: {
   open: boolean;
+  /**
+   * The kind a NEW shipment is — decided by the screen, not chosen in the form. «عاوز اضافة شحنة
+   * اشيل النوع ويكون يومى بس»: the day board adds daily shipments; the secured backlog (legacy
+   * `/mohsana`, where secured shipments were always created) adds secured ones. An edit keeps the
+   * shipment's own type — it never changes (legacy had no path between the two).
+   */
+  createType: OperationsShipmentType;
   /** A board row (with its branches resolved) or a plain shipment; null creates one. */
   shipment: OperationsShipmentDto | OperationsDayBoardShipmentDto | null;
   /** The board's day — a new shipment defaults to the day being looked at, not to "today". */
@@ -157,8 +165,8 @@ export const ShipmentFormDialog = ({
   const update = useUpdateOperationsShipment();
   const editing = shipment !== null;
   const row = boardRow(shipment);
+  const shipmentType: OperationsShipmentType = shipment?.shipmentType ?? createType;
 
-  const [shipmentType, setShipmentType] = useState<OperationsShipmentType>('daily');
   const [mainBankId, setMainBankId] = useState('');
   const [fromBankId, setFromBankId] = useState('');
   const [toBankId, setToBankId] = useState('');
@@ -183,7 +191,6 @@ export const ShipmentFormDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setShipmentType(shipment?.shipmentType ?? 'daily');
     setMainBankId(shipment?.mainBankId ?? '');
     // The from-bank is the origin branch's own; a board row has it, a plain shipment is read below.
     setFromBankId(row?.origin?.bankId ?? '');
@@ -242,10 +249,10 @@ export const ShipmentFormDialog = ({
       return;
     }
     setDestinationBranchId(branch?.id ?? '');
-    setAreaName((current) => areaAfterDestination(branch, current));
+    setAreaName(areaOfDestination(branch));
   };
 
-  // Area SUGGESTIONS for the box — the catalog's names; the box still takes any text.
+  // The area catalog — the branch form opened from here offers it for the new branch's area.
   const areas = useOperationsAreas({ page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'name' }, open);
   const canAddBranch = can('operationsCatalog.manage');
 
@@ -375,7 +382,8 @@ export const ShipmentFormDialog = ({
         title={t(editing ? 'operations.shipment.edit' : 'operations.shipment.add')}
         subtitle={t('operations.shipment.form.subtitle')}
         icon={SHIPMENT_PATH.shipment}
-        width="3xl"
+        width="6xl"
+        dense
         panelProps={{ 'data-shipment-form': editing ? 'edit' : 'new' }}
         footer={
           <>
@@ -390,14 +398,14 @@ export const ShipmentFormDialog = ({
       >
         <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
 
-        <DesignSection title={t('operations.shipment.form.sections.shipment')} icon={SHIPMENT_PATH.calendar}>
-          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
-            <DesignField
-              label={t('operations.shipment.form.mainBank')}
-              hint={t('operations.shipment.form.mainBankHint')}
-              required
-              missing={mainMissing}
-            >
+        {/* «الفورم … كبيرة انها متهكنش فيها اسكرول»: two bands of columns on a wide panel, so the
+            whole form fits a laptop screen — the shipment (with its notes) and its two branches
+            across the top, the money and the crew across the bottom. One column on a narrow screen. */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+          <DesignSection title={t('operations.shipment.form.sections.shipment')} icon={SHIPMENT_PATH.calendar}>
+            {/* What «الرئيسي» means is the form's subtitle («البنك المُحاسب…»); a hint here too
+                would cost the line that keeps the form on a laptop screen without a scroll. */}
+            <DesignField label={t('operations.shipment.form.mainBank')} required missing={mainMissing}>
               <div
                 className={cn(
                   carBoxClass(false),
@@ -418,17 +426,6 @@ export const ShipmentFormDialog = ({
                 />
               </div>
             </DesignField>
-            <DesignField label={t('operations.shipment.type')} required>
-              <Select
-                value={shipmentType}
-                onChange={(e) => setShipmentType(e.target.value as OperationsShipmentType)}
-                disabled={editing}
-                className={selectBox}
-              >
-                <option value="daily">{t('operations.shipment.type.daily')}</option>
-                <option value="secured">{t('operations.shipment.type.secured')}</option>
-              </Select>
-            </DesignField>
             <DesignField
               label={t('operations.shipment.form.date')}
               required
@@ -444,9 +441,7 @@ export const ShipmentFormDialog = ({
                 data-shipment-date="true"
               />
             </DesignField>
-          </div>
-          {shipmentType === 'secured' && (
-            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
+            {shipmentType === 'secured' && (
               <DesignField
                 label={t('operations.shipment.deliveryDate')}
                 hint={t('operations.shipment.deliveryDateHint')}
@@ -460,67 +455,93 @@ export const ShipmentFormDialog = ({
                   tone={cn(box, MONO)}
                 />
               </DesignField>
-            </div>
-          )}
-        </DesignSection>
-
-        <DesignSection title={t('operations.shipment.form.sections.route')} icon={SHIPMENT_PATH.route}>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <ShipmentBranchSide
-              side="origin"
-              title={t('operations.shipment.origin')}
-              banks={banks}
-              bankId={fromBankId}
-              onBankChange={(next) => changeSideBank('origin', next)}
-              branchId={originBranchId}
-              onBranchChange={(branch) => pickBranch('origin', branch)}
-              known={row?.origin ?? null}
-              canCreate={canAddBranch}
-              onRequestCreate={(bankId, name) => setAdding({ side: 'origin', bankId, name })}
-              branchMissing={required.isMissing('origin')}
-            />
-            <ShipmentBranchSide
-              side="destination"
-              title={t('operations.shipment.destination')}
-              banks={banks}
-              bankId={toBankId}
-              onBankChange={(next) => changeSideBank('destination', next)}
-              branchId={destinationBranchId}
-              onBranchChange={(branch) => pickBranch('destination', branch)}
-              known={row?.destination ?? null}
-              canCreate={canAddBranch}
-              onRequestCreate={(bankId, name) => setAdding({ side: 'destination', bankId, name })}
-              branchMissing={required.isMissing('destination')}
-            />
-          </div>
-          <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
-            <DesignField
-              label={t('operations.shipment.area')}
-              hint={t('operations.shipment.form.areaHint')}
-            >
-              <Input
-                value={areaName}
-                onChange={(e) => setAreaName(e.target.value)}
-                list="shipment-area-options"
-                tone={box}
-                data-shipment-area="true"
+            )}
+            <DesignField label={t('operations.shipment.notes')}>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={1}
+                aria-label={t('operations.shipment.notes')}
+                // The select's tone, not `box`: a Textarea has no `tone` slot, and only `!`-classes
+                // beat its own background (the Accident form's notes box does the same).
+                className={cn(selectBox, '!pe-4')}
               />
-              <datalist id="shipment-area-options">
-                {(areas.data?.items ?? [])
-                  .filter((area) => area.isActive)
-                  .map((area) => (
-                    <option key={area.id} value={area.name} />
-                  ))}
-              </datalist>
             </DesignField>
-          </div>
-        </DesignSection>
+            <Checkbox
+              label={t('operations.shipment.serialTracked')}
+              checked={serialTracked}
+              onChange={(e) => setSerialTracked(e.target.checked)}
+            />
+          </DesignSection>
 
+          <DesignSection title={t('operations.shipment.form.sections.route')} icon={SHIPMENT_PATH.route}>
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+              <ShipmentBranchSide
+                side="origin"
+                title={t('operations.shipment.origin')}
+                banks={banks}
+                bankId={fromBankId}
+                onBankChange={(next) => changeSideBank('origin', next)}
+                branchId={originBranchId}
+                onBranchChange={(branch) => pickBranch('origin', branch)}
+                known={row?.origin ?? null}
+                canCreate={canAddBranch}
+                onRequestCreate={(bankId, name) => setAdding({ side: 'origin', bankId, name })}
+                branchMissing={required.isMissing('origin')}
+              />
+              <ShipmentBranchSide
+                side="destination"
+                title={t('operations.shipment.destination')}
+                banks={banks}
+                bankId={toBankId}
+                onBankChange={(next) => changeSideBank('destination', next)}
+                branchId={destinationBranchId}
+                onBranchChange={(branch) => pickBranch('destination', branch)}
+                known={row?.destination ?? null}
+                canCreate={canAddBranch}
+                onRequestCreate={(bankId, name) => setAdding({ side: 'destination', bankId, name })}
+                branchMissing={required.isMissing('destination')}
+              >
+                {/* «المنطقة … تحت الفرع اللى الى»: under the TO branch, read only — it is that
+                    branch's, so typing it would only let the two disagree. */}
+                <div
+                  className="flex items-center gap-3"
+                  title={t('operations.shipment.form.areaHint')}
+                >
+                  <span className="shrink-0 text-[15px] font-bold text-slate-900 dark:text-white">
+                    {t('operations.shipment.area')}
+                  </span>
+                  <div
+                    role="textbox"
+                    aria-readonly="true"
+                    aria-label={t('operations.shipment.area')}
+                    aria-description={t('operations.shipment.form.areaHint')}
+                    data-shipment-area="true"
+                    className={cn(
+                      'flex min-h-[2.5rem] flex-1 items-center rounded-xl border px-4 text-[15px] font-medium',
+                      'border-dashed border-slate-300 bg-slate-100/70 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233]/50 dark:text-white',
+                    )}
+                  >
+                    {areaName === '' ? (
+                      <span className="text-sm text-slate-400 dark:text-slate-500">
+                        {t('operations.shipment.form.areaEmpty')}
+                      </span>
+                    ) : (
+                      areaName
+                    )}
+                  </div>
+                </div>
+              </ShipmentBranchSide>
+            </div>
+          </DesignSection>
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <DesignSection title={t('operations.shipment.form.sections.money')} icon={SHIPMENT_PATH.money}>
           <div className="space-y-3">
             {lines.map((line, index) => (
               // Lines have no identity of their own until saved; the index IS the slot.
-              <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-end gap-3">
+              <div key={index} className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)_auto] items-end gap-2">
                 <DesignField
                   label={t('operations.shipment.currency')}
                   missing={index === 0 && required.isMissing('amount')}
@@ -601,7 +622,10 @@ export const ShipmentFormDialog = ({
             </p>
           ) : (
             <>
-              <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+              <div
+                className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
+                title={t('operations.shipment.form.crewHint')}
+              >
                 <DesignField label={t('operations.shipment.form.captain')}>
                   <div className={carBoxClass(false)}>
                     <Combobox
@@ -645,35 +669,18 @@ export const ShipmentFormDialog = ({
                   </div>
                 </DesignField>
               </div>
-              {crewOptions.length === 0 && !crewBoard.isLoading ? (
+              {/* Only the warning keeps a line of its own; how the two boxes pick each other is said
+                  by the boxes' title, so the form fits a laptop screen with no scroll. */}
+              {crewOptions.length === 0 && !crewBoard.isLoading && (
                 <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
                   {t('operations.shipment.noCrewForDay')}
-                </p>
-              ) : (
-                <p className="text-[13px] text-slate-500 dark:text-slate-400">
-                  {t('operations.shipment.form.crewHint')}
                 </p>
               )}
             </>
           )}
         </DesignSection>
 
-        <DesignSection title={t('operations.shipment.notes')} icon={SHIPMENT_PATH.note}>
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            aria-label={t('operations.shipment.notes')}
-            // The select's tone, not `box`: a Textarea has no `tone` slot, and only `!`-classes beat
-            // its own background (the Accident form's notes box does the same).
-            className={cn(selectBox, '!pe-4')}
-          />
-          <Checkbox
-            label={t('operations.shipment.serialTracked')}
-            checked={serialTracked}
-            onChange={(e) => setSerialTracked(e.target.checked)}
-          />
-        </DesignSection>
+        </div>
       </DesignDialog>
 
       {/* «يظهر موديل كدا انه يضيف باقى البيانات»: the catalogs screen's own branch form, opened with

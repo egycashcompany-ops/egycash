@@ -5,7 +5,7 @@
 // RBAC on every surface, version-aware updates, and the operations.shipment.* events.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   ErrorCodes,
@@ -3313,6 +3313,153 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     });
     expect(crewOf(twoLegs.id)?.vehicleCode).not.toBe('OPS-V2');
     expect(crewOf(twoLegs.id)?.captainEmployeeId).not.toBe(pickupCaptainId);
+
+    // The captain's «تم التسليم» on a SECURED row is the DELIVERY leg's too. The collection run's
+    // own "delivered" is the cash reaching the VAULT, never the destination branch. The legs are
+    // stamped directly here; the real mobile acts are driven in the daily case below.
+    const { OperationsShipmentAssignmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.model'
+    );
+    const stamp = (id: unknown, set: Record<string, unknown>, unset?: Record<string, 1>) =>
+      OperationsShipmentAssignmentModel.updateOne(
+        { _id: id },
+        unset === undefined ? { $set: set } : { $set: set, $unset: unset },
+      ).exec();
+    const deliveredOnBoard = async (): Promise<string | null | undefined> =>
+      data<{ shipments: OperationsDayBoardShipmentDto[] }>(await board(BOARD_DATE)).shipments.find(
+        (r) => r.id === twoLegs.id,
+      )?.captainDeliveredAt;
+    await stamp(securedPickup?._id, {
+      executionStatus: 'completed',
+      deliveredAt: new Date(`${PICKUP_DATE}T09:00:00.000Z`),
+    });
+    expect(await deliveredOnBoard()).toBeNull();
+    // A leg written before OP-7 carries no execution state at all: read as not started.
+    await stamp(securedDelivery?._id, {}, { executionStatus: 1, deliveredAt: 1 });
+    expect(await deliveredOnBoard()).toBeNull();
+    const atBranch = new Date(`${BOARD_DATE}T11:30:00.000Z`);
+    await stamp(securedDelivery?._id, { executionStatus: 'delivered', deliveredAt: atBranch });
+    expect(await deliveredOnBoard()).toBe(atBranch.toISOString());
+  });
+
+  // «لو تم التسليم من القائد من برا الحالة هتكون تم التسليم بس الصف لونه اصفر ولما ادوس انا على صح
+  // من عندى يبقى الصف اخضر»: the board needs the CAPTAIN's delivery as its own fact beside the
+  // desk's. Driven through the real mobile API, on a day and a captain of its own — the captain's
+  // route is sequential across the whole day, so sharing `captainId`'s board day would put this
+  // stop behind stops other cases booked and never let it start.
+  it('carries when the captain delivered the board leg — and delivering never completes the shipment', async () => {
+    const DELIVERY_BOARD_DATE = shift(225);
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Captain on the board', ar: 'قائد لوحة التشغيل' },
+        permissionKeys: ['operationsExecution.own'],
+      },
+      adminId,
+    );
+    const deliveringCaptainId = await mkEmployee();
+    const userId = await mkUser('board-captain@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const employee = await employeeRepository.getById(deliveringCaptainId);
+    await employeeRepository.updateById(
+      deliveringCaptainId,
+      { userId },
+      { by: null, version: employee.__v },
+    );
+    const captainToken = await login('board-captain@ecms.local');
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELIVERY_BOARD_DATE,
+        rows: [{ vehicleId: vehicleAId, notes: 'delivery seed' }],
+      });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELIVERY_BOARD_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [deliveringCaptainId] }],
+      });
+    expect(plan.status).toBe(200);
+    const crewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(crewId).not.toBe('');
+
+    const booked = await mkShipment({
+      collectionDate: DELIVERY_BOARD_DATE,
+      pickup: { crewAssignmentId: crewId, captainEmployeeId: deliveringCaptainId },
+    });
+    expect(booked.status).toBe(201);
+    const shipmentId = data<OperationsShipmentDto>(booked).id;
+    const { operationsShipmentAssignmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.repository'
+    );
+    const pickupLeg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      shipmentId,
+      'pickup',
+    );
+    const legId = String(pickupLeg?._id ?? '');
+    expect(legId).not.toBe('');
+
+    const rowOnBoard = async (): Promise<OperationsDayBoardShipmentDto> => {
+      const res = await board(DELIVERY_BOARD_DATE);
+      expect(res.status).toBe(200);
+      const found = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+        (r) => r.id === shipmentId,
+      );
+      expect(found).toBeDefined();
+      return found as OperationsDayBoardShipmentDto;
+    };
+    const act = async (step: string): Promise<void> => {
+      const res = await request(app)
+        .post(`/api/v1/operations/mobile/stops/${legId}/${step}`)
+        .set('Authorization', `Bearer ${captainToken}`)
+        .send({});
+      expect(res.status, step).toBe(200);
+    };
+
+    // Before the captain acts: nothing delivered.
+    expect((await rowOnBoard()).captainDeliveredAt).toBeNull();
+
+    // Started and picked up is not delivered — the money is still in the van.
+    await act('start');
+    await act('pickup');
+    expect((await rowOnBoard()).captainDeliveredAt).toBeNull();
+
+    // «تم التسليم» from the captain: stamped on the row, while the shipment itself is untouched —
+    // still `draft`, still not received by the desk (execution.service.ts: deliberately).
+    await act('deliver');
+    const delivered = await rowOnBoard();
+    expect(delivered.captainDeliveredAt).not.toBeNull();
+    expect(Number.isNaN(Date.parse(delivered.captainDeliveredAt ?? ''))).toBe(false);
+    expect(delivered.status).toBe('draft');
+    expect(delivered.receivedAt).toBeNull();
+
+    // The desk ticks it: now completed, and the captain's fact is kept beside the desk's.
+    const completed = await request(app)
+      .post(`/api/v1/operations/shipments/${shipmentId}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: delivered.version });
+    expect(completed.status).toBe(200);
+    const received = await rowOnBoard();
+    expect(received.status).toBe('completed');
+    expect(received.captainDeliveredAt).toBe(delivered.captainDeliveredAt);
+
+    // Un-ticking takes back only the desk's confirmation; what the captain did still stands.
+    const reopened = await request(app)
+      .post(`/api/v1/operations/shipments/${shipmentId}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: received.version });
+    expect(reopened.status).toBe(200);
+    const back = await rowOnBoard();
+    expect(back.status).toBe('draft');
+    expect(back.captainDeliveredAt).toBe(delivered.captainDeliveredAt);
   });
 
   it('is empty, not an error, on a day with no work', async () => {
@@ -3333,6 +3480,370 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}&status=draft`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(tampered.status).toBe(400);
+  });
+});
+
+describe('the shipment receipt image — «صورة الإيصال», the Fleet receipts\' twin', () => {
+  // NO legacy counterpart: main_ops.ejs never held a photo. The owner asked for the vehicles
+  // screen's image column on the board, so this is Fleet's receipt-photo flow on a shipment —
+  // Files owns the bytes, the row keeps the link, and the shipment's own grants guard both.
+  const IMAGE_DATE = shift(226);
+
+  /** A 1×1 PNG — a real image, so the category's mime check passes on its true bytes. */
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  /** A DIFFERENT 1×1 PNG, so a replace can be told from the photo it replaced by its bytes. */
+  const PNG_2 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQaPgAAAIkAYFvkeRkAAAAAElFTkSuQmCC',
+    'base64',
+  );
+
+  const imageUrl = (id: string): string => `/api/v1/operations/shipments/${id}/receipt-image`;
+  const upload = (id: string, body: Buffer = PNG, name = 'receipt.png', token = adminToken) =>
+    request(app)
+      .post(imageUrl(id))
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', body, name);
+  const fresh = async (): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(await mkShipment({ collectionDate: IMAGE_DATE }));
+  const readBack = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const bytesOf = async (id: string): Promise<Buffer> => {
+    const res = await request(app)
+      .get(imageUrl(id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse((r, done) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (chunk: Buffer) => chunks.push(chunk));
+        r.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    return res.body as Buffer;
+  };
+  /** The desk's ✓ (or its undo) — a write on the SAME row that has nothing to do with the photo. */
+  const tick = async (id: string, step: 'complete' | 'reopen'): Promise<void> => {
+    const res = await request(app)
+      .post(`/api/v1/operations/shipments/${id}/${step}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await readBack(id)).version });
+    expect(res.status, step).toBe(200);
+  };
+
+  it('starts with no image', async () => {
+    const shipment = await fresh();
+    expect(shipment.receiptImage).toBeNull();
+    const res = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404); // absent is absent, not an empty body
+  });
+
+  it('uploads the photo, links it to the shipment, and serves the bytes back with their type', async () => {
+    const shipment = await fresh();
+    const res = await upload(shipment.id);
+    expect(res.status).toBe(200);
+    const updated = data<OperationsShipmentDto>(res);
+    expect(updated.receiptImage).toMatchObject({
+      fileName: 'receipt.png',
+      mime: 'image/png',
+      size: PNG.length,
+    });
+    expect(updated.receiptImage?.fileId).toMatch(/^[a-f0-9]{24}$/);
+    expect(Number.isNaN(Date.parse(updated.receiptImage?.uploadedAt ?? ''))).toBe(false);
+    // A real write on the row — a form still holding the old version must refetch.
+    expect(updated.version).toBeGreaterThan(shipment.version);
+
+    const bytes = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse((r, done) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (chunk: Buffer) => chunks.push(chunk));
+        r.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['content-type']).toContain('image/png');
+    // Private document: no shared cache may keep it.
+    expect(bytes.headers['cache-control']).toContain('no-store');
+    expect(Buffer.compare(bytes.body as Buffer, PNG)).toBe(0);
+  });
+
+  it('a second upload REPLACES the photo — one current receipt per shipment', async () => {
+    const shipment = await fresh();
+    const first = data<OperationsShipmentDto>(await upload(shipment.id));
+    const second = await upload(shipment.id, PNG_2, 'receipt-2.png');
+    expect(second.status).toBe(200);
+    const replaced = data<OperationsShipmentDto>(second).receiptImage;
+    expect(replaced?.fileName).toBe('receipt-2.png');
+    // A new version is a new file id, and the GET serves ITS bytes — not the first photo's.
+    expect(replaced?.fileId).not.toBe(first.receiptImage?.fileId);
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG_2)).toBe(0);
+  });
+
+  it('REJECTS an oversized photo — the category caps it at 10 MB', async () => {
+    const shipment = await fresh();
+    const res = await upload(shipment.id, Buffer.alloc(11 * 1024 * 1024, 1), 'huge.png');
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.FILE_TOO_LARGE);
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+  });
+
+  it('the day board row carries the photo, so the column needs no second read', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${IMAGE_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const row = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+      (r) => r.id === shipment.id,
+    );
+    expect(row?.receiptImage).toMatchObject({ fileName: 'receipt.png', mime: 'image/png' });
+  });
+
+  it('deletes the photo and keeps the SHIPMENT; a second delete finds nothing to delete', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+    const res = await request(app)
+      .delete(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<OperationsShipmentDto>(res).receiptImage).toBeNull();
+
+    const still = await readBack(shipment.id);
+    expect(still.receiptImage).toBeNull();
+    expect(still.lines).toEqual(shipment.lines);
+    expect(
+      (await request(app).get(imageUrl(shipment.id)).set('Authorization', `Bearer ${adminToken}`))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await request(app)
+          .delete(imageUrl(shipment.id))
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(409);
+  });
+
+  it('REJECTS a non-image — the file category is the authority, and it allows images only', async () => {
+    const shipment = await fresh();
+    const pdf = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 not an image'), {
+        filename: 'receipt.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(pdf.status).toBe(422);
+    expect(errorCode(pdf)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED);
+    const text = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('not an image either'), {
+        filename: 'receipt.txt',
+        contentType: 'text/plain',
+      });
+    expect(text.status).toBe(422);
+    expect(errorCode(text)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED);
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+  });
+
+  it('refuses an upload with no file part instead of crashing on it', async () => {
+    const shipment = await fresh();
+    const res = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('RBAC — view may see the photo, only edit may change it, and nobody anonymous', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+
+    // The viewer holds operationsShipment.view only: may look, may not upload or delete.
+    const seen = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(seen.status).toBe(200);
+    expect((await upload(shipment.id, PNG, 'viewer.png', viewerToken)).status).toBe(403);
+    expect(
+      (
+        await request(app)
+          .delete(imageUrl(shipment.id))
+          .set('Authorization', `Bearer ${viewerToken}`)
+      ).status,
+    ).toBe(403);
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe('receipt.png');
+
+    expect((await request(app).get(imageUrl(shipment.id))).status).toBe(401);
+    expect(
+      (await request(app).post(imageUrl(shipment.id)).attach('file', PNG, 'x.png')).status,
+    ).toBe(401);
+    expect((await request(app).delete(imageUrl(shipment.id))).status).toBe(401);
+  });
+
+  it('the platform file endpoints ask the SHIPMENT grants too — nobody goes around them (ADR-023)', async () => {
+    // Knowing the FILE id must be no better than knowing the shipment id. Both callers below hold
+    // the platform's own file grants, so the route lets them in and only the operations authorizer
+    // stands between them and the photo: read on `operationsShipment.view`, write on `.edit`.
+    const shipment = await fresh();
+    const fileId =
+      data<OperationsShipmentDto>(await upload(shipment.id)).receiptImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+      const role = await rbacService.createRole(
+        { name: { en: `Receipt files ${email}`, ar: `ملفات الإيصالات ${email}` }, permissionKeys },
+        adminId,
+      );
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+      return login(email);
+    };
+    const fileGrants = ['file.view', 'file.download', 'file.edit'];
+    const outsider = await tokenWith('receipt-outsider@ecms.local', fileGrants);
+    const looker = await tokenWith('receipt-looker@ecms.local', [
+      'operationsShipment.view',
+      ...fileGrants,
+    ]);
+    const replaceVia = (token: string) =>
+      request(app)
+        .post(`/api/v1/platform/files/${fileId}/replace`)
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', PNG_2, 'around.png');
+
+    // No shipment grant: to a reader the photo does not exist (ADR-023 answers reads with 404),
+    // and a write is refused.
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${outsider}`);
+      expect(res.status, path).toBe(404);
+    }
+    expect((await replaceVia(outsider)).status).toBe(403);
+
+    // `.view` sees it through the platform as well — but `.view` is not `.edit`.
+    const meta = await request(app)
+      .get(`/api/v1/platform/files/${fileId}`)
+      .set('Authorization', `Bearer ${looker}`);
+    expect(meta.status).toBe(200);
+    const download = await request(app)
+      .get(`/api/v1/platform/files/${fileId}/download`)
+      .set('Authorization', `Bearer ${looker}`);
+    expect(download.status).toBe(302);
+    expect((await replaceVia(looker)).status).toBe(403);
+    expect((await readBack(shipment.id)).receiptImage?.fileId).toBe(fileId);
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG)).toBe(0);
+  });
+
+  it('a desk ✓ that lands mid-upload costs neither the ✓ nor the photo', async () => {
+    // The race the version guard meets most on a busy board: the photo is still being stored
+    // when the desk ticks the row. That write was about the STATUS, so both must stand.
+    const { fileService } = await import('../../src/platform/files');
+    const shipment = await fresh();
+    const realUpload = fileService.upload.bind(fileService);
+    const spy = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+      const stored = await realUpload(...args);
+      await tick(shipment.id, 'complete');
+      return stored;
+    });
+    try {
+      const res = await upload(shipment.id);
+      expect(res.status).toBe(200);
+      expect(data<OperationsShipmentDto>(res)).toMatchObject({
+        status: 'completed',
+        receiptImage: { fileName: 'receipt.png' },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a REPLACE that meets a desk ✓ mid-flight never strands the photo on a superseded version', async () => {
+    // Worse than a 409: by the time the row write runs, Files has already made the old photo a
+    // superseded version, and Files never replaces a superseded version. A row left pointing at
+    // it could never take another photo — every later upload would be refused.
+    const { fileService } = await import('../../src/platform/files');
+    const shipment = await fresh();
+    expect((await upload(shipment.id)).status).toBe(200);
+    const realReplace = fileService.replace.bind(fileService);
+    const spy = vi.spyOn(fileService, 'replace').mockImplementationOnce(async (...args) => {
+      const stored = await realReplace(...args);
+      await tick(shipment.id, 'complete');
+      return stored;
+    });
+    let raced: request.Response;
+    try {
+      raced = await upload(shipment.id, PNG_2, 'receipt-2.png');
+    } finally {
+      spy.mockRestore();
+    }
+    const after = await upload(shipment.id, PNG, 'receipt-3.png');
+    expect([raced.status, after.status]).toEqual([200, 200]);
+    expect(data<OperationsShipmentDto>(raced)).toMatchObject({
+      status: 'completed',
+      receiptImage: { fileName: 'receipt-2.png' },
+    });
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG)).toBe(0);
+  });
+
+  it('a photo someone ELSE put on the row mid-upload wins — a 409, and the loser is not left behind', async () => {
+    const { fileService } = await import('../../src/platform/files');
+    const { FileModel } = await import('../../src/platform/files/file.model');
+    const shipment = await fresh();
+    let losing = '';
+    const realUpload = fileService.upload.bind(fileService);
+    const spy = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+      const stored = await realUpload(...args);
+      losing = String(stored._id);
+      // A second desk's photo lands first. Its own upload reaches the real service: this mock
+      // answers once only.
+      expect((await upload(shipment.id, PNG_2, 'theirs.png')).status).toBe(200);
+      return stored;
+    });
+    try {
+      const res = await upload(shipment.id, PNG, 'mine.png');
+      expect(res.status).toBe(409);
+      expect(errorCode(res)).toBe(ErrorCodes.STALE_DOCUMENT);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe('theirs.png');
+    expect(losing).not.toBe('');
+    expect((await FileModel.findById(losing).lean().exec())?.isDeleted).toBe(true);
+  });
+
+  it('a row written before the column existed reads as "no photo", with no migration', async () => {
+    const shipment = await fresh();
+    const { OperationsShipmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment.model'
+    );
+    await OperationsShipmentModel.updateOne(
+      { _id: shipment.id },
+      { $unset: { receiptImage: 1 } },
+    ).exec();
+    const raw = await OperationsShipmentModel.findById(shipment.id).lean().exec();
+    expect(raw !== null && 'receiptImage' in raw).toBe(false);
+
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${IMAGE_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const row = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+      (r) => r.id === shipment.id,
+    );
+    expect(row?.receiptImage).toBeNull();
+    // ...and the first upload onto such a row works like any other.
+    expect((await upload(shipment.id)).status).toBe(200);
   });
 });
 

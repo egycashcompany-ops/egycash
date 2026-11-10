@@ -9,6 +9,8 @@ import { type OperationsDayBoardShipmentDto, type OperationsShipmentDto } from '
 import {
   EMPTY_DAY_BOARD_FILTERS,
   boardDateOf,
+  boardDelivery,
+  boardFigures,
   boardTotals,
   branchCell,
   branchCellText,
@@ -37,6 +39,7 @@ const shipment = (over: Partial<OperationsShipmentDto> = {}): OperationsShipment
   deliveryDate: null,
   receiptNumber: null,
   vaultReceiptNumber: null,
+  receiptImage: null,
   serialTracked: false,
   notes: null,
   receivedById: null,
@@ -241,6 +244,7 @@ describe('isOtherOriginBank — money collected from a bank other than the one b
         : { id: 'branch-1', name: 'فرع المهندسين', code: 'B1', bankId: originBankId, bankName: 'x' },
     destination: null,
     crew: null,
+    captainDeliveredAt: null,
   });
 
   it('is false when the origin branch belongs to the billed bank', () => {
@@ -271,6 +275,7 @@ const boardRow = (
     origin: resolved('o', origin),
     destination: resolved('d', destination),
     crew: null,
+    captainDeliveredAt: null,
   };
 };
 
@@ -468,5 +473,77 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
     ];
     const unranked = orderedBoardTotals(rows, () => undefined);
     expect(unranked.map((total) => total.currencyId)).toEqual(['usd', 'egp']);
+  });
+});
+
+describe('boardDelivery — who delivered: «القائد» yellow, «المكتب» green', () => {
+  const at = '2026-11-10T09:30:00.000Z';
+
+  it('is the desk once the shipment is completed — whatever the captain did', () => {
+    expect(boardDelivery({ status: 'completed', captainDeliveredAt: null })).toBe('desk');
+    expect(boardDelivery({ status: 'completed', captainDeliveredAt: at })).toBe('desk');
+  });
+
+  it('is the captain when the leg is delivered and the desk has not confirmed', () => {
+    expect(boardDelivery({ status: 'draft', captainDeliveredAt: at })).toBe('captain');
+    expect(boardDelivery({ status: 'dispatched', captainDeliveredAt: at })).toBe('captain');
+  });
+
+  it('is nobody otherwise — and a plain shipment has no captain fact at all', () => {
+    expect(boardDelivery({ status: 'draft', captainDeliveredAt: null })).toBe('none');
+    expect(boardDelivery({ status: 'draft' })).toBe('none');
+  });
+
+  // «التسليم» filters on what the status column says, and it says «تم التسليم» for both.
+  it('counts a captain’s delivery as delivered in the «التسليم» filter', () => {
+    const rows = [
+      { ...shipment({ id: 'waiting' }), captainDeliveredAt: null },
+      { ...shipment({ id: 'captain' }), captainDeliveredAt: at },
+      { ...shipment({ id: 'desk', status: 'completed' }), captainDeliveredAt: null },
+    ];
+    const by = (received: 'yes' | 'no') =>
+      filterDayBoard(
+        rows,
+        { ...EMPTY_DAY_BOARD_FILTERS, received },
+        bankNameOf,
+        (row, side) => branchNameOf(side === 'origin' ? row.originBranchId : row.destinationBranchId),
+      ).map((r) => r.id);
+    expect(by('yes')).toEqual(['captain', 'desk']);
+    expect(by('no')).toEqual(['waiting']);
+  });
+});
+
+describe('boardFigures — «مصري», «دولار», then «عملات أخرى»', () => {
+  const CURRENCIES: Record<string, { code: string; name: string }> = {
+    egp: { code: 'EGP', name: 'مصري' },
+    usd: { code: 'USD', name: 'دولار' },
+    eur: { code: 'EUR', name: 'يورو' },
+    gbp: { code: 'GBP', name: 'جنيه استرليني' },
+  };
+  const currencyOf = (id: string) => CURRENCIES[id];
+  const rows = [
+    shipment({ lines: [{ currencyId: 'egp', amount: 12_000_000 }, { currencyId: 'gbp', amount: 60_000 }] }),
+    shipment({ lines: [{ currencyId: 'usd', amount: 100_000 }, { currencyId: 'eur', amount: 30_000 }] }),
+  ];
+
+  it('keeps the pound and the dollar apart, and sums every other currency into one figure', () => {
+    const figures = boardFigures(rows, currencyOf);
+    expect(figures.egp).toBe(12_000_000);
+    expect(figures.usd).toBe(100_000);
+    // Legacy's «عملات أجنبية»: every currency but the pound and the dollar (main_ops.ejs:3309).
+    expect(figures.othersSum).toBe(90_000);
+  });
+
+  it('lists the others each on its own, by name — what a click on «عملات أخرى» shows', () => {
+    expect(boardFigures(rows, currencyOf).others).toEqual([
+      { currencyId: 'gbp', amount: 60_000 },
+      { currencyId: 'eur', amount: 30_000 },
+    ]);
+  });
+
+  it('is all zeros for an empty board, and counts an unnamed currency with the others', () => {
+    expect(boardFigures([], currencyOf)).toEqual({ egp: 0, usd: 0, others: [], othersSum: 0 });
+    const unknown = boardFigures([shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })], currencyOf);
+    expect(unknown.othersSum).toBe(5);
   });
 });

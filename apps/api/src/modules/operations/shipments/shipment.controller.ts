@@ -9,6 +9,7 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { ValidationError } from '../../../shared/errors';
 import { toShipmentDto } from '../operations.mappers';
 import { operationsShipmentService } from './shipment.service';
 
@@ -28,11 +29,12 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
     date: new Date(
       Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
     ).toISOString(),
-    shipments: rows.map(({ doc, origin, destination, crew }) => ({
+    shipments: rows.map(({ doc, origin, destination, crew, captainDeliveredAt }) => ({
       ...toShipmentDto(doc),
       origin,
       destination,
       crew,
+      captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
     })),
   });
 };
@@ -78,4 +80,38 @@ export const deleteShipment = async (req: Request, res: Response): Promise<void>
   const { params } = validated<never, never, IdParam>(req);
   await operationsShipmentService.softDelete(params.id, authContext(req).userId);
   noContent(res);
+};
+
+export const uploadShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
+  }
+  const doc = await operationsShipmentService.setReceiptImage(authContext(req), params.id, {
+    originalName: uploaded.originalname,
+    mime: uploaded.mimetype,
+    size: uploaded.size,
+    buffer: uploaded.buffer,
+  });
+  ok(res, toShipmentDto(doc));
+};
+
+export const getShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const image = await operationsShipmentService.readReceiptImage(authContext(req), params.id);
+  res.setHeader('Content-Type', image.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(image.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(image.buffer);
+};
+
+export const deleteShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    toShipmentDto(await operationsShipmentService.deleteReceiptImage(authContext(req), params.id)),
+  );
 };

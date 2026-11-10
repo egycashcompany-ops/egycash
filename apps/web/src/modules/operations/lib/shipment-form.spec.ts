@@ -8,7 +8,7 @@ import {
   BRANCH_DUPLICATE_KEY,
   SHIPMENT_SAVE_ERROR_KEYS,
   branchSaveErrorKey,
-  areaAfterDestination,
+  areaOfDestination,
   followMainBank,
   secondaryBankFor,
   shipmentSaveErrorKey,
@@ -40,19 +40,17 @@ describe('secondaryBankFor — what secondaryBankId carries', () => {
   });
 });
 
-describe('areaAfterDestination — المنطقة from the TO branch', () => {
+describe('areaOfDestination — المنطقة from the TO branch, not typed', () => {
   it('takes the branch’s operations area', () => {
-    expect(areaAfterDestination({ opsAreaName: 'المعادي' }, '')).toBe('المعادي');
-    expect(areaAfterDestination({ opsAreaName: 'المعادي' }, 'وسط البلد')).toBe('المعادي');
+    expect(areaOfDestination({ opsAreaName: 'المعادي' })).toBe('المعادي');
+    expect(areaOfDestination({ opsAreaName: '  المعادي ' })).toBe('المعادي');
   });
 
-  it('keeps what the box held when the branch has no area, as legacy did', () => {
-    expect(areaAfterDestination({ opsAreaName: null }, 'وسط البلد')).toBe('وسط البلد');
-    expect(areaAfterDestination({ opsAreaName: '  ' }, 'وسط البلد')).toBe('وسط البلد');
-  });
-
-  it('keeps it when the branch was cleared', () => {
-    expect(areaAfterDestination(null, 'وسط البلد')).toBe('وسط البلد');
+  // The box cannot be typed into, so nothing may linger from the branch picked before.
+  it('is empty for a branch with no area, and for no branch', () => {
+    expect(areaOfDestination({ opsAreaName: null })).toBe('');
+    expect(areaOfDestination({ opsAreaName: '  ' })).toBe('');
+    expect(areaOfDestination(null)).toBe('');
   });
 });
 

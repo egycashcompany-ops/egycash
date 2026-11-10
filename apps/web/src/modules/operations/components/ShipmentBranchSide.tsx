@@ -10,7 +10,7 @@
 // typed name already in. Offered only once the search for that text has ANSWERED: before that,
 // "not found" only means "not looked for yet", and adding then would duplicate a branch the
 // answer was about to show.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
@@ -43,6 +43,7 @@ export const ShipmentBranchSide = ({
   canCreate,
   onRequestCreate,
   branchMissing,
+  children,
 }: {
   side: 'origin' | 'destination';
   /** «من فرع» / «إلى فرع». */
@@ -63,6 +64,8 @@ export const ShipmentBranchSide = ({
   canCreate: boolean;
   onRequestCreate: (bankId: string, name: string) => void;
   branchMissing: boolean;
+  /** What belongs to this side under its branch — the destination's area. */
+  children?: ReactNode;
 }): JSX.Element => {
   const t = useT();
 
@@ -170,6 +173,7 @@ export const ShipmentBranchSide = ({
           />
         </div>
       </DesignField>
+      {children}
     </div>
   );
 };

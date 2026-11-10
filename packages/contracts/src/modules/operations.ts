@@ -319,6 +319,18 @@ export interface OperationsShipmentLineDto {
   amount: number;
 }
 
+/** The file category a shipment's receipt photo is stored under (platform Files). */
+export const OPERATIONS_SHIPMENT_RECEIPT_FILE_CATEGORY = 'operations-shipment-receipts';
+
+/** A shipment's receipt photo — the file is read through the shipment, never by its id alone. */
+export interface OperationsShipmentReceiptImageDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface OperationsShipmentDto {
   id: string;
   shipmentType: OperationsShipmentType;
@@ -349,6 +361,11 @@ export interface OperationsShipmentDto {
   /** Legacy `receipt_num` / `vault_receipt_num` — stamped by the vault flow (later slice). */
   receiptNumber: string | null;
   vaultReceiptNumber: string | null;
+  /**
+   * «صورة الإيصال» — a photo of the shipment's paper receipt, uploaded from the day board's row
+   * (`POST/GET/DELETE /operations/shipments/:id/receipt-image`), or null. No legacy counterpart.
+   */
+  receiptImage: OperationsShipmentReceiptImageDto | null;
   /** Legacy `serial` — whether banknote serials are tracked for this shipment. */
   serialTracked: boolean;
   notes: string | null;
@@ -516,6 +533,13 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
   destination: OperationsDayBoardBranchDto | null;
   /** Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. */
   crew: OperationsDayBoardCrewDto | null;
+  /**
+   * When the crew captain confirmed DELIVERY of this row's leg from the mobile app (the leg's
+   * `executionStatus` reached `delivered` or `completed`; its `deliveredAt`), or null. Separate
+   * from the shipment's own `status`: the captain's act never completes the shipment — the desk's
+   * ✓ does. The board shows the first as «تم التسليم» on a yellow row, the second on a green one.
+   */
+  captainDeliveredAt: string | null;
 }
 
 export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({

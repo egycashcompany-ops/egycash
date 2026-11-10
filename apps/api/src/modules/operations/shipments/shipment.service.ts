@@ -27,8 +27,15 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { BusinessRuleError } from '../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../../shared/errors';
+import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
+import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
@@ -41,6 +48,7 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetVehicleRepository } from '../fleet-boundary';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
+import { resolveShipmentReceiptCategoryId } from './shipment-files';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -80,6 +88,12 @@ export interface DayBoardRow {
   origin: OperationsDayBoardBranchDto | null;
   destination: OperationsDayBoardBranchDto | null;
   crew: OperationsDayBoardCrewDto | null;
+  /**
+   * When the captain of the board leg confirmed «تم التسليم» on the mobile app — null until he
+   * has. It is the captain's fact, NOT the shipment's status: delivering never completes the
+   * shipment (execution.service.ts), so the desk's own confirmation stays a separate, later step.
+   */
+  captainDeliveredAt: Date | null;
 }
 
 interface ShipmentRefs {
@@ -149,6 +163,12 @@ const toLines = (lines: { currencyId: string; amount: number }[]): OperationsShi
 
 const oidOrNull = (id: string | null): Types.ObjectId | null =>
   id === null ? null : new Types.ObjectId(id);
+
+/**
+ * How many times a receipt photo's link is written before a run of unrelated writes on the same
+ * row is reported as a conflict. One retry covers the desk's ✓; three bounds a pathological row.
+ */
+const RECEIPT_LINK_ATTEMPTS = 3;
 
 class OperationsShipmentService {
   async create(input: CreateOperationsShipment, by: string): Promise<OperationsShipmentDoc> {
@@ -325,8 +345,15 @@ class OperationsShipmentService {
 
     return docs.map((doc) => {
       const leg = boardLeg(doc);
+      // A leg that predates OP-7 has no `executionStatus` at all; it has plainly not been started
+      // (the same reading as execution.service's `statusOf`). Execution only moves forward, so
+      // once the leg is delivered — or completed after it — its `deliveredAt` stays the answer,
+      // even if the desk later reopens the shipment.
+      const execution = leg?.executionStatus ?? 'pending';
+      const captainDelivered = execution === 'delivered' || execution === 'completed';
       return {
         doc,
+        captainDeliveredAt: captainDelivered ? (leg?.deliveredAt ?? null) : null,
         origin: branchView.get(String(doc.originBranchId)) ?? null,
         destination: branchView.get(String(doc.destinationBranchId)) ?? null,
         crew:
@@ -457,6 +484,144 @@ class OperationsShipmentService {
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     await emit(OperationsEvents.ShipmentReopened, eventPayload(updated));
+    return updated;
+  }
+
+  // ── The receipt photo (Files owns the bytes, the row owns the link) ─────────────────────────────
+  //
+  // «عمود كمان لصورة الإيصال زى شاشة السيارات» — the Fleet receipts' flow, unchanged in shape. No
+  // status gate: like every other shipment edit (legacy gates edits on nothing), the paper can be
+  // photographed whenever it arrives, before or after delivery. No event either, as for Fleet
+  // receipts: the audit row is the record, and the board refetches on the mutation itself.
+
+  async setReceiptImage(
+    ctx: AuthContext,
+    id: string,
+    binary: UploadedBinary,
+  ): Promise<OperationsShipmentDoc> {
+    const before = await operationsShipmentRepository.getById(id);
+    const current = before.receiptImage ?? null;
+    let file: FileDoc;
+    if (current === null) {
+      file = await fileService.upload(
+        ctx,
+        {
+          moduleId: 'operations',
+          entityType: 'shipment',
+          entityId: id,
+          categoryId: await resolveShipmentReceiptCategoryId(),
+          displayName: `shipment receipt — ${before.collectionDate.toISOString().slice(0, 10)}`,
+          visibility: 'private',
+          tags: [],
+        },
+        binary,
+      );
+    } else {
+      // A new VERSION in the same file group, so the photo it replaces stays retrievable.
+      file = await fileService.replace(ctx, String(current.fileId), binary);
+    }
+    const updated = await this.linkReceiptImage(ctx, before, file);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'receiptImage',
+          old: current === null ? null : String(current.fileId),
+          new: String(file._id),
+        },
+      ],
+    });
+    return updated;
+  }
+
+  /**
+   * Point the row at the file just stored — a compare-and-swap on the photo LINK, not on the row.
+   *
+   * The write is version-guarded, so it can lose to ANY write on the shipment, most often the desk
+   * ticking it received while the photo was still being stored. When the link is still what this
+   * upload saw, that other write was about something else, so the link is written again on the
+   * row as it now is. Giving up there would be worse than a 409 on a REPLACE: Files has already
+   * made the old photo a superseded version and never replaces one, so a row left pointing at it
+   * could never take another photo.
+   *
+   * When the link itself moved (another upload or a delete won), this upload lost for real: what
+   * it stored is a file no row points at, so it is soft-deleted and the 409 stands.
+   */
+  private async linkReceiptImage(
+    ctx: AuthContext,
+    seen: OperationsShipmentDoc,
+    file: FileDoc,
+  ): Promise<OperationsShipmentDoc> {
+    const id = String(seen._id);
+    const linked = seen.receiptImage == null ? null : String(seen.receiptImage.fileId);
+    const receiptImage = {
+      fileId: file._id,
+      fileName: file.originalName,
+      mime: file.mime,
+      size: file.size,
+      uploadedAt: new Date(),
+    };
+    let version = seen.__v;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await operationsShipmentRepository.updateById(
+          id,
+          { receiptImage },
+          { by: ctx.userId, version },
+        );
+      } catch (error) {
+        const now =
+          error instanceof StaleDocumentError
+            ? await operationsShipmentRepository.findById(id)
+            : null;
+        const nowLinked = now?.receiptImage == null ? null : String(now.receiptImage.fileId);
+        if (now !== null && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
+          version = now.__v;
+          continue;
+        }
+        // A first upload that did not land is always an orphan. A replace is one only when the
+        // row has moved off its file group; otherwise it is the group's own newest version.
+        if (linked === null || (now !== null && nowLinked !== linked)) {
+          await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+        }
+        throw error;
+      }
+    }
+  }
+
+  async readReceiptImage(
+    ctx: AuthContext,
+    id: string,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    const row = await operationsShipmentRepository.getById(id);
+    if (row.receiptImage == null) throw new NotFoundError('this shipment has no receipt image');
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+      ctx,
+      String(row.receiptImage.fileId),
+    );
+    return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  async deleteReceiptImage(ctx: AuthContext, id: string): Promise<OperationsShipmentDoc> {
+    const before = await operationsShipmentRepository.getById(id);
+    if (before.receiptImage == null) {
+      throw new ConflictError('this shipment has no receipt image to delete');
+    }
+    const fileId = String(before.receiptImage.fileId);
+    const updated = await operationsShipmentRepository.updateById(
+      id,
+      { receiptImage: null },
+      { by: ctx.userId, version: before.__v },
+    );
+    // The row is the truth: once it no longer points at the file, a failed soft-delete leaves an
+    // unreachable file behind, never a broken row.
+    await fileService.softDelete(ctx, fileId).catch(() => undefined);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'receiptImage', old: fileId, new: null }],
+    });
     return updated;
   }
 

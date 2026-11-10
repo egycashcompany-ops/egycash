@@ -64,6 +64,25 @@ export const isReceived = (shipment: { status: OperationsShipmentStatus }): bool
   shipment.status === 'completed';
 
 /**
+ * WHO delivered a board row, as the owner set it out: «لو تم التسليم من القائد من برا الحالة هتكون
+ * تم التسليم بس الصف لونه اصفر ولما ادوس انا على صح من عندى يبقى الصف اخضر».
+ *
+ *   · `desk`    — the desk pressed ✓: the shipment is completed. Green, «تم التسليم».
+ *   · `captain` — the crew captain confirmed delivery from the mobile app, and the desk has not
+ *                 yet: the leg is delivered, the shipment is not. Yellow, «تم التسليم».
+ *   · `none`    — neither. «لم يتم التسليم».
+ *
+ * The desk wins: once it confirms, the row is green whatever the captain did. A plain shipment
+ * (no board fields) can only be `desk` or `none`.
+ */
+export type BoardDelivery = 'desk' | 'captain' | 'none';
+
+export const boardDelivery = (
+  row: { status: OperationsShipmentStatus } & Partial<Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt'>>,
+): BoardDelivery =>
+  isReceived(row) ? 'desk' : row.captainDeliveredAt != null ? 'captain' : 'none';
+
+/**
  * The row labels the board displays, resolved from the shipment's own fields.
  *
  * A row is "the display of a shipment on a day", and which DATE that day refers to depends on the
@@ -98,8 +117,10 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       matches(shipment.areaName, filters.area) &&
       matches(shipment.notes, filters.notes) &&
       (filters.type === '' || shipment.shipmentType === filters.type) &&
+      // «التسليم» filters on what the status column SAYS: a captain's delivery reads «تم التسليم»
+      // there too, so it is found under «تم التسليم» here.
       (filters.received === '' ||
-        (filters.received === 'yes') === isReceived(shipment)),
+        (filters.received === 'yes') === (boardDelivery(shipment) !== 'none')),
   );
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;
@@ -126,8 +147,8 @@ export const totalsByCurrency = (
 /**
  * The money on the board, per currency — the legacy strip «مصري = … دولار = …» (main_ops.ejs:744,
  * 3179-3317), over the rows SHOWN rather than the whole day, so a bank filter answers "how much
- * for this bank". Each currency on its own: legacy's «عملات أجنبية» added dollars to euros, a sum
- * with no meaning, and it is not reproduced.
+ * for this bank". The figures group it as legacy did (`boardFigures`); this is every currency on
+ * its own, which the «عملات أخرى» breakdown lists.
  */
 export const boardTotals = (
   shipments: readonly OperationsShipmentDto[],
@@ -166,6 +187,36 @@ export const orderedBoardTotals = (
       (left?.name ?? '').localeCompare(right?.name ?? '')
     );
   });
+
+/**
+ * The figures over the rows shown, as the owner set them out: «مصري» and «دولار» each on its own,
+ * then «عملات أخرى» — «مجموع كل العملات ما عدا المصرى والدولار» — whose click lists each of those
+ * currencies apart. Legacy summed the same set (main_ops.ejs:3309 `foregn = euro1 + gbp1 + …`,
+ * every currency but the pound and the dollar) and printed «عملات أجنبية = …».
+ *
+ * The pound and the dollar are known by their CODE (EGP, USD); a currency the catalog cannot name
+ * yet counts with the others. `others` reads by name, as the breakdown lists it.
+ */
+export const boardFigures = (
+  shipments: readonly OperationsShipmentDto[],
+  currencyOf: (currencyId: string) => Pick<OperationsCurrencyDto, 'code' | 'name'> | undefined,
+): {
+  egp: number;
+  usd: number;
+  others: { currencyId: string; amount: number }[];
+  othersSum: number;
+} => {
+  let egp = 0;
+  let usd = 0;
+  const others: { currencyId: string; amount: number }[] = [];
+  for (const total of orderedBoardTotals(shipments, currencyOf)) {
+    const code = currencyOf(total.currencyId)?.code;
+    if (code === 'EGP') egp += total.amount;
+    else if (code === 'USD') usd += total.amount;
+    else others.push(total);
+  }
+  return { egp, usd, others, othersSum: others.reduce((sum, total) => sum + total.amount, 0) };
+};
 
 /**
  * Was the money collected from ANOTHER bank than the one billed? The main bank is the billed bank,

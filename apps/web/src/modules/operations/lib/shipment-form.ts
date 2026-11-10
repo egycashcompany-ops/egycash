@@ -28,16 +28,13 @@ export const secondaryBankFor = (mainBankId: string, toBankId: string): string |
   toBankId === '' || toBankId === mainBankId ? null : toBankId;
 
 /**
- * The area after the TO branch was picked: that branch's operations area (`opsAreaName`, legacy
- * `area` — «للعمليات», never `area2`) — main_ops.ejs:520-531. A branch with no area keeps what the
- * box held, as legacy did; the box stays editable either way.
+ * The shipment's area: the TO branch's operations area (`opsAreaName`, legacy `area` — «للعمليات»,
+ * never `area2`; main_ops.ejs:520-531). «عاوز المنطقة ميقدر يكتب»: it is not typed, so it follows
+ * the branch exactly — a branch with no area, or no branch, means no area, never the area of the
+ * branch picked before it (legacy kept that only because its box was editable).
  */
-export const areaAfterDestination = (
-  branch: { opsAreaName: string | null } | null,
-  current: string,
-): string => (branch !== null && branch.opsAreaName !== null && branch.opsAreaName.trim() !== ''
-  ? branch.opsAreaName
-  : current);
+export const areaOfDestination = (branch: { opsAreaName: string | null } | null): string =>
+  branch?.opsAreaName?.trim() ?? '';
 
 /**
  * The i18n key for a refused save, by the server's code — so an Arabic desk reads why, in Arabic,

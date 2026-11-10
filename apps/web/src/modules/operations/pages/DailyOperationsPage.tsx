@@ -15,12 +15,13 @@
 //
 // ONE ADDITION over legacy: a date picker. The default is still today, so the legacy answer is
 // the default answer; being able to look at yesterday is additive, not a changed rule.
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
+  type OperationsShipmentDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -37,7 +38,6 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../fleet/components/board-scroll';
 import { DARK_FILTER_BAR, pickOne } from '../../fleet/components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../../fleet/components/FilterWithIcon';
-import { FigureChip } from '../../fleet/components/FleetFigures';
 import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { ACTION_GROUP, PRESSED, actionTone } from '../../fleet/components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../../fleet/components/row-action-icons';
@@ -56,13 +56,20 @@ import {
   branchCellText,
   filterDayBoard,
   hasActiveFilter,
+  boardDelivery,
+  boardFigures,
   isReceived,
+  type BoardDelivery,
   legacyRowNumber,
   orderedBoardTotals,
-  totalsByCurrency,
   type DayBoardFilters,
 } from '../lib/day-board';
-import { ShipmentStatusBadge, ShipmentTypeBadge } from '../components/ShipmentBadges';
+import { DeliveryStatusBadge, ShipmentTypeBadge } from '../components/ShipmentBadges';
+import { BoardFigurePill, FIGURE_TONE, OtherCurrenciesDialog } from '../components/BoardFigures';
+import {
+  ShipmentReceiptImageCell,
+  ShipmentReceiptImagePreviewDialog,
+} from '../components/ShipmentReceiptImageCell';
 import { ShipmentFormDialog } from '../components/ShipmentFormDialog';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 
@@ -101,7 +108,20 @@ const SHIPMENTS_TABLE = cn(
   BOARD_TABLE_FILL,
   '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
   "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+  // Fourteen columns beside the menu on a laptop: the two icon boxes (the receipt's and the row's
+  // actions) sit their icons closer than the Fleet boards' twelve-column tables need to.
+  '[&_[data-row-actions]]:!gap-1 [&_[data-row-actions]]:!px-1 [&_[data-image-actions]]:!gap-1 [&_[data-image-actions]]:!px-1',
 );
+
+/**
+ * A row's colour by who delivered it (`boardDelivery`): green once the desk confirmed — legacy's
+ * `#a9e6b8` — yellow while only the crew captain has, none before either.
+ */
+const ROW_TINT: Record<BoardDelivery, string | undefined> = {
+  desk: '!bg-emerald-50 dark:!bg-emerald-950/30',
+  captain: '!bg-amber-50 dark:!bg-yellow-400/10',
+  none: undefined,
+};
 
 /** A figure in the table: monospace, tabular, never broken over two lines. */
 const FIGURE = cn('whitespace-nowrap', NUM);
@@ -112,15 +132,6 @@ const DASH = <span className="text-slate-400">—</span>;
  * `nowrap`, and fourteen columns of unbroken names do not fit a laptop beside the menu.
  */
 const WRAP = 'block min-w-[5rem] max-w-[9rem] whitespace-normal leading-tight';
-
-/** «تشغيل يوم …» — the legacy header's long date (main_ops.ejs:262, 1659-1661). */
-const longDay = (iso: string, locale: 'ar' | 'en'): string =>
-  iso === ''
-    ? ''
-    : new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
-        dateStyle: 'long',
-        timeZone: 'UTC',
-      }).format(new Date(iso));
 
 export const DailyOperationsPage = (): JSX.Element => {
   const t = useT();
@@ -164,6 +175,8 @@ export const DailyOperationsPage = (): JSX.Element => {
   const [editing, setEditing] = useState<OperationsDayBoardShipmentDto | null>(null);
   const [creating, setCreating] = useState(false);
   const [statsOpen, setStatsOpen] = useState(true);
+  const [othersOpen, setOthersOpen] = useState(false);
+  const [previewingReceipt, setPreviewingReceipt] = useState<OperationsShipmentDto | null>(null);
 
   const bankNameOf = (id: string): string =>
     banks.data?.items.find((bank) => bank.id === id)?.opsName ?? '';
@@ -183,7 +196,9 @@ export const DailyOperationsPage = (): JSX.Element => {
 
   // The figures: over the rows SHOWN — the filtered ones — per currency, in the legacy strip's
   // order (`orderedBoardTotals`).
-  const totals = orderedBoardTotals(rows, currencyOf);
+  const figures = boardFigures(rows, currencyOf);
+  const currencyByCode = (code: string): OperationsCurrencyDto | undefined =>
+    currencies.data?.items.find((currency) => currency.code === code);
 
   const canEdit = can('operationsShipment.edit');
   const canDelete = can('operationsShipment.delete');
@@ -267,27 +282,19 @@ export const DailyOperationsPage = (): JSX.Element => {
       },
     },
     {
-      key: 'currency',
-      header: t('operations.shipment.currency'),
-      // One line per currency, matching the amounts beside it line for line.
-      render: (row) => (
-        <div className="space-y-0.5">
-          {totalsByCurrency(row).map((total) => (
-            <div key={total.currencyId}>{currencyOf(total.currencyId)?.name ?? '…'}</div>
-          ))}
-        </div>
-      ),
-    },
-    {
       key: 'amount',
       header: t('operations.shipment.form.amount'),
-      align: 'end',
+      // «الشحنة نفسها فى الصف … كل العملات ظاهرها بالاجمالى ل كل عملة»: one line per currency, its
+      // name beside its total — مصري, then دولار, then the rest by name, as the figures read.
       render: (row) => (
-        <div className="space-y-0.5">
-          {totalsByCurrency(row).map((total) => (
-            <div key={total.currencyId} className={FIGURE}>
-              {formatAmount(total.amount, locale)}
-            </div>
+        <div className="grid grid-cols-[auto_auto] items-baseline justify-start gap-x-2 gap-y-0.5">
+          {orderedBoardTotals([row], currencyOf).map((total) => (
+            <Fragment key={total.currencyId}>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                {currencyOf(total.currencyId)?.name ?? '…'}
+              </span>
+              <span className={cn(FIGURE, 'text-end')}>{formatAmount(total.amount, locale)}</span>
+            </Fragment>
           ))}
         </div>
       ),
@@ -320,15 +327,14 @@ export const DailyOperationsPage = (): JSX.Element => {
     {
       key: 'type',
       header: t('operations.shipment.type'),
-      // The status rides under the type rather than in a column of its own (legacy had none: its
-      // received rows were simply green). A row still waiting says nothing more — the tint and the
-      // ✓ carry «received» — while a delivered or out-for-delivery row names its state.
-      render: (row) => (
-        <div className="flex flex-col items-start gap-1">
-          <ShipmentTypeBadge shipmentType={row.shipmentType} />
-          {row.status !== 'draft' && <ShipmentStatusBadge status={row.status} />}
-        </div>
-      ),
+      render: (row) => <ShipmentTypeBadge shipmentType={row.shipmentType} />,
+    },
+    {
+      key: 'status',
+      header: t('operations.common.status'),
+      // «النوع هيفضل زى ماهو بس هنفصل عنه الحالة»: its own column, in the desk's two words —
+      // «لم يتم التسليم» / «تم التسليم» — whoever delivered; the row's colour says who.
+      render: (row) => <DeliveryStatusBadge delivery={boardDelivery(row)} />,
     },
     {
       key: 'area',
@@ -342,16 +348,24 @@ export const DailyOperationsPage = (): JSX.Element => {
         row.notes === null ? (
           DASH
         ) : (
-          <span className="block max-w-[9rem] truncate" title={row.notes}>
+          <span className="block max-w-[5.5rem] truncate" title={row.notes}>
             {row.notes}
           </span>
         ),
     },
     {
+      key: 'receiptImage',
+      header: t('operations.board.receiptImage'),
+      align: 'center',
+      // «عاوز عمود كمان لصورة الايصال زى شاشة السيارات اقدر ارفع صوره»: the vehicles' image cell —
+      // the dashed cloud to upload, then view / replace / delete.
+      render: (row) => <ShipmentReceiptImageCell row={row} onPreview={setPreviewingReceipt} />,
+    },
+    {
       key: 'actions',
       header: t('operations.board.actions'),
       render: (row) => (
-        <span className={ACTION_GROUP}>
+        <span className={ACTION_GROUP} data-row-actions="shipment">
           {canEdit && (
             <button
               type="button"
@@ -406,17 +420,62 @@ export const DailyOperationsPage = (): JSX.Element => {
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME}>
-        {/* The Fleet boards open on their toolbar. Its start carries the legacy header — «تشغيل يوم
-            …» (main_ops.ejs:262) — and how many shipments the filters left. */}
-        <div className="flex items-center justify-between gap-2" data-shipments-toolbar="true">
-          <div className="min-w-0">
-            <h1 className="text-base font-black text-slate-900 sm:text-lg dark:text-white">
-              {t('operations.board.title', { day: longDay(board.data?.date ?? '', locale) })}
-            </h1>
-            <span
+        {/* The Fleet boards open on their toolbar. «عاوز الاحصائيات تكون مكان تشغيل يوم … شيل العنوان
+            دا … وخلى الاحصائيات تفتح يمين»: no title; at the start (the right) the figures behind
+            «الإحصائيات» — how many shipments the filters left, the pound, the dollar, and «عملات
+            أخرى» — or, with them closed, the count alone. The buttons stay at the end. */}
+        <div
+          className="flex flex-wrap items-center justify-between gap-2"
+          data-shipments-toolbar="true"
+        >
+          {statsOpen && board.data !== undefined ? (
+            <div
               role="status"
-              className="text-sm font-bold text-slate-600 dark:text-slate-300"
+              aria-label={t('operations.board.stats')}
+              data-shipment-figures="true"
+              className="flex min-w-0 animate-fade-in flex-wrap items-center gap-1.5"
             >
+              <BoardFigurePill
+                icon={SHIPMENT_PATH.shipment}
+                tone={FIGURE_TONE.count}
+                label={t('operations.board.figures.count')}
+                value={
+                  rows.length === shipments.length
+                    ? formatNumber(rows.length, locale)
+                    : `${formatNumber(rows.length, locale)} / ${formatNumber(shipments.length, locale)}`
+                }
+                unit={t('operations.board.figures.countUnit')}
+              />
+              <BoardFigurePill
+                icon={SHIPMENT_PATH.money}
+                tone={FIGURE_TONE.pound}
+                label={currencyByCode('EGP')?.name ?? 'EGP'}
+                value={formatAmount(figures.egp, locale)}
+                unit="EGP"
+                data-figure="EGP"
+              />
+              <BoardFigurePill
+                icon={SHIPMENT_PATH.money}
+                tone={FIGURE_TONE.dollar}
+                label={currencyByCode('USD')?.name ?? 'USD'}
+                value={formatAmount(figures.usd, locale)}
+                unit="USD"
+                data-figure="USD"
+              />
+              {/* «مكان يورو تبقى اسمها عملات اخرى ويجيب مجموع كل العملات ما عدا المصرى والدولار»:
+                  a sum of DIFFERENT currencies, which is why a click lists each one apart. */}
+              <BoardFigurePill
+                icon={SHIPMENT_PATH.money}
+                tone={FIGURE_TONE.others}
+                label={t('operations.board.figures.otherCurrencies')}
+                value={formatAmount(figures.othersSum, locale)}
+                title={t('operations.board.figures.otherCurrenciesHint')}
+                onClick={() => setOthersOpen(true)}
+                data-figure="others"
+              />
+            </div>
+          ) : (
+            <span role="status" className="text-sm font-bold text-slate-600 dark:text-slate-300">
               {board.data === undefined
                 ? ''
                 : t('operations.dailyOps.count', {
@@ -424,8 +483,8 @@ export const DailyOperationsPage = (): JSX.Element => {
                     total: formatNumber(shipments.length, locale),
                   })}
             </span>
-          </div>
-          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
+          )}
+          <span className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               data-shipment-stats-toggle="true"
@@ -434,15 +493,20 @@ export const DailyOperationsPage = (): JSX.Element => {
               className={BRAND_BUTTON}
             >
               {statsOpen ? t('operations.board.statsHide') : t('operations.board.stats')}
+              {/* Opens to the side (the figures take the title's place), so the chevron points
+                  that way rather than down. */}
               <svg
                 viewBox="0 0 24 24"
                 aria-hidden
-                className={cn('h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5', statsOpen && 'rotate-180')}
+                className={cn(
+                  'h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5 rtl:-scale-x-100',
+                  statsOpen && 'rotate-180',
+                )}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={2.5}
               >
-                <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
             {can('operationsShipment.create') && (
@@ -617,41 +681,6 @@ export const DailyOperationsPage = (): JSX.Element => {
           </FilterBar>
         </div>
 
-        {/* «مصري = … دولار = …» — the legacy strip, as the Fleet boards' figures, between the
-            filters and the table, behind «الإحصائيات». Over the rows SHOWN, one figure per
-            currency (`orderedBoardTotals`). */}
-        {statsOpen && board.data !== undefined && (
-          <div
-            data-shipment-figures="true"
-            className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
-          >
-            <FigureChip
-              icon={SHIPMENT_PATH.shipment}
-              iconClass="bg-brand-500/15 text-brand-600 dark:text-brand-300"
-              label={t('operations.board.figures.count')}
-              value={formatNumber(rows.length, locale)}
-              unit={t('operations.board.figures.countUnit')}
-            />
-            {totals.map((total) => {
-              const currency = currencyOf(total.currencyId);
-              return (
-                <FigureChip
-                  key={total.currencyId}
-                  icon={SHIPMENT_PATH.money}
-                  iconClass={
-                    currency?.code === 'EGP'
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                  }
-                  label={currency?.name ?? '…'}
-                  value={formatAmount(total.amount, locale)}
-                  unit={currency?.code ?? ''}
-                />
-              );
-            })}
-          </div>
-        )}
-
         <div className={SHIPMENTS_TABLE}>
           <DataTable
             columns={columns}
@@ -661,10 +690,10 @@ export const DailyOperationsPage = (): JSX.Element => {
             error={board.error}
             onRetry={() => void board.refetch()}
             empty={t('operations.dailyOps.empty')}
-            // A received row is tinted, as legacy's was (`#a9e6b8`, main_ops.ejs:851).
-            rowClassName={(row) =>
-              isReceived(row) ? '!bg-emerald-50 dark:!bg-emerald-950/30' : undefined
-            }
+            // «لو تم التسليم من القائد … الصف لونه اصفر ولما ادوس انا على صح … يبقى الصف اخضر»: green
+            // once the desk confirmed (legacy's `#a9e6b8`, main_ops.ejs:851), yellow while only the
+            // crew captain has.
+            rowClassName={(row) => ROW_TINT[boardDelivery(row)]}
             stickyHead
             // Thirteen columns of short things — a van code, a bank, a date, three icons. The
             // default floor (7.5rem a column) would make the table 98rem wide and push the notes
@@ -674,7 +703,23 @@ export const DailyOperationsPage = (): JSX.Element => {
         </div>
       </div>
 
+      <ShipmentReceiptImagePreviewDialog
+        open={previewingReceipt !== null}
+        onClose={() => setPreviewingReceipt(null)}
+        row={previewingReceipt}
+      />
+
+      <OtherCurrenciesDialog
+        open={othersOpen}
+        onClose={() => setOthersOpen(false)}
+        totals={figures.others}
+        currencyOf={currencyOf}
+        locale={locale}
+      />
+
       <ShipmentFormDialog
+        // The day board adds daily shipments only — «اشيل النوع ويكون يومى بس».
+        createType="daily"
         open={creating || editing !== null}
         shipment={editing}
         defaultDate={date ?? boardDay}

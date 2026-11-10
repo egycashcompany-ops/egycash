@@ -143,28 +143,33 @@ export interface Letterhead {
 }
 
 /**
- * A form's CSS. The page frame is a one-column TABLE whose header and footer rows carry the top and
- * bottom edges: a printing browser repeats a table's header and footer on every page it runs over,
- * so a form that spills onto a second page is framed — closed top and bottom — on both, and a frame
- * never lands on the contract's pages printed beside it. (`box-decoration-break: clone` was tried
- * first; Chromium left the bottom edge of the first page open.) The BODY CELL is a page tall, so a
- * one-page form is framed down to the foot of the page, as the company's papers are — on the cell,
- * not the table: a table with a height of its own stops repeating its footer.
+ * A form's CSS. The frame is the PAGE's own border: every form is laid out on the named page
+ * `form`, and that page box carries the border — so every page a form runs over is framed, closed
+ * top and bottom, as the company's papers are, and the contract's pages beside it (on the default
+ * page) carry none. Two earlier frames failed in print: `box-decoration-break: clone` left the
+ * first page open at the bottom, and a one-column table repeating its header and footer rows did
+ * the same whenever the text ran close to the foot of the page. A screen has no pages, so there
+ * (the template editor's preview) the form is boxed instead.
  */
 const FORM_CSS = `
-  table.form-frame { width: 100%; border-collapse: collapse; }
-  table.form-frame > thead > tr > td, table.form-frame > tfoot > tr > td,
-  table.form-frame > tbody > tr > td.form-doc { border: 0; border-left: 1.5px solid #111;
-    border-right: 1.5px solid #111; padding: 0; }
-  table.form-frame > thead > tr > td { border-top: 1.5px solid #111; height: 6mm; }
-  table.form-frame > tfoot > tr > td { border-bottom: 1.5px solid #111; height: 6mm; }
-  table.form-frame > tbody > tr > td.form-doc { padding: 2mm 9mm; vertical-align: top; height: 235mm; }
+  @page form { margin: 12mm; border: 1.5px solid #111; padding: 6mm; }
+  .doc-form { page: form; }
+  @media screen {
+    .form-doc { max-width: 174mm; margin: 0 auto 8mm; padding: 6mm; border: 1.5px solid #111; }
+  }
+  .form-doc { font-size: 11pt; line-height: 1.5; }
   .form-doc .letterhead { display: flex; justify-content: space-between; align-items: flex-start;
-                          margin-bottom: 6mm; }
+                          margin-bottom: 4mm; }
   .form-doc .letterhead .lines { font-weight: 700; line-height: 1.5; text-align: center; }
   .form-doc .letterhead img { max-height: 15mm; }
   .form-doc .blank { display: inline-block; min-width: 45mm; border-bottom: 1px dotted #444; }
-  .form-doc .signatures { margin-top: 12mm; }
+  .form-doc .signatures { margin-top: 8mm; }
+  .form-doc .signature .line { margin-top: 10mm; }
+  .form-doc h3 { margin: 0 0 4mm; }
+  .form-doc p { margin: 0 0 2.5mm; }
+  .form-doc ul, .form-doc ol { margin: 0 0 2.5mm; }
+  .form-doc td, .form-doc th { padding: 1mm 2.5mm; }
+  .form-doc table { margin-bottom: 2.5mm; }
 `;
 
 const formBody = (
@@ -190,20 +195,16 @@ const formBody = (
     )
     .join('\n');
   return `
-  <table class="form-frame">
-    <thead><tr><td></td></tr></thead>
-    <tfoot><tr><td></td></tr></tfoot>
-    <tbody><tr><td class="form-doc">
-      <div class="letterhead">
-        <div class="lines">${letterhead.lines.join('<br />')}</div>
-        <img src="${letterhead.logoDataUri}" alt="" />
-      </div>
-      ${fill(template.sections.header)}
-      <main>${fill(template.sections.body)}</main>
-      ${signatures === '' ? '' : `<div class="signatures">${signatures}</div>`}
-      ${fill(template.sections.footer)}
-    </td></tr></tbody>
-  </table>`;
+  <div class="form-doc">
+    <div class="letterhead">
+      <div class="lines">${letterhead.lines.join('<br />')}</div>
+      <img src="${letterhead.logoDataUri}" alt="" />
+    </div>
+    ${fill(template.sections.header)}
+    <main>${fill(template.sections.body)}</main>
+    ${signatures === '' ? '' : `<div class="signatures">${signatures}</div>`}
+    ${fill(template.sections.footer)}
+  </div>`;
 };
 
 /** One hiring form, alone — what the template editor previews. */
@@ -217,7 +218,7 @@ export const renderFormHtml = (
 <html lang="${template.language}" dir="${dir}">
 <head><meta charset="utf-8" /><style>${PRINT_CSS}${FORM_CSS}</style></head>
 <body>
-${formBody(template, values, letterhead)}
+<section class="doc doc-form">${formBody(template, values, letterhead)}</section>
 </body>
 </html>`;
 };

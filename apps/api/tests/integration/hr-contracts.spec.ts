@@ -38,6 +38,9 @@ import { organizationService } from '../../src/platform/organization';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { ContractTemplateModel } from '../../src/modules/hr/contracts/contract-templates/contract-template.model';
+import { syncHiringTemplates } from '../../src/modules/hr/contracts/hiring-templates';
+import { JobTitleModel } from '../../src/platform/organization/job-titles/job-title.model';
 import { formatTemplateDate } from '../../src/modules/hr/contracts/contracts/contract-variables';
 import { type AuthContext } from '../../src/shared/types';
 
@@ -988,6 +991,40 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
   });
 });
 
+/** An employee hired straight into `jobTitleId`, starting 15 November 2026 (A27). */
+const employeeIn = async (jobTitleId: string): Promise<EmployeeDto> => {
+  const res = await request(app)
+    .post('/api/v1/hr/employees/direct')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      personal: {
+        identity: { fullNameAr: 'موظف المستندات', nationalId: nextNid(), nationality: 'Egyptian' },
+        contact: { primaryPhone: nextPhone() },
+        experience: [],
+        drivingLicenses: [],
+        certifications: [],
+        references: [],
+      },
+      employment: {
+        jobTitleId,
+        departmentId: DEPARTMENT_ID,
+        branchId: BRANCH_ID,
+        employmentType: 'fullTime',
+        probationMonths: 0,
+        startDate: '2026-11-15T00:00:00.000Z',
+      },
+      entryStatus: 'active',
+    });
+  expect(res.status, JSON.stringify(res.body)).toBe(201);
+  return res.body.data as EmployeeDto;
+};
+
+const pack = (employeeId: string) =>
+  request(app)
+    .post('/api/v1/hr/contracts/hiring-pack')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ employeeId });
+
 /**
  * «مستندات التعيين» (A27) — «عاوز يجبلي كل الحاجه اللي هتتطبع للشخص دا علي حسب وظيفتو». The
  * employee's contract first, then the forms of the employee's job; the contract made when there is
@@ -1011,39 +1048,6 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
       },
       ...over,
     });
-
-  const employeeIn = async (jobTitleId: string): Promise<EmployeeDto> => {
-    const res = await request(app)
-      .post('/api/v1/hr/employees/direct')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        personal: {
-          identity: { fullNameAr: 'موظف المستندات', nationalId: nextNid(), nationality: 'Egyptian' },
-          contact: { primaryPhone: nextPhone() },
-          experience: [],
-          drivingLicenses: [],
-          certifications: [],
-          references: [],
-        },
-        employment: {
-          jobTitleId,
-          departmentId: DEPARTMENT_ID,
-          branchId: BRANCH_ID,
-          employmentType: 'fullTime',
-          probationMonths: 0,
-          startDate: '2026-11-15T00:00:00.000Z',
-        },
-        entryStatus: 'active',
-      });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    return res.body.data as EmployeeDto;
-  };
-
-  const pack = (employeeId: string) =>
-    request(app)
-      .post('/api/v1/hr/contracts/hiring-pack')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ employeeId });
 
   beforeAll(async () => {
     await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
@@ -1115,5 +1119,105 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
       .send({ version: draft.version });
     expect(res.status).toBe(422);
     expect(JSON.stringify(res.body)).toContain('the jobs it is printed for');
+  });
+});
+
+/**
+ * The owner's thirteen papers (A27, stage 2) — «هبعتلك الفايلات»: written into the templates on
+ * boot, each once; a job's paper published for the jobs that carry its name, or waiting as a draft
+ * until one does; and never written over somebody's edit.
+ */
+describe('the owner\'s papers — written into the templates on boot (A27, stage 2)', () => {
+  const key = (name: string): string => `egycash.hiring.${name}`;
+  const ALL_JOBS = ['contract', 'data-sheet', 'work-receipt', 'relatives', 'bank-letter'].map(key);
+  let specialistJob = '';
+  let crewLeaderJob = '';
+
+  const jobNamed = async (code: string, ar: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar, en: code }, jobGrade: 'G5' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+  const row = async (name: string) => {
+    const found = await ContractTemplateModel.find({ key: key(name) }).lean();
+    expect(found, name).toHaveLength(1);
+    return found[0]!;
+  };
+
+  beforeAll(async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    specialistJob = await jobNamed('JT-PAPER-1', 'أخصائى صراف آلى');
+    // The crew leader the set's own tests made: «قائد طاقم».
+    const leader = await JobTitleModel.findOne({ code: 'JT-PACK-1' }).lean();
+    crewLeaderJob = String(leader?._id);
+  });
+
+  it('writes each paper once — published when it has its jobs, waiting when it has none yet', async () => {
+    const first = await syncHiringTemplates();
+    expect(first.published).toEqual(
+      expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-crew-leader'), key('card.atm-specialist')]),
+    );
+    expect(first.waiting).toEqual(expect.arrayContaining([key('card.security-guard'), key('card.treasurer')]));
+    expect(first.published.length + first.waiting.length).toBe(13);
+    expect(first.linked).toEqual([]);
+
+    const contract = await row('contract');
+    expect(contract).toMatchObject({ status: 'published', kind: 'contract', allJobs: true, printOrder: 0 });
+    expect(contract.contractTypeId).not.toBeNull();
+    expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob]);
+    expect(((await row('card.atm-specialist')).jobTitleIds ?? []).map(String)).toEqual([specialistJob]);
+    expect(await row('card.security-guard')).toMatchObject({ status: 'draft', jobTitleIds: [] });
+
+    // Again: nothing is written twice.
+    const second = await syncHiringTemplates();
+    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting });
+    expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(13);
+  });
+
+  it('publishes a waiting paper on the boot after its job is created — unless somebody edited it', async () => {
+    const guardJob = await jobNamed('JT-PAPER-2', 'مراقب أمن');
+    // HR has reworded the treasurer's card meanwhile: that draft is theirs now.
+    const treasurer = await row('card.treasurer');
+    const dto = (
+      await request(app)
+        .get(`/api/v1/hr/contract-templates/${String(treasurer._id)}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as ContractTemplateDto;
+    const edit = await request(app)
+      .patch(`/api/v1/hr/contract-templates/${dto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'بطاقة أمين الخزينة', en: 'Treasurer' }, version: dto.version });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    await jobNamed('JT-PAPER-3', 'أمين خزينة');
+
+    const third = await syncHiringTemplates();
+    expect(third.linked).toEqual([key('card.security-guard')]);
+    expect(await row('card.security-guard')).toMatchObject({ status: 'published' });
+    expect(((await row('card.security-guard')).jobTitleIds ?? []).map(String)).toEqual([guardJob]);
+    expect(await row('card.treasurer')).toMatchObject({ status: 'draft', jobTitleIds: [] });
+  });
+
+  it('prints the owner\'s contract and the papers of the employee\'s job', async () => {
+    const employee = await employeeIn(specialistJob);
+    const res = await pack(employee.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const set = res.body.data as HiringPackDto;
+    expect(set.contractNote).toBeNull();
+    expect(set.documents.map((d) => d.key)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    expect(set.html).toContain('عقد عمل محدد المدة');
+    expect(set.html).toContain('السيد/ موظف المستندات');
+    expect(set.html).toContain('تبدأ من 15/11/2026 وتنتهي في 14/11/2027');
+    expect(set.html).toContain(`ربط الحساب بكود الموظف ${employee.code}`);
+    expect(set.html).not.toContain('{{');
+
+    // A crew leader signs the weapon declaration and the ATM crew leader's card besides.
+    const leader = await employeeIn(crewLeaderJob);
+    const leaders = (await pack(leader.id)).body.data as HiringPackDto;
+    const keys = leaders.documents.map((d) => d.key);
+    expect(keys).toEqual(expect.arrayContaining([key('weapon'), key('card.atm-crew-leader')]));
+    expect(keys).not.toContain(key('card.atm-specialist'));
   });
 });

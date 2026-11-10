@@ -519,7 +519,10 @@ which forms depends on the job.
 - **Forms fail nothing.** A value the record lacks prints as a dotted line, to fill in by hand.
 - **Layout.** A form wears the company letterhead (the company name and «إدارة الموارد البشرية»,
   the shared EGYCASH logo) inside a page frame, closed on every page it runs over; the contract keeps
-  A24's branding. Each document of the set starts on a fresh page.
+  A24's branding. Each document of the set starts on a fresh page. The frame is the border of the
+  named page `form` that every form is laid out on (`@page form`); the contract stays on the default
+  page, unframed. (A table repeating its header and footer rows left a page open at the bottom when
+  the text ran close to the foot of the page.)
 - **Variables.** New catalog keys for the forms: mobile, birth date, marital and military status,
   qualification, graduation year and institution, hiring date, weapon-licence expiry, start date and
   its day, today's day, and the salary split (`salary.gross`, `salary.fixed` 70%,
@@ -530,6 +533,23 @@ which forms depends on the job.
 - **Screens.** «طباعة المستندات» heads the employee's «مستندات التعيين»; «تعيين» lands there (the set
   opened if missing, `POST /hr/hiring-documents/open`); a generated contract offers it too. The
   contract wizard offers the employee's job's contract template first and never a form.
+
+### A27, stage 2 — the owner's thirteen papers, written on boot
+
+- **What.** His contract (fixed-term, one year), the data sheet, the work-receipt and relatives
+  declarations and the bank letter (every job), the weapon declaration (crew leaders), and seven job
+  description cards — `hiring-templates/hiring-papers.ts`, his words as he prints them (listed in
+  `VERBATIM_PAPERS`). Where his paper leaves a line for the employee's facts it is a placeholder;
+  lines filled by hand stay dotted. His sample bank letter's employee is not in it.
+- **Which jobs.** By name, folded (`أخصائى عد و فرز` = `اخصائي عد وفرز`): a job named as the paper
+  says, or that name followed by more words (`أمين خزينة أول`). The weapon declaration goes to every
+  `قائد طاقم…`; the ATM crew leader's card to `قائد طاقم صراف آلي…` and to plain `قائد طاقم`.
+- **How.** `syncHiringTemplates()` on every API boot, after the navigation sync. A paper is known by
+  its template key (`egycash.hiring.*`) and written once: published when it is for every job or has a
+  job, else a draft. A draft nobody has touched is matched again on each boot and published once a
+  job carries its name. Any edit, publish, archive or delete by a person is final. The contract gets
+  the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
+  and never stops the boot.
 
 ## Review trail
 

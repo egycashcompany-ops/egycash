@@ -61,6 +61,9 @@ export const useDocumentVersions = (id: string, typeId: string | null) =>
 export const useCreateHiringDocs = () =>
   useWorkflowMutation(FEATURE, (body: CreateHiringDocuments) => api.createHiringDocs(body));
 
+export const useOpenHiringDocs = () =>
+  useWorkflowMutation(FEATURE, (employeeId: string) => api.openHiringDocs(employeeId));
+
 export const useUploadHiringDoc = (id: string) =>
   useWorkflowMutation(FEATURE, (form: FormData) => api.uploadHiringDoc(id, form));
 

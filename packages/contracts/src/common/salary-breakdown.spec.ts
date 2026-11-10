@@ -1,6 +1,6 @@
 // The salary split from the gross: 70% fixed, 30% attendance bonus, insurance = gross ÷ 1.3.
 import { describe, expect, it } from 'vitest';
-import { salaryBreakdown } from './salary-breakdown';
+import { salaryBreakdown } from './salary-breakdown.js';
 
 describe('the salary, split from the gross', () => {
   it('splits 10,000 the way the sample showed', () => {

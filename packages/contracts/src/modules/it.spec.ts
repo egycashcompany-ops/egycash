@@ -64,6 +64,11 @@ import {
   IT_VEHICLE_CHECK_ITEMS,
   IT_VEHICLE_CHECK_NOTES_MAX,
   ItVehicleCheckPhotoFieldsSchema,
+  vehicleCheckNeedsNotes,
+  IT_VEHICLE_CHECK_OVERDUE_DAYS,
+  ItVehicleCheckDashboardQuerySchema,
+  ItVehicleCheckPhotoParamSchema,
+  ListItVehicleChecksQuerySchema,
 } from './it.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -785,6 +790,14 @@ describe('it vehicle check contracts', () => {
     expect(CreateItVehicleCheckSchema.safeParse({ ...base, vehicleId: 'x' }).success).toBe(false);
   });
 
+  // «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل».
+  it('asks for a note exactly when a device is «لا يعمل»', () => {
+    expect(vehicleCheckNeedsNotes(undefined)).toBe(false);
+    expect(vehicleCheckNeedsNotes({})).toBe(false);
+    expect(vehicleCheckNeedsNotes({ screen: 'works', dvr: null })).toBe(false);
+    expect(vehicleCheckNeedsNotes({ screen: 'works', camera7: 'notWorking' })).toBe(true);
+  });
+
   it('trims the note and refuses one over 1000 characters', () => {
     const max = 'م'.repeat(IT_VEHICLE_CHECK_NOTES_MAX);
     expect(CreateItVehicleCheckSchema.parse({ ...base, notes: `  ${max}  ` }).notes).toBe(max);
@@ -829,5 +842,128 @@ describe('it vehicle check contracts', () => {
     expect(CreateItVehicleCheckSchema.safeParse({ ...base, checkDate: '2026-11-07' }).success).toBe(
       true,
     );
+  });
+});
+
+// The dashboard over those reports — «تمام نفذا الـ Dashboard بتاعت الفحص» (2026-11-10): its window
+// and branch, the reports list's filters, and one photo of one report.
+describe('it vehicle checks dashboard contracts', () => {
+  it('counts «لم تُفحص منذ ٧ أيام» over seven days', () => {
+    expect(IT_VEHICLE_CHECK_OVERDUE_DAYS).toBe(7);
+  });
+
+  it('takes an optional window of calendar days and one branch, and nothing else', () => {
+    expect(ItVehicleCheckDashboardQuerySchema.parse({})).toEqual({});
+    expect(
+      ItVehicleCheckDashboardQuerySchema.parse({
+        from: '2026-11-04',
+        to: '2026-11-10',
+        branchId: oid(3),
+      }),
+    ).toEqual({ from: '2026-11-04', to: '2026-11-10', branchId: oid(3) });
+    for (const query of [
+      { from: '2026-02-30' },
+      { to: '2026-11-1' },
+      { branchId: 'x' },
+      { vehicleId: oid(4) },
+      { period: '7' },
+    ]) {
+      expect(ItVehicleCheckDashboardQuerySchema.safeParse(query).success).toBe(false);
+    }
+  });
+
+  it('refuses a window whose start is after its end, on `from`', () => {
+    expect(
+      ItVehicleCheckDashboardQuerySchema.safeParse({ from: '2026-11-10', to: '2026-11-10' })
+        .success,
+    ).toBe(true);
+    const inverted = ItVehicleCheckDashboardQuerySchema.safeParse({
+      from: '2026-11-11',
+      to: '2026-11-10',
+    });
+    expect(inverted.success).toBe(false);
+    expect(inverted.error?.issues[0]?.path).toEqual(['from']);
+    // One end alone is never compared: the route fills the other.
+    expect(ItVehicleCheckDashboardQuerySchema.safeParse({ from: '2099-01-01' }).success).toBe(true);
+  });
+
+  it('pages the reports list and reads every filter from the address bar', () => {
+    expect(ListItVehicleChecksQuerySchema.parse({})).toEqual({
+      page: 1,
+      pageSize: 25,
+      sortDir: 'desc',
+    });
+    expect(
+      ListItVehicleChecksQuerySchema.parse({
+        page: '2',
+        pageSize: '10',
+        from: '2026-11-04',
+        to: '2026-11-10',
+        branchId: oid(1),
+        vehicleId: oid(2),
+        carCode: '  ١٥٠  ',
+        faultsOnly: 'true',
+        device: 'camera7',
+      }),
+    ).toEqual({
+      page: 2,
+      pageSize: 10,
+      sortDir: 'desc',
+      from: '2026-11-04',
+      to: '2026-11-10',
+      branchId: oid(1),
+      vehicleId: oid(2),
+      carCode: '١٥٠',
+      faultsOnly: true,
+      device: 'camera7',
+    });
+  });
+
+  it('reads faultsOnly from the strings a URL carries, and nothing else', () => {
+    expect(ListItVehicleChecksQuerySchema.parse({ faultsOnly: 'true' }).faultsOnly).toBe(true);
+    expect(ListItVehicleChecksQuerySchema.parse({ faultsOnly: 'false' }).faultsOnly).toBe(false);
+    for (const faultsOnly of ['yes', '1', '']) {
+      expect(ListItVehicleChecksQuerySchema.safeParse({ faultsOnly }).success).toBe(false);
+    }
+  });
+
+  it('takes a device only among the eleven', () => {
+    for (const device of IT_VEHICLE_CHECK_ITEMS) {
+      expect(ListItVehicleChecksQuerySchema.parse({ device }).device).toBe(device);
+    }
+    for (const device of ['camera9', 'horn', 'DVR', '']) {
+      expect(ListItVehicleChecksQuerySchema.safeParse({ device }).success).toBe(false);
+    }
+  });
+
+  it('refuses an unknown filter, a bad day or id, a car code over 50, and a page over 100', () => {
+    for (const query of [
+      { status: 'notWorking' },
+      { from: '2026-02-30' },
+      { vehicleId: 'x' },
+      { branchId: '42' },
+      { carCode: '1'.repeat(51) },
+      { pageSize: '101' },
+    ]) {
+      expect(ListItVehicleChecksQuerySchema.safeParse(query).success).toBe(false);
+    }
+    expect(ListItVehicleChecksQuerySchema.safeParse({ carCode: '1'.repeat(50) }).success).toBe(
+      true,
+    );
+  });
+
+  it('names one photo by its report and its file, both ids, and nothing else', () => {
+    expect(ItVehicleCheckPhotoParamSchema.parse({ id: oid(1), fileId: oid(2) })).toEqual({
+      id: oid(1),
+      fileId: oid(2),
+    });
+    for (const params of [
+      { id: oid(1) },
+      { id: oid(1), fileId: 'photo.jpg' },
+      { id: 'x', fileId: oid(2) },
+      { id: oid(1), fileId: oid(2), index: '0' },
+    ]) {
+      expect(ItVehicleCheckPhotoParamSchema.safeParse(params).success).toBe(false);
+    }
   });
 });

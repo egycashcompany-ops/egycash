@@ -412,7 +412,8 @@ it_vehicle_checks ──n─1 fleet_vehicles (id + code/branch snapshot, read th
 
 Cross-module references are **by id + event subscription only** — IT never imports HR or Fleet
 services (the Fleet §9.1 discipline). The one exception (2026-11-08, FR-21): IT reads Fleet's car
-list through `it/fleet-boundary.ts`, two read functions and nothing else (§9.2).
+list through `it/fleet-boundary.ts`, read functions and nothing else — two for the form, a third
+for its dashboard (2026-11-10; §9.2).
 
 ## 4. Workflows and lifecycles
 
@@ -580,11 +581,14 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
 - **FR-21** A user granted the vehicle check (`itVehicleCheck.create`, given through a role) files,
   from a phone, a report on any ACTIVE car: the car (searched by its code), the day (today, may be
-  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (any may
-  be left unanswered), notes, and up to five photos. Only the car (and the pre-filled day) is
-  required. Reading and deleting reports (`itVehicleCheck.view`, `.delete`) come with the IT
-  dashboard over them, which follows its own sample (§17, 2026-11-08;
-  [design](it-vehicle-checks-design.md)).
+  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (every
+  device opens at «يعمل»; any may be left unanswered), notes, and one to five photos. The car (and
+  the pre-filled day) and at least one photo are required, and a note is required while a device is
+  «لا يعمل» — the server refuses a new report without it (§17, 2026-11-09). The reports are read on
+  IT's dashboard `/it/vehicle-checks` (`itVehicleCheck.view`, scoped by the report's branch at
+  filing): the latest report of each active car, the faults per device, the cars not checked for
+  seven days, the reports with their photos, Excel and PDF; a wrong report is soft-deleted under
+  `itVehicleCheck.delete` (§17, 2026-11-10; [design §11](it-vehicle-checks-design.md)).
 
 ## 6. States catalog
 
@@ -618,7 +622,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/software` | `itSoftware.view` | `itSoftware.manage` (products + installations) |
 | `/it/licenses` | `itLicense.view` | `itLicense.manage` |
 | `/it/vendors` | `itVendor.view` | `itVendor.manage` |
-| `/it/vehicle-checks/new` (phone, outside the console frame) | `itVehicleCheck.create` | `itVehicleCheck.create` (list the active cars, file a report, add photos to one's own report within 24 hours) — NOT limited by the reporter's data scope, a design decision (the roles screen's default `own` scope would leave no car; [design §4](it-vehicle-checks-design.md)); `itVehicleCheck.view` and `.delete` come with the dashboard, and reading will be scoped by the car's branch at filing — FR-21 |
+| `/it/vehicle-checks` (the dashboard, in the console) | `itVehicleCheck.view` | `itVehicleCheck.view` (the dashboard, the reports, their photos — scoped by the report's branch at filing; the active cars by their current branch) · `itVehicleCheck.delete` (soft-delete a wrong report) — FR-21, §17 2026-11-10 |
+| `/it/vehicle-checks/new` (phone, outside the console frame) | `itVehicleCheck.create` | `itVehicleCheck.create` (list the active cars, file a report, add photos to one's own report within 24 hours) — NOT limited by the reporter's data scope, a design decision (the roles screen's default `own` scope would leave no car; [design §4](it-vehicle-checks-design.md)); `itVehicleCheck.view` and `.delete` belong to the dashboard (row above) — FR-21 |
 
 Data scopes on every read/write via the standard base-repository path: `branchId` on assets and
 tickets is the anchor; a branch-scoped technician sees that branch's world; `own` gives every
@@ -679,10 +684,12 @@ shared collections. A tracker SIM handed to a car (FR-19) names the car by the c
 written on the hand-over — text on the interval, not a Fleet id — and a car Fleet later renames or
 disposes is not updated on the line's record. **Amended 2026-11-08 (FR-21):** the vehicle device
 checks need Fleet's car list, so IT has ONE read-only import surface,
-`modules/it/fleet-boundary.ts` — Operations' and Gold's pattern, narrowed: two read functions over
-`fleetVehicleRepository` (`listActiveVehicleCodes`, `findVehicleForCheck`), not the repository
-itself. Through it IT lists active cars and reads a car's code and branch when a check is filed;
-it never writes a Fleet collection, and nothing else in IT imports Fleet.
+`modules/it/fleet-boundary.ts` — Operations' and Gold's pattern, narrowed: read functions over
+`fleetVehicleRepository` (`listActiveVehicleCodes`, `findVehicleForCheck`, and since the dashboard,
+2026-11-10, `listActiveVehiclesForCheckBoard`, every active car with its current branch), not the
+repository itself. Through it IT lists active cars and reads a car's code and branch when a check is
+filed; it never writes a Fleet collection, and nothing else in IT imports Fleet. None of the three
+applies a data scope; IT applies `itVehicleCheck.view`'s to what they return.
 **9.3 Contracts/Procurement/Accounting (future):** vendor contracts, purchase workflows and
 asset value land in their own modules; IT already publishes the events (§8.1) and holds the ids
 they will need.
@@ -714,9 +721,10 @@ license compliance (over-seats, expiring) — the §8.1 sweeps' queryable twin, 
 warn-only stance has a screen someone actually watches.
 **Asset export:** CSV via the audited row-capped export path (the applicant-export
 precedent; `itAsset.export`).
-**Vehicle devices dashboard (FR-21, planned):** the owner's «الـ Dashboard … هتبقي عند الـ IT» —
-the latest status of each car's devices, the device that fails most, cars not checked, the reports
-with their photos; built after its sample is approved, with the reads it needs.
+**Vehicle devices dashboard (FR-21, built 2026-11-10):** the owner's «الـ Dashboard … هتبقي عند الـ
+IT» — the latest status of each car's devices, the faults per device, the cars not checked for seven
+days, the reports with their photos, derived on read from `it_vehicle_checks` and Fleet's active
+cars ([design §11](it-vehicle-checks-design.md)).
 
 ## 12. APIs (all under `/api/v1/it/…`, standard list/get/create/patch + named actions)
 
@@ -742,7 +750,7 @@ with their photos; built after its sample is approved, with the reads it needs.
 | `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
 | `/it/consumable-movements` | read-only: `GET /` (kind, item, type, employee, asset, branch, from/to, search) — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
-| `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — all under `itVehicleCheck.create`; the reads and the delete come with the dashboard — FR-21 |
+| `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — under `itVehicleCheck.create` · `GET /dashboard` (the figures, the latest per car, the overdue cars) · `GET /` (the reports: window, branch, car, a code, faults, a device) · `GET /:id` · `GET /:id/photos/:fileId` (the bytes) — under `itVehicleCheck.view`, scoped · `DELETE /:id` (soft) — under `itVehicleCheck.delete` — FR-21 |
 | `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -1253,3 +1261,27 @@ starts only on an explicit owner GO.
   عرضهم»), then «طبق PR». §0, §2.12, §3, FR-21, §7, §11, §12; §9.2 amended: IT reads Fleet's car
   list through two read functions in one boundary file. Full design and its review:
   [it-vehicle-checks-design.md](it-vehicle-checks-design.md). The dashboard follows its own sample.
+
+- **The vehicle check opens at «يعمل», with a note for a fault and a photo always** (2026-11-09) —
+  owner request: «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى
+  يغيرها», then «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل
+  الحالات». FR-21 amended: every device opens at «يعمل» (a tap on the chosen «يعمل» still leaves a
+  device the car lacks unanswered); a report with any «لا يعمل» needs a note — on the form, and on the
+  server (`IT_VEHICLE_CHECK_NOTES_REQUIRED`, checked after a repeated request id is answered, so a
+  report filed before the rule still answers 200); and every report needs a photo on the form.
+  The server cannot hold a report to its photo, which is uploaded after the report is filed; a
+  report whose uploads all failed says so in red on its sent screen, which offers «إعادة رفع الصور»
+  while it stays open and asks once before «تقرير لسيارة أخرى» or the back arrow leaves it (a reload
+  asks too while failed photos wait). Design: §1.2, §2, §6.1,
+  §6.2 and §6.3 of [it-vehicle-checks-design.md](it-vehicle-checks-design.md).
+
+- **The vehicle checks dashboard** (2026-11-10) — owner request: «فين الـ DashBoard؟ اللى بيظهر فيه
+  التقرير والبيانات اللى الناس بتدخلها»; the sample was shown and approved («تمام نفذا الـ Dashboard
+  بتاعت الفحص»). `/it/vehicle-checks`, in the console: the six figures of a window (today, 7 or 30
+  days) under a branch filter, the faults per device, the cars not checked for seven days, the
+  latest report of each active car with its eleven devices, the reports with their photos (a report
+  view with the images, «كل تقارير هذه السيارة», a soft delete), Excel and PDF. Two grants join
+  `itVehicleCheck.create`: `.view` (scoped by the report's branch at filing; the active cars by their
+  current branch) and `.delete`. FR-21, §3, §7, §9.2, §11 and §12 amended; the Fleet boundary gains
+  one read (every active car with its branch). The realtime topic `it.vehicleCheck` now has its screen. Design:
+  [it-vehicle-checks-design.md §11](it-vehicle-checks-design.md).

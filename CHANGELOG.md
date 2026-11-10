@@ -11,6 +11,19 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
+  اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
+  - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch
+    filter — reports and reporters, cars checked out of the active ones, cars with a fault, devices
+    «لا يعمل», cars not checked for seven days, reports with no photo.
+  - The faults per device (a click filters by it), the cars not checked for seven days, the latest
+    report of each active car with its eleven devices, and the reports with their photos; a report
+    view with the images, «كل تقارير هذه السيارة» and «حذف التقرير»; Excel and PDF.
+  - Two grants beside the form's `itVehicleCheck.create`: `.view` (scoped by the report's branch at
+    filing) and `.delete` (a soft delete). Given to no role on deploy.
+  - API: `GET /it/vehicle-checks/dashboard`, `GET /it/vehicle-checks`, `GET /:id`,
+    `GET /:id/photos/:fileId`, `DELETE /:id`. The realtime topic `it.vehicleCheck` now refreshes it.
+
 - **Fleet: a car's card on its code, like the driver's card on a name.** «عاوز لما اماوس يقف على كود
   عربيه يجيب بيانات زى اما اقف على اسم السواق نفس الموضوع كدا». When the mouse rests on a car's
   code, or Tab reaches it, a card opens after the same short pause as the driver card, in the same
@@ -621,6 +634,12 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **IT vehicle checks dashboard: the page no longer scrolls into empty space.** «بيعمل Scroll لمساحه
+  فاضية». The matrix's last column has a heading only screen readers hear (`sr-only`, absolutely
+  positioned). Its table's scroll box was not positioned, so the heading took the page as its
+  containing block, sat at the matrix's height and stretched the document: the whole console frame
+  scrolled up by about 170 px into blank space. The box is `relative` now, as DataTable's is
+  (measured in Chromium: the document 1077 px in a 909 px window before, 909 px after).
 - **«حوادث السيارات»: a transfer can no longer take more than the file's negative, its refusals
   are in Arabic with their figures, and the car list offers no deleted car.**
   - **The server caps a take at the receiving file's negative** («اعرف المبلغ اللى بالسالب كام
@@ -830,6 +849,18 @@ its entry here in the same PR.
 
 ### Changed
 
+- **IT vehicle check: every device opens at «يعمل»; a fault needs a note, and every report a
+  photo.** «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها»،
+  «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل الحالات».
+  - The form opens with «يعمل» chosen on all eleven devices; the reporter taps «لا يعمل» on what
+    fails. A tap on the chosen «يعمل» still clears it, for a device the car lacks.
+  - With any device «لا يعمل», «ملاحظات» is required (marked «*», with a hint). The server refuses
+    such a report without a note (422 `IT_VEHICLE_CHECK_NOTES_REQUIRED`); a repeat of a report
+    already filed still answers 200.
+  - At least one photo is required on the form. The server cannot require it, because photos go
+    up after the report is filed. A report whose uploads all failed says so in red on the sent
+    screen, which offers «إعادة رفع الصور» while it stays open; «تقرير لسيارة أخرى» and the back
+    arrow ask once before leaving it, and a reload asks while failed photos wait.
 - **«حوادث السيارات»: the approved board and form, and a transfer from other cars whose amount may
   now be typed.** «شكل تعديل الشاشه بتاعت الحوادث تمام». Built from the owner-approved samples
   ([design §4.6](docs/12-planning/fleet-module-design.md)).

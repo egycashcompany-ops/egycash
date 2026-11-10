@@ -76,12 +76,14 @@ describe('the Arabic the product speaks is formal Arabic', () => {
   });
 });
 
-// His printed papers are exempt — by FILE, three of them, and nothing else. «عاوز زيهم بالظبط»: the
+// His printed papers are exempt — by FILE, four of them, and nothing else. «عاوز زيهم بالظبط»: the
 // custody's memos and letters print his words, his spelling included («الاجمالى النهائى»), so the
 // file holding those words and the file holding his default names are listed in `VERBATIM_PAPERS`
 // and not corrected; the ATM settlement papers (the Note, «بيان التغذية», «سيلزات») print the bank
-// master's words the same way (docs/12-planning/atm-settlements-phase1.md §8.1). What keeps that
-// exemption from quietly growing is pinned here: exactly those three files; every other file of
+// master's words the same way (docs/12-planning/atm-settlements-phase1.md §8.1), and the hiring
+// papers («مستندات التعيين» — his contract, forms and job description cards) are his Word files
+// copied into templates. What keeps that
+// exemption from quietly growing is pinned here: exactly those four files; every other file of
 // either paper engine carries no Arabic letter at all (the Arabic-Indic digits, «٫» and the tatweel
 // are built from code points, and they are not letters); and the rule itself is untouched — his
 // words written anywhere else are still caught.
@@ -96,8 +98,9 @@ describe('his printed papers — the one exemption, held narrow', () => {
       .replace(/\/\*[^]*?\*\//gu, ' ')
       .replace(/(^|[^:'"`\\])\/\/[^\n]*/gu, '$1');
 
-  it('exempts exactly his papers’ wording and his default names — the three files exist', () => {
+  it('exempts exactly his papers’ wording and his default names — the four files exist', () => {
     expect([...VERBATIM_PAPERS].sort()).toEqual([
+      'apps/api/src/modules/hr/contracts/hiring-templates/hiring-papers.ts',
       'apps/web/src/modules/atm/lib/papers/settlement-paper-wording.ts',
       'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
       'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',

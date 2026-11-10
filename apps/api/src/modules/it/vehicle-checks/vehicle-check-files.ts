@@ -9,7 +9,7 @@ import {
   type CreateFileCategory,
 } from '@ecms/contracts';
 import { fileCategoryService, type FileEntityAuthorizer } from '../../../platform/files';
-import { hasPermission } from '../../../shared/types';
+import { hasPermission, scopeSelector } from '../../../shared/types';
 import { itVehicleCheckRepository } from './vehicle-check.repository';
 
 const VEHICLE_CHECK_PHOTO_CATEGORY: CreateFileCategory = {
@@ -42,14 +42,25 @@ export const vehicleCheckPhotoCategory = (): Promise<string> => {
 };
 
 /**
+ * A READ — the dashboard's «الصور» (2026-11-10) — is answered for a holder of `itVehicleCheck.view`
+ * on a live report inside their view scope: the report's branch at filing, as every dashboard read
+ * is. The form's grant reads nothing back, so a reporter holding only `create` sees no photo, not
+ * even their own.
+ *
  * A WRITE is answered only for the report's own reporter, holding `itVehicleCheck.create`, on a
- * live report — unscoped, as filing is (design §4). No READ is answered at all: no screen reads a
- * report or its photos until the dashboard brings `itVehicleCheck.view`.
+ * live report — unscoped, as filing is (design §4).
  */
 export const vehicleCheckFileAuthorizer: FileEntityAuthorizer = {
   entityType: 'vehicleCheck',
   async authorize({ ctx, entityId, intent }): Promise<boolean> {
-    if (intent === 'read') return false;
+    if (intent === 'read') {
+      if (!hasPermission(ctx, 'itVehicleCheck.view')) return false;
+      const report = await itVehicleCheckRepository.findById(
+        entityId,
+        scopeSelector(ctx, 'itVehicleCheck.view'),
+      );
+      return report !== null;
+    }
     if (!hasPermission(ctx, 'itVehicleCheck.create')) return false;
     return (await itVehicleCheckRepository.findOwnLive(entityId, ctx.userId)) !== null;
   },

@@ -931,6 +931,18 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'itCatalog.manage',
       },
       {
+        // FR-21 — «فحص أجهزة السيارات», IT's dashboard over the reports the phone form files
+        // («الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT», 2026-11-10). Right before the
+        // form, on the READ grant: a reporter who holds only the form does not see it, and a reader
+        // who does not file does not see the form. The gauge, the dashboards' glyph (as the gold
+        // vault's), which no other IT row wears.
+        en: 'Vehicle device checks',
+        ar: 'فحص أجهزة السيارات',
+        route: '/it/vehicle-checks',
+        icon: 'gauge',
+        permission: 'itVehicleCheck.view',
+      },
+      {
         // FR-21 — «فحص أجهزة السيارة», the phone form (docs/12-planning/it-vehicle-checks-design.md
         // §4): last in the IT list, on its own grant, so a role that holds only the form sees this
         // one row. The car glyph, which no other IT row wears.

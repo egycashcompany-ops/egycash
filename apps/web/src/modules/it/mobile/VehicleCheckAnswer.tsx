@@ -2,9 +2,10 @@
 // item's row (the owner: «زرارين يعمل ولا يعمل خليهم على نفس الصف مش تحت البند وصغر عرضهم»).
 //
 // Each button is as wide as its icon and word and 48px tall; the pair never shrinks or wraps, so a
-// long label wraps beside it instead. Nothing is chosen at first, and tapping the chosen button
-// again clears it (`answerTapped`): nothing is mandatory, so a tap made by mistake has to be
-// undoable. A chosen «يعمل» is green and a chosen «لا يعمل» red — and the ✓ / ✕ says which without
+// long label wraps beside it instead. «يعمل» is chosen at first (the form opens with every device
+// working, 2026-11-09), and tapping the chosen button again clears it (`answerTapped`): an answer is
+// never mandatory, so a tap made by mistake is undoable and a device the car lacks can be left
+// unanswered. A chosen «يعمل» is green and a chosen «لا يعمل» red — and the ✓ / ✕ says which without
 // the colour, for a reader who cannot tell the two apart in daylight.
 import { IT_VEHICLE_CHECK_ANSWERS, type ItVehicleCheckAnswer } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';

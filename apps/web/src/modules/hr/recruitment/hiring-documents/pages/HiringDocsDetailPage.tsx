@@ -2,7 +2,7 @@
 // download, and the Complete action — blocked (with the missing-required list) until every required
 // document is present. All mutations are permission-gated and version-checked.
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { type Locale, type LocalizedString } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -21,6 +21,7 @@ import { UploadDocumentDialog } from '../components/UploadDocumentDialog';
 import { DocumentVersionsDialog } from '../components/DocumentVersionsDialog';
 import { useCompleteHiringDocs, useHiringDocs, useHiringDocumentTypes } from '../api/hiring-documents-queries';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
+import { PrintHiringPackButton } from '../../../contracts/components/PrintHiringPackButton';
 
 type Active =
   | { kind: 'upload' | 'replace' | 'versions'; typeId: string; typeName: LocalizedString }
@@ -32,6 +33,9 @@ export const HiringDocsDetailPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
   const { id = '' } = useParams();
+  const [sp] = useSearchParams();
+  // Set by «تعيين» (EmployeeCreatePage) when it lands here.
+  const justHired = sp.get('hired') === '1';
   const { data: h, isLoading, isError, error, refetch } = useHiringDocs(id);
   const { data: types = [] } = useHiringDocumentTypes();
   const complete = useCompleteHiringDocs(id);
@@ -91,15 +95,30 @@ export const HiringDocsDetailPage = (): JSX.Element => {
           { label: h.employeeCode },
         ]}
         actions={
-          isInProgress ? (
-            <Can permission="hiringDocuments.complete">
-              <Button size="sm" disabled={!completable} onClick={() => setActive({ kind: 'complete' })}>
-                {t('hiringDocs.actions.complete')}
-              </Button>
-            </Can>
-          ) : undefined
+          <>
+            {/* A27 — the contract and every form for the job, printed in one go. */}
+            <PrintHiringPackButton employeeId={h.employeeId} variant={isInProgress ? 'secondary' : 'primary'} />
+            {isInProgress && (
+              <Can permission="hiringDocuments.complete">
+                <Button size="sm" disabled={!completable} onClick={() => setActive({ kind: 'complete' })}>
+                  {t('hiringDocs.actions.complete')}
+                </Button>
+              </Can>
+            )}
+          </>
         }
       />
+
+      {/* Landed here from «تعيين»: the next thing to do is print and sign the papers. */}
+      {justHired && (
+        <div
+          data-hired-banner="true"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+        >
+          <span>{t('hiringPack.hiredBanner')}</span>
+          <PrintHiringPackButton employeeId={h.employeeId} />
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link to={`/employees/${h.employeeId}`} className="font-mono text-sm text-brand-600 hover:underline" dir="ltr">

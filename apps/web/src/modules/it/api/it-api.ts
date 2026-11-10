@@ -91,6 +91,7 @@ import {
   type ScrapItConsumable,
   type UpdateItConsumable,
   type CreateItVehicleCheck,
+  type ItVehicleCheckDashboardDto,
   type ItVehicleCheckDto,
   type ItVehicleOptionDto,
   type OrgUnitOptionDto,
@@ -476,6 +477,32 @@ export const uploadVehicleCheckPhoto = (
   form.append('file', photo.file, photo.fileName);
   return upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form);
 };
+
+// The dashboard («الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT»): the reports read back under
+// `itVehicleCheck.view` and the reader's data scope (the car's branch at filing), and a wrong one
+// deleted under `itVehicleCheck.delete`. Every figure is the server's.
+
+/** The tiles, the bars, each car's latest report and the overdue cars — under the period and branch. */
+export const getVehicleCheckDashboard = (
+  params: ItListParams,
+): Promise<ItVehicleCheckDashboardDto> =>
+  get<ItVehicleCheckDashboardDto>(`/it/vehicle-checks/dashboard${buildQuery(params)}`);
+
+/** «آخر التقارير» — newest first, under every filter of the page. */
+export const listVehicleChecks = (params: ItListParams): Promise<Paginated<ItVehicleCheckDto>> =>
+  getPage<ItVehicleCheckDto>(`/it/vehicle-checks${buildQuery(params)}`);
+
+/** One report — the side panel's. 404 outside the reader's scope, or once deleted. */
+export const getVehicleCheck = (id: string): Promise<ItVehicleCheckDto> =>
+  get<ItVehicleCheckDto>(`/it/vehicle-checks/${id}`);
+
+/** One photo's bytes, for a reader of the report — through the token, as an `<img>` cannot send it. */
+export const fetchVehicleCheckPhoto = (id: string, fileId: string): Promise<Blob> =>
+  fetchBlob(`/it/vehicle-checks/${id}/photos/${fileId}`);
+
+/** A wrong report, soft-deleted. Its photos stay filed but no reader reaches them any more. */
+export const deleteVehicleCheck = (id: string): Promise<void> =>
+  del<void>(`/it/vehicle-checks/${id}`);
 
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (

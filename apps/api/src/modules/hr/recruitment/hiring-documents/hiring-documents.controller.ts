@@ -81,6 +81,14 @@ export const createHiringDocuments = async (req: Request, res: Response): Promis
   await respond(ctx, res, () => hiringDocumentsService.create(ctx, body, scope), 201);
 };
 
+/** The employee's set, opened if missing — the landing after «تعيين» (A27). */
+export const openHiringDocuments = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<CreateHiringDocuments>(req);
+  const scope = scopeSelector(ctx, 'hiringDocuments.create');
+  await respond(ctx, res, () => hiringDocumentsService.openFor(ctx, body.employeeId, scope), 200);
+};
+
 export const listHiringDocuments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListHiringDocumentsQuery>(req);

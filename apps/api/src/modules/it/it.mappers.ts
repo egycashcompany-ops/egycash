@@ -30,6 +30,7 @@ import {
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
   type ItVehicleCheckDto,
+  type ItVehicleCheckLatestDto,
   IT_VEHICLE_CHECK_ITEMS,
   ymdOf,
 } from '@ecms/contracts';
@@ -884,6 +885,12 @@ export const toItTechnicianDto = (person: DirectoryEmployeeListing): ItTechnicia
   userId: person.userId,
 });
 
+/** The eleven answers in the contract's order, unanswered (or absent from an old row) as `null`. */
+const vehicleCheckItems = (doc: ItVehicleCheckDoc): ItVehicleCheckDto['items'] =>
+  Object.fromEntries(
+    IT_VEHICLE_CHECK_ITEMS.map((key) => [key, doc.items?.[key] ?? null]),
+  ) as ItVehicleCheckDto['items'];
+
 /**
  * A vehicle device check (FR-21). Every one of the eleven items is on the wire, in the contract's
  * order — unanswered as `null` — and `checkDate` is the date-only day it was filed for.
@@ -895,9 +902,7 @@ export const toItVehicleCheckDto = (doc: ItVehicleCheckDoc): ItVehicleCheckDto =
   vehicleCode: doc.vehicleCode,
   branchId: idOrNull(doc.branchId),
   checkDate: ymdOf(doc.checkDate),
-  items: Object.fromEntries(
-    IT_VEHICLE_CHECK_ITEMS.map((key) => [key, doc.items?.[key] ?? null]),
-  ) as ItVehicleCheckDto['items'],
+  items: vehicleCheckItems(doc),
   notes: doc.notes ?? null,
   photos: doc.photos.map((photo) => ({
     clientPhotoId: photo.clientPhotoId,
@@ -911,4 +916,22 @@ export const toItVehicleCheckDto = (doc: ItVehicleCheckDoc): ItVehicleCheckDto =
   reportedByName: doc.reportedByName,
   clientRequestId: doc.clientRequestId,
   createdAt: iso(doc.createdAt),
+});
+
+/**
+ * A car's latest report as one row of «حالة أجهزة كل سيارة — آخر تقرير». The report's facts at
+ * filing — its code and its branch, the data-scope anchor — and only what the row prints: the
+ * photos and the note are counted and flagged here, and read whole through «عرض التقرير».
+ */
+export const toItVehicleCheckLatestDto = (doc: ItVehicleCheckDoc): ItVehicleCheckLatestDto => ({
+  reportId: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  vehicleCode: doc.vehicleCode,
+  branchId: idOrNull(doc.branchId),
+  checkDate: ymdOf(doc.checkDate),
+  createdAt: iso(doc.createdAt),
+  items: vehicleCheckItems(doc),
+  photoCount: doc.photos.length,
+  hasNotes: (doc.notes ?? '') !== '',
+  reportedByName: doc.reportedByName,
 });

@@ -157,6 +157,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/it/pages/SoftwarePage.tsx', ['tab']],
   ['modules/it/pages/SparePartsPage.tsx', []],
   ['modules/it/pages/TicketsListPage.tsx', []],
+  // FR-21 — the vehicle checks dashboard: the period, the branch, the car (typed, or by id from a
+  // report), «بها عطل» and the device, all remembered.
+  ['modules/it/pages/VehicleChecksPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
   ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
@@ -668,5 +671,18 @@ describe('the IT registers remember both of their lists', () => {
     expect(declared(text('modules/it/pages/AssetsListPage.tsx'))).toContain(
       'warrantyEndsWithinDays',
     );
+  });
+
+  // The vehicle checks dashboard keeps every filter it offers — a bare arrival from the rail or the
+  // IT home opens the view the reader left.
+  it('the vehicle checks dashboard remembers each of its filters', () => {
+    expect(declared(text('modules/it/pages/VehicleChecksPage.tsx'))).toEqual([
+      'branch',
+      'car',
+      'device',
+      'faults',
+      'period',
+      'vehicle',
+    ]);
   });
 });

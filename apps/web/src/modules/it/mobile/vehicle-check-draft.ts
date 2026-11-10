@@ -11,7 +11,8 @@
 //
 // READ. With this file's own guarded reader (Fleet's is shaped for the roster's rows), and every
 // field taken only when it is valid: a draft written by an older build, or edited by hand, puts the
-// form back in a state it could have been in, never one the server would refuse.
+// form back in a state it could have been in. That state may still miss what a send needs (a note
+// for a fault, a photo — photos are never kept): the form's required fields ask for it.
 //
 // This is the ONE file of the phone screens allowed to touch browser storage
 // (`it-mobile-quality.spec.tsx`).
@@ -25,6 +26,7 @@ import {
 } from '@ecms/contracts';
 import { clearDraft, writeDraft } from '../../fleet/lib/draft-storage';
 import {
+  isAllWorking,
   isClientId,
   type VehicleCheckAnswers,
   type VehicleCheckFormState,
@@ -57,12 +59,14 @@ export const writeVehicleCheckDraft = (state: VehicleCheckFormState, vehicleCode
 export const clearVehicleCheckDraft = (): void => clearDraft(VEHICLE_CHECK_DRAFT_KEY);
 
 /**
- * Is there anything to keep? A form that holds only today and a fresh request id is the form the
- * page opens on anyway; writing it would only leave a draft nobody filled in.
+ * Is there anything to keep? A form with no car, today, every device at «يعمل» and no note is the
+ * form the page opens on anyway; writing it would only leave a draft nobody filled in. Any change
+ * from it — a cleared answer included — is kept.
  */
 export const draftWorthKeeping = (state: VehicleCheckFormState, today: string): boolean =>
   state.vehicleId !== '' ||
-  Object.keys(state.items).length > 0 ||
+  // The answers the page opens on are every device at «يعمل»; only a change from them is news.
+  !isAllWorking(state.items) ||
   state.notes !== '' ||
   state.checkDate !== today;
 

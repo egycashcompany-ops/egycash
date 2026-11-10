@@ -1,7 +1,8 @@
 // «فحص أجهزة السيارة» — IT's phone form (FR-21, docs/12-planning/it-vehicle-checks-design.md §2):
 // the car, the day, «يعمل / لا يعمل» for the screen, the eight cameras, the DVR and the Motorola
-// radio, one note, and up to five photos. Only the car is required (and a day, which the box
-// starts with); every device may be left unanswered.
+// radio, one note, and one to five photos. Every device opens at «يعمل» and the reporter taps what
+// fails; one may still be left unanswered. Required (2026-11-09): the car, a day (which the box
+// starts with), a note while a device is «لا يعمل», and at least one photo (`vehicleCheckRequired`).
 //
 // A phone screen OUTSIDE the console frame: the shared `PhoneShell` (the captain's frame, moved),
 // its back arrow to the home page — the one page a user whose only grant is this form is sure to
@@ -17,7 +18,8 @@
 //
 // A photo is drawn small as it is picked, which takes a moment: the send waits for the picks still
 // being drawn (`createPhotoQueue`), and once the report is sent a pick still running is dropped,
-// never carried to the next car's form.
+// never carried to the next car's form. A lone photo still being drawn is not counted yet, so the
+// required fields name «الصور» until it arrives (a photo is required, 2026-11-09).
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   IT_VEHICLE_CHECK_ITEMS,
@@ -46,6 +48,7 @@ import {
   defaultCheckDate,
   emptyVehicleCheck,
   newClientId,
+  notesNeeded,
   requestIdAfterEdit,
   vehicleCheckPayload,
   vehicleCheckRequired,
@@ -66,7 +69,12 @@ import {
 import { VehicleCheckAnswer } from './VehicleCheckAnswer';
 import { VehicleCheckCarPicker } from './VehicleCheckCarPicker';
 import { VehicleCheckPhotos, type VehicleCheckPickedPhoto } from './VehicleCheckPhotos';
-import { VehicleCheckSent, type VehicleCheckSentSummary } from './VehicleCheckSent';
+import {
+  VehicleCheckSent,
+  sentLeaveStep,
+  sentWithoutPhoto,
+  type VehicleCheckSentSummary,
+} from './VehicleCheckSent';
 import {
   clearVehicleCheckDraft,
   draftWorthKeeping,
@@ -124,18 +132,25 @@ export const VehicleCheckPage = (): JSX.Element => {
   const [busy, setBusy] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [sent, setSent] = useState<Sent | null>(null);
+  // A tap already tried to leave a sent report that has no photo: the next one goes (`sentLeaveStep`).
+  const [askedToLeave, setAskedToLeave] = useState(false);
   const [round, setRound] = useState(0);
   const cars = useItVehicleCheckCars();
 
   const required = useRequiredFields(
     // Each name held on one line in the banner (no-break spaces): on a 375px phone the banner
     // wraps, and «كود» at a line's end with «السيارة.» under it reads as two things.
-    vehicleCheckRequired(form, {
+    vehicleCheckRequired(form, photos.length, {
       vehicle: t('it.vehicleCheck.vehicle').replace(/ /gu, '\u00a0'),
       date: t('it.vehicleCheck.date').replace(/ /gu, '\u00a0'),
+      notes: t('it.vehicleCheck.notes'),
+      photos: t('it.vehicleCheck.photos'),
     }),
     round,
   );
+  // A device «لا يعمل» makes the note required (`vehicleCheckRequired`).
+  const needsNotes = notesNeeded(form);
+  const notesMissing = required.isMissing('notes');
 
   // Every device's name, each a literal key the IT dictionary check can see.
   const labels: Record<ItVehicleCheckItem, string> = {
@@ -156,6 +171,7 @@ export const VehicleCheckPage = (): JSX.Element => {
     carGone: t('it.vehicleCheck.toast.carGone'),
     carInactive: t('it.vehicleCheck.toast.carInactive'),
     futureDay: t('it.vehicleCheck.toast.futureDay'),
+    notesRequired: t('it.vehicleCheck.toast.notesRequired'),
   };
 
   // A restored car the active list no longer carries is cleared, with a new request id.
@@ -167,6 +183,20 @@ export const VehicleCheckPage = (): JSX.Element => {
     setForm((now) => reconcileDraftCar(now, active, newClientId));
     setVehicleCode('');
   }, [carIds, form.vehicleId]);
+
+  // A report with no photo whose failed photos wait for «إعادة رفع الصور»: a reload or a closed tab
+  // would lose them, and no screen can add a photo afterwards — so the browser asks first.
+  const photosAtStake = sent !== null && sentWithoutPhoto(sent.summary) && sent.failed.length > 0;
+  useEffect(() => {
+    if (!photosAtStake) return undefined;
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Older browsers show the prompt only when `returnValue` is set.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [photosAtStake]);
 
   // The draft follows the form while it is filled; the sent view keeps none.
   useEffect(() => {
@@ -343,6 +373,7 @@ export const VehicleCheckPage = (): JSX.Element => {
     heldRef.current = null;
     clearVehicleCheckDraft();
     setSent(null);
+    setAskedToLeave(false);
     setForm((now) => emptyVehicleCheck(now.checkDate));
     setVehicleCode('');
     setRound((n) => n + 1);
@@ -358,6 +389,14 @@ export const VehicleCheckPage = (): JSX.Element => {
         subtitle={t('it.module.title')}
         backTo="/"
         backLabel={t('it.vehicleCheck.back')}
+        // On the sent view, a report with no photo is not left on the first tap: it asks, as
+        // «تقرير لسيارة أخرى» does (`sentLeaveStep`).
+        onBack={(event) => {
+          if (sent === null || sentLeaveStep(sent.summary, askedToLeave) === 'leave') return;
+          event.preventDefault();
+          setAskedToLeave(true);
+          window.scrollTo({ top: document.documentElement.scrollHeight });
+        }}
         {...(footer === undefined ? {} : { footer })}
       >
         {content}
@@ -372,6 +411,8 @@ export const VehicleCheckPage = (): JSX.Element => {
         retrying={retrying}
         onRetry={() => void retryPhotos()}
         onAnother={another}
+        askedToLeave={askedToLeave}
+        onAskToLeave={() => setAskedToLeave(true)}
       />,
     );
   }
@@ -511,24 +552,42 @@ export const VehicleCheckPage = (): JSX.Element => {
       {oneItem('dvr')}
       {oneItem('radio')}
 
-      <section className={cn(CARD, 'space-y-3 p-4')}>
-        <label htmlFor={notesId} className={cn(CARD_TITLE, 'block')}>
+      <section className={cn(CARD, 'space-y-3 p-4')} data-vehicle-check-notes-card="true">
+        <label
+          htmlFor={notesId}
+          className={cn(
+            'block',
+            notesMissing ? 'text-base font-bold text-red-600 dark:text-red-400' : CARD_TITLE,
+          )}
+        >
           {t('it.vehicleCheck.notes')}
+          {needsNotes && <span className="text-red-500"> *</span>}
         </label>
-        <Textarea
-          id={notesId}
-          rows={3}
-          textScale="comfortable"
-          value={form.notes}
-          maxLength={IT_VEHICLE_CHECK_NOTES_MAX}
-          onChange={(e) => {
-            const notes = e.target.value;
-            edit((now) => ({ ...now, notes }));
-          }}
-          disabled={busy}
-          placeholder={t('it.vehicleCheck.notesPlaceholder')}
-          data-vehicle-check-notes="true"
-        />
+        {/* The card's own title is the label; the Field only marks the box and says why. */}
+        <Field
+          missing={notesMissing}
+          hint={needsNotes ? t('it.vehicleCheck.notesNeeded') : undefined}
+        >
+          <Textarea
+            id={notesId}
+            rows={3}
+            textScale="comfortable"
+            value={form.notes}
+            maxLength={IT_VEHICLE_CHECK_NOTES_MAX}
+            onChange={(e) => {
+              const notes = e.target.value;
+              edit((now) => ({ ...now, notes }));
+            }}
+            disabled={busy}
+            placeholder={
+              needsNotes
+                ? t('it.vehicleCheck.notesPlaceholderFault')
+                : t('it.vehicleCheck.notesPlaceholder')
+            }
+            aria-required={needsNotes}
+            data-vehicle-check-notes="true"
+          />
+        </Field>
       </section>
 
       <VehicleCheckPhotos
@@ -536,6 +595,7 @@ export const VehicleCheckPage = (): JSX.Element => {
         onAdd={addPhotos}
         onRemove={removePhoto}
         disabled={busy}
+        missing={required.isMissing('photos')}
       />
     </div>,
     bar,

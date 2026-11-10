@@ -10,8 +10,9 @@
 // car, on the asset grants (no key and no page of their own). FR-20 adds the consumables — each
 // branch's store of inks, cables, adapters, mice and the like, issued to an employee on a memo of
 // its own series — on the same grants, again with no key and no page. FR-21 adds the vehicle
-// device checks («فحص أجهزة السيارة») — a phone form, its one grant and its own page, reading
-// Fleet's car list through the one boundary file (it-vehicle-checks-design.md §5).
+// device checks («فحص أجهزة السيارة») — a phone form and IT's dashboard over its reports, three
+// grants and their own page, reading Fleet's car list through the one boundary file
+// (it-vehicle-checks-design.md §5).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
@@ -244,15 +245,18 @@ const licensePermissions = declarePermissions(
   'it.licences',
 );
 
-// FR-21 — the phone form («فحص أجهزة السيارة»). ONE key: `create` lists the active cars, files a
-// report and adds photos to one's own report within 24 hours. `view` and `delete` come with the
-// dashboard that uses them — a grant is declared WITH its operation, never ahead of it. The label is
-// plural because the resource covers every car's checks; the screen, which checks one car, is not.
+// FR-21 — the vehicle device checks. `create` is the phone form («فحص أجهزة السيارة»): it lists the
+// active cars, files a report and adds photos to one's own report within 24 hours. `view` and
+// `delete` arrived WITH the dashboard that uses them (2026-11-10, «الـ Dashboard مش هتكون عند
+// الحركة .. هتبقي عند الـ IT»): `view` reads every report under the reader's scope — the figures,
+// the list, one report and its photos — and `delete` soft-deletes a wrong one. Three separate
+// powers: a reporter files and never reads back, and reading is not removing. The label is plural
+// because the resource covers every car's checks; the form, which checks one car, is not.
 const vehicleCheckPermissions = declarePermissions(
   'it',
   'itVehicleCheck',
   { en: 'Vehicle device checks', ar: 'فحص أجهزة السيارات' },
-  ['create'],
+  ['create', 'view', 'delete'],
   [],
   'it.vehicle-checks',
 );
@@ -342,12 +346,13 @@ export const itPages: PageDef[] = [
     sortOrder: 90,
   },
   {
-    // FR-21 — the phone form, last in the IT rail. Its route is the form itself: no screen in this
-    // delivery reads a report.
+    // FR-21, last in the IT rail. Its route is the dashboard now (2026-11-10), the surface the three
+    // keys administer — the reports, read and deleted there; the phone form it files them from is
+    // `/it/vehicle-checks/new`, one of its actions.
     id: 'it.vehicle-checks',
     moduleId: 'it',
-    name: { en: 'Vehicle device check', ar: 'فحص أجهزة السيارة' },
-    route: '/it/vehicle-checks/new',
+    name: { en: 'Vehicle device checks', ar: 'فحص أجهزة السيارات' },
+    route: '/it/vehicle-checks',
     sortOrder: 100,
   },
 ];
@@ -391,7 +396,8 @@ export const itModule: ModuleManifest = {
     // §11 — the `/it` home: «Dashboard … يظهر إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر
     // أفلتر بـالفئة». Derived reads over the collections above, on the assets' read grant.
     { prefix: '/it/dashboard', router: buildItDashboardRouter() },
-    // FR-21 — «فحص أجهزة السيارة»: the phone form's car list, filing a report and its photos.
+    // FR-21 — «فحص أجهزة السيارة»: the phone form's car list, filing a report and its photos; and
+    // IT's dashboard over the reports — the figures, the list, one report, its photos, a delete.
     { prefix: '/it/vehicle-checks', router: buildItVehicleChecksRouter() },
   ],
   collections: [

@@ -5,8 +5,13 @@
 // fails loud, an unresolved {{…}} can never reach a document.
 import { type Types } from 'mongoose';
 import {
+  amountInArabicWords,
+  salaryBreakdown,
   type ContractVariableIssueDto,
   type ContractVariableSource,
+  type EducationLevel,
+  type MaritalStatus,
+  type MilitaryStatus,
 } from '@ecms/contracts';
 import { branchService, departmentService, jobTitleService, organizationService } from '../../../../platform/organization';
 import { cairoToday, dateOnlyIso } from '../../shared/business-date';
@@ -31,6 +36,63 @@ const addressOf = (employee: EmployeeDoc): string => {
     .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
     .join('، ');
 };
+
+/**
+ * A date as the template's language writes it: `15/11/2026` in Arabic (the company's papers write
+ * day/month/year, no leading zeros), ISO in English. Input is an ISO date or a Date.
+ */
+export const formatTemplateDate = (value: string | Date | null, language: 'ar' | 'en'): string => {
+  if (value === null || value === '') return '';
+  const iso = typeof value === 'string' ? value : dateOnlyIso(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (match === null) return iso;
+  if (language === 'en') return `${match[1]}-${match[2]}-${match[3]}`;
+  return `${Number(match[3])}/${Number(match[2])}/${match[1]}`;
+};
+
+const DAY_NAMES = {
+  ar: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+};
+
+/** The weekday of an ISO date, by the calendar date itself (no timezone shift). */
+export const dayNameOf = (value: string | Date | null, language: 'ar' | 'en'): string => {
+  if (value === null || value === '') return '';
+  const iso = typeof value === 'string' ? value : dateOnlyIso(value);
+  const day = new Date(`${iso.slice(0, 10)}T00:00:00Z`).getUTCDay();
+  return Number.isNaN(day) ? '' : DAY_NAMES[language][day] ?? '';
+};
+
+const MARITAL: Record<MaritalStatus, { ar: string; en: string }> = {
+  single: { ar: 'أعزب', en: 'Single' },
+  married: { ar: 'متزوج', en: 'Married' },
+  divorced: { ar: 'مطلق', en: 'Divorced' },
+  widowed: { ar: 'أرمل', en: 'Widowed' },
+};
+const MILITARY: Record<MilitaryStatus, { ar: string; en: string }> = {
+  completed: { ar: 'أدى الخدمة', en: 'Completed' },
+  exempted: { ar: 'معفى', en: 'Exempted' },
+  postponed: { ar: 'مؤجل', en: 'Postponed' },
+  serving: { ar: 'يؤدي الخدمة', en: 'Serving' },
+  notApplicable: { ar: 'لا ينطبق', en: 'Not applicable' },
+};
+const EDUCATION: Record<EducationLevel, { ar: string; en: string }> = {
+  none: { ar: 'بدون', en: 'None' },
+  primary: { ar: 'ابتدائي', en: 'Primary' },
+  preparatory: { ar: 'إعدادي', en: 'Preparatory' },
+  secondary: { ar: 'ثانوي', en: 'Secondary' },
+  diploma: { ar: 'دبلوم', en: 'Diploma' },
+  bachelor: { ar: 'بكالوريوس', en: "Bachelor's" },
+  master: { ar: 'ماجستير', en: "Master's" },
+  doctorate: { ar: 'دكتوراه', en: 'Doctorate' },
+};
+
+/** An amount the way the company's papers print it: `7,000`, or `85.40` when there are piastres. */
+const money = (amount: number): string =>
+  amount.toLocaleString('en-US', {
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
 
 /** Resolve the catalog value for one key from live data ('' when absent). */
 const resolveFromData = async (key: string, input: ResolutionInput): Promise<string> => {
@@ -68,12 +130,59 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
     case 'contract.code':
       return input.code;
     case 'contract.startDate':
-      return input.startDate;
+      return formatTemplateDate(input.startDate, input.language);
     case 'contract.endDate':
-      return input.endDate ?? '';
+      return formatTemplateDate(input.endDate, input.language);
     case 'contract.currentDate':
       // The signing-office calendar (Africa/Cairo), not the server's UTC clock.
-      return dateOnlyIso(cairoToday());
+      return formatTemplateDate(cairoToday(), input.language);
+    case 'contract.currentDayName':
+      return dayNameOf(cairoToday(), input.language);
+    case 'employee.phone':
+      return employee.personal.contact.primaryPhone;
+    case 'employee.birthDate':
+      return formatTemplateDate(employee.personal.birthDate, input.language);
+    case 'employee.maritalStatus':
+      return employee.personal.maritalStatus === null
+        ? ''
+        : MARITAL[employee.personal.maritalStatus][input.language];
+    case 'employee.militaryStatus':
+      return employee.personal.military === null
+        ? ''
+        : MILITARY[employee.personal.military.status][input.language];
+    case 'employee.qualification': {
+      const education = employee.personal.education;
+      if (education === null) return '';
+      return [EDUCATION[education.level][input.language], education.specialization ?? '']
+        .filter((part) => part.trim() !== '')
+        .join(' ');
+    }
+    case 'employee.graduationYear':
+      return employee.personal.education?.graduationYear == null
+        ? ''
+        : String(employee.personal.education.graduationYear);
+    case 'employee.institution':
+      return employee.personal.education?.institution ?? '';
+    case 'employee.hireDate':
+      return formatTemplateDate(employee.hiredAt, input.language);
+    case 'employee.weaponLicenseExpiry':
+      return formatTemplateDate(employee.officer?.weaponLicense?.expiry ?? null, input.language);
+    case 'employment.startDate':
+      return formatTemplateDate(employee.employment.startDate, input.language);
+    case 'employment.startDayName':
+      return dayNameOf(employee.employment.startDate, input.language);
+    case 'salary.gross':
+    case 'salary.fixed':
+    case 'salary.attendanceBonus':
+    case 'salary.grossInWords': {
+      // The one split the register screen shows (70% basic, 30% attendance), from the gross.
+      const parts = salaryBreakdown(employee.employment.salary?.amount ?? null);
+      if (parts === null) return '';
+      if (key === 'salary.gross') return money(parts.gross);
+      if (key === 'salary.fixed') return money(parts.fixed);
+      if (key === 'salary.attendanceBonus') return money(parts.attendanceBonus);
+      return amountInArabicWords(parts.gross);
+    }
     case 'company.name': {
       const org = await organizationService.get().catch(() => null);
       if (org === null) return '';

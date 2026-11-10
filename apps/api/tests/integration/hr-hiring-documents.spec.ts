@@ -473,3 +473,27 @@ describe('hiring documents — bulk complete reports partial success honestly', 
     expect((untouched.body.data as HiringDocumentsDto).status).toBe('inProgress');
   });
 });
+
+// A27 — «تعيين» lands on the employee's set: opened when missing, the same one every time after.
+describe('hiring documents — opened for an employee, once', () => {
+  it('opens the set when there is none, and returns that same set when asked again', async () => {
+    const emp = await hiredEmployee();
+    const open = () =>
+      request(app)
+        .post('/api/v1/hr/hiring-documents/open')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: emp.id });
+    const first = await open();
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const id = (first.body.data as HiringDocumentsDto).id;
+    const second = await open();
+    expect(second.status).toBe(200);
+    expect((second.body.data as HiringDocumentsDto).id).toBe(id);
+    // …and an explicit create still refuses a second set.
+    const dup = await request(app)
+      .post('/api/v1/hr/hiring-documents')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: emp.id });
+    expect(dup.status).toBe(409);
+  });
+});

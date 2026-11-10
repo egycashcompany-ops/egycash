@@ -49,6 +49,29 @@ export const CONTRACT_TEMPLATE_LANGUAGES = ['ar', 'en'] as const;
 export const ContractTemplateLanguageSchema = z.enum(CONTRACT_TEMPLATE_LANGUAGES);
 export type ContractTemplateLanguage = z.infer<typeof ContractTemplateLanguageSchema>;
 
+/**
+ * What a template prints (A27, «مستندات التعيين»): the employment CONTRACT itself — numbered,
+ * generated, frozen — or a hiring FORM printed beside it (a declaration, the data sheet, the job
+ * description card, the bank letter). A form is rendered fresh each time it is printed and is
+ * never a contract: it has no type, no number and no snapshot.
+ */
+export const CONTRACT_TEMPLATE_KINDS = ['contract', 'form'] as const;
+export const ContractTemplateKindSchema = z.enum(CONTRACT_TEMPLATE_KINDS);
+export type ContractTemplateKind = z.infer<typeof ContractTemplateKindSchema>;
+
+/**
+ * Which jobs a template is printed for (A27). `allJobs` is its own flag rather than "an empty
+ * list means everybody", so a job card whose job has not been chosen yet prints for NOBODY
+ * instead of for the whole company.
+ */
+const templatePrintFields = {
+  kind: ContractTemplateKindSchema,
+  allJobs: z.boolean(),
+  jobTitleIds: z.array(objectId()).max(300),
+  /** Where it falls in the printed set — smaller first. */
+  printOrder: z.number().int().min(0).max(999),
+};
+
 /** A version's lifecycle (A17): only `published` versions can generate contracts. */
 export const CONTRACT_TEMPLATE_STATUSES = ['draft', 'published', 'archived'] as const;
 export const ContractTemplateStatusSchema = z.enum(CONTRACT_TEMPLATE_STATUSES);
@@ -112,6 +135,10 @@ export const CreateContractTemplateSchema = z
     sections: DraftTemplateSectionsSchema,
     logoFileId: objectId().nullable().default(null),
     signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
+    kind: templatePrintFields.kind.default('contract'),
+    allJobs: templatePrintFields.allJobs.default(true),
+    jobTitleIds: templatePrintFields.jobTitleIds.default([]),
+    printOrder: templatePrintFields.printOrder.default(100),
   })
   .strict();
 export type CreateContractTemplate = z.infer<typeof CreateContractTemplateSchema>;
@@ -124,6 +151,10 @@ export const UpdateContractTemplateSchema = z
     sections: DraftTemplateSectionsSchema.optional(),
     logoFileId: objectId().nullable().optional(),
     signatures: z.array(DraftSignatureBlockSchema).max(10).optional(),
+    kind: templatePrintFields.kind.optional(),
+    allJobs: templatePrintFields.allJobs.optional(),
+    jobTitleIds: templatePrintFields.jobTitleIds.optional(),
+    printOrder: templatePrintFields.printOrder.optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -142,6 +173,7 @@ export const ListContractTemplatesQuerySchema = PaginationQuerySchema.extend({
   language: ContractTemplateLanguageSchema.optional(),
   contractTypeId: objectId().optional(),
   status: ContractTemplateStatusSchema.optional(),
+  kind: ContractTemplateKindSchema.optional(),
   /** Latest version per template key only (the templates list view). */
   latestOnly: z.coerce.boolean().optional(),
 }).strict();
@@ -162,6 +194,10 @@ export interface ContractTemplateDto {
   sections: TemplateSections;
   logoFileId: string | null;
   signatures: SignatureBlock[];
+  kind: ContractTemplateKind;
+  allJobs: boolean;
+  jobTitleIds: string[];
+  printOrder: number;
   /** Placeholder keys used by the sections — derived server-side on save. */
   placeholders: string[];
   changedBy: string | null;
@@ -408,6 +444,8 @@ export const InlinePreviewTemplateSchema = z
       })
       .strict(),
     signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
+    /** A27 — a form previews inside the company letterhead, as it prints. */
+    kind: ContractTemplateKindSchema.default('contract'),
   })
   .strict();
 export type InlinePreviewTemplate = z.infer<typeof InlinePreviewTemplateSchema>;
@@ -597,6 +635,34 @@ export const ContractApprovalDecidedPayloadV1 = ContractEventPayloadV1.extend({
 export const ContractTerminatedPayloadV1 = ContractEventPayloadV1.extend({
   reason: z.string(),
 });
+
+// ── «مستندات التعيين» — the printed hiring set (A27) ─────────────────────────
+
+/** Why the set carries no contract, when it carries none. */
+export const HIRING_PACK_CONTRACT_NOTES = [
+  'noTemplate',
+  'approvalRequired',
+  'notPermitted',
+  'missingValues',
+  'notCreated',
+] as const;
+export type HiringPackContractNote = (typeof HIRING_PACK_CONTRACT_NOTES)[number];
+
+export const HiringPackRequestSchema = z.object({ employeeId: objectId() }).strict();
+export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
+
+/**
+ * Everything one employee signs on joining, ready to print in one go: the contract first, then
+ * every published form for the employee's job, each starting on a fresh page.
+ */
+export interface HiringPackDto {
+  html: string;
+  /** The contract printed first — `created` when this very request made and generated it. */
+  contract: { id: string; code: string; created: boolean } | null;
+  contractNote: HiringPackContractNote | null;
+  /** The documents in the set, in print order. */
+  documents: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
+}
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

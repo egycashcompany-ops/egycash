@@ -130,6 +130,17 @@ export const useGenerateContract = () => {
   });
 };
 
+/** The printed hiring set — invalidates contracts, since it may have made and generated one. */
+export const useHiringPack = () => {
+  const invalidate = useContractsInvalidation();
+  return useMutation({
+    mutationFn: (employeeId: string) => api.hiringPack(employeeId),
+    onSuccess: (set) => {
+      if (set.contract?.created === true) invalidate();
+    },
+  });
+};
+
 export const useRetryContractPdf = () => {
   const invalidate = useContractsInvalidation();
   return useMutation({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
-import { toIdCardSummaryDto } from './employee-id-card';
+import { toIdCardSummaryDto } from './employee-id-card.mapper';
 
 describe('the company ID card counters', () => {
   it('read as never received and never printed for an employee the counters have not reached yet', () => {

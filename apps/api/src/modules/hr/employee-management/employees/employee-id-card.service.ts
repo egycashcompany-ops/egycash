@@ -7,20 +7,16 @@
 // confirms the employee signed the receipt (إقرار الاستلام) and took it: `confirmHandover`, which
 // moves `receivedCount` by exactly one per printed card, however many times that card was printed.
 //
-// Two stores, each for the question it answers:
-//
-//   * ON THE EMPLOYEE — `idCard`: how many times, the first time and the last time. The list needs
-//     these on every row and filters and sorts on them across 1,760 people, so they sit on the
-//     document the list already reads, moved by one atomic `$inc` per print.
-//   * ITS OWN COLLECTION — one row per print, `hr_employee_id_card_prints`: who printed it and when,
-//     numbered. The profile's history reads it; nothing else needs it.
+// Two stores, each for the question it answers: the counters on the employee (`idCard`, moved by
+// one atomic `$inc` per print — see `employee.model.ts`) and one row per print in its own
+// collection (`employee-id-card.model.ts`).
 //
 // THE NATIONAL ID. The registry's rule is that `personal.nationalId` is stored raw and ALWAYS masked
 // in DTOs (Security Architecture §3). The card is the one place it must appear whole: it is printed
 // on the card itself. So it leaves through exactly one read, `cardData`, gated on
 // `employee.editPersonal` within scope — the permission that may already type the number in — and
 // every such read is audited as a `download`. No list or profile DTO carries it.
-import { Schema, Types, model } from 'mongoose';
+import { Types } from 'mongoose';
 import {
   type EmployeeIdCardDataDto,
   type EmployeeIdCardPrintDto,
@@ -32,81 +28,14 @@ import { ConflictError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { EmployeeModel, type EmployeeDoc } from './employee.model';
 import { employeeRepository } from './employee.repository';
-
-interface IdCardPrintDoc {
-  _id: Types.ObjectId;
-  employeeId: Types.ObjectId;
-  /** 1 for the first card this person ever got, 2 for the second, … */
-  printNumber: number;
-  printedAt: Date;
-  printedBy: Types.ObjectId | null;
-  /** Whether the card carried a photo, or went out with an empty frame. */
-  withPhoto: boolean;
-  /** Set once HR confirms this print was handed over: its number among cards RECEIVED. */
-  receivedNumber?: number | null;
-  receivedAt?: Date | null;
-  receivedBy?: Types.ObjectId | null;
-}
-
-const idCardPrintSchema = new Schema<IdCardPrintDoc>(
-  {
-    employeeId: { type: Schema.Types.ObjectId, required: true },
-    printNumber: { type: Number, required: true },
-    printedAt: { type: Date, required: true },
-    printedBy: { type: Schema.Types.ObjectId, default: null },
-    withPhoto: { type: Boolean, required: true },
-    receivedNumber: { type: Number, default: null },
-    receivedAt: { type: Date, default: null },
-    receivedBy: { type: Schema.Types.ObjectId, default: null },
-  },
-  { versionKey: false },
-);
-idCardPrintSchema.index({ employeeId: 1, printedAt: -1 }, { name: 'ix_employee_printedAt' });
-
-export const EmployeeIdCardPrintModel = model<IdCardPrintDoc>(
-  'EmployeeIdCardPrint',
-  idCardPrintSchema,
-  'hr_employee_id_card_prints',
-);
+import { EmployeeIdCardPrintModel, type IdCardPrintDoc } from './employee-id-card.model';
+import { toIdCardSummaryDto, toPrintDto } from './employee-id-card.mapper';
 
 /** The printing user as stored — null for a caller whose id is not a user's (a system job). */
 const actorId = (ctx: AuthContext): Types.ObjectId | null =>
   Types.ObjectId.isValid(ctx.userId) ? new Types.ObjectId(ctx.userId) : null;
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });
-const iso = (d: Date | null | undefined): string | null =>
-  d === null || d === undefined ? null : d.toISOString();
-
-/** The counters, read the same way for an employee printed often and one never printed at all. */
-const idOf = (v: Types.ObjectId | null | undefined): string | null =>
-  v === null || v === undefined ? null : String(v);
-
-export const toIdCardSummaryDto = (doc: Pick<EmployeeDoc, 'idCard'>): EmployeeIdCardSummaryDto => ({
-  receivedCount: doc.idCard?.receivedCount ?? 0,
-  firstReceivedAt: iso(doc.idCard?.firstReceivedAt),
-  lastReceivedAt: iso(doc.idCard?.lastReceivedAt),
-  lastReceivedBy: idOf(doc.idCard?.lastReceivedBy),
-  awaitingHandover: doc.idCard?.awaitingHandover === true,
-  receiptPrintedAt: iso(doc.idCard?.receiptPrintedAt),
-  printCount: doc.idCard?.printCount ?? 0,
-  firstPrintedAt: iso(doc.idCard?.firstPrintedAt),
-  lastPrintedAt: iso(doc.idCard?.lastPrintedAt),
-  lastPrintedBy:
-    doc.idCard?.lastPrintedBy === null || doc.idCard?.lastPrintedBy === undefined
-      ? null
-      : String(doc.idCard.lastPrintedBy),
-});
-
-const toPrintDto = (row: IdCardPrintDoc): EmployeeIdCardPrintDto => ({
-  id: String(row._id),
-  printNumber: row.printNumber,
-  printedAt: row.printedAt.toISOString(),
-  printedBy: row.printedBy === null ? null : String(row.printedBy),
-  withPhoto: row.withPhoto,
-  receivedNumber: row.receivedNumber ?? null,
-  receivedAt: iso(row.receivedAt),
-  receivedBy: idOf(row.receivedBy),
-});
 
 export const employeeIdCardService = {
   /** Everything printed on the card, the full national ID among it — audited, see the top. */

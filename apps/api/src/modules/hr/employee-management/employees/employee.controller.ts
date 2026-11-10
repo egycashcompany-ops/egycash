@@ -29,7 +29,7 @@ import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
 import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
-import { employeeIdCardService } from './employee-id-card';
+import { employeeIdCardService } from './employee-id-card.service';
 
 type IdParam = { id: string };
 

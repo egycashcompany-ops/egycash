@@ -22,7 +22,7 @@ import {
   type MyEmployeeSummaryDto,
   type RehireCheckResultDto,
 } from '@ecms/contracts';
-import { toIdCardSummaryDto } from './employee-id-card';
+import { toIdCardSummaryDto } from './employee-id-card.mapper';
 import {
   type EmployeeDoc,
   type EmployeePersonalData,

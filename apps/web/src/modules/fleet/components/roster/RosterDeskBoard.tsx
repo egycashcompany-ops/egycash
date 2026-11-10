@@ -20,7 +20,8 @@
 // day is a DRAFT until «حفظ» (the board model).
 //
 // CHANGED (approved): ONE drivers panel with two tabs, so «إجراءات» is on the screen (at 1280 the
-// table scrolls inside its frame and the actions column stays pinned); status badges never break
+// table still scrolls inside its frame and the actions column stays pinned; from 1366 the whole
+// table is in its frame — THE LAPTOP below); status badges never break
 // their words; a seat is name + employee code (amber when the driver has a problem); a workshop
 // row says «في الورشة — غير قابلة للتعيين» once; save / cancel live in the unsaved bar at the
 // bottom (edited codes, «تراجع», «إلغاء», «حفظ»); the date reads «الاثنين 2026/11/09 اليوم»;
@@ -76,8 +77,25 @@ const ROW_TINTS = cn(
   '[&_tbody_tr[data-tint=workshop]]:!bg-[#fff1f2] dark:[&_tbody_tr[data-tint=workshop]]:!bg-[#291021] [&_tbody_tr[data-tint=workshop]:hover]:!bg-[#ffe4e6] dark:[&_tbody_tr[data-tint=workshop]:hover]:!bg-[#340d1f]',
 );
 
-/** The seats and the mission select fill their cell: a 6px gutter, not the table's 9px. */
-const TIGHT_CELL = '[&&]:!px-1.5';
+/**
+ * THE LAPTOP (1280–1535px) — «تمام اعتمد», on: «على اللابتوب بس (1366 و1440) أصغّر عرض قائمة
+ * السواقين اللي على الشمال شوية، وأضيّق خانة «نوع المهمة» وعمود «ملاحظات» شوية. كده الجدول كله
+ * يدخل في الشاشة من غير سحب … على 1536 وأكبر الشكل اللي اعتمدته مش هيتغير خالص».
+ *
+ * Every laptop rule is a `max-[1535px]:` variant laid OVER the approved class, never written in
+ * its place: from 1536px up the board renders exactly as approved. The three approved narrowings —
+ * the drivers panel 20rem → 18.25rem, the mission box 9.5rem → 9rem, the notes 5rem → 3.5rem — were
+ * not enough alone (at 1366 the table was 109px wider than its frame), so the laptop also takes
+ * tighter gutters (the seats' 6px → 4px, the other cells' 9px → 6px), an 8px gap beside the panel
+ * and a closer action box: the same pieces, colours and type, only tighter. At 1280 the table still
+ * overflows (its floor is wider than that frame) and scrolls under the pinned «إجراءات».
+ */
+const LAPTOP_GUTTERS = 'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5';
+/** The row's three icons closer together on a laptop (16px → 12px apart, 12px → 8px from the box). */
+const LAPTOP_ACTIONS = 'max-[1535px]:gap-1 max-[1535px]:px-1';
+
+/** The seats and the mission select fill their cell: a 6px gutter (4px on a laptop), not 9px. */
+const TIGHT_CELL = '[&&]:!px-1.5 max-[1535px]:[&&]:!px-1';
 
 /**
  * «إجراءات» pinned to the table's end edge — never the casualty of a narrow screen. The cell takes
@@ -117,14 +135,17 @@ const ROSTER_TABLE = cn(
   '[&_td_[data-seat-state]_button]:!h-auto [&_td_[data-seat-state]_button]:!w-full',
   '[&_td_[data-seat-state]_button[data-seat-bin]]:!h-6 [&_td_[data-seat-state]_button[data-seat-bin]]:!w-5',
   ROW_TINTS,
+  LAPTOP_GUTTERS,
 );
 
 /**
  * The mission select's words in Cairo, as every other select on the boards: the table's cells
  * read figures in Azeret Mono first, whose wide space pushed «نقل أموال (يومي)» past the 9.5rem
- * box sized for Cairo.
+ * box sized for Cairo. On a laptop the box is 9rem: «نقل أموال (يومي)» still whole beside the
+ * chevron, with about 5px to spare.
  */
-const MISSION_BOX = "mx-auto w-[9.5rem] [&_select]:![font-family:'Cairo',ui-sans-serif,sans-serif]";
+const MISSION_BOX =
+  "mx-auto w-[9.5rem] max-[1535px]:w-36 [&_select]:![font-family:'Cairo',ui-sans-serif,sans-serif]";
 
 /** Is the table wider than its frame? (Measured, not guessed from the screen's width.) */
 const useOverflowing = (): [RefObject<HTMLDivElement>, boolean] => {
@@ -330,7 +351,8 @@ export const RosterDeskBoard = ({
         row.notes === null ? (
           DASH
         ) : (
-          <span className="mx-auto block min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance]">
+          // 3.5rem on a laptop, wide enough for «ملاحظات» over it; a longer note takes more lines.
+          <span className="mx-auto block min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.5rem]">
             {row.notes}
           </span>
         ),
@@ -346,7 +368,7 @@ export const RosterDeskBoard = ({
             // «اعملى الالوان دى»: the pen, the swap of the two seats (indigo) and the bin, in the
             // owner's box (`row-actions-look`).
             render: (row: FleetRosterRowDto) => (
-              <span className={ACTION_GROUP} data-row-actions="roster">
+              <span className={cn(ACTION_GROUP, LAPTOP_ACTIONS)} data-row-actions="roster">
                 {/* FR-5: a car the workshop holds cannot be ASSIGNED, but clearing stays legal. */}
                 {!row.inMaintenance && (
                   <button
@@ -450,7 +472,9 @@ export const RosterDeskBoard = ({
           </FilterBar>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4">
+        {/* The drivers panel beside the table: 20rem, 24rem from 1750px, and 18.25rem with an 8px
+            gap on a laptop (THE LAPTOP above). */}
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4">
           <div
             ref={tableBox}
             className={ROSTER_TABLE}

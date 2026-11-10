@@ -325,6 +325,12 @@ const at = (query: string, board: FleetRosterDayDto = FILTERS_BOARD): string =>
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
 
+/**
+ * A car's ROW in that body, by its own mark — not its bare code: the cells' classes hold figures
+ * too (the laptop's `max-[1535px]:` holds «153»), so a bare code could be found in a class.
+ */
+const car = (code: string): string => `data-car="${code}"`;
+
 /** Is this chip drawn as the one being applied? */
 const chipActive = (markup: string, key: string): boolean => {
   const at_ = markup.indexOf(`data-counter="${key}"`);
@@ -368,32 +374,32 @@ describe('the counters filter the board', () => {
 
   it('«إجمالي» shows every row, and is the state with no filter on', () => {
     const body = tbody(at(''));
-    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(car(code));
     expect(chipActive(at(''), 'total'), 'إجمالي is the default').toBe(true);
   });
 
   it('«صيانة» shows only the cars the workshop holds', () => {
     const body = tbody(at('&view=workshop'));
-    expect(body).toContain('151');
-    expect(body).toContain('152');
-    expect(body, 'not the working one').not.toContain('150');
-    expect(body, 'nor the idle one').not.toContain('153');
+    expect(body).toContain(car('151'));
+    expect(body).toContain(car('152'));
+    expect(body, 'not the working one').not.toContain(car('150'));
+    expect(body, 'nor the idle one').not.toContain(car('153'));
   });
 
   it('«تشغيل» shows only the cars carrying a plan', () => {
     const body = tbody(at('&view=assigned'));
-    expect(body).toContain('150');
-    expect(body, 'in the workshop but still carrying a mission').toContain('152');
-    expect(body, 'workshop with no plan').not.toContain('151');
-    expect(body, 'nothing at all').not.toContain('153');
+    expect(body).toContain(car('150'));
+    expect(body, 'in the workshop but still carrying a mission').toContain(car('152'));
+    expect(body, 'workshop with no plan').not.toContain(car('151'));
+    expect(body, 'nothing at all').not.toContain(car('153'));
   });
 
   it('a MISSION chip narrows to that mission — through the dropdown’s own parameter', () => {
     const body = tbody(at(`&mission=${MT}`));
-    expect(body).toContain('150');
-    expect(body).toContain('152');
-    expect(body).not.toContain('151');
-    expect(body).not.toContain('153');
+    expect(body).toContain(car('150'));
+    expect(body).toContain(car('152'));
+    expect(body).not.toContain(car('151'));
+    expect(body).not.toContain(car('153'));
     // One axis, one parameter: the chip writes `mission`, so the select follows it.
     expect(SOURCE, 'no second copy of mission filtering').not.toContain('view: item.id');
   });
@@ -1795,7 +1801,10 @@ describe('the board fits: notes and actions are on screen', () => {
       expect(other, `as ${board} does`).toContain('stickyHead');
     }
     expect(DESK, 'the boards’ dark table').toContain('DARK_TABLE,');
-    expect(DESK, 'a tight gutter for the seats').toContain("const TIGHT_CELL = '[&&]:!px-1.5'");
+    // 6px from 1536px up, as approved; 4px on a laptop («تمام اعتمد» — the laptop fit, below).
+    expect(DESK, 'a tight gutter for the seats').toContain(
+      "const TIGHT_CELL = '[&&]:!px-1.5 max-[1535px]:[&&]:!px-1'",
+    );
   });
 
   it('holds a driver seat to a bounded width and a long note to a short column', () => {
@@ -1820,6 +1829,122 @@ describe('the board fits: notes and actions are on screen', () => {
     expect(cell).toContain('className={MISSION_BOX}');
     expect(DESK).toMatch(/const MISSION_BOX =\s*"mx-auto w-\[9\.5rem\]/u);
     expect(cell).toContain('density="tight"');
+  });
+});
+
+// ── «تمام اعتمد» — the laptop fit (1280–1535px) ─────────────────────────────
+//
+// The owner approved: «على اللابتوب بس (1366 و1440) أصغّر عرض قائمة السواقين اللي على الشمال شوية،
+// وأضيّق خانة «نوع المهمة» وعمود «ملاحظات» شوية. كده الجدول كله يدخل في الشاشة من غير سحب، و«السائق
+// الثاني» و«ملاحظات» يبانوا كاملين. على 1536 وأكبر الشكل اللي اعتمدته مش هيتغير خالص» — «تمام اعتمد».
+//
+// Measured in a browser before the change: the table needed 1021px and its frame gave 912px at
+// 1366×768 and 986px at 1440×900, so «ملاحظات» and part of «السائق الثاني» slid under the pinned
+// «إجراءات». The three named narrowings alone gave back about 60px; the rest came from tighter
+// gutters, gap and action box. After: 939px of table in a 944px frame at 1366, the whole table in
+// its 1018px frame at 1440 — and at 1280 the table's floor still overflows its 858px frame by 81px,
+// where the pinned «إجراءات» and its edge carry on as before. The shots (1366, 1440, 1536, 1920,
+// touch) are the proof of the pixels; these claims pin the rules that make them.
+describe('the laptop fit — «تمام اعتمد»', () => {
+  const LAPTOP = 'max-[1535px]:';
+  /** Every `max-[…px]:` rule written in the given text. */
+  const maxRules = (text: string): string[] => text.match(/max-\[\d+px\]:[^\s'"`]+/gu) ?? [];
+  /** The class list of the first element carrying `marker`, in rendered markup. */
+  const classOf = (markup: string, marker: string): string => {
+    const at = markup.indexOf(marker);
+    if (at === -1) throw new Error(`nothing marked ${marker}`);
+    const tag = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at));
+    // The markup escapes `&` and `>` inside an attribute; the classes are read as written.
+    return (/class="([^"]*)"/u.exec(tag)?.[1] ?? '')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&lt;', '<');
+  };
+
+  it('narrows the three pieces the owner named — the drivers panel, «نوع المهمة», «ملاحظات»', () => {
+    // Each laptop value is written BESIDE the approved one, never in its place.
+    expect(DESK, 'the panel: 20rem → 18.25rem, beside an 8px gap').toContain(
+      'grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4',
+    );
+    expect(DESK, 'the mission box: 9.5rem → 9rem').toMatch(
+      /const MISSION_BOX =\s*"mx-auto w-\[9\.5rem\] max-\[1535px\]:w-36 /u,
+    );
+    expect(DESK, 'the notes’ floor: 5rem → 3.5rem, the 8rem ceiling kept').toContain(
+      'min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.5rem]',
+    );
+  });
+
+  it('keeps «نقل أموال (يومي)» whole in the 9rem box, beside its chevron', () => {
+    // The box's room for words is its width less the select's border (1px a side), its tight
+    // start gutter (`px-2`, 8px) and the chevron's reserve (`pe-6`, 24px) — read from `Select`
+    // itself, so a change there breaks this claim rather than the label. The label is 105.2px
+    // (14px Cairo, semibold — measured), «بدون نوع مهمة» 91px.
+    const FORM = readFileSync(join(HERE, '../../shared/ui/form.tsx'), 'utf8');
+    expect(FORM).toContain("(density === 'tight' ? 'px-2' : 'px-3')");
+    expect(FORM).toContain("density === 'tight' ? 'appearance-none pe-6' : 'appearance-none pe-9'");
+    const at = DESK.indexOf("key: 'mission'");
+    expect(DESK.slice(at, DESK.indexOf("key: 'driver1'")), 'the mission select is tight').toContain(
+      'density="tight"',
+    );
+    const room = 9 * 16 - 2 - 8 - 24;
+    expect(room - 105.2, 'about 5px to spare').toBeGreaterThanOrEqual(4);
+  });
+
+  it('closes up only spacing — gutters, the gap, the action box, the panel’s own padding', () => {
+    expect(DESK, 'the cells’ 9px gutter → 6px').toContain(
+      "const LAPTOP_GUTTERS = 'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5'",
+    );
+    expect(DESK, 'on the roster’s table').toMatch(/ROW_TINTS,\s*LAPTOP_GUTTERS,\s*\);/u);
+    expect(DESK, 'the action box 16px → 12px between its icons').toContain(
+      "const LAPTOP_ACTIONS = 'max-[1535px]:gap-1 max-[1535px]:px-1'",
+    );
+    expect(DESK).toContain(
+      'className={cn(ACTION_GROUP, LAPTOP_ACTIONS)} data-row-actions="roster"',
+    );
+    expect(DESK, 'the panel’s 12px → 8px around the tabs and the search').toContain(
+      'border-b border-slate-200 p-3 max-[1535px]:p-2',
+    );
+    // «السائقون المتاحون (8)» needs about 119px in a tab; the 18.25rem panel's equal tabs give it
+    // 128px once their own gaps close up — and a two-digit count (about 8px more) still fits.
+    expect(DESK, 'the tabs’ own gaps').toContain(
+      '[&_[role=tab]]:!h-9 [&_[role=tab]]:!gap-1 [&_[role=tab]]:!px-1 [&_[role=tab]]:!text-[13px] max-[1535px]:[&_[role=tab]]:!gap-0.5 max-[1535px]:[&_[role=tab]]:!px-0.5 max-[1535px]:[&_[role=tablist]]:!gap-0.5',
+    );
+    // Nothing on a laptop shrinks a word, hides a piece or cuts a text.
+    const rules = maxRules(DESK);
+    expect(rules.length, 'the laptop rules are there').toBeGreaterThanOrEqual(13);
+    for (const rule of rules) {
+      expect(rule, 'one band: 1280–1535px').toMatch(/^max-\[1535px\]:/u);
+      expect(rule, 'no type size, no hiding, no cutting').not.toMatch(
+        /text-|hidden|invisible|truncate|line-clamp|overflow|whitespace|w-0|max-w/u,
+      );
+    }
+  });
+
+  it('never reaches the touch boards or the lists they share', () => {
+    // «على 1536 وأكبر … مش هيتغير خالص» and the phone/tablet boards untouched: the laptop rules
+    // live on the computer's board alone — the shared lists are tightened from the desk panel.
+    const elsewhere = rosterSource(['touch', 'shared', 'shell', 'model'], { raw: true });
+    expect(elsewhere).not.toContain(LAPTOP);
+  });
+
+  it('draws the laptop rules on the board itself, not in dead constants', () => {
+    const markup = render();
+    expect(classOf(markup, 'data-roster-table="true"')).toContain(
+      'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5',
+    );
+    expect(
+      classOf(markup, 'grid min-h-0 flex-1 grid-cols-'),
+      'the grid of table and panel',
+    ).toContain('max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2');
+    expect(classOf(markup, 'data-row-actions="roster"')).toContain('max-[1535px]:gap-1');
+    const mission = missionCell(markup, '150');
+    expect(mission, 'the default board offers a mission select on 150').not.toBe('');
+    const box = markup.slice(0, markup.indexOf(mission));
+    expect(box.slice(box.lastIndexOf('<div class="mx-auto')), 'its box').toContain(
+      'w-[9.5rem] max-[1535px]:w-36',
+    );
+    const panel = markup.slice(markup.indexOf('data-drivers-panel'));
+    expect(panel.slice(0, 2000), 'the panel’s header').toContain('p-3 max-[1535px]:p-2');
   });
 });
 

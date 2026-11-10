@@ -287,9 +287,13 @@ export const DriversPanel = ({
         DESK_CONTROLS,
       )}
     >
-      <div className="shrink-0 space-y-2.5 border-b border-slate-200 p-3 dark:border-slate-800">
-        {/* The approved tabs at a computer's size: 36px, 13px words — both titles whole in 20rem. */}
-        <div className="[&_[role=tab]]:!h-9 [&_[role=tab]]:!gap-1 [&_[role=tab]]:!px-1 [&_[role=tab]]:!text-[13px]">
+      {/* 12px around the tabs and the search; 8px on a laptop, whose panel is 18.25rem
+          (RosterDeskBoard's THE LAPTOP — «تمام اعتمد»). */}
+      <div className="shrink-0 space-y-2.5 border-b border-slate-200 p-3 max-[1535px]:p-2 dark:border-slate-800">
+        {/* The approved tabs at a computer's size: 36px, 13px words — both titles whole in 20rem.
+            In the laptop's 18.25rem the tabs' own gaps close up (4px → 2px) so both titles stay
+            whole on one line, with room for a two-digit count. */}
+        <div className="[&_[role=tab]]:!h-9 [&_[role=tab]]:!gap-1 [&_[role=tab]]:!px-1 [&_[role=tab]]:!text-[13px] max-[1535px]:[&_[role=tab]]:!gap-0.5 max-[1535px]:[&_[role=tab]]:!px-0.5 max-[1535px]:[&_[role=tablist]]:!gap-0.5">
           <DriverTabs
             tab={tab}
             onTab={setTab}

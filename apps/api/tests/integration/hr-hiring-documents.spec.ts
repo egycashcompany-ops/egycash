@@ -674,3 +674,72 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     expect((await call('bulk/open', { offerIds: many })).status).toBe(400);
   });
 });
+
+/**
+ * A27, stage 3 — the checklist is the employee's JOB's: «إقرار حيازة سلاح» is collected from crew
+ * leaders only. A type for chosen jobs is asked of those jobs alone, and a type for no job at all is
+ * refused rather than read as every job.
+ */
+describe('hiring documents — collected by the employee\'s job (A27)', () => {
+  const OTHER_JOB = '64b1f0cccccccccccccccc0f';
+  const mkType = (key: string, jobTitleIds: string[]) =>
+    request(app)
+      .post('/api/v1/hr/hiring-document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ key, name: { ar: key, en: key }, required: true, allJobs: false, jobTitleIds });
+
+  it('asks a job\'s own document of that job only', async () => {
+    expect((await mkType('forNoJob', [])).status).toBe(400);
+    expect((await mkType('otherJobPaper', [OTHER_JOB])).status).toBe(201);
+
+    const emp = await hiredEmployee();
+    const opened = await request(app)
+      .post('/api/v1/hr/hiring-documents/open')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: emp.id });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const set = opened.body.data as HiringDocumentsDto;
+    expect(set.typeKeys).toEqual(expect.arrayContaining(REQUIRED_KEYS));
+    expect(set.typeKeys).not.toContain('otherJobPaper');
+    expect(set.missingRequired).not.toContain('otherJobPaper');
+
+    // A required paper for the employee's own job is asked of it, and holds the completion back.
+    const own = await mkType('ownJobPaper', [emp.employment.jobTitleId]);
+    expect(own.status).toBe(201);
+    const read = async (): Promise<HiringDocumentsDto> =>
+      (
+        await request(app)
+          .get(`/api/v1/hr/hiring-documents/${set.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body.data as HiringDocumentsDto;
+    const withOwn = await read();
+    expect(withOwn.typeKeys).toContain('ownJobPaper');
+    expect(withOwn.missingRequired).toContain('ownJobPaper');
+    const version = await uploadAllRequired(withOwn);
+    const blocked = await request(app)
+      .post(`/api/v1/hr/hiring-documents/${set.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version });
+    expect(blocked.status).toBe(422);
+    expect(JSON.stringify(blocked.body)).toContain('ownJobPaper');
+
+    // Narrowing it to chosen jobs with none chosen is refused; moved to another job, it is not asked.
+    const ownDto = own.body.data as HiringDocumentTypeDto;
+    const emptied = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${ownDto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [], version: ownDto.version });
+    expect(emptied.status).toBe(400);
+    const moved = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${ownDto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [OTHER_JOB], version: ownDto.version });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect((moved.body.data as HiringDocumentTypeDto).jobTitleIds).toEqual([OTHER_JOB]);
+    const done = await request(app)
+      .post(`/api/v1/hr/hiring-documents/${set.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+  });
+});

@@ -58,10 +58,14 @@ describe('toHiringDocumentsDto', () => {
     const doc = baseDoc({
       documents: [item({ typeKey: 'signedContract', fileVersion: 2, fileName: 'contract-v2.pdf', uploadedBy: uploader })],
     });
-    const dto = toHiringDocumentsDto(doc, ['nationalIdCopy']);
+    const dto = toHiringDocumentsDto(doc, {
+      typeKeys: ['signedContract', 'nationalIdCopy', 'personalPhoto'],
+      requiredKeys: ['signedContract', 'nationalIdCopy'],
+    });
     expect(dto.status).toBe('inProgress');
     expect(dto.employeeCode).toBe('EMP-2026-000001');
     expect(dto.missingRequired).toEqual(['nationalIdCopy']);
+    expect(dto.typeKeys).toEqual(['signedContract', 'nationalIdCopy', 'personalPhoto']);
     expect(dto.documents).toHaveLength(1);
     expect(dto.documents[0]).toMatchObject({
       typeKey: 'signedContract',
@@ -77,7 +81,7 @@ describe('toHiringDocumentsDto', () => {
   it('surfaces the completion timestamp once completed', () => {
     const dto = toHiringDocumentsDto(
       baseDoc({ status: 'completed', completedAt: new Date('2026-09-25T00:00:00.000Z') }),
-      [],
+      { typeKeys: [], requiredKeys: [] },
     );
     expect(dto.status).toBe('completed');
     expect(dto.completedAt).toBe('2026-09-25T00:00:00.000Z');

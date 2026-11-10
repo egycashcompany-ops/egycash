@@ -17,7 +17,6 @@ import {
   HrPayrollTemplates,
   type CreateApplicantSource,
   type CreateEvaluationPhase,
-  type CreateHiringDocumentType,
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
@@ -41,7 +40,11 @@ import {
   applicantPortalIdentityResolver,
 } from './recruitment/applicant-portal';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
-import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
+import {
+  ensureHiringDocsCategory,
+  hiringDocumentTypeService,
+  type HiringDocumentTypeSeed,
+} from './recruitment/hiring-documents';
 import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
@@ -238,7 +241,7 @@ const ensureOfferTemplates = async (): Promise<void> => {
 
 // The standard hiring-documents checklist (approved Recruitment spec — 7 documents, ALL required
 // for completion). The set stays admin-configurable thereafter (add / remove / toggle required).
-const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
+const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
   { key: 'employmentContract', name: { en: 'Employment Contract', ar: 'عقد العمل' }, required: true },
   { key: 'employmentAcceptance', name: { en: 'Employment Acceptance Acknowledgment', ar: 'إقرار قبول التعيين' }, required: true },
   { key: 'socialStatusForm', name: { en: 'Social Status Form', ar: 'استمارة الحالة الاجتماعية' }, required: true },

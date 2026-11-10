@@ -1,6 +1,7 @@
-// The per-type document checklist: every active document type with its uploaded file (or a
-// "missing" state), plus download / replace / version-history / upload actions. Required types are
-// flagged; missing required ones are highlighted. Uploads/replaces are gated by the caller.
+// The per-type document checklist: every active document type the employee's job collects, with
+// its uploaded file (or a "missing" state), plus download / replace / version-history / upload
+// actions. Required types are flagged; missing required ones are highlighted. Uploads/replaces are
+// gated by the caller.
 import {
   type HiringDocumentItemDto,
   type HiringDocumentTypeDto,
@@ -23,17 +24,25 @@ export interface DocumentRow {
   doc: HiringDocumentItemDto | null;
 }
 
-/** Merge the active type catalog with the uploaded documents into one ordered checklist. */
-const buildRows = (docs: HiringDocumentsDto, types: HiringDocumentTypeDto[]): DocumentRow[] => {
+/**
+ * Merge the active type catalog with the uploaded documents into one ordered checklist — the types
+ * the employee's JOB collects (`typeKeys`, A27: the crew leader's weapon declaration is asked of
+ * crew leaders only), each with its document or missing.
+ */
+export const buildRows = (docs: HiringDocumentsDto, types: HiringDocumentTypeDto[]): DocumentRow[] => {
   const byType = new Map(docs.documents.map((d) => [d.typeId, d]));
-  const rows: DocumentRow[] = types.map((ty) => ({
-    typeId: ty.id,
-    typeName: ty.name,
-    required: ty.required,
-    doc: byType.get(ty.id) ?? null,
-  }));
-  // Any uploaded documents whose type is no longer active still surface (read-only).
-  const known = new Set(types.map((ty) => ty.id));
+  const mine = new Set(docs.typeKeys);
+  const rows: DocumentRow[] = types
+    .filter((ty) => mine.has(ty.key))
+    .map((ty) => ({
+      typeId: ty.id,
+      typeName: ty.name,
+      required: ty.required,
+      doc: byType.get(ty.id) ?? null,
+    }));
+  // An uploaded document whose type is off this checklist (no longer active, or another job's)
+  // still surfaces (read-only).
+  const known = new Set(rows.map((row) => row.typeId));
   for (const d of docs.documents) {
     if (!known.has(d.typeId)) rows.push({ typeId: d.typeId, typeName: d.typeName, required: d.required, doc: d });
   }

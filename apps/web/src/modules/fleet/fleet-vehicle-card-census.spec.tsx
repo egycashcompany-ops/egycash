@@ -89,7 +89,8 @@ const WIRED: readonly Wired[] = [
     pins: [/<VehicleHoverCode vehicleId=\{row\.vehicleId\} code=\{row\.vehicleCode\} \/>/u],
   },
   {
-    file: 'pages/RosterPage.tsx',
+    // The computer's board — its page (`RosterPage.tsx`) is a shell that only picks the board.
+    file: 'components/roster/RosterDeskBoard.tsx',
     screen: '«تعيين السيارات» — the code column, hover only',
     pins: [
       /<VehicleHoverCode\s+vehicleId=\{row\.vehicleId\}\s+code=\{row\.code\}\s+focusable=\{false\}/u,
@@ -361,7 +362,7 @@ describe('the wired screens: the code cell is the card’s trigger', () => {
 
   it('hover only where the code sits in something that takes clicks or drags', () => {
     for (const file of [
-      'pages/RosterPage.tsx',
+      'components/roster/RosterDeskBoard.tsx',
       'pages/FixedRosterPage.tsx',
       'pages/CustodyPage.tsx',
       'components/FuelCarGroup.tsx',

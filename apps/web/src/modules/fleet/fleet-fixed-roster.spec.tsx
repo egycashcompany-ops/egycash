@@ -31,6 +31,7 @@ import { translate } from '../../platform/localization/i18n';
 import { resolveNavIcon } from '../../platform/navigation/app-icon';
 import { FixedRosterPage } from './pages/FixedRosterPage';
 import { applyEdit, changedRows } from './lib/fixed-roster-board';
+import { rosterSource } from './roster-spec-sources';
 
 /** Real 24-hex ids: the save payload is parsed with the REAL schema, which demands ObjectIds. */
 const V1 = '650000000000000000000001';
@@ -49,7 +50,8 @@ const RAW = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
  * absent, so matching raw source would fail on its own explanation.
  */
 const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-const ROSTER = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8');
+/** The daily roster as written — its page shell, its model, both boards and their parts. */
+const ROSTER = rosterSource(['shell', 'model', 'desk', 'shared', 'touch'], { raw: true });
 
 const row = (
   vehicleId: string,
@@ -94,10 +96,12 @@ const client = (board: FleetFixedRosterDto = BOARD): QueryClient => {
   // HR's directory and no longer need HR's grant.
   qc.setQueryData(
     ['fleet', 'people'],
-    ([
-      [E1, 'HR-1', 'أحمد محمد'],
-      [E2, 'HR-2', 'محمد محمود'],
-    ] as const).map(([employeeId, code, fullNameAr]) => ({
+    (
+      [
+        [E1, 'HR-1', 'أحمد محمد'],
+        [E2, 'HR-2', 'محمد محمود'],
+      ] as const
+    ).map(([employeeId, code, fullNameAr]) => ({
       employeeId,
       code,
       fullNameAr,
@@ -1143,9 +1147,9 @@ describe('saving', () => {
     // The rule now lives in `useDraftBoard`, shared with the daily board. UNCHANGED: keying on
     // identity is still what makes "the server refused, nothing changed" mean "your draft is
     // still here".
-    expect(
-      readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8'),
-    ).toContain('edit.base === saved ? edit.rows');
+    expect(readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8')).toContain(
+      'edit.base === saved ? edit.rows',
+    );
     expect(SOURCE, 'and this page uses it').toContain('useDraftBoard(');
     expect(SOURCE, 'the saved board is a stable reference').toMatch(
       /const saved = useMemo\(\(\) => boardQuery\.data\?\.rows \?\? \[\], \[boardQuery\.data\]\)/,
@@ -1209,11 +1213,18 @@ describe('driver 2 depends on driver 1', () => {
     expect(SOURCE, 'the gate exists').toContain(
       "const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null",
     );
-    expect(SOURCE, 'and both handlers ride it').toContain('const droppable = mayPlan && !needsFirst');
-    const cell = SOURCE.slice(SOURCE.indexOf('const CrewSlotCell'), SOURCE.indexOf('export const FixedRosterPage'));
+    expect(SOURCE, 'and both handlers ride it').toContain(
+      'const droppable = mayPlan && !needsFirst',
+    );
+    const cell = SOURCE.slice(
+      SOURCE.indexOf('const CrewSlotCell'),
+      SOURCE.indexOf('export const FixedRosterPage'),
+    );
     const overAt = cell.indexOf('onDragOver');
     const dropAt = cell.indexOf('onDrop=');
-    expect(cell.slice(overAt, overAt + 120), 'dragover is gated').toContain('if (!droppable) return');
+    expect(cell.slice(overAt, overAt + 120), 'dragover is gated').toContain(
+      'if (!droppable) return',
+    );
     expect(cell.slice(dropAt, dropAt + 120), 'and so is drop').toContain('if (!droppable) return');
   });
 
@@ -1372,7 +1383,9 @@ describe('the fixed draft is persisted', () => {
     // `fleet_fixed_crews` is one standing row per vehicle, with no date, weekday or effective
     // range anywhere in it. A date key here would split one board's draft across a key per day,
     // so a reader would lose their work by doing nothing but waiting past midnight.
-    expect(SOURCE).toContain('useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS)');
+    expect(SOURCE).toContain(
+      'useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS)',
+    );
     const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
     expect(storage).toContain("FIXED_ROSTER_DRAFT_KEY = 'ecms.fleet.fixedRoster.draft'");
     expect(storage, 'and the constant carries no date').not.toMatch(
@@ -1472,19 +1485,22 @@ describe('a car edited and not yet saved is tinted here too', () => {
 describe('the standing board wears the daily board’s bar', () => {
   const SOURCE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
   const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  const DAILY = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
+  /**
+   * The DAILY board on a computer, as code. Since «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده
+   * ك ui و شيل الفلتر بتاع كل المهمات اللى جمب كود السيارة بس وسيب الباقى» it wears the new Fleet
+   * boards' dark FilterBar, so the strip claims below are the STANDING board's own; what the pair
+   * still shares is asserted on both.
+   */
+  const DAILY = rosterSource(['shell', 'model', 'desk', 'shared']);
 
   it('drops the shared FilterBar for the daily board’s own strip', () => {
     expect(CODE, 'no FilterBar left').not.toContain('<FilterBar');
     expect(CODE, 'nor its import').not.toContain("from '../../../shared/ui/FilterBar'");
-    expect(CODE, 'the strip the daily board uses').toContain(
+    expect(CODE, 'the strip the daily board used').toContain(
       'className="mb-4 flex flex-wrap items-center gap-1.5"',
     );
-    expect(DAILY, 'which is the same strip').toContain(
-      'mb-4 flex flex-wrap items-center gap-1.5',
-    );
+    // The daily board has moved on to the new boards' bar (the owner's request, above).
+    expect(DAILY, 'the daily board wears the new boards’ bar').toContain('<FilterBar');
   });
 
   it('gives the strip the WHOLE PAGE, above the grid — as the daily board does', () => {
@@ -1495,11 +1511,9 @@ describe('the standing board wears the daily board’s bar', () => {
     //
     // Proved by POSITION in the source, which is the only thing a suite with no layout engine can
     // read honestly: the strip must open before the grid does, not inside the column the grid
-    // opens. Both boards, so neither can drift back on its own.
-    for (const [name, source] of [
-      ['fixed', CODE],
-      ['daily', DAILY],
-    ] as const) {
+    // opens. The daily board's bar (the new boards' FilterBar) is above its grid too — asserted in
+    // the daily spec.
+    for (const [name, source] of [['fixed', CODE]] as const) {
       const strip = source.indexOf('mb-4 flex flex-wrap items-center gap-1.5');
       // The board grid's opening, whatever its gutter: the daily board's is `gap-3` since the
       // pools took a fixed width so «ملاحظات» and «إجراءات» fit beside them.
@@ -1541,7 +1555,9 @@ describe('the standing board wears the daily board’s bar', () => {
     // the tag cannot be cut at the first one.
     const chip = CODE.slice(CODE.lastIndexOf('<', at), CODE.indexOf('className=', at));
     expect(chip, 'a button, not a span').toContain('<button');
-    expect(chip, 'that says whether it is the one applied').toContain('aria-pressed={counter.active}');
+    expect(chip, 'that says whether it is the one applied').toContain(
+      'aria-pressed={counter.active}',
+    );
     expect(chip, 'and applies its own target').toContain('onClick={() => patch(counter.apply)}');
   });
 
@@ -1561,7 +1577,9 @@ describe('the standing board wears the daily board’s bar', () => {
     );
     const width = (code: string): string | undefined =>
       /<div className="(w-\d+)">\s*<CatalogMultiSelect\s+kind="missionType"/.exec(code)?.[1];
-    expect(width(CODE), 'the same box as the daily board').toBe(width(DAILY));
+    // The daily board no longer has this select beside its code — «شيل الفلتر بتاع كل المهمات
+    // اللى جمب كود السيارة بس» — so the width is the standing board's own.
+    expect(DAILY, 'gone from the daily computer board').not.toContain('<CatalogMultiSelect');
     // Narrowed from `w-44` so the sixteen chips fit beside it on ONE line — «حتى لو هتصغر كود
     // السيارة شويه». 144px still holds «كل المهمات» with room to spare.
     expect(width(CODE)).toBe('w-36');
@@ -1582,11 +1600,9 @@ describe('the standing board wears the daily board’s bar', () => {
     // pair itself: `ms-auto` pushes to the end of the LAST line, so a strip that overflows drops
     // the pair onto a row of its own — which is what this board did, carrying one counter more
     // than the daily one. And the box does not wrap either, or one chip still costs the strip a
-    // second line. Pinned on BOTH boards, because the point is that they match.
-    for (const [name, body] of [
-      ['fixed', stripOf(CODE)],
-      ['daily', stripOf(DAILY)],
-    ] as const) {
+    // second line. The daily board's save is in its floating unsaved bar now («اعتمد» on D1), so
+    // this is the standing board's own.
+    for (const [name, body] of [['fixed', stripOf(CODE)]] as const) {
       expect(body, `${name}: the chips live in a box of their own, and it does not wrap`).toContain(
         '-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1',
       );
@@ -1601,13 +1617,18 @@ describe('the standing board wears the daily board’s bar', () => {
 
   it('carries the daily board’s reset, offered only when there is something to undo', () => {
     expect(CODE).toContain('data-reset-filters="true"');
-    expect(DAILY, 'the same hook on the twin').toContain('data-reset-filters="true"');
+    // The daily board's reset is the new boards' own now — the FilterBar's, told what is filtered.
+    expect(DAILY, 'the twin keeps a reset on the same rule').toContain(
+      '<FilterBar hasActiveFilters={m.filtered} onClear={resetFilters}>',
+    );
     const at = CODE.indexOf('data-reset-filters');
     expect(CODE.slice(Math.max(0, at - 400), at), 'gated on an active filter').toContain(
       'filtered &&',
     );
     // …and «an active filter» is any of the three, not the code search alone.
-    expect(CODE).toContain("const filtered = search !== '' || missions.length > 0 || view !== null;");
+    expect(CODE).toContain(
+      "const filtered = search !== '' || missions.length > 0 || view !== null;",
+    );
   });
 
   it('gives the car picker the same width the daily board gives it', () => {
@@ -1615,7 +1636,10 @@ describe('the standing board wears the daily board’s bar', () => {
     // the whole strip holds one line: «حتى لو هتصغر كود السيارة شويه».
     const width = (code: string): string | undefined =>
       code.slice(code.indexOf('<VehicleCodeFilter')).match(/className="([^"]+)"/)?.[1];
-    expect(width(CODE)).toBe(width(DAILY));
+    // The daily board's picker sits in the new boards' icon box (`FilterWithIcon`), as on
+    // Accidents — «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui» — so the 160px box is
+    // the standing board's own.
+    expect(DAILY).toContain('<FilterWithIcon');
     expect(width(CODE)).toContain('w-40');
   });
 
@@ -1631,8 +1655,14 @@ describe('the standing board wears the daily board’s bar', () => {
    * the gap to the first chip 6px, the same as every other gap.
    */
   it('makes the picker fill its box, on BOTH boards', () => {
-    for (const [name, code] of [['standing', CODE], ['daily', DAILY]] as const) {
-      const mount = code.slice(code.indexOf('<VehicleCodeFilter'), code.indexOf('/>', code.indexOf('<VehicleCodeFilter')));
+    for (const [name, code] of [
+      ['standing', CODE],
+      ['daily', DAILY],
+    ] as const) {
+      const mount = code.slice(
+        code.indexOf('<VehicleCodeFilter'),
+        code.indexOf('/>', code.indexOf('<VehicleCodeFilter')),
+      );
       expect(mount, `${name} board`).toContain('fullWidth');
     }
   });
@@ -1786,9 +1816,10 @@ describe('the counters filter the standing board', () => {
     expect(both).toContain('152');
     expect(both, 'uncrewed without the mission').not.toContain('151');
     expect(both, 'the mission with a crew').not.toContain('150');
-    expect(tbody(at(`?view=uncrewed&mission=${MT}&q=151`)), 'a contradiction shows nothing').not.toContain(
-      '152',
-    );
+    expect(
+      tbody(at(`?view=uncrewed&mission=${MT}&q=151`)),
+      'a contradiction shows nothing',
+    ).not.toContain('152');
   });
 
   it('ignores a view it does not know instead of emptying the board', () => {
@@ -1812,9 +1843,10 @@ describe('the counters count the BOARD, never the filtered rows', () => {
     const unfiltered = at('');
     const totals = ['total', 'crewed', 'uncrewed', MT].map((k) => shown(unfiltered, k));
     for (const query of ['?view=crewed', '?view=uncrewed', `?mission=${MT}`, '?q=150']) {
-      expect(['total', 'crewed', 'uncrewed', MT].map((k) => shown(at(query), k)), query).toEqual(
-        totals,
-      );
+      expect(
+        ['total', 'crewed', 'uncrewed', MT].map((k) => shown(at(query), k)),
+        query,
+      ).toEqual(totals);
     }
   });
 

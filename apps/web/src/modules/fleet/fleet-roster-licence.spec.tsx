@@ -28,11 +28,10 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
+import { rosterSource } from './roster-spec-sources';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SOURCE = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8')
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\/\/[^\n]*/g, '');
+/** The desktop page's CODE — its shell, its model, the computer's board and the shared parts. */
+const SOURCE = rosterSource(['shell', 'model', 'desk', 'shared']);
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -240,9 +239,10 @@ describe('the three rule views — where the dashboard’s links land', () => {
   it('offers each as a chip with the day’s count', () => {
     const markup = render();
     expect(chip(markup, 'ready')).toContain(t('fleet.roster.counter.ready'));
-    expect(chip(markup, 'ready'), '150, 151, 152 and 155').toContain('٤');
-    expect(chip(markup, 'unmanned'), '151, 152, 155').toContain('٣');
-    expect(chip(markup, 'crewGap'), 'only the absence').toContain('١');
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(chip(markup, 'ready'), '150, 151, 152 and 155').toContain('4');
+    expect(chip(markup, 'unmanned'), '151, 152, 155').toContain('3');
+    expect(chip(markup, 'crewGap'), 'only the absence').toContain('1');
   });
 
   it('view=ready shows the cars the server marked assignable', () => {
@@ -305,15 +305,18 @@ describe('the available panel — «منهم رخصة منتهية N»', () => {
     const markup = render();
     expect(markup, 'the free driver is in the list').toContain(`data-driver-card="${E.free}"`);
     expect(markup, 'the flagged one is not').not.toContain(`data-driver-card="${E.expiredFree}"`);
-    const heading = markup.slice(markup.indexOf(t('fleet.roster.availableTitle')));
-    expect(heading.slice(0, heading.indexOf('</h2>')), 'one unseated licensed driver').toContain(
-      '(١)',
-    );
+    // «اعتمد» on D1: the count sits in the «السائقون المتاحون» TAB of the one drivers panel, in a
+    // Latin digit.
+    const at = markup.indexOf('data-driver-tab="available"');
+    const tab = markup.slice(at, markup.indexOf('</button>', at));
+    expect(tab).toContain(t('fleet.roster.availableTitle'));
+    expect(tab, 'one unseated licensed driver').toContain('>1<');
   });
 
   it('lists every licence-expired driver of the day under it, seated or not', () => {
     const panel = section(render(), 'data-licence-expired-panel="true"');
-    expect(panel).toContain(t('fleet.roster.expiredLicence.title', { count: '٢' }));
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(panel).toContain(t('fleet.roster.expiredLicence.title', { count: '2' }));
     expect(panel).toContain(`data-licence-expired-driver="${E.expiredFree}"`);
     expect(panel).toContain(`data-licence-expired-driver="${E.expiredSeated}"`);
     expect(panel, 'the seated one says where').toContain(
@@ -341,7 +344,7 @@ describe('the available panel — «منهم رخصة منتهية N»', () => {
     );
     expect(panel).toContain(`href="/fleet/drivers?licExpBefore=${DATE}"`);
     expect(panel).toContain(`href="/fleet/vehicles?status=active&amp;licExpBefore=${DATE}"`);
-    expect(panel).toContain(t('fleet.roster.expiredLicence.vehiclesLink', { count: '١' }));
+    expect(panel).toContain(t('fleet.roster.expiredLicence.vehiclesLink', { count: '1' }));
   });
 
   it('offers each check only with its own screen’s guard — the roster’s opens neither', () => {
@@ -364,6 +367,21 @@ describe('the available panel — «منهم رخصة منتهية N»', () => {
     expect(markup).toContain(`data-reason-filter="licenceExpired"`);
     expect(t('fleet.roster.reason.licenceExpired')).not.toBe('fleet.roster.reason.licenceExpired');
   });
+
+  it('stays gone after «حفظ» — the saved day keeps the rule it was derived under', () => {
+    // The save writes the server's answer into the day's cache. Written without `licenceRule`,
+    // the board read the rule as «not refuse» and drew the block again until the next refetch.
+    const queries = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'api/fleet-queries.ts'),
+      'utf8',
+    );
+    const save = queries.slice(
+      queries.indexOf('export const usePlanRoster'),
+      queries.indexOf('onError:', queries.indexOf('export const usePlanRoster')),
+    );
+    expect(save).toContain('licenceRule: board.licenceRule');
+    expect(render('', REFUSE_BOARD)).not.toContain('data-licence-expired-panel="true"');
+  });
 });
 
 describe('the unavailable panel — per-reason subtotals and the reason filter', () => {
@@ -375,7 +393,8 @@ describe('the unavailable panel — per-reason subtotals and the reason filter',
     expect(leave).toBeGreaterThan(tam);
     const leaveChip = markup.slice(leave, markup.indexOf('</button>', leave));
     expect(leaveChip).toContain(t('fleet.roster.reason.hrLeave'));
-    expect(leaveChip).toContain('٢');
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(leaveChip).toContain('>2<');
   });
 
   it('unavailable=hrLeave shows the leave only, and presses its chip', () => {
@@ -405,14 +424,17 @@ describe('the unavailable panel — per-reason subtotals and the reason filter',
     expect(at, 'the asked reason has its chip').toBeGreaterThan(-1);
     const chip = markup.slice(at, markup.indexOf('</button>', at));
     expect(chip).toContain('aria-pressed="true"');
-    expect(chip).toContain('٠');
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(chip).toContain('>0<');
     expect(markup).not.toContain(`data-unavailable-driver="${E.absent}"`);
     expect(markup).toContain(t('fleet.roster.reasonFilterEmpty'));
     expect(markup).not.toContain(t('fleet.fixedRoster.driverSearchEmpty'));
-    // «إعادة ضبط» is offered, and takes the reasons off with the other filters.
-    expect(markup).toContain('data-reset-filters="true"');
+    // «إعادة ضبط» is offered, and takes the reasons off with the other filters — the new boards'
+    // own reset, the FilterBar's, at the end of the dark bar.
+    const reset = `aria-label="${t('common.filters.clear')}"`;
+    expect(markup).toContain(reset);
     expect(SOURCE).toContain('patch({ q: null, mission: null, view: null, unavailable: null })');
-    expect(render('', board)).not.toContain('data-reset-filters="true"');
+    expect(render('', board)).not.toContain(reset);
   });
 
   it('is a REMEMBERED filter, written through the URL', () => {

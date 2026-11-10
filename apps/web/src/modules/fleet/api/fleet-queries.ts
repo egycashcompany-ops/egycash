@@ -709,6 +709,9 @@ export const usePlanRoster = () => {
         rows: board.rows,
         availableDrivers: board.availableDrivers,
         unavailableDrivers: board.unavailableDrivers,
+        // The rule the answer was derived under: without it a save in refuse mode drew the
+        // licence block («منهم رخصة منتهية») again until the next refetch.
+        ...(board.licenceRule === undefined ? {} : { licenceRule: board.licenceRule }),
       } satisfies FleetRosterDayDto);
     },
     onError: () => void qc.invalidateQueries({ queryKey: fleetKeys.roster }),

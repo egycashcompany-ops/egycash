@@ -23,11 +23,21 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
 import { filterDrivers } from './lib/driver-search';
+import { rosterSource } from './roster-spec-sources';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const RAW = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8');
-/** The page's CODE — the header explains the rules at length and would match either way. */
-const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+/**
+ * The screen is no longer one file: a page shell, one board model, the computer's board and the
+ * parts both boards share («شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui»). `RAW` is every
+ * file of it as written; `SOURCE` is "the desktop page" — what `<RosterPage/>` draws without a window
+ * — as CODE, the headers explaining the rules at length would match either way.
+ */
+const RAW = rosterSource(['shell', 'model', 'desk', 'shared', 'touch'], { raw: true });
+const SOURCE = rosterSource(['shell', 'model', 'desk', 'shared']);
+/** The computer's board alone, for claims about the table, its cells and its panel. */
+const DESK = rosterSource(['desk']);
+/** The board model alone (`useRosterBoard`) — the draft, the edits and the save. */
+const MODEL = rosterSource(['model']);
 const VIEW_SOURCE = readFileSync(join(HERE, 'lib/roster-view.ts'), 'utf8');
 const SERVICE = readFileSync(
   join(HERE, '../../../../api/src/modules/fleet/roster/roster.service.ts'),
@@ -262,10 +272,18 @@ describe('the day’s counters', () => {
 
   it('reports what the board actually holds', () => {
     const markup = render();
-    // 2 vehicles, 1 in the workshop, 1 carrying a plan.
-    const strip = markup.slice(markup.indexOf('data-counter="total"'), markup.indexOf('</table>'));
-    expect(strip).toContain('٢');
-    expect(strip).toContain('١');
+    // 2 vehicles, 1 in the workshop, 1 carrying a plan — in LATIN digits, as the approved computer
+    // board prints every figure («اعتمد» on D1, «14 سيارة» and the chips in Latin digits).
+    const chip = (key: string): string => {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      return markup.slice(idx, markup.indexOf('</button>', idx));
+    };
+    expect(chip('total')).toContain('>2<');
+    expect(chip('workshop')).toContain('>1<');
+    expect(chip('assigned')).toContain('>1<');
+    expect(markup.slice(markup.indexOf('data-counter="total"')), 'no Eastern digit').not.toMatch(
+      /[٠-٩]/u,
+    );
   });
 });
 
@@ -388,7 +406,7 @@ describe('the counters filter the board', () => {
       const tag = markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('>', idx) + 1);
       // Everything the ACTIVE state adds, removed — what is left is the chip's own colour.
       return (/class="([^"]*)"/.exec(tag)?.[1] ?? '')
-        .replace(/ring-2 ring-offset-1|ring-0|dark:ring-offset-slate-900/g, '')
+        .replace(/ring-2 ring-offset-1 ring-offset-white dark:ring-offset-\[#111827\]|ring-0/g, '')
         .replace(/\s+/g, ' ')
         .trim();
     };
@@ -448,17 +466,30 @@ describe('the counters count the DAY, never the filtered rows', () => {
   it('counts the whole day even when the table shows one row', () => {
     const markup = at('&q=153');
     expect(tbody(markup), 'the table is narrowed').not.toContain('151');
-    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('٤');
-    expect(shown(markup, 'workshop'), 'صيانة still counts two').toContain('٢');
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('4');
+    expect(shown(markup, 'workshop'), 'صيانة still counts two').toContain('2');
   });
 });
 
 describe('Reset', () => {
   it('is offered only when something is filtered', () => {
-    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
+    // The reset is the new boards' own — the FilterBar's red button at the end of the dark bar
+    // («شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui») — and keeps its rule: only when
+    // something is filtered.
+    const reset = `aria-label="${t('common.filters.clear')}"`;
+    const bar = (markup: string): string => {
+      const from = markup.indexOf('data-roster-filters');
+      expect(from, 'the filter bar').toBeGreaterThan(-1);
+      return markup.slice(from, markup.indexOf('data-roster-table', from));
+    };
+    expect(bar(at('')), 'nothing to undo').not.toContain(reset);
     for (const query of ['&q=150', `&mission=${MT}`, '&view=workshop', '&view=assigned']) {
-      expect(at(query), query).toContain('data-reset-filters');
+      expect(bar(at(query)), query).toContain(reset);
     }
+    expect(SOURCE, 'the bar is told what is filtered').toContain(
+      '<FilterBar hasActiveFilters={m.filtered} onClear={resetFilters}>',
+    );
   });
 
   it('clears q, mission, view and the unavailable reasons together — and leaves the DAY alone', () => {
@@ -489,9 +520,17 @@ describe('a car the workshop holds is red, whole', () => {
   };
 
   it('tints the row, not just a badge', () => {
+    // The ROW carries the tint, by its own mark — and the board's table paints it the workshop's
+    // rose, OPAQUE: the pinned «إجراءات» cell takes its row's colour, and a see-through rose would
+    // show the seats scrolling under it at 1280px (approved D1 / D3, «اعتمد»).
     const markup = at('');
-    expect(rowOf(markup, '151'), 'the workshop’s car').toContain('bg-rose-50');
-    expect(rowOf(markup, '151'), 'and dark mode too').toContain('dark:bg-rose-950/40');
+    expect(rowTag(markup, '151'), 'the workshop’s car').toContain('data-tint="workshop"');
+    expect(DESK, 'rose, laid over the board').toContain(
+      '[&_tbody_tr[data-tint=workshop]]:!bg-[#fff1f2]',
+    );
+    expect(DESK, 'and dark mode too').toContain(
+      'dark:[&_tbody_tr[data-tint=workshop]]:!bg-[#291021]',
+    );
   });
 
   /**
@@ -505,8 +544,8 @@ describe('a car the workshop holds is red, whole', () => {
 
   it('leaves an ordinary car alone', () => {
     const markup = at('');
-    expect(rowTag(markup, '150')).not.toContain('bg-rose-50');
-    expect(rowTag(markup, '153')).not.toContain('bg-rose-50');
+    expect(rowTag(markup, '150')).not.toContain('data-tint');
+    expect(rowTag(markup, '153')).not.toContain('data-tint');
   });
 
   it('reads `inMaintenance`, never the registry’s `inWorkshop`', () => {
@@ -520,15 +559,17 @@ describe('a car the workshop holds is red, whole', () => {
   it('does not treat a mere ASSIGNMENT as the workshop', () => {
     // 150 carries a mission and a driver and is not in the workshop; 153 is stored-but-empty.
     const markup = at('');
-    expect(rowTag(markup, '150'), 'a plan is not a workshop visit').not.toContain('rose');
-    expect(rowOf(markup, '152'), 'and a car with both is still red').toContain('bg-rose-50');
+    expect(rowTag(markup, '150'), 'a plan is not a workshop visit').not.toContain('data-tint');
+    expect(rowTag(markup, '152'), 'and a car with both is still red').toContain(
+      'data-tint="workshop"',
+    );
   });
 
   it('keeps the tint under every filter', () => {
     for (const query of ['', '&view=workshop', `&mission=${MT}`, '&q=152']) {
       const markup = at(query);
       if (!tbody(markup).includes('152')) continue;
-      expect(rowOf(markup, '152'), query).toContain('bg-rose-50');
+      expect(rowTag(markup, '152'), query).toContain('data-tint="workshop"');
     }
   });
 
@@ -665,7 +706,8 @@ describe('the assignment badge needs a DRIVER, not a mission', () => {
 
   it('uses `hasDriver`, and leaves «تشغيل» on `carriesPlan`', () => {
     // Two facts, two names. Folding them would make the badge and the counter agree by accident.
-    expect(SOURCE).toContain('hasDriver(row) && <Badge');
+    // The badge is the computer's status cell now, one badge per line (prettier wraps it).
+    expect(DESK).toMatch(/hasDriver\(row\) && \(?\s*<Badge/u);
     expect(SOURCE, 'the counter is untouched').toContain('shown.filter(carriesPlan).length');
     expect(VIEW_SOURCE, 'and the two predicates stay separate').toContain('export const hasDriver');
   });
@@ -679,10 +721,11 @@ describe('neither change reaches the filters, the counters or the save', () => {
       const tag = markup.slice(idx, markup.indexOf('</button>', idx));
       return tag.slice(tag.lastIndexOf('<span'), tag.lastIndexOf('</span>'));
     };
-    // 4 vehicles: 2 in the workshop, 2 carrying a plan (150 and 152, one of them crewless).
-    expect(shown('total')).toContain('٤');
-    expect(shown('workshop')).toContain('٢');
-    expect(shown('assigned'), '«تشغيل» still counts a mission, badge or no badge').toContain('٢');
+    // 4 vehicles: 2 in the workshop, 2 carrying a plan (150 and 152, one of them crewless) — in
+    // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
+    expect(shown('total')).toContain('4');
+    expect(shown('workshop')).toContain('2');
+    expect(shown('assigned'), '«تشغيل» still counts a mission, badge or no badge').toContain('2');
   });
 
   it('leaves the filters narrowing exactly as they did', () => {
@@ -699,7 +742,7 @@ describe('neither change reaches the filters, the counters or the save', () => {
   it('leaves the workshop row red and the drop still refused', () => {
     const body = tbody(at(''));
     const row151 = body.split('<tr').find((r) => r.includes('151')) ?? '';
-    expect(row151).toContain('bg-rose-50');
+    expect(row151.slice(0, row151.indexOf('>'))).toContain('data-tint="workshop"');
     expect(SOURCE).toContain('const droppable = mayPlan && !row.inMaintenance && !needsFirst');
   });
 });
@@ -729,8 +772,9 @@ describe('a filter never reaches what is SAVED', () => {
     expect(SOURCE, 'one filtered list, used for the table').toContain(
       'visibleRows(shown, { term: search, missions, view })',
     );
+    // The model names it `plain` and hands it to touch's re-flagging; the computer shows it as is.
     expect(SOURCE, 'and the draft is what an editable day shows').toContain(
-      'const shown = editable ? draft : saved',
+      'const plain = editable ? draft : saved',
     );
     expect(SOURCE, 'the pool still reads the whole board').toContain(
       'availableDrivers(board?.availableDrivers ?? [], shown)',
@@ -741,8 +785,16 @@ describe('a filter never reaches what is SAVED', () => {
 // ── 4. the two driver lists ─────────────────────────────────────────────────
 
 describe('the driver lists', () => {
-  it('stands them side by side, not one under the other — and both reach the screen’s end', () => {
-    expect(SOURCE, 'two columns').toContain('grid-cols-2');
+  it('holds both halves in ONE panel of two tabs — and the panel reaches the screen’s end', () => {
+    // «اعتمد» on D1: the two side-by-side columns took «إجراءات» off the screen, so the computer's
+    // board holds them in ONE panel with two tabs («السائقون المتاحون» / «غير المتاحين»), both
+    // lists in the page (the other one hidden).
+    expect(DESK, 'one panel').toContain('data-drivers-panel="true"');
+    const markup = render();
+    const panel = markup.slice(markup.indexOf('data-drivers-panel'));
+    expect(panel.match(/role="tab"/g)?.length, 'two tabs').toBe(2);
+    expect(panel.match(/role="tabpanel"/g)?.length, 'both lists in the page').toBe(2);
+    expect(DESK, 'two columns no more').not.toContain('grid-cols-2');
     // THE HEIGHT IS INHERITED, not computed. Three shapes have been tried here: a fixed
     // `max-h-[26rem]` (416px of list with its own scrollbar and a quarter of the page blank
     // underneath), then `sticky top-4` + `max-h-[calc(100vh-2rem)]` (bounded by the viewport but
@@ -750,13 +802,14 @@ describe('the driver lists', () => {
     // page itself is exactly the shell's height and hands that down.
     expect(SOURCE, 'the page is the screen').toContain('<PageContainer fullHeight>');
     expect(SOURCE, 'and the board grid takes that height').toContain(
-      'grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_26rem]',
+      'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem]',
     );
-    expect(SOURCE, 'the list takes what is left').toContain('min-h-0 flex-1 space-y-1');
+    expect(SOURCE, 'the list takes what is left').toContain(
+      "const LIST_SCROLL = 'min-h-0 flex-1 overflow-y-auto overscroll-contain'",
+    );
     expect(SOURCE, 'and no fixed box remains').not.toContain('max-h-[26rem]');
     expect(SOURCE, 'nor any viewport arithmetic').not.toContain('max-h-[calc(100vh-2rem)]');
     expect(SOURCE, 'and nothing is pinned by scrolling any more').not.toContain('sticky top-4');
-    const markup = render();
     expect(markup).toContain(t('fleet.roster.availableTitle'));
     expect(markup).toContain(t('fleet.roster.unavailableTitle'));
   });
@@ -817,15 +870,16 @@ describe('the driver lists', () => {
 // ── 5. dropping onto the board ──────────────────────────────────────────────
 
 describe('assigning by drag', () => {
-  const CELL = SOURCE.slice(
-    SOURCE.indexOf('const RosterSlotCell = ('),
-    SOURCE.indexOf('export const RosterPage'),
-  );
+  /** The computer's seat — its own module now (`roster-desk-cells.tsx`), to the end of the file. */
+  const CELLS = rosterSource(['desk']).slice(DESK.indexOf('\nexport const DASH'));
+  const CELL = CELLS.slice(CELLS.indexOf('export const SeatCell = ('));
 
   it('declares the slot cell at module level — the drag-cancelling bug is not repeated', () => {
+    // Over EVERY file of the screen, both boards: a component written inside another is a new
+    // element type on every render, and a drag in flight dies with its node.
     const inner = [...RAW.matchAll(/\n[ \t]+const ([A-Z]\w*) = \(/g)].map((m) => m[1]);
     expect(inner, `rebuilt every render: ${inner.join(', ')}`).toEqual([]);
-    expect(SOURCE).toContain('\nconst RosterSlotCell = (');
+    expect(SOURCE).toContain('\nexport const SeatCell = (');
   });
 
   it('refuses to be a drop target when the vehicle is in the workshop', () => {
@@ -839,18 +893,32 @@ describe('assigning by drag', () => {
   });
 
   it('asks for no click before the drag', () => {
-    const chip = CELL.slice(CELL.indexOf('draggable={mayPlan}'));
+    // The seat's person is the drag handle (`SeatPerson`, handed `draggable={mayPlan}`).
+    expect(CELL).toContain('draggable={mayPlan}');
+    const at = CELLS.indexOf('draggable={draggable}');
+    expect(at, 'the handle').toBeGreaterThan(-1);
+    const chip = CELLS.slice(at);
     expect(chip.slice(0, 400)).not.toContain('onClick');
     expect(chip.slice(0, 400)).not.toContain('onDoubleClick');
   });
 
   it('edits the DRAFT — a drop persists nothing on its own', () => {
-    const drop = SOURCE.slice(
-      SOURCE.indexOf('const dropDriver ='),
-      SOURCE.indexOf('const commit ='),
+    // The board hands the drop to the model; the model's every edit lands on the draft.
+    const drop = DESK.slice(
+      DESK.indexOf('const dropDriver ='),
+      DESK.indexOf('const applyDialog ='),
     );
-    expect(drop, 'the drop edits local state').toContain('setDraft(');
+    expect(drop, 'the drop is an assign').toContain('m.actions.assign(');
     expect(drop, 'and does not save').not.toContain('mutateAsync');
+    const edit = MODEL.slice(
+      MODEL.indexOf('const edit = useCallback('),
+      MODEL.indexOf('const commit ='),
+    );
+    expect(edit, 'the drop edits local state').toContain('setDraft(');
+    expect(edit, 'and does not save').not.toContain('mutateAsync');
+    expect(edit, 'through the board function').toContain(
+      'assignDriver(rows, target.vehicleId, target.slot, employeeId)',
+    );
   });
 
   it('commits through the EXISTING plan mutation, not a new path', () => {
@@ -920,7 +988,11 @@ describe('the daily draft and its Save', () => {
     // An effect runs after the first paint — the board would flash — and never runs at all under
     // `renderToStaticMarkup`, which is how this file tests the screen. A draft seeded by an
     // effect would therefore be untestable here and visibly wrong in a browser.
-    expect(SOURCE, 'no effect seeds the draft').not.toContain('useEffect');
+    // The page and its model: the computer's board measures its table in an effect (is it wider
+    // than its frame?), which seeds nothing.
+    expect(rosterSource(['shell', 'model']), 'no effect seeds the draft').not.toContain(
+      'useEffect',
+    );
   });
 
   it('offers Save and Cancel, and both are dead until something changes', () => {
@@ -931,10 +1003,13 @@ describe('the daily draft and its Save', () => {
       buttonDisabled(markup, `>${t('common.cancel')}<`),
       'nothing edited, so nothing to discard',
     ).toBe(true);
-    expect(SOURCE, 'the save is gated on real changes').toContain('disabled={!dirty}');
+    // «اعتمد» on D1: «حفظ / إلغاء» live in the unsaved bar floating at the bottom, and the BAR is
+    // what real changes gate — there is no «حفظ» to disable while nothing would be written.
+    expect(DESK, 'the save is gated on real changes').toContain('mayPlan && m.dirty && (');
     expect(SOURCE, 'and the cancel is gated on real EDITS').toContain(
-      'disabled={!edited || plan.isPending}',
+      'disabled={!edited || saving}',
     );
+    expect(DESK, 'busy while the save is in flight').toContain('saving={m.saving}');
     expect(markup, 'both buttons are offered').toContain(t('common.save'));
     expect(markup).toContain(t('common.cancel'));
   });
@@ -955,7 +1030,8 @@ describe('the daily draft and its Save', () => {
       rows: BOARD.rows.map((r) => ({ ...r, planned: true })),
     };
     const markup = render({ qc: client(allStored) });
-    expect(buttonDisabled(markup, 'data-save-roster="true"'), 'nothing left to commit').toBe(true);
+    // «اعتمد» on D1: the unsaved bar (and its «حفظ») shows only while there is something to save.
+    expect(markup, 'nothing left to commit').not.toContain('data-save-roster');
     expect(markup).not.toContain('data-unsaved="true"');
   });
 
@@ -1026,8 +1102,15 @@ describe('the daily draft and its Save', () => {
     const dialog = readFileSync(join(HERE, 'components/RosterAssignDialog.tsx'), 'utf8');
     expect(dialog, 'the dialog no longer persists').not.toContain('mutateAsync');
     expect(dialog, 'it hands its values back').toContain('onSave({');
-    expect(SOURCE, 'and the page applies them to the draft').toContain(
-      'setDraft(() => applyEdit(draft, editingRow.vehicleId, values))',
+    // The board hands the dialog's values to the model as ONE edit (one «تراجع» step), and the
+    // model applies them to the draft through the board function.
+    expect(DESK, 'the board hands them on').toContain(
+      'if (editingRow !== null) applyDialog(editingRow, values);',
+    );
+    expect(DESK).toContain('m.actions.apply(row.vehicleId, values)');
+    const apply = MODEL.slice(MODEL.indexOf('const apply ='), MODEL.indexOf('const undo ='));
+    expect(apply, 'and the model applies them to the draft').toContain(
+      'edit((rows) =>\n      applyEdit(rows, vehicleId, {',
     );
   });
 });
@@ -1052,9 +1135,16 @@ describe('the mission type is chosen on the row', () => {
   });
 
   it('writes the choice into the DRAFT, not to the server', () => {
-    expect(SOURCE, 'the cell edits the draft').toContain(
-      "setDraft(() => setMission(draft, row.vehicleId, id === '' ? null : id))",
+    // The cell hands the choice to the model, whose every edit lands on the draft.
+    expect(DESK, 'the cell edits the draft').toContain(
+      "m.actions.mission(row.vehicleId, id === '' ? null : id)",
     );
+    expect(MODEL, 'through the board function').toContain(
+      'return setMission(rows, vehicleId, missionTypeId);',
+    );
+    const mission = MODEL.slice(MODEL.indexOf('const mission ='), MODEL.indexOf('const notes ='));
+    expect(mission, 'an edit, never a write').toContain('edit((rows) =>');
+    expect(mission).not.toContain('mutateAsync');
   });
 
   it('shows the name as text to a reader who may not plan', () => {
@@ -1142,25 +1232,42 @@ describe('the day’s counters', () => {
   it('sits in the same top strip as the filters, not in a block of its own', () => {
     // The CODE PICKER, not a search box: the owner asked for the same control the accidents board
     // carries — «كود العربيه ... يكونوا زى شاشه الحوادث» — so what is looked for here is the
-    // picker's own label. The claim is unchanged: both filters stand above the counters, in one
-    // strip, and the old `FilterBar` block under the header has not come back.
+    // picker's own label. Both stand in ONE strip, the code picker first.
+    //
+    // CHANGED by the owner: «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui و شيل الفلتر
+    // بتاع كل المهمات اللى جمب كود السيارة بس وسيب الباقى». The strip is now the new boards' dark
+    // FilterBar (as on Accidents), and «كل المهمات» beside «كود السيارة» is gone — the per-mission
+    // counter chip is the computer's mission control.
     const markup = render();
+    const filters = markup.indexOf('data-roster-filters');
     const strip = markup.indexOf('data-counter="total"');
     const codeFilterAt = markup.indexOf(t('fleet.vehicles.fields.code'));
-    const missionFilterAt = markup.indexOf(t('fleet.roster.allMissions'));
-    expect(codeFilterAt, 'the code picker is above the counters').toBeGreaterThan(-1);
-    expect(missionFilterAt, 'so is «كل المهمات»').toBeGreaterThan(-1);
+    expect(filters, 'one filter strip').toBeGreaterThan(-1);
+    expect(codeFilterAt, 'the code picker is in it').toBeGreaterThan(filters);
     expect(codeFilterAt, 'the code picker comes first in the strip').toBeLessThan(strip);
-    expect(missionFilterAt, 'then the mission filter').toBeLessThan(strip);
-    expect(SOURCE, 'the old FilterBar block under the header is gone').not.toContain('<FilterBar');
+    expect(strip, 'and the counters stand in the same strip').toBeLessThan(
+      markup.indexOf('data-roster-table'),
+    );
+    expect(markup, '«كل المهمات» is gone from the computer').not.toContain(
+      t('fleet.roster.allMissions'),
+    );
+    expect(DESK, 'in the new boards’ bar').toContain('<FilterBar');
+    expect(DESK).toContain('DARK_FILTER_BAR');
   });
 
   it('narrows the board by a code PICKED, not by a code typed from memory', () => {
     // The defect this replaced: a free-text box asks the reader to already know a code, and
     // offers no way to see what the board holds. The picker's options are the board's own cars.
     expect(SOURCE, 'the roster reaches for the shared picker').toContain('<VehicleCodeFilter');
-    expect(SOURCE, 'and offers the rows it already holds').toContain('options={codeOptions}');
+    expect(SOURCE, 'and offers the rows it already holds').toContain('options={m.codeOptions}');
+    // On the COMPUTER the free-text box stays gone — the code filter is the picker («كود العربيه
+    // ... يكونوا زى شاشه الحوادث»). A typed box is the phone's and the tablet's own: «مينفعش ابحث
+    // فى الفون او التابلت ؟» — see `fleet-roster-touch.spec.tsx`.
     expect(SOURCE, 'the free-text box is gone').not.toContain('fleet.roster.searchPlaceholder');
+    const touch = rosterSource(['touch']);
+    expect(touch, 'the touch board types its codes').toContain('fleet.roster.searchPlaceholder');
+    expect(touch, 'in a search box').toContain('type="search"');
+    expect(touch, 'that takes letters and lists, not a number pad').not.toContain('inputMode');
   });
 });
 
@@ -1263,10 +1370,8 @@ describe('a day shows its own board, and only its own', () => {
     // The data-integrity half. Armed here, one click posts the wrong day's crew under this date.
     const qc = client(BOARD, day(1));
     const markup = render({ date: day(2), qc });
-    expect(
-      buttonDisabled(markup, 'data-save-roster="true"'),
-      'nothing to save for a day we have not got',
-    ).toBe(true);
+    // «اعتمد» on D1: no unsaved bar, and so no «حفظ», while nothing would be written.
+    expect(markup, 'nothing to save for a day we have not got').not.toContain('data-save-roster');
     expect(markup).not.toContain('data-unsaved="true"');
   });
 
@@ -1358,15 +1463,24 @@ describe('each driver list has its own search', () => {
   });
 
   it('the page filters the AVAILABLE list', () => {
-    expect(SOURCE).toContain('shownAvailable = useMemo');
-    expect(SOURCE, 'and renders the filtered list, not the pool').toContain('shownAvailable.map(');
+    // The model answers the list for a term; the panel renders that answer, not the pool.
+    const available = MODEL.slice(
+      MODEL.indexOf('const availableFor = useCallback('),
+      MODEL.indexOf('const unavailableFor = useCallback('),
+    );
+    expect(available).toContain('filterDrivers(board?.availableDrivers ?? [], searchIndex, term)');
+    expect(DESK, 'and renders the filtered list, not the pool').toContain(
+      'const options = m.availableFor(availableSearch, null);',
+    );
+    expect(DESK).toContain('options={options}');
   });
 
   it('the page filters the UNAVAILABLE list', () => {
-    expect(SOURCE).toContain('shownUnavailable = useMemo');
-    expect(SOURCE, 'and renders the filtered list, not the server array').toContain(
-      'shownUnavailable.map(',
+    expect(MODEL).toContain('byReasons(filterDrivers(unavailable, searchIndex, term), asked)');
+    expect(DESK, 'and renders the filtered list, not the server array').toContain(
+      'const unavailable = m.unavailableFor(unavailableSearch, reasons);',
     );
+    expect(DESK).toContain('drivers={unavailable}');
   });
 
   it('indexes BOTH halves, so one term can reach either', () => {
@@ -1376,29 +1490,28 @@ describe('each driver list has its own search', () => {
     expect(call, 'the unavailable half is indexed too').toContain('unavailable.map');
   });
 
-  it('renders ONE box INSIDE each panel — two in all', () => {
+  it('renders ONE box, inside the drivers panel', () => {
+    // «اعتمد» on D1: ONE drivers panel with two tabs, and ONE search box under them — its words
+    // are the open tab's own term (below), so the two lists still search independently.
     const markup = render();
     const boxes = markup.split('placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder'));
-    expect(boxes.length - 1, 'one per driver panel').toBe(2);
+    expect(boxes.length - 1, 'one box').toBe(1);
   });
 
-  it('puts each box inside its own panel, not above the pair', () => {
-    // Position is the claim: a box between the table and the two panels would look like it
-    // filtered both. Each must sit after its own panel's heading.
+  it('puts the box inside the panel, under its two tabs — not above the table', () => {
+    // Position is the claim: a box between the table and the panel would look like it filtered
+    // the cars. It sits in the panel, after both tabs and before either list.
     const markup = render();
     const placeholder = 'placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder');
-    for (const title of ['fleet.roster.availableTitle', 'fleet.roster.unavailableTitle']) {
-      const heading = markup.indexOf(t(title));
-      expect(heading, `${title} is on the page`).toBeGreaterThan(-1);
-      const after = markup.indexOf(placeholder, heading);
-      expect(after, `${title} is followed by its own search box`).toBeGreaterThan(-1);
-      // …and nothing but that panel's own list comes between them.
-      expect(markup.slice(heading, after)).not.toContain(
-        t('fleet.roster.unavailableTitle') === t(title)
-          ? t('fleet.roster.availableTitle')
-          : t('fleet.roster.unavailableTitle'),
-      );
+    const panel = markup.indexOf('data-drivers-panel');
+    const box = markup.indexOf(placeholder);
+    expect(panel, 'the panel').toBeGreaterThan(-1);
+    expect(box, 'the box is in the panel').toBeGreaterThan(panel);
+    for (const tab of ['available', 'unavailable']) {
+      expect(markup.indexOf(`data-driver-tab="${tab}"`), `${tab} tab`).toBeGreaterThan(panel);
+      expect(markup.indexOf(`data-driver-tab="${tab}"`), `under the ${tab} tab`).toBeLessThan(box);
     }
+    expect(box, 'and above both lists').toBeLessThan(markup.indexOf('role="tabpanel"'));
   });
 
   it('keeps the two terms INDEPENDENT — each list filters by its OWN box', () => {
@@ -1406,15 +1519,20 @@ describe('each driver list has its own search', () => {
     // Asserted on the filter calls themselves rather than on the surrounding block, because a
     // dependency array naming both terms would satisfy a looser check while the call passed the
     // wrong one — which is exactly the mistake this guards.
-    expect(SOURCE, 'the available list filters by the available box').toContain(
-      'filterDrivers(pool, searchIndex, availableSearch)',
+    expect(DESK, 'the available list filters by the available box').toContain(
+      'm.availableFor(availableSearch, null)',
     );
-    expect(SOURCE, 'the unavailable list filters by the unavailable box').toContain(
-      'filterDrivers(unavailable, searchIndex, unavailableSearch)',
+    expect(DESK, 'the unavailable list filters by the unavailable box').toContain(
+      'm.unavailableFor(unavailableSearch, reasons)',
     );
     // Neither may reach for the other's term.
-    expect(SOURCE).not.toContain('filterDrivers(pool, searchIndex, unavailableSearch)');
-    expect(SOURCE).not.toContain('filterDrivers(unavailable, searchIndex, availableSearch)');
+    expect(DESK).not.toContain('m.availableFor(unavailableSearch');
+    expect(DESK).not.toContain('m.unavailableFor(availableSearch');
+    // ONE box, and it shows and writes the OPEN tab's own term.
+    expect(DESK).toContain("value={tab === 'available' ? availableSearch : unavailableSearch}");
+    expect(DESK).toContain(
+      "onChange={tab === 'available' ? setAvailableSearch : setUnavailableSearch}",
+    );
   });
 
   it('is DISPLAY ONLY — the draft, the counters and the payload read the unfiltered lists', () => {
@@ -1460,6 +1578,16 @@ describe('the daily draft is persisted, per day', () => {
     expect(commit.slice(commit.indexOf('catch')), 'a REFUSED save keeps the work').not.toContain(
       'acceptDraft()',
     );
+    // …in memory too. A save the server folds away (a row of nulls for a car with no stored plan)
+    // answers with the board it already held, the query cache keeps that board's identity, and a
+    // draft tied to the board by identity would outlive the save with «تغييرات غير محفوظة» still
+    // up — found on the real page (the approved touch check P7).
+    expect(commit.indexOf('discard();'), 'the in-memory draft goes too').toBeGreaterThan(
+      commit.indexOf('acceptDraft()'),
+    );
+    expect(commit.slice(commit.indexOf('catch')), 'but never on a refusal').not.toContain(
+      'discard();',
+    );
   });
 
   it('restores only the fields a reader edits, and only usable values', () => {
@@ -1498,14 +1626,21 @@ describe('the board removes with a bin, not with a cross', () => {
   });
 
   it('no cross is left doing a removal on this board', () => {
-    expect(SOURCE, 'CloseIcon is gone from the board entirely').not.toContain('CloseIcon');
+    // The COMPUTER's board. The phone and tablet seat clears with ✕ «إزالة من هذه الخانة» as the
+    // owner picked it — «انا برشح دول» on P1 / TL2 — so the claim is the computer's own.
+    expect(DESK, 'CloseIcon is gone from the board entirely').not.toContain('CloseIcon');
+    expect(DESK, 'nor does it hand the lists a seat’s occupant to clear with one').not.toContain(
+      'occupant=',
+    );
   });
 
   it('the row control still clears BOTH seats, the mission and the note', () => {
     // The behaviour the icon now advertises. Changing the icon without this would be a label on
-    // the wrong box.
-    const at = SOURCE.indexOf('if (clearing === null) return;');
-    const body = SOURCE.slice(at, at + 400);
+    // the wrong box. The confirm hands the car to the model's `clearAll`.
+    expect(DESK).toContain('if (clearing !== null) m.actions.clearAll(clearing.vehicleId);');
+    expect(MODEL).toContain('clearAll: confirmClear,');
+    const at = MODEL.indexOf('const confirmClear =');
+    const body = MODEL.slice(at, at + 400);
     expect(body).toContain('driver1EmployeeId: null');
     expect(body).toContain('driver2EmployeeId: null');
     expect(body).toContain('missionTypeId: null');
@@ -1522,13 +1657,20 @@ describe('the board removes with a bin, not with a cross', () => {
  * in a node environment where nothing can be dragged, typed or dropped to create one.
  */
 describe('a car edited and not yet saved is tinted', () => {
-  const CODE = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
+  /** The model (which rows are unsaved) and the computer's board (how a row says so). */
+  const CODE = rosterSource(['model', 'desk']);
 
-  it('paints the row with the colour BOTH boards share', () => {
-    expect(CODE, 'from the shared constant, never a literal').toContain('UNSAVED_ROW');
-    expect(CODE, 'applied per row').toContain('unsavedIds.has(row.vehicleId)');
+  it('paints the row with the board’s unsaved amber', () => {
+    // «اعتمد» on D1 / D3: the computer's rows are tinted by their own mark in OPAQUE colours — the
+    // pinned «إجراءات» cell takes its row's colour, and the see-through `UNSAVED_ROW` would show
+    // the seats scrolling under it at 1280px. The same amber, laid over the board's surface;
+    // `UNSAVED_ROW` stays the touch card's.
+    expect(CODE, 'a mark on the row').toContain("? 'unsaved'");
+    expect(CODE, 'painted amber, opaque').toContain(
+      '[&_tbody_tr[data-tint=unsaved]]:!bg-[#fffbeb]',
+    );
+    expect(CODE, 'applied per row').toContain('m.unsavedIds.has(row.vehicleId)');
+    expect(rosterSource(['touch']), 'the cards keep the shared constant').toContain('UNSAVED_ROW');
   });
 
   /**
@@ -1547,10 +1689,10 @@ describe('a car edited and not yet saved is tinted', () => {
   it('an unsaved edit outranks the workshop tint — the workshop also has a badge', () => {
     // Only one row colour can win, and the rose one is backed by the badge in the code cell.
     // An unsaved edit has nothing but this colour, so it must not be the one that loses.
-    const at = CODE.indexOf('rowClassName');
+    const at = CODE.indexOf('rowProps=');
     const rule = CODE.slice(at, CODE.indexOf('loading=', at));
-    expect(rule.indexOf('UNSAVED_ROW'), 'unsaved is tested first').toBeGreaterThan(-1);
-    expect(rule.indexOf('UNSAVED_ROW')).toBeLessThan(rule.indexOf('inMaintenance'));
+    expect(rule.indexOf("'unsaved'"), 'unsaved is tested first').toBeGreaterThan(-1);
+    expect(rule.indexOf("'unsaved'")).toBeLessThan(rule.indexOf('inMaintenance'));
   });
 
   it('nothing clears the tint by hand — the draft reset is what clears it', () => {
@@ -1569,39 +1711,54 @@ describe('a car edited and not yet saved is tinted', () => {
 // in a browser after the change: the table and its box are both 914px at 1600, nothing clipped.
 describe('the board fits: notes and actions are on screen', () => {
   it('gives the pools a fixed width and the table everything else', () => {
-    expect(SOURCE).toContain('xl:grid-cols-[minmax(0,1fr)_26rem]');
+    // «اعتمد» on D1: the ONE drivers panel takes 20rem (24rem from 1750px) and the table the rest,
+    // so «إجراءات» is whole on the screen at 1536 and 1920.
+    expect(SOURCE).toContain('grid-cols-[minmax(0,1fr)_20rem]');
+    expect(SOURCE).toContain('min-[1750px]:grid-cols-[minmax(0,1fr)_24rem]');
     expect(SOURCE, 'no third of the screen reserved for the pools any more').not.toContain(
       'xl:grid-cols-3',
     );
     expect(SOURCE, 'nor a span that assumed it').not.toContain('xl:col-span-2');
   });
 
-  it('trims the side gutters the way the other wide Fleet boards do', () => {
-    const at = SOURCE.indexOf('<DataTable');
-    const table = SOURCE.slice(at, at + 400);
-    expect(table).toContain('dense');
-    expect(table).toContain('tightGutter');
-    expect(table).toContain('minColumnWidth={6}');
+  it('wears the new Fleet boards’ table', () => {
+    // «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui»: the table the Accidents and
+    // Maintenance boards draw — their floor per column and their sticky head — inside the boards'
+    // dark table, its seats and selects on a 6px gutter of their own.
+    const at = DESK.indexOf('<DataTable');
+    const table = DESK.slice(at, DESK.indexOf('/>', at));
+    expect(table).toContain('minColumnWidth={4}');
+    expect(table).toContain('stickyHead');
+    for (const board of ['pages/AccidentsPage.tsx', 'pages/MaintenancePage.tsx']) {
+      const other = readFileSync(join(HERE, board), 'utf8');
+      expect(other, `as ${board} does`).toContain('minColumnWidth={4}');
+      expect(other, `as ${board} does`).toContain('stickyHead');
+    }
+    expect(DESK, 'the boards’ dark table').toContain('DARK_TABLE,');
+    expect(DESK, 'a tight gutter for the seats').toContain("const TIGHT_CELL = '[&&]:!px-1.5'");
   });
 
-  it('holds a driver seat to one width and a long note to a short line', () => {
-    // «كبر اى مكان فيه اسم سواق» — the seats are wider and read the name a size bigger.
-    expect(SOURCE, 'the seat is a fixed width').toContain('<div className="w-[15rem]">');
-    expect(SOURCE, 'the seated name is the big chip').toContain(
-      '<DriverChip employeeId={employeeId} className="w-full" size="lg" />',
+  it('holds a driver seat to a bounded width and a long note to a short column', () => {
+    // «كبر اى مكان فيه اسم سواق» — the name is still the seat's biggest word. «اعتمد» on D1: the
+    // seat is the COMPACT one — the name in bold over the employee code — between 11rem and
+    // 15rem, and a long note WRAPS in an 8rem column rather than widening the table past its
+    // frame.
+    expect(DESK, 'the seat is bounded').toContain('min-w-[11rem] max-w-[15rem]');
+    expect(DESK, 'the seated name reads bold').toContain(
+      "'text-[12.5px] font-bold leading-5 text-slate-900 min-[1750px]:text-sm dark:text-slate-50'",
     );
-    expect(SOURCE, 'the note truncates').toContain('block max-w-[9rem] truncate');
-    expect(SOURCE, 'and keeps its full text as a tooltip').toContain(
-      'title={row.notes ?? undefined}',
+    expect(DESK, 'the note wraps in a short column').toContain(
+      'max-w-[8rem] whitespace-normal break-words',
     );
   });
 
   it('still leaves the mission select room for «نقل أموال (يومي)»', () => {
     // «صغر ... نوع المهمة» — 9.5rem at the tight gutter: 152px less the 36px chevron and 8px
     // start padding is 108px; the label needs 104px.
-    const at = SOURCE.indexOf("key: 'mission'");
-    const cell = SOURCE.slice(at, SOURCE.indexOf("key: 'driver1'"));
-    expect(cell).toContain('className="w-[9.5rem]"');
+    const at = DESK.indexOf("key: 'mission'");
+    const cell = DESK.slice(at, DESK.indexOf("key: 'driver1'"));
+    expect(cell).toContain('className={MISSION_BOX}');
+    expect(DESK).toMatch(/const MISSION_BOX =\s*"mx-auto w-\[9\.5rem\]/u);
     expect(cell).toContain('density="tight"');
   });
 });
@@ -1637,16 +1794,19 @@ describe('the row swaps its two drivers', () => {
   });
 
   it('sits in the actions, between edit and delete, and edits the DRAFT only', () => {
-    const edit = SOURCE.indexOf("t('fleet.roster.editAssignment')");
-    const swap = SOURCE.indexOf('data-swap-drivers=');
-    const clear = SOURCE.indexOf("t('fleet.roster.clearAssignment')");
+    const BOARD_FILE = rosterSource(['desk']);
+    const edit = BOARD_FILE.indexOf("t('fleet.roster.editAssignment')");
+    const swap = BOARD_FILE.indexOf('data-swap-drivers=');
+    const clear = BOARD_FILE.indexOf("t('fleet.roster.clearAssignment')");
     expect(edit).toBeGreaterThan(-1);
     expect(swap).toBeGreaterThan(edit);
     expect(clear).toBeGreaterThan(swap);
-    expect(SOURCE.slice(swap, swap + 500)).toContain(
-      'setDraft(() => swapDrivers(draft, row.vehicleId))',
+    expect(BOARD_FILE.slice(swap, swap + 500)).toContain('m.actions.swap(row.vehicleId)');
+    expect(BOARD_FILE.slice(swap, swap + 500)).toContain('<SwapIcon');
+    // …and the model's swap is an edit of the draft, through the board function.
+    expect(MODEL).toContain(
+      'const swap = (vehicleId: string): void => edit((rows) => swapDrivers(rows, vehicleId));',
     );
-    expect(SOURCE.slice(swap, swap + 500)).toContain('<SwapIcon');
   });
 });
 
@@ -1658,7 +1818,132 @@ describe('the names are the board — «كبر اى مكان فيه اسم سو�
     );
     expect(CHIP, 'the default chip is unchanged elsewhere').toContain("'truncate py-1 text-xs'");
   });
-  it('uses the big chip in the pool as on the car', () => {
-    expect(SOURCE.match(/size="lg"/g)?.length).toBeGreaterThanOrEqual(2);
+  it('reads every name as the board’s biggest word, in the pool as on the car', () => {
+    // «اعتمد» on D1: the computer's seat is the compact one, not the chip — the name in bold over
+    // its employee code in the figures' face — and the lists read names at 15px. (`DriverChip`
+    // itself is unchanged; the standing board still draws it.)
+    expect(DESK, 'the seat draws no chip').not.toContain('<DriverChip');
+    const markup = render();
+    const seat = markup.slice(markup.indexOf(`data-driver-chip="${E1}"`));
+    expect(seat.slice(0, 1500), 'the seat says the name').toContain('أحمد محمد');
+    expect(seat.slice(0, 1500), 'over the code').toContain('>HR-1<');
+    expect(DESK, 'the code in the figures’ face').toContain(
+      "className={cn(NUM, 'text-[11px] font-semibold text-slate-500 dark:text-slate-400')}",
+    );
+    expect(rosterSource(['shared']), 'the lists read a name at 15px').toContain(
+      "'block text-[15px] font-semibold leading-5'",
+    );
+  });
+});
+
+// ── the computer's board, as the owner approved it ──────────────────────────
+//
+// «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui و شيل الفلتر بتاع كل المهمات اللى جمب كود
+// السيارة بس وسيب الباقى» — and «اعتمد» on the shot D1-board-1536-dk. What is NEW on the computer;
+// what it kept is asserted above.
+describe('the computer’s board — «اعتمد» on D1', () => {
+  it('drops ONLY «كل المهمات»: the mission chip narrows the board and shows it is pressed', () => {
+    const markup = at(`&mission=${MT}`);
+    expect(markup, 'no mission drop-down beside the code').not.toContain(
+      t('fleet.roster.allMissions'),
+    );
+    expect(SOURCE, 'nor its control').not.toContain('<CatalogMultiSelect');
+    expect(tbody(markup), '?mission= still narrows').toContain('150');
+    expect(tbody(markup)).not.toContain('151');
+    expect(chipActive(markup, MT), 'the mission chip is the control, pressed').toBe(true);
+    expect(markup, 'the code picker stays').toContain(t('fleet.vehicles.fields.code'));
+  });
+
+  it('opens on its toolbar — no page title, no breadcrumbs — counting the cars in Latin digits', () => {
+    const markup = at('');
+    expect(markup, 'no page title').not.toContain('<h1');
+    expect(SOURCE, 'nor the page header').not.toContain('PageHeader');
+    const toolbar = markup.slice(markup.indexOf('data-roster-toolbar'));
+    expect(toolbar.slice(0, 600), 'the count of the cars on screen').toContain(
+      translate('ar', 'fleet.vehicles.count', { count: '4' }),
+    );
+    // …the cars ON SCREEN: a filter narrows it.
+    const narrowed = at('&view=workshop');
+    expect(narrowed.slice(narrowed.indexOf('data-roster-toolbar')).slice(0, 600)).toContain(
+      translate('ar', 'fleet.vehicles.count', { count: '2' }),
+    );
+  });
+
+  it('reads the table’s words in Cairo and its figures in the figures’ face', () => {
+    // After the shot the owner approved, the table's words were moved to Cairo with `!important`
+    // so a name has no wide Azeret Mono spaces in it («عمرو  حسن»).
+    expect(DESK).toContain('"[&_td]:![font-family:\'Cairo\',ui-sans-serif,sans-serif]"');
+    expect(DESK, 'the code').toContain("const FIGURE = cn('whitespace-nowrap', NUM);");
+    expect(DESK, 'on the code cell').toContain("className={cn('text-sm font-bold', FIGURE)}");
+  });
+
+  it('pins «إجراءات» to the table’s end edge, head and cells', () => {
+    expect(DESK).toContain("const PINNED_CELL = 'sticky end-0 z-[1] [background-color:inherit]';");
+    expect(DESK).toContain("const PINNED_HEAD = 'sticky end-0 z-[2] [background-color:inherit]';");
+    const markup = at('');
+    const head = markup.slice(
+      markup.lastIndexOf('<th', markup.indexOf(`>${t('fleet.vehicles.columns.actions')}<`)),
+    );
+    expect(head.slice(0, head.indexOf('>')), 'the head').toContain('sticky end-0');
+    const cell = markup.lastIndexOf('<td', markup.indexOf('data-row-actions="roster"'));
+    expect(markup.slice(cell, markup.indexOf('>', cell)), 'and each cell').toContain(
+      'sticky end-0',
+    );
+  });
+
+  it('says «في الورشة — غير قابلة للتعيين» ONCE per workshop car, and keeps each badge whole', () => {
+    const markup = at('');
+    const rowOf = (code: string): string =>
+      tbody(markup)
+        .split('<tr')
+        .find((r) => r.includes(`>${code}<`)) ?? '';
+    for (const code of ['151', '152']) {
+      expect(rowOf(code).split(t('fleet.roster.inWorkshopNoDrop')).length - 1, code).toBe(1);
+    }
+    expect(rowOf('150'), 'not on a working car').not.toContain(t('fleet.roster.inWorkshopNoDrop'));
+    expect(DESK, 'a badge never breaks its words').toContain('[&_span]:whitespace-nowrap');
+  });
+
+  it('holds both driver lists in one panel: two tabs counted in Latin digits, one box', () => {
+    const markup = at('');
+    const panel = markup.slice(markup.indexOf('data-drivers-panel'));
+    const tab = (key: string): string => {
+      const idx = panel.indexOf(`data-driver-tab="${key}"`);
+      return panel.slice(panel.lastIndexOf('<button', idx), panel.indexOf('</button>', idx));
+    };
+    // E3 is the one free driver (E1 sits on 150); E2 is on leave.
+    expect(tab('available')).toContain('>1<');
+    expect(tab('unavailable')).toContain('>1<');
+    expect(tab('available'), 'opens on the available list').toContain('aria-selected="true"');
+    expect(panel.match(/role="tabpanel"/g)?.length, 'both lists are in the page').toBe(2);
+    expect(panel, 'the free driver').toContain(`data-driver-card="${E3}"`);
+    expect(panel, 'and the absent one, in the hidden tab').toContain(
+      `data-unavailable-driver="${E2}"`,
+    );
+  });
+
+  it('opens the absent list when the link asks for a reason («غائبون اليوم»)', () => {
+    const markup = at('&unavailable=hrLeave');
+    const idx = markup.indexOf('data-driver-tab="unavailable"');
+    const tag = markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('>', idx) + 1);
+    expect(tag).toContain('aria-selected="true"');
+    expect(markup, 'the reason chip is pressed').toMatch(
+      /data-reason-filter="hrLeave" aria-pressed="true"/u,
+    );
+  });
+
+  it('exports through the boards’ Excel pill', () => {
+    const markup = at('');
+    const idx = markup.indexOf('data-export="roster"');
+    expect(idx, 'the pill').toBeGreaterThan(-1);
+    const button = markup.slice(
+      markup.lastIndexOf('<button', idx),
+      markup.indexOf('</button>', idx),
+    );
+    expect(button).toContain(`title="${t('fleet.export.excel')}"`);
+    expect(button).toContain(t('fleet.fuelCards.board.excel'));
+    expect(DESK, 'the rows on screen, in their order').toContain(
+      'onExport={() => m.actions.exportSheet(rows)}',
+    );
   });
 });

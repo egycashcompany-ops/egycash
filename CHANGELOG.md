@@ -55,6 +55,30 @@ its entry here in the same PR.
   is — amber «طُبع ولم يُطبع الإقرار» (HR's) and sky «في انتظار استلام الموظف» (the employee's) — in
   the list's icon, the filter (`awaiting` / `receipt`) and the profile.
 
+- **Operations: the shipment form by bank → branch, and the day board in the Fleet look.** «عند اضافة
+  شحنة البنك الرئيسى دا اللى بيحاسب على الشحنة … عدل برضو الui بتاع الفورم والشاشة زى الحركة».
+  - «البنك الرئيسي» is the bank billed. «من فرع» and «إلى فرع» each pick a bank, then a branch of it
+    by typing (searched on the server, Arabic letter variants folded, no 100-branch cap). A branch
+    that is not there is offered as «+ إضافة … كفرع جديد», which opens the catalogs' branch form with
+    the bank and the name filled in; the saved branch is picked on the side that asked.
+  - The area fills from the destination branch and stays editable. «اسم قائد الطاقم» and «رقم
+    السيارة» pick each other from the collection day's crew plan.
+  - The origin branch may belong to any bank (legacy never posted its from-bank); the destination
+    rule is unchanged. A secured shipment's delivery date stays optional.
+  - `/operations/shipments` in the Fleet boards' look: «تشغيل يوم …», the dark icon filter bar with
+    a «قائد الطاقم» filter, the money per currency behind «الإحصائيات», and the legacy columns
+    (السيارة، اسم البنك، من فرع، إلى فرع، العملة، قيمة الشحنة، قائد الطاقم، التاريخ …).
+  - API: `GET /operations/shipments/day-board` rows carry their branches (with banks) and the crew of
+    the leg the row reports on; `GET /operations/bank-branches/:id`; catalog searches take typed
+    text literally (regex metacharacters escaped) and fold Arabic letter variants.
+  - Two hover cards on the board, on Fleet's card mechanics: «لما اقف على العربيه تجيب مين اللى
+    متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه». The
+    van code opens who rides that van on the leg's crew row (drivers from its Fleet duty row, the
+    captain, specialists 1 and 2, the direction and planned time); the captain's name opens the
+    Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
+    (`crews`, and the captain's code, phone and branch on each row); a reader without
+    `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
+
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
   - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch

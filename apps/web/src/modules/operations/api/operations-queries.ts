@@ -120,6 +120,29 @@ export const useOperationsCurrencies = (params: OperationsListParams, enabled = 
   });
 
 /** Branches of one bank — the cascading picker. Disabled until a bank is chosen. */
+/** One branch — cached under the branches feature, so a branch edit refreshes it too. */
+export const useBankBranch = (id: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { id }),
+    queryFn: () => api.getBankBranch(id),
+    enabled: id !== '',
+    staleTime: 60_000,
+  });
+
+/**
+ * A bank's active branches matching `search` — the branch picker's options. `placeholderData`
+ * keeps the previous answer on screen while the next one is fetched, so the list does not blink
+ * empty under the operator's fingers on every keystroke.
+ */
+export const useBranchSearch = (bankId: string, search: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { bankId, search: search.trim(), picker: true }),
+    queryFn: () => api.searchBranchesOfBank(bankId, search),
+    enabled: bankId !== '',
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+  });
+
 export const useBranchesOfBank = (bankId: string | null) =>
   useQuery({
     queryKey: listKey(MODULE, 'bankBranches', { bankId: bankId ?? '', all: true }),
@@ -148,11 +171,19 @@ const useShipmentInvalidation = () => {
   };
 };
 
+// THE FORM OWNS THESE MUTATIONS' ERRORS — the shipment form's two, and the branch form's two (which
+// the shipment form opens over itself for «+ إضافة»). The global notifier would toast the server's
+// own sentence — English, for the codes it has no translation of — and the form toasts its Arabic
+// one beside it, so a refused save showed two messages. Declaring `onError` here is what
+// tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
+const formOwnsTheError = (): void => undefined;
+
 export const useCreateOperationsShipment = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
     mutationFn: (body: CreateOperationsShipment) => api.createShipment(body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -162,6 +193,7 @@ export const useUpdateOperationsShipment = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
       api.updateShipment(id, body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -192,6 +224,26 @@ export const useDeleteOperationsShipment = () => {
     onSuccess: invalidate,
   });
 };
+
+// «صورة الإيصال». The photo is a field of the shipment row, so both acts stale the board and the
+// list like any other shipment write. No `onError` on purpose: the global notifier names the
+// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it.
+export const useUploadShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      api.uploadShipmentReceiptImage(id, file),
+    onSuccess: invalidate,
+  });
+};
+
+export const useDeleteShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteShipmentReceiptImage(id),
+    onSuccess: invalidate,
+  });
+};
 export const useCreateOperationsBank = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -212,6 +264,8 @@ export const useUpdateOperationsBank = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.banks });
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints the banks of a row's branches, joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
   });
 };
@@ -223,6 +277,7 @@ export const useCreateOperationsBankBranch = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -233,7 +288,10 @@ export const useUpdateOperationsBankBranch = () => {
       api.updateBankBranch(id, body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints branch names (and their banks) joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
+    onError: formOwnsTheError,
   });
 };
 

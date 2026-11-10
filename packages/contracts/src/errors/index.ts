@@ -103,7 +103,11 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
-  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  /**
+   * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
+   * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
+   * carries no bank rule: it may belong to any bank, the main bank being the billed one.
+   */
   OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
   /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
   OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',

@@ -7,7 +7,8 @@
 //
 //   1. a closed visit takes a new exit driver: stored, on the answer, and in the update's audit row;
 //   2. an open visit refuses it (400 on `body.driverOutEmployeeId`) and nothing is written;
-//   3. an unknown employee, `null`, a stale version and a missing `fleetMaintenance.edit` refuse it;
+//   3. an unknown employee, `null`, a stale version (also one from before a reopen: 409, not 400)
+//      and a missing `fleetMaintenance.edit` refuse it; `fleetMaintenance.edit` alone is enough;
 //   4. HR is asked only when the value CHANGES: resending the stored driver after they left the
 //      directory is accepted;
 //   5. an old-book visit with only the book's spelling (`driverOutName`) gets an employee, and the
@@ -366,6 +367,49 @@ describe('«سائق الخروج» in the workshop edit', () => {
     expect(String((await stored(visit.id))?.driverOutEmployeeId)).toBe(firstDriver);
   });
 
+  it('a copy from before someone reopened the visit is stale (409), not a field to fix', async () => {
+    const visit = await closedVisit();
+    // Reopened elsewhere while «تعديل» was still showing the closed visit.
+    const reopened = ok<FleetMaintenanceVisitDto>(
+      await post(`/fleet/maintenance/${visit.id}/reopen`, { version: visit.version }),
+    );
+    const res = await edit(visit.id, { driverOutEmployeeId: secondDriver, version: visit.version });
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect((res.body as { error: { code: string } }).error.code).toBe('STALE_DOCUMENT');
+    const after = await stored(visit.id);
+    expect(after?.driverOutEmployeeId).toBeNull();
+    expect(after?.__v).toBe(reopened.version);
+    // With the copy reloaded, the open visit refuses it as before.
+    const fresh = await edit(visit.id, {
+      driverOutEmployeeId: secondDriver,
+      version: reopened.version,
+    });
+    expect(fresh.status).toBe(400);
+    expect(errorDetails(fresh)).toContainEqual(
+      expect.objectContaining({ field: 'body.driverOutEmployeeId', code: 'INVALID' }),
+    );
+  });
+
+  it('fleetMaintenance.edit is enough — no check-out grant is needed to correct it', async () => {
+    const visit = await closedVisit();
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Workshop editor', ar: 'محرر الورشة' },
+        permissionKeys: ['fleetMaintenance.view', 'fleetMaintenance.edit'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('maintenance-exit-driver-editor@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await authService.signAccessToken(userId, new Types.ObjectId().toString(), 0);
+
+    const dto = ok<FleetMaintenanceVisitDto>(
+      await edit(visit.id, { driverOutEmployeeId: secondDriver, version: visit.version }, token),
+    );
+    expect(dto.driverOutEmployeeId).toBe(secondDriver);
+    expect(String((await stored(visit.id))?.driverOutEmployeeId)).toBe(secondDriver);
+  });
+
   it('needs fleetMaintenance.edit, like the rest of the edit — check-out alone is not enough', async () => {
     const visit = await closedVisit();
     const role = await rbacService.createRole(
@@ -479,6 +523,10 @@ describe('«سائق الخروج» in the workshop edit', () => {
       version: reopened.version,
     });
     expect(noDriver.status).toBe(400);
+    // Refused by the schema for the missing driver, not by some other rule.
+    expect(errorDetails(noDriver)).toContainEqual(
+      expect.objectContaining({ field: 'body.driverOutEmployeeId' }),
+    );
     expect((await stored(visit.id))?.outDate).toBeNull();
   });
 });

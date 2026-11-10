@@ -19,7 +19,7 @@ import {
   type UpdateFleetMaintenance,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { ConflictError, ValidationError } from '../../../shared/errors';
+import { ConflictError, StaleDocumentError, ValidationError } from '../../../shared/errors';
 import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -436,6 +436,9 @@ class FleetMaintenanceService {
     }
     // «سائق الخروج» — only on a CLOSED visit. An open one has not left yet; check-out sets it.
     if (input.driverOutEmployeeId !== undefined && before.outDate === null) {
+      // A copy older than the stored visit saw it closed: it was reopened since. That is a stale
+      // copy to reload (409, as on every edit), not a field the editor filled in wrong.
+      if (input.version !== before.__v) throw new StaleDocumentError();
       throw new ValidationError([
         {
           field: 'body.driverOutEmployeeId',

@@ -958,7 +958,8 @@ its entry here in the same PR.
     not emptied. On an old visit with only the old book's spelling, it opens empty and stays
     optional; choosing a driver records the employee, who is then shown instead of the spelling.
   - `PATCH /fleet/maintenance/:id` takes an optional `driverOutEmployeeId`: refused on an open
-    visit (400 on `body.driverOutEmployeeId`, `INVALID`), `null` refused, and checked against HR
+    visit (400 on `body.driverOutEmployeeId`, `INVALID`; a copy read before someone reopened the
+    visit gets 409 `STALE_DOCUMENT` instead), `null` refused, and checked against HR
     only when it differs from the stored driver. Same permission (`fleetMaintenance.edit`),
     version check and `update` audit as the rest of the edit. The screen sends it only when the
     edit changed it.

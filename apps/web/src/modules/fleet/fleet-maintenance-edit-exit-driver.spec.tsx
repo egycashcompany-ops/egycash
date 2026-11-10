@@ -98,6 +98,21 @@ const draw = (v: FleetMaintenanceVisitDto): string =>
 const pickers = (markup: string): number =>
   (markup.match(/data-driver-picker="true"/g) ?? []).length;
 
+/**
+ * A driver field as drawn, from its field box down to its picker's own tag: the label, the frame
+ * around the picker and the picker's look. The label text and the list's generated id are left
+ * out, so «سائق الدخول» and «سائق الخروج» compare equal only when they look the same.
+ */
+const driverField = (markup: string, label: string): string => {
+  const text = markup.indexOf(label);
+  const box = markup.lastIndexOf('<div', markup.lastIndexOf('<label', text));
+  const picker = markup.indexOf('data-driver-picker="true"', text);
+  return markup
+    .slice(box, markup.indexOf('>', picker) + 1)
+    .replace(label, '')
+    .replace(/driver-list-\d+/g, 'driver-list');
+};
+
 describe('the edit dialog and «سائق الخروج»', () => {
   it('a CLOSED visit offers it, right after «سائق الدخول», with the same picker', () => {
     const markup = draw(visit());
@@ -108,6 +123,10 @@ describe('the edit dialog and «سائق الخروج»', () => {
     // Nothing else sits between the two: the next field is the parts list.
     expect(exit).toBeLessThan(markup.indexOf(t('fleet.maintenance.fields.spareParts'), entry));
     expect(pickers(markup), 'the entry driver and the exit driver').toBe(2);
+    // The same look: the same field box, the same frame around the picker, the same picker.
+    const entryField = driverField(markup, t('fleet.maintenance.fields.driverIn'));
+    expect(entryField).toContain('data-driver-picker="true"');
+    expect(driverField(markup, t('fleet.maintenance.fields.driverOut'))).toBe(entryField);
   });
 
   it('an OPEN visit does not — it has not left yet, and «إخراج من الورشة» sets it', () => {
@@ -136,8 +155,17 @@ describe('the edit dialog and «سائق الخروج»', () => {
 
   it('it opens on the driver the visit closed with', () => {
     const code = editSource();
-    expect(code).toContain("setDriverOut(visit.driverOutEmployeeId ?? '')");
+    // Set when the dialog opens on a visit, and by nothing else but the picker: no later reset
+    // can empty it behind the prefill.
+    const opening = code.slice(
+      code.indexOf('if (open && visit !== null) {'),
+      code.indexOf('}, [open, visit]);'),
+    );
+    expect(opening).toContain("setDriverOut(visit.driverOutEmployeeId ?? '')");
+    expect(code.match(/\bsetDriverOut\(/g) ?? [], 'the prefill is the only call').toHaveLength(1);
     expect(code).toContain('<OptionalDriverField value={driverOut} onChange={setDriverOut} />');
+    // Declared, prefilled, handed to the picker — and nowhere else.
+    expect(code.match(/\bsetDriverOut\b/g) ?? []).toHaveLength(3);
   });
 
   it('it is sent only when this edit changed it, and never empty or null', () => {

@@ -74,6 +74,7 @@ import {
   ListFleetCustodyDeletedQuerySchema,
   UpdateFleetCatalogItemSchema,
   UpdateFleetMaintenanceSchema,
+  CheckOutFleetMaintenanceSchema,
   foldSheetHeader,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
@@ -1680,5 +1681,14 @@ describe('the workshop edit corrects «سائق الخروج» — «عاوز ا
         version: 3,
       }).success,
     ).toBe(false);
+  });
+
+  it('check-out still requires it — the edit only corrects what check-out set', () => {
+    const checkOut = { outDate: '2026-10-04', version: 0 };
+    expect(CheckOutFleetMaintenanceSchema.safeParse(checkOut).success).toBe(false);
+    expect(
+      CheckOutFleetMaintenanceSchema.safeParse({ ...checkOut, driverOutEmployeeId: oid('e1') })
+        .success,
+    ).toBe(true);
   });
 });

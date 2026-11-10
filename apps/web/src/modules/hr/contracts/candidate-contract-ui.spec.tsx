@@ -100,4 +100,13 @@ describe('the words', () => {
       }
     }
   });
+
+  it('labels the page\'s fields with words that exist, never with a key', () => {
+    const used = [...PAGE.matchAll(/t\('([a-zA-Z.]+)'/g)].map((m) => m[1] ?? '');
+    for (const locale of ['ar', 'en'] as Locale[]) {
+      for (const key of used) {
+        expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
+      }
+    }
+  });
 });

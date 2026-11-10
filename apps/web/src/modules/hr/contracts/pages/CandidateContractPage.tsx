@@ -231,7 +231,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
                 </div>
               </dl>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label={t('contracts.create.startDate')} required>
+                <Field label={t('contracts.fields.startDate')} required>
                   <Input
                     type="date"
                     value={draft.startDate}
@@ -245,7 +245,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
                   />
                 </Field>
                 {draft.allowsEndDate && (
-                  <Field label={t('contracts.create.endDate')}>
+                  <Field label={t('contracts.fields.endDate')}>
                     <Input
                       type="date"
                       value={draft.endDate ?? ''}

@@ -487,6 +487,15 @@ export type LinkEmployeeUser = z.infer<typeof LinkEmployeeUserSchema>;
 
 // ── List ─────────────────────────────────────────────────────────────────────
 
+/** The ID card filter's two answers. */
+/**
+ * `received` — handed at least one card (HR confirmed the signed receipt); `never` — never handed
+ * one; `awaiting` — a card printed, its receipt not printed yet; `receipt` — card and receipt
+ * printed, waiting for the employee to sign and take the card.
+ */
+export const EMPLOYEE_ID_CARD_FILTERS = ['received', 'never', 'awaiting', 'receipt'] as const;
+export type EmployeeIdCardFilter = (typeof EMPLOYEE_ID_CARD_FILTERS)[number];
+
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   status: EmployeeStatusSchema.optional(),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
@@ -529,6 +538,8 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
+  /** The company ID card: printed at least once, or never. */
+  idCard: z.enum(EMPLOYEE_ID_CARD_FILTERS).optional(),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 
@@ -768,10 +779,65 @@ export interface EmployeeDto {
   /** The officer/armed-security profile, or null. Redacted without `employee.viewOfficer`. */
   officer: EmployeeOfficerDto | null;
   officerVisible: boolean;
+  /** The company ID card's print counters. Optional only so older fixtures still type-check. */
+  idCard?: EmployeeIdCardSummaryDto;
   hiredAt: string;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The company ID card for one employee. Two counts, on purpose: PRINTING is only paper — reprints,
+ * a jammed printer, a second try — so it never counts as a card. A card COUNTS when HR confirms the
+ * employee signed the receipt (إقرار الاستلام) and took it: `receivedCount`.
+ */
+export interface EmployeeIdCardSummaryDto {
+  /** Cards the employee has actually received — the number the list shows, filters and sorts on. */
+  receivedCount: number;
+  firstReceivedAt: string | null;
+  lastReceivedAt: string | null;
+  /** The user who confirmed the last handover. */
+  lastReceivedBy: string | null;
+  /** A card printed since the last handover, waiting for HR to confirm it was received. */
+  awaitingHandover: boolean;
+  /** When the receipt (إقرار الاستلام) for the waiting card was printed — the employee's turn. */
+  receiptPrintedAt: string | null;
+  /** Every print, reprints and spoiled ones included — for the record, never as a card. */
+  printCount: number;
+  firstPrintedAt: string | null;
+  lastPrintedAt: string | null;
+  /** The user who printed it last. */
+  lastPrintedBy: string | null;
+}
+
+/**
+ * Everything printed on the company ID card. The ONLY DTO that carries the national ID unmasked —
+ * it is printed on the card — behind `employee.editPersonal`, and every read is audited.
+ */
+export interface EmployeeIdCardDataDto {
+  employeeId: string;
+  code: string;
+  employeeNumber: string;
+  fullNameAr: string;
+  jobTitle: { ar: string; en: string } | null;
+  nationalId: string | null;
+  hasPhoto: boolean;
+  summary: EmployeeIdCardSummaryDto;
+}
+
+/** One print of the card, and — once HR confirmed it — its handover. */
+export interface EmployeeIdCardPrintDto {
+  id: string;
+  /** The print's own number: 1, 2, 3 … every print counted. */
+  printNumber: number;
+  printedAt: string;
+  printedBy: string | null;
+  withPhoto: boolean;
+  /** Set on the print that was handed over: the card's number among those RECEIVED (1, 2, …). */
+  receivedNumber: number | null;
+  receivedAt: string | null;
+  receivedBy: string | null;
 }
 
 /** Exited-employee match for a national id (the Rehire prompt / duplicate guard). */

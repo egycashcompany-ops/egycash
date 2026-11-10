@@ -18,6 +18,8 @@ import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
 import { PlusIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
+import { IdCardDialog } from '../id-card/IdCardDialog';
+import { type EmployeeDto } from '@ecms/contracts';
 // Its own chunk: the dialog pulls in the whole report renderer, and nobody who never uploads a
 // roster should pay for it on every visit to the list.
 const RosterImportDialog = lazy(() =>
@@ -42,6 +44,9 @@ import {
 import { type EmployeeListParams } from '../api/employee-api';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
+/** «الأكثر استلامًا أولًا»: the ID card column sorted by cards received, most first. */
+const MOST_RECEIVED_SORT = 'idCard.receivedCount:desc';
+
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'q',
@@ -53,6 +58,7 @@ const REMEMBERED_FILTERS = [
   'size',
   'sort',
   'view',
+  'idcard',
 ] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -83,6 +89,8 @@ export const EmployeesListPage = (): JSX.Element => {
 
   const canSettle = can('employee.viewCompensation');
   const [importOpen, setImportOpen] = useState(false);
+  const [cardOf, setCardOf] = useState<EmployeeDto | null>(null);
+  const idCard = sp.get('idcard') ?? '';
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   // `dept` and `section` hold GROUP keys — a company-wide department, not one branch's copy of it.
@@ -138,7 +146,13 @@ export const EmployeesListPage = (): JSX.Element => {
   );
   const sectionIds = useMemo(
     () => sectionIdsFor(sectionOptions, departmentOptions, placement),
-    [sectionOptions, departmentOptions, placement.branchId, placement.departmentKey, placement.sectionKey],
+    [
+      sectionOptions,
+      departmentOptions,
+      placement.branchId,
+      placement.departmentKey,
+      placement.sectionKey,
+    ],
   );
 
   const params = useMemo<EmployeeListParams>(
@@ -160,6 +174,12 @@ export const EmployeesListPage = (): JSX.Element => {
       ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
       ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
       ...(placement.jobTitleId === '' ? {} : { jobTitleId: placement.jobTitleId }),
+      ...(idCard === 'received' ||
+      idCard === 'never' ||
+      idCard === 'awaiting' ||
+      idCard === 'receipt'
+        ? { idCard }
+        : {}),
     }),
     [paramsKey, departmentIds, sectionIds],
   );
@@ -174,14 +194,27 @@ export const EmployeesListPage = (): JSX.Element => {
     [paramsKey],
   );
 
-  const columns = useMemo(() => employeeColumns(t, locale), [t, locale]);
+  const columns = useMemo(() => employeeColumns(t, locale, setCardOf), [t, locale]);
 
   // "Active" means anything a reader changed from how the screen opens: the default view is not a
   // filter to them, it is the screen. Clearing puts every remembered parameter back to that.
   const hasActiveFilters =
-    search !== '' || status !== '' || view !== 'employed' || hasPlacementFilter(placement);
+    search !== '' ||
+    status !== '' ||
+    view !== 'employed' ||
+    hasPlacementFilter(placement) ||
+    idCard !== '';
   const clearFilters = (): void =>
-    patch({ q: null, status: null, view: null, branch: null, dept: null, section: null, job: null });
+    patch({
+      q: null,
+      status: null,
+      view: null,
+      branch: null,
+      dept: null,
+      section: null,
+      job: null,
+      idcard: null,
+    });
 
   // One fetch of each catalog, narrowed in the browser. All four endpoints are authenticated but
   // NOT gated by the unit's `view` permission, so the filters populate for anybody who may read the
@@ -250,7 +283,11 @@ export const EmployeesListPage = (): JSX.Element => {
               </Button>
             </Can>
             <Can permission="employee.create">
-              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => navigate('new')}
+              >
                 {t('employees.actions.create')}
               </Button>
             </Can>
@@ -280,11 +317,13 @@ export const EmployeesListPage = (): JSX.Element => {
           {view !== 'exited' && view !== 'toSettle' && (
             <Select value={status} onChange={(e) => patch({ status: e.target.value || null })}>
               <option value="">{t('employees.filters.anyStatus')}</option>
-              {EMPLOYEE_STATUSES.filter((s) => (view === 'employed' ? s !== 'exited' : true)).map((s) => (
-                <option key={s} value={s}>
-                  {t(`employees.status.${s}`)}
-                </option>
-              ))}
+              {EMPLOYEE_STATUSES.filter((s) => (view === 'employed' ? s !== 'exited' : true)).map(
+                (s) => (
+                  <option key={s} value={s}>
+                    {t(`employees.status.${s}`)}
+                  </option>
+                ),
+              )}
             </Select>
           )}
           {/*
@@ -344,6 +383,29 @@ export const EmployeesListPage = (): JSX.Element => {
                   </option>
                 ))}
               </Select>
+              {/* The company ID card: received, waiting for its handover, never received, or the most received first. */}
+              <Select
+                aria-label={t('employees.columns.idCard')}
+                value={
+                  idCard === 'received' && sort.by === 'idCard.receivedCount' ? 'most' : idCard
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'most') patch({ idcard: 'received', sort: MOST_RECEIVED_SORT });
+                  else
+                    patch({
+                      idcard: v || null,
+                      ...(sort.by === 'idCard.receivedCount' ? { sort: null } : {}),
+                    });
+                }}
+              >
+                <option value="">{t('employees.filters.anyIdCard')}</option>
+                <option value="received">{t('employees.filters.idCardReceived')}</option>
+                <option value="awaiting">{t('employees.filters.idCardAwaiting')}</option>
+                <option value="receipt">{t('employees.filters.idCardWaitingEmployee')}</option>
+                <option value="never">{t('employees.filters.idCardNever')}</option>
+                <option value="most">{t('employees.filters.idCardMost')}</option>
+              </Select>
             </>
           )}
         </FilterBar>
@@ -381,6 +443,8 @@ export const EmployeesListPage = (): JSX.Element => {
           </>
         )}
       </div>
+
+      <IdCardDialog employee={cardOf} onClose={() => setCardOf(null)} />
 
       {importOpen && (
         <Suspense fallback={null}>

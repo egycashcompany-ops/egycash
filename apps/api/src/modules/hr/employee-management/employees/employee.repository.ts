@@ -8,7 +8,11 @@ import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { normalizeArabic } from '../../shared/arabic';
 import { EmployeeModel, type EmployeeDoc, type EmployeeEntity } from './employee.model';
-import { codeNumberExpression, codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
+import {
+  codeNumberExpression,
+  codeNumberKey,
+  employeeCodeSort,
+} from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
   status?: string | undefined;
@@ -27,6 +31,8 @@ export interface EmployeeListFilter {
   governorate?: string | undefined;
   address?: string | undefined;
   phone?: string | undefined;
+  /** The company ID card: printed at least once, or never. */
+  idCard?: 'received' | 'never' | 'awaiting' | 'receipt' | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -219,9 +225,16 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    */
   async jobTitlePlacements(
     branchId: string,
-  ): Promise<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }[]> {
+  ): Promise<
+    { jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }[]
+  > {
     return this.model
-      .aggregate<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }>([
+      .aggregate<{
+        jobTitleId: unknown;
+        departmentId: unknown;
+        sectionId: unknown;
+        employees: number;
+      }>([
         {
           $match: {
             isDeleted: false,
@@ -613,6 +626,24 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         ],
       } as FilterQuery<EmployeeDoc>);
     }
+    // A card counts once HR confirms it was received — printing alone never does (see
+    // `employee-id-card.ts`). Never received is the counter absent as well as zero.
+    if (f.idCard === 'received') clauses.push({ 'idCard.receivedCount': { $gte: 1 } });
+    if (f.idCard === 'never') clauses.push({ 'idCard.receivedCount': { $not: { $gte: 1 } } });
+    // Waiting for its handover, split by whose turn it is: HR's (print the receipt) or the
+    // employee's (sign it and take the card).
+    if (f.idCard === 'awaiting') {
+      clauses.push({
+        'idCard.awaitingHandover': true,
+        'idCard.receiptPrintedAt': { $exists: false },
+      });
+    }
+    if (f.idCard === 'receipt') {
+      clauses.push({
+        'idCard.awaitingHandover': true,
+        'idCard.receiptPrintedAt': { $exists: true },
+      });
+    }
     if (f.phone !== undefined && f.phone.trim() !== '') {
       // The PRIMARY number only — the one every screen displays. Including the secondary would
       // match rows whose shown phone does not contain the search term.
@@ -687,7 +718,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       pageSize: params.pageSize,
       sortBy: params.sortBy,
       sortDir: params.sortDir,
-      sortableFields: ['createdAt', 'code', codeNumberKey('code'), 'hiredAt'],
+      // `idCard.receivedCount` — «الأكثر استلاماً للكارنيه».
+      sortableFields: [
+        'createdAt',
+        'code',
+        codeNumberKey('code'),
+        'hiredAt',
+        'idCard.receivedCount',
+      ],
       ...employeeCodeSort('code', params.sortBy, params.sortDir ?? 'desc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });

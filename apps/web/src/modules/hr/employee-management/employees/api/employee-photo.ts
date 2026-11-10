@@ -14,7 +14,7 @@ import {
 } from '@ecms/contracts';
 import { api, upload } from '../../../../../shared/lib/api-client';
 import { useAuthedImage } from '../../../../../shared/lib/authed-image';
-import { detailKey } from '../../../../../shared/lib/query-keys';
+import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { MY_SUMMARY_KEY } from '../../../../../platform/home/home-api';
 
 const MODULE = 'hr';
@@ -45,6 +45,8 @@ const useAfterPhotoWrite = (id: string) => {
   const qc = useQueryClient();
   return (updated: EmployeeDto): void => {
     qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
+    // The list's photo and ID card columns read the same file.
+    void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
     void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
     // The person's own card names their photo's file: should the face changed be the signed-in
     // person's, the new file id is a new picture in the top bar and on the welcome page.

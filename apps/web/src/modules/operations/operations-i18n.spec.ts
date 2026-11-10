@@ -107,6 +107,7 @@ const BOARD_KEYS = [
   'operations.board.title',
   'operations.board.stats',
   'operations.board.statsHide',
+  'operations.board.no',
   'operations.board.vehicle',
   'operations.board.bank',
   'operations.board.captain',
@@ -114,11 +115,12 @@ const BOARD_KEYS = [
   'operations.board.actions',
   'operations.board.figures.count',
   'operations.board.figures.countUnit',
+  'operations.catalogs.branch.duplicate',
   ...[
     'subtitle', 'mainBank', 'mainBankHint', 'pickBank', 'pickBankFirst', 'pickBranch', 'sideBank',
     'branch', 'addBranch', 'date', 'amount', 'areaHint', 'sections.shipment', 'sections.route',
     'sections.money', 'sections.crew', 'captain', 'vehicle', 'crewHint', 'crewHeld',
-    'crewNotOnEdit', 'crewNoAccess',
+    'crewNotOnEdit', 'crewElsewhere', 'crewNoAccess',
   ].map((key) => `operations.shipment.form.${key}`),
   ...['branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale'].map(
     (key) => `operations.shipment.errors.${key}`,

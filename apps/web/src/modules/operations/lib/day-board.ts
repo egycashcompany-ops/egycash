@@ -4,10 +4,11 @@
 // WHAT BELONGS HERE AND WHAT DOES NOT. The board's MEMBERSHIP — which shipments the desk works
 // today — is a business rule and lives on the server (`GET /operations/shipments/day-board`).
 // What lives here is presentation over an already-fetched day: the operator's search boxes, the
-// row numbering, and the status wording. The legacy screen mixed the two, filtering rows by
-// reading their rendered background colour (main_ops.ejs:995) — a genuinely fragile idea this
-// replaces with data.
+// row numbering, the status wording, what a branch cell prints and the order of the figures. The
+// legacy screen mixed the two, filtering rows by reading their rendered background colour
+// (main_ops.ejs:995) — a genuinely fragile idea this replaces with data.
 import {
+  type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
   type OperationsShipmentDto,
   type OperationsShipmentStatus,
@@ -72,18 +73,27 @@ export const isReceived = (shipment: { status: OperationsShipmentStatus }): bool
 export const boardDateOf = (shipment: OperationsShipmentDto): string | null =>
   shipment.shipmentType === 'daily' ? shipment.collectionDate : shipment.deliveryDate;
 
+/** Which branch column a value belongs to — «من فرع» or «الى فرع». */
+export type BoardBranchSide = 'origin' | 'destination';
+
+/**
+ * «من فرع» / «الى فرع» match what the cell SHOWS, as legacy's did: it read `cells[3/4].innerText`
+ * (main_ops.ejs:988-989), so a bank printed above a branch was searchable too. `cellTextOf` is
+ * that text — on the board, `branchCellText`; a caller holding plain shipments passes the branch
+ * name by id.
+ */
 export const filterDayBoard = <T extends OperationsShipmentDto>(
   shipments: readonly T[],
   filters: DayBoardFilters,
   bankNameOf: (bankId: string) => string,
-  branchNameOf: (branchId: string) => string,
+  cellTextOf: (shipment: T, side: BoardBranchSide) => string,
   captainNameOf: (shipment: T) => string = () => '',
 ): T[] =>
   shipments.filter(
     (shipment) =>
       matches(bankNameOf(shipment.mainBankId), filters.bank) &&
-      matches(branchNameOf(shipment.originBranchId), filters.origin) &&
-      matches(branchNameOf(shipment.destinationBranchId), filters.destination) &&
+      matches(cellTextOf(shipment, 'origin'), filters.origin) &&
+      matches(cellTextOf(shipment, 'destination'), filters.destination) &&
       matches(captainNameOf(shipment), filters.captain) &&
       matches(shipment.areaName, filters.area) &&
       matches(shipment.notes, filters.notes) &&
@@ -132,9 +142,85 @@ export const boardTotals = (
 };
 
 /**
+ * Where a currency sits in the figures: the domestic currency first, then the dollar, then the
+ * rest — the order the legacy strip read «مصري = … دولار = …» in (main_ops.ejs:3315). A currency
+ * the catalog cannot name goes last: its chip says «…», which is not worth reading first.
+ */
+const currencyRank = (currency: Pick<OperationsCurrencyDto, 'code'> | undefined): number =>
+  currency === undefined ? 3 : currency.code === 'EGP' ? 0 : currency.code === 'USD' ? 1 : 2;
+
+/**
+ * The board's figures in the order they are shown: `boardTotals` over the rows it is GIVEN — the
+ * page passes the filtered rows, so a bank filter answers "how much for this bank" — then EGP,
+ * USD, the rest by name, and an unknown currency last. Ties keep `boardTotals`' order.
+ */
+export const orderedBoardTotals = (
+  shipments: readonly OperationsShipmentDto[],
+  currencyOf: (currencyId: string) => Pick<OperationsCurrencyDto, 'code' | 'name'> | undefined,
+): { currencyId: string; amount: number }[] =>
+  boardTotals(shipments).sort((a, b) => {
+    const left = currencyOf(a.currencyId);
+    const right = currencyOf(b.currencyId);
+    return (
+      currencyRank(left) - currencyRank(right) ||
+      (left?.name ?? '').localeCompare(right?.name ?? '')
+    );
+  });
+
+/**
  * Was the money collected from ANOTHER bank than the one billed? The main bank is the billed bank,
  * so the bank the money came from is the origin branch's — worth showing exactly when it differs,
  * as the legacy board showed the to-bank (main_ops.ejs:867-872).
  */
 export const isOtherOriginBank = (row: OperationsDayBoardShipmentDto): boolean =>
   row.origin !== null && row.origin.bankId !== row.mainBankId;
+
+/**
+ * A bank's name, or null when there is none to print. The server sends `bankName: ''` for a bank
+ * it can no longer name, and the catalog lookup answers '' the same way. Passed through, that ''
+ * would be a "bank" the page draws as an empty line, so it counts as no bank; on the destination
+ * side the secondary bank's name is tried next, as it is when the branch itself is gone.
+ */
+const named = (name: string | undefined): string | null =>
+  name === undefined || name === '' ? null : name;
+
+/**
+ * What a branch cell PRINTS: the branch, and above it a bank exactly when the bank is news.
+ *
+ *   · «الى فرع» — the destination bank when the movement crosses banks (`isCrossBank`), as legacy
+ *     printed `sec_bank` in dark red above `to_name` (main_ops.ejs:867-871).
+ *   · «من فرع» — the origin branch's bank when it is not the billed one (`isOtherOriginBank`).
+ *
+ * `bank` is null when the cell prints none; `branch` is null when the branch could not be resolved
+ * (the page draws «…» there, which nobody types into a search box).
+ */
+export const branchCell = (
+  row: OperationsDayBoardShipmentDto,
+  side: BoardBranchSide,
+  bankNameOf: (bankId: string) => string,
+): { bank: string | null; branch: string | null } =>
+  side === 'origin'
+    ? {
+        bank: isOtherOriginBank(row) ? named(row.origin?.bankName) : null,
+        branch: row.origin?.name ?? null,
+      }
+    : {
+        bank: isCrossBank(row)
+          ? (named(row.destination?.bankName) ?? named(bankNameOf(row.secondaryBankId ?? '')))
+          : null,
+        branch: row.destination?.name ?? null,
+      };
+
+/**
+ * The branch cell as text — what legacy's «من فرع» / «الى فرع» boxes searched (`innerText`: the
+ * bank line, a line break, the branch). A bank the cell does not print is not in it, so typing a
+ * bank's name never finds a row whose cell does not say it.
+ */
+export const branchCellText = (
+  row: OperationsDayBoardShipmentDto,
+  side: BoardBranchSide,
+  bankNameOf: (bankId: string) => string,
+): string => {
+  const cell = branchCell(row, side, bankNameOf);
+  return [cell.bank, cell.branch].filter((line) => line !== null && line !== '').join('\n');
+};

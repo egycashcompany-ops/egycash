@@ -3035,6 +3035,8 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   let dailyOtherDay = '';
   let securedDueDraft = '';
   let securedDueDispatched = '';
+  /** The board day's one crew row — van A under `captainId` — for the legs booked below. */
+  let boardCrewId = '';
 
   beforeAll(async () => {
     dailyToday = data<OperationsShipmentDto>(
@@ -3096,18 +3098,18 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
     const dayDoc = await operationsDayService.findByDate(new Date(BOARD_DATE));
     const crewRows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
-    const crewId = String(crewRows[0]?._id ?? '');
+    boardCrewId = String(crewRows[0]?._id ?? '');
 
     const assigned = await request(app)
       .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewId, captainEmployeeId: captainId, version: 0 });
+      .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
 
     const dispatched = await request(app)
       .post('/api/v1/operations/secured/dispatch')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [secured.id], crewAssignmentId: crewId });
+      .send({ shipmentIds: [secured.id], crewAssignmentId: boardCrewId });
     expect(dispatched.status).toBe(200);
   });
 
@@ -3198,6 +3200,119 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     // Still a shipment underneath: every field a shipment reader expects is there.
     expect(secured.shipmentType).toBe('secured');
     expect(secured.lines.length).toBeGreaterThan(0);
+  });
+
+  // WHICH leg's crew a row prints is the type's rule — the same split the captain report makes:
+  // a daily shipment is reported under the crew that COLLECTED it, a secured one under the crew
+  // that DELIVERED it. The case above only had one leg to choose from. Here each type has a way to
+  // answer wrongly: the daily one is booked WITH its collection crew, and the secured one was
+  // collected the day before by another van and captain, then delivered by van A on the board day.
+  it('prints the crew of the leg the type reports on — collection for daily, delivery for secured', async () => {
+    const { operationsShipmentAssignmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.repository'
+    );
+
+    // DAILY, with the collection crew named at booking — the shipment form's own path.
+    const booked = await mkShipment({
+      collectionDate: BOARD_DATE,
+      pickup: { crewAssignmentId: boardCrewId, captainEmployeeId: captainId },
+    });
+    expect(booked.status).toBe(201);
+    const dailyCrewed = data<OperationsShipmentDto>(booked).id;
+    const dailyPickup = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      dailyCrewed,
+      'pickup',
+    );
+    expect(dailyPickup).not.toBeNull();
+
+    // SECURED, collected the day before by van B under its own captain.
+    const PICKUP_DATE = shift(219);
+    const pickupCaptainId = await mkEmployee();
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: PICKUP_DATE, rows: [{ vehicleId: vehicleBId, notes: 'board pickup seed' }] });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: PICKUP_DATE,
+        rows: [{ vehicleId: vehicleBId, captainEmployeeIds: [pickupCaptainId] }],
+      });
+    expect(plan.status).toBe(200);
+    const pickupCrewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleBId)?.crew?.id ??
+      '';
+    expect(pickupCrewId).not.toBe('');
+
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: PICKUP_DATE,
+      deliveryDate: BOARD_DATE,
+      pickup: { crewAssignmentId: pickupCrewId, captainEmployeeId: pickupCaptainId },
+    });
+    expect(created.status).toBe(201);
+    const twoLegs = data<OperationsShipmentDto>(created);
+
+    // ...then into the vault, out on van A under `captainId` on the board day.
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${twoLegs.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-BOARD-${twoLegs.id.slice(-5)}`,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: await mkEmployee(),
+        version: twoLegs.version,
+      });
+    expect(received.status).toBe(200);
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${twoLegs.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
+    expect(assigned.status).toBe(200);
+    const dispatched = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ shipmentIds: [twoLegs.id], crewAssignmentId: boardCrewId });
+    expect(dispatched.status).toBe(200);
+
+    // The fixture really has two legs on two different crews — otherwise the board could pass
+    // below by finding only one.
+    const securedPickup = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      twoLegs.id,
+      'pickup',
+    );
+    const securedDelivery = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      twoLegs.id,
+      'delivery',
+    );
+    expect(String(securedPickup?.vehicleId)).toBe(vehicleBId);
+    expect(String(securedPickup?.captainEmployeeId)).toBe(pickupCaptainId);
+    expect(String(securedDelivery?.vehicleId)).toBe(vehicleAId);
+    expect(String(securedDelivery?.captainEmployeeId)).toBe(captainId);
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const rows = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments;
+    const crewOf = (id: string): OperationsDayBoardShipmentDto['crew'] | undefined =>
+      rows.find((r) => r.id === id)?.crew;
+
+    // The daily row prints its COLLECTION leg.
+    expect(crewOf(dailyCrewed)).toMatchObject({
+      vehicleId: String(dailyPickup?.vehicleId),
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: String(dailyPickup?.captainEmployeeId),
+    });
+
+    // The secured row prints who DELIVERED it — van A and `captainId` — never who collected it.
+    expect(crewOf(twoLegs.id)).toMatchObject({
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+    });
+    expect(crewOf(twoLegs.id)?.vehicleCode).not.toBe('OPS-V2');
+    expect(crewOf(twoLegs.id)?.captainEmployeeId).not.toBe(pickupCaptainId);
   });
 
   it('is empty, not an error, on a day with no work', async () => {
@@ -4113,6 +4228,44 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
       .set('Authorization', `Bearer ${adminToken}`);
     expect(wildcard.status).toBe(200);
     expect((wildcard.body as { data: OperationsBankBranchDto[] }).data).toEqual([]);
+  });
+
+  // A search miss on a spelling variant is how a duplicate branch is born: the operator typed
+  // «الاسكندريه», the catalog held «الإسكندرية», nothing came back, and the form offered to add it
+  // «كفرع جديد». The folding runs inside Mongo's own regex engine here, not only in a unit test.
+  it('9b2. finds a branch whatever hamza or taa marbuta the operator typed', async () => {
+    const make = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع الإسكندرية', code: 'V-10' });
+    expect(make.status).toBe(201);
+
+    const codesFor = async (search: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(
+          `/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent(search)}`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: OperationsBankBranchDto[] }).data.map((b) => b.code);
+    };
+
+    expect(await codesFor('الاسكندريه')).toEqual(['V-10']); // no hamza, haa for taa marbuta
+    expect(await codesFor('اسكندرية')).toEqual(['V-10']); // no article, no hamza
+    expect(await codesFor('الإسْكَنْدَرِيَّة')).toEqual(['V-10']); // typed with tashkeel
+    // Still a literal underneath: a bracket beside a folded letter is text, not a group.
+    expect(await codesFor('(الاسكندريه')).toEqual([]);
+    // A long paste is still a search, not a 500: folded in full, 600 letters is a pattern mongod
+    // refuses as longer than its limit.
+    expect(await codesFor('الاسكندريه'.repeat(60))).toEqual([]);
+
+    // And the other side: a name STORED with tashkeel and tatweel is found by its bare letters.
+    const marked = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع دَمَنْهُـور', code: 'V-11' });
+    expect(marked.status).toBe(201);
+    expect(await codesFor('دمنهور')).toEqual(['V-11']);
   });
 
   // A shipment's edit form names its branches — and the bank the money came from — by reading the

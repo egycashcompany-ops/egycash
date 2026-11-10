@@ -15,7 +15,7 @@
 //
 // ONE ADDITION over legacy: a date picker. The default is still today, so the legacy answer is
 // the default answer; being able to look at yesterday is additive, not a changed rule.
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -52,13 +52,13 @@ import {
 } from '../api/operations-queries';
 import {
   EMPTY_DAY_BOARD_FILTERS,
-  boardTotals,
+  branchCell,
+  branchCellText,
   filterDayBoard,
   hasActiveFilter,
-  isCrossBank,
-  isOtherOriginBank,
   isReceived,
   legacyRowNumber,
+  orderedBoardTotals,
   totalsByCurrency,
   type DayBoardFilters,
 } from '../lib/day-board';
@@ -112,13 +112,6 @@ const DASH = <span className="text-slate-400">—</span>;
  * `nowrap`, and fourteen columns of unbroken names do not fit a laptop beside the menu.
  */
 const WRAP = 'block min-w-[5rem] max-w-[9rem] whitespace-normal leading-tight';
-
-/**
- * The domestic currency first, then the dollar, then the rest by name — the order the legacy strip
- * read «مصري = … دولار = …» in (main_ops.ejs:3315).
- */
-const currencyRank = (currency: OperationsCurrencyDto | undefined): number =>
-  currency?.code === 'EGP' ? 0 : currency?.code === 'USD' ? 1 : 2;
 
 /** «تشغيل يوم …» — the legacy header's long date (main_ops.ejs:262, 1659-1661). */
 const longDay = (iso: string, locale: 'ar' | 'en'): string =>
@@ -178,34 +171,19 @@ export const DailyOperationsPage = (): JSX.Element => {
     currencies.data?.items.find((currency) => currency.id === id);
 
   const shipments = board.data?.shipments ?? [];
-  // Branch names come WITH the rows now — no page-capped catalog lookup to run out.
-  const branchNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const row of shipments) {
-      if (row.origin !== null) names.set(row.origin.id, row.origin.name);
-      if (row.destination !== null) names.set(row.destination.id, row.destination.name);
-    }
-    return names;
-  }, [shipments]);
+  // Branch names come WITH the rows now — no page-capped catalog lookup to run out. «من فرع» and
+  // «الى فرع» search the text their cell prints, bank line included, as legacy's did.
   const rows = filterDayBoard(
     shipments,
     filters,
     bankNameOf,
-    (id) => branchNames.get(id) ?? '',
+    (row, side) => branchCellText(row, side, bankNameOf),
     (row) => row.crew?.captainName ?? '',
   );
 
-  // The figures: what is SHOWN, per currency — domestic first, then the dollar, then the rest.
-  const totals = useMemo(
-    () =>
-      boardTotals(rows).sort(
-        (a, b) =>
-          currencyRank(currencyOf(a.currencyId)) - currencyRank(currencyOf(b.currencyId)) ||
-          (currencyOf(a.currencyId)?.name ?? '').localeCompare(currencyOf(b.currencyId)?.name ?? ''),
-      ),
-    // `currencyOf` reads the currencies query, which is what the second dependency tracks.
-    [rows, currencies.data],
-  );
+  // The figures: over the rows SHOWN — the filtered ones — per currency, in the legacy strip's
+  // order (`orderedBoardTotals`).
+  const totals = orderedBoardTotals(rows, currencyOf);
 
   const canEdit = can('operationsShipment.edit');
   const canDelete = can('operationsShipment.delete');
@@ -237,7 +215,7 @@ export const DailyOperationsPage = (): JSX.Element => {
   const columns: Column<OperationsDayBoardShipmentDto>[] = [
     {
       key: 'no',
-      header: 'م',
+      header: t('operations.board.no'),
       // Descending, newest highest — the legacy numbering operators call shipments by.
       render: (row) => (
         <span className={FIGURE}>{legacyRowNumber(rows.indexOf(row), rows.length)}</span>
@@ -257,34 +235,36 @@ export const DailyOperationsPage = (): JSX.Element => {
     {
       key: 'origin',
       header: t('operations.shipment.origin'),
-      render: (row) => (
-        <div className="leading-tight">
-          {/* The money came from ANOTHER bank than the one billed: said above the branch, as the
-              legacy board said the to-bank (main_ops.ejs:867-872). */}
-          {isOtherOriginBank(row) && (
-            <div className="text-[11px] text-amber-700 dark:text-amber-300">
-              {row.origin?.bankName}
-            </div>
-          )}
-          <div className={WRAP}>{row.origin?.name ?? '…'}</div>
-        </div>
-      ),
+      render: (row) => {
+        const cell = branchCell(row, 'origin', bankNameOf);
+        return (
+          <div className="leading-tight">
+            {/* The money came from ANOTHER bank than the one billed: said above the branch, as the
+                legacy board said the to-bank (main_ops.ejs:867-872). */}
+            {cell.bank !== null && (
+              <div className="text-[11px] text-amber-700 dark:text-amber-300">{cell.bank}</div>
+            )}
+            <div className={WRAP}>{cell.branch ?? '…'}</div>
+          </div>
+        );
+      },
     },
     {
       key: 'destination',
       header: t('operations.shipment.destination'),
-      render: (row) => (
-        <div className="leading-tight">
-          {/* The cross-bank movement legacy printed in dark red, because it is the case an
-              operator must not miss (main_ops.ejs:867). */}
-          {isCrossBank(row) && (
-            <div className="text-[11px] text-red-700 dark:text-red-400">
-              {row.destination?.bankName ?? bankNameOf(row.secondaryBankId ?? '')}
-            </div>
-          )}
-          <div className={WRAP}>{row.destination?.name ?? '…'}</div>
-        </div>
-      ),
+      render: (row) => {
+        const cell = branchCell(row, 'destination', bankNameOf);
+        return (
+          <div className="leading-tight">
+            {/* The cross-bank movement legacy printed in dark red, because it is the case an
+                operator must not miss (main_ops.ejs:867). */}
+            {cell.bank !== null && (
+              <div className="text-[11px] text-red-700 dark:text-red-400">{cell.bank}</div>
+            )}
+            <div className={WRAP}>{cell.branch ?? '…'}</div>
+          </div>
+        );
+      },
     },
     {
       key: 'currency',
@@ -383,15 +363,17 @@ export const DailyOperationsPage = (): JSX.Element => {
               <SquarePenIcon className="h-4 w-4" />
             </button>
           )}
-          {/* «إستلام» — a toggle, as legacy's was (main_ops.ejs:919-928): pressed once received. */}
+          {/* «إستلام» — a toggle, as legacy's was (main_ops.ejs:919-928): pressed once received.
+              Its NAME stays «تأكيد التسليم» either way and `aria-pressed` carries the state: a
+              name that flipped to «التراجع عن التسليم» would be announced "undo delivery,
+              pressed", as if the undo were what is switched on. The tooltip may still say what
+              a click does next. */}
           {canComplete && (
             <button
               type="button"
               className={cn(actionTone('status'), isReceived(row) && PRESSED)}
               aria-pressed={isReceived(row)}
-              aria-label={t(
-                isReceived(row) ? 'operations.shipment.unreceive' : 'operations.shipment.receive',
-              )}
+              aria-label={t('operations.shipment.receive')}
               title={t(
                 isReceived(row) ? 'operations.shipment.unreceive' : 'operations.shipment.receive',
               )}
@@ -637,7 +619,7 @@ export const DailyOperationsPage = (): JSX.Element => {
 
         {/* «مصري = … دولار = …» — the legacy strip, as the Fleet boards' figures, between the
             filters and the table, behind «الإحصائيات». Over the rows SHOWN, one figure per
-            currency (`boardTotals`). */}
+            currency (`orderedBoardTotals`). */}
         {statsOpen && board.data !== undefined && (
           <div
             data-shipment-figures="true"

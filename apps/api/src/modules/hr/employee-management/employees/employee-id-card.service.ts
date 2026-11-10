@@ -24,6 +24,7 @@ import {
   type EmployeePlacementUnitDto,
 } from '@ecms/contracts';
 import { auditService } from '../../../../platform/audit';
+import { publishAuditedChange } from '../../../../platform/realtime';
 import { ConflictError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { EmployeeModel, type EmployeeDoc } from './employee.model';
@@ -36,6 +37,27 @@ const actorId = (ctx: AuthContext): Types.ObjectId | null =>
   Types.ObjectId.isValid(ctx.userId) ? new Types.ObjectId(ctx.userId) : null;
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });
+
+/**
+ * A print, a receipt or a handover changed what the employees list and the profile show, so every
+ * other HR screen on that employee refreshes (ADR-029).
+ *
+ * The audit row announces itself, but only for the actions that ARE data changes: `update` is in
+ * `REALTIME_BROADCAST_ACTIONS`, so the handover already signals on its own, while a print and a
+ * receipt are audited as an `export` — telemetry, which stops at the audit stream by design. Their
+ * counters are on the employee all the same, so each sends one `update` signal for the employee
+ * itself, carrying the employee's branch so a branch-scoped `employee.view` reader hears it too.
+ * No audit row of its own: `signalVehicleCheck` and `signalConsumable` are the precedent.
+ * Best-effort, as every signal is — it may never fail or slow the write it rides on.
+ */
+const signalIdCard = (employee: Pick<EmployeeDoc, '_id' | 'branchId'>): void => {
+  publishAuditedChange({
+    entityRef: entityRef(String(employee._id)),
+    action: 'update',
+    at: new Date().toISOString(),
+    branchId: employee.branchId === null ? null : String(employee.branchId),
+  });
+};
 
 export const employeeIdCardService = {
   /** Everything printed on the card, the full national ID among it — audited, see the top. */
@@ -108,6 +130,7 @@ export const employeeIdCardService = {
         { field: 'idCard.printCount', old: summary.printCount - 1, new: summary.printCount },
       ],
     });
+    signalIdCard(before);
     return summary;
   },
 
@@ -139,6 +162,7 @@ export const employeeIdCardService = {
         { field: 'idCard.receipt', old: null, new: 'receipt printed for the employee to sign' },
       ],
     });
+    signalIdCard(before);
     return toIdCardSummaryDto(updated);
   },
 
@@ -148,6 +172,9 @@ export const employeeIdCardService = {
    * Only a card printed since the last handover can be handed over — the condition is part of the
    * same atomic update, so a double click, two HR people at once, or a confirm with nothing printed
    * moves the count at most once (the rest are a 409). The newest unconfirmed print is the one marked.
+   *
+   * The audit row's `update` already signals this one; `signalIdCard` adds the employee's branch,
+   * which that row cannot carry, so branch-scoped readers hear it too.
    */
   async confirmHandover(
     ctx: AuthContext,
@@ -195,6 +222,7 @@ export const employeeIdCardService = {
         },
       ],
     });
+    signalIdCard(before);
     return summary;
   },
 

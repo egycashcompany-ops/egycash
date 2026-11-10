@@ -34,7 +34,7 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'permissions', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'idCard', 'timeline', 'permissions', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
@@ -78,6 +78,7 @@ const EmployeeAdjustmentsTab = lazy(
 const EmployeeLoansTab = lazy(
   () => import('../../../employee-loans/components/EmployeeLoansTab'),
 );
+const EmployeeIdCardTab = lazy(() => import('../id-card/EmployeeIdCardTab'));
 const EmployeeSettlementTab = lazy(
   () => import('../../../settlement/components/EmployeeSettlementTab'),
 );
@@ -464,6 +465,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
           </Suspense>
         ))}
       {tab === 'documents' && <DocumentsTab e={e} />}
+      {tab === 'idCard' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeIdCardTab employee={e} />
+        </Suspense>
+      )}
       {tab === 'timeline' && <TimelineTab e={e} />}
       {tab === 'account' && (
         <EmployeeAccountCard employee={e} />

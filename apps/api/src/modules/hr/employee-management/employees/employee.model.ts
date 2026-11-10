@@ -30,7 +30,11 @@ import {
   type ContactChannel,
   type Address,
 } from '@ecms/contracts';
-import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
+import {
+  baseFields,
+  baseSchemaOptions,
+  type BaseDocFields,
+} from '../../../../shared/base/base.model';
 
 export interface EmployeeMoney {
   amount: number;
@@ -85,6 +89,25 @@ export interface EmployeeContact {
   preferredContactChannel: ContactChannel | null;
 }
 
+/**
+ * The company ID card's counters. Printing and receiving are counted apart: only a confirmed
+ * handover (`receivedCount`) is a card. The `first…At` dates are only ever set by `$min`, never null.
+ */
+export interface EmployeeIdCardRecord {
+  receivedCount?: number;
+  firstReceivedAt?: Date;
+  lastReceivedAt?: Date;
+  lastReceivedBy?: Types.ObjectId | null;
+  /** A print since the last handover, not yet confirmed as received. */
+  awaitingHandover?: boolean;
+  /** The receipt for the waiting card was printed: the employee's turn to sign and take it. */
+  receiptPrintedAt?: Date;
+  printCount: number;
+  firstPrintedAt?: Date;
+  lastPrintedAt?: Date;
+  lastPrintedBy?: Types.ObjectId | null;
+}
+
 /** Personal data owned by the employee post-hire — same shapes the applicant stores. */
 export interface EmployeePersonalData {
   fullNameAr: string;
@@ -105,7 +128,11 @@ export interface EmployeePersonalData {
   contact: EmployeeContact;
   officialAddress: Address | null;
   currentAddress: Address | null;
-  military: { status: MilitaryStatus; certificateRef: string | null; completedAt: Date | null } | null;
+  military: {
+    status: MilitaryStatus;
+    certificateRef: string | null;
+    completedAt: Date | null;
+  } | null;
   education: {
     level: EducationLevel;
     institution: string | null;
@@ -207,6 +234,11 @@ export interface EmployeeDoc extends BaseDocFields {
   employmentPeriods: EmploymentPeriod[];
   /** Per-employee Personnel Action sequence — atomic `$inc`, the history's total order. */
   actionSeq: number;
+  /**
+   * The company ID card's counters (see `employee-id-card.ts`). Absent until the first print; each
+   * print is also its own row in `hr_employee_id_card_prints`.
+   */
+  idCard?: EmployeeIdCardRecord;
   /** LEGACY pre-actions status trail, frozen at migration (oldest first, starts with the hire). */
   statusHistory: EmployeeStatusEvent[];
   /** The linked login account (Employee ← one User), null until a login is created (ADR-017). */
@@ -463,6 +495,25 @@ const employeeSchema = new Schema<EmployeeDoc>(
     exit: { type: exitSchema, default: null },
     employmentPeriods: { type: [employmentPeriodSchema], default: [] },
     actionSeq: { type: Number, required: true, default: 0 },
+    // No defaults inside: a first print's `$min` must find the date absent, not null.
+    idCard: {
+      type: new Schema(
+        {
+          receivedCount: Number,
+          firstReceivedAt: Date,
+          lastReceivedAt: Date,
+          lastReceivedBy: Schema.Types.ObjectId,
+          awaitingHandover: Boolean,
+          receiptPrintedAt: Date,
+          printCount: Number,
+          firstPrintedAt: Date,
+          lastPrintedAt: Date,
+          lastPrintedBy: Schema.Types.ObjectId,
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     statusHistory: { type: [statusEventSchema], default: [] },
     userId: { type: Schema.Types.ObjectId, default: null },
     applicantId: { type: Schema.Types.ObjectId, default: null },
@@ -500,7 +551,11 @@ employeeSchema.index({ code: 1 }, { unique: true, name: 'ux_code' });
 // (jobOfferId is null for direct registrations — nulls are exempt via the type filter.)
 employeeSchema.index(
   { jobOfferId: 1 },
-  { unique: true, name: 'ux_offer', partialFilterExpression: { jobOfferId: { $type: 'objectId' }, isDeleted: false } },
+  {
+    unique: true,
+    name: 'ux_offer',
+    partialFilterExpression: { jobOfferId: { $type: 'objectId' }, isDeleted: false },
+  },
 );
 // One login account per employee (Employee ← one User); nulls are exempt.
 employeeSchema.index(
@@ -515,6 +570,8 @@ employeeSchema.index({ sectionId: 1, status: 1 }, { name: 'ix_sectionId_status' 
 // Duplicate-person guard + rehire-check lookups (uniqueness enforced in the service so the
 // migration can never be blocked by legacy data).
 employeeSchema.index({ 'personal.nationalId': 1 }, { name: 'ix_nationalId' });
+// The ID card filter («اتطبعله كارنيه / لأ») and «الأكثر طباعة» sort.
+employeeSchema.index({ 'idCard.receivedCount': -1 }, { name: 'ix_idCard_receivedCount' });
 // Direct reports (subordinates endpoint / exit direct-reports decision).
 employeeSchema.index({ 'employment.managerId': 1, status: 1 }, { name: 'ix_managerId_status' });
 

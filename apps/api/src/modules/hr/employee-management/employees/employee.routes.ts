@@ -3,7 +3,13 @@
 // never imports infrastructure directly (Module Structure §1). Literal paths (`/direct`,
 // `/rehire-check`) are declared before `/:id`. The status endpoint moved to the
 // employee-actions feature (deprecated alias over the engine).
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import multer from 'multer';
 import { ErrorCodes } from '@ecms/contracts';
 import { AppError, ValidationError } from '../../../../shared/errors';
@@ -22,6 +28,11 @@ import {
   getMyEmployeeSummary,
   getEmployeePhoto,
   getEmployeeTimeline,
+  getEmployeeIdCard,
+  recordEmployeeIdCardPrint,
+  confirmEmployeeIdCardHandover,
+  recordEmployeeIdCardReceipt,
+  listEmployeeIdCardPrints,
   linkEmployeeUser,
   listEmployees,
   listSubordinates,
@@ -73,7 +84,13 @@ const rosterUpload = (): RequestHandler => {
         return;
       }
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        next(new AppError(ErrorCodes.VALIDATION_FAILED, 422, `File exceeds the ${ROSTER_MAX_MB} MB cap`));
+        next(
+          new AppError(
+            ErrorCodes.VALIDATION_FAILED,
+            422,
+            `File exceeds the ${ROSTER_MAX_MB} MB cap`,
+          ),
+        );
         return;
       }
       next(error);
@@ -273,6 +290,44 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.editPersonal'),
     validate({ params: EmployeeIdParamSchema }),
     asyncHandler(removeEmployeePhoto),
+  );
+  // The company ID card (كارنيه الشركة). Printing it, and reading what goes on it — the national ID
+  // in full — is a personal-data edit's authority; seeing how often it was printed is seeing the
+  // employee. See `employee-id-card.ts`.
+  router.get(
+    '/:id/id-card',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(getEmployeeIdCard),
+  );
+  router.post(
+    '/:id/id-card/prints',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(recordEmployeeIdCardPrint),
+  );
+  router.post(
+    '/:id/id-card/receipts',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(recordEmployeeIdCardReceipt),
+  );
+  router.post(
+    '/:id/id-card/handovers',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(confirmEmployeeIdCardHandover),
+  );
+  router.get(
+    '/:id/id-card/prints',
+    authenticate,
+    authorize('employee.view'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(listEmployeeIdCardPrints),
   );
   // The National-ID card (front and back) carried over from the applicant file at hire.
   router.get(

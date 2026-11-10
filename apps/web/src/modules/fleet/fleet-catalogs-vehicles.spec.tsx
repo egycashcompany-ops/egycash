@@ -121,27 +121,42 @@ const me = (permissions: readonly string[]): MeDto =>
 const seededClient = (): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const M = 'fleet';
-  qc.setQueryData(listKey(M, 'vehicleTypes', { pageSize: 100 }), page([
-    {
-      id: 'ty1',
-      name: { ar: 'مرسيدس اسبرانتر 515', en: 'Mercedes Sprinter 515' },
-      maintenanceIntervalKm: 10_000,
-      isActive: true,
-      version: 0,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  ]));
+  qc.setQueryData(
+    listKey(M, 'vehicleTypes', { pageSize: 100 }),
+    page([
+      {
+        id: 'ty1',
+        name: { ar: 'مرسيدس اسبرانتر 515', en: 'Mercedes Sprinter 515' },
+        maintenanceIntervalKm: 10_000,
+        isActive: true,
+        version: 0,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]),
+  );
   for (const [kind, item] of Object.entries(CATALOG)) {
-    qc.setQueryData(listKey(M, 'catalogs', { kind }), page([catalogItem(kind, item.id, item.name)]));
+    qc.setQueryData(
+      listKey(M, 'catalogs', { kind }),
+      page([catalogItem(kind, item.id, item.name)]),
+    );
   }
   // Branch names come from `/platform/branches/options` — a bare ARRAY, no page wrapper and no
   // `select`, and no `branch.view` behind it. The specs below prove exactly that: the column fills
   // for a reader who holds no organization grant at all.
-  qc.setQueryData(['organization', 'branches', 'options'], [
-    { id: 'b1', code: '01', name: { ar: 'المهندسين', en: 'Mohandessin' }, parentId: null, catalogId: null },
-    { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, parentId: null, catalogId: null },
-  ]);
+  qc.setQueryData(
+    ['organization', 'branches', 'options'],
+    [
+      {
+        id: 'b1',
+        code: '01',
+        name: { ar: 'المهندسين', en: 'Mohandessin' },
+        parentId: null,
+        catalogId: null,
+      },
+      { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, parentId: null, catalogId: null },
+    ],
+  );
   qc.setQueryData(listKey(M, 'vehicles', { defaultBranch: true }), {
     branchId: 'b1',
     name: { ar: 'المهندسين', en: 'Mohandessin' },
@@ -275,12 +290,7 @@ describe('the drivers registry’s three catalogs are managed here too', () => {
         page(items.map((i) => catalogItem(kind, i.id, { ar: i.ar, en: i.ar }))),
       );
       const markup = render(
-        <CatalogSelect
-          kind={kind as never}
-          value=""
-          onChange={() => undefined}
-          ariaLabel={kind}
-        />,
+        <CatalogSelect kind={kind as never} value="" onChange={() => undefined} ariaLabel={kind} />,
         { client: qc },
       );
       for (const item of items) {
@@ -289,9 +299,10 @@ describe('the drivers registry’s three catalogs are managed here too', () => {
         );
       }
       // Nothing else: the control has no vocabulary of its own to add to the catalog's.
-      expect(markup.match(/<option/g), `${kind} offers only the catalog + the empty row`).toHaveLength(
-        items.length + 1,
-      );
+      expect(
+        markup.match(/<option/g),
+        `${kind} offers only the catalog + the empty row`,
+      ).toHaveLength(items.length + 1);
     }
   });
 
@@ -319,7 +330,10 @@ describe('the drivers registry’s three catalogs are managed here too', () => {
       listKey('fleet', 'catalogs', { kind: 'driverSpecialization', violationSide: undefined }),
       page([
         { ...catalogItem('driverSpecialization', 's1', { ar: 'نقل اموال', en: 'Cash' }) },
-        { ...catalogItem('driverSpecialization', 's9', { ar: 'تخصص متقاعد', en: 'Retired' }), isActive: false },
+        {
+          ...catalogItem('driverSpecialization', 's9', { ar: 'تخصص متقاعد', en: 'Retired' }),
+          isActive: false,
+        },
       ]),
     );
     const chosen = render(
@@ -351,10 +365,7 @@ describe('the drivers registry’s three catalogs are managed here too', () => {
     expect(selected, 'the driverJob tab is the selected one').toContain(
       t('fleet.catalogs.kind.driverJob'),
     );
-    expect(
-      markup.split('aria-selected="true"').length - 1,
-      'exactly one tab is selected',
-    ).toBe(1);
+    expect(markup.split('aria-selected="true"').length - 1, 'exactly one tab is selected').toBe(1);
     expect(markup, 'and the add action names the kind').toContain(
       translate('ar', 'fleet.catalogs.addItem', { kind: t('fleet.catalogs.kind.driverJob') }),
     );
@@ -636,7 +647,10 @@ describe('the registry table renders the frozen column order', () => {
   it('wraps rather than overflowing on a narrow screen', () => {
     const html = withRows([vehicle()]);
     // The bar itself carries the wrap; nothing inside it pins a row open.
-    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2'), html.indexOf('<thead'));
+    const bar = html.slice(
+      html.indexOf('flex flex-wrap items-center gap-2'),
+      html.indexOf('<thead'),
+    );
     expect(bar).toContain('flex-wrap');
     expect(bar).not.toContain('flex-nowrap');
   });
@@ -783,9 +797,9 @@ describe('the print view carries the image only when there is one', () => {
 
   it('sets the document direction from the locale', () => {
     expect(buildVehiclePrintHtml({ ...base, licenseImage: null }, null)).toContain('dir="rtl"');
-    expect(
-      buildVehiclePrintHtml({ ...base, locale: 'en', licenseImage: null }, null),
-    ).toContain('dir="ltr"');
+    expect(buildVehiclePrintHtml({ ...base, locale: 'en', licenseImage: null }, null)).toContain(
+      'dir="ltr"',
+    );
   });
 });
 
@@ -802,7 +816,9 @@ describe('every literal fleet key the module uses resolves in both locales', () 
   const keys = (() => {
     const found = new Set<string>();
     for (const file of sources(HERE)) {
-      for (const match of readFileSync(file, 'utf8').matchAll(/\bt\(\s*'(fleet\.[a-zA-Z0-9_.]+)'/g)) {
+      for (const match of readFileSync(file, 'utf8').matchAll(
+        /\bt\(\s*'(fleet\.[a-zA-Z0-9_.]+)'/g,
+      )) {
         if (match[1] !== undefined) found.add(match[1]);
       }
     }
@@ -833,12 +849,17 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('the shared dialog lets each caller decide', () => {
     expect(DIALOG, 'the option exists').toContain('dismissOnOutsideClick');
     expect(DIALOG, 'and it gates the listener').toContain(
-      'useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick)',
+      'useOnClickOutside(panelRef, closeIfOnTop, open && dismissOnOutsideClick)',
     );
   });
 
   it('and still closes on Escape, which is a decision rather than a slip', () => {
-    expect(DIALOG).toContain("if (e.key === 'Escape') onClose()");
+    // The dialog on top answers Escape: one press closes one dialog, not every one stacked under it.
+    // It marks the key handled, so a Fleet DesignDialog underneath (listening on the window, after
+    // the document) does not close on the same key and lose what was typed into it.
+    expect(DIALOG).toMatch(
+      /if \(e\.key !== 'Escape' \|\| !onTop\(\)\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u,
+    );
   });
 
   // The reading and workshop forms are drawn in the vehicle form's design now: `DesignDialog`'s
@@ -847,7 +868,9 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('the design shell has no click on its backdrop, and closes on Escape', () => {
     expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
     expect(SHELL).not.toContain('useOnClickOutside');
-    expect(SHELL).toContain("if (e.key === 'Escape') onClose()");
+    // Escape closes the dialog on TOP — not one under a dialog opened from it.
+    expect(SHELL).toContain("if (e.key !== 'Escape' || e.defaultPrevented) return;");
+    expect(SHELL).toMatch(/roots\[roots\.length - 1\] !== rootRef\.current\) return;\s*e\.preventDefault\(\);\s*onClose\(\);/u);
   });
 
   it('the reading dialog is drawn in it', () => {
@@ -902,7 +925,10 @@ describe('the odometer and workshop driver slots ask the registry', () => {
   });
 
   it('the payroll-backed field is gone from the module', () => {
-    for (const rel of ['components/RecordOdometerDialog.tsx', 'components/MaintenanceDialogs.tsx']) {
+    for (const rel of [
+      'components/RecordOdometerDialog.tsx',
+      'components/MaintenanceDialogs.tsx',
+    ]) {
       expect(read(rel), `${rel} still imports the payroll field`).not.toContain(
         'OptionalEmployeeField',
       );

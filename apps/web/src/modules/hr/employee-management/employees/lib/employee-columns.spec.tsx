@@ -24,7 +24,7 @@ const employee = (placement: Partial<EmployeeDto['placement']> = {}): EmployeeDt
   }) as unknown as EmployeeDto;
 
 describe('the employees list columns', () => {
-  it('are, in order: code, name, site, department, section, job title, hire date, status', () => {
+  it('are, in order: code, name, site, department, section, job title, ID card, hire date, status', () => {
     expect(columns.map((c) => c.key)).toEqual([...EMPLOYEE_COLUMN_ORDER]);
   });
 
@@ -45,8 +45,13 @@ describe('the employees list columns', () => {
     expect(renderToStaticMarkup(<>{section?.render(employee(), 0)}</>)).toContain('—');
   });
 
-  it('keep code and hire date sortable, and nothing derived sortable', () => {
+  it('keep code, ID card prints and hire date sortable, and nothing derived sortable', () => {
     const sortable = columns.filter((c) => c.sortable === true).map((c) => c.key);
-    expect(sortable).toEqual(['code', 'hiredAt']);
+    expect(sortable).toEqual(['code', 'idCard', 'hiredAt']);
+  });
+
+  /** «الأكثر طباعة» — the ID card column sorts on the server's print counter, not on its own key. */
+  it('sort the ID card column on how many times it was printed', () => {
+    expect(columns.find((c) => c.key === 'idCard')?.sortKey).toBe('idCard.receivedCount');
   });
 });

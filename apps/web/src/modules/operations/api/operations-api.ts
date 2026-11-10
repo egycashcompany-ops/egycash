@@ -54,10 +54,12 @@ import {
   api,
   buildQuery,
   del,
+  fetchBlob,
   get,
   getPage,
   patch,
   post,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -100,6 +102,33 @@ export const updateCurrency = (
   body: UpdateOperationsCurrency,
 ): Promise<OperationsCurrencyDto> =>
   patch<OperationsCurrencyDto>(`/operations/currencies/${id}`, body);
+
+/** One branch by id — how a shipment's edit form names the branch it holds, and that branch's bank. */
+export const getBankBranch = (id: string): Promise<OperationsBankBranchDto> =>
+  get<OperationsBankBranchDto>(`/operations/bank-branches/${id}`);
+
+/**
+ * One bank's ACTIVE branches matching what was typed — the shipment form's branch picker.
+ *
+ * Searched on the server, never filtered from a fetched page: a large bank has hundreds of
+ * branches, a page holds a hundred, and filtering "the first hundred" would hide the rest — the
+ * operator would then add a branch that already exists. Inactive branches are left out because the
+ * server refuses to book a shipment on one.
+ */
+export const searchBranchesOfBank = (
+  bankId: string,
+  search: string,
+): Promise<Paginated<OperationsBankBranchDto>> =>
+  getPage<OperationsBankBranchDto>(
+    `/operations/bank-branches${buildQuery({
+      bankId,
+      search: search.trim() === '' ? undefined : search.trim(),
+      isActive: true,
+      pageSize: MAX_PAGE_SIZE,
+      sortBy: 'name',
+      sortDir: 'asc',
+    })}`,
+  );
 
 /** Every branch of one bank, for the cascading pickers the shipment screens use. */
 export const branchesOfBank = (bankId: string): Promise<Paginated<OperationsBankBranchDto>> =>
@@ -156,6 +185,26 @@ export const reopenShipment = (
 
 export const deleteShipment = (id: string): Promise<void> =>
   del<void>(`/operations/shipments/${id}`);
+
+// «صورة الإيصال» — the photo of a shipment's paper receipt, one per shipment (the Fleet receipts'
+// image endpoints, on the shipment). Upload answers the shipment with its new `receiptImage`; a
+// second upload REPLACES the photo (a new version of the same file, so the old one stays in the
+// file's history). The bytes are guarded (ADR-023), so they are fetched with the session and never
+// put in an `<img src>` as a URL.
+export const uploadShipmentReceiptImage = (
+  id: string,
+  file: File,
+): Promise<OperationsShipmentDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<OperationsShipmentDto>(`/operations/shipments/${id}/receipt-image`, form);
+};
+
+export const fetchShipmentReceiptImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/operations/shipments/${id}/receipt-image`);
+
+export const deleteShipmentReceiptImage = (id: string): Promise<OperationsShipmentDto> =>
+  del<OperationsShipmentDto>(`/operations/shipments/${id}/receipt-image`);
 
 // ── Crew board, roster and requirements (B3 — legacy /tashghela + /requirement) ─────────────
 

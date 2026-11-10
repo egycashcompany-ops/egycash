@@ -27,6 +27,7 @@ import { buildOperationsAssignmentsRouter } from './assignments/assignment.route
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
 import { buildOperationsReportsRouter } from './reports/report.routes';
 import { seedOperations } from './operations.seed';
+import { shipmentFileAuthorizer } from './shipments/shipment-files';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -188,7 +189,11 @@ export const operationsModule: ModuleManifest = {
   // The standing crew (الطاقم الثابت) follows the same shape a third time: one new prefix, one new
   // collection, no new permission and no new page. It rides `operationsCrew.view` / `.plan`,
   // because deciding who crews which vehicle is one authority whether it is said once or daily.
-  version: '0.10.0',
+  //
+  // The receipt photo on a shipment is the first Operations file: three routes under the existing
+  // shipments prefix, on the EXISTING `operationsShipment.view` / `.edit` grants, plus the file
+  // authorizer below. Still no new permission, page or collection.
+  version: '0.11.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -219,6 +224,10 @@ export const operationsModule: ModuleManifest = {
     'operations_vault_custody',
     'operations_shipment_assignments',
   ],
+  // ADR-023 — the receipt photo on a shipment answers to the SHIPMENT's grants (view to see it,
+  // edit to change it), so reaching it through the platform's own file endpoints is guarded
+  // exactly as the shipment routes are. Without this the Files service refuses every read of it.
+  fileEntityAuthorizers: [shipmentFileAuthorizer],
   eventSubscriptions: [],
   // Widens the seeded `super-admin` role with this module's grants on a database that ran the
   // platform seed before Operations existed. See operations.seed.ts — without it, no account on

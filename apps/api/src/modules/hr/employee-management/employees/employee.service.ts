@@ -107,7 +107,13 @@ const entryProbation = (
   }
   return {
     status: 'active',
-    probation: { endDate: null, confirmedAt: hiredAt, confirmedBy: confirmedBy, extendedTo: null, failed: false },
+    probation: {
+      endDate: null,
+      confirmedAt: hiredAt,
+      confirmedBy: confirmedBy,
+      extendedTo: null,
+      failed: false,
+    },
   };
 };
 
@@ -251,7 +257,8 @@ class EmployeeService {
     await this.assertPersonNotEmployed(applicant.nationalId);
 
     const t = snapshot.terms;
-    const offered = t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
+    const offered =
+      t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
     const starting = await salaryForAssignment(String(t.jobTitleId), offered);
     const employment: EmploymentDetails = {
       jobTitleId: t.jobTitleId,
@@ -263,13 +270,22 @@ class EmployeeService {
       employmentType: t.employmentType,
       salary: starting.salary,
       salarySource: starting.salarySource,
-      allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
+      allowances: t.allowances.map((a) => ({
+        name: a.name,
+        amount: a.amount,
+        currency: a.currency,
+      })),
       benefits: [...t.benefits],
       probationMonths: t.probationMonths,
       startDate: t.startDate,
     };
     const hiredAt = input.hiringDate ?? new Date();
-    const entry = entryProbation(hiredAt, employment.probationMonths, true, new Types.ObjectId(ctx.userId));
+    const entry = entryProbation(
+      hiredAt,
+      employment.probationMonths,
+      true,
+      new Types.ObjectId(ctx.userId),
+    );
 
     const branch = await branchService.getById(String(employment.branchId));
 
@@ -451,7 +467,11 @@ class EmployeeService {
     const derived = identity.nationalId !== undefined ? parseNationalId(identity.nationalId) : null;
     if (identity.nationalId !== undefined && derived === null) {
       throw new ValidationError([
-        { field: 'personal.identity.nationalId', code: 'INVALID', message: 'invalid Egyptian national ID' },
+        {
+          field: 'personal.identity.nationalId',
+          code: 'INVALID',
+          message: 'invalid Egyptian national ID',
+        },
       ]);
     }
     if (identity.nationalId !== undefined) {
@@ -554,7 +574,11 @@ class EmployeeService {
       employmentType: e.employmentType,
       salary: registered.salary,
       salarySource: registered.salarySource,
-      allowances: e.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
+      allowances: e.allowances.map((a) => ({
+        name: a.name,
+        amount: a.amount,
+        currency: a.currency,
+      })),
       benefits: [...e.benefits],
       probationMonths: e.probationMonths,
       startDate: e.startDate,
@@ -692,7 +716,9 @@ class EmployeeService {
     scope: ScopeSelector,
   ): Promise<EmployeeDoc> {
     const before = await employeeRepository.getById(id, scope);
-    const personal: EmployeePersonalData = JSON.parse(JSON.stringify(before.personal)) as EmployeePersonalData;
+    const personal: EmployeePersonalData = JSON.parse(
+      JSON.stringify(before.personal),
+    ) as EmployeePersonalData;
     // JSON round-trip stringifies dates — restore the Date fields we keep untouched below.
     const changes: { field: string; old: string | null; new: string | null }[] = [];
     const jsonOf = (v: unknown): string | null => (v == null ? null : JSON.stringify(v));
@@ -703,7 +729,11 @@ class EmployeeService {
         const derived = parseNationalId(idn.nationalId);
         if (derived === null) {
           throw new ValidationError([
-            { field: 'identity.nationalId', code: 'INVALID', message: 'invalid Egyptian national ID' },
+            {
+              field: 'identity.nationalId',
+              code: 'INVALID',
+              message: 'invalid Egyptian national ID',
+            },
           ]);
         }
         await this.assertPersonNotEmployed(idn.nationalId);
@@ -714,19 +744,33 @@ class EmployeeService {
         personal.placeOfBirth = derived.governorate;
       }
       if (idn.fullNameAr !== undefined && idn.fullNameAr !== before.personal.fullNameAr) {
-        changes.push({ field: 'personal.fullNameAr', old: before.personal.fullNameAr, new: idn.fullNameAr });
+        changes.push({
+          field: 'personal.fullNameAr',
+          old: before.personal.fullNameAr,
+          new: idn.fullNameAr,
+        });
         personal.fullNameAr = idn.fullNameAr;
       }
       if (idn.fullNameEn !== undefined && idn.fullNameEn !== before.personal.fullNameEn) {
-        changes.push({ field: 'personal.fullNameEn', old: before.personal.fullNameEn, new: idn.fullNameEn });
+        changes.push({
+          field: 'personal.fullNameEn',
+          old: before.personal.fullNameEn,
+          new: idn.fullNameEn,
+        });
         personal.fullNameEn = idn.fullNameEn;
       }
-      personal.searchName = normalizeArabic([personal.fullNameAr, personal.fullNameEn ?? ''].join(' '));
+      personal.searchName = normalizeArabic(
+        [personal.fullNameAr, personal.fullNameEn ?? ''].join(' '),
+      );
       if (idn.nationality !== undefined) personal.nationality = idn.nationality;
       // The photo is not edited here: it has its own endpoints (POST/DELETE /:id/photo), which check
       // the image, file it as this employee's and audit the change. A file id sent here is ignored.
       if (idn.maritalStatus !== undefined) {
-        changes.push({ field: 'personal.maritalStatus', old: before.personal.maritalStatus, new: idn.maritalStatus });
+        changes.push({
+          field: 'personal.maritalStatus',
+          old: before.personal.maritalStatus,
+          new: idn.maritalStatus,
+        });
         personal.maritalStatus = idn.maritalStatus;
       }
       if (idn.religion !== undefined) personal.religion = idn.religion;
@@ -734,14 +778,19 @@ class EmployeeService {
       if (idn.dependentsCount !== undefined) personal.dependentsCount = idn.dependentsCount;
     }
     if (input.contact !== undefined) {
-      changes.push({ field: 'personal.contact', old: jsonOf(before.personal.contact), new: jsonOf(input.contact) });
+      changes.push({
+        field: 'personal.contact',
+        old: jsonOf(before.personal.contact),
+        new: jsonOf(input.contact),
+      });
       personal.contact = {
         primaryPhone: input.contact.primaryPhone ?? before.personal.contact.primaryPhone,
         secondaryPhone:
           input.contact.secondaryPhone === undefined
             ? before.personal.contact.secondaryPhone
             : input.contact.secondaryPhone,
-        email: input.contact.email === undefined ? before.personal.contact.email : input.contact.email,
+        email:
+          input.contact.email === undefined ? before.personal.contact.email : input.contact.email,
         preferredContactChannel:
           input.contact.preferredContactChannel === undefined
             ? before.personal.contact.preferredContactChannel
@@ -765,7 +814,11 @@ class EmployeeService {
       personal.currentAddress = input.currentAddress ?? null;
     }
     if (input.military !== undefined) {
-      changes.push({ field: 'personal.military', old: jsonOf(before.personal.military), new: jsonOf(input.military) });
+      changes.push({
+        field: 'personal.military',
+        old: jsonOf(before.personal.military),
+        new: jsonOf(input.military),
+      });
       personal.military =
         input.military == null
           ? null
@@ -776,7 +829,11 @@ class EmployeeService {
             };
     }
     if (input.education !== undefined) {
-      changes.push({ field: 'personal.education', old: jsonOf(before.personal.education), new: jsonOf(input.education) });
+      changes.push({
+        field: 'personal.education',
+        old: jsonOf(before.personal.education),
+        new: jsonOf(input.education),
+      });
       personal.education =
         input.education == null
           ? null
@@ -789,7 +846,11 @@ class EmployeeService {
             };
     }
     if (input.experience !== undefined) {
-      changes.push({ field: 'personal.experience', old: `${String(before.personal.experience.length)} entries`, new: `${String(input.experience.length)} entries` });
+      changes.push({
+        field: 'personal.experience',
+        old: `${String(before.personal.experience.length)} entries`,
+        new: `${String(input.experience.length)} entries`,
+      });
       personal.experience = input.experience.map((x) => ({
         employer: x.employer,
         position: x.position ?? null,
@@ -799,15 +860,30 @@ class EmployeeService {
       }));
     }
     if (input.drivingLicenses !== undefined) {
-      changes.push({ field: 'personal.drivingLicenses', old: jsonOf(before.personal.drivingLicenses), new: jsonOf(input.drivingLicenses) });
-      personal.drivingLicenses = input.drivingLicenses.map((d) => ({ class: d.class, expiry: d.expiry ?? null }));
+      changes.push({
+        field: 'personal.drivingLicenses',
+        old: jsonOf(before.personal.drivingLicenses),
+        new: jsonOf(input.drivingLicenses),
+      });
+      personal.drivingLicenses = input.drivingLicenses.map((d) => ({
+        class: d.class,
+        expiry: d.expiry ?? null,
+      }));
     }
     if (input.certifications !== undefined) {
-      changes.push({ field: 'personal.certifications', old: jsonOf(before.personal.certifications), new: jsonOf(input.certifications) });
+      changes.push({
+        field: 'personal.certifications',
+        old: jsonOf(before.personal.certifications),
+        new: jsonOf(input.certifications),
+      });
       personal.certifications = [...input.certifications];
     }
     if (input.references !== undefined) {
-      changes.push({ field: 'personal.references', old: `${String(before.personal.references.length)} entries`, new: `${String(input.references.length)} entries` });
+      changes.push({
+        field: 'personal.references',
+        old: `${String(before.personal.references.length)} entries`,
+        new: `${String(input.references.length)} entries`,
+      });
       personal.references = input.references.map((r) => ({
         name: r.name,
         relationship: r.relationship ?? null,
@@ -829,7 +905,8 @@ class EmployeeService {
     }
     personal.photoFileId = before.personal.photoFileId;
     if (input.experience === undefined) personal.experience = before.personal.experience;
-    if (input.drivingLicenses === undefined) personal.drivingLicenses = before.personal.drivingLicenses;
+    if (input.drivingLicenses === undefined)
+      personal.drivingLicenses = before.personal.drivingLicenses;
     if (input.military === undefined) personal.military = before.personal.military;
 
     const updated = await employeeRepository.updateById(
@@ -891,7 +968,11 @@ class EmployeeService {
       entityRef: entityRef(id),
       action: 'update',
       // Field names only — a wage bracket is not written into the audit trail in the clear.
-      changes: changed.map((field) => ({ field: `insurance.${field}`, old: '[redacted]', new: '[redacted]' })),
+      changes: changed.map((field) => ({
+        field: `insurance.${field}`,
+        old: '[redacted]',
+        new: '[redacted]',
+      })),
     });
     return updated;
   }
@@ -924,7 +1005,8 @@ class EmployeeService {
   ): Promise<{ doc: EmployeeDoc; loginUsernameChanged: boolean }> {
     const before = await employeeRepository.getById(id, scope);
     const code = input.code.trim();
-    if (code === before.code) throw new BusinessRuleError('the new code is the same as the current one');
+    if (code === before.code)
+      throw new BusinessRuleError('the new code is the same as the current one');
 
     const holder = await employeeRepository.findByCodeAnyState(code);
     if (holder !== null) {
@@ -933,7 +1015,8 @@ class EmployeeService {
 
     // The sign-in name follows only if it is still the code it was issued as. Checked BEFORE the
     // code is written, so a clash refuses the whole change rather than leaving half of it done.
-    const user = before.userId === null ? null : await userService.findByIdSystem(String(before.userId));
+    const user =
+      before.userId === null ? null : await userService.findByIdSystem(String(before.userId));
     const renameLogin = user !== null && (user.username ?? '') === before.code.toLowerCase();
     if (renameLogin) {
       const taken = await userService.findByUsernameOrEmail(code);
@@ -951,12 +1034,19 @@ class EmployeeService {
     let loginUsernameChanged = false;
     if (renameLogin) {
       try {
-        await userService.update(String(user._id), { username: code, version: user.__v }, ctx.userId);
+        await userService.update(
+          String(user._id),
+          { username: code, version: user.__v },
+          ctx.userId,
+        );
         loginUsernameChanged = true;
       } catch (error) {
         // The code is changed either way; a sign-in name that could not follow is reported, not
         // allowed to undo the change somebody asked for.
-        logger.warn({ err: error, employeeId: id, code }, 'employee code changed; sign-in name did not follow');
+        logger.warn(
+          { err: error, employeeId: id, code },
+          'employee code changed; sign-in name did not follow',
+        );
       }
     }
 
@@ -969,7 +1059,9 @@ class EmployeeService {
       changes: [
         { field: 'code', old: before.code, new: code },
         { field: 'codeChangeReason', old: null, new: input.reason.trim() },
-        ...(loginUsernameChanged ? [{ field: 'loginUsername', old: before.code.toLowerCase(), new: code }] : []),
+        ...(loginUsernameChanged
+          ? [{ field: 'loginUsername', old: before.code.toLowerCase(), new: code }]
+          : []),
       ],
     });
     return { doc: updated, loginUsernameChanged };
@@ -1040,6 +1132,7 @@ class EmployeeService {
       governorate: query.governorate,
       address: query.address,
       phone: query.phone,
+      idCard: query.idCard,
     };
   }
 
@@ -1063,7 +1156,9 @@ class EmployeeService {
     return files.map((f) => fileService.toDto(f) as FileDto);
   }
 
-  private async cardFiles(employeeId: string): Promise<Awaited<ReturnType<typeof fileService.list>>['items']> {
+  private async cardFiles(
+    employeeId: string,
+  ): Promise<Awaited<ReturnType<typeof fileService.list>>['items']> {
     const page = await fileService.list(
       {
         moduleId: 'hr',
@@ -1115,7 +1210,10 @@ class EmployeeService {
         });
       }
     } catch (error) {
-      logger.warn({ err: error, employeeId: String(employee._id) }, 'carrying the national-id card failed');
+      logger.warn(
+        { err: error, employeeId: String(employee._id) },
+        'carrying the national-id card failed',
+      );
     }
   }
 
@@ -1395,9 +1493,8 @@ class EmployeeService {
     // employees, so the timeline reaches the leave feature the same acyclic way it reaches the
     // Employee File (leave design §1.3; absent ⇒ degrade, BD-007).
     try {
-      const { leaveRequestRepository } = await import(
-        '../../leave-management/leave-requests/leave-request.repository'
-      );
+      const { leaveRequestRepository } =
+        await import('../../leave-management/leave-requests/leave-request.repository');
       const leave = await leaveRequestRepository.listRequests(
         { page: 1, pageSize: 100, employeeId: id },
         undefined,
@@ -1800,13 +1897,17 @@ class EmployeeService {
     const ending = await employeeRepository.findProbationEndingSystem(from, to);
     for (const employee of ending) {
       const recipients = new Set<string>();
-      if (employee.employment.managerId !== null) recipients.add(String(employee.employment.managerId));
+      if (employee.employment.managerId !== null)
+        recipients.add(String(employee.employment.managerId));
       if (employee.createdBy !== null) recipients.add(String(employee.createdBy));
       const deadline = employee.probation?.extendedTo ?? employee.probation?.endDate ?? null;
       await notificationsService
         .notify({
           template: HrEmployeeTemplates.ProbationEnding,
-          to: recipients.size > 0 ? { userIds: [...recipients] } : { permission: 'employee.manageActions', scope: 'organization' },
+          to:
+            recipients.size > 0
+              ? { userIds: [...recipients] }
+              : { permission: 'employee.manageActions', scope: 'organization' },
           data: {
             employeeCode: employee.code,
             endDate: deadline === null ? '' : deadline.toISOString(),

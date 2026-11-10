@@ -159,6 +159,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_performance_reviews: { action: 'purge', why: 'somebody’s review' },
   hr_employee_actions: { action: 'purge', why: 'a personnel action applied to somebody' },
   hr_employee_files: { action: 'purge', why: 'somebody’s electronic file' },
+  hr_employee_id_card_prints: {
+    action: 'purge',
+    why: 'a company ID card printed for somebody, and whether they took it',
+  },
   hr_cost_center_assignments: { action: 'purge', why: 'where somebody’s cost is reported' },
   hr_hiring_documents: { action: 'purge', why: 'the documents collected to hire somebody' },
   hr_job_requisition_fills: { action: 'purge', why: 'the record that somebody filled a seat' },

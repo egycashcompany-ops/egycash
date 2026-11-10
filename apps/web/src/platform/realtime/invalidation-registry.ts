@@ -259,7 +259,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'operations.currency': [['operations', 'currencies']],
 
   // ── HR ─────────────────────────────────────────────────────────────────────
-  'hr.employee': [['hr', 'employees'], ['employees']],
+  // The company ID card's keys ride here rather than on a topic of their own: a print, a receipt
+  // or a handover changes the employee (`idCard` sits on the document the list reads), and the
+  // card's own mutations invalidate all four of these locally — so a signal that ANOTHER HR user
+  // printed or handed over a card has to reach the same four.
+  'hr.employee': [['hr', 'employees'], ['employees'], ['hr', 'employeeIdCard']],
   'hr.employeeFile': [['hr', 'employeeFiles']],
   'hr.employeeLoan': [['hr', 'employeeLoans']],
   'hr.employeeLoanAttachment': [['hr', 'employeeLoans']],

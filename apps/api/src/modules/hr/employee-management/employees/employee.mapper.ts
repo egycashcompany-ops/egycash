@@ -22,6 +22,7 @@ import {
   type MyEmployeeSummaryDto,
   type RehireCheckResultDto,
 } from '@ecms/contracts';
+import { toIdCardSummaryDto } from './employee-id-card.mapper';
 import {
   type EmployeeDoc,
   type EmployeePersonalData,
@@ -41,7 +42,10 @@ const statusEventDto = (e: EmployeeStatusEvent): EmployeeStatusEventDto => ({
   actionId: e.actionId == null ? null : String(e.actionId),
 });
 
-const employmentDto = (e: EmploymentDetails, compensationVisible: boolean): EmploymentDetailsDto => ({
+const employmentDto = (
+  e: EmploymentDetails,
+  compensationVisible: boolean,
+): EmploymentDetailsDto => ({
   jobTitleId: String(e.jobTitleId),
   departmentId: String(e.departmentId),
   sectionId: e.sectionId === null ? null : String(e.sectionId),
@@ -88,8 +92,12 @@ const personalDto = (p: EmployeePersonalData): EmployeePersonalDto => ({
       ? null
       : {
           status: p.military.status,
-          ...(p.military.certificateRef === null ? {} : { certificateRef: p.military.certificateRef }),
-          ...(p.military.completedAt === null ? {} : { completedAt: p.military.completedAt.toISOString() }),
+          ...(p.military.certificateRef === null
+            ? {}
+            : { certificateRef: p.military.certificateRef }),
+          ...(p.military.completedAt === null
+            ? {}
+            : { completedAt: p.military.completedAt.toISOString() }),
         },
   education:
     p.education === null
@@ -97,8 +105,12 @@ const personalDto = (p: EmployeePersonalData): EmployeePersonalDto => ({
       : {
           level: p.education.level,
           ...(p.education.institution === null ? {} : { institution: p.education.institution }),
-          ...(p.education.specialization === null ? {} : { specialization: p.education.specialization }),
-          ...(p.education.graduationYear === null ? {} : { graduationYear: p.education.graduationYear }),
+          ...(p.education.specialization === null
+            ? {}
+            : { specialization: p.education.specialization }),
+          ...(p.education.graduationYear === null
+            ? {}
+            : { graduationYear: p.education.graduationYear }),
           ...(p.education.grade === null ? {} : { grade: p.education.grade }),
         },
   experience: p.experience.map((e) => ({
@@ -180,7 +192,11 @@ export const exitDto = (doc: EmployeeDoc): EmployeeExitDto | null =>
         by: doc.exit.by === null ? null : String(doc.exit.by),
       };
 
-const periodDto = (p: { hiredAt: Date; exitedAt: Date | null; exitType: EmploymentPeriodDto['exitType'] }): EmploymentPeriodDto => ({
+const periodDto = (p: {
+  hiredAt: Date;
+  exitedAt: Date | null;
+  exitType: EmploymentPeriodDto['exitType'];
+}): EmploymentPeriodDto => ({
   hiredAt: p.hiredAt.toISOString(),
   exitedAt: iso(p.exitedAt),
   exitType: p.exitType,
@@ -223,6 +239,7 @@ export const toEmployeeDto = (
   employment: employmentDto(doc.employment, opts.compensationVisible),
   placement,
   compensationVisible: opts.compensationVisible,
+  idCard: toIdCardSummaryDto(doc),
   hiredAt: doc.hiredAt.toISOString(),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),

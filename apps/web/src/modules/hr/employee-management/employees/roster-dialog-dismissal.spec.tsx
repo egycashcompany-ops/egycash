@@ -40,7 +40,7 @@ describe('the roster import dialog survives a click that missed', () => {
    * a scrollbar — and a keyboard user needs a way out that does not depend on finding a button.
    */
   it('still closes on Escape, and still has an × that closes it', () => {
-    expect(DIALOG_UI).toContain("if (e.key === 'Escape') onClose()");
+    expect(DIALOG_UI).toMatch(/if \(e\.key !== 'Escape'\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u);
     expect(DIALOG_UI).toContain("aria-label={t('common.close')}");
   });
 

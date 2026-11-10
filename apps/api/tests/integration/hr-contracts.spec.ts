@@ -22,7 +22,7 @@ import {
   type HiringPackDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
-import { cairoToday, dateOnlyIso } from '../../src/modules/hr/shared/business-date';
+import { cairoToday } from '../../src/modules/hr/shared/business-date';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
@@ -38,6 +38,7 @@ import { organizationService } from '../../src/platform/organization';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { formatTemplateDate } from '../../src/modules/hr/contracts/contracts/contract-variables';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -904,7 +905,8 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
       sections: { header: '', body: '<p>حُرِّر في {{contract.currentDate}} — {{contract.code}}</p>', footer: '' },
     });
     const contract = await generated(typeId, template.id);
-    const cairoDate = dateOnlyIso(cairoToday());
+    // An Arabic template writes it as the company's papers do: day/month/year (A27).
+    const cairoDate = formatTemplateDate(cairoToday(), 'ar');
     const entry = contract.variables.find((v) => v.key === 'contract.currentDate');
     expect(entry?.value).toBe(cairoDate);
     expect(await documentOf(contract.id)).toContain(cairoDate);

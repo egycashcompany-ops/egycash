@@ -69,6 +69,7 @@ import {
   ShipmentReceiptImageCell,
   ShipmentReceiptImagePreviewDialog,
 } from '../components/ShipmentReceiptImageCell';
+import { CaptainHoverName, CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { ShipmentFormDialog } from '../components/ShipmentFormDialog';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 
@@ -173,6 +174,9 @@ export const DailyOperationsPage = (): JSX.Element => {
     currencies.data?.items.find((currency) => currency.id === id);
 
   const shipments = board.data?.shipments ?? [];
+  // The crew rows the day's legs ride, for the van card — by the leg's crew row, not the van: one
+  // van can run two crews in a day.
+  const crewOf = new Map((board.data?.crews ?? []).map((crew) => [crew.crewAssignmentId, crew]));
   // Branch names come WITH the rows now — no page-capped catalog lookup to run out. «من فرع» and
   // «الى فرع» search the text their cell prints, bank line included, as legacy's did.
   const rows = filterDayBoard(
@@ -220,8 +224,17 @@ export const DailyOperationsPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('operations.board.vehicle'),
+      // «لما اقف على العربيه تجيب مين اللى متعين عليها»: the code opens the van's crew card.
       render: (row) =>
-        row.crew === null ? DASH : <span className={FIGURE}>{row.crew.vehicleCode ?? '…'}</span>,
+        row.crew === null ? (
+          DASH
+        ) : (
+          <CrewVehicleHoverCode
+            className={FIGURE}
+            code={row.crew.vehicleCode ?? '…'}
+            vehicleCrew={crewOf.get(row.crew.crewAssignmentId)}
+          />
+        ),
     },
     {
       key: 'bank',
@@ -294,8 +307,13 @@ export const DailyOperationsPage = (): JSX.Element => {
     {
       key: 'captain',
       header: t('operations.board.captain'),
+      // «لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه»: the Fleet driver card's facts.
       render: (row) =>
-        row.crew?.captainName == null ? DASH : <span className={WRAP}>{row.crew.captainName}</span>,
+        row.crew?.captainName == null ? (
+          DASH
+        ) : (
+          <CaptainHoverName className={WRAP} crew={row.crew} />
+        ),
     },
     {
       key: 'date',

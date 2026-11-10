@@ -27,6 +27,7 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type OperationsDayBoardDto,
   type OperationsDayBoardShipmentDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
@@ -170,14 +171,25 @@ let phoneCounter = 50_000_000;
 const nextNid = (): string => `290010101${String(70_000 + nidCounter++).padStart(5, '0')}`;
 const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
 
-/** HR employee via the real direct-registration endpoint — Operations never fabricates one. */
-const mkEmployee = async (): Promise<string> => {
+/**
+ * HR employee via the real direct-registration endpoint — Operations never fabricates one.
+ *
+ * `seat` places them somewhere other than the crew department — a driver has to sit in a job title
+ * that requires a driving test, or Fleet will not put them on a van.
+ */
+const mkEmployee = async (
+  seat: { fullNameAr?: string; jobTitleId?: string; departmentId?: string } = {},
+): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       personal: {
-        identity: { fullNameAr: 'طاقم اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
+        identity: {
+          fullNameAr: seat.fullNameAr ?? 'طاقم اختبار',
+          nationalId: nextNid(),
+          nationality: 'Egyptian',
+        },
         contact: { primaryPhone: nextPhone() },
         experience: [],
         drivingLicenses: [],
@@ -185,8 +197,8 @@ const mkEmployee = async (): Promise<string> => {
         references: [],
       },
       employment: {
-        jobTitleId,
-        departmentId,
+        jobTitleId: seat.jobTitleId ?? jobTitleId,
+        departmentId: seat.departmentId ?? departmentId,
         branchId,
         employmentType: 'fullTime',
         probationMonths: 0,
@@ -3037,6 +3049,9 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   let securedDueDispatched = '';
   /** The board day's one crew row — van A under `captainId` — for the legs booked below. */
   let boardCrewId = '';
+  /** Van A's two drivers on the board day — FLEET's half of the van, on its duty row. */
+  let boardDriver1Id = '';
+  let boardDriver2Id = '';
 
   beforeAll(async () => {
     dailyToday = data<OperationsShipmentDto>(
@@ -3078,19 +3093,64 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       });
     expect(received.status).toBe(200);
 
+    // Van A goes out with BOTH halves of a crew, so the van's card has something in every line:
+    // two drivers on Fleet's duty row, and a captain plus a specialist in each slot on the crew
+    // row. The drivers sit in their own department, in a seat that requires a driving test —
+    // Fleet only seats a driver, and the crew department's roster (B3) stays as it was.
+    const driverDept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'OPS-BRD-DRV', name: { ar: 'سائقو اللوحة', en: 'Board Drivers' }, branchId });
+    expect(driverDept.status).toBe(201);
+    const driverTitle = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'OPS-BRD-DRV',
+        name: { ar: 'سائق', en: 'Driver' },
+        jobGrade: 'G1',
+        requiresDrivingTest: true,
+      });
+    expect(driverTitle.status).toBe(201);
+    const driverSeat = {
+      departmentId: data<{ id: string }>(driverDept).id,
+      jobTitleId: data<{ id: string }>(driverTitle).id,
+    };
+    boardDriver1Id = await mkEmployee({ ...driverSeat, fullNameAr: 'سائق اللوحة الأول' });
+    boardDriver2Id = await mkEmployee({ ...driverSeat, fullNameAr: 'سائق اللوحة الثاني' });
+
     const rosterRes = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: BOARD_DATE, rows: [{ vehicleId: vehicleAId, notes: 'board seed' }] });
-    expect(rosterRes.status).toBe(200);
+      .send({
+        date: BOARD_DATE,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            driver1EmployeeId: boardDriver1Id,
+            driver2EmployeeId: boardDriver2Id,
+            notes: 'board seed',
+          },
+        ],
+      });
+    expect(rosterRes.status, JSON.stringify(rosterRes.body)).toBe(200);
     const crewRes = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: BOARD_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeIds: [captainId],
+            specialist1EmployeeIds: [specialist1Id],
+            specialist2EmployeeIds: [specialist2Id],
+            direction: 'القاهرة',
+            plannedTime: '08:30',
+          },
+        ],
       });
-    expect(crewRes.status).toBe(200);
+    expect(crewRes.status, JSON.stringify(crewRes.body)).toBe(200);
 
     const { operationsCrewAssignmentRepository } = await import(
       '../../src/modules/operations/crew/crew-assignment.repository'
@@ -3300,13 +3360,16 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
 
     // The daily row prints its COLLECTION leg.
     expect(crewOf(dailyCrewed)).toMatchObject({
+      crewAssignmentId: boardCrewId,
       vehicleId: String(dailyPickup?.vehicleId),
       vehicleCode: 'OPS-V1',
       captainEmployeeId: String(dailyPickup?.captainEmployeeId),
     });
 
     // The secured row prints who DELIVERED it — van A and `captainId` — never who collected it.
+    // Its crew key is the delivery crew's too, so the van's card names the crew that delivered.
     expect(crewOf(twoLegs.id)).toMatchObject({
+      crewAssignmentId: boardCrewId,
       vehicleId: vehicleAId,
       vehicleCode: 'OPS-V1',
       captainEmployeeId: captainId,
@@ -3340,6 +3403,186 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const atBranch = new Date(`${BOARD_DATE}T11:30:00.000Z`);
     await stamp(securedDelivery?._id, { executionStatus: 'delivered', deliveredAt: atBranch });
     expect(await deliveredOnBoard()).toBe(atBranch.toISOString());
+  });
+
+  // «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب
+  // بياناته زى ما عاملين فى الحركه»: hovering a van names everyone on it — Fleet's two drivers and
+  // Operations' captain and specialists — and hovering the captain gives the facts the Fleet driver
+  // card prints. Both come from the crew plan, so a reader without `operationsCrew.view` keeps
+  // the board the legacy table printed and gets neither card's crew facts.
+  it('names who rides the van and gives the captain\'s card — behind the crew grant', async () => {
+    // A second leg on van A, booked here so this case does not lean on the ones above: two rows
+    // ride one crew row, and the van's card must still be listed once.
+    const booked = await mkShipment({
+      collectionDate: BOARD_DATE,
+      pickup: { crewAssignmentId: boardCrewId, captainEmployeeId: captainId },
+    });
+    expect(booked.status).toBe(201);
+
+    // What HR itself says about each person — the board must hand on the same facts.
+    const hrRecord = async (
+      id: string,
+    ): Promise<{
+      code: string;
+      personal: { fullNameAr: string; contact: { primaryPhone: string } };
+    }> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/employees/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data(res);
+    };
+    const person = async (employeeId: string) => {
+      const hr = await hrRecord(employeeId);
+      return { employeeId, code: hr.code, fullNameAr: hr.personal.fullNameAr };
+    };
+    const captain = await hrRecord(captainId);
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const view = data<OperationsDayBoardDto>(res);
+
+    // The captain's card: his employee code, phone and branch, beside the van he drove out in and
+    // the key of the crew row he rides.
+    const secured = view.shipments.find((r) => r.id === securedDueDispatched);
+    expect(secured?.crew).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+      captainCode: captain.code,
+      captainPhone: captain.personal.contact.primaryPhone,
+      captainBranchId: branchId,
+    });
+
+    // One card per crew ROW, not per shipment, and only for crews a row on the board rides.
+    expect(
+      view.shipments.filter((r) => r.crew?.crewAssignmentId === boardCrewId).length,
+    ).toBeGreaterThan(1);
+    expect(view.crews.filter((c) => c.crewAssignmentId === boardCrewId)).toHaveLength(1);
+    const ridden = new Set(view.shipments.map((r) => r.crew?.crewAssignmentId));
+    for (const crew of view.crews) expect(ridden.has(crew.crewAssignmentId)).toBe(true);
+
+    // The van's card: Fleet's drivers in their seat order, then the crew row slot by slot.
+    expect(view.crews.find((c) => c.crewAssignmentId === boardCrewId)).toEqual({
+      crewAssignmentId: boardCrewId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      drivers: [await person(boardDriver1Id), await person(boardDriver2Id)],
+      captains: [await person(captainId)],
+      specialist1: [await person(specialist1Id)],
+      specialist2: [await person(specialist2Id)],
+      direction: 'القاهرة',
+      plannedTime: '08:30',
+    });
+    expect(
+      view.crews.find((c) => c.crewAssignmentId === boardCrewId)?.drivers.map((d) => d.fullNameAr),
+    ).toEqual(['سائق اللوحة الأول', 'سائق اللوحة الثاني']);
+
+    // The viewer holds `operationsShipment.view` only: the same rows, the same van and captain
+    // name, but no crew cards and no captain's phone.
+    const viewerRes = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(viewerRes.status).toBe(200);
+    const viewerView = data<OperationsDayBoardDto>(viewerRes);
+    expect(viewerView.crews).toEqual([]);
+    expect(viewerView.shipments.find((r) => r.id === securedDueDispatched)?.crew).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+      captainName: captain.personal.fullNameAr,
+      captainPhone: null,
+    });
+    const crewedForViewer = viewerView.shipments.filter((r) => r.crew !== null);
+    expect(crewedForViewer.length).toBeGreaterThan(0);
+    for (const row of crewedForViewer) expect(row.crew?.captainPhone).toBeNull();
+  });
+
+  // The van's card reads two rows the shipment does not own: the crew row the leg rides, and the
+  // Fleet duty row that crew row anchors on. Either can be taken off the plan after the leg was
+  // booked, and `findByIdsSystem` hands soft-deleted rows back on purpose. A crew row that is off
+  // the plan puts nobody on the van, and a duty row that is off the plan seats no driver. Neither
+  // may cost the desk its board: the row still prints the van and the captain its own leg names.
+  // On a day of its own, so taking rows away here cannot touch the cases above.
+  it('a crew or duty row taken off the plan leaves the van card empty — never the board', async () => {
+    const GONE_DATE = shift(227);
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: GONE_DATE,
+        rows: [
+          { vehicleId: vehicleAId, driver1EmployeeId: boardDriver1Id },
+          { vehicleId: vehicleBId, driver1EmployeeId: boardDriver2Id },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: GONE_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [specialist2Id] },
+        ],
+      });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    const crewOn = (vehicleId: string) =>
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleId)?.crew;
+    const crewAId = crewOn(vehicleAId)?.id ?? '';
+    const crewBId = crewOn(vehicleBId)?.id ?? '';
+    expect(crewAId).not.toBe('');
+    expect(crewBId).not.toBe('');
+
+    const onA = await mkShipment({
+      collectionDate: GONE_DATE,
+      pickup: { crewAssignmentId: crewAId, captainEmployeeId: captainId },
+    });
+    expect(onA.status, JSON.stringify(onA.body)).toBe(201);
+    const onB = await mkShipment({
+      collectionDate: GONE_DATE,
+      pickup: { crewAssignmentId: crewBId, captainEmployeeId: specialist2Id },
+    });
+    expect(onB.status, JSON.stringify(onB.body)).toBe(201);
+
+    // Both rows come off the plan underneath the legs: van A's crew row, and van B's duty row.
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { fleetDutyAssignmentRepository } = await import(
+      '../../src/modules/operations/fleet-boundary'
+    );
+    await operationsCrewAssignmentRepository.softDeleteById(crewAId, { by: null });
+    const crewB = await operationsCrewAssignmentRepository.getById(crewBId);
+    await fleetDutyAssignmentRepository.softDeleteById(String(crewB.fleetDutyAssignmentId), {
+      by: null,
+    });
+
+    const res = await board(GONE_DATE);
+    expect(res.status).toBe(200);
+    const view = data<OperationsDayBoardDto>(res);
+
+    // The rows still print what their own legs say: the van, the captain, the crew key.
+    const rowOf = (id: string) => view.shipments.find((r) => r.id === id)?.crew;
+    expect(rowOf(data<OperationsShipmentDto>(onA).id)).toMatchObject({
+      crewAssignmentId: crewAId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+    });
+    expect(rowOf(data<OperationsShipmentDto>(onB).id)).toMatchObject({
+      crewAssignmentId: crewBId,
+      vehicleId: vehicleBId,
+      captainEmployeeId: specialist2Id,
+    });
+
+    // Van A's crew row is gone, so it has no card. Van B keeps its card with its captain, but its
+    // duty row is gone, so nobody drives it.
+    expect(view.crews.map((c) => c.crewAssignmentId)).toEqual([crewBId]);
+    expect(view.crews[0]?.drivers).toEqual([]);
+    expect(view.crews[0]?.captains.map((p) => p.employeeId)).toEqual([specialist2Id]);
   });
 
   // «لو تم التسليم من القائد من برا الحالة هتكون تم التسليم بس الصف لونه اصفر ولما ادوس انا على صح

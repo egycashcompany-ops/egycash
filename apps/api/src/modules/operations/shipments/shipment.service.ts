@@ -23,6 +23,8 @@ import {
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardBranchDto,
   type OperationsDayBoardCrewDto,
+  type OperationsDayBoardPersonDto,
+  type OperationsDayBoardVehicleCrewDto,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -45,7 +47,9 @@ import { operationsAssignmentService, resolveCrew } from '../assignments/assignm
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { operationsShipmentRepository } from './shipment.repository';
 import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
-import { fleetVehicleRepository } from '../fleet-boundary';
+import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
+import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { crewMembers, slotIds } from '../crew/crew-slots';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
 import { resolveShipmentReceiptCategoryId } from './shipment-files';
@@ -94,6 +98,18 @@ export interface DayBoardRow {
    * shipment (execution.service.ts), so the desk's own confirmation stays a separate, later step.
    */
   captainDeliveredAt: Date | null;
+}
+
+/**
+ * The whole board before mapping: its rows, and who rides each van the rows ride.
+ *
+ * The crews are a list beside the rows, not a field on each: ten shipments on one van are ten rows
+ * and ONE crew, and the van's card needs the crew once. Everything here is the full answer — the
+ * controller is where a reader without `operationsCrew.view` has the crew plan taken back out.
+ */
+export interface DayBoardView {
+  rows: DayBoardRow[];
+  crews: OperationsDayBoardVehicleCrewDto[];
 }
 
 interface ShipmentRefs {
@@ -296,19 +312,21 @@ class OperationsShipmentService {
 
   /**
    * The day board with what the legacy table printed beside each shipment: both branches by name
-   * and code with their banks, and the crew of the leg the shipment's type reports on.
+   * and code with their banks, and the crew of the leg the shipment's type reports on — plus, for
+   * the hover cards, who rides each van and the captain's own card.
    *
-   * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the vehicle codes
-   * and the captains' names are each fetched once for the whole day and joined in memory. A busy
-   * day is a few hundred shipments; a per-row lookup would make the board a thousand queries.
+   * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the crew rows, their
+   * Fleet duty rows, the vehicle codes and every person's name are each fetched once for the whole
+   * day and joined in memory. A busy day is a few hundred shipments; a per-row lookup would make
+   * the board a thousand queries.
    *
    * Nothing here can fail a row. A branch, vehicle or name that no longer resolves comes back as
    * null and the screen says so — a board that refused to load because one van was scrapped would
    * be worse than a board with one blank cell.
    */
-  async dayBoardView(date: Date | undefined): Promise<DayBoardRow[]> {
+  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
     const docs = await this.dayBoard(date);
-    if (docs.length === 0) return [];
+    if (docs.length === 0) return { rows: [], crews: [] };
 
     const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);
     const branches = await operationsBankBranchRepository.findByIdsSystem(branchIds);
@@ -336,14 +354,82 @@ class OperationsShipmentService {
       legOf.get(`${String(doc._id)}:${doc.shipmentType === 'daily' ? 'pickup' : 'delivery'}`) ??
       null;
     const crewed = docs.map(boardLeg).filter((a) => a !== null);
-    const vehicleCodes = await fleetVehicleRepository.codesByIds(
-      [...new Set(crewed.map((a) => String(a.vehicleId)))],
-    );
-    const captains = await getDirectoryEmployees([
-      ...new Set(crewed.map((a) => String(a.captainEmployeeId))),
-    ]);
 
-    return docs.map((doc) => {
+    // «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين»: the van's card needs
+    // the crew row each leg rides. Keyed by the leg's OWN `crewAssignmentId`, never re-found by
+    // (day, vehicle): a secured leg is delivered on its delivery day while the shipment's other
+    // dates can say something else, and the id is the one fact that cannot drift. The crew rows
+    // are kept in the order the board first meets them, so the list reads like the board does.
+    const crewIds = [...new Set(crewed.map((a) => String(a.crewAssignmentId)))];
+    const crewById = new Map(
+      (await operationsCrewAssignmentRepository.findByIdsSystem(crewIds))
+        // `findByIdsSystem` resolves soft-deleted rows too, on purpose, for names. A crew row
+        // that was taken off the plan puts nobody on the van, so it shows no crew at all.
+        .filter((c) => !c.isDeleted)
+        .map((c) => [String(c._id), c]),
+    );
+    const crewRows = crewIds.flatMap((id) => {
+      const row = crewById.get(id);
+      return row === undefined ? [] : [row];
+    });
+    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
+    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
+    // boundary, read-only, like every other Fleet fact Operations shows.
+    const dutyById = new Map(
+      (
+        await fleetDutyAssignmentRepository.findByIdsSystem(
+          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
+        )
+      )
+        .filter((d) => !d.isDeleted)
+        .map((d) => [String(d._id), d]),
+    );
+    const driversOf = (crew: (typeof crewRows)[number]): string[] => {
+      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
+      if (duty === undefined) return [];
+      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
+      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
+      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
+        .filter((id) => id != null)
+        .map(String);
+    };
+
+    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+      ...new Set([
+        ...crewed.map((a) => String(a.vehicleId)),
+        ...crewRows.map((c) => String(c.vehicleId)),
+      ]),
+    ]);
+    // ONE directory read for everyone the board names — the legs' captains, and the drivers,
+    // captains and specialists on every van card.
+    const people = await getDirectoryEmployees([
+      ...new Set([
+        ...crewed.map((a) => String(a.captainEmployeeId)),
+        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
+      ]),
+    ]);
+    const person = (employeeId: string): OperationsDayBoardPersonDto => {
+      const found = people.get(employeeId);
+      return {
+        employeeId,
+        code: found?.code ?? null,
+        fullNameAr: found?.fullNameAr ?? null,
+      };
+    };
+
+    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
+      crewAssignmentId: String(c._id),
+      vehicleId: String(c.vehicleId),
+      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
+      drivers: driversOf(c).map(person),
+      captains: slotIds(c.captainEmployeeIds).map(person),
+      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
+      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
+      direction: c.direction ?? null,
+      plannedTime: c.plannedTime ?? null,
+    }));
+
+    const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
       // A leg that predates OP-7 has no `executionStatus` at all; it has plainly not been started
       // (the same reading as execution.service's `statusOf`). Execution only moves forward, so
@@ -351,6 +437,7 @@ class OperationsShipmentService {
       // even if the desk later reopens the shipment.
       const execution = leg?.executionStatus ?? 'pending';
       const captainDelivered = execution === 'delivered' || execution === 'completed';
+      const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
       return {
         doc,
         captainDeliveredAt: captainDelivered ? (leg?.deliveredAt ?? null) : null,
@@ -360,13 +447,20 @@ class OperationsShipmentService {
           leg === null
             ? null
             : {
+                crewAssignmentId: String(leg.crewAssignmentId),
                 vehicleId: String(leg.vehicleId),
                 vehicleCode: vehicleCodes.get(String(leg.vehicleId)) ?? null,
                 captainEmployeeId: String(leg.captainEmployeeId),
-                captainName: captains.get(String(leg.captainEmployeeId))?.fullNameAr ?? null,
+                captainName: captain?.fullNameAr ?? null,
+                // «لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه» — the facts the Fleet
+                // driver card prints, from the same directory read. The van is already above.
+                captainCode: captain?.code ?? null,
+                captainPhone: captain?.phone ?? null,
+                captainBranchId: captain?.branchId ?? null,
               },
       };
     });
+    return { rows, crews };
   }
 
   async getById(id: string): Promise<OperationsShipmentDoc> {

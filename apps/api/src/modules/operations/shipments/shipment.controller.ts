@@ -4,12 +4,14 @@ import {
   type CompleteOperationsShipment,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
+  type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { ValidationError } from '../../../shared/errors';
+import { hasPermission } from '../../../shared/types';
 import { toShipmentDto } from '../operations.mappers';
 import { receiptImageFileName } from './receipt-image-upload';
 import { operationsShipmentService } from './shipment.service';
@@ -21,12 +23,22 @@ export const listShipments = async (req: Request, res: Response): Promise<void> 
   okPage(res, await operationsShipmentService.list(query), toShipmentDto);
 };
 
+/**
+ * Who rides which van, and how to reach its captain, is the crew plan — `operationsCrew.view`'s,
+ * the crew board's own grant. The day board itself rides `operationsShipment.view`, so a desk
+ * reader without the crew grant still sees the van and the captain's name the legacy table
+ * printed, but not the van's card or the captain's phone.
+ */
+const seesCrewPlan = (req: Request): boolean =>
+  hasPermission(authContext(req), 'operationsCrew.view');
+
 /** The legacy `/main_ops` board — one day's working set, unioned server-side. */
 export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsDayBoardQuery>(req);
   const day = query.date ?? new Date();
-  const rows = await operationsShipmentService.dayBoardView(query.date);
-  ok(res, {
+  const { rows, crews } = await operationsShipmentService.dayBoardView(query.date);
+  const crewPlan = seesCrewPlan(req);
+  ok<OperationsDayBoardDto>(res, {
     date: new Date(
       Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
     ).toISOString(),
@@ -34,9 +46,10 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
       ...toShipmentDto(doc),
       origin,
       destination,
-      crew,
+      crew: crew === null || crewPlan ? crew : { ...crew, captainPhone: null },
       captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
     })),
+    crews: crewPlan ? crews : [],
   });
 };
 

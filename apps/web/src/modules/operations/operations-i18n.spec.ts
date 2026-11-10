@@ -123,6 +123,8 @@ const BOARD_KEYS = [
   'operations.board.figures.otherCurrenciesHint',
   'operations.board.figures.otherCurrenciesTitle',
   'operations.board.figures.otherCurrenciesEmpty',
+  'operations.board.card.crewTitle',
+  'operations.board.card.drivers',
   'operations.board.status.delivered',
   'operations.board.status.notDelivered',
   'operations.board.status.byCaptain',

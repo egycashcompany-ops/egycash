@@ -71,6 +71,13 @@ its entry here in the same PR.
   - API: `GET /operations/shipments/day-board` rows carry their branches (with banks) and the crew of
     the leg the row reports on; `GET /operations/bank-branches/:id`; catalog searches take typed
     text literally (regex metacharacters escaped) and fold Arabic letter variants.
+  - Two hover cards on the board, on Fleet's card mechanics: «لما اقف على العربيه تجيب مين اللى
+    متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه». The
+    van code opens who rides that van on the leg's crew row (drivers from its Fleet duty row, the
+    captain, specialists 1 and 2, the direction and planned time); the captain's name opens the
+    Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
+    (`crews`, and the captain's code, phone and branch on each row); a reader without
+    `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

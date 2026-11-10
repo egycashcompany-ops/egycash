@@ -491,6 +491,11 @@ export interface OperationsDayBoardDto {
    * shipments DELIVERED on the day that have left the vault. Newest created first.
    */
   shipments: OperationsDayBoardShipmentDto[];
+  /**
+   * The crews the rows ride, for the van's card. Empty for a reader without
+   * `operationsCrew.view` — the crew plan is that grant's.
+   */
+  crews: OperationsDayBoardVehicleCrewDto[];
 }
 
 /**
@@ -515,12 +520,46 @@ export interface OperationsDayBoardBranchDto {
  * (main_ops.ejs:858-881), and the same leg the captain report attributes the shipment to.
  */
 export interface OperationsDayBoardCrewDto {
+  /** The crew row this leg rides — the key into `OperationsDayBoardDto.crews`. */
+  crewAssignmentId: string;
   vehicleId: string;
   /** Null when Fleet no longer answers for the vehicle — shown as missing, never as blank. */
   vehicleCode: string | null;
   captainEmployeeId: string;
   /** Null when the directory cannot name the employee. */
   captainName: string | null;
+  /**
+   * The captain's card on the board («زى ما عاملين فى الحركه» — the Fleet driver card's facts):
+   * his employee code and branch, and his phone. Null where the directory has none; the phone is
+   * also null for a reader without `operationsCrew.view`.
+   */
+  captainCode: string | null;
+  captainPhone: string | null;
+  captainBranchId: string | null;
+}
+
+/** A person on a board crew card — named from the HR directory, null where it cannot. */
+export interface OperationsDayBoardPersonDto {
+  employeeId: string;
+  code: string | null;
+  fullNameAr: string | null;
+}
+
+/**
+ * WHO RIDES ONE VAN on the board's legs — «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين
+ * واخصائيين». One per crew row the day's legs ride (not per shipment): the Fleet duty row's two
+ * drivers, and the crew row's captains and specialists, in their slots.
+ */
+export interface OperationsDayBoardVehicleCrewDto {
+  crewAssignmentId: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  drivers: OperationsDayBoardPersonDto[];
+  captains: OperationsDayBoardPersonDto[];
+  specialist1: OperationsDayBoardPersonDto[];
+  specialist2: OperationsDayBoardPersonDto[];
+  direction: string | null;
+  plannedTime: string | null;
 }
 
 /**

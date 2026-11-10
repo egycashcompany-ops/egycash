@@ -1,7 +1,9 @@
 import { Types, type FilterQuery } from 'mongoose';
-import { IT_VEHICLE_CHECK_MAX_PHOTOS } from '@ecms/contracts';
+import { IT_VEHICLE_CHECK_MAX_PHOTOS, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
+import { type ScopeSelector } from '../../../shared/types';
 import { collectionReady } from '../mobile-lines/ensure-collection';
+import { type VehicleCheckWindowFigures } from './vehicle-check-dashboard';
 import {
   ItVehicleCheckModel,
   type ItVehicleCheckDoc,
@@ -13,9 +15,93 @@ class ItVehicleCheckRepository extends BaseRepository<ItVehicleCheckDoc> {
   readonly ensureCollection = collectionReady(ItVehicleCheckModel);
 
   constructor() {
-    // The data-scope anchor for the readers the dashboard brings: the car's branch at filing. No
+    // The data-scope anchor for the dashboard's readers: the car's branch at filing. A report
+    // filed on a car with no branch matches no branch, so no branch-scoped reader sees it. No
     // `ownerUserField` — the default `own` scope already matches `createdBy`, the reporter.
     super(ItVehicleCheckModel, { branchField: 'branchId' });
+  }
+
+  /**
+   * «آخر التقارير» — one page, the newest first: the latest day, then the latest filing. The order
+   * is the screen's and not the caller's to choose, so no `sortBy` from the query reaches it.
+   */
+  async listNewestFirst(
+    filter: FilterQuery<ItVehicleCheckDoc>,
+    page: { page: number; pageSize: number },
+    scope: ScopeSelector,
+  ): Promise<Paginated<ItVehicleCheckDoc>> {
+    return this.list({
+      filter,
+      page: page.page,
+      pageSize: page.pageSize,
+      sorts: [
+        { by: 'checkDate', dir: 'desc' },
+        { by: 'createdAt', dir: 'desc' },
+      ],
+      sortableFields: ['checkDate', 'createdAt'],
+      scope,
+    });
+  }
+
+  /**
+   * Each car's latest LIVE report the reader may see — the latest day, then the latest filing — in
+   * ONE aggregation, whatever the number of cars: the `ix_vehicle_latest` order, and the first
+   * report of each car. The match is this repository's own (live, under the scope), so the
+   * reduction can never see a report the list would not show.
+   */
+  async latestPerVehicle(
+    filter: FilterQuery<ItVehicleCheckDoc>,
+    scope: ScopeSelector,
+  ): Promise<ItVehicleCheckDoc[]> {
+    return this.model
+      .aggregate<ItVehicleCheckDoc>([
+        { $match: this.baseFilter(scope, filter) },
+        { $sort: { vehicleId: 1, checkDate: -1, createdAt: -1 } },
+        { $group: { _id: '$vehicleId', report: { $first: '$$ROOT' } } },
+        { $replaceRoot: { newRoot: '$report' } },
+      ])
+      .exec();
+  }
+
+  /**
+   * The period's figures in ONE pass over the live reports the reader may see under `filter`: how
+   * many, by how many people, on which cars, and how many hold no photo (design §7: «the
+   * dashboard should show such reports»). The cars come back as ids — at most the fleet's size —
+   * for the builder to count among the visible active cars (`carsCheckedOf`).
+   */
+  async windowFigures(
+    filter: FilterQuery<ItVehicleCheckDoc>,
+    scope: ScopeSelector,
+  ): Promise<VehicleCheckWindowFigures> {
+    const [row] = await this.model
+      .aggregate<Omit<VehicleCheckWindowFigures, 'vehicleIds'> & { vehicleIds: Types.ObjectId[] }>([
+        { $match: this.baseFilter(scope, filter) },
+        {
+          $group: {
+            _id: null,
+            reports: { $sum: 1 },
+            reporters: { $addToSet: '$reportedByUserId' },
+            cars: { $addToSet: '$vehicleId' },
+            reportsWithoutPhoto: {
+              $sum: { $cond: [{ $eq: [{ $size: { $ifNull: ['$photos', []] } }, 0] }, 1, 0] },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            reports: 1,
+            reporters: { $size: '$reporters' },
+            vehicleIds: '$cars',
+            reportsWithoutPhoto: 1,
+          },
+        },
+      ])
+      .exec();
+    if (row === undefined) {
+      return { reports: 0, reporters: 0, vehicleIds: [], reportsWithoutPhoto: 0 };
+    }
+    return { ...row, vehicleIds: row.vehicleIds.map(String) };
   }
 
   /**

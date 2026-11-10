@@ -10,6 +10,13 @@
 //
 // Cars are planted through Fleet's raw collection: that is how a car with no branch gets in, since
 // Fleet's schema requires one.
+//
+// The dashboard (2026-11-10, «تمام نفذا الـ Dashboard بتاعت الفحص») adds what only a real database
+// shows: its keys standing apart from the form's, each car's latest report reduced in one
+// aggregation (the day first, then the filing), the window's figures, the reader's branch scope
+// over both the cars and the reports, the list's filters and order, the photo bytes, and a delete
+// leaving every read. Its reports are planted straight into the collection, on cars of a branch of
+// their own (C), so every figure is exact whatever the cases above filed.
 import { randomUUID } from 'node:crypto';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -18,11 +25,13 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  IT_VEHICLE_CHECK_ITEMS,
   SettingKeys,
   addDaysYmd,
   cairoYmd,
   compareFleetVehicleCodes,
   platformPermissions,
+  type ItVehicleCheckDashboardDto,
   type ItVehicleCheckDto,
   type ItVehicleOptionDto,
   type PageMeta,
@@ -55,8 +64,14 @@ let otherReporterId: string;
 let otherReporterToken: string; // the same role, another person
 let assetViewerToken: string; // itAsset.view only — no itVehicleCheck.create
 let fleetViewerToken: string; // fleetVehicle.view only
+let orgViewerToken: string; // itVehicleCheck.view ONLY, organization-wide
+let branchViewerToken: string; // itVehicleCheck.view ONLY, at BRANCH scope, placed in branch C
+let deleterId: string;
+let deleterToken: string; // itVehicleCheck.view + .delete, organization-wide
+let branchDeleterToken: string; // the same role at BRANCH scope, placed in branch C
 let branchAId: string;
 let branchBId: string;
+let branchCId: string; // the dashboard's own branch: no car of the form's cases stands in it
 
 /** The planted cars, by code. */
 const cars = new Map<string, string>();
@@ -216,6 +231,87 @@ const filesOf = async (reportId: string, live = false): Promise<{ _id: Types.Obj
     .lean<{ _id: Types.ObjectId }[]>()
     .exec();
 
+/**
+ * A report straight into the collection — any day, any filing time, any branch, any state — so
+ * the dashboard's figures are planted exactly. Every device «يعمل» but the `faults`; each photo
+ * a link only (the dashboard counts photos, it never reads these bytes).
+ */
+const plantReport = async (
+  code: string,
+  options: {
+    branchId: string | null;
+    checkDate: string;
+    createdAt: Date;
+    faults?: readonly string[];
+    notes?: string;
+    photos?: number;
+    reporter?: { id: string; name: string };
+    isDeleted?: boolean;
+  },
+): Promise<string> => {
+  const _id = new Types.ObjectId();
+  const reporter = options.reporter ?? { id: reporterId, name: 'سامح نبيل' };
+  await ItVehicleCheckModel.collection.insertOne({
+    _id,
+    vehicleId: new Types.ObjectId(car(code)),
+    vehicleCode: code,
+    branchId: options.branchId === null ? null : new Types.ObjectId(options.branchId),
+    checkDate: new Date(`${options.checkDate}T00:00:00.000Z`),
+    items: Object.fromEntries(
+      IT_VEHICLE_CHECK_ITEMS.map((item) => [
+        item,
+        (options.faults ?? []).includes(item) ? 'notWorking' : 'works',
+      ]),
+    ),
+    ...(options.notes === undefined ? {} : { notes: options.notes }),
+    photos: Array.from({ length: options.photos ?? 0 }, () => ({
+      clientPhotoId: randomUUID(),
+      fileId: new Types.ObjectId(),
+      fileName: 'camera.jpg',
+      mime: 'image/jpeg',
+      size: 1024,
+      uploadedAt: options.createdAt,
+    })),
+    reportedByUserId: new Types.ObjectId(reporter.id),
+    reportedByName: reporter.name,
+    clientRequestId: randomUUID(),
+    schemaVersion: 1,
+    isDeleted: options.isDeleted ?? false,
+    deletedAt: options.isDeleted === true ? options.createdAt : null,
+    deletedBy: null,
+    createdBy: new Types.ObjectId(reporter.id),
+    updatedBy: null,
+    createdAt: options.createdAt,
+    updatedAt: options.createdAt,
+    __v: 0,
+  });
+  return String(_id);
+};
+
+/** A dashboard read, as `token`. */
+const read = (path: string, token: string) =>
+  request(app).get(`${PATH}${path}`).set('Authorization', `Bearer ${token}`);
+
+const remove = (id: string, token: string) =>
+  request(app).delete(`${PATH}/${id}`).set('Authorization', `Bearer ${token}`);
+
+/** The dashboard as `token` reads it — answered 200. */
+const board = async (
+  query: string,
+  token = orgViewerToken,
+): Promise<ItVehicleCheckDashboardDto> => {
+  const res = await read(`/dashboard${query}`, token);
+  expect(res.status).toBe(200);
+  return data<ItVehicleCheckDashboardDto>(res);
+};
+
+/** The ids of one page of the reports list as `token` reads it — answered 200. */
+const listed = async (query: string, token = orgViewerToken): Promise<string[]> => {
+  const res = await read(query, token);
+  expect(res.status).toBe(200);
+  return data<ItVehicleCheckDto[]>(res).map((report) => report.id);
+};
+
 /** A synthetic context for calling the file authorizer directly. */
 const ctxOf = (userId: string, permissions: AuthContext['permissions']): AuthContext => ({
   userId,
@@ -305,6 +401,37 @@ beforeAll(async () => {
   const fleetViewerId = await mkUser('vc-fleet@ecms.local', { branchId: branchAId });
   await rbacService.ensureAssignment(fleetViewerId, String(fleetViewerRole._id), 'organization');
   fleetViewerToken = await login('vc-fleet@ecms.local');
+
+  // The dashboard's readers, as an admin would build them: reading alone, and reading with
+  // deleting — each organization-wide and branch-scoped in branch C.
+  branchCId = await mkBranch('95', 'فرع ج', 'Branch C');
+  const viewerRole = await rbacService.createRole(
+    {
+      name: { en: 'Vehicle checks viewer', ar: 'مطالع فحص أجهزة السيارات' },
+      permissionKeys: ['itVehicleCheck.view'],
+    },
+    adminId,
+  );
+  const orgViewerId = await mkUser('vc-viewer@ecms.local', { branchId: branchAId });
+  await rbacService.ensureAssignment(orgViewerId, String(viewerRole._id), 'organization');
+  orgViewerToken = await login('vc-viewer@ecms.local');
+  const branchViewerId = await mkUser('vc-viewer-c@ecms.local', { branchId: branchCId });
+  await rbacService.ensureAssignment(branchViewerId, String(viewerRole._id), 'branch');
+  branchViewerToken = await login('vc-viewer-c@ecms.local');
+
+  const deleterRole = await rbacService.createRole(
+    {
+      name: { en: 'Vehicle checks keeper', ar: 'مسؤول فحص أجهزة السيارات' },
+      permissionKeys: ['itVehicleCheck.view', 'itVehicleCheck.delete'],
+    },
+    adminId,
+  );
+  deleterId = await mkUser('vc-deleter@ecms.local', { branchId: branchAId });
+  await rbacService.ensureAssignment(deleterId, String(deleterRole._id), 'organization');
+  deleterToken = await login('vc-deleter@ecms.local');
+  const branchDeleterId = await mkUser('vc-deleter-c@ecms.local', { branchId: branchCId });
+  await rbacService.ensureAssignment(branchDeleterId, String(deleterRole._id), 'branch');
+  branchDeleterToken = await login('vc-deleter-c@ecms.local');
 
   // The registry the form offers: active cars on both branches and one with no branch, written in
   // all three of Fleet's groups — and the cars it must NOT offer.
@@ -799,24 +926,439 @@ describe('the audit trail', () => {
 });
 
 describe('the file authorizer', () => {
-  it('refuses every read, a non-reporter, and a reporter without itVehicleCheck.create', async () => {
-    const report = await filed('9');
+  it('writes for the reporter holding create alone, and reads for a viewer in scope alone', async () => {
+    const report = await filed('9'); // branch A
     const ask = (ctx: AuthContext, intent: 'read' | 'write') =>
       vehicleCheckFileAuthorizer.authorize({ ctx, entityId: report.id, intent });
     const reporter = ctxOf(reporterId, { 'itVehicleCheck.create': 'own' });
+    const viewerIn = (scope: 'organization' | 'branch', branchId: string | null): AuthContext => ({
+      ...ctxOf(otherReporterId, { 'itVehicleCheck.view': scope }),
+      branchId,
+    });
 
-    // The one yes: the report's own reporter, holding the grant, writing.
+    // The one write: the report's own reporter, holding the grant.
     expect(await ask(reporter, 'write')).toBe(true);
-    // No read at all until the dashboard brings `itVehicleCheck.view`.
+    // Somebody else, grant or not; the reporter without the grant; a viewer.
+    expect(
+      await ask(ctxOf(otherReporterId, { 'itVehicleCheck.create': 'organization' }), 'write'),
+    ).toBe(false);
+    expect(await ask(ctxOf(reporterId, {}), 'write')).toBe(false);
+    expect(await ask(viewerIn('organization', null), 'write')).toBe(false);
+
+    // The form's grant reads nothing back — not even the reporter's own photos.
     expect(await ask(reporter, 'read')).toBe(false);
     expect(
       await ask(ctxOf(otherReporterId, { 'itVehicleCheck.create': 'organization' }), 'read'),
     ).toBe(false);
-    // Somebody else, grant or not.
+    // `itVehicleCheck.view` reads, inside its scope: everywhere, or the report's own branch.
+    expect(await ask(viewerIn('organization', null), 'read')).toBe(true);
+    expect(await ask(viewerIn('branch', branchAId), 'read')).toBe(true);
+    expect(await ask(viewerIn('branch', branchBId), 'read')).toBe(false);
+
+    // A deleted report's photos are unreachable, whoever asks.
+    await ItVehicleCheckModel.collection.updateOne(
+      { _id: new Types.ObjectId(report.id) },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    );
+    expect(await ask(viewerIn('organization', null), 'read')).toBe(false);
+  });
+});
+
+// ── The dashboard (2026-11-10) — «تمام نفذا الـ Dashboard بتاعت الفحص» ─────────────────────────
+describe('the dashboard', () => {
+  const day = (back: number): string => addDaysYmd(today(), -back);
+  const minutesAgo = (minutes: number): Date => new Date(Date.now() - minutes * 60 * 1000);
+  /** The planted reports. */
+  const r = {} as Record<'r1' | 'r2' | 'r3' | 'r4' | 'r5' | 'r6' | 'r7' | 'r8' | 'r9', string>;
+  const NONE = Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((item) => [item, 0]));
+
+  // Branch C's fleet, in Fleet's code order — 301, 302, (303 out of service), هيونداي 4, 55 —
+  // and its reports. Planted HERE, after the car list's cases, which count every active car.
+  beforeAll(async () => {
+    await plantCar('301', { branchId: branchCId });
+    await plantCar('302', { branchId: branchCId });
+    await plantCar('303', { branchId: branchCId, status: 'outOfService' });
+    await plantCar('هيونداي 4', { branchId: branchCId });
+    await plantCar('55', { branchId: branchCId });
+    const C = branchCId;
+    const other = { id: otherReporterId, name: 'شريف ممدوح فاروق' };
+    // 301: three live reports and a deleted one. r3 is the latest — yesterday, filed after r2;
+    // r1 was filed last of all but for an earlier day, and the day comes first.
+    r.r1 = await plantReport('301', {
+      branchId: C,
+      checkDate: day(2),
+      createdAt: minutesAgo(30),
+      photos: 1,
+    });
+    r.r2 = await plantReport('301', {
+      branchId: C,
+      checkDate: day(1),
+      createdAt: minutesAgo(180),
+      faults: ['camera7'],
+      notes: 'كاميرا داخل الخزينة 1 لا تعرض صورة.',
+      photos: 1,
+    });
+    r.r3 = await plantReport('301', {
+      branchId: C,
+      checkDate: day(1),
+      createdAt: minutesAgo(120),
+      faults: ['dvr', 'radio'],
+      notes: 'الـ DVR لا يسجّل، وجهاز الاتصال بلا إرسال.',
+      photos: 2,
+    });
+    // Deleted: today's report would otherwise be 301's latest, and its screen a fault.
+    r.r4 = await plantReport('301', {
+      branchId: C,
+      checkDate: day(0),
+      createdAt: minutesAgo(60),
+      faults: ['screen'],
+      notes: 'الشاشة مطفأة.',
+      photos: 1,
+      isDeleted: true,
+    });
+    // 302: one report three days ago, by another reporter, with no photo.
+    r.r5 = await plantReport('302', {
+      branchId: C,
+      checkDate: day(3),
+      createdAt: minutesAgo(3 * 1440),
+      reporter: other,
+    });
+    // هيونداي 4: last checked nine days ago — overdue, and outside the default window.
+    r.r6 = await plantReport('هيونداي 4', {
+      branchId: C,
+      checkDate: day(9),
+      createdAt: minutesAgo(9 * 1440),
+      photos: 1,
+    });
+    // 303 is out of service: its report counts in the period, never as a row of «آخر تقرير».
+    r.r7 = await plantReport('303', {
+      branchId: C,
+      checkDate: day(0),
+      createdAt: minutesAgo(60),
+      faults: ['camera1'],
+      notes: 'كاميرا أمام المركبة مكسورة.',
+    });
+    // 55 has none. Beyond C: a report on the car with no branch, and one on branch B.
+    r.r8 = await plantReport('1003', {
+      branchId: null,
+      checkDate: day(0),
+      createdAt: minutesAgo(90),
+      photos: 1,
+    });
+    r.r9 = await plantReport('152', {
+      branchId: branchBId,
+      checkDate: day(1),
+      createdAt: minutesAgo(300),
+      photos: 1,
+    });
+    expect(['55', 'هيونداي 4', '303', '302', '301'].sort(compareFleetVehicleCodes)).toEqual([
+      '301',
+      '302',
+      '303',
+      'هيونداي 4',
+      '55',
+    ]);
+  });
+
+  it('answers 403 to every read without itVehicleCheck.view — the form’s reporter included — and to a delete without .delete', async () => {
+    const fileId = String(new Types.ObjectId());
+    for (const token of [reporterToken, assetViewerToken, fleetViewerToken]) {
+      expect((await read('/dashboard', token)).status).toBe(403);
+      expect((await read('', token)).status).toBe(403);
+      expect((await read(`/${r.r3}`, token)).status).toBe(403);
+      expect((await read(`/${r.r3}/photos/${fileId}`, token)).status).toBe(403);
+    }
+    for (const token of [reporterToken, orgViewerToken]) {
+      expect((await remove(r.r3, token)).status).toBe(403);
+    }
+    const raw = await ItVehicleCheckModel.collection.findOne({ _id: new Types.ObjectId(r.r3) });
+    expect(raw?.isDeleted).toBe(false);
+    // …and reading or deleting is not filing: the form's three routes stay the form's.
+    for (const token of [orgViewerToken, deleterToken]) {
+      expect((await listCars('?page=1&pageSize=10', token)).status).toBe(403);
+      expect((await fileReport({ vehicleId: car('301') }, token)).status).toBe(403);
+      expect((await upload(r.r3, { token })).status).toBe(403);
+    }
+    expect(await filesOf(r.r3)).toHaveLength(0);
+  });
+
+  it("derives every figure from the reports: each car's latest by day then filing, the deleted and the inactive left out", async () => {
+    const dashboard = await board(`?branchId=${branchCId}`);
+    expect(dashboard.from).toBe(day(6));
+    expect(dashboard.to).toBe(today());
+    expect(dashboard.overdueDays).toBe(7);
+    expect(dashboard.totals).toEqual({
+      // r1, r2, r3, r5, r7 — not the deleted r4, not r6 from nine days ago.
+      reports: 5,
+      reporters: 2,
+      // 301 and 302 — not 303: its report counts above, but it is out of service, and the tile
+      // reads «X من Y سيارة نشطة».
+      carsChecked: 2,
+      // 301, 302, هيونداي 4, 55.
+      activeCars: 4,
+      // 301's latest is r3: the DVR and the radio.
+      carsWithFaults: 1,
+      devicesNotWorking: 2,
+      overdueCars: 2,
+      // r5 and r7.
+      reportsWithoutPhoto: 2,
+    });
+    expect(dashboard.faultsByDevice).toEqual({ ...NONE, dvr: 1, radio: 1 });
+    // Fleet's code order, one row per active car that has a report: 55 has none, 303 is inactive.
+    expect(dashboard.latest.map((row) => row.reportId)).toEqual([r.r3, r.r5, r.r6]);
+    expect(dashboard.latest[0]).toEqual({
+      reportId: r.r3,
+      vehicleId: car('301'),
+      vehicleCode: '301',
+      branchId: branchCId,
+      checkDate: day(1),
+      createdAt: expect.any(String) as unknown as string,
+      items: {
+        ...Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((item) => [item, 'works'])),
+        dvr: 'notWorking',
+        radio: 'notWorking',
+      },
+      photoCount: 2,
+      hasNotes: true,
+      reportedByName: 'سامح نبيل',
+    });
+    expect(dashboard.latest[1]).toMatchObject({
+      vehicleCode: '302',
+      photoCount: 0,
+      hasNotes: false,
+    });
+    // Never checked first, then the longest unchecked — under the car's branch now.
+    expect(dashboard.overdue).toEqual([
+      {
+        vehicleId: car('55'),
+        vehicleCode: '55',
+        branchId: branchCId,
+        lastCheckDate: null,
+        daysSince: null,
+      },
+      {
+        vehicleId: car('هيونداي 4'),
+        vehicleCode: 'هيونداي 4',
+        branchId: branchCId,
+        lastCheckDate: day(9),
+        daysSince: 9,
+      },
+    ]);
+  });
+
+  it('opens on the last seven days, clamps an end after today, and never limits the latest reports to the window', async () => {
+    const clamped = await board(`?branchId=${branchCId}&to=${addDaysYmd(today(), 5)}`);
+    expect([clamped.from, clamped.to]).toEqual([day(6), today()]);
+    expect(clamped.totals.reports).toBe(5);
+
+    // «اليوم»: r7 alone (r4 is deleted) — but the matrix and the overdue cars are unchanged. r7 is
+    // on the out-of-service 303, so no ACTIVE car was checked today: «٠ من ٤».
+    const onlyToday = await board(`?branchId=${branchCId}&from=${today()}&to=${today()}`);
+    expect(onlyToday.totals).toMatchObject({
+      reports: 1,
+      reporters: 1,
+      carsChecked: 0,
+      reportsWithoutPhoto: 1,
+      activeCars: 4,
+      overdueCars: 2,
+    });
+    expect(onlyToday.latest.map((row) => row.reportId)).toEqual([r.r3, r.r5, r.r6]);
+
+    // An earlier end moves the default start with it: seven days ending there.
+    const earlier = await board(`?branchId=${branchCId}&to=${day(2)}`);
+    expect([earlier.from, earlier.to]).toEqual([day(8), day(2)]);
+    expect(earlier.totals).toMatchObject({
+      reports: 2,
+      reporters: 2,
+      carsChecked: 2,
+      reportsWithoutPhoto: 1,
+    });
+
+    const inverted = await read(`/dashboard?from=${today()}&to=${day(1)}`, orgViewerToken);
+    expect(inverted.status).toBe(400);
+    expect(errorCode(inverted)).toBe(ErrorCodes.VALIDATION_FAILED);
+  });
+
+  it("shows a branch-scoped reader their branch's cars and reports only, whatever branch they ask for", async () => {
+    const mine = await board('', branchViewerToken);
+    expect(mine.totals).toMatchObject({ reports: 5, activeCars: 4, overdueCars: 2 });
+    expect(mine.latest.map((row) => row.reportId)).toEqual([r.r3, r.r5, r.r6]);
+
+    const elsewhere = await board(`?branchId=${branchBId}`, branchViewerToken);
+    expect(elsewhere.totals).toMatchObject({
+      reports: 0,
+      reporters: 0,
+      activeCars: 0,
+      overdueCars: 0,
+    });
+    expect(elsewhere.latest).toEqual([]);
+    expect(elsewhere.overdue).toEqual([]);
+
+    // An organization-wide reader sees every branch — and the car with no branch, with its report.
+    const everything = await board('');
+    const codes = everything.latest.map((row) => row.vehicleCode);
+    for (const code of ['150', '152', '301', '302', 'هيونداي 4']) expect(codes).toContain(code);
+    expect(everything.latest.find((row) => row.vehicleId === car('1003'))?.branchId).toBeNull();
+    expect(mine.latest.some((row) => row.vehicleId === car('1003'))).toBe(false);
+  });
+
+  it('shows a report with no branch to an organization-wide reader only', async () => {
+    const org = await read(`/${r.r8}`, orgViewerToken);
+    expect(org.status).toBe(200);
+    expect(data<ItVehicleCheckDto>(org).branchId).toBeNull();
+
+    const branch = await read(`/${r.r8}`, branchViewerToken);
+    expect(branch.status).toBe(404);
+    expect(errorCode(branch)).toBe(ErrorCodes.NOT_FOUND);
+    expect(await listed(`?vehicleId=${car('1003')}`, branchViewerToken)).toEqual([]);
+    expect(await listed(`?vehicleId=${car('1003')}`)).toContain(r.r8);
+  });
+
+  it('answers one report — and 404 outside the scope, for a deleted one, and for none', async () => {
+    const res = await read(`/${r.r3}`, branchViewerToken);
+    expect(res.status).toBe(200);
+    expect(data<ItVehicleCheckDto>(res)).toMatchObject({
+      id: r.r3,
+      vehicleCode: '301',
+      branchId: branchCId,
+      checkDate: day(1),
+      notes: 'الـ DVR لا يسجّل، وجهاز الاتصال بلا إرسال.',
+      reportedByName: 'سامح نبيل',
+    });
+    expect(data<ItVehicleCheckDto>(res).photos).toHaveLength(2);
+
+    for (const [id, token] of [
+      [r.r9, branchViewerToken], // branch B
+      [r.r4, orgViewerToken], // deleted
+      [String(new Types.ObjectId()), orgViewerToken],
+    ] as const) {
+      const missing = await read(`/${id}`, token);
+      expect(missing.status).toBe(404);
+      expect(errorCode(missing)).toBe(ErrorCodes.NOT_FOUND);
+    }
+    expect((await read('/not-an-id', orgViewerToken)).status).toBe(400);
+  });
+
+  it('lists the reports newest first — the day, then the filing — under every filter, ANDed', async () => {
+    const C = `?branchId=${branchCId}`;
+    const ALL = [r.r7, r.r3, r.r2, r.r1, r.r5, r.r6];
+    expect(await listed(C)).toEqual(ALL);
+    // The order is the screen's: a sort the caller sends changes nothing.
+    expect(await listed(`${C}&sortBy=createdAt&sortDir=asc`)).toEqual(ALL);
+    expect(await listed(`${C}&faultsOnly=false`)).toEqual(ALL);
+    expect(await listed(`${C}&faultsOnly=true`)).toEqual([r.r7, r.r3, r.r2]);
+    expect(await listed(`${C}&device=camera7`)).toEqual([r.r2]);
+    expect(await listed(`${C}&device=dvr&faultsOnly=true`)).toEqual([r.r3]);
+    // A car code in Arabic-Indic digits finds «301»; a word finds its car; a dot is a dot.
+    expect(await listed(`${C}&carCode=${encodeURIComponent('٣٠١')}`)).toEqual([r.r3, r.r2, r.r1]);
+    expect(await listed(`${C}&carCode=${encodeURIComponent('هيونداي')}`)).toEqual([r.r6]);
+    expect(await listed(`${C}&carCode=.`)).toEqual([]);
+    expect(await listed(`${C}&vehicleId=${car('302')}`)).toEqual([r.r5]);
+    expect(await listed(`${C}&from=${day(3)}&to=${day(1)}`)).toEqual([r.r3, r.r2, r.r1, r.r5]);
+
+    const second = await read(`${C}&page=2&pageSize=2`, orgViewerToken);
+    expect(second.status).toBe(200);
+    expect(data<ItVehicleCheckDto[]>(second).map((report) => report.id)).toEqual([r.r2, r.r1]);
+    expect((second.body as { meta: PageMeta }).meta).toMatchObject({
+      totalItems: 6,
+      totalPages: 3,
+    });
+
+    // The branch reader's list is their branch's, and a branch they may not see is empty.
+    expect(await listed('', branchViewerToken)).toEqual(ALL);
+    expect(await listed(`?branchId=${branchBId}`, branchViewerToken)).toEqual([]);
+  });
+
+  it('serves a photo of a report the reader may see — and 404 for a file not on it, or a report out of reach', async () => {
+    const report = await filed('152'); // branch B
+    const uploaded = await upload(report.id);
+    expect(uploaded.status).toBe(200);
+    const fileId = data<ItVehicleCheckDto>(uploaded).photos[0]?.fileId ?? '';
+
+    const bytes = await read(`/${report.id}/photos/${fileId}`, orgViewerToken);
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['content-type']).toContain('image/png');
+    expect(bytes.headers['content-disposition']).toBe('inline; filename="camera.png"');
+    expect(bytes.headers['cache-control']).toBe('private, no-store');
+    expect(Buffer.isBuffer(bytes.body)).toBe(true);
+    expect((bytes.body as Buffer).equals(PNG)).toBe(true);
+
+    // Another report's real photo, asked for under this report: not this report's.
+    const another = await filed('152');
+    const anotherUpload = await upload(another.id);
+    const foreignFileId = data<ItVehicleCheckDto>(anotherUpload).photos[0]?.fileId ?? '';
+    for (const [path, token] of [
+      [`/${report.id}/photos/${foreignFileId}`, orgViewerToken],
+      [`/${report.id}/photos/${String(new Types.ObjectId())}`, orgViewerToken],
+      [`/${report.id}/photos/${fileId}`, branchViewerToken], // branch B, read from C
+    ] as const) {
+      const refused = await read(path, token);
+      expect(refused.status).toBe(404);
+      expect(errorCode(refused)).toBe(ErrorCodes.NOT_FOUND);
+    }
+    expect((await read(`/${report.id}/photos/not-an-id`, orgViewerToken)).status).toBe(400);
+
+    // Deleted, the report's photo is unreachable — and still stored (no retention, design §7).
+    expect((await remove(report.id, deleterToken)).status).toBe(204);
+    const gone = await read(`/${report.id}/photos/${fileId}`, orgViewerToken);
+    expect(gone.status).toBe(404);
+    expect(await filesOf(report.id, true)).toHaveLength(1);
+  });
+
+  it('soft-deletes a report under the delete scope, audits it, and the report leaves every read', async () => {
+    // Not a viewer's to delete, nor a branch deleter's on another branch.
+    const outside = await remove(r.r9, branchDeleterToken);
+    expect(outside.status).toBe(404);
+    expect(errorCode(outside)).toBe(ErrorCodes.NOT_FOUND);
     expect(
-      await ask(ctxOf(otherReporterId, { 'itVehicleCheck.create': 'organization' }), 'write'),
+      (await ItVehicleCheckModel.collection.findOne({ _id: new Types.ObjectId(r.r9) }))?.isDeleted,
     ).toBe(false);
-    // The reporter, without the grant.
-    expect(await ask(ctxOf(reporterId, {}), 'write')).toBe(false);
+
+    const res = await remove(r.r3, deleterToken);
+    expect(res.status).toBe(204);
+    const raw = await ItVehicleCheckModel.collection.findOne({ _id: new Types.ObjectId(r.r3) });
+    expect(raw?.isDeleted).toBe(true);
+    expect(raw?.deletedAt).toBeInstanceOf(Date);
+    expect(String(raw?.deletedBy)).toBe(deleterId);
+    // The photo links stay on the record: the files are kept, only unreachable.
+    const photoIds = ((raw?.photos ?? []) as { fileId: Types.ObjectId }[]).map((p) =>
+      String(p.fileId),
+    );
+    expect(photoIds).toHaveLength(2);
+
+    const rows = await AuditLogModel.find({
+      'entityRef.moduleId': 'it',
+      'entityRef.entityType': 'vehicleCheck',
+      'entityRef.entityId': r.r3,
+      action: 'delete',
+    })
+      .lean()
+      .exec();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'vehicleCode', old: '301', new: null },
+        { field: 'checkDate', old: day(1), new: null },
+        { field: 'photos', old: photoIds, new: null },
+      ]),
+    );
+
+    expect((await read(`/${r.r3}`, orgViewerToken)).status).toBe(404);
+    expect((await remove(r.r3, deleterToken)).status).toBe(404);
+    expect(await listed(`?branchId=${branchCId}`)).toEqual([r.r7, r.r2, r.r1, r.r5, r.r6]);
+    // 301's latest is r2 now: the camera inside safe 1, and the DVR and radio count no more.
+    const after = await board(`?branchId=${branchCId}`);
+    expect(after.latest.map((row) => row.reportId)).toEqual([r.r2, r.r5, r.r6]);
+    expect(after.faultsByDevice).toEqual({ ...NONE, camera7: 1 });
+    expect(after.totals).toMatchObject({ reports: 4, carsWithFaults: 1, devicesNotWorking: 1 });
+
+    // A branch deleter in C may delete C's report: هيونداي 4 is then never checked, and both
+    // never-checked cars are listed in Fleet's code order.
+    expect((await remove(r.r6, branchDeleterToken)).status).toBe(204);
+    const overdue = (await board(`?branchId=${branchCId}`)).overdue;
+    expect(overdue.map((row) => [row.vehicleCode, row.daysSince])).toEqual([
+      ['هيونداي 4', null],
+      ['55', null],
+    ]);
   });
 });

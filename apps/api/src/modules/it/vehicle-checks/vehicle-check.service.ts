@@ -1,19 +1,25 @@
 // Vehicle device checks — «فحص أجهزة السيارة» (FR-21; docs/12-planning/it-vehicle-checks-design.md
-// §6.1): the car list the phone form offers, filing a report, and adding its photos.
+// §6.1): the car list the phone form offers, filing a report, and adding its photos; and since
+// 2026-11-10 («تمام نفذا الـ Dashboard بتاعت الفحص») IT's dashboard over them — the figures, the
+// reports list, one report, its photos, and deleting a wrong one.
 //
-// Every path ignores the reporter's data scope (design §4): the form offers every active car, and
-// `own` over cars would be no car at all. Scope will govern READING reports, which the dashboard
-// brings; each report keeps the car's branch for it.
+// The form's paths ignore the reporter's data scope (design §4): the form offers every active car,
+// and `own` over cars would be no car at all. The dashboard's paths are the opposite: every read
+// and the delete run under the caller's scope for their own key, on the branch each report keeps.
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
   IT_VEHICLE_CHECK_ITEMS,
   IT_VEHICLE_CHECK_MAX_PHOTOS,
   IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS,
+  cairoYmd,
   vehicleCheckNeedsNotes,
   ymdOf,
   ymdToUtcDate,
   type CreateItVehicleCheck,
+  type ItVehicleCheckDashboardDto,
+  type ItVehicleCheckDashboardQuery,
+  type ListItVehicleChecksQuery,
   type Paginated,
 } from '@ecms/contracts';
 import {
@@ -22,17 +28,27 @@ import {
   NotFoundError,
   StaleDocumentError,
 } from '../../../shared/errors';
-import { type AuthContext } from '../../../shared/types';
+import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { auditService } from '../../../platform/audit';
 import { fileService, type UploadedBinary } from '../../../platform/files';
+import { publishAuditedChange } from '../../../platform/realtime';
 import {
   findVehicleForCheck,
   listActiveVehicleCodes,
+  listActiveVehiclesForCheckBoard,
   type ItVehicleOption,
 } from '../fleet-boundary';
+import { toItVehicleCheckLatestDto } from '../it.mappers';
 import { itVehicleCheckRepository } from './vehicle-check.repository';
 import { vehicleCheckPhotoCategory } from './vehicle-check-files';
+import {
+  buildVehicleCheckDashboard,
+  carsVisibleTo,
+  dashboardWindow,
+  latestReportsFilter,
+  vehicleCheckListFilter,
+} from './vehicle-check-dashboard';
 import { type ItVehicleCheckDoc, type ItVehicleCheckItemsSub } from './vehicle-check.model';
 
 /** The audited entity — a LITERAL pair, so the realtime registry's scan can classify it. */
@@ -40,6 +56,35 @@ const vehicleCheckEntityRef = (id: string) => ({
   moduleId: 'it',
   entityType: 'vehicleCheck',
   entityId: id,
+});
+
+/**
+ * A report filed, a photo added or a report deleted refreshes «فحص أجهزة السيارات». The audit row
+ * announces itself (ADR-029), but with no branch, so it reaches only the topic's organization-wide
+ * room — and a branch-scoped `itVehicleCheck.view` reader, who joins only their branches' rooms,
+ * would never hear of a report on their own branch's car. One `update` signal WITH the report's
+ * branch (the car's at filing, the scope anchor) reaches that branch's room too; a report with no
+ * branch is for organization-wide readers only, so it goes to their room alone. No audit row of
+ * its own — `signalConsumable`'s precedent. Best-effort, as every signal is.
+ */
+export const signalVehicleCheck = (report: Pick<ItVehicleCheckDoc, '_id' | 'branchId'>): void => {
+  publishAuditedChange({
+    entityRef: { moduleId: 'it', entityType: 'vehicleCheck', entityId: String(report._id) },
+    action: 'update',
+    at: new Date().toISOString(),
+    branchId: report.branchId === null ? null : String(report.branchId),
+  });
+};
+
+/** A report as its audit rows describe it — what was filed, and never changes once filed. */
+const filedFacts = (report: ItVehicleCheckDoc) => ({
+  vehicleId: String(report.vehicleId),
+  vehicleCode: report.vehicleCode,
+  branchId: report.branchId === null ? null : String(report.branchId),
+  checkDate: ymdOf(report.checkDate),
+  items: report.items,
+  notes: report.notes ?? null,
+  clientRequestId: report.clientRequestId,
 });
 
 /** The reporter's name as the IT histories snapshot an actor. */
@@ -127,23 +172,13 @@ class ItVehicleCheckService {
       throw error;
     }
 
-    // 5. The trail.
+    // 5. The trail, and the dashboard's signal — for a NEW report only: a repeat changed nothing.
     await auditService.record({
       entityRef: vehicleCheckEntityRef(String(report._id)),
       action: 'create',
-      changes: diffChanges(
-        {},
-        {
-          vehicleId: String(report.vehicleId),
-          vehicleCode: report.vehicleCode,
-          branchId: report.branchId === null ? null : String(report.branchId),
-          checkDate: ymdOf(report.checkDate),
-          items: report.items,
-          notes: report.notes ?? null,
-          clientRequestId: report.clientRequestId,
-        },
-      ),
+      changes: diffChanges({}, filedFacts(report)),
     });
+    signalVehicleCheck(report);
     return { report, created: true };
   }
 
@@ -230,6 +265,7 @@ class ItVehicleCheckService {
 
     // 7. The trail: this one photo added. `old` comes from the update's own result, not from the
     //    read in step 1 — under racing uploads that read is out of date by the time the push lands.
+    //    Then the dashboard's signal; a photo already there (the early returns) added nothing.
     await auditService.record({
       entityRef: vehicleCheckEntityRef(id),
       action: 'update',
@@ -243,6 +279,7 @@ class ItVehicleCheckService {
         },
       ],
     });
+    signalVehicleCheck(updated);
     return updated;
   }
 
@@ -271,6 +308,106 @@ class ItVehicleCheckService {
       );
     }
     return report;
+  }
+
+  // ── The dashboard (2026-11-10): reads and the delete, each under the caller's scope ──────────
+
+  /**
+   * «فحص أجهزة السيارات» — the tiles, «الأعطال حسب الجهاز», «لم تُفحص منذ ٧ أيام» and the matrix,
+   * in three reads whatever the size of the fleet: Fleet's active cars and the window's figures
+   * together, then each visible car's latest report in one aggregation — never a read per car.
+   * The rules are `vehicle-check-dashboard.ts`'s; this only reads.
+   */
+  async dashboard(
+    query: ItVehicleCheckDashboardQuery,
+    scope: ScopeSelector,
+  ): Promise<ItVehicleCheckDashboardDto> {
+    const today = cairoYmd(new Date());
+    const window = dashboardWindow(query, today);
+    const [fleet, period] = await Promise.all([
+      listActiveVehiclesForCheckBoard(),
+      itVehicleCheckRepository.windowFigures(
+        vehicleCheckListFilter({
+          from: window.from,
+          to: window.to,
+          ...(query.branchId === undefined ? {} : { branchId: query.branchId }),
+        }),
+        scope,
+      ),
+    ]);
+    const cars = carsVisibleTo(fleet, scope, query.branchId);
+    const latest =
+      cars.length === 0
+        ? []
+        : await itVehicleCheckRepository.latestPerVehicle(
+            latestReportsFilter(cars, query.branchId),
+            scope,
+          );
+    return buildVehicleCheckDashboard({
+      window,
+      today,
+      cars,
+      latest: latest.map(toItVehicleCheckLatestDto),
+      period,
+    });
+  }
+
+  /** «آخر التقارير» under every filter, the newest first. */
+  async list(
+    query: ListItVehicleChecksQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<ItVehicleCheckDoc>> {
+    return itVehicleCheckRepository.listNewestFirst(vehicleCheckListFilter(query), query, scope);
+  }
+
+  /**
+   * One live report the reader may see. Missing, deleted and outside the scope are one answer
+   * (404), so a reader learns nothing of a report they may not read.
+   */
+  async get(id: string, scope: ScopeSelector): Promise<ItVehicleCheckDoc> {
+    const report = await itVehicleCheckRepository.findById(id, scope);
+    if (report === null) throw new NotFoundError('vehicle check not found');
+    return report;
+  }
+
+  /**
+   * One photo's bytes — the custody signed copy's path: the report first, under the reader's
+   * scope; the file only when it is one of THAT report's photos (an id of another report's photo
+   * is a 404 here, never a way round its scope); then the Files service, whose entity authorizer
+   * asks the same grant again.
+   */
+  async readPhoto(
+    ctx: AuthContext,
+    id: string,
+    fileId: string,
+    scope: ScopeSelector,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    const report = await this.get(id, scope);
+    if (!report.photos.some((photo) => String(photo.fileId) === fileId)) {
+      throw new NotFoundError('this photo is not on this report');
+    }
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, fileId);
+    return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  /**
+   * «حذف التقرير» — a wrong report, soft-deleted under the caller's delete scope (design §3: a
+   * wrong report was corrected by filing again until IT's delete grant arrived). The photos stay
+   * stored, as no retention is set (design §7), and simply become unreachable: every read goes
+   * through a live report. The car's latest report is then the one before it.
+   */
+  async remove(id: string, ctx: AuthContext, scope: ScopeSelector): Promise<void> {
+    const report = await this.get(id, scope);
+    await itVehicleCheckRepository.softDeleteById(id, { by: ctx.userId, scope });
+    await auditService.record({
+      entityRef: vehicleCheckEntityRef(id),
+      action: 'delete',
+      changes: diffChanges(
+        { ...filedFacts(report), photos: report.photos.map((photo) => String(photo.fileId)) },
+        {},
+      ),
+    });
+    signalVehicleCheck(report);
   }
 }
 

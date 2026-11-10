@@ -27,7 +27,7 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface, the employees register and the vehicle check', () => {
+  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface, the employees register and the vehicle checks', () => {
     expect(paths.sort()).toEqual(
       [
         'assets',
@@ -48,7 +48,9 @@ describe('IT routes', () => {
         // FR-20 — the consumables' store and its ledger, on the same grants.
         'consumables',
         'consumables/movements',
-        // FR-21 — the vehicle device check, a phone form on its own grant, outside AppShell.
+        // FR-21 — the vehicle device check, a phone form on its own grant, outside AppShell, and
+        // the dashboard of its reports, inside the console on the view grant.
+        'vehicle-checks',
         'vehicle-checks/new',
         'software',
         'spare-parts',
@@ -113,6 +115,21 @@ describe('IT routes', () => {
     expect(paths).toContain('helpdesk-settings');
     expect(paths).not.toContain('help-desk');
     expect(SEED).toContain("route: '/it/helpdesk-settings'");
+  });
+
+  // «الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT»: the reports' dashboard is a console page,
+  // inside the frame and on the view grant; the form stays the one phone page outside it.
+  it('puts the vehicle checks dashboard inside AppShell, on its view grant, and the form outside', () => {
+    const shellEnd = ROUTES.indexOf('<Route path="*" element={<NotFoundPage />} />');
+    const dashboard = ROUTES.indexOf('path="vehicle-checks"');
+    const form = ROUTES.indexOf('path="vehicle-checks/new"');
+    expect(dashboard).toBeGreaterThan(ROUTES.indexOf('<Route element={<AppShell />}>'));
+    expect(dashboard).toBeLessThan(shellEnd);
+    expect(form).toBeGreaterThan(shellEnd);
+    const guard = (at: number): string =>
+      ROUTES.slice(at, ROUTES.indexOf('</RequirePermission>', at));
+    expect(guard(dashboard)).toContain('<RequirePermission permission="itVehicleCheck.view">');
+    expect(guard(form)).toContain('<RequirePermission permission="itVehicleCheck.create">');
   });
 
   it('resolves the literal scan segment before the :id matcher', () => {

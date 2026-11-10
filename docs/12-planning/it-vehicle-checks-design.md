@@ -8,9 +8,10 @@ IT reading Fleet's car list. It amends that design in §0, §2.12, §3, §5 (FR-
 and §17. Each amendment is listed in §8 below. §10 records the fresh-context review that checked
 this document.
 
-**This delivery:** the phone form, the record behind it, its photos, its one grant and the car
-list. **Not this delivery:** reading, listing and deleting reports, and the IT dashboard. These
-come together, after the owner approves the dashboard's own sample (§9).
+**First delivery (2026-11-08):** the phone form, the record behind it, its photos, its one grant
+and the car list. **The dashboard (2026-11-10):** reading, listing and deleting reports, and the IT
+dashboard over them, after the owner approved its sample («تمام نفذا الـ Dashboard بتاعت الفحص»):
+§11.
 
 ## 1. The owner's request and the adopted defaults
 
@@ -170,15 +171,19 @@ reportedByName, clientRequestId }` plus the platform's `baseFields` (soft delete
 ## 4. Grants
 
 There is one resource, `itVehicleCheck`, labelled «فحص أجهزة السيارات» in the roles screen. The
-label is plural because the resource covers every car's checks; the screen, which checks one car,
-is singular. The page is `it.vehicle-checks`, route `/it/vehicle-checks/new`.
+label is plural because the resource covers every car's checks; the phone screen, which checks one
+car, is singular. The page is `it.vehicle-checks`. It was routed to the form, `/it/vehicle-checks/new`;
+since the dashboard (2026-11-10, §11) it is the dashboard's route, `/it/vehicle-checks`, named
+«فحص أجهزة السيارات», and it covers all three keys.
 
 | Key | What it allows |
 |---|---|
 | `itVehicleCheck.create` | the phone form: list the active cars, file a report, add photos to one's own report within 24 hours of filing |
+| `itVehicleCheck.view` | the dashboard `/it/vehicle-checks` (2026-11-10, §11): the figures, the reports, their photos — under the reader's data scope on the report's branch at filing |
+| `itVehicleCheck.delete` | soft-delete a wrong report (§11) — under the same scope |
 
-- The `view` and `delete` keys come with the dashboard that uses them (§9). No screen in this
-  delivery reads a report, so none is granted.
+- The `view` and `delete` keys came with the dashboard that uses them (2026-11-10, §11); the first
+  delivery declared only `create`, since no screen of it read a report.
 - The form's grant implies no other IT or Fleet grant. The car list is IT's own endpoint under
   `itVehicleCheck.create`, so the reporter needs neither `fleetVehicle.view` nor `itAsset.view`.
   `fleetVehicle.view` would open Fleet's registry, including chassis, engine and licence image.
@@ -192,7 +197,9 @@ is singular. The page is `it.vehicle-checks`, route `/it/vehicle-checks/new`.
 - No role is seeded. On deploy, as for every new key, only super-admin holds it
   (`syncPermissionRegistry`), until an admin builds the role («نخصصها عادى كدور»).
 - A navigation row in the IT category, «فحص أجهزة السيارة» → `/it/vehicle-checks/new`, under
-  `itVehicleCheck.create`, with the `vehicle` glyph. No other IT row uses it.
+  `itVehicleCheck.create`, with the `vehicle` glyph. No other IT row uses it. Since 2026-11-10 the
+  dashboard's row «فحص أجهزة السيارات» → `/it/vehicle-checks` (`itVehicleCheck.view`, `gauge`) sits
+  before it.
 
 ## 5. The Fleet boundary (amends IT §3 and §9.2)
 
@@ -201,7 +208,9 @@ This form needs Fleet's car list. So IT gets one import surface,
 `apps/api/src/modules/it/fleet-boundary.ts`. It does not re-export the whole repository, as
 [`operations/fleet-boundary.ts`](../../apps/api/src/modules/operations/fleet-boundary.ts) and
 [`gold/fleet-boundary.ts`](../../apps/api/src/modules/gold/fleet-boundary.ts) do. It exports two
-read functions built on `fleetVehicleRepository`. Neither applies a data scope:
+read functions built on `fleetVehicleRepository` — three since the dashboard, which adds
+`listActiveVehiclesForCheckBoard` (every active car with its current branch; §11.2). None applies a
+data scope:
 
 - `listActiveVehicleCodes({ page, pageSize }): Promise<Paginated<{ id, code }>>` returns active,
   non-deleted cars through `listVehicles`, `sortBy: 'code'`, ascending. That is Fleet's code order;
@@ -225,7 +234,7 @@ Alternatives set aside:
 
 ## 6. How it works
 
-### 6.1 API (under `/api/v1/it/vehicle-checks`, every route under `itVehicleCheck.create`)
+### 6.1 API (under `/api/v1/it/vehicle-checks`, the form's routes under `itVehicleCheck.create`; the dashboard's reads and delete: §11.2)
 
 | Method and path | Answer | Refusals |
 |---|---|---|
@@ -286,7 +295,8 @@ Two racing uploads therefore cannot leave six photos.
 check photos"), created on first use with `fileCategoryService.ensure`:
 `IT_VEHICLE_CHECK_PHOTO_MIME_TYPES` (JPEG, PNG, WebP), `IT_VEHICLE_CHECK_PHOTO_MAX_MB` (10), no
 retention, private. The entity authorizer `it/vehicleCheck` answers a write only for the report's
-own reporter holding `itVehicleCheck.create`, unscoped. It answers no read until the dashboard.
+own reporter holding `itVehicleCheck.create`, unscoped. It answered no read until the dashboard;
+since 2026-11-10 it answers a read for `itVehicleCheck.view` inside the reader's scope (§11.2).
 The upload route reuses IT's single-file intake (`signedCopyUpload` from
 `apps/api/src/modules/it/assets/receipt.controller.ts`; its 15 MB outer cap answers 422
 `FILE_TOO_LARGE` too, but the category's 10 MB is the limit a photo meets first).
@@ -295,7 +305,7 @@ The upload route reuses IT's single-file intake (`signedCopyUpload` from
 'vehicleCheck' }`. Every audited entity must be classified in the realtime registry. With no screen
 that reads reports yet, `it.vehicleCheck` goes in `REALTIME_EXCLUDED_ENTITIES`, with the reason "no
 screen until the dashboard". It leaves that list in the change that builds the dashboard, as the
-attendance-device entry does.
+attendance-device entry does — and did, on 2026-11-10 (§11.2).
 
 ### 6.2 Contracts (`packages/contracts/src/modules/it.ts`)
 
@@ -445,11 +455,12 @@ The car list's query is the shared `PaginationQuerySchema`. The labels are not i
   report. No retention is set: the files are kept, as the custody papers are. The bound is the
   grant, given only to the people named in the role. There is no per-day cap; the dashboard will
   show the volume.
-- **Sensitive photos.** Two cameras look inside the car's safe. The photos are private Files. In
-  this delivery only their reporter can write them, and no one can read them through the API until
-  the dashboard brings `itVehicleCheck.view`.
-- **A wrong report stays until the dashboard.** The reporter cannot delete. Until IT's delete
-  grant arrives, a wrong report is corrected by filing again, and the latest one counts.
+- **Sensitive photos.** Two cameras look inside the car's safe. The photos are private Files. Only
+  their reporter can write them; since the dashboard (§11.2) a holder of `itVehicleCheck.view` reads
+  them inside their scope, and nobody else can.
+- **A wrong report.** The reporter cannot delete. Before the dashboard a wrong report was corrected
+  by filing again, the latest one counting; now IT soft-deletes it under `itVehicleCheck.delete`
+  (§11).
 - **A car with no branch** is filed with no branch. When the dashboard reads under a branch scope,
   only organization-wide readers will see those reports.
 - **A report can still end with no photo** (2026-11-09): the server cannot require one (§6.1), and
@@ -473,6 +484,8 @@ The car list's query is the shared `PaginationQuerySchema`. The labels are not i
 - §11: the dashboard is planned.
 - §12: the API row.
 - §17: the trail entry.
+- 2026-11-10, the dashboard (§11): FR-21's reading and deleting; §3 and §9.2, the boundary's third
+  read; §7, the dashboard's row; §11, built; §12, the new routes; §17, its entry.
 
 ## 9. Delivery plan
 
@@ -581,7 +594,7 @@ how a car with no branch gets in, since Fleet's schema requires one.
 - **Files.** Called directly, `vehicleCheckFileAuthorizer` refuses every read. It refuses a write
   by a non-reporter, and a write by the reporter without `itVehicleCheck.create`.
 
-**Next delivery: the dashboard**, after its sample is approved. It adds `itVehicleCheck.view` and
+**Next delivery: the dashboard**, after its sample is approved (built 2026-11-10: §11). It adds `itVehicleCheck.view` and
 `.delete`; the reads it needs (the latest report per car, faults per device, active cars with no
 recent report, the reports list with photos); the photo bytes for readers; and the realtime topic.
 Not planned: notifications or automatic tickets for «لا يعمل», a per-car equipment profile, and
@@ -659,3 +672,78 @@ What the build changed (Step 4), each found by the review of the built code:
 - **The reasons for a refused photo** read for any count («الحجم أكبر من 10 ميجابايت», «النوع غير
   مدعوم», «رفض الخادم الطلب»), so they agree with «لم تُرفع صورتان:». A photo's size is never shown
   as «0.0».
+
+## 11. The dashboard (2026-11-10)
+
+The owner asked «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات اللى الناس بتدخلها». A sample was
+shown (a page in the console, not a phone screen) and approved: «تمام نفذا الـ Dashboard بتاعت الفحص».
+It lives at `/it/vehicle-checks`, inside the console frame, under `itVehicleCheck.view`; the phone form
+stays at `/it/vehicle-checks/new`. A navigation row «فحص أجهزة السيارات» (the `gauge` glyph) sits
+before the form's row, and the IT home's page links gain it.
+
+### 11.1 What the reader sees
+
+- **The filters**, in the URL and remembered: the window («اليوم», «آخر ٧ أيام», «آخر ٣٠ يومًا»: Cairo
+  days on `checkDate`; the default seven days is kept off the URL), one branch, a car code typed,
+  «السيارات التي بها عطل فقط», and a device (set by a click on its bar). «كل تقارير هذه السيارة» also
+  pins the car by its id (`vehicle`), since a typed code matches anywhere («1» would bring «10» and
+  «150»); typing in the car box lets go of it. A pinned car's reports are listed and exported over
+  every day — the window does not apply to them, and the list says so — and the button clears the
+  faults and device filters, so «كل» means all of that car's reports. «مسح الفلاتر» clears them all
+  but the window.
+- **Six figures**: the reports of the window and how many people sent them; the active cars checked
+  in it out of the active cars the reader sees; the cars whose latest report has a fault; the devices «لا يعمل» in those latest
+  reports; the cars not checked for seven days; the reports of the window with no photo (§2 item 5:
+  the server cannot require one, so the dashboard shows them).
+- **«الأعطال حسب الجهاز»**: for each of the eleven devices, the active cars whose latest report has it
+  «لا يعمل». A click filters the matrix and the reports by that device.
+- **«سيارات لم تُفحص منذ ٧ أيام»**: the active cars with no report for seven Cairo days, today
+  included, never-checked first, then the longest unchecked.
+- **«حالة أجهزة كل سيارة — آخر تقرير»**: one row per active car with its latest live report — the
+  branch, the day, the eleven devices (✓ يعمل, ✕ لا يعمل, – لم يُفحص, each with its own label), the
+  photos — in Fleet's code order. The latest is the latest day, then the latest filing (§1.2 default
+  4). It is not limited by the window: a car's state is its latest report, however old.
+- **«آخر التقارير»**: the reports of the window, newest first, with the failed devices, the note and the
+  photo count, paginated; Excel and PDF export them under the filters, the filter line naming each.
+- **The report view**: the car, branch, day, reporter and filing time, the counts, every device with
+  its answer, the note, the photos as images (a tap opens one large), «كل تقارير هذه السيارة», and
+  «حذف التقرير» for `itVehicleCheck.delete`.
+
+### 11.2 API (added to §6.1's router)
+
+| Method and path | Grant | Answer |
+|---|---|---|
+| `GET /dashboard?from&to&branchId` | `view` | `ItVehicleCheckDashboardDto`: the window's figures, `faultsByDevice`, `latest`, `overdue`. The window defaults to the last seven days, today included; a `to` after today is today |
+| `GET /?page&pageSize&from&to&branchId&vehicleId&carCode&faultsOnly&device` | `view` | the reports, newest first; `carCode` matches anywhere in the code, any digit set |
+| `GET /:id` | `view` | one report; 404 outside the scope, deleted or missing |
+| `GET /:id/photos/:fileId` | `view` | the photo's bytes (`private, no-store`); 404 for a file not on that report |
+| `DELETE /:id` | `delete` | **204**; a soft delete, audited with the filed facts and the photos' file ids; the photo files are kept (§7) but no longer readable |
+
+- **Scope.** Reports are read under the reader's data scope for `view` (or `delete`) on the report's
+  `branchId` at filing; a report with no branch is seen only by an organization-wide reader (§7), or
+  by a department or section reader whose scope widens (below). The
+  active cars (Fleet's list, through one more boundary read that returns each car's id, code and
+  current branch) are filtered by their current branch the same way; a scope that names no branch
+  (`own`) sees no car, so its overdue list is empty. A department or section grant follows the
+  platform's rule for a branch-only collection: on the reports it widens to every branch (no-branch
+  reports included), while the cars, the latest reports and the overdue list narrow to the home
+  branch, as IT's other dashboards do.
+- **One more Fleet read** (amends §5): every active, non-deleted car with its branch, in Fleet's code
+  order. Still a read, still unscoped in the boundary; IT applies the reader's scope.
+- **Files.** The authorizer `it/vehicleCheck` now answers a READ for a holder of `view` on a live
+  report inside their scope (§6.1 "Files"). Writes are unchanged.
+- **Realtime.** `it.vehicleCheck` leaves `REALTIME_EXCLUDED_ENTITIES` and becomes a topic under
+  `itVehicleCheck.view`: a report filed, a photo added or a report deleted refreshes the dashboard.
+  The audit's own signal carries no branch, so each of the three also sends one `update` WITH the
+  report's branch (the consumables' `signalConsumable` precedent), which reaches a branch-scoped
+  reader too.
+
+### 11.3 Limits
+
+- A car moved to another branch keeps its old reports under the old branch: a branch-scoped reader of
+  the new branch sees the car (by its current branch) but not those reports, so it may read as
+  overdue until it is checked again.
+- A car taken out of service leaves the matrix and the overdue list; its reports stay in «آخر
+  التقارير».
+- «تقارير بلا صورة» counts a report filed seconds ago whose photos are still going up.
+

@@ -691,9 +691,11 @@ describe('the dashboard the IT home calls exists on the API, on the asset view g
 
 // FR-21 — «فحص أجهزة السيارة» (docs/12-planning/it-vehicle-checks-design.md §6.1): the phone form's
 // three calls — the car list, filing a report, one photo onto it — every one on the form's one
-// grant, so a reporter needs no Fleet or asset grant. Nothing here reads a report back: that comes
-// with the dashboard.
-describe('vehicle checks: the phone form’s calls exist on the API, on itVehicleCheck.create', () => {
+// grant, so a reporter needs no Fleet or asset grant. The dashboard («تمام نفذا الـ Dashboard بتاعت
+// الفحص», 2026-11-10) reads them back on `itVehicleCheck.view` — the figures, the list, one report
+// and its photos' bytes — and deletes a wrong one on `itVehicleCheck.delete`; the reporter, who
+// holds only `create`, reads none of it.
+describe('vehicle checks: the form’s and the dashboard’s calls exist on the API, each on its grant', () => {
   const FILE = resolve(API_SRC, 'vehicle-checks/vehicle-check.routes.ts');
   const ROUTES = existsSync(FILE) ? readFileSync(FILE, 'utf8') : '';
   const route = (verb: string, path: string): string =>
@@ -714,8 +716,19 @@ describe('vehicle checks: the phone form’s calls exist on the API, on itVehicl
     expect(ROUTES).toContain('export const buildItVehicleChecksRouter');
   });
 
-  it('serves the three calls the form makes — and nothing that reads a report', () => {
-    expect(declared(ROUTES)).toEqual(new Set(['get /vehicles', 'post /', 'post /:id/photos']));
+  it('serves the form’s three calls and the dashboard’s five — and nothing else', () => {
+    expect(declared(ROUTES)).toEqual(
+      new Set([
+        'get /vehicles',
+        'post /',
+        'post /:id/photos',
+        'get /dashboard',
+        'get /',
+        'get /:id',
+        'get /:id/photos/:fileId',
+        'delete /:id',
+      ]),
+    );
     // The car list, every page of it (ADR-037), at the path the API serves it on.
     expect(CLIENT).toContain(
       'getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`)',
@@ -734,6 +747,51 @@ describe('vehicle checks: the phone form’s calls exist on the API, on itVehicl
       expect(gates(verb, path), `${verb} ${path}`).toEqual(['itVehicleCheck.create']);
     }
     expect(MANIFEST, 'the grant is declared').toContain("'itVehicleCheck'");
+  });
+
+  it('declares the literal paths before the id matcher, so neither is read as a report id', () => {
+    // Where the router DECLARES a path — not where a comment names it.
+    const at = (path: string): number =>
+      ROUTES.search(
+        new RegExp(`router\\.(?:get|post|patch|delete)\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'`),
+      );
+    for (const literal of ['/vehicles', '/dashboard']) {
+      expect(at(literal), literal).toBeGreaterThan(-1);
+      expect(at(literal), literal).toBeLessThan(at('/:id'));
+    }
+  });
+
+  it('the dashboard’s client calls are the paths the API serves', () => {
+    expect(CLIENT).toContain(
+      'get<ItVehicleCheckDashboardDto>(`/it/vehicle-checks/dashboard${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain(
+      'getPage<ItVehicleCheckDto>(`/it/vehicle-checks${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain('get<ItVehicleCheckDto>(`/it/vehicle-checks/${id}`)');
+    // The photo's bytes through the token: an <img src> would send none.
+    expect(CLIENT).toContain('fetchBlob(`/it/vehicle-checks/${id}/photos/${fileId}`)');
+    expect(CLIENT).toContain('del<void>(`/it/vehicle-checks/${id}`)');
+  });
+
+  it('gates every read on itVehicleCheck.view, and the delete on itVehicleCheck.delete', () => {
+    for (const [verb, path] of [
+      ['get', '/dashboard'],
+      ['get', '/'],
+      ['get', '/:id'],
+      ['get', '/:id/photos/:fileId'],
+    ] as const) {
+      expect(gates(verb, path), `${verb} ${path}`).toEqual(['itVehicleCheck.view']);
+    }
+    expect(gates('delete', '/:id')).toEqual(['itVehicleCheck.delete']);
+  });
+
+  it('validates what the dashboard sends against the contract', () => {
+    expect(route('get', '/dashboard')).toContain('ItVehicleCheckDashboardQuerySchema');
+    expect(route('get', '/')).toContain('ListItVehicleChecksQuerySchema');
+    expect(route('get', '/:id/photos/:fileId')).toContain('ItVehicleCheckPhotoParamSchema');
+    expect(route('get', '/:id')).toMatch(/IdParamSchema/);
+    expect(route('delete', '/:id')).toMatch(/IdParamSchema/);
   });
 
   it('validates what the client sends against the contract', () => {

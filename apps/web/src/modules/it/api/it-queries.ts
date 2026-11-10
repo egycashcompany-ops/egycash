@@ -4,6 +4,7 @@
 // One rule carries this file: an asset mutation invalidates the ASSETS subtree and reseeds the
 // detail cache, because the server derives `status` and allocates `assetCode` — a client that
 // kept its own copy would show a stale truth the moment either changed.
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
@@ -59,6 +60,7 @@ import {
   type UpdateItVendor,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { rereadAfterDelete } from '../lib/vehicle-check-dashboard';
 import * as api from './it-api';
 import { type ItListParams } from './it-api';
 
@@ -101,6 +103,13 @@ const itKeys = {
    * apart. An asset's «installed on it» card and a person's card read the same ledger.
    */
   consumables: featureKey(MODULE, 'consumables'),
+  /**
+   * The vehicle checks dashboard (FR-21): its figures, the reports list and one report — one
+   * subtree, because a delete moves all three (the report leaves the list, its car's latest falls
+   * back to the one before, the counts move), and so does a report filed or a photo added on a
+   * phone, which the realtime `it.vehicleCheck` signal names.
+   */
+  vehicleChecks: featureKey(MODULE, 'vehicleChecks'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -629,6 +638,65 @@ export const useItVehicleCheckCars = () =>
     queryFn: api.fetchItVehicleCheckCars,
     staleTime: 60_000,
   });
+
+/**
+ * The dashboard's figures under the period and the branch. The previous view's figures stay while
+ * the next ones load, so the tiles keep their shape instead of flashing to skeletons on every click.
+ */
+export const useItVehicleCheckDashboard = (params: ItListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleChecks', { dashboard: true, ...params }),
+    queryFn: () => api.getVehicleCheckDashboard(params),
+    placeholderData: (prev) => prev,
+  });
+
+/** «آخر التقارير» — a page of reports under every filter. */
+export const useItVehicleChecks = (params: ItListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleChecks', params),
+    queryFn: () => api.listVehicleChecks(params),
+    placeholderData: (prev) => prev,
+  });
+
+/** One report, for the side panel. A 404 (deleted, or outside the scope) is an answer: no retry. */
+export const useItVehicleCheck = (id: string | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'vehicleChecks', id ?? ''),
+    queryFn: () => api.getVehicleCheck(id ?? ''),
+    enabled: id !== null && id !== '',
+    retry: false,
+  });
+
+/**
+ * Delete a wrong report. The dashboard and the list read the subtree it moves — all of it again but
+ * the deleted report's own read, which its still-open panel would fetch back as a 404 and the app
+ * would toast as «not found» over a delete that succeeded (`rereadAfterDelete`); the panel lets
+ * that read go once it closes (`useForgetItVehicleCheck`). A refusal is the panel's to say, once:
+ * the declared `onError` keeps the global handler's second toast away.
+ */
+export const useDeleteItVehicleCheck = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteVehicleCheck(id),
+    onSuccess: (_done: void, id: string) => {
+      void qc.invalidateQueries({
+        queryKey: itKeys.vehicleChecks,
+        predicate: (query) => rereadAfterDelete(query.queryKey, id),
+      });
+    },
+    onError: () => undefined,
+  });
+};
+
+/** Let a deleted report's own read go — called once its panel has closed (`forgetsDeletedReport`). */
+export const useForgetItVehicleCheck = () => {
+  const qc = useQueryClient();
+  return useCallback(
+    (id: string) =>
+      qc.removeQueries({ queryKey: detailKey(MODULE, 'vehicleChecks', id), exact: true }),
+    [qc],
+  );
+};
 
 // ── People: the employees IT names ──────────────────────────────────────────
 

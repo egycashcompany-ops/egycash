@@ -62,6 +62,7 @@ import {
   QrIcon,
   TagIcon,
   TrashIcon,
+  TruckIcon,
   UsersIcon,
   WrenchIcon,
 } from '../../../shared/ui/icons';
@@ -954,6 +955,8 @@ export const ItHomePage = (): JSX.Element => {
   const canSpareParts = can('itSparePart.view');
   const canSoftware = can('itSoftware.view');
   const canLicenses = can('itLicense.view');
+  // «فحص أجهزة السيارات» — the reports the phone form files, read on their own view grant.
+  const canVehicleChecks = can('itVehicleCheck.view');
   // Every grant that opens at least one panel or page below. A viewer holding only
   // `itSoftware.view` has a screen to reach, so leaving them on «no access» would be a lie.
   const anything =
@@ -965,7 +968,8 @@ export const ItHomePage = (): JSX.Element => {
     canMaintenance ||
     canSpareParts ||
     canSoftware ||
-    canLicenses;
+    canLicenses ||
+    canVehicleChecks;
 
   // «الفئة» (several) and «الفرع» (one), under the asset register's own names.
   const categoryIds = useMemo(() => readCategoryIds(sp.get('category')), [sp]);
@@ -1008,6 +1012,9 @@ export const ItHomePage = (): JSX.Element => {
       : []),
     ...(canSoftware ? [{ to: '/it/software', label: t('it.nav.software'), icon: GridIcon }] : []),
     ...(canLicenses ? [{ to: '/it/licenses', label: t('it.nav.licenses'), icon: BadgeIcon }] : []),
+    ...(canVehicleChecks
+      ? [{ to: '/it/vehicle-checks', label: t('it.vehicleChecks.title'), icon: TruckIcon }]
+      : []),
     ...(canVendors ? [{ to: '/it/vendors', label: t('it.nav.vendors'), icon: FolderIcon }] : []),
     ...(canCatalogs ? [{ to: '/it/catalogs', label: t('it.nav.catalogs'), icon: TagIcon }] : []),
     ...(canSla

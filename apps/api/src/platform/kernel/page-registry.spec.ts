@@ -35,9 +35,11 @@ describe('the assembled page registry', () => {
   // The active users page («المستخدمين النشطين») added one page and its one key, `activeUser.view`.
   // IT's vehicle device checks («فحص أجهزة السيارة», FR-21) added one page and its one key,
   // `itVehicleCheck.create`.
-  it('declares 84 pages over 315 permissions', () => {
+  // Their dashboard («فحص أجهزة السيارات») added two keys and no page, `itVehicleCheck.view` and
+  // `.delete`, on the same `it.vehicle-checks`.
+  it('declares 84 pages over 317 permissions', () => {
     expect(pages).toHaveLength(84);
-    expect(permissions).toHaveLength(315);
+    expect(permissions).toHaveLength(317);
   });
 
   /**
@@ -117,10 +119,15 @@ describe('the assembled page registry', () => {
    * `it.vehicle-checks`, built in the same change as the phone form it opens. Its `view` and
    * `delete` arrive with the dashboard that uses them. Assigned, so the unassigned count does not
    * move.
+   *
+   * The vehicle checks dashboard adds TWO keys and no page: `itVehicleCheck.view` (the figures, the
+   * reports, their photos) and `itVehicleCheck.delete` (a wrong report), arriving WITH the screen
+   * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
+   * dashboard, so the unassigned count does not move.
    */
-  it('assigns 286 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 288 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(286);
+    expect(assigned).toHaveLength(288);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -145,7 +152,8 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    // IT's tenth page is the vehicle device check form (`it.vehicle-checks`, FR-21).
+    // IT's tenth page is the vehicle device checks (`it.vehicle-checks`, FR-21) — the form's page,
+    // whose route the dashboard took over (2026-11-10): one page, not a second.
     expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 37, fleet: 19, it: 10 });
   });
 

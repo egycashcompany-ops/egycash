@@ -523,6 +523,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'it.consumable': [['it', 'consumables']],
   // A memo's signed copy shows on the ledger's rows («موقّع» / «بانتظار التوقيع»).
   'it.consumableMemo': [['it', 'consumables']],
+  // FR-21 — a report filed on a phone, a photo added to it, or a wrong one deleted moves the vehicle
+  // checks dashboard's figures, its reports list and an open report: one subtree, as the delete's
+  // own `onSuccess` says.
+  'it.vehicleCheck': [['it', 'vehicleChecks']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

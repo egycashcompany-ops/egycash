@@ -404,6 +404,15 @@ describe('the panels, each by its grant', () => {
     expect(hrefs(render(['itSoftware.view']))).toEqual(['/it/software']);
   });
 
+  // FR-21 — the vehicle checks dashboard, on its own view grant: a reader who holds only that has a
+  // page to reach, not «no access».
+  it('links «فحص أجهزة السيارات» for a reader of the vehicle checks', () => {
+    const html = render(['itVehicleCheck.view']);
+    expect(hrefs(html)).toEqual(['/it/vehicle-checks']);
+    expect(text(html)).toContain(ar('it.vehicleChecks.title'));
+    expect(html).not.toContain(ar('it.overview.noAccessTitle'));
+  });
+
   it('tells a reader with no IT grant so, once, instead of a wall of errors', () => {
     const html = render([]);
     expect(html).toContain(ar('it.overview.noAccessTitle'));

@@ -16,6 +16,7 @@ const directives = (): Record<string, unknown> => ({
   ...helmet.contentSecurityPolicy.getDefaultDirectives(),
   'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
   'frame-src': ["'self'", 'blob:'],
+  'script-src': ["'self'", "'wasm-unsafe-eval'"],
 });
 
 const imgSrc = (): string[] => directives()['img-src'] as string[];
@@ -110,5 +111,24 @@ describe('the policy the app builds matches the one asserted here', () => {
       (match) => match[1] ?? match[2],
     );
     expect(entries).toEqual(frameSrc());
+  });
+});
+
+describe('script-src lets the HR photo’s face finder run, and nothing more', () => {
+  const scriptSrc = (): string[] => directives()['script-src'] as string[];
+  const APP = readFileSync(new URL('./app.ts', import.meta.url), 'utf8');
+
+  it('allows WebAssembly to compile — the face finder is MediaPipe in the page', () => {
+    expect(scriptSrc()).toContain("'wasm-unsafe-eval'");
+  });
+
+  it('still refuses JavaScript eval and inline scripts, and adds no script host', () => {
+    expect(scriptSrc()).not.toContain("'unsafe-eval'");
+    expect(scriptSrc()).not.toContain("'unsafe-inline'");
+    expect(scriptSrc().filter((s) => s.startsWith('http'))).toEqual([]);
+  });
+
+  it('is what app.ts actually serves', () => {
+    expect(APP).toContain(`'script-src': ["'self'", "'wasm-unsafe-eval'"],`);
   });
 });

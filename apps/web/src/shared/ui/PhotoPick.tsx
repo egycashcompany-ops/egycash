@@ -90,6 +90,7 @@ export const PhotoPickButton = ({
   accept,
   onFile,
   disabled = false,
+  camera: withCamera = true,
   label,
   className,
   children,
@@ -98,6 +99,8 @@ export const PhotoPickButton = ({
   accept: string;
   onFile: (file: File) => void;
   disabled?: boolean;
+  /** false: no «تصوير بالكاميرا» — a phone goes straight to its pictures, like a computer. */
+  camera?: boolean;
   /** The button's name, read aloud and shown on hover. */
   label: string;
   className?: string;
@@ -139,7 +142,7 @@ export const PhotoPickButton = ({
         aria-expanded={open !== null}
         className={cn('cursor-pointer', className)}
         onClick={(e) => {
-          if (!isTouchScreen()) {
+          if (!withCamera || !isTouchScreen()) {
             device.current?.click();
             return;
           }
@@ -164,6 +167,7 @@ export const PhotoPickButton = ({
             ref={menu}
             role="menu"
             data-photo-menu="true"
+            data-floating-layer=""
             style={{ top: open.top, left: open.left }}
             className="fixed z-[120] flex w-48 flex-col rounded-lg border border-slate-200 bg-white p-1 text-start shadow-lg dark:border-slate-600 dark:bg-slate-800"
           >

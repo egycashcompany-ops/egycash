@@ -1,4 +1,4 @@
-// The branches' custody — four sheets, one per branch — added to the register, once, by the deploy.
+// The branches' custody — five sheets, one per branch — added to the register, once, by the deploy.
 // «هبعتلك عهده الأفرع وعايزك تضيفهم مره واحده كل فرع فى فرعه فى الـ IT».
 //
 // What the file says (`branch-custody-import.ts`, reviewed with the owner) is what happens:

@@ -12,19 +12,21 @@ its entry here in the same PR.
 ### Added
 
 - **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
-  تضيفهم مره واحده كل فرع فى فرعه فى الـ IT». The four sheets (بورسعيد، طنطا، الشروق، أكتوبر), reviewed
-  with the owner, in `apps/api/assets/it-go-live/branch-custody-2026-11.json` (199 rows, no person).
-  - 52 new devices registered in their branch, in stock; a Dell's service tag is its serial number,
+  تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
+  طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` (244 rows, no person).
+  - 68 new devices registered in their branch, in stock; a Dell's service tag is its serial number,
     and its «CN-0…» label its printed tag.
   - Devices already on the register get only what they lack («أكمّل الناقص بس»): specifications,
     accessories, printed tag, make, model. A value already typed is kept. The Shorouk sheet's 13
     Dell desktops get no processor or graphics: those cells repeat its all-in-ones'.
   - 8 devices registered under another branch move to the sheet's when in stock, and their old
     location (a place in the branch they left) is cleared; a held one stays and is reported.
-  - Left out: two repeated rows in Tanta and two rows in October with neither serial nor tag; and,
-    until the owner reads their labels, the Shorouk printer CNDRP8Z666 and screen B3ZY8V3 (serials
-    the October inventory found twice), the October screen B3SZ8V3 (two characters off B3ZY8V3) and
-    an HP Z240 whose only label is HP's product number.
+  - Left out: three repeated rows (two in Tanta, one in Assiut) and two rows in October with neither
+    serial nor tag; and, until the owner reads their labels, the Shorouk printer CNDRP8Z666 and
+    screen B3ZY8V3 (serials the October inventory found twice), three screens a character or two
+    off a register screen of their branch that the sheet does not list (October's B3SZ8V3, Assiut's
+    BR565G3 and 1Q1L1T3) and an HP Z240 whose only label is HP's product number.
   - One transaction, run once (`go-live:it-branch-custody-2026-11:v1`), after the inventory, the
     October all-in-ones and the specifications; a missing branch or category refuses it.
 

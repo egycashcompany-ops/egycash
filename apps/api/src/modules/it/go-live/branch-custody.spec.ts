@@ -1,5 +1,5 @@
 // The branches' custody reaches the company by DEPLOYING, and what it writes is the reviewed file —
-// the file is held to the owner's review here (four sheets, «كل فرع فى فرعه»; «انقلهم لفرع الملف»;
+// the file is held to the owner's review here (five sheets, «كل فرع فى فرعه»; «انقلهم لفرع الملف»;
 // «لو مفيش تاجات فخلاص متضيفهمش»; «طابعتين مختلفتين»; «أكمّل الناقص بس»), with the deploy's caller
 // and the steps it waits for. The planner is `branch-custody-import.spec.ts`; the writing itself is
 // proved against a real mongo in `tests/integration/it-go-live-branch-custody.spec.ts`.
@@ -154,10 +154,11 @@ describe('the committed file is the reviewed one', () => {
     return category;
   };
 
-  it('holds the four sheets’ 199 lines, in sheet order', () => {
-    expect(devices).toHaveLength(199);
+  // «هبعتلك أسيوط كمان» — Assiut's sheet came while the change waited, in the same file and run.
+  it('holds the five sheets’ 244 lines, in sheet order', () => {
+    expect(devices).toHaveLength(244);
     const sheets = [...new Set(devices.map((row) => row.branch))];
-    expect(sheets).toEqual(['بورسعيد', 'طنطا', 'الشروق', 'أكتوبر']);
+    expect(sheets).toEqual(['بورسعيد', 'طنطا', 'الشروق', 'أكتوبر', 'أسيوط']);
     for (const branch of sheets) {
       const rows = devices.filter((row) => row.branch === branch).map((row) => row.row);
       expect(rows).toEqual([...rows].sort((a, b) => a - b));
@@ -175,10 +176,11 @@ describe('the committed file is the reviewed one', () => {
       طنطا: { fill: 31, move: 2, new: 8, skip: 2 },
       الشروق: { fill: 19, move: 4, new: 12, skip: 2 },
       أكتوبر: { fill: 46, move: 2, new: 2, skip: 4 },
+      أسيوط: { fill: 26, new: 16, skip: 3 },
     });
     const totals: Record<string, number> = {};
     for (const row of devices) totals[row.action] = (totals[row.action] ?? 0) + 1;
-    expect(totals).toEqual({ fill: 131, move: 8, new: 52, skip: 8 });
+    expect(totals).toEqual({ fill: 157, move: 8, new: 68, skip: 11 });
   });
 
   it('finds every line the review matched on the register — in its branch, or the one it moves from', () => {
@@ -203,6 +205,7 @@ describe('the committed file is the reviewed one', () => {
       ['الشروق', 26, '46YMRS3', 'المهندسين'],
       ['أكتوبر', 64, 'CNDRP8Z4KV', 'المهندسين'],
       ['أكتوبر', 65, 'FCH2402D9S4', 'المهندسين'],
+      // None from Assiut's sheet: every device of it the register holds is Assiut's already.
     ]);
     expect([...new Set(moves.map((row) => row.fromBranch))].sort()).toEqual([
       'أكتوبر',
@@ -263,11 +266,11 @@ describe('the committed file is the reviewed one', () => {
       for (const field of Object.keys(row.specs)) carrying[field] = (carrying[field] ?? 0) + 1;
     }
     expect(carrying).toEqual({
-      processor: 62,
-      memory: 74,
-      systemType: 75,
-      storage: 75,
-      displayAdapter: 62,
+      processor: 74,
+      memory: 86,
+      systemType: 87,
+      storage: 87,
+      displayAdapter: 74,
     });
   });
 
@@ -335,14 +338,21 @@ describe('the committed file is the reviewed one', () => {
       ['أكتوبر', 28, 'noSerialOrTag'],
       ['أكتوبر', 29, 'noSerialOrTag'],
       ['أكتوبر', 39, 'nearSerial'],
+      ['أسيوط', 14, 'nearSerial'],
+      ['أسيوط', 17, 'nearSerial'],
+      ['أسيوط', 35, 'repeatedSerial'],
     ]);
-    // A repeated serial is another line's, on the same sheet.
+    // A repeated serial is an EARLIER line's, on the same sheet — that line is the device, and it
+    // is written; the repeat adds nothing.
     for (const row of devices) {
       if (row.action !== 'skip' || row.reason !== 'repeatedSerial') continue;
       const twins = devices.filter(
         (other) => other !== row && other.sheet === row.sheet && other.serial === row.serial,
       );
       expect(twins, where(row)).toHaveLength(1);
+      const [twin] = twins;
+      expect(twin?.row, where(row)).toBeLessThan(row.row);
+      expect(twin?.action, where(row)).not.toBe('skip');
     }
   });
 
@@ -397,10 +407,14 @@ describe('the committed file is the reviewed one', () => {
 
   // October's sheet gives a screen B3SZ8V3 — two characters off B3ZY8V3, an October screen the
   // October sheet does not list. Most likely that very screen, its label misread: registering it
-  // as new could count one screen twice, so the owner reads the label.
+  // as new could count one screen twice, so the owner reads the label. Assiut's sheet does it
+  // twice: BR565G3 (14) is one character off BR545G3, and 1Q1L1T3 (17) one off 1Q1LJT3 — both
+  // Assiut screens on the register that its sheet does not list.
   it('leaves out a label two edits off a device of its branch that no line names — likely it, misread', () => {
     expect(editsBetween('KITTEN', 'SITTING')).toBe(3);
     expect(editsBetween('B3SZ8V3', 'B3ZY8V3')).toBe(2);
+    expect(editsBetween('BR565G3', 'BR545G3')).toBe(1);
+    expect(editsBetween('1Q1L1T3', '1Q1LJT3')).toBe(1);
     const inventory = inventoryDevices();
     const register = registered();
     const named = new Set(
@@ -411,7 +425,11 @@ describe('the committed file is the reviewed one', () => {
     const near = devices.flatMap((row) =>
       row.action === 'skip' && row.reason === 'nearSerial' ? [row] : [],
     );
-    expect(near.map(where)).toEqual(['عهدة فرع أكتوبر 39']);
+    expect(near.map(where)).toEqual([
+      'عهدة فرع أكتوبر 39',
+      'عهدة فرع أسيوط 14',
+      'عهدة فرع أسيوط 17',
+    ]);
     for (const row of near) {
       const labels = [row.serial, row.tag].flatMap((id) => (id === null ? [] : [id.toUpperCase()]));
       expect(labels.length, where(row)).toBeGreaterThan(0);
@@ -470,9 +488,10 @@ describe('the committed file is the reviewed one', () => {
       }
       return counts;
     };
-    expect(profile('fill')).toEqual({ serialOnly: 46, tagOnly: 70, both: 15 });
-    // October's 6 and 39 were tag-only new lines until the review held them for the owner.
-    expect(profile('new')).toEqual({ serialOnly: 47, tagOnly: 4, both: 1 });
+    expect(profile('fill')).toEqual({ serialOnly: 51, tagOnly: 91, both: 15 });
+    // October's 6 and 39 and Assiut's 14 and 17 would be tag-only new lines, and Assiut's 35 a
+    // serial-only one, had the review not held them for the owner.
+    expect(profile('new')).toEqual({ serialOnly: 62, tagOnly: 5, both: 1 });
     for (const row of devices) {
       if (row.action === 'skip' || row.action === 'new') continue;
       expect(row.registerSerial, where(row)).toBe(row.tag ?? row.serial);

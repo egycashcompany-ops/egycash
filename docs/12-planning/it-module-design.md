@@ -1287,17 +1287,19 @@ starts only on an explicit owner GO.
   [it-vehicle-checks-design.md §11](it-vehicle-checks-design.md).
 - **The branches' custody sheets** (2026-11-10) — owner request: «هبعتلك عهده الأفرع وعايزك تضيفهم مره
   واحده كل فرع فى فرعه فى الـ IT شوف الأول لو فى مشاكل .. أو تكرار». Four sheets (بورسعيد، طنطا، الشروق،
-  أكتوبر), reviewed against the register's go-live files, and the owner's answers: a device the register
+  أكتوبر) and, the same day, a fifth («هبعتلك أسيوط كمان»), reviewed against the register's go-live
+  files, and the owner's answers: a device the register
   holds under another branch moves to the sheet's («انقلهم لفرع الملف»); a row with neither serial nor
   tag, or repeating another row's serial, is left out; the two Tanta printers are «طابعتين مختلفتين»;
   a device already registered gets only what it lacks («أكمّل الناقص بس»). The go-live file
-  `apps/api/assets/it-go-live/branch-custody-2026-11.json` holds the 199 rows — serials, tags,
-  specifications and accessories, no person — each with what the review decided: 131 to fill, 8 to
-  move, 52 new, 8 left out. Besides the four the owner's answers leave out, four wait for him to read
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` holds the 244 rows — serials, tags,
+  specifications and accessories, no person — each with what the review decided: 157 to fill, 8 to
+  move, 68 new, 11 left out. Besides the five the owner's answers leave out, six wait for him to read
   a label: two serials the October inventory found twice (the Shorouk printer CNDRP8Z666 and screen
   B3ZY8V3 — it gave each to another device and registered the second without one, so a move could
-  move the wrong device), the October screen B3SZ8V3 (two characters off that screen, probably the
-  same one misread) and an HP Z240 whose only label, L8T14AV, is HP's product number. The Shorouk
+  move the wrong device), three screens a character or two off a register screen of the same branch
+  that the sheet does not list (October's B3SZ8V3; Assiut's BR565G3 and 1Q1L1T3 — probably those
+  screens misread) and an HP Z240 whose only label, L8T14AV, is HP's product number. The Shorouk
   sheet's rows 2–14 (Dell OptiPlex desktops) carry its all-in-ones' processor and graphics word for
   word — a laptop chip no OptiPlex holds — so those two values are left out for them, and row 14's
   memory too (it repeats the two OptiPlex 7090 rows above it). A one-time boot step

@@ -34,6 +34,7 @@ import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 import { startItMobileLinesGoLive } from './modules/it/go-live/mobile-lines';
 import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
 import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
+import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 
@@ -96,6 +97,12 @@ const main = async (): Promise<void> => {
   // file).
   startItAioOctoberGoLive();
   startItAssetSpecsGoLive();
+  // «هبعتلك عهده الأفرع وعايزك تضيفهم مره واحده كل فرع فى فرعه فى الـ IT» — the four branches'
+  // sheets, reviewed against the register: a new device registered in its branch's stock, a
+  // registered one given only what it lacks («أكمّل الناقص بس») and, in stock elsewhere, moved
+  // to the sheet's branch («انقلهم لفرع الملف»). Once, after the inventory, the October
+  // all-in-ones and the specifications (see the file).
+  startItBranchCustodyGoLive();
   // «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — the consumables' types the owner
   // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
   // after the types it is filed under — started second, so it waits for them (see each file).

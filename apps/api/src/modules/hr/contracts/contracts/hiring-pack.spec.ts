@@ -136,6 +136,12 @@ describe('the printed set', () => {
     const contractSection = html.slice(html.indexOf('doc-contract'), html.indexOf('doc-form'));
     expect(contractSection).not.toContain('form-doc');
     expect(html.match(/class="form-doc"/g)).toHaveLength(2);
+    // The frame is the border of the forms' own named page, so it closes on every page they run
+    // over; the contract stays on the default page, unframed.
+    expect(html).toContain('@page form { margin: 12mm; border: 1.5px solid #111;');
+    expect(html).toContain('.doc-form { page: form; }');
+    expect(html.match(/class="doc doc-form"/g)).toHaveLength(2);
+    expect(html).not.toContain('form-frame');
   });
 });
 

@@ -8,6 +8,7 @@
 // reading their rendered background colour (main_ops.ejs:995) — a genuinely fragile idea this
 // replaces with data.
 import {
+  type OperationsDayBoardShipmentDto,
   type OperationsShipmentDto,
   type OperationsShipmentStatus,
   type OperationsShipmentType,
@@ -26,6 +27,8 @@ export interface DayBoardFilters {
   destination: string;
   area: string;
   notes: string;
+  /** Legacy's «قائد الطاقم» box (main_ops.ejs:800) — the captain of the row's leg, by name. */
+  captain: string;
   type: OperationsShipmentType | '';
   received: 'yes' | 'no' | '';
 }
@@ -36,6 +39,7 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   destination: '',
   area: '',
   notes: '',
+  captain: '',
   type: '',
   received: '',
 };
@@ -68,17 +72,19 @@ export const isReceived = (shipment: { status: OperationsShipmentStatus }): bool
 export const boardDateOf = (shipment: OperationsShipmentDto): string | null =>
   shipment.shipmentType === 'daily' ? shipment.collectionDate : shipment.deliveryDate;
 
-export const filterDayBoard = (
-  shipments: readonly OperationsShipmentDto[],
+export const filterDayBoard = <T extends OperationsShipmentDto>(
+  shipments: readonly T[],
   filters: DayBoardFilters,
   bankNameOf: (bankId: string) => string,
   branchNameOf: (branchId: string) => string,
-): OperationsShipmentDto[] =>
+  captainNameOf: (shipment: T) => string = () => '',
+): T[] =>
   shipments.filter(
     (shipment) =>
       matches(bankNameOf(shipment.mainBankId), filters.bank) &&
       matches(branchNameOf(shipment.originBranchId), filters.origin) &&
       matches(branchNameOf(shipment.destinationBranchId), filters.destination) &&
+      matches(captainNameOf(shipment), filters.captain) &&
       matches(shipment.areaName, filters.area) &&
       matches(shipment.notes, filters.notes) &&
       (filters.type === '' || shipment.shipmentType === filters.type) &&
@@ -86,11 +92,6 @@ export const filterDayBoard = (
         (filters.received === 'yes') === isReceived(shipment)),
   );
 
-/**
- * The legacy board numbered rows DESCENDING — the first (newest) row carries the highest number,
- * counting down to 1 (main_ops.ejs:847-849). It reads as "how many shipments so far today", and
- * operators call shipments by it, so it is preserved rather than replaced with a 1..n index.
- */
 export const legacyRowNumber = (index: number, total: number): number => total - index;
 
 /**
@@ -111,3 +112,29 @@ export const totalsByCurrency = (
   }
   return [...totals.entries()].map(([currencyId, amount]) => ({ currencyId, amount }));
 };
+
+/**
+ * The money on the board, per currency — the legacy strip «مصري = … دولار = …» (main_ops.ejs:744,
+ * 3179-3317), over the rows SHOWN rather than the whole day, so a bank filter answers "how much
+ * for this bank". Each currency on its own: legacy's «عملات أجنبية» added dollars to euros, a sum
+ * with no meaning, and it is not reproduced.
+ */
+export const boardTotals = (
+  shipments: readonly OperationsShipmentDto[],
+): { currencyId: string; amount: number }[] => {
+  const totals = new Map<string, number>();
+  for (const shipment of shipments) {
+    for (const line of shipment.lines) {
+      totals.set(line.currencyId, (totals.get(line.currencyId) ?? 0) + line.amount);
+    }
+  }
+  return [...totals.entries()].map(([currencyId, amount]) => ({ currencyId, amount }));
+};
+
+/**
+ * Was the money collected from ANOTHER bank than the one billed? The main bank is the billed bank,
+ * so the bank the money came from is the origin branch's — worth showing exactly when it differs,
+ * as the legacy board showed the to-bank (main_ops.ejs:867-872).
+ */
+export const isOtherOriginBank = (row: OperationsDayBoardShipmentDto): boolean =>
+  row.origin !== null && row.origin.bankId !== row.mainBankId;

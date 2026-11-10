@@ -120,6 +120,29 @@ export const useOperationsCurrencies = (params: OperationsListParams, enabled = 
   });
 
 /** Branches of one bank — the cascading picker. Disabled until a bank is chosen. */
+/** One branch — cached under the branches feature, so a branch edit refreshes it too. */
+export const useBankBranch = (id: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { id }),
+    queryFn: () => api.getBankBranch(id),
+    enabled: id !== '',
+    staleTime: 60_000,
+  });
+
+/**
+ * A bank's active branches matching `search` — the branch picker's options. `placeholderData`
+ * keeps the previous answer on screen while the next one is fetched, so the list does not blink
+ * empty under the operator's fingers on every keystroke.
+ */
+export const useBranchSearch = (bankId: string, search: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { bankId, search: search.trim(), picker: true }),
+    queryFn: () => api.searchBranchesOfBank(bankId, search),
+    enabled: bankId !== '',
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+  });
+
 export const useBranchesOfBank = (bankId: string | null) =>
   useQuery({
     queryKey: listKey(MODULE, 'bankBranches', { bankId: bankId ?? '', all: true }),
@@ -148,11 +171,18 @@ const useShipmentInvalidation = () => {
   };
 };
 
+// THE FORM OWNS THESE TWO MUTATIONS' ERRORS. The global notifier would toast the server's own
+// sentence — English, for the Operations codes it has no translation of — and the form toasts its
+// Arabic one beside it, so a refused save showed two messages. Declaring `onError` here is what
+// tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
+const formOwnsTheError = (): void => undefined;
+
 export const useCreateOperationsShipment = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
     mutationFn: (body: CreateOperationsShipment) => api.createShipment(body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -162,6 +192,7 @@ export const useUpdateOperationsShipment = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
       api.updateShipment(id, body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 

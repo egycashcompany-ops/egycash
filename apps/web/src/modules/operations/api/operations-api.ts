@@ -101,6 +101,33 @@ export const updateCurrency = (
 ): Promise<OperationsCurrencyDto> =>
   patch<OperationsCurrencyDto>(`/operations/currencies/${id}`, body);
 
+/** One branch by id — how a shipment's edit form names the branch it holds, and that branch's bank. */
+export const getBankBranch = (id: string): Promise<OperationsBankBranchDto> =>
+  get<OperationsBankBranchDto>(`/operations/bank-branches/${id}`);
+
+/**
+ * One bank's ACTIVE branches matching what was typed — the shipment form's branch picker.
+ *
+ * Searched on the server, never filtered from a fetched page: a large bank has hundreds of
+ * branches, a page holds a hundred, and filtering "the first hundred" would hide the rest — the
+ * operator would then add a branch that already exists. Inactive branches are left out because the
+ * server refuses to book a shipment on one.
+ */
+export const searchBranchesOfBank = (
+  bankId: string,
+  search: string,
+): Promise<Paginated<OperationsBankBranchDto>> =>
+  getPage<OperationsBankBranchDto>(
+    `/operations/bank-branches${buildQuery({
+      bankId,
+      search: search.trim() === '' ? undefined : search.trim(),
+      isActive: true,
+      pageSize: MAX_PAGE_SIZE,
+      sortBy: 'name',
+      sortDir: 'asc',
+    })}`,
+  );
+
 /** Every branch of one bank, for the cascading pickers the shipment screens use. */
 export const branchesOfBank = (bankId: string): Promise<Paginated<OperationsBankBranchDto>> =>
   getPage<OperationsBankBranchDto>(

@@ -27,6 +27,7 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type OperationsDayBoardShipmentDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -433,10 +434,21 @@ describe('cash shipments — the ported legacy create guard', () => {
     expect(data<OperationsShipmentDto>(res).collectionDate).toBe('2026-08-17T00:00:00.000Z');
   });
 
-  it('refuses an origin branch that does not belong to the main bank (client rule made domain)', async () => {
+  // The main bank is the BILLED bank. The money may be collected from a branch of another bank —
+  // legacy's from-branch list followed its own from-bank select (main_ops.ejs:497-499), which was
+  // never stored; the from-bank is the origin branch's own bank.
+  it('accepts an origin branch of another bank — the main bank is the billed one', async () => {
     const res = await mkShipment({ originBranchId: branchB1.id });
+    expect(res.status).toBe(201);
+    const dto = data<OperationsShipmentDto>(res);
+    expect(dto.originBranchId).toBe(branchB1.id);
+    expect(dto.mainBankId).not.toBe(bankB.id);
+  });
+
+  it('still refuses an unknown origin branch', async () => {
+    const res = await mkShipment({ originBranchId: '00000000000000000000beef' });
     expect(res.status).toBe(422);
-    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_BRANCH_BANK_MISMATCH);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_UNKNOWN_BRANCH);
   });
 
   it('destination side follows toBank ?? mainBank — bank B branch needs bank B declared', async () => {
@@ -3139,6 +3151,55 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     );
   });
 
+  // What the legacy table printed beside each shipment (main_ops.ejs:829-897), resolved on the
+  // server: both branches by name, code and bank, and the crew of the leg the type reports on.
+  it('prints each row as the legacy table did — branches with their banks, and the leg\'s crew', async () => {
+    // The billed bank is A; the money is collected from a branch of bank B (the from-bank is the
+    // origin branch's own bank, never stored on the shipment).
+    const crossBank = data<OperationsShipmentDto>(
+      await mkShipment({ collectionDate: BOARD_DATE, originBranchId: branchB1.id }),
+    ).id;
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const rows = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments;
+    const row = (id: string): OperationsDayBoardShipmentDto => {
+      const found = rows.find((r) => r.id === id);
+      expect(found).toBeDefined();
+      return found as OperationsDayBoardShipmentDto;
+    };
+
+    // A daily shipment booked with no crew: branches resolved, crew honestly null.
+    const daily = row(dailyToday);
+    expect(daily.origin).toEqual({
+      id: branchA1.id,
+      name: 'فرع المهندسين',
+      code: 'A-101',
+      bankId: bankA.id,
+      bankName: bankA.opsName,
+    });
+    expect(daily.destination?.id).toBe(branchA1.id);
+    expect(daily.crew).toBeNull();
+
+    // Billed to A, collected from B — the board shows where the money came from.
+    const cross = row(crossBank);
+    expect(cross.mainBankId).toBe(bankA.id);
+    expect(cross.origin?.bankId).toBe(bankB.id);
+    expect(cross.origin?.bankName).toBe(bankB.opsName);
+
+    // A secured shipment reports on its DELIVERY leg — the van and captain that delivered it.
+    const secured = row(securedDueDispatched);
+    expect(secured.crew?.vehicleId).toBe(vehicleAId);
+    expect(secured.crew?.vehicleCode).toBe('OPS-V1');
+    expect(secured.crew?.captainEmployeeId).toBe(captainId);
+    expect(typeof secured.crew?.captainName).toBe('string');
+    expect(secured.crew?.captainName).not.toBe('');
+
+    // Still a shipment underneath: every field a shipment reader expects is there.
+    expect(secured.shipmentType).toBe('secured');
+    expect(secured.lines.length).toBeGreaterThan(0);
+  });
+
   it('is empty, not an error, on a day with no work', async () => {
     const res = await board(shift(224));
     expect(res.status).toBe(200);
@@ -4023,6 +4084,57 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     expect(after.status).toBe(200);
     const rows = (after.body as { data: OperationsBankBranchDto[] }).data;
     expect(rows[0]?.opsAreaName).toBe('حلوان');
+  });
+
+  // The shipment form filters a bank's branches as the operator types. Before the search was
+  // escaped, a typed "(" reached $regex as a pattern and the request failed with a 500; "." matched
+  // any character.
+  it('9b. searches for the text typed, brackets and dots included', async () => {
+    const make = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع (المعادي) 2.0', code: 'V-9' });
+    expect(make.status).toBe(201);
+
+    const bracket = await request(app)
+      .get(
+        `/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent('(المعادي')}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bracket.status).toBe(200);
+    expect((bracket.body as { data: OperationsBankBranchDto[] }).data.map((b) => b.code)).toEqual([
+      'V-9',
+    ]);
+
+    // Syntax is text: read as a pattern, ".*" would match every branch of the bank (this one
+    // included); read as text, no branch name contains it.
+    const wildcard = await request(app)
+      .get(`/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent('.*')}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(wildcard.status).toBe(200);
+    expect((wildcard.body as { data: OperationsBankBranchDto[] }).data).toEqual([]);
+  });
+
+  // A shipment's edit form names its branches — and the bank the money came from — by reading the
+  // branch it holds; listing a whole bank's branches would stop at one page.
+  it('9c. reads one branch by id on the shipment grant, and 404s an unknown one', async () => {
+    const one = await request(app)
+      .get(`/api/v1/operations/bank-branches/${branchA1.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(one.status).toBe(200);
+    expect(data<OperationsBankBranchDto>(one)).toMatchObject({
+      id: branchA1.id,
+      bankId: bankA.id,
+      name: 'فرع المهندسين',
+      code: 'A-101',
+    });
+
+    const missing = await request(app)
+      .get('/api/v1/operations/bank-branches/00000000000000000000dead')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(missing.status).toBe(404);
+
+    expect((await request(app).get(`/api/v1/operations/bank-branches/${branchA1.id}`)).status).toBe(401);
   });
 
   it('10. reads ride the shipment grant; writes need the catalog grant', async () => {

@@ -104,6 +104,25 @@ const BOARD_KEYS = [
   'operations.shipment.deliveryDateHint',
   'operations.shipment.notes',
   'operations.shipment.serialTracked',
+  'operations.board.title',
+  'operations.board.stats',
+  'operations.board.statsHide',
+  'operations.board.vehicle',
+  'operations.board.bank',
+  'operations.board.captain',
+  'operations.board.date',
+  'operations.board.actions',
+  'operations.board.figures.count',
+  'operations.board.figures.countUnit',
+  ...[
+    'subtitle', 'mainBank', 'mainBankHint', 'pickBank', 'pickBankFirst', 'pickBranch', 'sideBank',
+    'branch', 'addBranch', 'date', 'amount', 'areaHint', 'sections.shipment', 'sections.route',
+    'sections.money', 'sections.crew', 'captain', 'vehicle', 'crewHint', 'crewHeld',
+    'crewNotOnEdit', 'crewNoAccess',
+  ].map((key) => `operations.shipment.form.${key}`),
+  ...['branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale'].map(
+    (key) => `operations.shipment.errors.${key}`,
+  ),
 ];
 
 /** B3 — the crew board and the roster. */

@@ -5,13 +5,15 @@
 // received. They are preserved as behaviour and replaced as implementation, so each one is pinned
 // here against the shipment's actual fields.
 import { describe, expect, it } from 'vitest';
-import { type OperationsShipmentDto } from '@ecms/contracts';
+import { type OperationsDayBoardShipmentDto, type OperationsShipmentDto } from '@ecms/contracts';
 import {
   EMPTY_DAY_BOARD_FILTERS,
   boardDateOf,
+  boardTotals,
   filterDayBoard,
   hasActiveFilter,
   isCrossBank,
+  isOtherOriginBank,
   isReceived,
   legacyRowNumber,
   totalsByCurrency,
@@ -178,5 +180,71 @@ describe('filterDayBoard — the eight legacy filters, over data instead of HTML
   it('hasActiveFilter reports whether the operator has narrowed anything', () => {
     expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, bank: 'أهل' })).toBe(true);
     expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, received: 'yes' })).toBe(true);
+    expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, captain: 'محمود' })).toBe(true);
+  });
+
+  it('filters by the crew captain’s name — legacy’s «قائد الطاقم» box', () => {
+    const captainOf = (row: OperationsShipmentDto): string =>
+      row.id === 'secured' ? 'محمود حسن' : '';
+    const byCaptain = (captain: string) =>
+      filterDayBoard(
+        rows,
+        { ...EMPTY_DAY_BOARD_FILTERS, captain },
+        bankNameOf,
+        branchNameOf,
+        captainOf,
+      ).map((r) => r.id);
+    expect(byCaptain('محمود')).toEqual(['secured']);
+    // A row with no crew yet has no captain to match — it drops out rather than matching all.
+    expect(byCaptain('أحمد')).toEqual([]);
+    expect(byCaptain('')).toEqual(['daily', 'secured']);
+  });
+});
+
+describe('boardTotals — the legacy «مصري = … دولار = …» strip, over the rows shown', () => {
+  it('sums each currency across every row, never adding one currency to another', () => {
+    const rows = [
+      shipment({ lines: [{ currencyId: 'egp', amount: 1000 }] }),
+      shipment({
+        lines: [
+          { currencyId: 'egp', amount: 500 },
+          { currencyId: 'usd', amount: 40 },
+        ],
+      }),
+      shipment({ lines: [{ currencyId: 'eur', amount: 7 }] }),
+    ];
+    expect(boardTotals(rows)).toEqual([
+      { currencyId: 'egp', amount: 1500 },
+      { currencyId: 'usd', amount: 40 },
+      { currencyId: 'eur', amount: 7 },
+    ]);
+  });
+
+  it('is empty for an empty board', () => {
+    expect(boardTotals([])).toEqual([]);
+  });
+});
+
+describe('isOtherOriginBank — money collected from a bank other than the one billed', () => {
+  const row = (originBankId: string | null): OperationsDayBoardShipmentDto => ({
+    ...shipment(),
+    origin:
+      originBankId === null
+        ? null
+        : { id: 'branch-1', name: 'فرع المهندسين', code: 'B1', bankId: originBankId, bankName: 'x' },
+    destination: null,
+    crew: null,
+  });
+
+  it('is false when the origin branch belongs to the billed bank', () => {
+    expect(isOtherOriginBank(row('bank-a'))).toBe(false);
+  });
+
+  it('is true when the origin branch belongs to another bank', () => {
+    expect(isOtherOriginBank(row('bank-b'))).toBe(true);
+  });
+
+  it('is false when the origin could not be resolved — nothing to say about it', () => {
+    expect(isOtherOriginBank(row(null))).toBe(false);
   });
 });

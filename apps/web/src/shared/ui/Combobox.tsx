@@ -13,6 +13,10 @@
 //  • An option may be SHOWN differently from what it commits (`optionLabel`): the ATM register's
 //    area filter matches the stored name (MOHNDESSEN) and shows it in the reader's language. Typing
 //    finds either.
+//  • A box may offer to ADD what was typed (`onCreate`) when no option is exactly it — the
+//    shipment form's branch picker, where a branch missing from the catalog is created on the
+//    spot. It is an explicit row the reader picks, never something leaving the box does: the box
+//    still commits only options, and the owner decides what «add» means.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { fold } from '../lib/fold';
@@ -89,6 +93,21 @@ export const exactOption = (
   return options.find((o) => fold(shown(o)) === q || fold(o) === q);
 };
 
+/**
+ * Pure: the text an «add» row would offer — the typed text, trimmed — or null when there is
+ * nothing to offer: a blank box, or text that already IS an option (picking it is the answer, and
+ * offering to create it again would make a duplicate).
+ */
+export const createOffer = (
+  options: readonly string[],
+  typed: string,
+  shown: (option: string) => string = (option) => option,
+): string | null => {
+  const text = typed.trim();
+  if (text === '') return null;
+  return exactOption(options, text, shown) === undefined ? text : null;
+};
+
 export const Combobox = ({
   value,
   options,
@@ -106,6 +125,8 @@ export const Combobox = ({
   ariaLabel,
   tallList = false,
   optionLabel,
+  onCreate,
+  createLabel,
 }: {
   value: string;
   options: readonly string[];
@@ -150,6 +171,14 @@ export const Combobox = ({
   tallList?: boolean;
   /** What an option READS as, when that is not the value it commits. The value by default. */
   optionLabel?: (option: string) => string;
+  /**
+   * Offer to ADD the typed text when no option is exactly it: a last row, reachable by the arrows
+   * and Enter like any option, that hands the trimmed text here and closes the list. Nothing is
+   * committed — the owner creates the thing and sets `value` to it once it exists.
+   */
+  onCreate?: (typed: string) => void;
+  /** The «add» row's words for the typed text — «+ إضافة فرع «…»». Needed with `onCreate`. */
+  createLabel?: (typed: string) => string;
 }): JSX.Element => {
   // A `Field` marked missing turns this box red, as it does an `Input`.
   const missing = useFieldMissing();
@@ -187,6 +216,16 @@ export const Combobox = ({
     if (remote || !open || q === '') return all;
     return all.filter((o) => fold(optionLabel?.(o) ?? o).includes(q) || fold(o).includes(q));
   }, [open, query, all, remote, optionLabel]);
+
+  // The «add» row: only with an owner who can create, and only for text no option already is.
+  const offer = onCreate === undefined || !open ? null : createOffer(all, query, shown);
+  // Rows the arrows move through: the matches, then the «add» row when there is one.
+  const rowCount = matches.length + (offer === null ? 0 : 1);
+  const create = (text: string): void => {
+    setOpen(false);
+    setQuery('');
+    onCreate?.(text);
+  };
 
   // Leaving the open box: an exact match is committed; anything else falls back to the value.
   const leave = (): void => {
@@ -244,7 +283,7 @@ export const Combobox = ({
       }
       setActive((i) => {
         const next = e.key === 'ArrowDown' ? i + 1 : i - 1;
-        return matches.length === 0 ? 0 : (next + matches.length) % matches.length;
+        return rowCount === 0 ? 0 : (next + rowCount) % rowCount;
       });
       return;
     }
@@ -252,6 +291,7 @@ export const Combobox = ({
       e.preventDefault();
       const picked = matches[active];
       if (picked !== undefined) commit(picked);
+      else if (offer !== null && active === matches.length) create(offer);
       return;
     }
     if (e.key === 'Escape' && open) {
@@ -348,7 +388,7 @@ export const Combobox = ({
             'bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800',
           )}
         >
-          {matches.length === 0 && (
+          {matches.length === 0 && offer === null && (
             <li className={cn(size.option, 'text-slate-400')}>{emptyText}</li>
           )}
           {matches.map((option, i) => (
@@ -371,6 +411,23 @@ export const Combobox = ({
               {shown(option)}
             </li>
           ))}
+          {offer !== null && (
+            <li
+              role="option"
+              aria-selected={false}
+              data-combobox-create="true"
+              onMouseEnter={() => setActive(matches.length)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => create(offer)}
+              className={cn(
+                'cursor-pointer border-t border-slate-100 font-semibold text-brand-600 dark:border-slate-700 dark:text-brand-300',
+                size.option,
+                active === matches.length ? 'bg-slate-100 dark:bg-slate-700' : '',
+              )}
+            >
+              {createLabel?.(offer) ?? `+ ${offer}`}
+            </li>
+          )}
         </ul>
       )}
     </div>

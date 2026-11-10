@@ -323,9 +323,17 @@ export interface OperationsShipmentDto {
   id: string;
   shipmentType: OperationsShipmentType;
   status: OperationsShipmentStatus;
-  /** Legacy `main_bank` (the FROM side's bank; legacy requires it — contad_app.js:313). */
+  /**
+   * Legacy `main_bank` — البنك الرئيسي, the bank BILLED for the shipment (legacy requires it —
+   * contad_app.js:313). Every per-bank roll-up keys on it, in legacy (/ops_bank_report, /vault1)
+   * and here. It is NOT necessarily the bank the money is collected from: that is the origin
+   * branch's own bank, which legacy never stored and this DTO does not either.
+   */
   mainBankId: string;
-  /** Legacy `sec_bank` via `toBankSelect`; never server-validated in legacy, so nullable. */
+  /**
+   * Legacy `sec_bank` via `toBankSelect` — the DESTINATION branch's bank when it differs from the
+   * main bank; null means "the main bank". Never server-validated in legacy, so nullable.
+   */
   secondaryBankId: string | null;
   /** Legacy `from_name`/`from_code` — required in legacy (contad_app.js:313). */
   originBranchId: string;
@@ -465,7 +473,49 @@ export interface OperationsDayBoardDto {
    * The union the legacy board showed: daily shipments collected on the day, plus secured
    * shipments DELIVERED on the day that have left the vault. Newest created first.
    */
-  shipments: OperationsShipmentDto[];
+  shipments: OperationsDayBoardShipmentDto[];
+}
+
+/**
+ * A branch as the board prints it — the name and code legacy showed, and the bank it belongs to.
+ *
+ * Resolved on the server because the board's own branch lookups were capped at one page: past the
+ * hundredth branch, the screen printed a blank where a name belonged. The bank matters too — the
+ * main bank is the BILLED bank, so the bank the money came from is only known through its branch.
+ */
+export interface OperationsDayBoardBranchDto {
+  id: string;
+  name: string;
+  code: string;
+  bankId: string;
+  /** The bank's operational name (`opsName`), as every Operations screen labels a bank. */
+  bankName: string;
+}
+
+/**
+ * The crew this shipment rides with on the board: the PICKUP leg for a daily shipment, the
+ * DELIVERY leg for a secured one — the legacy board's `car_num1/leader1` vs `car_num2/leader2`
+ * (main_ops.ejs:858-881), and the same leg the captain report attributes the shipment to.
+ */
+export interface OperationsDayBoardCrewDto {
+  vehicleId: string;
+  /** Null when Fleet no longer answers for the vehicle — shown as missing, never as blank. */
+  vehicleCode: string | null;
+  captainEmployeeId: string;
+  /** Null when the directory cannot name the employee. */
+  captainName: string | null;
+}
+
+/**
+ * A board row: the shipment itself, plus what the legacy table printed beside it. EXTENDS the
+ * shipment DTO, so a reader that only knows a shipment reads it exactly as before.
+ */
+export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
+  /** Null only when the branch record itself is gone. */
+  origin: OperationsDayBoardBranchDto | null;
+  destination: OperationsDayBoardBranchDto | null;
+  /** Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. */
+  crew: OperationsDayBoardCrewDto | null;
 }
 
 export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({

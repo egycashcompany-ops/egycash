@@ -23,12 +23,17 @@ export const listShipments = async (req: Request, res: Response): Promise<void> 
 export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsDayBoardQuery>(req);
   const day = query.date ?? new Date();
-  const docs = await operationsShipmentService.dayBoard(query.date);
+  const rows = await operationsShipmentService.dayBoardView(query.date);
   ok(res, {
     date: new Date(
       Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
     ).toISOString(),
-    shipments: docs.map(toShipmentDto),
+    shipments: rows.map(({ doc, origin, destination, crew }) => ({
+      ...toShipmentDto(doc),
+      origin,
+      destination,
+      crew,
+    })),
   });
 };
 

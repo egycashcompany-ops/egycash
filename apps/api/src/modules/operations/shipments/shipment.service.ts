@@ -6,7 +6,9 @@
 //     branch, one currency line, the date — contad_app.js:313); the secondary bank was never
 //     server-checked in legacy, so it stays optional.
 //   · Branch-belongs-to-bank was CLIENT-ONLY in legacy (main_ops.ejs:477 filters the datalist by
-//     bank); like the crew-uniqueness rule (Q11) it moves into the domain here.
+//     bank); like the crew-uniqueness rule (Q11) it moves into the domain here — for the
+//     DESTINATION, whose bank legacy stored (`sec_bank`). The origin's bank was never stored and
+//     is not the billed bank, so the origin carries no bank rule (see assertReferences).
 //   · Edit and soft-delete are allowed in ANY status — legacy gates them on nothing but
 //     `deleted_dock` (contad_app.js:481-547). PRESERVED, deliberately.
 //   · Complete/reopen follow the observed transitions in shipment-status.ts; the legacy toggle's
@@ -19,6 +21,8 @@ import {
   toMinorUnits,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
+  type OperationsDayBoardBranchDto,
+  type OperationsDayBoardCrewDto,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -33,6 +37,9 @@ import { operationsCurrencyRepository } from '../currencies/currency.repository'
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { operationsShipmentRepository } from './shipment.repository';
+import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
+import { fleetVehicleRepository } from '../fleet-boundary';
+import { getDirectoryEmployees } from '../../../platform/directory';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
 
 const entityRef = (id: string) => ({
@@ -67,6 +74,14 @@ const eventPayload = (doc: OperationsShipmentDoc) => ({
   status: doc.status,
 });
 
+/** One board row before mapping: the shipment and what the board prints beside it. */
+export interface DayBoardRow {
+  doc: OperationsShipmentDoc;
+  origin: OperationsDayBoardBranchDto | null;
+  destination: OperationsDayBoardBranchDto | null;
+  crew: OperationsDayBoardCrewDto | null;
+}
+
 interface ShipmentRefs {
   mainBankId: string;
   secondaryBankId: string | null;
@@ -95,13 +110,12 @@ const assertReferences = async (refs: ShipmentRefs): Promise<void> => {
   if (origin === null) {
     throw new BusinessRuleError('unknown or inactive origin branch', 'OPERATIONS_UNKNOWN_BRANCH');
   }
-  // The legacy from-branch picker lists only the main bank's branches (main_ops.ejs:477).
-  if (String(origin.bankId) !== refs.mainBankId) {
-    throw new BusinessRuleError(
-      'origin branch does not belong to the main bank',
-      'OPERATIONS_BRANCH_BANK_MISMATCH',
-    );
-  }
+  // NO BANK RULE ON THE ORIGIN. The main bank is the bank BILLED for the shipment, and the money
+  // may be collected from a branch of any bank: legacy's from-branch list followed its own
+  // `fromBankSelect` (main_ops.ejs:497-499), which only DEFAULTED to the main bank (:505-517) and
+  // was never posted (:420 has no `name`). The from-bank is therefore not a field at all — it is
+  // the origin branch's own `bankId`. An earlier rule here required origin.bankId === mainBankId;
+  // that read the shared helper at :477 as the whole story and refused real collections.
 
   const destination = await operationsBankBranchRepository.findActiveById(refs.destinationBranchId);
   if (destination === null) {
@@ -258,6 +272,74 @@ class OperationsShipmentService {
     const next = new Date(day);
     next.setUTCDate(next.getUTCDate() + 1);
     return operationsShipmentRepository.dayBoard(day, next);
+  }
+
+  /**
+   * The day board with what the legacy table printed beside each shipment: both branches by name
+   * and code with their banks, and the crew of the leg the shipment's type reports on.
+   *
+   * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the vehicle codes
+   * and the captains' names are each fetched once for the whole day and joined in memory. A busy
+   * day is a few hundred shipments; a per-row lookup would make the board a thousand queries.
+   *
+   * Nothing here can fail a row. A branch, vehicle or name that no longer resolves comes back as
+   * null and the screen says so — a board that refused to load because one van was scrapped would
+   * be worse than a board with one blank cell.
+   */
+  async dayBoardView(date: Date | undefined): Promise<DayBoardRow[]> {
+    const docs = await this.dayBoard(date);
+    if (docs.length === 0) return [];
+
+    const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);
+    const branches = await operationsBankBranchRepository.findByIdsSystem(branchIds);
+    const banks = await operationsBankRepository.findByIdsSystem(branches.map((b) => String(b.bankId)));
+    const bankName = new Map(banks.map((b) => [String(b._id), b.opsName]));
+    const branchView = new Map(
+      branches.map((b) => [
+        String(b._id),
+        {
+          id: String(b._id),
+          name: b.name,
+          code: b.code,
+          bankId: String(b.bankId),
+          bankName: bankName.get(String(b.bankId)) ?? '',
+        },
+      ]),
+    );
+
+    // The leg that carries this type's crew — the same split the captain report uses.
+    const legs = await operationsShipmentAssignmentRepository.findByShipments(
+      docs.map((d) => String(d._id)),
+    );
+    const legOf = new Map(legs.map((a) => [`${String(a.shipmentId)}:${a.leg}`, a]));
+    const boardLeg = (doc: OperationsShipmentDoc) =>
+      legOf.get(`${String(doc._id)}:${doc.shipmentType === 'daily' ? 'pickup' : 'delivery'}`) ??
+      null;
+    const crewed = docs.map(boardLeg).filter((a) => a !== null);
+    const vehicleCodes = await fleetVehicleRepository.codesByIds(
+      [...new Set(crewed.map((a) => String(a.vehicleId)))],
+    );
+    const captains = await getDirectoryEmployees([
+      ...new Set(crewed.map((a) => String(a.captainEmployeeId))),
+    ]);
+
+    return docs.map((doc) => {
+      const leg = boardLeg(doc);
+      return {
+        doc,
+        origin: branchView.get(String(doc.originBranchId)) ?? null,
+        destination: branchView.get(String(doc.destinationBranchId)) ?? null,
+        crew:
+          leg === null
+            ? null
+            : {
+                vehicleId: String(leg.vehicleId),
+                vehicleCode: vehicleCodes.get(String(leg.vehicleId)) ?? null,
+                captainEmployeeId: String(leg.captainEmployeeId),
+                captainName: captains.get(String(leg.captainEmployeeId))?.fullNameAr ?? null,
+              },
+      };
+    });
   }
 
   async getById(id: string): Promise<OperationsShipmentDoc> {

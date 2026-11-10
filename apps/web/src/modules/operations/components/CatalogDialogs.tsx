@@ -195,6 +195,8 @@ export const BankBranchDialog = ({
   banks,
   areas,
   onClose,
+  initial,
+  onSaved,
 }: {
   open: boolean;
   branch: OperationsBankBranchDto | null;
@@ -206,6 +208,13 @@ export const BankBranchDialog = ({
    */
   areas: OperationsAreaDto[];
   onClose: () => void;
+  /**
+   * A NEW branch that starts filled in — the shipment form's «add this branch»: the bank the
+   * operator was choosing from and the name they typed and did not find. Ignored when editing.
+   */
+  initial?: { bankId: string; name: string };
+  /** The branch as the server saved it — so the form that asked for it can select it at once. */
+  onSaved?: (saved: OperationsBankBranchDto) => void;
 }): JSX.Element => {
   const t = useT();
   const create = useCreateOperationsBankBranch();
@@ -227,8 +236,8 @@ export const BankBranchDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setBankId(branch?.bankId ?? '');
-    setName(branch?.name ?? '');
+    setBankId(branch?.bankId ?? initial?.bankId ?? '');
+    setName(branch?.name ?? initial?.name ?? '');
     setCode(branch?.code ?? '');
     setOpsArea(branch?.opsAreaName ?? '');
     setFinanceArea(branch?.financeAreaName ?? '');
@@ -237,6 +246,7 @@ export const BankBranchDialog = ({
     setLinkDraft('');
     setLinkError(null);
     setMapOpen(false);
+    // `initial` is read on OPEN only: it is a starting point, not a value to keep in step with.
   }, [open, branch]);
 
   const applyLink = (raw: string): void => {
@@ -262,9 +272,12 @@ export const BankBranchDialog = ({
       location: branchLocation(addressLine, coordinates),
     };
     try {
-      if (branch === null) await create.mutateAsync(core);
-      else await update.mutateAsync({ id: branch.id, body: { ...core, version: branch.version } });
+      const saved =
+        branch === null
+          ? await create.mutateAsync(core)
+          : await update.mutateAsync({ id: branch.id, body: { ...core, version: branch.version } });
       toast.success(t('operations.catalogs.saved'));
+      onSaved?.(saved);
       onClose();
     } catch {
       toast.error(t('operations.catalogs.saveFailed'));
@@ -276,6 +289,9 @@ export const BankBranchDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      // A form: a stray click outside must not throw away a branch half typed in — and opened over
+      // the shipment form, that click would land on the form underneath.
+      dismissOnOutsideClick={false}
       title={t(
         branch === null ? 'operations.catalogs.branch.add' : 'operations.catalogs.branch.edit',
       )}

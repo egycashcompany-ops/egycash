@@ -7693,6 +7693,20 @@ const en: Record<string, string> = {
   'fleet.roster.expiredLicence.driversLink': 'Drivers with an expired licence',
   'fleet.roster.expiredLicence.vehiclesLink': 'Vehicles with an expired licence ({{count}})',
   'fleet.roster.reasonFilter': 'Filter by reason',
+  // «تعيين السيارات» on the phone and the tablet, and the computer's unsaved bar.
+  'fleet.roster.filters': 'Filters',
+  'fleet.roster.targetNow': 'Assigning now: vehicle {{code}} · {{slot}}',
+  'fleet.roster.driverNow': 'Assigning now: {{name}} — pick a slot on a vehicle.',
+  'fleet.roster.poolHint': 'Pick a driver, then pick a slot for him on a vehicle.',
+  'fleet.roster.pickSlotHint':
+    'Pick a slot on a vehicle and then the driver, or the driver first and then the slot.',
+  'fleet.roster.onOtherVehicles': 'Assigned to other vehicles',
+  'fleet.roster.showResults': 'Show results ({{count}})',
+  'fleet.roster.editedCars': 'Edited vehicles:',
+  'fleet.roster.undo': 'Undo',
+  'fleet.roster.discardAll': 'Discard changes',
+  'fleet.roster.discardBody':
+    'Discard all unsaved changes? These vehicles go back to how they were last saved:',
 
   // Fleet — accidents (FW-8)
   'fleet.accidents.subtitle':
@@ -20588,6 +20602,20 @@ const ar: Record<string, string> = {
   'fleet.roster.expiredLicence.driversLink': 'السائقون برخصة منتهية',
   'fleet.roster.expiredLicence.vehiclesLink': 'السيارات برخصة منتهية ({{count}})',
   'fleet.roster.reasonFilter': 'تصفية حسب السبب',
+  // «تعيين السيارات» على الهاتف والجهاز اللوحي، وشريط التغييرات على الحاسوب.
+  'fleet.roster.filters': 'عوامل التصفية',
+  'fleet.roster.targetNow': 'يُعيَّن الآن: السيارة {{code}} · {{slot}}',
+  'fleet.roster.driverNow': 'يُعيَّن الآن: {{name}} — اختر له خانة في إحدى السيارات.',
+  'fleet.roster.poolHint': 'اختر سائقًا، ثم اختر له خانة في إحدى السيارات.',
+  'fleet.roster.pickSlotHint':
+    'اختر خانة في إحدى السيارات ثم السائق، أو اختر السائق أولًا ثم الخانة.',
+  'fleet.roster.onOtherVehicles': 'معيّنون على سيارات أخرى',
+  'fleet.roster.showResults': 'عرض النتائج ({{count}})',
+  'fleet.roster.editedCars': 'السيارات المعدَّلة:',
+  'fleet.roster.undo': 'تراجع',
+  'fleet.roster.discardAll': 'إلغاء التغييرات',
+  'fleet.roster.discardBody':
+    'إلغاء كل التغييرات غير المحفوظة؟ تعود هذه السيارات كما حُفظت آخر مرة:',
 
   // Fleet — accidents (FW-8)
   'fleet.accidents.subtitle':

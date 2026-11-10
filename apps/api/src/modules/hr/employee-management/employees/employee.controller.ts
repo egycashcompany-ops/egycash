@@ -29,6 +29,7 @@ import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
 import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
+import { employeeIdCardService } from './employee-id-card';
 
 type IdParam = { id: string };
 
@@ -120,14 +121,7 @@ export const getEmployee = async (req: Request, res: Response): Promise<void> =>
   const { params } = validated<never, never, IdParam>(req);
   const doc = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view'));
   const placement = await resolvePlacements([doc]);
-  ok(
-    res,
-    toEmployeeDto(
-      doc,
-      visibility(req),
-      placement.for(doc),
-    ),
-  );
+  ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
 };
 
 /** Post-hire personal-data edits — plain audited updates, not personnel actions (I4). */
@@ -191,16 +185,25 @@ export const updateEmployeeOfficer = async (req: Request, res: Response): Promis
 export const getEmployeeNationalIdCard = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')));
+  ok(
+    res,
+    await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')),
+  );
 };
 
 export const listSubordinates = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   const visible = visibility(req);
-  const reports = await employeeService.subordinates(params.id, scopeSelector(ctx, 'employee.view'));
+  const reports = await employeeService.subordinates(
+    params.id,
+    scopeSelector(ctx, 'employee.view'),
+  );
   const placement = await resolvePlacements(reports);
-  ok(res, reports.map((d) => toEmployeeDto(d, visible, placement.for(d))));
+  ok(
+    res,
+    reports.map((d) => toEmployeeDto(d, visible, placement.for(d))),
+  );
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
@@ -361,4 +364,70 @@ export const createEmployeeLogin = async (req: Request, res: Response): Promise<
     employeeCode,
   };
   created(res, payload, `/api/v1/platform/users/${String(user._id)}`);
+};
+
+/**
+ * The company ID card's data, the full national ID among it (see `employee-id-card.ts`). Scoped
+ * like a personal-data edit, which is the permission that may print the card.
+ */
+export const getEmployeeIdCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = scopeSelector(ctx, 'employee.editPersonal');
+  const doc = await employeeService.getById(params.id, scope);
+  const placement = await resolvePlacements([doc]);
+  ok(
+    res,
+    await employeeIdCardService.cardData(ctx, params.id, scope, placement.for(doc).jobTitle, doc),
+  );
+};
+
+/** One print: recorded, and the card waits for its handover. It is not counted as a card. */
+export const recordEmployeeIdCardPrint = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  created(
+    res,
+    await employeeIdCardService.recordPrint(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+    `/api/v1/hr/employees/${params.id}/id-card/prints`,
+  );
+};
+
+/** The receipt for the waiting card was printed — the handover's second step, kept on the employee. */
+export const recordEmployeeIdCardReceipt = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.recordReceipt(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** HR confirms the employee signed the receipt and took the card — the only thing that counts a card. */
+export const confirmEmployeeIdCardHandover = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.confirmHandover(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** Every card printed for the employee, newest first. */
+export const listEmployeeIdCardPrints = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await employeeIdCardService.history(params.id, scopeSelector(ctx, 'employee.view')));
 };

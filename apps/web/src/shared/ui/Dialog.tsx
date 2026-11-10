@@ -60,12 +60,30 @@ export const Dialog = ({
 }): JSX.Element | null => {
   const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * Only the dialog on TOP answers a click outside it or Escape. Every dialog is portalled to the
+   * body on its own, so one opened from inside another (the ID card's «إضافة صورة» opening the photo
+   * dialog) is not inside the first one's panel: a click in it read as «outside» the card, closed
+   * the card, and took the photo dialog with it before its file picker could answer.
+   */
+  const onTop = (): boolean => {
+    const roots = document.querySelectorAll('[data-dialog-root]');
+    return roots.length === 0 || roots[roots.length - 1] === rootRef.current;
+  };
+  // A menu a field inside the dialog opened, drawn on the page's body so nothing clips it (the
+  // photo's «تصوير بالكاميرا / اختيار من الجهاز»), belongs to the dialog: a press in it is not «outside».
+  const closeIfOnTop = (event: MouseEvent | TouchEvent): void => {
+    const target = event.target;
+    if (target instanceof Element && target.closest('[data-floating-layer]') !== null) return;
+    if (onTop()) onClose();
+  };
+  useOnClickOutside(panelRef, closeIfOnTop, open && dismissOnOutsideClick);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && onTop()) onClose();
     };
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
@@ -79,7 +97,11 @@ export const Dialog = ({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+    <div
+      ref={rootRef}
+      data-dialog-root=""
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+    >
       <div
         className="absolute inset-0 animate-fade-in bg-slate-900/50 backdrop-blur-sm"
         aria-hidden="true"

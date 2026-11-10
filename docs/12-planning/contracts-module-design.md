@@ -488,6 +488,49 @@ The Contracts domain calls only `platform/pdf` (`pdfDriverEnabled()`,
 renderer is an infrastructure swap — no business-logic change. This is a standing
 architectural invariant, not an implementation detail.
 
+## 11. Revision 4 — «مستندات التعيين»: the printed hiring set (A27)
+
+The owner: «لما بدوس على إنشاء وتوليد مستندات … عاوز يجبلي كل الحاجه اللي هتتطبع للشخص دا علي حسب
+وظيفتو … سواق كانت من العقد او نمازج التعيين الخاصة بيه». A new hire signs a contract and a handful
+of company forms (declarations, the data sheet, the job description card, the bank letter), and
+which forms depends on the job.
+
+### A27 — Templates print as contracts or forms, for chosen jobs, as one set
+
+- **Kind.** A template is a `contract` (everything above applies) or a `form`. A form is printed,
+  never contracted: it has no contract type, no number, no snapshot and no approval. It cannot be
+  the template of a contract (refused at create, update, amend and renew). A pre-A27 row reads as
+  a contract for every job.
+- **Jobs.** `allJobs`, or the `jobTitleIds` it prints for. A template for no job prints for nobody,
+  never for everybody; publishing one is refused.
+- **Print order.** Smaller first, within the set.
+- **The set.** `POST /hr/contracts/hiring-pack {employeeId}` (`contract.print`) returns ONE A4
+  document: the employee's contract, then every published form for the employee's job.
+  - The contract printed is the employee's current one (`active`/`signed`), re-rendered from its
+    PINNED template version and FROZEN variables — the snapshot's content (A2/A3/A21).
+  - With none, the set finishes an in-progress one or makes one, through the ordinary create and
+    generate: from the published contract template of the employee's job, starting on the
+    employment's start date, for one year (to the day before the anniversary) when the type is
+    fixed-term. Numbering, approval and A16 all apply. Making one needs `contract.create` and
+    `contract.generate`.
+  - Whatever keeps the contract out (`noTemplate`, `approvalRequired`, `notPermitted`,
+    `missingValues`, `notCreated`) is returned beside the set; the forms print regardless.
+  - The set is audited on the employee (`export`, format `hiringPack`).
+- **Forms fail nothing.** A value the record lacks prints as a dotted line, to fill in by hand.
+- **Layout.** A form wears the company letterhead (the company name and «إدارة الموارد البشرية»,
+  the shared EGYCASH logo) inside a page frame, closed on every page it runs over; the contract keeps
+  A24's branding. Each document of the set starts on a fresh page.
+- **Variables.** New catalog keys for the forms: mobile, birth date, marital and military status,
+  qualification, graduation year and institution, hiring date, weapon-licence expiry, start date and
+  its day, today's day, and the salary split (`salary.gross`, `salary.fixed` 70%,
+  `salary.attendanceBonus` 30%, `salary.grossInWords`) — the same split the register screen shows,
+  from one shared implementation. **Dates in an Arabic template render day/month/year**
+  (`15/11/2026`), as the company's papers write them; English stays ISO. Contracts generated before
+  keep their frozen values.
+- **Screens.** «طباعة المستندات» heads the employee's «مستندات التعيين»; «تعيين» lands there (the set
+  opened if missing, `POST /hr/hiring-documents/open`); a generated contract offers it too. The
+  contract wizard offers the employee's job's contract template first and never a form.
+
 ## Review trail
 
 **Revision 3 (2026-07-27) — FREEZE CONFIRMED BY THE APPROVER:** Q1–Q3 restated and

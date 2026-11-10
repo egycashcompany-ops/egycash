@@ -1,3 +1,5 @@
+// Shared by the register screen (the salary section) and the server (the salary variables a
+// contract or a hiring form prints), so the two can never split the same gross differently.
 // The salary, split the way the company pays it — from the one figure HR types, the gross.
 //
 //   الراتب الثابت    70% of the gross

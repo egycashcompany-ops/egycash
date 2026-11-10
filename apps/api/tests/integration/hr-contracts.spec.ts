@@ -19,9 +19,10 @@ import {
   type ContractTemplateDto,
   type ContractTypeDto,
   type EmployeeDto,
+  type HiringPackDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
-import { cairoToday, dateOnlyIso } from '../../src/modules/hr/shared/business-date';
+import { cairoToday } from '../../src/modules/hr/shared/business-date';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
@@ -37,6 +38,7 @@ import { organizationService } from '../../src/platform/organization';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { formatTemplateDate } from '../../src/modules/hr/contracts/contracts/contract-variables';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -903,7 +905,8 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
       sections: { header: '', body: '<p>حُرِّر في {{contract.currentDate}} — {{contract.code}}</p>', footer: '' },
     });
     const contract = await generated(typeId, template.id);
-    const cairoDate = dateOnlyIso(cairoToday());
+    // An Arabic template writes it as the company's papers do: day/month/year (A27).
+    const cairoDate = formatTemplateDate(cairoToday(), 'ar');
     const entry = contract.variables.find((v) => v.key === 'contract.currentDate');
     expect(entry?.value).toBe(cairoDate);
     expect(await documentOf(contract.id)).toContain(cairoDate);
@@ -982,5 +985,135 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
 
     const list = await contractQueryService.listForEmployee(employee.id);
     expect(list.some((c) => c.contractId === contract.id)).toBe(true);
+  });
+});
+
+/**
+ * «مستندات التعيين» (A27) — «عاوز يجبلي كل الحاجه اللي هتتطبع للشخص دا علي حسب وظيفتو». The
+ * employee's contract first, then the forms of the employee's job; the contract made when there is
+ * none — one year from the start date — and made once.
+ */
+describe('«مستندات التعيين» — the printed hiring set (A27)', () => {
+  let jobId = '';
+  let contractTemplate: ContractTemplateDto;
+  let jobForm: ContractTemplateDto;
+  let otherJobForm: ContractTemplateDto;
+
+  const form = (over: Record<string, unknown>) =>
+    mkTemplate('', {
+      contractTypeId: null,
+      kind: 'form',
+      signatures: [],
+      sections: {
+        header: '',
+        body: '<p>إقرار {{employee.fullName}} — رخصة {{employee.weaponLicenseExpiry}}</p>',
+        footer: '',
+      },
+      ...over,
+    });
+
+  const employeeIn = async (jobTitleId: string): Promise<EmployeeDto> => {
+    const res = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        personal: {
+          identity: { fullNameAr: 'موظف المستندات', nationalId: nextNid(), nationality: 'Egyptian' },
+          contact: { primaryPhone: nextPhone() },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId,
+          departmentId: DEPARTMENT_ID,
+          branchId: BRANCH_ID,
+          employmentType: 'fullTime',
+          probationMonths: 0,
+          startDate: '2026-11-15T00:00:00.000Z',
+        },
+        entryStatus: 'active',
+      });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return res.body.data as EmployeeDto;
+  };
+
+  const pack = (employeeId: string) =>
+    request(app)
+      .post('/api/v1/hr/contracts/hiring-pack')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId });
+
+  beforeAll(async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    const title = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-PACK-1', name: { ar: 'قائد طاقم', en: 'Crew leader' }, jobGrade: 'G5' });
+    expect(title.status).toBe(201);
+    jobId = (title.body as { data: { id: string } }).data.id;
+
+    const type = await mkType({ name: { ar: 'عقد محدد المدة', en: 'Fixed term' } });
+    contractTemplate = await publishTemplate(
+      await mkTemplate(type.id, {
+        kind: 'contract',
+        allJobs: false,
+        jobTitleIds: [jobId],
+        printOrder: 0,
+        sections: { header: '', body: '<p>عقد {{employee.fullName}} من {{contract.startDate}} إلى {{contract.endDate}}</p>', footer: '' },
+      }),
+    );
+    jobForm = await publishTemplate(await form({ name: { ar: 'إقرار السلاح', en: 'Weapon' }, allJobs: false, jobTitleIds: [jobId], printOrder: 5 }));
+    otherJobForm = await publishTemplate(
+      await form({ name: { ar: 'نموذج وظيفة أخرى', en: 'Other job' }, allJobs: false, jobTitleIds: [JOB_TITLE_ID] }),
+    );
+  });
+
+  it('makes the contract when there is none, prints it first with the job\'s forms only, and makes it once', async () => {
+    const employee = await employeeIn(jobId);
+    const first = await pack(employee.id);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    const set = first.body.data as HiringPackDto;
+    expect(set.contractNote).toBeNull();
+    expect(set.contract?.created).toBe(true);
+    expect(set.documents[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract' });
+    const keys = set.documents.map((d) => d.key);
+    expect(keys).toContain(jobForm.key);
+    expect(keys).not.toContain(otherJobForm.key);
+    // The contract's dates as the papers write them, and one year long.
+    expect(set.html).toContain('عقد موظف المستندات من 15/11/2026 إلى 14/11/2027');
+    // The form wears the letterhead and leaves a line where the record has nothing.
+    expect(set.html).toContain('class="form-doc"');
+    expect(set.html).toContain('إقرار موظف المستندات — رخصة <span class="blank">&nbsp;</span>');
+
+    const contract = await getContract(set.contract?.id ?? '');
+    expect(contract.status).toBe('active');
+    expect(contract.startDate).toBe('2026-11-15');
+    expect(contract.endDate).toBe('2027-11-14');
+
+    // Printing again prints the same contract — it does not make a second one.
+    const again = (await pack(employee.id)).body.data as HiringPackDto;
+    expect(again.contract).toEqual({ id: set.contract?.id, code: set.contract?.code, created: false });
+  });
+
+  it('never makes a contract from a form', async () => {
+    const employee = await employeeIn(jobId);
+    const type = await mkType({ name: { ar: 'نوع آخر', en: 'Another' } });
+    const res = await request(app)
+      .post('/api/v1/hr/contracts')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: employee.id, typeId: type.id, templateId: jobForm.id, startDate: START_DATE, endDate: null });
+    expect(res.status).toBe(422);
+  });
+
+  it('publishes a form without a contract type, but not one printed for no job at all', async () => {
+    const draft = await form({ name: { ar: 'نموذج بلا وظائف', en: 'For nobody' }, allJobs: false, jobTitleIds: [] });
+    const res = await request(app)
+      .post(`/api/v1/hr/contract-templates/${draft.id}/publish`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: draft.version });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('the jobs it is printed for');
   });
 });

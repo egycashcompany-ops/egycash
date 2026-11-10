@@ -16,6 +16,7 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type DownloadTicketDto,
+  type HiringPackDto,
   type Paginated,
   type PreviewContract,
   type SignContractBlock,
@@ -90,6 +91,9 @@ export const removeContractAttachment = (id: string, attachmentId: string, versi
 
 // Exports (audited server-side under contract.print).
 export const contractDocumentHtml = (id: string): Promise<string> => getText(`/hr/contracts/${id}/document`);
+/** «مستندات التعيين» (A27): the employee's contract (made if missing) and every form for the job. */
+export const hiringPack = (employeeId: string): Promise<HiringPackDto> =>
+  post<HiringPackDto>('/hr/contracts/hiring-pack', { employeeId });
 export const contractPdfTicket = (id: string): Promise<{ ready: boolean; ticket: DownloadTicketDto | null }> =>
   get<{ ready: boolean; ticket: DownloadTicketDto | null }>(`/hr/contracts/${id}/pdf`);
 

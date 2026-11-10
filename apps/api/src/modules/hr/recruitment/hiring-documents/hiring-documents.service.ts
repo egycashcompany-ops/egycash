@@ -96,6 +96,19 @@ class HiringDocumentsService {
     return doc;
   }
 
+  /**
+   * The employee's set, opened now if there is none yet — what «تعيين» lands on, so the clerk who
+   * just hired somebody is one click from printing and filing their papers (A27).
+   */
+  async openFor(ctx: AuthContext, employeeId: string, scope: ScopeSelector): Promise<HiringDocumentsDoc> {
+    const existing = await hiringDocumentsRepository.findByEmployeeId(employeeId);
+    if (existing !== null) {
+      await employeeService.getById(employeeId, scope); // the caller must still reach the employee
+      return existing;
+    }
+    return this.create(ctx, { employeeId }, scope);
+  }
+
   async list(query: ListHiringDocumentsQuery, scope: ScopeSelector): Promise<Paginated<HiringDocumentsDoc>> {
     return hiringDocumentsRepository.listHiringDocuments({
       filter: this.toFilter(query),

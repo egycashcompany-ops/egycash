@@ -456,7 +456,7 @@ describe('the counters filter the board', () => {
 
   it('ignores a view it does not know instead of emptying the board', () => {
     const body = tbody(at('&view=nonsense'));
-    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(car(code));
   });
 });
 
@@ -524,7 +524,8 @@ describe('Reset', () => {
   it('brings every row back and returns «إجمالي» to the applied state', () => {
     // Cleared is the same address as never-filtered, so this is what the button lands on.
     const cleared = at('');
-    for (const code of ['150', '151', '152', '153']) expect(tbody(cleared), code).toContain(code);
+    for (const code of ['150', '151', '152', '153'])
+      expect(tbody(cleared), code).toContain(car(code));
     expect(chipActive(cleared, 'total')).toBe(true);
     for (const key of ['workshop', 'assigned', MT])
       expect(chipActive(cleared, key), key).toBe(false);
@@ -1801,9 +1802,9 @@ describe('the board fits: notes and actions are on screen', () => {
       expect(other, `as ${board} does`).toContain('stickyHead');
     }
     expect(DESK, 'the boards’ dark table').toContain('DARK_TABLE,');
-    // 6px from 1536px up, as approved; 4px on a laptop («تمام اعتمد» — the laptop fit, below).
+    // 6px from 1440px up, as approved; 4px below 1440px («تمام اعتمد» — the laptop fit, below).
     expect(DESK, 'a tight gutter for the seats').toContain(
-      "const TIGHT_CELL = '[&&]:!px-1.5 max-[1535px]:[&&]:!px-1'",
+      "const TIGHT_CELL = '[&&]:!px-1.5 max-[1439px]:[&&]:!px-1'",
     );
   });
 
@@ -1840,13 +1841,22 @@ describe('the board fits: notes and actions are on screen', () => {
 //
 // Measured in a browser before the change: the table needed 1021px and its frame gave 912px at
 // 1366×768 and 986px at 1440×900, so «ملاحظات» and part of «السائق الثاني» slid under the pinned
-// «إجراءات». The three named narrowings alone gave back about 60px; the rest came from tighter
-// gutters, gap and action box. After: 939px of table in a 944px frame at 1366, the whole table in
-// its 1018px frame at 1440 — and at 1280 the table's floor still overflows its 858px frame by 81px,
-// where the pinned «إجراءات» and its edge carry on as before. The shots (1366, 1440, 1536, 1920,
-// touch) are the proof of the pixels; these claims pin the rules that make them.
+// «إجراءات». Two bands came of it:
+// - 1280–1535px — the three narrowings he named (and the panel's own spacing that keeps its two tab
+//   titles whole in the narrower panel). At 1440 these alone fit the table in its frame, so the
+//   cells there keep the boards' 9px laptop gutter — the owner's «على اللاب … المسافات قربت».
+// - 1280–1439px — at 1366 the three were about 60px short, so there the spacing closes up too:
+//   every gutter 4px, an 8px gap beside the panel, the row's icons 2px apart.
+// The frame scrolls down, and Chrome or Edge on Windows draw a 15–17px scrollbar inside it; with a
+// 15px one the table is 913px in a 929px frame at 1366 and 983px in 999px at 1440 (31px to spare at
+// both where the scrollbar is hidden). At 1280 its floor still overflows the 858px frame by 55px,
+// and the pinned «إجراءات» carries on as before. The shots (1280, 1366, 1440 with and without a
+// scrollbar, 1536, 1920, touch) are the proof of the pixels; these claims pin the rules behind them.
 describe('the laptop fit — «تمام اعتمد»', () => {
+  /** The laptop: from 1280px (the desk board's own floor) to 1535px. */
   const LAPTOP = 'max-[1535px]:';
+  /** The part of the laptop where the three narrowings alone are not enough. */
+  const CLOSE_UP = 'max-[1439px]:';
   /** Every `max-[…px]:` rule written in the given text. */
   const maxRules = (text: string): string[] => text.match(/max-\[\d+px\]:[^\s'"`]+/gu) ?? [];
   /** The class list of the first element carrying `marker`, in rendered markup. */
@@ -1863,14 +1873,16 @@ describe('the laptop fit — «تمام اعتمد»', () => {
 
   it('narrows the three pieces the owner named — the drivers panel, «نوع المهمة», «ملاحظات»', () => {
     // Each laptop value is written BESIDE the approved one, never in its place.
-    expect(DESK, 'the panel: 20rem → 18.25rem, beside an 8px gap').toContain(
-      'grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4',
+    expect(DESK, 'the panel: 20rem → 18.25rem; the 12px gap closes to 8px below 1440px').toContain(
+      'grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1439px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4',
     );
     expect(DESK, 'the mission box: 9.5rem → 9rem').toMatch(
       /const MISSION_BOX =\s*"mx-auto w-\[9\.5rem\] max-\[1535px\]:w-36 /u,
     );
-    expect(DESK, 'the notes’ floor: 5rem → 3.5rem, the 8rem ceiling kept').toContain(
-      'min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.5rem]',
+    // 3.125rem is 50px, the width of the column's head «ملاحظات» (49.6px, 13px Cairo bold —
+    // measured): the head sets the column's floor, and a longer note takes more lines.
+    expect(DESK, 'the notes’ floor: 5rem → 3.125rem, the 8rem ceiling kept').toContain(
+      'min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.125rem]',
     );
   });
 
@@ -1890,17 +1902,7 @@ describe('the laptop fit — «تمام اعتمد»', () => {
     expect(room - 105.2, 'about 5px to spare').toBeGreaterThanOrEqual(4);
   });
 
-  it('closes up only spacing — gutters, the gap, the action box, the panel’s own padding', () => {
-    expect(DESK, 'the cells’ 9px gutter → 6px').toContain(
-      "const LAPTOP_GUTTERS = 'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5'",
-    );
-    expect(DESK, 'on the roster’s table').toMatch(/ROW_TINTS,\s*LAPTOP_GUTTERS,\s*\);/u);
-    expect(DESK, 'the action box 16px → 12px between its icons').toContain(
-      "const LAPTOP_ACTIONS = 'max-[1535px]:gap-1 max-[1535px]:px-1'",
-    );
-    expect(DESK).toContain(
-      'className={cn(ACTION_GROUP, LAPTOP_ACTIONS)} data-row-actions="roster"',
-    );
+  it('keeps both tab titles whole in the 18.25rem panel — its own spacing closes up', () => {
     expect(DESK, 'the panel’s 12px → 8px around the tabs and the search').toContain(
       'border-b border-slate-200 p-3 max-[1535px]:p-2',
     );
@@ -1909,15 +1911,53 @@ describe('the laptop fit — «تمام اعتمد»', () => {
     expect(DESK, 'the tabs’ own gaps').toContain(
       '[&_[role=tab]]:!h-9 [&_[role=tab]]:!gap-1 [&_[role=tab]]:!px-1 [&_[role=tab]]:!text-[13px] max-[1535px]:[&_[role=tab]]:!gap-0.5 max-[1535px]:[&_[role=tab]]:!px-0.5 max-[1535px]:[&_[role=tablist]]:!gap-0.5',
     );
-    // Nothing on a laptop shrinks a word, hides a piece or cuts a text.
+  });
+
+  it('closes up the spacing only below 1440px, where the three narrowings are not enough', () => {
+    expect(DESK, 'every cell’s gutter 4px').toContain(
+      "const LAPTOP_GUTTERS = 'max-[1439px]:[&_td]:!px-1 max-[1439px]:[&_th]:!px-1'",
+    );
+    expect(DESK, 'on the roster’s table').toMatch(/ROW_TINTS,\s*LAPTOP_GUTTERS,\s*\);/u);
+    expect(DESK, 'the row’s icons 2px apart, 2px from their box').toContain(
+      "const LAPTOP_ACTIONS = 'max-[1439px]:gap-0.5 max-[1439px]:px-0.5'",
+    );
+    expect(DESK).toContain(
+      'className={cn(ACTION_GROUP, LAPTOP_ACTIONS)} data-row-actions="roster"',
+    );
+    // The whole list of each band, so nothing slips from one into the other: from 1440 to 1535px
+    // only the three narrowings and the panel's own spacing apply — no gutter, gap or action box.
     const rules = maxRules(DESK);
-    expect(rules.length, 'the laptop rules are there').toBeGreaterThanOrEqual(13);
-    for (const rule of rules) {
-      expect(rule, 'one band: 1280–1535px').toMatch(/^max-\[1535px\]:/u);
+    expect(rules.filter((rule) => rule.startsWith(LAPTOP)).sort(), '1280–1535px').toEqual(
+      [
+        'max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem]',
+        'max-[1535px]:w-36',
+        'max-[1535px]:min-w-[3.125rem]',
+        'max-[1535px]:p-2',
+        'max-[1535px]:[&_[role=tab]]:!gap-0.5',
+        'max-[1535px]:[&_[role=tab]]:!px-0.5',
+        'max-[1535px]:[&_[role=tablist]]:!gap-0.5',
+      ].sort(),
+    );
+    expect(rules.filter((rule) => rule.startsWith(CLOSE_UP)).sort(), '1280–1439px').toEqual(
+      [
+        'max-[1439px]:[&_td]:!px-1',
+        'max-[1439px]:[&_th]:!px-1',
+        'max-[1439px]:gap-0.5',
+        'max-[1439px]:px-0.5',
+        'max-[1439px]:[&&]:!px-1',
+        'max-[1439px]:gap-2',
+      ].sort(),
+    );
+    expect(rules.length, 'no third band').toBe(13);
+    // …so from 1440px the cells keep the boards' laptop gutter, the owner's «على اللاب … المسافات
+    // قربت» (DARK_TABLE, under the table's own rules).
+    const LOOK = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
+    expect(LOOK).toContain('max-[1749px]:[&_td]:!px-[9px] max-[1749px]:[&_th]:!px-[9px]');
+    // Nothing on a laptop shrinks a word, hides a piece or cuts a text.
+    for (const rule of rules)
       expect(rule, 'no type size, no hiding, no cutting').not.toMatch(
         /text-|hidden|invisible|truncate|line-clamp|overflow|whitespace|w-0|max-w/u,
       );
-    }
   });
 
   it('never reaches the touch boards or the lists they share', () => {
@@ -1925,23 +1965,29 @@ describe('the laptop fit — «تمام اعتمد»', () => {
     // live on the computer's board alone — the shared lists are tightened from the desk panel.
     const elsewhere = rosterSource(['touch', 'shared', 'shell', 'model'], { raw: true });
     expect(elsewhere).not.toContain(LAPTOP);
+    expect(elsewhere).not.toContain(CLOSE_UP);
   });
 
   it('draws the laptop rules on the board itself, not in dead constants', () => {
     const markup = render();
     expect(classOf(markup, 'data-roster-table="true"')).toContain(
-      'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5',
+      'max-[1439px]:[&_td]:!px-1 max-[1439px]:[&_th]:!px-1',
     );
     expect(
       classOf(markup, 'grid min-h-0 flex-1 grid-cols-'),
       'the grid of table and panel',
-    ).toContain('max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2');
-    expect(classOf(markup, 'data-row-actions="roster"')).toContain('max-[1535px]:gap-1');
+    ).toContain('max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1439px]:gap-2');
+    expect(classOf(markup, 'data-row-actions="roster"')).toContain(
+      'max-[1439px]:gap-0.5 max-[1439px]:px-0.5',
+    );
     const mission = missionCell(markup, '150');
     expect(mission, 'the default board offers a mission select on 150').not.toBe('');
     const box = markup.slice(0, markup.indexOf(mission));
     expect(box.slice(box.lastIndexOf('<div class="mx-auto')), 'its box').toContain(
       'w-[9.5rem] max-[1535px]:w-36',
+    );
+    expect(classOf(box.slice(box.lastIndexOf('<td')), '<td'), 'its cell’s tight gutter').toContain(
+      '[&&]:!px-1.5 max-[1439px]:[&&]:!px-1',
     );
     const panel = markup.slice(markup.indexOf('data-drivers-panel'));
     expect(panel.slice(0, 2000), 'the panel’s header').toContain('p-3 max-[1535px]:p-2');

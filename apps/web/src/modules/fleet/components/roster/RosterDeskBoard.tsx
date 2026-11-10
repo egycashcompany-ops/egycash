@@ -20,8 +20,9 @@
 // day is a DRAFT until «حفظ» (the board model).
 //
 // CHANGED (approved): ONE drivers panel with two tabs, so «إجراءات» is on the screen (at 1280 the
-// table still scrolls inside its frame and the actions column stays pinned; from 1366 the whole
-// table is in its frame — THE LAPTOP below); status badges never break
+// table still scrolls inside its frame and the actions column stays pinned; from 1366 the table
+// fits its frame with room to spare — THE LAPTOP below — though a wide name that keeps to one line
+// can still widen it past the frame, under the same pinned column); status badges never break
 // their words; a seat is name + employee code (amber when the driver has a problem); a workshop
 // row says «في الورشة — غير قابلة للتعيين» once; save / cancel live in the unsaved bar at the
 // bottom (edited codes, «تراجع», «إلغاء», «حفظ»); the date reads «الاثنين 2026/11/09 اليوم»;
@@ -82,20 +83,27 @@ const ROW_TINTS = cn(
  * السواقين اللي على الشمال شوية، وأضيّق خانة «نوع المهمة» وعمود «ملاحظات» شوية. كده الجدول كله
  * يدخل في الشاشة من غير سحب … على 1536 وأكبر الشكل اللي اعتمدته مش هيتغير خالص».
  *
- * Every laptop rule is a `max-[1535px]:` variant laid OVER the approved class, never written in
- * its place: from 1536px up the board renders exactly as approved. The three approved narrowings —
- * the drivers panel 20rem → 18.25rem, the mission box 9.5rem → 9rem, the notes 5rem → 3.5rem — were
- * not enough alone (at 1366 the table was 109px wider than its frame), so the laptop also takes
- * tighter gutters (the seats' 6px → 4px, the other cells' 9px → 6px), an 8px gap beside the panel
- * and a closer action box: the same pieces, colours and type, only tighter. At 1280 the table still
- * overflows (its floor is wider than that frame) and scrolls under the pinned «إجراءات».
+ * Every laptop rule is a `max-[…px]:` variant laid OVER the approved class, never written in its
+ * place: from 1536px up the board renders exactly as approved. Two bands:
+ * - 1280–1535px (`max-[1535px]:`): the three narrowings the owner named — the drivers panel 20rem →
+ *   18.25rem (its header and tabs close up so both titles stay whole), the mission box 9.5rem →
+ *   9rem, the notes' floor 5rem → 3.125rem (the width of its «ملاحظات» head). At 1440 these alone
+ *   fit the table in its frame, even beside a browser's 17px scrollbar, so the cells keep the
+ *   boards' laptop gutters there («على اللاب … المسافات قربت» — DARK_TABLE's 9px).
+ * - 1280–1439px (`max-[1439px]:`): at 1366 the three were about 60px short, so only below 1440 the
+ *   spacing closes up too — every cell's gutter 4px, an 8px gap beside the panel, the row's icons
+ *   2px apart: the same pieces, colours and type, only tighter.
+ * Measured with a 15px scrollbar on the table's frame: 1366 and 1440 both fit with about 16px to
+ * spare (31px where the browser hides its scrollbars). A name that keeps to one line and is wider
+ * than about 150px can still widen the table a few px past its frame, and at 1280 its floor is
+ * wider than the frame: then the table scrolls under the pinned «إجراءات».
  */
-const LAPTOP_GUTTERS = 'max-[1535px]:[&_td]:!px-1.5 max-[1535px]:[&_th]:!px-1.5';
-/** The row's three icons closer together on a laptop (16px → 12px apart, 12px → 8px from the box). */
-const LAPTOP_ACTIONS = 'max-[1535px]:gap-1 max-[1535px]:px-1';
+const LAPTOP_GUTTERS = 'max-[1439px]:[&_td]:!px-1 max-[1439px]:[&_th]:!px-1';
+/** The row's three icons closer together below 1440px (8px → 2px apart and from the box). */
+const LAPTOP_ACTIONS = 'max-[1439px]:gap-0.5 max-[1439px]:px-0.5';
 
-/** The seats and the mission select fill their cell: a 6px gutter (4px on a laptop), not 9px. */
-const TIGHT_CELL = '[&&]:!px-1.5 max-[1535px]:[&&]:!px-1';
+/** The seats and the mission select fill their cell: a 6px gutter (4px below 1440px), not 9px. */
+const TIGHT_CELL = '[&&]:!px-1.5 max-[1439px]:[&&]:!px-1';
 
 /**
  * «إجراءات» pinned to the table's end edge — never the casualty of a narrow screen. The cell takes
@@ -351,8 +359,8 @@ export const RosterDeskBoard = ({
         row.notes === null ? (
           DASH
         ) : (
-          // 3.5rem on a laptop, wide enough for «ملاحظات» over it; a longer note takes more lines.
-          <span className="mx-auto block min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.5rem]">
+          // 3.125rem on a laptop, the width of «ملاحظات» over it; a longer note takes more lines.
+          <span className="mx-auto block min-w-[5rem] max-w-[8rem] whitespace-normal break-words text-xs leading-snug [text-wrap:balance] max-[1535px]:min-w-[3.125rem]">
             {row.notes}
           </span>
         ),
@@ -472,9 +480,9 @@ export const RosterDeskBoard = ({
           </FilterBar>
         </div>
 
-        {/* The drivers panel beside the table: 20rem, 24rem from 1750px, and 18.25rem with an 8px
-            gap on a laptop (THE LAPTOP above). */}
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1535px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4">
+        {/* The drivers panel beside the table: 20rem, 24rem from 1750px, and 18.25rem on a laptop,
+            with an 8px gap below 1440px (THE LAPTOP above). */}
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1439px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4">
           <div
             ref={tableBox}
             className={ROSTER_TABLE}

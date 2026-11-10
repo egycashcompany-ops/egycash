@@ -5,7 +5,7 @@
 // list needs them on every row and filters and sorts on them across 1,760 people, so they sit on
 // the document the list already reads. This collection answers the other question — the profile's
 // history — and nothing else reads it.
-import { Schema, Types, model } from 'mongoose';
+import { Schema, model, type Types } from 'mongoose';
 
 export interface IdCardPrintDoc {
   _id: Types.ObjectId;

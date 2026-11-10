@@ -60,7 +60,6 @@ import {
   boardFigures,
   isReceived,
   rowTint,
-  legacyRowNumber,
   orderedBoardTotals,
   type DayBoardFilters,
 } from '../lib/day-board';
@@ -219,14 +218,6 @@ export const DailyOperationsPage = (): JSX.Element => {
 
   const columns: Column<OperationsDayBoardShipmentDto>[] = [
     {
-      key: 'no',
-      header: t('operations.board.no'),
-      // Descending, newest highest — the legacy numbering operators call shipments by.
-      render: (row) => (
-        <span className={FIGURE}>{legacyRowNumber(rows.indexOf(row), rows.length)}</span>
-      ),
-    },
-    {
       key: 'vehicle',
       header: t('operations.board.vehicle'),
       render: (row) =>
@@ -271,19 +262,30 @@ export const DailyOperationsPage = (): JSX.Element => {
         );
       },
     },
+    // «خلى المنطقة بعد الفرع الى»: the area is the destination branch's, so it sits beside it.
+    {
+      key: 'area',
+      header: t('operations.shipment.area'),
+      render: (row) => row.areaName ?? DASH,
+    },
     {
       key: 'amount',
       header: t('operations.shipment.form.amount'),
       // «الشحنة نفسها فى الصف … كل العملات ظاهرها بالاجمالى ل كل عملة»: one line per currency, its
       // name beside its total — مصري, then دولار, then the rest by name, as the figures read.
+      // «الارقام … تبقى اكنها عمود مش شوية داخلين وشوية خارجين»: the names take one fixed width in
+      // every row, so the amounts sit in one column down the whole table — each in a box of the same
+      // width, right-aligned, so units sit under units and a million reads longer than a thousand.
       render: (row) => (
-        <div className="grid grid-cols-[auto_auto] items-baseline justify-start gap-x-2 gap-y-0.5">
+        <div className="grid grid-cols-[4.75rem_6.25rem] items-baseline gap-x-2 gap-y-0.5">
           {orderedBoardTotals([row], currencyOf).map((total) => (
             <Fragment key={total.currencyId}>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                 {currencyOf(total.currencyId)?.name ?? '…'}
               </span>
-              <span className={cn(FIGURE, 'text-end')}>{formatAmount(total.amount, locale)}</span>
+              <span className={cn(FIGURE, 'text-right')} dir="ltr">
+                {formatAmount(total.amount, locale)}
+              </span>
             </Fragment>
           ))}
         </div>
@@ -325,11 +327,6 @@ export const DailyOperationsPage = (): JSX.Element => {
       // «النوع هيفضل زى ماهو بس هنفصل عنه الحالة»: its own column, in the desk's two words —
       // «لم يتم التسليم» / «تم التسليم» — whoever delivered; the row's colour says who.
       render: (row) => <DeliveryStatusBadge delivery={boardDelivery(row)} />,
-    },
-    {
-      key: 'area',
-      header: t('operations.shipment.area'),
-      render: (row) => row.areaName ?? DASH,
     },
     {
       key: 'notes',

@@ -935,11 +935,12 @@ describe('the odometer and workshop driver slots ask the registry', () => {
     }
   });
 
-  it('both odometer seats and all three workshop slots use it', () => {
+  it('both odometer seats and all four workshop slots use it', () => {
     expect(read('components/RecordOdometerDialog.tsx').split('<OptionalDriverField')).toHaveLength(
       3,
     );
-    expect(read('components/MaintenanceDialogs.tsx').split('<OptionalDriverField')).toHaveLength(4);
+    // Check-in, check-out, and the edit's two: «سائق الدخول» and «سائق الخروج».
+    expect(read('components/MaintenanceDialogs.tsx').split('<OptionalDriverField')).toHaveLength(5);
   });
 
   it('the seat stays OPTIONAL — a reading with nobody named is a real state', () => {

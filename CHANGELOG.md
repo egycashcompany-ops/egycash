@@ -947,6 +947,23 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«الصيانة»: «سائق الخروج» can be corrected in «تعديل الزيارة».** «دلوقتى عاوز ف الصيانة عاوز اقدر
+  اعدل السواق التانى اللى هو سائق الخروج». Before, a wrong exit driver could only be fixed by
+  reopening the visit, which also clears the exit date, the exit counter and the custody, and
+  checking it out again.
+  - On a visit that has left the workshop, the edit shows «سائق الخروج» right after «سائق الدخول»,
+    with the same picker, opened on the stored driver. A visit still in the workshop does not
+    show it: «إخراج من الورشة» sets it.
+  - A correction, never a clear, as for «سائق الدخول»: it can be changed to another driver but
+    not emptied. On an old visit with only the old book's spelling, it opens empty and stays
+    optional; choosing a driver records the employee, who is then shown instead of the spelling.
+  - `PATCH /fleet/maintenance/:id` takes an optional `driverOutEmployeeId`: refused on an open
+    visit (400 on `body.driverOutEmployeeId`, `INVALID`), `null` refused, and checked against HR
+    only when it differs from the stored driver. Same permission (`fleetMaintenance.edit`),
+    version check and `update` audit as the rest of the edit. The screen sends it only when the
+    edit changed it.
+  - Unchanged: reopen still clears it, check-out still requires it, and the exit date stays
+    non-editable ([design §4.2](docs/12-planning/fleet-module-design.md)).
 - **IT vehicle check: every device opens at «يعمل»; a fault needs a note, and every report a
   photo.** «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها»،
   «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل الحالات».

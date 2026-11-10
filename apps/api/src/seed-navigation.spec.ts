@@ -69,7 +69,8 @@ describe('the seeded navigation catalog', () => {
     // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
     // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
     // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
-    expect(rows).toHaveLength(134);
+    // 134 → 135: «فحص أجهزة السيارات», IT's dashboard over those reports, right before the form.
+    expect(rows).toHaveLength(135);
   });
 
   /**
@@ -156,6 +157,27 @@ describe('the seeded navigation catalog', () => {
     );
     // The movements screen nests under it and has no row of its own.
     expect(rows.some((row) => row.route === '/it/consumables/movements')).toBe(false);
+  });
+
+  it('offers the vehicle checks dashboard right before the phone form, on the read grant', () => {
+    // «الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT»: an IT row, keyed to reading the
+    // reports — so a reporter holding only the form sees the form and not the dashboard.
+    const itRows = rows.filter((row) => row.route.startsWith('/it'));
+    const board = itRows.find((row) => row.route === '/it/vehicle-checks');
+    expect(board).toMatchObject({
+      en: 'Vehicle device checks',
+      ar: 'فحص أجهزة السيارات',
+      icon: 'gauge',
+      permission: 'itVehicleCheck.view',
+    });
+    expect(itRows.indexOf(board as (typeof itRows)[number])).toBe(
+      itRows.findIndex((row) => row.route === '/it/vehicle-checks/new') - 1,
+    );
+    // The form keeps its row, its glyph and its own grant.
+    expect(itRows.find((row) => row.route === '/it/vehicle-checks/new')).toMatchObject({
+      icon: 'vehicle',
+      permission: 'itVehicleCheck.create',
+    });
   });
 
   it('offers the machine map right after the machine list, behind its own key', () => {

@@ -27,6 +27,7 @@
 //   /it/mobile-lines       itAsset.view   (the SIM lines and who holds them)     FR-19
 //   /it/consumables        itAsset.view   (each branch's store of consumables)    FR-20
 //   /it/consumables/movements  itAsset.view   (the store's ledger, no nav row)    FR-20
+//   /it/vehicle-checks     itVehicleCheck.view   (the reports' dashboard)            FR-21
 //   /it/vehicle-checks/new itVehicleCheck.create (the phone form, OUTSIDE AppShell) FR-21
 // The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
 // the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
@@ -35,7 +36,8 @@
 // the ONE route here that does not sit inside `AppShell`: it is a phone form, and a topbar, a
 // navigation rail and a command palette are console furniture a 360px screen cannot afford. Same
 // app, same session, same route guard — a different frame (`shared/ui/PhoneShell.tsx`), as the
-// Operations captain's day is.
+// Operations captain's day is. The reports it files are read back at `/it/vehicle-checks`, inside
+// the console like every other IT page: «الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT».
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -62,6 +64,7 @@ import { ItEmployeeHistoryPage } from './pages/ItEmployeeHistoryPage';
 import { MobileLinesPage } from './pages/MobileLinesPage';
 import { ConsumablesPage } from './pages/ConsumablesPage';
 import { ConsumableMovementsPage } from './pages/ConsumableMovementsPage';
+import { VehicleChecksPage } from './pages/VehicleChecksPage';
 import { VehicleCheckPage } from './mobile/VehicleCheckPage';
 
 export default function ItRoutes(): JSX.Element {
@@ -146,6 +149,16 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <ConsumableMovementsPage />
+            </RequirePermission>
+          }
+        />
+        {/* «فحص أجهزة السيارات» (FR-21) — the dashboard of the phone form's reports, on its own
+            view grant: the reporter, who holds only `create`, files reports and reads none. */}
+        <Route
+          path="vehicle-checks"
+          element={
+            <RequirePermission permission="itVehicleCheck.view">
+              <VehicleChecksPage />
             </RequirePermission>
           }
         />

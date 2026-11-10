@@ -2759,3 +2759,113 @@ export interface ItVehicleCheckDto {
   clientRequestId: string;
   createdAt: string;
 }
+
+// ── The vehicle checks dashboard (FR-21, 2026-11-10) ─────────────────────────────────────────────
+// «تمام نفذا الـ Dashboard بتاعت الفحص» — the approved sample, built: the reports the phone form
+// files, read back under `itVehicleCheck.view` and the reader's data scope (the car's branch at
+// filing); a wrong report deleted under `itVehicleCheck.delete`
+// (docs/12-planning/it-vehicle-checks-design.md §11).
+
+/** «لم تُفحص منذ ٧ أيام»: an active car with no report for this many Cairo days, today included. */
+export const IT_VEHICLE_CHECK_OVERDUE_DAYS = 7;
+
+/**
+ * The dashboard's window — Cairo days on `checkDate`, both ends included. Absent: the last
+ * `IT_VEHICLE_CHECK_OVERDUE_DAYS` days, today included. `to` never after today; `from` ≤ `to`.
+ */
+export const ItVehicleCheckDashboardQuerySchema = z
+  .object({
+    from: ymd().optional(),
+    to: ymd().optional(),
+    branchId: objectId().optional(),
+  })
+  .strict()
+  .refine((q) => q.from === undefined || q.to === undefined || q.from <= q.to, {
+    message: 'from is after to',
+    path: ['from'],
+  });
+export type ItVehicleCheckDashboardQuery = z.infer<typeof ItVehicleCheckDashboardQuerySchema>;
+
+/**
+ * The reports list, newest first (the latest day, then the latest filing). Every filter is ANDed:
+ * the window (Cairo days on `checkDate`), the branch at filing, one car by id, a car code typed
+ * («كود السيارة», matched anywhere in the code, letter case ignored, the reader's characters taken
+ * literally), only reports with a device «لا يعمل», and only reports where THAT device is «لا يعمل».
+ */
+export const ListItVehicleChecksQuerySchema = PaginationQuerySchema.extend({
+  from: ymd().optional(),
+  to: ymd().optional(),
+  branchId: objectId().optional(),
+  vehicleId: objectId().optional(),
+  carCode: z.string().trim().max(50).optional(),
+  faultsOnly: booleanQuery().optional(),
+  device: z.enum(IT_VEHICLE_CHECK_ITEMS).optional(),
+}).strict();
+export type ListItVehicleChecksQuery = z.infer<typeof ListItVehicleChecksQuerySchema>;
+
+/** One photo of one report, by its Files id — the bytes, for a reader of the report. */
+export const ItVehicleCheckPhotoParamSchema = z
+  .object({ id: objectId(), fileId: objectId() })
+  .strict();
+
+/** «حالة أجهزة كل سيارة — آخر تقرير»: an active car and its latest live report. */
+export interface ItVehicleCheckLatestDto {
+  reportId: string;
+  vehicleId: string;
+  vehicleCode: string;
+  /** The report's branch at filing — the data-scope anchor. */
+  branchId: string | null;
+  /** YYYY-MM-DD */
+  checkDate: string;
+  createdAt: string;
+  items: Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>;
+  photoCount: number;
+  hasNotes: boolean;
+  reportedByName: string;
+}
+
+/** «لم تُفحص منذ ٧ أيام»: an active car the reader may see, and when it was last checked. */
+export interface ItVehicleCheckOverdueDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /** The car's branch NOW (Fleet's), since it has no recent report to carry one. */
+  branchId: string | null;
+  /** YYYY-MM-DD of its latest live report, or null for a car never checked. */
+  lastCheckDate: string | null;
+  /** Whole Cairo days from `lastCheckDate` to today; null for a car never checked. */
+  daysSince: number | null;
+}
+
+export interface ItVehicleCheckDashboardDto {
+  /** The window the period figures cover, YYYY-MM-DD, both ends included. */
+  from: string;
+  to: string;
+  totals: {
+    /** Reports filed for a day in the window. */
+    reports: number;
+    /** Distinct reporters of those reports. */
+    reporters: number;
+    /**
+     * Distinct cars those reports are on, counted among `activeCars` only — the tile reads «X من Y
+     * سيارة نشطة», so a car out of service or out of the reader's sight is not counted.
+     */
+    carsChecked: number;
+    /** Active cars the reader may see (Fleet's list, under the scope and the branch filter). */
+    activeCars: number;
+    /** Active cars whose latest report has a device «لا يعمل». */
+    carsWithFaults: number;
+    /** Devices «لا يعمل» summed over those latest reports. */
+    devicesNotWorking: number;
+    /** Active cars with no report in the last `overdueDays` days. */
+    overdueCars: number;
+    /** Reports in the window that hold no photo. */
+    reportsWithoutPhoto: number;
+  };
+  /** For each device, the active cars whose latest report has it «لا يعمل». */
+  faultsByDevice: Record<ItVehicleCheckItem, number>;
+  /** The latest live report of each active car the reader may see, in Fleet's code order. */
+  latest: ItVehicleCheckLatestDto[];
+  /** The overdue cars, the longest unchecked first (never checked first of all), then by code. */
+  overdue: ItVehicleCheckOverdueDto[];
+  overdueDays: number;
+}

@@ -224,6 +224,13 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'it.ticket': { permission: 'itTicket.view' },
   'it.ticketPriority': { permission: 'itCatalog.manage' },
   'it.vendor': { permission: 'itVendor.view' },
+  // FR-21 — the vehicle checks dashboard («الـ Dashboard … هتبقي عند الـ IT»): a report filed, a
+  // photo added and a report deleted each refresh it for whoever may read the reports. Their audit
+  // rows announce themselves with no branch — the organization-wide room only — so the service
+  // also sends one `update` WITH the report's branch (`signalVehicleCheck`), which reaches a
+  // branch-scoped reader's room too. The form's own grant reads nothing back, so its reporters are
+  // not in the room.
+  'it.vehicleCheck': { permission: 'itVehicleCheck.view' },
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },
@@ -289,11 +296,6 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // AT-D3's enrolment map is the same shape and leaves at the same moment: it is administered
   // from the device screen, so it has no surface of its own to react.
   'hr.attendanceEnrollment': 'no screen until AT-D4 builds device health',
-  // FR-21's vehicle device checks ship the phone form only (it-vehicle-checks-design.md §6.1): it
-  // files a report and its photos, and no screen reads a report back. It leaves this map in the
-  // change that builds the IT dashboard, which brings `itVehicleCheck.view` and the topic — the
-  // attendance-device discipline above, and never before.
-  'it.vehicleCheck': 'no screen until the dashboard',
   // A decision is audited on the CHAIN, whose id is «type:rung» and not a record anybody lists.
   // The screen that has to refresh is the request's own — a leave request, a regularization — and
   // that request's entity topic already fires from the same decision, because deciding writes the

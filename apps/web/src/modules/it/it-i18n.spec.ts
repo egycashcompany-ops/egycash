@@ -30,10 +30,13 @@ import {
   IT_MOBILE_SIM_KINDS,
   IT_TICKET_EVENT_TYPES,
   IT_TICKET_STATUSES,
+  IT_VEHICLE_CHECK_ANSWERS,
+  IT_VEHICLE_CHECK_ITEMS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
+import { VEHICLE_CHECK_PERIODS } from './lib/vehicle-check-dashboard';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -111,6 +114,35 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   {
     name: 'warranty window',
     prefix: 'it.assets.warranty.endsWithin',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // FR-21 — the vehicle checks dashboard names each device, each answer, the period and its short
+  // column heads through TEMPLATE keys, and counts days, faults, reporters, cars and photos in
+  // Arabic's five forms through more — none of which the source scan below can see.
+  { name: 'vehicle check device', prefix: 'it.vehicleCheck.item', values: IT_VEHICLE_CHECK_ITEMS },
+  {
+    name: 'vehicle check answer',
+    prefix: 'it.vehicleCheck.answer',
+    values: IT_VEHICLE_CHECK_ANSWERS,
+  },
+  {
+    name: 'vehicle check column head',
+    prefix: 'it.vehicleChecks.short',
+    values: IT_VEHICLE_CHECK_ITEMS.filter((item) => !item.startsWith('camera')),
+  },
+  {
+    name: 'vehicle check period',
+    prefix: 'it.vehicleChecks.period',
+    values: VEHICLE_CHECK_PERIODS,
+  },
+  ...(['days', 'faults', 'reporters', 'activeCars'] as const).map((noun) => ({
+    name: `vehicle checks ${noun} count`,
+    prefix: `it.vehicleChecks.${noun}`,
+    values: CUSTODY_COUNT_FORMS,
+  })),
+  {
+    name: 'vehicle check photo count',
+    prefix: 'it.vehicleCheck.sent.photoCount',
     values: CUSTODY_COUNT_FORMS,
   },
 ];

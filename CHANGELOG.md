@@ -11,6 +11,19 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
+  اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
+  - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch
+    filter — reports and reporters, cars checked out of the active ones, cars with a fault, devices
+    «لا يعمل», cars not checked for seven days, reports with no photo.
+  - The faults per device (a click filters by it), the cars not checked for seven days, the latest
+    report of each active car with its eleven devices, and the reports with their photos; a report
+    view with the images, «كل تقارير هذه السيارة» and «حذف التقرير»; Excel and PDF.
+  - Two grants beside the form's `itVehicleCheck.create`: `.view` (scoped by the report's branch at
+    filing) and `.delete` (a soft delete). Given to no role on deploy.
+  - API: `GET /it/vehicle-checks/dashboard`, `GET /it/vehicle-checks`, `GET /:id`,
+    `GET /:id/photos/:fileId`, `DELETE /:id`. The realtime topic `it.vehicleCheck` now refreshes it.
+
 - **Fleet: a car's card on its code, like the driver's card on a name.** «عاوز لما اماوس يقف على كود
   عربيه يجيب بيانات زى اما اقف على اسم السواق نفس الموضوع كدا». When the mouse rests on a car's
   code, or Tab reaches it, a card opens after the same short pause as the driver card, in the same

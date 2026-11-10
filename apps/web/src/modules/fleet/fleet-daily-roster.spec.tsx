@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -23,6 +23,7 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
 import { filterDrivers } from './lib/driver-search';
+import { rosterDraftKey } from './lib/draft-storage';
 import { rosterSource } from './roster-spec-sources';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -207,6 +208,19 @@ describe('the assignment date', () => {
     const at = markup.indexOf(t('fleet.roster.prevDay'));
     const tag = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
     expect(tag, 'yesterday is readable').not.toMatch(/ disabled=""| disabled>/);
+  });
+
+  it('names the day box the stepper and its calendar open — a hidden box is not a focus target', () => {
+    // Both the date button and the cyan calendar move the focus into the box before the picker
+    // opens: it is out of the Tab order, but a keyboard or a screen reader lands on «التاريخ».
+    const markup = render({ date: day(1) });
+    const box = markup.slice(
+      markup.lastIndexOf('<input', markup.indexOf(`value="${day(1)}"`)),
+      markup.indexOf('>', markup.indexOf(`value="${day(1)}"`)) + 1,
+    );
+    expect(box).toContain('type="date"');
+    expect(box).toContain(`aria-label="${t('fleet.roster.date')}"`);
+    expect(box).not.toContain('aria-hidden');
   });
 
   it('is refused SERVER-side too — the UI is not the guard', () => {
@@ -467,8 +481,9 @@ describe('the counters count the DAY, never the filtered rows', () => {
     const markup = at('&q=153');
     expect(tbody(markup), 'the table is narrowed').not.toContain('151');
     // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
-    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('4');
-    expect(shown(markup, 'workshop'), 'صيانة still counts two').toContain('2');
+    // The figure exactly: the span's text ends the slice, so «>4» is 4 and never 14 or 24.
+    expect(shown(markup, 'total'), 'إجمالي still counts four').toMatch(/>4$/u);
+    expect(shown(markup, 'workshop'), 'صيانة still counts two').toMatch(/>2$/u);
   });
 });
 
@@ -723,9 +738,10 @@ describe('neither change reaches the filters, the counters or the save', () => {
     };
     // 4 vehicles: 2 in the workshop, 2 carrying a plan (150 and 152, one of them crewless) — in
     // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
-    expect(shown('total')).toContain('4');
-    expect(shown('workshop')).toContain('2');
-    expect(shown('assigned'), '«تشغيل» still counts a mission, badge or no badge').toContain('2');
+    // The figure exactly: the span's text ends the slice, so «>4» is 4 and never 14 or 24.
+    expect(shown('total')).toMatch(/>4$/u);
+    expect(shown('workshop')).toMatch(/>2$/u);
+    expect(shown('assigned'), '«تشغيل» still counts a mission, badge or no badge').toMatch(/>2$/u);
   });
 
   it('leaves the filters narrowing exactly as they did', () => {
@@ -1014,6 +1030,31 @@ describe('the daily draft and its Save', () => {
     expect(markup).toContain(t('common.cancel'));
   });
 
+  it('offers «تراجع» only for an edit made HERE — a draft restored on arrival has no history', () => {
+    // A reload keeps the draft (sessionStorage), not its undo steps: «إلغاء» is live, «تراجع» is
+    // not. The bar's undo is gated on the model's depth, never left on for show.
+    const stored = new Map([
+      [rosterDraftKey(day(1)), JSON.stringify(BOARD.rows.map((r) => ({ ...r, notes: 'تغيير' })))],
+    ]);
+    vi.stubGlobal('window', {
+      sessionStorage: {
+        getItem: (k: string) => stored.get(k) ?? null,
+        setItem: (k: string, v: string) => void stored.set(k, v),
+        removeItem: (k: string) => void stored.delete(k),
+      },
+    });
+    try {
+      const markup = render();
+      expect(markup).toContain('data-edits-bar="true"');
+      expect(buttonDisabled(markup, 'data-undo-edit'), 'nothing done here to take back').toBe(true);
+      expect(buttonDisabled(markup, 'data-discard-edits'), 'the restored draft can go').toBe(false);
+      expect(buttonDisabled(markup, 'data-save-roster'), 'and be saved').toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(DESK).toContain('undoable={m.undoDepth > 0}');
+  });
+
   it('is SAVEABLE on an untouched day that still carries an inherited operation', () => {
     // The heart of the fix. V1 arrives `planned: false` with a mission and a driver projected
     // from the standing crew — nothing is stored for it yet, so `operations/crew-board`, which
@@ -1248,6 +1289,12 @@ describe('the day’s counters', () => {
     expect(strip, 'and the counters stand in the same strip').toBeLessThan(
       markup.indexOf('data-roster-table'),
     );
+    // ABOVE the grid of the table and the drivers panel — a strip inside the grid's first column
+    // would still come before the table.
+    expect(filters, 'the strip is above the grid, not in it').toBeLessThan(
+      markup.indexOf('grid min-h-0 flex-1 grid-cols-'),
+    );
+    expect(markup.indexOf('grid min-h-0 flex-1 grid-cols-')).toBeGreaterThan(-1);
     expect(markup, '«كل المهمات» is gone from the computer').not.toContain(
       t('fleet.roster.allMissions'),
     );
@@ -1490,12 +1537,20 @@ describe('each driver list has its own search', () => {
     expect(call, 'the unavailable half is indexed too').toContain('unavailable.map');
   });
 
-  it('renders ONE box, inside the drivers panel', () => {
-    // «اعتمد» on D1: ONE drivers panel with two tabs, and ONE search box under them — its words
-    // are the open tab's own term (below), so the two lists still search independently.
+  it('shows ONE box, inside the drivers panel — the open tab’s own', () => {
+    // «اعتمد» on D1: ONE drivers panel with two tabs, and ONE search box on screen under them.
+    // Each list keeps its own box (below); the other tab's is hidden, not unmounted, so a tab
+    // switched while the box is still reporting the last keys does not lose them.
     const markup = render();
-    const boxes = markup.split('placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder'));
-    expect(boxes.length - 1, 'one box').toBe(1);
+    const placeholder = 'placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder');
+    const boxes = markup.split(placeholder);
+    expect(boxes.length - 1, 'one box per list').toBe(2);
+    const shown = markup.indexOf(placeholder);
+    const hidden = markup.indexOf(placeholder, shown + 1);
+    const wrapperOf = (at: number): string =>
+      markup.slice(markup.lastIndexOf('<div', markup.lastIndexOf('<div', at) - 1), at);
+    expect(wrapperOf(shown), 'the available tab’s box is on screen').not.toContain('hidden=""');
+    expect(wrapperOf(hidden), 'the other one is hidden').toContain('hidden=""');
   });
 
   it('puts the box inside the panel, under its two tabs — not above the table', () => {
@@ -1528,11 +1583,16 @@ describe('each driver list has its own search', () => {
     // Neither may reach for the other's term.
     expect(DESK).not.toContain('m.availableFor(unavailableSearch');
     expect(DESK).not.toContain('m.unavailableFor(availableSearch');
-    // ONE box, and it shows and writes the OPEN tab's own term.
-    expect(DESK).toContain("value={tab === 'available' ? availableSearch : unavailableSearch}");
+    // Each box shows and writes its OWN list's term, and only the open tab's box is on screen.
     expect(DESK).toContain(
-      "onChange={tab === 'available' ? setAvailableSearch : setUnavailableSearch}",
+      '<DriverSearch value={availableSearch} onChange={setAvailableSearch} />',
     );
+    expect(DESK).toContain(
+      '<DriverSearch value={unavailableSearch} onChange={setUnavailableSearch} />',
+    );
+    expect(DESK).toContain("<div hidden={tab !== 'available'}>");
+    expect(DESK).toContain("<div hidden={tab !== 'unavailable'}>");
+    expect(DESK, 'no box shared between the two terms').not.toMatch(/value=\{tab === 'available'/u);
   });
 
   it('is DISPLAY ONLY — the draft, the counters and the payload read the unfiltered lists', () => {
@@ -1818,10 +1878,14 @@ describe('the names are the board — «كبر اى مكان فيه اسم سو�
     );
     expect(CHIP, 'the default chip is unchanged elsewhere').toContain("'truncate py-1 text-xs'");
   });
-  it('reads every name as the board’s biggest word, in the pool as on the car', () => {
+  it('reads the name as the seat’s biggest word, and the lists’ names at 15px', () => {
     // «اعتمد» on D1: the computer's seat is the compact one, not the chip — the name in bold over
     // its employee code in the figures' face — and the lists read names at 15px. (`DriverChip`
     // itself is unchanged; the standing board still draws it.)
+    //
+    // A TRADE the owner may not have noticed, named here and in the hand-off: on the approved D1
+    // the seat's name is 12.5px between 1280 and 1749px (14px from 1750px, as the car code), where
+    // «كبر اى مكان فيه اسم سواق» had made it 14px — the price of «إجراءات» on screen at 1536.
     expect(DESK, 'the seat draws no chip').not.toContain('<DriverChip');
     const markup = render();
     const seat = markup.slice(markup.indexOf(`data-driver-chip="${E1}"`));
@@ -1833,6 +1897,10 @@ describe('the names are the board — «كبر اى مكان فيه اسم سو�
     expect(rosterSource(['shared']), 'the lists read a name at 15px').toContain(
       "'block text-[15px] font-semibold leading-5'",
     );
+    expect(DESK, 'the seat’s name: 12.5px, the car code’s 14px from 1750px').toContain(
+      "'text-[12.5px] font-bold leading-5 text-slate-900 min-[1750px]:text-sm dark:text-slate-50'",
+    );
+    expect(DESK, 'the car code').toContain("className={cn('text-sm font-bold', FIGURE)}");
   });
 });
 

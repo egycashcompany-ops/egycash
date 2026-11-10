@@ -1503,7 +1503,7 @@ describe('the standing board wears the daily board’s bar', () => {
     expect(DAILY, 'the daily board wears the new boards’ bar').toContain('<FilterBar');
   });
 
-  it('gives the strip the WHOLE PAGE, above the grid — as the daily board does', () => {
+  it('gives the strip the WHOLE PAGE, above the grid — the daily board’s bar is above its grid too', () => {
     // «فلاتر الطقم الثابت زى تعيين السيارات ... على نفس الصف كله». Having the daily board's
     // controls was never the whole of that: they sat inside the board's own grid column, four
     // fifths of the page, so the row the daily board fits on one line wrapped onto two or three
@@ -1511,8 +1511,8 @@ describe('the standing board wears the daily board’s bar', () => {
     //
     // Proved by POSITION in the source, which is the only thing a suite with no layout engine can
     // read honestly: the strip must open before the grid does, not inside the column the grid
-    // opens. The daily board's bar (the new boards' FilterBar) is above its grid too — asserted in
-    // the daily spec.
+    // opens. The daily board's bar (the new boards' FilterBar) is above its grid too — asserted on
+    // the daily board's markup in fleet-daily-roster.spec («sits in the same top strip…»).
     for (const [name, source] of [['fixed', CODE]] as const) {
       const strip = source.indexOf('mb-4 flex flex-wrap items-center gap-1.5');
       // The board grid's opening, whatever its gutter: the daily board's is `gap-3` since the
@@ -1631,14 +1631,14 @@ describe('the standing board wears the daily board’s bar', () => {
     );
   });
 
-  it('gives the car picker the same width the daily board gives it', () => {
-    // «تظبط ابعاد الفلاتر» — one width for one control across the pair. Narrowed from `w-56` so
-    // the whole strip holds one line: «حتى لو هتصغر كود السيارة شويه».
+  it('keeps the standing board’s own 160px car picker — the daily one sits in the new boards’ icon box', () => {
+    // «تظبط ابعاد الفلاتر» — one width for one control across the pair, narrowed from `w-56` so
+    // the whole strip holds one line: «حتى لو هتصغر كود السيارة شويه». The pair has parted since:
     const width = (code: string): string | undefined =>
       code.slice(code.indexOf('<VehicleCodeFilter')).match(/className="([^"]+)"/)?.[1];
-    // The daily board's picker sits in the new boards' icon box (`FilterWithIcon`), as on
+    // the daily board's picker sits in the new boards' icon box (`FilterWithIcon`), as on
     // Accidents — «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui» — so the 160px box is
-    // the standing board's own.
+    // the standing board's own, and this screen is unchanged.
     expect(DAILY).toContain('<FilterWithIcon');
     expect(width(CODE)).toContain('w-40');
   });

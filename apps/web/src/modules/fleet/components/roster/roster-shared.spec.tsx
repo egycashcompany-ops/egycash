@@ -2,6 +2,9 @@
 // with `renderToStaticMarkup` for the markup contracts the board specs and the dashboard links
 // read: the employee ids on the rows, the drag source on a free row, the licence block's own
 // marker, and every figure in Latin digits.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -13,7 +16,7 @@ import { authSlice } from '../../../../store/authSlice';
 import { translate } from '../../../../platform/localization/i18n';
 import { type DriverOption, type DriverOptions } from '../../lib/roster-board';
 import { AvailableList, DriverTabs, UnavailableList } from './roster-drivers';
-import { EditsBar, num, slashDate, weekdayOf } from './roster-parts';
+import { EditsBar, num, slashDate, unbrokenName, weekdayOf } from './roster-parts';
 
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
@@ -117,6 +120,55 @@ describe('AvailableList — the pool and the licence block', () => {
     expect(markup.slice(at, at + 200)).toContain('draggable="true"');
     expect(markup, 'the name and the code').toContain('سعيد سعد');
     expect(markup).toContain('11003');
+  });
+
+  it('makes a free driver a drag source and nothing more on the computer — no button, no Tab stop', () => {
+    // No seat is being filled and nobody is chosen first there: a `<button aria-pressed>` would be
+    // a Tab stop per driver, announced as a toggle that does nothing. The keyboard's way onto a
+    // seat is the seat's «+ اختيار سائق».
+    const markup = desk('list');
+    const free = item(markup, `data-driver-card="${E3}"`);
+    expect(free).toContain('draggable="true"');
+    expect(free).not.toContain('<button');
+    expect(markup).not.toContain('aria-pressed');
+    const licence = item(desk('licence'), `data-licence-expired-driver="${E4}"`);
+    expect(licence, 'nor is an unseated flagged driver').not.toContain('<button');
+    expect(licence).toContain('draggable="true"');
+  });
+
+  it('keeps the licence block on a day with nobody available — the vehicles still have their check', () => {
+    const empty: DriverOptions = { free: [], flagged: [], seated: [] };
+    const none = { ...LICENCE, count: 0 };
+    const all = render(
+      <AvailableList
+        options={empty}
+        person={person}
+        onPick={null}
+        licence={none}
+        dayHasDrivers={false}
+        searched={false}
+      />,
+    );
+    expect(all).toContain(t('fleet.roster.availableEmpty'));
+    expect(all).toContain('data-licence-expired-panel="true"');
+    expect(all.indexOf(t('fleet.roster.availableEmpty'))).toBeLessThan(
+      all.indexOf('data-licence-expired-panel'),
+    );
+    expect(all).toContain('data-licence-check="drivers"');
+    const pinned = render(
+      <AvailableList
+        options={empty}
+        person={person}
+        onPick={null}
+        licence={none}
+        dayHasDrivers={false}
+        searched={false}
+        draggable
+        part="licence"
+      />,
+    );
+    expect(pinned).toContain('data-licence-expired-panel="true"');
+    expect(pinned, 'the block alone').not.toContain(t('fleet.roster.availableEmpty'));
   });
 
   it('leaves the licence block out of the list — the computer pins it apart', () => {
@@ -321,5 +373,28 @@ describe('the day and the figures', () => {
   it('writes every figure in Latin digits', () => {
     expect(num(1234)).toBe('1,234');
     expect(num(8)).toBe('8');
+  });
+});
+
+describe('unbrokenName — «عبد» and «أبو» never end a line', () => {
+  const NBSP = '\u00a0';
+  it.each([
+    ['عمرو حسن عبد الله', `عمرو حسن عبد${NBSP}الله`],
+    ['ياسر عبد العزيز سالم', `ياسر عبد${NBSP}العزيز سالم`],
+    ['أبو عبد الله', `أبو${NBSP}عبد${NBSP}الله`],
+    ['عبد الله فتحي زايد', `عبد${NBSP}الله فتحي زايد`],
+    ['  أحمد   محمد ', 'أحمد محمد'],
+    ['عبدالله محمد', 'عبدالله محمد'],
+    ['', ''],
+  ])('«%s»', (name, shown) => {
+    expect(unbrokenName(name)).toBe(shown);
+  });
+
+  it('is what a touch seat prints', () => {
+    const card = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'RosterCarCard.tsx'),
+      'utf8',
+    );
+    expect(card).toContain('{unbrokenName(name)}');
   });
 });

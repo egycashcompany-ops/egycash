@@ -64,6 +64,23 @@ export const weekdayOf = (ymd: string, locale: Locale): string => {
   return (locale === 'en' ? WEEKDAY_EN : WEEKDAY_AR).format(day);
 };
 
+/** The words that belong to the word after them in a name: «عبد الله», «أبو بكر». */
+const BOUND_TO_NEXT: ReadonlySet<string> = new Set(['عبد', 'أبو']);
+
+/**
+ * A name as it may wrap: «عبد» and «أبو» never end a line — they are joined to the next word by a
+ * no-break space, so a narrow seat breaks «عمرو حسن / عبد الله», never «عمرو حسن عبد / الله». The
+ * spaces in between are one plain space each, as the name is read.
+ */
+export const unbrokenName = (name: string): string => {
+  const words = name.trim().split(/\s+/u);
+  return words.reduce(
+    (out, word, at) =>
+      at === 0 ? word : `${out}${BOUND_TO_NEXT.has(words[at - 1] ?? '') ? '\u00a0' : ' '}${word}`,
+    '',
+  );
+};
+
 // ── the past day ────────────────────────────────────────────────────────────────────────────────
 
 /**

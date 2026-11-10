@@ -29,7 +29,7 @@
 // missions and the counter view; the counters keep counting the whole day. One matcher for all of
 // it: `matchesVehicleCode` (Arabic-Indic digits folded, several codes at once).
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { splitVehicleCodeList, type FleetRosterRowDto, type Locale } from '@ecms/contracts';
+import { type FleetRosterRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { cn } from '../../../../shared/lib/cn';
@@ -42,7 +42,9 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { matchesVehicleCode } from '../../lib/vehicle-code-match';
 import {
   SLOT_WORD,
+  filtersHiding,
   shiftDay,
+  touchCars,
   type RosterTouchBoardProps,
   type SeatTarget,
 } from '../../lib/roster-board';
@@ -89,21 +91,15 @@ export const RosterTouchBoard = ({
 
   // ── the car search — this board's own state (see the head of this file) ─────────────────────
   const [carTerm, setCarTerm] = useState('');
-  // A box holding no code at all (empty, spaces, a lone dash) narrows nothing, exactly as
-  // `matchesVehicleCode` reads it.
-  const searching = splitVehicleCodeList(carTerm).length > 0;
+  // What the term finds over what the URL narrows (`touchCars`): the road's cars, the workshop's,
+  // both in the order drawn, and whether the term alone finds a car of the day at all.
+  const { searching, onRoad, inWorkshop, drawn, termFinds } = useMemo(
+    () => touchCars(m.visible, m.shown, carTerm),
+    [m.visible, m.shown, carTerm],
+  );
   // A reason filter is a filter too, and so is a typed code: the red reset stays lit in the sticky
   // row while the term narrows.
   const filtered = m.filtered || searching;
-
-  const visible = useMemo(
-    () => m.visible.filter((row) => matchesVehicleCode(row.code, carTerm)),
-    [m.visible, carTerm],
-  );
-  const onRoad = visible.filter((row) => !row.inMaintenance);
-  const inWorkshop = visible.filter((row) => row.inMaintenance);
-  /** Does the term ALONE find a car of the day? (No → «لا توجد سيارة بهذا الكود».) */
-  const termFinds = !searching || m.shown.some((row) => matchesVehicleCode(row.code, carTerm));
 
   // ── the counters: the model's seven-plus, counting the whole day. On touch a pressed state chip
   // is let go by a second tap (the computer's chip only sets) — as the approved sample.
@@ -121,7 +117,13 @@ export const RosterTouchBoard = ({
 
   // ── what is open ──────────────────────────────────────────────────────────────────────────────
   const [picker, setPicker] = useState<SeatTarget | null>(null);
-  const [tab, setTab] = useState<DriverTab>('available');
+  /**
+   * A link that asks for reasons (the dashboard's «غائبون اليوم» → `?unavailable=hrLeave`) lands on
+   * the list it narrows, as the computer's panel does. Read off the FIRST render: that is the URL
+   * the reader arrived with — a bare arrival gets its remembered filters only after it.
+   */
+  const [arrivedAsking] = useState(() => reasons.length > 0);
+  const [tab, setTab] = useState<DriverTab>(arrivedAsking ? 'unavailable' : 'available');
   const [term, setTerm] = useState('');
   const [missionFor, setMissionFor] = useState<FleetRosterRowDto | null>(null);
   const [notesFor, setNotesFor] = useState<FleetRosterRowDto | null>(null);
@@ -136,6 +138,13 @@ export const RosterTouchBoard = ({
 
   const rowOf = (vehicleId: string): FleetRosterRowDto | undefined =>
     m.shown.find((row) => row.vehicleId === vehicleId);
+
+  // …and on a phone or a portrait tablet the list lives in the drivers sheet, so the link opens it,
+  // once, on arrival (the landscape panel is always in sight). A reason remembered from an earlier
+  // visit opens nothing: it is restored after the first render.
+  useEffect(() => {
+    if (arrivedAsking && layout !== 'landscape') setPoolOpen(true);
+  }, []);
 
   // A target on another day is no target — reset only when the day actually CHANGES.
   const lastDate = useRef(date);
@@ -218,10 +227,13 @@ export const RosterTouchBoard = ({
     },
   };
 
-  /** «كل ما أظهره الفلتر» — the cards on show, the typed code included, in their order. */
+  /**
+   * «كل ما أظهره الفلتر» — the cards on show, the typed code included, in the order DRAWN: the road,
+   * then the workshop's group (folded or not, it is part of what the filter shows).
+   */
   const exportSheet = (): void => {
     try {
-      m.actions.exportSheet(visible);
+      m.actions.exportSheet(drawn);
     } catch (error) {
       toast.error(errorMessage(error, locale));
     }
@@ -242,10 +254,17 @@ export const RosterTouchBoard = ({
     if (m.changed.length > 1) setAskDiscard(true);
     else m.actions.discard();
   };
-  /** An edited car's code in the bar → its card (a term that hides it is cleared first). */
+  /**
+   * An edited car's code in the bar → its card. What hides it is lifted first, and only that: the
+   * typed term, and each URL filter the car fails (`filtersHiding` — with the touch board's live
+   * flags a car filled under «بلا سائق» leaves that view at once).
+   */
   const showCar = (code: string): void => {
     const row = m.shown.find((candidate) => candidate.code === code);
     if (!matchesVehicleCode(code, carTerm)) setCarTerm('');
+    if (row !== undefined && !m.visible.includes(row)) {
+      patch(filtersHiding(row, { search: query.search, missions, view }));
+    }
     if (row?.inMaintenance === true) {
       setWorkshopOpen(true);
       setFoldedFor(null);
@@ -360,9 +379,10 @@ export const RosterTouchBoard = ({
       <CounterChips counters={counters} />
     </div>
   );
+  /** The drivers sheet opens on the list the reasons narrow, when the URL asks for some. */
   const openPool = (): void => {
     setTerm('');
-    setTab('available');
+    setTab(reasons.length > 0 ? 'unavailable' : 'available');
     setPoolOpen(true);
   };
   const editsBar = (shape: 'phone' | 'strip' | 'floating'): JSX.Element => (
@@ -559,7 +579,7 @@ export const RosterTouchBoard = ({
         onToggleMission={(id) => patch({ mission: writeList(toggleValue(missions, id)) })}
         onAllMissions={() => patch({ mission: null })}
         onReset={resetAll}
-        results={visible.length}
+        results={drawn.length}
         filtered={filtered}
       />
       <ConfirmSheet

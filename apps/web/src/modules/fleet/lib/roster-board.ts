@@ -22,6 +22,7 @@
 // what lets the specs render the screen with `renderToStaticMarkup`.
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  splitVehicleCodeList,
   type FleetPersonDto,
   type FleetRosterDayDto,
   type FleetRosterRowDto,
@@ -75,6 +76,7 @@ import {
 } from './roster-view';
 import { useDraftBoard } from './useDraftBoard';
 import { type TouchLayout } from './roster-layout';
+import { matchesVehicleCode } from './vehicle-code-match';
 
 // ── pure pieces (exported for the boards and the specs) ──────────────────────────────────────────
 
@@ -107,45 +109,93 @@ export const shiftDay = (date: string, delta: number): string => {
 /** How far back «تراجع» reaches on one day. */
 export const UNDO_LIMIT = 50;
 
-/** One undo stack per day: the drafts as they were before each edit, newest last. */
-export type UndoStacks = Readonly<Record<string, readonly FleetRosterRowDto[][]>>;
+/**
+ * One day's undo steps (the drafts as they were before each edit, newest last), together with the
+ * server board they were taken over. A step holds WHOLE rows — the server's facts too (the
+ * workshop, the flags) — so it is only good while that board is the day's board: once the server
+ * answers with another one (a realtime refetch, the re-read after a refused save, a stale day
+ * read again), the old steps would put old facts back into the draft. So they lapse — the draft
+ * itself is kept (it is rebuilt over the new board), only its history is gone.
+ */
+export interface UndoDay {
+  base: readonly FleetRosterRowDto[];
+  steps: readonly FleetRosterRowDto[][];
+}
+
+/** One undo history per day. */
+export type UndoStacks = Readonly<Record<string, UndoDay>>;
+
+/** `date`'s steps, if they were taken over `base` — none otherwise. */
+export const undoSteps = (
+  stacks: UndoStacks,
+  date: string,
+  base: readonly FleetRosterRowDto[],
+): readonly FleetRosterRowDto[][] => {
+  const day = stacks[date];
+  return day !== undefined && day.base === base ? day.steps : [];
+};
 
 /** Remember `rows` (the draft before an edit) on `date`'s stack, keeping the newest `UNDO_LIMIT`. */
 export const pushUndo = (
   stacks: UndoStacks,
   date: string,
+  base: readonly FleetRosterRowDto[],
   rows: FleetRosterRowDto[],
 ): UndoStacks => ({
   ...stacks,
-  [date]: [...(stacks[date] ?? []), rows].slice(-UNDO_LIMIT),
+  [date]: { base, steps: [...undoSteps(stacks, date, base), rows].slice(-UNDO_LIMIT) },
 });
 
 /** Take the newest draft off `date`'s stack — `previous` is undefined when there is none. */
 export const popUndo = (
   stacks: UndoStacks,
   date: string,
+  base: readonly FleetRosterRowDto[],
 ): { stacks: UndoStacks; previous: FleetRosterRowDto[] | undefined } => {
-  const stack = stacks[date] ?? [];
-  const previous = stack[stack.length - 1];
+  const steps = undoSteps(stacks, date, base);
+  const previous = steps[steps.length - 1];
   if (previous === undefined) return { stacks, previous: undefined };
-  return { stacks: { ...stacks, [date]: stack.slice(0, -1) }, previous };
+  return { stacks: { ...stacks, [date]: { base, steps: steps.slice(0, -1) } }, previous };
+};
+
+/**
+ * One edit on the draft: the rows after it, or `null` when it changes no fact — a drop on the seat
+ * already held, a car the workshop holds, a note or a dialog saved as it was. Such an edit is not
+ * a step: nothing to undo, nothing to write.
+ */
+export const editStep = (
+  draft: readonly FleetRosterRowDto[],
+  change: (rows: readonly FleetRosterRowDto[]) => FleetRosterRowDto[],
+): FleetRosterRowDto[] | null => {
+  const after = change(draft);
+  return changedRows(draft, after).length === 0 ? null : after;
 };
 
 /**
  * The touch rule (approved): an EDITED row's day flags re-derived from the draft, as the server
  * derives them (R-06) — every other row keeps the server's own flags.
  *
- *   manned     a seat names a driver available on the day
- *   crewGaps   a gap closes once its seat holds an available driver (the server's crewCovered)
- *   stalePlan  stays only while a seat still names an unavailable driver
+ *   manned     a seat names a driver who MANS today: available AND licensed. R-04 counts an
+ *              expired licence as not available even while the rule only flags it — planning
+ *              may still take him, but «nobody counts him as manning a seat today» (the server's
+ *              `reasonOf`), so `mansIds` leaves the licence-flagged out
+ *   crewGaps   a gap closes once its seat holds such a driver (the server's crewCovered)
+ *   stalePlan  stays only while a seat still names a driver who is out (`outIds`: unavailable,
+ *              or the licence expired)
+ *
+ * The draft can only CLOSE what the server reported, never open something new: a gap needs the
+ * car's fixed driver and his reason, and a stale plan needs the fixed crew — the board carries
+ * neither. So emptying the seat of a substitute who covered an absent fixed driver, or picking a
+ * licence-flagged driver into a planned car, is counted once «حفظ» re-reads the day, exactly as
+ * the computer counts every edit.
  */
 export const reflagEdited = (
   rows: readonly FleetRosterRowDto[],
   unsavedIds: ReadonlySet<string>,
-  availableIds: ReadonlySet<string>,
-  unavailableIds: ReadonlySet<string>,
+  mansIds: ReadonlySet<string>,
+  outIds: ReadonlySet<string>,
 ): FleetRosterRowDto[] => {
-  const mans = (id: string | null): boolean => id !== null && availableIds.has(id);
+  const mans = (id: string | null): boolean => id !== null && mansIds.has(id);
   return rows.map((row) => {
     if (!unsavedIds.has(row.vehicleId)) return row;
     const seats = [row.driver1EmployeeId, row.driver2EmployeeId] as const;
@@ -153,10 +203,65 @@ export const reflagEdited = (
       ...row,
       manned: seats.some(mans),
       crewGaps: (row.crewGaps ?? []).filter((gap) => !mans(seats[gap.seat - 1] ?? null)),
-      stalePlan:
-        row.stalePlan === true && seats.some((id) => id !== null && unavailableIds.has(id)),
+      stalePlan: row.stalePlan === true && seats.some((id) => id !== null && outIds.has(id)),
     };
   });
+};
+
+/** What the touch board draws for a typed car code (`touchCars`). */
+export interface TouchCars {
+  /** The box holds at least one code (empty, spaces, a lone dash narrow nothing). */
+  searching: boolean;
+  /** The cars on the road, in the day's order. */
+  onRoad: FleetRosterRowDto[];
+  /** The cars the workshop holds — drawn last, in their own group. */
+  inWorkshop: FleetRosterRowDto[];
+  /** Everything on show, in the order DRAWN: the road, then the workshop (Excel writes this). */
+  drawn: FleetRosterRowDto[];
+  /** Does the term ALONE find a car of the day? No → «لا توجد سيارة بهذا الكود». */
+  termFinds: boolean;
+}
+
+/**
+ * «مينفعش ابحث فى الفون او التابلت ؟» — the touch board's typed car code over what the URL already
+ * narrows (`visible`: the picked codes, the missions, the counter view), ANDed, with one matcher
+ * for all of it (`matchesVehicleCode`: Arabic-Indic digits folded, several codes at once).
+ * `shown` is the whole day, which only says whether the term finds a car at all.
+ */
+export const touchCars = (
+  visible: readonly FleetRosterRowDto[],
+  shown: readonly FleetRosterRowDto[],
+  carTerm: string,
+): TouchCars => {
+  const searching = splitVehicleCodeList(carTerm).length > 0;
+  const matched = visible.filter((row) => matchesVehicleCode(row.code, carTerm));
+  const onRoad = matched.filter((row) => !row.inMaintenance);
+  const inWorkshop = matched.filter((row) => row.inMaintenance);
+  return {
+    searching,
+    onRoad,
+    inWorkshop,
+    drawn: [...onRoad, ...inWorkshop],
+    termFinds: !searching || shown.some((row) => matchesVehicleCode(row.code, carTerm)),
+  };
+};
+
+/**
+ * The URL filters that HIDE `row` from the board, each set to null — an edited car's code in the
+ * unsaved bar brings its car back by lifting only those (the picked codes, the missions, the
+ * counter view; the drivers' reason chips hide no car). Empty when nothing hides it.
+ */
+export const filtersHiding = (
+  row: FleetRosterRowDto,
+  narrowing: { search: string; missions: readonly string[]; view: RosterView | null },
+): Record<string, null> => {
+  const passes = (filter: Parameters<typeof visibleRows>[1]): boolean =>
+    visibleRows([row], filter).length === 1;
+  return {
+    ...(passes({ term: narrowing.search }) ? {} : { q: null }),
+    ...(passes({ missions: narrowing.missions }) ? {} : { mission: null }),
+    ...(passes({ view: narrowing.view }) ? {} : { view: null }),
+  };
 };
 
 // ── the model's shape ────────────────────────────────────────────────────────────────────────────
@@ -376,9 +481,10 @@ export const useRosterBoard = (
   const inFlight = useRef<{ from: FleetRosterRowDto[]; rows: FleetRosterRowDto[] } | null>(null);
   const latest = (): FleetRosterRowDto[] =>
     inFlight.current !== null && inFlight.current.from === draft ? inFlight.current.rows : draft;
-  // Undo: one stack per day, in memory — a reload keeps the draft, not its history.
+  // Undo: one stack per day, in memory — a reload keeps the draft, not its history. The steps are
+  // good only over the board they were taken on (`UndoDay`).
   const [undoStacks, setUndoStacks] = useState<UndoStacks>({});
-  const undoDepth = editable ? (undoStacks[date]?.length ?? 0) : 0;
+  const undoDepth = editable ? undoSteps(undoStacks, date, saved).length : 0;
 
   // What a save would WRITE: edits, plus any operation still only projected from the fixed crew.
   const pending = useMemo(() => rowsToSave(saved, draft), [saved, draft]);
@@ -401,20 +507,32 @@ export const useRosterBoard = (
     return item === undefined ? '—' : localized(item.name, locale);
   };
 
-  const availableIds = useMemo(
-    () => new Set((board?.availableDrivers ?? []).map((driver) => driver.employeeId)),
-    [board],
+  // The licence flag (R-04, Q-01): read here first, because it decides who MANS a seat today.
+  const expired = useMemo(() => expiredLicenceIds(board), [board]);
+  /** Who mans a seat today, as the server counts it: available, and the licence not expired. */
+  const mansIds = useMemo(
+    () =>
+      new Set(
+        (board?.availableDrivers ?? [])
+          .map((driver) => driver.employeeId)
+          .filter((employeeId) => !expired.has(employeeId)),
+      ),
+    [board, expired],
   );
-  const unavailableIds = useMemo(
-    () => new Set((board?.unavailableDrivers ?? []).map((driver) => driver.employeeId)),
-    [board],
+  /** Who is OUT today: unavailable, or available with an expired licence. */
+  const outIds = useMemo(
+    () =>
+      new Set([
+        ...(board?.unavailableDrivers ?? []).map((driver) => driver.employeeId),
+        ...expired,
+      ]),
+    [board, expired],
   );
   /** A past day shows the SERVER's board, never a draft that outlived midnight. */
   const plain = editable ? draft : saved;
   const shown = useMemo(
-    () =>
-      liveFlags && editable ? reflagEdited(plain, unsavedIds, availableIds, unavailableIds) : plain,
-    [liveFlags, editable, plain, unsavedIds, availableIds, unavailableIds],
+    () => (liveFlags && editable ? reflagEdited(plain, unsavedIds, mansIds, outIds) : plain),
+    [liveFlags, editable, plain, unsavedIds, mansIds, outIds],
   );
   // DISPLAY ONLY: the draft, the counters, the pool and the payload read the whole day.
   const visible = useMemo(
@@ -576,7 +694,7 @@ export const useRosterBoard = (
   // A driver whose licence has expired is not counted «available today»: the list and its count
   // leave him out, and «منهم رخصة منتهية N» lists every such driver of the day, seated or not. While
   // the rule only flags he stays in `pool`, so the pickers and the drag rules still offer him.
-  const expired = useMemo(() => expiredLicenceIds(board), [board]);
+  // (`expired` is read above, with who mans a seat.)
   const poolLicensed = useMemo(() => withoutExpiredLicence(pool, expired), [pool, expired]);
   const flagged = useMemo(
     () => (board?.availableDrivers ?? []).filter((driver) => driver.licence === 'expired'),
@@ -694,15 +812,14 @@ export const useRosterBoard = (
     (change: (rows: readonly FleetRosterRowDto[]) => FleetRosterRowDto[]): void => {
       if (!mayPlan) return;
       const before = latest();
-      const after = change(before);
-      // An edit that changes no fact — a drop on the seat already held, a car the workshop holds,
-      // a note or a dialog saved as it was — is not a step: nothing to undo, nothing to write.
-      if (changedRows(before, after).length === 0) return;
+      // An edit that changes no fact is not a step (`editStep` → null).
+      const after = editStep(before, change);
+      if (after === null) return;
       inFlight.current = { from: draft, rows: after };
-      setUndoStacks((all) => pushUndo(all, date, before));
+      setUndoStacks((all) => pushUndo(all, date, saved, before));
       setDraft(() => after);
     },
-    [mayPlan, date, draft, setDraft],
+    [mayPlan, date, saved, draft, setDraft],
   );
 
   const assign = (target: SeatTarget, employeeId: string): void =>
@@ -742,14 +859,18 @@ export const useRosterBoard = (
     );
   /** «تراجع» — the draft as it was before the last edit. */
   const undo = (): void => {
-    const { previous } = popUndo(undoStacks, date);
+    if (!editable) return;
+    const { previous } = popUndo(undoStacks, date, saved);
     if (previous === undefined) return;
     inFlight.current = { from: draft, rows: previous };
-    setUndoStacks((all) => popUndo(all, date).stacks);
+    setUndoStacks((all) => popUndo(all, date, saved).stacks);
     setDraft(() => previous);
   };
+  /** The day's history goes with its draft: «إلغاء», and a stored save. */
+  const forgetSteps = (): void =>
+    setUndoStacks((all) => ({ ...all, [date]: { base: saved, steps: [] } }));
   const discardEdits = (): void => {
-    setUndoStacks((all) => ({ ...all, [date]: [] }));
+    forgetSteps();
     discard();
   };
 
@@ -770,7 +891,7 @@ export const useRosterBoard = (
       // («تغييرات غير محفوظة» still up). So the save drops it in memory too: the server's answer IS
       // the day now.
       discard();
-      setUndoStacks((all) => ({ ...all, [date]: [] }));
+      forgetSteps();
       toast.success(t('fleet.roster.saved'));
       return true;
     } catch (error) {

@@ -156,11 +156,14 @@ export const DeskDayStepper = ({
             </span>
           )}
         </button>
+        {/* Out of the Tab order (the button above is the stop) but NAMED, not hidden: both the
+            button and the calendar move the focus here before the picker opens, so the keyboard
+            and a screen reader land on «التاريخ» — and a date can still be typed. */}
         <input
           ref={input}
           type="date"
           tabIndex={-1}
-          aria-hidden="true"
+          aria-label={t('fleet.roster.date')}
           value={date}
           onChange={(event) => {
             if (event.target.value !== '') onPick(event.target.value);
@@ -252,8 +255,8 @@ const LIST_SCROLL = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
  * pinned under the available list (a `max-h-[45%]` footer), so it is in sight on arrival however
  * long the list above it is.
  *
- * ONE search box, but each list keeps its OWN term — a name typed to find somebody available is
- * not a filter on who is out, and switching tabs shows the other list's own term.
+ * Each list keeps its OWN search term — a name typed to find somebody available is not a filter
+ * on who is out, and switching tabs shows the other list's own box with its own term.
  */
 export const DriversPanel = ({
   m,
@@ -295,10 +298,14 @@ export const DriversPanel = ({
             panelIds={panelIds}
           />
         </div>
-        <DriverSearch
-          value={tab === 'available' ? availableSearch : unavailableSearch}
-          onChange={tab === 'available' ? setAvailableSearch : setUnavailableSearch}
-        />
+        {/* One box per list, the other one hidden rather than unmounted: the box reports what is
+            typed a moment later, and a tab switched in that moment must not lose the last keys. */}
+        <div hidden={tab !== 'available'}>
+          <DriverSearch value={availableSearch} onChange={setAvailableSearch} />
+        </div>
+        <div hidden={tab !== 'unavailable'}>
+          <DriverSearch value={unavailableSearch} onChange={setUnavailableSearch} />
+        </div>
       </div>
       <div
         role="tabpanel"
@@ -341,7 +348,7 @@ export const DriversPanel = ({
       </div>
       {/* The licence block belongs to the available tab and is pinned under its list: a child of
           the panel itself, so its `max-h-[45%]` is the panel's, as the board always sized it. */}
-      {m.licence !== null && m.dayHasDrivers && (
+      {m.licence !== null && (
         <div
           data-licence-footer="true"
           hidden={tab !== 'available'}

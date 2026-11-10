@@ -13,7 +13,7 @@
 // The markup hooks the specs and the dashboard links read are the employee ids: a free row
 // `data-driver-card`, a licence-block row `data-licence-expired-driver`, an unavailable row
 // `data-unavailable-driver`, the block itself `data-licence-expired-panel`.
-import { type ReactNode } from 'react';
+import { type DragEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { type FleetPersonDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -311,7 +311,8 @@ export const AvailableList = ({
         hoverCard={hoverCard}
       />
     );
-    if (look || (tap === null && !(draggable && !seated))) {
+    const dragSource = draggable && !seated;
+    if (look || (tap === null && !dragSource)) {
       return (
         <li
           key={option.employeeId}
@@ -326,6 +327,41 @@ export const AvailableList = ({
         </li>
       );
     }
+    const drag = {
+      onDragStart: (event: DragEvent<HTMLElement>) => {
+        event.dataTransfer.setData(DRAG_TYPE, option.employeeId);
+        event.dataTransfer.effectAllowed = 'move';
+        onDragDriver?.(option.employeeId);
+      },
+      onDragEnd: () => onDragDriver?.(null),
+    };
+    const rowLook = cn(
+      'flex min-h-14 w-full items-center gap-3 px-4 py-2 text-start transition-colors',
+      pending
+        ? 'bg-brand-50 shadow-[inset_3px_0_0_0] shadow-brand-600 dark:bg-brand-950/50 dark:shadow-brand-400'
+        : 'hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none active:bg-slate-100 dark:hover:bg-slate-800/60 dark:focus-visible:bg-slate-800/60 dark:active:bg-slate-800',
+      dragSource && 'cursor-grab active:cursor-grabbing',
+    );
+    // A drag source and nothing else (the computer's panel: no seat is being filled, no driver is
+    // chosen first): the drag is its one use, so it is no button — no Tab stop announced as a
+    // toggle that does nothing. The keyboard's way onto a seat is the seat's «+ اختيار سائق».
+    if (tap === null) {
+      return (
+        <li key={option.employeeId} {...homeProps}>
+          <div
+            data-pick-driver={code}
+            data-driver-state={option.state}
+            data-driver-card={card}
+            draggable
+            {...drag}
+            className={rowLook}
+          >
+            {face}
+            {badge}
+          </div>
+        </li>
+      );
+    }
     return (
       <li key={option.employeeId} {...homeProps}>
         <button
@@ -335,21 +371,10 @@ export const AvailableList = ({
           data-pending={pending ? 'true' : undefined}
           aria-pressed={onPick === null ? pending : undefined}
           data-driver-card={card}
-          draggable={draggable && !seated}
-          onDragStart={(event) => {
-            event.dataTransfer.setData(DRAG_TYPE, option.employeeId);
-            event.dataTransfer.effectAllowed = 'move';
-            onDragDriver?.(option.employeeId);
-          }}
-          onDragEnd={() => onDragDriver?.(null)}
-          onClick={() => tap?.()}
-          className={cn(
-            'flex min-h-14 w-full items-center gap-3 px-4 py-2 text-start transition-colors',
-            pending
-              ? 'bg-brand-50 shadow-[inset_3px_0_0_0] shadow-brand-600 dark:bg-brand-950/50 dark:shadow-brand-400'
-              : 'hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none active:bg-slate-100 dark:hover:bg-slate-800/60 dark:focus-visible:bg-slate-800/60 dark:active:bg-slate-800',
-            draggable && !seated && 'cursor-grab active:cursor-grabbing',
-          )}
+          draggable={dragSource}
+          {...drag}
+          onClick={() => tap()}
+          className={rowLook}
         >
           {face}
           {badge}
@@ -375,18 +400,6 @@ export const AvailableList = ({
         </button>
       </div>
     );
-  if (!dayHasDrivers) {
-    if (part === 'licence') return null;
-    return (
-      <div>
-        {occupantRow}
-        <p className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          {t('fleet.roster.availableEmpty')}
-        </p>
-      </div>
-    );
-  }
-  const nothing = options.free.length + options.flagged.length + options.seated.length === 0;
   const linkClass =
     'inline-flex min-h-11 items-center text-sm font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200';
   const licenceBlock =
@@ -422,6 +435,20 @@ export const AvailableList = ({
       </div>
     );
   if (part === 'licence') return licenceBlock;
+  // A day with nobody available still has its licence check: the expired-licence vehicles are a
+  // fact about the cars, and the block says so under «لا يوجد سائقون متاحون», as the board always did.
+  if (!dayHasDrivers) {
+    return (
+      <div>
+        {occupantRow}
+        <p className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+          {t('fleet.roster.availableEmpty')}
+        </p>
+        {part === 'all' && licenceBlock}
+      </div>
+    );
+  }
+  const nothing = options.free.length + options.flagged.length + options.seated.length === 0;
   // The free list empty: the day has no free licensed driver left («لا يوجد سائقون متاحون في هذا
   // التاريخ»), or the term found nobody — said where the list would be (on touch only when the term
   // found nobody anywhere; on the computer's list, whose licence block is pinned apart, as the

@@ -20,6 +20,7 @@ import { translate } from '../../platform/localization/i18n';
 import { RosterScreen } from './pages/RosterPage';
 import { type TouchLayout } from './lib/roster-layout';
 import { matchesVehicleCode } from './lib/vehicle-code-match';
+import { touchCars } from './lib/roster-board';
 import { rosterSource } from './roster-spec-sources';
 
 const V1 = '650000000000000000000001';
@@ -59,7 +60,11 @@ const row = (
  * 150: both seats filled, its operation still only PROJECTED from the fixed crew (the day is
  * saveable on arrival). 151: in the workshop. 410: stored, its driver out on leave today.
  */
-const board = (date: string, stored = false): FleetRosterDayDto => ({
+const board = (
+  date: string,
+  stored = false,
+  workshopNote: string | null = null,
+): FleetRosterDayDto => ({
   date: `${date}T00:00:00.000Z`,
   rows: [
     row(V1, '150', {
@@ -68,7 +73,7 @@ const board = (date: string, stored = false): FleetRosterDayDto => ({
       driver2EmployeeId: E4,
       planned: stored,
     }),
-    row(V2, '151', { inMaintenance: true, planned: stored }),
+    row(V2, '151', { inMaintenance: true, planned: stored, notes: workshopNote }),
     row(V3, '410', { driver1EmployeeId: E2, planned: true }),
   ],
   availableDrivers: [
@@ -79,9 +84,9 @@ const board = (date: string, stored = false): FleetRosterDayDto => ({
   unavailableDrivers: [{ employeeId: E2, reason: 'hrLeave' }],
 });
 
-const client = (date: string, stored = false): QueryClient => {
+const client = (date: string, stored = false, workshopNote: string | null = null): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(['fleet', 'roster', 'day', date], board(date, stored));
+  qc.setQueryData(['fleet', 'roster', 'day', date], board(date, stored, workshopNote));
   qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
     items: [
       {
@@ -140,10 +145,11 @@ const render = ({
   date = day(1),
   query = '',
   stored = false,
+  workshopNote = null as string | null,
 } = {}): string =>
   renderToStaticMarkup(
     <Provider store={store(permissions)}>
-      <QueryClientProvider client={client(date, stored)}>
+      <QueryClientProvider client={client(date, stored, workshopNote)}>
         <MemoryRouter initialEntries={[`/fleet/roster?date=${date}${query}`]}>
           <RosterScreen layout={layout} />
         </MemoryRouter>
@@ -225,17 +231,89 @@ describe('the car-code search («مينفعش ابحث فى الفون او ال
 
 // ── 3–4. what the term finds, and where it lives ────────────────────────────────────────────
 
-describe('the term is matched as the funnel’s codes are, and kept on the board alone', () => {
-  it('goes through matchesVehicleCode, ANDed with what the URL narrows', () => {
-    expect(TOUCH).toContain('m.visible.filter((row) => matchesVehicleCode(row.code, carTerm))');
+describe('touchCars — what the typed code shows on the cards', () => {
+  // The day: four cars on the road, 410 in the workshop.
+  const DAY_ROWS = [
+    row('v120', '120'),
+    row('v133', '133'),
+    row('v410', '410', { inMaintenance: true }),
+    row('v489', '489'),
+    row('vmg2', 'MG 2'),
+  ];
+  const codes = (rows: readonly { code: string }[]): string[] => rows.map((r) => r.code);
+
+  it.each([
+    ['١٢٠', ['120']],
+    ['120 133', ['120', '133']],
+    ['120 - 489', ['120', '489']],
+    ['MG 2', ['MG 2']],
+  ])('«%s» narrows the road’s cards to %j', (term, found) => {
+    const cars = touchCars(DAY_ROWS, DAY_ROWS, term);
+    expect(cars.searching).toBe(true);
+    expect(codes(cars.onRoad)).toEqual(found);
+    expect(cars.inWorkshop).toEqual([]);
+    expect(cars.termFinds).toBe(true);
   });
 
+  it.each(['', '  ', '-'])('«%s» narrows nothing', (term) => {
+    const cars = touchCars(DAY_ROWS, DAY_ROWS, term);
+    expect(cars.searching).toBe(false);
+    expect(codes(cars.onRoad)).toEqual(['120', '133', '489', 'MG 2']);
+    expect(codes(cars.inWorkshop)).toEqual(['410']);
+  });
+
+  it('is ANDed with what the URL narrows (a counter view, the picked codes, the missions)', () => {
+    const viewed = DAY_ROWS.filter((r) => r.code === '133' || r.code === '489');
+    expect(codes(touchCars(viewed, DAY_ROWS, '120 133').onRoad)).toEqual(['133']);
+  });
+
+  it('finds a car the filters hide → the filters’ line, not «no car with this code»', () => {
+    const viewed = DAY_ROWS.filter((r) => r.code === '489');
+    const cars = touchCars(viewed, DAY_ROWS, '120');
+    expect([...cars.onRoad, ...cars.inWorkshop]).toEqual([]);
+    expect(cars.termFinds, 'the day has a 120').toBe(true);
+  });
+
+  it('finds no car at all → «لا توجد سيارة بهذا الكود»', () => {
+    const cars = touchCars(DAY_ROWS, DAY_ROWS, '999');
+    expect(cars.drawn).toEqual([]);
+    expect(cars.termFinds).toBe(false);
+  });
+
+  it('finds a workshop car into the workshop group alone', () => {
+    const cars = touchCars(DAY_ROWS, DAY_ROWS, '41');
+    expect(cars.onRoad).toEqual([]);
+    expect(codes(cars.inWorkshop)).toEqual(['410']);
+  });
+
+  it('draws — and writes to Excel — the road first, then the workshop', () => {
+    expect(codes(touchCars(DAY_ROWS, DAY_ROWS, '').drawn)).toEqual([
+      '120',
+      '133',
+      '489',
+      'MG 2',
+      '410',
+    ]);
+  });
+
+  it('is what the board draws, exports, and lets go of with the red reset', () => {
+    expect(TOUCH).toContain('touchCars(m.visible, m.shown, carTerm)');
+    expect(TOUCH).toContain('m.actions.exportSheet(drawn)');
+    const reset = TOUCH.slice(TOUCH.indexOf('const resetAll = ()'));
+    expect(reset.indexOf("setCarTerm('')"), 'the typed code goes too').toBeGreaterThan(-1);
+    expect(reset.indexOf("setCarTerm('')")).toBeLessThan(reset.indexOf('resetFilters()'));
+  });
+});
+
+describe('the term is matched as the funnel’s codes are, and kept on the board alone', () => {
+  // «120،133» (an Arabic comma between two codes) finds nothing today: the shared parser
+  // `splitVehicleCodeList` (packages/contracts) does not split on «،». That is a known limit of
+  // the parser, handed off — not a requirement, so it is not pinned here.
   it.each([
     ['١٢٠', ['120']],
     ['41', ['410']],
     ['120 133', ['120', '133']],
     ['120 - 489', ['120', '489']],
-    ['120،133', []],
     ['MG 2', ['MG 2']],
     ['', ['120', '133', '410', '489', 'MG 2']],
     ['  ', ['120', '133', '410', '489', 'MG 2']],
@@ -296,6 +374,31 @@ describe('the unsaved bar at the screen’s foot', () => {
     expect(render({ stored: true })).not.toContain('data-edits-bar');
   });
 
+  it.each(['phone', 'portrait', 'landscape'] as const)(
+    '%s: a reader who only looks, on a day still plannable, gets no planning control',
+    (layout) => {
+      for (const date of [day(0), day(1)]) {
+        const html = render({
+          layout,
+          date,
+          permissions: ['fleetRoster.view', 'fleetDriver.view'],
+        });
+        for (const marker of [
+          'data-clear-slot',
+          'data-swap-drivers',
+          'data-card-menu',
+          'data-edits-bar',
+          'draggable="true"',
+          'data-mission="',
+        ]) {
+          expect(html, `${layout} ${date}: ${marker}`).not.toContain(marker);
+        }
+        expect(html).not.toContain(t('fleet.roster.pickDriver'));
+        expect(html, 'nor is the day called over').not.toContain('data-readonly-day');
+      }
+    },
+  );
+
   it('a past day is read, never planned', () => {
     const html = render({ layout: 'portrait', date: day(-1) });
     expect(html).toContain('data-readonly-day="true"');
@@ -329,5 +432,56 @@ describe('one card per car', () => {
     const card = html.slice(html.indexOf('data-car="410"'));
     expect(card).toContain('data-driver-out="hrLeave"');
     expect(card).toContain(t('fleet.roster.reason.hrLeave'));
+  });
+});
+
+// ── 10. the dashboard's «غائبون اليوم» link, and a workshop car's note ──────────────────────
+
+describe('a link that asks for the absent (`?unavailable=`) lands on the absent list', () => {
+  it('landscape: the panel opens on «غير المتاحين», narrowed to the reason', () => {
+    const html = render({ layout: 'landscape', query: '&unavailable=hrLeave' });
+    expect(tagOf(html, 'data-driver-tab="unavailable"')).toContain('aria-selected="true"');
+    expect(tagOf(html, 'data-driver-tab="available"')).toContain('aria-selected="false"');
+    expect(html).toContain(`data-unavailable-driver="${E2}"`);
+    expect(tagOf(html, 'data-reason-filter="hrLeave"')).toContain('aria-pressed="true"');
+  });
+
+  it('landscape without the key: the available list, as before', () => {
+    const html = render({ layout: 'landscape' });
+    expect(tagOf(html, 'data-driver-tab="available"')).toContain('aria-selected="true"');
+  });
+
+  it('phone and portrait: the drivers sheet opens once on arrival, on that list', () => {
+    expect(TOUCH).toContain('const [arrivedAsking] = useState(() => reasons.length > 0);');
+    expect(TOUCH).toContain("useState<DriverTab>(arrivedAsking ? 'unavailable' : 'available')");
+    expect(TOUCH).toContain("if (arrivedAsking && layout !== 'landscape') setPoolOpen(true);");
+    // The drivers button opens the narrowed list too while the URL holds reasons.
+    const pool = TOUCH.slice(TOUCH.indexOf('const openPool = ()'));
+    expect(pool.slice(0, 200)).toContain(
+      "setTab(reasons.length > 0 ? 'unavailable' : 'available')",
+    );
+  });
+});
+
+describe('a car the workshop holds keeps its note legible', () => {
+  it('shows the note, read-only, on the compact workshop card', () => {
+    const html = render({ layout: 'phone', query: '&view=workshop', workshopNote: 'تغيير زيت' });
+    const card = html.slice(html.indexOf('data-car="151"'));
+    const end = card.indexOf('</article>');
+    expect(card.slice(0, end)).toContain('data-notes="151"');
+    expect(card.slice(0, end)).toContain('تغيير زيت');
+    expect(card.slice(0, end), 'not an edit button').not.toContain('data-notes-edit');
+  });
+});
+
+describe('a seat on a touch card clears with ✕', () => {
+  // «… بس خليهم علامه سله» — the owner's bin is the COMPUTER's remove mark. The touch seat's ✕
+  // comes from the approved P1 / TL2 shots («انا برشح دول»), and is an open question to the owner
+  // (touch ✕ against the bin he asked for on the computer). Pinned, so either answer is a
+  // deliberate change here, not a silent drift.
+  it('uses CloseIcon on the seat’s clear button', () => {
+    const card = rosterSource(['touch']);
+    const clear = card.slice(card.indexOf('data-clear-slot='));
+    expect(clear.slice(0, 600)).toContain('<CloseIcon');
   });
 });

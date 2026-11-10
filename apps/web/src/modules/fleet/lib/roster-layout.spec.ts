@@ -8,26 +8,40 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { rosterSource } from '../roster-spec-sources';
 import {
   ROSTER_BREAKPOINTS,
+  layoutSnapshot,
   rosterLayoutFor,
+  subscribeLayout,
   useRosterLayout,
   viewportLayout,
 } from './roster-layout';
 
-/** A window whose `matchMedia` answers `(min-width: Npx)` / `(min-height: Npx)` for this size. */
-const viewport = (width: number, height: number): void => {
+/** What a stubbed media query was asked to listen with, query by query. */
+interface Listening {
+  added: string[];
+  removed: string[];
+}
+
+/**
+ * A window whose `matchMedia` answers `(min-width: Npx)` / `(min-height: Npx)` for this size, and
+ * writes down every change listener added and removed.
+ */
+const viewport = (width: number, height: number): Listening => {
+  const listening: Listening = { added: [], removed: [] };
   vi.stubGlobal('window', {
     matchMedia: (query: string) => {
       const found = /\((min-width|min-height): (\d+)px\)/u.exec(query);
       const side = found?.[1] === 'min-height' ? height : width;
       return {
         matches: found !== null && side >= Number(found[2]),
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
+        addEventListener: (type: string) => listening.added.push(`${type} ${query}`),
+        removeEventListener: (type: string) => listening.removed.push(`${type} ${query}`),
       };
     },
   });
+  return listening;
 };
 
 afterEach(() => {
@@ -93,5 +107,58 @@ describe('useRosterLayout — read during render', () => {
   it('renders the computer’s board where there is no window — what every roster spec renders', () => {
     const markup = renderToStaticMarkup(createElement(Probe));
     expect(markup).toBe('<i data-layout="desktop" data-short="false"></i>');
+  });
+});
+
+describe('the browser half of the hook — the snapshot and the subscription it is read through', () => {
+  it('answers ONE string per layout, «:short» for a short touch screen', () => {
+    viewport(390, 844);
+    expect(layoutSnapshot()).toBe('phone');
+    viewport(844, 390);
+    expect(layoutSnapshot(), 'a phone held sideways').toBe('portrait:short');
+    viewport(1180, 820);
+    expect(layoutSnapshot()).toBe('landscape');
+    viewport(1536, 864);
+    expect(layoutSnapshot()).toBe('desktop');
+  });
+
+  it('listens to the four media queries for a change, and stops listening when asked', () => {
+    const listening = viewport(820, 1180);
+    const stop = subscribeLayout(() => undefined);
+    expect(listening.added).toHaveLength(4);
+    expect(listening.added.every((entry) => entry.startsWith('change '))).toBe(true);
+    expect(listening.removed).toEqual([]);
+    stop();
+    expect([...listening.removed].sort()).toEqual([...listening.added].sort());
+  });
+
+  it('is what the hook reads in the browser — the computer’s board only without a window', () => {
+    const model = rosterSource(['model']);
+    expect(model).toContain(
+      'useSyncExternalStore(subscribeLayout, layoutSnapshot, serverSnapshot)',
+    );
+  });
+});
+
+describe('the page shell draws the board the viewport asks for, over ONE model', () => {
+  const SHELL = rosterSource(['shell']);
+
+  it('reads the layout once and hands it to the screen', () => {
+    expect(SHELL).toContain('const { layout, short } = useRosterLayout();');
+    expect(SHELL).toContain('<RosterScreen layout={layout} short={short} />');
+  });
+
+  it('re-flags the draft live on touch only — the computer keeps the server’s flags until «حفظ»', () => {
+    expect(SHELL).toContain("useRosterBoard(query, { liveFlags: layout !== 'desktop' })");
+  });
+
+  it('holds the model ABOVE the choice of board, so turning a tablet keeps the draft and its undo', () => {
+    const model = SHELL.indexOf('useRosterBoard(');
+    const choice = SHELL.indexOf("if (layout === 'desktop')");
+    expect(model).toBeGreaterThan(-1);
+    expect(choice).toBeGreaterThan(model);
+    expect(SHELL.slice(choice)).toContain('<RosterDeskBoard');
+    expect(SHELL.slice(choice)).toContain('<RosterTouchBoard');
+    expect(SHELL.slice(choice)).toContain('layout={layout}');
   });
 });

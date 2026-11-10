@@ -27,6 +27,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
+import { rosterDayFromSave } from './api/fleet-queries';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 import { rosterSource } from './roster-spec-sources';
 
@@ -240,9 +241,10 @@ describe('the three rule views — where the dashboard’s links land', () => {
     const markup = render();
     expect(chip(markup, 'ready')).toContain(t('fleet.roster.counter.ready'));
     // Latin digits, as the approved computer board prints every figure («اعتمد» on D1).
-    expect(chip(markup, 'ready'), '150, 151, 152 and 155').toContain('4');
-    expect(chip(markup, 'unmanned'), '151, 152, 155').toContain('3');
-    expect(chip(markup, 'crewGap'), 'only the absence').toContain('1');
+    // The figure itself, between its tags — a bare digit would also match the chip's class names.
+    expect(chip(markup, 'ready'), '150, 151, 152 and 155').toContain('>4<');
+    expect(chip(markup, 'unmanned'), '151, 152, 155').toContain('>3<');
+    expect(chip(markup, 'crewGap'), 'only the absence').toContain('>1<');
   });
 
   it('view=ready shows the cars the server marked assignable', () => {
@@ -371,16 +373,34 @@ describe('the available panel — «منهم رخصة منتهية N»', () => {
   it('stays gone after «حفظ» — the saved day keeps the rule it was derived under', () => {
     // The save writes the server's answer into the day's cache. Written without `licenceRule`,
     // the board read the rule as «not refuse» and drew the block again until the next refetch.
+    const answer = { ...REFUSE_BOARD, changedCount: 3 };
+    const cached = rosterDayFromSave(answer);
+    expect(cached.licenceRule, 'refuse stays refuse').toBe('refuse');
+    expect(rosterDayFromSave(FLAG_BOARD).licenceRule).toBe('flag');
+    const older: FleetRosterDayDto = {
+      date: REFUSE_BOARD.date,
+      rows: REFUSE_BOARD.rows,
+      availableDrivers: REFUSE_BOARD.availableDrivers,
+      unavailableDrivers: REFUSE_BOARD.unavailableDrivers,
+    };
+    expect('licenceRule' in rosterDayFromSave(older), 'an answer without it stays without').toBe(
+      false,
+    );
+    expect('changedCount' in cached, 'the day, and nothing else').toBe(false);
+    expect(render('', cached), 'and the saved day draws no block').not.toContain(
+      'data-licence-expired-panel="true"',
+    );
+    // …and it IS what the save writes into the day's cache.
     const queries = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'api/fleet-queries.ts'),
       'utf8',
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const save = queries.slice(queries.indexOf('export const usePlanRoster'));
+    expect(save.slice(0, save.indexOf('onError:'))).toContain(
+      'qc.setQueryData(rosterDayKey(dateKey), rosterDayFromSave(board));',
     );
-    const save = queries.slice(
-      queries.indexOf('export const usePlanRoster'),
-      queries.indexOf('onError:', queries.indexOf('export const usePlanRoster')),
-    );
-    expect(save).toContain('licenceRule: board.licenceRule');
-    expect(render('', REFUSE_BOARD)).not.toContain('data-licence-expired-panel="true"');
   });
 });
 

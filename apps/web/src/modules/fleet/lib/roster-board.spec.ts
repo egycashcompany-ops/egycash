@@ -24,14 +24,19 @@ import { translate } from '../../../platform/localization/i18n';
 import { offendersIn } from '../../../../../../scripts/check-formal-arabic.mjs';
 import { isUnmanned, missionTone } from './roster-view';
 import { rosterDraftKey } from './draft-storage';
+import { applyEdit } from './daily-roster-board';
+import { rosterSource } from '../roster-spec-sources';
 import {
   KNOWN_REASONS,
   SLOT_WORD,
   UNDO_LIMIT,
+  editStep,
+  filtersHiding,
   popUndo,
   pushUndo,
   reflagEdited,
   shiftDay,
+  undoSteps,
   useRosterBoard,
   type RosterBoardModel,
   type RosterQuery,
@@ -261,8 +266,11 @@ const t = (key: string, params?: Record<string, string | number>): string =>
 // ── 1. the pure pieces ───────────────────────────────────────────────────────────────────────────
 
 describe('reflagEdited — the touch rule: edited rows follow the draft', () => {
-  const available = new Set([E1, E3, E4, E5]);
-  const unavailable = new Set([E2, E6]);
+  // Who MANS a seat today, as the server's `reasonOf` counts it: available AND licensed — E4 and E5
+  // are available with an expired licence (flag mode), so they man nothing. Who is OUT: the
+  // unavailable, and the licence-flagged.
+  const available = new Set([E1, E3]);
+  const unavailable = new Set([E2, E6, E4, E5]);
 
   it('re-derives manned, the crew gap and the stale plan for an EDITED row', () => {
     const edited = {
@@ -306,45 +314,198 @@ describe('reflagEdited — the touch rule: edited rows follow the draft', () => 
     ];
     expect(before.filter(isUnmanned)).toHaveLength(3);
     const draft = before.map((r) =>
-      r.vehicleId === V5 ? r : { ...r, driver1EmployeeId: r.vehicleId === V3 ? E3 : E4 },
+      r.vehicleId === V5 ? r : { ...r, driver1EmployeeId: r.vehicleId === V3 ? E3 : E1 },
     );
     const after = reflagEdited(draft, new Set([V3, V4]), available, unavailable);
     expect(after.filter(isUnmanned).map((r) => r.code)).toEqual(['154']);
   });
+
+  it('counts a licence-flagged driver as manning NOTHING — as the server does after «حفظ»', () => {
+    const edited = {
+      ...row(V3, '152', {
+        assignable: true,
+        manned: false,
+        crewGaps: [{ seat: 1 as const, employeeId: E2, reason: 'hrLeave' }],
+        stalePlan: true,
+        planned: true,
+      }),
+      driver1EmployeeId: E4,
+    };
+    const [after] = reflagEdited([edited], new Set([V3]), available, unavailable);
+    expect(after?.manned, 'planning took him; nobody counts him as manning it').toBe(false);
+    expect(after && isUnmanned(after), '«بلا سائق» keeps the car').toBe(true);
+    expect(after?.crewGaps, 'the absent fixed driver’s gap stays open').toEqual([
+      { seat: 1, employeeId: E2, reason: 'hrLeave' },
+    ]);
+    expect(after?.stalePlan, 'a seat still names a driver who is out today').toBe(true);
+  });
+
+  it('only CLOSES what the server reported — an emptied seat opens no gap before «حفظ»', () => {
+    // The board carries neither the fixed crew nor its reasons, so a gap cannot be drawn up here.
+    const covered = row(V3, '152', {
+      assignable: true,
+      manned: true,
+      crewCovered: 1,
+      crewGaps: [],
+    });
+    const [after] = reflagEdited([covered], new Set([V3]), available, unavailable);
+    expect(after?.manned).toBe(false);
+    expect(after?.crewGaps).toEqual([]);
+    expect(after?.stalePlan).toBe(false);
+  });
 });
 
-describe('the undo stacks — one per day, newest last', () => {
+describe('the undo stacks — one per day, newest last, good only over their board', () => {
   const snapshot = (code: string): FleetRosterRowDto[] => [row(V1, code)];
+  /** The server's board the steps are taken over — compared by identity, as the model does. */
+  const BASE = BOARD.rows;
 
   it('takes back the LAST edit only — last in, first out', () => {
     let stacks: UndoStacks = {};
-    stacks = pushUndo(stacks, DAY, snapshot('a'));
-    stacks = pushUndo(stacks, DAY, snapshot('b'));
-    const first = popUndo(stacks, DAY);
+    stacks = pushUndo(stacks, DAY, BASE, snapshot('a'));
+    stacks = pushUndo(stacks, DAY, BASE, snapshot('b'));
+    const first = popUndo(stacks, DAY, BASE);
     expect(first.previous?.[0]?.code).toBe('b');
-    const second = popUndo(first.stacks, DAY);
+    expect(undoSteps(first.stacks, DAY, BASE), 'exactly one step left').toHaveLength(1);
+    const second = popUndo(first.stacks, DAY, BASE);
     expect(second.previous?.[0]?.code).toBe('a');
-    const none = popUndo(second.stacks, DAY);
+    const none = popUndo(second.stacks, DAY, BASE);
     expect(none.previous, 'nothing left to undo').toBeUndefined();
     expect(none.stacks, 'and nothing changes').toBe(second.stacks);
   });
 
   it(`keeps at most ${String(UNDO_LIMIT)} steps, dropping the oldest`, () => {
     let stacks: UndoStacks = {};
-    for (let i = 0; i < UNDO_LIMIT + 10; i += 1) stacks = pushUndo(stacks, DAY, snapshot(`${i}`));
-    expect(stacks[DAY]).toHaveLength(UNDO_LIMIT);
-    expect(stacks[DAY]?.[0]?.[0]?.code, 'the ten oldest are gone').toBe('10');
-    expect(popUndo(stacks, DAY).previous?.[0]?.code).toBe(String(UNDO_LIMIT + 9));
+    for (let i = 0; i < UNDO_LIMIT + 10; i += 1) {
+      stacks = pushUndo(stacks, DAY, BASE, snapshot(`${i}`));
+    }
+    const steps = undoSteps(stacks, DAY, BASE);
+    expect(steps).toHaveLength(UNDO_LIMIT);
+    expect(steps[0]?.[0]?.code, 'the ten oldest are gone').toBe('10');
+    expect(popUndo(stacks, DAY, BASE).previous?.[0]?.code).toBe(String(UNDO_LIMIT + 9));
   });
 
   it('keeps each day’s history to itself', () => {
     let stacks: UndoStacks = {};
-    stacks = pushUndo(stacks, DAY, snapshot('today'));
-    stacks = pushUndo(stacks, day(2), snapshot('later'));
-    const popped = popUndo(stacks, DAY);
+    stacks = pushUndo(stacks, DAY, BASE, snapshot('today'));
+    stacks = pushUndo(stacks, day(2), BASE, snapshot('later'));
+    const popped = popUndo(stacks, DAY, BASE);
     expect(popped.previous?.[0]?.code).toBe('today');
-    expect(popped.stacks[day(2)], 'the other day is untouched').toEqual([snapshot('later')]);
-    expect(stacks[DAY], 'and nothing is mutated in place').toHaveLength(1);
+    expect(undoSteps(popped.stacks, day(2), BASE), 'the other day is untouched').toEqual([
+      snapshot('later'),
+    ]);
+    expect(undoSteps(stacks, DAY, BASE), 'and nothing is mutated in place').toHaveLength(1);
+  });
+
+  it('lets the steps lapse once the server answers with ANOTHER board — old facts never come back', () => {
+    // A realtime refetch, the re-read after a refused save: the steps hold whole rows, the
+    // workshop and the flags of the board they were taken over.
+    let stacks: UndoStacks = {};
+    stacks = pushUndo(stacks, DAY, BASE, snapshot('a'));
+    const refetched = BOARD.rows.map((r) => ({ ...r }));
+    expect(undoSteps(stacks, DAY, refetched), 'nothing to undo over the new board').toEqual([]);
+    expect(popUndo(stacks, DAY, refetched).previous).toBeUndefined();
+    stacks = pushUndo(stacks, DAY, refetched, snapshot('b'));
+    expect(undoSteps(stacks, DAY, refetched).map((step) => step[0]?.code)).toEqual(['b']);
+  });
+});
+
+describe('editStep — what is one «تراجع» step', () => {
+  const at = (rows: readonly FleetRosterRowDto[], vehicleId: string): FleetRosterRowDto => {
+    const found = rows.find((r) => r.vehicleId === vehicleId);
+    if (found === undefined) throw new Error(`no row ${vehicleId}`);
+    return found;
+  };
+
+  it('is no step at all when the edit changes no fact', () => {
+    expect(editStep(BOARD.rows, (rows) => [...rows])).toBeNull();
+    const same = at(BOARD.rows, V1);
+    expect(
+      editStep(BOARD.rows, (rows) =>
+        applyEdit(rows, V1, {
+          missionTypeId: same.missionTypeId,
+          driver1EmployeeId: same.driver1EmployeeId,
+          driver2EmployeeId: same.driver2EmployeeId,
+          notes: same.notes,
+        }),
+      ),
+      'a dialog saved as it was',
+    ).toBeNull();
+  });
+
+  it('takes the pen dialog’s four facts — a mission, both seats, a note — as ONE step', () => {
+    const after = editStep(BOARD.rows, (rows) =>
+      applyEdit(rows, V4, {
+        missionTypeId: MT,
+        driver1EmployeeId: E3,
+        driver2EmployeeId: E4,
+        notes: 'وردية مسائية',
+      }),
+    );
+    expect(after).not.toBeNull();
+    const edited = at(after ?? [], V4);
+    expect([
+      edited.missionTypeId,
+      edited.driver1EmployeeId,
+      edited.driver2EmployeeId,
+      edited.notes,
+    ]).toEqual([MT, E3, E4, 'وردية مسائية']);
+    let stacks: UndoStacks = {};
+    stacks = pushUndo(stacks, DAY, BOARD.rows, BOARD.rows);
+    expect(undoSteps(stacks, DAY, BOARD.rows), 'one snapshot for the four facts').toHaveLength(1);
+    expect(popUndo(stacks, DAY, BOARD.rows).previous, 'and «تراجع» puts all four back').toBe(
+      BOARD.rows,
+    );
+  });
+
+  it('is how the model edits, steps back and drops a day’s history', () => {
+    const MODEL = rosterSource(['model']);
+    expect(MODEL, 'every edit goes through editStep').toContain(
+      'const after = editStep(before, change);',
+    );
+    expect(MODEL).toContain('if (after === null) return;');
+    expect(MODEL, 'one step pushed per edit').toContain(
+      'setUndoStacks((all) => pushUndo(all, date, saved, before));',
+    );
+    expect(MODEL, '«تراجع» pops ONE step').toContain(
+      'setUndoStacks((all) => popUndo(all, date, saved).stacks);',
+    );
+    // The pen dialog is one `edit(` — never a mission write and then a seats write.
+    const apply = MODEL.slice(
+      MODEL.indexOf('const apply = (vehicleId: string, values: AssignValues)'),
+      MODEL.indexOf('const undo = ()'),
+    );
+    expect(apply.match(/edit\(/gu), 'the dialog is one edit').toHaveLength(1);
+    const DESK = rosterSource(['desk']);
+    const dialog = DESK.slice(DESK.indexOf('const applyDialog'), DESK.indexOf('const save = ()'));
+    expect(dialog).toContain('m.actions.apply(row.vehicleId, values)');
+    expect(dialog, 'and the computer sends it as one').not.toMatch(
+      /m\.actions\.(mission|assign|notes|clear)\(/u,
+    );
+  });
+});
+
+describe('filtersHiding — what a code in the unsaved bar lifts to bring its car back', () => {
+  const CAR = row(V3, '152', { missionTypeId: MT, assignable: true, manned: true });
+
+  it('lifts nothing that does not hide the car', () => {
+    expect(filtersHiding(CAR, { search: '152', missions: [MT], view: 'assigned' })).toEqual({});
+  });
+
+  it('lifts exactly the filters the car fails — each on its own', () => {
+    expect(filtersHiding(CAR, { search: '150', missions: [MT], view: null })).toEqual({ q: null });
+    expect(filtersHiding(CAR, { search: '', missions: ['other'], view: null })).toEqual({
+      mission: null,
+    });
+    expect(
+      filtersHiding(CAR, { search: '', missions: [], view: 'unmanned' }),
+      'a car filled under «بلا سائق» leaves that view',
+    ).toEqual({ view: null });
+    expect(filtersHiding(CAR, { search: '150', missions: ['other'], view: 'workshop' })).toEqual({
+      q: null,
+      mission: null,
+      view: null,
+    });
   });
 });
 
@@ -498,8 +659,17 @@ describe('useRosterBoard — the draft', () => {
     expect(counter(desk, 'unmanned'), 'the computer: the server’s last answer').toBe(2);
     expect(counter(desk, 'crewGap')).toBe(1);
     const touch = model({}, { liveFlags: true });
-    expect(counter(touch, 'unmanned'), 'touch: both picks count at once').toBe(0);
+    // 152 is manned by E3 at once; 153's E4 is licence-flagged — planning takes him, but nobody
+    // counts him as manning a seat today (R-04), on the board as after «حفظ».
+    expect(counter(touch, 'unmanned'), 'touch: the licensed pick counts at once').toBe(1);
+    expect(touch.shown.find((r) => r.vehicleId === V4)?.manned, '153 stays unmanned').toBe(false);
     expect(counter(touch, 'crewGap'), '152’s gap is covered').toBe(0);
+  });
+
+  it('has nothing to undo on arrival, on a past day, or for a reader who only looks', () => {
+    withDraft(DAY, EDITED);
+    expect(model().undoDepth, 'a reload keeps the draft, not its history').toBe(0);
+    expect(model({ editable: false, mayPlan: false }).undoDepth).toBe(0);
   });
 
   it('shows a past day as the server has it, never a draft that outlived midnight', () => {

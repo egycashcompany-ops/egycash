@@ -43,6 +43,7 @@ import {
   missionTone,
   UNSAVED_ROW,
 } from '../../lib/roster-view';
+import { unbrokenName } from './roster-parts';
 
 /** What a card asks the board to do. */
 export interface CardHandlers {
@@ -348,7 +349,7 @@ const SlotRow = ({
       <span className="min-w-0 flex-1">
         {caption}
         <span className="block text-[15px] font-semibold leading-5 text-slate-900 dark:text-slate-50">
-          {name}
+          {unbrokenName(name)}
         </span>
         <span className="mt-0.5 block font-figures text-xs leading-4 text-slate-500 dark:text-slate-400">
           <bdi dir="ltr">{person?.code ?? ''}</bdi>
@@ -560,6 +561,17 @@ export const CarCard = ({
     </span>
   );
 
+  /** The car's note as the board reads it, never a button (the pen dialog edits it). */
+  const notesText = (
+    <>
+      <span className="font-semibold text-slate-500 dark:text-slate-400">
+        {t('fleet.attendance.fields.notes')}:
+      </span>{' '}
+      {row.notes}
+    </>
+  );
+  const hasNotes = row.notes !== null && row.notes.trim() !== '';
+
   // ── a car the WORKSHOP holds: compact — nothing on it can be assigned (FR-5) ────────────────
   if (locked) {
     const seated = (['driver1EmployeeId', 'driver2EmployeeId'] as const).filter(
@@ -600,41 +612,42 @@ export const CarCard = ({
             ))}
           </div>
         )}
+        {/* Its note stays legible, as the computer's «ملاحظات» shows it for every car — read here,
+            not edited: nothing on a car the workshop holds is planned from its card. */}
+        {hasNotes && (
+          <p
+            data-notes={row.code}
+            className="mt-2 rounded-lg bg-slate-200/60 px-3 py-2 text-[13px] leading-5 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+          >
+            {notesText}
+          </p>
+        )}
       </article>
     );
   }
 
-  const notes =
-    row.notes !== null && row.notes.trim() !== '' ? (
-      menuEdit !== null ? (
-        <button
-          type="button"
-          data-notes={row.code}
-          data-notes-edit="true"
-          onClick={menuEdit}
-          aria-label={`${row.code} · ${t('fleet.roster.editAssignment')}`}
-          className="mt-2.5 flex min-h-11 w-full items-start gap-2 rounded-lg bg-slate-100/80 px-3 py-2 text-start text-[13px] leading-5 text-slate-700 transition-colors hover:bg-slate-200/70 active:bg-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="font-semibold text-slate-500 dark:text-slate-400">
-              {t('fleet.attendance.fields.notes')}:
-            </span>{' '}
-            {row.notes}
-          </span>
-          <SquarePenIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-        </button>
-      ) : (
-        <p
-          data-notes={row.code}
-          className="mt-2.5 rounded-lg bg-slate-100/80 px-3 py-2 text-[13px] leading-5 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
-        >
-          <span className="font-semibold text-slate-500 dark:text-slate-400">
-            {t('fleet.attendance.fields.notes')}:
-          </span>{' '}
-          {row.notes}
-        </p>
-      )
-    ) : null;
+  const notes = hasNotes ? (
+    menuEdit !== null ? (
+      <button
+        type="button"
+        data-notes={row.code}
+        data-notes-edit="true"
+        onClick={menuEdit}
+        aria-label={`${row.code} · ${t('fleet.roster.editAssignment')}`}
+        className="mt-2.5 flex min-h-11 w-full items-start gap-2 rounded-lg bg-slate-100/80 px-3 py-2 text-start text-[13px] leading-5 text-slate-700 transition-colors hover:bg-slate-200/70 active:bg-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
+      >
+        <span className="min-w-0 flex-1">{notesText}</span>
+        <SquarePenIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+      </button>
+    ) : (
+      <p
+        data-notes={row.code}
+        className="mt-2.5 rounded-lg bg-slate-100/80 px-3 py-2 text-[13px] leading-5 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+      >
+        {notesText}
+      </p>
+    )
+  ) : null;
 
   return (
     <article

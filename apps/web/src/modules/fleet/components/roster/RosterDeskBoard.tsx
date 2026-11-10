@@ -48,8 +48,13 @@ import { ACTION_GROUP, actionTone } from '../row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../row-action-icons';
 import { DARK_TABLE } from '../../pages/VehiclesListPage';
 import { type DutySlot } from '../../lib/daily-roster-board';
-import { carriesPlan, visibleRows } from '../../lib/roster-view';
-import { shiftDay, type AssignValues, type RosterDeskBoardProps } from '../../lib/roster-board';
+import { carriesPlan } from '../../lib/roster-view';
+import {
+  filtersHiding,
+  shiftDay,
+  type AssignValues,
+  type RosterDeskBoardProps,
+} from '../../lib/roster-board';
 import { DASH, SeatCell, StatusCell, type SeatFacts } from './roster-desk-cells';
 import { DeskCounters, DeskDayStepper, DriversPanel, ExcelPill } from './roster-desk-parts';
 import { CodeList, EditsBar, PastDayBanner, num } from './roster-parts';
@@ -199,13 +204,7 @@ export const RosterDeskBoard = ({
   const showCar = (code: string): void => {
     const row = m.shown.find((candidate) => candidate.code === code);
     if (row !== undefined && !rows.some((candidate) => candidate.code === code)) {
-      const passes = (filter: Parameters<typeof visibleRows>[1]): boolean =>
-        visibleRows([row], filter).length === 1;
-      patch({
-        ...(passes({ term: query.search }) ? {} : { q: null }),
-        ...(passes({ missions }) ? {} : { mission: null }),
-        ...(passes({ view }) ? {} : { view: null }),
-      });
+      patch(filtersHiding(row, { search: query.search, missions, view }));
     }
     window.requestAnimationFrame(() =>
       document

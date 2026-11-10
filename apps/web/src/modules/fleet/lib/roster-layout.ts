@@ -79,14 +79,16 @@ export const viewportLayout = (): { layout: RosterLayout; short: boolean } => {
 
 /**
  * The layout as ONE string (`'portrait'`, `'portrait:short'` …), so React compares snapshots by
- * value and re-renders only when the answer actually changes.
+ * value and re-renders only when the answer actually changes. (Exported for the specs: the hook
+ * reads it in the browser.)
  */
-const snapshot = (): string => {
+export const layoutSnapshot = (): string => {
   const { layout, short } = viewportLayout();
   return short ? `${layout}:short` : layout;
 };
 
-const subscribe = (onChange: () => void): (() => void) => {
+/** Told when any of the four media queries changes its answer; the return stops listening. */
+export const subscribeLayout = (onChange: () => void): (() => void) => {
   if (!canAsk()) return () => undefined;
   const lists = Object.values(QUERIES).map((query) => window.matchMedia(query));
   for (const list of lists) list.addEventListener('change', onChange);
@@ -104,7 +106,7 @@ const serverSnapshot = (): string => DESKTOP_SNAPSHOT;
  * client paint is already the right board; with no window it answers the computer's board.
  */
 export const useRosterLayout = (): { layout: RosterLayout; short: boolean } => {
-  const key = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
+  const key = useSyncExternalStore(subscribeLayout, layoutSnapshot, serverSnapshot);
   return useMemo(() => {
     const [layout, flag] = key.split(':') as [RosterLayout, string | undefined];
     return { layout, short: flag === 'short' };

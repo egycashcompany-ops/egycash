@@ -562,11 +562,15 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     // Not hired before anything was printed.
     expect((await call('post', `${base(offer.id)}/hire`, { version: draft.version })).status).toBe(422);
 
-    // The choice and a typed-in address are kept; a stale page is refused.
+    // The choice and the typed-in values are kept; a stale page is refused. (This suite's offers
+    // name a job title that is only an id, so the job is typed in — as «تعديل» would.)
     draft = (
       await call('patch', base(offer.id), {
         selected: [PAPER('contract'), PAPER('bank-letter')],
-        overrides: [{ key: 'employee.address', value: 'العجوزة' }],
+        overrides: [
+          { key: 'employee.address', value: 'العجوزة' },
+          { key: 'job.title', value: 'أخصائى صراف آلى' },
+        ],
         version: draft.version,
       })
     ).body.data as CandidateDraftDto;
@@ -579,6 +583,7 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     expect(preview.status, JSON.stringify(preview.body)).toBe(200);
     const previewed = preview.body.data as RenderCandidatePapersDto;
     expect(previewed.html).toContain('السيد/ أحمد محمد المقيم في العجوزة');
+    expect(previewed.html).toContain('بوظيفة ( أخصائى صراف آلى )');
     expect(previewed.html).toContain('تبدأ من 1/4/2027 وتنتهي في 31/3/2028');
     expect(previewed.draft).toMatchObject({ printedAt: null, employeeCode: null });
     expect((await call('post', `${base(offer.id)}/render`, { keys: ['not.a.paper'] })).status).toBe(400);
@@ -605,6 +610,7 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     ).body.data as ContractDto;
     expect(contract).toMatchObject({ status: 'active', startDate: '2027-04-01', endDate: '2028-03-31' });
     expect(contract.variables.find((v) => v.key === 'employee.address')?.value).toBe('العجوزة');
+    expect(contract.variables.find((v) => v.key === 'job.title')?.value).toBe('أخصائى صراف آلى');
 
     // Hired once: the page says so, and a second hire is refused.
     const after = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;

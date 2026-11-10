@@ -3588,6 +3588,24 @@ describe('the shipment receipt image — «صورة الإيصال», the Fleet 
     expect(Buffer.compare(await bytesOf(shipment.id), PNG_2)).toBe(0);
   });
 
+  it('keeps an Arabic file name as the person named it — not multer\'s latin1 reading of it', async () => {
+    // Multer 2 reads a multipart `filename` as latin1, so «إيصال ١.png» would arrive as mojibake
+    // unless the controller turns it back (Fleet's `uploadFileName` rule).
+    const name = 'إيصال ١.png';
+    const shipment = await fresh();
+    const res = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', PNG, { filename: name, contentType: 'image/png' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const image = data<OperationsShipmentDto>(res).receiptImage;
+    expect(image?.fileName).toBe(name);
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe(name);
+    // The platform Files row (and so its audit entry) carries the same, real name.
+    const { FileModel } = await import('../../src/platform/files/file.model');
+    expect((await FileModel.findById(image?.fileId).lean().exec())?.originalName).toBe(name);
+  });
+
   it('REJECTS an oversized photo — the category caps it at 10 MB', async () => {
     const shipment = await fresh();
     const res = await upload(shipment.id, Buffer.alloc(11 * 1024 * 1024, 1), 'huge.png');

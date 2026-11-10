@@ -77,6 +77,17 @@ export const isReceived = (shipment: { status: OperationsShipmentStatus }): bool
  */
 export type BoardDelivery = 'desk' | 'captain' | 'none';
 
+/**
+ * A row's colour by who delivered it (`boardDelivery`): green once the desk confirmed — legacy's
+ * `#a9e6b8` (main_ops.ejs:851) — yellow while only the crew captain has, none before either.
+ */
+export const rowTint = (delivery: BoardDelivery): string | undefined =>
+  delivery === 'desk'
+    ? '!bg-emerald-50 dark:!bg-emerald-950/30'
+    : delivery === 'captain'
+      ? '!bg-amber-50 dark:!bg-yellow-400/10'
+      : undefined;
+
 export const boardDelivery = (
   row: { status: OperationsShipmentStatus } & Partial<Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt'>>,
 ): BoardDelivery =>

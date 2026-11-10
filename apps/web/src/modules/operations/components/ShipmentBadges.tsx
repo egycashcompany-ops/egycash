@@ -4,13 +4,11 @@
 // are NON-ORDINAL, and the literal 1 is the TERMINAL state, not the first step (discovery §6). The
 // tones below therefore follow MEANING, not numeric order — `completed` is the success tone
 // because the shipment is delivered, and `draft` is neutral because nothing has happened yet.
-import {
-  type OperationsShipmentStatus,
-  type OperationsShipmentType,
-} from '@ecms/contracts';
+import { type OperationsShipmentStatus, type OperationsShipmentType } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge, StatusBadge, type Tone } from '../../../shared/ui/Badge';
 import { cn } from '../../../shared/lib/cn';
+import { CheckIcon, TruckIcon } from '../../../shared/ui/icons';
 
 const STATUS_TONES: Record<OperationsShipmentStatus, Tone> = {
   draft: 'neutral',
@@ -50,10 +48,15 @@ export const ShipmentTypeBadge = ({
 /**
  * The day board's «الحالة»: «تم التسليم» or «لم يتم التسليم», as the owner words it. Who delivered
  * changes the ROW's colour (yellow: the crew captain from the mobile app; green: the desk's ✓), and
- * the badge's title says it in words for whoever cannot tell the colours apart.
+ * the badge says it without colour too: its glyph (a van, a tick), and the words for a screen
+ * reader and on hover.
  */
 const DELIVERY_TONE = { desk: 'success', captain: 'warning', none: 'neutral' } as const;
-const DELIVERY_DOT = { desk: 'bg-emerald-500', captain: 'bg-amber-500', none: 'bg-slate-400' } as const;
+const DELIVERY_DOT = {
+  desk: 'bg-emerald-500',
+  captain: 'bg-amber-500',
+  none: 'bg-slate-400',
+} as const;
 
 export const DeliveryStatusBadge = ({
   delivery,
@@ -62,23 +65,32 @@ export const DeliveryStatusBadge = ({
 }): JSX.Element => {
   const t = useT();
   const label = t(
-    delivery === 'none' ? 'operations.board.status.notDelivered' : 'operations.board.status.delivered',
+    delivery === 'none'
+      ? 'operations.board.status.notDelivered'
+      : 'operations.board.status.delivered',
   );
+  const who =
+    delivery === 'captain'
+      ? t('operations.board.status.byCaptain')
+      : delivery === 'desk'
+        ? t('operations.board.status.byDesk')
+        : null;
   return (
-    <span
-      data-delivery={delivery}
-      title={
-        delivery === 'captain'
-          ? t('operations.board.status.byCaptain')
-          : delivery === 'desk'
-            ? t('operations.board.status.byDesk')
-            : undefined
-      }
-    >
+    <span data-delivery={delivery} title={who ?? undefined}>
       {/* The small size: the board has fourteen columns to fit beside the menu. */}
       <Badge tone={DELIVERY_TONE[delivery]} size="sm">
-        <span className={cn('h-1.5 w-1.5 rounded-full', DELIVERY_DOT[delivery])} />
+        {/* WHO delivered is not left to colour alone (yellow and green are the pair a red-green
+            colour-blind reader confuses): a van for the captain, a tick for the desk, and the
+            words for a screen reader. */}
+        {delivery === 'captain' ? (
+          <TruckIcon className="h-3.5 w-3.5" aria-hidden />
+        ) : delivery === 'desk' ? (
+          <CheckIcon className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <span className={cn('h-1.5 w-1.5 rounded-full', DELIVERY_DOT[delivery])} />
+        )}
         {label}
+        {who !== null && <span className="sr-only"> — {who}</span>}
       </Badge>
     </span>
   );

@@ -41,7 +41,9 @@ const PillBody = ({
       <BoardIcon d={[...icon]} className="h-4 w-4" />
     </span>
     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</span>
-    <span className={cn('text-[15px] font-black text-slate-900 dark:text-white', NUM)}>{value}</span>
+    <span className={cn('text-[15px] font-black text-slate-900 dark:text-white', NUM)}>
+      {value}
+    </span>
     {unit !== undefined && unit !== '' && (
       <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">{unit}</span>
     )}
@@ -96,6 +98,41 @@ export const BoardFigurePill = ({
  * figure adds together, each with its own total — the one place a reader sees what that sum is
  * made of.
  */
+/** The breakdown itself — one figure per currency, or the empty line. Apart so it can be rendered
+ * (and pinned) without the dialog's portal. */
+export const OtherCurrenciesList = ({
+  totals,
+  currencyOf,
+  locale,
+}: {
+  totals: readonly { currencyId: string; amount: number }[];
+  currencyOf: (id: string) => OperationsCurrencyDto | undefined;
+  locale: 'ar' | 'en';
+}): JSX.Element => {
+  const t = useT();
+  return totals.length === 0 ? (
+    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+      {t('operations.board.figures.otherCurrenciesEmpty')}
+    </p>
+  ) : (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-other-currencies-list="true">
+      {totals.map((total) => {
+        const currency = currencyOf(total.currencyId);
+        return (
+          <FigureChip
+            key={total.currencyId}
+            icon={SHIPMENT_PATH.money}
+            iconClass={FIGURE_TONE.others}
+            label={currency?.name ?? '…'}
+            value={formatAmount(total.amount, locale)}
+            unit={currency?.code ?? ''}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 export const OtherCurrenciesDialog = ({
   open,
   onClose,
@@ -120,27 +157,7 @@ export const OtherCurrenciesDialog = ({
       panelProps={{ 'data-other-currencies': 'true' }}
       footer={<DesignCancel onClick={onClose} label={t('common.close')} />}
     >
-      {totals.length === 0 ? (
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {t('operations.board.figures.otherCurrenciesEmpty')}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {totals.map((total) => {
-            const currency = currencyOf(total.currencyId);
-            return (
-              <FigureChip
-                key={total.currencyId}
-                icon={SHIPMENT_PATH.money}
-                iconClass={FIGURE_TONE.others}
-                label={currency?.name ?? '…'}
-                value={formatAmount(total.amount, locale)}
-                unit={currency?.code ?? ''}
-              />
-            );
-          })}
-        </div>
-      )}
+      <OtherCurrenciesList totals={totals} currencyOf={currencyOf} locale={locale} />
     </DesignDialog>
   );
 };

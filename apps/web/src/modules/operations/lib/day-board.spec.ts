@@ -12,6 +12,7 @@ import {
   boardDelivery,
   boardFigures,
   boardTotals,
+  rowTint,
   branchCell,
   branchCellText,
   filterDayBoard,
@@ -545,5 +546,20 @@ describe('boardFigures — «مصري», «دولار», then «عملات أخ�
     expect(boardFigures([], currencyOf)).toEqual({ egp: 0, usd: 0, others: [], othersSum: 0 });
     const unknown = boardFigures([shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })], currencyOf);
     expect(unknown.othersSum).toBe(5);
+  });
+});
+
+// «لو تم التسليم من القائد … الصف لونه اصفر ولما ادوس انا على صح من عندى يبقى الصف اخضر».
+describe('rowTint — yellow for the captain, green for the desk', () => {
+  it('is green (emerald) once the desk confirmed', () => {
+    expect(rowTint('desk')).toContain('emerald');
+  });
+  it('is yellow (amber) while only the captain has delivered', () => {
+    const tint = rowTint('captain') ?? '';
+    expect(tint).toMatch(/amber|yellow/);
+    expect(tint).not.toContain('emerald');
+  });
+  it('is no colour before either', () => {
+    expect(rowTint('none')).toBeUndefined();
   });
 });

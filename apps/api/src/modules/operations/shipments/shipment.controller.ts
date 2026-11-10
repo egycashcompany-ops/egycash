@@ -11,6 +11,7 @@ import { created, noContent, ok, okPage, validated } from '../../../platform/web
 import { authContext } from '../../../platform/auth';
 import { ValidationError } from '../../../shared/errors';
 import { toShipmentDto } from '../operations.mappers';
+import { receiptImageFileName } from './receipt-image-upload';
 import { operationsShipmentService } from './shipment.service';
 
 type IdParam = { id: string };
@@ -91,7 +92,9 @@ export const uploadShipmentReceiptImage = async (req: Request, res: Response): P
     ]);
   }
   const doc = await operationsShipmentService.setReceiptImage(authContext(req), params.id, {
-    originalName: uploaded.originalname,
+    // Multer reads the part's name as latin1; an Arabic «إيصال ١.jpg» is turned back here, so the
+    // Files row, its audit entry and the shipment's `receiptImage.fileName` all keep the real name.
+    originalName: receiptImageFileName(uploaded.originalname),
     mime: uploaded.mimetype,
     size: uploaded.size,
     buffer: uploaded.buffer,

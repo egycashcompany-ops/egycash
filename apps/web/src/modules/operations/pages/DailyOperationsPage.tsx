@@ -59,7 +59,7 @@ import {
   boardDelivery,
   boardFigures,
   isReceived,
-  type BoardDelivery,
+  rowTint,
   legacyRowNumber,
   orderedBoardTotals,
   type DayBoardFilters,
@@ -112,16 +112,6 @@ const SHIPMENTS_TABLE = cn(
   // actions) sit their icons closer than the Fleet boards' twelve-column tables need to.
   '[&_[data-row-actions]]:!gap-1 [&_[data-row-actions]]:!px-1 [&_[data-image-actions]]:!gap-1 [&_[data-image-actions]]:!px-1',
 );
-
-/**
- * A row's colour by who delivered it (`boardDelivery`): green once the desk confirmed — legacy's
- * `#a9e6b8` — yellow while only the crew captain has, none before either.
- */
-const ROW_TINT: Record<BoardDelivery, string | undefined> = {
-  desk: '!bg-emerald-50 dark:!bg-emerald-950/30',
-  captain: '!bg-amber-50 dark:!bg-yellow-400/10',
-  none: undefined,
-};
 
 /** A figure in the table: monospace, tabular, never broken over two lines. */
 const FIGURE = cn('whitespace-nowrap', NUM);
@@ -428,7 +418,9 @@ export const DailyOperationsPage = (): JSX.Element => {
           className="flex flex-wrap items-center justify-between gap-2"
           data-shipments-toolbar="true"
         >
-          {statsOpen && board.data !== undefined ? (
+          {/* The money pills sort currencies by code, so they wait for the catalog: before it,
+              every currency would read as «عملات أخرى» beside a pound and a dollar of 0. */}
+          {statsOpen && board.data !== undefined && currencies.data !== undefined ? (
             <div
               role="status"
               aria-label={t('operations.board.stats')}
@@ -693,7 +685,7 @@ export const DailyOperationsPage = (): JSX.Element => {
             // «لو تم التسليم من القائد … الصف لونه اصفر ولما ادوس انا على صح … يبقى الصف اخضر»: green
             // once the desk confirmed (legacy's `#a9e6b8`, main_ops.ejs:851), yellow while only the
             // crew captain has.
-            rowClassName={(row) => ROW_TINT[boardDelivery(row)]}
+            rowClassName={(row) => rowTint(boardDelivery(row))}
             stickyHead
             // Thirteen columns of short things — a van code, a bank, a date, three icons. The
             // default floor (7.5rem a column) would make the table 98rem wide and push the notes

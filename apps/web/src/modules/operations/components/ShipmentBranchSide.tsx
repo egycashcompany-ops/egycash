@@ -11,10 +11,7 @@
 // "not found" only means "not looked for yet", and adding then would duplicate a branch the
 // answer was about to show.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import {
-  type OperationsBankBranchDto,
-  type OperationsBankDto,
-} from '@ecms/contracts';
+import { type OperationsBankBranchDto, type OperationsBankDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { Combobox } from '../../../shared/ui/Combobox';
@@ -105,7 +102,7 @@ export const ShipmentBranchSide = ({
   return (
     <div
       data-branch-side={side}
-      className="space-y-4 rounded-2xl border border-slate-200 bg-white/60 p-4 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
+      className="space-y-3 rounded-2xl border border-slate-200 bg-white/60 p-4 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
     >
       <div className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
         <Stroke
@@ -115,64 +112,70 @@ export const ShipmentBranchSide = ({
         {title}
       </div>
 
-      <DesignField label={t('operations.shipment.form.sideBank')}>
-        <div className={carBoxClass(false)}>
-          <Combobox
-            value={bankId}
-            options={banks.filter((bank) => bank.isActive).map((bank) => bank.id)}
-            optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
-            onChange={onBankChange}
-            placeholder={t('operations.shipment.form.pickBank')}
-            emptyText={t('common.noResults')}
-            clearLabel={t('common.clear')}
-            ariaLabel={`${title} — ${t('operations.shipment.form.sideBank')}`}
-            testId={`${side}-bank`}
-          />
-        </div>
-      </DesignField>
+      {/* The bank and its branch side by side: one line of the card, so the shipment form keeps
+          to the screen's height (« … متهكنش فيها اسكرول»). The branch gets the wider share. */}
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <DesignField label={t('operations.shipment.form.sideBank')}>
+          <div className={carBoxClass(false)}>
+            <Combobox
+              value={bankId}
+              options={banks.filter((bank) => bank.isActive).map((bank) => bank.id)}
+              optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
+              onChange={onBankChange}
+              placeholder={t('operations.shipment.form.pickBank')}
+              emptyText={t('common.noResults')}
+              clearLabel={t('common.clear')}
+              ariaLabel={`${title} — ${t('operations.shipment.form.sideBank')}`}
+              testId={`${side}-bank`}
+            />
+          </div>
+        </DesignField>
 
-      <DesignField label={t('operations.shipment.form.branch')} required missing={branchMissing}>
-        <div
-          className={cn(
-            carBoxClass(false),
-            branchMissing &&
-              '[&_input]:!border-rose-500/70 [&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] [&_input]:!pe-28 [&_.end-2]:!end-10',
-          )}
-        >
-          <Combobox
-            value={branchId}
-            options={found.map((branch) => branch.id)}
-            optionLabel={nameOf}
-            onSearch={setTyped}
-            onChange={(id) => {
-              // Picking the branch already held changes nothing. Not a nicety: the held branch is
-              // shown pinned at the top of the list even when it is not on the page the server
-              // answered (a bank of hundreds of branches), and resolving it from that page alone
-              // would turn "keep this one" into "clear it".
-              if (id === branchId) return;
-              onBranchChange(id === '' ? null : (found.find((branch) => branch.id === id) ?? null));
-            }}
-            disabled={bankId === ''}
-            placeholder={
-              bankId === ''
-                ? t('operations.shipment.form.pickBankFirst')
-                : t('operations.shipment.form.pickBranch')
-            }
-            emptyText={t(search.isFetching ? 'common.loading' : 'common.noResults')}
-            clearLabel={t('common.clear')}
-            ariaLabel={`${title} — ${t('operations.shipment.form.branch')}`}
-            testId={`${side}-branch`}
-            tallList
-            {...(canCreate && answered
-              ? {
-                  onCreate: (name: string) => onRequestCreate(bankId, name),
-                  createLabel: (name: string) =>
-                    t('operations.shipment.form.addBranch', { name, bank: bankName }),
-                }
-              : {})}
-          />
-        </div>
-      </DesignField>
+        <DesignField label={t('operations.shipment.form.branch')} required missing={branchMissing}>
+          <div
+            className={cn(
+              carBoxClass(false),
+              branchMissing &&
+                '[&_input]:!border-rose-500/70 [&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] [&_input]:!pe-28 [&_.end-2]:!end-10',
+            )}
+          >
+            <Combobox
+              value={branchId}
+              options={found.map((branch) => branch.id)}
+              optionLabel={nameOf}
+              onSearch={setTyped}
+              onChange={(id) => {
+                // Picking the branch already held changes nothing. Not a nicety: the held branch is
+                // shown pinned at the top of the list even when it is not on the page the server
+                // answered (a bank of hundreds of branches), and resolving it from that page alone
+                // would turn "keep this one" into "clear it".
+                if (id === branchId) return;
+                onBranchChange(
+                  id === '' ? null : (found.find((branch) => branch.id === id) ?? null),
+                );
+              }}
+              disabled={bankId === ''}
+              placeholder={
+                bankId === ''
+                  ? t('operations.shipment.form.pickBankFirst')
+                  : t('operations.shipment.form.pickBranch')
+              }
+              emptyText={t(search.isFetching ? 'common.loading' : 'common.noResults')}
+              clearLabel={t('common.clear')}
+              ariaLabel={`${title} — ${t('operations.shipment.form.branch')}`}
+              testId={`${side}-branch`}
+              tallList
+              {...(canCreate && answered
+                ? {
+                    onCreate: (name: string) => onRequestCreate(bankId, name),
+                    createLabel: (name: string) =>
+                      t('operations.shipment.form.addBranch', { name, bank: bankName }),
+                  }
+                : {})}
+            />
+          </div>
+        </DesignField>
+      </div>
       {children}
     </div>
   );

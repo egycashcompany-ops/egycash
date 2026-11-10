@@ -22,7 +22,7 @@
 // non-exclusive branches — create/edit × single/multi currency — where the multi-currency path
 // walked SEVENTEEN fixed field pairs (quirk Q7). Here there is ONE shape: a list of
 // {currency, amount} lines. The 17 remains only as the contract's max.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
@@ -110,10 +110,8 @@ export const hasUsableLine = (draft: readonly DraftLine[]): boolean =>
  * `deliveryDate` belongs to secured shipments only: legacy wrote `del_date: ""` for daily
  * (contad_app.js:353) and the contract rejects a daily shipment carrying one.
  */
-export const deliveryDateFor = (
-  shipmentType: OperationsShipmentType,
-  raw: string,
-): Date | null => (shipmentType === 'daily' || raw === '' ? null : new Date(raw));
+export const deliveryDateFor = (shipmentType: OperationsShipmentType, raw: string): Date | null =>
+  shipmentType === 'daily' || raw === '' ? null : new Date(raw);
 
 /**
  * The currency a new line starts on: the domestic one — legacy's form opened on «مصري»
@@ -226,7 +224,11 @@ export const ShipmentFormDialog = ({
     const nextFrom = followMainBank(fromBankId, mainBankId, next);
     const nextTo = followMainBank(toBankId, mainBankId, next);
     if (nextFrom !== fromBankId) setOriginBranchId('');
-    if (nextTo !== toBankId) setDestinationBranchId('');
+    if (nextTo !== toBankId) {
+      // The area is the destination branch's: no branch, no area.
+      setDestinationBranchId('');
+      setAreaName('');
+    }
     setFromBankId(nextFrom);
     setToBankId(nextTo);
     setMainBankId(next);
@@ -236,7 +238,10 @@ export const ShipmentFormDialog = ({
       if (next !== fromBankId) setOriginBranchId('');
       setFromBankId(next);
     } else {
-      if (next !== toBankId) setDestinationBranchId('');
+      if (next !== toBankId) {
+        setDestinationBranchId('');
+        setAreaName('');
+      }
       setToBankId(next);
     }
   };
@@ -264,6 +269,7 @@ export const ShipmentFormDialog = ({
   // Read from the collection date's crew plan; both boxes edit the SAME choice (`crewKey`, one
   // crew row and one of its captains), so they cannot disagree.
   const canSeeCrew = can('operationsCrew.view');
+  const crewHintId = useId();
   const crewOn = open && !editing && canSeeCrew && collectionDate !== '';
   const crewBoard = useOperationsCrewBoard(crewOn ? collectionDate : null, crewOn);
   const crewDirectory = useOperationsCrewDirectory(crewOn ? collectionDate : null, crewOn);
@@ -345,7 +351,8 @@ export const ShipmentFormDialog = ({
         });
       }
       // `shipmentType` is immutable — legacy has no path that converts one type into the other.
-      else await update.mutateAsync({ id: shipment.id, body: { ...core, version: shipment.version } });
+      else
+        await update.mutateAsync({ id: shipment.id, body: { ...core, version: shipment.version } });
       toast.success(t('operations.shipment.saved'));
       onClose();
     } catch (error) {
@@ -371,10 +378,11 @@ export const ShipmentFormDialog = ({
     <>
       <DesignDialog
         open={open}
-        // Escape inside the branch form closes THAT form; this one must not close with it. What
-        // guarantees it is the event, not this check: the branch form marks its Escape handled and
-        // `DesignDialog` ignores a handled one. `adding` alone is not enough — a real key press
-        // lets React commit `adding = null` and re-register this listener before the event
+        // Escape inside the branch form closes THAT form; this one must not close with it. Both are
+        // DesignDialogs listening on the window, in whatever order React last registered them:
+        // only the dialog on top of the `[data-dialog-root]` stack answers, and it marks the key
+        // handled for a listener that runs after it. `adding` alone is not enough — a real key
+        // press lets React commit `adding = null` and re-register this listener before the event
         // reaches it. The check stays for the × and «إلغاء» while the branch form is up.
         onClose={() => {
           if (adding === null) onClose();
@@ -398,14 +406,22 @@ export const ShipmentFormDialog = ({
       >
         <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
 
-        {/* «الفورم … كبيرة انها متهكنش فيها اسكرول»: two bands of columns on a wide panel, so the
-            whole form fits a laptop screen — the shipment (with its notes) and its two branches
-            across the top, the money and the crew across the bottom. One column on a narrow screen. */}
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-          <DesignSection title={t('operations.shipment.form.sections.shipment')} icon={SHIPMENT_PATH.calendar}>
+        {/* «الفورم … كبيرة انها متهكنش فيها اسكرول»: ONE band of three columns on a wide panel —
+            the shipment, its two branches, then the money and the crew — so the form is as tall as
+            its tallest column rather than the sum of its rows, and fits a laptop screen. One
+            column on a narrow screen. */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+          <DesignSection
+            title={t('operations.shipment.form.sections.shipment')}
+            icon={SHIPMENT_PATH.calendar}
+          >
             {/* What «الرئيسي» means is the form's subtitle («البنك المُحاسب…»); a hint here too
                 would cost the line that keeps the form on a laptop screen without a scroll. */}
-            <DesignField label={t('operations.shipment.form.mainBank')} required missing={mainMissing}>
+            <DesignField
+              label={t('operations.shipment.form.mainBank')}
+              required
+              missing={mainMissing}
+            >
               <div
                 className={cn(
                   carBoxClass(false),
@@ -474,8 +490,11 @@ export const ShipmentFormDialog = ({
             />
           </DesignSection>
 
-          <DesignSection title={t('operations.shipment.form.sections.route')} icon={SHIPMENT_PATH.route}>
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+          <DesignSection
+            title={t('operations.shipment.form.sections.route')}
+            icon={SHIPMENT_PATH.route}
+          >
+            <div className="space-y-4">
               <ShipmentBranchSide
                 side="origin"
                 title={t('operations.shipment.origin')}
@@ -514,6 +533,8 @@ export const ShipmentFormDialog = ({
                   <div
                     role="textbox"
                     aria-readonly="true"
+                    // A read-only textbox stays in the Tab order, so a keyboard reader meets it.
+                    tabIndex={0}
                     aria-label={t('operations.shipment.area')}
                     aria-description={t('operations.shipment.form.areaHint')}
                     data-shipment-area="true"
@@ -534,152 +555,190 @@ export const ShipmentFormDialog = ({
               </ShipmentBranchSide>
             </div>
           </DesignSection>
-        </div>
 
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <DesignSection title={t('operations.shipment.form.sections.money')} icon={SHIPMENT_PATH.money}>
-          <div className="space-y-3">
-            {lines.map((line, index) => (
-              // Lines have no identity of their own until saved; the index IS the slot.
-              <div key={index} className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)_auto] items-end gap-2">
-                <DesignField
-                  label={t('operations.shipment.currency')}
-                  missing={index === 0 && required.isMissing('amount')}
-                >
-                  <Select
-                    value={line.currencyId}
-                    onChange={(e) => setLine(index, { currencyId: e.target.value })}
-                    className={selectBox}
-                    aria-label={`${t('operations.shipment.currency')} ${index + 1}`}
-                  >
-                    <option value="">{t('common.select')}</option>
-                    {activeCurrencies.map((currency) => (
-                      <option key={currency.id} value={currency.id}>
-                        {currency.name}
-                      </option>
-                    ))}
-                  </Select>
-                </DesignField>
-                <DesignField
-                  label={t('operations.shipment.form.amount')}
-                  required={index === 0}
-                  missing={index === 0 && required.isMissing('amount')}
-                >
-                  <MoneyInput
-                    value={line.amount}
-                    onChange={(amount) => setLine(index, { amount })}
-                    tone={cn(box, MONO, 'text-right')}
-                    aria-label={`${t('operations.shipment.form.amount')} ${index + 1}`}
-                    data-shipment-amount={String(index)}
-                  />
-                </DesignField>
-                <button
-                  type="button"
-                  onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
-                  disabled={lines.length === 1}
-                  aria-label={t('common.remove')}
-                  className="mb-1 rounded-xl border border-slate-200 p-3 text-slate-500 transition-colors hover:border-rose-300 hover:text-rose-500 disabled:opacity-40 dark:border-[#2b3b6b] dark:text-slate-400"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setLines((prev) => [...prev, EMPTY_LINE])}
-              disabled={lines.length >= MAX_SHIPMENT_LINES}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-indigo-300 px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-50 disabled:opacity-40 dark:border-indigo-500/50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
-            >
-              <PlusIcon className="h-4 w-4" />
-              {t('operations.shipment.addLine')}
-            </button>
-          </div>
-        </DesignSection>
-
-        <DesignSection title={t('operations.shipment.form.sections.crew')} icon={SHIPMENT_PATH.crew}>
-          {editing ? (
-            // Re-crewing a saved shipment is not an edit — it moves a stop between captains'
-            // ordered days. What it rides with now is shown, read only.
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200">
-              {row?.crew != null
-                ? t('operations.shipment.form.crewHeld', {
-                    captain: row.crew.captainName ?? '—',
-                    vehicle: row.crew.vehicleCode ?? '—',
-                  })
-                : // «No crew yet» is a fact only where this form KNOWS the legs: a day-board row
-                  // reports the pickup leg of a daily shipment. A secured row reports its delivery
-                  // leg (a pickup may exist), and a shipment opened from elsewhere (the secured
-                  // backlog) carries no legs at all — for those, say where the crew is set.
-                  t(
-                    row !== null && row.shipmentType === 'daily'
-                      ? 'operations.shipment.form.crewNotOnEdit'
-                      : 'operations.shipment.form.crewElsewhere',
-                  )}
-            </p>
-          ) : !canSeeCrew ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {t('operations.shipment.form.crewNoAccess')}
-            </p>
-          ) : (
-            <>
-              <div
-                className="grid grid-cols-1 items-start gap-4 md:grid-cols-2"
-                title={t('operations.shipment.form.crewHint')}
+          <div className="space-y-5">
+            {/* «+ إضافة عملة» sits on the section's own title line, and only the first line
+                carries the boxes' names: a shipment of several currencies (the owner's own
+                example has four) grows by a box's height a currency, not a labelled field's. */}
+            <div className="relative">
+              <DesignSection
+                title={t('operations.shipment.form.sections.money')}
+                icon={SHIPMENT_PATH.money}
               >
-                <DesignField label={t('operations.shipment.form.captain')}>
-                  <div className={carBoxClass(false)}>
-                    <Combobox
-                      value={crewKey}
-                      options={crewOptions.map((option) => option.key)}
-                      optionLabel={captainLabel}
-                      onChange={setCrewKey}
-                      placeholder={t('operations.shipment.noCrew')}
-                      emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
-                      clearLabel={t('common.clear')}
-                      ariaLabel={t('operations.shipment.form.captain')}
-                      testId="shipment-captain"
-                    />
-                  </div>
-                </DesignField>
-                <DesignField label={t('operations.shipment.form.vehicle')}>
-                  <div className={carBoxClass(false)}>
-                    <Combobox
-                      value={chosenCrew?.vehicleId ?? ''}
-                      options={vehicles.map((vehicle) => vehicle.vehicleId)}
-                      optionLabel={(id) =>
-                        vehicles.find((vehicle) => vehicle.vehicleId === id)?.vehicleCode ?? id
-                      }
-                      onChange={(vehicleId) =>
-                        setCrewKey(
-                          vehicleId === ''
-                            ? ''
-                            : (chooseVehicle(
-                                crewOptions,
-                                vehicleId,
-                                chosenCrew?.captainEmployeeId ?? '',
-                              )?.key ?? ''),
-                        )
-                      }
-                      placeholder={t('operations.shipment.noCrew')}
-                      emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
-                      clearLabel={t('common.clear')}
-                      ariaLabel={t('operations.shipment.form.vehicle')}
-                      testId="shipment-vehicle"
-                    />
-                  </div>
-                </DesignField>
-              </div>
-              {/* Only the warning keeps a line of its own; how the two boxes pick each other is said
-                  by the boxes' title, so the form fits a laptop screen with no scroll. */}
-              {crewOptions.length === 0 && !crewBoard.isLoading && (
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                  {t('operations.shipment.noCrewForDay')}
-                </p>
-              )}
-            </>
-          )}
-        </DesignSection>
+                <div className="space-y-2">
+                  {lines.map((line, index) => {
+                    const currencyBox = (
+                      <Select
+                        value={line.currencyId}
+                        onChange={(e) => setLine(index, { currencyId: e.target.value })}
+                        className={selectBox}
+                        aria-label={`${t('operations.shipment.currency')} ${index + 1}`}
+                      >
+                        <option value="">{t('common.select')}</option>
+                        {activeCurrencies.map((currency) => (
+                          <option key={currency.id} value={currency.id}>
+                            {currency.name}
+                          </option>
+                        ))}
+                      </Select>
+                    );
+                    const amountBox = (
+                      <MoneyInput
+                        value={line.amount}
+                        onChange={(amount) => setLine(index, { amount })}
+                        tone={cn(box, MONO, 'text-right')}
+                        aria-label={`${t('operations.shipment.form.amount')} ${index + 1}`}
+                        data-shipment-amount={String(index)}
+                      />
+                    );
+                    return (
+                      // Lines have no identity of their own until saved; the index IS the slot.
+                      <div
+                        key={index}
+                        className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)_auto] items-end gap-2"
+                      >
+                        {index === 0 ? (
+                          <>
+                            <DesignField
+                              label={t('operations.shipment.currency')}
+                              missing={required.isMissing('amount')}
+                            >
+                              {currencyBox}
+                            </DesignField>
+                            <DesignField
+                              label={t('operations.shipment.form.amount')}
+                              required
+                              missing={required.isMissing('amount')}
+                            >
+                              {amountBox}
+                            </DesignField>
+                          </>
+                        ) : (
+                          <>
+                            {currencyBox}
+                            <div className="relative">{amountBox}</div>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
+                          disabled={lines.length === 1}
+                          aria-label={`${t('common.remove')} ${index + 1}`}
+                          className="mb-1 rounded-xl border border-slate-200 p-3 text-slate-500 transition-colors hover:border-rose-300 hover:text-rose-500 disabled:opacity-40 dark:border-[#2b3b6b] dark:text-slate-400"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </DesignSection>
+              <button
+                type="button"
+                onClick={() => setLines((prev) => [...prev, EMPTY_LINE])}
+                disabled={lines.length >= MAX_SHIPMENT_LINES}
+                data-shipment-add-line="true"
+                className="absolute end-0 top-0 inline-flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 px-2.5 py-1 text-xs font-bold text-indigo-600 transition-colors hover:bg-indigo-50 disabled:opacity-40 dark:border-indigo-500/50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+                {t('operations.shipment.addLine')}
+              </button>
+            </div>
 
+            <DesignSection
+              title={t('operations.shipment.form.sections.crew')}
+              icon={SHIPMENT_PATH.crew}
+            >
+              {editing ? (
+                // Re-crewing a saved shipment is not an edit — it moves a stop between captains'
+                // ordered days. What it rides with now is shown, read only.
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200">
+                  {row?.crew != null
+                    ? t('operations.shipment.form.crewHeld', {
+                        captain: row.crew.captainName ?? '—',
+                        vehicle: row.crew.vehicleCode ?? '—',
+                      })
+                    : // «No crew yet» is a fact only where this form KNOWS the legs: a day-board row
+                      // reports the pickup leg of a daily shipment. A secured row reports its delivery
+                      // leg (a pickup may exist), and a shipment opened from elsewhere (the secured
+                      // backlog) carries no legs at all — for those, say where the crew is set.
+                      t(
+                        row !== null && row.shipmentType === 'daily'
+                          ? 'operations.shipment.form.crewNotOnEdit'
+                          : 'operations.shipment.form.crewElsewhere',
+                      )}
+                </p>
+              ) : !canSeeCrew ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {t('operations.shipment.form.crewNoAccess')}
+                </p>
+              ) : (
+                <>
+                  {/* How the two boxes pick each other, said to a screen reader on both of them — a
+                    visible line would cost the height that keeps the form without a scroll. */}
+                  <span id={crewHintId} className="sr-only">
+                    {t('operations.shipment.form.crewHint')}
+                  </span>
+                  <div
+                    className="grid grid-cols-1 items-start gap-4"
+                    title={t('operations.shipment.form.crewHint')}
+                  >
+                    <DesignField label={t('operations.shipment.form.captain')}>
+                      <div className={carBoxClass(false)}>
+                        <Combobox
+                          value={crewKey}
+                          options={crewOptions.map((option) => option.key)}
+                          optionLabel={captainLabel}
+                          onChange={setCrewKey}
+                          placeholder={t('operations.shipment.noCrew')}
+                          emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
+                          clearLabel={t('common.clear')}
+                          ariaLabel={t('operations.shipment.form.captain')}
+                          testId="shipment-captain"
+                          ariaDescribedBy={crewHintId}
+                        />
+                      </div>
+                    </DesignField>
+                    <DesignField label={t('operations.shipment.form.vehicle')}>
+                      <div className={carBoxClass(false)}>
+                        <Combobox
+                          value={chosenCrew?.vehicleId ?? ''}
+                          options={vehicles.map((vehicle) => vehicle.vehicleId)}
+                          optionLabel={(id) =>
+                            vehicles.find((vehicle) => vehicle.vehicleId === id)?.vehicleCode ?? id
+                          }
+                          onChange={(vehicleId) =>
+                            setCrewKey(
+                              vehicleId === ''
+                                ? ''
+                                : (chooseVehicle(
+                                    crewOptions,
+                                    vehicleId,
+                                    chosenCrew?.captainEmployeeId ?? '',
+                                  )?.key ?? ''),
+                            )
+                          }
+                          placeholder={t('operations.shipment.noCrew')}
+                          emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
+                          clearLabel={t('common.clear')}
+                          ariaLabel={t('operations.shipment.form.vehicle')}
+                          testId="shipment-vehicle"
+                          ariaDescribedBy={crewHintId}
+                        />
+                      </div>
+                    </DesignField>
+                  </div>
+                  {/* Only the warning keeps a line of its own; how the two boxes pick each other is said
+                    by the boxes' title, so the form fits a laptop screen with no scroll. */}
+                  {crewOptions.length === 0 && !crewBoard.isLoading && (
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                      {t('operations.shipment.noCrewForDay')}
+                    </p>
+                  )}
+                </>
+              )}
+            </DesignSection>
+          </div>
         </div>
       </DesignDialog>
 

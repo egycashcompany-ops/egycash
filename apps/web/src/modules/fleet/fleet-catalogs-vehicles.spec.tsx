@@ -855,8 +855,8 @@ describe('the Fleet form dialogs survive a click outside them', () => {
 
   it('and still closes on Escape, which is a decision rather than a slip', () => {
     // The dialog on top answers Escape: one press closes one dialog, not every one stacked under it.
-    // It marks the key handled, so a DesignDialog underneath (the shipment form under its «+ إضافة
-    // فرع») does not close on the same key and lose what was typed into it.
+    // It marks the key handled, so a Fleet DesignDialog underneath (listening on the window, after
+    // the document) does not close on the same key and lose what was typed into it.
     expect(DIALOG).toMatch(
       /if \(e\.key !== 'Escape' \|\| !onTop\(\)\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u,
     );

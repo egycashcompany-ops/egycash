@@ -123,6 +123,7 @@ export const Combobox = ({
   density = 'default',
   testId,
   ariaLabel,
+  ariaDescribedBy,
   tallList = false,
   optionLabel,
   onCreate,
@@ -164,6 +165,8 @@ export const Combobox = ({
   testId?: string;
   /** The control's own accessible name, when no `<label>` points at it. */
   ariaLabel?: string;
+  /** The id of what describes the box beyond its name — a hint read with it. */
+  ariaDescribedBy?: string;
   /**
    * A taller open list — for a catalog the reader scrolls through as well as types into, such as
    * the whole vehicle registry, where seven rows at a time is a keyhole.
@@ -315,6 +318,7 @@ export const Combobox = ({
         role="combobox"
         {...(testId === undefined ? {} : { 'data-vehicle-select': testId })}
         {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
+        {...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy })}
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"

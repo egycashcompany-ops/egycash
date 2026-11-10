@@ -84,10 +84,10 @@ export const Dialog = ({
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape' || !onTop()) return;
-      // Marked as handled, so a dialog UNDER this one that is not a `Dialog` — a `DesignDialog`,
-      // listening on the window further along the same event (the shipment form under its «+ إضافة
-      // فرع») — knows the Escape was this dialog's and stays open. A flag in React state cannot
-      // say that: the state flips mid-event and the other listener reads the new value.
+      // Marked as handled, so a dialog UNDER this one that is not a `Dialog` — a Fleet
+      // `DesignDialog`, listening on the window further along the same event — knows the Escape
+      // was this dialog's and stays open. A flag in React state cannot say that: the state flips
+      // mid-event and the other listener reads the new value.
       e.preventDefault();
       onClose();
     };

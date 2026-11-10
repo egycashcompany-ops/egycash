@@ -5,7 +5,9 @@ import { ErrorCodes } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { translate } from '../../../platform/localization/i18n';
 import {
+  BRANCH_DUPLICATE_KEY,
   SHIPMENT_SAVE_ERROR_KEYS,
+  branchSaveErrorKey,
   areaAfterDestination,
   followMainBank,
   secondaryBankFor,
@@ -69,14 +71,46 @@ describe('shipmentSaveErrorKey — a refused save, in the reader’s language', 
     );
   });
 
-  it('falls back to the generic message for anything else', () => {
+  it('falls back to the generic message for a refusal about the values', () => {
     expect(shipmentSaveErrorKey(failed('SOMETHING_ELSE'))).toBe('operations.shipment.saveFailed');
-    expect(shipmentSaveErrorKey(new Error('network'))).toBe('operations.shipment.saveFailed');
+    expect(shipmentSaveErrorKey(failed(ErrorCodes.VALIDATION_FAILED))).toBe(
+      'operations.shipment.saveFailed',
+    );
+  });
+
+  // «راجع القيم» for a dropped connection sends the operator to re-check values that were fine.
+  it('leaves the reason to the shared wording when it is not about the values', () => {
+    expect(shipmentSaveErrorKey(new TypeError('Failed to fetch'))).toBeNull();
+    expect(shipmentSaveErrorKey(failed('FORBIDDEN'))).toBeNull();
+    expect(shipmentSaveErrorKey(failed('AUTH_SESSION_REVOKED'))).toBeNull();
+    expect(shipmentSaveErrorKey(failed('INTERNAL'))).toBeNull();
   });
 
   // A key missing from a catalog renders as the key itself — on an Arabic screen, in English.
   it('every key it can return exists in both catalogs', () => {
     for (const key of [...SHIPMENT_SAVE_ERROR_KEYS, 'operations.shipment.saveFailed']) {
+      for (const locale of ['ar', 'en'] as const) expect(translate(locale, key)).not.toBe(key);
+    }
+  });
+});
+
+describe('branchSaveErrorKey — the branch form, also opened from the shipment form', () => {
+  const failed = (code: string): ApiError => new ApiError(code, 'english server sentence', 409);
+
+  // The shipment form searches ACTIVE branches; a "new" name may be a deactivated branch's.
+  it('names a duplicate name or code — a deactivated branch may hold it', () => {
+    expect(branchSaveErrorKey(failed(ErrorCodes.DUPLICATE))).toBe(BRANCH_DUPLICATE_KEY);
+  });
+
+  it('falls back to the catalogs’ generic message, or the shared wording', () => {
+    expect(branchSaveErrorKey(failed(ErrorCodes.VALIDATION_FAILED))).toBe(
+      'operations.catalogs.saveFailed',
+    );
+    expect(branchSaveErrorKey(new TypeError('Failed to fetch'))).toBeNull();
+  });
+
+  it('every key it can return exists in both catalogs', () => {
+    for (const key of [BRANCH_DUPLICATE_KEY, 'operations.catalogs.saveFailed']) {
       for (const locale of ['ar', 'en'] as const) expect(translate(locale, key)).not.toBe(key);
     }
   });

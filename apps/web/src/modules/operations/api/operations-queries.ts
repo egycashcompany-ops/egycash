@@ -171,9 +171,10 @@ const useShipmentInvalidation = () => {
   };
 };
 
-// THE FORM OWNS THESE TWO MUTATIONS' ERRORS. The global notifier would toast the server's own
-// sentence — English, for the Operations codes it has no translation of — and the form toasts its
-// Arabic one beside it, so a refused save showed two messages. Declaring `onError` here is what
+// THE FORM OWNS THESE MUTATIONS' ERRORS — the shipment form's two, and the branch form's two (which
+// the shipment form opens over itself for «+ إضافة»). The global notifier would toast the server's
+// own sentence — English, for the codes it has no translation of — and the form toasts its Arabic
+// one beside it, so a refused save showed two messages. Declaring `onError` here is what
 // tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
 const formOwnsTheError = (): void => undefined;
 
@@ -243,6 +244,8 @@ export const useUpdateOperationsBank = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.banks });
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints the banks of a row's branches, joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
   });
 };
@@ -254,6 +257,7 @@ export const useCreateOperationsBankBranch = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -264,7 +268,10 @@ export const useUpdateOperationsBankBranch = () => {
       api.updateBankBranch(id, body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints branch names (and their banks) joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
+    onError: formOwnsTheError,
   });
 };
 

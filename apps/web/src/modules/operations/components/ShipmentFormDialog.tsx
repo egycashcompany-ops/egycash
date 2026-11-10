@@ -40,6 +40,8 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Checkbox, Input, Select, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useAppSelector } from '../../../store';
 import { TrashIcon, PlusIcon } from '../../../shared/ui/icons';
 import {
   DesignCancel,
@@ -149,6 +151,7 @@ export const ShipmentFormDialog = ({
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const can = useCan();
   const create = useCreateOperationsShipment();
   const update = useUpdateOperationsShipment();
@@ -295,15 +298,9 @@ export const ShipmentFormDialog = ({
         ok: collectionDate !== '',
       },
       { key: 'amount', label: t('operations.shipment.form.amount'), ok: hasUsableLine(lines) },
-      ...(shipmentType === 'secured'
-        ? [
-            {
-              key: 'deliveryDate',
-              label: t('operations.shipment.deliveryDate'),
-              ok: deliveryDate !== '',
-            },
-          ]
-        : []),
+      // NOT the delivery date of a secured shipment: the contract keeps it nullable, legacy never
+      // required it (receive_mohsana.ejs:644), and a date invented to get past the form would put
+      // the shipment on that day's dispatch list.
     ],
     open,
   );
@@ -346,8 +343,10 @@ export const ShipmentFormDialog = ({
       onClose();
     } catch (error) {
       // The mutations leave their errors to this form (operations-queries.ts), so this is the one
-      // message — in the reader's language, naming the reason where the server gave one.
-      toast.error(t(shipmentSaveErrorKey(error)));
+      // message — in the reader's language, naming the reason where the server gave one, and the
+      // shared wording when the reason is not the values at all (a dropped connection, no rights).
+      const key = shipmentSaveErrorKey(error);
+      toast.error(key === null ? errorMessage(error, locale) : t(key));
     }
   };
 
@@ -365,7 +364,11 @@ export const ShipmentFormDialog = ({
     <>
       <DesignDialog
         open={open}
-        // Escape inside the branch form closes THAT form; this one must not close with it.
+        // Escape inside the branch form closes THAT form; this one must not close with it. What
+        // guarantees it is the event, not this check: the branch form marks its Escape handled and
+        // `DesignDialog` ignores a handled one. `adding` alone is not enough — a real key press
+        // lets React commit `adding = null` and re-register this listener before the event
+        // reaches it. The check stays for the × and «إلغاء» while the branch form is up.
         onClose={() => {
           if (adding === null) onClose();
         }}
@@ -447,8 +450,6 @@ export const ShipmentFormDialog = ({
               <DesignField
                 label={t('operations.shipment.deliveryDate')}
                 hint={t('operations.shipment.deliveryDateHint')}
-                required
-                missing={required.isMissing('deliveryDate')}
                 datePicker
               >
                 <Input
@@ -468,7 +469,7 @@ export const ShipmentFormDialog = ({
             <ShipmentBranchSide
               side="origin"
               title={t('operations.shipment.origin')}
-              banks={activeBanks}
+              banks={banks}
               bankId={fromBankId}
               onBankChange={(next) => changeSideBank('origin', next)}
               branchId={originBranchId}
@@ -481,7 +482,7 @@ export const ShipmentFormDialog = ({
             <ShipmentBranchSide
               side="destination"
               title={t('operations.shipment.destination')}
-              banks={activeBanks}
+              banks={banks}
               bankId={toBankId}
               onBankChange={(next) => changeSideBank('destination', next)}
               branchId={destinationBranchId}
@@ -584,7 +585,15 @@ export const ShipmentFormDialog = ({
                     captain: row.crew.captainName ?? '—',
                     vehicle: row.crew.vehicleCode ?? '—',
                   })
-                : t('operations.shipment.form.crewNotOnEdit')}
+                : // «No crew yet» is a fact only where this form KNOWS the legs: a day-board row
+                  // reports the pickup leg of a daily shipment. A secured row reports its delivery
+                  // leg (a pickup may exist), and a shipment opened from elsewhere (the secured
+                  // backlog) carries no legs at all — for those, say where the crew is set.
+                  t(
+                    row !== null && row.shipmentType === 'daily'
+                      ? 'operations.shipment.form.crewNotOnEdit'
+                      : 'operations.shipment.form.crewElsewhere',
+                  )}
             </p>
           ) : !canSeeCrew ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">

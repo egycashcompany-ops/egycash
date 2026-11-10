@@ -56,6 +56,48 @@ const SAVE_ERRORS: Record<string, string> = {
 
 export const SHIPMENT_SAVE_ERROR_KEYS = Object.values(SAVE_ERRORS);
 
-export const shipmentSaveErrorKey = (error: unknown): string =>
-  (error instanceof ApiError ? SAVE_ERRORS[error.code] : undefined) ??
-  'operations.shipment.saveFailed';
+/**
+ * Refusals that have nothing to do with the values typed: no connection, no permission, a session
+ * that ended, a server fault. «راجع القيم» would send the operator to re-check good values, so for
+ * these the caller says the actual reason (`errorMessage`, which words each of them in both
+ * languages). A fetch that never reached the server throws a bare `TypeError`.
+ */
+const NOT_ABOUT_THE_VALUES = new Set([
+  'NETWORK',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'RATE_LIMITED',
+  'INTERNAL',
+  'PAYLOAD_TOO_LARGE',
+  'AUTH_TOKEN_EXPIRED',
+  'AUTH_TOKEN_INVALID',
+  'UNAUTHENTICATED',
+  'AUTH_SESSION_REVOKED',
+]);
+
+const isAboutSomethingElse = (error: unknown): boolean =>
+  error instanceof TypeError || (error instanceof ApiError && NOT_ABOUT_THE_VALUES.has(error.code));
+
+/**
+ * The i18n key for a refused shipment save, or `null` when the refusal is not about the values —
+ * then the caller shows `errorMessage(error, locale)`.
+ */
+export const shipmentSaveErrorKey = (error: unknown): string | null => {
+  const known = error instanceof ApiError ? SAVE_ERRORS[error.code] : undefined;
+  if (known !== undefined) return known;
+  return isAboutSomethingElse(error) ? null : 'operations.shipment.saveFailed';
+};
+
+/**
+ * The same for the branch form — reached from the catalogs AND from the shipment form's «+ إضافة».
+ * A branch's name and its code are each unique within its bank, deactivated branches included, and
+ * the shipment form searches ACTIVE branches only: a name that "does not exist" there may belong to
+ * a deactivated branch. The duplicate refusal says so, instead of «راجع القيم».
+ */
+export const BRANCH_DUPLICATE_KEY = 'operations.catalogs.branch.duplicate';
+
+export const branchSaveErrorKey = (error: unknown): string | null => {
+  // E11000 on `ux_bank_name` / `ux_bank_code` (base.repository.ts → ConflictError DUPLICATE).
+  if (error instanceof ApiError && error.code === 'DUPLICATE') return BRANCH_DUPLICATE_KEY;
+  return isAboutSomethingElse(error) ? null : 'operations.catalogs.saveFailed';
+};

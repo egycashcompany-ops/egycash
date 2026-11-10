@@ -47,6 +47,10 @@ export const ShipmentBranchSide = ({
   side: 'origin' | 'destination';
   /** «من فرع» / «إلى فرع». */
   title: string;
+  /**
+   * EVERY bank, active or not: the active ones are offered, and all of them name a bank already
+   * held — a shipment whose branch belongs to a bank deactivated since must not show a raw id.
+   */
   banks: readonly OperationsBankDto[];
   bankId: string;
   onBankChange: (bankId: string) => void;
@@ -112,7 +116,7 @@ export const ShipmentBranchSide = ({
         <div className={carBoxClass(false)}>
           <Combobox
             value={bankId}
-            options={banks.map((bank) => bank.id)}
+            options={banks.filter((bank) => bank.isActive).map((bank) => bank.id)}
             optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
             onChange={onBankChange}
             placeholder={t('operations.shipment.form.pickBank')}
@@ -137,9 +141,14 @@ export const ShipmentBranchSide = ({
             options={found.map((branch) => branch.id)}
             optionLabel={nameOf}
             onSearch={setTyped}
-            onChange={(id) =>
-              onBranchChange(id === '' ? null : (found.find((branch) => branch.id === id) ?? null))
-            }
+            onChange={(id) => {
+              // Picking the branch already held changes nothing. Not a nicety: the held branch is
+              // shown pinned at the top of the list even when it is not on the page the server
+              // answered (a bank of hundreds of branches), and resolving it from that page alone
+              // would turn "keep this one" into "clear it".
+              if (id === branchId) return;
+              onBranchChange(id === '' ? null : (found.find((branch) => branch.id === id) ?? null));
+            }}
             disabled={bankId === ''}
             placeholder={
               bankId === ''

@@ -51,7 +51,10 @@ export const DesignDialog = ({
   useEffect(() => {
     if (!open) return undefined;
     const escape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      // `defaultPrevented`: something above this form already answered this Escape — an open list
+      // closing, or a dialog opened FROM this form (the shipment form's «+ إضافة فرع») closing
+      // itself. Closing this form too would throw away everything typed into it.
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);

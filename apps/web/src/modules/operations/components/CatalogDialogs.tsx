@@ -35,6 +35,9 @@ import {
   type MapsLinkFailure,
 } from '../lib/maps-link';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useAppSelector } from '../../../store';
+import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
   useCreateOperationsArea,
   useCreateOperationsBank,
@@ -217,6 +220,7 @@ export const BankBranchDialog = ({
   onSaved?: (saved: OperationsBankBranchDto) => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const create = useCreateOperationsBankBranch();
   const update = useUpdateOperationsBankBranch();
 
@@ -279,8 +283,11 @@ export const BankBranchDialog = ({
       toast.success(t('operations.catalogs.saved'));
       onSaved?.(saved);
       onClose();
-    } catch {
-      toast.error(t('operations.catalogs.saveFailed'));
+    } catch (error) {
+      // The branch mutations leave their errors to this form (operations-queries.ts): ONE message,
+      // naming a duplicate — which from the shipment form is usually a deactivated branch's name.
+      const key = branchSaveErrorKey(error);
+      toast.error(key === null ? errorMessage(error, locale) : t(key));
     }
   };
 

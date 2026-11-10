@@ -838,7 +838,9 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   });
 
   it('and still closes on Escape, which is a decision rather than a slip', () => {
-    expect(DIALOG).toContain("if (e.key === 'Escape') onClose()");
+    // Marked handled first, so a DesignDialog underneath (the shipment form under its «+ إضافة
+    // فرع») does not close on the same key and lose what was typed into it.
+    expect(DIALOG).toMatch(/if \(e\.key !== 'Escape'\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u);
   });
 
   // The reading and workshop forms are drawn in the vehicle form's design now: `DesignDialog`'s
@@ -847,7 +849,7 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('the design shell has no click on its backdrop, and closes on Escape', () => {
     expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
     expect(SHELL).not.toContain('useOnClickOutside');
-    expect(SHELL).toContain("if (e.key === 'Escape') onClose()");
+    expect(SHELL).toContain("if (e.key === 'Escape' && !e.defaultPrevented) onClose()");
   });
 
   it('the reading dialog is drawn in it', () => {

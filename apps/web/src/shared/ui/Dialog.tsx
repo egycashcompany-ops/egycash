@@ -65,7 +65,12 @@ export const Dialog = ({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      // Marked as handled, so a dialog UNDER this one — listening further along the same event
+      // (`DesignDialog`, on the window) — knows the Escape was this dialog's and stays open. A flag
+      // in React state cannot say that: the state flips mid-event and the other listener reads it.
+      e.preventDefault();
+      onClose();
     };
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;

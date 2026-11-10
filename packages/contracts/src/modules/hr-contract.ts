@@ -664,6 +664,95 @@ export interface HiringPackDto {
   documents: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
 }
 
+/**
+ * A28 — «عقد جديد» for a CANDIDATE: everything one accepted candidate signs, printed from the offer
+ * before the hire, and the hire itself once it is printed. The page's state is a server record —
+ * saved as it changes, so a closed tab, a dropped connection or an expired session loses nothing.
+ */
+export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob'] as const;
+export type CandidatePaperGroup = (typeof CANDIDATE_PAPER_GROUPS)[number];
+
+export interface CandidatePaperDto {
+  key: string;
+  name: { ar: string; en: string };
+  kind: ContractTemplateKind;
+  /** The contract; a form every job signs; a form for this job only (its card, its declarations). */
+  group: CandidatePaperGroup;
+  /** The values it prints — what «تعديل» offers to change. */
+  placeholders: string[];
+  selected: boolean;
+}
+
+export interface CandidateValueDto {
+  key: string;
+  label: { ar: string; en: string };
+  value: string;
+  /** Typed in for this candidate, instead of read from the record. */
+  overridden: boolean;
+}
+
+export interface CandidateDraftDto {
+  id: string;
+  offerId: string;
+  offerCode: string | null;
+  applicantName: string;
+  jobTitle: { ar: string; en: string } | null;
+  /** The contract's term and the hiring date — from the offer, as changed here. */
+  startDate: string;
+  endDate: string | null;
+  hiringDate: string;
+  /** The contract type is fixed-term: the contract carries an end date. */
+  allowsEndDate: boolean;
+  papers: CandidatePaperDto[];
+  /** Every value the papers print, as they would print now. */
+  values: CandidateValueDto[];
+  /** The employee code kept for the candidate at the first print — and taken at the hire. */
+  employeeCode: string | null;
+  printedAt: string | null;
+  printCount: number;
+  /** Set once hired from here. */
+  employeeId: string | null;
+  updatedAt: string;
+  version: number;
+}
+
+export const UpdateCandidateDraftSchema = z
+  .object({
+    selected: z.array(z.string().min(1).max(100)).max(60).optional(),
+    overrides: overridesField().optional(),
+    startDate: isoDate().optional(),
+    endDate: isoDate().nullable().optional(),
+    hiringDate: isoDate().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateCandidateDraft = z.infer<typeof UpdateCandidateDraftSchema>;
+
+export const RenderCandidatePapersSchema = z
+  .object({
+    keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+    /** A print keeps the employee code and records the print; a preview changes nothing. */
+    print: z.boolean().default(false),
+  })
+  .strict();
+export type RenderCandidatePapers = z.infer<typeof RenderCandidatePapersSchema>;
+
+export interface RenderCandidatePapersDto {
+  html: string;
+  draft: CandidateDraftDto;
+}
+
+export const HireCandidateSchema = z.object({ version: z.number().int().min(0) }).strict();
+export type HireCandidate = z.infer<typeof HireCandidateSchema>;
+
+export interface HireCandidateDto {
+  employeeId: string;
+  employeeCode: string;
+  /** The contract recorded on the new employee, made and generated from the papers' terms. */
+  contract: { id: string; code: string } | null;
+  contractNote: HiringPackContractNote | null;
+}
+
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',
 } as const;

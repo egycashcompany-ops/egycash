@@ -12,8 +12,10 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type PreviewContract,
+  type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
+  type UpdateCandidateDraft,
   type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
@@ -137,6 +139,47 @@ export const useHiringPack = () => {
     mutationFn: (employeeId: string) => api.hiringPack(employeeId),
     onSuccess: (set) => {
       if (set.contract?.created === true) invalidate();
+    },
+  });
+};
+
+/** A28 — the candidate's papers page: its saved state, made on the first visit. */
+export const useCandidateDraft = (offerId: string) =>
+  useQuery({
+    queryKey: ['hr', 'contracts', 'candidate', offerId],
+    queryFn: () => api.openCandidate(offerId),
+    enabled: offerId !== '',
+    // The page's own saves keep it fresh; a refetch on focus would undo a choice in flight.
+    refetchOnWindowFocus: false,
+  });
+
+export const useUpdateCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateCandidateDraft) => api.updateCandidate(offerId, body),
+    onSuccess: (draft) => client.setQueryData(['hr', 'contracts', 'candidate', offerId], draft),
+  });
+};
+
+export const useRenderCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderCandidatePapers) => api.renderCandidate(offerId, body),
+    onSuccess: (out) => client.setQueryData(['hr', 'contracts', 'candidate', offerId], out.draft),
+  });
+};
+
+/** The hire: a new employee and contract, and the offer leaves «جاهزون للتعيين». */
+export const useHireCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  const invalidate = useContractsInvalidation();
+  return useMutation({
+    mutationFn: (version: number) => api.hireCandidate(offerId, version),
+    onSuccess: () => {
+      invalidate();
+      void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate', offerId] });
+      void client.invalidateQueries({ queryKey: ['hr', 'jobOffers'] });
+      void client.invalidateQueries({ queryKey: ['hr', 'employees'] });
     },
   });
 };

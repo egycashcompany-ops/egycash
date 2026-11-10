@@ -9,8 +9,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
   platformPermissions,
+  HrContractSettingKeys,
   SettingKeys,
   type ApplicantDto,
+  type CandidateDraftDto,
+  type ContractDto,
+  type HireCandidateDto,
+  type RenderCandidatePapersDto,
   type EmployeeDto,
   type HiringDocumentTypeDto,
   type HiringDocumentsDto,
@@ -30,6 +35,7 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 import { nextNationalId } from './helpers/national-id';
+import { syncHiringTemplates } from '../../src/modules/hr/contracts/hiring-templates';
 
 const PASSWORD = 'Str0ng#Pass!';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
@@ -49,6 +55,7 @@ const REQUIRED_KEYS = [
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
+let adminUserId = '';
 let aliceToken: string;
 let interviewerId: string; // interview panel + hiring manager
 let interviewerToken: string;
@@ -106,6 +113,17 @@ const idByKey = async (path: string, key: string): Promise<string> => {
  * reads its `data` half. The employee endpoint is Stage 5's own aggregate and is unchanged.
  */
 const hiredEmployee = async (): Promise<EmployeeDto> => {
+  const offer = await acceptedOffer();
+  const emp = await request(app)
+    .post('/api/v1/hr/employees')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ jobOfferId: offer.id });
+  expect(emp.status).toBe(201);
+  return emp.body.data as EmployeeDto;
+};
+
+/** Register → screen → both interviews → offer sent and ACCEPTED: a candidate ready to hire. */
+const acceptedOffer = async (): Promise<JobOfferDto> => {
   const sourceId = await idByKey('applicant-sources', 'internalHr');
   const applicant = mutated<ApplicantDto>(
     await request(app)
@@ -183,12 +201,7 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
     .post(`/api/v1/hr/job-offers/${draft.id}/accept`)
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ version: mutated<JobOfferDto>(sent).version });
-  const emp = await request(app)
-    .post('/api/v1/hr/employees')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ jobOfferId: mutated<JobOfferDto>(accepted).id });
-  expect(emp.status).toBe(201);
-  return emp.body.data as EmployeeDto;
+  return mutated<JobOfferDto>(accepted);
 };
 
 const createSet = async (employeeId: string): Promise<HiringDocumentsDto> => {
@@ -233,6 +246,7 @@ beforeAll(async () => {
     [...platformPermissions, ...hrPermissions].map((p) => p.key),
   );
   const adminId = await mkUser('admin@ecms.local');
+  adminUserId = adminId;
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   await mkUser('alice@ecms.local');
 
@@ -495,5 +509,106 @@ describe('hiring documents — opened for an employee, once', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeId: emp.id });
     expect(dup.status).toBe(409);
+  });
+});
+
+/**
+ * A28 — «عقد جديد» for a candidate: the papers print from the accepted offer before the hire, every
+ * change is saved on the server, the first print keeps the employee code, and the hire — refused
+ * until something was printed — gives that code and records the contract with the printed terms.
+ */
+describe('«عقد جديد» for a candidate — print, then hire (A28)', () => {
+  const PAPER = (name: string): string => `egycash.hiring.${name}`;
+  const base = (offerId: string): string => `/api/v1/hr/contracts/candidates/${offerId}`;
+  const call = (method: 'post' | 'patch', path: string, body: object) =>
+    request(app)[method](path).set('Authorization', `Bearer ${adminToken}`).send(body);
+
+  beforeAll(async () => {
+    // The owner's papers, as the API's boot writes them; the contract generates without approval.
+    await syncHiringTemplates();
+    await settingsService.set(
+      {
+        userId: adminUserId,
+        sessionId: 'seed',
+        branchId: null,
+        departmentId: null,
+        sectionId: null,
+        locale: 'en',
+        permissions: { 'setting.edit': 'organization' },
+        permissionVersion: 1,
+        isPrivileged: true,
+      },
+      { key: HrContractSettingKeys.RequireApproval, scope: 'organization', value: false },
+    );
+  });
+
+  it('opens the candidate\'s papers, saves what changes, prints, and only then hires', async () => {
+    const offer = await acceptedOffer();
+    const opened = await call('post', `${base(offer.id)}/open`, {});
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    let draft = opened.body.data as CandidateDraftDto;
+    expect(draft.papers[0]).toMatchObject({ key: PAPER('contract'), group: 'contract', selected: true });
+    expect(draft.papers.filter((p) => p.group === 'everyJob').map((p) => p.key)).toEqual([
+      PAPER('data-sheet'),
+      PAPER('work-receipt'),
+      PAPER('relatives'),
+      PAPER('bank-letter'),
+    ]);
+    expect(draft).toMatchObject({ startDate: '2027-04-01', endDate: '2028-03-31', employeeCode: null, printedAt: null });
+    expect(draft.values.find((v) => v.key === 'employee.fullName')?.value).toBe('أحمد محمد');
+    // Opened again: the same record, not a second one.
+    expect(((await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto).id).toBe(draft.id);
+
+    // Not hired before anything was printed.
+    expect((await call('post', `${base(offer.id)}/hire`, { version: draft.version })).status).toBe(422);
+
+    // The choice and a typed-in address are kept; a stale page is refused.
+    draft = (
+      await call('patch', base(offer.id), {
+        selected: [PAPER('contract'), PAPER('bank-letter')],
+        overrides: [{ key: 'employee.address', value: 'العجوزة' }],
+        version: draft.version,
+      })
+    ).body.data as CandidateDraftDto;
+    expect(draft.papers.filter((p) => p.selected).map((p) => p.key)).toEqual([PAPER('contract'), PAPER('bank-letter')]);
+    expect(draft.values.find((v) => v.key === 'employee.address')).toMatchObject({ value: 'العجوزة', overridden: true });
+    expect((await call('patch', base(offer.id), { selected: [], version: draft.version - 1 })).status).toBe(409);
+
+    // A preview changes nothing.
+    const preview = await call('post', `${base(offer.id)}/render`, { keys: [PAPER('contract')] });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    const previewed = preview.body.data as RenderCandidatePapersDto;
+    expect(previewed.html).toContain('السيد/ أحمد محمد المقيم في العجوزة');
+    expect(previewed.html).toContain('تبدأ من 1/4/2027 وتنتهي في 31/3/2028');
+    expect(previewed.draft).toMatchObject({ printedAt: null, employeeCode: null });
+    expect((await call('post', `${base(offer.id)}/render`, { keys: ['not.a.paper'] })).status).toBe(400);
+
+    // The first print keeps the employee code, and the bank letter carries it; a second print keeps it.
+    const first = (await call('post', `${base(offer.id)}/render`, { keys: [PAPER('bank-letter')], print: true }))
+      .body.data as RenderCandidatePapersDto;
+    const code = first.draft.employeeCode ?? '';
+    expect(code).not.toBe('');
+    expect(first.draft.printCount).toBe(1);
+    expect(first.html).toContain(`ربط الحساب بكود الموظف ${code}`);
+    const second = (await call('post', `${base(offer.id)}/render`, { keys: [PAPER('contract')], print: true }))
+      .body.data as RenderCandidatePapersDto;
+    expect(second.draft).toMatchObject({ employeeCode: code, printCount: 2 });
+
+    // The hire: the kept code, and the contract with the printed term and address.
+    const hired = await call('post', `${base(offer.id)}/hire`, { version: second.draft.version });
+    expect(hired.status, JSON.stringify(hired.body)).toBe(200);
+    const done = hired.body.data as HireCandidateDto;
+    expect(done.employeeCode).toBe(code);
+    expect(done.contractNote).toBeNull();
+    const contract = (
+      await request(app).get(`/api/v1/hr/contracts/${done.contract?.id ?? ''}`).set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as ContractDto;
+    expect(contract).toMatchObject({ status: 'active', startDate: '2027-04-01', endDate: '2028-03-31' });
+    expect(contract.variables.find((v) => v.key === 'employee.address')?.value).toBe('العجوزة');
+
+    // Hired once: the page says so, and a second hire is refused.
+    const after = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
+    expect(after.employeeId).toBe(done.employeeId);
+    expect((await call('post', `${base(offer.id)}/hire`, { version: after.version })).status).toBe(409);
   });
 });

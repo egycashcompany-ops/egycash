@@ -11,7 +11,13 @@ import {
   ContractVersionOnlySchema,
   CreateContractSchema,
   DecideContractApprovalSchema,
+  HireCandidateSchema,
   HiringPackRequestSchema,
+  RenderCandidatePapersSchema,
+  UpdateCandidateDraftSchema,
+  type HireCandidate,
+  type RenderCandidatePapers,
+  type UpdateCandidateDraft,
   ListContractsQuerySchema,
   PreviewContractSchema,
   SignContractBlockSchema,
@@ -42,6 +48,7 @@ import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { contractTypeService } from '../contract-types';
 import { contractService } from './contract.service';
 import { hiringPackService } from './hiring-pack.service';
+import { candidateDraftService } from '../candidates';
 import { verifyContract } from './contract-verify';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -144,6 +151,41 @@ const hiringPack = async (req: Request, res: Response): Promise<void> => {
   ok(res, await hiringPackService.build(ctx, body.employeeId, scopeSelector(ctx, 'contract.print')));
 };
 
+// ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
+
+const OfferParamSchema = z.object({ offerId: objectId() }).strict();
+type OfferParam = { offerId: string };
+
+const openCandidate = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, OfferParam>(req);
+  ok(res, await candidateDraftService.open(ctx, params.offerId, scopeSelector(ctx, 'contract.print')));
+};
+
+const updateCandidate = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdateCandidateDraft, never, OfferParam>(req);
+  ok(res, await candidateDraftService.update(ctx, params.offerId, body, scopeSelector(ctx, 'contract.print')));
+};
+
+const renderCandidate = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<RenderCandidatePapers, never, OfferParam>(req);
+  ok(res, await candidateDraftService.render(ctx, params.offerId, body, scopeSelector(ctx, 'contract.print')));
+};
+
+const hireCandidate = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<HireCandidate, never, OfferParam>(req);
+  ok(
+    res,
+    await candidateDraftService.hire(ctx, params.offerId, body, {
+      employee: scopeSelector(ctx, 'employee.create'),
+      contract: scopeSelector(ctx, 'contract.create'),
+    }),
+  );
+};
+
 const documentHtml = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
@@ -213,6 +255,14 @@ export const buildContractsRouter = (): Router => {
     validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
   router.post('/hiring-pack', ...guard('contract.print'), validate({ body: HiringPackRequestSchema }),
     asyncHandler(hiringPack));
+  router.post('/candidates/:offerId/open', ...guard('contract.print'), validate({ params: OfferParamSchema }),
+    asyncHandler(openCandidate));
+  router.patch('/candidates/:offerId', ...guard('contract.print'),
+    validate({ body: UpdateCandidateDraftSchema, params: OfferParamSchema }), asyncHandler(updateCandidate));
+  router.post('/candidates/:offerId/render', ...guard('contract.print'),
+    validate({ body: RenderCandidatePapersSchema, params: OfferParamSchema }), asyncHandler(renderCandidate));
+  router.post('/candidates/:offerId/hire', ...guard('employee.create'),
+    validate({ body: HireCandidateSchema, params: OfferParamSchema }), asyncHandler(hireCandidate));
   router.get('/:id', ...guard('contract.view'), validate({ params: IdParamSchema }), asyncHandler(getContract));
   router.patch('/:id', ...guard('contract.create'), validate({ body: UpdateContractDraftSchema, params: IdParamSchema }),
     asyncHandler(act<UpdateContractDraft>((ctx, id, body) => contractService.updateDraft(ctx, id, body, scopeSelector(ctx, 'contract.create')))));

@@ -11,6 +11,23 @@ its entry here in the same PR.
 
 ### Added
 
+- **Operations: the shipment form by bank → branch, and the day board in the Fleet look.** «عند اضافة
+  شحنة البنك الرئيسى دا اللى بيحاسب على الشحنة … عدل برضو الui بتاع الفورم والشاشة زى الحركة».
+  - «البنك الرئيسي» is the bank billed. «من فرع» and «إلى فرع» each pick a bank, then a branch of it
+    by typing (searched on the server, Arabic letter variants folded, no 100-branch cap). A branch
+    that is not there is offered as «+ إضافة … كفرع جديد», which opens the catalogs' branch form with
+    the bank and the name filled in; the saved branch is picked on the side that asked.
+  - The area fills from the destination branch and stays editable. «اسم قائد الطاقم» and «رقم
+    السيارة» pick each other from the collection day's crew plan.
+  - The origin branch may belong to any bank (legacy never posted its from-bank); the destination
+    rule is unchanged. A secured shipment's delivery date stays optional.
+  - `/operations/shipments` in the Fleet boards' look: «تشغيل يوم …», the dark icon filter bar with
+    a «قائد الطاقم» filter, the money per currency behind «الإحصائيات», and the legacy columns
+    (السيارة، اسم البنك، من فرع، إلى فرع، العملة، قيمة الشحنة، قائد الطاقم، التاريخ …).
+  - API: `GET /operations/shipments/day-board` rows carry their branches (with banks) and the crew of
+    the leg the row reports on; `GET /operations/bank-branches/:id`; catalog searches take typed
+    text literally (regex metacharacters escaped) and fold Arabic letter variants.
+
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
   - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch

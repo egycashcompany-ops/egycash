@@ -4,8 +4,9 @@
 // What a typecheck cannot see:
 //   • the van code is a trigger only when its crew row came with the board (a reader without
 //     `operationsCrew.view` gets none — the code stays plain text);
-//   • the van card names every place on the van — drivers, captain, both specialists — and a
-//     person the directory cannot name is a dash, never a raw id;
+//   • the van card names every place on the van — drivers, captain, both specialists — the drivers
+//     by name only (their details are Fleet's), and a person the directory cannot name is never a
+//     raw id;
 //   • the captain card says the Fleet driver card's facts — code, phone, the van, the branch named
 //     from the shared list — and has no phone line for a reader the server sends no phone to.
 //
@@ -53,8 +54,8 @@ const VEHICLE_CREW: OperationsDayBoardVehicleCrewDto = {
   vehicleId: CREW.vehicleId,
   vehicleCode: '120',
   drivers: [
-    { employeeId: '64b1f0ffffffffffffffff01', code: '2001', fullNameAr: 'سامر عادل منصور' },
-    { employeeId: '64b1f0ffffffffffffffff02', code: '2002', fullNameAr: 'محمود سعيد عبد الحميد' },
+    { employeeId: '64b1f0ffffffffffffffff01', fullNameAr: 'سامر عادل منصور' },
+    { employeeId: '64b1f0ffffffffffffffff02', fullNameAr: 'محمود سعيد عبد الحميد' },
   ],
   captains: [{ employeeId: CAPTAIN, code: '1042', fullNameAr: 'محمد عبد الله السيد' }],
   specialist1: [{ employeeId: '64b1f0ffffffffffffffff03', code: '3001', fullNameAr: 'أحمد فؤاد' }],
@@ -141,6 +142,46 @@ describe('the van card — who rides the van', () => {
     // Drivers, then the captain, then the specialists — the order the crew board reads in.
     expect(card.indexOf('سامر عادل منصور')).toBeLessThan(card.indexOf('محمد عبد الله السيد'));
     expect(card.indexOf('محمد عبد الله السيد')).toBeLessThan(card.indexOf('أحمد فؤاد'));
+  });
+
+  it('a driver is his name only — his details are Fleet’s, even if a code came along', () => {
+    // «هعرف مين السواقين اللي عليها، لكن مش عايز اعرف بياناتهم». The server sends a driver's name
+    // only; were a code ever to ride along, the card still would not print it.
+    const leaky = render(
+      <VehicleCrewCardBody
+        crew={{
+          ...VEHICLE_CREW,
+          drivers: [
+            {
+              employeeId: '64b1f0ffffffffffffffff01',
+              fullNameAr: 'سامر عادل منصور',
+              code: 'DRV-2001',
+              phone: '01009998877',
+            } as OperationsDayBoardVehicleCrewDto['drivers'][number],
+          ],
+        }}
+      />,
+    );
+    expect(leaky).toContain('سامر عادل منصور');
+    expect(leaky).not.toContain('DRV-2001');
+    expect(leaky).not.toContain('01009998877');
+    // The captain and the specialists are Operations' own people: their codes stay.
+    expect(card).toContain('1042');
+    expect(card).toContain('3001');
+  });
+
+  it('an unnamed driver is a dash; an unnamed crew member is his code — never an id', () => {
+    const unnamed = render(
+      <VehicleCrewCardBody
+        crew={{
+          ...VEHICLE_CREW,
+          drivers: [{ employeeId: '64b1f0ffffffffffffffff05', fullNameAr: null }],
+        }}
+      />,
+    );
+    expect(unnamed).toContain('data-crew-card-slot="drivers" data-crew-card-count="1"');
+    expect(unnamed).toContain('—');
+    expect(unnamed).not.toContain('64b1f0ffffffffffffffff05');
   });
 
   it('an unnamed person is his code — never his id', () => {

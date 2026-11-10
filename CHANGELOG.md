@@ -97,6 +97,9 @@ its entry here in the same PR.
     Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
     (`crews`, and the captain's code, phone and branch on each row); a reader without
     `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
+  - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
+    اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
+    answer sends a driver's name only. The captain and the specialists keep their codes.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

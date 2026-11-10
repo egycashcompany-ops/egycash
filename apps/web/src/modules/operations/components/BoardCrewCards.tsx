@@ -2,8 +2,8 @@
 // واخصائيين و لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه».
 //
 // - The VAN card, on the vehicle code: who rides that van on the crew row the shipment's leg is on
-//   — its drivers (the Fleet duty row's), its captain and both specialists, then the direction and
-//   the planned time when the row has them.
+//   — its drivers (the Fleet duty row's, by name only: their details are Fleet's), its captain and
+//   both specialists, then the direction and the planned time when the row has them.
 // - The CAPTAIN card, on the captain's name: the Fleet driver card's facts, for the captain — the
 //   whole name, the employee code, the mobile number, the van and the branch.
 //
@@ -22,6 +22,7 @@ import { type ReactNode } from 'react';
 import {
   type Locale,
   type OperationsDayBoardCrewDto,
+  type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
 } from '@ecms/contracts';
@@ -173,7 +174,33 @@ export const CaptainHoverName = ({
   );
 };
 
-/** The people in one place on the van: each on a line of its own, the name then the code. */
+/**
+ * The van's drivers: each on a line of its own, BY NAME ONLY — «هعرف مين السواقين اللي عليها، لكن
+ * مش عايز اعرف بياناتهم». A driver's details are Fleet's (its driver card), so Operations says who
+ * drives and stops there; the server sends nothing more. A driver the directory cannot name is a
+ * dash.
+ */
+const DriverNames = ({
+  drivers,
+}: {
+  drivers: readonly OperationsDayBoardDriverDto[];
+}): JSX.Element =>
+  drivers.length === 0 ? (
+    <Missing />
+  ) : (
+    <span data-crew-card-slot="drivers" data-crew-card-count={drivers.length}>
+      {drivers.map((driver) => (
+        <span key={driver.employeeId} className="block">
+          {driver.fullNameAr ?? <Missing />}
+        </span>
+      ))}
+    </span>
+  );
+
+/**
+ * Operations' own people in one place on the van — the captain, a specialist: each on a line of its
+ * own, the name then the code.
+ */
 const People = ({
   people,
   slot,
@@ -221,7 +248,7 @@ export const VehicleCrewCardBody = ({
       </CardHead>
       <dl className={HOVER_CARD_FACTS}>
         <Fact label={t('operations.board.card.drivers')}>
-          <People people={crew.drivers} slot="drivers" />
+          <DriverNames drivers={crew.drivers} />
         </Fact>
         <Fact label={t('operations.crew.slot.captain')}>
           <People people={crew.captains} slot="captain" />

@@ -23,6 +23,7 @@ import {
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardBranchDto,
   type OperationsDayBoardCrewDto,
+  type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
   type Paginated,
@@ -421,7 +422,14 @@ class OperationsShipmentService {
       crewAssignmentId: String(c._id),
       vehicleId: String(c.vehicleId),
       vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
-      drivers: driversOf(c).map(person),
+      // The driver by NAME only, built field by field so no code can ride along: a driver's
+      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
+      drivers: driversOf(c).map(
+        (employeeId): OperationsDayBoardDriverDto => ({
+          employeeId,
+          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
+        }),
+      ),
       captains: slotIds(c.captainEmployeeIds).map(person),
       specialist1: slotIds(c.specialist1EmployeeIds).map(person),
       specialist2: slotIds(c.specialist2EmployeeIds).map(person),

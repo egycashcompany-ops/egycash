@@ -3463,21 +3463,39 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const ridden = new Set(view.shipments.map((r) => r.crew?.crewAssignmentId));
     for (const crew of view.crews) expect(ridden.has(crew.crewAssignmentId)).toBe(true);
 
-    // The van's card: Fleet's drivers in their seat order, then the crew row slot by slot.
-    expect(view.crews.find((c) => c.crewAssignmentId === boardCrewId)).toEqual({
+    // The van's card: Fleet's drivers in their seat order — BY NAME ONLY («هعرف مين السواقين اللي
+    // عليها، لكن مش عايز اعرف بياناتهم»: a driver's details are Fleet's) — then the crew row slot
+    // by slot, each with the code Operations reads its own people by.
+    const driver = async (employeeId: string) => {
+      const hr = await hrRecord(employeeId);
+      return { employeeId, fullNameAr: hr.personal.fullNameAr };
+    };
+    const vanCard = view.crews.find((c) => c.crewAssignmentId === boardCrewId);
+    expect(vanCard).toEqual({
       crewAssignmentId: boardCrewId,
       vehicleId: vehicleAId,
       vehicleCode: 'OPS-V1',
-      drivers: [await person(boardDriver1Id), await person(boardDriver2Id)],
+      drivers: [await driver(boardDriver1Id), await driver(boardDriver2Id)],
       captains: [await person(captainId)],
       specialist1: [await person(specialist1Id)],
       specialist2: [await person(specialist2Id)],
       direction: 'القاهرة',
       plannedTime: '08:30',
     });
-    expect(
-      view.crews.find((c) => c.crewAssignmentId === boardCrewId)?.drivers.map((d) => d.fullNameAr),
-    ).toEqual(['سائق اللوحة الأول', 'سائق اللوحة الثاني']);
+    expect(vanCard?.drivers.map((d) => d.fullNameAr)).toEqual([
+      'سائق اللوحة الأول',
+      'سائق اللوحة الثاني',
+    ]);
+    // Not a key more than the name: no code, no phone, no branch reaches Operations for a driver
+    // — `toEqual` above would let an `undefined` key through, so the keys are pinned outright, and
+    // the drivers' HR codes appear nowhere in the board's answer.
+    for (const d of vanCard?.drivers ?? []) {
+      expect(Object.keys(d).sort()).toEqual(['employeeId', 'fullNameAr']);
+    }
+    const body = JSON.stringify(view);
+    for (const id of [boardDriver1Id, boardDriver2Id]) {
+      expect(body).not.toContain(`"${(await hrRecord(id)).code}"`);
+    }
 
     // The viewer holds `operationsShipment.view` only: the same rows, the same van and captain
     // name, but no crew cards and no captain's phone.

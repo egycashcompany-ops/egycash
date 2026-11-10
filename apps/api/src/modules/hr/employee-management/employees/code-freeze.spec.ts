@@ -55,13 +55,19 @@ describe('the Employee Code is frozen once issued', () => {
   });
 
   /**
-   * Composition is legitimate exactly twice — the two ways an employee is first created (hire from
-   * an accepted offer, and direct registration). If this count ever rises, a third path is issuing
-   * codes and needs to be looked at; if it falls, hiring has stopped composing one at all.
+   * Composition is legitimate exactly twice as an ISSUE — the two ways an employee is first created
+   * (hire from an accepted offer, and direct registration) — and once more as a PREVIEW: a
+   * candidate's papers (A28) print the code the hire will compose from the number kept for them,
+   * and that path writes nothing. If this count ever rises, another path is composing codes and
+   * needs to be looked at; if it falls, hiring has stopped composing one at all.
    */
-  it('only the two hire paths compose a code', () => {
+  it('only the two hire paths, and the candidate\'s unsaved preview, compose a code', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
-    expect(composed).toHaveLength(2);
+    expect(composed).toHaveLength(3);
+    // The third is the candidate's preview — built, returned, never saved.
+    const preview = SERVICE.slice(SERVICE.indexOf('async candidateFromOffer('), SERVICE.indexOf('async reserveEmployeeNumber('));
+    expect(preview).toContain('buildEmployeeCode(');
+    expect(preview).not.toMatch(/employeeRepository\.(create|update)/);
   });
 
   /**

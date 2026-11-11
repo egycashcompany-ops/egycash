@@ -9,6 +9,7 @@
 //     carries its own bank.
 //   · the TO bank — whose branch it is delivered to. Stored as `secondaryBankId` when it differs
 //     from the main bank (legacy `sec_bank`), null when it is the main bank.
+import { isYmd } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 
 /**
@@ -37,6 +38,48 @@ export const areaOfDestination = (branch: { opsAreaName: string | null } | null)
   branch?.opsAreaName?.trim() ?? '';
 
 /**
+ * A SHIPMENT'S DATES HAVE A FLOOR — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات», and for an edit
+ * «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»:
+ *
+ *   · a NEW date is today or later — today in Cairo, the desk's day, never the browser's or UTC's
+ *     (which is still yesterday for the first hours after a Cairo midnight);
+ *   · an EDIT may keep the day a date was on, or move it later, but never earlier. A shipment from
+ *     last week stays editable on its own day: the floor is ITS day, not today.
+ *
+ * The collection date, and a secured shipment's delivery date alike — the server holds both to it.
+ * `held` is the date as stored on the shipment being edited ('YYYY-MM-DD'), or null: a new
+ * shipment, or a delivery date being set for the first time, which is a new date. The server
+ * refuses the same (`OPERATIONS_SHIPMENT_DATE_IN_PAST`, `OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`);
+ * the form's date boxes do not offer an earlier day, and a day typed earlier is said in words
+ * before anything is sent.
+ */
+export const earliestShipmentDate = (held: string | null, today: string): string => held ?? today;
+
+export type ShipmentDateProblem = 'inPast' | 'beforeOriginal';
+
+/**
+ * Why `value` cannot be the date, or null when it can. An empty or half-typed date is not this
+ * rule's to refuse — the required-field check names an empty collection date, a secured
+ * shipment's delivery date may stay empty, and there is nothing to compare until a whole day is
+ * there. Days compare as 'YYYY-MM-DD' strings.
+ */
+export const shipmentDateProblem = (
+  value: string,
+  held: string | null,
+  today: string,
+): ShipmentDateProblem | null => {
+  if (!isYmd(value)) return null;
+  if (held === null) return value < today ? 'inPast' : null;
+  return value < held ? 'beforeOriginal' : null;
+};
+
+/** What each problem says — the same words as the server's refusal of it (`SAVE_ERRORS`). */
+export const SHIPMENT_DATE_PROBLEM_KEY: Record<ShipmentDateProblem, string> = {
+  inPast: 'operations.shipment.errors.dateInPast',
+  beforeOriginal: 'operations.shipment.errors.dateBeforeOriginal',
+};
+
+/**
  * The i18n key for a refused save, by the server's code — so an Arabic desk reads why, in Arabic,
  * instead of the server's English sentence. Unknown codes fall back to the generic message.
  */
@@ -47,6 +90,10 @@ const SAVE_ERRORS: Record<string, string> = {
   OPERATIONS_UNKNOWN_CURRENCY: 'operations.shipment.errors.unknownCurrency',
   OPERATIONS_CREW_DAY_MISMATCH: 'operations.shipment.errors.crewDay',
   OPERATIONS_CREW_CAPTAIN_MISMATCH: 'operations.shipment.errors.crewCaptain',
+  // A date's floor (`shipmentDateProblem`): the form says it first, but the server's clock is the
+  // one that counts — a browser whose clock runs behind is refused here.
+  OPERATIONS_SHIPMENT_DATE_IN_PAST: SHIPMENT_DATE_PROBLEM_KEY.inPast,
+  OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: SHIPMENT_DATE_PROBLEM_KEY.beforeOriginal,
   // Someone else saved this shipment after it was opened (optimistic lock, 409).
   STALE_DOCUMENT: 'operations.shipment.errors.stale',
 };

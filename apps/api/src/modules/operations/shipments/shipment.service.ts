@@ -17,20 +17,30 @@
 //   · The creation-time captain/vehicle (leader1/car_num1) live on the ASSIGNMENT entity per the
 //     approved SPLIT and arrive with that slice; until then a shipment can exist unassigned.
 import {
+  ErrorCodes,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
+  OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES,
   OperationsEvents,
+  cairoCalendarDate,
+  cairoYmd,
   toMinorUnits,
+  ymdOf,
   type CreateOperationsShipment,
+  type ErrorCode,
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardBranchDto,
   type OperationsDayBoardCrewDto,
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsShipmentLeg,
+  type OperationsShipmentLogDto,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -51,9 +61,15 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
-import { getDirectoryEmployees } from '../../../platform/directory';
+import { directoryProfileService, getDirectoryEmployees } from '../../../platform/directory';
+import { vaultCustody } from '../treasury-boundary';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
 import { resolveShipmentReceiptCategoryId } from './shipment-files';
+import {
+  SHIPMENT_LOG_ENTITY,
+  buildShipmentLogEntries,
+  collectShipmentLogRefs,
+} from './shipment-log';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -80,6 +96,88 @@ const snapshot = (doc: OperationsShipmentDoc) => ({
 /** Q15 NORMALIZE: the identity of an operating date is the day, stored as UTC midnight. */
 const utcDay = (d: Date): Date =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+
+/**
+ * TODAY, as the operating day: the Cairo calendar date of the server clock, stored the date-only
+ * way (UTC midnight). Cairo, not UTC — between Cairo midnight and UTC midnight the two name
+ * different days, and the desk works on Cairo's. The day board's default and the date rules
+ * below read this one "today", so a shipment booked for today is on the board that opens empty.
+ */
+const operatingToday = (): Date => cairoCalendarDate(new Date());
+
+/**
+ * 422 for a date a person may not give a shipment — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات».
+ * The one detail names the field and the earliest day it may take, so the form can say so.
+ */
+const dateRefused = (
+  code: ErrorCode,
+  field: 'collectionDate' | 'deliveryDate',
+  earliest: string,
+  message: string,
+): AppError =>
+  new AppError(code, 422, message, {
+    details: [{ field, code: 'MIN_DATE', message: earliest }],
+  });
+
+/**
+ * A NEW date may not fall before today on the Cairo calendar. Compared as calendar days
+ * ('YYYY-MM-DD' strings compare in date order): the stored value is the UTC day the client sent.
+ */
+const assertNotBeforeToday = (field: 'collectionDate' | 'deliveryDate', value: Date): void => {
+  const today = cairoYmd(new Date());
+  if (ymdOf(value) < today) {
+    throw dateRefused(
+      ErrorCodes.OPERATIONS_SHIPMENT_DATE_IN_PAST,
+      field,
+      today,
+      `the ${field} ${ymdOf(value)} is before today (${today}) — a shipment cannot be booked on a day that has passed`,
+    );
+  }
+};
+
+/**
+ * An EDITED date may not move before the day the shipment is on now — «ميقدرش يحدد يوم قبل يوم اللى
+ * كانت عليه الشحنة». Later, or the same day, is always accepted: the form sends every field back.
+ */
+const assertNotBeforeOriginal = (
+  field: 'collectionDate' | 'deliveryDate',
+  next: Date,
+  current: Date,
+): void => {
+  if (ymdOf(next) < ymdOf(current)) {
+    throw dateRefused(
+      ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL,
+      field,
+      ymdOf(current),
+      `the ${field} cannot move from ${ymdOf(current)} back to ${ymdOf(next)} — only to the same day or later`,
+    );
+  }
+};
+
+/** The UTC midnight after `day` — the exclusive end of a half-open day range. */
+const nextDay = (day: Date): Date => {
+  const next = new Date(day);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+};
+
+/**
+ * 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` — the range holds more shipments than one history
+ * screen serves. Both figures ride in the details, so the screen can say how far over it is and
+ * the owner can narrow the range rather than guess.
+ */
+const historyTooLarge = (count: number): AppError =>
+  new AppError(
+    ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE,
+    422,
+    `the range holds ${String(count)} shipments — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; narrow the dates`,
+    {
+      details: [
+        { field: 'count', code: 'COUNT', message: String(count) },
+        { field: 'max', code: 'MAX', message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) },
+      ],
+    },
+  );
 
 const eventPayload = (doc: OperationsShipmentDoc) => ({
   shipmentId: String(doc._id),
@@ -189,6 +287,15 @@ const RECEIPT_LINK_ATTEMPTS = 3;
 
 class OperationsShipmentService {
   async create(input: CreateOperationsShipment, by: string): Promise<OperationsShipmentDoc> {
+    // NO PAST DAY — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات». This is the ONE create path: the
+    // desk's form on the day board and history, and the secured register (`/operations/secured`
+    // backlog), both post here, and in both a person picks the dates. So both dates a person
+    // picks are held to it: the collection date, and a secured shipment's delivery date — its
+    // board day, which a past one would book onto a past board. Checked first, before any
+    // reference is read: a past day is wrong whatever else the form says.
+    assertNotBeforeToday('collectionDate', input.collectionDate);
+    if (input.deliveryDate !== null) assertNotBeforeToday('deliveryDate', input.deliveryDate);
+
     await assertReferences({
       mainBankId: input.mainBankId,
       secondaryBankId: input.secondaryBankId,
@@ -301,32 +408,164 @@ class OperationsShipmentService {
    *   · never deleted; newest created first (legacy `input_date: -1`)
    *
    * `date` defaults to TODAY, matching the legacy screen — which computed today server-side and
-   * offered no date picker at all. Accepting a date is the one addition, and it is additive: the
-   * default answer is the legacy answer.
+   * offered no date picker at all («هنشيل التاريخ لان هو هيجيب بتاعت اليوم»). Today is the CAIRO
+   * day (`operatingToday`), the same today a new shipment may not be dated before. Accepting a
+   * date is the one addition, and it is additive: the default answer is the legacy answer.
    */
   async dayBoard(date: Date | undefined): Promise<OperationsShipmentDoc[]> {
-    const day = utcDay(date ?? new Date());
-    const next = new Date(day);
-    next.setUTCDate(next.getUTCDate() + 1);
-    return operationsShipmentRepository.dayBoard(day, next);
+    const day = this.boardDay(date);
+    return operationsShipmentRepository.boardInRange(day, nextDay(day));
+  }
+
+  /** The operating day a board request means: the day asked for, or today in Cairo. */
+  boardDay(date: Date | undefined): Date {
+    return date === undefined ? operatingToday() : utcDay(date);
+  }
+
+  /** The day board with what the legacy table printed beside each shipment (see `boardView`). */
+  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
+    return this.boardView(await this.dayBoard(date));
   }
 
   /**
-   * The day board with what the legacy table printed beside each shipment: both branches by name
-   * and code with their banks, and the crew of the leg the shipment's type reports on — plus, for
-   * the hover cards, who rides each van and the captain's own card.
+   * THE SHIPMENTS HISTORY — «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك
+   * الhistory بتاع الشحنات»: the day board over every day from `from` to `to`, both inclusive.
+   *
+   * The same union and the same enrichment as the day board, on purpose: a day in the history is
+   * the board of that day, row for row, so the owner can trust that what he looks back at is what
+   * the desk saw.
+   *
+   * COUNTED BEFORE IT IS READ. A range holding more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments is refused for the price of an index count, before a row is loaded or joined — and
+   * refused, never cut short: the screen totals what it is given, and totals over a silently
+   * truncated list would be wrong money figures with nothing on screen to say so.
+   */
+  async historyView(from: Date, to: Date): Promise<DayBoardView> {
+    const first = utcDay(from);
+    const toExclusive = nextDay(utcDay(to));
+    const count = await operationsShipmentRepository.countBoardInRange(first, toExclusive);
+    if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
+    return this.boardView(await operationsShipmentRepository.boardInRange(first, toExclusive));
+  }
+
+  /**
+   * THE DELETED SHIPMENTS — «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح»: the rows deleted
+   * from the boards of `from`..`to`, the history's own union over deleted rows, so each one listed
+   * is a row that returns to that history when restored. Counted before it is read and capped
+   * exactly as the history is; enriched exactly as board rows are (`boardView`), plus who deleted
+   * each one, by name.
+   */
+  async deletedView(
+    from: Date,
+    to: Date,
+  ): Promise<DayBoardView & { deletedByName: Map<string, string | null> }> {
+    const first = utcDay(from);
+    const toExclusive = nextDay(utcDay(to));
+    const count = await operationsShipmentRepository.countDeletedBoardInRange(first, toExclusive);
+    if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
+    const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive);
+    // The deleter is the user stamped on the row (`deletedBy`), named in ONE directory read for
+    // the whole list — a handful of desk users delete, however many rows they deleted.
+    const deleters = [
+      ...new Set(docs.flatMap((d) => (d.deletedBy == null ? [] : [String(d.deletedBy)]))),
+    ];
+    const profiles = await directoryProfileService.resolve(deleters);
+    const nameOf = (userId: string): string | null => {
+      const name = profiles.get(userId)?.displayName;
+      if (name === undefined) return null;
+      return name.ar !== '' ? name.ar : name.en !== '' ? name.en : null;
+    };
+    const deletedByName = new Map(
+      docs.map((d) => [String(d._id), d.deletedBy == null ? null : nameOf(String(d.deletedBy))]),
+    );
+    return { ...(await this.boardView(docs)), deletedByName };
+  }
+
+  /**
+   * THE SHIPMENT'S ACTION LOG — «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة»: every recorded act
+   * on one shipment, oldest first, read from the audit trail of the shipment, its legs and its
+   * vault custody, and printed in names (see shipment-log.ts). A deleted shipment answers too —
+   * the deleted list is where one most needs its story.
+   *
+   * A FIXED NUMBER OF READS, whatever the length of the story: the shipment, its legs, its
+   * custody, ONE audit read for all three entities (`trailOf`), then one read per kind of name the
+   * values hold (banks, branches, currencies, people, vans).
+   *
+   * The legs read are the LIVE ones, through `ux_shipment_leg` (and the custody through the
+   * treasury port's own read): no path deletes a leg or a custody row today — a reassignment
+   * rewrites the leg in place, and a deleted shipment keeps its legs — and the only index that
+   * finds a shipment's legs is partial on `isDeleted: false`, so asking for deleted ones too would
+   * scan the whole collection on every log opened, for rows that do not exist.
+   *
+   * THE VAULT'S RECORD IS THE TREASURY'S. The custody rows (receipt number, counts, seals, the two
+   * receiving treasurers) are read only for a reader who `seesVault` (`operationsVault.view`, the
+   * grant the vault screens and the custody's realtime topic ride). Without it the custody trail
+   * is not read at all, and the shipment's own status rows still say it entered the vault and was
+   * dispatched — the entries stay, only the treasury's details are left out.
+   */
+  async log(id: string, reader: { seesVault: boolean }): Promise<OperationsShipmentLogDto> {
+    const shipment = await operationsShipmentRepository.findAnyById(id);
+    if (shipment === null) throw new NotFoundError();
+    const legs = await operationsShipmentAssignmentRepository.findByShipments([id]);
+    const custody = reader.seesVault ? await vaultCustody().find(id) : null;
+    const { rows, truncated } = await auditService.trailOf(
+      'operations',
+      [
+        { entityType: SHIPMENT_LOG_ENTITY.shipment, entityIds: [id] },
+        { entityType: SHIPMENT_LOG_ENTITY.leg, entityIds: legs.map((leg) => String(leg._id)) },
+        {
+          entityType: SHIPMENT_LOG_ENTITY.custody,
+          entityIds: custody === null ? [] : [custody.id],
+        },
+      ],
+      OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES,
+    );
+
+    const refs = collectShipmentLogRefs(rows);
+    const [banks, branches, currencies, people, vehicles] = await Promise.all([
+      operationsBankRepository.findByIdsSystem(refs.bankIds),
+      operationsBankBranchRepository.findByIdsSystem(refs.branchIds),
+      operationsCurrencyRepository.findByIdsSystem(refs.currencyIds),
+      getDirectoryEmployees(refs.employeeIds),
+      fleetVehicleRepository.codesByIds(refs.vehicleIds),
+    ]);
+    const bankName = new Map(banks.map((b) => [String(b._id), b.opsName]));
+    const branchName = new Map(
+      branches.map((b) => [String(b._id), b.code === '' ? b.name : `${b.name} (${b.code})`]),
+    );
+    const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
+    const legOf = new Map<string, OperationsShipmentLeg>(
+      legs.map((leg) => [String(leg._id), leg.leg]),
+    );
+    return {
+      shipmentId: id,
+      entries: buildShipmentLogEntries(rows, legOf, {
+        bank: (bankId) => bankName.get(bankId) ?? null,
+        branch: (branchId) => branchName.get(branchId) ?? null,
+        currency: (currencyId) => currencyName.get(currencyId) ?? null,
+        person: (employeeId) => people.get(employeeId)?.fullNameAr ?? null,
+        vehicle: (vehicleId) => vehicles.get(vehicleId) ?? null,
+      }),
+      truncated,
+    };
+  }
+
+  /**
+   * Board rows with what the legacy table printed beside each shipment: both branches by name and
+   * code with their banks, and the crew of the leg the shipment's type reports on — plus, for the
+   * hover cards, who rides each van and the captain's own card. Shared by the day board and the
+   * history, so a history day can never print a row differently from that day's board.
    *
    * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the crew rows, their
    * Fleet duty rows, the vehicle codes and every person's name are each fetched once for the whole
-   * day and joined in memory. A busy day is a few hundred shipments; a per-row lookup would make
-   * the board a thousand queries.
+   * set and joined in memory. A busy day is a few hundred shipments and a history range is capped
+   * at a few thousand; a per-row lookup would make either thousands of queries.
    *
    * Nothing here can fail a row. A branch, vehicle or name that no longer resolves comes back as
    * null and the screen says so — a board that refused to load because one van was scrapped would
    * be worse than a board with one blank cell.
    */
-  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
-    const docs = await this.dayBoard(date);
+  private async boardView(docs: OperationsShipmentDoc[]): Promise<DayBoardView> {
     if (docs.length === 0) return { rows: [], crews: [] };
 
     const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);
@@ -505,6 +744,18 @@ class OperationsShipmentService {
         'a daily shipment has no delivery date',
         'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
       );
+    }
+    // NEVER EARLIER THAN THE DAY IT IS ON — «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة». Edit
+    // and delete stay open on the history (a past day's row may be corrected), but its date may
+    // only move forward. A shipment already on a past day can keep it — the form sends every
+    // field back, unchanged ones included. A delivery date the shipment never had is a fresh pick,
+    // so it follows the create rule instead: not before today.
+    if (input.collectionDate !== undefined) {
+      assertNotBeforeOriginal('collectionDate', input.collectionDate, before.collectionDate);
+    }
+    if (input.deliveryDate != null) {
+      if (before.deliveryDate === null) assertNotBeforeToday('deliveryDate', input.deliveryDate);
+      else assertNotBeforeOriginal('deliveryDate', input.deliveryDate, before.deliveryDate);
     }
 
     const set: Partial<OperationsShipmentDoc> = {};
@@ -733,6 +984,34 @@ class OperationsShipmentService {
     await operationsShipmentRepository.softDeleteById(id, { by });
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
     await emit(OperationsEvents.ShipmentDeleted, eventPayload(before));
+  }
+
+  /**
+   * Bring a deleted shipment back — «اقدر اجيب منه اللى اتمسح». The delete is a plain soft flag
+   * with no cascade (its legs, custody and receipt photo were never touched), so clearing the flag
+   * is the whole undo: the shipment returns to its day's board and the history with its crew as it
+   * was. Whoever may delete a shipment may restore it — one grant, both directions, as `complete`
+   * and `reopen` share theirs.
+   *
+   * No state guard and no date rule, like the delete it undoes: restoring dates nothing, it puts
+   * a row back on the day it was always on.
+   */
+  async restore(id: string, by: string): Promise<OperationsShipmentDoc> {
+    const restored = await operationsShipmentRepository.restoreById(id, { by });
+    if (restored === null) {
+      // Nothing deleted under that id: a live shipment is a 409 the screen can name, anything
+      // else a plain 404.
+      if ((await operationsShipmentRepository.findById(id)) !== null) {
+        throw new ConflictError(
+          'this shipment is not deleted',
+          ErrorCodes.OPERATIONS_SHIPMENT_NOT_DELETED,
+        );
+      }
+      throw new NotFoundError();
+    }
+    await auditService.record({ entityRef: entityRef(id), action: 'restore' });
+    await emit(OperationsEvents.ShipmentRestored, eventPayload(restored));
+    return restored;
   }
 }
 

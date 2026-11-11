@@ -645,6 +645,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع
+        // الشحنات»: the same board over a range of days, right beneath the day it extends.
+        en: 'Shipments History',
+        ar: 'سجل الشحنات',
+        route: '/operations/shipments/history',
+        icon: 'calendar',
+        permission: 'operationsShipment.view',
+      },
+      {
         en: 'Crew Board',
         ar: 'لوحة التشغيلة',
         route: '/operations/crew-board',

@@ -3,7 +3,6 @@
 // than rendering an empty screen with no table at all.
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_CATALOG_KINDS, resolveCatalogKind } from './CatalogsPage';
-import { resolveBoardDate } from './DailyOperationsPage';
 import { resolveCrewDate } from './CrewBoardPage';
 import { resolveDueDate } from './SecuredDispatchPage';
 
@@ -33,23 +32,8 @@ describe('resolveCatalogKind', () => {
   });
 });
 
-describe('resolveBoardDate — the daily board\'s ?date= contract', () => {
-  it('accepts a plain yyyy-mm-dd day', () => {
-    expect(resolveBoardDate('2026-10-05')).toBe('2026-10-05');
-  });
-
-  it('is null when absent, so the SERVER decides what today is', () => {
-    // Near midnight a browser and the server can disagree about the date; the legacy screen had no
-    // picker at all and computed today server-side. Null preserves that.
-    expect(resolveBoardDate(null)).toBeNull();
-  });
-
-  it('is null for anything that is not a day, rather than passing it through', () => {
-    for (const bad of ['', 'today', '2026-13-99T00:00:00Z', '05-10-2026']) {
-      expect(resolveBoardDate(bad)).toBeNull();
-    }
-  });
-});
+// The daily board has no `?date=` contract any more — «اليوم التشغيلي … هو هيجيب بتاعت اليوم»: it
+// is always Cairo's today, and an old link's `date` is dropped (shipment-screens.spec).
 
 describe('resolveCrewDate — the crew board defaults to TOMORROW, server-side', () => {
   it('accepts an explicit day', () => {

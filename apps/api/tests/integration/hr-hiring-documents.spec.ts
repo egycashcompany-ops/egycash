@@ -639,7 +639,7 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
   const call = (path: string, body: object) =>
     request(app).post(`/api/v1/hr/contracts/candidates/${path}`).set('Authorization', `Bearer ${adminToken}`).send(body);
 
-  it('prints the chosen papers for every ticked person, in one document', async () => {
+  it('prints for every ticked person the papers chosen for them, in one document', async () => {
     await syncHiringTemplates();
     const first = await acceptedOffer();
     const second = await acceptedOffer();
@@ -653,30 +653,41 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     expect(people[0]?.error).toBeNull();
     expect(people[2]?.error).not.toBeNull();
 
+    // Each person's own line: two papers for the first, one for the second.
     const printed = await call('bulk/render', {
-      offerIds: [first.id, second.id, nobody],
-      keys: [PAPER('bank-letter'), PAPER('relatives')],
+      people: [
+        { offerId: first.id, keys: [PAPER('bank-letter'), PAPER('relatives')] },
+        { offerId: second.id, keys: [PAPER('relatives'), 'egycash.hiring.card.not-this-job'] },
+        { offerId: nobody, keys: [PAPER('relatives')] },
+      ],
     });
     expect(printed.status, JSON.stringify(printed.body)).toBe(200);
     const out = printed.body.data as RenderCandidateBulkDto;
     expect(out.results).toEqual([
       { offerId: first.id, printed: 2, error: null },
-      { offerId: second.id, printed: 2, error: null },
+      // A paper that is not of the person's job is never printed for them.
+      { offerId: second.id, printed: 1, error: null },
       expect.objectContaining({ offerId: nobody, printed: 0 }),
     ]);
-    // Two people, two papers each: four documents, each on its own page after the first.
-    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(4);
+    // Three documents in all, each on its own page after the first.
+    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(3);
 
     // Each person's page shows the print, with the code kept — the hire is open there now.
+    const codes: string[] = [];
     for (const offer of [first, second]) {
       const draft = (await call(`${offer.id}/open`, {})).body.data as CandidateDraftDto;
       expect(draft.printCount).toBe(1);
       expect(draft.employeeCode).not.toBeNull();
-      expect(out.html).toContain(`ربط الحساب بكود الموظف ${draft.employeeCode ?? ''}`);
+      codes.push(draft.employeeCode ?? '');
     }
-    // More than the cap is refused at the door.
+    // Only the first was printed the bank letter, which carries the code.
+    expect(out.html).toContain(`ربط الحساب بكود الموظف ${codes[0] ?? ''}`);
+    expect(out.html).not.toContain(`ربط الحساب بكود الموظف ${codes[1] ?? ''}`);
+    // More than the cap is refused at the door; so is the old one-choice-for-all shape.
     const many = Array.from({ length: 51 }, () => first.id);
     expect((await call('bulk/open', { offerIds: many })).status).toBe(400);
+    expect((await call('bulk/render', { offerIds: [first.id], keys: [PAPER('relatives')] })).status).toBe(400);
+    expect((await call('bulk/render', { people: [{ offerId: first.id, keys: [] }] })).status).toBe(400);
   });
 });
 

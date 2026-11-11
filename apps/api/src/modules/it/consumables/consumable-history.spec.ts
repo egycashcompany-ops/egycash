@@ -59,6 +59,40 @@ describe('a ledger row', () => {
       reason: null,
       memoId: null,
       notes: 'جرد',
+      transferId: null,
+      counterpartBranchId: null,
+      counterpartConsumableId: null,
+    });
+  });
+
+  it('names a transfer’s pair — the shared id, the other store and its item — on each half', () => {
+    const item = { _id: new Types.ObjectId(), branchId: STORE };
+    const at = new Date('2026-11-11T09:00:00.000Z');
+    const transferId = new Types.ObjectId();
+    const otherStore = new Types.ObjectId();
+    const otherItem = new Types.ObjectId();
+    expect(
+      consumableMovementRow({
+        item,
+        kind: 'transferredOut',
+        qty: 5,
+        at,
+        byUserId: null,
+        transferId,
+        counterpartBranchId: otherStore,
+        counterpartConsumableId: otherItem,
+      }),
+    ).toMatchObject({
+      consumableId: item._id,
+      kind: 'transferredOut',
+      qty: 5,
+      // The row is in ITS item's store; the other store is the counterpart.
+      branchId: STORE,
+      employeeId: null,
+      memoId: null,
+      transferId,
+      counterpartBranchId: otherStore,
+      counterpartConsumableId: otherItem,
     });
   });
 });
@@ -83,6 +117,9 @@ describe('the audit trail', () => {
       issued: 'assign',
       scrapped: 'dispose',
       returned: 'return',
+      // Both halves of a transfer between two stores: the asset's own verb for a branch move.
+      transferredOut: 'transfer',
+      transferredIn: 'transfer',
     });
   });
 

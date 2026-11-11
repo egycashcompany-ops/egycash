@@ -21,4 +21,24 @@ export const SHIPMENT_PATH = {
   shipment: [
     'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z',
   ],
+  // The action log («السجل») and the deleted shipments («اللى اتمسح») — the clock turned back, as
+  // the shared `HistoryIcon` draws it, and the bin with an arrow rising out of it: what was thrown
+  // away, coming back.
+  history: ['M3 12a9 9 0 1 0 3-6.7', 'M3 3v5h5', 'M12 7v5l3 2'],
+  trashRestore: [
+    'M3 6h18',
+    'M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6',
+    'M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2',
+    'M12 18v-6',
+    'M9 15l3-3 3 3',
+  ],
+  // The log's entries that no drawing above says.
+  check: ['M5 13l4 4L19 7'],
+  checkCircle: ['M9 12l2 2 4-4', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+  undo: ['M9 14L4 9l5-5', 'M4 9h10.5a5.5 5.5 0 010 11H11'],
+  play: ['M7 4.5v15l12-7.5z'],
+  flag: ['M4 21V4', 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1'],
+  reorder: ['M7 20V4', 'M3 8l4-4 4 4', 'M17 4v16', 'M13 16l4 4 4-4'],
+  info: ['M12 16v-4m0-4h.01', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+  person: ['M16 7a4 4 0 11-8 0 4 4 0 018 0z', 'M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
 } as const;

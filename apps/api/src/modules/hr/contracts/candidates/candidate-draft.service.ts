@@ -17,9 +17,9 @@
 //     hire stands.
 //   · Everything the page changes is saved as it changes («يتعملو ريكورد»): a closed tab or an
 //     expired session resumes where it stopped.
-//   · MANY AT ONCE («طباعة لكل المحدد» on «جاهزون للتعيين»): the people ticked, the papers chosen
-//     once for all; each person prints those of them their own job has, all in one document, each
-//     print recorded as a single person's is.
+//   · MANY AT ONCE («طباعة لكل المحدد» on «جاهزون للتعيين»): the people ticked, each on a line of
+//     their own with their own job's papers, chosen for that person alone; all in one document,
+//     each print recorded as a single person's is.
 import { Types } from 'mongoose';
 import {
   type CandidateBulkPersonDto,
@@ -368,17 +368,23 @@ class CandidateDraftService {
   }
 
   /**
-   * Print the chosen papers for every ticked person, as ONE document: each person in turn, each
-   * with those of the chosen papers their own job has, in print order — so a crew leader gets the
-   * weapon declaration and every person their own job's card. Each print is recorded as a single
-   * person's is (the code kept, the print counted and audited). A person with nothing to print, or
-   * who cannot be printed for, is reported and skipped; the others print.
+   * Print the papers chosen for each person, as ONE document: each person in turn, with those of
+   * the papers chosen for them that their own job has, in print order — a paper of another job is
+   * never printed for them. Each print is recorded as a single person's is (the code kept, the print
+   * counted and audited). A person with nothing to print, or who cannot be printed for, is reported
+   * and skipped; the others print.
    */
   async bulkRender(ctx: AuthContext, input: RenderCandidateBulk, scope: ScopeSelector): Promise<RenderCandidateBulkDto> {
-    const wanted = new Set(input.keys);
+    // Each person's own choice; a person listed twice prints what both lines chose, once.
+    const chosen = new Map<string, Set<string>>();
+    for (const person of input.people) {
+      const keys = chosen.get(person.offerId) ?? new Set<string>();
+      for (const key of person.keys) keys.add(key);
+      chosen.set(person.offerId, keys);
+    }
     const parts: HiringPackPart[] = [];
     const results: RenderCandidateBulkDto['results'] = [];
-    for (const offerId of new Set(input.offerIds)) {
+    for (const [offerId, wanted] of chosen) {
       try {
         let c = await this.context(ctx, offerId, scope, true);
         const papers = c.papers.filter((paper) => wanted.has(paper.template.key));

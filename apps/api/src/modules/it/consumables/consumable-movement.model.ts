@@ -1,5 +1,7 @@
 // `it_consumable_movements` — the consumables store's ledger, append-only (ADR-024's shape): every
-// unit in («توريد», «مرتجع») and out («صرف», «هالك»), one row per movement, never edited. A mistake
+// unit in («توريد», «مرتجع») and out («صرف», «هالك») — and between two branches' stores («تحويل إلى
+// فرع»: a `transferredOut` row in one, a `transferredIn` row in the other, sharing one
+// `transferId`) — one row per movement, never edited. A mistake
 // is corrected by an opposing movement — which is what keeps every on-hand figure explainable six
 // months later — and the repository offers nothing that changes a row.
 //
@@ -34,6 +36,16 @@ export interface ItConsumableMovementDoc extends BaseDocFields {
   /** `issued`: the memo the employee signed for it. */
   memoId: Types.ObjectId | null;
   notes: string | null;
+  /**
+   * A transfer between two stores — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: the id its two
+   * movements share (one transfer of several items shares one id across all of them). Null
+   * otherwise.
+   */
+  transferId: Types.ObjectId | null;
+  /** `transferredOut`: the branch it went to; `transferredIn`: the branch it came from. */
+  counterpartBranchId: Types.ObjectId | null;
+  /** A transfer: the other store's item of the same name — the other half of the pair. */
+  counterpartConsumableId: Types.ObjectId | null;
 }
 
 const movementSchema = new Schema<ItConsumableMovementDoc>(
@@ -49,6 +61,9 @@ const movementSchema = new Schema<ItConsumableMovementDoc>(
     reason: { type: String, default: null },
     memoId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, default: null },
+    transferId: { type: Schema.Types.ObjectId, default: null },
+    counterpartBranchId: { type: Schema.Types.ObjectId, default: null },
+    counterpartConsumableId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -64,6 +79,8 @@ movementSchema.index({ employeeId: 1, at: -1 }, { name: 'ix_employee_at' });
 movementSchema.index({ assetId: 1, at: -1 }, { name: 'ix_asset_at' });
 // The movements one memo lists.
 movementSchema.index({ memoId: 1 }, { name: 'ix_memo' });
+// The movements one transfer wrote — both halves of every line, in both stores.
+movementSchema.index({ transferId: 1 }, { name: 'ix_transfer' });
 
 export const ItConsumableMovementModel = model<ItConsumableMovementDoc>(
   'ItConsumableMovement',

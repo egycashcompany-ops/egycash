@@ -624,8 +624,7 @@ which forms depends on the job.
   On every print page («عقد جديد», «طباعة لكل المحدد», the employee's tab) it starts TICKED for a crew
   leader and UNTICKED for a cash-in-transit specialist («منغير علامه»): `HiringPaper.optionalFor`,
   read through `optionalForJob(key, jobName)` into the papers' `optional` flag. In «طباعة لكل
-  المحدد» the papers are chosen once for everybody, so a paper usual for any ticked person starts
-  ticked.
+  المحدد» each person's line starts as their own job has it.
 
 ## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
 
@@ -662,13 +661,15 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   with the printed term and the typed-in values the contract prints. What stops the contract is
   returned as a note; the hire stands. The page then lands on the employee's «مستندات التعيين».
 - **Many at once** («لو معايا 20 شخص و عاوز اطبعلهم كلهم فنفس الوقت»). «جاهزون للتعيين» ticks
-  people (one by one, or all on the page) and offers «طباعة لكل المحدد». Its popup lists them, each
-  with their job and how many papers they get, beside every paper any of them prints as the same
-  tiles, each saying for how many it is («للجميع», «لـ ٣»). «تأكيد الطباعة» prints ONE document,
-  person after person, each with those of the chosen papers their own job has — their job's card,
-  the weapon declaration for crew leaders only. Each print is recorded as on the person's own page
-  (the code kept, so «تعيين» opens there). A person who cannot be printed for is reported, not
-  dropped; the others print. At most 50 at a time.
+  people (one by one, or all on the page) and offers «طباعة لكل المحدد». Its popup gives EACH PERSON A
+  LINE OF THEIR OWN — «كل واحد ليه line جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو، مش كله مع
+  بعض فنفس الاختيارات»: their name, job and how many papers are ticked, then the tiles of their own
+  job's papers, ticked for that person alone (all / none per line, and for everyone at once). Each
+  line starts with every paper of the job ticked but one the job is only offered (`optional`).
+  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line;
+  a paper not of the person's job is never printed for them. Each print is recorded as on the
+  person's own page (the code kept, so «تعيين» opens there). A person who cannot be printed for is
+  reported, not dropped; the others print. At most 50 at a time.
 - **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
   اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
   the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
@@ -678,7 +679,7 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   the contract held, or makes one as «مستندات التعيين» does.
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
-  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {offerIds, keys}`;
+  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
   `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`.
 
 ## Review trail

@@ -6,6 +6,8 @@
 // moment; until then its URL falls through to the standard 404. Live routes, each behind its
 // design §16.2 permission:
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
+//   /operations/shipments/history  operationsShipment.view  (NO legacy equivalent — the day board
+//                                  over a from–to range: «اعمل dublicat للشاشة دى بس التاريخ … من الى»)
 //   /operations/crew-board    operationsCrew.view       B3  (legacy /tashghela)
 //   /operations/requirements  operationsCrew.view       B3  (legacy /requirement)
 //   /operations/standing-crew operationsCrew.view       (NO legacy equivalent — الطاقم الثابت)
@@ -32,6 +34,7 @@ import { AppShell } from '../../platform/layout/AppShell';
 import { OperationsOverviewPage } from './pages/OperationsOverviewPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { DailyOperationsPage } from './pages/DailyOperationsPage';
+import { ShipmentsHistoryPage } from './pages/ShipmentsHistoryPage';
 import { CrewBoardPage } from './pages/CrewBoardPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { StandingCrewPage } from './pages/StandingCrewPage';
@@ -56,6 +59,15 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsShipment.view">
               <DailyOperationsPage />
+            </RequirePermission>
+          }
+        />
+        {/* The same grant as the day board: it is the same rows, over more days. */}
+        <Route
+          path="shipments/history"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <ShipmentsHistoryPage />
             </RequirePermission>
           }
         />

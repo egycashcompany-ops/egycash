@@ -36,6 +36,7 @@ import {
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
+import { ASSET_MOVE_REFUSALS } from './lib/asset-branch-move';
 import { VEHICLE_CHECK_PERIODS } from './lib/vehicle-check-dashboard';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -143,6 +144,21 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   {
     name: 'vehicle check photo count',
     prefix: 'it.vehicleCheck.sent.photoCount',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // «نقل إلى فرع» / «تحويل إلى فرع» (2026-11-11): why an asset stays, and the toasts that count
+  // what moved — and what the other store did not have — in Arabic's five forms, all through
+  // TEMPLATE keys the source scan below cannot see.
+  { name: 'asset move refusal', prefix: 'it.assets.move.refused', values: ASSET_MOVE_REFUSALS },
+  { name: 'assets moved count', prefix: 'it.assets.move.moved', values: CUSTODY_COUNT_FORMS },
+  {
+    name: 'consumables transferred count',
+    prefix: 'it.consumables.transfer.done',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  {
+    name: 'consumables made in the other store count',
+    prefix: 'it.consumables.transfer.created',
     values: CUSTODY_COUNT_FORMS,
   },
 ];

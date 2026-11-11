@@ -214,6 +214,18 @@ describe('the registry’s heavy topics and stale-only keys', () => {
     expect(isStaleOnlyKey(listKey('atm', 'leaders', { kind: 'options' }))).toBe(false);
     expect(isStaleOnlyKey(listKey('fleet', 'vehicles', { kind: 'done' }))).toBe(false);
     expect(isStaleOnlyKey(['atm', 'replenishments'])).toBe(false);
+    // The Operations shipments history — a whole range of day boards — is marked stale only; the
+    // day board itself, a single day, is still refetched.
+    expect(
+      isStaleOnlyKey(['operations', 'dayBoard', 'history', { from: '2026-11-01', to: '2026-11-11' }]),
+    ).toBe(true);
+    // ...and so are its deleted shipments, the same range over deleted rows. One shipment's log
+    // is a small read and is refetched like the day board, so an open log follows another desk.
+    expect(
+      isStaleOnlyKey(['operations', 'dayBoard', 'deleted', { from: '2026-11-01', to: '2026-11-11' }]),
+    ).toBe(true);
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'log', { id: 's1' }])).toBe(false);
+    expect(isStaleOnlyKey(listKey('operations', 'dayBoard', { date: 'today' }))).toBe(false);
   });
 });
 

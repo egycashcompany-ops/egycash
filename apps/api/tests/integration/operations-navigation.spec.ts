@@ -103,6 +103,8 @@ const opsRoutesOf = async (token: string): Promise<string[]> =>
 const ALL_OPS_ROUTES = [
   '/operations',
   '/operations/shipments',
+  // «سجل الشحنات» — the day board over a range of days, on the board's own grant.
+  '/operations/shipments/history',
   '/operations/crew-board',
   // الطاقم الثابت — the permanent crew each day's board is seeded from. No legacy equivalent, and
   // no permission of its own: deciding who crews which vehicle is one authority, said once here
@@ -279,12 +281,13 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     );
   });
 
-  it('10. gives a shipment-only account the home, the board, the backlog and the two reports', async () => {
+  it('10. gives a shipment-only account the home, the board and its history, the backlog and the two reports', async () => {
     const token = await accountWith(['operationsShipment.view']);
     expect((await opsRoutesOf(token)).sort()).toEqual(
       [
         '/operations',
         '/operations/shipments',
+        '/operations/shipments/history',
         '/operations/secured',
         '/operations/reports/captains',
         '/operations/reports/banks',

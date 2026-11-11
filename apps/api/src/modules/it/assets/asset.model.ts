@@ -1,6 +1,7 @@
 // The asset register row (design §2.2). `status` is DERIVED from operations and never hand-set
 // (FR-2): in IT-1 the only operation is registration, so every asset is `inStock`; IT-2's custody
-// actions move it. `branchId` is the data-scope anchor and changes only via transfer (IT-2).
+// actions move it. `branchId` is the data-scope anchor and changes only via transfer (IT-2) or the
+// move to another branch («نقل إلى فرع», which for a held asset IS that transfer).
 import { Schema, model, type Types } from 'mongoose';
 import {
   IT_ASSET_STATUSES,

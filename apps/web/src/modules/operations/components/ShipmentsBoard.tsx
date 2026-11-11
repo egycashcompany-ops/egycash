@@ -107,13 +107,16 @@ const SHIPMENTS_TABLE = cn(
  *     reset in a column of its own at the end spanning both rows. That column is IMPLICIT — made
  *     by the reset's own placement, so it exists only while the reset shows; a spare explicit one
  *     would take a filter into it whenever there is nothing to reset;
- *   · 1600px and wider — the Fleet bar's single row, where a share is a readable 105px or more.
+ *   · 1600px and wider — the Fleet bar's single row, where a share is a readable 105px or more —
+ *     for the day board. The history keeps its two rows at every laptop width and up: its two
+ *     dates carry «من» and «إلى» inside the box, and in a row of eleven shares a box is too narrow
+ *     for a name and a date together.
  *
  * Written out per count because Tailwind reads class names from the source text, never a built one.
  */
 const BAR_ROWS: Record<10 | 11, string> = {
   10: 'lg:max-[1599px]:[&>div]:!grid lg:max-[1599px]:[&>div]:!grid-cols-5 lg:max-[1599px]:[&>div>.ms-auto]:!col-start-6',
-  11: 'lg:max-[1599px]:[&>div]:!grid lg:max-[1599px]:[&>div]:!grid-cols-6 lg:max-[1599px]:[&>div>.ms-auto]:!col-start-7',
+  11: 'lg:[&>div]:!grid lg:[&>div]:!grid-cols-6 lg:[&>div>.ms-auto]:!col-start-7 lg:[&>div]:!gap-x-1.5 lg:[&>div]:!gap-y-2 lg:[&>div>*:not(.ms-auto)]:!w-auto lg:[&>div>.ms-auto]:!row-span-2 lg:[&>div>.ms-auto]:!row-start-1 lg:[&>div>.ms-auto]:!self-center',
 };
 const BAR_LAYOUT = cn(
   'max-sm:[&>div]:!grid max-sm:[&>div]:!grid-cols-2 max-sm:[&>div>*:not(.ms-auto)]:!w-auto',
@@ -263,6 +266,10 @@ export const ShipmentsBoard = ({
   // on a page number of a list they are no longer looking at.
   const view = sp.toString();
   const [paging, setPaging] = useState({ view, page: 1, size: HISTORY_PAGE_SIZE });
+  // The reset is STORED, not only derived: deriving it alone kept the old page under the old view,
+  // so going back to that view — the reset button, or a filter typed and erased — brought back a
+  // page deep in the list. Adjusting state while rendering is React's own pattern for this.
+  if (paging.view !== view) setPaging({ view, page: 1, size: paging.size });
   const page = paging.view === view ? paging.page : 1;
   const shown = paged ? pageOfRows(rows, page, paging.size) : null;
 
@@ -715,7 +722,12 @@ export const ShipmentsBoard = ({
                 key={picker.param}
                 icon={FILTER_ICON.calendar}
                 tone="text-cyan-600 dark:text-cyan-400"
-                className="w-36 shrink-0"
+                // A box that writes its name measures itself (a size container), so the name shows
+                // only while the box has room for it AND the date — never over the digits.
+                className={cn(
+                  'w-36 shrink-0',
+                  picker.showLabel === true && '[container-type:inline-size]',
+                )}
                 datePicker={{ label: picker.label }}
               >
                 <Input
@@ -726,15 +738,21 @@ export const ShipmentsBoard = ({
                   title={picker.label}
                   value={picker.value}
                   onChange={(e) => picker.onChange(e.target.value)}
-                  className="dark:[color-scheme:dark]"
+                  // On an English page the date would start right after the calendar, where the
+                  // name is written: it goes to the box's far side instead, as on an Arabic page.
+                  className={cn(
+                    'dark:[color-scheme:dark]',
+                    picker.showLabel === true && '[[dir=ltr]_&]:text-right',
+                  )}
                 />
-                {/* The date is written left to right from the box's far side, so the name sits in
-                    the free room beside the calendar; the input already carries it for a reader. */}
+                {/* The date sits at the box's far side, so the name takes the free room beside the
+                    calendar — shown only from a box wide enough for both (the input already carries
+                    the name for a reader, and as its hover title). */}
                 {picker.showLabel === true && (
                   <span
                     aria-hidden
                     data-date-label={picker.param}
-                    className="pointer-events-none absolute start-6 top-0 flex h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400"
+                    className="pointer-events-none absolute start-6 top-0 hidden h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400 [@container(min-width:8.75rem)]:flex"
                   >
                     {picker.label}
                   </span>

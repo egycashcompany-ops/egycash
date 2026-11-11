@@ -59,7 +59,9 @@ describe('the filters sit on the Fleet bar', () => {
   it('sizes each text filter with a wrapper, since the control base class is w-full', () => {
     // `cn` has no tailwind-merge, so a width passed to the Input loses to its own `w-full` and
     // every box would stretch the bar — one filter per line, which is the bug being fixed.
-    const sized = BAR.match(/className="w-\d+ shrink-0"[^>]*>\s*<Input/g) ?? [];
+    // The width may be the first class of a `cn(…)` (the history's dates add a size container).
+    const sized =
+      BAR.match(/className=(?:"w-\d+ shrink-0"|\{cn\(\s*'w-\d+ shrink-0')[^>]*>\s*<Input/g) ?? [];
     const inputs = BAR.match(/<Input\b/g) ?? [];
     // Seven typed boxes (the van, the bank, the two branches, the area, the captain, the notes)
     // and the date box the period's pickers are drawn with.
@@ -77,13 +79,16 @@ describe('the filters sit on the Fleet bar', () => {
     // of half the filters per row, with the reset in its own column spanning both rows.
     expect(BOARD).toContain('lg:max-[1599px]:[&>div]:!grid');
     expect(BOARD).toContain('lg:max-[1599px]:[&>div]:!grid-cols-5');
-    expect(BOARD).toContain('lg:max-[1599px]:[&>div]:!grid-cols-6');
+    // The history (eleven filters) keeps two rows at every width from 1024px: its dates write
+    // «من» and «إلى» in the box, which a share of a single row of eleven has no room for.
+    expect(BOARD).toContain('lg:[&>div]:!grid-cols-6');
+    expect(BOARD).toContain('lg:[&>div>.ms-auto]:!row-span-2');
     expect(BOARD).toContain('[&>div>.ms-auto]:!row-span-2');
     // The reset's column is made by its own placement — no spare column for a filter to fall into
     // while there is nothing to reset.
     expect(BOARD).not.toMatch(/grid-cols-\[repeat\(\d,minmax\(0,1fr\)\)_auto\]/);
     expect(BOARD).toContain('lg:max-[1599px]:[&>div>.ms-auto]:!col-start-6');
-    expect(BOARD).toContain('lg:max-[1599px]:[&>div>.ms-auto]:!col-start-7');
+    expect(BOARD).toContain('lg:[&>div>.ms-auto]:!col-start-7');
     // A phone: two even columns.
     expect(BOARD).toContain('max-sm:[&>div]:!grid-cols-2');
   });

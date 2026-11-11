@@ -87,6 +87,13 @@ const STALE_ONLY_LISTS: readonly { prefix: KeyPrefix; kinds: readonly string[] }
  * `[module, feature, 'list', { kind, … }]` (`shared/lib/query-keys.ts`).
  */
 export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
+  // The Operations shipments history (`['operations', 'dayBoard', 'history', { from, to }]`) — a
+  // whole range of day boards, up to a year and five thousand shipments. It sits under the day
+  // board's key so the reader's own saves refresh it at once; another desk's single write only marks
+  // it stale, rather than re-reading the whole range for every viewer on every signal.
+  if (queryKey[0] === 'operations' && queryKey[1] === 'dayBoard' && queryKey[2] === 'history') {
+    return true;
+  }
   const params = queryKey[3];
   if (queryKey[2] !== 'list' || typeof params !== 'object' || params === null) return false;
   const kind = (params as { kind?: unknown }).kind;

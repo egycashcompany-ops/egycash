@@ -6,7 +6,9 @@
 //     branch, one currency line, the date — contad_app.js:313); the secondary bank was never
 //     server-checked in legacy, so it stays optional.
 //   · Branch-belongs-to-bank was CLIENT-ONLY in legacy (main_ops.ejs:477 filters the datalist by
-//     bank); like the crew-uniqueness rule (Q11) it moves into the domain here.
+//     bank); like the crew-uniqueness rule (Q11) it moves into the domain here — for the
+//     DESTINATION, whose bank legacy stored (`sec_bank`). The origin's bank was never stored and
+//     is not the billed bank, so the origin carries no bank rule (see assertReferences).
 //   · Edit and soft-delete are allowed in ANY status — legacy gates them on nothing but
 //     `deleted_dock` (contad_app.js:481-547). PRESERVED, deliberately.
 //   · Complete/reopen follow the observed transitions in shipment-status.ts; the legacy toggle's
@@ -19,12 +21,24 @@ import {
   toMinorUnits,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
+  type OperationsDayBoardBranchDto,
+  type OperationsDayBoardCrewDto,
+  type OperationsDayBoardDriverDto,
+  type OperationsDayBoardPersonDto,
+  type OperationsDayBoardVehicleCrewDto,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { BusinessRuleError } from '../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../../shared/errors';
+import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
+import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
@@ -33,7 +47,13 @@ import { operationsCurrencyRepository } from '../currencies/currency.repository'
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { operationsShipmentRepository } from './shipment.repository';
+import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
+import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
+import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { crewMembers, slotIds } from '../crew/crew-slots';
+import { getDirectoryEmployees } from '../../../platform/directory';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
+import { resolveShipmentReceiptCategoryId } from './shipment-files';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -67,6 +87,32 @@ const eventPayload = (doc: OperationsShipmentDoc) => ({
   status: doc.status,
 });
 
+/** One board row before mapping: the shipment and what the board prints beside it. */
+export interface DayBoardRow {
+  doc: OperationsShipmentDoc;
+  origin: OperationsDayBoardBranchDto | null;
+  destination: OperationsDayBoardBranchDto | null;
+  crew: OperationsDayBoardCrewDto | null;
+  /**
+   * When the captain of the board leg confirmed «تم التسليم» on the mobile app — null until he
+   * has. It is the captain's fact, NOT the shipment's status: delivering never completes the
+   * shipment (execution.service.ts), so the desk's own confirmation stays a separate, later step.
+   */
+  captainDeliveredAt: Date | null;
+}
+
+/**
+ * The whole board before mapping: its rows, and who rides each van the rows ride.
+ *
+ * The crews are a list beside the rows, not a field on each: ten shipments on one van are ten rows
+ * and ONE crew, and the van's card needs the crew once. Everything here is the full answer — the
+ * controller is where a reader without `operationsCrew.view` has the crew plan taken back out.
+ */
+export interface DayBoardView {
+  rows: DayBoardRow[];
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
 interface ShipmentRefs {
   mainBankId: string;
   secondaryBankId: string | null;
@@ -95,13 +141,12 @@ const assertReferences = async (refs: ShipmentRefs): Promise<void> => {
   if (origin === null) {
     throw new BusinessRuleError('unknown or inactive origin branch', 'OPERATIONS_UNKNOWN_BRANCH');
   }
-  // The legacy from-branch picker lists only the main bank's branches (main_ops.ejs:477).
-  if (String(origin.bankId) !== refs.mainBankId) {
-    throw new BusinessRuleError(
-      'origin branch does not belong to the main bank',
-      'OPERATIONS_BRANCH_BANK_MISMATCH',
-    );
-  }
+  // NO BANK RULE ON THE ORIGIN. The main bank is the bank BILLED for the shipment, and the money
+  // may be collected from a branch of any bank: legacy's from-branch list followed its own
+  // `fromBankSelect` (main_ops.ejs:497-499), which only DEFAULTED to the main bank (:505-517) and
+  // was never posted (:420 has no `name`). The from-bank is therefore not a field at all — it is
+  // the origin branch's own `bankId`. An earlier rule here required origin.bankId === mainBankId;
+  // that read the shared helper at :477 as the whole story and refused real collections.
 
   const destination = await operationsBankBranchRepository.findActiveById(refs.destinationBranchId);
   if (destination === null) {
@@ -135,6 +180,12 @@ const toLines = (lines: { currencyId: string; amount: number }[]): OperationsShi
 
 const oidOrNull = (id: string | null): Types.ObjectId | null =>
   id === null ? null : new Types.ObjectId(id);
+
+/**
+ * How many times a receipt photo's link is written before a run of unrelated writes on the same
+ * row is reported as a conflict. One retry covers the desk's ✓; three bounds a pathological row.
+ */
+const RECEIPT_LINK_ATTEMPTS = 3;
 
 class OperationsShipmentService {
   async create(input: CreateOperationsShipment, by: string): Promise<OperationsShipmentDoc> {
@@ -260,6 +311,166 @@ class OperationsShipmentService {
     return operationsShipmentRepository.dayBoard(day, next);
   }
 
+  /**
+   * The day board with what the legacy table printed beside each shipment: both branches by name
+   * and code with their banks, and the crew of the leg the shipment's type reports on — plus, for
+   * the hover cards, who rides each van and the captain's own card.
+   *
+   * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the crew rows, their
+   * Fleet duty rows, the vehicle codes and every person's name are each fetched once for the whole
+   * day and joined in memory. A busy day is a few hundred shipments; a per-row lookup would make
+   * the board a thousand queries.
+   *
+   * Nothing here can fail a row. A branch, vehicle or name that no longer resolves comes back as
+   * null and the screen says so — a board that refused to load because one van was scrapped would
+   * be worse than a board with one blank cell.
+   */
+  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
+    const docs = await this.dayBoard(date);
+    if (docs.length === 0) return { rows: [], crews: [] };
+
+    const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);
+    const branches = await operationsBankBranchRepository.findByIdsSystem(branchIds);
+    const banks = await operationsBankRepository.findByIdsSystem(branches.map((b) => String(b.bankId)));
+    const bankName = new Map(banks.map((b) => [String(b._id), b.opsName]));
+    const branchView = new Map(
+      branches.map((b) => [
+        String(b._id),
+        {
+          id: String(b._id),
+          name: b.name,
+          code: b.code,
+          bankId: String(b.bankId),
+          bankName: bankName.get(String(b.bankId)) ?? '',
+        },
+      ]),
+    );
+
+    // The leg that carries this type's crew — the same split the captain report uses.
+    const legs = await operationsShipmentAssignmentRepository.findByShipments(
+      docs.map((d) => String(d._id)),
+    );
+    const legOf = new Map(legs.map((a) => [`${String(a.shipmentId)}:${a.leg}`, a]));
+    const boardLeg = (doc: OperationsShipmentDoc) =>
+      legOf.get(`${String(doc._id)}:${doc.shipmentType === 'daily' ? 'pickup' : 'delivery'}`) ??
+      null;
+    const crewed = docs.map(boardLeg).filter((a) => a !== null);
+
+    // «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين»: the van's card needs
+    // the crew row each leg rides. Keyed by the leg's OWN `crewAssignmentId`, never re-found by
+    // (day, vehicle): a secured leg is delivered on its delivery day while the shipment's other
+    // dates can say something else, and the id is the one fact that cannot drift. The crew rows
+    // are kept in the order the board first meets them, so the list reads like the board does.
+    const crewIds = [...new Set(crewed.map((a) => String(a.crewAssignmentId)))];
+    const crewById = new Map(
+      (await operationsCrewAssignmentRepository.findByIdsSystem(crewIds))
+        // `findByIdsSystem` resolves soft-deleted rows too, on purpose, for names. A crew row
+        // that was taken off the plan puts nobody on the van, so it shows no crew at all.
+        .filter((c) => !c.isDeleted)
+        .map((c) => [String(c._id), c]),
+    );
+    const crewRows = crewIds.flatMap((id) => {
+      const row = crewById.get(id);
+      return row === undefined ? [] : [row];
+    });
+    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
+    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
+    // boundary, read-only, like every other Fleet fact Operations shows.
+    const dutyById = new Map(
+      (
+        await fleetDutyAssignmentRepository.findByIdsSystem(
+          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
+        )
+      )
+        .filter((d) => !d.isDeleted)
+        .map((d) => [String(d._id), d]),
+    );
+    const driversOf = (crew: (typeof crewRows)[number]): string[] => {
+      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
+      if (duty === undefined) return [];
+      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
+      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
+      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
+        .filter((id) => id != null)
+        .map(String);
+    };
+
+    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+      ...new Set([
+        ...crewed.map((a) => String(a.vehicleId)),
+        ...crewRows.map((c) => String(c.vehicleId)),
+      ]),
+    ]);
+    // ONE directory read for everyone the board names — the legs' captains, and the drivers,
+    // captains and specialists on every van card.
+    const people = await getDirectoryEmployees([
+      ...new Set([
+        ...crewed.map((a) => String(a.captainEmployeeId)),
+        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
+      ]),
+    ]);
+    const person = (employeeId: string): OperationsDayBoardPersonDto => {
+      const found = people.get(employeeId);
+      return {
+        employeeId,
+        code: found?.code ?? null,
+        fullNameAr: found?.fullNameAr ?? null,
+      };
+    };
+
+    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
+      crewAssignmentId: String(c._id),
+      vehicleId: String(c.vehicleId),
+      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
+      // The driver by NAME only, built field by field so no code can ride along: a driver's
+      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
+      drivers: driversOf(c).map(
+        (employeeId): OperationsDayBoardDriverDto => ({
+          employeeId,
+          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
+        }),
+      ),
+      captains: slotIds(c.captainEmployeeIds).map(person),
+      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
+      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
+      direction: c.direction ?? null,
+      plannedTime: c.plannedTime ?? null,
+    }));
+
+    const rows = docs.map((doc): DayBoardRow => {
+      const leg = boardLeg(doc);
+      // A leg that predates OP-7 has no `executionStatus` at all; it has plainly not been started
+      // (the same reading as execution.service's `statusOf`). Execution only moves forward, so
+      // once the leg is delivered — or completed after it — its `deliveredAt` stays the answer,
+      // even if the desk later reopens the shipment.
+      const execution = leg?.executionStatus ?? 'pending';
+      const captainDelivered = execution === 'delivered' || execution === 'completed';
+      const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
+      return {
+        doc,
+        captainDeliveredAt: captainDelivered ? (leg?.deliveredAt ?? null) : null,
+        origin: branchView.get(String(doc.originBranchId)) ?? null,
+        destination: branchView.get(String(doc.destinationBranchId)) ?? null,
+        crew:
+          leg === null
+            ? null
+            : {
+                crewAssignmentId: String(leg.crewAssignmentId),
+                vehicleId: String(leg.vehicleId),
+                vehicleCode: vehicleCodes.get(String(leg.vehicleId)) ?? null,
+                captainEmployeeId: String(leg.captainEmployeeId),
+                captainName: captain?.fullNameAr ?? null,
+                // «لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه» — the facts the Fleet
+                // driver card prints, from the same directory read. The van is already above.
+                captainCode: captain?.code ?? null,
+                captainPhone: captain?.phone ?? null,
+                captainBranchId: captain?.branchId ?? null,
+              },
+      };
+    });
+    return { rows, crews };
+  }
+
   async getById(id: string): Promise<OperationsShipmentDoc> {
     return operationsShipmentRepository.getById(id);
   }
@@ -375,6 +586,144 @@ class OperationsShipmentService {
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     await emit(OperationsEvents.ShipmentReopened, eventPayload(updated));
+    return updated;
+  }
+
+  // ── The receipt photo (Files owns the bytes, the row owns the link) ─────────────────────────────
+  //
+  // «عمود كمان لصورة الإيصال زى شاشة السيارات» — the Fleet receipts' flow, unchanged in shape. No
+  // status gate: like every other shipment edit (legacy gates edits on nothing), the paper can be
+  // photographed whenever it arrives, before or after delivery. No event either, as for Fleet
+  // receipts: the audit row is the record, and the board refetches on the mutation itself.
+
+  async setReceiptImage(
+    ctx: AuthContext,
+    id: string,
+    binary: UploadedBinary,
+  ): Promise<OperationsShipmentDoc> {
+    const before = await operationsShipmentRepository.getById(id);
+    const current = before.receiptImage ?? null;
+    let file: FileDoc;
+    if (current === null) {
+      file = await fileService.upload(
+        ctx,
+        {
+          moduleId: 'operations',
+          entityType: 'shipment',
+          entityId: id,
+          categoryId: await resolveShipmentReceiptCategoryId(),
+          displayName: `shipment receipt — ${before.collectionDate.toISOString().slice(0, 10)}`,
+          visibility: 'private',
+          tags: [],
+        },
+        binary,
+      );
+    } else {
+      // A new VERSION in the same file group, so the photo it replaces stays retrievable.
+      file = await fileService.replace(ctx, String(current.fileId), binary);
+    }
+    const updated = await this.linkReceiptImage(ctx, before, file);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'receiptImage',
+          old: current === null ? null : String(current.fileId),
+          new: String(file._id),
+        },
+      ],
+    });
+    return updated;
+  }
+
+  /**
+   * Point the row at the file just stored — a compare-and-swap on the photo LINK, not on the row.
+   *
+   * The write is version-guarded, so it can lose to ANY write on the shipment, most often the desk
+   * ticking it received while the photo was still being stored. When the link is still what this
+   * upload saw, that other write was about something else, so the link is written again on the
+   * row as it now is. Giving up there would be worse than a 409 on a REPLACE: Files has already
+   * made the old photo a superseded version and never replaces one, so a row left pointing at it
+   * could never take another photo.
+   *
+   * When the link itself moved (another upload or a delete won), this upload lost for real: what
+   * it stored is a file no row points at, so it is soft-deleted and the 409 stands.
+   */
+  private async linkReceiptImage(
+    ctx: AuthContext,
+    seen: OperationsShipmentDoc,
+    file: FileDoc,
+  ): Promise<OperationsShipmentDoc> {
+    const id = String(seen._id);
+    const linked = seen.receiptImage == null ? null : String(seen.receiptImage.fileId);
+    const receiptImage = {
+      fileId: file._id,
+      fileName: file.originalName,
+      mime: file.mime,
+      size: file.size,
+      uploadedAt: new Date(),
+    };
+    let version = seen.__v;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await operationsShipmentRepository.updateById(
+          id,
+          { receiptImage },
+          { by: ctx.userId, version },
+        );
+      } catch (error) {
+        const now =
+          error instanceof StaleDocumentError
+            ? await operationsShipmentRepository.findById(id)
+            : null;
+        const nowLinked = now?.receiptImage == null ? null : String(now.receiptImage.fileId);
+        if (now !== null && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
+          version = now.__v;
+          continue;
+        }
+        // A first upload that did not land is always an orphan. A replace is one only when the
+        // row has moved off its file group; otherwise it is the group's own newest version.
+        if (linked === null || (now !== null && nowLinked !== linked)) {
+          await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+        }
+        throw error;
+      }
+    }
+  }
+
+  async readReceiptImage(
+    ctx: AuthContext,
+    id: string,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    const row = await operationsShipmentRepository.getById(id);
+    if (row.receiptImage == null) throw new NotFoundError('this shipment has no receipt image');
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+      ctx,
+      String(row.receiptImage.fileId),
+    );
+    return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  async deleteReceiptImage(ctx: AuthContext, id: string): Promise<OperationsShipmentDoc> {
+    const before = await operationsShipmentRepository.getById(id);
+    if (before.receiptImage == null) {
+      throw new ConflictError('this shipment has no receipt image to delete');
+    }
+    const fileId = String(before.receiptImage.fileId);
+    const updated = await operationsShipmentRepository.updateById(
+      id,
+      { receiptImage: null },
+      { by: ctx.userId, version: before.__v },
+    );
+    // The row is the truth: once it no longer points at the file, a failed soft-delete leaves an
+    // unreachable file behind, never a broken row.
+    await fileService.softDelete(ctx, fileId).catch(() => undefined);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'receiptImage', old: fileId, new: null }],
+    });
     return updated;
   }
 

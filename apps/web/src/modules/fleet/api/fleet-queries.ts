@@ -696,6 +696,19 @@ export const useRosterToday = (enabled: boolean) => {
   });
 };
 
+/**
+ * The day a roster save answers with, as the day's cache holds it — the board and nothing else,
+ * the rule it was derived under included: without `licenceRule` a save in refuse mode drew the
+ * licence block («منهم رخصة منتهية») again until the next refetch.
+ */
+export const rosterDayFromSave = (board: FleetRosterDayDto): FleetRosterDayDto => ({
+  date: board.date,
+  rows: board.rows,
+  availableDrivers: board.availableDrivers,
+  unavailableDrivers: board.unavailableDrivers,
+  ...(board.licenceRule === undefined ? {} : { licenceRule: board.licenceRule }),
+});
+
 // A plan save answers with the refreshed board in the same round-trip (FL-5 point 7), so the
 // day's cache is replaced directly — no refetch between save and repaint. A failed save still
 // invalidates: the usual cause of a 409 is a board gone stale under the user.
@@ -704,12 +717,7 @@ export const usePlanRoster = () => {
   return useMutation({
     mutationFn: (input: { dateKey: string; body: PlanFleetRoster }) => api.planRoster(input.body),
     onSuccess: (board, { dateKey }) => {
-      qc.setQueryData(rosterDayKey(dateKey), {
-        date: board.date,
-        rows: board.rows,
-        availableDrivers: board.availableDrivers,
-        unavailableDrivers: board.unavailableDrivers,
-      } satisfies FleetRosterDayDto);
+      qc.setQueryData(rosterDayKey(dateKey), rosterDayFromSave(board));
     },
     onError: () => void qc.invalidateQueries({ queryKey: fleetKeys.roster }),
   });

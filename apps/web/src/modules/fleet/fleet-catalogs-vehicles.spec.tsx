@@ -855,7 +855,11 @@ describe('the Fleet form dialogs survive a click outside them', () => {
 
   it('and still closes on Escape, which is a decision rather than a slip', () => {
     // The dialog on top answers Escape: one press closes one dialog, not every one stacked under it.
-    expect(DIALOG).toContain("if (e.key === 'Escape' && onTop()) onClose()");
+    // It marks the key handled, so a Fleet DesignDialog underneath (listening on the window, after
+    // the document) does not close on the same key and lose what was typed into it.
+    expect(DIALOG).toMatch(
+      /if \(e\.key !== 'Escape' \|\| !onTop\(\)\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u,
+    );
   });
 
   // The reading and workshop forms are drawn in the vehicle form's design now: `DesignDialog`'s
@@ -864,7 +868,9 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('the design shell has no click on its backdrop, and closes on Escape', () => {
     expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
     expect(SHELL).not.toContain('useOnClickOutside');
-    expect(SHELL).toContain("if (e.key === 'Escape') onClose()");
+    // Escape closes the dialog on TOP — not one under a dialog opened from it.
+    expect(SHELL).toContain("if (e.key !== 'Escape' || e.defaultPrevented) return;");
+    expect(SHELL).toMatch(/roots\[roots\.length - 1\] !== rootRef\.current\) return;\s*e\.preventDefault\(\);\s*onClose\(\);/u);
   });
 
   it('the reading dialog is drawn in it', () => {
@@ -929,11 +935,12 @@ describe('the odometer and workshop driver slots ask the registry', () => {
     }
   });
 
-  it('both odometer seats and all three workshop slots use it', () => {
+  it('both odometer seats and all four workshop slots use it', () => {
     expect(read('components/RecordOdometerDialog.tsx').split('<OptionalDriverField')).toHaveLength(
       3,
     );
-    expect(read('components/MaintenanceDialogs.tsx').split('<OptionalDriverField')).toHaveLength(4);
+    // Check-in, check-out, and the edit's two: «سائق الدخول» and «سائق الخروج».
+    expect(read('components/MaintenanceDialogs.tsx').split('<OptionalDriverField')).toHaveLength(5);
   });
 
   it('the seat stays OPTIONAL — a reading with nobody named is a real state', () => {

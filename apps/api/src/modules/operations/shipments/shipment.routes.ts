@@ -19,12 +19,16 @@ import {
   completeShipment,
   createShipment,
   deleteShipment,
+  deleteShipmentReceiptImage,
   getDayBoard,
   getShipment,
+  getShipmentReceiptImage,
   listShipments,
   reopenShipment,
   updateShipment,
+  uploadShipmentReceiptImage,
 } from './shipment.controller';
+import { multipartSingle } from './receipt-image-upload';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -86,6 +90,31 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.delete'),
     validate({ params: IdParamSchema }),
     asyncHandler(deleteShipment),
+  );
+  // The photo of the paper receipt («صورة الإيصال») — the Fleet receipts' rule: whoever may edit
+  // the row may manage it, whoever may view the row may see it. No new grant. `authorize` runs
+  // BEFORE multer, so a caller who may not upload never gets a body buffered.
+  router.get(
+    '/:id/receipt-image',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getShipmentReceiptImage),
+  );
+  router.post(
+    '/:id/receipt-image',
+    authenticate,
+    authorize('operationsShipment.edit'),
+    multipartSingle(),
+    validate({ params: IdParamSchema }),
+    asyncHandler(uploadShipmentReceiptImage),
+  );
+  router.delete(
+    '/:id/receipt-image',
+    authenticate,
+    authorize('operationsShipment.edit'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteShipmentReceiptImage),
   );
   return router;
 };

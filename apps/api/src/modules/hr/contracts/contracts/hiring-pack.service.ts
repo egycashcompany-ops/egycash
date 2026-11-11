@@ -15,7 +15,13 @@
 //
 // A FORM IS NOT A CONTRACT. It is rendered fresh each time, keeps no snapshot and fails nothing:
 // a value the record lacks prints as a dotted line to fill in by hand.
-import { ErrorCodes, type HiringPackContractNote, type HiringPackDto } from '@ecms/contracts';
+import {
+  ErrorCodes,
+  type ContractOverride,
+  type EmployeePapersDto,
+  type HiringPackContractNote,
+  type HiringPackDto,
+} from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
@@ -31,6 +37,13 @@ import { renderHiringPackHtml, type HiringPackPart } from './contract-render';
 import { letterheadFor } from './letterhead';
 import { contractService } from './contract.service';
 import { type ContractDoc } from './contract.model';
+
+/** A28 — the term and typed-in values a candidate's contract is made with at the hire. */
+export interface ContractTerms {
+  startDate: string;
+  endDate: string | null;
+  overrides: ContractOverride[];
+}
 
 /** A generated contract that is still the employee's: printable as it stands. */
 const PRINTABLE = new Set(['active', 'signed']);
@@ -76,6 +89,8 @@ class HiringPackService {
     employee: EmployeeDoc,
     contractTemplates: readonly ContractTemplateDoc[],
     scope: ScopeSelector,
+    /** A28 — the term and values the candidate's papers were printed with; else the employment's. */
+    terms: ContractTerms | null = null,
   ): Promise<{ doc: ContractDoc | null; created: boolean; note: HiringPackContractNote | null }> {
     const id = String(employee._id);
     const contracts = await contractService.listForEmployee(id);
@@ -100,10 +115,11 @@ class HiringPackService {
             employeeId: id,
             typeId: String(template.contractTypeId),
             templateId: String(template._id),
-            startDate: dateOnlyIso(start),
-            endDate: type.allowsEndDate ? dateOnlyIso(oneYearFrom(start)) : null,
+            startDate: terms?.startDate ?? dateOnlyIso(start),
+            endDate: type.allowsEndDate ? (terms === null ? dateOnlyIso(oneYearFrom(start)) : terms.endDate) : null,
             referenceNumber: null,
-            overrides: [],
+            // Only what the contract prints: an override of a form's value is no contract's business.
+            overrides: (terms?.overrides ?? []).filter((o) => template.placeholders.includes(o.key)),
           },
           scope,
         );
@@ -133,14 +149,108 @@ class HiringPackService {
     }
   }
 
-  async build(ctx: AuthContext, employeeId: string, scope: ScopeSelector): Promise<HiringPackDto> {
+  /**
+   * A28 — the contract of a candidate just hired from «عقد جديد»: made and generated from the
+   * contract template of the job, with the term and values the papers were printed with. Whatever
+   * stops that is returned as the note, as the printed set returns it; the hire stands regardless.
+   */
+  async contractForHire(
+    ctx: AuthContext,
+    employeeId: string,
+    scope: ScopeSelector,
+    terms: ContractTerms,
+  ): Promise<{ doc: ContractDoc | null; note: HiringPackContractNote | null }> {
+    const employee = await employeeService.getById(employeeId, scope);
+    const { contracts } = templatesForJob(
+      await contractTemplateService.listPublished(),
+      String(employee.employment.jobTitleId),
+    );
+    const made = await this.contractFor(ctx, employee, contracts, scope, terms);
+    return { doc: made.doc, note: made.note };
+  }
+
+  /**
+   * The contract an employee holds now — a generated one still theirs, else one on its way — and
+   * the template key it prints from: the paper «العقد» stands for on their tab.
+   */
+  private async heldContract(
+    employeeId: string,
+    contractTemplates: readonly ContractTemplateDoc[],
+  ): Promise<{ held: ContractDoc | null; key: string | null }> {
+    const contracts = await contractService.listForEmployee(employeeId);
+    const held =
+      contracts.find((c) => PRINTABLE.has(c.status) && c.renderedHtml !== null) ??
+      contracts.find((c) => IN_PROGRESS.has(c.status)) ??
+      null;
+    return { held, key: held?.templateKey ?? contractTemplates[0]?.key ?? null };
+  }
+
+  /**
+   * A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers (their contract first,
+   * then the forms every job signs, then their job's own) and the contract they hold.
+   */
+  async papersFor(employeeId: string, scope: ScopeSelector): Promise<EmployeePapersDto> {
+    const employee = await employeeService.getById(employeeId, scope);
+    const { contracts, forms } = templatesForJob(
+      await contractTemplateService.listPublished(),
+      String(employee.employment.jobTitleId),
+    );
+    const { held, key } = await this.heldContract(employeeId, contracts);
+    const papers: EmployeePapersDto['papers'] = [];
+    if (key !== null) {
+      const template = (await contractTemplateService.publishedOf(key)) ?? contracts[0] ?? null;
+      papers.push({
+        key,
+        name: template?.name ?? { ar: 'العقد', en: 'Contract' },
+        kind: 'contract',
+        group: 'contract',
+      });
+    }
+    for (const form of forms) {
+      papers.push({
+        key: form.key,
+        name: form.name,
+        kind: 'form',
+        group: printSettings(form).allJobs ? 'everyJob' : 'thisJob',
+      });
+    }
+    return {
+      papers,
+      contract:
+        held === null
+          ? null
+          : {
+              id: String(held._id),
+              code: held.code,
+              status: held.status,
+              startDate: dateOnlyIso(held.startDate),
+              endDate: held.endDate === null ? null : dateOnlyIso(held.endDate),
+              version: held.__v,
+            },
+    };
+  }
+
+  async build(
+    ctx: AuthContext,
+    employeeId: string,
+    scope: ScopeSelector,
+    /** A28 — only these papers (template keys); absent, the whole set. */
+    keys?: readonly string[],
+  ): Promise<HiringPackDto> {
     const employee = await employeeService.getById(employeeId, scope);
     const jobTitleId = String(employee.employment.jobTitleId);
-    const { contracts, forms } = templatesForJob(await contractTemplateService.listPublished(), jobTitleId);
+    const published = templatesForJob(await contractTemplateService.listPublished(), jobTitleId);
+    const wanted = keys === undefined ? null : new Set(keys);
+    const contracts = published.contracts;
+    const forms = published.forms.filter((form) => wanted === null || wanted.has(form.key));
+    const contractKey = wanted === null ? null : (await this.heldContract(employeeId, contracts)).key;
+    const withContract = wanted === null || (contractKey !== null && wanted.has(contractKey));
 
     const parts: HiringPackPart[] = [];
     const documents: HiringPackDto['documents'] = [];
-    const contract = await this.contractFor(ctx, employee, contracts, scope);
+    const contract = withContract
+      ? await this.contractFor(ctx, employee, contracts, scope)
+      : { doc: null, created: false, note: null };
     if (contract.doc !== null && contract.doc.pinnedTemplateVersion !== null) {
       const pinned = await contractTemplateService.pinnedVersion(
         contract.doc.templateKey,

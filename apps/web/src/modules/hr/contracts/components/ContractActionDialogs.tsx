@@ -16,18 +16,21 @@ export const AmendRenewDialog = ({
   mode,
   open,
   onClose,
+  initial,
 }: {
-  contract: ContractDto;
+  contract: Pick<ContractDto, 'id' | 'code' | 'version'>;
   mode: 'amend' | 'renew';
   open: boolean;
   onClose: () => void;
+  /** A28 — the dates the dialog opens with (a renewal: the day after the end, for one year). */
+  initial?: { startDate: string; endDate: string | null };
 }): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
   const amend = useAmendContract();
   const renew = useRenewContract();
-  const [startDate, setStartDate] = useState(today());
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(initial?.startDate ?? today());
+  const [endDate, setEndDate] = useState(initial?.endDate ?? '');
   const busy = amend.isPending || renew.isPending;
 
   const submit = async (): Promise<void> => {

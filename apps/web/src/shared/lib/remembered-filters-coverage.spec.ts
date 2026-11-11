@@ -282,6 +282,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ],
   ['modules/hr/attendance/pages/MyAttendancePage.tsx'],
   ['modules/hr/attendance/pages/ShiftsPage.tsx'],
+  ['modules/hr/contracts/pages/CandidateContractPage.tsx'],
   ['modules/hr/contracts/pages/ContractCreatePage.tsx'],
   [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',

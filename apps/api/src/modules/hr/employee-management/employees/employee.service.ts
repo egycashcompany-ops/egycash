@@ -63,6 +63,7 @@ import { applicantService } from '../../recruitment/applicants';
 import { resolveNationalIdCardCategoryId } from '../../recruitment/applicants/national-id-card.files';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { jobOfferService } from '../../recruitment/job-offers';
+import { type OfferTerms } from '../../recruitment/job-offers/job-offer.model';
 // File import (not the barrel) — the barrel would close an import cycle via the actions service.
 import { employeeActionRepository } from '../employee-actions/employee-action.repository';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
@@ -229,10 +230,80 @@ class EmployeeService {
    * Create an Employee from an Accepted Job Offer. Reads employment data only from the offer's
    * Accepted Snapshot and copies the personal data ONCE from the applicant's raw document (I5).
    */
+  /**
+   * A28 — the employee an accepted offer WOULD make, unsaved: what the candidate's papers print
+   * before the hire («عقد جديد»). Built exactly as `create` builds the record — the offer's accepted
+   * terms and the applicant's personal data — with the employee code kept for the candidate, if
+   * one is (else the code prints blank). Nothing is written.
+   */
+  async candidateFromOffer(
+    offerId: string,
+    scope: ScopeSelector,
+    opts: { employeeNumber: string | null; hiredAt: Date },
+  ): Promise<{ employee: EmployeeDoc; offerCode: string | null; applicantName: string; hiredEmployeeId: string | null }> {
+    const offer = await jobOfferService.acceptedOfferById(offerId);
+    if (offer === null || offer.acceptedSnapshot === null) {
+      throw new BusinessRuleError('only an accepted job offer can be printed for');
+    }
+    const applicant = await applicantService.getById(String(offer.applicantId), scope);
+    const employment = await this.employmentFromOffer(offer.acceptedSnapshot.terms);
+    const branch = await branchService.getById(String(employment.branchId));
+    const code = opts.employeeNumber === null ? '' : buildEmployeeCode(branch.code, opts.employeeNumber);
+    const employee = {
+      _id: new Types.ObjectId(),
+      employeeNumber: opts.employeeNumber ?? '',
+      code,
+      status: 'active',
+      origin: 'recruitment',
+      personal: personalFromApplicant(applicant),
+      insurance: null,
+      officer: null,
+      employment,
+      branchId: employment.branchId,
+      departmentId: employment.departmentId,
+      sectionId: employment.sectionId,
+      hiredAt: opts.hiredAt,
+    } as unknown as EmployeeDoc;
+    return {
+      employee,
+      offerCode: offer.code ?? null,
+      applicantName: offer.applicantName,
+      hiredEmployeeId: offer.hiredEmployeeId === null ? null : String(offer.hiredEmployeeId),
+    };
+  }
+
+  /** A28 — take the next employee number now, to keep for a candidate until the hire. */
+  async reserveEmployeeNumber(): Promise<string> {
+    return nextEmployeeNumber();
+  }
+
+  /** An accepted offer's terms as the employment they make — one builder for the hire and its papers. */
+  private async employmentFromOffer(t: OfferTerms): Promise<EmploymentDetails> {
+    const offered = t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
+    const starting = await salaryForAssignment(String(t.jobTitleId), offered);
+    return {
+      jobTitleId: t.jobTitleId,
+      departmentId: t.departmentId,
+      // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
+      sectionId: null,
+      branchId: t.branchId,
+      managerId: t.managerId,
+      employmentType: t.employmentType,
+      salary: starting.salary,
+      salarySource: starting.salarySource,
+      allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
+      benefits: [...t.benefits],
+      probationMonths: t.probationMonths,
+      startDate: t.startDate,
+    };
+  }
+
   async create(
     ctx: AuthContext,
     input: CreateEmployee,
     scope: ScopeSelector,
+    /** A28 — the employee number kept for the candidate when its papers were printed. */
+    opts: { employeeNumber?: string } = {},
   ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     const offer = await jobOfferService.acceptedOfferById(input.jobOfferId);
     if (offer === null) {
@@ -256,29 +327,7 @@ class EmployeeService {
     }
     await this.assertPersonNotEmployed(applicant.nationalId);
 
-    const t = snapshot.terms;
-    const offered =
-      t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
-    const starting = await salaryForAssignment(String(t.jobTitleId), offered);
-    const employment: EmploymentDetails = {
-      jobTitleId: t.jobTitleId,
-      departmentId: t.departmentId,
-      // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
-      sectionId: null,
-      branchId: t.branchId,
-      managerId: t.managerId,
-      employmentType: t.employmentType,
-      salary: starting.salary,
-      salarySource: starting.salarySource,
-      allowances: t.allowances.map((a) => ({
-        name: a.name,
-        amount: a.amount,
-        currency: a.currency,
-      })),
-      benefits: [...t.benefits],
-      probationMonths: t.probationMonths,
-      startDate: t.startDate,
-    };
+    const employment = await this.employmentFromOffer(snapshot.terms);
     const hiredAt = input.hiringDate ?? new Date();
     const entry = entryProbation(
       hiredAt,
@@ -292,7 +341,7 @@ class EmployeeService {
     // Atomic: allocate the permanent Global Employee Number and insert the record in one
     // transaction; the unique offer index guarantees no duplicate under concurrency.
     const doc = await unitOfWork(async (session) => {
-      const employeeNumber = await nextEmployeeNumber(session);
+      const employeeNumber = opts.employeeNumber ?? (await nextEmployeeNumber(session));
       const code = buildEmployeeCode(branch.code, employeeNumber);
       const hireEvent: EmployeeStatusEvent = {
         from: null,

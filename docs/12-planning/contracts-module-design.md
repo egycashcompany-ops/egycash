@@ -551,6 +551,60 @@ which forms depends on the job.
   the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
   and never stops the boot.
 
+## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
+
+The owner: «هنستبدل زرار التعيين بزرار اسمو طباعه العقد و المستندات … جوه حتت عقد الجديد … toggle
+buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار … واحد للطباعه … و زرار جمبو علطول اللي هو التعيين …
+الزرار ميبقاش active الا لما يطبع اول». And: «لو كنت بعمل عقد … و تلعط او جاهز قفل او سستم تايم اوت
+يتعملو ريكورد».
+
+- **Where.** «جاهزون للتعيين» no longer hires: its button is «طباعة العقد والمستندات», which opens
+  `/contracts/new?offerId=…` — «عقد جديد» in the candidate's mode (`contract.print`).
+- **The candidate is not an employee yet.** The papers print from the employee the accepted offer
+  WOULD make (`employeeService.candidateFromOffer`): the offer's terms and the applicant's personal
+  data, built exactly as the hire builds the record. Nothing is written by a preview.
+- **The page.** The job's papers are ONE row beside the title — its contract (the first by print
+  order), the forms every job signs, the forms of this job — each a tile to tick for printing (the
+  owner's own tile pattern), with «تعديل» and «طباعة» under it («عاوز المستندات كلها تظهر ك line
+  واحد … جمب كلمه عقد جديد»). Below: the form — the contract's term (start; end one year on when
+  the type is fixed-term) and the hiring date, then the paper opened by its «تعديل» — and beside it
+  that paper as it prints (the contract until another is opened). At the foot, «طباعة المحدد» and
+  «تعيين».
+- **«تعديل»** opens the paper's values in the form, each typed in for the candidate (A16
+  overrides) and saved as its box is left. A value is kept on the record and used by every paper
+  that prints it; no template changes. The employee code is shown, never typed — the server drops
+  an override of it — because the hire gives exactly the code kept at the first print.
+- **The record** (`hr_candidate_drafts`, one per offer) holds the papers ticked, the typed-in
+  values, the term, the employee number kept, and the prints. Every change is saved as it is made,
+  in sequence with the version each save returns; a stale save is refused (409) and the page reloads
+  from the record.
+- **The first print** takes the next employee number from the sequence and keeps it for the
+  candidate, so the bank letter carries the code the hire gives. A candidate never hired leaves that
+  number unused. Every print is counted and audited on the offer (`export`, `candidatePapers`).
+- **The hire** (`employee.create`) is refused until something was printed. It creates the employee
+  with the kept number, then the contract — through the A27 path, from the job's contract template
+  with the printed term and the typed-in values the contract prints. What stops the contract is
+  returned as a note; the hire stands. The page then lands on the employee's «مستندات التعيين».
+- **Many at once** («لو معايا 20 شخص و عاوز اطبعلهم كلهم فنفس الوقت»). «جاهزون للتعيين» ticks
+  people (one by one, or all on the page) and offers «طباعة لكل المحدد». Its popup lists them, each
+  with their job and how many papers they get, beside every paper any of them prints as the same
+  tiles, each saying for how many it is («للجميع», «لـ ٣»). «تأكيد الطباعة» prints ONE document,
+  person after person, each with those of the chosen papers their own job has — their job's card,
+  the weapon declaration for crew leaders only. Each print is recorded as on the person's own page
+  (the code kept, so «تعيين» opens there). A person who cannot be printed for is reported, not
+  dropped; the others print. At most 50 at a time.
+- **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
+  اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
+  the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
+  the contract's own renewal (`contract.renew`), opened from the day after it ends for one year — and
+  their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
+  chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
+  the contract held, or makes one as «مستندات التعيين» does.
+- **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
+  `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
+  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {offerIds, keys}`;
+  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`.
+
 ## Review trail
 
 **Revision 3 (2026-07-27) — FREEZE CONFIRMED BY THE APPROVER:** Q1–Q3 restated and

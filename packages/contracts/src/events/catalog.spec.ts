@@ -457,8 +457,13 @@ describe('JSON Schema', () => {
   });
 
   it('carries enums, formats and patterns a generator can act on', () => {
+    // `external` joined the enum when external registration arrived (تعيين خارجى): a person the
+    // company did not hire, who is in the registry so IT can hand them custody. It is published
+    // here because `registerExternal` emits this very event carrying it, so a consumer generating
+    // a reader off this schema has to know the value exists — which is what this assertion makes
+    // impossible to widen quietly.
     const origin = eventCatalogEntry('hr.employee.created')?.jsonSchema?.properties?.origin;
-    expect(origin?.enum).toEqual(['recruitment', 'direct']);
+    expect(origin?.enum).toEqual(['recruitment', 'direct', 'external']);
 
     const contractId = eventCatalogEntry('hr.contract.expired')?.jsonSchema?.properties?.contractId;
     expect(contractId?.pattern).toBe('^[0-9a-fA-F]{24}$');

@@ -1246,6 +1246,18 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob, citJob]);
     // Again: nothing more.
     expect((await syncHiringTemplates()).widened).toEqual([]);
+
+    // The specialist is offered it unticked; the crew leader, as a usual paper.
+    const offered = async (jobTitleId: string) => {
+      const employee = await employeeIn(jobTitleId);
+      const res = await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as EmployeePapersDto).papers.find((p) => p.key === key('weapon'));
+    };
+    expect(await offered(citJob)).toMatchObject({ optional: true });
+    expect(await offered(crewLeaderJob)).toMatchObject({ optional: false });
   });
 
   it('prints the owner\'s contract and the papers of the employee\'s job', async () => {

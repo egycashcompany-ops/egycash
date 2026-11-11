@@ -571,6 +571,12 @@ which forms depends on the job.
   paper is (`hr/shared/job-match.ts`: `CREW_LEADERS`, `CIT_SPECIALISTS`, `WEAPON_HOLDERS`). The
   boot seed writes each once a job carrying its name exists, for those jobs; while no person has
   edited it, a job of that name created since is added on the next boot. A person's edit is final.
+- **Printed, unticked for the specialist.** The printed «إقرار حيازة سلاح» is offered to both jobs.
+  On every print page («عقد جديد», «طباعة لكل المحدد», the employee's tab) it starts TICKED for a crew
+  leader and UNTICKED for a cash-in-transit specialist («منغير علامه»): `HiringPaper.optionalFor`,
+  read through `optionalForJob(key, jobName)` into the papers' `optional` flag. In «طباعة لكل
+  المحدد» the papers are chosen once for everybody, so a paper usual for any ticked person starts
+  ticked.
 
 ## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
 

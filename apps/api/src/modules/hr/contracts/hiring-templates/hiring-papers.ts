@@ -16,7 +16,7 @@
 // These are only the STARTING papers. `syncHiringTemplates` writes each one once; HR edits them
 // in «قوالب العقود» like any template, and an edit is never overwritten.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
-import { CIT_SPECIALISTS, WEAPON_HOLDERS, type JobMatch } from '../../shared/job-match';
+import { CIT_SPECIALISTS, WEAPON_HOLDERS, matchesJob, type JobMatch, type JobNames } from '../../shared/job-match';
 
 /** The jobs a paper prints for, by name — job titles carry no other link to a paper. */
 export type PaperJobs = JobMatch;
@@ -27,6 +27,11 @@ export interface HiringPaper {
   name: LocalizedString;
   kind: ContractTemplateKind;
   jobs: PaperJobs;
+  /**
+   * Jobs among `jobs` the paper is OFFERED to but not ticked for: the print pages list it unticked,
+   * for HR to tick when it applies (the cash-in-transit specialist's weapon declaration).
+   */
+  optionalFor?: JobNames;
   printOrder: number;
   sections: { header: string; body: string; footer: string };
   signatures: SignatureBlock[];
@@ -301,6 +306,8 @@ const WEAPON: HiringPaper = {
   // Crew leaders (of every kind) and cash-in-transit specialists — required of the first, optional
   // for the second when the signed copy is collected; printed for both.
   jobs: WEAPON_HOLDERS,
+  // «اخصائي نقل اموال بتبقا اوبشن … منغير علامه»: offered to the specialist, unticked.
+  optionalFor: CIT_SPECIALISTS,
   printOrder: 50,
   sections: {
     header: title('إقـرار حيازة سلاح'),
@@ -629,3 +636,12 @@ export const HIRING_PAPERS: readonly HiringPaper[] = [
   WEAPON,
   ...JOB_CARDS.map(jobCardPaper),
 ];
+
+/**
+ * Is the paper `key` offered to the job named `jobName` unticked (`optionalFor`)? False for a paper
+ * not written from this file, or a job whose name is unknown.
+ */
+export const optionalForJob = (key: string, jobName: string | null): boolean => {
+  const optional = HIRING_PAPERS.find((paper) => paper.key === key)?.optionalFor;
+  return optional !== undefined && jobName !== null && matchesJob(optional, jobName);
+};

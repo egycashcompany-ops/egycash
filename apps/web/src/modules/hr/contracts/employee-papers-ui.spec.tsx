@@ -50,6 +50,10 @@ describe('printing', () => {
     expect(TAB.indexOf('openPrintWindow(')).toBeLessThan(TAB.indexOf('print.mutateAsync('));
   });
 
+  it('starts with every paper ticked but one the job is only offered', () => {
+    expect(TAB).toContain('setChosen(new Set(data.papers.filter((p) => !p.optional).map((p) => p.key)))');
+  });
+
   it('names everything in both languages', () => {
     const used = [...TAB.matchAll(/t\('([a-zA-Z.]+)'/g)].map((m) => m[1] ?? '');
     for (const locale of ['ar', 'en'] as Locale[]) {

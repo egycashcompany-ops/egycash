@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type CandidateBulkPersonDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
-import { papersOfPeople } from './components/BulkPrintDialog';
+import { papersOfPeople, startingChoice } from './components/BulkPrintDialog';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -16,12 +16,22 @@ const code = (path: string): string =>
 const READY = code('../employee-management/employees/pages/EmployeesReadyPage.tsx');
 const DIALOG = code('components/BulkPrintDialog.tsx');
 
-const person = (offerId: string, keys: [string, 'contract' | 'everyJob' | 'thisJob'][]): CandidateBulkPersonDto => ({
+const person = (
+  offerId: string,
+  keys: [string, 'contract' | 'everyJob' | 'thisJob'][],
+  optional: readonly string[] = [],
+): CandidateBulkPersonDto => ({
   offerId,
   applicantName: offerId,
   offerCode: null,
   jobTitle: null,
-  papers: keys.map(([key, group]) => ({ key, name: { ar: key, en: key }, kind: group === 'contract' ? 'contract' : 'form', group })),
+  papers: keys.map(([key, group]) => ({
+    key,
+    name: { ar: key, en: key },
+    kind: group === 'contract' ? 'contract' : 'form',
+    group,
+    optional: optional.includes(key),
+  })),
   error: null,
 });
 
@@ -36,6 +46,13 @@ describe('the papers of the ticked people', () => {
     // Each job's card, and the weapon declaration, for that job's people only.
     expect(papers.find((p) => p.key === 'weapon')?.for).toEqual(['leader']);
     expect(papers.find((p) => p.key === 'card.guard')?.for).toEqual(['guard']);
+  });
+
+  it('starts unticked a paper their jobs are only offered — unless it is usual for one of them', () => {
+    const specialist = person('cit', [['contract', 'contract'], ['weapon', 'thisJob']], ['weapon']);
+    expect([...startingChoice([specialist, guard])].sort()).toEqual(['card.guard', 'contract', 'sheet']);
+    expect(startingChoice([specialist, leader]).has('weapon')).toBe(true);
+    expect(DIALOG).toContain('setChosen(startingChoice(loaded))');
   });
 });
 

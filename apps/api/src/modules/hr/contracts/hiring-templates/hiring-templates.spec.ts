@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { renderContractHtml, renderFormHtml } from '../contracts/contract-render';
 import { type ContractVariableValue } from '../contracts/contract.model';
 import { CATALOG_KEYS, CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
-import { HIRING_PAPERS, type HiringPaper } from './hiring-papers';
+import { HIRING_PAPERS, optionalForJob, type HiringPaper } from './hiring-papers';
 import { jobKey, matchesJob } from '../../shared/job-match';
 import { jobsFor, preparedSections } from './hiring-templates.sync';
 
@@ -151,6 +151,16 @@ describe('which job prints which paper — matched by the job\'s name', () => {
     // The cash-in-transit specialist may sign it too (optional when collected).
     expect(papersFor('اخصائي نقل اموال')).toContain('egycash.hiring.weapon');
     expect(papersFor('أمين خزينة')).not.toContain('egycash.hiring.weapon');
+  });
+
+  it('offers it to the cash-in-transit specialist unticked — «اوبشن … منغير علامه»', () => {
+    expect(optionalForJob(WEAPON.key, 'أخصائي نقل أموال')).toBe(true);
+    expect(optionalForJob(WEAPON.key, 'قائد طاقم نقل أموال')).toBe(false);
+    expect(optionalForJob(WEAPON.key, null)).toBe(false);
+    // Every other paper is ticked for every job.
+    for (const p of HIRING_PAPERS.filter((x) => x.key !== WEAPON.key)) {
+      expect(optionalForJob(p.key, 'أخصائي نقل أموال'), p.key).toBe(false);
+    }
   });
 
   it('takes a grade after the name, and nothing that merely shares a word', () => {

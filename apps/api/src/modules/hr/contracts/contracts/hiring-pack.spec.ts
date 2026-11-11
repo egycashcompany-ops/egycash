@@ -2,7 +2,14 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
-import { pageFootCells, renderContractHtml, renderFormHtml, renderHiringPackHtml, type Letterhead } from './contract-render';
+import {
+  pageFootCells,
+  renderContractHtml,
+  renderFormHtml,
+  renderHiringPackHtml,
+  type HiringPackPart,
+  type Letterhead,
+} from './contract-render';
 import { dayNameOf, formatTemplateDate } from './contract-variables';
 import { appliesToJob, oneYearFrom, templatesForJob } from './hiring-pack.service';
 
@@ -169,9 +176,13 @@ describe('his contract as printed — the page foot, the page number, the basmal
     '<table class="foot"><tbody><tr><td>EGYCASH-HR-F-10-04</td><td>Issue / Rev. no.: 1/0</td><td>Issue date: 1/5/2022</td></tr></tbody></table>';
   const contract = (footer: string, body = '<p>نص</p>') =>
     template({ kind: 'contract', sections: { header: '', body, footer } });
-  const part = (footer: string, body?: string) =>
-    ({ kind: 'contract', template: contract(footer, body), values: [], options: {} }) as const;
-  const form = { kind: 'form', template: template({ kind: 'form' }), values: [] } as const;
+  const part = (footer: string, body?: string): HiringPackPart => ({
+    kind: 'contract',
+    template: contract(footer, body),
+    values: [],
+    options: {},
+  });
+  const form: HiringPackPart = { kind: 'form', template: template({ kind: 'form' }), values: [] };
 
   it('reads the doc-control line cell by cell, and nothing else as one', () => {
     expect(pageFootCells(FOOT)).toEqual(['EGYCASH-HR-F-10-04', 'Issue / Rev. no.: 1/0', 'Issue date: 1/5/2022']);

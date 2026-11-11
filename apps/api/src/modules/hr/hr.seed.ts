@@ -253,14 +253,15 @@ const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
 ];
 
 /**
- * A27, stage 3 — the crew leader's signed weapon declaration, collected from crew leaders only (the
- * printed «إقرار حيازة سلاح» is theirs alone too). Written for the jobs named «قائد طاقم…»; with
- * none yet it waits for the boot after one is created.
+ * A27, stage 3 — the crew leader's signed weapon declaration, asked of crew leaders only (the
+ * printed «إقرار حيازة سلاح» is theirs alone too). OPTIONAL: «اوبشن مش اجباري لقائد الطقم» — not
+ * every crew leader carries a licensed weapon, so it never holds the set's completion back. Written
+ * for the jobs named «قائد طاقم…»; with none yet it waits for the boot after one is created.
  */
 const WEAPON_DECLARATION: HiringDocumentTypeSeed = {
   key: 'weaponDeclaration',
   name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' },
-  required: true,
+  required: false,
 };
 
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {

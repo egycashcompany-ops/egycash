@@ -748,7 +748,8 @@ describe('hiring documents — collected by the employee\'s job (A27)', () => {
 });
 
 /**
- * A27, stage 3 — the crew leader's signed weapon declaration is collected from crew leaders only.
+ * A27, stage 3 — the crew leader's signed weapon declaration is asked of crew leaders only, and is
+ * optional.
  * The boot writes it for the jobs named «قائد طاقم…» once one exists, adds a crew leader's job made
  * since, and leaves it alone once a person has set its jobs.
  */
@@ -778,7 +779,8 @@ describe('hiring documents — the weapon declaration, for crew leaders (A27)', 
     const cit = await jobNamed('JT-WPN-1', 'قائد طاقم نقل أموال');
     await seedHrRecruitment();
     const written = await weapon();
-    expect(written).toMatchObject({ required: true, active: true, allJobs: false, jobTitleIds: [cit] });
+    // Optional: asked of crew leaders, never holding their set's completion back.
+    expect(written).toMatchObject({ required: false, active: true, allJobs: false, jobTitleIds: [cit] });
     expect(written?.name.ar).toBe('إقرار حيازة سلاح');
 
     // A crew leader's job made since is added on the next boot; any other job is not.

@@ -561,8 +561,9 @@ which forms depends on the job.
   (`HiringDocumentsDto.typeKeys`; `missingRequired` and the completion gate follow it). An employee
   who cannot be read is treated as an unknown job: every-job types only. A document already uploaded
   under a type outside the list still shows.
-- **The weapon declaration.** `weaponDeclaration` («إقرار حيازة سلاح», required) is collected from
-  crew leaders only, matched by name as the printed paper is (`hr/shared/job-match.ts`,
+- **The weapon declaration.** `weaponDeclaration` («إقرار حيازة سلاح») is asked of crew leaders
+  only, and is OPTIONAL — the owner: «اوبشن مش اجباري لقائد الطقم»; it never holds a set's
+  completion back. It is matched by name as the printed paper is (`hr/shared/job-match.ts`,
   `CREW_LEADERS`). The boot seed writes it once a `قائد طاقم…` job exists, for those jobs; while no
   person has edited it, a crew leader's job created since is added on the next boot. A person's edit
   is final.

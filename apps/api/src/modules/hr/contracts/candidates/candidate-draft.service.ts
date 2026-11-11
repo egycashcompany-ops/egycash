@@ -17,17 +17,23 @@
 //     hire stands.
 //   · Everything the page changes is saved as it changes («يتعملو ريكورد»): a closed tab or an
 //     expired session resumes where it stopped.
+//   · MANY AT ONCE («طباعة لكل المحدد» on «جاهزون للتعيين»): the people ticked, the papers chosen
+//     once for all; each person prints those of them their own job has, all in one document, each
+//     print recorded as a single person's is.
 import { Types } from 'mongoose';
 import {
+  type CandidateBulkPersonDto,
   type CandidateDraftDto,
   type CandidatePaperDto,
   type HireCandidate,
   type HireCandidateDto,
+  type RenderCandidateBulk,
+  type RenderCandidateBulkDto,
   type RenderCandidatePapers,
   type RenderCandidatePapersDto,
   type UpdateCandidateDraft,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
+import { AppError, BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { jobTitleService } from '../../../../platform/organization';
@@ -252,29 +258,21 @@ class CandidateDraftService {
   ): Promise<RenderCandidatePapersDto> {
     let c = await this.context(ctx, offerId, scope, false);
     const wanted = new Set(input.keys);
-    const parts = c.papers.filter((paper) => wanted.has(paper.template.key));
-    if (parts.length !== wanted.size) {
+    const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
+    if (papers.length !== wanted.size) {
       throw new ValidationError([
         { field: 'body.keys', code: 'INVALID', message: 'a paper that is not one of the job\'s papers' },
       ]);
     }
-    if (input.print) {
-      const employeeNumber = c.draft.employeeNumber ?? (await employeeService.reserveEmployeeNumber());
-      await candidateDraftRepository.updateById(
-        String(c.draft._id),
-        {
-          employeeNumber,
-          printedAt: c.draft.printedAt ?? new Date(),
-          printedBy: c.draft.printedBy ?? new Types.ObjectId(ctx.userId),
-          printCount: c.draft.printCount + 1,
-        },
-        { by: ctx.userId, version: c.draft.__v },
-      );
-      c = await this.context(ctx, offerId, scope, false);
-    }
+    if (input.print) c = await this.markPrinted(ctx, c, papers, scope);
+    const html = renderHiringPackHtml(await this.partsFor(ctx, c, papers), 'ar', await letterheadFor('ar'));
+    return { html, draft: await this.toDto(c) };
+  }
 
+  /** The rendered parts of `papers`, filled for the candidate. */
+  private async partsFor(ctx: AuthContext, c: Context, papers: readonly Paper[]): Promise<HiringPackPart[]> {
     const rendered: HiringPackPart[] = [];
-    for (const { template } of parts) {
+    for (const { template } of papers) {
       const { values } = await this.valuesFor(c, template.placeholders);
       if (printSettings(template).kind === 'contract') {
         rendered.push({
@@ -287,19 +285,100 @@ class CandidateDraftService {
         rendered.push({ kind: 'form', template, values });
       }
     }
-    const html = renderHiringPackHtml(rendered, 'ar', await letterheadFor('ar'));
-    if (input.print) {
-      await auditService.record({
-        entityRef: offerRef(offerId),
-        action: 'export',
-        changes: [
-          { field: 'format', old: null, new: 'candidatePapers' },
-          { field: 'documents', old: null, new: parts.map((paper) => paper.template.key).join(',') },
-        ],
-        actor: { userId: ctx.userId, ip: null, userAgent: null },
-      });
+    return rendered;
+  }
+
+  /**
+   * Record a print of `papers`: the employee code kept for the candidate if none is yet, the first
+   * print's time and author, the count, and an audit entry on the offer. Returns the context as it
+   * now is — the papers print the kept code.
+   */
+  private async markPrinted(ctx: AuthContext, c: Context, papers: readonly Paper[], scope: ScopeSelector): Promise<Context> {
+    const offerId = String(c.draft.offerId);
+    const employeeNumber = c.draft.employeeNumber ?? (await employeeService.reserveEmployeeNumber());
+    await candidateDraftRepository.updateById(
+      String(c.draft._id),
+      {
+        employeeNumber,
+        printedAt: c.draft.printedAt ?? new Date(),
+        printedBy: c.draft.printedBy ?? new Types.ObjectId(ctx.userId),
+        printCount: c.draft.printCount + 1,
+      },
+      { by: ctx.userId, version: c.draft.__v },
+    );
+    await auditService.record({
+      entityRef: offerRef(offerId),
+      action: 'export',
+      changes: [
+        { field: 'format', old: null, new: 'candidatePapers' },
+        { field: 'documents', old: null, new: papers.map((paper) => paper.template.key).join(',') },
+      ],
+      actor: { userId: ctx.userId, ip: null, userAgent: null },
+    });
+    return this.context(ctx, offerId, scope, false);
+  }
+
+  /**
+   * «طباعة لكل المحدد» — each ticked person with the papers of their own job, opened (and their
+   * record made) as one is when their page is opened. A person who cannot be printed for — the offer
+   * no longer accepted, out of the caller's reach — is listed with why, not dropped.
+   */
+  async bulkOpen(ctx: AuthContext, offerIds: readonly string[], scope: ScopeSelector): Promise<CandidateBulkPersonDto[]> {
+    const out: CandidateBulkPersonDto[] = [];
+    for (const offerId of new Set(offerIds)) {
+      try {
+        const c = await this.context(ctx, offerId, scope, true);
+        const job = await jobTitleService.getById(String(c.employee.employment.jobTitleId)).catch(() => null);
+        out.push({
+          offerId,
+          applicantName: c.applicantName,
+          offerCode: c.offerCode,
+          jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
+          papers: c.papers.map(({ template, group }) => ({
+            key: template.key,
+            name: template.name,
+            kind: printSettings(template).kind,
+            group,
+          })),
+          error: null,
+        });
+      } catch (error) {
+        if (!(error instanceof AppError) || error.httpStatus >= 500) throw error;
+        out.push({ offerId, applicantName: '', offerCode: null, jobTitle: null, papers: [], error: error.message });
+      }
     }
-    return { html, draft: await this.toDto(c) };
+    return out;
+  }
+
+  /**
+   * Print the chosen papers for every ticked person, as ONE document: each person in turn, each
+   * with those of the chosen papers their own job has, in print order — so a crew leader gets the
+   * weapon declaration and every person their own job's card. Each print is recorded as a single
+   * person's is (the code kept, the print counted and audited). A person with nothing to print, or
+   * who cannot be printed for, is reported and skipped; the others print.
+   */
+  async bulkRender(ctx: AuthContext, input: RenderCandidateBulk, scope: ScopeSelector): Promise<RenderCandidateBulkDto> {
+    const wanted = new Set(input.keys);
+    const parts: HiringPackPart[] = [];
+    const results: RenderCandidateBulkDto['results'] = [];
+    for (const offerId of new Set(input.offerIds)) {
+      try {
+        let c = await this.context(ctx, offerId, scope, true);
+        const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
+        if (papers.length === 0) {
+          results.push({ offerId, printed: 0, error: 'none of the chosen papers is one of this job\'s papers' });
+          continue;
+        }
+        c = await this.markPrinted(ctx, c, papers, scope);
+        parts.push(...(await this.partsFor(ctx, c, papers)));
+        results.push({ offerId, printed: papers.length, error: null });
+      } catch (error) {
+        if (!(error instanceof AppError) || error.httpStatus >= 500) throw error;
+        results.push({ offerId, printed: 0, error: error.message });
+      }
+    }
+    const html = parts.length === 0 ? '' : renderHiringPackHtml(parts, 'ar', await letterheadFor('ar'));
+    return { html, results };
   }
 
   /** Hire the candidate — only once the papers were printed — and record the contract. */

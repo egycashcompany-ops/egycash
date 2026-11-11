@@ -5,12 +5,12 @@
 //
 // Hiring copies the terms from the offer's immutable accepted snapshot, so this page only has to
 // get HR to the right offer — on «عقد جديد», where the papers print and the hire follows (A28).
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
@@ -23,6 +23,9 @@ import {
 } from '../components/EmployeesReadyFilters';
 import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { BulkPrintDialog } from '../../../contracts/components/BulkPrintDialog';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -97,6 +100,11 @@ export const EmployeesReadyPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);
   const rows = data?.items ?? [];
+  // A28 — «اعمل check box للناس … يظهرلي حاجه زي طباعه لكل المحدد»: tick people (or all on the
+  // page), then print their papers in one go, each by their own job.
+  const can = useCan();
+  const selection = useTableSelection(rows.map((o) => o.id));
+  const [printing, setPrinting] = useState(false);
 
   const columns: Column<JobOfferDto>[] = [
     {
@@ -159,10 +167,19 @@ export const EmployeesReadyPage = (): JSX.Element => {
       <div className="space-y-4">
         <EmployeesReadyFilters value={filters} onChange={changeFilters} />
 
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          <Can permission="contract.print">
+            <Button size="sm" onClick={() => setPrinting(true)} data-bulk-print>
+              {t('employees.ready.printSelected')}
+            </Button>
+          </Can>
+        </BulkActionBar>
+
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(o) => o.id}
+          {...(can('contract.print') ? { selection } : {})}
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
@@ -177,6 +194,13 @@ export const EmployeesReadyPage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <BulkPrintDialog
+        offerIds={selection.ids}
+        open={printing}
+        onClose={() => setPrinting(false)}
+        onPrinted={selection.clear}
+      />
     </PageContainer>
   );
 };

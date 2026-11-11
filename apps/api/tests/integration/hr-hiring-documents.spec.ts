@@ -12,9 +12,11 @@ import {
   HrContractSettingKeys,
   SettingKeys,
   type ApplicantDto,
+  type CandidateBulkPersonDto,
   type CandidateDraftDto,
   type ContractDto,
   type HireCandidateDto,
+  type RenderCandidateBulkDto,
   type RenderCandidatePapersDto,
   type EmployeeDto,
   type HiringDocumentTypeDto,
@@ -619,5 +621,56 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     const after = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
     expect(after.employeeId).toBe(done.employeeId);
     expect((await call('post', `${base(offer.id)}/hire`, { version: after.version })).status).toBe(409);
+  });
+});
+
+/**
+ * A28 — «طباعة لكل المحدد»: the ticked people, each with the papers of their own job, printed as
+ * one document; each print recorded as on the person's own page; a person who cannot be printed
+ * for is reported, not dropped, and the others still print.
+ */
+describe('«طباعة لكل المحدد» on «جاهزون للتعيين» (A28)', () => {
+  const PAPER = (name: string): string => `egycash.hiring.${name}`;
+  const call = (path: string, body: object) =>
+    request(app).post(`/api/v1/hr/contracts/candidates/${path}`).set('Authorization', `Bearer ${adminToken}`).send(body);
+
+  it('prints the chosen papers for every ticked person, in one document', async () => {
+    await syncHiringTemplates();
+    const first = await acceptedOffer();
+    const second = await acceptedOffer();
+    const nobody = '64b1f0cccccccccccccccc0e';
+
+    const opened = await call('bulk/open', { offerIds: [first.id, second.id, nobody] });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const people = opened.body.data as CandidateBulkPersonDto[];
+    expect(people.map((p) => p.offerId)).toEqual([first.id, second.id, nobody]);
+    expect(people[0]?.papers.map((p) => p.key)).toContain(PAPER('bank-letter'));
+    expect(people[0]?.error).toBeNull();
+    expect(people[2]?.error).not.toBeNull();
+
+    const printed = await call('bulk/render', {
+      offerIds: [first.id, second.id, nobody],
+      keys: [PAPER('bank-letter'), PAPER('relatives')],
+    });
+    expect(printed.status, JSON.stringify(printed.body)).toBe(200);
+    const out = printed.body.data as RenderCandidateBulkDto;
+    expect(out.results).toEqual([
+      { offerId: first.id, printed: 2, error: null },
+      { offerId: second.id, printed: 2, error: null },
+      expect.objectContaining({ offerId: nobody, printed: 0 }),
+    ]);
+    // Two people, two papers each: four documents, each on its own page after the first.
+    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(4);
+
+    // Each person's page shows the print, with the code kept — the hire is open there now.
+    for (const offer of [first, second]) {
+      const draft = (await call(`${offer.id}/open`, {})).body.data as CandidateDraftDto;
+      expect(draft.printCount).toBe(1);
+      expect(draft.employeeCode).not.toBeNull();
+      expect(out.html).toContain(`ربط الحساب بكود الموظف ${draft.employeeCode ?? ''}`);
+    }
+    // More than the cap is refused at the door.
+    const many = Array.from({ length: 51 }, () => first.id);
+    expect((await call('bulk/open', { offerIds: many })).status).toBe(400);
   });
 });

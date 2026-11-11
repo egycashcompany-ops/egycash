@@ -11,7 +11,11 @@ import {
   ContractVersionOnlySchema,
   CreateContractSchema,
   DecideContractApprovalSchema,
+  CandidateBulkSchema,
   HireCandidateSchema,
+  RenderCandidateBulkSchema,
+  type CandidateBulk,
+  type RenderCandidateBulk,
   HiringPackRequestSchema,
   RenderCandidatePapersSchema,
   UpdateCandidateDraftSchema,
@@ -174,6 +178,18 @@ const renderCandidate = async (req: Request, res: Response): Promise<void> => {
   ok(res, await candidateDraftService.render(ctx, params.offerId, body, scopeSelector(ctx, 'contract.print')));
 };
 
+const bulkOpenCandidates = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<CandidateBulk>(req);
+  ok(res, await candidateDraftService.bulkOpen(ctx, body.offerIds, scopeSelector(ctx, 'contract.print')));
+};
+
+const bulkRenderCandidates = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RenderCandidateBulk>(req);
+  ok(res, await candidateDraftService.bulkRender(ctx, body, scopeSelector(ctx, 'contract.print')));
+};
+
 const hireCandidate = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<HireCandidate, never, OfferParam>(req);
@@ -255,6 +271,11 @@ export const buildContractsRouter = (): Router => {
     validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
   router.post('/hiring-pack', ...guard('contract.print'), validate({ body: HiringPackRequestSchema }),
     asyncHandler(hiringPack));
+  // Before the `:offerId` routes, so «bulk» is never read as an offer id.
+  router.post('/candidates/bulk/open', ...guard('contract.print'), validate({ body: CandidateBulkSchema }),
+    asyncHandler(bulkOpenCandidates));
+  router.post('/candidates/bulk/render', ...guard('contract.print'), validate({ body: RenderCandidateBulkSchema }),
+    asyncHandler(bulkRenderCandidates));
   router.post('/candidates/:offerId/open', ...guard('contract.print'), validate({ params: OfferParamSchema }),
     asyncHandler(openCandidate));
   router.patch('/candidates/:offerId', ...guard('contract.print'),

@@ -215,6 +215,12 @@ export interface ItAssetDto {
    * holder label IT prints; null while nobody holds it (or the interval cannot be read).
    */
   holder: ItAssetHolderDto | null;
+  /**
+   * A maintenance order on it is open or in progress — its status alone does not say so (an
+   * `open` order, the preventive sweep's among them, leaves it `inStock`). Custody and the move
+   * to another branch refuse such an asset, so the screen says so before it is asked.
+   */
+  hasActiveMaintenance: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -578,6 +584,62 @@ export const DisposeItAssetSchema = z
   })
   .strict();
 export type DisposeItAsset = z.infer<typeof DisposeItAssetSchema>;
+
+// «عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني» (2026-11-11): several assets at once, at once — no
+// paper, the history is the record («لا، السجل كفاية»). An asset in stock simply changes branch; one
+// held by an employee moves WITH its custody («ينتقل مع عهدته») — exactly the custody transfer to a
+// new branch in the same hands. One in maintenance or disposed is not moved.
+
+/** A move is a few shelves' worth, not the register: the screen's page, at most. */
+export const IT_ASSET_MOVE_MAX = 100;
+
+/** «نقل إلى فرع» — every asset named, to ONE branch, in one transaction: all of them or none. */
+export const MoveItAssetsToBranchSchema = z
+  .object({
+    assetIds: z.array(objectId()).min(1).max(IT_ASSET_MOVE_MAX),
+    toBranchId: objectId(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.assetIds.forEach((id, index) => {
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['assetIds', index],
+          message: 'an asset is named twice',
+        });
+      }
+      seen.add(id);
+    });
+  });
+export type MoveItAssetsToBranch = z.infer<typeof MoveItAssetsToBranchSchema>;
+
+/** What a move did, asset by asset — in the order the request named them. */
+export interface ItAssetBranchMoveDto {
+  assetId: string;
+  assetCode: string;
+  fromBranchId: string;
+  toBranchId: string;
+  /** The employee who still holds it, when it moved with its custody; null for one in stock. */
+  holderEmployeeId: string | null;
+}
+
+export interface ItAssetsBranchMoveResultDto {
+  toBranchId: string;
+  moved: ItAssetBranchMoveDto[];
+}
+
+/**
+ * The branches the caller may move assets — and send consumables — to: every active branch their
+ * `itAsset.assign` reaches, judged by the server's own rule, so the pickers never offer a branch
+ * the move would refuse (the account's `branchIds` are the reach of ALL its grants, not this one).
+ */
+export interface ItMoveTargetsDto {
+  branchIds: string[];
+}
 
 /** The custody register's receipt filter: the paper signed and filed, waiting, or none at all. */
 export const IT_ASSIGNMENT_RECEIPT_STATES = ['signed', 'unsigned', 'none'] as const;
@@ -2285,8 +2347,19 @@ export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistor
 // so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
 // atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
 
-/** Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person. */
-export const IT_CONSUMABLE_MOVEMENT_KINDS = ['received', 'issued', 'scrapped', 'returned'] as const;
+/**
+ * Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person — and
+ * between two branches' stores («ممكن أنقل 5 لفرع تاني»): out of one (`transferredOut`) and into the
+ * other (`transferredIn`), the pair written together and sharing one `transferId`.
+ */
+export const IT_CONSUMABLE_MOVEMENT_KINDS = [
+  'received',
+  'issued',
+  'scrapped',
+  'returned',
+  'transferredOut',
+  'transferredIn',
+] as const;
 export const ItConsumableMovementKindSchema = z.enum(IT_CONSUMABLE_MOVEMENT_KINDS);
 export type ItConsumableMovementKind = z.infer<typeof ItConsumableMovementKindSchema>;
 
@@ -2441,6 +2514,66 @@ export const IssueItConsumablesSchema = z
   });
 export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
 
+/** One item of a transfer — how many of it leave its store. */
+export const ItConsumableTransferLineSchema = z
+  .object({ consumableId: objectId(), qty: consumableQty })
+  .strict();
+export type ItConsumableTransferLine = z.infer<typeof ItConsumableTransferLineSchema>;
+
+/** A transfer carries a few shelves' worth, as a memo does — the screen's page, at most. */
+export const IT_CONSUMABLE_TRANSFER_MAX_LINES = 50;
+
+/**
+ * «تحويل إلى فرع» — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: one or more items of ONE
+ * branch's store, each with how many, to ONE other branch, at once and with no paper («السجل
+ * كفاية»). In one transaction: every line leaves its store and reaches the other or none does. Each
+ * reaches the other store's item of the SAME name (a store holds one item per name), which is made
+ * there — same name, type and unit — when that store has none yet.
+ */
+export const TransferItConsumablesSchema = z
+  .object({
+    toBranchId: objectId(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+    lines: z.array(ItConsumableTransferLineSchema).min(1).max(IT_CONSUMABLE_TRANSFER_MAX_LINES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.lines.forEach((line, index) => {
+      if (seen.has(line.consumableId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'consumableId'],
+          message: 'an item appears on the transfer twice',
+        });
+      }
+      seen.add(line.consumableId);
+    });
+  });
+export type TransferItConsumables = z.infer<typeof TransferItConsumablesSchema>;
+
+/** One line of a transfer, as it was written — both stores' items. */
+export interface ItConsumableTransferLineDto {
+  fromConsumableId: string;
+  fromCode: string;
+  toConsumableId: string;
+  toCode: string;
+  name: string;
+  unit: string;
+  qty: number;
+  /** The receiving store had no item of that name: this transfer made it. */
+  created: boolean;
+}
+
+export interface ItConsumableTransferResultDto {
+  transferId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  at: string;
+  lines: ItConsumableTransferLineDto[];
+}
+
 export const ItConsumableIdParamSchema = z.object({ id: objectId() }).strict();
 
 /** One movement of the ledger, labelled for the register at response time. */
@@ -2469,6 +2602,13 @@ export interface ItConsumableMovementDto {
   memoNumber: number | null;
   /** Whether the memo's signed copy is filed; null when there is no memo (or it is gone). */
   memoSigned: boolean | null;
+  /** A transfer between two stores: the id both of its movements share. Null otherwise. */
+  transferId: string | null;
+  /** `transferredOut`: the branch it went to; `transferredIn`: the branch it came from. */
+  counterpartBranchId: string | null;
+  /** The other store's item of the same transfer (same name, the other branch). */
+  counterpartConsumableId: string | null;
+  counterpartConsumableCode: string | null;
   byUserId: string | null;
   notes: string | null;
   createdAt: string;

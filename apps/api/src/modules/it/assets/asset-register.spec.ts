@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   distinctNames: vi.fn(),
   findIntervals: vi.fn(),
   getDirectoryEmployees: vi.fn(),
+  activeAssetIds: vi.fn(),
 }));
 
 vi.mock('../../../platform/directory', () => ({
@@ -38,6 +39,9 @@ vi.mock('./asset.repository', () => ({
 }));
 vi.mock('./assignment.repository', () => ({
   itAssetAssignmentRepository: { findByIdsSystem: mocks.findIntervals },
+}));
+vi.mock('../maintenance/order.repository', () => ({
+  itMaintenanceOrderRepository: { activeAssetIds: mocks.activeAssetIds },
 }));
 
 const { itAssetService, ASSET_NAMES_CAP } = await import('./asset.service');
@@ -109,9 +113,11 @@ const heldBy = (employee: Types.ObjectId) => {
 const labels = (
   intervals: readonly ItAssetAssignmentDoc[],
   employees: readonly [string, { code: string; fullNameAr: string }][] = [],
+  activeMaintenance: readonly string[] = [],
 ): ItAssetHolderLabels => ({
   intervals: new Map(intervals.map((row) => [String(row._id), row])),
   employees: new Map(employees),
+  activeMaintenance: new Set(activeMaintenance),
 });
 
 const person = (id: Types.ObjectId, code: string, fullNameAr: string): DirectoryEmployee => ({
@@ -131,6 +137,7 @@ const MOHAMED = { code: '0100052', fullNameAr: 'محمد أحمد علي' };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.activeAssetIds.mockResolvedValue(new Set());
 });
 
 describe('the holder an asset row names', () => {
@@ -235,6 +242,40 @@ describe('resolving the holders of a response', () => {
     const holders = await itAssetService.holderLabels([asset(), asset()]);
     expect(mocks.getDirectoryEmployees).not.toHaveBeenCalled();
     expect(holders.intervals.size).toBe(0);
+  });
+});
+
+// The move to another branch — and custody — refuse an asset an order open or in progress holds,
+// and its status alone does not say so: the row says it, so the screen can leave it out first.
+describe('an asset a maintenance order holds', () => {
+  it('is said so on its row — and only on its own', () => {
+    const repairing = asset();
+    const fine = asset();
+    const facts = labels([], [], [String(repairing._id)]);
+    expect(toItAssetDto(repairing, facts).hasActiveMaintenance).toBe(true);
+    expect(toItAssetDto(fine, facts).hasActiveMaintenance).toBe(false);
+    // An `open` order leaves the asset in stock: the status is no substitute.
+    expect(toItAssetDto(repairing, facts).status).toBe('inStock');
+  });
+
+  it('is read for a whole page in ONE query of the page’s ids, never one per row', async () => {
+    const repairing = asset();
+    const held = heldBy(EMPLOYEE);
+    const fine = asset();
+    const page = [repairing, held.doc, fine];
+    mocks.findIntervals.mockResolvedValue([held.open]);
+    mocks.getDirectoryEmployees.mockResolvedValue(new Map());
+    mocks.activeAssetIds.mockResolvedValue(new Set([String(repairing._id)]));
+
+    const holders = await itAssetService.holderLabels(page);
+
+    expect(mocks.activeAssetIds).toHaveBeenCalledTimes(1);
+    expect(mocks.activeAssetIds).toHaveBeenCalledWith(page.map((doc) => String(doc._id)));
+    expect(page.map((doc) => toItAssetDto(doc, holders).hasActiveMaintenance)).toEqual([
+      true,
+      false,
+      false,
+    ]);
   });
 });
 

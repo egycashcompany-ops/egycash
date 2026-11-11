@@ -510,4 +510,28 @@ describe('the ledger', () => {
     expect([...labels.memos.keys()]).toEqual([String(MEMO)]);
     expect(labels.memos.get(String(MEMO))).toEqual({ memoNumber: 7, signed: true });
   });
+
+  it('reads a transfer’s other store’s item with the page’s own items — once each, in one read', async () => {
+    const OTHER = new Types.ObjectId();
+    const half = (kind: string) => ({
+      _id: new Types.ObjectId(),
+      consumableId: new Types.ObjectId(ITEM),
+      kind,
+      employeeId: null,
+      assetId: null,
+      memoId: null,
+      counterpartConsumableId: OTHER,
+    });
+    mocks.itemsByIds.mockResolvedValue([item()]);
+    mocks.memosByIds.mockResolvedValue([]);
+    mocks.employees.mockResolvedValue(new Map());
+
+    await itConsumableService.movementLabels(
+      [half('transferredOut'), half('transferredOut')] as never,
+      scope,
+    );
+
+    expect(mocks.itemsByIds).toHaveBeenCalledTimes(1);
+    expect(mocks.itemsByIds).toHaveBeenCalledWith([ITEM, String(OTHER)]);
+  });
 });

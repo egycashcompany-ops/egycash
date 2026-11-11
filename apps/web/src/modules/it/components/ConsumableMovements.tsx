@@ -11,6 +11,10 @@
 // «بدل تالف» is said in so many words wherever an issue is shown: the damaged unit it replaces is
 // counted as scrap, though it never sat on the shelf — so the store's «الهالك» grows by it while
 // «الرصيد» moves only by the new unit, and a reader comparing the two figures is told why.
+//
+// A transfer between two stores («ممكن أنقل 5 لفرع تاني») is a pair of movements: «تحويل إلى فرع» out
+// of one, coloured as an issue is, and «تحويل من فرع» into the other, coloured as a receipt is. Each
+// names the other side in the reason's place — the branch, and that store's item when known.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -27,22 +31,28 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { ClipboardIcon } from '../../../shared/ui/icons';
 import { cn } from '../../../shared/lib/cn';
 import { formatDateTime, formatNumber, localized } from '../../../shared/lib/format';
-import { useItCatalog, useItConsumableMovements } from '../api/it-queries';
+import { useItBranchOptions, useItCatalog, useItConsumableMovements } from '../api/it-queries';
 import {
   MOVEMENT_SIGN,
   movementAsset,
+  movementCounterpart,
   movementEmployee,
   movementReason,
 } from '../lib/consumable-movement-register-export';
 import { ConsumableMemoActions } from './ConsumableMemo';
 import { ItUserName } from './ItUserName';
 
-/** Each kind's colour: in is green, out to a person is blue, scrap is red, back is the brand's. */
+/**
+ * Each kind's colour: in is green, out to a person is blue, scrap is red, back is the brand's — and
+ * stock sent to another branch is out as an issue is, stock arriving from one is in as a receipt is.
+ */
 export const MOVEMENT_TONE: Readonly<Record<ItConsumableMovementKind, Tone>> = {
   received: 'success',
   issued: 'info',
   scrapped: 'danger',
   returned: 'brand',
+  transferredOut: 'info',
+  transferredIn: 'success',
 };
 
 /** The kind, as a chip. */
@@ -79,6 +89,11 @@ export const useConsumableMovementColumns = ({
   const types = useItCatalog('consumableType');
   const typeName = new Map(
     (types.data?.items ?? []).map((type) => [type.id, localized(type.name, locale)] as const),
+  );
+  // The other side a transfer names — the same cached options every IT screen reads.
+  const branches = useItBranchOptions();
+  const branchName = new Map(
+    (branches.data ?? []).map((branch) => [branch.id, localized(branch.name, locale)] as const),
   );
 
   const columns: (Column<ItConsumableMovementDto> | false)[] = [
@@ -163,11 +178,28 @@ export const useConsumableMovementColumns = ({
       key: 'reason',
       header: t('it.consumables.movements.columns.reason'),
       render: (m) => {
-        const reason = movementReason(t, m);
+        const counterpart = movementCounterpart(t, m, branchName);
+        const reason = movementReason(t, m, branchName);
         const notes = m.notes?.trim() ?? '';
         return (
           <span className="flex max-w-xs flex-col gap-0.5 leading-tight">
-            <span>{reason ?? (notes === '' ? '—' : null)}</span>
+            {counterpart === null ? (
+              <span>{reason ?? (notes === '' ? '—' : null)}</span>
+            ) : (
+              // The other store's item code isolated in its own direction, so the Latin code never
+              // reorders the Arabic around it.
+              <span data-transfer-counterpart={m.kind}>
+                {counterpart.place}
+                {counterpart.code === null ? null : (
+                  <>
+                    {' '}
+                    <bdi className="font-mono text-xs text-slate-500 dark:text-slate-400" dir="ltr">
+                      {counterpart.code}
+                    </bdi>
+                  </>
+                )}
+              </span>
+            )}
             {m.kind === 'issued' && m.reason === 'replacement' && (
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {t('it.consumables.replacementNote')}

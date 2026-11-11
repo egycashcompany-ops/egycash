@@ -1,5 +1,7 @@
 // The consumables ledger as a file (FR-20) — what its Excel and PDF say, movement by movement, the
-// way each kind is read, and the filters its printed page names.
+// way each kind is read, and the filters its printed page names. A transfer between two stores
+// («ممكن أنقل 5 لفرع تاني») is read as its two halves: out of one store, into the other, each naming
+// the other side.
 import { describe, expect, it } from 'vitest';
 import { type ItConsumableMovementDto } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
@@ -13,6 +15,7 @@ import {
   consumableMovementRegisterReport,
   consumableMovementRegisterSubtitle,
   movementAsset,
+  movementCounterpart,
   movementEmployee,
   movementReason,
   type ConsumableMovementRegisterContext,
@@ -25,8 +28,13 @@ const context: ConsumableMovementRegisterContext = {
   t,
   locale: 'ar',
   typeName: new Map([['ty-mice', 'ماوس']]),
+  branchName: new Map([
+    ['b-hq', 'المهندسين'],
+    ['b-oct', 'أكتوبر'],
+  ]),
   userName: new Map([['u-it', 'أحمد سالم']]),
 };
+const { branchName } = context;
 
 const AT = '2026-10-21T08:30:00.000Z';
 
@@ -50,6 +58,10 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   memoId: 'memo-1',
   memoNumber: 7,
   memoSigned: false,
+  transferId: null,
+  counterpartBranchId: null,
+  counterpartConsumableId: null,
+  counterpartConsumableCode: null,
   byUserId: 'u-it',
   notes: null,
   createdAt: AT,
@@ -74,19 +86,83 @@ const RECEIVED = movement({
   notes: 'جرد أكتوبر',
 });
 
+/** «10 ماوس … أنقل 5»: the half that left the head office's store for October's. */
+const SENT = movement({
+  id: 'm-3',
+  kind: 'transferredOut',
+  qty: 5,
+  employeeId: null,
+  employeeCode: null,
+  employeeName: null,
+  assetId: null,
+  assetCode: null,
+  assetName: null,
+  reason: null,
+  memoId: null,
+  memoNumber: null,
+  memoSigned: null,
+  transferId: 't-1',
+  counterpartBranchId: 'b-oct',
+  counterpartConsumableId: 'c-9',
+  counterpartConsumableCode: 'CON-00031',
+});
+/** …and the half that reached October's store. */
+const ARRIVED = movement({
+  ...SENT,
+  id: 'm-4',
+  consumableId: 'c-9',
+  consumableCode: 'CON-00031',
+  kind: 'transferredIn',
+  branchId: 'b-oct',
+  counterpartBranchId: 'b-hq',
+  counterpartConsumableId: 'c-1',
+  counterpartConsumableCode: 'CON-00004',
+});
+
 describe('a movement, read by its kind', () => {
-  it('moves the store in by a receipt or a return, out by an issue or a scrap', () => {
-    expect(MOVEMENT_SIGN).toEqual({ received: 1, issued: -1, scrapped: -1, returned: 1 });
+  it('moves the store in by a receipt, a return or a transfer in; out by an issue, a scrap or a transfer out', () => {
+    expect(MOVEMENT_SIGN).toEqual({
+      received: 1,
+      issued: -1,
+      scrapped: -1,
+      returned: 1,
+      transferredOut: -1,
+      transferredIn: 1,
+    });
   });
 
   it('gives an issue’s reason in words, a scrap’s own text, and nothing for the others', () => {
-    expect(movementReason(t, movement())).toBe('بدل تالف');
-    expect(movementReason(t, movement({ reason: 'new' }))).toBe('جديد');
-    expect(movementReason(t, movement({ kind: 'scrapped', reason: ' انكسر الموصل ' }))).toBe(
-      'انكسر الموصل',
-    );
-    expect(movementReason(t, RECEIVED)).toBeNull();
-    expect(movementReason(t, movement({ kind: 'returned', reason: 'new' }))).toBeNull();
+    expect(movementReason(t, movement(), branchName)).toBe('بدل تالف');
+    expect(movementReason(t, movement({ reason: 'new' }), branchName)).toBe('جديد');
+    expect(
+      movementReason(t, movement({ kind: 'scrapped', reason: ' انكسر الموصل ' }), branchName),
+    ).toBe('انكسر الموصل');
+    expect(movementReason(t, RECEIVED, branchName)).toBeNull();
+    expect(movementReason(t, movement({ kind: 'returned', reason: 'new' }), branchName)).toBeNull();
+  });
+
+  it('names a transfer’s other side: the branch it went to or came from, and that store’s item', () => {
+    expect(movementCounterpart(t, SENT, branchName)).toEqual({
+      place: 'إلى فرع أكتوبر',
+      code: 'CON-00031',
+    });
+    expect(movementCounterpart(t, ARRIVED, branchName)).toEqual({
+      place: 'من فرع المهندسين',
+      code: 'CON-00004',
+    });
+    expect(movementReason(t, SENT, branchName)).toBe('إلى فرع أكتوبر (CON-00031)');
+    expect(movementReason(t, ARRIVED, branchName)).toBe('من فرع المهندسين (CON-00004)');
+    // Every other kind has no other side.
+    expect(movementCounterpart(t, movement(), branchName)).toBeNull();
+  });
+
+  it('never prints an id for a branch it cannot name, nor a code the server could not give', () => {
+    const unnamed = movement({
+      ...SENT,
+      counterpartBranchId: 'b-closed',
+      counterpartConsumableCode: null,
+    });
+    expect(movementReason(t, unnamed, branchName)).toBe('إلى فرع آخر');
   });
 
   it('names the person and the asset as the server labelled them — or by code, then id', () => {
@@ -163,6 +239,20 @@ describe('the ledger’s columns', () => {
       '',
     );
     expect(cells[9]).toBe('بدل تالف — للمكتب الأمامي');
+  });
+
+  it('write a transfer’s two halves signed by their kind — out of one store, into the other', () => {
+    const out = consumableMovementRegisterLine(SENT, context, '');
+    expect(out[1]).toBe('تحويل إلى فرع');
+    expect(out[5]).toBe(-5);
+    expect(out[9]).toBe('إلى فرع أكتوبر (CON-00031)');
+    // No person, no asset, no memo: the ledger is the record.
+    expect([out[6], out[8], out[10], out[11]]).toEqual(['', '', '', '']);
+    const into = consumableMovementRegisterLine(ARRIVED, context, '');
+    expect(into[1]).toBe('تحويل من فرع');
+    expect(into[3]).toBe('CON-00031');
+    expect(into[5]).toBe(5);
+    expect(into[9]).toBe('من فرع المهندسين (CON-00004)');
   });
 
   it('say a signed memo is signed', () => {

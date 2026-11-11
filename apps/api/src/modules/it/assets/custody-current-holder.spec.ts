@@ -23,6 +23,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../platform/directory', () => ({
   getDirectoryEmployee: mocks.getDirectoryEmployee,
 }));
+// The move to another branch reads the target branch; nothing here moves one. Mocked so the real
+// organization module is not loaded against the directory mock above.
+vi.mock('../../../platform/organization', () => ({
+  branchRepository: { findById: vi.fn(async () => null) },
+}));
 // Who the receipt names is read through the directory too — the same answer the leaver rule is
 // judged on, so the mock below is the one fact both decisions see.
 vi.mock('./receipt-holder', () => ({

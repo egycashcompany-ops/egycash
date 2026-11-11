@@ -733,11 +733,16 @@ its entry here in the same PR.
   is 12rem instead of 15rem (192 px; its placeholder, icon, one code or three «215, 216, 217» still
   whole), the chips are 4 px apart instead of 6, and each chip has 8 px of padding a side instead
   of 10 and 4 px between word and figure instead of 6. Height, type, colours and the active ring
-  are unchanged. Measured on the real page at 1920 px: all eighteen chips and the reset on one row,
-  68.6 px to spare (110.6 without the reset), every ring whole at the start, middle and end. At
-  1536 and 1366 px the row is still 273–485 px short and the last four to six chips are partly or
-  wholly off its end; what the row does there is a decision still pending with the owner, and its
-  sideways scroll is unchanged. The phone and tablet boards, whose row is swiped, are not changed.
+  are unchanged. Measured on the real page at 1920 px with that day's figures (most missions 0,
+  «تشغيل» 45): all eighteen chips and the reset on one row, 68.6 px to spare (110.6 without the
+  reset), every ring whole at the start, middle and end. The spare is that day's, not every day's:
+  each extra digit in a chip's figure costs about 9 px, so a planned day («تشغيل» 143, four
+  missions in two digits) keeps 32 px, while a day with every mission in two digits is 41 px short
+  with the reset showing and «نقل أموال (يومي)» is cut again. At 1536 and 1366 px the row is still
+  273–485 px short and the last four to six chips are partly or wholly off its end. What the row
+  does when its chips do not fit — those screens, and such a day at 1920 — is a decision still
+  pending with the owner, and its sideways scroll is unchanged. The phone and tablet boards, whose
+  row is swiped, are not changed.
 - **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
   pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
   (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and

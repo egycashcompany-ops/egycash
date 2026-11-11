@@ -461,7 +461,8 @@ export const RosterDeskBoard = ({
             row («لا صغر شوية كود السيارة وخلى كله صف واحد»). «كود السيارة» is 12rem, not 15rem:
             its placeholder, its icon and one code or three («215, 216, 217») still whole, and the
             48px it gives up (with DeskCounters' tighter chips) lets the six counters and the
-            twelve missions stand beside the reset at 1920px (measured). */}
+            twelve missions stand beside the reset at 1920px on the measured day's figures —
+            longer figures take more room (see DeskCounters). */}
         <div
           className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
           data-roster-filters="true"

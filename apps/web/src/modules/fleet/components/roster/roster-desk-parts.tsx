@@ -7,7 +7,7 @@
 //   DeskDayStepper  the approved stepper (weekday · 2026/11/09 · «اليوم») at the toolbar's 36px.
 //                   The date opens the browser's calendar through the date box's own calendar
 //                   button and through the date itself.
-//   DeskCounters    the day's seven counters, tap = filter, active = ring — on the filter bar's
+//   DeskCounters    the day's six counters, tap = filter, active = ring — on the filter bar's
 //                   36px line, figures in Latin digits.
 //   DriversPanel    «السائقون المتاحون (n)» / «غير المتاحين (n)» as tabs over ONE list (both lists
 //                   are in the page, the other one hidden), the lists draggable on a computer with
@@ -203,8 +203,10 @@ export const DeskDayStepper = ({
  * ONE row, never two — «فى مشكلة باقى الفلاتر مش ظاهرة» → «لا صغر شوية كود السيارة وخلى كله صف
  * واحد». The chips sit 4px apart, 8px of padding each side and 4px between word and figure (the
  * same 36px height, type, tones and ring): with «كود السيارة» at 12rem (RosterDeskBoard), the six
- * counters and the twelve missions fit beside the red reset at 1920px with about 68px to spare
- * (measured). Where they still do not fit, the row scrolls sideways as before.
+ * counters and the twelve missions fit beside the red reset at 1920px with about 68px to spare on
+ * the measured day's figures. Each extra digit in a figure costs about 9px, so a day with every
+ * mission in two digits is cut again there (measured: 41px short with the reset). Where they do
+ * not fit, the row scrolls sideways as before.
  */
 export const DeskCounters = ({
   counters,

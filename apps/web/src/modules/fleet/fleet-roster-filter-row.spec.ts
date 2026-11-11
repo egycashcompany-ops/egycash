@@ -7,11 +7,14 @@
 // scrollbar, out of a mouse's reach. The owner kept the one row (no second line) and chose a
 // smaller «كود السيارة»: 15rem → 12rem, with the chips a little tighter — 4px apart (was 6), 8px of
 // padding a side (was 10), 4px between word and figure (was 6); the same 36px height, type, tones
-// and ring. Measured after on the real page: 68.6px to spare with the reset, about 110 without.
+// and ring. Measured after on the real page, on that day's figures: 68.6px to spare with the
+// reset, about 110 without. The spare is that day's: each extra digit in a chip's figure costs
+// about 9px, and a day with every mission in two digits is 41px short again at 1920 with the reset.
 // The shots are the proof of the pixels; these claims pin the classes behind them.
 //
-// Narrower screens (a laptop, a pinned nav) still cannot hold eighteen chips; what the row does
-// there is unchanged here. The touch boards are not part of it — their row scrolls under a finger.
+// Narrower screens (a laptop, a pinned nav), and such a day at 1920, still cannot hold eighteen
+// chips; what the row does there is unchanged here (a decision pending with the owner). The touch
+// boards are not part of it — their row scrolls under a finger.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,7 +93,8 @@ describe('«تعيين السيارات» on a computer: every filter on ONE row
   it('adds up: the 121.4px the chips were short, and what the change gives back', () => {
     // Measured before, at 1920 with the reset: 1599.4px of chips in a 1478px row. The row gains
     // what «كود السيارة» gives up; the chips need less by the gaps between them and by each chip's
-    // padding and inner gap. Eighteen chips: six counters, twelve missions.
+    // padding and inner gap. Eighteen chips: six counters, twelve missions. The figures are the
+    // measured day's; every extra digit in a chip takes about 9px of the spare back.
     const chips = 18;
     const before = { car: 240, gap: 6, pad: 10, inner: 6 };
     const after = {

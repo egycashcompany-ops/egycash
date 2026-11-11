@@ -1611,10 +1611,19 @@ export const UpdateFleetMaintenanceSchema = z
     exitOdometer: z.number().int().min(0).nullish().optional(),
     /**
      * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
-     * no correction path turns one mistyped driver into a permanent one; the check-OUT driver is
-     * deliberately not here, because changing it belongs to reopening and closing the visit again.
+     * no correction path turns one mistyped driver into a permanent one.
      */
     driverInEmployeeId: objectId().optional(),
+    /**
+     * «سائق الخروج», correctable too — «عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج». Before,
+     * fixing it meant reopening the visit, which also wipes the exit date, the exit counter and
+     * the custody, and checking it out again.
+     *
+     * Only on a CLOSED visit: an open one has no exit yet, and check-out sets it (400 on an open
+     * visit). A correction, never a clear, as for the entry driver: `null` is refused. The server
+     * checks the employee only when the value differs from the one stored.
+     */
+    driverOutEmployeeId: objectId().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),

@@ -19,7 +19,7 @@ import {
   type UpdateFleetMaintenance,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { ConflictError, ValidationError } from '../../../shared/errors';
+import { ConflictError, StaleDocumentError, ValidationError } from '../../../shared/errors';
 import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -434,6 +434,28 @@ class FleetMaintenanceService {
     if (input.driverInEmployeeId !== undefined) {
       await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
     }
+    // «سائق الخروج» — only on a CLOSED visit. An open one has not left yet; check-out sets it.
+    if (input.driverOutEmployeeId !== undefined && before.outDate === null) {
+      // A copy older than the stored visit saw it closed: it was reopened since. That is a stale
+      // copy to reload (409, as on every edit), not a field the editor filled in wrong.
+      if (input.version !== before.__v) throw new StaleDocumentError();
+      throw new ValidationError([
+        {
+          field: 'body.driverOutEmployeeId',
+          code: 'INVALID',
+          message: 'the exit driver of an open visit is set by check-out',
+        },
+      ]);
+    }
+    // Asked of HR only when this edit CHANGES it, so resaving a visit whose driver has since left
+    // the directory is not refused for a driver nobody touched. Lowercased: an id is hex, and the
+    // stored one always reads back lowercase.
+    if (
+      input.driverOutEmployeeId !== undefined &&
+      input.driverOutEmployeeId.toLowerCase() !== String(before.driverOutEmployeeId ?? '')
+    ) {
+      await this.assertDriver(input.driverOutEmployeeId, 'body.driverOutEmployeeId');
+    }
     // FR-4's `outDate ≥ inDate`, against the END STATE of the edit.
     //
     // Check-out enforces it once, at the moment it sets `outDate` — and `outDate` is deliberately
@@ -515,6 +537,10 @@ class FleetMaintenanceService {
     }
     if (input.driverInEmployeeId !== undefined) {
       set.driverInEmployeeId = new Types.ObjectId(input.driverInEmployeeId);
+    }
+    // `driverOutName` (the old book's spelling) is left as it is; the employee id wins on display.
+    if (input.driverOutEmployeeId !== undefined) {
+      set.driverOutEmployeeId = new Types.ObjectId(input.driverOutEmployeeId);
     }
     if (input.takenInByEmployeeId !== undefined) {
       set.takenInByEmployeeId =

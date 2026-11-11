@@ -26,7 +26,16 @@ import { ChevronEndIcon, ChevronStartIcon } from '../../../../shared/ui/icons';
 import { BoardIcon, PATH } from '../FuelCardBoard';
 import { DateBox } from '../DateBox';
 import { type RosterBoardModel, type RosterCounter } from '../../lib/roster-board';
-import { ROW_FITS, rowEnds, rowStep, sameRowEnds, type RowEnds } from '../../lib/row-scroll';
+import {
+  focusAfterSpent,
+  holdsEnd,
+  ROW_FITS,
+  rowEndOffset,
+  rowEnds,
+  rowStep,
+  sameRowEnds,
+  type RowEnds,
+} from '../../lib/row-scroll';
 import {
   AvailableList,
   DriverSearch,
@@ -204,6 +213,10 @@ const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLa
  * the room the bar gives it, and which end it stands at (`rowEnds`). Read again when the row, its
  * frame or a chip is resized (the window, the nav pinned or not, the reset showing; a figure, a
  * font), on every scroll of the row, and when the counters change. No polling.
+ *
+ * A row that stood at its END stays there through a resize (`holdsEnd`): the red reset that shows
+ * once a chip is clicked takes its room off that end, and the chip just revealed by the end arrow
+ * and clicked must not slip out of sight under the pointer. A scroll only reads.
  */
 const useRowEnds = (
   shape: string,
@@ -211,22 +224,33 @@ const useRowEnds = (
   const frame = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const [ends, setEnds] = useState<RowEnds>(ROW_FITS);
+  // The last reading, kept across new counters: where the row stood before a resize.
+  const last = useRef<RowEnds>(ROW_FITS);
   useBrowserLayoutEffect(() => {
     const room = frame.current;
     const box = row.current;
     if (room === null || box === null) return undefined;
-    const measure = (): void => {
-      const next = rowEnds(box, room.clientWidth);
+    const read = (): RowEnds => rowEnds(box, room.clientWidth);
+    const keep = (next: RowEnds): void => {
+      last.current = next;
       setEnds((was) => (sameRowEnds(was, next) ? was : next));
     };
-    measure();
-    box.addEventListener('scroll', measure, { passive: true });
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    const scrolled = (): void => keep(read());
+    const resized = (): void => {
+      if (holdsEnd(last.current, read())) {
+        const direction = getComputedStyle(box).direction === 'rtl' ? 'rtl' : 'ltr';
+        box.scrollTo({ left: rowEndOffset(box, direction), behavior: 'instant' });
+      }
+      keep(read());
+    };
+    resized();
+    box.addEventListener('scroll', scrolled, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resized);
     observer?.observe(room);
     observer?.observe(box);
     for (const chip of Array.from(box.children)) observer?.observe(chip);
     return () => {
-      box.removeEventListener('scroll', measure);
+      box.removeEventListener('scroll', scrolled);
       observer?.disconnect();
     };
   }, [shape]);
@@ -261,6 +285,10 @@ const ROW_ARROW =
  * stays hidden; the arrows are how a mouse reaches the rest, and Tab still walks the chips (the
  * browser brings a hidden one into view). When everything fits there are no arrows and the bar is
  * exactly as it was.
+ *
+ * A row at its end stays at its end when the reset takes its room (useRowEnds), so the chip the
+ * end arrow revealed stays whole once clicked; and the keyboard keeps its place when the arrow it
+ * pressed is spent — the focus goes to the other arrow.
  */
 export const DeskCounters = ({
   counters,
@@ -275,6 +303,34 @@ export const DeskCounters = ({
     .map((counter) => `${counter.key}:${counter.label}:${counter.value}`)
     .join('|');
   const [frame, row, ends] = useRowEnds(shape);
+  const startArrow = useRef<HTMLButtonElement>(null);
+  const endArrow = useRef<HTMLButtonElement>(null);
+  // Enter on the end arrow until the end: the arrow turns disabled under the keyboard, and the
+  // browser drops the focus to the page at once — its blur comes while React writes `disabled`,
+  // when React's own onBlur is held back, so it is heard here natively. The blur names the spent
+  // arrow; once the row's new reading is in, the focus goes to the other arrow, live now
+  // (`focusAfterSpent`), unless it has gone somewhere else meanwhile. A mouse sees nothing of it.
+  const spent = useRef<'start' | 'end' | null>(null);
+  useBrowserLayoutEffect(() => {
+    const room = frame.current;
+    if (room === null) return undefined;
+    const lost = (event: FocusEvent): void => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement) || !target.disabled) return;
+      if (target === startArrow.current) spent.current = 'start';
+      else if (target === endArrow.current) spent.current = 'end';
+    };
+    room.addEventListener('focusout', lost);
+    return () => room.removeEventListener('focusout', lost);
+  }, [frame]);
+  useBrowserLayoutEffect(() => {
+    const lost = spent.current;
+    spent.current = null;
+    const active = document.activeElement;
+    if (lost === null || (active !== null && active !== document.body)) return;
+    const to = focusAfterSpent(ends, lost);
+    if (to !== null) (to === 'start' ? startArrow : endArrow).current?.focus();
+  }, [ends]);
   const step = (toward: 'start' | 'end'): void => {
     const box = row.current;
     if (box === null) return;
@@ -287,6 +343,7 @@ export const DeskCounters = ({
       {ends.overflowing && (
         <button
           type="button"
+          ref={startArrow}
           data-counters-arrow="start"
           aria-label={t('fleet.roster.filtersPrev')}
           title={t('fleet.roster.filtersPrev')}
@@ -328,6 +385,7 @@ export const DeskCounters = ({
       {ends.overflowing && (
         <button
           type="button"
+          ref={endArrow}
           data-counters-arrow="end"
           aria-label={t('fleet.roster.filtersNext')}
           title={t('fleet.roster.filtersNext')}

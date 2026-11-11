@@ -751,9 +751,14 @@ its entry here in the same PR.
   px on the measured day the bar is pixel for pixel as before. Measured on the real page, dark and
   light: one click on the end arrow brings «نقل أموال (يومي)» whole into view, its ring whole
   beside the arrow, at 1920 (every mission in two digits, the reset showing), at 1920 with the nav
-  pinned, at 1536 and at 1366, and one click on the start arrow comes back. The scrollbar stays
-  hidden, the wheel is not taken over, and Tab still walks the chips. The phone and tablet boards,
-  whose row is swiped, are not changed.
+  pinned, at 1536 and at 1366, and one click on the start arrow comes back. A row scrolled to its
+  end stays at its end when the reset appears: the reset takes about 42 px off that end, and the
+  chip just revealed and clicked there — «نقل أموال (يومي)» — would otherwise be cut under the
+  pointer, its ring broken (the other chips move 42 px with it). A keyboard user who presses the end
+  arrow until the end, which disables it, finds the focus on the start arrow rather than lost, and
+  the other way round; a mouse sees no change. The scrollbar stays hidden, the wheel is not taken
+  over, and Tab still walks the chips. The phone and tablet boards, whose row is swiped, are not
+  changed.
 - **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
   pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
   (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and

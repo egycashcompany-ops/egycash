@@ -132,8 +132,12 @@ describe('«تعيين السيارات» on a computer: every filter on ONE row
       COUNTERS.match(/\{ends\.overflowing && \(/gu),
       'each arrow behind the overflow',
     ).toHaveLength(2);
-    expect(arrow('start'), 'spent at the start').toContain('disabled={ends.atStart}');
-    expect(arrow('end'), 'spent at the end').toContain('disabled={ends.atEnd}');
+    // The `disabled` attribute itself — `:disabled` dims it (`disabled:opacity-40`) and takes it
+    // out of the clicks and the Tab order; an `aria-disabled` would leave it live and bright.
+    expect(arrow('start'), 'spent at the start').toMatch(/\sdisabled=\{ends\.atStart\}/u);
+    expect(arrow('end'), 'spent at the end').toMatch(/\sdisabled=\{ends\.atEnd\}/u);
+    for (const end of ['start', 'end'] as const)
+      expect(arrow(end), 'not aria-disabled').not.toContain('aria-disabled');
     expect(arrow('start')).toContain("onClick={() => step('start')}");
     expect(arrow('end')).toContain("onClick={() => step('end')}");
     for (const end of ['start', 'end'] as const)
@@ -205,19 +209,68 @@ describe('«تعيين السيارات» on a computer: every filter on ONE row
   it('measures on resize, on scroll and on new counters — and lets go on unmount', () => {
     // The room WITHOUT the arrows decides whether they show (rowEnds), so they never keep
     // themselves on screen.
-    expect(ROW_ENDS).toContain('const next = rowEnds(box, room.clientWidth);');
-    expect(ROW_ENDS).toContain('new ResizeObserver(measure)');
+    expect(ROW_ENDS).toContain('const read = (): RowEnds => rowEnds(box, room.clientWidth);');
+    expect(ROW_ENDS).toContain('new ResizeObserver(resized)');
     expect(ROW_ENDS).toContain('observer?.observe(room);');
     expect(ROW_ENDS).toContain('observer?.observe(box);');
     expect(ROW_ENDS, 'each chip, for its figure and its font').toContain(
       'for (const chip of Array.from(box.children)) observer?.observe(chip);',
     );
-    expect(ROW_ENDS).toContain("box.addEventListener('scroll', measure, { passive: true });");
-    expect(ROW_ENDS).toContain("box.removeEventListener('scroll', measure);");
+    expect(ROW_ENDS, 'a scroll only reads').toContain('const scrolled = (): void => keep(read());');
+    expect(ROW_ENDS).toContain("box.addEventListener('scroll', scrolled, { passive: true });");
+    expect(ROW_ENDS).toContain("box.removeEventListener('scroll', scrolled);");
     expect(ROW_ENDS).toContain('observer?.disconnect();');
+    expect(ROW_ENDS, 'read at once, as on a resize').toMatch(/\n\s+resized\(\);\n/u);
     expect(ROW_ENDS, 'again when the counters change').toContain('}, [shape]);');
     expect(ROW_ENDS, 'no polling').not.toMatch(/setInterval|setTimeout|requestAnimationFrame/u);
     expect(COUNTERS).toContain('const [frame, row, ends] = useRowEnds(shape);');
+  });
+
+  it('keeps a row that stood at its end there when the reset takes its room', () => {
+    // The end arrow reveals «نقل أموال (يومي)», a click on it turns a filter on, and the red reset
+    // takes about 42px off the row's end: at the same `scrollLeft` the chip just clicked would be
+    // cut, its ring broken, the end arrow live again. On a RESIZE only (never a scroll — a reader
+    // who moves away from the end is not put back), a row that stood at its end goes back to it,
+    // at once (holdsEnd / rowEndOffset, tested in lib/row-scroll.spec.ts). Not a scroll to the
+    // active chip: the start and the middle stay where they are.
+    expect(ROW_ENDS, 'the last reading, kept across new counters').toContain(
+      'const last = useRef<RowEnds>(ROW_FITS);',
+    );
+    expect(ROW_ENDS).toContain('last.current = next;');
+    expect(ROW_ENDS).toContain('if (holdsEnd(last.current, read())) {');
+    expect(ROW_ENDS).toContain(
+      "box.scrollTo({ left: rowEndOffset(box, direction), behavior: 'instant' });",
+    );
+    expect(ROW_ENDS).toContain("getComputedStyle(box).direction === 'rtl' ? 'rtl' : 'ltr'");
+    const scrolled = /const scrolled = [^\n]*\n/u.exec(ROW_ENDS)?.[0] ?? '';
+    expect(scrolled, 'a scroll never holds').not.toMatch(/holdsEnd|scrollTo/u);
+    expect(ROW_ENDS.match(/scrollTo\(/gu), 'the one move of its own').toHaveLength(1);
+  });
+
+  it('hands the focus to the other arrow when the focused one is spent', () => {
+    // Enter on the end arrow until the end: the button turns disabled under the keyboard and the
+    // browser drops the focus to the page while React writes `disabled` — React's own onBlur is
+    // held back then, so the frame hears the native `focusout`. The new reading in, the focus
+    // goes to the other arrow (focusAfterSpent), unless it went somewhere else meanwhile.
+    expect(COUNTERS).toContain("const spent = useRef<'start' | 'end' | null>(null);");
+    expect(COUNTERS).toContain("room.addEventListener('focusout', lost);");
+    expect(COUNTERS).toContain("return () => room.removeEventListener('focusout', lost);");
+    expect(COUNTERS, 'only a blur that `disabled` caused').toContain(
+      'if (!(target instanceof HTMLButtonElement) || !target.disabled) return;',
+    );
+    expect(COUNTERS).toContain("if (target === startArrow.current) spent.current = 'start';");
+    expect(COUNTERS).toContain("else if (target === endArrow.current) spent.current = 'end';");
+    expect(COUNTERS, 'not where the reader went on purpose').toContain(
+      'if (lost === null || (active !== null && active !== document.body)) return;',
+    );
+    expect(COUNTERS).toContain('const to = focusAfterSpent(ends, lost);');
+    expect(COUNTERS).toContain(
+      "if (to !== null) (to === 'start' ? startArrow : endArrow).current?.focus();",
+    );
+    expect(COUNTERS, 'after each new reading').toContain('}, [ends]);');
+    expect(arrow('start')).toContain('ref={startArrow}');
+    expect(arrow('end')).toContain('ref={endArrow}');
+    expect(COUNTERS, 'React’s onBlur never comes here').not.toContain('onBlur=');
   });
 
   it('leaves the touch boards’ row and chips as they were', () => {

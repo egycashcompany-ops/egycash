@@ -8,6 +8,7 @@ import {
   CreateOperationsShipmentSchema,
   ListOperationsShipmentsQuerySchema,
   OperationsDayBoardQuerySchema,
+  OperationsDeletedShipmentsQuerySchema,
   OperationsShipmentHistoryQuerySchema,
   ReopenOperationsShipmentSchema,
   UpdateOperationsShipmentSchema,
@@ -22,11 +23,14 @@ import {
   deleteShipment,
   deleteShipmentReceiptImage,
   getDayBoard,
+  getDeletedShipments,
   getShipment,
   getShipmentHistory,
+  getShipmentLog,
   getShipmentReceiptImage,
   listShipments,
   reopenShipment,
+  restoreShipment,
   updateShipment,
   uploadShipmentReceiptImage,
 } from './shipment.controller';
@@ -59,6 +63,16 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.view'),
     validate({ query: OperationsShipmentHistoryQuerySchema }),
     asyncHandler(getShipmentHistory),
+  );
+  // The shipments deleted from the history's days («اعملى ايقون اقدر اجيب منه اللى اتمسح»). BEFORE
+  // `/:id` like its two siblings, and behind the same reading grant: it is the history's rows that
+  // were taken off it. Bringing one back is `POST /:id/restore`, below, on the delete grant.
+  router.get(
+    '/deleted',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ query: OperationsDeletedShipmentsQuerySchema }),
+    asyncHandler(getDeletedShipments),
   );
   router.get(
     '/:id',
@@ -101,6 +115,24 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.delete'),
     validate({ params: IdParamSchema }),
     asyncHandler(deleteShipment),
+  );
+  // The undo of the delete above, on the SAME grant — the `complete`/`reopen` precedent: whoever
+  // may take a shipment off its board may put it back. No body: nothing about the row changes.
+  router.post(
+    '/:id/restore',
+    authenticate,
+    authorize('operationsShipment.delete'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(restoreShipment),
+  );
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — whoever may see the shipment may read its story,
+  // on the day board and the history alike, and for a deleted shipment too.
+  router.get(
+    '/:id/log',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getShipmentLog),
   );
   // The photo of the paper receipt («صورة الإيصال») — the Fleet receipts' rule: whoever may edit
   // the row may manage it, whoever may view the row may see it. No new grant. `authorize` runs

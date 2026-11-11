@@ -90,8 +90,14 @@ export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
   // The Operations shipments history (`['operations', 'dayBoard', 'history', { from, to }]`) — a
   // whole range of day boards, up to a year and five thousand shipments. It sits under the day
   // board's key so the reader's own saves refresh it at once; another desk's single write only marks
-  // it stale, rather than re-reading the whole range for every viewer on every signal.
-  if (queryKey[0] === 'operations' && queryKey[1] === 'dayBoard' && queryKey[2] === 'history') {
+  // it stale, rather than re-reading the whole range for every viewer on every signal. Its deleted
+  // shipments (`[…, 'deleted', { from, to }]`, the «المحذوفة» icon's count) are the same range read
+  // over deleted rows, and follow the same rule; their dialog reads them afresh when it opens.
+  if (
+    queryKey[0] === 'operations' &&
+    queryKey[1] === 'dayBoard' &&
+    (queryKey[2] === 'history' || queryKey[2] === 'deleted')
+  ) {
     return true;
   }
   const params = queryKey[3];

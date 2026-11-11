@@ -40,3 +40,52 @@ describe('«المنطقة ميقدر يكتب» — the area follows the TO bra
     expect(FORM.match(/setDestinationBranchId\(''\);\s*setAreaName\(''\);/gu)?.length).toBe(2);
   });
 });
+
+describe('«مينفعش لما يجى يضيف شحنه يختار تاريخ فات» — the dates’ floor', () => {
+  it('opens a new shipment on Cairo’s today — whichever screen it is added from', () => {
+    // No caller's day to inherit: a default day before today would open the form refused, and the
+    // secured register's used to be the UTC day, which is yesterday after a Cairo midnight.
+    expect(FORM).toContain('setCollectionDate(shipment === null ? cairoToday() : dateOnly(');
+    expect(FORM).not.toContain('defaultDate');
+    expect(BOARD).not.toContain('defaultDate');
+    expect(SECURED).not.toContain('defaultDate');
+  });
+
+  it('floors the collection date at today for a new shipment, at its own day for an edit', () => {
+    expect(FORM).toContain(
+      'const heldDate = shipment === null ? null : dateOnly(shipment.collectionDate);',
+    );
+    expect(FORM).toContain('const earliestDate = earliestShipmentDate(heldDate, today);');
+    expect(FORM).toMatch(/min=\{earliestDate\}\s+value=\{collectionDate\}/u);
+  });
+
+  // The server holds a secured shipment's delivery date to the same floor.
+  it('floors a secured shipment’s delivery date the same way — a first one at today', () => {
+    expect(FORM).toContain(
+      'const heldDeliveryDate = shipment?.deliveryDate == null ? null : dateOnly(shipment.deliveryDate);',
+    );
+    expect(FORM).toContain(
+      'const earliestDeliveryDate = earliestShipmentDate(heldDeliveryDate, today);',
+    );
+    expect(FORM).toMatch(/min=\{earliestDeliveryDate\}\s+value=\{deliveryDate\}/u);
+    expect(FORM).toContain(
+      "shipmentType === 'secured' ? shipmentDateProblem(deliveryDate, heldDeliveryDate, day) : null",
+    );
+  });
+
+  it('names a day typed earlier on its own box', () => {
+    expect(FORM).toContain('collection: shipmentDateProblem(collectionDate, heldDate, day),');
+    expect(FORM).toContain('error={problemText(dateProblem.collection)}');
+    expect(FORM).toContain('error={problemText(dateProblem.delivery)}');
+  });
+
+  it('refuses it on save before anything is sent, against today read at that moment', () => {
+    const submit = FORM.slice(FORM.indexOf('const submit = async'));
+    const check = submit.indexOf('const problems = dateProblems(cairoToday());');
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(submit).toContain('const problem = problems.collection ?? problems.delivery;');
+    // Checked, and returned from, before either request is built.
+    expect(check).toBeLessThan(submit.indexOf('create.mutateAsync'));
+    expect(submit.slice(check, submit.indexOf('const core'))).toContain('return;');
+  });
+});

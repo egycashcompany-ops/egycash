@@ -23,6 +23,17 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // short; the page says so in place, and this is the same refusal for a background refetch.
     OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE:
       'This range holds too many shipments to show at once — narrow the dates.',
+    // A shipment's dates have a floor: «مينفعش لما يجى يضيف شحنه يختار تاريخ فات», and on an edit
+    // «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة». The shipment form words both itself
+    // (`operations.shipment.errors.*`); these are the same refusals anywhere else they surface.
+    OPERATIONS_SHIPMENT_DATE_IN_PAST:
+      'A shipment cannot be dated on a day that has passed — choose today or a later day.',
+    OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL:
+      'A shipment’s date cannot move earlier than the day it was on — keep it, or choose a later day.',
+    // «اعملى ايقون اقدر اجيب منه اللى اتمسح»: a restore of a shipment someone else already brought
+    // back. Nothing is lost — it is on its day again — and the deleted list refreshes behind it.
+    OPERATIONS_SHIPMENT_NOT_DELETED:
+      'This shipment is no longer deleted — it is already back on its day.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -50,6 +61,11 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'المبلغ المأخوذ أكبر من سالب هذا الحادث.',
     OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE:
       'هذه المدة تضم شحنات أكثر مما يمكن عرضه مرة واحدة — يُرجى تضييق التاريخ.',
+    OPERATIONS_SHIPMENT_DATE_IN_PAST:
+      'لا يمكن تسجيل الشحنة بتاريخ يوم مضى — اختر اليوم أو يومًا بعده.',
+    OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL:
+      'لا يمكن تقديم تاريخ الشحنة عن اليوم الذي كانت عليه — أبقِه كما هو أو اختر يومًا بعده.',
+    OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

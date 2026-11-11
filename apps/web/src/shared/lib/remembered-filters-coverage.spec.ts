@@ -161,6 +161,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // report), «بها عطل» and the device, all remembered.
   ['modules/it/pages/VehicleChecksPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
+  // `date`: the old day picker's, only ever deleted — the board is always today, and an old link
+  // or bookmark sheds it.
   ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
   // «سجل الشحنات»: the day board's filters, remembered alike; `from`/`to` open on this month to
   // date — the range is what the screen IS, as `date` is the day board's.

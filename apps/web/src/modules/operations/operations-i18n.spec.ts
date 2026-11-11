@@ -10,6 +10,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
+  OPERATIONS_SHIPMENT_LEGS,
+  OPERATIONS_SHIPMENT_LOG_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_KINDS,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   type Locale,
@@ -70,7 +73,6 @@ const BOARD_KEYS = [
   'operations.cards.dailyOps',
   'operations.dailyOps.title',
   'operations.dailyOps.subtitle',
-  'operations.dailyOps.date',
   'operations.dailyOps.received',
   'operations.dailyOps.receivedYes',
   'operations.dailyOps.receivedNo',
@@ -154,9 +156,24 @@ const BOARD_KEYS = [
     'sections.money', 'sections.crew', 'captain', 'vehicle', 'crewHint', 'crewHeld',
     'crewNotOnEdit', 'crewElsewhere', 'crewNoAccess',
   ].map((key) => `operations.shipment.form.${key}`),
-  ...['branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale'].map(
-    (key) => `operations.shipment.errors.${key}`,
-  ),
+  ...[
+    'branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale',
+    // The collection date's floor — a new shipment not before today, an edit not before its day.
+    'dateInPast', 'dateBeforeOriginal',
+  ].map((key) => `operations.shipment.errors.${key}`),
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens: its frame,
+  // a sentence for every kind, a label for every field and a name for every leg the contract lists.
+  ...[
+    'open', 'title', 'route', 'actorUnknown', 'empty', 'loadFailed', 'truncated', 'becomes', 'yes', 'no',
+  ].map((key) => `operations.shipment.log.${key}`),
+  ...OPERATIONS_SHIPMENT_LOG_KINDS.map((kind) => `operations.shipment.log.kind.${kind}`),
+  ...OPERATIONS_SHIPMENT_LOG_FIELDS.map((field) => `operations.shipment.log.field.${field}`),
+  ...OPERATIONS_SHIPMENT_LEGS.map((leg) => `operations.shipment.log.leg.${leg}`),
+  // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the history's deleted shipments.
+  ...[
+    'open', 'openCount', 'unavailable', 'title', 'subtitle', 'empty', 'loadFailed', 'deletedBy',
+    'deletedAt', 'log', 'restore', 'confirmRestore', 'restored',
+  ].map((key) => `operations.shipment.deletedList.${key}`),
 ];
 
 /** B3 — the crew board and the roster. */

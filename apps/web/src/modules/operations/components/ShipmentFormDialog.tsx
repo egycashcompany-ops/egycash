@@ -14,6 +14,12 @@
 // «المنطقة» is filled from the TO branch's operations area when that branch is picked, and stays
 // editable — legacy main_ops.ejs:520-531.
 //
+// «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a new shipment opens on today and cannot be dated
+// earlier; an edit cannot move a date earlier than the day it was on (`shipmentDateProblem`) — the
+// collection date, and a secured shipment's delivery date, as the server holds them. The date boxes
+// offer no earlier day, and one typed earlier is said in words on the box, and again if saved —
+// before anything is sent.
+//
 // «اسم القائد وكود العربيه»: two boxes over ONE choice — a crew row of the collection date's plan.
 // Picking a vehicle names the captain on it; picking a captain names his vehicle. Only on CREATE:
 // re-crewing a saved shipment moves a stop between captains' ordered days, which is not an edit.
@@ -71,11 +77,16 @@ import {
   vehiclesOf,
 } from '../lib/dispatch-crew';
 import {
+  SHIPMENT_DATE_PROBLEM_KEY,
   areaOfDestination,
+  earliestShipmentDate,
   followMainBank,
   secondaryBankFor,
+  shipmentDateProblem,
   shipmentSaveErrorKey,
+  type ShipmentDateProblem,
 } from '../lib/shipment-form';
+import { cairoToday } from '../lib/shipment-history';
 import { currencyOfKind } from '../lib/day-board';
 import { BankBranchDialog } from './CatalogDialogs';
 import { ShipmentBranchSide } from './ShipmentBranchSide';
@@ -133,7 +144,6 @@ const boardRow = (
 export const ShipmentFormDialog = ({
   open,
   shipment,
-  defaultDate,
   banks,
   currencies,
   createType,
@@ -147,10 +157,11 @@ export const ShipmentFormDialog = ({
    * shipment's own type — it never changes (legacy had no path between the two).
    */
   createType: OperationsShipmentType;
-  /** A board row (with its branches resolved) or a plain shipment; null creates one. */
+  /**
+   * A board row (with its branches resolved) or a plain shipment; null creates one — dated today
+   * (Cairo), the earliest day a new shipment may have, whichever screen it is added from.
+   */
   shipment: OperationsShipmentDto | OperationsDayBoardShipmentDto | null;
-  /** The board's day — a new shipment defaults to the day being looked at, not to "today". */
-  defaultDate: string;
   banks: OperationsBankDto[];
   currencies: OperationsCurrencyDto[];
   onClose: () => void;
@@ -195,7 +206,7 @@ export const ShipmentFormDialog = ({
     setOriginBranchId(shipment?.originBranchId ?? '');
     setDestinationBranchId(shipment?.destinationBranchId ?? '');
     setAreaName(shipment?.areaName ?? '');
-    setCollectionDate(shipment === null ? defaultDate : dateOnly(shipment.collectionDate));
+    setCollectionDate(shipment === null ? cairoToday() : dateOnly(shipment.collectionDate));
     setDeliveryDate(shipment === null ? '' : dateOnly(shipment.deliveryDate));
     setSerialTracked(shipment?.serialTracked ?? false);
     setNotes(shipment?.notes ?? '');
@@ -210,7 +221,7 @@ export const ShipmentFormDialog = ({
     setCrewKey('');
     setAdding(null);
     // `row` and the currencies are read on OPEN only — the form is the operator's from then on.
-  }, [open, shipment, defaultDate]);
+  }, [open, shipment]);
 
   // Editing a plain shipment (the secured backlog's): its origin branch names the from-bank.
   const heldOrigin = useBankBranch(open && editing && row === null ? originBranchId : '');
@@ -294,6 +305,28 @@ export const ShipmentFormDialog = ({
   };
   const vehicles = vehiclesOf(crewOptions);
 
+  // ── The dates' floor ───────────────────────────────────────────────────────────────────────────
+  //
+  // Today for a new date, the day it was on for an edit — a delivery date never set before is a new
+  // one. Today is read per render (cheap), so a form left open over midnight moves its floor with
+  // the clock.
+  const heldDate = shipment === null ? null : dateOnly(shipment.collectionDate);
+  const heldDeliveryDate = shipment?.deliveryDate == null ? null : dateOnly(shipment.deliveryDate);
+  const today = cairoToday();
+  const earliestDate = earliestShipmentDate(heldDate, today);
+  const earliestDeliveryDate = earliestShipmentDate(heldDeliveryDate, today);
+  /** Both dates' problems as of `day` — the delivery date only where the form has one. */
+  const dateProblems = (
+    day: string,
+  ): { collection: ShipmentDateProblem | null; delivery: ShipmentDateProblem | null } => ({
+    collection: shipmentDateProblem(collectionDate, heldDate, day),
+    delivery:
+      shipmentType === 'secured' ? shipmentDateProblem(deliveryDate, heldDeliveryDate, day) : null,
+  });
+  const dateProblem = dateProblems(today);
+  const problemText = (problem: ShipmentDateProblem | null): string | undefined =>
+    problem === null ? undefined : t(SHIPMENT_DATE_PROBLEM_KEY[problem]);
+
   // ── Required fields ────────────────────────────────────────────────────────────────────────────
   const required = useRequiredFields(
     [
@@ -318,6 +351,14 @@ export const ShipmentFormDialog = ({
   );
 
   const submit = async (): Promise<void> => {
+    // Refused here first, in words, rather than sent to be refused by the server. Today is read
+    // again: the save may come after a midnight the last render did not see.
+    const problems = dateProblems(cairoToday());
+    const problem = problems.collection ?? problems.delivery;
+    if (problem !== null) {
+      toast.error(t(SHIPMENT_DATE_PROBLEM_KEY[problem]));
+      return;
+    }
     const core = {
       mainBankId,
       secondaryBankId: secondaryBankFor(mainBankId, toBankId),
@@ -445,11 +486,14 @@ export const ShipmentFormDialog = ({
               label={t('operations.shipment.form.date')}
               required
               missing={required.isMissing('collectionDate')}
+              error={problemText(dateProblem.collection)}
               datePicker
             >
               <Input
                 type="date"
                 dir="ltr"
+                // The calendar offers no earlier day; one typed earlier is named under the box.
+                min={earliestDate}
                 value={collectionDate}
                 onChange={(e) => setCollectionDate(e.target.value)}
                 tone={cn(box, MONO)}
@@ -460,11 +504,13 @@ export const ShipmentFormDialog = ({
               <DesignField
                 label={t('operations.shipment.deliveryDate')}
                 hint={t('operations.shipment.deliveryDateHint')}
+                error={problemText(dateProblem.delivery)}
                 datePicker
               >
                 <Input
                   type="date"
                   dir="ltr"
+                  min={earliestDeliveryDate}
                   value={deliveryDate}
                   onChange={(e) => setDeliveryDate(e.target.value)}
                   tone={cn(box, MONO)}

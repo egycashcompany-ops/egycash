@@ -14,6 +14,7 @@ import {
   defaultHistoryRange,
   historyRangeProblem,
   isHistoryTooLarge,
+  msUntilNextCairoDay,
   pageOfRows,
   resolveHistoryRange,
 } from './shipment-history';
@@ -23,6 +24,39 @@ describe('cairoToday — the day the server calls «اليوم»', () => {
     // 23:30 UTC on 10 Nov is 01:30 on 11 Nov in Cairo (UTC+2).
     expect(cairoToday(new Date('2026-11-10T23:30:00.000Z'))).toBe('2026-11-11');
     expect(cairoToday(new Date('2026-11-11T08:00:00.000Z'))).toBe('2026-11-11');
+  });
+});
+
+describe('msUntilNextCairoDay — when a screen showing "today" looks again', () => {
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+
+  it('is the time to Cairo’s midnight, not UTC’s or the browser’s', () => {
+    // 21:59 UTC on 10 Nov is 23:59 in Cairo (UTC+2): a minute to go.
+    expect(msUntilNextCairoDay(new Date('2026-11-10T21:59:00.000Z'))).toBe(MINUTE);
+    // 23:30 UTC is already 01:30 on the 11th in Cairo: 22½ hours to the 12th.
+    expect(msUntilNextCairoDay(new Date('2026-11-10T23:30:00.000Z'))).toBe(22.5 * HOUR);
+  });
+
+  it('is a whole day at the very start of one', () => {
+    expect(msUntilNextCairoDay(new Date('2026-11-10T22:00:00.000Z'))).toBe(24 * HOUR);
+  });
+
+  it('knows Cairo’s summer clock (UTC+3)', () => {
+    // 20:00 UTC on 1 Jul is 23:00 in Cairo.
+    expect(msUntilNextCairoDay(new Date('2026-07-01T20:00:00.000Z'))).toBe(HOUR);
+  });
+
+  it('is never more than a day and an hour — a timer the browser will always honour', () => {
+    for (const at of [
+      '2026-04-23T22:30:00.000Z',
+      '2026-10-28T21:30:00.000Z',
+      '2026-01-01T00:00:00.000Z',
+    ]) {
+      const wait = msUntilNextCairoDay(new Date(at));
+      expect(wait, at).toBeGreaterThan(0);
+      expect(wait, at).toBeLessThanOrEqual(25 * HOUR);
+    }
   });
 });
 

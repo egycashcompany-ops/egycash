@@ -10,7 +10,8 @@
 // by eye or by screen reader.
 //
 // Since «انا عاوز ارتب الفلاتر على حسب عواميد الجدول وضيف كود العربيه ف الفلاتر» they also hold
-// the ORDER — the filters read in the table's column order — and the van's code among them.
+// the ORDER — the filters read in the table's column order — and the van's code among them; and
+// since «الفلاتر هتكون كلها على صف واحد» (and for the history «على نفس الصف»), the ONE ROW.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -21,9 +22,21 @@ const read = (path: string): string =>
 const BOARD = read('../components/ShipmentsBoard.tsx');
 const DAY_PAGE = read('./DailyOperationsPage.tsx');
 const HISTORY_PAGE = read('./ShipmentsHistoryPage.tsx');
+const FLEET_BAR = read('../../../shared/ui/dark-filter-bar.ts');
 
 /** The filter bar's own markup, from `<FilterBar` to its close — not the rest of the board. */
 const BAR = BOARD.slice(BOARD.indexOf('<FilterBar'), BOARD.indexOf('</FilterBar>'));
+/** A layout constant's classes, as written in the board — its quoted strings, comments left out. */
+const layout = (name: string): string => {
+  const start = BOARD.indexOf(`const ${name} =`);
+  if (start < 0) return '';
+  const source = BOARD.slice(start, BOARD.indexOf(';', start)).replace(/\/\/.*$/gm, '');
+  return [...source.matchAll(/'([^']*)'/g)].map((m) => m[1]).join(' ');
+};
+/** Every screen's bar: the phone's two columns. */
+const BAR_LAYOUT = layout('BAR_LAYOUT');
+/** The history's bar (it has date pickers): two rows 1024–1279, one row from 1280. */
+const PERIOD_BAR_LAYOUT = layout('PERIOD_BAR_LAYOUT');
 
 /** Every control's name, in the order the bar draws them. */
 const FILTERS = [
@@ -33,7 +46,7 @@ const FILTERS = [
   'operations.shipment.destination',
   'operations.shipment.area',
   'operations.board.captain',
-  // The page's period — the day, or «من» and «إلى» — at the date column's place.
+  // The history's period — «من» and «إلى» — at the date column's place (the day board has none).
   'picker.label',
   'operations.shipment.type',
   'operations.dailyOps.received',
@@ -74,23 +87,44 @@ describe('the filters sit on the Fleet bar', () => {
     expect(BAR).toContain('<FilterWithIcon');
   });
 
-  it('keeps to two rows of even columns on a laptop, one row from 1600px', () => {
-    // A row of ten shares is ~93px at 1366 — narrower than a date. Up to 1599px the bar is a grid
-    // of half the filters per row, with the reset in its own column spanning both rows.
-    expect(BOARD).toContain('lg:max-[1599px]:[&>div]:!grid');
-    expect(BOARD).toContain('lg:max-[1599px]:[&>div]:!grid-cols-5');
-    // The history (eleven filters) keeps two rows at every width from 1024px: its dates write
-    // «من» and «إلى» in the box, which a share of a single row of eleven has no room for.
-    expect(BOARD).toContain('lg:[&>div]:!grid-cols-6');
-    expect(BOARD).toContain('lg:[&>div>.ms-auto]:!row-span-2');
-    expect(BOARD).toContain('[&>div>.ms-auto]:!row-span-2');
+  // «الفلاتر هتكون كلها على صف واحد». The day board's nine filters are the Fleet bar's own single
+  // row from 1024px — every box an even share, the reset keeping its size at the row's end.
+  it('puts the day board’s filters on ONE row from 1024px — the Fleet bar’s own row', () => {
+    expect(FLEET_BAR).toContain('lg:[&>div]:!flex-nowrap');
+    expect(FLEET_BAR).toContain('lg:[&>div>*]:!flex-1');
+    expect(FLEET_BAR).toContain('lg:[&>div>.ms-auto]:!flex-none');
+    // Nothing of the board's own overrides that row for a screen with no dates: the history's
+    // layout is applied only where there are pickers, and the old two-row laptop grid is gone.
+    expect(BOARD).toContain('datePickers.length > 0 && PERIOD_BAR_LAYOUT');
+    expect(BOARD).not.toContain('max-[1599px]');
+    expect(BAR_LAYOUT).not.toMatch(/\blg:/);
+  });
+
+  // «على نفس الصف» for the history too — from 1280px, where its eleven boxes fit: the two dates
+  // keep a date's width (a date cut short is unreadable) and the nine others share the rest.
+  it('puts the history’s filters on ONE row from 1280px, its two dates at their own width', () => {
+    expect(PERIOD_BAR_LAYOUT).toContain('xl:[&>div>*:has(>input[type=date])]:!flex-none');
+    // The date box's own width is the one that holds then: a date and its «من» / «إلى».
+    expect(BAR).toMatch(/className=\{cn\(\s*'w-36 shrink-0',\s*picker\.showLabel === true/);
+    // No grid survives past 1279: every grid rule of the history's is bounded to 1024–1279.
+    const gridRules = PERIOD_BAR_LAYOUT.split(' ').filter((rule) => rule.includes('grid'));
+    expect(gridRules.length).toBeGreaterThan(0);
+    for (const rule of gridRules) expect(rule.startsWith('lg:max-xl:'), rule).toBe(true);
+  });
+
+  it('keeps the history to two rows of even columns between 1024 and 1279', () => {
+    // A row of eleven shares is narrower than a date there: a grid of six columns, the reset in a
+    // column of its own spanning both rows.
+    expect(PERIOD_BAR_LAYOUT).toContain('lg:max-xl:[&>div]:!grid-cols-6');
+    expect(PERIOD_BAR_LAYOUT).toContain('lg:max-xl:[&>div>.ms-auto]:!row-span-2');
     // The reset's column is made by its own placement — no spare column for a filter to fall into
     // while there is nothing to reset.
     expect(BOARD).not.toMatch(/grid-cols-\[repeat\(\d,minmax\(0,1fr\)\)_auto\]/);
-    expect(BOARD).toContain('lg:max-[1599px]:[&>div>.ms-auto]:!col-start-6');
-    expect(BOARD).toContain('lg:[&>div>.ms-auto]:!col-start-7');
-    // A phone: two even columns.
-    expect(BOARD).toContain('max-sm:[&>div]:!grid-cols-2');
+    expect(PERIOD_BAR_LAYOUT).toContain('lg:max-xl:[&>div>.ms-auto]:!col-start-7');
+  });
+
+  it('keeps the phone’s two even columns', () => {
+    expect(BAR_LAYOUT).toContain('max-sm:[&>div]:!grid-cols-2');
   });
 });
 
@@ -160,10 +194,11 @@ describe('nothing lost its name when the labels went', () => {
     }
   });
 
-  it('gives every date picker a name — the day, «من» and «إلى»', () => {
-    expect(DAY_PAGE).toContain("label: t('operations.dailyOps.date')");
+  it('gives every date picker a name — «من» and «إلى»', () => {
     expect(HISTORY_PAGE).toContain("label: t('operations.history.from')");
     expect(HISTORY_PAGE).toContain("label: t('operations.history.to')");
+    // The day board has no picker to name: «هنشيل منها التاريخ».
+    expect(DAY_PAGE).not.toContain('datePickers');
   });
 });
 
@@ -172,7 +207,9 @@ describe('clearing returns the whole view to its default', () => {
     // `hasActiveFilter` was exported by `lib/day-board.ts` from the start and never wired to
     // anything; the bar is what finally uses it.
     expect(BAR).toContain('hasActiveFilters={hasActiveFilter(filters) || periodActive}');
-    expect(DAY_PAGE).toContain('periodActive={date !== null}');
+    // The day board's period is always today — never "not the default", so only filters reset.
+    expect(BOARD).toContain('periodActive = false,');
+    expect(DAY_PAGE).not.toContain('periodActive');
     expect(HISTORY_PAGE).toContain(
       "periodActive={sp.get('from') !== null || sp.get('to') !== null}",
     );
@@ -182,7 +219,8 @@ describe('clearing returns the whole view to its default', () => {
     expect(BAR).toContain(
       'for (const name of [...DAY_BOARD_FILTER_PARAMS, ...periodParams]) next.delete(name);',
     );
-    expect(DAY_PAGE).toContain("periodParams={['date']}");
+    expect(BOARD).toContain('periodParams = [],');
+    expect(DAY_PAGE).not.toContain('periodParams');
     expect(HISTORY_PAGE).toContain("periodParams={['from', 'to']}");
   });
 });

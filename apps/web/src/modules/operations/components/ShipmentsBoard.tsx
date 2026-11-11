@@ -6,12 +6,14 @@
 // them is fixed on both, and they cannot drift apart.
 //
 // WHAT THE PAGES OWN, AND WHAT THIS OWNS. A page owns its period — which rows the server is asked
-// for (one day, or from–to), the date pickers' values and what a reset does to them — and hands
-// the answer in. This owns everything over the answer: the filters (in the URL, remembered by the
-// page's `useRememberedFilters`), the figures, the «عملات أخرى» breakdown, the table with its
-// hover cards, tints and row actions, and «إضافة شحنة». All of it is presentation over rows the
-// server already chose; the rules are pure functions in `lib/day-board.ts`, because the legacy
-// versions of them read rendered HTML (main_ops.ejs:995).
+// for (today, or from–to), the history's two date pickers and what a reset does to them — and
+// what may be DONE from it (`canCreate`, `canToggleReceived`), and hands the answer in. This owns
+// everything over the answer: the filters (in the URL, remembered by the page's
+// `useRememberedFilters`), the figures, the «عملات أخرى» breakdown, the table with its hover
+// cards, tints and row actions — «السجل», each row's action log, among them on both screens — and
+// «إضافة شحنة». All of it is presentation over rows the server already chose; the rules are pure
+// functions in `lib/day-board.ts`, because the legacy versions of them read rendered HTML
+// (main_ops.ejs:995). The history also hands in its range for the deleted shipments' icon.
 //
 // THE LEGACY TABLE (main_ops.ejs:829-897): م | السيارة | اسم البنك | من فرع | الى فرع | العملة |
 // قيمة الشحنة | قائد الطاقم | التاريخ | النوع | المنطقة | ملاحظات | actions.
@@ -42,7 +44,7 @@ import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { ACTION_GROUP, PRESSED, actionTone } from '../../fleet/components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../../fleet/components/row-action-icons';
 import { DARK_TABLE } from '../../fleet/pages/VehiclesListPage';
-import { CheckIcon } from '../../../shared/ui/icons';
+import { CheckIcon, HistoryIcon } from '../../../shared/ui/icons';
 import {
   useDeleteOperationsShipment,
   useOperationsBanks,
@@ -65,7 +67,13 @@ import {
   orderedBoardTotals,
   type DayBoardFilters,
 } from '../lib/day-board';
-import { HISTORY_PAGE_SIZE, HISTORY_PAGE_SIZES, pageOfRows } from '../lib/shipment-history';
+import {
+  HISTORY_PAGE_SIZE,
+  HISTORY_PAGE_SIZES,
+  pageOfRows,
+  type HistoryRange,
+} from '../lib/shipment-history';
+import { shipmentCaption } from '../lib/shipment-log';
 import { DeliveryStatusBadge, ShipmentTypeBadge } from './ShipmentBadges';
 import { BoardFigurePill, FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
 import {
@@ -73,7 +81,9 @@ import {
   ShipmentReceiptImagePreviewDialog,
 } from './ShipmentReceiptImageCell';
 import { CaptainHoverName, CrewVehicleHoverCode } from './BoardCrewCards';
+import { DeletedShipmentsControl } from './DeletedShipments';
 import { ShipmentFormDialog } from './ShipmentFormDialog';
+import { ShipmentLogDialog, type ShipmentLogTarget } from './ShipmentLogDialog';
 import { SHIPMENT_PATH } from './shipment-icons';
 
 /** Every filter is `density="tight"`, as on the Fleet boards. */
@@ -94,35 +104,46 @@ const SHIPMENTS_TABLE = cn(
   // Fourteen columns beside the menu on a laptop: the two icon boxes (the receipt's and the row's
   // actions) sit their icons closer than the Fleet boards' twelve-column tables need to.
   '[&_[data-row-actions]]:!gap-1 [&_[data-row-actions]]:!px-1 [&_[data-image-actions]]:!gap-1 [&_[data-image-actions]]:!px-1',
+  // «السجل» made the day board's actions four icons (✎ ✓ السجل 🗑), 32px more than the table had
+  // to spare at 1440 beside the menu — the bin went under the edge. The two cells that hold an icon
+  // box give up most of their side padding (the box draws its own frame, and the columns have no
+  // lines between them), and the notes' cut-off moves in by 8px: that buys the width back without
+  // shrinking an icon or a name.
+  '[&_td:has([data-row-actions])]:!px-1 [&_td:has([data-image-actions])]:!px-1',
 );
 
 /**
- * THE FILTER BAR'S ROWS. The Fleet bar (`DARK_FILTER_BAR`) holds every filter on ONE row from 1024px,
- * each taking an even share. Ten filters (eleven on the history, with its two dates) do not read in
- * one row on a laptop: at 1366 a share is ~93px, under the width of a date or of «قائد الطاقم». So:
+ * THE FILTER BAR'S ROWS — «الفلاتر هتكون كلها على صف واحد», on both screens («على نفس الصف»):
  *
  *   · a phone — two even columns, rather than boxes of four widths wrapping raggedly;
  *   · a tablet — the boxes' own widths, wrapping (the Fleet bar's own behaviour);
- *   · a laptop up to 1599px — TWO rows of even columns, a grid of half the filters per row, the
- *     reset in a column of its own at the end spanning both rows. That column is IMPLICIT — made
- *     by the reset's own placement, so it exists only while the reset shows; a spare explicit one
- *     would take a filter into it whenever there is nothing to reset;
- *   · 1600px and wider — the Fleet bar's single row, where a share is a readable 105px or more —
- *     for the day board. The history keeps its two rows at every laptop width and up: its two
- *     dates carry «من» and «إلى» inside the box, and in a row of eleven shares a box is too narrow
- *     for a name and a date together.
+ *   · the day board from 1024px — the Fleet bar's single row (`DARK_FILTER_BAR`): its nine filters
+ *     share the row evenly and the reset keeps its size at the row's end. Nothing to add here;
+ *   · the history from 1280px — the same single row, but its two dates do not share: a date cut
+ *     short is unreadable, so «من» and «إلى» keep their own width (`w-36`, a date and its name) and
+ *     the nine other filters share what is left. Between 1024 and 1279 a row of eleven leaves a
+ *     share narrower than a date, so there the history keeps TWO rows of even columns, the reset
+ *     in a column of its own spanning both. That column is IMPLICIT — made by the reset's own
+ *     placement, so it exists only while the reset shows; a spare explicit one would take a filter
+ *     into it whenever there is nothing to reset.
  *
- * Written out per count because Tailwind reads class names from the source text, never a built one.
+ * Written out because Tailwind reads class names from the source text, never a built one.
  */
-const BAR_ROWS: Record<10 | 11, string> = {
-  10: 'lg:max-[1599px]:[&>div]:!grid lg:max-[1599px]:[&>div]:!grid-cols-5 lg:max-[1599px]:[&>div>.ms-auto]:!col-start-6',
-  11: 'lg:[&>div]:!grid lg:[&>div]:!grid-cols-6 lg:[&>div>.ms-auto]:!col-start-7 lg:[&>div]:!gap-x-1.5 lg:[&>div]:!gap-y-2 lg:[&>div>*:not(.ms-auto)]:!w-auto lg:[&>div>.ms-auto]:!row-span-2 lg:[&>div>.ms-auto]:!row-start-1 lg:[&>div>.ms-auto]:!self-center',
-};
-const BAR_LAYOUT = cn(
-  'max-sm:[&>div]:!grid max-sm:[&>div]:!grid-cols-2 max-sm:[&>div>*:not(.ms-auto)]:!w-auto',
+const BAR_LAYOUT =
+  'max-sm:[&>div]:!grid max-sm:[&>div]:!grid-cols-2 max-sm:[&>div>*:not(.ms-auto)]:!w-auto';
+const PERIOD_BAR_LAYOUT = cn(
+  'lg:max-xl:[&>div]:!grid lg:max-xl:[&>div]:!grid-cols-6 lg:max-xl:[&>div>.ms-auto]:!col-start-7',
   // In a grid cell a box keeps its own width (`w-32`) unless told to fill the cell.
-  'lg:max-[1599px]:[&>div]:!gap-x-1.5 lg:max-[1599px]:[&>div]:!gap-y-2 lg:max-[1599px]:[&>div>*:not(.ms-auto)]:!w-auto',
-  'lg:max-[1599px]:[&>div>.ms-auto]:!row-span-2 lg:max-[1599px]:[&>div>.ms-auto]:!row-start-1 lg:max-[1599px]:[&>div>.ms-auto]:!self-center',
+  'lg:max-xl:[&>div]:!gap-x-1.5 lg:max-xl:[&>div]:!gap-y-2 lg:max-xl:[&>div>*:not(.ms-auto)]:!w-auto',
+  'lg:max-xl:[&>div>.ms-auto]:!row-span-2 lg:max-xl:[&>div>.ms-auto]:!row-start-1 lg:max-xl:[&>div>.ms-auto]:!self-center',
+  // One row from 1280: a date box keeps its own width instead of the Fleet bar's even share.
+  'xl:[&>div>*:has(>input[type=date])]:!flex-none',
+  // Up to 1439 that row leaves the nine others 82–96px each, narrower than the day board's at
+  // 1024 — so the words go a size down, as the Fleet bar takes them at 1024–1279, and read whole.
+  // The open list's search box keeps its own padding (`:where`, as the Fleet bar's rule).
+  'xl:max-[1439px]:[&_:where(:not([role=listbox]_*))_>_input]:!px-1.5 xl:max-[1439px]:[&_input]:!text-xs',
+  'xl:max-[1439px]:[&_button[aria-haspopup]]:!px-1.5 xl:max-[1439px]:[&_button[aria-haspopup]]:!text-xs',
+  'xl:max-[1439px]:[&_button[aria-haspopup]_svg]:!h-3 xl:max-[1439px]:[&_button[aria-haspopup]_svg]:!w-3',
 );
 
 /** A figure in the table: monospace, tabular, never broken over two lines. */
@@ -136,8 +157,8 @@ const DASH = <span className="text-slate-400">—</span>;
 const WRAP = 'block min-w-[5rem] max-w-[9rem] whitespace-normal leading-tight';
 
 /**
- * A date picker in the bar, at the «التاريخ» column's place: the board's one day, or the history's
- * «من» and «إلى». The page owns the value and what a change writes.
+ * A date picker in the bar, at the «التاريخ» column's place: the history's «من» and «إلى» (the day
+ * board has none — it is always today). The page owns the value and what a change writes.
  */
 export interface BoardDatePicker {
   /** The URL param it is kept in — its key, too. */
@@ -146,7 +167,7 @@ export interface BoardDatePicker {
   label: string;
   /**
    * Also WRITE the name in the box, beside its calendar — for the history's «من» and «إلى», which
-   * are two boxes of the same look a reader must not mix up. The board's one day needs none.
+   * are two boxes of the same look a reader must not mix up.
    */
   showLabel?: boolean;
   value: string;
@@ -161,13 +182,15 @@ export const ShipmentsBoard = ({
   loading,
   error,
   onRetry,
-  datePickers,
-  periodActive,
-  periodParams,
-  defaultDate,
+  datePickers = [],
+  periodActive = false,
+  periodParams = [],
+  canCreate,
+  canToggleReceived,
   empty,
   refusal = null,
   paged = false,
+  deletedShipments,
 }: {
   /** The page's `useSearchParams()` — the filters live in the URL beside the page's period. */
   search: [URLSearchParams, SetURLSearchParams];
@@ -180,13 +203,23 @@ export const ShipmentsBoard = ({
   loading: boolean;
   error: unknown;
   onRetry: () => void;
-  datePickers: readonly BoardDatePicker[];
+  /** The period's pickers — none on the day board, which is always today. */
+  datePickers?: readonly BoardDatePicker[];
   /** The period is not the page's default — a reset has something to undo. */
-  periodActive: boolean;
+  periodActive?: boolean;
   /** The URL params the period lives in, cleared by the reset in the same write as the filters. */
-  periodParams: readonly string[];
-  /** The day «إضافة شحنة» opens on. */
-  defaultDate: string;
+  periodParams?: readonly string[];
+  /**
+   * «إضافة شحنة» is offered here — the day board, where the desk enters the day's work. The
+   * history is not a place to add from («مش هيقدر يضيف»). Still subject to the permission.
+   */
+  canCreate: boolean;
+  /**
+   * The ✓ that confirms a delivery (and undoes one) is offered here — the day board, where the
+   * day's deliveries are confirmed. Not from the history («مش هيقدر منها يسلم او يستلم»), which
+   * still edits and deletes («عاوز عادى يعدل و يحذف»). Still subject to the permission.
+   */
+  canToggleReceived: boolean;
   empty: string;
   /**
    * Why the rows were not asked for, or were refused — said in the table's place instead of an
@@ -195,6 +228,12 @@ export const ShipmentsBoard = ({
   refusal?: string | null;
   /** Cut the table into pages — the history's thousands of rows. The figures stay over them all. */
   paged?: boolean;
+  /**
+   * «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the icon in the toolbar that lists the shipments
+   * deleted from the period's days, and brings one back. The history's: it hands in its range (and
+   * whether the endpoint would take it). The day board has none.
+   */
+  deletedShipments?: { range: HistoryRange; enabled: boolean };
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -230,6 +269,7 @@ export const ShipmentsBoard = ({
   const [statsOpen, setStatsOpen] = useState(true);
   const [othersOpen, setOthersOpen] = useState(false);
   const [previewingReceipt, setPreviewingReceipt] = useState<OperationsShipmentDto | null>(null);
+  const [logOf, setLogOf] = useState<ShipmentLogTarget | null>(null);
 
   const bankNameOf = (id: string): string =>
     banks.data?.items.find((bank) => bank.id === id)?.opsName ?? '';
@@ -275,7 +315,12 @@ export const ShipmentsBoard = ({
 
   const canEdit = can('operationsShipment.edit');
   const canDelete = can('operationsShipment.delete');
-  const canComplete = can('operationsShipment.complete');
+  // «السجل» — on BOTH screens, to whoever may see the rows: the log is read on the same grant.
+  const canViewLog = can('operationsShipment.view');
+  // What the SCREEN offers and what the reader may do, both: the history offers neither, whoever
+  // is reading it; the day board offers both, to whoever holds the permission.
+  const canAdd = canCreate && can('operationsShipment.create');
+  const canComplete = canToggleReceived && can('operationsShipment.complete');
 
   const toggleReceived = async (shipment: OperationsDayBoardShipmentDto): Promise<void> => {
     try {
@@ -429,11 +474,12 @@ export const ShipmentsBoard = ({
     {
       key: 'notes',
       header: t('operations.shipment.notes'),
+      // Cut short with its whole text on hover; 5rem rather than 5.5 since «السجل» joined the actions.
       render: (row) =>
         row.notes === null ? (
           DASH
         ) : (
-          <span className="block max-w-[5.5rem] truncate" title={row.notes}>
+          <span className="block max-w-[5rem] truncate" title={row.notes}>
             {row.notes}
           </span>
         ),
@@ -480,6 +526,21 @@ export const ShipmentsBoard = ({
               onClick={() => void toggleReceived(row)}
             >
               <CheckIcon className="h-4 w-4" />
+            </button>
+          )}
+          {/* «سجل بالاكشنز اللى حصلت على الشحنة»: the row's story, a log among the actions — slate,
+              between the ✓ and the bin (`row-actions-look`). */}
+          {canViewLog && (
+            <button
+              type="button"
+              data-shipment-log={row.id}
+              aria-haspopup="dialog"
+              className={actionTone('history')}
+              aria-label={t('operations.shipment.log.open')}
+              title={t('operations.shipment.log.open')}
+              onClick={() => setLogOf({ id: row.id, caption: shipmentCaption(row, bankNameOf, t) })}
+            >
+              <HistoryIcon className="h-4 w-4" />
             </button>
           )}
           {canDelete && (
@@ -595,7 +656,7 @@ export const ShipmentsBoard = ({
                 <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
-            {can('operationsShipment.create') && (
+            {canAdd && (
               <button
                 type="button"
                 data-shipment-new="true"
@@ -606,30 +667,40 @@ export const ShipmentsBoard = ({
                 {t('operations.shipment.add')}
               </button>
             )}
+            {/* The history's deleted shipments, at the end where the day board's «إضافة شحنة» is. */}
+            {deletedShipments !== undefined && (
+              <DeletedShipmentsControl
+                range={deletedShipments.range}
+                enabled={deletedShipments.enabled}
+                bankNameOf={bankNameOf}
+                currencyOf={currencyOf}
+              />
+            )}
           </span>
         </div>
 
         {/* The Fleet boards' dark bar: every filter's name written in its box, an icon at its start.
           «ارتب الفلاتر على حسب عواميد الجدول»: the filters in the table's column order — السيارة,
-          اسم البنك, من فرع, إلى فرع, المنطقة, قائد الطاقم, التاريخ, النوع, الحالة, ملاحظات (the
-          amount, the receipt image and the actions have nothing to type). Widths go on the
-          WRAPPER — `Input` carries its own `w-full`, and `cn` does not merge a width passed to it. */}
+          اسم البنك, من فرع, إلى فرع, المنطقة, قائد الطاقم, (the history's من and إلى,) النوع,
+          الحالة, ملاحظات (the amount, the receipt image and the actions have nothing to type).
+          Widths go on the WRAPPER — `Input` carries its own `w-full`, and `cn` does not merge a
+          width passed to it; from 1024px the bar's row overrides them (`BAR_LAYOUT`). */}
         <div
           className={cn(
             DARK_FILTER_BAR,
             '[&_[role=listbox]]:animate-menu-in',
             BAR_LAYOUT,
-            BAR_ROWS[datePickers.length > 1 ? 11 : 10],
+            datePickers.length > 0 && PERIOD_BAR_LAYOUT,
           )}
           data-shipment-filters="true"
         >
           <FilterBar
             hasActiveFilters={hasActiveFilter(filters) || periodActive}
             onClear={() => {
-              // ONE write. The period goes back to the page's default alongside the filters: it is
-              // not a filter — it is what the board IS — but a "clear" that left yesterday on screen
-              // would be a reset the user can see failing. Two separate writes would not do it,
-              // because the second would be built from the params the first had already replaced.
+              // ONE write. The history's period goes back to its default alongside the filters: it
+              // is not a filter — it is what the screen IS — but a "clear" that left last week on
+              // screen would be a reset the user can see failing. Two separate writes would not do
+              // it, because the second would be built from the params the first had replaced.
               const next = new URLSearchParams(sp);
               for (const name of [...DAY_BOARD_FILTER_PARAMS, ...periodParams]) next.delete(name);
               setSp(next, { replace: true });
@@ -714,9 +785,10 @@ export const ShipmentsBoard = ({
                 onChange={(e) => setFilter({ captain: e.target.value })}
               />
             </FilterWithIcon>
-            {/* «التاريخ» — the day, or the history's «من» and «إلى»: the page's period, at the date
-              column's place. A date box draws its own format hint and ignores a placeholder, so
-              its name is its title (on hover) and its aria-label. */}
+            {/* «التاريخ» — the history's «من» and «إلى»: the page's period, at the date column's
+              place (the day board has no picker: it is always today). A date box draws its own
+              format hint and ignores a placeholder, so its name is its title (on hover) and its
+              aria-label. */}
             {datePickers.map((picker) => (
               <FilterWithIcon
                 key={picker.param}
@@ -740,8 +812,10 @@ export const ShipmentsBoard = ({
                   onChange={(e) => picker.onChange(e.target.value)}
                   // On an English page the date would start right after the calendar, where the
                   // name is written: it goes to the box's far side instead, as on an Arabic page.
+                  // The browser pads a date's fields a pixel above and below, which stood the two
+                  // dates 2px taller than the boxes beside them in the one row.
                   className={cn(
-                    'dark:[color-scheme:dark]',
+                    'dark:[color-scheme:dark] [&::-webkit-datetime-edit-fields-wrapper]:py-0',
                     picker.showLabel === true && '[[dir=ltr]_&]:text-right',
                   )}
                 />
@@ -864,6 +938,8 @@ export const ShipmentsBoard = ({
         )}
       </div>
 
+      <ShipmentLogDialog target={logOf} onClose={() => setLogOf(null)} />
+
       <ShipmentReceiptImagePreviewDialog
         open={previewingReceipt !== null}
         onClose={() => setPreviewingReceipt(null)}
@@ -883,9 +959,8 @@ export const ShipmentsBoard = ({
       <ShipmentFormDialog
         // The board adds daily shipments only — «اشيل النوع ويكون يومى بس».
         createType="daily"
-        open={creating || editing !== null}
+        open={(canAdd && creating) || editing !== null}
         shipment={editing}
-        defaultDate={defaultDate}
         banks={banks.data?.items ?? []}
         currencies={currencyList}
         onClose={() => {

@@ -2,10 +2,16 @@
 // زياده يعنى عشان اقدر امسك الhistory بتاع الشحنات».
 //
 // THE SAME BOARD as «اليوم التشغيلي» (`DailyOperationsPage.tsx`) — the figures and the «عملات أخرى»
-// breakdown, the same filters (the van's code among them), the same table with its hover cards,
-// row colours, receipt images, edit / ✓ / delete and «إضافة شحنة» — drawn by the one shared
-// component (`components/ShipmentsBoard.tsx`), so the two cannot drift. What differs is the period:
-// two dates, «من» and «إلى», at the date filter's place, where the day board has one.
+// breakdown, the same filters (the van's code among them) on one row, the same table with its hover
+// cards, row colours and receipt images — drawn by the one shared component
+// (`components/ShipmentsBoard.tsx`), so the two cannot drift. What differs is the period — two
+// dates, «من» and «إلى», at the date column's place, where the day board is always today — and
+// what may be done from it: «الصفحة اللى هتتكرر بقى هتكون هى هى بس طبعا مش هيقدر يضيف … ومش هيقدر
+// منها يسلم او يستلم». No «إضافة شحنة» and no ✓ (deliver / undo): new work is entered, and the
+// day's deliveries confirmed, on the day board. Edit and delete stay — «عاوز عادى يعدل و يحذف» —
+// and so does the receipt image, and each row's «السجل» (its action log, as on the day board).
+// And one thing only the history has: «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح» — an icon
+// in the toolbar listing the shipments deleted from the range's days, to bring one back.
 //
 // The rows are the SERVER's (`GET /operations/shipments/history?from=&to=`): the day board's union
 // over every day of the range, both bounds inclusive. A range is bounded twice, so a history read
@@ -33,9 +39,9 @@ import {
 } from '../lib/shipment-history';
 
 /**
- * Remembered across visits: the filters, and NOT `from` / `to`. Like the day board's `date`, the
- * range is what the screen IS — a bare visit opens on this month to date — so restoring the range
- * last looked at would answer a question nobody asked today. The same list as the day board's.
+ * Remembered across visits: the filters, and NOT `from` / `to`. The range is what the screen IS —
+ * a bare visit opens on this month to date — so restoring the range last looked at would answer a
+ * question nobody asked today. The same list as the day board's.
  */
 const REMEMBERED_FILTERS = [
   'vehicle',
@@ -118,11 +124,13 @@ export const ShipmentsHistoryPage = (): JSX.Element => {
         ]}
         periodActive={sp.get('from') !== null || sp.get('to') !== null}
         periodParams={['from', 'to']}
-        // A shipment added from the history is today's work, whatever range is on screen.
-        defaultDate={today}
+        canCreate={false}
+        canToggleReceived={false}
         empty={t('operations.history.empty')}
         refusal={refusal}
         paged
+        // The deleted shipments of the SAME range — asked for only when the range itself may be.
+        deletedShipments={{ range, enabled: problem === null }}
       />
     </PageContainer>
   );

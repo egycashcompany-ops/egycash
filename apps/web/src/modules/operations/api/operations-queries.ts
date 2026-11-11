@@ -156,8 +156,10 @@ export const useBranchesOfBank = (bankId: string | null) =>
   });
 
 /**
- * One day's board. `date` null means "today" — resolved by the SERVER, which also echoes back the
- * day it used, so a client near midnight can never disagree with it about which day this is.
+ * One day's board. «اليوم التشغيلي» names its day — Cairo's today (`useCairoToday`) — so the day on
+ * screen and the day a new shipment is floored at are one day, even in the hours after a Cairo
+ * midnight. `date` null still means "today", resolved by the server (today in Cairo there too), which
+ * echoes back the day it used.
  */
 export const useOperationsDayBoard = (date: string | null, enabled = true) =>
   useQuery({
@@ -165,6 +167,10 @@ export const useOperationsDayBoard = (date: string | null, enabled = true) =>
     queryFn: () => api.getDayBoard(date),
     enabled,
   });
+
+/** A 4xx is an answer (not found, not allowed, too large) that asking again cannot change. */
+const retryUnless4xx = (failures: number, error: unknown): boolean =>
+  !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 1;
 
 /** The history's cache entry: one per range, inside the day board's subtree (see `operationsKeys`). */
 const shipmentHistoryKey = (range: { from: string; to: string }): readonly unknown[] => [
@@ -188,8 +194,57 @@ export const useOperationsShipmentHistory = (
     queryKey: shipmentHistoryKey(range),
     queryFn: () => api.getShipmentHistory(range),
     enabled,
-    retry: (failures, error) =>
-      !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 1,
+    retry: retryUnless4xx,
+  });
+
+/**
+ * One shipment's log, inside the day board's subtree like the history. Every act that stales the
+ * board — a shipment saved, received, deleted, restored or photographed, a secured act, a
+ * captain's act from this browser — writes an entry into SOME shipment's log, so the same
+ * invalidation that refreshes the board refreshes an open log, with no list of its own to forget.
+ */
+const shipmentLogKey = (id: string): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'log',
+  { id },
+];
+
+/**
+ * «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — asked only while the log is open (`id` set): a
+ * board of a hundred rows does not read a hundred logs it may never show.
+ */
+export const useOperationsShipmentLog = (id: string | null) =>
+  useQuery({
+    queryKey: shipmentLogKey(id ?? ''),
+    queryFn: () => api.getShipmentLog(id ?? ''),
+    enabled: id !== null,
+    retry: retryUnless4xx,
+  });
+
+/**
+ * The deleted shipments of a range, beside the history's own entry in the day board's subtree: a
+ * delete takes a row OUT of the history and INTO this list, and a restore the other way, so the
+ * invalidation every shipment write runs refreshes both at once.
+ */
+const deletedShipmentsKey = (range: { from: string; to: string }): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'deleted',
+  { from: range.from, to: range.to },
+];
+
+/**
+ * «اعملى ايقون اقدر اجيب منه اللى اتمسح» — read while the history is open (the icon's count) and
+ * whenever its dialog is. `enabled` is false while the page holds a range the endpoint would refuse.
+ */
+export const useOperationsDeletedShipments = (
+  range: { from: string; to: string },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: deletedShipmentsKey(range),
+    queryFn: () => api.getDeletedShipments(range),
+    enabled,
+    retry: retryUnless4xx,
   });
 
 // ── Writes ─────────────────────────────────────────────────────────────────
@@ -253,6 +308,19 @@ export const useDeleteOperationsShipment = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteShipment(id),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Bring a deleted shipment back — it returns to its day's board and to the history, and leaves the
+ * deleted list. Refreshed on failure too (`onSettled`): a 409 means someone else restored it first,
+ * and the list on screen is the stale thing. No `onError`: the global notifier words the refusal.
+ */
+export const useRestoreOperationsShipment = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreShipment(id),
+    onSettled: invalidate,
   });
 };
 
@@ -351,6 +419,9 @@ export const useUpdateOperationsCurrency = () => {
 export const __operationsKeys = operationsKeys;
 /** Exported for the cache tests — the history's key, to prove the board's writes reach it. */
 export const __shipmentHistoryKey = shipmentHistoryKey;
+/** Exported for the cache tests — the log's and the deleted list's keys, for the same proof. */
+export const __shipmentLogKey = shipmentLogKey;
+export const __deletedShipmentsKey = deletedShipmentsKey;
 
 // ── Crew board, pool and roster (B3) ───────────────────────────────────────
 

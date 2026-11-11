@@ -12,6 +12,7 @@ import {
   cairoYmd,
   daysBetweenYmd,
   isYmd,
+  nextCairoMidnight,
   type PageMeta,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -23,13 +24,21 @@ export interface HistoryRange {
 }
 
 /**
- * Today in Cairo — the desk's own day. The day board leaves "today" to the server (`?date=`
- * empty, resolved there as the UTC day, so for the first two or three hours after a Cairo midnight
- * it still opens on the day before). The history cannot leave it to the server — its endpoint takes
- * two explicit days — so it asks the desk's question in the desk's zone rather than the browser's.
- * Only the DEFAULT differs: both read and store whole calendar days alike.
+ * Today in Cairo — the desk's own day, asked in the desk's zone rather than the browser's. Both
+ * screens name it explicitly: the history's endpoint takes two explicit days, and the day board
+ * («اليوم التشغيلي … هو هيجيب بتاعت اليوم») shows today and nothing else. The day board used to
+ * leave "today" to the server (`?date=` empty), which resolves it as the UTC day — so for the first
+ * two or three hours after a Cairo midnight it still opened on the day before.
  */
 export const cairoToday = (now: Date = new Date()): string => cairoYmd(now);
+
+/**
+ * How long until Cairo's next day begins, in ms — when a screen that shows "today" has to look
+ * again. One timer set for that moment, rather than a clock ticking all day. DST-aware: Cairo's
+ * day is 23 or 25 hours long on the two change days, which `nextCairoMidnight` knows.
+ */
+export const msUntilNextCairoDay = (now: Date = new Date()): number =>
+  Math.max(0, nextCairoMidnight(now).getTime() - now.getTime());
 
 /**
  * The range a bare visit opens on: the first day of this month, to today. A month to date is the

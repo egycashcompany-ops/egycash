@@ -7,10 +7,17 @@ import { OperationsShipmentModel, type OperationsShipmentDoc } from './shipment.
  * The board's union as one filter, shared by the read and the count so the count can never
  * measure a different set than the rows it stands in for.
  */
-const boardFilter = (from: Date, toExclusive: Date): FilterQuery<OperationsShipmentDoc> => {
+const boardFilter = (
+  from: Date,
+  toExclusive: Date,
+  deleted = false,
+): FilterQuery<OperationsShipmentDoc> => {
   const range = { $gte: from, $lt: toExclusive };
   return {
-    isDeleted: false,
+    // `deleted` reads the SAME union over the rows that were deleted from those boards — the
+    // deleted shipments list («اعملى ايقون اقدر اجيب منه اللى اتمسح»). One filter for both, so a row
+    // listed there is exactly a row that comes back onto that board when it is restored.
+    isDeleted: deleted,
     $or: [
       // The days' collection runs.
       { shipmentType: 'daily', collectionDate: range },
@@ -72,6 +79,32 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
    */
   async countBoardInRange(from: Date, toExclusive: Date): Promise<number> {
     return this.model.countDocuments(boardFilter(from, toExclusive)).exec();
+  }
+
+  /**
+   * The rows DELETED from the boards of [from, toExclusive) — the history's union over deleted
+   * rows, newest deleted first. Each half of the `$or` rides the same index as the board's own.
+   */
+  async deletedBoardInRange(from: Date, toExclusive: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model
+      .find(boardFilter(from, toExclusive, true))
+      .sort({ deletedAt: -1, _id: -1 })
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
+  /** How many rows `deletedBoardInRange` would return — counted before anything is loaded. */
+  async countDeletedBoardInRange(from: Date, toExclusive: Date): Promise<number> {
+    return this.model.countDocuments(boardFilter(from, toExclusive, true)).exec();
+  }
+
+  /**
+   * One shipment WHETHER OR NOT it is deleted — the action log answers for a deleted shipment too,
+   * so the deleted list can show what happened to a row before it was taken off its board.
+   */
+  async findAnyById(id: string): Promise<OperationsShipmentDoc | null> {
+    const [doc] = await this.findByIdsSystem([id]);
+    return doc ?? null;
   }
 
   /** A set of shipments by id — the vault roll-up joins the money onto its custody rows. */

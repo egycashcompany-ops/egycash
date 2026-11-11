@@ -6,8 +6,11 @@ import {
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
+  type OperationsDeletedShipmentsDto,
+  type OperationsDeletedShipmentsQuery,
   type OperationsShipmentHistoryDto,
   type OperationsShipmentHistoryQuery,
+  type OperationsShipmentLogDto,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -63,8 +66,11 @@ const boardForReader = (
 /** The legacy `/main_ops` board — one day's working set, unioned server-side. */
 export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsDayBoardQuery>(req);
-  const day = query.date ?? new Date();
-  const view = await operationsShipmentService.dayBoardView(query.date);
+  // The day the SERVICE resolves — today in Cairo when none is asked for — resolved ONCE and read
+  // with, so the echoed date is always the day whose rows came back (two reads of the clock would
+  // disagree on a request that straddles Cairo midnight).
+  const day = operationsShipmentService.boardDay(query.date);
+  const view = await operationsShipmentService.dayBoardView(day);
   ok<OperationsDayBoardDto>(res, { date: utcDayIso(day), ...boardForReader(req, view) });
 };
 
@@ -77,6 +83,54 @@ export const getShipmentHistory = async (req: Request, res: Response): Promise<v
     to: utcDayIso(query.to),
     ...boardForReader(req, view),
   });
+};
+
+/**
+ * The deleted shipments of `from`..`to` — the history's rows that were deleted, each with when and
+ * by whom, mapped for this reader through the same `boardForReader` as the history.
+ */
+export const getDeletedShipments = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDeletedShipmentsQuery>(req);
+  const view = await operationsShipmentService.deletedView(query.from, query.to);
+  const board = boardForReader(req, view);
+  const docOf = new Map(view.rows.map(({ doc }) => [String(doc._id), doc]));
+  ok<OperationsDeletedShipmentsDto>(res, {
+    from: utcDayIso(query.from),
+    to: utcDayIso(query.to),
+    shipments: board.shipments.map((row) => {
+      const deletedAt = docOf.get(row.id)?.deletedAt;
+      return {
+        ...row,
+        // Every row of this list was read on `isDeleted: true`, which the delete stamps together
+        // with `deletedAt`; `updatedAt` stands in only for a row deleted by hand without one.
+        deletedAt: deletedAt == null ? row.updatedAt : deletedAt.toISOString(),
+        deletedByName: view.deletedByName.get(row.id) ?? null,
+      };
+    }),
+    crews: board.crews,
+  });
+};
+
+/**
+ * The shipment's action log — every recorded act on it, oldest first (deleted ones answer too).
+ *
+ * The vault's own record — the receipt number, the package counts, the seals and the two
+ * treasurers — is the treasury's, behind `operationsVault.view` like the vault screens and the
+ * custody's realtime topic. A reader without it still sees that the shipment entered the vault
+ * and left it (its own status moves), just not what the treasury wrote down.
+ */
+export const getShipmentLog = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const seesVault = hasPermission(authContext(req), 'operationsVault.view');
+  ok<OperationsShipmentLogDto>(res, await operationsShipmentService.log(params.id, { seesVault }));
+};
+
+export const restoreShipment = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    toShipmentDto(await operationsShipmentService.restore(params.id, authContext(req).userId)),
+  );
 };
 
 export const getShipment = async (req: Request, res: Response): Promise<void> => {

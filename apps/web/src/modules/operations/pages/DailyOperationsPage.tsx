@@ -14,21 +14,24 @@
 // shipments history (`ShipmentsHistoryPage.tsx`) draws over a range of days, so the two screens
 // cannot drift apart.
 //
-// ONE ADDITION over legacy: a date picker. The default is still today, so the legacy answer is
-// the default answer; being able to look at yesterday is additive, not a changed rule.
+// TODAY, AND ONLY TODAY — «اليوم التشغيلي دى هنشيل منها التاريخ … هو هيجيب بتاعت اليوم». The
+// day picker this screen once added over legacy is gone: looking at another day is what the
+// history is for. The day is Cairo's, named in the request rather than left to the server (which
+// would answer the UTC day for the first hours after a Cairo midnight), and it moves on by itself
+// on a screen left open overnight (`useCairoToday`).
+import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useOperationsDayBoard } from '../api/operations-queries';
 import { ShipmentsBoard } from '../components/ShipmentsBoard';
+import { useCairoToday } from '../lib/use-cairo-today';
 
 /**
- * Remembered across visits: the filters, and NOT `date`. The day is what the board IS — it opens
- * on today, server-side — so restoring last Tuesday would answer a question nobody asked. The
- * filters narrow whichever day is open, which is exactly what is worth keeping. The SAME list as
- * the history's, and as the board's own filters (`DAY_BOARD_FILTER_PARAMS`) — day-board-filters.spec
- * holds the three together.
+ * Remembered across visits: the filters — the board's day is always today, so there is no period
+ * to remember. The SAME list as the history's, and as the board's own filters
+ * (`DAY_BOARD_FILTER_PARAMS`) — day-board-filters.spec holds the three together.
  */
 const REMEMBERED_FILTERS = [
   'vehicle',
@@ -42,22 +45,25 @@ const REMEMBERED_FILTERS = [
   'notes',
 ] as const;
 
-/** `?date=` empty means today, resolved by the server. */
-export const resolveBoardDate = (raw: string | null): string | null =>
-  raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-
 export const DailyOperationsPage = (): JSX.Element => {
   const t = useT();
   const search = useSearchParams();
   const [sp, setSp] = search;
 
-  const date = resolveBoardDate(sp.get('date'));
-  const board = useOperationsDayBoard(date);
+  const today = useCairoToday();
+  const board = useOperationsDayBoard(today);
 
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  // The day the server answered for — what the picker shows while `?date=` is empty.
-  const boardDay = (board.data?.date ?? '').slice(0, 10);
+  // An old link or bookmark may still carry the day picker's `?date=`. It is never read — the board
+  // is today's whatever it says — and it is dropped from the address bar so it does not sit there
+  // looking like the day on screen. `replace`: tidying a URL is not a place to go Back to.
+  useEffect(() => {
+    if (!sp.has('date')) return;
+    const next = new URLSearchParams(sp);
+    next.delete('date');
+    setSp(next, { replace: true });
+  }, [sp, setSp]);
 
   return (
     <PageContainer fullHeight>
@@ -69,23 +75,9 @@ export const DailyOperationsPage = (): JSX.Element => {
         loading={board.isLoading}
         error={board.error}
         onRetry={() => void board.refetch()}
-        datePickers={[
-          {
-            param: 'date',
-            label: t('operations.dailyOps.date'),
-            value: date ?? boardDay,
-            onChange: (value) => {
-              const next = new URLSearchParams(sp);
-              if (value === '') next.delete('date');
-              else next.set('date', value);
-              setSp(next);
-            },
-          },
-        ]}
-        periodActive={date !== null}
-        periodParams={['date']}
-        // A new shipment opens on the day being looked at, not on "today".
-        defaultDate={date ?? boardDay}
+        // The desk's working screen: new shipments are entered here, and delivered here.
+        canCreate
+        canToggleReceived
         empty={t('operations.dailyOps.empty')}
       />
     </PageContainer>

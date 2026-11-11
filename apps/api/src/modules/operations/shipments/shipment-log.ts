@@ -2,7 +2,8 @@
 // audit rows to the entries the screen prints.
 //
 // The audit trail already holds every act: the shipment's own rows (create, edit, the desk's ✓ and
-// its undo, the receipt photo, delete, restore), its legs' rows (`shipmentAssignment` — the crew,
+// its undo, the desk's pickup ✓ and its undo, the receipt photo, delete, restore, a cancelled vault
+// receipt), its legs' rows (`shipmentAssignment` — the crew,
 // the route order, the captain's execution on the mobile app) and its vault custody's rows. What it
 // does NOT hold is anything a person can read: ids, minor units, ISO instants. This file turns each
 // row into one entry of a closed `kind`, with every value resolved to the name, code, day or
@@ -136,6 +137,9 @@ const SHIPMENT_FIELDS: Readonly<Record<string, FieldRule>> = {
   deliveryDate: { field: 'deliveryDate', render: day },
   serialTracked: { field: 'serialTracked', render: flag },
   notes: { field: 'notes', render: plain },
+  // Round 10 — the reason typed when the vault's receipt was cancelled. Recorded on the SHIPMENT's
+  // row (not only the custody's) so every reader of the log sees why, vault grant or not.
+  receiptCancelReason: { field: 'reason', render: plain },
 };
 
 const LEG_CREW_FIELDS: Readonly<Record<string, FieldRule>> = {
@@ -224,12 +228,14 @@ const changeOf = (row: AuditLogDto, field: string) =>
   row.changes.find((change) => change.field === field);
 
 /**
- * What a move of the shipment's STATUS meant. Only four moves exist (shipment-status.ts and the
- * vault flow), and each is its own act on the screen — the desk's ✓ is not an edit.
+ * What a move of the shipment's STATUS meant. Only five moves exist (shipment-status.ts, the vault
+ * flow and Round 10's cancelled receipt), and each is its own act on the screen — the desk's ✓ is
+ * not an edit, and neither is the vault's receipt being undone.
  */
 const statusKind = (from: unknown, to: unknown): OperationsShipmentLogKind => {
   if (to === 'completed') return 'received';
   if (from === 'completed') return 'receiveUndone';
+  if (from === 'inVault' && to === 'draft') return 'receiptCancelled';
   if (to === 'inVault') return 'vaultReceived';
   if (to === 'dispatched') return 'dispatched';
   return 'other';
@@ -277,6 +283,12 @@ const shipmentEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | nul
               : 'receiptImageReplaced';
         return { kind, changes: [] };
       }
+      // Round 10 — the desk's pickup ✓ («تم الاستلام من العمليات») or its undo. The instant and the
+      // user are the entry's own time and actor, so nothing more is printed.
+      const pickup = changeOf(row, 'pickupConfirmedAt');
+      if (pickup !== undefined) {
+        return { kind: pickup.new == null ? 'pickupUndone' : 'pickupConfirmed', changes: [] };
+      }
       return { kind: 'edited', changes: printed(row, SHIPMENT_FIELDS, names) };
     }
     default:
@@ -307,11 +319,14 @@ const legEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => 
   return { kind: 'other', changes: [] };
 };
 
-/** One custody row → its entry: into the vault (with the receipt), or out of it. */
+/** One custody row → its entry: into the vault (with the receipt), out of it, or its receipt undone. */
 const custodyEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => {
   if (row.action === 'create') {
     return { kind: 'vaultReceived', changes: printed(row, CUSTODY_FIELDS, names) };
   }
+  // Round 10 — a cancelled receipt voids the custody (audited as its delete). The reason is printed
+  // from the SHIPMENT's row of the same request, which this entry is folded into.
+  if (row.action === 'delete') return { kind: 'receiptCancelled', changes: [] };
   if (row.action === 'update') {
     if (row.changes.length === 0) return null;
     // Released is the custody half of the dispatch. `releasedById` is the actor of the entry, who
@@ -331,7 +346,8 @@ const actorNameOf = (row: AuditLogDto): string | null => {
  * The log's entries, oldest first, from the rows `auditService.trailOf` read (oldest first).
  *
  * ONE ACT, ONE ENTRY. Receiving a secured shipment into the vault writes two rows in one request —
- * the custody taken, then the shipment's status — and so does dispatching it. Shown as two, the
+ * the custody taken, then the shipment's status — and so do dispatching it and cancelling its
+ * receipt (Round 10). Shown as two, the
  * same act would appear twice. So a custody row is folded into the shipment's entry of the SAME
  * kind written by the SAME request (`requestId`): the entry keeps the shipment row's id and time
  * and gains the custody's details. A custody row with no such partner stands on its own.

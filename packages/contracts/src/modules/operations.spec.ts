@@ -7,6 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CREW_SLOT_CAPACITY,
+  CancelVaultReceiptSchema,
+  ConfirmSecuredPickupSchema,
   CreateOperationsBankBranchSchema,
   CreateOperationsCurrencySchema,
   CreateOperationsShipmentSchema,
@@ -16,6 +18,9 @@ import {
   OPERATIONS_DAY_STATUSES,
   OPERATIONS_EXECUTION_STATUSES,
   OPERATIONS_PICKED_UP_EXECUTION_STATUSES,
+  OPERATIONS_RECEIPT_CANCEL_REASON_MAX,
+  OPERATIONS_SECURED_PICKED_UP_BY,
+  OPERATIONS_SECURED_RECEIVABLE_STAGES,
   OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_LEGS,
@@ -30,13 +35,16 @@ import {
   OperationsEvents,
   OperationsShipmentHistoryQuerySchema,
   OperationsSecuredBoardQuerySchema,
+  OperationsSecuredInVaultQuerySchema,
   OperationsShipmentStatusSchema,
   OperationsVaultQueueQuerySchema,
   OrderOperationsCurrenciesSchema,
   PlanOperationsCrewSchema,
   UpdateOperationsCurrencySchema,
   SetOperationsStandingCrewSchema,
+  UndoSecuredPickupSchema,
   UpdateOperationsShipmentSchema,
+  isOperationsShipmentLocked,
 } from './operations.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -90,13 +98,18 @@ describe('operations vocabulary — the shape it actually has today', () => {
     ]);
     expect(OPERATIONS_DAY_STATUSES).toEqual(['planning', 'open', 'closed']);
     // Round 8 — the محصنة row's colour, derived on the server: white, yellow, green, out, done.
+    // Round 10 adds the second yellow: the desk's ✓ («تم الاستلام من العمليات»).
     expect(OPERATIONS_SECURED_STAGES).toEqual([
       'awaitingPickup',
       'withCaptain',
+      'withOperations',
       'inVault',
       'dispatched',
       'completed',
     ]);
+    // The vault receives a yellow row only — never a white one.
+    expect(OPERATIONS_SECURED_RECEIVABLE_STAGES).toEqual(['withCaptain', 'withOperations']);
+    expect(OPERATIONS_SECURED_PICKED_UP_BY).toEqual(['captain', 'operations']);
     // The captain's ✓ on collecting it from the bank is every state from `pickedUp` on.
     expect(OPERATIONS_PICKED_UP_EXECUTION_STATUSES).toEqual(['pickedUp', 'delivered', 'completed']);
   });
@@ -420,6 +433,59 @@ describe('the secured screen and the vault queue — their queries', () => {
   });
 });
 
+// Round 10 — «الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها».
+describe('the secured pickup ✓, the lock and the cancelled receipt — their rules', () => {
+  it('locks a secured shipment from the vault on, and never a daily one', () => {
+    expect(isOperationsShipmentLocked({ shipmentType: 'secured', status: 'draft' })).toBe(false);
+    for (const status of ['inVault', 'dispatched', 'completed'] as const) {
+      expect(isOperationsShipmentLocked({ shipmentType: 'secured', status })).toBe(true);
+    }
+    for (const status of OPERATIONS_SHIPMENT_STATUSES) {
+      expect(isOperationsShipmentLocked({ shipmentType: 'daily', status })).toBe(false);
+    }
+  });
+
+  it('the pickup ✓ and its undo take the version and nothing else', () => {
+    expect(UndoSecuredPickupSchema).toBe(ConfirmSecuredPickupSchema);
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 3 }).success).toBe(true);
+    expect(ConfirmSecuredPickupSchema.safeParse({}).success).toBe(false);
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 3, by: 'captain' }).success).toBe(false);
+  });
+
+  it('a cancelled receipt needs a reason — trimmed, 3 to 500 characters — and the version', () => {
+    const parse = (reason: unknown) => CancelVaultReceiptSchema.safeParse({ reason, version: 2 });
+    expect(parse('  استلام خاطئ  ').success).toBe(true);
+    expect(CancelVaultReceiptSchema.parse({ reason: '  خطأ  ', version: 2 }).reason).toBe('خطأ');
+    expect(parse('  ab  ').success).toBe(false);
+    expect(parse('').success).toBe(false);
+    expect(parse(undefined).success).toBe(false);
+    expect(parse('x'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MAX)).success).toBe(true);
+    expect(parse('x'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MAX + 1)).success).toBe(false);
+    expect(CancelVaultReceiptSchema.safeParse({ reason: 'سبب كافٍ' }).success).toBe(false);
+  });
+
+  it('«صرف الخزينة» takes two optional delivery-date bounds, never backwards', () => {
+    expect(OperationsSecuredInVaultQuerySchema.safeParse({}).success).toBe(true);
+    expect(OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-01' }).success).toBe(true);
+    expect(OperationsSecuredInVaultQuerySchema.safeParse({ to: '2026-11-01' }).success).toBe(true);
+    expect(
+      OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-01', to: '2026-11-01' })
+        .success,
+    ).toBe(true);
+    expect(
+      OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-02', to: '2026-11-01' })
+        .success,
+    ).toBe(false);
+    expect(OperationsSecuredInVaultQuerySchema.safeParse({ date: '2026-11-01' }).success).toBe(false);
+  });
+
+  it('the three acts are their own events', () => {
+    expect(OperationsEvents.ShipmentPickupConfirmed).toBe('operations.shipment.pickupConfirmed');
+    expect(OperationsEvents.ShipmentPickupUndone).toBe('operations.shipment.pickupUndone');
+    expect(OperationsEvents.VaultReceiptCancelled).toBe('operations.custody.receiptCancelled');
+  });
+});
+
 describe('operations shipments history query — whole days, both ends inclusive', () => {
   const ok = (from: string, to: string): boolean =>
     OperationsShipmentHistoryQuerySchema.safeParse({ from, to }).success;
@@ -485,6 +551,9 @@ describe('operations shipment log vocabulary — closed lists a screen can label
         'executionDelivered',
         'vaultReceived',
         'dispatched',
+        'pickupConfirmed',
+        'pickupUndone',
+        'receiptCancelled',
         'other',
       ]),
     );

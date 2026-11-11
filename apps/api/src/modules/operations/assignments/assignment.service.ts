@@ -39,6 +39,7 @@ import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repo
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
+import { assertSecuredUnlocked } from '../shipments/secured-lock';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf, slotIds } from '../crew/crew-slots';
@@ -101,6 +102,9 @@ class OperationsAssignmentService {
     by: string,
   ): Promise<OperationsShipmentAssignmentDoc> {
     const shipment = await operationsShipmentRepository.getById(shipmentId);
+    // Round 10 — who collected a محصنة is part of what the vault signed for: once it has received
+    // the shipment, its pickup crew is history like the rest of it («ميقدر حد … يعدل عليها»).
+    assertSecuredUnlocked(shipment, 'its pickup crew');
     const { crew, operationsDayId } = await resolveCrew(
       input.crewAssignmentId,
       input.captainEmployeeId,

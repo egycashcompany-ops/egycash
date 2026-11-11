@@ -43,6 +43,19 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
       .exec();
   }
 
+  /**
+   * EVERY custody the treasury ever took for one shipment — the live one AND any cancelled receipt
+   * (Round 10), oldest received first — served by `ix_shipment_received`. For the action log only:
+   * every other read is about what is held now, and asks `isDeleted: false`.
+   */
+  async findHistoryByShipment(shipmentId: string): Promise<OperationsVaultCustodyDoc[]> {
+    return this.model
+      .find({ shipmentId })
+      .sort({ receivedAt: 1, _id: 1 })
+      .lean<OperationsVaultCustodyDoc[]>()
+      .exec();
+  }
+
   /** Custody for a SET of shipments — the reports' package counts, in one round trip. */
   async findByShipments(shipmentIds: string[]): Promise<OperationsVaultCustodyDoc[]> {
     if (shipmentIds.length === 0) return [];

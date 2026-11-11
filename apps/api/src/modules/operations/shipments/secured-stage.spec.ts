@@ -1,7 +1,13 @@
 // The محصنة row's stage and legs (Round 8) — «هيبقى الصف باللون الاصفر … هتبقى اخضر».
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_EXECUTION_STATUSES } from '@ecms/contracts';
-import { crewLegOf, deliveryLegOf, isPickedUp, securedStageOf } from './secured-stage';
+import {
+  crewLegOf,
+  deliveryLegOf,
+  isPickedUp,
+  pickedUpByOf,
+  securedStageOf,
+} from './secured-stage';
 
 describe('the secured stage — derived from the status and the pickup leg', () => {
   it('a draft not yet collected by its captain is awaitingPickup (white)', () => {
@@ -20,11 +26,33 @@ describe('the secured stage — derived from the status and the pickup leg', () 
     }
   });
 
+  // Round 10 — «ممكن القائد اللى يعمل صح انه استلم او العمليات».
+  it('a draft the desk confirmed and its captain did not pick up is withOperations (yellow)', () => {
+    const at = new Date('2026-11-11T08:00:00.000Z');
+    expect(securedStageOf('draft', null, at)).toBe('withOperations');
+    expect(securedStageOf('draft', 'pending', at)).toBe('withOperations');
+    expect(securedStageOf('draft', 'cancelled', at)).toBe('withOperations');
+    // No desk ✓ (absent on a row written before Round 10, or taken back): white again.
+    expect(securedStageOf('draft', 'active', null)).toBe('awaitingPickup');
+    expect(securedStageOf('draft', 'active', undefined)).toBe('awaitingPickup');
+  });
+
+  it('the captain wins when both picked it up — his ✓ is the record of the collection itself', () => {
+    const at = new Date('2026-11-11T08:00:00.000Z');
+    expect(securedStageOf('draft', 'pickedUp', at)).toBe('withCaptain');
+    expect(pickedUpByOf('pickedUp', at)).toBe('captain');
+    expect(pickedUpByOf('pending', at)).toBe('operations');
+    expect(pickedUpByOf('pending', null)).toBeNull();
+    expect(pickedUpByOf(undefined, undefined)).toBeNull();
+  });
+
   it('from the vault on, the shipment’s own status is the stage, whatever the pickup leg says', () => {
     for (const execution of [...OPERATIONS_EXECUTION_STATUSES, null]) {
       expect(securedStageOf('inVault', execution)).toBe('inVault');
       expect(securedStageOf('dispatched', execution)).toBe('dispatched');
       expect(securedStageOf('completed', execution)).toBe('completed');
+      // …and whatever the desk confirmed: the vault's ✓ moved it on.
+      expect(securedStageOf('inVault', execution, new Date())).toBe('inVault');
     }
   });
 

@@ -251,6 +251,51 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
     expect(entries[1]?.changes).toEqual([]);
   });
 
+  // Round 10 — «تم الاستلام من العمليات», its undo, and the vault's receipt cancelled with a reason.
+  it('reads the desk pickup ✓, its undo and a cancelled vault receipt as their own acts', () => {
+    const custody = (action: AuditLogDto['action'], changes: AuditLogDto['changes'], req: string) =>
+      row(SHIPMENT_LOG_ENTITY.custody, CUSTODY, action, changes, req);
+    const entries = build([
+      shipmentRow('update', [
+        { field: 'pickupConfirmedAt', old: null, new: '2026-11-11T08:00:00.000Z' },
+        { field: 'pickupConfirmedById', old: null, new: oid(99) },
+      ]),
+      shipmentRow('update', [
+        { field: 'pickupConfirmedAt', old: '2026-11-11T08:00:00.000Z', new: null },
+        { field: 'pickupConfirmedById', old: oid(99), new: null },
+      ]),
+      custody('delete', [{ field: 'cancelReason', old: null, new: 'استلام بالخطأ' }], 'req-cancel'),
+      shipmentRow(
+        'update',
+        [
+          { field: 'status', old: 'inVault', new: 'draft' },
+          { field: 'receiptNumber', old: 'R-77', new: null },
+          { field: 'receiptCancelReason', old: null, new: 'استلام بالخطأ' },
+        ],
+        'req-cancel',
+      ),
+    ]);
+    // ONE entry for the cancelled receipt — the custody's half is folded into the shipment's.
+    expect(entries.map((e) => e.kind)).toEqual(['pickupConfirmed', 'pickupUndone', 'receiptCancelled']);
+    // Who and when are the entry's own; no user id is ever printed.
+    expect(entries[0]?.changes).toEqual([]);
+    expect(entries[1]?.changes).toEqual([]);
+    expect(entries[2]?.changes).toEqual([{ field: 'reason', old: null, new: 'استلام بالخطأ' }]);
+  });
+
+  it('a cancelled receipt without the vault grant still says why — the reason is the shipment’s', () => {
+    const [cancelled] = build([
+      shipmentRow('update', [
+        { field: 'status', old: 'inVault', new: 'draft' },
+        { field: 'receiptCancelReason', old: null, new: 'سبب' },
+      ]),
+    ]);
+    expect(cancelled).toMatchObject({
+      kind: 'receiptCancelled',
+      changes: [{ field: 'reason', old: null, new: 'سبب' }],
+    });
+  });
+
   it('a value that no longer resolves is null — never the id in its place', () => {
     const [edited] = build([
       shipmentRow('update', [{ field: 'mainBankId', old: BANK_A, new: oid(777) }]),

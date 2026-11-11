@@ -250,6 +250,7 @@ import {
   OperationsCrewPlannedPayloadV1,
   OperationsStandingCrewChangedPayloadV1,
   OperationsCustodyEventPayloadV1,
+  OperationsCustodyReceiptCancelledPayloadV1,
   OperationsDayEventPayloadV1,
   OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
@@ -905,6 +906,11 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // vocabulary and mean exactly what execution means by them — reused, not duplicated.
   pickedUp: { en: 'picked up', ar: 'استلام من المصدر' },
   delivered: { en: 'delivered', ar: 'توصيل' },
+  // operations (Round 10): the desk's pickup ✓ on a secured shipment, its undo, and a cancelled
+  // vault receipt — «تأكيد استلام شحنة», «التراجع عن استلام شحنة», «إلغاء استلام عهدة الخزينة».
+  pickupConfirmed: { en: 'pickup confirmed', ar: 'تأكيد استلام' },
+  pickupUndone: { en: 'pickup undone', ar: 'التراجع عن استلام' },
+  receiptCancelled: { en: 'receipt cancelled', ar: 'إلغاء استلام' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -1439,6 +1445,10 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.StandingCrewChanged]: OperationsStandingCrewChangedPayloadV1,
   [OperationsEvents.VaultReceived]: OperationsCustodyEventPayloadV1,
   [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
+  // Round 10 — the desk's pickup ✓ and its undo, and a cancelled vault receipt.
+  [OperationsEvents.VaultReceiptCancelled]: OperationsCustodyReceiptCancelledPayloadV1,
+  [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,

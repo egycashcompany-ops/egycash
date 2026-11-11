@@ -105,6 +105,14 @@ const vaultPermissions = declarePermissions(
     // screens had different owners, and the Treasury port exists to keep them different.
     { action: 'receive', name: { en: 'Receive into the vault', ar: 'استلام في الخزينة' } },
     { action: 'dispatch', name: { en: 'Release and dispatch from the vault', ar: 'صرف من الخزينة' } },
+    // Round 10 — after the vault's ✓ nobody edits a محصنة, «بس صلاحية خاصة تقدر تلغى استلام الخزينة».
+    // A grant of its OWN, apart from `receive`: undoing the treasury's signature is a rarer and
+    // heavier decision than giving it, so no role holds it unless an administrator grants it (the
+    // `super-admin` role holds every key by design — rbac.service.ts keeps it on the full catalog).
+    {
+      action: 'cancelReceipt',
+      name: { en: 'Cancel a vault receipt', ar: 'إلغاء استلام الخزينة' },
+    },
   ],
   'operations.vault',
 );
@@ -193,7 +201,14 @@ export const operationsModule: ModuleManifest = {
   // The receipt photo on a shipment is the first Operations file: three routes under the existing
   // shipments prefix, on the EXISTING `operationsShipment.view` / `.edit` grants, plus the file
   // authorizer below. Still no new permission, page or collection.
-  version: '0.11.0',
+  //
+  // Round 10 adds ONE permission, `operationsVault.cancelReceipt`, on the existing vault page — the
+  // owner's «صلاحية خاصة» that undoes a vault receipt — and new routes under the existing
+  // `/operations/secured` prefix (the desk's pickup ✓ and its undo on the EXISTING
+  // `operationsShipment.complete`, «صرف الخزينة» on the EXISTING `operationsVault.view`). No page and
+  // no collection; two fields on the shipment and three on the custody, all optional (no migration),
+  // and one custody index.
+  version: '0.12.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,

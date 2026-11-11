@@ -52,6 +52,8 @@ export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView 
   boxCount: doc.boxCount,
   receivedByPrimaryId: String(doc.receivedByPrimaryId),
   receivedBySecondaryId: String(doc.receivedBySecondaryId),
+  // `?? null`: a row written before Round 10 carries no cancellation fields at all.
+  cancelledAt: doc.cancelledAt ?? null,
 });
 
 class OperationsVaultCustodyService implements VaultCustodyProvider {
@@ -138,6 +140,73 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
       shipmentId: view.shipmentId,
       state: after.state,
     });
+  }
+
+  /**
+   * Void the HELD custody of a shipment — Round 10's cancelled receipt. ONE write, version-guarded:
+   * the cancellation stamp (when, who, why) and the soft-delete together, so there is no moment in
+   * which the row is cancelled but still read as held, or hidden without saying why.
+   *
+   * Soft-deleted rather than given a new `state`: every live read already asks `isDeleted: false`
+   * (the inventory, the roll-up, today's receipts, the reports' package counts), and `ux_shipment`
+   * is partial on it — so a cancelled receipt leaves all of them, and frees the shipment for a fresh
+   * receipt, without changing an index or teaching every reader a third state. Nothing is erased:
+   * the receipt number, counts, seals and treasurers stay on the row, and `history` reads it back.
+   */
+  async cancelReceipt(
+    shipmentId: string,
+    reason: string,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
+    const current = await operationsVaultCustodyRepository.findByShipment(shipmentId, typedSession);
+    if (current?.state !== 'held') {
+      throw new BusinessRuleError(
+        current === null
+          ? 'this shipment is not in the vault'
+          : 'this shipment has already left the vault',
+        'OPERATIONS_CUSTODY_NOT_HELD',
+      );
+    }
+    const now = new Date();
+    const actor = new Types.ObjectId(by);
+    const updated = await operationsVaultCustodyRepository.updateById(
+      String(current._id),
+      {
+        cancelledAt: now,
+        cancelledById: actor,
+        cancelReason: reason,
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy: actor,
+      },
+      { by, version: current.__v, session: typedSession },
+    );
+    return toCustodyView(updated);
+  }
+
+  /**
+   * Audit + event for a cancelled receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape. Audited as the custody's `delete`, carrying the reason: the shipment's
+   * action log reads it as `receiptCancelled` and folds it into the shipment's own entry.
+   */
+  async announceReceiptCancelled(view: VaultCustodyView, reason: string): Promise<void> {
+    await auditService.record({
+      entityRef: entityRef(view.id),
+      action: 'delete',
+      changes: [{ field: 'cancelReason', old: null, new: reason }],
+    });
+    await emit(OperationsEvents.VaultReceiptCancelled, {
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
+      reason,
+    });
+  }
+
+  async history(shipmentId: string): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findHistoryByShipment(shipmentId);
+    return docs.map(toCustodyView);
   }
 
   async find(shipmentId: string): Promise<VaultCustodyView | null> {

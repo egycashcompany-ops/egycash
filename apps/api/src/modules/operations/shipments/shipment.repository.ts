@@ -72,6 +72,29 @@ const securedDraftFilter: FilterQuery<OperationsShipmentDoc> = {
   status: 'draft',
 };
 
+/**
+ * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, optionally only those whose
+ * delivery date falls in [from, toExclusive) (either bound alone, too). Without a date bound it is
+ * served by `ix_type_status_created`; with one, by `ix_type_delivery_date_status`. A shipment with no
+ * delivery date matches only the unbounded form — a range is a question about a date it lacks.
+ */
+const inVaultFilter = (
+  from: Date | undefined,
+  toExclusive: Date | undefined,
+): FilterQuery<OperationsShipmentDoc> => ({
+  isDeleted: false,
+  shipmentType: 'secured',
+  status: 'inVault',
+  ...(from === undefined && toExclusive === undefined
+    ? {}
+    : {
+        deliveryDate: {
+          ...(from === undefined ? {} : { $gte: from }),
+          ...(toExclusive === undefined ? {} : { $lt: toExclusive }),
+        },
+      }),
+});
+
 class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc> {
   constructor() {
     super(OperationsShipmentModel, {}); // org scoping arrives with the day/board slice if needed
@@ -165,6 +188,23 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   /** How many rows `securedDrafts` would return — counted before anything is loaded. */
   async countSecuredDrafts(): Promise<number> {
     return this.model.countDocuments(securedDraftFilter).exec();
+  }
+
+  /**
+   * «صرف الخزينة» — the secured shipments in the vault (`inVaultFilter`), in no particular order: the
+   * service orders them by delivery date with the undated ones last, which Mongo's ascending sort
+   * (nulls first) cannot say.
+   */
+  async securedInVault(from?: Date, toExclusive?: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model
+      .find(inVaultFilter(from, toExclusive))
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
+  /** How many rows `securedInVault` would return — counted before anything is loaded. */
+  async countSecuredInVault(from?: Date, toExclusive?: Date): Promise<number> {
+    return this.model.countDocuments(inVaultFilter(from, toExclusive)).exec();
   }
 
   /**

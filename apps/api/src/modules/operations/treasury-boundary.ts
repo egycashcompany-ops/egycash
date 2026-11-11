@@ -59,6 +59,12 @@ export interface VaultCustodyView {
   boxCount: number;
   receivedByPrimaryId: string;
   receivedBySecondaryId: string;
+  /**
+   * Round 10 — when the receipt was CANCELLED, or null. Only `history` ever hands back a cancelled
+   * custody: every other read is about what the treasury holds or took, and a cancelled receipt is
+   * neither.
+   */
+  cancelledAt: Date | null;
 }
 
 export interface VaultCustodyProvider {
@@ -86,6 +92,24 @@ export interface VaultCustodyProvider {
    * shipments received today, which it lists green beside the ones still to receive.
    */
   receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]>;
+  /**
+   * Round 10 — CANCEL the receipt of a shipment the treasury holds: «صلاحية خاصة تقدر تلغى استلام
+   * الخزينة». The custody is VOIDED, never erased — it keeps what was stamped and records when, who
+   * and why — and from then on no live read sees it, so the shipment can be received afresh.
+   * Rejects anything not currently held. Joins the caller's transaction when given a session; the
+   * caller announces it (audit + event) after the commit.
+   */
+  cancelReceipt(
+    shipmentId: string,
+    reason: string,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView>;
+  /**
+   * Every custody the treasury ever took for one shipment, a cancelled receipt included, oldest
+   * first — the shipment's action log tells the whole story, including a receipt that was undone.
+   */
+  history(shipmentId: string): Promise<VaultCustodyView[]>;
 }
 
 let provider: VaultCustodyProvider | null = null;

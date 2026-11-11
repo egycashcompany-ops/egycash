@@ -56,6 +56,13 @@ export interface OperationsShipmentDoc extends BaseDocFields {
    * reads `.lean()` — absent reads as "no image", so no migration is needed.
    */
   receiptImage?: OperationsShipmentReceiptImage | null;
+  /**
+   * Round 10 — the Operations desk's pickup ✓ on a SECURED shipment («تم الاستلام من العمليات»):
+   * when, and which USER. Optional for the same reason as `receiptImage`: rows written before the
+   * field carry nothing, and absent reads as "not confirmed" — no migration.
+   */
+  pickupConfirmedAt?: Date | null;
+  pickupConfirmedById?: Types.ObjectId | null;
 }
 
 const lineSchema = new Schema<OperationsShipmentLine>(
@@ -101,6 +108,8 @@ const shipmentSchema = new Schema<OperationsShipmentDoc>(
     receivedById: { type: Schema.Types.ObjectId, default: null },
     receivedAt: { type: Date, default: null },
     receiptImage: { type: receiptImageSchema, default: null },
+    pickupConfirmedAt: { type: Date, default: null },
+    pickupConfirmedById: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -120,6 +129,10 @@ shipmentSchema.index(
   { shipmentType: 1, status: 1, createdAt: -1 },
   { name: 'ix_type_status_created' },
 );
+// Round 10 needs no new index: «صرف الخزينة» (every secured shipment `inVault`, optionally by
+// delivery date) is served by `ix_type_status_created` without a date and by
+// `ix_type_delivery_date_status` with one.
+
 
 export const OperationsShipmentModel = model<OperationsShipmentDoc>(
   'OperationsShipment',

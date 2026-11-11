@@ -163,6 +163,34 @@ export const ErrorCodes = {
   /** 409 — a restore asked for a shipment that is not deleted. */
   OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
 
+  // ── The secured pickup ✓, the vault lock and the cancelled receipt (Round 10) ────────────────
+  /**
+   * 409 — the shipment is LOCKED: a secured shipment the vault has received (status `inVault`,
+   * `dispatched` or `completed`) — «ميقدر حد من القادة او العمليات او الخزنه يعدل عليها». Refuses
+   * the edit, the delete, the receipt photo, the pickup crew, and the desk's pickup ✓ / its undo.
+   * The way back is the cancelled receipt (`operationsVault.cancelReceipt`).
+   */
+  OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
+  /**
+   * 409 — the vault's ✓ on a secured shipment nobody has picked up yet (stage `awaitingPickup`):
+   * «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح».
+   */
+  OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
+  /** 409 — the desk's pickup ✓ on a shipment the desk already confirmed. */
+  OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED: 'OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED',
+  /** 409 — the desk's undo on a shipment with no desk pickup ✓ to take back. */
+  OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED: 'OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED',
+  /**
+   * 409 — the desk's pickup ✓ (or its undo) on a shipment its captain already picked up in the
+   * app: his ✓ is his execution record and stands — the desk neither doubles it nor takes it back.
+   */
+  OPERATIONS_SECURED_CAPTAIN_PICKED_UP: 'OPERATIONS_SECURED_CAPTAIN_PICKED_UP',
+  /**
+   * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
+   * already dispatched or completed.
+   */
+  OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',

@@ -109,6 +109,9 @@ export const toShipmentDto = (doc: OperationsShipmentDoc): OperationsShipmentDto
           size: doc.receiptImage.size,
           uploadedAt: iso(doc.receiptImage.uploadedAt),
         },
+  // `== null` for the same reason: a row written before Round 10 has no pickup fields at all.
+  pickupConfirmedAt: doc.pickupConfirmedAt == null ? null : iso(doc.pickupConfirmedAt),
+  pickupConfirmedById: doc.pickupConfirmedById == null ? null : String(doc.pickupConfirmedById),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

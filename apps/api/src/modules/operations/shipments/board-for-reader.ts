@@ -43,6 +43,8 @@ export const boardForReader = (
         captainDeliveredAt,
         securedStage,
         captainPickedUpAt,
+        pickedUpBy,
+        pickedUpAt,
       }) => ({
         ...toShipmentDto(doc),
         origin,
@@ -51,6 +53,8 @@ export const boardForReader = (
         captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
         securedStage,
         captainPickedUpAt: captainPickedUpAt === null ? null : captainPickedUpAt.toISOString(),
+        pickedUpBy,
+        pickedUpAt: pickedUpAt === null ? null : pickedUpAt.toISOString(),
       }),
     ),
     crews: crewPlan ? crews : [],

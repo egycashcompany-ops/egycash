@@ -7,6 +7,7 @@
 import {
   OPERATIONS_PICKED_UP_EXECUTION_STATUSES,
   type OperationsExecutionStatus,
+  type OperationsSecuredPickedUpBy,
   type OperationsSecuredStage,
   type OperationsShipmentLeg,
   type OperationsShipmentStatus,
@@ -22,17 +23,37 @@ export const isPickedUp = (execution: OperationsExecutionStatus | null | undefin
   execution != null && OPERATIONS_PICKED_UP_EXECUTION_STATUSES.includes(execution);
 
 /**
+ * WHO has the shipment in hand, if anybody — Round 10: «ممكن القائد اللى يعمل صح انه استلم او
+ * العمليات». The captain's ✓ in the app (his pickup leg picked up) or the Operations desk's ✓
+ * (`pickupConfirmedAt` on the shipment). When both exist THE CAPTAIN WINS: his is the execution
+ * record of the collection itself, the desk's is a confirmation made from the office.
+ */
+export const pickedUpByOf = (
+  pickupExecution: OperationsExecutionStatus | null | undefined,
+  pickupConfirmedAt: Date | null | undefined,
+): OperationsSecuredPickedUpBy | null => {
+  if (isPickedUp(pickupExecution)) return 'captain';
+  if (pickupConfirmedAt != null) return 'operations';
+  return null;
+};
+
+/**
  * The stage of a SECURED shipment. While it is still `draft` the vault has not received it, and
- * the pickup leg's execution tells the two draft stages apart: not collected yet (white) or with
- * the captain on his way to the vault (yellow). From `inVault` on, the shipment's own status IS
- * the stage — the vault's ✓, the dispatch and the desk's ✓ each move it.
+ * who picked it up tells the three draft stages apart: nobody yet (white), the captain on his way
+ * to the vault (yellow), or the desk's confirmation (yellow too — «تم الاستلام من العمليات»). From
+ * `inVault` on, the shipment's own status IS the stage — the vault's ✓, the dispatch and the desk's
+ * completion ✓ each move it.
  */
 export const securedStageOf = (
   status: OperationsShipmentStatus,
   pickupExecution: OperationsExecutionStatus | null | undefined,
+  pickupConfirmedAt?: Date | null,
 ): OperationsSecuredStage => {
-  if (status === 'draft') return isPickedUp(pickupExecution) ? 'withCaptain' : 'awaitingPickup';
-  return status;
+  if (status !== 'draft') return status;
+  const by = pickedUpByOf(pickupExecution, pickupConfirmedAt);
+  if (by === 'captain') return 'withCaptain';
+  if (by === 'operations') return 'withOperations';
+  return 'awaitingPickup';
 };
 
 /**

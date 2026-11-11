@@ -1,12 +1,17 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  ymdOf,
   type AssignSecuredDeliveryLeg,
+  type CancelVaultReceipt,
+  type ConfirmSecuredPickup,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
   type ListSecuredDueQuery,
   type ListVaultInventoryQuery,
   type OperationsSecuredBoardDto,
+  type OperationsSecuredInVaultDto,
+  type OperationsSecuredInVaultQuery,
   type OperationsVaultQueueDto,
   type OperationsVaultQueueQuery,
   type ReceiveIntoVault,
@@ -56,6 +61,68 @@ export const getVaultQueue = async (req: Request, res: Response): Promise<void> 
     }),
     crews: board.crews,
   });
+};
+
+/**
+ * «صرف الخزينة» (Round 10) — every secured shipment in the vault, optionally by delivery date, as
+ * board rows mapped for this reader, each with when the vault took it in, whether it is overdue and
+ * its delivery leg's version.
+ */
+export const getSecuredInVault = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsSecuredInVaultQuery>(req);
+  const view = await operationsSecuredService.inVault(query.from, query.to);
+  const board = boardForReader(req, view);
+  const today = ymdOf(view.today);
+  ok<OperationsSecuredInVaultDto>(res, {
+    from: query.from === undefined ? null : utcDayIso(query.from),
+    to: query.to === undefined ? null : utcDayIso(query.to),
+    today: utcDayIso(view.today),
+    shipments: board.shipments.map((row) => {
+      const receivedAt = view.receivedAt.get(row.id);
+      return {
+        ...row,
+        vaultReceivedAt: receivedAt === undefined ? null : receivedAt.toISOString(),
+        // Calendar days compared as 'YYYY-MM-DD': the stored delivery date is a UTC day, and
+        // "today" is the Cairo one the server resolved.
+        overdue: row.deliveryDate !== null && ymdOf(row.deliveryDate) < today,
+        deliveryLegVersion: view.deliveryLegVersion.get(row.id) ?? null,
+      };
+    }),
+    crews: board.crews,
+  });
+};
+
+/** The desk's pickup ✓ — «تم الاستلام من العمليات» (Round 10). */
+export const confirmSecuredPickup = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<ConfirmSecuredPickup, never, IdParam>(req);
+  const doc = await operationsSecuredService.confirmPickup(
+    params.id,
+    body.version,
+    authContext(req).userId,
+  );
+  ok(res, toShipmentDto(doc));
+};
+
+/** …and its undo, until the vault receives (Round 10). */
+export const undoSecuredPickup = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<ConfirmSecuredPickup, never, IdParam>(req);
+  const doc = await operationsSecuredService.undoPickup(
+    params.id,
+    body.version,
+    authContext(req).userId,
+  );
+  ok(res, toShipmentDto(doc));
+};
+
+/** Cancel the vault's receipt — the special grant (Round 10). */
+export const cancelVaultReceipt = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<CancelVaultReceipt, never, IdParam>(req);
+  const doc = await operationsSecuredService.cancelReceipt(
+    params.id,
+    body,
+    authContext(req).userId,
+  );
+  ok(res, toShipmentDto(doc));
 };
 
 export const listDue = async (req: Request, res: Response): Promise<void> => {

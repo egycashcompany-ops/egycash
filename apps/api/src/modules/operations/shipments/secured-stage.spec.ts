@@ -1,58 +1,86 @@
-// The محصنة row's stage and legs (Round 8) — «هيبقى الصف باللون الاصفر … هتبقى اخضر».
+// The محصنة row's stage and legs (Round 8) — «هيبقى الصف باللون الاصفر … هتبقى اخضر» — and, since
+// Round 10, the shipment's one pickup record («ممكن القائد اللى يعمل صح انه استلم او العمليات»).
 import { describe, expect, it } from 'vitest';
-import { OPERATIONS_EXECUTION_STATUSES } from '@ecms/contracts';
+import { Types } from 'mongoose';
+import { OPERATIONS_EXECUTION_STATUSES, OPERATIONS_SHIPMENT_STATUSES } from '@ecms/contracts';
 import {
   crewLegOf,
   deliveryLegOf,
   isPickedUp,
-  pickedUpByOf,
+  securedPickupOf,
   securedStageOf,
+  type SecuredPickup,
 } from './secured-stage';
+import { type OperationsShipmentPickup } from './shipment.model';
 
-describe('the secured stage — derived from the status and the pickup leg', () => {
-  it('a draft not yet collected by its captain is awaitingPickup (white)', () => {
-    expect(securedStageOf('draft', null)).toBe('awaitingPickup');
-    // No pickup leg at all — booked, crewed later.
-    expect(securedStageOf('draft', undefined)).toBe('awaitingPickup');
-    expect(securedStageOf('draft', 'pending')).toBe('awaitingPickup');
-    expect(securedStageOf('draft', 'active')).toBe('awaitingPickup');
-    // A cancelled leg did not hand anything to anyone.
-    expect(securedStageOf('draft', 'cancelled')).toBe('awaitingPickup');
+const AT = new Date('2026-11-11T08:00:00.000Z');
+const LEG_AT = new Date('2026-11-11T07:30:00.000Z');
+const record = (by: OperationsShipmentPickup['by']): OperationsShipmentPickup => ({
+  by,
+  at: AT,
+  userId: new Types.ObjectId(),
+});
+const leg = (executionStatus: (typeof OPERATIONS_EXECUTION_STATUSES)[number] | null) => ({
+  executionStatus,
+  pickedUpAt: isPickedUp(executionStatus) ? LEG_AT : null,
+});
+
+describe('the pickup a secured shipment has — the shipment’s own record', () => {
+  it('reads the record as it is, whoever wrote it', () => {
+    expect(securedPickupOf(record('captain'), leg('pickedUp'))).toEqual({ by: 'captain', at: AT });
+    expect(securedPickupOf(record('operations'), leg(null))).toEqual({ by: 'operations', at: AT });
+    // The desk's ✓ on a shipment the captain never picked up in the app — and on one he did NOT:
+    // the record is what counts, not the leg.
+    expect(securedPickupOf(record('operations'), leg('pending'))).toEqual({
+      by: 'operations',
+      at: AT,
+    });
   });
 
-  it('a draft whose captain pressed ✓ on collecting it is withCaptain (yellow) — and stays so', () => {
-    for (const execution of ['pickedUp', 'delivered', 'completed'] as const) {
-      expect(securedStageOf('draft', execution)).toBe('withCaptain');
-    }
-  });
-
-  // Round 10 — «ممكن القائد اللى يعمل صح انه استلم او العمليات».
-  it('a draft the desk confirmed and its captain did not pick up is withOperations (yellow)', () => {
-    const at = new Date('2026-11-11T08:00:00.000Z');
-    expect(securedStageOf('draft', null, at)).toBe('withOperations');
-    expect(securedStageOf('draft', 'pending', at)).toBe('withOperations');
-    expect(securedStageOf('draft', 'cancelled', at)).toBe('withOperations');
-    // No desk ✓ (absent on a row written before Round 10, or taken back): white again.
-    expect(securedStageOf('draft', 'active', null)).toBe('awaitingPickup');
-    expect(securedStageOf('draft', 'active', undefined)).toBe('awaitingPickup');
-  });
-
-  it('the captain wins when both picked it up — his ✓ is the record of the collection itself', () => {
-    const at = new Date('2026-11-11T08:00:00.000Z');
-    expect(securedStageOf('draft', 'pickedUp', at)).toBe('withCaptain');
-    expect(pickedUpByOf('pickedUp', at)).toBe('captain');
-    expect(pickedUpByOf('pending', at)).toBe('operations');
-    expect(pickedUpByOf('pending', null)).toBeNull();
-    expect(pickedUpByOf(undefined, undefined)).toBeNull();
-  });
-
-  it('from the vault on, the shipment’s own status is the stage, whatever the pickup leg says', () => {
+  it('an explicit null is nobody — even when the captain’s leg says picked up (his ✓ was undone)', () => {
     for (const execution of [...OPERATIONS_EXECUTION_STATUSES, null]) {
-      expect(securedStageOf('inVault', execution)).toBe('inVault');
-      expect(securedStageOf('dispatched', execution)).toBe('dispatched');
-      expect(securedStageOf('completed', execution)).toBe('completed');
-      // …and whatever the desk confirmed: the vault's ✓ moved it on.
-      expect(securedStageOf('inVault', execution, new Date())).toBe('inVault');
+      expect(securedPickupOf(null, leg(execution))).toBeNull();
+    }
+    expect(securedPickupOf(null, null)).toBeNull();
+  });
+
+  // A row from before Round 10 has no record at all — absent, not null.
+  it('a record NEVER WRITTEN falls back to the leg: picked up in the app → the captain’s', () => {
+    for (const execution of ['pickedUp', 'delivered', 'completed'] as const) {
+      expect(securedPickupOf(undefined, leg(execution))).toEqual({ by: 'captain', at: LEG_AT });
+    }
+    for (const execution of ['pending', 'active', 'cancelled', null] as const) {
+      expect(securedPickupOf(undefined, leg(execution))).toBeNull();
+    }
+    // No pickup leg at all — booked, crewed later.
+    expect(securedPickupOf(undefined, null)).toBeNull();
+    expect(securedPickupOf(undefined, undefined)).toBeNull();
+    // A leg picked up but never stamped still reads as his, with no instant.
+    expect(securedPickupOf(undefined, { executionStatus: 'pickedUp' })).toEqual({
+      by: 'captain',
+      at: null,
+    });
+  });
+});
+
+describe('the secured stage — derived from the status and the pickup record', () => {
+  const captain: SecuredPickup = { by: 'captain', at: AT };
+  const desk: SecuredPickup = { by: 'operations', at: AT };
+
+  it('a draft nobody has picked up is awaitingPickup (white)', () => {
+    expect(securedStageOf('draft', null)).toBe('awaitingPickup');
+  });
+
+  it('a draft the captain picked up is withCaptain, one the desk picked up withOperations (both yellow)', () => {
+    expect(securedStageOf('draft', captain)).toBe('withCaptain');
+    expect(securedStageOf('draft', desk)).toBe('withOperations');
+  });
+
+  it('from the vault on, the shipment’s own status is the stage, whoever picked it up', () => {
+    for (const status of OPERATIONS_SHIPMENT_STATUSES.filter((s) => s !== 'draft')) {
+      for (const pickup of [captain, desk, null]) {
+        expect(securedStageOf(status, pickup)).toBe(status);
+      }
     }
   });
 

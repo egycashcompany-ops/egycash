@@ -115,32 +115,37 @@ export type OperationsExecutionStatus = z.infer<typeof OperationsExecutionStatus
 /**
  * Where a SECURED shipment stands, as the secured screen, the vault's receive screen and the day
  * board colour its row. DERIVED on the server, never stored and never sent back: it reads the
- * shipment's own `status` and its PICKUP leg's captain execution, so it can never disagree with
- * either. The owner's words: «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر …
- * ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات وفى اللحظه دى المحصنة هتبقى موجوده
- * فى صرف الخزينه».
+ * shipment's own `status` and, while it is `draft`, the shipment's PICKUP RECORD — who confirmed
+ * collecting it (`OperationsDayBoardShipmentDto.pickedUpBy`). The owner's words: «لما القائد هيستلم
+ * من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة
+ * وعند العمليات وفى اللحظه دى المحصنة هتبقى موجوده فى صرف الخزينه», and in Round 10: «ممكن القائد اللى
+ * يعمل صح انه استلم او العمليات ف لو قائد تم الاستلام من القائد و لو العمليات تم الاستلام من العمليات».
  *
- *   awaitingPickup  status `draft`, the pickup leg not yet picked up by its captain (or no pickup
- *                   leg at all) AND no desk confirmation — «لم يتم التسليم», a WHITE row. The vault
- *                   cannot receive it (Round 10): it shows on the vault's screen under «الكل» for
- *                   viewing only.
- *   withCaptain     status `draft`, the pickup leg's `executionStatus` is `pickedUp`, `delivered`
- *                   or `completed` — the captain's ✓ in the mobile app on collecting it from the
- *                   bank — «تم الاستلام من القائد», a YELLOW row. From this moment the vault's
- *                   receive screen lists it by default. The CAPTAIN WINS: a shipment his app picked
- *                   up is `withCaptain` even when the desk confirmed it as well.
- *   withOperations  (Round 10) status `draft`, NOT picked up by the captain, but the Operations desk
- *                   confirmed the pickup (`pickupConfirmedAt` is set — `POST
- *                   /operations/secured/:id/pickup`) — «تم الاستلام من العمليات», a YELLOW row like
- *                   `withCaptain`, listed by default on the vault's receive screen. The owner: «ممكن
- *                   القائد اللى يعمل صح انه استلم او العمليات». The desk may take its own ✓ back
- *                   (`DELETE …/pickup`) until the vault receives it.
+ *   awaitingPickup  status `draft`, nobody has confirmed the pickup (`pickedUpBy` null) — «لم يتم
+ *                   التسليم», a WHITE row. The vault cannot receive it (Round 10): it shows on the
+ *                   vault's screen under «الكل» for viewing only.
+ *   withCaptain     status `draft`, the pickup was confirmed by its CAPTAIN — his ✓ in the mobile
+ *                   app on collecting it from the bank (`pickedUpBy: 'captain'`) — «تم الاستلام من
+ *                   القائد», a YELLOW row. From this moment the vault's receive screen lists it by
+ *                   default and may receive it.
+ *   withOperations  (Round 10) status `draft`, the pickup was confirmed by the OPERATIONS desk
+ *                   (`POST /operations/secured/:id/pickup` — `pickedUpBy: 'operations'`) — «تم
+ *                   الاستلام من العمليات», a YELLOW row exactly like `withCaptain`: listed by default
+ *                   on the vault's receive screen and receivable.
  *   inVault         status `inVault` — the vault's ✓ (the receive form) — «بالخزينة», a GREEN row,
  *                   on the secured screen and on the vault's alike; it is now on «صرف الخزينة»
- *                   (`GET /operations/secured/in-vault`). From here the shipment is LOCKED
+ *                   (`GET /operations/secured/dispatch-board`). From here the shipment is LOCKED
  *                   (`isOperationsShipmentLocked`).
  *   dispatched      status `dispatched` — it left the vault for delivery — «خرجت للتسليم».
  *   completed       status `completed` — the desk confirmed the delivery — «تم التسليم».
+ *
+ * THE PICKUP IS ONE RECORD ON THE SHIPMENT (Round 10), written by whichever ✓ came first and read
+ * by nothing else: the captain's ✓ in the app writes it (`by: 'captain'`) when the shipment is a
+ * secured draft with no pickup recorded, the desk's ✓ writes it (`by: 'operations'`), and the desk's
+ * undo (`DELETE /operations/secured/:id/pickup`) clears it — WHOEVER wrote it, until the vault
+ * receives («لو القائد عمل صح ممكن العمليات تشيلها بس لو العمليات عملت صح القائد مينفعش يشيلها»: the
+ * captain's app has no undo, and never overwrites the desk's ✓). The undo does not rewrite the
+ * captain's pickup LEG — the leg stays his execution record; the stage reads the shipment's record.
  *
  * Daily shipments have no stage (`securedStage: null` on their rows).
  */
@@ -165,8 +170,14 @@ export const OPERATIONS_SECURED_RECEIVABLE_STAGES: readonly OperationsSecuredSta
   'withOperations',
 ];
 
-/** Who has a secured shipment in hand on its board row — see `OperationsDayBoardShipmentDto.pickedUpBy`. */
+/**
+ * WHO confirmed collecting a secured shipment — the pickup record's `by` (Round 10):
+ *   captain     his ✓ in the mobile app — «تم الاستلام من القائد» (stage `withCaptain`);
+ *   operations  the Operations desk's ✓ — «تم الاستلام من العمليات» (stage `withOperations`).
+ * See `OperationsDayBoardShipmentDto.pickedUpBy`.
+ */
 export const OPERATIONS_SECURED_PICKED_UP_BY = ['captain', 'operations'] as const;
+export const OperationsSecuredPickedUpBySchema = z.enum(OPERATIONS_SECURED_PICKED_UP_BY);
 export type OperationsSecuredPickedUpBy = (typeof OPERATIONS_SECURED_PICKED_UP_BY)[number];
 
 /**
@@ -176,11 +187,11 @@ export type OperationsSecuredPickedUpBy = (typeof OPERATIONS_SECURED_PICKED_UP_B
  *
  * The server refuses, with 409 `OPERATIONS_SECURED_LOCKED`, every change of a locked shipment's
  * data: `PATCH /operations/shipments/:id`, `DELETE /operations/shipments/:id`, the receipt photo
- * (`POST`/`DELETE /operations/shipments/:id/receipt-image`), the pickup crew
+ * (`POST`/`DELETE /operations/shipments/:id/receipt-image` — reading it stays open), the pickup crew
  * (`POST /operations/assignments/shipments/:id/assign-pickup`) and the desk's pickup ✓ and its undo
  * (`POST`/`DELETE /operations/secured/:id/pickup`). The FLOW acts stay open — they move the shipment
- * along, they do not rewrite it: the delivery crew (`assign-delivery`), the dispatch, the delivery
- * captain's execution, and the desk's completion ✓ and its undo. Restoring a deleted shipment is
+ * along, they do not rewrite it: the delivery crew (`assign-delivery`), the dispatch, both captains'
+ * execution in the app, and the desk's completion ✓ and its undo. Restoring a deleted shipment is
  * unaffected (it was deleted while open). The one way back is `POST
  * /operations/secured/:id/cancel-receipt`, behind its own grant (`operationsVault.cancelReceipt`).
  */
@@ -497,17 +508,6 @@ export interface OperationsShipmentDto {
   /** Legacy `received_user`/`received_date`, stamped on completion, cleared on reopen. */
   receivedById: string | null;
   receivedAt: string | null;
-  /**
-   * Round 10 — the Operations desk's pickup ✓ on a SECURED shipment, «تم الاستلام من العمليات»: when
-   * it was confirmed (ISO instant) and by which USER (a user id, not an employee id). Set by
-   * `POST /operations/secured/:id/pickup`, cleared by `DELETE /operations/secured/:id/pickup`; both
-   * are null on a daily shipment and on a secured one the desk has not confirmed. It is KEPT through
-   * the vault receipt and the later stages (it is when the desk had it in hand), and kept by a
-   * cancelled receipt (the shipment returns yellow). A secured shipment the desk confirmed and its
-   * captain did not pick up is in stage `withOperations`.
-   */
-  pickupConfirmedAt: string | null;
-  pickupConfirmedById: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -802,27 +802,32 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
    */
   securedStage: OperationsSecuredStage | null;
   /**
-   * SECURED rows only (null on a daily row): when the captain of the PICKUP leg confirmed he had
-   * collected it from the bank in the mobile app (the leg's `pickedUpAt`, once its
-   * `executionStatus` is `pickedUp`, `delivered` or `completed`), or null before that. It stays
-   * set through the later stages — it is when the shipment reached the captain's hands.
-   */
-  captainPickedUpAt: string | null;
-  /**
-   * Round 10 — SECURED rows only (null on a daily row): WHO has had the shipment in hand since its
-   * collection, as the yellow row's label says it — `'captain'` («تم الاستلام من القائد», his ✓ in the
-   * app: `captainPickedUpAt` is set) or `'operations'` («تم الاستلام من العمليات», the desk's ✓:
-   * `pickupConfirmedAt` is set) — or null while nobody has (`awaitingPickup`). The CAPTAIN WINS when
-   * both exist, exactly as `securedStage` does. Like `captainPickedUpAt` it stays set through the
-   * later stages (a row in the vault still says who brought it).
+   * Round 10 — SECURED rows only (null on a daily row): WHO confirmed collecting the shipment, as
+   * the yellow row's label says it — `'captain'` («تم الاستلام من القائد», his ✓ in the mobile app)
+   * or `'operations'` («تم الاستلام من العمليات», the desk's ✓ — `POST /operations/secured/:id/pickup`)
+   * — or null while nobody has (`awaitingPickup`, white). It is the shipment's ONE pickup record
+   * (see `OPERATIONS_SECURED_STAGES`), and `securedStage` is read from it. It stays set through the
+   * later stages (a row in the vault still says who brought it) and through a cancelled receipt.
    *
-   * What a screen offers from it, for a draft row: the desk's ✓ on `awaitingPickup` (grant
-   * `operationsShipment.complete`), the desk's undo on `withOperations` ONLY (never on
-   * `withCaptain`: the captain's ✓ is his execution record, not the desk's to take back), and the
-   * vault's ✓ on either yellow stage (`OPERATIONS_SECURED_RECEIVABLE_STAGES`).
+   * A row from before Round 10 whose record was never written reads `'captain'` when its pickup
+   * leg was already picked up in the app — exactly what its stage said before.
+   *
+   * What a screen offers from it, on a DRAFT row (`status === 'draft'`):
+   *   · the desk's ✓ when it is null (grant `operationsShipment.complete`);
+   *   · the desk's undo when it is set — `'captain'` OR `'operations'`: the desk may take back the
+   *     captain's ✓ too (grant `operationsShipment.complete`). The captain's app has no undo;
+   *   · the vault's ✓ when it is set (`OPERATIONS_SECURED_RECEIVABLE_STAGES`, grant
+   *     `operationsVault.receive`).
+   * None of them once the row is not draft (`isOperationsShipmentLocked`).
+   *
+   * Replaces Round 8's `captainPickedUpAt` (removed): the leg's own stamp could disagree with the
+   * record once the desk takes a captain's ✓ back, and the board must say one thing.
    */
   pickedUpBy: OperationsSecuredPickedUpBy | null;
-  /** When `pickedUpBy` took it — `captainPickedUpAt` or `pickupConfirmedAt`, whichever won; null with it. */
+  /**
+   * When the pickup in `pickedUpBy` was confirmed (ISO instant) — the captain's ✓ or the desk's;
+   * null with it. On a pre-Round-10 row read as the captain's, his leg's `pickedUpAt`.
+   */
   pickedUpAt: string | null;
 }
 
@@ -898,8 +903,16 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *                        reader with `operationsVault.view`; empty for anyone else.
  *   dispatched           a secured shipment left the vault for delivery.
  *   pickupConfirmed      (Round 10) the Operations desk confirmed it collected a secured shipment —
- *                        «تم الاستلام من العمليات» (`POST /operations/secured/:id/pickup`).
- *   pickupUndone         (Round 10) the desk took that ✓ back (`DELETE /operations/secured/:id/pickup`).
+ *                        «تم الاستلام من العمليات» (`POST /operations/secured/:id/pickup`). `changes`
+ *                        carry ONE change, `pickedUpBy` (old = null, new = 'operations'). The
+ *                        captain's own ✓ in the app writes the same record (`new = 'captain'`), but
+ *                        it is ONE act with his `executionPickedUp`, so the log shows that entry
+ *                        alone; a `pickupConfirmed` by 'captain' stands only if its leg row is
+ *                        missing.
+ *   pickupUndone         (Round 10) the desk took the pickup ✓ back (`DELETE
+ *                        /operations/secured/:id/pickup`), the captain's or its own. `changes`
+ *                        carry ONE change, `pickedUpBy` (old = whose ✓ was removed: 'captain' or
+ *                        'operations', new = null).
  *   receiptCancelled     (Round 10) the vault's receipt was cancelled under
  *                        `operationsVault.cancelReceipt` — the shipment went back from the vault to
  *                        draft. `changes` carry ONE change, `reason` (old = null, new = the reason
@@ -955,6 +968,10 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *   bagCount, cartonCount, boxCount  whole numbers, as digits
  *   bagSeals, boxSeals           the seal numbers, joined by «، »
  *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names
+ * The pickup record (on `pickupConfirmed` / `pickupUndone`, Round 10) — for every reader:
+ *   pickedUpBy                   'captain' or 'operations' (`OPERATIONS_SECURED_PICKED_UP_BY`) —
+ *                                a code, not a name: the screen says «القائد» / «العمليات»
+ *                                (see OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS)
  * A cancelled vault receipt (on `receiptCancelled`, Round 10) — for every reader:
  *   reason                       the reason typed when the receipt was cancelled, as typed
  */
@@ -980,6 +997,7 @@ export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'boxSeals',
   'receivedByPrimary',
   'receivedBySecondary',
+  'pickedUpBy',
   'reason',
 ] as const;
 export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
@@ -987,6 +1005,14 @@ export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)
 /** The fields whose values are 'true' / 'false' — the screen says yes / no in its own language. */
 export const OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS: readonly OperationsShipmentLogField[] = [
   'serialTracked',
+];
+
+/**
+ * The fields whose values are an `OperationsSecuredPickedUpBy` code ('captain' / 'operations') —
+ * the screen says «القائد» / «العمليات» in its own language (Round 10).
+ */
+export const OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS: readonly OperationsShipmentLogField[] = [
+  'pickedUpBy',
 ];
 
 /**
@@ -1972,13 +1998,13 @@ export interface OperationsVaultInventoryRowDto {
  *
  * `GET /operations/secured/due?date=` (`operationsShipment.view`) — the legacy one-day list, a
  * plain `OperationsShipmentDto[]`. KEPT, unchanged, for parity; Round 10 moved «صرف الخزينة» onto
- * `GET /operations/secured/in-vault` (below), which lists EVERY shipment in the vault with an
- * optional delivery-date filter («كله يبقى موجود فى تاريخ يتفلتر»).
+ * `GET /operations/secured/dispatch-board` (below), which lists EVERY shipment in the vault as board
+ * rows with an optional delivery-date filter («كله يبقى موجود فى تاريخ يتفلتر»).
  */
 export const ListSecuredDueQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;
 
-// ── Round 10: the desk's pickup ✓, the lock, the cancelled receipt, «صرف الخزينة» ──────────────
+// ── Round 10: the pickup ✓, the lock, the cancelled receipt, «صرف الخزينة» ─────────────────────
 //
 // The owner: «فى شاشة المحصنات ممكن القائد اللى يعمل صح انه استلم او العمليات ف لو قائد تم الاستلام من
 // القائد و لو العمليات تم الاستلام من العمليات وهتبقى صفر بس وهتكون ظاهره ل شاشة استلام الخزينة بس مش
@@ -1986,27 +2012,35 @@ export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;
 // ميقدر حد من القادة او العمليات او الخزنه يعدل عليها والمحصنة دى بتروح تلقائى ل صرف الخزنة».
 
 /**
- * THE DESK'S PICKUP ✓ — «تم الاستلام من العمليات».
+ * THE DESK'S PICKUP ✓ — «تم الاستلام من العمليات» — AND ITS UNDO.
  *
- * `POST /operations/secured/:id/pickup` and its undo `DELETE /operations/secured/:id/pickup`, both
- * with this body and both on `operationsShipment.complete` (the desk's ✓ grant, one grant both
- * directions — the complete/reopen precedent). Each answers 200 with the updated
- * `OperationsShipmentDto` (`pickupConfirmedAt` / `pickupConfirmedById` set, or cleared), is audited
- * on the shipment, shows in «السجل» (`pickupConfirmed` / `pickupUndone`), emits
- * `operations.shipment.pickupConfirmed` / `operations.shipment.pickupUndone`, and refreshes every
- * board (realtime topic `operations.shipment`).
+ * `POST /operations/secured/:id/pickup` and `DELETE /operations/secured/:id/pickup`, both with this
+ * body and both on `operationsShipment.complete` (the desk's ✓ grant, one grant both directions —
+ * the complete/reopen precedent). Each answers 200 with the updated `OperationsShipmentDto` (its
+ * new `version`; the board rows carry the pickup itself — `pickedUpBy` / `pickedUpAt`), is
+ * audited on the shipment, shows in «السجل» (`pickupConfirmed` / `pickupUndone`, with
+ * `pickedUpBy`), emits `operations.shipment.pickupConfirmed` / `operations.shipment.pickupUndone`
+ * (`OperationsShipmentPickupPayloadV1`), and refreshes every board (realtime topic
+ * `operations.shipment`).
+ *
+ * POST writes the shipment's pickup record as the desk's (`pickedUpBy: 'operations'`) — the row
+ * turns yellow (`withOperations`) and the vault may receive it. DELETE CLEARS the record, whoever
+ * wrote it — the captain's ✓ from the app included («لو القائد عمل صح ممكن العمليات تشيلها») — and
+ * the row turns white again; the desk may then ✓ it again (as Operations). The undo never rewrites
+ * the captain's pickup leg: that stays his execution record.
  *
  * Refusals, in the order they are checked:
+ *   · 403 — without `operationsShipment.complete`;
  *   · 404 — no such shipment (or deleted);
  *   · 422 `OPERATIONS_NOT_A_SECURED_SHIPMENT` — a daily shipment;
  *   · 409 `OPERATIONS_SECURED_LOCKED` — the vault has received it (status is not `draft`): the ✓
- *     can be taken back only UNTIL the vault receives («لحد ما الخزنة تستلم»);
- *   · 409 `OPERATIONS_SECURED_CAPTAIN_PICKED_UP` — its captain already confirmed the pickup in the
- *     app (stage `withCaptain`). His ✓ is his execution record: the desk neither adds a second ✓
- *     beside it nor takes one back while it stands;
- *   · 409 `OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED` (POST) — the desk already confirmed it;
- *     409 `OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED` (DELETE) — there is no desk ✓ to take back;
- *   · 409 `STALE_DOCUMENT` — `version` is not the shipment's current version.
+ *     can be taken back only UNTIL the vault receives;
+ *   · 409 `OPERATIONS_SECURED_ALREADY_PICKED_UP` (POST) — a pickup is already recorded, the
+ *     captain's or the desk's (the desk never stamps over the captain's ✓, nor twice);
+ *     409 `OPERATIONS_SECURED_NOT_PICKED_UP` (DELETE) — nobody has confirmed the pickup, there is
+ *     nothing to take back;
+ *   · 409 `STALE_DOCUMENT` — `version` is not the shipment's current version (the captain's ✓ in
+ *     the app moves the shipment's version too, so a screen read before it is refused as stale).
  */
 export const ConfirmSecuredPickupSchema = z
   .object({ version: z.number().int().min(0) })
@@ -2028,20 +2062,24 @@ export const OPERATIONS_RECEIPT_CANCEL_REASON_MAX = 500;
  * Only while the shipment is `inVault` (received, not yet dispatched). In one transaction:
  *   · the vault custody is VOIDED, never erased: the custody row keeps its receipt, counts, seals
  *     and treasurers, gains `cancelledAt` / `cancelledById` / `cancelReason`, and leaves every live
- *     read (the vault inventory, the roll-up, today's receipts on the receive queue) — so a fresh
- *     receipt can be taken later;
- *   · the shipment returns to `draft`, its `receiptNumber` cleared, its pickup INTACT — so it is
- *     YELLOW again (`withCaptain` / `withOperations`), editable again, and receivable again.
+ *     read (the vault inventory, the roll-up, the reports, today's receipts on the receive queue) —
+ *     so a fresh receipt can be taken later;
+ *   · the shipment returns to `draft`, its `receiptNumber` cleared, its pickup record INTACT — so
+ *     it is YELLOW again (`withCaptain` / `withOperations`), editable again, and receivable again.
+ *     A delivery crew already assigned while it was in the vault stays assigned (dispatch still
+ *     needs it back in the vault first).
  * Answers 200 with the updated `OperationsShipmentDto`. Audited on the shipment (status, receipt
- * number and the reason) and on the custody; «السجل» shows `receiptCancelled` with the `reason`;
- * emits `operations.custody.receiptCancelled` and `operations.shipment.updated`; realtime topics
+ * number and the reason) and on the custody; «السجل» shows ONE `receiptCancelled` entry with the
+ * `reason`, for every reader; emits `operations.custody.receiptCancelled`
+ * (`OperationsCustodyReceiptCancelledPayloadV1`) and `operations.shipment.updated`; realtime topics
  * `operations.shipment` and `operations.vaultCustody`.
  *
  * Refusals: 400 `VALIDATION_FAILED` — `reason` missing, or shorter than
  * `OPERATIONS_RECEIPT_CANCEL_REASON_MIN` / longer than `OPERATIONS_RECEIPT_CANCEL_REASON_MAX`
- * characters once trimmed; 403 without the grant; 404; 422 `OPERATIONS_NOT_A_SECURED_SHIPMENT`;
- * 409 `OPERATIONS_SECURED_NOT_IN_VAULT` — not received yet, or already dispatched or completed (a
- * shipment that left the vault is past cancelling); 409 `STALE_DOCUMENT`.
+ * characters once trimmed, or `version` missing; 403 without the grant; 404; 422
+ * `OPERATIONS_NOT_A_SECURED_SHIPMENT`; 409 `OPERATIONS_SECURED_NOT_IN_VAULT` — not received yet
+ * (`draft`), or already dispatched or completed (a shipment that left the vault is past
+ * cancelling); 409 `STALE_DOCUMENT`.
  */
 export const CancelVaultReceiptSchema = z
   .object({
@@ -2056,44 +2094,52 @@ export const CancelVaultReceiptSchema = z
 export type CancelVaultReceipt = z.infer<typeof CancelVaultReceiptSchema>;
 
 /**
- * «صرف الخزينة» — THE VAULT'S DISPATCH LIST (Round 10): «كله يبقى موجود فى تاريخ يتفلتر».
+ * «صرف الخزينة» — THE VAULT'S DISPATCH BOARD (Round 10): «كله يبقى موجود فى تاريخ يتفلتر», in the
+ * shared board look («اعملها بقى بشكل الجديد للشاشات اللى احنا عملناها»).
  *
- * `GET /operations/secured/in-vault?from=&to=` (`operationsVault.view`, the vault screens' grant):
- * EVERY secured shipment in the vault right now (status `inVault`), whatever its delivery date —
- * sorted by delivery date, OLDEST FIRST (so the overdue ones lead), then oldest created; a shipment
- * with no delivery date comes last. Both bounds are OPTIONAL delivery-date filters, whole days, each
- * inclusive and usable alone: `from` keeps delivery dates on or after it, `to` on or before it; a
- * single day is `from=to=` that day. A shipment with no delivery date is listed only when neither
- * bound is given. `from` after `to` is a 400.
+ * `GET /operations/secured/dispatch-board?date=` (`operationsVault.view` — the grant the
+ * `/operations/vault/dispatch` page already rides): EVERY secured shipment in the vault right now
+ * (status `inVault`), whatever its delivery date, as BOARD ROWS (`boardForReader`: the same row as
+ * every board, its `crew` the DELIVERY leg's, the van cards behind `operationsCrew.view`).
  *
- * Counted before it is read: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` matching shipments is
- * refused with 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` (details `count`, `max`), never cut short.
+ *   · `date` — OPTIONAL, a whole day: only the shipments whose delivery date is that day. Leave it
+ *     out for all of them (an empty `date=` is a 400 — omit the key). A shipment with no delivery
+ *     date is listed only without `date`.
+ *   · Order: delivery date ascending — so the OVERDUE ones (delivery day before today, Cairo) lead —
+ *     then oldest created; a shipment with no delivery date last.
+ *   · Counted before it is read: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` matching
+ *     shipments is refused with 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` (details `count`,
+ *     `max`), never cut short.
  *
- * ASSIGNING THE DELIVERY CREW from this list: each row's crew must be planned on THAT ROW'S
+ * ASSIGNING THE DELIVERY CREW from this board: a row's crew must be planned on THAT ROW'S
  * `deliveryDate`, not on the filter's — `POST /operations/secured/:id/assign-delivery` refuses any
- * other day with 422 `OPERATIONS_CREW_DAY_MISMATCH`. So the assign picker reads the crew board of
- * the shipment's own delivery day (`GET /operations/crew-board?date=<deliveryDate>` and
- * `…/crew-board/directory?date=`), and sends `deliveryLegVersion` as `version` when the leg already
- * exists (re-assignment), 0 when it does not. A shipment with no delivery date cannot be assigned
- * (422 `OPERATIONS_INVALID_SHIPMENT_TRANSITION`). DISPATCH is unchanged: one crew row per call, and
- * every shipment in it assigned to that crew row.
+ * other day with 422 `OPERATIONS_CREW_DAY_MISMATCH`. So the assign dialog reads the crew board of
+ * the SHIPMENT's delivery day (`GET /operations/crew-board?date=<row.deliveryDate>` and
+ * `…/crew-board/directory?date=`), and sends the row's `deliveryLegVersion` as `version` when a
+ * delivery leg already exists (re-assignment), 0 when it is null (first assignment) — never the
+ * shipment's own `version`. A shipment with no delivery date cannot be assigned (422
+ * `OPERATIONS_INVALID_SHIPMENT_TRANSITION`). Assignment needs `operationsShipment.edit`, as before.
+ *
+ * DISPATCH is unchanged: `POST /operations/secured/dispatch` (`operationsVault.dispatch`) with ONE
+ * crew row (`crewAssignmentId`) and the shipments it carries — every one of them assigned to that
+ * crew row (each row's `crew.crewAssignmentId`), else 409. Rows of different crews go out in
+ * separate calls.
  */
-export const OperationsSecuredInVaultQuerySchema = z
-  .object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() })
-  .strict()
-  .refine((q) => q.from === undefined || q.to === undefined || historyDay(q.from) <= historyDay(q.to), {
-    message: 'from must not be after to',
-    path: ['from'],
-  });
-export type OperationsSecuredInVaultQuery = z.infer<typeof OperationsSecuredInVaultQuerySchema>;
+export const OperationsSecuredDispatchBoardQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsSecuredDispatchBoardQuery = z.infer<
+  typeof OperationsSecuredDispatchBoardQuerySchema
+>;
 
 /** A row of «صرف الخزينة»: a board row (its `crew` is the DELIVERY leg's), plus what the screen needs. */
-export interface OperationsSecuredInVaultShipmentDto extends OperationsDayBoardShipmentDto {
+export interface OperationsSecuredDispatchRowDto extends OperationsDayBoardShipmentDto {
   /** When the treasury took it in (the custody's `receivedAt`, ISO instant). */
   vaultReceivedAt: string | null;
   /**
-   * True when its delivery date is before TODAY on the Cairo calendar (`OperationsSecuredInVaultDto
-   * .today`) — late leaving the vault. False with no delivery date.
+   * True when its delivery date is before TODAY on the Cairo calendar
+   * (`OperationsSecuredDispatchBoardDto.today`) — late leaving the vault. False with no delivery
+   * date.
    */
   overdue: boolean;
   /**
@@ -2103,14 +2149,13 @@ export interface OperationsSecuredInVaultShipmentDto extends OperationsDayBoardS
   deliveryLegVersion: number | null;
 }
 
-export interface OperationsSecuredInVaultDto {
-  /** The resolved bounds (UTC midnight ISO strings), null for a bound not given. */
-  from: string | null;
-  to: string | null;
+export interface OperationsSecuredDispatchBoardDto {
+  /** The delivery day filtered on (its UTC midnight, ISO), or null when every day is listed. */
+  date: string | null;
   /** TODAY on the Cairo calendar, as its UTC midnight ISO string — what `overdue` was judged by. */
   today: string;
   /** Delivery date ascending (overdue first), then oldest created; no delivery date last. */
-  shipments: OperationsSecuredInVaultShipmentDto[];
+  shipments: OperationsSecuredDispatchRowDto[];
   /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
   crews: OperationsDayBoardVehicleCrewDto[];
 }
@@ -2500,9 +2545,16 @@ export const OperationsEvents = {
    * (kept as history), the shipment back to draft. Carries the reason typed.
    */
   VaultReceiptCancelled: 'operations.custody.receiptCancelled',
-  /** Round 10 — the Operations desk confirmed it collected a secured shipment («تم الاستلام من العمليات»). */
+  /**
+   * Round 10 — a secured shipment's pickup was confirmed: by its captain in the app («تم الاستلام من
+   * القائد», alongside his `shipmentAssignment.pickedUp`) or by the Operations desk («تم الاستلام من
+   * العمليات»). `OperationsShipmentPickupPayloadV1.by` says which.
+   */
   ShipmentPickupConfirmed: 'operations.shipment.pickupConfirmed',
-  /** Round 10 — the desk took its pickup ✓ back, before the vault received the shipment. */
+  /**
+   * Round 10 — the desk took a pickup ✓ back (the captain's or its own), before the vault received
+   * the shipment. `OperationsShipmentPickupPayloadV1.by` is whose ✓ was removed.
+   */
   ShipmentPickupUndone: 'operations.shipment.pickupUndone',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   SecuredDispatched: 'operations.shipment.dispatched',
@@ -2566,6 +2618,14 @@ export const OperationsCustodyEventPayloadV1 = z.object({
   custodyId: objectId(),
   shipmentId: objectId(),
   state: OperationsCustodyStateSchema,
+});
+
+/**
+ * Round 10 — a secured shipment's pickup record written or cleared: the shipment event's fields,
+ * plus WHO — on `pickupConfirmed` who confirmed it, on `pickupUndone` whose ✓ was removed.
+ */
+export const OperationsShipmentPickupPayloadV1 = OperationsShipmentEventPayloadV1.extend({
+  by: OperationsSecuredPickedUpBySchema,
 });
 
 /** Round 10 — a cancelled vault receipt: the voided custody, its shipment, and why. */

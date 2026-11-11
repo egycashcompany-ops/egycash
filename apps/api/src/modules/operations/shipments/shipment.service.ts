@@ -60,13 +60,7 @@ import { operationsBankBranchRepository } from '../bank-branches/bank-branch.rep
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
-import {
-  crewLegOf,
-  deliveryLegOf,
-  isPickedUp,
-  pickedUpByOf,
-  securedStageOf,
-} from './secured-stage';
+import { crewLegOf, deliveryLegOf, securedPickupOf, securedStageOf } from './secured-stage';
 import { assertSecuredUnlocked } from './secured-lock';
 import { operationsShipmentRepository } from './shipment.repository';
 import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
@@ -236,14 +230,9 @@ export interface DayBoardRow {
   /** Where a secured shipment stands (secured-stage.ts); null on a daily row. */
   securedStage: OperationsSecuredStage | null;
   /**
-   * When the pickup leg's captain confirmed collecting a SECURED shipment from the bank — the
-   * yellow row's moment; null on a daily row, and before he has.
-   */
-  captainPickedUpAt: Date | null;
-  /**
-   * Round 10 — who has a SECURED shipment in hand (the captain wins over the desk), and since when:
-   * `captainPickedUpAt` or the shipment's `pickupConfirmedAt`. Both null on a daily row, and while
-   * nobody has picked it up.
+   * Round 10 — who confirmed collecting a SECURED shipment, and when: its pickup record read by
+   * `securedPickupOf` (the captain's ✓ or the desk's). Both null on a daily row, and while nobody
+   * has picked it up.
    */
   pickedUpBy: OperationsSecuredPickedUpBy | null;
   pickedUpAt: Date | null;
@@ -754,29 +743,18 @@ class OperationsShipmentService {
       const delivering = legFor(doc, deliveryLegOf(doc.shipmentType));
       const execution = delivering?.executionStatus ?? 'pending';
       const captainDelivered = execution === 'delivered' || execution === 'completed';
-      // A secured row's stage, and when its captain collected it — both read off the PICKUP leg,
-      // and (Round 10) off the desk's own ✓ on the shipment, which counts only when he has not.
-      const secured = doc.shipmentType === 'secured';
-      const pickup = secured ? legFor(doc, 'pickup') : null;
-      const captainPickedUpAt =
-        pickup !== null && isPickedUp(pickup.executionStatus) ? (pickup.pickedUpAt ?? null) : null;
-      const deskConfirmedAt = secured ? (doc.pickupConfirmedAt ?? null) : null;
-      const pickedUpBy = secured ? pickedUpByOf(pickup?.executionStatus, deskConfirmedAt) : null;
+      // A secured row's stage, and who collected it — both read off the shipment's pickup record
+      // (Round 10); the PICKUP leg is consulted only for a row whose record was never written.
+      const pickup =
+        doc.shipmentType === 'secured' ? securedPickupOf(doc.pickup, legFor(doc, 'pickup')) : null;
       const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
       return {
         doc,
         captainDeliveredAt: captainDelivered ? (delivering?.deliveredAt ?? null) : null,
-        securedStage: secured
-          ? securedStageOf(doc.status, pickup?.executionStatus, deskConfirmedAt)
-          : null,
-        captainPickedUpAt,
-        pickedUpBy,
-        pickedUpAt:
-          pickedUpBy === 'captain'
-            ? captainPickedUpAt
-            : pickedUpBy === 'operations'
-              ? deskConfirmedAt
-              : null,
+        securedStage:
+          doc.shipmentType === 'secured' ? securedStageOf(doc.status, pickup) : null,
+        pickedUpBy: pickup?.by ?? null,
+        pickedUpAt: pickup?.at ?? null,
         origin: branchView.get(String(doc.originBranchId)) ?? null,
         destination: branchView.get(String(doc.destinationBranchId)) ?? null,
         crew:

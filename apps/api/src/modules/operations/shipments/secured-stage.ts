@@ -2,8 +2,9 @@
 //
 // «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها
 // هتبقى اخضر عند الخزنة وعند العمليات». The stage is DERIVED, never stored: it reads the shipment's own
-// status and its pickup leg's captain execution, so it can never disagree with either of them. Pure
-// functions, so the rule has one spelling and a spec of its own, whatever screen colours the row.
+// status and — since Round 10 — the shipment's ONE pickup record («ممكن القائد اللى يعمل صح انه استلم
+// او العمليات»), so it can never disagree with either. Pure functions, so the rule has one spelling
+// and a spec of its own, whatever screen colours the row.
 import {
   OPERATIONS_PICKED_UP_EXECUTION_STATUSES,
   type OperationsExecutionStatus,
@@ -13,6 +14,7 @@ import {
   type OperationsShipmentStatus,
   type OperationsShipmentType,
 } from '@ecms/contracts';
+import { type OperationsShipmentPickup } from './shipment.model';
 
 /**
  * Has the captain got the shipment in hand on this leg — his ✓ on collecting it in the mobile app?
@@ -22,38 +24,58 @@ import {
 export const isPickedUp = (execution: OperationsExecutionStatus | null | undefined): boolean =>
   execution != null && OPERATIONS_PICKED_UP_EXECUTION_STATUSES.includes(execution);
 
+/** Who confirmed collecting a secured shipment, and when — what its board row says. */
+export interface SecuredPickup {
+  by: OperationsSecuredPickedUpBy;
+  /** Null only for a pre-Round-10 row read off a leg that was never stamped. */
+  at: Date | null;
+}
+
 /**
- * WHO has the shipment in hand, if anybody — Round 10: «ممكن القائد اللى يعمل صح انه استلم او
- * العمليات». The captain's ✓ in the app (his pickup leg picked up) or the Operations desk's ✓
- * (`pickupConfirmedAt` on the shipment). When both exist THE CAPTAIN WINS: his is the execution
- * record of the collection itself, the desk's is a confirmation made from the office.
+ * THE PICKUP A SECURED SHIPMENT HAS — Round 10. The shipment's own record is the answer: the
+ * captain's ✓ in the app and the desk's ✓ both write it, the desk's undo clears it to null (the
+ * captain's included — «لو القائد عمل صح ممكن العمليات تشيلها»), and nothing else counts. The pickup
+ * LEG is NOT read for a row that has a record, null included: an undone captain's ✓ stays undone
+ * although his leg still says picked up — the leg is his execution record, not the shipment's.
+ *
+ * The one exception is a row whose record was NEVER WRITTEN (`undefined`: the field is absent,
+ * which only a row from before Round 10 can be — the schema defaults every newer row to null).
+ * Such a row reads as the captain's when its pickup leg is picked up, which is exactly what its
+ * stage said before the record existed, so no row in flight changes colour on deploy.
+ *
+ * Why this and not a backfill migration: it is right for every row at every moment — a captain's ✓
+ * recorded by the previous build while this one boots (two processes overlap on a deploy) is read
+ * correctly with nothing to re-run — and it writes nothing at boot.
  */
-export const pickedUpByOf = (
-  pickupExecution: OperationsExecutionStatus | null | undefined,
-  pickupConfirmedAt: Date | null | undefined,
-): OperationsSecuredPickedUpBy | null => {
-  if (isPickedUp(pickupExecution)) return 'captain';
-  if (pickupConfirmedAt != null) return 'operations';
-  return null;
+export const securedPickupOf = (
+  record: OperationsShipmentPickup | null | undefined,
+  pickupLeg:
+    | { executionStatus?: OperationsExecutionStatus | null; pickedUpAt?: Date | null }
+    | null
+    | undefined,
+): SecuredPickup | null => {
+  if (record === undefined) {
+    return pickupLeg != null && isPickedUp(pickupLeg.executionStatus)
+      ? { by: 'captain', at: pickupLeg.pickedUpAt ?? null }
+      : null;
+  }
+  return record === null ? null : { by: record.by, at: record.at };
 };
 
 /**
  * The stage of a SECURED shipment. While it is still `draft` the vault has not received it, and
- * who picked it up tells the three draft stages apart: nobody yet (white), the captain on his way
- * to the vault (yellow), or the desk's confirmation (yellow too — «تم الاستلام من العمليات»). From
- * `inVault` on, the shipment's own status IS the stage — the vault's ✓, the dispatch and the desk's
- * completion ✓ each move it.
+ * who confirmed the pickup tells the three draft stages apart: nobody yet (white), the captain
+ * (yellow — «تم الاستلام من القائد») or the Operations desk (yellow too — «تم الاستلام من العمليات»).
+ * From `inVault` on, the shipment's own status IS the stage — the vault's ✓, the dispatch and the
+ * desk's completion ✓ each move it.
  */
 export const securedStageOf = (
   status: OperationsShipmentStatus,
-  pickupExecution: OperationsExecutionStatus | null | undefined,
-  pickupConfirmedAt?: Date | null,
+  pickup: SecuredPickup | null,
 ): OperationsSecuredStage => {
   if (status !== 'draft') return status;
-  const by = pickedUpByOf(pickupExecution, pickupConfirmedAt);
-  if (by === 'captain') return 'withCaptain';
-  if (by === 'operations') return 'withOperations';
-  return 'awaitingPickup';
+  if (pickup === null) return 'awaitingPickup';
+  return pickup.by === 'captain' ? 'withCaptain' : 'withOperations';
 };
 
 /**

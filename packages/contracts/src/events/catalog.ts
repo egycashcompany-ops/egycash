@@ -254,6 +254,7 @@ import {
   OperationsDayEventPayloadV1,
   OperationsShipmentAssignmentPayloadV1,
   OperationsShipmentEventPayloadV1,
+  OperationsShipmentPickupPayloadV1,
   OperationsShipmentExecutionPayloadV1,
   OperationsShipmentReorderedPayloadV1,
 } from '../modules/operations.js';
@@ -906,8 +907,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // vocabulary and mean exactly what execution means by them — reused, not duplicated.
   pickedUp: { en: 'picked up', ar: 'استلام من المصدر' },
   delivered: { en: 'delivered', ar: 'توصيل' },
-  // operations (Round 10): the desk's pickup ✓ on a secured shipment, its undo, and a cancelled
-  // vault receipt — «تأكيد استلام شحنة», «التراجع عن استلام شحنة», «إلغاء استلام عهدة الخزينة».
+  // operations (Round 10): a secured shipment's pickup ✓ (the captain's or the desk's), its undo,
+  // and a cancelled vault receipt — «تأكيد استلام شحنة», «التراجع عن استلام شحنة», «إلغاء استلام عهدة
+  // الخزينة».
   pickupConfirmed: { en: 'pickup confirmed', ar: 'تأكيد استلام' },
   pickupUndone: { en: 'pickup undone', ar: 'التراجع عن استلام' },
   receiptCancelled: { en: 'receipt cancelled', ar: 'إلغاء استلام' },
@@ -1445,10 +1447,11 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.StandingCrewChanged]: OperationsStandingCrewChangedPayloadV1,
   [OperationsEvents.VaultReceived]: OperationsCustodyEventPayloadV1,
   [OperationsEvents.VaultReleased]: OperationsCustodyEventPayloadV1,
-  // Round 10 — the desk's pickup ✓ and its undo, and a cancelled vault receipt.
+  // Round 10 — a secured shipment's pickup ✓ (captain's or desk's) and its undo, and a cancelled
+  // vault receipt.
   [OperationsEvents.VaultReceiptCancelled]: OperationsCustodyReceiptCancelledPayloadV1,
-  [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentEventPayloadV1,
-  [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentPickupPayloadV1,
+  [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,

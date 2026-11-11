@@ -172,19 +172,17 @@ export const ErrorCodes = {
    */
   OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
   /**
-   * 409 — the vault's ✓ on a secured shipment nobody has picked up yet (stage `awaitingPickup`):
-   * «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح».
+   * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
+   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
+   * desk's undo has no pickup ✓ to take back.
    */
   OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
-  /** 409 — the desk's pickup ✓ on a shipment the desk already confirmed. */
-  OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED: 'OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED',
-  /** 409 — the desk's undo on a shipment with no desk pickup ✓ to take back. */
-  OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED: 'OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED',
   /**
-   * 409 — the desk's pickup ✓ (or its undo) on a shipment its captain already picked up in the
-   * app: his ✓ is his execution record and stands — the desk neither doubles it nor takes it back.
+   * 409 — the desk's pickup ✓ on a secured shipment whose pickup is already recorded — by its
+   * captain in the app or by the desk itself. The desk never stamps over the captain's ✓ (it may
+   * take it back, then confirm as Operations).
    */
-  OPERATIONS_SECURED_CAPTAIN_PICKED_UP: 'OPERATIONS_SECURED_CAPTAIN_PICKED_UP',
+  OPERATIONS_SECURED_ALREADY_PICKED_UP: 'OPERATIONS_SECURED_ALREADY_PICKED_UP',
   /**
    * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
    * already dispatched or completed.

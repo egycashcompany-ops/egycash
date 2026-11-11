@@ -25,6 +25,7 @@ import {
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_LEGS,
   OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS,
   OPERATIONS_SHIPMENT_LOG_FIELDS,
   OPERATIONS_SHIPMENT_LOG_KINDS,
   OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES,
@@ -35,7 +36,8 @@ import {
   OperationsEvents,
   OperationsShipmentHistoryQuerySchema,
   OperationsSecuredBoardQuerySchema,
-  OperationsSecuredInVaultQuerySchema,
+  OperationsSecuredDispatchBoardQuerySchema,
+  OperationsShipmentPickupPayloadV1,
   OperationsShipmentStatusSchema,
   OperationsVaultQueueQuerySchema,
   OrderOperationsCurrenciesSchema,
@@ -464,25 +466,32 @@ describe('the secured pickup ✓, the lock and the cancelled receipt — their r
     expect(CancelVaultReceiptSchema.safeParse({ reason: 'سبب كافٍ' }).success).toBe(false);
   });
 
-  it('«صرف الخزينة» takes two optional delivery-date bounds, never backwards', () => {
-    expect(OperationsSecuredInVaultQuerySchema.safeParse({}).success).toBe(true);
-    expect(OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-01' }).success).toBe(true);
-    expect(OperationsSecuredInVaultQuerySchema.safeParse({ to: '2026-11-01' }).success).toBe(true);
+  it('«صرف الخزينة» takes ONE optional delivery day — and nothing else', () => {
+    expect(OperationsSecuredDispatchBoardQuerySchema.safeParse({}).success).toBe(true);
+    const day = OperationsSecuredDispatchBoardQuerySchema.parse({ date: '2026-11-01' });
+    expect(day.date?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    // An empty value is not "every day" — the screen omits the key.
+    expect(OperationsSecuredDispatchBoardQuerySchema.safeParse({ date: '' }).success).toBe(false);
     expect(
-      OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-01', to: '2026-11-01' })
-        .success,
-    ).toBe(true);
-    expect(
-      OperationsSecuredInVaultQuerySchema.safeParse({ from: '2026-11-02', to: '2026-11-01' })
-        .success,
+      OperationsSecuredDispatchBoardQuerySchema.safeParse({ from: '2026-11-01' }).success,
     ).toBe(false);
-    expect(OperationsSecuredInVaultQuerySchema.safeParse({ date: '2026-11-01' }).success).toBe(false);
   });
 
-  it('the three acts are their own events', () => {
+  it('the three acts are their own events, the pickup ones saying WHO', () => {
     expect(OperationsEvents.ShipmentPickupConfirmed).toBe('operations.shipment.pickupConfirmed');
     expect(OperationsEvents.ShipmentPickupUndone).toBe('operations.shipment.pickupUndone');
     expect(OperationsEvents.VaultReceiptCancelled).toBe('operations.custody.receiptCancelled');
+    const payload = { shipmentId: oid(1), shipmentType: 'secured', status: 'draft' };
+    expect(OperationsShipmentPickupPayloadV1.safeParse({ ...payload, by: 'captain' }).success).toBe(
+      true,
+    );
+    expect(
+      OperationsShipmentPickupPayloadV1.safeParse({ ...payload, by: 'operations' }).success,
+    ).toBe(true);
+    expect(OperationsShipmentPickupPayloadV1.safeParse(payload).success).toBe(false);
+    expect(OperationsShipmentPickupPayloadV1.safeParse({ ...payload, by: 'vault' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -565,9 +574,15 @@ describe('operations shipment log vocabulary — closed lists a screen can label
     );
     // Values are display values — a field named after an id would invite sending one.
     expect(OPERATIONS_SHIPMENT_LOG_FIELDS.filter((field) => /Id$/.test(field))).toEqual([]);
-    for (const field of OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS) {
+    for (const field of [
+      ...OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
+      ...OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS,
+    ]) {
       expect(OPERATIONS_SHIPMENT_LOG_FIELDS).toContain(field);
     }
+    // Round 10 — who confirmed the pickup is a code the screen labels, and the cancel's reason.
+    expect(OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS).toEqual(['pickedUpBy']);
+    expect(OPERATIONS_SHIPMENT_LOG_FIELDS).toEqual(expect.arrayContaining(['pickedUpBy', 'reason']));
     expect(OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES).toBeGreaterThan(0);
   });
 

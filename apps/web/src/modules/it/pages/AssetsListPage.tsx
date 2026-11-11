@@ -20,6 +20,11 @@
 //
 // «الضمان» (`warrantyEndsWithinDays`): the assets whose warranty ends within 30 or 90 days. The
 // `/it` dashboard's «ضمان ينتهي خلال ٣٠ يومًا» opens here with it set (`lib/warranty-window.ts`).
+//
+// «عايز إمكانية نقل أصل … إلى فرع تاني» (2026-11-11) — «كذا حاجة مرة واحدة»: the assets ticked on
+// the table go to ONE branch in one step, «نقل إلى فرع (n)» in the selection's bar, under the
+// custody grant (`itAsset.assign`) the transfer already rides. The dialog lists what moves and what
+// stays, and why (`components/AssetBranchMoveDialog.tsx`).
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
@@ -37,8 +42,15 @@ import { Select } from '../../../shared/ui/form';
 import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, PlusIcon, QrIcon, TrashIcon } from '../../../shared/ui/icons';
-import { formatDate, localized } from '../../../shared/lib/format';
+import {
+  BuildingIcon,
+  EditIcon,
+  EyeIcon,
+  PlusIcon,
+  QrIcon,
+  TrashIcon,
+} from '../../../shared/ui/icons';
+import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
 import {
   useDeleteItAsset,
@@ -50,6 +62,7 @@ import {
 import { EmployeePicker } from '../components/EmployeePicker';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
+import { AssetBranchMoveDialog } from '../components/AssetBranchMoveDialog';
 import { AssetNameFilter } from '../components/AssetNameFilter';
 import { ItCatalogMultiSelect } from '../components/ItCatalogMultiSelect';
 import { useAssetLabels } from '../components/useAssetLabels';
@@ -192,6 +205,9 @@ export const AssetsListPage = (): JSX.Element => {
   const [editing, setEditing] = useState<ItAssetDto | null>(null);
   const [deleting, setDeleting] = useState<ItAssetDto | null>(null);
   const remove = useDeleteItAsset();
+  // «نقل إلى فرع»: the ticked rows as they were when the dialog opened — a refetch underneath
+  // (realtime, another tab) must not change the list the reader is looking at.
+  const [moving, setMoving] = useState<ItAssetDto[] | null>(null);
 
   const confirmDelete = async (): Promise<void> => {
     if (deleting === null) return;
@@ -487,6 +503,17 @@ export const AssetsListPage = (): JSX.Element => {
           >
             {t('it.assets.printLabels')}
           </Button>
+          <Can permission="itAsset.assign">
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<BuildingIcon className="h-4 w-4" />}
+              data-bulk-move
+              onClick={() => setMoving(rows.filter((a) => selection.selectedIds.has(a.id)))}
+            >
+              {t('it.assets.move.bulkAction', { n: formatNumber(selection.count, locale) })}
+            </Button>
+          </Can>
         </BulkActionBar>
 
         <DataTable
@@ -509,6 +536,12 @@ export const AssetsListPage = (): JSX.Element => {
         )}
       </div>
 
+      <AssetBranchMoveDialog
+        open={moving !== null}
+        onClose={() => setMoving(null)}
+        assets={moving ?? []}
+        onMoved={selection.clear}
+      />
       <AssetFormDialog
         open={formOpen}
         onClose={() => {

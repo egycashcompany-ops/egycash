@@ -11,6 +11,46 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: assets and consumables moved to another branch, several at once.** «هنا /it/consumables وهنا
+  /it/assets — عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني، وطبعاً المستهلكات لو مثلاً فى 10 ماوس ..
+  فممكن أنقل 5 لفرع تاني وهكذا»; then a held asset «ينتقل مع عهدته», recorded «فوراً», «لا، السجل
+  كفاية», and «كذا حاجة مرة واحدة».
+  - **Assets:** on `/it/assets`, pick assets and «نقل إلى فرع (n)»; on an asset's page, «نقل إلى
+    فرع». The branch, a date and notes; the assets that cannot move (disposed; under maintenance, by
+    its status or by a maintenance order still open or in progress; already in that branch) are
+    listed with the reason and left out. All move or none, at once, with no paper. One in stock
+    changes branch; one an employee holds moves with its custody, as a custody transfer to a new
+    branch in the same hands — the same holder, the receipt already signed, its due date, its
+    condition on issue and its notes. Either way it leaves its location behind (only the move
+    clears it; a custody transfer keeps it), and its history shows the move between the two
+    branches, with the move's notes.
+  - **Consumables:** on `/it/consumables`, pick items of one store (or one row's «تحويل إلى فرع»),
+    the branch, and how many of each — 5 of 10 mice, say. The units leave this store and reach the
+    other store's item of the same name, which is added there (same name, type and unit, a new code)
+    when it has none; another unit or a retired item there refuses the transfer, and nothing leaves
+    beyond what is on hand. A retired item may still send its stock out. An item with nothing on
+    hand is left out, and does not count toward the 50.
+  - Both dialogs offer only the branches the server says the account's custody grant reaches
+    (`GET /it/assets/move-targets`) — not the reach of all its grants, which offered branches the
+    move then refused; while that list loads the picker waits, and with none left they say so and
+    cannot be sent.
+  - The ledger, its filter and its Excel/PDF gain «تحويل إلى فرع» and «تحويل من فرع», each naming
+    the other branch and the other store's item code; both halves share one transfer id.
+  - No new grant: both ride `itAsset.assign`, the custody grant. API: `POST /it/assets/move-branch`
+    (up to 100 assets), `POST /it/consumables/transfer` (up to 50 items) and
+    `GET /it/assets/move-targets` (where both may go: every active branch that grant reaches). The
+    move and the transfer refuse a branch out of the grant's reach (403), an asset or item out of
+    its scope (404) and a branch that is not an active one (400). The move names, in ONE refusal,
+    every asset that holds it back — a held one dated before its custody began among them (422; 409
+    when all are under maintenance); the transfer refuses two stores, the same store, more than on
+    hand, another unit or a retired item (422). Every asset answer gains `hasActiveMaintenance`; the
+    movement gains `transferId`, `counterpartBranchId` and `counterpartConsumableId` (indexed on
+    `transferId`) ([IT design §2.2, §2.5, §2.11](docs/12-planning/it-module-design.md)).
+  - A custody transfer in the same hands now keeps the open interval's due date, condition on
+    issue and notes unless it gives its own; it and the move write their audit rows after the
+    commit ([IT design FR-3, §4.3, §10](docs/12-planning/it-module-design.md);
+    [ADR-021](docs/03-decisions/ADR-021-it-asset-custody-and-history.md), amended).
+
 - **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
   تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
   طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in

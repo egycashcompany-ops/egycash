@@ -11,6 +11,10 @@
 // machine could accept it — assign when in stock, return/transfer when out, dispose when free —
 // and each is gated by its own §7 grant. The server still decides; offering a button that can
 // only ever 409 is worse than not offering it.
+//
+// «نقل إلى فرع» sits beside them (2026-11-11): the register's dialog for this one asset, under the
+// same custody grant, offered while the asset is in stock or held — a held one moves with its
+// custody («ينتقل مع عهدته»); one under maintenance or disposed does not move.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
@@ -23,7 +27,15 @@ import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { EditIcon, QrIcon, ResetIcon, UsersIcon, TrashIcon, LinkIcon } from '../../../shared/ui/icons';
+import {
+  BuildingIcon,
+  EditIcon,
+  QrIcon,
+  ResetIcon,
+  UsersIcon,
+  TrashIcon,
+  LinkIcon,
+} from '../../../shared/ui/icons';
 import { formatAmount, formatDate, localized } from '../../../shared/lib/format';
 import {
   useItAsset,
@@ -35,6 +47,7 @@ import {
 } from '../api/it-queries';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
+import { AssetBranchMoveDialog } from '../components/AssetBranchMoveDialog';
 import { AssetHistoryList } from '../components/AssetHistoryList';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
 import { AssetConsumablesCard } from '../components/ConsumableMovements';
@@ -95,7 +108,7 @@ export const AssetDetailPage = (): JSX.Element => {
   const labels = useAssetLabels();
   const [editing, setEditing] = useState(false);
   const [custodyAction, setCustodyAction] = useState<
-    'assign' | 'return' | 'transfer' | 'dispose' | null
+    'assign' | 'return' | 'transfer' | 'move' | 'dispose' | null
   >(null);
 
   // Custody reads. Both are gated by `itAsset.view` server-side, which the page already required.
@@ -156,7 +169,9 @@ export const AssetDetailPage = (): JSX.Element => {
           { label: asset.assetCode },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          // Up to five actions in one row: on a phone they wrap rather than run off the screen.
+          // The header's own wrap cannot do it — this row is its only child.
+          <div data-asset-actions className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="secondary"
@@ -205,6 +220,17 @@ export const AssetDetailPage = (): JSX.Element => {
                 </Button>
               </>
             )}
+            {can('itAsset.assign') &&
+              (asset.status === 'inStock' || asset.status === 'assigned') && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<BuildingIcon className="h-4 w-4" />}
+                  onClick={() => setCustodyAction('move')}
+                >
+                  {t('it.assets.move.title')}
+                </Button>
+              )}
             {can('itAsset.dispose') && asset.status === 'inStock' && (
               <Button
                 size="sm"
@@ -488,6 +514,11 @@ export const AssetDetailPage = (): JSX.Element => {
         asset={asset}
         current={openAssignment}
         holderLabel={holderLabel}
+      />
+      <AssetBranchMoveDialog
+        open={custodyAction === 'move'}
+        onClose={() => setCustodyAction(null)}
+        assets={[asset]}
       />
       <DisposeAssetDialog
         open={custodyAction === 'dispose'}

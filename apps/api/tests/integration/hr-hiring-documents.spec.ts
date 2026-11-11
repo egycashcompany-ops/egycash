@@ -555,6 +555,7 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     let draft = opened.body.data as CandidateDraftDto;
     expect(draft.papers[0]).toMatchObject({ key: PAPER('contract'), group: 'contract', selected: true });
     expect(draft.papers.filter((p) => p.group === 'everyJob').map((p) => p.key)).toEqual([
+      PAPER('insurance-form-1'),
       PAPER('data-sheet'),
       PAPER('work-receipt'),
       PAPER('relatives'),

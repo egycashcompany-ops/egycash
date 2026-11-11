@@ -1160,13 +1160,13 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
 });
 
 /**
- * The owner's thirteen papers (A27, stage 2) — «هبعتلك الفايلات»: written into the templates on
+ * The owner's fourteen papers (A27, stage 2) — «هبعتلك الفايلات»: written into the templates on
  * boot, each once; a job's paper published for the jobs that carry its name, or waiting as a draft
  * until one does; and never written over somebody's edit.
  */
 describe('the owner\'s papers — written into the templates on boot (A27, stage 2)', () => {
   const key = (name: string): string => `egycash.hiring.${name}`;
-  const ALL_JOBS = ['contract', 'data-sheet', 'work-receipt', 'relatives', 'bank-letter'].map(key);
+  const ALL_JOBS = ['contract', 'insurance-form-1', 'data-sheet', 'work-receipt', 'relatives', 'bank-letter'].map(key);
   let specialistJob = '';
   let crewLeaderJob = '';
 
@@ -1198,7 +1198,7 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
       expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-crew-leader'), key('card.atm-specialist')]),
     );
     expect(first.waiting).toEqual(expect.arrayContaining([key('card.security-guard'), key('card.treasurer')]));
-    expect(first.published.length + first.waiting.length).toBe(13);
+    expect(first.published.length + first.waiting.length).toBe(14);
     expect(first.linked).toEqual([]);
 
     const contract = await row('contract');
@@ -1211,7 +1211,7 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     // Again: nothing is written twice.
     const second = await syncHiringTemplates();
     expect(second).toEqual({ published: [], linked: [], waiting: first.waiting, widened: [], revised: [] });
-    expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(13);
+    expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(14);
   });
 
   it('publishes a waiting paper on the boot after its job is created — unless somebody edited it', async () => {

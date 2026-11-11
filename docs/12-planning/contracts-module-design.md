@@ -534,7 +534,7 @@ which forms depends on the job.
   opened if missing, `POST /hr/hiring-documents/open`); a generated contract offers it too. The
   contract wizard offers the employee's job's contract template first and never a form.
 
-### A27, stage 2 — the owner's thirteen papers, written on boot
+### A27, stage 2 — the owner's papers, written on boot
 
 - **What.** His contract (fixed-term, one year), the data sheet, the work-receipt and relatives
   declarations and the bank letter (every job), the weapon declaration (crew leaders), and seven job
@@ -582,6 +582,26 @@ which forms depends on the job.
   `paperRevision` it was written at. The boot rewrites a row it wrote, and nobody has touched since,
   to a newer revision (its sections, placeholders and signatures). A row somebody edited keeps their
   edit.
+
+### A27, stage 2c — «نموذج رقم (1)», the social-insurance registration
+
+- **What.** «دا هنزودوا مع النمازج»: the authority's form (طلب اشتراك مؤمن عليه, two pages: the
+  form, then the instructions and the declarations overleaf) is the fourteenth paper — every job,
+  printed right after the contract (`egycash.hiring.insurance-form-1`, print order 5). His copy is a
+  Legal-size scan; it prints on A4, tighter, in the same order.
+- **Filled.** With the contract and the bank letter, the one form filled from the record: the
+  category (عاملين لدى الغير, ticked), the company's name (twice), the employee's insurance number,
+  national ID, name, nationality, qualification and job, the start date in its day / month / year
+  boxes, the address, phone and email, the date it is written, and his name in the declaration
+  overleaf. **The basic wage is 2720 pounds** («عاوزين نخلي رقم 2720 دا يبقا الاجر الاساسي في نموزج
+  1»), written in its boxes. What the record does not hold — the establishment number, the codes, the
+  other wages, the signatures — stays for the hand. New variables: `employee.nationality`,
+  `employee.email`, `employee.insuranceNumber`, `employment.startDay/Month/Year`.
+- **As drawn.** Digit boxes (`<span class="cells cN">`, one box per character, left to right — the
+  renderer fills the N boxes from what the span holds), small boxed tables for the wages and codes,
+  the section names in rounded boxes on a line, the authority's emblem (`nosi`, cropped from his
+  copy). The form brings its own head (`ownhead`): no company letterhead, and it prints on the bare
+  page without the forms' frame.
 
 ### A27, stage 3 — the papers COLLECTED are the employee's job's too
 

@@ -4,6 +4,7 @@
 // template engine. Deterministic by construction (A21): fixed page box, fixed font stack.
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
 import { BASMALA_PNG } from './basmala';
+import { NOSI_EMBLEM_JPG } from './nosi-emblem';
 import { type ContractVariableValue } from './contract.model';
 
 /**
@@ -44,17 +45,38 @@ const paperCss = (scope: string): string => `
   /* The document-control line at the foot of the page. */
   ${scope} table.foot { width: 100%; border: none; margin: 0; font-size: 9pt; direction: ltr; }
   ${scope} table.foot td { border: none; padding: 0; text-align: center; }
+  /* «نموذج رقم (1)»: a row of digit boxes, one character each, written left to right (\`boxCells\`). */
+  ${scope} .cells { display: inline-flex; vertical-align: middle; direction: ltr; unicode-bidi: isolate;
+                    border: 1px solid #111; height: 6.5mm; font-weight: 700; }
+  ${scope} .cells > i { font-style: normal; box-sizing: border-box; width: 5.5mm; height: 100%; display: flex;
+                        align-items: center; justify-content: center; border-left: 1px solid #111; }
+  ${scope} .cells > i:first-child { border-left: none; }
+  /* A small boxed table inside a line (the wage boxes, «نوع المدة»). */
+  ${scope} table.mini { width: auto; display: inline-table; vertical-align: middle; margin: 0; }
+  ${scope} table.mini td { border: 1px solid #111; padding: 0 1mm; height: 5.5mm; min-width: 3.5mm; text-align: center;
+                           font-size: 9.5pt; line-height: 1.2; font-weight: 700; }
+  /* A section's name in a rounded box on a line across the page. */
+  ${scope} p.divider { display: flex; align-items: center; margin: 2mm 0; }
+  ${scope} p.divider::before, ${scope} p.divider::after { content: ''; flex: 1; border-top: 2px solid #111; }
+  ${scope} p.divider > span { border: 1.5px solid #111; border-radius: 3mm; padding: 0.5mm 9mm; font-weight: 700; }
+  /* The next page of the same paper. */
+  ${scope} p.newpage { break-before: page; height: 0; margin: 0; overflow: hidden; }
 `;
 
 /**
- * His «بسم الله الرحمن الرحيم», the calligraphy that heads his contract; the words stay, unseen. Only
- * in a document that uses it — the picture is not small.
+ * The pictures a paper shows by a class, the words staying underneath, unseen: his contract's
+ * «بسم الله الرحمن الرحيم» calligraphy (`basmala`) and the emblem heading «نموذج رقم (1)» (`nosi`).
+ * Only in a document that uses one — the pictures are not small.
  */
-const basmalaCss = (html: string): string =>
-  html.includes('class="basmala"')
-    ? `.page p.basmala { height: 11mm; margin: 0 0 2mm; color: transparent; overflow: hidden;
+const pictureCss = (html: string): string =>
+  (html.includes('class="basmala"')
+    ? `.page p.basmala, .form-doc p.basmala { height: 11mm; margin: 0 0 2mm; color: transparent; overflow: hidden;
                        background: url(${BASMALA_PNG}) center / contain no-repeat; }`
-    : '';
+    : '') +
+  (html.includes('class="nosi"')
+    ? `.page p.nosi, .form-doc p.nosi { height: 20mm; margin: 0 auto; color: transparent; overflow: hidden;
+                       background: url(${NOSI_EMBLEM_JPG}) center / contain no-repeat; }`
+    : '');
 
 /** A doc-control line in a template's footer (`table.foot`), cell by cell as text — or null. */
 export const pageFootCells = (footerHtml: string): string[] | null => {
@@ -207,7 +229,7 @@ export const renderContractHtml = (
   const dir = template.language === 'ar' ? 'rtl' : 'ltr';
   return `<!doctype html>
 <html lang="${template.language}" dir="${dir}">
-<head><meta charset="utf-8" /><style>${PRINT_CSS}${brandCssFor(options.branding)}${basmalaCss(template.sections.header + template.sections.body)}${pageFootCss(template.sections.footer, true)}</style></head>
+<head><meta charset="utf-8" /><style>${PRINT_CSS}${brandCssFor(options.branding)}${pictureCss(template.sections.header + template.sections.body)}${pageFootCss(template.sections.footer, true)}</style></head>
 <body>
 ${contractBody(template, values, options)}
 </body>
@@ -240,8 +262,20 @@ export interface Letterhead {
 const FORM_CSS = `
   @page form { margin: 12mm; border: 1.5px solid #111; padding: 6mm; }
   .doc-form { page: form; }
+  /* A form with its own head prints on the bare page: the authority's layout, no frame. */
+  @page bare { margin: 9mm 11mm; @top-center { content: none; } @bottom-center { content: none; } }
+  .doc-form.doc-bare { page: bare; }
+  /* The authority's form is dense: his two Legal pages on A4. */
+  .doc-bare .form-doc { font-size: 10.5pt; line-height: 1.3; min-height: 0; }
+  .doc-bare .form-doc p { margin: 0 0 1.1mm; }
+  .doc-bare .form-doc table { margin-bottom: 1.1mm; }
+  .doc-bare .form-doc table.plain td { padding-top: 0.4mm; padding-bottom: 0.4mm; }
+  .doc-bare .form-doc p.divider { margin: 1.2mm 0; }
+  .doc-bare .form-doc .cells { height: 6mm; }
+  .doc-bare .form-doc td, .doc-bare .form-doc th { padding: 0.6mm 2mm; }
   @media screen {
     .form-doc { max-width: 174mm; margin: 0 auto 8mm; padding: 6mm; border: 1.5px solid #111; }
+    .doc-bare .form-doc { max-width: 188mm; border: none; }
   }
   .form-doc { font-size: 12pt; line-height: 1.5; display: flex; flex-direction: column; min-height: 254mm; }
   .form-doc .form-foot { margin-top: auto; padding-top: 4mm; }
@@ -261,14 +295,48 @@ const FORM_CSS = `
   @page form { @top-center { content: none; } @bottom-center { content: none; } }
 ${paperCss('.form-doc')}`;
 
+/** A form that brings its own head (class `ownhead`): no letterhead, and no frame round its pages. */
+const ownHead = (template: Pick<ContractTemplateDoc, 'sections'>): boolean =>
+  /class="[^"]*\bownhead\b/.test(template.sections.header);
+
+/** A form's section: framed on the `form` page, or on the bare page when it brings its own head. */
+const formSection = (
+  template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
+  html: string,
+  pageBreak = '',
+): string => `<section class="doc doc-form${ownHead(template) ? ' doc-bare' : ''}"${pageBreak}>${html}</section>`;
+
+/** Text safe inside HTML. */
+const escapeHtml = (text: string): string =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * A row of digit boxes (`<span class="cells cN">…</span>`, «نموذج رقم (1)»): N boxes, one character
+ * each from what the span holds once its placeholders are filled — the rest left empty for the hand.
+ */
+const boxCells = (html: string, values: Map<string, string>): string =>
+  html.replace(/<span class="cells c(\d+)">([^<]*)<\/span>/g, (_m, n: string, inner: string) => {
+    const count = Number(n);
+    const text = inner
+      .replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_k, key: string) => values.get(key) ?? '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, '');
+    const chars = [...text].slice(0, count);
+    const boxes = Array.from({ length: count }, (_x, i) => {
+      const char = chars[i];
+      return `<i>${char === undefined ? '&nbsp;' : escapeHtml(char)}</i>`;
+    });
+    return `<span class="cells c${count}">${boxes.join('')}</span>`;
+  });
+
 const formBody = (
   template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
   values: ContractVariableValue[],
   letterhead: Letterhead,
 ): string => {
+  const map = new Map(values.map((v) => [v.key, v.value]));
   const fill = (html: string): string => {
-    const map = new Map(values.map((v) => [v.key, v.value]));
-    return html.replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
+    return boxCells(html, map).replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
       const value = map.get(key) ?? '';
       return value.trim() === '' ? BLANK : value;
     });
@@ -283,12 +351,16 @@ const formBody = (
         </div>`,
     )
     .join('\n');
-  return `
-  <div class="form-doc">
-    <div class="letterhead">
+  // A paper with its own head («نموذج رقم (1)», the authority's form) wears no company letterhead.
+  const letterheadHtml = ownHead(template)
+    ? ''
+    : `<div class="letterhead">
       <div class="lines">${letterhead.lines.join('<br />')}</div>
       <img src="${letterhead.logoDataUri}" alt="" />
-    </div>
+    </div>`;
+  return `
+  <div class="form-doc">
+    ${letterheadHtml}
     ${fill(template.sections.header)}
     <main>${fill(template.sections.body)}</main>
     ${signatures === '' ? '' : `<div class="signatures">${signatures}</div>`}
@@ -305,9 +377,9 @@ export const renderFormHtml = (
   const dir = template.language === 'ar' ? 'rtl' : 'ltr';
   return `<!doctype html>
 <html lang="${template.language}" dir="${dir}">
-<head><meta charset="utf-8" /><style>${PRINT_CSS}${FORM_CSS}</style></head>
+<head><meta charset="utf-8" /><style>${PRINT_CSS}${FORM_CSS}${pictureCss(template.sections.header + template.sections.body)}</style></head>
 <body>
-<section class="doc doc-form">${formBody(template, values, letterhead)}</section>
+${formSection(template, formBody(template, values, letterhead))}
 </body>
 </html>`;
 };
@@ -340,17 +412,16 @@ export const renderHiringPackHtml = (
   const contract = parts.find((part) => part.kind === 'contract');
   const contracts = parts.filter((part) => part.kind === 'contract').length;
   const brandCss =
-    contract?.kind === 'contract'
+    (contract?.kind === 'contract'
       ? brandCssFor(contract.options.branding, '.doc-contract') +
-        basmalaCss(contract.template.sections.header + contract.template.sections.body) +
         pageFootCss(contract.template.sections.footer, contracts === 1)
-      : '';
+      : '') + pictureCss(parts.map((part) => part.template.sections.header + part.template.sections.body).join(''));
   const sections = parts
     .map((part, index) => {
       const pageBreak = index === 0 ? '' : ' style="break-before: page;"';
       return part.kind === 'contract'
         ? `<section class="doc doc-contract"${pageBreak}>${contractBody(part.template, part.values, part.options)}</section>`
-        : `<section class="doc doc-form"${pageBreak}>${formBody(part.template, part.values, letterhead)}</section>`;
+        : formSection(part.template, formBody(part.template, part.values, letterhead), pageBreak);
     })
     .join('\n');
   return `<!doctype html>

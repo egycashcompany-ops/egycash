@@ -546,6 +546,16 @@ export interface OperationsDayBoardPersonDto {
 }
 
 /**
+ * A DRIVER on a board crew card: the name, and nothing else. «انا وقفت العربية، انا هعرف مين
+ * السواقين اللي عليها، لكن مش عايز اعرف بياناتهم» — a driver's details (code, phone, branch) are
+ * Fleet's, kept apart from HR, so Operations names the driver and stops there.
+ */
+export interface OperationsDayBoardDriverDto {
+  employeeId: string;
+  fullNameAr: string | null;
+}
+
+/**
  * WHO RIDES ONE VAN on the board's legs — «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين
  * واخصائيين». One per crew row the day's legs ride (not per shipment): the Fleet duty row's two
  * drivers, and the crew row's captains and specialists, in their slots.
@@ -554,7 +564,8 @@ export interface OperationsDayBoardVehicleCrewDto {
   crewAssignmentId: string;
   vehicleId: string;
   vehicleCode: string | null;
-  drivers: OperationsDayBoardPersonDto[];
+  /** By name only — see `OperationsDayBoardDriverDto`. */
+  drivers: OperationsDayBoardDriverDto[];
   captains: OperationsDayBoardPersonDto[];
   specialist1: OperationsDayBoardPersonDto[];
   specialist2: OperationsDayBoardPersonDto[];

@@ -11,6 +11,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
+  تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
+  طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` (244 rows, no person).
+  - 68 new devices registered in their branch, in stock; a Dell's service tag is its serial number,
+    and its «CN-0…» label its printed tag.
+  - Devices already on the register get only what they lack («أكمّل الناقص بس»): specifications,
+    accessories, printed tag, make, model. A value already typed is kept. The Shorouk sheet's 13
+    Dell desktops get no processor or graphics: those cells repeat its all-in-ones'.
+  - 8 devices registered under another branch move to the sheet's when in stock, and their old
+    location (a place in the branch they left) is cleared; a held one stays and is reported.
+  - Left out: three repeated rows (two in Tanta, one in Assiut) and two rows in October with neither
+    serial nor tag; and, until the owner reads their labels, the Shorouk printer CNDRP8Z666 and
+    screen B3ZY8V3 (serials the October inventory found twice), three screens a character or two
+    off a register screen of their branch that the sheet does not list (October's B3SZ8V3, Assiut's
+    BR565G3 and 1Q1L1T3) and an HP Z240 whose only label is HP's product number.
+  - One transaction, run once (`go-live:it-branch-custody-2026-11:v1`), after the inventory, the
+    October all-in-ones and the specifications; a missing branch or category refuses it.
+
 - **«قص الوجه من صفحة A4»: the employee photo, cut from the A4 page it arrives on.** The photo
   dialog takes a PDF or a scanned page as well as a photo. Page 1 is drawn in the browser (pdf.js),
   the face is found (MediaPipe BlazeFace, run over the sheet whole and in overlapping tiles so a
@@ -78,6 +97,9 @@ its entry here in the same PR.
     Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
     (`crews`, and the captain's code, phone and branch on each row); a reader without
     `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
+  - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
+    اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
+    answer sends a driver's name only. The captain and the specialists keep their codes.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

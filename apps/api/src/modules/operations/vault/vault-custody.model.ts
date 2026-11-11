@@ -56,6 +56,8 @@ custodySchema.index(
   { unique: true, name: 'ux_shipment', partialFilterExpression: { isDeleted: false } },
 );
 custodySchema.index({ state: 1 }, { name: 'ix_state' });
+// Round 8: the vault's receive queue lists what was received TODAY — a window on `receivedAt`.
+custodySchema.index({ receivedAt: -1 }, { name: 'ix_received_at' });
 
 export const OperationsVaultCustodyModel = model<OperationsVaultCustodyDoc>(
   'OperationsVaultCustody',

@@ -1,13 +1,33 @@
 // The shipments board — the toolbar's figures, the dark icon filter bar and the dark table that
-// «اليوم التشغيلي» (`pages/DailyOperationsPage.tsx`, one day) and «سجل الشحنات»
-// (`pages/ShipmentsHistoryPage.tsx`, a range of days) both show. «عاوز اعمل dublicat للشاشة دى بس
-// التاريخ هيكون من الى»: the history is THIS screen with two dates where the day was, so the two
-// pages share one board rather than one copy each — a column, a filter or a figure fixed on one of
-// them is fixed on both, and they cannot drift apart.
+// «اليوم التشغيلي» (`pages/DailyOperationsPage.tsx`, one day), «سجل الشحنات»
+// (`pages/ShipmentsHistoryPage.tsx`, a range of days) and «الشحنات المحصنة»
+// (`pages/SecuredBacklogPage.tsx`, every open محصنة) all show. «عاوز اعمل dublicat للشاشة دى بس
+// التاريخ هيكون من الى»: the history is THIS screen with two dates where the day was; «شاشة الشحنات
+// المحصنة عاوز شكلها يكون زى شاشة اليوم التشغيلى بس هنزود التاريخ التسليم يظهر فى الجدول والحالة»:
+// the secured screen is THIS screen with a delivery-date column, the محصنة's stage as its status,
+// and no «النوع» — every row on it is a محصنة. The pages share one board rather than one copy each — a column, a filter or a figure
+// fixed on one of them is fixed on all three, and they cannot drift apart.
+//
+// A FOURTH SCREEN, THE VAULT'S. «شاشة الاستلام من الخزنة خليها زى شاشة التشغيل اليومى برضو»: the
+// vault's receive queue (`pages/VaultReceivePage.tsx`) is this board too — the secured screen's
+// columns, over the rows the vault receives. What it adds, it hands in through four small hooks
+// that the other three screens leave alone: its own act on a row (`rowAction` — the vault's ✓),
+// a line under the status (`statusNote`), its own row colour (`tintOf`) and its own toolbar
+// controls (`toolbarExtras`); and it turns off what the treasury does not do there
+// (`canEditRows`).
+//
+// THE STATUS, ON EVERY SCREEN. A daily row says who delivered it — «لم يتم التسليم», then «تم
+// التسليم» on a yellow row (the crew captain, from the mobile app) or a green one (the desk's ✓).
+// A secured row says its STAGE (`securedStage`, the server's; `lib/secured-stage.ts`): «لم يتم
+// التسليم» white, «تم الاستلام من القائد» yellow, «بالخزينة» green, «خرجت للتسليم» blue, «تم
+// التسليم» green — on the secured screen, and on the day board and the history alike, where a
+// محصنة due for delivery is listed whatever its stage.
 //
 // WHAT THE PAGES OWN, AND WHAT THIS OWNS. A page owns its period — which rows the server is asked
 // for (today, or from–to), the history's two date pickers and what a reset does to them — and
-// what may be DONE from it (`canCreate`, `canToggleReceived`), and hands the answer in. This owns
+// what may be DONE from it (`canCreate`, `canToggleReceived`, what «إضافة شحنة» creates), and hands
+// the answer in, with which board it is (`kind` — the secured screen's columns and filters differ).
+// This owns
 // everything over the answer: the filters (in the URL, remembered by the page's
 // `useRememberedFilters`), the figures, the «عملات أخرى» breakdown, the table with its hover
 // cards, tints and row actions — «السجل», each row's action log, among them on both screens — and
@@ -17,14 +37,16 @@
 //
 // THE LEGACY TABLE (main_ops.ejs:829-897): م | السيارة | اسم البنك | من فرع | الى فرع | العملة |
 // قيمة الشحنة | قائد الطاقم | التاريخ | النوع | المنطقة | ملاحظات | actions.
-import { Fragment, useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { type SetURLSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredStage,
   type OperationsShipmentDto,
+  type OperationsShipmentType,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -63,10 +85,17 @@ import {
   isReceived,
   otherCurrencies,
   readDayBoardFilters,
-  rowTint,
+  offeredFilters,
   orderedBoardTotals,
+  type BoardKind,
   type DayBoardFilters,
 } from '../lib/day-board';
+import {
+  SECURED_SCREEN_STAGES,
+  boardRowTint,
+  offersDeliveryToggle,
+  shownStage,
+} from '../lib/secured-stage';
 import {
   HISTORY_PAGE_SIZE,
   HISTORY_PAGE_SIZES,
@@ -74,7 +103,7 @@ import {
   type HistoryRange,
 } from '../lib/shipment-history';
 import { shipmentCaption } from '../lib/shipment-log';
-import { DeliveryStatusBadge, ShipmentTypeBadge } from './ShipmentBadges';
+import { DeliveryStatusBadge, SecuredStageBadge, ShipmentTypeBadge } from './ShipmentBadges';
 import { BoardFigurePill, FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
 import {
   ShipmentReceiptImageCell,
@@ -89,10 +118,13 @@ import { SHIPMENT_PATH } from './shipment-icons';
 /** Every filter is `density="tight"`, as on the Fleet boards. */
 const TIGHT = 'tight' as const;
 
-/** The Fleet boards' toolbar buttons (ReceiptsPage). */
-const BRAND_BUTTON =
+/**
+ * The Fleet boards' toolbar buttons (ReceiptsPage). Exported for a page's own toolbar controls
+ * (`toolbarExtras`), so they wear the board's buttons rather than a look of their own.
+ */
+export const BRAND_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
-const ADD_BUTTON =
+export const ADD_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95';
 
 /** The Fleet boards' table — no column lines, every value in Cairo's bold. */
@@ -174,7 +206,7 @@ export interface BoardDatePicker {
   onChange: (value: string) => void;
 }
 
-export const ShipmentsBoard = ({
+export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   search: [sp, setSp],
   shipments,
   crews,
@@ -186,16 +218,27 @@ export const ShipmentsBoard = ({
   periodActive = false,
   periodParams = [],
   canCreate,
+  createType = 'daily',
   canToggleReceived,
+  kind = 'shipments',
   empty,
   refusal = null,
   paged = false,
   deletedShipments,
+  canEditRows = true,
+  stages = SECURED_SCREEN_STAGES,
+  rowAction,
+  statusNote,
+  tintOf,
+  toolbarExtras,
 }: {
   /** The page's `useSearchParams()` — the filters live in the URL beside the page's period. */
   search: [URLSearchParams, SetURLSearchParams];
-  /** The rows the server chose for the period, newest created first. */
-  shipments: readonly OperationsDayBoardShipmentDto[];
+  /**
+   * The rows the server chose for the period, newest created first — board rows, or rows that
+   * carry more (the vault queue's `vaultReceivedAt`), which the page's hooks below are handed back.
+   */
+  shipments: readonly T[];
   /** The crews the rows ride, for the van's card. */
   crews: readonly OperationsDayBoardVehicleCrewDto[];
   /** The period's answer has arrived — the figures wait for it. */
@@ -215,11 +258,31 @@ export const ShipmentsBoard = ({
    */
   canCreate: boolean;
   /**
+   * What «إضافة شحنة» creates — decided by the screen, never chosen in the form: the day board adds
+   * daily shipments («اشيل النوع ويكون يومى بس»), the secured screen secured ones («الفورم بتاعت
+   * الاضافى لما اضيف اتوماتيك محصنة»), as legacy /mohsana did.
+   */
+  createType?: OperationsShipmentType;
+  /**
    * The ✓ that confirms a delivery (and undoes one) is offered here — the day board, where the
    * day's deliveries are confirmed. Not from the history («مش هيقدر منها يسلم او يستلم»), which
-   * still edits and deletes («عاوز عادى يعدل و يحذف»). Still subject to the permission.
+   * still edits and deletes («عاوز عادى يعدل و يحذف»), nor from the secured screen, whose rows move
+   * on by the captain's, the vault's and the dispatch's acts. Still subject to the permission, and
+   * offered only on a row the server would take it for (`offersDeliveryToggle`).
    */
   canToggleReceived: boolean;
+  /**
+   * Which board this is (`BoardKind`). `shipments` — the day board and the history, daily rows and
+   * محصنات side by side. `secured` — the secured screen, every row a محصنة, so:
+   *   · «هنزود التاريخ التسليم يظهر فى الجدول» — a «تاريخ التسليم» column beside the date, which is
+   *     then named for what it is on a محصنة, «تاريخ الاستلام» (elsewhere a secured row prints both
+   *     days in the one date cell);
+   *   · «الحالة» is filtered by stage, one at a time — «delivered or not» would lump four stages
+   *     together;
+   *   · no «النوع», column or filter — it would say «محصنة» on every row, and its 68px are what
+   *     the extra date column needs to keep the actions on a 1440 laptop's screen.
+   */
+  kind?: BoardKind;
   empty: string;
   /**
    * Why the rows were not asked for, or were refused — said in the table's place instead of an
@@ -234,6 +297,39 @@ export const ShipmentsBoard = ({
    * whether the endpoint would take it). The day board has none.
    */
   deletedShipments?: { range: HistoryRange; enabled: boolean };
+  /**
+   * The row's edit and delete, and its receipt image's upload / replace / delete, are offered here
+   * — still subject to the permissions. Every screen but one: on the vault's receive queue the
+   * treasury RECEIVES; it does not edit the desk's shipments there («NO edit/delete»). The image
+   * can still be looked at.
+   */
+  canEditRows?: boolean;
+  /**
+   * On a secured board (`kind`), the stages its «الحالة» filter offers — the ones its rows can be
+   * in. The secured screen's open stages by default; the vault queue hands in its own (with or
+   * without «الكل»). A stage in the URL that is not offered narrows nothing, as a param with no box.
+   */
+  stages?: readonly OperationsSecuredStage[];
+  /**
+   * The page's own act on a row, drawn in the row-actions group at the ✓'s place — the vault's ✓
+   * («استلام في الخزينة») on its receive queue. The page decides on which rows (null on the rest),
+   * and for whom (undefined: nobody — the hook is not handed in).
+   */
+  rowAction?: ((row: T) => ReactNode) | undefined;
+  /** A line under the row's «الحالة» badge — the vault queue's «استلمها القائد …» / «استُلمت …». */
+  statusNote?: (row: T) => ReactNode;
+  /**
+   * The row's colour, where a page colours by a rule of its own instead of the stage's
+   * (`boardRowTint`) — the vault queue keeps a row it received today green even once it has left.
+   */
+  tintOf?: (row: T) => string | undefined;
+  /**
+   * The page's own controls in the toolbar, after «الإحصائيات» where the day board has «إضافة
+   * شحنة» — the vault queue's colour legend and «الكل». Handed the rows SHOWN (the filters
+   * applied, every page of them), as the figures are counted over; called before an answer is in
+   * as well, so what must wait for one is the page's to say.
+   */
+  toolbarExtras?: (shown: readonly T[]) => ReactNode;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -254,7 +350,10 @@ export const ShipmentsBoard = ({
   // page's remembered-filters hook has something to remember. Filtering still happens in the
   // browser over the rows the server returned; only where the state LIVES is the URL. Written with
   // `replace`, because narrowing the board is a view of it rather than a place to go Back to.
-  const filters = readDayBoardFilters(sp);
+  // A filter this board offers no box for reads as empty: a param with no box on screen never
+  // narrows the table.
+  const filters = offeredFilters(readDayBoardFilters(sp), kind, stages);
+  const secured = kind === 'secured';
   const setFilter = (patch: Partial<DayBoardFilters>): void => {
     const params = new URLSearchParams(sp);
     for (const [name, value] of Object.entries({ ...filters, ...patch })) {
@@ -313,8 +412,10 @@ export const ShipmentsBoard = ({
   const page = paging.view === view ? paging.page : 1;
   const shown = paged ? pageOfRows(rows, page, paging.size) : null;
 
-  const canEdit = can('operationsShipment.edit');
-  const canDelete = can('operationsShipment.delete');
+  // What the SCREEN offers and what the reader may do, both — the vault queue offers neither
+  // (`canEditRows`); everywhere else, whoever holds the permission edits and deletes.
+  const canEdit = canEditRows && can('operationsShipment.edit');
+  const canDelete = canEditRows && can('operationsShipment.delete');
   // «السجل» — on BOTH screens, to whoever may see the rows: the log is read on the same grant.
   const canViewLog = can('operationsShipment.view');
   // What the SCREEN offers and what the reader may do, both: the history offers neither, whoever
@@ -345,7 +446,7 @@ export const ShipmentsBoard = ({
     }
   };
 
-  const columns: Column<OperationsDayBoardShipmentDto>[] = [
+  const everyColumn: Column<T>[] = [
     {
       key: 'vehicle',
       header: t('operations.board.vehicle'),
@@ -442,11 +543,14 @@ export const ShipmentsBoard = ({
     },
     {
       key: 'date',
-      header: t('operations.board.date'),
-      // A secured row is about two days: collected (green) and delivered — legacy :882-897.
+      // With its own «تاريخ التسليم» beside it, the date is named for the day it is: the day a
+      // محصنة is collected from the bank («تاريخ التسليم تانى يوم الاستلام»).
+      header: t(secured ? 'operations.board.collectedOn' : 'operations.board.date'),
+      // A secured row is about two days: collected (green) and delivered — legacy :882-897. Where
+      // the delivery day has a column of its own, this cell is the collection day alone.
       render: (row) => (
         <div className={cn('leading-tight', FIGURE)}>
-          {row.shipmentType === 'secured' ? (
+          {row.shipmentType === 'secured' && !secured ? (
             <>
               <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
                 {row.collectionDate.slice(0, 10)}
@@ -460,6 +564,17 @@ export const ShipmentsBoard = ({
       ),
     },
     {
+      key: 'deliveryDate',
+      header: t('operations.shipment.deliveryDate'),
+      // The secured screen's alone (`kind`) — see the filter after the list.
+      render: (row) =>
+        row.deliveryDate === null ? (
+          DASH
+        ) : (
+          <span className={FIGURE}>{row.deliveryDate.slice(0, 10)}</span>
+        ),
+    },
+    {
       key: 'type',
       header: t('operations.shipment.type'),
       render: (row) => <ShipmentTypeBadge shipmentType={row.shipmentType} />,
@@ -467,9 +582,30 @@ export const ShipmentsBoard = ({
     {
       key: 'status',
       header: t('operations.common.status'),
-      // «النوع هيفضل زى ماهو بس هنفصل عنه الحالة»: its own column, in the desk's two words —
-      // «لم يتم التسليم» / «تم التسليم» — whoever delivered; the row's colour says who.
-      render: (row) => <DeliveryStatusBadge delivery={boardDelivery(row)} />,
+      // «النوع هيفضل زى ماهو بس هنفصل عنه الحالة»: its own column. A daily row in the desk's two
+      // words — «لم يتم التسليم» / «تم التسليم» — whoever delivered (the row's colour says who); a
+      // محصنة in its stage's words, «والحالة لم التسليم و تم الاستلام من القائد و بالخزينة» — except
+      // one on the road its delivery captain has delivered, which says «تم التسليم» as a daily row
+      // does until the desk's ✓ (`shownStage`).
+      render: (row) => {
+        const stage = shownStage(row);
+        const badge =
+          stage !== null ? (
+            <SecuredStageBadge stage={stage} />
+          ) : (
+            <DeliveryStatusBadge delivery={boardDelivery(row)} />
+          );
+        // The page's line under it, where it has one (the vault queue's "when").
+        const note = statusNote?.(row);
+        return note === undefined || note === null ? (
+          badge
+        ) : (
+          <div className="space-y-0.5">
+            {badge}
+            {note}
+          </div>
+        );
+      },
     },
     {
       key: 'notes',
@@ -490,77 +626,121 @@ export const ShipmentsBoard = ({
       align: 'center',
       // «عاوز عمود كمان لصورة الايصال زى شاشة السيارات اقدر ارفع صوره»: the vehicles' image cell —
       // the dashed cloud to upload, then view / replace / delete.
-      render: (row) => <ShipmentReceiptImageCell row={row} onPreview={setPreviewingReceipt} />,
+      // On the vault queue it is looked at, never managed (`canEditRows`).
+      render: (row) => (
+        <ShipmentReceiptImageCell
+          row={row}
+          onPreview={setPreviewingReceipt}
+          readOnly={!canEditRows}
+        />
+      ),
     },
     {
       key: 'actions',
       header: t('operations.board.actions'),
-      render: (row) => (
-        <span className={ACTION_GROUP} data-row-actions="shipment">
-          {canEdit && (
-            <button
-              type="button"
-              className={actionTone('edit')}
-              aria-label={t('common.edit')}
-              title={t('common.edit')}
-              onClick={() => setEditing(row)}
-            >
-              <SquarePenIcon className="h-4 w-4" />
-            </button>
-          )}
-          {/* «إستلام» — a toggle, as legacy's was (main_ops.ejs:919-928): pressed once received.
+      render: (row) => {
+        // The page's own act on this row (the vault's ✓), or null where it has none here.
+        const own = rowAction?.(row) ?? null;
+        // Nothing at all to do on this row (a vault-only treasurer's green row): a dash, as an empty
+        // cell reads — not an empty box.
+        if (!canEdit && !canComplete && !canViewLog && !canDelete && own === null) return DASH;
+        return (
+          <span className={ACTION_GROUP} data-row-actions="shipment">
+            {canEdit && (
+              <button
+                type="button"
+                className={actionTone('edit')}
+                aria-label={t('common.edit')}
+                title={t('common.edit')}
+                onClick={() => setEditing(row)}
+              >
+                <SquarePenIcon className="h-4 w-4" />
+              </button>
+            )}
+            {/* «إستلام» — a toggle, as legacy's was (main_ops.ejs:919-928): pressed once received.
               Its NAME stays «تأكيد التسليم» either way and `aria-pressed` carries the state: a
               name that flipped to «التراجع عن التسليم» would be announced "undo delivery,
               pressed", as if the undo were what is switched on. The tooltip may still say what
               a click does next. */}
-          {canComplete && (
-            <button
-              type="button"
-              className={cn(actionTone('status'), isReceived(row) && PRESSED)}
-              aria-pressed={isReceived(row)}
-              aria-label={t('operations.shipment.receive')}
-              title={t(
-                isReceived(row) ? 'operations.shipment.unreceive' : 'operations.shipment.receive',
-              )}
-              disabled={setReceived.isPending}
-              onClick={() => void toggleReceived(row)}
-            >
-              <CheckIcon className="h-4 w-4" />
-            </button>
-          )}
-          {/* «سجل بالاكشنز اللى حصلت على الشحنة»: the row's story, a log among the actions — slate,
+            {canComplete && offersDeliveryToggle(row) && (
+              <button
+                type="button"
+                className={cn(actionTone('status'), isReceived(row) && PRESSED)}
+                aria-pressed={isReceived(row)}
+                aria-label={t('operations.shipment.receive')}
+                title={t(
+                  isReceived(row) ? 'operations.shipment.unreceive' : 'operations.shipment.receive',
+                )}
+                disabled={setReceived.isPending}
+                onClick={() => void toggleReceived(row)}
+              >
+                <CheckIcon className="h-4 w-4" />
+              </button>
+            )}
+            {/* A محصنة still on its way to the vault, or in it, takes no ✓ — its next step is the
+              captain's, the vault's or the dispatch's, and the server would refuse the desk's. Its
+              square is kept, empty, so the log and the bin stand where they stand on every row. */}
+            {canComplete && !offersDeliveryToggle(row) && (
+              <span aria-hidden className={cn(actionTone('status'), 'invisible')} />
+            )}
+            {/* The page's own act, at the ✓'s place — the vault's ✓ on its receive queue. A row it
+              has none for keeps its square, empty, while «السجل» or the bin follow, so they stand
+              where they stand on every row (as the desk ✓'s square above). */}
+            {rowAction !== undefined &&
+              (own ??
+                ((canViewLog || canDelete) && (
+                  <span aria-hidden className={cn(actionTone('status'), 'invisible')} />
+                )))}
+            {/* «سجل بالاكشنز اللى حصلت على الشحنة»: the row's story, a log among the actions — slate,
               between the ✓ and the bin (`row-actions-look`). */}
-          {canViewLog && (
-            <button
-              type="button"
-              data-shipment-log={row.id}
-              aria-haspopup="dialog"
-              className={actionTone('history')}
-              aria-label={t('operations.shipment.log.open')}
-              title={t('operations.shipment.log.open')}
-              onClick={() => setLogOf({ id: row.id, caption: shipmentCaption(row, bankNameOf, t) })}
-            >
-              <HistoryIcon className="h-4 w-4" />
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              className={actionTone('delete')}
-              aria-label={t('common.remove')}
-              title={t('common.remove')}
-              onClick={() => void removeShipment(row)}
-            >
-              <Trash2Icon className="h-4 w-4" />
-            </button>
-          )}
-        </span>
-      ),
+            {canViewLog && (
+              <button
+                type="button"
+                data-shipment-log={row.id}
+                aria-haspopup="dialog"
+                className={actionTone('history')}
+                aria-label={t('operations.shipment.log.open')}
+                title={t('operations.shipment.log.open')}
+                onClick={() =>
+                  setLogOf({ id: row.id, caption: shipmentCaption(row, bankNameOf, t) })
+                }
+              >
+                <HistoryIcon className="h-4 w-4" />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className={actionTone('delete')}
+                aria-label={t('common.remove')}
+                title={t('common.remove')}
+                onClick={() => void removeShipment(row)}
+              >
+                <Trash2Icon className="h-4 w-4" />
+              </button>
+            )}
+          </span>
+        );
+      },
     },
   ];
+  // The delivery-date column is the secured screen's alone, and «النوع» everyone else's (`kind`);
+  // both are declared in their places in the list above, so the columns read in one order on
+  // every screen.
+  const boardColumns = everyColumn.filter(
+    (column) => column.key !== (secured ? 'type' : 'deliveryDate'),
+  );
+  // A screen that offers this reader nothing to do on a row (the vault queue, read by a treasurer
+  // who may neither receive nor read the log) draws no actions column — not a column of empty boxes.
+  const offersRowActions =
+    canEdit || canComplete || canViewLog || canDelete || rowAction !== undefined;
+  const columns = offersRowActions
+    ? boardColumns
+    : boardColumns.filter((column) => column.key !== 'actions');
 
   const typeValue = filters.type === '' ? [] : [filters.type];
   const receivedValue = filters.received === '' ? [] : [filters.received];
+  const stageValue = filters.stage === '' ? [] : [filters.stage];
 
   return (
     <>
@@ -631,7 +811,9 @@ export const ShipmentsBoard = ({
                 : ''}
             </span>
           )}
-          <span className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
+          {/* `max-w-full flex-wrap`: a page's own controls can make this group wider than a phone;
+            it then wraps inside itself instead of running off the screen. */}
+          <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
             <button
               type="button"
               data-shipment-stats-toggle="true"
@@ -656,6 +838,11 @@ export const ShipmentsBoard = ({
                 <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+            {/* The page's own controls, where the day board has «إضافة شحنة», handed the rows the
+              figures count. Drawn whether or not an answer is in: the page decides what waits for
+              one (the vault's legend does; its «الكل» does not — a choice of view stays on screen
+              while the list loads or is refused). */}
+            {toolbarExtras?.(rows)}
             {canAdd && (
               <button
                 type="button"
@@ -664,7 +851,11 @@ export const ShipmentsBoard = ({
                 className={ADD_BUTTON}
               >
                 <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-                {t('operations.shipment.add')}
+                {t(
+                  createType === 'secured'
+                    ? 'operations.secured.backlog.add'
+                    : 'operations.shipment.add',
+                )}
               </button>
             )}
             {/* The history's deleted shipments, at the end where the day board's «إضافة شحنة» is. */}
@@ -834,43 +1025,71 @@ export const ShipmentsBoard = ({
               </FilterWithIcon>
             ))}
             {/* Two answers each — ONE at a time: ticking one replaces the other, and clearing it is
-              «all», as the Fleet boards' two-answer filters read. */}
-            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
-              <MultiSelect
-                clearable
-                fullWidth
-                density={TIGHT}
-                showSelectedValues
-                label={t('operations.shipment.type')}
-                options={[
-                  { value: 'daily', label: t('operations.shipment.type.daily') },
-                  { value: 'secured', label: t('operations.shipment.type.secured') },
-                ]}
-                value={typeValue}
-                onChange={(next) =>
-                  setFilter({ type: (pickOne(typeValue, next) ?? '') as DayBoardFilters['type'] })
-                }
-              />
-            </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
-              <MultiSelect
-                clearable
-                fullWidth
-                density={TIGHT}
-                showSelectedValues
-                label={t('operations.dailyOps.received')}
-                options={[
-                  { value: 'yes', label: t('operations.dailyOps.receivedYes') },
-                  { value: 'no', label: t('operations.dailyOps.receivedNo') },
-                ]}
-                value={receivedValue}
-                onChange={(next) =>
-                  setFilter({
-                    received: (pickOne(receivedValue, next) ?? '') as DayBoardFilters['received'],
-                  })
-                }
-              />
-            </FilterWithIcon>
+              «all», as the Fleet boards' two-answer filters read. No «النوع» on the secured screen,
+              where every row is a محصنة. */}
+            {!secured && (
+              <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  label={t('operations.shipment.type')}
+                  options={[
+                    { value: 'daily', label: t('operations.shipment.type.daily') },
+                    { value: 'secured', label: t('operations.shipment.type.secured') },
+                  ]}
+                  value={typeValue}
+                  onChange={(next) =>
+                    setFilter({ type: (pickOne(typeValue, next) ?? '') as DayBoardFilters['type'] })
+                  }
+                />
+              </FilterWithIcon>
+            )}
+            {/* «الحالة» — on a secured board the محصنة's stages, in their order («the status
+              filter must offer the stages on this screen» — the page's `stages`); elsewhere
+              «التسليم», delivered or not. One box either way, at the status column's place. */}
+            {secured ? (
+              <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  label={t('operations.common.status')}
+                  options={stages.map((stage) => ({
+                    value: stage,
+                    label: t(`operations.board.stage.${stage}`),
+                  }))}
+                  value={stageValue}
+                  onChange={(next) =>
+                    setFilter({
+                      stage: (pickOne(stageValue, next) ?? '') as DayBoardFilters['stage'],
+                    })
+                  }
+                />
+              </FilterWithIcon>
+            ) : (
+              <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  label={t('operations.dailyOps.received')}
+                  options={[
+                    { value: 'yes', label: t('operations.dailyOps.receivedYes') },
+                    { value: 'no', label: t('operations.dailyOps.receivedNo') },
+                  ]}
+                  value={receivedValue}
+                  onChange={(next) =>
+                    setFilter({
+                      received: (pickOne(receivedValue, next) ?? '') as DayBoardFilters['received'],
+                    })
+                  }
+                />
+              </FilterWithIcon>
+            )}
             <FilterWithIcon
               icon={SHIPMENT_PATH.note}
               tone="text-slate-600 dark:text-slate-300"
@@ -913,9 +1132,12 @@ export const ShipmentsBoard = ({
                 onRetry={onRetry}
                 empty={empty}
                 // «لو تم التسليم من القائد … الصف لونه اصفر ولما ادوس انا على صح … يبقى الصف اخضر»:
-                // green once the desk confirmed (legacy's `#a9e6b8`, main_ops.ejs:851), yellow while
-                // only the crew captain has.
-                rowClassName={(row) => rowTint(boardDelivery(row))}
+                // a daily row green once the desk confirmed (legacy's `#a9e6b8`, main_ops.ejs:851),
+                // yellow while only the crew captain has; a محصنة by its stage — yellow with the
+                // captain, green in the vault («هتبقى اخضر عند الخزنة وعند العمليات»), blue on the
+                // road (`boardRowTint`).
+                // A page with a rule of its own (`tintOf` — the vault queue's) colours by it.
+                rowClassName={(row) => (tintOf === undefined ? boardRowTint(row) : tintOf(row))}
                 stickyHead
                 // Thirteen columns of short things — a van code, a bank, a date, three icons. The
                 // default floor (7.5rem a column) would make the table 98rem wide and push the notes
@@ -944,6 +1166,7 @@ export const ShipmentsBoard = ({
         open={previewingReceipt !== null}
         onClose={() => setPreviewingReceipt(null)}
         row={previewingReceipt}
+        readOnly={!canEditRows}
       />
 
       <OtherCurrenciesDialog
@@ -957,8 +1180,9 @@ export const ShipmentsBoard = ({
       />
 
       <ShipmentFormDialog
-        // The board adds daily shipments only — «اشيل النوع ويكون يومى بس».
-        createType="daily"
+        // The screen's kind: daily from the day board («اشيل النوع ويكون يومى بس»), secured from
+        // the secured screen («لما اضيف اتوماتيك محصنة»).
+        createType={createType}
         open={(canAdd && creating) || editing !== null}
         shipment={editing}
         banks={banks.data?.items ?? []}

@@ -13,12 +13,17 @@ import {
   boardDelivery,
   boardFigures,
   boardTotals,
+  compareCurrencies,
   currencyKind,
   currencyOfKind,
+  currencyOrder,
   currencyUnit,
   otherCurrencies,
   readDayBoardFilters,
   rowTint,
+  saysDelivered,
+  boardFilterParams,
+  offeredFilters,
   branchCell,
   branchCellText,
   filterDayBoard,
@@ -248,10 +253,18 @@ describe('isOtherOriginBank — money collected from a bank other than the one b
     origin:
       originBankId === null
         ? null
-        : { id: 'branch-1', name: 'فرع المهندسين', code: 'B1', bankId: originBankId, bankName: 'x' },
+        : {
+            id: 'branch-1',
+            name: 'فرع المهندسين',
+            code: 'B1',
+            bankId: originBankId,
+            bankName: 'x',
+          },
     destination: null,
     crew: null,
     captainDeliveredAt: null,
+    securedStage: null,
+    captainPickedUpAt: null,
   });
 
   it('is false when the origin branch belongs to the billed bank', () => {
@@ -283,6 +296,8 @@ const boardRow = (
     destination: resolved('d', destination),
     crew: null,
     captainDeliveredAt: null,
+    securedStage: null,
+    captainPickedUpAt: null,
   };
 };
 
@@ -408,18 +423,84 @@ describe('filterDayBoard over board rows — «من فرع» / «الى فرع»
   });
 });
 
-describe('orderedBoardTotals — the figures, in the legacy strip’s order', () => {
-  const CURRENCIES: Record<string, { code: string; name: string }> = {
-    egp: { code: 'EGP', name: 'مصري' },
-    usd: { code: 'USD', name: 'دولار' },
-    eur: { code: 'EUR', name: 'يورو' },
-    sar: { code: 'SAR', name: 'ريال' },
+// «ترتيب العملات فى الجدول لما تظهر تكون على حسب ترتيبها ف شاشة البيانات المرجعية» — the catalog's
+// dragged order, the server's `byCatalogOrder` exactly (currency.service.ts).
+describe('compareCurrencies / currencyOrder — the catalog’s order', () => {
+  const at = (id: string, code: string, name: string, sortOrder: number | null) => ({
+    id,
+    code,
+    name,
+    sortOrder,
+  });
+
+  it('puts the dragged places first, in their order, and a currency nobody placed after them', () => {
+    const catalog = [
+      at('egp', '1', 'مصري', 2),
+      at('usd', '2', 'دولار', 0),
+      at('new', '0', 'جديدة', null),
+      at('eur', '3', 'يورو', 1),
+    ];
+    expect([...catalog].sort(compareCurrencies).map((c) => c.id)).toEqual([
+      'usd',
+      'eur',
+      'egp',
+      'new',
+    ]);
+  });
+
+  it('reads the codes as numbers while nobody has arranged the list — «2» before «10»', () => {
+    const catalog = [
+      at('ten', '10', 'عشرة', null),
+      at('two', '2', 'اثنان', null),
+      at('one', '1', 'واحد', null),
+      at('eur', 'EUR', 'يورو', null),
+    ];
+    // Text order would put «10» before «2»; a person reads 1, 2, 10. Digits sort before letters.
+    expect([...catalog].sort(compareCurrencies).map((c) => c.id)).toEqual([
+      'one',
+      'two',
+      'ten',
+      'eur',
+    ]);
+  });
+
+  it('settles a tie on the place and the code by the name', () => {
+    expect(compareCurrencies(at('a', 'X', 'يورو', 1), at('b', 'X', 'دولار', 1))).toBeGreaterThan(0);
+    expect(compareCurrencies(at('a', 'X', 'دولار', 1), at('a', 'X', 'دولار', 1))).toBe(0);
+  });
+
+  it('orders ids by it, an id the catalog does not hold last, ties in the caller’s order', () => {
+    const order = currencyOrder([
+      at('egp', '1', 'مصري', 1),
+      at('usd', '2', 'دولار', 0),
+      at('eur', '3', 'يورو', null),
+    ]);
+    expect(['gone', 'egp', 'other-gone', 'eur', 'usd'].sort(order)).toEqual([
+      'usd',
+      'egp',
+      'eur',
+      'gone',
+      'other-gone',
+    ]);
+  });
+
+  it('changes nothing over an empty catalog — every id is unknown alike', () => {
+    expect(['usd', 'egp', 'eur'].sort(currencyOrder([]))).toEqual(['usd', 'egp', 'eur']);
+  });
+});
+
+describe('orderedBoardTotals — a row’s money, in the catalog’s order', () => {
+  const CURRENCIES: Record<string, { code: string; name: string; sortOrder?: number | null }> = {
+    egp: { code: 'EGP', name: 'مصري', sortOrder: 1 },
+    usd: { code: 'USD', name: 'دولار', sortOrder: 0 },
+    eur: { code: 'EUR', name: 'يورو', sortOrder: null },
+    sar: { code: 'SAR', name: 'ريال', sortOrder: 2 },
   };
   const currencyOf = (id: string) => CURRENCIES[id];
   const ids = (rows: OperationsShipmentDto[]) =>
     orderedBoardTotals(rows, currencyOf).map((total) => total.currencyId);
 
-  it('puts EGP first, then USD, then the rest by name, and a currency it cannot name last', () => {
+  it('follows the catalog’s places — not the pound first — and a currency it cannot name last', () => {
     const rows = [
       shipment({
         lines: [
@@ -435,8 +516,9 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
         ],
       }),
     ];
-    // ريال before يورو by name; `gone` is not in the catalog.
-    expect(ids(rows)).toEqual(['egp', 'usd', 'sar', 'eur', 'gone']);
+    // The dollar was dragged above the pound; the euro has no place, so it follows every placed
+    // one; `gone` is not in the catalog.
+    expect(ids(rows)).toEqual(['usd', 'egp', 'sar', 'eur', 'gone']);
   });
 
   it('keeps each currency’s sum — ordering never merges or drops a figure', () => {
@@ -446,8 +528,8 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
       shipment({ lines: [{ currencyId: 'egp', amount: 250 }] }),
     ];
     expect(orderedBoardTotals(rows, currencyOf)).toEqual([
-      { currencyId: 'egp', amount: 750 },
       { currencyId: 'usd', amount: 40 },
+      { currencyId: 'egp', amount: 750 },
     ]);
   });
 
@@ -464,8 +546,8 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
     const shown = run([ahly, misr], { bank: 'أهل' });
     expect(orderedBoardTotals(shown, currencyOf)).toEqual([{ currencyId: 'egp', amount: 100 }]);
     expect(orderedBoardTotals([ahly, misr], currencyOf)).toEqual([
-      { currencyId: 'egp', amount: 1000 },
       { currencyId: 'usd', amount: 5 },
+      { currencyId: 'egp', amount: 1000 },
     ]);
   });
 
@@ -509,11 +591,8 @@ describe('boardDelivery — who delivered: «القائد» yellow, «المكت
       { ...shipment({ id: 'desk', status: 'completed' }), captainDeliveredAt: null },
     ];
     const by = (received: 'yes' | 'no') =>
-      filterDayBoard(
-        rows,
-        { ...EMPTY_DAY_BOARD_FILTERS, received },
-        bankNameOf,
-        (row, side) => branchNameOf(side === 'origin' ? row.originBranchId : row.destinationBranchId),
+      filterDayBoard(rows, { ...EMPTY_DAY_BOARD_FILTERS, received }, bankNameOf, (row, side) =>
+        branchNameOf(side === 'origin' ? row.originBranchId : row.destinationBranchId),
       ).map((r) => r.id);
     expect(by('yes')).toEqual(['captain', 'desk']);
     expect(by('no')).toEqual(['waiting']);
@@ -529,8 +608,18 @@ describe('boardFigures — «مصري», «دولار», then «عملات أخ�
   };
   const currencyOf = (id: string) => CURRENCIES[id];
   const rows = [
-    shipment({ lines: [{ currencyId: 'egp', amount: 12_000_000 }, { currencyId: 'gbp', amount: 60_000 }] }),
-    shipment({ lines: [{ currencyId: 'usd', amount: 100_000 }, { currencyId: 'eur', amount: 30_000 }] }),
+    shipment({
+      lines: [
+        { currencyId: 'egp', amount: 12_000_000 },
+        { currencyId: 'gbp', amount: 60_000 },
+      ],
+    }),
+    shipment({
+      lines: [
+        { currencyId: 'usd', amount: 100_000 },
+        { currencyId: 'eur', amount: 30_000 },
+      ],
+    }),
   ];
 
   it('keeps the pound and the dollar apart, and sums every other currency into one figure', () => {
@@ -541,16 +630,20 @@ describe('boardFigures — «مصري», «دولار», then «عملات أخ�
     expect(figures.othersSum).toBe(90_000);
   });
 
-  it('lists the others each on its own, by name — what a click on «عملات أخرى» shows', () => {
+  it('lists the others each on its own, in the catalog’s order — what «عملات أخرى» opens on', () => {
+    // Nobody has placed these two, so the codes decide: EUR before GBP.
     expect(boardFigures(rows, currencyOf).others).toEqual([
-      { currencyId: 'gbp', amount: 60_000 },
       { currencyId: 'eur', amount: 30_000 },
+      { currencyId: 'gbp', amount: 60_000 },
     ]);
   });
 
   it('is all zeros for an empty board, and counts an unnamed currency with the others', () => {
     expect(boardFigures([], currencyOf)).toEqual({ egp: 0, usd: 0, others: [], othersSum: 0 });
-    const unknown = boardFigures([shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })], currencyOf);
+    const unknown = boardFigures(
+      [shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })],
+      currencyOf,
+    );
     expect(unknown.othersSum).toBe(5);
   });
 });
@@ -599,7 +692,17 @@ describe('currencyKind — the pound and the dollar by code, name or legacy alia
   });
 
   it('reads the spellings an Egyptian typist uses — hamza, ى/ي, ة/ه, the dots', () => {
-    for (const name of ['مصرى', 'جنية', 'جنيه مصرى', 'الجنيه المصرى', 'L.E', 'LE', 'ج.م', 'ج. م', 'E£']) {
+    for (const name of [
+      'مصرى',
+      'جنية',
+      'جنيه مصرى',
+      'الجنيه المصرى',
+      'L.E',
+      'LE',
+      'ج.م',
+      'ج. م',
+      'E£',
+    ]) {
       expect(currencyKind(cur('x', name)), name).toBe('pound');
     }
     for (const name of ['الدولار', 'دولار أمريكى', 'الدولار الأمريكي', 'US$', '$', 'U.S. Dollar']) {
@@ -680,24 +783,46 @@ describe('the figures over the production catalog', () => {
     expect(figures.othersSum).toBe(450_000);
   });
 
-  it('orders a row’s money pound, dollar, then the rest by name', () => {
+  it('orders a row’s money by the catalog’s codes, read as numbers, until somebody drags it', () => {
     const more = [...rows, shipment({ lines: [{ currencyId: 'sar', amount: 9 }] })];
+    // «1» مصري, «2» دولار, «3» يورو, «4» ريال سعودي — the order the owner typed them in.
     expect(orderedBoardTotals(more, currencyOf).map((total) => total.currencyId)).toEqual([
       'egp',
       'usd',
+      'eur',
+      'sar',
+    ]);
+  });
+
+  it('follows the order dragged on the reference-data screen once there is one', () => {
+    const dragged = (id: string) => {
+      const places: Record<string, number> = { sar: 0, eur: 1, usd: 2, egp: 3 };
+      const currency = PRODUCTION[id];
+      return currency === undefined ? undefined : { ...currency, sortOrder: places[id] ?? null };
+    };
+    const more = [...rows, shipment({ lines: [{ currencyId: 'sar', amount: 9 }] })];
+    expect(orderedBoardTotals(more, dragged).map((total) => total.currencyId)).toEqual([
       'sar',
       'eur',
+      'usd',
+      'egp',
     ]);
+    // The pills do not move: the pound and the dollar are still the pound and the dollar.
+    const figures = boardFigures(more, dragged);
+    expect([figures.egp, figures.usd]).toEqual([55_000_000, 300_000]);
+    expect(figures.others.map((total) => total.currencyId)).toEqual(['sar', 'eur']);
   });
 });
 
 describe('otherCurrencies — what the «عملات أخرى» dialog shows', () => {
-  const CATALOG: Record<string, { code: string; name: string }> = {
-    egp: { code: '1', name: 'مصري' },
-    usd: { code: '2', name: 'دولار' },
-    eur: { code: '3', name: 'يورو' },
-    gbp: { code: 'GBP', name: 'جنيه استرليني' },
-    sar: { code: 'SAR', name: 'ريال' },
+  // Arranged on the reference-data screen: the riyal dragged first, the euro — the largest sum
+  // here — last.
+  const CATALOG: Record<string, { code: string; name: string; sortOrder: number | null }> = {
+    egp: { code: '1', name: 'مصري', sortOrder: 1 },
+    usd: { code: '2', name: 'دولار', sortOrder: 2 },
+    eur: { code: '3', name: 'يورو', sortOrder: 4 },
+    gbp: { code: 'GBP', name: 'جنيه استرليني', sortOrder: 3 },
+    sar: { code: 'SAR', name: 'ريال', sortOrder: 0 },
   };
   const currencyOf = (id: string) => CATALOG[id];
   const rows = [
@@ -727,9 +852,9 @@ describe('otherCurrencies — what the «عملات أخرى» dialog shows', ()
     expect(result.sum).toBe(105_000);
   });
 
-  it('puts the largest first; equal sums keep the by-name order', () => {
-    // يورو 75,000; جنيه استرليني 15,000 and ريال 15,000 tie — by name, جنيه before ريال.
-    expect(result.cards.map((card) => card.currencyId)).toEqual(['eur', 'gbp', 'sar']);
+  it('lists them in the catalog’s order, as every list of currencies reads — not by size', () => {
+    // يورو is 75,000 of the 105,000, yet it was dragged last; ريال was dragged first.
+    expect(result.cards.map((card) => card.currencyId)).toEqual(['sar', 'gbp', 'eur']);
   });
 
   it('counts the SHIPMENTS carrying each currency, not its lines', () => {
@@ -742,7 +867,9 @@ describe('otherCurrencies — what the «عملات أخرى» dialog shows', ()
 
   it('gives each its share of the figure', () => {
     const shares = result.cards.map((card) => card.share);
-    expect(shares[0]).toBeCloseTo(75_000 / 105_000);
+    expect(result.cards.find((card) => card.currencyId === 'eur')?.share).toBeCloseTo(
+      75_000 / 105_000,
+    );
     expect(shares.reduce((sum, share) => sum + share, 0)).toBeCloseTo(1);
   });
 
@@ -792,7 +919,8 @@ describe('the van filter — «ضيف كود العربيه ف الفلاتر»'
 describe('the filters in the URL — «ارتب الفلاتر على حسب عواميد الجدول»', () => {
   it('names them in the table’s column order', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | قائد الطاقم | (التاريخ) | النوع | الحالة |
-    // ملاحظات — the day is the page's, not a filter.
+    // ملاحظات — the day is the page's, not a filter. «الحالة» is two params, one per board: the
+    // delivery (the day board and the history) and the محصنة's stage (the secured screen).
     expect([...DAY_BOARD_FILTER_PARAMS]).toEqual([
       'vehicle',
       'bank',
@@ -802,13 +930,14 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       'captain',
       'type',
       'received',
+      'stage',
       'notes',
     ]);
   });
 
   it('reads every filter from its param', () => {
     const params = new URLSearchParams(
-      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&notes=e&date=2026-11-01',
+      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&notes=e&date=2026-11-01',
     );
     expect(readDayBoardFilters(params)).toEqual({
       vehicle: '150',
@@ -819,14 +948,151 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       captain: 'd',
       type: 'secured',
       received: 'no',
+      stage: 'inVault',
       notes: 'e',
     });
     expect(readDayBoardFilters(new URLSearchParams())).toEqual(EMPTY_DAY_BOARD_FILTERS);
   });
 
   it('reads a hand-edited select value as no filter, not as one nothing matches', () => {
-    const filters = readDayBoardFilters(new URLSearchParams('type=all&received=maybe'));
+    const filters = readDayBoardFilters(new URLSearchParams('type=all&received=maybe&stage=lost'));
     expect(filters.type).toBe('');
     expect(filters.received).toBe('');
+    expect(filters.stage).toBe('');
+  });
+
+  // A param with no box on screen must not narrow the table: the day board offers «التسليم» and
+  // not the stage; the secured screen the stage, and neither «التسليم» nor «النوع» (every row on
+  // it is a محصنة).
+  it('reads only the filters a board offers, and a page remembers exactly those', () => {
+    const all = {
+      ...EMPTY_DAY_BOARD_FILTERS,
+      type: 'daily' as const,
+      received: 'yes' as const,
+      stage: 'inVault' as const,
+      bank: 'أهل',
+    };
+    expect(offeredFilters(all, 'shipments')).toEqual({ ...all, stage: '' });
+    expect(offeredFilters(all, 'secured')).toEqual({ ...all, type: '', received: '' });
+    expect(boardFilterParams('shipments')).toEqual(
+      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'stage'),
+    );
+    expect(boardFilterParams('secured')).toEqual(
+      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'type' && name !== 'received'),
+    );
+  });
+
+  // The vault queue offers «لم يتم التسليم» only with «الكل»: a stage its box does not offer is
+  // read as no stage, rather than as a filter nothing on screen explains.
+  it('reads a stage the board’s box does not offer as no stage', () => {
+    const waiting = { ...EMPTY_DAY_BOARD_FILTERS, stage: 'awaitingPickup' as const, bank: 'أهل' };
+    expect(offeredFilters(waiting, 'secured', ['withCaptain', 'inVault'])).toEqual({
+      ...waiting,
+      stage: '',
+    });
+    expect(offeredFilters(waiting, 'secured', ['awaitingPickup', 'withCaptain'])).toEqual(waiting);
+    // No list given: every stage is read, as before.
+    expect(offeredFilters(waiting, 'secured')).toEqual(waiting);
+  });
+});
+
+// «اليوم التشغيلى هيظهر فيها اليومى والمحصنة اللى اليوم بتاعها فى اليوم اللى هتخرج فيه»: a محصنة is on
+// the day board whatever its stage, and its status cell reads the stage — so «التسليم» must answer
+// for it by what that cell says, and the secured screen's «الحالة» by the stage itself.
+describe('the status filters over secured rows', () => {
+  const at = '2026-11-10T09:30:00.000Z';
+  const row = (
+    id: string,
+    over: Partial<OperationsShipmentDto>,
+    extra: Partial<OperationsDayBoardShipmentDto>,
+  ): OperationsDayBoardShipmentDto => ({
+    ...shipment({ id, ...over }),
+    origin: null,
+    destination: null,
+    crew: null,
+    captainDeliveredAt: null,
+    securedStage: null,
+    captainPickedUpAt: null,
+    ...extra,
+  });
+  const ROWS = [
+    row('daily-waiting', {}, {}),
+    row('daily-captain', {}, { captainDeliveredAt: at }),
+    row('daily-desk', { status: 'completed' }, {}),
+    row('s-awaiting', { shipmentType: 'secured' }, { securedStage: 'awaitingPickup' }),
+    row(
+      's-captain',
+      { shipmentType: 'secured' },
+      { securedStage: 'withCaptain', captainPickedUpAt: at },
+    ),
+    row('s-vault', { shipmentType: 'secured', status: 'inVault' }, { securedStage: 'inVault' }),
+    // On the road, not delivered yet — «خرجت للتسليم».
+    row(
+      's-road',
+      { shipmentType: 'secured', status: 'dispatched' },
+      { securedStage: 'dispatched' },
+    ),
+    // On the road, and its delivery captain has pressed «تم التسليم» in the app — the cell says
+    // «تم التسليم» on a yellow row, as a daily row the captain delivered (`shownStage`), and its
+    // stage is still `dispatched`.
+    row(
+      's-road-captain',
+      { shipmentType: 'secured', status: 'dispatched' },
+      { securedStage: 'dispatched', captainDeliveredAt: at },
+    ),
+    row('s-done', { shipmentType: 'secured', status: 'completed' }, { securedStage: 'completed' }),
+  ];
+  const ids = (over: Partial<typeof EMPTY_DAY_BOARD_FILTERS>): string[] =>
+    filterDayBoard(ROWS, { ...EMPTY_DAY_BOARD_FILTERS, ...over }, bankNameOf, () => '').map(
+      (r) => r.id,
+    );
+
+  it('«تم التسليم» finds a محصنة only once it is delivered — its cell says so then, and only then', () => {
+    expect(ids({ received: 'yes' })).toEqual([
+      'daily-captain',
+      'daily-desk',
+      's-road-captain',
+      's-done',
+    ]);
+    expect(ids({ received: 'no' })).toEqual([
+      'daily-waiting',
+      's-awaiting',
+      's-captain',
+      's-vault',
+      's-road',
+    ]);
+  });
+
+  it('saysDelivered reads the stage of a secured row and who delivered a daily one', () => {
+    expect(saysDelivered({ status: 'draft', securedStage: 'withCaptain' })).toBe(false);
+    expect(saysDelivered({ status: 'dispatched', securedStage: 'dispatched' })).toBe(false);
+    // Its delivery captain delivered it from the app: «تم التسليم» on a yellow row, as a daily row.
+    expect(
+      saysDelivered({ status: 'dispatched', securedStage: 'dispatched', captainDeliveredAt: at }),
+    ).toBe(true);
+    // Before it leaves the vault, no captain's «delivered» can make it say so.
+    expect(
+      saysDelivered({ status: 'inVault', securedStage: 'inVault', captainDeliveredAt: at }),
+    ).toBe(false);
+    expect(saysDelivered({ status: 'completed', securedStage: 'completed' })).toBe(true);
+    // No stage (a daily row, or a plain shipment): the daily rule.
+    expect(saysDelivered({ status: 'draft', securedStage: null, captainDeliveredAt: at })).toBe(
+      true,
+    );
+    expect(saysDelivered({ status: 'draft' })).toBe(false);
+  });
+
+  it('the stage filter keeps that one stage — and no daily row, which has none', () => {
+    expect(ids({ stage: 'withCaptain' })).toEqual(['s-captain']);
+    expect(ids({ stage: 'inVault' })).toEqual(['s-vault']);
+    expect(ids({ stage: 'awaitingPickup' })).toEqual(['s-awaiting']);
+    // The stage is the server's: one its delivery captain delivered is still on the road.
+    expect(ids({ stage: 'dispatched' })).toEqual(['s-road', 's-road-captain']);
+    // A plain shipment carries no stage to match.
+    expect(run([shipment({ shipmentType: 'secured' })], { stage: 'awaitingPickup' })).toEqual([]);
+  });
+
+  it('a stage narrows the board as any filter does', () => {
+    expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, stage: 'dispatched' })).toBe(true);
   });
 });

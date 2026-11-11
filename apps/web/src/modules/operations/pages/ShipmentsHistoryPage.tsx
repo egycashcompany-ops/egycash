@@ -13,8 +13,10 @@
 // And one thing only the history has: «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح» — an icon
 // in the toolbar listing the shipments deleted from the range's days, to bring one back.
 //
-// The rows are the SERVER's (`GET /operations/shipments/history?from=&to=`): the day board's union
-// over every day of the range, both bounds inclusive. A range is bounded twice, so a history read
+// The rows are the SERVER's (`GET /operations/shipments/history?from=&to=`): the daily shipments
+// collected in the range, and — «المفروض الشاشة اللى احنا عملينها history تكون شحنات ومحصنات» —
+// every محصنة whose collection OR delivery day falls in it, whatever its stage, each listed once
+// and coloured by its stage as on the day board; both bounds inclusive. A range is bounded twice, so a history read
 // stays a screen and not an export: at most `OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS` days, checked
 // here before asking, and at most `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` shipments, which only the
 // server can count and which it REFUSES past rather than cutting short. Both are said in words in
@@ -41,7 +43,7 @@ import {
 /**
  * Remembered across visits: the filters, and NOT `from` / `to`. The range is what the screen IS —
  * a bare visit opens on this month to date — so restoring the range last looked at would answer a
- * question nobody asked today. The same list as the day board's.
+ * question nobody asked today. The same list as the day board's (`boardFilterParams('shipments')`).
  */
 const REMEMBERED_FILTERS = [
   'vehicle',

@@ -34,6 +34,15 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
       .exec();
   }
 
+  /** Every custody received in [from, toExclusive), newest first — served by `ix_received_at`. */
+  async findReceivedBetween(from: Date, toExclusive: Date): Promise<OperationsVaultCustodyDoc[]> {
+    return this.model
+      .find({ receivedAt: { $gte: from, $lt: toExclusive }, isDeleted: false })
+      .sort({ receivedAt: -1 })
+      .lean<OperationsVaultCustodyDoc[]>()
+      .exec();
+  }
+
   /** Custody for a SET of shipments — the reports' package counts, in one round trip. */
   async findByShipments(shipmentIds: string[]): Promise<OperationsVaultCustodyDoc[]> {
     if (shipmentIds.length === 0) return [];

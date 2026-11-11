@@ -172,6 +172,11 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     return docs.map(toCustodyView);
   }
 
+  async receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findReceivedBetween(from, toExclusive);
+    return docs.map(toCustodyView);
+  }
+
   /** The doc behind a view — the caller needs the before-image for its audit diff. */
   async docFor(shipmentId: string, session?: ClientSession): Promise<OperationsVaultCustodyDoc> {
     const doc = await operationsVaultCustodyRepository.findByShipment(shipmentId, session);

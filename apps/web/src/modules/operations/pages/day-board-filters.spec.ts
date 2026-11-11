@@ -15,13 +15,15 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DAY_BOARD_FILTER_PARAMS } from '../lib/day-board';
+import { boardFilterParams } from '../lib/day-board';
 
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 const BOARD = read('../components/ShipmentsBoard.tsx');
 const DAY_PAGE = read('./DailyOperationsPage.tsx');
 const HISTORY_PAGE = read('./ShipmentsHistoryPage.tsx');
+const SECURED_PAGE = read('./SecuredBacklogPage.tsx');
+const VAULT_PAGE = read('./VaultReceivePage.tsx');
 const FLEET_BAR = read('../../../shared/ui/dark-filter-bar.ts');
 
 /** The filter bar's own markup, from `<FilterBar` to its close — not the rest of the board. */
@@ -49,6 +51,8 @@ const FILTERS = [
   // The history's period — «من» and «إلى» — at the date column's place (the day board has none).
   'picker.label',
   'operations.shipment.type',
+  // «الحالة» at the status column's place: the secured screen's stage box, or «التسليم».
+  'operations.common.status',
   'operations.dailyOps.received',
   'operations.shipment.notes',
 ];
@@ -139,8 +143,8 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
 
   it('is the order of the columns themselves', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | (قيمة الشحنة) | قائد الطاقم | التاريخ |
-    // النوع | الحالة | ملاحظات — the amount has nothing to type, and the status column is
-    // filtered by «التسليم».
+    // (تاريخ التسليم — the secured screen's) | النوع | الحالة | ملاحظات — the amount and the delivery
+    // date have nothing to type, and the status column is filtered by «التسليم» or the stage.
     const columns = [...BOARD.matchAll(/^ {6}key: '(\w+)',$/gm)].map((m) => m[1]);
     expect(columns).toEqual([
       'vehicle',
@@ -151,6 +155,7 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
       'amount',
       'captain',
       'date',
+      'deliveryDate',
       'type',
       'status',
       'notes',
@@ -197,8 +202,12 @@ describe('nothing lost its name when the labels went', () => {
   it('gives every date picker a name — «من» and «إلى»', () => {
     expect(HISTORY_PAGE).toContain("label: t('operations.history.from')");
     expect(HISTORY_PAGE).toContain("label: t('operations.history.to')");
-    // The day board has no picker to name: «هنشيل منها التاريخ».
+    // The day board has no picker to name: «هنشيل منها التاريخ»; nor has the secured screen,
+    // which is every open محصنة whatever its dates.
     expect(DAY_PAGE).not.toContain('datePickers');
+    expect(SECURED_PAGE).not.toContain('datePickers');
+    // Nor the vault's receive queue: what is outstanding, and today's receipts — no dates to pick.
+    expect(VAULT_PAGE).not.toContain('datePickers');
   });
 });
 
@@ -216,6 +225,7 @@ describe('clearing returns the whole view to its default', () => {
   });
 
   it('clears the period as well, in the same write as the filters', () => {
+    // EVERY filter param — the status param the board does not offer too, so a stale one is gone.
     expect(BAR).toContain(
       'for (const name of [...DAY_BOARD_FILTER_PARAMS, ...periodParams]) next.delete(name);',
     );
@@ -225,7 +235,7 @@ describe('clearing returns the whole view to its default', () => {
   });
 });
 
-describe('both screens remember the same filters, and only those', () => {
+describe('every screen remembers the filters its board reads, and only those', () => {
   /** A page's own `REMEMBERED_FILTERS`, as the persistence census reads it. */
   const remembered = (source: string): string[] => {
     const block = /const REMEMBERED_FILTERS = \[([^\]]*)\] as const;/.exec(source);
@@ -235,8 +245,32 @@ describe('both screens remember the same filters, and only those', () => {
   it('remembers every filter the board reads — the van too — and never the period', () => {
     // A filter the board reads but a page does not remember is one that silently resets on the
     // next visit; one a page remembers but the board does not read is a dead entry.
-    expect(remembered(DAY_PAGE)).toEqual([...DAY_BOARD_FILTER_PARAMS]);
-    expect(remembered(HISTORY_PAGE)).toEqual([...DAY_BOARD_FILTER_PARAMS]);
+    expect(remembered(DAY_PAGE)).toEqual([...boardFilterParams('shipments')]);
+    expect(remembered(HISTORY_PAGE)).toEqual([...boardFilterParams('shipments')]);
+    // The secured screen filters by stage in «التسليم»'s place, and has no «النوع» — and so does
+    // the vault's receive queue, drawn as the secured board.
+    expect(remembered(SECURED_PAGE)).toEqual([...boardFilterParams('secured')]);
+    expect(VAULT_PAGE).toContain('kind="secured"');
+    expect(remembered(VAULT_PAGE)).toEqual([...boardFilterParams('secured')]);
+  });
+
+  it('reads only the filters the screen offers — a param with no box never narrows it', () => {
+    // …nor a stage its «الحالة» box does not offer (`stages` — the vault queue's depend on «الكل»).
+    expect(BOARD).toContain(
+      'const filters = offeredFilters(readDayBoardFilters(sp), kind, stages);',
+    );
+    expect(BOARD).toContain("kind = 'shipments',");
+    expect(BOARD).toContain('stages = SECURED_SCREEN_STAGES,');
+    expect(BAR).toContain('options={stages.map((stage) => ({');
+  });
+
+  it('draws no «النوع» on the secured screen, and the stage box in «التسليم»’s place', () => {
+    expect(BAR).toMatch(
+      /\{!secured && \(\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.shipment\.type'\)\}/,
+    );
+    expect(BAR).toMatch(
+      /\{secured \? \(\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.common\.status'\)\}/,
+    );
   });
 });
 

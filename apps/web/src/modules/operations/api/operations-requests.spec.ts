@@ -19,7 +19,6 @@ import {
   ListOperationsCrewRequirementsQuerySchema,
   ListOperationsReferenceQuerySchema,
   ListOperationsShipmentsQuerySchema,
-  ListSecuredBacklogQuerySchema,
   ListSecuredDueQuerySchema,
   ListVaultInventoryQuerySchema,
   MAX_PAGE_SIZE,
@@ -29,7 +28,10 @@ import {
   OperationsDayBoardQuerySchema,
   OperationsDeletedShipmentsQuerySchema,
   OperationsReportQuerySchema,
+  OperationsSecuredBoardQuerySchema,
   OperationsShipmentHistoryQuerySchema,
+  OperationsVaultQueueQuerySchema,
+  OrderOperationsCurrenciesSchema,
 } from '@ecms/contracts';
 import { buildQuery, type QueryParams } from '../../../shared/lib/api-client';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -100,15 +102,15 @@ const REQUESTS = [
     schema: OperationsDeletedShipmentsQuerySchema,
     params: { from: '2026-08-01', to: '2026-08-18' },
   },
+  // Round 8: the secured screen is the day board's board over every open محصنة — no parameters.
+  { screen: 'Secured screen · the board', schema: OperationsSecuredBoardQuerySchema, params: {} },
+  // Round 8: the vault's receive queue is board rows — with the captain and received today, and
+  // «الكل» adding the ones no captain has collected (`getVaultQueue` sends `all` only when on).
+  { screen: 'Vault receive · the queue', schema: OperationsVaultQueueQuerySchema, params: {} },
   {
-    screen: 'Secured backlog',
-    schema: ListSecuredBacklogQuerySchema,
-    params: { page: 1, pageSize: 25, sortDir: 'desc' },
-  },
-  {
-    screen: 'Vault receive · the draft queue',
-    schema: ListSecuredBacklogQuerySchema,
-    params: { page: 1, pageSize: MAX_PAGE_SIZE, sortDir: 'desc', status: ['draft'] },
+    screen: 'Vault receive · «الكل»',
+    schema: OperationsVaultQueueQuerySchema,
+    params: { all: true },
   },
   { screen: 'Vault dispatch · due list', schema: ListSecuredDueQuerySchema, params: { date: '2026-08-18' } },
   { screen: 'Vault inventory', schema: ListVaultInventoryQuerySchema, params: { page: 1, pageSize: 25 } },
@@ -144,6 +146,13 @@ describe('every Operations request parses against the schema that receives it (B
       expect(result.success, why).toBe(true);
     });
   }
+});
+
+describe('the currencies’ dragged order (Round 8)', () => {
+  it('sends a body the order endpoint takes — the ids in their new order', () => {
+    const ids = ['68c0f4a2b1d3e4f5a6b7c8d9', '68c0f4a2b1d3e4f5a6b7c8da'];
+    expect(OrderOperationsCurrenciesSchema.safeParse({ ids }).success).toBe(true);
+  });
 });
 
 describe('the ceiling that caused it (B8)', () => {

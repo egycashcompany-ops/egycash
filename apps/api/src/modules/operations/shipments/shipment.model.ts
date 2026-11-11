@@ -114,6 +114,12 @@ shipmentSchema.index(
   { name: 'ix_type_delivery_date_status' },
 );
 shipmentSchema.index({ status: 1 }, { name: 'ix_status' });
+// Round 8: the secured screen (every open محصنة, newest first) and the vault's receive queue (the
+// محصنات not received yet) both ask "secured, in these statuses" and read newest-created first.
+shipmentSchema.index(
+  { shipmentType: 1, status: 1, createdAt: -1 },
+  { name: 'ix_type_status_created' },
+);
 
 export const OperationsShipmentModel = model<OperationsShipmentDoc>(
   'OperationsShipment',

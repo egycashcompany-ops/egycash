@@ -68,6 +68,8 @@ export const toCurrencyDto = (doc: OperationsCurrencyDoc): OperationsCurrencyDto
   code: doc.code,
   name: doc.name,
   legacyAliases: doc.legacyAliases,
+  // `?? null`: a row written before the catalog could be ordered has no such field at all.
+  sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
   version: doc.__v,
   createdAt: iso(doc.createdAt),

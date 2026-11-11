@@ -118,7 +118,11 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   // A bare visit opens on the month to date — the web's `defaultHistoryRange` (shipment-history.ts).
   { screen: 'shipments history', url: `/operations/shipments/history?from=${TODAY.slice(0, 7)}-01&to=${TODAY}`, paginated: false },
   { screen: 'secured backlog', url: '/operations/secured/backlog?page=1&pageSize=25&sortDir=desc', paginated: true },
-  { screen: 'vault receive queue', url: `/operations/secured/backlog?page=1&pageSize=${String(MAX_PAGE_SIZE)}&sortDir=desc&status=draft`, paginated: true },
+  // Round 8: the secured screen in the day board's look, and the vault's receive queue (yellow +
+  // today's green, «الكل» adds the white) — board-shaped answers, not pages.
+  { screen: 'secured screen (board rows)', url: '/operations/secured/board', paginated: false },
+  { screen: 'vault receive queue (board rows)', url: '/operations/secured/vault-queue', paginated: false },
+  { screen: 'vault receive queue · «الكل»', url: '/operations/secured/vault-queue?all=true', paginated: false },
   { screen: 'vault dispatch due list', url: `/operations/secured/due?date=${TODAY}`, paginated: false },
   { screen: 'vault inventory', url: '/operations/secured/vault?page=1&pageSize=25', paginated: true },
   { screen: 'vault roll-up', url: '/operations/reports/vault', paginated: false },

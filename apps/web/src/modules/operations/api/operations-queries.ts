@@ -22,6 +22,7 @@ import {
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
   type OperationsExecutionResultDto,
+  type OrderOperationsCurrencies,
   type PlanOperationsCrew,
   type SetOperationsStandingCrew,
   type ReceiveIntoVault,
@@ -95,10 +96,7 @@ const securedSubtrees = [
 ];
 
 /** Every surface a shipment write can move. One list, so no mutation forgets one. */
-const shipmentSubtrees = [
-  featureKey(MODULE, 'shipments'),
-  featureKey(MODULE, 'dayBoard'),
-];
+const shipmentSubtrees = [featureKey(MODULE, 'shipments'), featureKey(MODULE, 'dayBoard')];
 
 // ── Reads ──────────────────────────────────────────────────────────────────
 // `enabled` follows the fleet precedent: a query never fires for a surface the operator is not
@@ -186,10 +184,7 @@ const shipmentHistoryKey = (range: { from: string; to: string }): readonly unkno
  * A 4xx is an ANSWER, not a failure: the range holds too many shipments, or the reader may not see
  * them. Asking again cannot change it, so it is not retried; only a network or server failure is.
  */
-export const useOperationsShipmentHistory = (
-  range: { from: string; to: string },
-  enabled = true,
-) =>
+export const useOperationsShipmentHistory = (range: { from: string; to: string }, enabled = true) =>
   useQuery({
     queryKey: shipmentHistoryKey(range),
     queryFn: () => api.getShipmentHistory(range),
@@ -243,6 +238,30 @@ export const useOperationsDeletedShipments = (
   useQuery({
     queryKey: deletedShipmentsKey(range),
     queryFn: () => api.getDeletedShipments(range),
+    enabled,
+    retry: retryUnless4xx,
+  });
+
+/**
+ * The secured screen's entry — every open محصنة as board rows — inside the DAY BOARD's subtree,
+ * like the history: its rows move with every act that moves the board's. A shipment saved,
+ * received or deleted (`useShipmentInvalidation`), the captain's ✓ in the mobile app that turns a
+ * row yellow (`useExecutionInvalidation`), the vault's receive that turns it green and its dispatch
+ * (the secured acts, whose list includes the board's subtree), a bank or branch renamed — each
+ * already stales the board, so living under its key the screen can miss none of them. Realtime
+ * reaches it the same way: every shipment topic sweeps `['operations', 'dayBoard']`, and unlike the
+ * history's whole range it is re-read, not only marked stale (`isStaleOnlyKey`).
+ */
+const securedBoardKey = (): readonly unknown[] => [...featureKey(MODULE, 'dayBoard'), 'secured'];
+
+/**
+ * «شاشة الشحنات المحصنة» — every secured shipment not yet completed, as board rows. A 4xx is an
+ * answer (more open محصنات than one screen may show, or not allowed), so it is not retried.
+ */
+export const useOperationsSecuredBoard = (enabled = true) =>
+  useQuery({
+    queryKey: securedBoardKey(),
+    queryFn: () => api.getSecuredBoard(),
     enabled,
     retry: retryUnless4xx,
   });
@@ -415,6 +434,25 @@ export const useUpdateOperationsCurrency = () => {
   });
 };
 
+/**
+ * «زى شاشة الحركة بالظبط» — save the currencies' dragged order, as Fleet's `useOrderCatalog` saves
+ * its catalogs'. The list is refreshed whatever the answer (`onSettled`): after a success it is the
+ * order just saved, after a refusal the order that still stands. The refresh is RETURNED, so the
+ * screen's own `onSettled` runs once the fresh list is in — it lets go of the order it was showing
+ * only when there is a newer one to show. Every currency list rides the same subtree, so a board's
+ * money lines and the form's pickers follow the new order too.
+ */
+export const useOrderOperationsCurrencies = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderOperationsCurrencies) => api.orderCurrencies(body),
+    onSettled: () => qc.invalidateQueries({ queryKey: operationsKeys.currencies }),
+    // The screen words the refusal itself (it also puts the rows back), so the global notifier
+    // stays quiet — one failure, one message.
+    onError: formOwnsTheError,
+  });
+};
+
 /** Exported for the cache tests, which assert what a mutation moves — never used by a screen. */
 export const __operationsKeys = operationsKeys;
 /** Exported for the cache tests — the history's key, to prove the board's writes reach it. */
@@ -422,6 +460,8 @@ export const __shipmentHistoryKey = shipmentHistoryKey;
 /** Exported for the cache tests — the log's and the deleted list's keys, for the same proof. */
 export const __shipmentLogKey = shipmentLogKey;
 export const __deletedShipmentsKey = deletedShipmentsKey;
+/** Exported for the cache tests — the secured screen rides the board's subtree too. */
+export const __securedBoardKey = securedBoardKey;
 
 // ── Crew board, pool and roster (B3) ───────────────────────────────────────
 
@@ -544,7 +584,6 @@ export const useSetOperationsSetting = () => {
   });
 };
 
-
 // ── Secured shipments and the vault (B4) ───────────────────────────────────
 
 export const useSecuredBacklog = (params: ListSecuredBacklogQuery, enabled = true) =>
@@ -567,6 +606,47 @@ export const useVaultInventory = (params: OperationsListParams, enabled = true) 
     queryFn: () => api.listVaultInventory(params),
     enabled,
   });
+
+/**
+ * The vault's receive queue, inside the DAY BOARD's subtree like the history: its rows are board
+ * rows whose colour moves with three kinds of act — the captain's ✓ in the mobile app (a pickup
+ * turns a row yellow: `useExecutionInvalidation`), the vault's receive (green: the secured acts,
+ * whose list includes the board's subtree) and any shipment write (`useShipmentInvalidation`). All
+ * three already stale the board, so living under its key, the queue can miss none of them.
+ */
+const vaultQueueKey = (all: boolean): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'vaultQueue',
+  { all },
+];
+
+/**
+ * How often the queue re-reads itself for a treasurer who hears no shipment signal. The captain's
+ * ✓ that turns a row yellow — «وساعتها هيظهر للخزنة فى شاشة استلام الخزينه» — is announced on the
+ * shipment topics, whose rooms need `operationsShipment.view`; a reader holding only the vault's
+ * grants hears the vault's own topic (a colleague's receive) and nothing else, so without this a
+ * shipment the captain has just collected would reach the screen only on a reload. Once a minute,
+ * only while the tab is visible — Settlements' rule for a screen that must keep up (DS-26).
+ */
+export const VAULT_QUEUE_POLL_MS = 60_000;
+
+/**
+ * «شاشة استلام الخزينه» — `all` false: the shipments with the captain and today's receipts; true:
+ * the ones no captain has collected yet as well. A 4xx (too many rows, not allowed) is an answer.
+ * `poll`: the reader hears no shipment signal (see `VAULT_QUEUE_POLL_MS`).
+ */
+export const useOperationsVaultQueue = (all: boolean, enabled = true, poll = false) =>
+  useQuery({
+    queryKey: vaultQueueKey(all),
+    queryFn: () => api.getVaultQueue(all),
+    enabled,
+    retry: retryUnless4xx,
+    refetchInterval: poll ? VAULT_QUEUE_POLL_MS : false,
+    refetchIntervalInBackground: false,
+  });
+
+/** Exported for the cache tests — the vault's receive queue rides the board's subtree too. */
+export const __vaultQueueKey = vaultQueueKey;
 
 /**
  * A secured act moves several screens at once — receiving takes a shipment OUT of the backlog and

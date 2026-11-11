@@ -8,8 +8,10 @@
 // legacy screen mixed the two, filtering rows by reading their rendered background colour
 // (main_ops.ejs:995) — a genuinely fragile idea this replaces with data.
 import {
+  OPERATIONS_SECURED_STAGES,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
+  type OperationsSecuredStage,
   type OperationsShipmentDto,
   type OperationsShipmentStatus,
   type OperationsShipmentType,
@@ -27,7 +29,8 @@ import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
  *
  * Declared in the order the bar shows them, which is the table's column order («ارتب الفلاتر على
  * حسب عواميد الجدول»): the van, the bank, the two branches, the area, the captain, (the day), the
- * type, the delivery, the notes.
+ * type, the status — the delivery on the day board and the history, the محصنة's stage on the
+ * secured screen — the notes.
  */
 export interface DayBoardFilters {
   /**
@@ -45,6 +48,12 @@ export interface DayBoardFilters {
   captain: string;
   type: OperationsShipmentType | '';
   received: 'yes' | 'no' | '';
+  /**
+   * The secured screen's «الحالة» — where a محصنة stands (`securedStage`), one stage at a time. A
+   * daily row has no stage, so it drops out of this filter. The secured screen offers it in place
+   * of «التسليم», whose two answers cannot tell its stages apart.
+   */
+  stage: OperationsSecuredStage | '';
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
@@ -56,11 +65,59 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   captain: '',
   type: '',
   received: '',
+  stage: '',
   notes: '',
 };
 
 /** The URL params the board's filters live in — one per filter, by the filter's own name. */
-export const DAY_BOARD_FILTER_PARAMS = Object.keys(EMPTY_DAY_BOARD_FILTERS) as readonly (keyof DayBoardFilters)[];
+export const DAY_BOARD_FILTER_PARAMS = Object.keys(
+  EMPTY_DAY_BOARD_FILTERS,
+) as readonly (keyof DayBoardFilters)[];
+
+/**
+ * Which board a screen draws (`ShipmentsBoard`'s `kind`):
+ *
+ *   · `shipments` — the day board and the history: daily rows and محصنات side by side, «النوع»
+ *     telling them apart, and «التسليم» (`received`) as the status filter;
+ *   · `secured` — the secured screen, where every row is a محصنة: no «النوع» (it would say «محصنة»
+ *     on every row, and its filter could only empty the table), and the محصنة's stage (`stage`)
+ *     as the status filter.
+ */
+export type BoardKind = 'shipments' | 'secured';
+
+/** The filter params a board offers no box for. */
+const UNOFFERED: Record<BoardKind, readonly (keyof DayBoardFilters)[]> = {
+  shipments: ['stage'],
+  secured: ['type', 'received'],
+};
+
+/**
+ * The filters a board READS — every one it offers a box for. A param with no box on screen must
+ * not narrow the table (an old link, a hand-typed `?stage=` on the day board), so it is read as
+ * empty (`offeredFilters`); and a page remembers exactly these.
+ */
+export const boardFilterParams = (kind: BoardKind): readonly (keyof DayBoardFilters)[] =>
+  DAY_BOARD_FILTER_PARAMS.filter((name) => !UNOFFERED[kind].includes(name));
+
+/**
+ * The filters with every one the board offers no box for read as empty — and, given the stages
+ * its «الحالة» box offers (`stages`), a stage it does not offer read as empty too: the vault queue
+ * offers «لم يتم التسليم» only with «الكل», and an old `?stage=awaitingPickup` left behind once
+ * «الكل» is off must not empty the table with nothing on screen to say why.
+ */
+export const offeredFilters = (
+  filters: DayBoardFilters,
+  kind: BoardKind,
+  stages?: readonly OperationsSecuredStage[],
+): DayBoardFilters => {
+  const offered: DayBoardFilters = {
+    ...filters,
+    ...Object.fromEntries(UNOFFERED[kind].map((name) => [name, ''])),
+  };
+  return stages !== undefined && offered.stage !== '' && !stages.includes(offered.stage)
+    ? { ...offered, stage: '' }
+    : offered;
+};
 
 /**
  * The filters a URL holds. A value the select filters cannot take (a hand-edited `?type=x`) reads
@@ -69,6 +126,7 @@ export const DAY_BOARD_FILTER_PARAMS = Object.keys(EMPTY_DAY_BOARD_FILTERS) as r
 export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters => {
   const type = params.get('type') ?? '';
   const received = params.get('received') ?? '';
+  const stage = params.get('stage') ?? '';
   return {
     vehicle: params.get('vehicle') ?? '',
     bank: params.get('bank') ?? '',
@@ -78,6 +136,9 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
     captain: params.get('captain') ?? '',
     type: type === 'daily' || type === 'secured' ? type : '',
     received: received === 'yes' || received === 'no' ? received : '',
+    stage: (OPERATIONS_SECURED_STAGES as readonly string[]).includes(stage)
+      ? (stage as OperationsSecuredStage)
+      : '',
     notes: params.get('notes') ?? '',
   };
 };
@@ -126,9 +187,32 @@ export const rowTint = (delivery: BoardDelivery): string | undefined =>
       : undefined;
 
 export const boardDelivery = (
-  row: { status: OperationsShipmentStatus } & Partial<Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt'>>,
+  row: { status: OperationsShipmentStatus } & Partial<
+    Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt'>
+  >,
 ): BoardDelivery =>
   isReceived(row) ? 'desk' : row.captainDeliveredAt != null ? 'captain' : 'none';
+
+/**
+ * Does the «الحالة» cell say «تم التسليم»? What the «التسليم» filter answers. A daily row says it
+ * once anybody delivered it (`boardDelivery` — the captain's yellow and the desk's green alike). A
+ * SECURED row's cell shows its stage (`lib/secured-stage.ts`) and says «تم التسليم» once it is
+ * `completed`; before that it reads «لم يتم التسليم», «تم الاستلام من القائد», «بالخزينة» or
+ * «خرجت للتسليم» — none of them a delivery. The one exception is the daily rule's own: a dispatched
+ * محصنة its DELIVERY captain has delivered from the app says «تم التسليم» on a yellow row
+ * (`shownStage`), so it is found here too. A row with no stage (a plain shipment, or a daily row)
+ * keeps the daily rule.
+ */
+export const saysDelivered = (
+  row: { status: OperationsShipmentStatus } & Partial<
+    Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt' | 'securedStage'>
+  >,
+): boolean =>
+  // Not `shownStage` itself (secured-stage.ts reads this file); the same rule — a dispatched row
+  // falls to `boardDelivery`, which reads its delivery captain's `captainDeliveredAt`.
+  row.securedStage != null && row.securedStage !== 'dispatched'
+    ? row.securedStage === 'completed'
+    : boardDelivery(row) !== 'none';
 
 /**
  * The row labels the board displays, resolved from the shipment's own fields.
@@ -139,6 +223,10 @@ export const boardDelivery = (
  */
 export const boardDateOf = (shipment: OperationsShipmentDto): string | null =>
   shipment.shipmentType === 'daily' ? shipment.collectionDate : shipment.deliveryDate;
+
+/** A row's secured stage, or null — a plain shipment (no board fields) has none to read. */
+const readStage = (shipment: OperationsShipmentDto): OperationsSecuredStage | null =>
+  (shipment as Partial<Pick<OperationsDayBoardShipmentDto, 'securedStage'>>).securedStage ?? null;
 
 /** Which branch column a value belongs to — «من فرع» or «الى فرع». */
 export type BoardBranchSide = 'origin' | 'destination';
@@ -170,9 +258,10 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       matches(shipment.notes, filters.notes) &&
       (filters.type === '' || shipment.shipmentType === filters.type) &&
       // «التسليم» filters on what the status column SAYS: a captain's delivery reads «تم التسليم»
-      // there too, so it is found under «تم التسليم» here.
-      (filters.received === '' ||
-        (filters.received === 'yes') === (boardDelivery(shipment) !== 'none')),
+      // there too, so it is found under «تم التسليم» here — and a محصنة only once it is delivered
+      // (by the desk, or by its delivery captain from the app).
+      (filters.received === '' || (filters.received === 'yes') === saysDelivered(shipment)) &&
+      (filters.stage === '' || readStage(shipment) === filters.stage),
   );
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;
@@ -330,29 +419,58 @@ export const currencyUnit = (currency: Pick<OperationsCurrencyDto, 'code'> | und
 };
 
 /**
- * Where a currency sits in the figures: the domestic currency first, then the dollar, then the
- * rest — the order the legacy strip read «مصري = … دولار = …» in (main_ops.ejs:3315). A currency
- * the catalog cannot name goes last: its chip says «…», which is not worth reading first.
+ * THE CATALOG'S ORDER — «ترتيب العملات فى الجدول لما تظهر تكون على حسب ترتيبها ف شاشة البيانات
+ * المرجعية». The reference-data screen drags the currencies into order («زى شاشة الحركة بالظبط»),
+ * and every screen that lists currencies follows it: a board row's money lines, the «عملات أخرى»
+ * dialog, the shipment form's pickers. It REPLACES the pound-first rule those lists used to follow
+ * (the legacy strip's «مصري = … دولار = …»): the owner arranges the list, so the list decides. The
+ * figures' three pills are not a list and keep their own order — «مصري», «دولار», «عملات أخرى».
+ *
+ * The SERVER's order, exactly (`byCatalogOrder`, currency.service.ts — the order `GET
+ * /operations/currencies` answers in when no `sortBy` is asked for): the dragged place first, a
+ * currency nobody placed after every placed one; then the CODE read as a person reads it, '2'
+ * before '10' (the production codes are the legacy numbers «1», «2», «3»…); then the name. Stated
+ * here as well because a screen orders ids it looked up, not the list the server sent.
  */
-const currencyRank = (currency: Parameters<typeof currencyKind>[0]): number => {
-  if (currency === undefined) return 3;
-  const kind = currencyKind(currency);
-  return kind === 'pound' ? 0 : kind === 'dollar' ? 1 : 2;
+type CatalogPlace = Pick<OperationsCurrencyDto, 'code' | 'name'> &
+  Partial<Pick<OperationsCurrencyDto, 'sortOrder'>>;
+
+const UNPLACED = Number.MAX_SAFE_INTEGER;
+const CODE_ORDER = new Intl.Collator('en', { numeric: true });
+const NAME_ORDER = new Intl.Collator('ar');
+
+/** Two currencies in the catalog's order — for `[...currencies].sort(compareCurrencies)`. */
+export const compareCurrencies = (left: CatalogPlace, right: CatalogPlace): number =>
+  (left.sortOrder ?? UNPLACED) - (right.sortOrder ?? UNPLACED) ||
+  CODE_ORDER.compare(left.code, right.code) ||
+  NAME_ORDER.compare(left.name, right.name);
+
+/**
+ * The catalog's order as a comparator over currency IDS — what a screen holding ids sorts with (a
+ * shipment's lines, a list of totals, a picker's options by id): `ids.sort(currencyOrder(catalog))`.
+ * An id the catalog does not hold goes after every one it does; ties keep the caller's order (the
+ * sort is stable), so an unloaded catalog changes nothing.
+ */
+export const currencyOrder = (
+  currencies: readonly (CatalogPlace & Pick<OperationsCurrencyDto, 'id'>)[],
+): ((leftId: string, rightId: string) => number) => {
+  const rank = new Map(
+    [...currencies].sort(compareCurrencies).map((currency, index) => [currency.id, index]),
+  );
+  // `rank.size`, never Infinity: Infinity − Infinity is NaN, which no sort can read.
+  return (leftId, rightId) => (rank.get(leftId) ?? rank.size) - (rank.get(rightId) ?? rank.size);
 };
 
 /** How the figures look a currency up — the page passes the catalog's own rows. */
 type CurrencyLookup = (
   currencyId: string,
-) =>
-  | (Pick<OperationsCurrencyDto, 'code' | 'name'> &
-      Partial<Pick<OperationsCurrencyDto, 'legacyAliases'>>)
-  | undefined;
+) => (CatalogPlace & Partial<Pick<OperationsCurrencyDto, 'legacyAliases'>>) | undefined;
 
 /**
- * The board's figures in the order they are shown: `boardTotals` over the rows it is GIVEN — the
- * page passes the filtered rows, so a bank filter answers "how much for this bank" — then the
- * pound, the dollar, the rest by name, and an unknown currency last. Ties keep `boardTotals`'
- * order.
+ * Money in the catalog's order (`compareCurrencies`): `boardTotals` over the rows it is GIVEN —
+ * the page passes the filtered rows, so a bank filter answers "how much for this bank" — and a
+ * currency the catalog cannot name last (its chip says «…», which is not worth reading first).
+ * Ties keep `boardTotals`' order, so before the catalog loads nothing moves.
  */
 export const orderedBoardTotals = (
   shipments: readonly OperationsShipmentDto[],
@@ -361,10 +479,10 @@ export const orderedBoardTotals = (
   boardTotals(shipments).sort((a, b) => {
     const left = currencyOf(a.currencyId);
     const right = currencyOf(b.currencyId);
-    return (
-      currencyRank(left) - currencyRank(right) ||
-      (left?.name ?? '').localeCompare(right?.name ?? '')
-    );
+    if (left === undefined || right === undefined) {
+      return Number(left === undefined) - Number(right === undefined);
+    }
+    return compareCurrencies(left, right);
   });
 
 /**
@@ -374,8 +492,8 @@ export const orderedBoardTotals = (
  * every currency but the pound and the dollar) and printed «عملات أجنبية = …».
  *
  * The pound and the dollar are known by `currencyKind` — code, name or legacy alias — never by
- * the code alone; a currency the catalog cannot name yet counts with the others. `others` reads by
- * name, as `orderedBoardTotals` orders it.
+ * the code alone; a currency the catalog cannot name yet counts with the others. `others` reads in
+ * the catalog's order, as `orderedBoardTotals` orders it.
  */
 export const boardFigures = (
   shipments: readonly OperationsShipmentDto[],
@@ -412,8 +530,10 @@ export interface OtherCurrencyCard {
  * What the «عملات أخرى» dialog shows — «يفتح فورم ب كل عملة لوحدها كام»: every currency the figure
  * adds together (exactly `boardFigures().others`, so the dialog can never list a currency the pill
  * did not count), each with its sum, the number of shipments shown that carry it and its share of
- * the figure; LARGEST FIRST, because the question a reader brings is "what is most of this?".
- * Also the figure itself and how many shipments carry any of them.
+ * the figure; in the CATALOG'S ORDER (`orderedBoardTotals`) — «ترتيب العملات … على حسب ترتيبها ف شاشة
+ * البيانات المرجعية», as every other list of currencies reads. (It read largest first before the
+ * owner arranged the catalog; the share bar still says which is most of the sum.) Also the figure
+ * itself and how many shipments carry any of them.
  */
 export const otherCurrencies = (
   shipments: readonly OperationsShipmentDto[],
@@ -428,14 +548,12 @@ export const otherCurrencies = (
     if (own.size > 0) anyOther += 1;
     for (const id of own) carrying.set(id, (carrying.get(id) ?? 0) + 1);
   }
-  const cards = others
-    .map((total) => ({
-      ...total,
-      shipments: carrying.get(total.currencyId) ?? 0,
-      share: othersSum === 0 ? 0 : total.amount / othersSum,
-    }))
-    // Stable: equal sums keep the by-name order `boardFigures` gave them.
-    .sort((a, b) => b.amount - a.amount);
+  // `others` is already in the catalog's order (`boardFigures` → `orderedBoardTotals`).
+  const cards = others.map((total) => ({
+    ...total,
+    shipments: carrying.get(total.currencyId) ?? 0,
+    share: othersSum === 0 ? 0 : total.amount / othersSum,
+  }));
   return { cards, sum: othersSum, shipments: anyOther };
 };
 

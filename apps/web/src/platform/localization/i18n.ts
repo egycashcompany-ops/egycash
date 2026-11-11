@@ -10382,6 +10382,12 @@ const en: Record<string, string> = {
   'operations.catalogs.currency.aliasesHint':
     'Every older spelling that means this currency, comma separated — reports match historical records on them.',
   'operations.catalogs.currency.empty': 'No currencies yet',
+  'operations.catalogs.currency.dragToOrder': 'Drag the row to change its place',
+  'operations.catalogs.currency.moveUp': 'Move up',
+  'operations.catalogs.currency.moveDown': 'Move down',
+  'operations.catalogs.currency.orderSaved': 'Order saved',
+  'operations.catalogs.currency.orderHint':
+    'Drag the rows, or use the arrows, to arrange the currencies — every screen lists them in this order.',
   // ── Operations B2 — the daily board (legacy /main_ops)
   'operations.nav.dailyOps': 'Daily operations',
   'operations.cards.dailyOps': "A day's cash shipments — collection runs and secured deliveries",
@@ -10423,6 +10429,21 @@ const en: Record<string, string> = {
   'operations.board.status.notDelivered': 'Not delivered',
   'operations.board.status.byCaptain': 'Delivered by the crew captain — awaiting the desk’s confirmation',
   'operations.board.status.byDesk': 'Delivery confirmed by the desk',
+  // A secured shipment's stage — its «الحالة» on the secured screen, the day board and the history.
+  'operations.board.stage.awaitingPickup': 'Not handed over',
+  'operations.board.stage.withCaptain': 'Collected by the captain',
+  'operations.board.stage.inVault': 'In the vault',
+  'operations.board.stage.dispatched': 'Out for delivery',
+  'operations.board.stage.completed': 'Delivered',
+  'operations.board.stageHint.awaitingPickup': 'The crew captain has not collected it from the bank yet',
+  'operations.board.stageHint.withCaptain':
+    'The crew captain collected it from the bank — awaiting the vault’s receipt',
+  'operations.board.stageHint.inVault': 'Received into the vault — it leaves on its delivery date',
+  'operations.board.stageHint.dispatched':
+    'It left the vault with its delivery crew — awaiting the desk’s confirmation',
+  'operations.board.stageHint.completed': 'Delivery confirmed by the desk',
+  // The secured screen's two dates: the day it is collected from the bank, and the day it is delivered.
+  'operations.board.collectedOn': 'Collected on',
   'operations.board.receiptImage': 'Receipt image',
   'operations.board.card.crewTitle': 'Assigned to this van',
   'operations.board.card.drivers': 'Drivers',
@@ -10488,9 +10509,8 @@ const en: Record<string, string> = {
   'operations.shipment.collectionDate': 'Collection date',
   'operations.shipment.deliveryDate': 'Delivery date',
   'operations.shipment.deliveryDateHint':
-    'Secured shipments only — the day it leaves for delivery.',
+    'The day it leaves for delivery — the day after collection unless changed.',
   'operations.shipment.notes': 'Notes',
-  'operations.shipment.serialTracked': 'Track banknote serials',
   'operations.shipment.form.subtitle': 'The billed bank, where the money comes from and goes to, and who carries it',
   'operations.shipment.form.mainBank': 'Main bank',
   'operations.shipment.form.mainBankHint': 'The bank billed for this shipment',
@@ -10528,6 +10548,8 @@ const en: Record<string, string> = {
     'A shipment cannot be dated on a day that has passed — choose today or a later day.',
   'operations.shipment.errors.dateBeforeOriginal':
     'A shipment’s date cannot move earlier than the day it was on — keep it, or choose a later day.',
+  'operations.shipment.errors.deliveryBeforeCollection':
+    'The delivery date cannot come before the collection date — choose the same day or a later one.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens.
   'operations.shipment.log.open': 'Shipment log',
   'operations.shipment.log.title': 'Shipment log',
@@ -10711,6 +10733,8 @@ const en: Record<string, string> = {
     'Every secured shipment that is not yet delivered. Deliberately not filtered by date.',
   'operations.secured.backlog.add': 'Add secured shipment',
   'operations.secured.backlog.empty': 'No open secured shipments',
+  'operations.secured.backlog.tooLarge':
+    'There are more than {{max}} open secured shipments, too many to show at once. The shipments history shows them by date range.',
   'operations.secured.receive.title': 'Receive into the vault',
   'operations.secured.receive.subtitle':
     'Secured shipments waiting to be taken into the vault. Two treasurers must sign for each one.',
@@ -10729,6 +10753,8 @@ const en: Record<string, string> = {
   'operations.secured.receive.sameTreasurer': 'The two treasurers must be different people.',
   'operations.secured.receive.done': 'Received into the vault',
   'operations.secured.receive.failed': 'Could not record the receipt.',
+  'operations.secured.receive.noRoster':
+    'The treasurers cannot be listed: choosing them needs permission to view the operations crew.',
   'operations.secured.dispatch.title': 'Assign and dispatch',
   'operations.secured.dispatch.subtitle':
     "Crew the day's secured deliveries, then release what each vehicle is carrying.",
@@ -10752,6 +10778,15 @@ const en: Record<string, string> = {
   'operations.vault.receivedBy': 'Received by',
   'operations.vault.receivedAt': 'Received at',
   'operations.vault.empty': 'The vault is empty',
+  // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
+  'operations.vault.queue.all': 'All',
+  'operations.vault.queue.allHint': 'Also list the secured shipments no captain has collected yet',
+  'operations.vault.queue.withCaptain': 'With the captain',
+  'operations.vault.queue.receivedToday': 'In the vault today',
+  'operations.vault.queue.awaiting': 'Not collected yet',
+  'operations.vault.queue.pickedUpAt': 'Collected {{at}}',
+  'operations.vault.queue.receivedAt': 'Received {{at}}',
+  'operations.vault.queue.receive': 'Receive into the vault',
   // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
   'operations.nav.vaultReport': 'Vault roll-up',
   'operations.cards.vaultReport': 'What the vault holds now, by bank',
@@ -23399,6 +23434,12 @@ const ar: Record<string, string> = {
   'operations.catalogs.currency.aliasesHint':
     'كل تهجئة قديمة تعني هذه العملة، مفصولة بفواصل — التقارير تطابق السجلات التاريخية عليها.',
   'operations.catalogs.currency.empty': 'لا توجد عملات بعد',
+  'operations.catalogs.currency.dragToOrder': 'اسحب الصف لتغيير ترتيبه',
+  'operations.catalogs.currency.moveUp': 'نقل لأعلى',
+  'operations.catalogs.currency.moveDown': 'نقل لأسفل',
+  'operations.catalogs.currency.orderSaved': 'تم حفظ الترتيب',
+  'operations.catalogs.currency.orderHint':
+    'اسحب الصفوف، أو استخدم الأسهم، لترتيب العملات — بهذا الترتيب تظهر في كل الشاشات.',
   // ── العمليات B2 — لوحة اليوم
   'operations.nav.dailyOps': 'العمليات اليومية',
   'operations.cards.dailyOps': 'شحنات اليوم — رحلات التحصيل وتسليمات المحصنات',
@@ -23437,6 +23478,18 @@ const ar: Record<string, string> = {
   'operations.board.status.notDelivered': 'لم يتم التسليم',
   'operations.board.status.byCaptain': 'سلّمها قائد الطاقم، وتنتظر تأكيد المكتب',
   'operations.board.status.byDesk': 'أكّد المكتب التسليم',
+  // مرحلة المحصنة — «الحالة» في شاشة المحصنات واليوم التشغيلي وسجل الشحنات.
+  'operations.board.stage.awaitingPickup': 'لم يتم التسليم',
+  'operations.board.stage.withCaptain': 'تم الاستلام من القائد',
+  'operations.board.stage.inVault': 'بالخزينة',
+  'operations.board.stage.dispatched': 'خرجت للتسليم',
+  'operations.board.stage.completed': 'تم التسليم',
+  'operations.board.stageHint.awaitingPickup': 'لم يستلمها قائد الطاقم من البنك بعد',
+  'operations.board.stageHint.withCaptain': 'استلمها قائد الطاقم من البنك، وتنتظر استلام الخزينة',
+  'operations.board.stageHint.inVault': 'استلمتها الخزينة، وتخرج في يوم تسليمها',
+  'operations.board.stageHint.dispatched': 'خرجت من الخزينة مع طاقم التسليم، وتنتظر تأكيد المكتب',
+  'operations.board.stageHint.completed': 'أكّد المكتب التسليم',
+  'operations.board.collectedOn': 'تاريخ الاستلام',
   'operations.board.receiptImage': 'صورة الإيصال',
   'operations.board.card.crewTitle': 'المعيّنون على هذه السيارة',
   'operations.board.card.drivers': 'السائقون',
@@ -23500,9 +23553,8 @@ const ar: Record<string, string> = {
     'لا توجد تشغيلة مخطَّطة لتاريخ التحصيل هذا بعد — سجّل الشحنة الآن وعيّنها من لوحة التشغيلة.',
   'operations.shipment.collectionDate': 'تاريخ التحصيل',
   'operations.shipment.deliveryDate': 'تاريخ التسليم',
-  'operations.shipment.deliveryDateHint': 'للمحصنات فقط — يوم الخروج للتسليم.',
+  'operations.shipment.deliveryDateHint': 'يوم الخروج للتسليم — اليوم التالي للاستلام ما لم يُغيَّر.',
   'operations.shipment.notes': 'ملاحظات',
-  'operations.shipment.serialTracked': 'تتبّع أرقام الأوراق النقدية',
   'operations.shipment.form.subtitle': 'البنك المُحاسَب، ومن أين تُستلم الأموال وإلى أين تُسلَّم، ومن يحملها',
   'operations.shipment.form.mainBank': 'البنك الرئيسي',
   'operations.shipment.form.mainBankHint': 'البنك الذي تُحاسَب عليه الشحنة',
@@ -23539,6 +23591,8 @@ const ar: Record<string, string> = {
     'لا يمكن تسجيل الشحنة بتاريخ يوم مضى — اختر اليوم أو يومًا بعده.',
   'operations.shipment.errors.dateBeforeOriginal':
     'لا يمكن تقديم تاريخ الشحنة عن اليوم الذي كانت عليه — أبقِه كما هو أو اختر يومًا بعده.',
+  'operations.shipment.errors.deliveryBeforeCollection':
+    'لا يمكن أن يسبق تاريخ التسليم تاريخ الاستلام — اختر اليوم نفسه أو يومًا بعده.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — سجل الإجراءات، على الشاشتين.
   'operations.shipment.log.open': 'سجل الشحنة',
   'operations.shipment.log.title': 'سجل الشحنة',
@@ -23717,6 +23771,8 @@ const ar: Record<string, string> = {
   'operations.secured.backlog.subtitle': 'كل محصنة لم تُسلَّم بعد. غير مفلترة بالتاريخ عمدًا.',
   'operations.secured.backlog.add': 'إضافة محصنة',
   'operations.secured.backlog.empty': 'لا توجد محصنات مفتوحة',
+  'operations.secured.backlog.tooLarge':
+    'عدد المحصنات المفتوحة يتجاوز {{max}}، وهو أكثر مما يمكن عرضه مرة واحدة. يعرضها سجل الشحنات بتحديد مدة.',
   'operations.secured.receive.title': 'الاستلام في الخزينة',
   'operations.secured.receive.subtitle':
     'المحصنات في انتظار الإدخال إلى الخزينة. يوقّع على كل واحدة أمينان.',
@@ -23735,6 +23791,8 @@ const ar: Record<string, string> = {
   'operations.secured.receive.sameTreasurer': 'يجب أن يكون الأمينان شخصين مختلفين.',
   'operations.secured.receive.done': 'تم الاستلام في الخزينة',
   'operations.secured.receive.failed': 'تعذّر تسجيل الاستلام.',
+  'operations.secured.receive.noRoster':
+    'تعذّر عرض أسماء الأمناء: يتطلب اختيارهم صلاحية عرض طاقم التشغيل.',
   'operations.secured.dispatch.title': 'التعيين والصرف',
   'operations.secured.dispatch.subtitle': 'عيّن أطقم محصنات اليوم ثم اصرف حمولة كل مركبة.',
   'operations.secured.dispatch.vehicle': 'المركبة والقائد',
@@ -23757,6 +23815,15 @@ const ar: Record<string, string> = {
   'operations.vault.receivedBy': 'استلمها',
   'operations.vault.receivedAt': 'وقت الاستلام',
   'operations.vault.empty': 'الخزينة فارغة',
+  // الجولة 8 — قائمة استلام الخزينة: أصفر مع القائد، أخضر بالخزينة اليوم.
+  'operations.vault.queue.all': 'الكل',
+  'operations.vault.queue.allHint': 'إظهار الشحنات المحصنة التي لم يستلمها القائد من البنك بعد أيضًا',
+  'operations.vault.queue.withCaptain': 'مع القائد',
+  'operations.vault.queue.receivedToday': 'بالخزينة اليوم',
+  'operations.vault.queue.awaiting': 'لم يتم التسليم',
+  'operations.vault.queue.pickedUpAt': 'استلمها القائد {{at}}',
+  'operations.vault.queue.receivedAt': 'استُلمت في الخزينة {{at}}',
+  'operations.vault.queue.receive': 'استلام في الخزينة',
   // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────
   'operations.nav.vaultReport': 'تجميع الخزينة',
   'operations.cards.vaultReport': 'ما بالخزينة الآن، حسب البنك',

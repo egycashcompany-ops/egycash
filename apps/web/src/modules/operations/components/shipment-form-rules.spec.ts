@@ -8,13 +8,17 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 const FORM = read('./ShipmentFormDialog.tsx');
-// The day board's and the history's board — both add through it (`components/ShipmentsBoard.tsx`).
+// The shared board of the day board, the history and the secured screen — every one of them adds
+// through it (`components/ShipmentsBoard.tsx`).
 const BOARD = read('./ShipmentsBoard.tsx');
 const SECURED = read('../pages/SecuredBacklogPage.tsx');
 
 describe('«اشيل النوع ويكون يومى بس» — the screen decides the type, not a box in the form', () => {
-  it('the shipments board creates daily shipments, the secured register secured ones', () => {
-    expect(BOARD).toContain('createType="daily"');
+  it('the shipments board creates daily shipments, the secured screen secured ones', () => {
+    // The board's own default is daily; the page says otherwise, and the form takes the page's.
+    expect(BOARD).toContain("createType = 'daily',");
+    expect(BOARD).toContain('createType={createType}');
+    // «الفورم بتاعت الاضافى لما اضيف اتوماتيك محصنة».
     expect(SECURED).toContain('createType="secured"');
   });
 
@@ -45,7 +49,8 @@ describe('«مينفعش لما يجى يضيف شحنه يختار تاريخ �
   it('opens a new shipment on Cairo’s today — whichever screen it is added from', () => {
     // No caller's day to inherit: a default day before today would open the form refused, and the
     // secured register's used to be the UTC day, which is yesterday after a Cairo midnight.
-    expect(FORM).toContain('setCollectionDate(shipment === null ? cairoToday() : dateOnly(');
+    expect(FORM).toContain('const openedOn = cairoToday();');
+    expect(FORM).toContain('setCollectionDate(shipment === null ? openedOn : dateOnly(');
     expect(FORM).not.toContain('defaultDate');
     expect(BOARD).not.toContain('defaultDate');
     expect(SECURED).not.toContain('defaultDate');
@@ -59,17 +64,18 @@ describe('«مينفعش لما يجى يضيف شحنه يختار تاريخ �
     expect(FORM).toMatch(/min=\{earliestDate\}\s+value=\{collectionDate\}/u);
   });
 
-  // The server holds a secured shipment's delivery date to the same floor.
-  it('floors a secured shipment’s delivery date the same way — a first one at today', () => {
+  // The server holds a secured shipment's delivery date to the same floor — and, since Round 8,
+  // never before its collection date.
+  it('floors a secured shipment’s delivery date the same way, and at the collection date', () => {
     expect(FORM).toContain(
       'const heldDeliveryDate = shipment?.deliveryDate == null ? null : dateOnly(shipment.deliveryDate);',
     );
-    expect(FORM).toContain(
-      'const earliestDeliveryDate = earliestShipmentDate(heldDeliveryDate, today);',
+    expect(FORM).toMatch(
+      /const earliestDeliveryDate = deliveryDateMin\(\s*earliestShipmentDate\(heldDeliveryDate, today\),\s*collectionDate,\s*\);/u,
     );
     expect(FORM).toMatch(/min=\{earliestDeliveryDate\}\s+value=\{deliveryDate\}/u);
-    expect(FORM).toContain(
-      "shipmentType === 'secured' ? shipmentDateProblem(deliveryDate, heldDeliveryDate, day) : null",
+    expect(FORM).toMatch(
+      /shipmentType === 'secured'\s+\? deliveryDateProblem\(deliveryDate, collectionDate, heldDates, day\)\s+: null/u,
     );
   });
 
@@ -87,5 +93,76 @@ describe('«مينفعش لما يجى يضيف شحنه يختار تاريخ �
     // Checked, and returned from, before either request is built.
     expect(check).toBeLessThan(submit.indexOf('create.mutateAsync'));
     expect(submit.slice(check, submit.indexOf('const core'))).toContain('return;');
+  });
+});
+
+describe('«تاريخ التسليم تانى يوم الاستلام افتراضى وممكن يغير» — a new محصنة’s delivery date', () => {
+  it('opens on the day after the collection date', () => {
+    expect(FORM).toContain('const openedOn = cairoToday();');
+    expect(FORM).toMatch(
+      /shipment === null\s+\? createType === 'secured'\s+\? defaultDeliveryDate\(openedOn\)\s+: ''\s+: dateOnly\(shipment\.deliveryDate\)/u,
+    );
+  });
+
+  it('follows the collection date until the person picks one — on a new محصنة only', () => {
+    const change = FORM.slice(FORM.indexOf('const changeCollectionDate'));
+    expect(change).toMatch(
+      /if \(!editing && shipmentType === 'secured'\) \{\s+setDeliveryDate\(\(current\) => followCollectionDate\(current, collectionDate, next\)\);/u,
+    );
+    // The collection box writes through it, never straight to its own state.
+    expect(FORM).toContain('onChange={(e) => changeCollectionDate(e.target.value)}');
+    expect(FORM).not.toContain('onChange={(e) => setCollectionDate(e.target.value)}');
+  });
+
+  it('is required of a new محصنة — named in the missing-fields banner and on its box', () => {
+    expect(FORM).toContain(
+      'const needsDeliveryDate = deliveryDateRequired(shipmentType, heldDeliveryDate, !editing);',
+    );
+    expect(FORM).toContain("ok: !needsDeliveryDate || deliveryDate !== '',");
+    expect(FORM).toMatch(
+      /required=\{needsDeliveryDate\}\s+missing=\{required\.isMissing\('deliveryDate'\)\}/u,
+    );
+  });
+
+  it('is titled «إضافة محصنة» — the secured screen’s own word for what it adds', () => {
+    expect(FORM).toMatch(
+      /: shipmentType === 'secured'\s+\? 'operations\.secured\.backlog\.add'\s+: 'operations\.shipment\.add'/u,
+    );
+  });
+
+  it('names the collection date for what it is on a محصنة — «تاريخ الاستلام»', () => {
+    expect(FORM).toContain(
+      "shipmentType === 'secured' ? 'operations.board.collectedOn' : 'operations.shipment.form.date',",
+    );
+  });
+});
+
+describe('«ترتيب العملات … على حسب ترتيبها ف شاشة البيانات المرجعية» — the currency pickers', () => {
+  it('list the currencies in the catalog’s order, not the order the caller’s list came in', () => {
+    expect(FORM).toMatch(
+      /const activeCurrencies = useMemo\(\s*\(\) => currencies\.filter\(\(c\) => c\.isActive\)\.sort\(compareCurrencies\),/u,
+    );
+    // Every line's box offers that list.
+    expect(FORM).toMatch(
+      /\{activeCurrencies\.map\(\(currency\) => \(\s*<option key=\{currency\.id\}/u,
+    );
+  });
+});
+
+describe('«ومحتاج اشيل دا» — no «تتبّع أرقام الأوراق النقدية» on the form', () => {
+  it('has no box for it, and keeps no state of it', () => {
+    expect(FORM).not.toContain("t('operations.shipment.serialTracked')");
+    expect(FORM).not.toContain('setSerialTracked');
+    expect(FORM).not.toContain('<Checkbox');
+  });
+
+  it('sends a new shipment the field’s default, and an edit nothing — what is stored stays', () => {
+    const create = FORM.slice(FORM.indexOf('await create.mutateAsync'), FORM.indexOf('else\n'));
+    expect(create).toContain('serialTracked: false,');
+    const core = FORM.slice(
+      FORM.indexOf('const core = {'),
+      FORM.indexOf('try {', FORM.indexOf('const core = {')),
+    );
+    expect(core).not.toContain('serialTracked');
   });
 });

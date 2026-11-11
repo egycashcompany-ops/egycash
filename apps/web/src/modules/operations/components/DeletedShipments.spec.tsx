@@ -73,6 +73,8 @@ const currency = (id: string, code: string, name: string): OperationsCurrencyDto
   code,
   name,
   legacyAliases: [],
+  // Nobody has dragged this catalog: its codes decide the order («1», «2», «3»).
+  sortOrder: null,
   isActive: true,
   version: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -139,6 +141,9 @@ const deletedRow = (
     captainBranchId: null,
   },
   captainDeliveredAt: null,
+  // A daily row has no secured stage; the secured one below says where it stood.
+  securedStage: null,
+  captainPickedUpAt: null,
   deletedAt: '2026-11-10T12:05:00.000Z',
   deletedByName: 'منى عبد الرحمن',
   ...over,
@@ -156,6 +161,8 @@ const ROWS = [
     origin: side('وسط البلد', 'b-misr'),
     destination: side('الزمالك', 'b-misr'),
     crew: null,
+    securedStage: 'dispatched',
+    captainPickedUpAt: '2026-11-06T08:10:00.000Z',
     deletedAt: '2026-11-09T21:45:00.000Z',
     deletedByName: null,
   }),
@@ -204,7 +211,7 @@ describe('a deleted shipment reads as the board reads its row', () => {
     expect(daily).toContain(ar('operations.board.captain'));
   });
 
-  it('shows the money in the board’s currency order — مصري, then دولار, then the rest', () => {
+  it('shows the money in the catalog’s order — here its codes: مصري «1», دولار «2», يورو «3»', () => {
     const egp = daily.indexOf('مصري');
     const usd = daily.indexOf('دولار');
     const eur = daily.indexOf('يورو');

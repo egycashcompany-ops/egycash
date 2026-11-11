@@ -1,6 +1,8 @@
 // The secured (محصنة) workflow — the four legacy screens, ported.
 //
 //   /mohsana            → backlog()          the open secured backlog, NO date filter (:657)
+//                         board()            …the same set as BOARD ROWS — the secured screen (Round 8)
+//   «استلام الخزينة»     → vaultQueue()       what the vault receives: the yellow and today's green (Round 8)
 //   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
 //   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737)
@@ -12,7 +14,12 @@
 // Custody never happens here: this service drives the Treasury PORT (../treasury-boundary.ts).
 // Operations decides WHEN a shipment may move; the treasury decides what custody means.
 import {
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
+  addDaysYmd,
+  cairoCalendarDate,
+  cairoDayStart,
+  cairoYmd,
   type AssignSecuredDeliveryLeg,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
@@ -20,7 +27,12 @@ import {
   type ReceiveIntoVault,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
-import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
@@ -36,6 +48,12 @@ import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
+import { isPickedUp } from '../shipments/secured-stage';
+import {
+  historyTooLarge,
+  operationsShipmentService,
+  type DayBoardView,
+} from '../shipments/shipment.service';
 
 const shipmentRef = (id: string) => ({
   moduleId: 'operations',
@@ -55,6 +73,15 @@ const assignmentSnapshot = (doc: OperationsShipmentAssignmentDoc) => ({
   vehicleId: String(doc.vehicleId),
   crewAssignmentId: String(doc.crewAssignmentId),
 });
+
+/**
+ * The vault's receive queue before mapping: board rows, and — for the ones the vault already took
+ * in today — when it did. `day` is the Cairo day "today" was read for (UTC midnight).
+ */
+export interface VaultQueueView extends DayBoardView {
+  day: Date;
+  receivedAt: Map<string, Date>;
+}
 
 const assertSecured = (shipment: OperationsShipmentDoc): void => {
   if (shipment.shipmentType !== 'secured') {
@@ -82,6 +109,86 @@ class OperationsSecuredService {
       sortBy: query.sortBy,
       sortDir: query.sortDir,
     });
+  }
+
+  /**
+   * THE SECURED SCREEN — «شاشة الشحنات المحصنة عاوز شكلها يكون زى شاشة اليوم التشغيلى»: the same
+   * set as `backlog` (every secured shipment not completed, no date filter, newest first), as BOARD
+   * ROWS — enriched exactly as the day board's (`boardView`), each carrying its `securedStage`.
+   *
+   * Whole, not paged, because the screen totals and filters it like the day board does; so it is
+   * COUNTED BEFORE IT IS READ and refused past the history's cap, never cut short — the same
+   * guard, code and details as the history.
+   */
+  async board(): Promise<DayBoardView> {
+    const count = await operationsShipmentRepository.countOpenSecured();
+    if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
+      throw historyTooLarge(
+        count,
+        `${String(count)} secured shipments are open — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown`,
+      );
+    }
+    return operationsShipmentService.boardView(await operationsShipmentRepository.openSecured());
+  }
+
+  /**
+   * THE VAULT'S RECEIVE QUEUE — «هيظهر للخزنة فى شاشة استلام الخزينه نفس المحصنة … وهتكون باللون
+   * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر»:
+   *
+   *   · the secured shipments WITH THE CAPTAIN — still `draft`, their pickup leg picked up in the
+   *     mobile app (`withCaptain`, yellow): on their way to the vault;
+   *   · the ones the vault RECEIVED TODAY on the Cairo calendar (the custody's `receivedAt`; green),
+   *     whatever has happened to them since — today's receipts stay on today's screen;
+   *   · with `all`, every `draft` one besides (`awaitingPickup`, white): a captain without the app
+   *     never presses ✓, and his shipment must still be receivable.
+   *
+   * The stage is read off the pickup legs BEFORE the rows are enriched, so the van cards beside the
+   * rows are only the vans of the rows shown. Counted before the shipments are read: the open drafts
+   * plus today's receipts, against the history's cap. Newest created first.
+   */
+  async vaultQueue(all: boolean, now: Date = new Date()): Promise<VaultQueueView> {
+    const today = cairoYmd(now);
+    const received = await vaultCustody().receivedBetween(
+      cairoDayStart(today),
+      cairoDayStart(addDaysYmd(today, 1)),
+    );
+    const count = (await operationsShipmentRepository.countSecuredDrafts()) + received.length;
+    if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
+      throw historyTooLarge(
+        count,
+        `${String(count)} secured shipments wait for the vault or were received today — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown`,
+      );
+    }
+
+    const drafts = await operationsShipmentRepository.securedDrafts();
+    let waiting = drafts;
+    if (!all) {
+      const pickups = await operationsShipmentAssignmentRepository.findByShipments(
+        drafts.map((d) => String(d._id)),
+      );
+      const withCaptain = new Set(
+        pickups
+          .filter((leg) => leg.leg === 'pickup' && isPickedUp(leg.executionStatus))
+          .map((leg) => String(leg.shipmentId)),
+      );
+      waiting = drafts.filter((d) => withCaptain.has(String(d._id)));
+    }
+    // A receipt's shipment that was deleted since is not offered: `findByIds` reads live rows only.
+    const receivedDocs = await operationsShipmentRepository.findByIds(
+      received.map((r) => r.shipmentId),
+    );
+    const byId = new Map(
+      [...waiting, ...receivedDocs].map((doc) => [String(doc._id), doc] as const),
+    );
+    const docs = [...byId.values()].sort(
+      (a, b) =>
+        b.createdAt.getTime() - a.createdAt.getTime() || String(b._id).localeCompare(String(a._id)),
+    );
+    return {
+      ...(await operationsShipmentService.boardView(docs)),
+      day: cairoCalendarDate(now),
+      receivedAt: new Map(received.map((r) => [r.shipmentId, r.receivedAt])),
+    };
   }
 
   /**
@@ -116,6 +223,12 @@ class OperationsSecuredService {
         'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
       );
     }
+
+    // The version is checked BEFORE the treasury takes custody, not only by the shipment write
+    // below: the two writes are not one transaction, so a stale receive that got as far as the
+    // custody left a HELD custody on a shipment still in draft — never receivable again (the
+    // custody refuses a second receive), and listed as received today on the vault's queue.
+    if (before.__v !== input.version) throw new StaleDocumentError();
 
     // The treasury takes custody first: if it refuses (already held, dual-control), no shipment
     // status moves. Its uniqueness index is the real double-receive guard.

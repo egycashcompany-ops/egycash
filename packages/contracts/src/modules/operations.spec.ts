@@ -8,12 +8,15 @@ import { describe, expect, it } from 'vitest';
 import {
   CREW_SLOT_CAPACITY,
   CreateOperationsBankBranchSchema,
+  CreateOperationsCurrencySchema,
   CreateOperationsShipmentSchema,
   LEGACY_OPERATIONS_SHIPMENT_CODE_BY_STATUS,
   LEGACY_OPERATIONS_SHIPMENT_STATUS_BY_CODE,
   LEGACY_OPERATIONS_SHIPMENT_TYPE_LABELS,
   OPERATIONS_DAY_STATUSES,
   OPERATIONS_EXECUTION_STATUSES,
+  OPERATIONS_PICKED_UP_EXECUTION_STATUSES,
+  OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_LEGS,
   OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
@@ -26,8 +29,12 @@ import {
   OperationsDeletedShipmentsQuerySchema,
   OperationsEvents,
   OperationsShipmentHistoryQuerySchema,
+  OperationsSecuredBoardQuerySchema,
   OperationsShipmentStatusSchema,
+  OperationsVaultQueueQuerySchema,
+  OrderOperationsCurrenciesSchema,
   PlanOperationsCrewSchema,
+  UpdateOperationsCurrencySchema,
   SetOperationsStandingCrewSchema,
   UpdateOperationsShipmentSchema,
 } from './operations.js';
@@ -82,6 +89,16 @@ describe('operations vocabulary — the shape it actually has today', () => {
       'cancelled',
     ]);
     expect(OPERATIONS_DAY_STATUSES).toEqual(['planning', 'open', 'closed']);
+    // Round 8 — the محصنة row's colour, derived on the server: white, yellow, green, out, done.
+    expect(OPERATIONS_SECURED_STAGES).toEqual([
+      'awaitingPickup',
+      'withCaptain',
+      'inVault',
+      'dispatched',
+      'completed',
+    ]);
+    // The captain's ✓ on collecting it from the bank is every state from `pickedUp` on.
+    expect(OPERATIONS_PICKED_UP_EXECUTION_STATUSES).toEqual(['pickedUp', 'delivered', 'completed']);
   });
 
   it('rejects a legacy numeric status where a normalized one is required', () => {
@@ -135,6 +152,17 @@ describe('operations shipment schemas — the legacy create guard, server-enforc
   it('caps lines at 17 — the legacy multi-currency form had exactly 17 slots (:1230)', () => {
     const lines = Array.from({ length: 18 }, (_, i) => ({ currencyId: oid(i + 10), amount: 1 }));
     expect(CreateOperationsShipmentSchema.safeParse({ ...base, lines }).success).toBe(false);
+  });
+
+  // «ومحتاج اشيل دا تتبّع أرقام الأوراق النقدية» — the forms no longer send it; the API still keeps it.
+  it('serialTracked is optional: false when a create leaves it out, untouched when an edit does', () => {
+    expect(CreateOperationsShipmentSchema.parse(base).serialTracked).toBe(false);
+    expect(
+      CreateOperationsShipmentSchema.parse({ ...base, serialTracked: true }).serialTracked,
+    ).toBe(true);
+    expect(UpdateOperationsShipmentSchema.parse({ notes: 'x', version: 0 })).not.toHaveProperty(
+      'serialTracked',
+    );
   });
 
   it('update is version-locked and cannot change the shipment type', () => {
@@ -344,6 +372,51 @@ describe('operations reference schemas', () => {
         location: { addressLine: null, coordinates: { lat: 100, lng: 0 } },
       }).success,
     ).toBe(false);
+  });
+});
+
+// «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل زى شاشة الحركة بالظبط» — the currencies are dragged
+// into order like Fleet's catalogs, and the order is a field the catalog answers with.
+describe('operations currency order', () => {
+  it('takes sortOrder as optional on create and edit — the drag order usually sets it', () => {
+    const created = CreateOperationsCurrencySchema.parse({ code: 'EGP', name: 'مصري' });
+    expect(created.sortOrder).toBeUndefined();
+    expect(
+      CreateOperationsCurrencySchema.safeParse({ code: 'EGP', name: 'مصري', sortOrder: 0 }).success,
+    ).toBe(true);
+    expect(
+      CreateOperationsCurrencySchema.safeParse({ code: 'EGP', name: 'مصري', sortOrder: -1 })
+        .success,
+    ).toBe(false);
+    expect(UpdateOperationsCurrencySchema.safeParse({ sortOrder: null, version: 0 }).success).toBe(
+      true,
+    );
+  });
+
+  it('orders a list of distinct ids — never an empty one, never one twice', () => {
+    expect(OrderOperationsCurrenciesSchema.safeParse({ ids: [oid(1), oid(2)] }).success).toBe(true);
+    expect(OrderOperationsCurrenciesSchema.safeParse({ ids: [] }).success).toBe(false);
+    expect(OrderOperationsCurrenciesSchema.safeParse({ ids: [oid(1), oid(1)] }).success).toBe(
+      false,
+    );
+    expect(
+      OrderOperationsCurrenciesSchema.safeParse({ ids: [oid(1)], kind: 'x' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('the secured screen and the vault queue — their queries', () => {
+  it('the secured board takes no parameters at all', () => {
+    expect(OperationsSecuredBoardQuerySchema.safeParse({}).success).toBe(true);
+    expect(OperationsSecuredBoardQuerySchema.safeParse({ date: '2026-08-01' }).success).toBe(false);
+  });
+
+  it('the vault queue takes `all` as a query boolean, and nothing else', () => {
+    expect(OperationsVaultQueueQuerySchema.parse({}).all).toBeUndefined();
+    expect(OperationsVaultQueueQuerySchema.parse({ all: 'true' }).all).toBe(true);
+    expect(OperationsVaultQueueQuerySchema.parse({ all: 'false' }).all).toBe(false);
+    expect(OperationsVaultQueueQuerySchema.safeParse({ all: 'yes' }).success).toBe(false);
+    expect(OperationsVaultQueueQuerySchema.safeParse({ status: 'draft' }).success).toBe(false);
   });
 });
 

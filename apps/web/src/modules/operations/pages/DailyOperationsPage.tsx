@@ -7,6 +7,12 @@
 // already left the vault. Its table (main_ops.ejs:829-897): م | السيارة | اسم البنك | من فرع |
 // الى فرع | العملة | قيمة الشحنة | قائد الطاقم | التاريخ | النوع | المنطقة | ملاحظات | actions.
 //
+// «اليوم التشغيلى هيظهر فيها اليومى والمحصنة اللى اليوم بتاعها فى اليوم اللى هتخرج فيه» (Round 8):
+// a محصنة due for delivery today is on today's board WHATEVER its stage, no longer only once it has
+// left the vault — its status cell and its row's colour say where it stands (with the captain,
+// in the vault, out for delivery), and the ✓ is offered on it only once it has left the vault,
+// the one step the desk confirms (`offersDeliveryToggle`).
+//
 // The membership rule is the SERVER's (`GET /operations/shipments/day-board`), and so are the
 // names: each row arrives with its branches (by name, with their banks) and the crew of the leg
 // its type reports on. This page owns only its DAY; everything drawn over the answer — filters,
@@ -30,8 +36,9 @@ import { useCairoToday } from '../lib/use-cairo-today';
 
 /**
  * Remembered across visits: the filters — the board's day is always today, so there is no period
- * to remember. The SAME list as the history's, and as the board's own filters
- * (`DAY_BOARD_FILTER_PARAMS`) — day-board-filters.spec holds the three together.
+ * to remember. The SAME list as the history's, and exactly the filters the board reads
+ * (`boardFilterParams('shipments')`) — day-board-filters.spec holds the pages and the board
+ * together.
  */
 const REMEMBERED_FILTERS = [
   'vehicle',

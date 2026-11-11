@@ -10,8 +10,10 @@ import { listKey } from '../../../shared/lib/query-keys';
 import {
   __deletedShipmentsKey,
   __operationsKeys,
+  __securedBoardKey,
   __shipmentHistoryKey,
   __shipmentLogKey,
+  __vaultQueueKey,
 } from './operations-queries';
 
 /** Seed one cache entry per feature so "did it become stale?" is answerable per feature. */
@@ -209,6 +211,120 @@ describe('the action log and the deleted shipments ride the day board’s subtre
 
     expect(isStale(qc, __shipmentLogKey('s-1'))).toBe(false);
     expect(isStale(qc, __deletedShipmentsKey(range))).toBe(false);
+  });
+});
+
+describe('the vault’s receive queue rides the day board’s subtree (Round 8)', () => {
+  // «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها
+  // هتبقى اخضر عند الخزنة وعند العمليات»: three acts move a queue row — the captain's ✓ (yellow), the
+  // vault's receive (green) and any shipment write. All three stale the board's subtree already.
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__vaultQueueKey(false), { shipments: [] });
+    qc.setQueryData(__vaultQueueKey(true), { shipments: [] });
+  };
+
+  it('keys the default queue and «الكل» apart, inside the board’s subtree', () => {
+    expect(__vaultQueueKey(false).slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__vaultQueueKey(true)).not.toEqual(__vaultQueueKey(false));
+  });
+
+  it('a captain’s ✓ from the mobile app turns it yellow — stales both views', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // `useExecutionInvalidation`: myDay, then the board's subtree.
+    await qc.invalidateQueries({ queryKey: ['operations', 'myDay'] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+    expect(isStale(qc, __vaultQueueKey(false))).toBe(true);
+    expect(isStale(qc, __vaultQueueKey(true))).toBe(true);
+  });
+
+  it('the vault’s receive turns it green — the secured acts’ list includes the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useSecuredInvalidation` does.
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+    expect(isStale(qc, __vaultQueueKey(false))).toBe(true);
+  });
+
+  it('crew planning leaves it alone, as it leaves the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    expect(isStale(qc, __vaultQueueKey(false))).toBe(false);
+  });
+});
+
+describe('the secured screen rides the day board’s subtree (Round 8)', () => {
+  // «شاشة الشحنات المحصنة … زى شاشة اليوم التشغيلى»: its rows are board rows, and four kinds of act
+  // move one — a shipment write, the captain's ✓ in the app (yellow), the vault's receive (green)
+  // and its dispatch (blue). Every one of them stales the board's subtree already, so living under
+  // its key the screen can miss none of them.
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__securedBoardKey(), { shipments: [], crews: [] });
+  };
+
+  it('is keyed inside the board’s subtree, apart from every other entry there', () => {
+    expect(__securedBoardKey().slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    const range = { from: '2026-11-01', to: '2026-11-11' };
+    for (const other of [
+      __shipmentHistoryKey(range),
+      __deletedShipmentsKey(range),
+      __vaultQueueKey(false),
+      listKey('operations', 'dayBoard', { date: 'today' }),
+    ]) {
+      expect(__securedBoardKey()).not.toEqual(other);
+    }
+  });
+
+  it('a shipment write — a new محصنة, an edit, a delete — stales it', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useShipmentInvalidation` does.
+    await qc.invalidateQueries({ queryKey: __operationsKeys.shipments });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+    expect(isStale(qc, __securedBoardKey())).toBe(true);
+  });
+
+  it('the captain’s ✓ from the mobile app turns a row yellow — stales it', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // `useExecutionInvalidation`: myDay, then the board's subtree.
+    await qc.invalidateQueries({ queryKey: ['operations', 'myDay'] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+    expect(isStale(qc, __securedBoardKey())).toBe(true);
+  });
+
+  it('the vault’s receive and dispatch — the secured acts — stale it', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useSecuredInvalidation` does.
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+    expect(isStale(qc, __securedBoardKey())).toBe(true);
+  });
+
+  it('crew planning leaves it alone, as it leaves the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    expect(isStale(qc, __securedBoardKey())).toBe(false);
   });
 });
 

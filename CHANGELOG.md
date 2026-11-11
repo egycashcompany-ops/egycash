@@ -173,6 +173,22 @@ its entry here in the same PR.
     lists the range's deleted shipments (who deleted them, when, their log) with «استرجاع» for
     `operationsShipment.delete`. API: `GET /operations/shipments/deleted?from=&to=`,
     `POST /operations/shipments/:id/restore` (409 `OPERATIONS_SHIPMENT_NOT_DELETED`).
+  - Secured shipments («المحصنة») in the board's look, with their own stages: «شاشة الشحنات
+    المحصنة عاوز شكلها يكون زى شاشة اليوم التشغيلى … والحالة لم التسليم و تم الاستلام من القائد
+    و بالخزينة». A secured row is «لم يتم التسليم» (white), «تم الاستلام من القائد» once the
+    captain's ✓ in the app picks it up (yellow), «بالخزينة» once the vault receives it (green),
+    then «خرجت للتسليم» / «تم التسليم». `/operations/secured` is the shared board (with «تاريخ
+    التسليم»; «إضافة محصنة» books a secured shipment whose delivery defaults to the next day and
+    never falls before collection — `OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION`). API:
+    `GET /operations/secured/board`; board rows carry `securedStage` and `captainPickedUpAt`.
+  - The vault's receive screen in the same look: the shipments with the captain (yellow) and
+    those received today (green), «الكل» for the rest, and the vault's ✓ opening the receive
+    form. API: `GET /operations/secured/vault-queue?all=` (`operationsVault.view`); the bank and
+    currency lists now also answer `operationsVault.view`, so a treasurer sees the names.
+  - «اليوم التشغيلي» lists the secured shipments due out that day whatever their stage; the
+    history lists a secured shipment by its collection OR delivery date.
+  - «تتبّع أرقام الأوراق النقدية» left the form. Currencies follow the reference-data order,
+    arranged by drag and drop as Fleet's lists are (`PUT /operations/currencies/order`).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

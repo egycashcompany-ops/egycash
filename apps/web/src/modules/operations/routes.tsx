@@ -7,11 +7,14 @@
 // design §16.2 permission:
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
 //   /operations/shipments/history  operationsShipment.view  (NO legacy equivalent — the day board
-//                                  over a from–to range: «اعمل dublicat للشاشة دى بس التاريخ … من الى»)
+//                                  over a from–to range: «اعمل dublicat للشاشة دى بس التاريخ … من الى»;
+//                                  daily shipments and محصنات alike: «تكون شحنات ومحصنات»)
 //   /operations/crew-board    operationsCrew.view       B3  (legacy /tashghela)
 //   /operations/requirements  operationsCrew.view       B3  (legacy /requirement)
 //   /operations/standing-crew operationsCrew.view       (NO legacy equivalent — الطاقم الثابت)
-//   /operations/secured       operationsShipment.view   B4  (legacy /mohsana)
+//   /operations/secured       operationsShipment.view   B4  (legacy /mohsana — every open محصنة, on the
+//                                                       day board's own board with its delivery date
+//                                                       and its stage: «شكلها يكون زى شاشة اليوم التشغيلى»)
 //   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
 //   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
 //   /operations/vault         operationsVault.view      B4  (legacy /vault1)

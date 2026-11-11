@@ -37,11 +37,14 @@ import {
   type OperationsMobileDayDto,
   type OperationsShipmentDto,
   type OperationsShipmentHistoryDto,
+  type OperationsSecuredBoardDto,
   type OperationsShipmentLogDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultQueueDto,
   type OperationsVaultReportDto,
+  type OrderOperationsCurrencies,
   type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
@@ -105,6 +108,12 @@ export const updateCurrency = (
   body: UpdateOperationsCurrency,
 ): Promise<OperationsCurrencyDto> =>
   patch<OperationsCurrencyDto>(`/operations/currencies/${id}`, body);
+/**
+ * «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل زى شاشة الحركة بالظبط» — the currencies' dragged
+ * order, saved as Fleet's catalogs save theirs (`orderCatalog`): the ids in their new order; 204.
+ */
+export const orderCurrencies = (body: OrderOperationsCurrencies): Promise<void> =>
+  put<void>('/operations/currencies/order', body);
 
 /** One branch by id — how a shipment's edit form names the branch it holds, and that branch's bank. */
 export const getBankBranch = (id: string): Promise<OperationsBankBranchDto> =>
@@ -317,6 +326,14 @@ export const listSecuredBacklog = (
     `/operations/secured/backlog${buildQuery(params as QueryParams)}`,
   );
 
+/**
+ * «شاشة الشحنات المحصنة» — the same open backlog as BOARD ROWS (branches with their banks, the crew
+ * of the leg the row is on, each row's `securedStage`), so the screen draws them on the day board's
+ * own table. No parameters: every open محصنة, whatever its dates.
+ */
+export const getSecuredBoard = (): Promise<OperationsSecuredBoardDto> =>
+  get<OperationsSecuredBoardDto>('/operations/secured/board');
+
 /** `/tash4ela_mohasana` + `/deliver_mohsana` — held shipments due for delivery on a date. */
 export const listSecuredDue = (date: string): Promise<OperationsShipmentDto[]> =>
   get<OperationsShipmentDto[]>(`/operations/secured/due${buildQuery({ date })}`);
@@ -326,6 +343,15 @@ export const listVaultInventory = (
   params: OperationsListParams,
 ): Promise<Paginated<OperationsVaultInventoryRowDto>> =>
   getPage<OperationsVaultInventoryRowDto>(`/operations/secured/vault${buildQuery(params)}`);
+
+/**
+ * «شاشة استلام الخزينه» — the vault's receive queue, as board rows: by default the secured
+ * shipments the captain has collected (yellow) and those received into the vault today (green);
+ * `all` adds the ones no captain has collected yet (white). `all=false` is the default, so it is
+ * not sent.
+ */
+export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
+  get<OperationsVaultQueueDto>(`/operations/secured/vault-queue${buildQuery(all ? { all } : {})}`);
 
 /** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
 export const receiveIntoVault = (

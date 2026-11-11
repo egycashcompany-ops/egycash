@@ -258,6 +258,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'vaultReport'],
     ['operations', 'securedDue'],
     ['operations', 'securedBacklog'],
+    // «شاشة استلام الخزينه» (Round 8) lives under the day board's key, which only the shipment
+    // topics sweep — and those need `operationsShipment.view`. A treasurer with the vault grant
+    // alone hears THIS topic (`operationsVault.view`), so a colleague's receive must turn the row
+    // green here too, as it emptied the old draft queue (`securedBacklog`) before.
+    ['operations', 'dayBoard', 'vaultQueue'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [

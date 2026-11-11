@@ -9,6 +9,8 @@ import {
   ListSecuredBacklogQuerySchema,
   ListSecuredDueQuerySchema,
   ListVaultInventoryQuerySchema,
+  OperationsSecuredBoardQuerySchema,
+  OperationsVaultQueueQuerySchema,
   ReceiveIntoVaultSchema,
   objectId,
 } from '@ecms/contracts';
@@ -18,6 +20,8 @@ import { asyncHandler, validate } from '../../../platform/web';
 import {
   assignDeliveryLeg,
   dispatchSecured,
+  getSecuredBoard,
+  getVaultQueue,
   listBacklog,
   listDue,
   listVaultInventory,
@@ -35,6 +39,24 @@ export const buildOperationsSecuredRouter = (): Router => {
     authorize('operationsShipment.view'),
     validate({ query: ListSecuredBacklogQuerySchema }),
     asyncHandler(listBacklog),
+  );
+  // The secured screen (Round 8): the same backlog as board rows, coloured by stage. The backlog's
+  // own grant — it is the same set, looked at the day board's way.
+  router.get(
+    '/board',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ query: OperationsSecuredBoardQuerySchema }),
+    asyncHandler(getSecuredBoard),
+  );
+  // «شاشة استلام الخزينه» (Round 8): what the treasury receives — the vault screens' grant, like the
+  // inventory below. Receiving itself stays `POST /:id/receive` on `operationsVault.receive`.
+  router.get(
+    '/vault-queue',
+    authenticate,
+    authorize('operationsVault.view'),
+    validate({ query: OperationsVaultQueueQuerySchema }),
+    asyncHandler(getVaultQueue),
   );
   // /tash4ela_mohasana + /deliver_mohsana — what is due for delivery on a date.
   router.get(

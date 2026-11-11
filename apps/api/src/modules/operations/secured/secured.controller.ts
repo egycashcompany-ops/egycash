@@ -6,6 +6,9 @@ import {
   type ListSecuredBacklogQuery,
   type ListSecuredDueQuery,
   type ListVaultInventoryQuery,
+  type OperationsSecuredBoardDto,
+  type OperationsVaultQueueDto,
+  type OperationsVaultQueueQuery,
   type ReceiveIntoVault,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
@@ -15,6 +18,7 @@ import {
   toShipmentDto,
   toVaultInventoryRowDto,
 } from '../operations.mappers';
+import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
 import { vaultCustody } from '../treasury-boundary';
 import { operationsSecuredService } from './secured.service';
 
@@ -23,6 +27,35 @@ type IdParam = { id: string };
 export const listBacklog = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListSecuredBacklogQuery>(req);
   okPage(res, await operationsSecuredService.backlog(query), toShipmentDto);
+};
+
+/**
+ * The secured screen — every open محصنة as a board row, mapped for this reader through the same
+ * `boardForReader` as the day board (the crew plan behind `operationsCrew.view`).
+ */
+export const getSecuredBoard = async (req: Request, res: Response): Promise<void> => {
+  const view = await operationsSecuredService.board();
+  ok<OperationsSecuredBoardDto>(res, boardForReader(req, view));
+};
+
+/** The vault's receive queue — the yellow rows, today's green ones, and with `all` the white ones. */
+export const getVaultQueue = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsVaultQueueQuery>(req);
+  const all = query.all ?? false;
+  const view = await operationsSecuredService.vaultQueue(all);
+  const board = boardForReader(req, view);
+  ok<OperationsVaultQueueDto>(res, {
+    date: utcDayIso(view.day),
+    all,
+    shipments: board.shipments.map((row) => {
+      const receivedAt = view.receivedAt.get(row.id);
+      return {
+        ...row,
+        vaultReceivedAt: receivedAt === undefined ? null : receivedAt.toISOString(),
+      };
+    }),
+    crews: board.crews,
+  });
 };
 
 export const listDue = async (req: Request, res: Response): Promise<void> => {

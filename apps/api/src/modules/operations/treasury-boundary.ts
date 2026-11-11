@@ -80,6 +80,12 @@ export interface VaultCustodyProvider {
    * what a treasury physically holds is bounded in a way its history is not.
    */
   allHeld(): Promise<VaultCustodyView[]>;
+  /**
+   * Every custody the treasury TOOK in the half-open window [from, toExclusive) — held or since
+   * released — newest received first. The vault's receive queue asks it for one Cairo day: the
+   * shipments received today, which it lists green beside the ones still to receive.
+   */
+  receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]>;
 }
 
 let provider: VaultCustodyProvider | null = null;

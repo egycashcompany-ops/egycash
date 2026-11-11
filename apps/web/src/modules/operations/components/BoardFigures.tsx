@@ -98,7 +98,8 @@ export const BoardFigurePill = ({
  * «لما ادوس على عملات أخرى دى يفتح فورم ب كل عملة لوحدها كام»: the currencies the «عملات أخرى»
  * figure adds together, each with its own total — the one place a reader sees what that sum is
  * made of. «شكل الفورم بتاعت العملات مش عاجبنى كبرها وحسن الشكل»: a wide panel, the figure itself
- * on a band across the top, then one generous card per currency, largest first.
+ * on a band across the top, then one generous card per currency, in the catalog's order — «ترتيب
+ * العملات … على حسب ترتيبها ف شاشة البيانات المرجعية» — with its share of the figure on its bar.
  *
  * The cards are `otherCurrencies()` (lib/day-board.ts) — exactly the currencies the pill counted,
  * so the panel can never list one the figure did not add, or miss one it did.

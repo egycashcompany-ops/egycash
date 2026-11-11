@@ -1,6 +1,13 @@
 // Reference reads ride `operationsShipment.view` because every operations form needs these
 // pickers; mutations are the settings surface, `operationsCatalog.manage` (the fleet-catalog
 // precedent, catalog-item.routes.ts:1-3).
+//
+// The LIST also answers `operationsVault.view`: «شاشة الاستلام من الخزنة خليها زى شاشة التشغيل
+// اليومى» — the vault's receive queue is the operations board, which prints each row's bank by
+// its catalog name, and a treasurer may hold the vault's grant without the shipment one. Without
+// this his «اسم البنك» column was blank. Any-of, as the Fleet catalogs widened their read for the
+// screens that point at them (catalog-read-permission.spec.ts). Reading names only — every write
+// stays the catalog grant's.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -10,7 +17,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import { createBank, listBanks, updateBank } from './bank.controller';
 
@@ -21,7 +28,7 @@ export const buildOperationsBanksRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('operationsShipment.view'),
+    authorizeAny('operationsShipment.view', 'operationsVault.view'),
     validate({ query: ListOperationsReferenceQuerySchema }),
     asyncHandler(listBanks),
   );

@@ -24,6 +24,7 @@ import { listKey } from '../../shared/lib/query-keys';
 import { DataTable } from '../../shared/ui/DataTable';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
 import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
+import { __securedBoardKey } from './api/operations-queries';
 
 // The generic copy the eleven screens were stuck on, in both locales.
 const UNKNOWN_AR = 'حدث خطأ ما. يُرجى المحاولة مجددًا.';
@@ -125,17 +126,16 @@ describe('the Operations screens on a successful, empty response', () => {
     expect(html).toContain('الخزينة فارغة');
   });
 
-  it('the secured backlog shows its empty copy, not the generic failure', () => {
+  // The secured screen is the day board's board now (`GET /operations/secured/board`): an empty
+  // open list is its empty copy too, never the generic failure.
+  it('the secured screen shows its empty copy, not the generic failure', () => {
     const html = render(<SecuredBacklogPage />, {
       path: '/operations/secured',
       permissions: ['operationsShipment.view'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('operations', 'securedBacklog', { page: 1, pageSize: 25, sortDir: 'desc' }),
-          emptyPage,
-        ),
+      seed: (qc) => qc.setQueryData(__securedBoardKey(), { shipments: [], crews: [] }),
     });
     expect(html).not.toContain(UNKNOWN_AR);
+    expect(html).not.toContain(UNKNOWN_EN);
     expect(html).toContain('لا توجد محصنات مفتوحة');
   });
 });

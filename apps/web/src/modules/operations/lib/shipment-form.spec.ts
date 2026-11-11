@@ -10,6 +10,12 @@ import {
   SHIPMENT_SAVE_ERROR_KEYS,
   branchSaveErrorKey,
   areaOfDestination,
+  defaultDeliveryDate,
+  deliveryDateMin,
+  deliveryDateProblem,
+  deliveryDateRequired,
+  followCollectionDate,
+  nextDay,
   shipmentDateProblem,
   earliestShipmentDate,
   followMainBank,
@@ -130,6 +136,9 @@ describe('a shipment date’s floor — «مينفعش لما يجى يضيف ش
     expect(shipmentSaveErrorKey(failed('OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL'))).toBe(
       SHIPMENT_DATE_PROBLEM_KEY.beforeOriginal,
     );
+    expect(
+      shipmentSaveErrorKey(failed(ErrorCodes.OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION)),
+    ).toBe(SHIPMENT_DATE_PROBLEM_KEY.beforeCollection);
   });
 
   it('has its words in both catalogs', () => {
@@ -195,6 +204,104 @@ describe('branchSaveErrorKey — the branch form, also opened from the shipment 
   it('every key it can return exists in both catalogs', () => {
     for (const key of [BRANCH_DUPLICATE_KEY, 'operations.catalogs.saveFailed']) {
       for (const locale of ['ar', 'en'] as const) expect(translate(locale, key)).not.toBe(key);
+    }
+  });
+});
+
+// «تاريخ المحصنة اجبارى … وتاريخ التسليم تانى يوم الاستلام افتراضى وممكن يغير».
+describe('a محصنة’s delivery date — the day after collection, unless changed', () => {
+  const TODAY = '2026-11-11';
+
+  it('nextDay is the calendar’s next day — across a month, a year and a leap day', () => {
+    expect(nextDay('2026-11-11')).toBe('2026-11-12');
+    expect(nextDay('2026-11-30')).toBe('2026-12-01');
+    expect(nextDay('2026-12-31')).toBe('2027-01-01');
+    expect(nextDay('2028-02-28')).toBe('2028-02-29');
+    expect(nextDay('2027-02-28')).toBe('2027-03-01');
+  });
+
+  it('nextDay has nothing to say of a date that is not a whole day', () => {
+    for (const value of ['', '2026-11', '2026-02-30', 'tomorrow']) expect(nextDay(value)).toBe('');
+  });
+
+  it('opens a new محصنة on the day after its collection', () => {
+    expect(defaultDeliveryDate(TODAY)).toBe('2026-11-12');
+    expect(defaultDeliveryDate('')).toBe('');
+  });
+
+  it('follows the collection date while the person has not picked a delivery date', () => {
+    expect(followCollectionDate('2026-11-12', '2026-11-11', '2026-11-15')).toBe('2026-11-16');
+    // The collection box half-typed, then whole again: the default comes back with it.
+    expect(followCollectionDate('2026-11-12', '2026-11-11', '')).toBe('');
+    expect(followCollectionDate('', '', '2026-11-20')).toBe('2026-11-21');
+  });
+
+  it('keeps a delivery date the person picked — «وممكن يغير»', () => {
+    expect(followCollectionDate('2026-11-14', '2026-11-11', '2026-11-12')).toBe('2026-11-14');
+    // Even one the new collection date now passes: the box says so, rather than moving it.
+    expect(followCollectionDate('2026-11-14', '2026-11-11', '2026-11-20')).toBe('2026-11-14');
+  });
+
+  it('offers no delivery day before the collection day, nor before its own floor', () => {
+    expect(deliveryDateMin(TODAY, '2026-11-15')).toBe('2026-11-15');
+    expect(deliveryDateMin('2026-11-20', '2026-11-15')).toBe('2026-11-20');
+    // A collection date not whole yet leaves the floor alone.
+    expect(deliveryDateMin(TODAY, '')).toBe(TODAY);
+  });
+
+  describe('deliveryDateProblem', () => {
+    it('takes the collection day itself, or any day after it', () => {
+      expect(deliveryDateProblem('2026-11-12', '2026-11-12', null, TODAY)).toBeNull();
+      expect(deliveryDateProblem('2026-11-13', '2026-11-12', null, TODAY)).toBeNull();
+    });
+
+    it('refuses a delivery day before the collection day', () => {
+      expect(deliveryDateProblem('2026-11-12', '2026-11-14', null, TODAY)).toBe('beforeCollection');
+    });
+
+    // The server checks the past-day rules first; so does the form, so both say the same thing.
+    it('names the floor first — a past day is «a day that has passed», whatever the order', () => {
+      expect(deliveryDateProblem('2026-11-10', '2026-11-11', null, TODAY)).toBe('inPast');
+      expect(
+        deliveryDateProblem(
+          '2026-11-12',
+          '2026-11-11',
+          { delivery: '2026-11-13', collection: '2026-11-11' },
+          TODAY,
+        ),
+      ).toBe('beforeOriginal');
+    });
+
+    it('lets an edit that moves neither date through — a row stored the wrong way round still takes a notes fix', () => {
+      const held = { delivery: '2026-11-12', collection: '2026-11-14' };
+      expect(deliveryDateProblem('2026-11-12', '2026-11-14', held, TODAY)).toBeNull();
+      // Moving either one is judged on the two dates the shipment would then have.
+      expect(deliveryDateProblem('2026-11-13', '2026-11-14', held, TODAY)).toBe('beforeCollection');
+      expect(deliveryDateProblem('2026-11-12', '2026-11-15', held, TODAY)).toBe('beforeCollection');
+      expect(deliveryDateProblem('2026-11-16', '2026-11-15', held, TODAY)).toBeNull();
+    });
+
+    it('leaves an empty or half-typed date to the required check', () => {
+      expect(deliveryDateProblem('', '2026-11-12', null, TODAY)).toBeNull();
+      expect(deliveryDateProblem('2026-11-12', '', null, TODAY)).toBeNull();
+    });
+  });
+
+  it('is required of a new محصنة, and of one that already has a delivery date', () => {
+    expect(deliveryDateRequired('secured', null, true)).toBe(true);
+    expect(deliveryDateRequired('secured', '2026-11-12', false)).toBe(true);
+  });
+
+  // Legacy never required it; a date invented to pass the form would book a dispatch day.
+  it('is not required of an old محصنة stored without one, nor of a daily shipment', () => {
+    expect(deliveryDateRequired('secured', null, false)).toBe(false);
+    expect(deliveryDateRequired('daily', null, true)).toBe(false);
+  });
+
+  it('says the refusal in both catalogs, as the server’s code is said', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const key = SHIPMENT_DATE_PROBLEM_KEY.beforeCollection;
+      expect(translate(locale, key)).not.toBe(key);
     }
   });
 });

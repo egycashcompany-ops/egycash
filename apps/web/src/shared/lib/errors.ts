@@ -30,6 +30,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A shipment cannot be dated on a day that has passed — choose today or a later day.',
     OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL:
       'A shipment’s date cannot move earlier than the day it was on — keep it, or choose a later day.',
+    // «تاريخ التسليم تانى يوم الاستلام افتراضى وممكن يغير»: a محصنة may be delivered the day it is
+    // collected or later, never before. The shipment form words it on its own box too.
+    OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION:
+      'The delivery date cannot come before the collection date — choose the same day or a later one.',
     // «اعملى ايقون اقدر اجيب منه اللى اتمسح»: a restore of a shipment someone else already brought
     // back. Nothing is lost — it is on its day again — and the deleted list refreshes behind it.
     OPERATIONS_SHIPMENT_NOT_DELETED:
@@ -65,6 +69,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'لا يمكن تسجيل الشحنة بتاريخ يوم مضى — اختر اليوم أو يومًا بعده.',
     OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL:
       'لا يمكن تقديم تاريخ الشحنة عن اليوم الذي كانت عليه — أبقِه كما هو أو اختر يومًا بعده.',
+    OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION:
+      'لا يمكن أن يسبق تاريخ التسليم تاريخ الاستلام — اختر اليوم نفسه أو يومًا بعده.',
     OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

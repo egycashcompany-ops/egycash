@@ -110,6 +110,47 @@ export const OPERATIONS_EXECUTION_STATUSES = [
 export const OperationsExecutionStatusSchema = z.enum(OPERATIONS_EXECUTION_STATUSES);
 export type OperationsExecutionStatus = z.infer<typeof OperationsExecutionStatusSchema>;
 
+// ── Secured stage (Round 8 — the محصنة row's colour) ───────────────────────────────────────────
+
+/**
+ * Where a SECURED shipment stands, as the secured screen, the vault's receive screen and the day
+ * board colour its row. DERIVED on the server, never stored and never sent back: it reads the
+ * shipment's own `status` and its PICKUP leg's captain execution, so it can never disagree with
+ * either. The owner's words: «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر …
+ * ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات وفى اللحظه دى المحصنة هتبقى موجوده
+ * فى صرف الخزينه».
+ *
+ *   awaitingPickup  status `draft`, the pickup leg not yet picked up by its captain (or no pickup
+ *                   leg at all) — «لم يتم التسليم», a WHITE row.
+ *   withCaptain     status `draft`, the pickup leg's `executionStatus` is `pickedUp`, `delivered`
+ *                   or `completed` — the captain's ✓ in the mobile app on collecting it from the
+ *                   bank — «تم الاستلام من القائد», a YELLOW row. From this moment the vault's
+ *                   receive screen lists it by default.
+ *   inVault         status `inVault` — the vault's ✓ (the receive form) — «بالخزينة», a GREEN row,
+ *                   on the secured screen and on the vault's alike; it is now on «صرف الخزينة»
+ *                   for its delivery date.
+ *   dispatched      status `dispatched` — it left the vault for delivery — «خرجت للتسليم».
+ *   completed       status `completed` — the desk confirmed the delivery — «تم التسليم».
+ *
+ * Daily shipments have no stage (`securedStage: null` on their rows).
+ */
+export const OPERATIONS_SECURED_STAGES = [
+  'awaitingPickup',
+  'withCaptain',
+  'inVault',
+  'dispatched',
+  'completed',
+] as const;
+export const OperationsSecuredStageSchema = z.enum(OPERATIONS_SECURED_STAGES);
+export type OperationsSecuredStage = z.infer<typeof OperationsSecuredStageSchema>;
+
+/** The pickup-leg execution states that mean the captain has the shipment in hand. */
+export const OPERATIONS_PICKED_UP_EXECUTION_STATUSES: readonly OperationsExecutionStatus[] = [
+  'pickedUp',
+  'delivered',
+  'completed',
+];
+
 // ── Operations day (NEW — no legacy counterpart) ────────────────────────────────────────────────
 
 /**
@@ -227,6 +268,18 @@ export interface OperationsCurrencyDto {
    * (contad_app.js:1409, 5029-5057) — so parity matching needs the full alias set as data.
    */
   legacyAliases: string[];
+  /**
+   * The currency's place in the catalog's ARRANGED order — 0 first — or null while nobody has
+   * arranged the list. «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل زى شاشة الحركة بالظبط»: the
+   * reference-data screen drags the currencies into order exactly as Fleet's catalogs are dragged
+   * (`PUT /operations/currencies/order`), and every screen that lists currencies — a board row's
+   * money lines, the «عملات أخرى» dialog, the shipment form's pickers — follows that order.
+   *
+   * THE ORDER THE LIST ENDPOINT ANSWERS IN when no `sortBy` is asked for: `sortOrder` ascending
+   * (null after every placed one), then `code` NUMERIC-AWARE ('2' before '10', `EGP` before `USD`),
+   * then `name`. A screen ordering money lines does the same: by this field, then by code.
+   */
+  sortOrder: number | null;
   isActive: boolean;
   version: number;
   createdAt: string;
@@ -237,6 +290,12 @@ const currencyCore = {
   code: z.string().min(1).max(8),
   name: z.string().min(1),
   legacyAliases: z.array(z.string().min(1)).max(20).default([]),
+  /**
+   * Optional on create and edit — the drag order (`PUT /operations/currencies/order`) is the
+   * usual way to set it. Left out on create, a new currency joins the END of a list somebody has
+   * arranged, and stays null on a list nobody has (the Fleet catalogs' rule).
+   */
+  sortOrder: z.number().int().min(0).nullable().optional(),
 };
 export const CreateOperationsCurrencySchema = z.object(currencyCore).strict();
 export type CreateOperationsCurrency = z.infer<typeof CreateOperationsCurrencySchema>;
@@ -246,6 +305,27 @@ export const UpdateOperationsCurrencySchema = z
   .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
   .strict();
 export type UpdateOperationsCurrency = z.infer<typeof UpdateOperationsCurrencySchema>;
+
+/**
+ * `PUT /operations/currencies/order` (`operationsCatalog.manage`) → 204 — save the catalog's
+ * dragged order, the Fleet catalogs' `PUT /fleet/catalogs/order` exactly («زى شاشة الحركة
+ * بالظبط»). The ids named come first, in the order given; every currency NOT named keeps its old
+ * place after them, so a list filtered on screen cannot lose the order of what it was not showing.
+ * An id that is not a live currency → 409 (code `DUPLICATE`, the generic conflict — what the Fleet
+ * catalogs' order answers too); nothing is written. Versions are left alone (a place in a list
+ * is not a fact the edit dialog carries, so reordering never makes the next edit stale). Audited
+ * as one `update` with the field `order` (old → new, as codes).
+ */
+export const OrderOperationsCurrenciesSchema = z
+  .object({
+    ids: z
+      .array(objectId())
+      .min(1)
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'A currency is listed twice' }),
+  })
+  .strict();
+export type OrderOperationsCurrencies = z.infer<typeof OrderOperationsCurrenciesSchema>;
 
 export const ListOperationsBankBranchesQuerySchema = PaginationQuerySchema.extend({
   bankId: objectId().optional(),
@@ -490,12 +570,18 @@ export type OperationsDayBoardQuery = z.infer<typeof OperationsDayBoardQuerySche
  * THE SHIPMENTS HISTORY — the day board over a RANGE of days: «عاوز اعمل dublicat للشاشة دى بس
  * التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع الشحنات».
  *
- * The same union as the day board, over every day from `from` to `to` (both inclusive): daily
- * shipments COLLECTED in the range, plus secured shipments DELIVERED in the range that have left
- * the vault. Bounded twice so a history read stays a screen and not an export: at most
- * `OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS` days, and a range holding more than
- * `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` shipments is REFUSED (never cut short — totals over a
- * silently truncated list would be wrong figures).
+ * «المفروض الشاشة اللى احنا عملينها history تكون شحنات ومحصنات» — shipments AND secured ones, over
+ * every day from `from` to `to` (both inclusive):
+ *   · daily shipments COLLECTED in the range;
+ *   · secured shipments whose COLLECTION date OR DELIVERY date falls in the range — whatever their
+ *     stage, so a محصنة is found on the day it was collected and on the day it goes out, from
+ *     «لم يتم التسليم» to «تم التسليم». Listed once even when both dates are in the range.
+ * So a history day is the day board of that day PLUS the secured shipments collected on it (the
+ * day board lists a secured shipment on its delivery day only). Bounded twice so a history read
+ * stays a screen and not an export: at most `OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS` days, and a
+ * range holding more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` shipments is REFUSED with 422
+ * `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` (never cut short — totals over a silently truncated list
+ * would be wrong figures).
  */
 export const OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS = 366;
 export const OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS = 5000;
@@ -539,8 +625,11 @@ export interface OperationsDayBoardDto {
   /** The resolved day, so a client never has to guess what "today" the server meant. */
   date: string;
   /**
-   * The union the legacy board showed: daily shipments collected on the day, plus secured
-   * shipments DELIVERED on the day that have left the vault. Newest created first.
+   * The day's work: daily shipments COLLECTED on the day, plus secured shipments due for DELIVERY
+   * on the day — WHATEVER their stage («اليوم التشغيلى هيظهر فيها اليومى والمحصنة اللى اليوم بتاعها
+   * فى اليوم اللى هتخرج فيه»). Round 8 dropped the legacy `status: [1,3]` filter (dispatched or
+   * completed only): a محصنة due today is on today's board from the moment it is booked, coloured
+   * by its `securedStage`. Newest created first.
    */
   shipments: OperationsDayBoardShipmentDto[];
   /**
@@ -567,9 +656,12 @@ export interface OperationsDayBoardBranchDto {
 }
 
 /**
- * The crew this shipment rides with on the board: the PICKUP leg for a daily shipment, the
- * DELIVERY leg for a secured one — the legacy board's `car_num1/leader1` vs `car_num2/leader2`
- * (main_ops.ejs:858-881), and the same leg the captain report attributes the shipment to.
+ * The crew this shipment rides with on the board — the leg the row is about RIGHT NOW:
+ *   · daily   → the PICKUP leg (legacy `car_num1/leader1`, main_ops.ejs:858-881);
+ *   · secured → the PICKUP leg while the shipment is still `draft` (awaitingPickup / withCaptain:
+ *               the captain going to the bank, or carrying it to the vault), then the DELIVERY leg
+ *               from `inVault` on (legacy `car_num2/leader2` — the leg the captain report attributes
+ *               it to). An `inVault` shipment whose delivery leg is not crewed yet has `crew: null`.
  */
 export interface OperationsDayBoardCrewDto {
   /** The crew row this leg rides — the key into `OperationsDayBoardDto.crews`. */
@@ -633,15 +725,33 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
   /** Null only when the branch record itself is gone. */
   origin: OperationsDayBoardBranchDto | null;
   destination: OperationsDayBoardBranchDto | null;
-  /** Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. */
+  /**
+   * Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. Which
+   * leg: see `OperationsDayBoardCrewDto`.
+   */
   crew: OperationsDayBoardCrewDto | null;
   /**
-   * When the crew captain confirmed DELIVERY of this row's leg from the mobile app (the leg's
-   * `executionStatus` reached `delivered` or `completed`; its `deliveredAt`), or null. Separate
-   * from the shipment's own `status`: the captain's act never completes the shipment — the desk's
-   * ✓ does. The board shows the first as «تم التسليم» on a yellow row, the second on a green one.
+   * When the crew captain confirmed DELIVERY to the destination from the mobile app, or null: the
+   * PICKUP leg's for a daily shipment, the DELIVERY leg's for a secured one — always, whichever
+   * leg `crew` shows (a secured pickup leg "delivers" to the vault, never to the branch). Read from
+   * the leg's `executionStatus` reaching `delivered` or `completed`, and its `deliveredAt`.
+   * Separate from the shipment's own `status`: the captain's act never completes the shipment —
+   * the desk's ✓ does. The day board shows the first as «تم التسليم» on a yellow row, the second
+   * on a green one.
    */
   captainDeliveredAt: string | null;
+  /**
+   * SECURED rows only (null on a daily row): where the محصنة stands — see
+   * `OPERATIONS_SECURED_STAGES` for the five stages, their Arabic labels and their row colours.
+   */
+  securedStage: OperationsSecuredStage | null;
+  /**
+   * SECURED rows only (null on a daily row): when the captain of the PICKUP leg confirmed he had
+   * collected it from the bank in the mobile app (the leg's `pickedUpAt`, once its
+   * `executionStatus` is `pickedUp`, `delivered` or `completed`), or null before that. It stays
+   * set through the later stages — it is when the shipment reached the captain's hands.
+   */
+  captainPickedUpAt: string | null;
 }
 
 // ── The dates a person may give a shipment ──────────────────────────────────────────────────────
@@ -657,11 +767,22 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
 //     `deliveryDate` not before the one it has → 422 `OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`.
 //     Moving a date LATER, or sending it unchanged, is always accepted. A delivery date set for the
 //     first time on an edit is a fresh pick, so it follows the create rule (not before today).
+//   · DELIVERY NOT BEFORE COLLECTION (Round 8, the secured form: «تاريخ التسليم تانى يوم الاستلام
+//     افتراضى وممكن يغير») — a secured shipment's `deliveryDate` may not fall before its
+//     `collectionDate` (the same day is allowed) → 422 `OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION`.
+//     Checked on create, and on an edit that CHANGES either date (the two dates the shipment would
+//     have after the edit are compared), so a row already stored the wrong way round still takes an
+//     edit that leaves both dates alone. The past-day rules above are checked first.
+//     The default «collection + 1 day» is the FORM's (the server stores what it is sent).
 //
-// Both refusals carry one detail: `field` = the date field refused, `code` = 'MIN_DATE',
-// `message` = the earliest day it may take, as 'YYYY-MM-DD' — so a form can say «أقرب تاريخ مسموح».
-// The comparison is on calendar days ('YYYY-MM-DD'): the stored date is the UTC day the client
-// sent; "today" is the Cairo day of the server's clock.
+// All three refusals carry one detail: `field` = the date field refused, `code` = 'MIN_DATE',
+// `message` = the earliest day it may take, as 'YYYY-MM-DD' (for the third: the collection day) —
+// so a form can say «أقرب تاريخ مسموح». The comparison is on calendar days ('YYYY-MM-DD'): the
+// stored date is the UTC day the client sent; "today" is the Cairo day of the server's clock.
+//
+// `serialTracked` («تتبّع أرقام الأوراق النقدية») is no longer on either screen's form (Round 8,
+// «ومحتاج اشيل دا»). The API keeps the field: optional on create (defaults to false) and on edit
+// (left out → the stored value is untouched).
 
 // ── The shipment's action log («سجل بالاكشنز اللى حصلت على الشحنة») ─────────────────────────────
 //
@@ -824,9 +945,9 @@ export interface OperationsShipmentLogDto {
 // ── The deleted shipments, and bringing one back («اعملى ايقون اقدر اجيب منه اللى اتمسح») ────────
 //
 // `GET /operations/shipments/deleted?from=&to=` (`operationsShipment.view`): the shipments that were
-// DELETED from the board days in the range — the history's own union (daily by collection day;
-// secured by delivery day once out of the vault) over deleted rows, so every row listed is one that
-// comes back onto that history when restored. Same range rules and the same row cap as the history
+// DELETED from the history of the range — the history's own union (daily by collection day;
+// secured by collection OR delivery day, any stage) over deleted rows, so every row listed is one
+// that comes back onto that history when restored. Same range rules and the same row cap as the history
 // (a range holding more is refused with `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`). Newest deleted
 // first; rows enriched exactly as board rows are, crew facts gated the same way.
 //
@@ -1742,9 +1863,82 @@ export interface OperationsVaultInventoryRowDto {
   releasedAt: string | null;
 }
 
-/** The `/tash4ela_mohasana` + `/deliver_mohsana` list: held, due for delivery on a date (:4447). */
+/**
+ * The `/tash4ela_mohasana` + `/deliver_mohsana` list: held, due for delivery on a date (:4447).
+ *
+ * This is «صرف الخزينة» (the vault dispatch screen), UNCHANGED by Round 8: a shipment the vault
+ * received (`inVault`) is listed here on its DELIVERY date — the screen's date picker opens on
+ * today and can be moved to any day — and nowhere earlier.
+ */
 export const ListSecuredDueQuerySchema = z.object({ date: z.coerce.date() }).strict();
 export type ListSecuredDueQuery = z.infer<typeof ListSecuredDueQuerySchema>;
+
+// ── The secured screen and the vault's receive queue (Round 8) ─────────────────────────────────
+//
+// «شاشة الشحنات المحصنة عاوز شكلها يكون زى شاشة اليوم التشغيلى»: the secured screen and the vault's
+// receive screen both print BOARD ROWS (`OperationsDayBoardShipmentDto`) — the same branches with
+// their banks, the same crew, the same van cards behind `operationsCrew.view` (a reader without it
+// gets `crews: []` and no captain phone, exactly as on the day board) — plus each row's
+// `securedStage`, which is what colours it.
+
+/**
+ * `GET /operations/secured/board` (`operationsShipment.view`) — THE SECURED SCREEN: every secured
+ * shipment not yet completed, NO date filter (the legacy `/mohsana` backlog, :657 — a shipment
+ * booked weeks ago and still open stays on it), newest created first. Takes no parameters.
+ *
+ * Counted before it is read, like the history: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+ * open secured shipments is refused with 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` (details
+ * `count` and `max`), never cut short.
+ */
+export const OperationsSecuredBoardQuerySchema = z.object({}).strict();
+export type OperationsSecuredBoardQuery = z.infer<typeof OperationsSecuredBoardQuerySchema>;
+
+export interface OperationsSecuredBoardDto {
+  /** Every open secured shipment (stage awaitingPickup … dispatched), newest created first. */
+  shipments: OperationsDayBoardShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
+/**
+ * `GET /operations/secured/vault-queue?all=` (`operationsVault.view`, the vault screens' grant) —
+ * «شاشة استلام الخزينه», what the treasury receives:
+ *
+ *   · by default (`all` absent or false): the secured shipments `withCaptain` (YELLOW — the captain
+ *     has collected it and it is on its way to the vault), plus those RECEIVED into the vault TODAY
+ *     on the Cairo calendar (GREEN — by the custody's `receivedAt`; listed whatever their stage
+ *     now, so one received and dispatched the same day still shows as today's receipt);
+ *   · with `all=true`: the same, plus every `awaitingPickup` one (WHITE) — so a shipment whose
+ *     captain never pressed ✓ in the app («القائد مش معاه الابلكيشن») can still be received.
+ *
+ * Receiving stays `POST /operations/secured/:id/receive` (`operationsVault.receive` — the receive
+ * form with the packaging, the seals and the two treasurers): that is the vault's ✓. Newest created
+ * first. Counted before it is read: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` candidates
+ * (open drafts plus today's receipts) is refused with 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`.
+ */
+export const OperationsVaultQueueQuerySchema = z
+  .object({ all: booleanQuery().optional() })
+  .strict();
+export type OperationsVaultQueueQuery = z.infer<typeof OperationsVaultQueueQuerySchema>;
+
+/** A vault-queue row: a board row, plus when the vault received it. */
+export interface OperationsVaultQueueShipmentDto extends OperationsDayBoardShipmentDto {
+  /**
+   * When the treasury took it into the vault (the custody's `receivedAt`, ISO instant) — set on
+   * the green rows received today, null on the rows still to be received.
+   */
+  vaultReceivedAt: string | null;
+}
+
+export interface OperationsVaultQueueDto {
+  /** The Cairo day "received today" was read for, as its UTC midnight ISO string. */
+  date: string;
+  /** Echoes the `all` the rows were read with (false when it was left out). */
+  all: boolean;
+  shipments: OperationsVaultQueueShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
 
 
 // ── Assignment & sequencing (OP-5) ──────────────────────────────────────────────────────────────

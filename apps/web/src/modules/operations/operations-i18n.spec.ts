@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
+  OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_LEGS,
   OPERATIONS_SHIPMENT_LOG_FIELDS,
   OPERATIONS_SHIPMENT_LOG_KINDS,
@@ -65,6 +66,12 @@ const CATALOG_KEYS = [
   'operations.catalogs.currency.name',
   'operations.catalogs.currency.aliases',
   'operations.catalogs.currency.aliasesHint',
+  // Round 8 — the currencies dragged into order, as Fleet's catalogs are.
+  'operations.catalogs.currency.dragToOrder',
+  'operations.catalogs.currency.moveUp',
+  'operations.catalogs.currency.moveDown',
+  'operations.catalogs.currency.orderSaved',
+  'operations.catalogs.currency.orderHint',
 ];
 
 /** B2 — the daily board and the shipment form. */
@@ -105,7 +112,8 @@ const BOARD_KEYS = [
   'operations.shipment.deliveryDate',
   'operations.shipment.deliveryDateHint',
   'operations.shipment.notes',
-  'operations.shipment.serialTracked',
+  // («تتبّع أرقام الأوراق النقدية» left the form — «ومحتاج اشيل دا»; the log still names the field
+  // for old entries, `operations.shipment.log.field.serialTracked`, listed with the log below.)
   'operations.board.title',
   'operations.board.stats',
   'operations.board.statsHide',
@@ -160,7 +168,16 @@ const BOARD_KEYS = [
     'branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale',
     // The collection date's floor — a new shipment not before today, an edit not before its day.
     'dateInPast', 'dateBeforeOriginal',
+    // A محصنة's delivery never before its collection («تاريخ التسليم تانى يوم الاستلام»).
+    'deliveryBeforeCollection',
   ].map((key) => `operations.shipment.errors.${key}`),
+  // A محصنة's stage — its «الحالة» on the secured screen, the day board and the history — with
+  // the sentence each says on hover; and the secured screen's «تاريخ الاستلام» beside «تاريخ التسليم».
+  ...OPERATIONS_SECURED_STAGES.flatMap((stage) => [
+    `operations.board.stage.${stage}`,
+    `operations.board.stageHint.${stage}`,
+  ]),
+  'operations.board.collectedOn',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens: its frame,
   // a sentence for every kind, a label for every field and a name for every leg the contract lists.
   ...[
@@ -237,6 +254,7 @@ const SECURED_KEYS = [
   'operations.secured.backlog.subtitle',
   'operations.secured.backlog.add',
   'operations.secured.backlog.empty',
+  'operations.secured.backlog.tooLarge',
   'operations.secured.receive.title',
   'operations.secured.receive.subtitle',
   'operations.secured.receive.action',
@@ -254,6 +272,7 @@ const SECURED_KEYS = [
   'operations.secured.receive.sameTreasurer',
   'operations.secured.receive.done',
   'operations.secured.receive.failed',
+  'operations.secured.receive.noRoster',
   'operations.secured.dispatch.title',
   'operations.secured.dispatch.subtitle',
   'operations.secured.dispatch.vehicle',
@@ -275,6 +294,15 @@ const SECURED_KEYS = [
   'operations.vault.receivedBy',
   'operations.vault.receivedAt',
   'operations.vault.empty',
+  // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
+  'operations.vault.queue.all',
+  'operations.vault.queue.allHint',
+  'operations.vault.queue.withCaptain',
+  'operations.vault.queue.receivedToday',
+  'operations.vault.queue.awaiting',
+  'operations.vault.queue.pickedUpAt',
+  'operations.vault.queue.receivedAt',
+  'operations.vault.queue.receive',
 ];
 
 const REPORT_KEYS = [

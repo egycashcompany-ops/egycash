@@ -33,6 +33,7 @@ import {
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredStage,
   type OperationsShipmentLeg,
   type OperationsShipmentLogDto,
   type Paginated,
@@ -56,6 +57,7 @@ import { operationsBankBranchRepository } from '../bank-branches/bank-branch.rep
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
+import { crewLegOf, deliveryLegOf, isPickedUp, securedStageOf } from './secured-stage';
 import { operationsShipmentRepository } from './shipment.repository';
 import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
@@ -154,6 +156,23 @@ const assertNotBeforeOriginal = (
   }
 };
 
+/**
+ * A secured shipment's delivery may not fall before its collection — «تاريخ التسليم تانى يوم الاستلام
+ * افتراضى وممكن يغير»: the form defaults it to the next day and the person may move it, but a
+ * shipment cannot go out before it was collected. The same day is accepted (collected in the
+ * morning, delivered in the afternoon). The earliest day allowed is the collection day.
+ */
+const assertDeliveryNotBeforeCollection = (delivery: Date, collection: Date): void => {
+  if (ymdOf(delivery) < ymdOf(collection)) {
+    throw dateRefused(
+      ErrorCodes.OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION,
+      'deliveryDate',
+      ymdOf(collection),
+      `the deliveryDate ${ymdOf(delivery)} is before the collectionDate ${ymdOf(collection)} — a shipment cannot go out before it is collected`,
+    );
+  }
+};
+
 /** The UTC midnight after `day` — the exclusive end of a half-open day range. */
 const nextDay = (day: Date): Date => {
   const next = new Date(day);
@@ -165,12 +184,19 @@ const nextDay = (day: Date): Date => {
  * 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` — the range holds more shipments than one history
  * screen serves. Both figures ride in the details, so the screen can say how far over it is and
  * the owner can narrow the range rather than guess.
+ *
+ * Exported for the two board screens without a range (the secured screen and the vault's receive
+ * queue, secured.service.ts): the same cap, the same code, the same details — only the message
+ * says what was too many.
  */
-const historyTooLarge = (count: number): AppError =>
+export const historyTooLarge = (
+  count: number,
+  message = `the range holds ${String(count)} shipments — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; narrow the dates`,
+): AppError =>
   new AppError(
     ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE,
     422,
-    `the range holds ${String(count)} shipments — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; narrow the dates`,
+    message,
     {
       details: [
         { field: 'count', code: 'COUNT', message: String(count) },
@@ -197,6 +223,13 @@ export interface DayBoardRow {
    * shipment (execution.service.ts), so the desk's own confirmation stays a separate, later step.
    */
   captainDeliveredAt: Date | null;
+  /** Where a secured shipment stands (secured-stage.ts); null on a daily row. */
+  securedStage: OperationsSecuredStage | null;
+  /**
+   * When the pickup leg's captain confirmed collecting a SECURED shipment from the bank — the
+   * yellow row's moment; null on a daily row, and before he has.
+   */
+  captainPickedUpAt: Date | null;
 }
 
 /**
@@ -294,7 +327,10 @@ class OperationsShipmentService {
     // board day, which a past one would book onto a past board. Checked first, before any
     // reference is read: a past day is wrong whatever else the form says.
     assertNotBeforeToday('collectionDate', input.collectionDate);
-    if (input.deliveryDate !== null) assertNotBeforeToday('deliveryDate', input.deliveryDate);
+    if (input.deliveryDate !== null) {
+      assertNotBeforeToday('deliveryDate', input.deliveryDate);
+      assertDeliveryNotBeforeCollection(input.deliveryDate, input.collectionDate);
+    }
 
     await assertReferences({
       mainBankId: input.mainBankId,
@@ -400,11 +436,12 @@ class OperationsShipmentService {
    * system kept its rules in the browser (discovery §8.3, §13). Answering it here is the whole
    * point of the migration; a client stitching two lists together would put the rule back.
    *
-   * PARITY, precisely:
+   * THE UNION, precisely:
    *   · daily   → `collectionDate` falls on the day (legacy `rec_date` exact-equality, Q15
    *               NORMALIZED to an explicit half-open day range)
-   *   · secured → `deliveryDate` falls on the day AND status ∈ {completed, dispatched}
-   *               (legacy `status: [1,3]`, Q10 NORMALIZED to an explicit `$in`)
+   *   · secured → `deliveryDate` falls on the day, WHATEVER its stage — Round 8 dropped the legacy
+   *               `status: [1,3]` filter («المحصنة اللى اليوم بتاعها فى اليوم اللى هتخرج فيه»): the
+   *               row is on its day from booking on, coloured by `securedStage`
    *   · never deleted; newest created first (legacy `input_date: -1`)
    *
    * `date` defaults to TODAY, matching the legacy screen — which computed today server-side and
@@ -414,7 +451,7 @@ class OperationsShipmentService {
    */
   async dayBoard(date: Date | undefined): Promise<OperationsShipmentDoc[]> {
     const day = this.boardDay(date);
-    return operationsShipmentRepository.boardInRange(day, nextDay(day));
+    return operationsShipmentRepository.boardInRange(day, nextDay(day), 'day');
   }
 
   /** The operating day a board request means: the day asked for, or today in Cairo. */
@@ -431,9 +468,10 @@ class OperationsShipmentService {
    * THE SHIPMENTS HISTORY — «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك
    * الhistory بتاع الشحنات»: the day board over every day from `from` to `to`, both inclusive.
    *
-   * The same union and the same enrichment as the day board, on purpose: a day in the history is
-   * the board of that day, row for row, so the owner can trust that what he looks back at is what
-   * the desk saw.
+   * «المفروض الشاشة اللى احنا عملينها history تكون شحنات ومحصنات»: the day board's dailies, and
+   * EVERY secured shipment collected or delivered in the range, whatever its stage — so a history
+   * day is that day's board plus the محصنات collected on it. The same enrichment as the day board
+   * (`boardView`), on purpose: a row prints the same wherever it is looked at.
    *
    * COUNTED BEFORE IT IS READ. A range holding more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
    * shipments is refused for the price of an index count, before a row is loaded or joined — and
@@ -443,9 +481,15 @@ class OperationsShipmentService {
   async historyView(from: Date, to: Date): Promise<DayBoardView> {
     const first = utcDay(from);
     const toExclusive = nextDay(utcDay(to));
-    const count = await operationsShipmentRepository.countBoardInRange(first, toExclusive);
+    const count = await operationsShipmentRepository.countBoardInRange(
+      first,
+      toExclusive,
+      'history',
+    );
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
-    return this.boardView(await operationsShipmentRepository.boardInRange(first, toExclusive));
+    return this.boardView(
+      await operationsShipmentRepository.boardInRange(first, toExclusive, 'history'),
+    );
   }
 
   /**
@@ -552,9 +596,10 @@ class OperationsShipmentService {
 
   /**
    * Board rows with what the legacy table printed beside each shipment: both branches by name and
-   * code with their banks, and the crew of the leg the shipment's type reports on — plus, for the
-   * hover cards, who rides each van and the captain's own card. Shared by the day board and the
-   * history, so a history day can never print a row differently from that day's board.
+   * code with their banks, and the crew of the leg the row is about (secured-stage.ts `crewLegOf`)
+   * — plus, for the hover cards, who rides each van and the captain's own card, and for a secured
+   * row its stage. Shared by the day board, the history, the deleted list, the secured screen and
+   * the vault's receive queue, so no screen can print a row differently from another.
    *
    * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the crew rows, their
    * Fleet duty rows, the vehicle codes and every person's name are each fetched once for the whole
@@ -565,7 +610,7 @@ class OperationsShipmentService {
    * null and the screen says so — a board that refused to load because one van was scrapped would
    * be worse than a board with one blank cell.
    */
-  private async boardView(docs: OperationsShipmentDoc[]): Promise<DayBoardView> {
+  async boardView(docs: OperationsShipmentDoc[]): Promise<DayBoardView> {
     if (docs.length === 0) return { rows: [], crews: [] };
 
     const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);
@@ -585,14 +630,16 @@ class OperationsShipmentService {
       ]),
     );
 
-    // The leg that carries this type's crew — the same split the captain report uses.
+    // Both legs of every row, in one read: the crew a row prints is the leg it is about now, and a
+    // secured row's stage reads its pickup leg whichever leg it prints.
     const legs = await operationsShipmentAssignmentRepository.findByShipments(
       docs.map((d) => String(d._id)),
     );
     const legOf = new Map(legs.map((a) => [`${String(a.shipmentId)}:${a.leg}`, a]));
+    const legFor = (doc: OperationsShipmentDoc, leg: OperationsShipmentLeg) =>
+      legOf.get(`${String(doc._id)}:${leg}`) ?? null;
     const boardLeg = (doc: OperationsShipmentDoc) =>
-      legOf.get(`${String(doc._id)}:${doc.shipmentType === 'daily' ? 'pickup' : 'delivery'}`) ??
-      null;
+      legFor(doc, crewLegOf(doc.shipmentType, doc.status));
     const crewed = docs.map(boardLeg).filter((a) => a !== null);
 
     // «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين»: the van's card needs
@@ -678,16 +725,27 @@ class OperationsShipmentService {
 
     const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
+      // The captain's «تم التسليم» is the leg that reaches the DESTINATION — the pickup leg of a
+      // daily shipment, the delivery leg of a secured one, whichever leg the row prints.
       // A leg that predates OP-7 has no `executionStatus` at all; it has plainly not been started
       // (the same reading as execution.service's `statusOf`). Execution only moves forward, so
       // once the leg is delivered — or completed after it — its `deliveredAt` stays the answer,
       // even if the desk later reopens the shipment.
-      const execution = leg?.executionStatus ?? 'pending';
+      const delivering = legFor(doc, deliveryLegOf(doc.shipmentType));
+      const execution = delivering?.executionStatus ?? 'pending';
       const captainDelivered = execution === 'delivered' || execution === 'completed';
+      // A secured row's stage, and when its captain collected it — both read off the PICKUP leg.
+      const pickup = doc.shipmentType === 'secured' ? legFor(doc, 'pickup') : null;
       const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
       return {
         doc,
-        captainDeliveredAt: captainDelivered ? (leg?.deliveredAt ?? null) : null,
+        captainDeliveredAt: captainDelivered ? (delivering?.deliveredAt ?? null) : null,
+        securedStage:
+          doc.shipmentType === 'secured'
+            ? securedStageOf(doc.status, pickup?.executionStatus)
+            : null,
+        captainPickedUpAt:
+          pickup !== null && isPickedUp(pickup.executionStatus) ? (pickup.pickedUpAt ?? null) : null,
         origin: branchView.get(String(doc.originBranchId)) ?? null,
         destination: branchView.get(String(doc.destinationBranchId)) ?? null,
         crew:
@@ -756,6 +814,17 @@ class OperationsShipmentService {
     if (input.deliveryDate != null) {
       if (before.deliveryDate === null) assertNotBeforeToday('deliveryDate', input.deliveryDate);
       else assertNotBeforeOriginal('deliveryDate', input.deliveryDate, before.deliveryDate);
+    }
+    // …and never out before it is collected, judged on the two dates the shipment would have AFTER
+    // this edit. Only when the edit moves one of them: the form sends every field back, and a row
+    // already stored the wrong way round (legacy never checked) must still take a notes fix.
+    const nextCollectionDate = input.collectionDate ?? before.collectionDate;
+    const datesMoved =
+      ymdOf(nextCollectionDate) !== ymdOf(before.collectionDate) ||
+      (nextDeliveryDate === null ? null : ymdOf(nextDeliveryDate)) !==
+        (before.deliveryDate === null ? null : ymdOf(before.deliveryDate));
+    if (datesMoved && nextDeliveryDate !== null) {
+      assertDeliveryNotBeforeCollection(nextDeliveryDate, nextCollectionDate);
     }
 
     const set: Partial<OperationsShipmentDoc> = {};

@@ -167,6 +167,13 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // «سجل الشحنات»: the day board's filters, remembered alike; `from`/`to` open on this month to
   // date — the range is what the screen IS, as `date` is the day board's.
   ['modules/operations/pages/ShipmentsHistoryPage.tsx', ['from', 'to']],
+  // «الشحنات المحصنة» on the day board's board (Round 8): its filters remembered alike, the stage
+  // in «التسليم»'s place; there is no period — it is every open محصنة.
+  ['modules/operations/pages/SecuredBacklogPage.tsx', []],
+  // «شاشة الاستلام من الخزنة … زى شاشة التشغيل اليومى» (Round 9): the secured board's filters,
+  // remembered alike; `all` («الكل») is not — the screen opens on the vault's work, the shipments
+  // with the captain and today's receipts, and «الكل» is a look further for the moment.
+  ['modules/operations/pages/VaultReceivePage.tsx', ['all']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
@@ -361,9 +368,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     '`from`/`to` arrive from the link; the page renders no control for them',
   ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
-  ['modules/operations/pages/SecuredBacklogPage.tsx', 'reads only `page`'],
   ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultReceivePage.tsx'],
   ['modules/operations/pages/VaultReportPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],

@@ -37,7 +37,7 @@ import {
   useOperationsCurrencies,
   useSecuredDue,
 } from '../api/operations-queries';
-import { totalsByCurrency } from '../lib/day-board';
+import { orderedBoardTotals } from '../lib/day-board';
 import { dispatchCrewOptions, findDispatchOption } from '../lib/dispatch-crew';
 import { ShipmentStatusBadge } from '../components/ShipmentBadges';
 
@@ -57,6 +57,7 @@ export const SecuredDispatchPage = (): JSX.Element => {
   const directory = useOperationsCrewDirectory(date);
   const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
   const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const currencyOf = (id: string) => currencies.data?.items.find((c) => c.id === id);
   const assign = useAssignSecuredDelivery();
   const dispatch = useDispatchSecured();
 
@@ -146,12 +147,12 @@ export const SecuredDispatchPage = (): JSX.Element => {
     {
       key: 'amount',
       header: t('operations.shipment.amount'),
+      // «ترتيب العملات … على حسب ترتيبها ف شاشة البيانات المرجعية»: the catalog's order.
       render: (row) => (
         <div className="space-y-0.5">
-          {totalsByCurrency(row).map((total) => (
+          {orderedBoardTotals([row], currencyOf).map((total) => (
             <div key={total.currencyId} className="whitespace-nowrap tabular-nums">
-              {formatAmount(total.amount, locale)}{' '}
-              {currencies.data?.items.find((c) => c.id === total.currencyId)?.name ?? ''}
+              {formatAmount(total.amount, locale)} {currencyOf(total.currencyId)?.name ?? ''}
             </div>
           ))}
         </div>

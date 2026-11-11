@@ -153,6 +153,13 @@ export const ErrorCodes = {
    * Same detail shape as `OPERATIONS_SHIPMENT_DATE_IN_PAST`; `message` = the shipment's current day.
    */
   OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: 'OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL',
+  /**
+   * 422 — a secured shipment's delivery date before its collection date («تاريخ التسليم تانى يوم
+   * الاستلام افتراضى وممكن يغير» — it may move, never to before the collection day; the same day
+   * is accepted). Checked on create and on an edit that changes either date. Same detail shape as
+   * `OPERATIONS_SHIPMENT_DATE_IN_PAST`, `field` = 'deliveryDate', `message` = the collection day.
+   */
+  OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION: 'OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION',
   /** 409 — a restore asked for a shipment that is not deleted. */
   OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
 

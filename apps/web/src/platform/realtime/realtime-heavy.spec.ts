@@ -226,6 +226,17 @@ describe('the registry’s heavy topics and stale-only keys', () => {
     ).toBe(true);
     expect(isStaleOnlyKey(['operations', 'dayBoard', 'log', { id: 's1' }])).toBe(false);
     expect(isStaleOnlyKey(listKey('operations', 'dayBoard', { date: 'today' }))).toBe(false);
+    // The secured screen — every open محصنة — is refetched like the day board: its rows turn yellow
+    // and green as the captain and the vault act from other desks («realtime like the day board»).
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'secured'])).toBe(false);
+    // The vault's receive queue is refetched too — and the vault's own topic reaches it, for a
+    // treasurer who holds the vault grant without the shipments one.
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'vaultQueue', { all: false }])).toBe(false);
+    expect(keysForTopic('operations.vaultCustody')).toContainEqual([
+      'operations',
+      'dayBoard',
+      'vaultQueue',
+    ]);
   });
 });
 

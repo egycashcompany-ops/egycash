@@ -22,11 +22,17 @@ const render = (node: JSX.Element): string => {
   return renderToStaticMarkup(<Provider store={store}>{node}</Provider>);
 };
 
-const currency = (id: string, code: string, name: string): OperationsCurrencyDto => ({
+const currency = (
+  id: string,
+  code: string,
+  name: string,
+  sortOrder: number | null = null,
+): OperationsCurrencyDto => ({
   id,
   code,
   name,
   legacyAliases: [],
+  sortOrder,
   isActive: true,
   version: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -84,10 +90,34 @@ describe('OtherCurrenciesList — «كبرها وحسن الشكل»: a band, th
     );
   });
 
-  it('orders the cards by amount, largest first', () => {
+  it('lists the cards in the catalog’s order — «على حسب ترتيبها ف شاشة البيانات المرجعية»', () => {
+    // Nobody has arranged this catalog, so its codes decide: «3» يورو before «GBP».
     expect(cards.indexOf('يورو')).toBeLessThan(cards.indexOf('جنيه استرليني'));
     expect(cards).toContain('500,000');
     expect(cards).toContain('60,000');
+    // Dragged on the reference-data screen, pound sterling above the euro: the dialog follows,
+    // although the euro's sum is the larger.
+    const arranged = [
+      currency('egp', '1', 'مصري', 0),
+      currency('usd', '2', 'دولار', 1),
+      currency('gbp', 'GBP', 'جنيه استرليني', 2),
+      currency('eur', '3', 'يورو', 3),
+    ];
+    const arrangedOf = (id: string) => arranged.find((c) => c.id === id);
+    const reordered = otherCurrencies(rows, arrangedOf);
+    const html2 = render(
+      <OtherCurrenciesList
+        cards={reordered.cards}
+        sum={reordered.sum}
+        shipments={reordered.shipments}
+        currencyOf={arrangedOf}
+        locale="ar"
+      />,
+    );
+    const list = html2.slice(html2.indexOf('<ul'));
+    expect(list.indexOf('data-other-currency="gbp"')).toBeLessThan(
+      list.indexOf('data-other-currency="eur"'),
+    );
   });
 
   it('says on each card how many shipments carry it, and its share of the figure', () => {

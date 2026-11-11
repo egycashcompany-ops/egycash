@@ -4,9 +4,11 @@
 // line under the dialog's title that names the shipment.
 import { describe, expect, it } from 'vitest';
 import {
+  OPERATIONS_SECURED_PICKED_UP_BY,
   OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
   OPERATIONS_SHIPMENT_LOG_FIELDS,
   OPERATIONS_SHIPMENT_LOG_KINDS,
+  OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
@@ -68,6 +70,19 @@ describe('every kind the server can send reads as a sentence, in a look of its o
     expect(LOG_KIND_LOOK.deleted.tone).toBe('red');
   });
 
+  // Round 10 — «لو قائد تم الاستلام من القائد و لو العمليات تم الاستلام من العمليات وهتبقى صفر»: the
+  // pickup ✓ in the yellow it turns the row, its undo and a cancelled vault receipt as undos.
+  it('says the pickup ✓, its undo and a cancelled vault receipt — the pickup in the row’s yellow', () => {
+    expect(ar(logKindKey('pickupConfirmed'))).toBe('أُكّد الاستلام من البنك');
+    expect(ar(logKindKey('pickupUndone'))).toBe('أُلغي تأكيد الاستلام من البنك');
+    expect(ar(logKindKey('receiptCancelled'))).toBe('أُلغي استلام الخزينة');
+    expect(LOG_KIND_LOOK.pickupConfirmed.tone).toBe('amber');
+    expect(LOG_KIND_LOOK.pickupUndone.tone).toBe('rose');
+    expect(LOG_KIND_LOOK.receiptCancelled.tone).toBe('rose');
+    // The vault's own lock, opened — not the lock of «دخلت الخزينة».
+    expect(LOG_KIND_LOOK.receiptCancelled.icon).not.toEqual(LOG_KIND_LOOK.vaultReceived.icon);
+  });
+
   it('shows a kind a newer server adds as «إجراء آخر» — shown, never hidden', () => {
     expect(logKindKey('somethingNew')).toBe('operations.shipment.log.kind.other');
     expect(logKindLook('somethingNew')).toBe(LOG_KIND_LOOK.other);
@@ -119,6 +134,27 @@ describe('a change’s value', () => {
     expect(logValue('notes', 'true', ar)).toBe('true');
   });
 
+  // The pickup record's `by` is a CODE (the contract's own list); the screen says who in its words.
+  it('says who confirmed a pickup — «القائد» / «العمليات» — in the page’s language', () => {
+    expect(OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS).toEqual(['pickedUpBy']);
+    expect(logValue('pickedUpBy', 'captain', ar)).toBe('القائد');
+    expect(logValue('pickedUpBy', 'operations', ar)).toBe('العمليات');
+    expect(logValue('pickedUpBy', 'operations', tOf('en'))).toBe('Operations');
+    for (const locale of LOCALES) {
+      for (const by of OPERATIONS_SECURED_PICKED_UP_BY) {
+        const key = `operations.shipment.log.pickedUpBy.${by}`;
+        expect(translate(locale, key), `${locale}: ${key}`).not.toBe(key);
+      }
+    }
+    // Taken back: nobody — the dash, as any empty value.
+    expect(logValue('pickedUpBy', null, ar)).toBe(LOG_EMPTY_VALUE);
+    // A code a newer server adds is shown as sent; another field's «captain» is that field's text.
+    expect(logValue('pickedUpBy', 'vault', ar)).toBe('vault');
+    expect(logValue('notes', 'captain', ar)).toBe('captain');
+    // The cancelled receipt's reason is the text typed, as typed.
+    expect(logValue('reason', 'أُدخلت بالخطأ', ar)).toBe('أُدخلت بالخطأ');
+  });
+
   it('is read old → new on an edit, and elsewhere only when something came before', () => {
     const first = [{ old: null }, { old: null }];
     // An edit always — a field filled for the first time reads «— ← …».
@@ -131,6 +167,11 @@ describe('a change’s value', () => {
     expect(
       showsOldValues({ kind: 'crewChanged', changes: [{ old: 'وليد سيد فوزي' }, { old: null }] }),
     ).toBe(true);
+    // Round 10: a pickup ✓ and a cancelled receipt carry first values (who; the reason) — listed
+    // plainly; an undo carries whose ✓ it took back, and shows it struck through.
+    expect(showsOldValues({ kind: 'pickupConfirmed', changes: [{ old: null }] })).toBe(false);
+    expect(showsOldValues({ kind: 'receiptCancelled', changes: [{ old: null }] })).toBe(false);
+    expect(showsOldValues({ kind: 'pickupUndone', changes: [{ old: 'captain' }] })).toBe(true);
   });
 });
 

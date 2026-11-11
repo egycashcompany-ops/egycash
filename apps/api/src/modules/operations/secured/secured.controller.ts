@@ -10,8 +10,8 @@ import {
   type ListSecuredDueQuery,
   type ListVaultInventoryQuery,
   type OperationsSecuredBoardDto,
-  type OperationsSecuredInVaultDto,
-  type OperationsSecuredInVaultQuery,
+  type OperationsSecuredDispatchBoardDto,
+  type OperationsSecuredDispatchBoardQuery,
   type OperationsVaultQueueDto,
   type OperationsVaultQueueQuery,
   type ReceiveIntoVault,
@@ -64,18 +64,17 @@ export const getVaultQueue = async (req: Request, res: Response): Promise<void> 
 };
 
 /**
- * «صرف الخزينة» (Round 10) — every secured shipment in the vault, optionally by delivery date, as
- * board rows mapped for this reader, each with when the vault took it in, whether it is overdue and
- * its delivery leg's version.
+ * «صرف الخزينة» (Round 10) — every secured shipment in the vault, optionally on one delivery day,
+ * as board rows mapped for this reader, each with when the vault took it in, whether it is overdue
+ * and its delivery leg's version.
  */
-export const getSecuredInVault = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, OperationsSecuredInVaultQuery>(req);
-  const view = await operationsSecuredService.inVault(query.from, query.to);
+export const getSecuredDispatchBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsSecuredDispatchBoardQuery>(req);
+  const view = await operationsSecuredService.dispatchBoard(query.date);
   const board = boardForReader(req, view);
   const today = ymdOf(view.today);
-  ok<OperationsSecuredInVaultDto>(res, {
-    from: query.from === undefined ? null : utcDayIso(query.from),
-    to: query.to === undefined ? null : utcDayIso(query.to),
+  ok<OperationsSecuredDispatchBoardDto>(res, {
+    date: query.date === undefined ? null : utcDayIso(query.date),
     today: utcDayIso(view.today),
     shipments: board.shipments.map((row) => {
       const receivedAt = view.receivedAt.get(row.id);
@@ -103,7 +102,7 @@ export const confirmSecuredPickup = async (req: Request, res: Response): Promise
   ok(res, toShipmentDto(doc));
 };
 
-/** …and its undo, until the vault receives (Round 10). */
+/** …and the undo of a pickup ✓ — the captain's or the desk's — until the vault receives (Round 10). */
 export const undoSecuredPickup = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<ConfirmSecuredPickup, never, IdParam>(req);
   const doc = await operationsSecuredService.undoPickup(

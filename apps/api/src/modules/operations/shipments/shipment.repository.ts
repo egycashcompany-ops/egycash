@@ -1,4 +1,4 @@
-import { type FilterQuery } from 'mongoose';
+import { type ClientSession, type FilterQuery } from 'mongoose';
 import { OPERATIONS_SHIPMENT_STATUSES, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { OperationsShipmentModel, type OperationsShipmentDoc } from './shipment.model';
@@ -73,26 +73,16 @@ const securedDraftFilter: FilterQuery<OperationsShipmentDoc> = {
 };
 
 /**
- * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, optionally only those whose
- * delivery date falls in [from, toExclusive) (either bound alone, too). Without a date bound it is
- * served by `ix_type_status_created`; with one, by `ix_type_delivery_date_status`. A shipment with no
- * delivery date matches only the unbounded form — a range is a question about a date it lacks.
+ * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, or only those whose delivery date
+ * is `day` (a UTC midnight — the stored form). Without a day it is served by
+ * `ix_type_status_created`; with one, by `ix_type_delivery_date_status`. A shipment with no delivery
+ * date matches only the unfiltered form — a day is a question about a date it lacks.
  */
-const inVaultFilter = (
-  from: Date | undefined,
-  toExclusive: Date | undefined,
-): FilterQuery<OperationsShipmentDoc> => ({
+const inVaultFilter = (day: Date | undefined): FilterQuery<OperationsShipmentDoc> => ({
   isDeleted: false,
   shipmentType: 'secured',
   status: 'inVault',
-  ...(from === undefined && toExclusive === undefined
-    ? {}
-    : {
-        deliveryDate: {
-          ...(from === undefined ? {} : { $gte: from }),
-          ...(toExclusive === undefined ? {} : { $lt: toExclusive }),
-        },
-      }),
+  ...(day === undefined ? {} : { deliveryDate: day }),
 });
 
 class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc> {
@@ -195,16 +185,39 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
    * service orders them by delivery date with the undated ones last, which Mongo's ascending sort
    * (nulls first) cannot say.
    */
-  async securedInVault(from?: Date, toExclusive?: Date): Promise<OperationsShipmentDoc[]> {
-    return this.model
-      .find(inVaultFilter(from, toExclusive))
-      .lean<OperationsShipmentDoc[]>()
-      .exec();
+  async securedInVault(day?: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model.find(inVaultFilter(day)).lean<OperationsShipmentDoc[]>().exec();
   }
 
   /** How many rows `securedInVault` would return — counted before anything is loaded. */
-  async countSecuredInVault(from?: Date, toExclusive?: Date): Promise<number> {
-    return this.model.countDocuments(inVaultFilter(from, toExclusive)).exec();
+  async countSecuredInVault(day?: Date): Promise<number> {
+    return this.model.countDocuments(inVaultFilter(day)).exec();
+  }
+
+  /**
+   * THE CAPTAIN'S PICKUP ✓, recorded on the shipment (Round 10) — in the caller's transaction, ONE
+   * conditional write: only a live SECURED shipment still in `draft` with NO pickup recorded
+   * (`pickup: null` matches the explicit null and a pre-Round-10 row without the field alike). So
+   * the desk's ✓ is never overwritten («لو العمليات عملت صح القائد مينفعش يشيلها»), a shipment the
+   * vault already has is never touched, and two racing writes cannot both land. The version moves
+   * like any other write's, so a desk screen read before it is refused as stale.
+   *
+   * Returns the updated row, or null when nothing matched — which is not an error: a daily
+   * shipment, or one whose pickup someone already recorded, simply keeps what it has.
+   */
+  async recordCaptainPickup(
+    id: string,
+    pickup: NonNullable<OperationsShipmentDoc['pickup']>,
+    session?: ClientSession,
+  ): Promise<OperationsShipmentDoc | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, isDeleted: false, shipmentType: 'secured', status: 'draft', pickup: null },
+        { $set: { pickup, updatedBy: pickup.userId }, $inc: { __v: 1 } },
+        { new: true, session: session ?? null },
+      )
+      .lean<OperationsShipmentDoc>()
+      .exec();
   }
 
   /**

@@ -12,7 +12,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignSecuredDeliveryLeg,
+  type CancelVaultReceipt,
   type CompleteOperationsShipment,
+  type ConfirmSecuredPickup,
   type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
@@ -39,6 +41,7 @@ import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
+import { isLockedRefusal } from '../lib/shipment-form';
 import * as api from './operations-api';
 import { type OperationsListParams } from './operations-api';
 
@@ -298,7 +301,14 @@ export const useUpdateOperationsShipment = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
       api.updateShipment(id, body),
     onSuccess: invalidate,
-    onError: formOwnsTheError,
+    // The form still owns the message (declaring `onError` keeps the global notifier quiet). One
+    // refusal also re-reads the boards: the vault received this محصنة after the form was opened
+    // (Round 10, `OPERATIONS_SECURED_LOCKED`) — the row on screen is the stale thing, and the form
+    // closes onto it.
+    onError: (error: unknown) => {
+      formOwnsTheError();
+      if (isLockedRefusal(error)) void invalidate();
+    },
   });
 };
 
@@ -649,6 +659,36 @@ export const useOperationsVaultQueue = (all: boolean, enabled = true, poll = fal
 export const __vaultQueueKey = vaultQueueKey;
 
 /**
+ * «صرف الخزينة» (Round 10) — every محصنة in the vault, as board rows, inside the DAY BOARD's subtree
+ * like the vault's receive queue: a receipt puts a row on it, a cancelled receipt or a dispatch takes
+ * one off, and a crew assigned changes one. Every one of those is a secured act, whose list
+ * includes the board's subtree, and every one is announced on the shipment topics, which sweep it —
+ * the vault custody topic too (`invalidation-registry.ts`), for a treasurer holding only the vault's
+ * grants. One entry per delivery-day filter; `null` is every day.
+ */
+const securedDispatchBoardKey = (date: string | null): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'securedDispatch',
+  { date: date ?? 'all' },
+];
+
+/**
+ * «صرف الخزينة — كله يبقى موجود فى تاريخ يتفلتر»: `date` null lists every shipment in the vault,
+ * a day lists that delivery day's. A 4xx (more rows than one screen may show, not allowed) is an
+ * answer, not retried.
+ */
+export const useOperationsSecuredDispatchBoard = (date: string | null, enabled = true) =>
+  useQuery({
+    queryKey: securedDispatchBoardKey(date === '' ? null : date),
+    queryFn: () => api.getSecuredDispatchBoard(date === '' ? null : date),
+    enabled,
+    retry: retryUnless4xx,
+  });
+
+/** Exported for the cache tests — «صرف الخزينة» rides the board's subtree too. */
+export const __securedDispatchBoardKey = securedDispatchBoardKey;
+
+/**
  * A secured act moves several screens at once — receiving takes a shipment OUT of the backlog and
  * INTO the vault, dispatching takes it out of the vault and onto the day board. Staling one and
  * not the others is how a treasurer ends up receiving the same shipment twice.
@@ -666,6 +706,48 @@ export const useReceiveIntoVault = () => {
     mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVault }) =>
       api.receiveIntoVault(id, body),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Round 10 — the desk's pickup ✓ on the secured screen and its undo, as one toggle: the caller says
+ * which way it means (`pickedUp`), nothing infers it. Each moves the row's colour on every screen
+ * that shows it — the secured screen, the day board, the vault's receive queue (a yellow row is the
+ * vault's work, a white one is not) — so it runs the secured acts' invalidation. On a refusal too
+ * (`onSettled`): `OPERATIONS_SECURED_ALREADY_PICKED_UP` means the captain pressed ✓ in the app while
+ * the desk looked, `OPERATIONS_SECURED_LOCKED` that the vault received it — either way the row on
+ * screen is the stale thing. No `onError`: the global notifier words the refusal (`errors.ts`).
+ */
+export const useSetSecuredPickup = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({
+      id,
+      pickedUp,
+      body,
+    }: {
+      id: string;
+      pickedUp: boolean;
+      body: ConfirmSecuredPickup;
+    }) => (pickedUp ? api.confirmSecuredPickup(id, body) : api.undoSecuredPickup(id, body)),
+    onSettled: invalidate,
+  });
+};
+
+/**
+ * Round 10 — the vault's receipt cancelled (`operationsVault.cancelReceipt`): the row goes back from
+ * green to yellow on every screen, leaves «صرف الخزينة» and the vault's contents and roll-up, and its
+ * log gains the reason — all of it the secured acts' invalidation. The dialog owns the refusal's
+ * message (declaring `onError` keeps the global notifier quiet), and a refusal re-reads too: one
+ * dispatched meanwhile (`OPERATIONS_SECURED_NOT_IN_VAULT`) is a row the screen still shows green.
+ */
+export const useCancelVaultReceipt = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CancelVaultReceipt }) =>
+      api.cancelVaultReceipt(id, body),
+    onSettled: invalidate,
+    onError: formOwnsTheError,
   });
 };
 

@@ -2,21 +2,23 @@
 //
 //   /mohsana            → backlog()          the open secured backlog, NO date filter (:657)
 //                         board()            …the same set as BOARD ROWS — the secured screen (Round 8)
-//   the desk's ✓        → confirmPickup()    «تم الاستلام من العمليات» on a draft (Round 10)
-//                         undoPickup()       …taken back, until the vault receives (Round 10)
+//   the pickup ✓        → confirmPickup()    the desk's «تم الاستلام من العمليات» on a draft (Round 10);
+//                                            the captain's own ✓ is written by execution.service
+//                         undoPickup()       …taken back — the captain's or the desk's — until the
+//                                            vault receives (Round 10)
 //   «استلام الخزينة»     → vaultQueue()       what the vault receives: the yellow and today's green (Round 8)
 //   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — only once
 //                                            somebody picked it up (Round 10)
 //   cancel the receipt  → cancelReceipt()    inVault → draft, custody voided — the special grant (Round 10)
-//   «صرف الخزينة»        → inVault()          every shipment in the vault, optional delivery dates (Round 10)
+//   «صرف الخزينة»        → dispatchBoard()    every shipment in the vault, optional delivery day (Round 10)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
 //   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737)
 //   /main_ops receive   → completion lives on the shipment service (:564), unchanged by this slice
 //
 // Round 10's lock («الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها») is enforced where
 // each write lives (secured-lock.ts): the shipment service's edit, delete and receipt photo, the
-// pickup crew, and the desk's pickup ✓ here. The flow acts in this file — assign the delivery leg,
-// dispatch — move a received shipment along and stay open.
+// pickup crew, and the pickup ✓ and its undo here. The flow acts in this file — assign the delivery
+// leg, dispatch — move a received shipment along and stay open.
 //
 // The status ladder's MEANING is preserved exactly (legacy 0→2→3→1, non-ordinal, 1 terminal); only
 // the encoding is normalized, and the legacy codes stay pinned in the contracts mapping.
@@ -60,7 +62,7 @@ import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
-import { isPickedUp, pickedUpByOf } from '../shipments/secured-stage';
+import { securedPickupOf, type SecuredPickup } from '../shipments/secured-stage';
 import { assertSecuredUnlocked } from '../shipments/secured-lock';
 import {
   historyTooLarge,
@@ -100,7 +102,7 @@ export interface VaultQueueView extends DayBoardView {
  * «صرف الخزينة» before mapping: board rows ordered by delivery date, when the vault took each one in,
  * the version of each one's delivery leg, and the Cairo day "overdue" was judged by (UTC midnight).
  */
-export interface InVaultView extends DayBoardView {
+export interface DispatchBoardView extends DayBoardView {
   today: Date;
   receivedAt: Map<string, Date>;
   deliveryLegVersion: Map<string, number>;
@@ -112,13 +114,6 @@ const shipmentEventPayload = (doc: OperationsShipmentDoc) => ({
   status: doc.status,
 });
 
-/** The UTC midnight after `day` — the exclusive end of a half-open day range. */
-const dayAfter = (day: Date): Date => {
-  const next = new Date(day);
-  next.setUTCDate(next.getUTCDate() + 1);
-  return next;
-};
-
 const assertSecured = (shipment: OperationsShipmentDoc): void => {
   if (shipment.shipmentType !== 'secured') {
     throw new BusinessRuleError(
@@ -129,28 +124,26 @@ const assertSecured = (shipment: OperationsShipmentDoc): void => {
 };
 
 /**
- * Has the captain picked this shipment up in the app — his pickup leg `pickedUp` or beyond? Read
- * live, because his ✓ lives on the leg and moves nothing on the shipment (not even its version).
+ * The pickup this secured shipment has — its record (secured-stage.ts `securedPickupOf`). The
+ * pickup LEG is read only for a row whose record was never written (a pre-Round-10 row), so the
+ * usual answer costs no second read.
  */
-const captainPickedUp = async (shipmentId: string): Promise<boolean> => {
-  const leg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(shipmentId, 'pickup');
-  return isPickedUp(leg?.executionStatus);
-};
+const securedPickup = async (shipment: OperationsShipmentDoc): Promise<SecuredPickup | null> =>
+  securedPickupOf(
+    shipment.pickup,
+    shipment.pickup === undefined
+      ? await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+          String(shipment._id),
+          'pickup',
+        )
+      : null,
+  );
 
-/**
- * 409 `OPERATIONS_SECURED_CAPTAIN_PICKED_UP` — the desk's ✓ and its undo both stop at the captain's
- * own: his ✓ is the execution record of the collection (the lead's decision for Round 10 — legs are
- * never rewritten from the desk), so the desk neither stamps a second ✓ beside it nor takes one back
- * while it stands. The row is yellow by the captain either way.
- */
-const assertCaptainHasNotPickedUp = async (shipmentId: string): Promise<void> => {
-  if (await captainPickedUp(shipmentId)) {
-    throw new ConflictError(
-      'the captain already confirmed collecting this shipment in the app — his ✓ stands',
-      ErrorCodes.OPERATIONS_SECURED_CAPTAIN_PICKED_UP,
-    );
-  }
-};
+/** The audit's two changes for a pickup record moving from `from` to `to` — WHO and WHEN. */
+const pickupChanges = (from: SecuredPickup | null, to: SecuredPickup | null) => [
+  { field: 'pickedUpBy', old: from?.by ?? null, new: to?.by ?? null },
+  { field: 'pickedUpAt', old: from?.at?.toISOString() ?? null, new: to?.at?.toISOString() ?? null },
+];
 
 class OperationsSecuredService {
   /**
@@ -195,8 +188,8 @@ class OperationsSecuredService {
    * THE VAULT'S RECEIVE QUEUE — «هيظهر للخزنة فى شاشة استلام الخزينه نفس المحصنة … وهتكون باللون
    * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر»:
    *
-   *   · the secured shipments SOMEBODY PICKED UP — still `draft`, their pickup leg picked up in the
-   *     mobile app (`withCaptain`, yellow) or, since Round 10, confirmed by the Operations desk
+   *   · the secured shipments SOMEBODY PICKED UP — still `draft`, their pickup confirmed by the
+   *     captain in the mobile app (`withCaptain`, yellow) or, since Round 10, by the Operations desk
    *     (`withOperations`, yellow too): on their way to the vault;
    *   · the ones the vault RECEIVED TODAY on the Cairo calendar (the custody's `receivedAt`; green),
    *     whatever has happened to them since — today's receipts stay on today's screen;
@@ -204,7 +197,7 @@ class OperationsSecuredService {
    *     the vault cannot receive it until the captain or the desk has pressed ✓ (a captain without
    *     the app now has the desk's ✓ for that, «او العمليات»).
    *
-   * The stage is read off the pickup legs BEFORE the rows are enriched, so the van cards beside the
+   * The stage is read off the pickup records BEFORE the rows are enriched, so the van cards beside the
    * rows are only the vans of the rows shown. Counted before the shipments are read: the open drafts
    * plus today's receipts, against the history's cap. Newest created first.
    */
@@ -225,17 +218,16 @@ class OperationsSecuredService {
     const drafts = await operationsShipmentRepository.securedDrafts();
     let waiting = drafts;
     if (!all) {
-      const pickups = await operationsShipmentAssignmentRepository.findByShipments(
-        drafts.map((d) => String(d._id)),
+      // Yellow either way — the captain's ✓ or the desk's, both on the shipment's pickup record.
+      // The legs are read only for the rows whose record was never written (pre-Round-10 rows).
+      const unrecorded = drafts.filter((d) => d.pickup === undefined).map((d) => String(d._id));
+      const pickupLegs = new Map(
+        (await operationsShipmentAssignmentRepository.findByShipments(unrecorded))
+          .filter((leg) => leg.leg === 'pickup')
+          .map((leg) => [String(leg.shipmentId), leg] as const),
       );
-      const withCaptain = new Set(
-        pickups
-          .filter((leg) => leg.leg === 'pickup' && isPickedUp(leg.executionStatus))
-          .map((leg) => String(leg.shipmentId)),
-      );
-      // Yellow either way: the captain's ✓ on his leg, or the desk's on the shipment itself.
       waiting = drafts.filter(
-        (d) => withCaptain.has(String(d._id)) || d.pickupConfirmedAt != null,
+        (d) => securedPickupOf(d.pickup, pickupLegs.get(String(d._id))) !== null,
       );
     }
     // A receipt's shipment that was deleted since is not offered: `findByIds` reads live rows only.
@@ -277,39 +269,36 @@ class OperationsSecuredService {
   /**
    * «صرف الخزينة» — Round 10: «كله يبقى موجود فى تاريخ يتفلتر». EVERY secured shipment in the vault,
    * whatever its delivery date, as board rows (their crew is the DELIVERY leg's: `crewLegOf` reads
-   * `inVault` that way), with the delivery date as an OPTIONAL filter — `from` / `to` whole days,
-   * each inclusive, either alone.
+   * `inVault` that way), with ONE delivery day as an optional filter.
    *
    * Ordered by delivery date, OLDEST FIRST — a shipment that should have left already is the one the
    * vault must see first — then oldest created, and a shipment with no delivery date last (Mongo's
    * ascending sort would put it first, so the order is applied here, over a set the cap bounds).
    *
    * Counted before it is read, refused past the history's cap like the other boards. Each row also
-   * carries when the vault took it in and the version of its delivery leg — the assign picker
-   * re-assigns with that version, and reads the crew board of the row's OWN delivery day.
+   * carries when the vault took it in and the version of its delivery leg — the assign dialog
+   * re-assigns with that version, and reads the crew board of the row's OWN delivery day, so a
+   * shipment due on another day than the filter's is assigned exactly as one due on it.
    */
-  async inVault(from?: Date, to?: Date, now: Date = new Date()): Promise<InVaultView> {
-    const first = from === undefined ? undefined : utcDay(from);
-    const toExclusive = to === undefined ? undefined : dayAfter(utcDay(to));
-    const count = await operationsShipmentRepository.countSecuredInVault(first, toExclusive);
+  async dispatchBoard(date?: Date, now: Date = new Date()): Promise<DispatchBoardView> {
+    const day = date === undefined ? undefined : utcDay(date);
+    const count = await operationsShipmentRepository.countSecuredInVault(day);
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
       throw historyTooLarge(
         count,
-        `${String(count)} secured shipments are in the vault for these dates — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; narrow the dates`,
+        `${String(count)} secured shipments are in the vault${day === undefined ? '' : ' for that day'} — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; pick a delivery day`,
       );
     }
-    const docs = (await operationsShipmentRepository.securedInVault(first, toExclusive)).sort(
-      (a, b) => {
-        if (a.deliveryDate === null || b.deliveryDate === null) {
-          if (a.deliveryDate !== b.deliveryDate) return a.deliveryDate === null ? 1 : -1;
-        } else if (a.deliveryDate.getTime() !== b.deliveryDate.getTime()) {
-          return a.deliveryDate.getTime() - b.deliveryDate.getTime();
-        }
-        return (
-          a.createdAt.getTime() - b.createdAt.getTime() || String(a._id).localeCompare(String(b._id))
-        );
-      },
-    );
+    const docs = (await operationsShipmentRepository.securedInVault(day)).sort((a, b) => {
+      if (a.deliveryDate === null || b.deliveryDate === null) {
+        if (a.deliveryDate !== b.deliveryDate) return a.deliveryDate === null ? 1 : -1;
+      } else if (a.deliveryDate.getTime() !== b.deliveryDate.getTime()) {
+        return a.deliveryDate.getTime() - b.deliveryDate.getTime();
+      }
+      return (
+        a.createdAt.getTime() - b.createdAt.getTime() || String(a._id).localeCompare(String(b._id))
+      );
+    });
     const ids = docs.map((d) => String(d._id));
     const [custody, legs] = await Promise.all([
       vaultCustody().findMany(ids),
@@ -329,13 +318,14 @@ class OperationsSecuredService {
 
   /**
    * THE DESK'S PICKUP ✓ — «لو العمليات تم الاستلام من العمليات» (Round 10). The Operations desk
-   * confirms it has collected a secured shipment: the row turns yellow (`withOperations`) and the
-   * vault may receive it. Stamped ON THE SHIPMENT (who and when), never on a leg — the captain's
-   * execution record is his own.
+   * confirms it has collected a secured shipment: the shipment's pickup record is written as the
+   * desk's, the row turns yellow (`withOperations`) and the vault may receive it. Never on a leg —
+   * the captain's execution record is his own.
    *
-   * Only while the vault has not received it (`assertSecuredUnlocked`), only when the captain has
-   * not already picked it up (his ✓ wins), once. The version guards the race with the vault's ✓:
-   * a receive moves the version, so a ✓ sent from a screen read before it is refused as stale.
+   * Only while the vault has not received it (`assertSecuredUnlocked`), and only when no pickup is
+   * recorded at all: the desk never stamps over the captain's ✓ (it may take it back first, then
+   * confirm as Operations). The version guards both races — with the vault's ✓ and with the
+   * captain's ✓ in the app, each of which moves the version.
    */
   async confirmPickup(
     shipmentId: string,
@@ -344,66 +334,70 @@ class OperationsSecuredService {
   ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(before);
-    assertSecuredUnlocked(before, "the desk's pickup ✓");
-    await assertCaptainHasNotPickedUp(shipmentId);
-    if (before.pickupConfirmedAt != null) {
+    assertSecuredUnlocked(before, 'the pickup ✓');
+    const current = await securedPickup(before);
+    if (current !== null) {
       throw new ConflictError(
-        'the Operations desk already confirmed collecting this shipment',
-        ErrorCodes.OPERATIONS_SECURED_PICKUP_ALREADY_CONFIRMED,
+        current.by === 'captain'
+          ? 'the captain already confirmed collecting this shipment in the app'
+          : 'the Operations desk already confirmed collecting this shipment',
+        ErrorCodes.OPERATIONS_SECURED_ALREADY_PICKED_UP,
       );
     }
-    const at = new Date();
+    const record = { by: 'operations' as const, at: new Date(), userId: new Types.ObjectId(by) };
     const updated = await operationsShipmentRepository.updateById(
       shipmentId,
-      { pickupConfirmedAt: at, pickupConfirmedById: new Types.ObjectId(by) },
+      { pickup: record },
       { by, version },
     );
     await auditService.record({
       entityRef: shipmentRef(shipmentId),
       action: 'update',
-      changes: [
-        { field: 'pickupConfirmedAt', old: null, new: at.toISOString() },
-        { field: 'pickupConfirmedById', old: null, new: by },
-      ],
+      changes: pickupChanges(null, record),
     });
-    await emit(OperationsEvents.ShipmentPickupConfirmed, shipmentEventPayload(updated));
+    await emit(OperationsEvents.ShipmentPickupConfirmed, {
+      ...shipmentEventPayload(updated),
+      by: record.by,
+    });
     return updated;
   }
 
   /**
-   * The desk takes ITS pickup ✓ back — «الصح ممكن يتلغى لحد ما الخزنة تستلم» (the owner's answer 1):
-   * until the vault receives. The row turns white again. The captain's ✓ is not the desk's to take
-   * back (see `assertCaptainHasNotPickedUp`), so a row he picked up offers no undo.
+   * The desk takes the pickup ✓ back — «الصح ممكن يتلغى لحد ما الخزنة تستلم» (the owner's answer 1),
+   * WHOEVER pressed it: «لو القائد عمل صح ممكن العمليات تشيلها». Until the vault receives. The record
+   * is cleared to an explicit null — never removed — so the row turns white even though the
+   * captain's leg still says picked up (his leg is his execution record and is not rewritten), and
+   * the desk may then ✓ it again as Operations.
    */
-  async undoPickup(shipmentId: string, version: number, by: string): Promise<OperationsShipmentDoc> {
+  async undoPickup(
+    shipmentId: string,
+    version: number,
+    by: string,
+  ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(before);
-    assertSecuredUnlocked(before, "taking the desk's pickup ✓ back");
-    await assertCaptainHasNotPickedUp(shipmentId);
-    if (before.pickupConfirmedAt == null) {
+    assertSecuredUnlocked(before, 'taking the pickup ✓ back');
+    const current = await securedPickup(before);
+    if (current === null) {
       throw new ConflictError(
-        'the Operations desk has not confirmed collecting this shipment — there is nothing to undo',
-        ErrorCodes.OPERATIONS_SECURED_PICKUP_NOT_CONFIRMED,
+        'nobody has confirmed collecting this shipment — there is no pickup ✓ to take back',
+        ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP,
       );
     }
     const updated = await operationsShipmentRepository.updateById(
       shipmentId,
-      { pickupConfirmedAt: null, pickupConfirmedById: null },
+      { pickup: null },
       { by, version },
     );
     await auditService.record({
       entityRef: shipmentRef(shipmentId),
       action: 'update',
-      changes: [
-        { field: 'pickupConfirmedAt', old: before.pickupConfirmedAt.toISOString(), new: null },
-        {
-          field: 'pickupConfirmedById',
-          old: before.pickupConfirmedById == null ? null : String(before.pickupConfirmedById),
-          new: null,
-        },
-      ],
+      changes: pickupChanges(current, null),
     });
-    await emit(OperationsEvents.ShipmentPickupUndone, shipmentEventPayload(updated));
+    await emit(OperationsEvents.ShipmentPickupUndone, {
+      ...shipmentEventPayload(updated),
+      by: current.by,
+    });
     return updated;
   }
 
@@ -423,49 +417,53 @@ class OperationsSecuredService {
     }
     // Round 10 — «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault receives what
     // somebody has collected — the captain in the app, or the desk. A white row is for viewing.
-    const pickupLeg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
-      shipmentId,
-      'pickup',
-    );
-    if (pickedUpByOf(pickupLeg?.executionStatus, before.pickupConfirmedAt) === null) {
+    if ((await securedPickup(before)) === null) {
       throw new ConflictError(
         'nobody has picked this shipment up yet — the captain (in the app) or the Operations desk confirms the pickup before the vault receives it',
         ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP,
       );
     }
 
-    // The version is checked BEFORE the treasury takes custody, not only by the shipment write
-    // below: the two writes are not one transaction, so a stale receive that got as far as the
-    // custody left a HELD custody on a shipment still in draft — never receivable again (the
-    // custody refuses a second receive), and listed as received today on the vault's queue.
+    // The version is checked up front for the plain answer, and again by the shipment write.
     if (before.__v !== input.version) throw new StaleDocumentError();
 
-    // The treasury takes custody first: if it refuses (already held, dual-control), no shipment
-    // status moves. Its uniqueness index is the real double-receive guard.
-    await vaultCustody().receive(
-      {
+    // ONE transaction (Round 10). The treasury takes custody first — if it refuses (already held,
+    // dual control), no shipment status moves; its uniqueness index is the real double-receive
+    // guard — and the shipment moves to `inVault` under the version the screen read. Before Round 10
+    // the two writes stood apart, so a receive refused at the second one (stale, because something
+    // changed the shipment a moment earlier) left a HELD custody on a shipment still in draft —
+    // never receivable again. The pickup ✓ and its undo made that moment likelier (each moves the
+    // version), so the two writes now commit or roll back together.
+    const { custody, updated } = await unitOfWork(async (session) => {
+      const taken = await vaultCustody().receive(
+        {
+          shipmentId,
+          receiptNumber: input.receiptNumber,
+          bagCount: input.bagCount,
+          cartonCount: input.cartonCount,
+          boxCount: input.boxCount,
+          bagSeals: input.bagSeals,
+          boxSeals: input.boxSeals,
+          receivedByPrimaryId: input.receivedByPrimaryId,
+          receivedBySecondaryId: input.receivedBySecondaryId,
+        },
+        by,
+        session,
+      );
+      const moved = await operationsShipmentRepository.updateById(
         shipmentId,
-        receiptNumber: input.receiptNumber,
-        bagCount: input.bagCount,
-        cartonCount: input.cartonCount,
-        boxCount: input.boxCount,
-        bagSeals: input.bagSeals,
-        boxSeals: input.boxSeals,
-        receivedByPrimaryId: input.receivedByPrimaryId,
-        receivedBySecondaryId: input.receivedBySecondaryId,
-      },
-      by,
-    );
+        {
+          status: 'inVault',
+          receiptNumber: input.receiptNumber,
+          ...(input.serialTracked === undefined ? {} : { serialTracked: input.serialTracked }),
+        },
+        { by, version: input.version, session },
+      );
+      return { custody: taken, updated: moved };
+    });
 
-    const updated = await operationsShipmentRepository.updateById(
-      shipmentId,
-      {
-        status: 'inVault',
-        receiptNumber: input.receiptNumber,
-        ...(input.serialTracked === undefined ? {} : { serialTracked: input.serialTracked }),
-      },
-      { by, version: input.version },
-    );
+    // Audit + events only after commit — the custody's first, as before.
+    await operationsVaultCustodyService.announceReceived(custody);
     await auditService.record({
       entityRef: shipmentRef(shipmentId),
       action: 'update',
@@ -489,6 +487,10 @@ class OperationsSecuredService {
    * exactly as it was — so the row is yellow again, editable again, and the vault can receive it
    * afresh. This is the one move back down the secured ladder; it is not in shipment-status.ts,
    * because no ordinary act may take it.
+   *
+   * A delivery crew assigned while it sat in the vault is LEFT as it is: the leg is the plan for
+   * its delivery day, still true once the vault takes it in again, and `dispatch` refuses anything
+   * not back in the vault — so the plan cannot send it out early.
    *
    * The reason is recorded on BOTH audit rows of the request — the custody's, and the shipment's own,
    * so every reader of the shipment's log sees why, vault grant or not.

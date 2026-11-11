@@ -4,7 +4,7 @@
 // the vault has signed for a محصنة, its data is history. The rule itself is one pure function in the
 // contracts (`isOperationsShipmentLocked`), shared with the screens so a button and the server can
 // never disagree; this file is the server's refusal, in one spelling, for every write that changes
-// the shipment's data (the shipment service, the pickup crew, the desk's pickup ✓).
+// the shipment's data (the shipment service, the pickup crew, the pickup ✓ and its undo).
 //
 // It lives apart from shipment.service.ts on purpose: the assignment service needs it too, and
 // shipment.service already imports the assignment service, so a shared home avoids an import cycle.

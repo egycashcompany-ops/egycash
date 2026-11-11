@@ -10504,12 +10504,21 @@ const en: Record<string, string> = {
   // A secured shipment's stage — its «الحالة» on the secured screen, the day board and the history.
   'operations.board.stage.awaitingPickup': 'Not handed over',
   'operations.board.stage.withCaptain': 'Collected by the captain',
+  'operations.board.stage.withOperations': 'Collected by Operations',
   'operations.board.stage.inVault': 'In the vault',
   'operations.board.stage.dispatched': 'Out for delivery',
   'operations.board.stage.completed': 'Delivered',
-  'operations.board.stageHint.awaitingPickup': 'The crew captain has not collected it from the bank yet',
+  'operations.board.stageHint.awaitingPickup':
+    'Neither the crew captain nor Operations has confirmed collecting it from the bank yet',
   'operations.board.stageHint.withCaptain':
     'The crew captain collected it from the bank — awaiting the vault’s receipt',
+  'operations.board.stageHint.withOperations':
+    'Operations confirmed collecting it from the bank — awaiting the vault’s receipt',
+  // Round 10 — a secured shipment the vault has received is locked: no edit, no delete, no photo.
+  'operations.board.locked':
+    'Locked — the vault has received it, so it can no longer be edited or deleted',
+  // A page's ticks on the board's rows (the vault's release of several at once).
+  'operations.board.select': 'Select',
   'operations.board.stageHint.inVault': 'Received into the vault — it leaves on its delivery date',
   'operations.board.stageHint.dispatched':
     'It left the vault with its delivery crew — awaiting the desk’s confirmation',
@@ -10622,6 +10631,8 @@ const en: Record<string, string> = {
     'A shipment’s date cannot move earlier than the day it was on — keep it, or choose a later day.',
   'operations.shipment.errors.deliveryBeforeCollection':
     'The delivery date cannot come before the collection date — choose the same day or a later one.',
+  'operations.shipment.errors.locked':
+    'The vault has received this shipment since it was opened — it can no longer be edited.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens.
   'operations.shipment.log.open': 'Shipment log',
   'operations.shipment.log.title': 'Shipment log',
@@ -10654,6 +10665,9 @@ const en: Record<string, string> = {
   'operations.shipment.log.kind.executionCompleted': 'The crew captain closed the run',
   'operations.shipment.log.kind.vaultReceived': 'Received into the vault',
   'operations.shipment.log.kind.dispatched': 'Left the vault for delivery',
+  'operations.shipment.log.kind.pickupConfirmed': 'Pickup from the bank confirmed',
+  'operations.shipment.log.kind.pickupUndone': 'Pickup confirmation undone',
+  'operations.shipment.log.kind.receiptCancelled': 'Vault receipt cancelled',
   'operations.shipment.log.kind.other': 'Another action',
   'operations.shipment.log.field.mainBank': 'Main bank',
   'operations.shipment.log.field.secondaryBank': 'Destination bank',
@@ -10676,6 +10690,10 @@ const en: Record<string, string> = {
   'operations.shipment.log.field.boxSeals': 'Box seals',
   'operations.shipment.log.field.receivedByPrimary': 'First receiving treasurer',
   'operations.shipment.log.field.receivedBySecondary': 'Second receiving treasurer',
+  'operations.shipment.log.field.pickedUpBy': 'Confirmed by',
+  'operations.shipment.log.field.reason': 'Reason',
+  'operations.shipment.log.pickedUpBy.captain': 'The captain',
+  'operations.shipment.log.pickedUpBy.operations': 'Operations',
   // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the deleted shipments of the history's range.
   'operations.shipment.deletedList.open': 'Deleted shipments',
   'operations.shipment.deletedList.openCount': 'Deleted shipments: {{count}}',
@@ -10843,6 +10861,24 @@ const en: Record<string, string> = {
   'operations.secured.dispatch.failed':
     'Could not release. A shipment may not be in the vault, or the vehicle has no delivery crew.',
   'operations.secured.dispatch.empty': 'Nothing due for delivery on this day',
+  // Round 10 — the desk's pickup ✓ on the secured screen, and its undo.
+  'operations.secured.pickup.toggle': 'Confirm the pickup from the bank',
+  'operations.secured.pickup.confirm': 'Mark as collected by Operations',
+  'operations.secured.pickup.undo': 'Undo the pickup confirmation',
+  'operations.secured.pickup.undoCaptain': 'Undo the captain’s pickup confirmation',
+  'operations.secured.pickup.confirmUndoCaptain':
+    'The captain confirmed collecting this secured shipment in the app. Remove his confirmation? The row goes back to «Not handed over» until the pickup is confirmed again.',
+  // Round 10 — cancelling the vault's receipt, a special permission.
+  'operations.secured.cancelReceipt.action': 'Cancel the vault receipt',
+  'operations.secured.cancelReceipt.body':
+    'The shipment leaves the vault and turns yellow again, as before the receipt: it can be edited, then received into the vault anew. The cancelled receipt and its reason stay in the log.',
+  'operations.secured.cancelReceipt.receiptNumber': 'Vault receipt number',
+  'operations.secured.cancelReceipt.reason': 'Reason for cancelling',
+  'operations.secured.cancelReceipt.reasonHint': 'Why is the receipt being cancelled?',
+  'operations.secured.cancelReceipt.reasonShort': 'Write a reason of at least {{min}} characters.',
+  'operations.secured.cancelReceipt.save': 'Cancel the receipt',
+  'operations.secured.cancelReceipt.back': 'Back',
+  'operations.secured.cancelReceipt.done': 'Vault receipt cancelled — the shipment is yellow again.',
   'operations.vault.title': 'Vault contents',
   'operations.vault.subtitle': 'Everything held in the vault right now.',
   'operations.vault.packages': 'Packages',
@@ -10852,11 +10888,15 @@ const en: Record<string, string> = {
   'operations.vault.empty': 'The vault is empty',
   // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
   'operations.vault.queue.all': 'All',
-  'operations.vault.queue.allHint': 'Also list the secured shipments no captain has collected yet',
-  'operations.vault.queue.withCaptain': 'With the captain',
+  'operations.vault.queue.allHint':
+    'Also list the secured shipments nobody has confirmed collecting yet — for viewing only',
+  'operations.vault.queue.pickedUp': 'With the captain or Operations',
   'operations.vault.queue.receivedToday': 'In the vault today',
   'operations.vault.queue.awaiting': 'Not collected yet',
   'operations.vault.queue.pickedUpAt': 'Collected {{at}}',
+  'operations.vault.queue.operationsPickedUpAt': 'Collected by Operations {{at}}',
+  'operations.vault.queue.viewOnly':
+    'View only — receivable once the captain or Operations confirms the pickup',
   'operations.vault.queue.receivedAt': 'Received {{at}}',
   'operations.vault.queue.receive': 'Receive into the vault',
   // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
@@ -23623,11 +23663,16 @@ const ar: Record<string, string> = {
   // مرحلة المحصنة — «الحالة» في شاشة المحصنات واليوم التشغيلي وسجل الشحنات.
   'operations.board.stage.awaitingPickup': 'لم يتم التسليم',
   'operations.board.stage.withCaptain': 'تم الاستلام من القائد',
+  'operations.board.stage.withOperations': 'تم الاستلام من العمليات',
   'operations.board.stage.inVault': 'بالخزينة',
   'operations.board.stage.dispatched': 'خرجت للتسليم',
   'operations.board.stage.completed': 'تم التسليم',
-  'operations.board.stageHint.awaitingPickup': 'لم يستلمها قائد الطاقم من البنك بعد',
+  'operations.board.stageHint.awaitingPickup': 'لم يؤكد قائد الطاقم ولا العمليات استلامها من البنك بعد',
   'operations.board.stageHint.withCaptain': 'استلمها قائد الطاقم من البنك، وتنتظر استلام الخزينة',
+  'operations.board.stageHint.withOperations': 'أكّدت العمليات استلامها من البنك، وتنتظر استلام الخزينة',
+  // الجولة 10 — المحصنة التي استلمتها الخزينة مقفلة: لا تعديل ولا حذف ولا صورة.
+  'operations.board.locked': 'مقفلة — استلمتها الخزينة، فلم يعد تعديلها أو حذفها ممكنًا',
+  'operations.board.select': 'تحديد',
   'operations.board.stageHint.inVault': 'استلمتها الخزينة، وتخرج في يوم تسليمها',
   'operations.board.stageHint.dispatched': 'خرجت من الخزينة مع طاقم التسليم، وتنتظر تأكيد المكتب',
   'operations.board.stageHint.completed': 'أكّد المكتب التسليم',
@@ -23735,6 +23780,7 @@ const ar: Record<string, string> = {
     'لا يمكن تقديم تاريخ الشحنة عن اليوم الذي كانت عليه — أبقِه كما هو أو اختر يومًا بعده.',
   'operations.shipment.errors.deliveryBeforeCollection':
     'لا يمكن أن يسبق تاريخ التسليم تاريخ الاستلام — اختر اليوم نفسه أو يومًا بعده.',
+  'operations.shipment.errors.locked': 'استلمت الخزينة هذه الشحنة بعد فتحها، فلم يعد تعديلها ممكنًا.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — سجل الإجراءات، على الشاشتين.
   'operations.shipment.log.open': 'سجل الشحنة',
   'operations.shipment.log.title': 'سجل الشحنة',
@@ -23766,6 +23812,9 @@ const ar: Record<string, string> = {
   'operations.shipment.log.kind.executionCompleted': 'أنهى قائد الطاقم الرحلة',
   'operations.shipment.log.kind.vaultReceived': 'دخلت الخزينة',
   'operations.shipment.log.kind.dispatched': 'خرجت من الخزينة للتسليم',
+  'operations.shipment.log.kind.pickupConfirmed': 'أُكّد الاستلام من البنك',
+  'operations.shipment.log.kind.pickupUndone': 'أُلغي تأكيد الاستلام من البنك',
+  'operations.shipment.log.kind.receiptCancelled': 'أُلغي استلام الخزينة',
   'operations.shipment.log.kind.other': 'إجراء آخر',
   'operations.shipment.log.field.mainBank': 'البنك الرئيسي',
   'operations.shipment.log.field.secondaryBank': 'بنك الوجهة',
@@ -23788,6 +23837,10 @@ const ar: Record<string, string> = {
   'operations.shipment.log.field.boxSeals': 'أختام الصناديق',
   'operations.shipment.log.field.receivedByPrimary': 'أمين الخزينة المستلم الأول',
   'operations.shipment.log.field.receivedBySecondary': 'أمين الخزينة المستلم الثاني',
+  'operations.shipment.log.field.pickedUpBy': 'أكّد الاستلام',
+  'operations.shipment.log.field.reason': 'السبب',
+  'operations.shipment.log.pickedUpBy.captain': 'القائد',
+  'operations.shipment.log.pickedUpBy.operations': 'العمليات',
   // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — الشحنات المحذوفة من مدة السجل.
   'operations.shipment.deletedList.open': 'الشحنات المحذوفة',
   'operations.shipment.deletedList.openCount': 'الشحنات المحذوفة: {{count}}',
@@ -23950,6 +24003,24 @@ const ar: Record<string, string> = {
   'operations.secured.dispatch.failed':
     'تعذّر الصرف. قد تكون إحدى الشحنات ليست في الخزينة، أو المركبة بلا طاقم تسليم.',
   'operations.secured.dispatch.empty': 'لا يوجد ما يُسلَّم في هذا اليوم',
+  // الجولة 10 — تأكيد العمليات للاستلام من البنك في شاشة المحصنات، والتراجع عنه.
+  'operations.secured.pickup.toggle': 'تأكيد الاستلام من البنك',
+  'operations.secured.pickup.confirm': 'تأكيد الاستلام من العمليات',
+  'operations.secured.pickup.undo': 'التراجع عن تأكيد الاستلام',
+  'operations.secured.pickup.undoCaptain': 'التراجع عن تأكيد القائد للاستلام',
+  'operations.secured.pickup.confirmUndoCaptain':
+    'أكّد القائد استلام هذه المحصنة من التطبيق. هل تريد إلغاء تأكيده؟ ستعود حالتها «لم يتم التسليم» حتى يُؤكَّد استلامها من جديد.',
+  // الجولة 10 — إلغاء استلام الخزينة، بصلاحية خاصة.
+  'operations.secured.cancelReceipt.action': 'إلغاء استلام الخزينة',
+  'operations.secured.cancelReceipt.body':
+    'ستخرج المحصنة من الخزينة وتعود صفراء كما كانت قبل الاستلام: يمكن تعديلها، ثم استلامها في الخزينة من جديد. يبقى الاستلام الملغى وسببه في السجل.',
+  'operations.secured.cancelReceipt.receiptNumber': 'رقم إيصال الخزينة',
+  'operations.secured.cancelReceipt.reason': 'سبب الإلغاء',
+  'operations.secured.cancelReceipt.reasonHint': 'لماذا يُلغى الاستلام؟',
+  'operations.secured.cancelReceipt.reasonShort': 'اكتب سببًا من {{min}} أحرف على الأقل.',
+  'operations.secured.cancelReceipt.save': 'إلغاء الاستلام',
+  'operations.secured.cancelReceipt.back': 'رجوع',
+  'operations.secured.cancelReceipt.done': 'أُلغي استلام الخزينة، وعادت المحصنة صفراء.',
   'operations.vault.title': 'محتويات الخزينة',
   'operations.vault.subtitle': 'كل ما هو محفوظ في الخزينة الآن.',
   'operations.vault.packages': 'العبوات',
@@ -23959,11 +24030,14 @@ const ar: Record<string, string> = {
   'operations.vault.empty': 'الخزينة فارغة',
   // الجولة 8 — قائمة استلام الخزينة: أصفر مع القائد، أخضر بالخزينة اليوم.
   'operations.vault.queue.all': 'الكل',
-  'operations.vault.queue.allHint': 'إظهار الشحنات المحصنة التي لم يستلمها القائد من البنك بعد أيضًا',
-  'operations.vault.queue.withCaptain': 'مع القائد',
+  'operations.vault.queue.allHint':
+    'إظهار الشحنات المحصنة التي لم يُؤكَّد استلامها من البنك بعد أيضًا — للعرض فقط',
+  'operations.vault.queue.pickedUp': 'مع القائد أو العمليات',
   'operations.vault.queue.receivedToday': 'بالخزينة اليوم',
   'operations.vault.queue.awaiting': 'لم يتم التسليم',
   'operations.vault.queue.pickedUpAt': 'استلمها القائد {{at}}',
+  'operations.vault.queue.operationsPickedUpAt': 'استلمتها العمليات {{at}}',
+  'operations.vault.queue.viewOnly': 'للعرض فقط — تُستلم بعد أن يؤكد القائد أو العمليات استلامها',
   'operations.vault.queue.receivedAt': 'استُلمت في الخزينة {{at}}',
   'operations.vault.queue.receive': 'استلام في الخزينة',
   // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────

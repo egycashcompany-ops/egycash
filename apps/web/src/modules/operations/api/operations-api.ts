@@ -12,7 +12,9 @@
 import {
   MAX_PAGE_SIZE,
   type AssignSecuredDeliveryLeg,
+  type CancelVaultReceipt,
   type CompleteOperationsShipment,
+  type ConfirmSecuredPickup,
   type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
@@ -38,9 +40,9 @@ import {
   type OperationsShipmentDto,
   type OperationsShipmentHistoryDto,
   type OperationsSecuredBoardDto,
+  type OperationsSecuredDispatchBoardDto,
   type OperationsShipmentLogDto,
   type OperationsStandingCrewBoardDto,
-  type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultQueueDto,
   type OperationsVaultReportDto,
@@ -353,12 +355,59 @@ export const listVaultInventory = (
 export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
   get<OperationsVaultQueueDto>(`/operations/secured/vault-queue${buildQuery(all ? { all } : {})}`);
 
-/** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
+/**
+ * `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). Answers the SHIPMENT
+ * (now `inVault`, its new version) — not its custody, which this file had typed it as before Round
+ * 10 although the route never sent one. Since Round 10 only a shipment somebody has collected
+ * (`OPERATIONS_SECURED_RECEIVABLE_STAGES`); a white one is refused, 409
+ * `OPERATIONS_SECURED_NOT_PICKED_UP`.
+ */
 export const receiveIntoVault = (
   id: string,
   body: ReceiveIntoVault,
-): Promise<OperationsVaultCustodyDto> =>
-  post<OperationsVaultCustodyDto>(`/operations/secured/${id}/receive`, body);
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/receive`, body);
+
+/**
+ * Round 10 — the desk's pickup ✓ on the secured screen («تم الاستلام من العمليات») and its undo,
+ * which takes back whoever's ✓ it was, the captain's included, until the vault receives. Each
+ * answers the shipment with its new version. The undo is a DELETE that carries a body: the version
+ * it was read at, as every write here does.
+ */
+export const confirmSecuredPickup = (
+  id: string,
+  body: ConfirmSecuredPickup,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/pickup`, body);
+
+export const undoSecuredPickup = (
+  id: string,
+  body: ConfirmSecuredPickup,
+): Promise<OperationsShipmentDto> =>
+  del<OperationsShipmentDto>(`/operations/secured/${id}/pickup`, body);
+
+/**
+ * Round 10 — «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: the vault's receipt cancelled, with the
+ * reason, while the shipment is still in the vault (`operationsVault.cancelReceipt`). It goes back to
+ * draft — yellow, editable and receivable again — and the custody is voided, kept as history.
+ */
+export const cancelVaultReceipt = (
+  id: string,
+  body: CancelVaultReceipt,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/cancel-receipt`, body);
+
+/**
+ * Round 10 — «صرف الخزينة»: EVERY secured shipment in the vault, whatever its delivery day («كله يبقى
+ * موجود فى تاريخ يتفلتر»), as board rows; `date` narrows it to one delivery day. Without a day the
+ * key is left out — the server refuses an empty `date=`.
+ */
+export const getSecuredDispatchBoard = (
+  date: string | null,
+): Promise<OperationsSecuredDispatchBoardDto> =>
+  get<OperationsSecuredDispatchBoardDto>(
+    `/operations/secured/dispatch-board${buildQuery(date === null || date === '' ? {} : { date })}`,
+  );
 
 /** `/tash4ela_mohasana` — the legacy leader2 + car_num2 pair, as the delivery leg. */
 export const assignSecuredDelivery = (

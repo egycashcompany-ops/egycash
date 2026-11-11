@@ -1,5 +1,7 @@
 // The vault's receive queue, asserted directly — «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى
-// الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات».
+// الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات», and in Round
+// 10: «لو قائد تم الاستلام من القائد و لو العمليات تم الاستلام من العمليات وهتبقى صفر بس وهتكون ظاهره ل
+// شاشة استلام الخزينة بس مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح».
 import { describe, expect, it } from 'vitest';
 import { type OperationsSecuredStage, type OperationsShipmentStatus } from '@ecms/contracts';
 import { rowTint } from './day-board';
@@ -18,12 +20,17 @@ const row = (status: OperationsShipmentStatus, securedStage: OperationsSecuredSt
   securedStage,
 });
 
-describe('vaultQueueState — yellow with the captain, green once the vault has it', () => {
-  it('is withCaptain once the captain pressed ✓ on collecting it from the bank', () => {
-    expect(vaultQueueState(row('draft', 'withCaptain'))).toBe('withCaptain');
+describe('vaultQueueState — yellow once collected, green once the vault has it', () => {
+  it('is pickedUp once the captain pressed ✓ on collecting it from the bank', () => {
+    expect(vaultQueueState(row('draft', 'withCaptain'))).toBe('pickedUp');
   });
 
-  it('is awaiting while no captain has collected it — the «الكل» rows', () => {
+  // Round 10: the desk's ✓ on the secured screen is the same yellow — the vault's work either way.
+  it('is pickedUp once the Operations desk confirmed collecting it, as for the captain', () => {
+    expect(vaultQueueState(row('draft', 'withOperations'))).toBe('pickedUp');
+  });
+
+  it('is awaiting while nobody has collected it — the «الكل» rows', () => {
     expect(vaultQueueState(row('draft', 'awaitingPickup'))).toBe('awaiting');
   });
 
@@ -35,10 +42,10 @@ describe('vaultQueueState — yellow with the captain, green once the vault has 
 });
 
 describe('vaultQueueTint — the Operations boards’ own two tints', () => {
-  it('paints a row with the captain the boards’ yellow, a received one their green', () => {
-    expect(vaultQueueTint('withCaptain')).toBe(rowTint('captain'));
+  it('paints a collected row the boards’ yellow, a received one their green', () => {
+    expect(vaultQueueTint('pickedUp')).toBe(rowTint('captain'));
     expect(vaultQueueTint('received')).toBe(rowTint('desk'));
-    expect(vaultQueueTint('withCaptain')).toContain('amber');
+    expect(vaultQueueTint('pickedUp')).toContain('amber');
     expect(vaultQueueTint('received')).toContain('emerald');
   });
 
@@ -47,11 +54,19 @@ describe('vaultQueueTint — the Operations boards’ own two tints', () => {
   });
 });
 
-describe('mayReceive — the vault’s ✓ only while it is outside the vault', () => {
-  it('offers the receive form on a draft row, yellow or white', () => {
+describe('mayReceive — the vault’s ✓ only on a yellow row', () => {
+  it('offers the receive form on a row somebody has collected — the captain or the desk', () => {
     expect(mayReceive(row('draft', 'withCaptain'))).toBe(true);
-    // A captain without the app never presses ✓: his shipment is still receivable.
-    expect(mayReceive(row('draft', 'awaitingPickup'))).toBe(true);
+    expect(mayReceive(row('draft', 'withOperations'))).toBe(true);
+  });
+
+  // «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: a white row under «الكل» is seen,
+  // not received — the server refuses it (`OPERATIONS_SECURED_NOT_PICKED_UP`). A captain without
+  // the app is covered by the desk's ✓ on the secured screen, which turns the row yellow.
+  it('offers nothing on a white row — nobody has confirmed the pickup yet', () => {
+    expect(mayReceive(row('draft', 'awaitingPickup'))).toBe(false);
+    // A row sent with no stage at all (an older server) is not offered either.
+    expect(mayReceive(row('draft', null))).toBe(false);
   });
 
   it('offers nothing on a green row — the server would refuse a second receipt', () => {
@@ -65,12 +80,12 @@ describe('vaultQueueCounts — the legend’s figures', () => {
     expect(
       vaultQueueCounts([
         row('draft', 'withCaptain'),
-        row('draft', 'withCaptain'),
+        row('draft', 'withOperations'),
         row('inVault', 'inVault'),
         row('draft', 'awaitingPickup'),
       ]),
-    ).toEqual({ withCaptain: 2, received: 1, awaiting: 1 });
-    expect(vaultQueueCounts([])).toEqual({ withCaptain: 0, received: 0, awaiting: 0 });
+    ).toEqual({ pickedUp: 2, received: 1, awaiting: 1 });
+    expect(vaultQueueCounts([])).toEqual({ pickedUp: 0, received: 0, awaiting: 0 });
   });
 });
 
@@ -88,16 +103,24 @@ describe('vaultRowTint — the queue’s own colour, from the row', () => {
     expect(vaultRowTint(row('completed', 'completed'))).toBe(rowTint('desk'));
     expect(vaultRowTint(row('inVault', 'inVault'))).toBe(rowTint('desk'));
     expect(vaultRowTint(row('draft', 'withCaptain'))).toBe(rowTint('captain'));
+    expect(vaultRowTint(row('draft', 'withOperations'))).toBe(rowTint('captain'));
     expect(vaultRowTint(row('draft', 'awaitingPickup'))).toBeUndefined();
   });
 });
 
 describe('vaultQueueStages — the «الحالة» filter offers the stages the list can hold', () => {
   it('offers «لم يتم التسليم» only with «الكل»', () => {
-    expect(vaultQueueStages(false)).toEqual(['withCaptain', 'inVault', 'dispatched', 'completed']);
+    expect(vaultQueueStages(false)).toEqual([
+      'withCaptain',
+      'withOperations',
+      'inVault',
+      'dispatched',
+      'completed',
+    ]);
     expect(vaultQueueStages(true)).toEqual([
       'awaitingPickup',
       'withCaptain',
+      'withOperations',
       'inVault',
       'dispatched',
       'completed',

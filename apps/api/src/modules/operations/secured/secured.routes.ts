@@ -12,7 +12,7 @@ import {
   ListSecuredDueQuerySchema,
   ListVaultInventoryQuerySchema,
   OperationsSecuredBoardQuerySchema,
-  OperationsSecuredInVaultQuerySchema,
+  OperationsSecuredDispatchBoardQuerySchema,
   OperationsVaultQueueQuerySchema,
   ReceiveIntoVaultSchema,
   UndoSecuredPickupSchema,
@@ -27,7 +27,7 @@ import {
   confirmSecuredPickup,
   dispatchSecured,
   getSecuredBoard,
-  getSecuredInVault,
+  getSecuredDispatchBoard,
   getVaultQueue,
   listBacklog,
   listDue,
@@ -66,17 +66,19 @@ export const buildOperationsSecuredRouter = (): Router => {
     validate({ query: OperationsVaultQueueQuerySchema }),
     asyncHandler(getVaultQueue),
   );
-  // «صرف الخزينة» (Round 10) — EVERY shipment in the vault, the delivery date an optional filter.
-  // The vault screens' grant, like the receive queue: it is the vault's list of what it holds.
+  // «صرف الخزينة» (Round 10) — EVERY shipment in the vault as board rows, one delivery day an
+  // optional filter. The grant the `/operations/vault/dispatch` page itself rides — the vault
+  // screens' — rather than `/due`'s `operationsShipment.view`: the page and its list now ask for the
+  // same key, so nobody can open the screen and be refused its own list.
   router.get(
-    '/in-vault',
+    '/dispatch-board',
     authenticate,
     authorize('operationsVault.view'),
-    validate({ query: OperationsSecuredInVaultQuerySchema }),
-    asyncHandler(getSecuredInVault),
+    validate({ query: OperationsSecuredDispatchBoardQuerySchema }),
+    asyncHandler(getSecuredDispatchBoard),
   );
   // /tash4ela_mohasana + /deliver_mohsana — what is due for delivery on a date (legacy parity; the
-  // dispatch screen reads `/in-vault` since Round 10).
+  // dispatch screen reads `/dispatch-board` since Round 10).
   router.get(
     '/due',
     authenticate,
@@ -92,8 +94,8 @@ export const buildOperationsSecuredRouter = (): Router => {
     validate({ query: ListVaultInventoryQuerySchema }),
     asyncHandler(listVaultInventory),
   );
-  // The desk's pickup ✓ «تم الاستلام من العمليات» and its undo (Round 10) — the desk's ✓ grant, one
-  // grant both directions, exactly as `complete` / `reopen` share it.
+  // The desk's pickup ✓ «تم الاستلام من العمليات» and its undo — of the captain's ✓ too — (Round 10):
+  // the desk's ✓ grant, one grant both directions, exactly as `complete` / `reopen` share it.
   router.post(
     '/:id/pickup',
     authenticate,

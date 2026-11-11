@@ -9,7 +9,7 @@
 //     carries its own bank.
 //   · the TO bank — whose branch it is delivered to. Stored as `secondaryBankId` when it differs
 //     from the main bank (legacy `sec_bank`), null when it is the main bank.
-import { isYmd, type OperationsShipmentType } from '@ecms/contracts';
+import { ErrorCodes, isYmd, type OperationsShipmentType } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 
 /**
@@ -174,6 +174,9 @@ const SAVE_ERRORS: Record<string, string> = {
   OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION: SHIPMENT_DATE_PROBLEM_KEY.beforeCollection,
   // Someone else saved this shipment after it was opened (optimistic lock, 409).
   STALE_DOCUMENT: 'operations.shipment.errors.stale',
+  // Round 10: the vault received this محصنة after the form was opened — «ميقدر حد … يعدل عليها».
+  // The board offers no edit on a locked row (`isLockedRow`), so only a stale row reaches this.
+  OPERATIONS_SECURED_LOCKED: 'operations.shipment.errors.locked',
 };
 
 export const SHIPMENT_SAVE_ERROR_KEYS = Object.values(SAVE_ERRORS);
@@ -199,6 +202,13 @@ const NOT_ABOUT_THE_VALUES = new Set([
 
 const isAboutSomethingElse = (error: unknown): boolean =>
   error instanceof TypeError || (error instanceof ApiError && NOT_ABOUT_THE_VALUES.has(error.code));
+
+/**
+ * The vault received this محصنة after the form was opened (Round 10, `OPERATIONS_SECURED_LOCKED`):
+ * nothing typed can be saved past it, so the form says why and closes, and the board is re-read.
+ */
+export const isLockedRefusal = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.OPERATIONS_SECURED_LOCKED;
 
 /**
  * The i18n key for a refused shipment save, or `null` when the refusal is not about the values —

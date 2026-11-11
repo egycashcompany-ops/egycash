@@ -57,7 +57,12 @@ export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView 
 });
 
 class OperationsVaultCustodyService implements VaultCustodyProvider {
-  async receive(input: VaultReceiptInput, by: string): Promise<VaultCustodyView> {
+  async receive(
+    input: VaultReceiptInput,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
     // Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced.
     if (input.receivedByPrimaryId === input.receivedBySecondaryId) {
       throw new BusinessRuleError(
@@ -65,7 +70,10 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
       );
     }
-    const existing = await operationsVaultCustodyRepository.findByShipment(input.shipmentId);
+    const existing = await operationsVaultCustodyRepository.findByShipment(
+      input.shipmentId,
+      typedSession,
+    );
     if (existing !== null) {
       // Legacy re-stamped status 2 and the receive timestamp on EVERY save from the receive
       // screen (Q29, contad_app.js:1194-1240). NORMALIZE: custody is taken once.
@@ -88,19 +96,28 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         releasedById: null,
         releasedAt: null,
       },
-      { by },
+      { by, session: typedSession },
     );
+    return toCustodyView(doc);
+  }
+
+  /**
+   * Audit + event for a receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape (Round 10 moved them out of `receive`, which now joins the caller's
+   * transaction). Re-reads the row: the audit snapshot carries the seals the view leaves out.
+   */
+  async announceReceived(view: VaultCustodyView): Promise<void> {
+    const doc = await operationsVaultCustodyRepository.getById(view.id);
     await auditService.record({
-      entityRef: entityRef(String(doc._id)),
+      entityRef: entityRef(view.id),
       action: 'create',
       changes: diffChanges({}, snapshot(doc)),
     });
     await emit(OperationsEvents.VaultReceived, {
-      custodyId: String(doc._id),
-      shipmentId: String(doc.shipmentId),
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
       state: doc.state,
     });
-    return toCustodyView(doc);
   }
 
   async release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView> {

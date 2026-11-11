@@ -11,6 +11,7 @@ import {
   __deletedShipmentsKey,
   __operationsKeys,
   __securedBoardKey,
+  __securedDispatchBoardKey,
   __shipmentHistoryKey,
   __shipmentLogKey,
   __vaultQueueKey,
@@ -325,6 +326,49 @@ describe('the secured screen rides the day board’s subtree (Round 8)', () => {
     seed(qc);
     await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
     expect(isStale(qc, __securedBoardKey())).toBe(false);
+  });
+});
+
+describe('«صرف الخزينة» rides the day board’s subtree (Round 10)', () => {
+  // «كله يبقى موجود فى تاريخ يتفلتر»: every محصنة in the vault, one entry per delivery-day filter. A
+  // receipt puts a row on it, a cancelled receipt or a release takes one off, the desk's pickup ✓
+  // and its undo move rows towards it — every one a secured act, whose list includes the board.
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__securedDispatchBoardKey(null), { shipments: [], crews: [] });
+    qc.setQueryData(__securedDispatchBoardKey('2026-11-12'), { shipments: [], crews: [] });
+  };
+
+  it('keys every day and one day apart, inside the board’s subtree', () => {
+    expect(__securedDispatchBoardKey(null).slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__securedDispatchBoardKey('2026-11-12'));
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__vaultQueueKey(false));
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__securedBoardKey());
+  });
+
+  it('the secured acts — a receipt, a cancelled one, a pickup ✓, a release — stale every entry', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useSecuredInvalidation` does (the receive, `useSetSecuredPickup`,
+    // `useCancelVaultReceipt`, the assign and the release).
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+    expect(isStale(qc, __securedDispatchBoardKey(null))).toBe(true);
+    expect(isStale(qc, __securedDispatchBoardKey('2026-11-12'))).toBe(true);
+  });
+
+  it('crew planning leaves it alone, as it leaves the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    expect(isStale(qc, __securedDispatchBoardKey(null))).toBe(false);
   });
 });
 

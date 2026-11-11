@@ -20,6 +20,7 @@ import {
   earliestShipmentDate,
   followMainBank,
   secondaryBankFor,
+  isLockedRefusal,
   shipmentSaveErrorKey,
 } from './shipment-form';
 
@@ -161,6 +162,18 @@ describe('shipmentSaveErrorKey — a refused save, in the reader’s language', 
     expect(shipmentSaveErrorKey(failed(ErrorCodes.STALE_DOCUMENT))).toBe(
       'operations.shipment.errors.stale',
     );
+  });
+
+  // Round 10: a form opened on a محصنة before the vault received it — the board offers no edit on a
+  // locked row, so this is the one way the lock reaches the form, and it says so in its own words.
+  it('says a lock that came after the form was opened, rather than «check the values»', () => {
+    expect(shipmentSaveErrorKey(failed(ErrorCodes.OPERATIONS_SECURED_LOCKED))).toBe(
+      'operations.shipment.errors.locked',
+    );
+    // …and the form closes on it: nothing typed can be saved past the vault's ✓.
+    expect(isLockedRefusal(failed(ErrorCodes.OPERATIONS_SECURED_LOCKED))).toBe(true);
+    expect(isLockedRefusal(failed(ErrorCodes.STALE_DOCUMENT))).toBe(false);
+    expect(isLockedRefusal(new TypeError('Failed to fetch'))).toBe(false);
   });
 
   it('falls back to the generic message for a refusal about the values', () => {

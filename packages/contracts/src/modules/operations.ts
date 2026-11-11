@@ -187,7 +187,8 @@ export type OperationsSecuredPickedUpBy = (typeof OPERATIONS_SECURED_PICKED_UP_B
  *
  * The server refuses, with 409 `OPERATIONS_SECURED_LOCKED`, every change of a locked shipment's
  * data: `PATCH /operations/shipments/:id`, `DELETE /operations/shipments/:id`, the receipt photo
- * (`POST`/`DELETE /operations/shipments/:id/receipt-image` — reading it stays open), the pickup crew
+ * (`POST`/`DELETE /operations/shipments/:id/receipt-image` — reading it stays open; the platform's
+ * own file routes refuse replacing or deleting that photo with 403 too), the pickup crew
  * (`POST /operations/assignments/shipments/:id/assign-pickup`) and the desk's pickup ✓ and its undo
  * (`POST`/`DELETE /operations/secured/:id/pickup`). The FLOW acts stay open — they move the shipment
  * along, they do not rewrite it: the delivery crew (`assign-delivery`), the dispatch, both captains'
@@ -1848,14 +1849,6 @@ export interface OperationsVaultCustodyDto {
   /** Legacy `treasurer_delivery` / `treasurer_delivery_date` — declared but NEVER written (Q3). */
   releasedById: string | null;
   releasedAt: string | null;
-  /**
-   * Round 10 — set when the receipt was CANCELLED (`POST /operations/secured/:id/cancel-receipt`):
-   * when, by which user, and why. A cancelled custody is kept as history and read by no live list;
-   * all three are null on every other custody.
-   */
-  cancelledAt: string | null;
-  cancelledById: string | null;
-  cancelReason: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -1863,14 +1856,21 @@ export interface OperationsVaultCustodyDto {
 
 /**
  * The vault's ✓ — `POST /operations/secured/:id/receive` (`operationsVault.receive`): custody taken,
- * the shipment `draft` → `inVault`, and from then on LOCKED (`isOperationsShipmentLocked`).
+ * the shipment `draft` → `inVault`, and from then on LOCKED (`isOperationsShipmentLocked`). Answers
+ * 200 with the updated `OperationsShipmentDto` (not a custody record).
  *
  * Round 10: only a shipment somebody has picked up — stage `withCaptain` or `withOperations`
  * (`OPERATIONS_SECURED_RECEIVABLE_STAGES`). A white `awaitingPickup` one is refused with 409
  * `OPERATIONS_SECURED_NOT_PICKED_UP` («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»).
- * The other refusals are unchanged: 422 `OPERATIONS_NOT_A_SECURED_SHIPMENT`, 422
- * `OPERATIONS_INVALID_SHIPMENT_TRANSITION` (not `draft`), 409 `STALE_DOCUMENT`, 409 when custody is
- * already held.
+ * The custody and the shipment's move are ONE transaction since Round 10: a receive refused at
+ * either leaves nothing behind. The other refusals are unchanged: 422
+ * `OPERATIONS_NOT_A_SECURED_SHIPMENT`, 422 `OPERATIONS_INVALID_SHIPMENT_TRANSITION` (not `draft`),
+ * 409 `STALE_DOCUMENT`, 409 when custody is already held.
+ *
+ * A receipt cancelled later (`POST /operations/secured/:id/cancel-receipt`) VOIDS its custody: the
+ * row is kept (receipt, counts, seals, treasurers, plus when / who / why it was cancelled) but no
+ * list reads it again — the shipment's «السجل» still shows it, as `vaultReceived` then
+ * `receiptCancelled`.
  */
 export const ReceiveIntoVaultSchema = z
   .object({

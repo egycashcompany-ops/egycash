@@ -8,9 +8,11 @@
 // than through a rendered dialog. The lists are the contract's own CLOSED lists; a kind or a field
 // a newer server adds is still shown — as «إجراء آخر», or under its own key — never hidden.
 import {
+  OPERATIONS_SECURED_PICKED_UP_BY,
   OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
   OPERATIONS_SHIPMENT_LOG_FIELDS,
   OPERATIONS_SHIPMENT_LOG_KINDS,
+  OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS,
   type OperationsDayBoardShipmentDto,
   type OperationsShipmentLogField,
   type OperationsShipmentLogKind,
@@ -67,12 +69,21 @@ export const LOG_KIND_LOOK: Readonly<Record<OperationsShipmentLogKind, LogKindLo
   executionCompleted: { tone: 'teal', icon: SHIPMENT_PATH.flag },
   vaultReceived: { tone: 'indigo', icon: PATH.lock },
   dispatched: { tone: 'indigo', icon: PATH.truck },
+  // Round 10. The pickup ✓ in the yellow it turns the row («وهتبقى صفر»), its undo in the rose of
+  // every other undo; a cancelled vault receipt is the vault's lock, opened, in the same rose.
+  pickupConfirmed: { tone: 'amber', icon: SHIPMENT_PATH.check },
+  pickupUndone: { tone: 'rose', icon: SHIPMENT_PATH.undo },
+  receiptCancelled: { tone: 'rose', icon: SHIPMENT_PATH.unlock },
   other: { tone: 'slate', icon: SHIPMENT_PATH.info },
 };
 
 const KINDS: ReadonlySet<string> = new Set(OPERATIONS_SHIPMENT_LOG_KINDS);
 const FIELDS: ReadonlySet<string> = new Set(OPERATIONS_SHIPMENT_LOG_FIELDS);
 const FLAGS: ReadonlySet<string> = new Set(OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS);
+const PICKED_UP_BY_FIELDS: ReadonlySet<string> = new Set(
+  OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS,
+);
+const PICKED_UP_BY: ReadonlySet<string> = new Set(OPERATIONS_SECURED_PICKED_UP_BY);
 
 const knownKind = (kind: string): OperationsShipmentLogKind =>
   KINDS.has(kind) ? (kind as OperationsShipmentLogKind) : 'other';
@@ -97,13 +108,19 @@ export const LOG_EMPTY_VALUE = '—';
 
 /**
  * A change's value as the reader sees it. Everything is a display string already (names, codes,
- * days, «مصري 1,500.5»); only a flag is 'true' / 'false', said as yes / no in the page's language.
+ * days, «مصري 1,500.5»); only two kinds of value are codes the screen words itself: a flag is
+ * 'true' / 'false', said as yes / no, and WHO confirmed a pickup (`pickedUpBy`, Round 10) is
+ * 'captain' / 'operations', said as «القائد» / «العمليات» — in the page's language. A code this
+ * screen does not know yet is shown as sent, never hidden.
  */
 export const logValue = (field: string, value: string | null, t: Translate): string => {
   if (value === null || value.trim() === '') return LOG_EMPTY_VALUE;
   if (FLAGS.has(field)) {
     if (value === 'true') return t('operations.shipment.log.yes');
     if (value === 'false') return t('operations.shipment.log.no');
+  }
+  if (PICKED_UP_BY_FIELDS.has(field) && PICKED_UP_BY.has(value)) {
+    return t(`operations.shipment.log.pickedUpBy.${value}`);
   }
   return value;
 };
@@ -113,7 +130,8 @@ export const logValue = (field: string, value: string | null, t: Translate): str
  * يظهر ف السجل» asks to see, a field filled for the first time included («— ← …»). Any other entry
  * is read old → new only when something came before: a booking, a first crew or a vault receipt
  * carries FIRST values (every `old` null), and «— ←» on every line would only say, line after
- * line, that nothing came before. A crew CHANGE carries the captain it replaced, and shows it.
+ * line, that nothing came before. A crew CHANGE carries the captain it replaced, and shows it; so
+ * does a pickup taken back (`pickupUndone`): whose ✓ it was, struck through, «القائد ← —».
  */
 export const showsOldValues = (entry: {
   kind: string;

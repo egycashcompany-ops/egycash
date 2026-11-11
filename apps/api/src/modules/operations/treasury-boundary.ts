@@ -68,8 +68,14 @@ export interface VaultCustodyView {
 }
 
 export interface VaultCustodyProvider {
-  /** Take a shipment into custody. Rejects a shipment already held. */
-  receive(input: VaultReceiptInput, by: string): Promise<VaultCustodyView>;
+  /**
+   * Take a shipment into custody. Rejects a shipment already held. Joins the caller's transaction
+   * when given a session (Round 10: the vault's ✓ and the shipment's move to `inVault` are ONE
+   * write, so a receive refused half-way — a stale version, a pickup ✓ taken back a moment before
+   * — can no longer leave a held custody on a shipment still in draft); the caller announces it
+   * (audit + event) after the commit, the `release` / `cancelReceipt` shape.
+   */
+  receive(input: VaultReceiptInput, by: string, session?: unknown): Promise<VaultCustodyView>;
   /** Hand a shipment back out for delivery. Rejects anything not currently held. */
   release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView>;
   /** Current custody for a shipment, or null when the treasury never held it. */

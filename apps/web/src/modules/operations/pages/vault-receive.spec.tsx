@@ -8,6 +8,11 @@
 // board (`components/ShipmentsBoard.tsx`): its figures, its filter bar, its dark table with the
 // secured screen's columns — and, in the row's actions, the vault's ✓ in place of the desk's. A
 // treasurer may read it on the vault's grants alone; what he may not read is not offered to him.
+//
+// Round 10: «لو قائد تم الاستلام من القائد و لو العمليات تم الاستلام من العمليات وهتبقى صفر بس وهتكون
+// ظاهره ل شاشة استلام الخزينة بس مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح» — the
+// desk's pickup is yellow and receivable like the captain's, a white row under «الكل» is for viewing
+// only, and «إلغاء استلام الخزينة» sits on a green row still in the vault for its special grant.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -129,12 +134,18 @@ const queueRow = (
   },
   captainDeliveredAt: null,
   securedStage,
-  captainPickedUpAt: securedStage === 'awaitingPickup' ? null : '2026-11-11T07:30:00.000Z',
+  pickedUpBy: securedStage === 'awaitingPickup' ? null : 'captain',
+  pickedUpAt: securedStage === 'awaitingPickup' ? null : '2026-11-11T07:30:00.000Z',
   vaultReceivedAt: status === 'draft' ? null : '2026-11-11T09:15:00.000Z',
   ...over,
 });
 
 const WITH_CAPTAIN = queueRow('s-yellow', 'draft', 'withCaptain');
+// Round 10 — the Operations desk confirmed the pickup on the secured screen: the same yellow.
+const WITH_OPERATIONS = queueRow('s-desk', 'draft', 'withOperations', {
+  pickedUpBy: 'operations',
+  pickedUpAt: '2026-11-11T08:05:00.000Z',
+});
 const RECEIVED = queueRow('s-green', 'inVault', 'inVault');
 const AWAITING = queueRow('s-white', 'draft', 'awaitingPickup');
 // Received this morning and sent out since: blue on the Operations boards, today's receipt here.
@@ -261,7 +272,7 @@ describe('the vault’s receive queue — by default, with the captain and in th
   });
 
   it('paints the shipment with the captain YELLOW and offers the vault’s ✓ on it', () => {
-    const yellow = rowOf(html, 'withCaptain');
+    const yellow = rowOf(html, 'pickedUp');
     expect(yellow).toContain('!bg-amber-50');
     expect(yellow).toContain(`data-vault-receive="s-yellow"`);
     expect(yellow).toContain(RECEIVE_LABEL);
@@ -286,10 +297,10 @@ describe('the vault’s receive queue — by default, with the captain and in th
   });
 
   it('says how many rows wear each colour, and lists no white ones', () => {
-    expect(html).toContain('data-vault-legend="withCaptain"');
+    expect(html).toContain('data-vault-legend="pickedUp"');
     expect(html).toContain('data-vault-legend="received"');
     expect(html).not.toContain('data-vault-legend="awaiting"');
-    expect(html).toContain(ar('operations.vault.queue.withCaptain'));
+    expect(html).toContain(ar('operations.vault.queue.pickedUp'));
     expect(html).toContain(ar('operations.vault.queue.receivedToday'));
     const received = html.slice(html.indexOf('data-vault-legend="received"'));
     expect(received.slice(0, received.indexOf('</span></span>'))).toMatch(
@@ -304,13 +315,13 @@ describe('the vault’s receive queue — by default, with the captain and in th
   });
 
   it('prints the money in the catalog’s order — the dollar dragged above the pound', () => {
-    const yellow = rowOf(html, 'withCaptain');
+    const yellow = rowOf(html, 'pickedUp');
     expect(yellow.indexOf('دولار')).toBeGreaterThan(-1);
     expect(yellow.indexOf('دولار')).toBeLessThan(yellow.indexOf('مصري'));
   });
 
   it('names the bank, the branches, the captain and his van', () => {
-    const yellow = rowOf(html, 'withCaptain');
+    const yellow = rowOf(html, 'pickedUp');
     // «اسم البنك» from the catalog — the list a treasurer may read on the vault grant.
     expect(yellow).toContain('بنك الأهلي');
     expect(yellow).toContain('فرع المهندسين');
@@ -342,7 +353,7 @@ describe('«خليها زى شاشة التشغيل اليومى» — the opera
       html.indexOf('data-shipments-toolbar'),
       html.indexOf('data-shipment-filters'),
     );
-    expect(toolbar).toContain('data-vault-legend="withCaptain"');
+    expect(toolbar).toContain('data-vault-legend="pickedUp"');
     expect(toolbar).toContain('data-vault-all-toggle');
   });
 
@@ -365,7 +376,7 @@ describe('«خليها زى شاشة التشغيل اليومى» — the opera
     expect(html).not.toContain(`aria-label="${ar('common.edit')}"`);
     expect(html).not.toContain(`aria-label="${ar('common.remove')}"`);
     expect(html).not.toContain(`aria-label="${ar('operations.shipment.receive')}"`);
-    const yellow = rowOf(html, 'withCaptain');
+    const yellow = rowOf(html, 'pickedUp');
     // The ✓ at the desk ✓'s place, before the log, in the same group.
     expect(yellow).toContain('data-row-actions="shipment"');
     expect(yellow.indexOf(RECEIVE_LABEL)).toBeLessThan(
@@ -388,7 +399,7 @@ describe('«خليها زى شاشة التشغيل اليومى» — the opera
   });
 });
 
-describe('«الكل» — the shipments no captain has collected yet, too', () => {
+describe('«الكل» — the shipments nobody has collected yet, too — to be SEEN', () => {
   const html = render({
     path: '/operations/vault/receive?all=1',
     seed: (qc) =>
@@ -401,12 +412,87 @@ describe('«الكل» — the shipments no captain has collected yet, too', () 
     expect(html).toContain(ar('operations.vault.queue.awaiting'));
   });
 
-  it('leaves the uncollected row white, and still lets the vault receive it', () => {
+  // Round 10 — «وهتكون ظاهره ل شاشة استلام الخزينة بس مش هيقدر يعمل صح الا لما القائد او العمليات
+  // تبقى عامله صح»: the white row is listed, with no ✓ — and the line under its badge says why.
+  it('leaves the uncollected row white, with NO vault ✓ — for viewing, and says so', () => {
     const white = rowOf(html, 'awaiting');
     expect(white).not.toContain('!bg-amber-50');
     expect(white).not.toContain('!bg-emerald-50');
-    expect(white).toContain(RECEIVE_LABEL);
+    expect(white).not.toContain(RECEIVE_LABEL);
+    expect(white).not.toContain('data-vault-receive=');
     expect(white).toContain('data-secured-stage="awaitingPickup"');
+    expect(white).toContain(ar('operations.vault.queue.viewOnly'));
+    // The same reader still receives the yellow row beside it.
+    expect(rowOf(html, 'pickedUp')).toContain(RECEIVE_LABEL);
+  });
+
+  it('tells the reader of the toggle that what it adds is for viewing only', () => {
+    expect(ar('operations.vault.queue.allHint')).toContain('للعرض فقط');
+    expect(html).toContain(`title="${ar('operations.vault.queue.allHint')}"`);
+  });
+});
+
+// Round 10 — «لو العمليات تم الاستلام من العمليات وهتبقى صفر بس»: the desk's ✓ on the secured
+// screen makes a row the vault's work exactly as the captain's does.
+describe('the desk’s pickup ✓ — yellow and receivable, as the captain’s', () => {
+  const html = render({
+    seed: (qc) =>
+      qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN, WITH_OPERATIONS])),
+  });
+
+  it('paints it yellow, offers the vault’s ✓, and says the desk collected it — and when', () => {
+    const desk = rowOf(html, 'pickedUp', 1);
+    expect(desk).toContain('data-secured-stage="withOperations"');
+    expect(desk).toContain('!bg-amber-50');
+    expect(desk).toContain('data-vault-receive="s-desk"');
+    expect(desk).toContain(ar('operations.vault.queue.operationsPickedUpAt', { at: '' }).trim());
+    expect(desk).not.toContain(ar('operations.vault.queue.pickedUpAt', { at: '' }).trim());
+    // The captain's row still says it was his.
+    expect(rowOf(html, 'pickedUp')).toContain(
+      ar('operations.vault.queue.pickedUpAt', { at: '' }).trim(),
+    );
+  });
+
+  // One yellow chip for both — «مع القائد أو العمليات» — counting both rows.
+  it('counts both yellows under ONE chip', () => {
+    expect(html.match(/data-vault-legend="/g)).toHaveLength(2);
+    const chip = html.slice(html.indexOf('data-vault-legend="pickedUp"'));
+    expect(chip.slice(0, chip.indexOf('</span></span>'))).toMatch(
+      new RegExp(`>${formatNumber(2, 'ar')}$`),
+    );
+    expect(ar('operations.vault.queue.pickedUp')).toBe('مع القائد أو العمليات');
+  });
+});
+
+// Round 10 — «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: a special grant, on a green row in the vault.
+describe('«إلغاء استلام الخزينة» — on a green row still in the vault, for its grant alone', () => {
+  const CANCEL = `aria-label="${ar('operations.secured.cancelReceipt.action')}"`;
+  const rows = [WITH_CAPTAIN, RECEIVED, RECEIVED_THEN_OUT];
+
+  it('is offered on the row in the vault — not on one gone out, nor on a yellow one', () => {
+    const html = render({
+      permissions: [
+        'operationsVault.view',
+        'operationsVault.receive',
+        'operationsVault.cancelReceipt',
+      ],
+      seed: (qc) => qc.setQueryData(__vaultQueueKey(false), queue(false, rows)),
+    });
+    const green = rowOf(html, 'received');
+    expect(green).toContain('data-cancel-receipt-open="s-green"');
+    expect(green).toContain(CANCEL);
+    expect(green).toContain('aria-haspopup="dialog"');
+    expect(rowOf(html, 'received', 1)).not.toContain('data-cancel-receipt-open');
+    expect(rowOf(html, 'pickedUp')).not.toContain('data-cancel-receipt-open');
+  });
+
+  it('is offered to nobody without the grant — a treasurer who receives included', () => {
+    const html = render({
+      permissions: [...DESK_TREASURER],
+      seed: (qc) => qc.setQueryData(__vaultQueueKey(false), queue(false, rows)),
+    });
+    expect(html).not.toContain('data-cancel-receipt-open');
+    expect(html).not.toContain(CANCEL);
   });
 });
 
@@ -416,13 +502,13 @@ describe('the legend counts the rows SHOWN, as the figures do', () => {
       path: '/operations/vault/receive?stage=withCaptain',
       seed: (qc) => qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN, RECEIVED])),
     });
-    expect(html).toContain('data-vault-row="withCaptain"');
+    expect(html).toContain('data-vault-row="pickedUp"');
     expect(html).not.toContain('data-vault-row="received"');
     const chip = (state: string): string => {
       const at = html.slice(html.indexOf(`data-vault-legend="${state}"`));
       return at.slice(0, at.indexOf('</span></span>'));
     };
-    expect(chip('withCaptain')).toMatch(new RegExp(`>${formatNumber(1, 'ar')}$`));
+    expect(chip('pickedUp')).toMatch(new RegExp(`>${formatNumber(1, 'ar')}$`));
     expect(chip('received')).toMatch(new RegExp(`>${formatNumber(0, 'ar')}$`));
   });
 
@@ -431,7 +517,7 @@ describe('the legend counts the rows SHOWN, as the figures do', () => {
       path: '/operations/vault/receive?stage=awaitingPickup',
       seed: (qc) => qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN, RECEIVED])),
     });
-    expect(html).toContain('data-vault-row="withCaptain"');
+    expect(html).toContain('data-vault-row="pickedUp"');
     expect(html).toContain('data-vault-row="received"');
   });
 });
@@ -442,7 +528,7 @@ describe('who may receive, and who may read what', () => {
       permissions: ['operationsVault.view'],
       seed: (qc) => qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN])),
     });
-    expect(rowOf(html, 'withCaptain')).toContain('!bg-amber-50');
+    expect(rowOf(html, 'pickedUp')).toContain('!bg-amber-50');
     expect(html).not.toContain(RECEIVE_LABEL);
     // Nothing to do on a row, and no log to read: no column of empty boxes.
     expect(html).not.toContain('data-row-actions="shipment"');
@@ -458,12 +544,12 @@ describe('who may receive, and who may read what', () => {
       seed: (qc) =>
         qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN, RECEIVED_THEN_OUT])),
     });
-    expect(rowOf(html, 'withCaptain')).toContain(RECEIVE_LABEL);
+    expect(rowOf(html, 'pickedUp')).toContain(RECEIVE_LABEL);
     expect(html).not.toContain('data-shipment-log=');
     expect(html).not.toContain('data-shipment-receipt-view');
     // A green row has nothing left for him to do: a dash in the actions' place, not an empty box.
     expect(rowOf(html, 'received')).not.toContain('data-row-actions="shipment"');
-    expect(rowOf(html, 'withCaptain')).toContain('بنك الأهلي');
+    expect(rowOf(html, 'pickedUp')).toContain('بنك الأهلي');
     expect(html).toContain('دولار');
   });
 
@@ -557,12 +643,20 @@ describe('what the page hands the board — the lines a refactor could quietly u
 
   it('offers the vault’s ✓ only to whoever may receive, and only on a row still outside the vault', () => {
     expect(PAGE).toContain("const canReceive = can('operationsVault.receive');");
+    // `mayReceive` — a yellow row: outside the vault, and somebody collected it (Round 10).
     expect(PAGE).toContain('rowAction={canReceive ? receiveAction : undefined}');
     expect(PAGE).toMatch(
       /mayReceive\(row\) \? \(\s*<button[\s\S]*?onClick=\{\(\) => setReceiving\(row\)\}/,
     );
     expect(PAGE).toContain("className={actionTone('status')}");
     expect(PAGE).toContain('<ReceiveIntoVaultDialog shipment={receiving}');
+  });
+
+  it('turns on the board’s «إلغاء استلام الخزينة» — the board gates it on its own grant', () => {
+    expect(PAGE).toMatch(/^\s+canCancelReceipt$/m);
+    expect(BOARD).toContain(
+      "const canCancel = canCancelReceipt && can('operationsVault.cancelReceipt');",
+    );
   });
 
   it('says a refusal in the table’s place, and feeds the board nothing beside it', () => {

@@ -5,7 +5,13 @@
 // هتبقى اخضر عند الخزنة وعند العمليات».
 import { describe, expect, it } from 'vitest';
 import {
+  OPERATIONS_RECEIPT_CANCEL_REASON_MAX,
+  OPERATIONS_RECEIPT_CANCEL_REASON_MIN,
   OPERATIONS_SECURED_STAGES,
+  OPERATIONS_SHIPMENT_STATUSES,
+  OPERATIONS_SHIPMENT_TYPES,
+  isOperationsShipmentLocked,
+  type OperationsSecuredPickedUpBy,
   type OperationsShipmentStatus,
   type OperationsShipmentType,
 } from '@ecms/contracts';
@@ -14,7 +20,11 @@ import {
   SECURED_SCREEN_STAGES,
   SECURED_STAGE_TINT,
   boardRowTint,
+  isLockedRow,
   offersDeliveryToggle,
+  offersReceiptCancel,
+  pickupToggleOf,
+  receiptCancelReasonProblem,
   shownStage,
 } from './secured-stage';
 
@@ -26,6 +36,12 @@ describe('SECURED_STAGE_TINT — white, yellow with the captain, green in the va
   it('turns it yellow once the captain has it — the daily rows’ own yellow', () => {
     expect(SECURED_STAGE_TINT.withCaptain).toBe(rowTint('captain'));
     expect(SECURED_STAGE_TINT.withCaptain).toMatch(/amber|yellow/);
+  });
+
+  // «لو العمليات تم الاستلام من العمليات وهتبقى صفر بس»: the desk's pickup is the same yellow — the
+  // badge's glyph tells the two apart, not the row's colour.
+  it('turns it the same yellow once the Operations desk confirmed collecting it', () => {
+    expect(SECURED_STAGE_TINT.withOperations).toBe(SECURED_STAGE_TINT.withCaptain);
   });
 
   // «هتبقى اخضر عند الخزنة وعند العمليات» — the same green the desk's ✓ gives a daily row.
@@ -171,6 +187,7 @@ describe('SECURED_SCREEN_STAGES — what the secured screen’s «الحالة»
     expect([...SECURED_SCREEN_STAGES]).toEqual([
       'awaitingPickup',
       'withCaptain',
+      'withOperations',
       'inVault',
       'dispatched',
     ]);
@@ -206,5 +223,101 @@ describe('offersDeliveryToggle — the ✓ only where the server takes it', () =
   it('is not offered while the محصنة is on its way to the vault, or in it', () => {
     expect(offersDeliveryToggle(row('secured', 'draft'))).toBe(false);
     expect(offersDeliveryToggle(row('secured', 'inVault'))).toBe(false);
+  });
+});
+
+// ── Round 10 ─────────────────────────────────────────────────────────────────────────────────────
+// «فى شاشة المحصنات ممكن القائد اللى يعمل صح انه استلم او العمليات … الشاشه بتاعت استلام الخزينة لما
+// تعمل صح ميقدر حد من القادة او العمليات او الخزنه يعدل عليها … بس صلاحية خاصة تقدر تلغى استلام الخزينة».
+
+describe('isLockedRow — no edit once the vault has received it, exactly the server’s lock', () => {
+  it('locks a محصنة in the vault, on the road and delivered — never one before the vault', () => {
+    expect(isLockedRow({ shipmentType: 'secured', status: 'draft' })).toBe(false);
+    expect(isLockedRow({ shipmentType: 'secured', status: 'inVault' })).toBe(true);
+    expect(isLockedRow({ shipmentType: 'secured', status: 'dispatched' })).toBe(true);
+    expect(isLockedRow({ shipmentType: 'secured', status: 'completed' })).toBe(true);
+  });
+
+  it('never locks a daily shipment, delivered or not', () => {
+    expect(isLockedRow({ shipmentType: 'daily', status: 'draft' })).toBe(false);
+    expect(isLockedRow({ shipmentType: 'daily', status: 'completed' })).toBe(false);
+  });
+
+  // ONE rule on both sides: the screen offers nothing the server would refuse, and hides nothing it
+  // would take — for every type and status the contract can produce.
+  it('agrees with the contract’s own rule — the one the API enforces — on every type and status', () => {
+    for (const shipmentType of OPERATIONS_SHIPMENT_TYPES) {
+      for (const status of OPERATIONS_SHIPMENT_STATUSES) {
+        expect(isLockedRow({ shipmentType, status }), `${shipmentType} ${status}`).toBe(
+          isOperationsShipmentLocked({ shipmentType, status }),
+        );
+      }
+    }
+  });
+});
+
+describe('pickupToggleOf — the desk’s pickup ✓ and its undo, until the vault', () => {
+  const row = (
+    status: OperationsShipmentStatus,
+    pickedUpBy: OperationsSecuredPickedUpBy | null,
+    shipmentType: OperationsShipmentType = 'secured',
+  ) => ({ shipmentType, status, pickedUpBy });
+
+  it('confirms on a white محصنة — nobody has collected it yet', () => {
+    expect(pickupToggleOf(row('draft', null))).toBe('confirm');
+  });
+
+  // «لو القائد عمل صح ممكن العمليات تشيلها بس لو العمليات عملت صح القائد مينفعش يشيلها»: the desk
+  // takes back its own ✓ AND the captain's; the captain's app has no undo at all.
+  it('undoes on a yellow one — the desk’s own ✓ and the captain’s alike', () => {
+    expect(pickupToggleOf(row('draft', 'operations'))).toBe('undo');
+    expect(pickupToggleOf(row('draft', 'captain'))).toBe('undo');
+  });
+
+  // «الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها»: never once the vault received it.
+  it('offers neither once the vault has received it — whoever collected it', () => {
+    for (const status of ['inVault', 'dispatched', 'completed'] as const) {
+      expect(pickupToggleOf(row(status, 'captain'))).toBeNull();
+      expect(pickupToggleOf(row(status, 'operations'))).toBeNull();
+    }
+  });
+
+  it('is not a daily shipment’s — a daily row has no pickup record', () => {
+    expect(pickupToggleOf(row('draft', null, 'daily'))).toBeNull();
+  });
+});
+
+describe('offersReceiptCancel — «إلغاء استلام الخزينة» only while it is in the vault', () => {
+  it('is offered on a محصنة in the vault', () => {
+    expect(offersReceiptCancel({ shipmentType: 'secured', status: 'inVault' })).toBe(true);
+  });
+
+  it('is not offered before the vault, nor once it has left it', () => {
+    for (const status of ['draft', 'dispatched', 'completed'] as const) {
+      expect(offersReceiptCancel({ shipmentType: 'secured', status })).toBe(false);
+    }
+    expect(offersReceiptCancel({ shipmentType: 'daily', status: 'completed' })).toBe(false);
+  });
+});
+
+describe('receiptCancelReasonProblem — the reason is required, within the server’s bounds', () => {
+  it('refuses an empty reason, and one shorter than the floor once trimmed', () => {
+    expect(receiptCancelReasonProblem('')).toBe('short');
+    expect(receiptCancelReasonProblem('   ')).toBe('short');
+    expect(
+      receiptCancelReasonProblem(` ${'خ'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MIN - 1)} `),
+    ).toBe('short');
+  });
+
+  it('takes a reason from the floor to the ceiling, counted without its spaces at the ends', () => {
+    expect(receiptCancelReasonProblem('خ'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MIN))).toBeNull();
+    expect(receiptCancelReasonProblem('  أُدخلت بالخطأ  ')).toBeNull();
+    expect(receiptCancelReasonProblem('خ'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MAX))).toBeNull();
+  });
+
+  it('refuses one longer than the ceiling', () => {
+    expect(receiptCancelReasonProblem('خ'.repeat(OPERATIONS_RECEIPT_CANCEL_REASON_MAX + 1))).toBe(
+      'long',
+    );
   });
 });

@@ -640,7 +640,7 @@ class OperationsShipmentService {
     );
 
     // Both legs of every row, in one read: the crew a row prints is the leg it is about now, and a
-    // secured row's stage reads its pickup leg whichever leg it prints.
+    // pre-Round-10 secured row with no pickup record reads its pickup leg (securedPickupOf).
     const legs = await operationsShipmentAssignmentRepository.findByShipments(
       docs.map((d) => String(d._id)),
     );

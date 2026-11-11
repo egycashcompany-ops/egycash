@@ -2,9 +2,9 @@
 // audit rows to the entries the screen prints.
 //
 // The audit trail already holds every act: the shipment's own rows (create, edit, the desk's ✓ and
-// its undo, the desk's pickup ✓ and its undo, the receipt photo, delete, restore, a cancelled vault
-// receipt), its legs' rows (`shipmentAssignment` — the crew,
-// the route order, the captain's execution on the mobile app) and its vault custody's rows. What it
+// its undo, the pickup record's ✓ and its undo, the receipt photo, delete, restore, a cancelled
+// vault receipt), its legs' rows (`shipmentAssignment` — the crew, the route order, the captain's
+// execution on the mobile app) and its vault custody's rows. What it
 // does NOT hold is anything a person can read: ids, minor units, ISO instants. This file turns each
 // row into one entry of a closed `kind`, with every value resolved to the name, code, day or
 // amount the board itself would print — so the browser translates a kind and a field key, and
@@ -227,6 +227,10 @@ const printed = (
 const changeOf = (row: AuditLogDto, field: string) =>
   row.changes.find((change) => change.field === field);
 
+/** A pickup record's `by` as the code the screen labels — anything else is no value. */
+const pickedUpBy = (value: unknown): string | null =>
+  value === 'captain' || value === 'operations' ? value : null;
+
 /**
  * What a move of the shipment's STATUS meant. Only five moves exist (shipment-status.ts, the vault
  * flow and Round 10's cancelled receipt), and each is its own act on the screen — the desk's ✓ is
@@ -283,11 +287,20 @@ const shipmentEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | nul
               : 'receiptImageReplaced';
         return { kind, changes: [] };
       }
-      // Round 10 — the desk's pickup ✓ («تم الاستلام من العمليات») or its undo. The instant and the
-      // user are the entry's own time and actor, so nothing more is printed.
-      const pickup = changeOf(row, 'pickupConfirmedAt');
+      // Round 10 — the pickup record written («تم الاستلام من العمليات», or the captain's ✓ from
+      // the app) or cleared by the desk's undo. Only WHO is printed — on the ✓ who confirmed it, on
+      // the undo whose ✓ was removed; the instant and the user are the entry's own time and actor.
+      const pickup = changeOf(row, 'pickedUpBy');
       if (pickup !== undefined) {
-        return { kind: pickup.new == null ? 'pickupUndone' : 'pickupConfirmed', changes: [] };
+        return pickup.new == null
+          ? {
+              kind: 'pickupUndone',
+              changes: [{ field: 'pickedUpBy', old: pickedUpBy(pickup.old), new: null }],
+            }
+          : {
+              kind: 'pickupConfirmed',
+              changes: [{ field: 'pickedUpBy', old: null, new: pickedUpBy(pickup.new) }],
+            };
       }
       return { kind: 'edited', changes: printed(row, SHIPMENT_FIELDS, names) };
     }
@@ -347,10 +360,11 @@ const actorNameOf = (row: AuditLogDto): string | null => {
  *
  * ONE ACT, ONE ENTRY. Receiving a secured shipment into the vault writes two rows in one request —
  * the custody taken, then the shipment's status — and so do dispatching it and cancelling its
- * receipt (Round 10). Shown as two, the
- * same act would appear twice. So a custody row is folded into the shipment's entry of the SAME
- * kind written by the SAME request (`requestId`): the entry keeps the shipment row's id and time
- * and gains the custody's details. A custody row with no such partner stands on its own.
+ * receipt (Round 10). Shown as two, the same act would appear twice. So a custody row is folded
+ * into the shipment's entry of the SAME kind written by the SAME request (`requestId`): the entry
+ * keeps the shipment row's id and time and gains the custody's details. A custody row with no
+ * such partner stands on its own. The captain's pickup ✓ in the app (Round 10) is the same story
+ * the other way round: the shipment's pickup record is folded into his leg's entry.
  */
 export const buildShipmentLogEntries = (
   rows: readonly AuditLogDto[],
@@ -389,6 +403,26 @@ export const buildShipmentLogEntries = (
   }
 
   const folded = new Set<OperationsShipmentLogEntryDto>();
+  // Round 10 — the captain's ✓ in the app is ONE act that writes two rows in one request: his leg
+  // moves to `pickedUp` and the shipment's pickup record is written as his. The leg's
+  // `executionPickedUp` entry already says it (with the leg), so the record's `pickupConfirmed` by
+  // 'captain' is folded into it rather than shown twice. Without such a partner it stands alone.
+  for (const { row, entry } of drafted) {
+    if (
+      entry.kind !== 'pickupConfirmed' ||
+      row.requestId === null ||
+      entry.changes[0]?.new !== 'captain'
+    ) {
+      continue;
+    }
+    const partner = drafted.some(
+      (other) =>
+        other.row.entityRef.entityType === SHIPMENT_LOG_ENTITY.leg &&
+        other.row.requestId === row.requestId &&
+        other.entry.kind === 'executionPickedUp',
+    );
+    if (partner) folded.add(entry);
+  }
   for (const { row, entry } of drafted) {
     if (row.entityRef.entityType !== SHIPMENT_LOG_ENTITY.custody || row.requestId === null)
       continue;

@@ -16,12 +16,37 @@
 // controls (`toolbarExtras`); and it turns off what the treasury does not do there
 // (`canEditRows`).
 //
+// ROUND 10 — THE PICKUP ✓, THE LOCK, THE CANCELLED RECEIPT. «فى شاشة المحصنات ممكن القائد اللى يعمل صح
+// انه استلم او العمليات … وهتبقى صفر بس … الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او
+// العمليات او الخزنه يعدل عليها», and «بس صلاحية خاصة تقدر تلغى استلام الخزينة». Three of the board's
+// own acts, each the server's rule read from the row (`lib/secured-stage.ts`):
+//
+//   · the desk's pickup ✓ (`canConfirmPickup` — the secured screen's): on a white محصنة it says
+//     «تم الاستلام من العمليات» and the row turns yellow; pressed on a yellow one — the desk's own ✓
+//     or the captain's from the app — it takes the ✓ back («لو القائد عمل صح ممكن العمليات تشيلها»;
+//     the captain's is confirmed first, it is his act). Never once the vault has received it;
+//   · the LOCK, on every board: a محصنة the vault has received offers no edit, no delete and no
+//     receipt-photo change (`isLockedRow`) — a lock in the pen's place says why;
+//   · «إلغاء استلام الخزينة» (`canCancelReceipt` — the secured screen's and the vault's receive
+//     screen's), for whoever holds the special grant, on a row IN the vault: the row goes back to
+//     yellow (`CancelVaultReceiptDialog`, with its reason).
+//
+// The ✓'s place in the row's actions is ONE square (the "act" slot): the desk's delivery ✓ on the
+// day board, and elsewhere whichever act the row is at — the pickup ✓ on a draft محصنة, the vault's
+// ✓ (the page's `rowAction`), the cancelled receipt on one in the vault. A screen that has acts
+// keeps the square, empty, on a row with none, so «السجل» and the bin stand where they stand on
+// every row.
+//
+// FOR «صرف الخزينة» (Round 10, its page rebuilt on this board): one delivery-day picker is one entry
+// of `datePickers`; the page's own acts on a row come through `rowAction`, its controls through
+// `toolbarExtras`; and `selection` ticks rows for an act over several at once — a release.
+//
 // THE STATUS, ON EVERY SCREEN. A daily row says who delivered it — «لم يتم التسليم», then «تم
 // التسليم» on a yellow row (the crew captain, from the mobile app) or a green one (the desk's ✓).
 // A secured row says its STAGE (`securedStage`, the server's; `lib/secured-stage.ts`): «لم يتم
-// التسليم» white, «تم الاستلام من القائد» yellow, «بالخزينة» green, «خرجت للتسليم» blue, «تم
-// التسليم» green — on the secured screen, and on the day board and the history alike, where a
-// محصنة due for delivery is listed whatever its stage.
+// التسليم» white, «تم الاستلام من القائد» or «تم الاستلام من العمليات» yellow, «بالخزينة» green,
+// «خرجت للتسليم» blue, «تم التسليم» green — on the secured screen, and on the day board and the
+// history alike, where a محصنة due for delivery is listed whatever its stage.
 //
 // WHAT THE PAGES OWN, AND WHAT THIS OWNS. A page owns its period — which rows the server is asked
 // for (today, or from–to), the history's two date pickers and what a reset does to them — and
@@ -66,11 +91,12 @@ import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { ACTION_GROUP, PRESSED, actionTone } from '../../fleet/components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../../fleet/components/row-action-icons';
 import { DARK_TABLE } from '../../fleet/pages/VehiclesListPage';
-import { CheckIcon, HistoryIcon } from '../../../shared/ui/icons';
+import { CheckIcon, HistoryIcon, LockIcon } from '../../../shared/ui/icons';
 import {
   useDeleteOperationsShipment,
   useOperationsBanks,
   useOperationsCurrencies,
+  useSetSecuredPickup,
   useSetShipmentReceived,
 } from '../api/operations-queries';
 import {
@@ -93,7 +119,10 @@ import {
 import {
   SECURED_SCREEN_STAGES,
   boardRowTint,
+  isLockedRow,
   offersDeliveryToggle,
+  offersReceiptCancel,
+  pickupToggleOf,
   shownStage,
 } from '../lib/secured-stage';
 import {
@@ -105,6 +134,7 @@ import {
 import { shipmentCaption } from '../lib/shipment-log';
 import { DeliveryStatusBadge, SecuredStageBadge, ShipmentTypeBadge } from './ShipmentBadges';
 import { BoardFigurePill, FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
+import { CancelVaultReceiptDialog, type CancelReceiptTarget } from './CancelVaultReceiptDialog';
 import {
   ShipmentReceiptImageCell,
   ShipmentReceiptImagePreviewDialog,
@@ -206,6 +236,24 @@ export interface BoardDatePicker {
   onChange: (value: string) => void;
 }
 
+/**
+ * Rows ticked for an act over several at once — «صرف الخزينة»'s release, which takes one crew's
+ * shipments in one call. The PAGE holds the ticks (it acts on them) and decides which rows may be
+ * ticked; the board draws a box at the start of each row. Only rows SHOWN are ever drawn ticked:
+ * `toolbarExtras` is handed the rows shown, so a page acts on its ticks among those — never on a
+ * row a filter has hidden.
+ */
+export interface BoardSelection<T> {
+  /** The ids ticked. */
+  selected: ReadonlySet<string>;
+  /** A row's box was ticked or unticked. */
+  onToggle: (row: T, selected: boolean) => void;
+  /** Whether this row may be ticked at all (a dash in its place otherwise). Every row by default. */
+  selectable?: (row: T) => boolean;
+  /** The row's box's name, for a screen reader and on hover («تحديد الشحنة …»). */
+  label: (row: T) => string;
+}
+
 export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   search: [sp, setSp],
   shipments,
@@ -231,6 +279,9 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   statusNote,
   tintOf,
   toolbarExtras,
+  canConfirmPickup = false,
+  canCancelReceipt = false,
+  selection,
 }: {
   /** The page's `useSearchParams()` — the filters live in the URL beside the page's period. */
   search: [URLSearchParams, SetURLSearchParams];
@@ -299,7 +350,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   deletedShipments?: { range: HistoryRange; enabled: boolean };
   /**
    * The row's edit and delete, and its receipt image's upload / replace / delete, are offered here
-   * — still subject to the permissions. Every screen but one: on the vault's receive queue the
+   * — still subject to the permissions, and to the row's lock (a محصنة the vault has received,
+   * `isLockedRow`, on every screen). Every screen but one: on the vault's receive queue the
    * treasury RECEIVES; it does not edit the desk's shipments there («NO edit/delete»). The image
    * can still be looked at.
    */
@@ -330,6 +382,23 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
    * as well, so what must wait for one is the page's to say.
    */
   toolbarExtras?: (shown: readonly T[]) => ReactNode;
+  /**
+   * Round 10 — the desk's pickup ✓ is offered here, at the ✓'s place: the secured screen's («فى شاشة
+   * المحصنات ممكن القائد اللى يعمل صح انه استلم او العمليات»). On a white محصنة it confirms collecting
+   * it («تم الاستلام من العمليات», yellow); pressed on a yellow one — whoever's ✓ it was — it takes it
+   * back, until the vault receives (`pickupToggleOf`). Still subject to the permission
+   * (`operationsShipment.complete`, the desk's ✓ grant).
+   */
+  canConfirmPickup?: boolean;
+  /**
+   * Round 10 — «إلغاء استلام الخزينة» is offered here, at the ✓'s place, on a row IN the vault
+   * (`offersReceiptCancel`): the secured screen's green rows and the vault's receive screen's. Still
+   * subject to its own special grant (`operationsVault.cancelReceipt`), which no role holds unless an
+   * administrator gives it.
+   */
+  canCancelReceipt?: boolean;
+  /** Rows ticked for an act over several (see `BoardSelection`) — a box at each row's start. */
+  selection?: BoardSelection<T>;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -344,6 +413,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
 
   const setReceived = useSetShipmentReceived();
+  const setPickup = useSetSecuredPickup();
   const remove = useDeleteOperationsShipment();
 
   // The filters live in the URL so the board is shareable and survives a reload — and so the
@@ -369,6 +439,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const [othersOpen, setOthersOpen] = useState(false);
   const [previewingReceipt, setPreviewingReceipt] = useState<OperationsShipmentDto | null>(null);
   const [logOf, setLogOf] = useState<ShipmentLogTarget | null>(null);
+  const [cancelling, setCancelling] = useState<CancelReceiptTarget | null>(null);
 
   const bankNameOf = (id: string): string =>
     banks.data?.items.find((bank) => bank.id === id)?.opsName ?? '';
@@ -422,6 +493,12 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // is reading it; the day board offers both, to whoever holds the permission.
   const canAdd = canCreate && can('operationsShipment.create');
   const canComplete = canToggleReceived && can('operationsShipment.complete');
+  // Round 10 — the screen offers them, and the reader holds the grant: the desk's pickup ✓ rides the
+  // desk's ✓ grant; the cancelled receipt is a special grant of its own.
+  const canPickup = canConfirmPickup && can('operationsShipment.complete');
+  const canCancel = canCancelReceipt && can('operationsVault.cancelReceipt');
+  // The ✓'s square holds an act on this screen other than the day board's ✓ (see the head).
+  const offersRowAct = rowAction !== undefined || canPickup || canCancel;
 
   const toggleReceived = async (shipment: OperationsDayBoardShipmentDto): Promise<void> => {
     try {
@@ -433,6 +510,75 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
     } catch {
       toast.error(t('operations.shipment.receiveFailed'));
     }
+  };
+
+  /**
+   * The desk's pickup ✓ or its undo, by the row (`pickupToggleOf`). Taking back the CAPTAIN's ✓ is
+   * confirmed first: it is his act from the app, and the row goes white until someone confirms the
+   * pickup again. The desk's own ✓ toggles back as the day board's ✓ does. A refusal is worded by
+   * the global notifier (`errors.ts`) and the boards are re-read either way (`useSetSecuredPickup`).
+   */
+  const togglePickup = (row: T): void => {
+    const undo = pickupToggleOf(row) === 'undo';
+    if (
+      undo &&
+      row.pickedUpBy === 'captain' &&
+      !window.confirm(t('operations.secured.pickup.confirmUndoCaptain'))
+    ) {
+      return;
+    }
+    setPickup.mutate({ id: row.id, pickedUp: !undo, body: { version: row.version } });
+  };
+
+  /**
+   * The board's own act on a secured row at the ✓'s place (Round 10), or null: the pickup ✓ on a
+   * draft محصنة (white: confirm; yellow: undo, pressed), the cancelled receipt on one in the vault.
+   */
+  const securedActOf = (row: T): ReactNode => {
+    const toggle = canPickup ? pickupToggleOf(row) : null;
+    if (toggle !== null) {
+      // «إستلام» as a toggle, the day board's ✓ look: pressed once somebody collected it. Its NAME
+      // stays «تأكيد الاستلام من البنك» either way and `aria-pressed` carries the state (the day
+      // board's rule); the tooltip says what a click does next — and whose ✓ an undo removes.
+      const pressed = toggle === 'undo';
+      return (
+        <button
+          type="button"
+          data-secured-pickup={row.id}
+          data-picked-up-by={row.pickedUpBy ?? 'none'}
+          className={cn(actionTone('status'), pressed && PRESSED)}
+          aria-pressed={pressed}
+          aria-label={t('operations.secured.pickup.toggle')}
+          title={t(
+            !pressed
+              ? 'operations.secured.pickup.confirm'
+              : row.pickedUpBy === 'captain'
+                ? 'operations.secured.pickup.undoCaptain'
+                : 'operations.secured.pickup.undo',
+          )}
+          disabled={setPickup.isPending}
+          onClick={() => togglePickup(row)}
+        >
+          <CheckIcon className="h-4 w-4" />
+        </button>
+      );
+    }
+    if (canCancel && offersReceiptCancel(row)) {
+      return (
+        <button
+          type="button"
+          data-cancel-receipt-open={row.id}
+          aria-haspopup="dialog"
+          className={actionTone('reopen')}
+          aria-label={t('operations.secured.cancelReceipt.action')}
+          title={t('operations.secured.cancelReceipt.action')}
+          onClick={() => setCancelling({ row, caption: shipmentCaption(row, bankNameOf, t) })}
+        >
+          <BoardIcon d={SHIPMENT_PATH.unlock} className="h-4 w-4" />
+        </button>
+      );
+    }
+    return null;
   };
 
   const removeShipment = async (shipment: OperationsDayBoardShipmentDto): Promise<void> => {
@@ -447,6 +593,26 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   };
 
   const everyColumn: Column<T>[] = [
+    {
+      // A page's ticks (`selection`) — first, at the row's start. Dropped below when there are none.
+      key: 'select',
+      header: t('operations.board.select'),
+      align: 'center',
+      render: (row) =>
+        selection === undefined || selection.selectable?.(row) === false ? (
+          DASH
+        ) : (
+          <input
+            type="checkbox"
+            data-board-select={row.id}
+            className="h-4 w-4 cursor-pointer rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-900"
+            checked={selection.selected.has(row.id)}
+            onChange={(e) => selection.onToggle(row, e.target.checked)}
+            aria-label={selection.label(row)}
+            title={selection.label(row)}
+          />
+        ),
+    },
     {
       key: 'vehicle',
       header: t('operations.board.vehicle'),
@@ -641,12 +807,36 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       render: (row) => {
         // The page's own act on this row (the vault's ✓), or null where it has none here.
         const own = rowAction?.(row) ?? null;
+        // …and the board's own (Round 10): the pickup ✓ or the cancelled receipt. Together, the
+        // row's act at the ✓'s place — null when it has neither.
+        const securedAct = securedActOf(row);
+        const act =
+          own === null && securedAct === null ? null : (
+            <>
+              {own}
+              {securedAct}
+            </>
+          );
+        // «ميقدر حد … يعدل عليها»: a محصنة the vault has received is LOCKED — no edit, no delete
+        // (`isLockedRow`, the server's own rule). A lock in the pen's place says why; the bin's
+        // square stays, empty, so «السجل» does not move.
+        const locked = isLockedRow(row);
         // Nothing at all to do on this row (a vault-only treasurer's green row): a dash, as an empty
         // cell reads — not an empty box.
-        if (!canEdit && !canComplete && !canViewLog && !canDelete && own === null) return DASH;
+        if (!canEdit && !canComplete && !canViewLog && !canDelete && act === null) return DASH;
         return (
           <span className={ACTION_GROUP} data-row-actions="shipment">
-            {canEdit && (
+            {canEdit && locked && (
+              <span
+                data-row-locked={row.id}
+                title={t('operations.board.locked')}
+                className={cn(actionTone('history'), 'cursor-help opacity-60')}
+              >
+                <LockIcon className="h-4 w-4" aria-hidden />
+                <span className="sr-only">{t('operations.board.locked')}</span>
+              </span>
+            )}
+            {canEdit && !locked && (
               <button
                 type="button"
                 className={actionTone('edit')}
@@ -683,11 +873,12 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             {canComplete && !offersDeliveryToggle(row) && (
               <span aria-hidden className={cn(actionTone('status'), 'invisible')} />
             )}
-            {/* The page's own act, at the ✓'s place — the vault's ✓ on its receive queue. A row it
-              has none for keeps its square, empty, while «السجل» or the bin follow, so they stand
-              where they stand on every row (as the desk ✓'s square above). */}
-            {rowAction !== undefined &&
-              (own ??
+            {/* The row's act, at the ✓'s place — the vault's ✓ on its receive queue (the page's),
+              the pickup ✓ or the cancelled receipt (the board's). A row with none keeps its square,
+              empty, while «السجل» or the bin follow, so they stand where they stand on every row
+              (as the desk ✓'s square above). */}
+            {offersRowAct &&
+              (act ??
                 ((canViewLog || canDelete) && (
                   <span aria-hidden className={cn(actionTone('status'), 'invisible')} />
                 )))}
@@ -708,7 +899,10 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
                 <HistoryIcon className="h-4 w-4" />
               </button>
             )}
-            {canDelete && (
+            {canDelete && locked && (
+              <span aria-hidden className={cn(actionTone('delete'), 'invisible')} />
+            )}
+            {canDelete && !locked && (
               <button
                 type="button"
                 className={actionTone('delete')}
@@ -727,13 +921,15 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // The delivery-date column is the secured screen's alone, and «النوع» everyone else's (`kind`);
   // both are declared in their places in the list above, so the columns read in one order on
   // every screen.
+  // The ticks' column is the page's that hands in a `selection` («صرف الخزينة»), and no other's.
   const boardColumns = everyColumn.filter(
-    (column) => column.key !== (secured ? 'type' : 'deliveryDate'),
+    (column) =>
+      column.key !== (secured ? 'type' : 'deliveryDate') &&
+      (column.key !== 'select' || selection !== undefined),
   );
   // A screen that offers this reader nothing to do on a row (the vault queue, read by a treasurer
   // who may neither receive nor read the log) draws no actions column — not a column of empty boxes.
-  const offersRowActions =
-    canEdit || canComplete || canViewLog || canDelete || rowAction !== undefined;
+  const offersRowActions = canEdit || canComplete || canViewLog || canDelete || offersRowAct;
   const columns = offersRowActions
     ? boardColumns
     : boardColumns.filter((column) => column.key !== 'actions');
@@ -1161,6 +1357,10 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       </div>
 
       <ShipmentLogDialog target={logOf} onClose={() => setLogOf(null)} />
+
+      {canCancel && (
+        <CancelVaultReceiptDialog target={cancelling} onClose={() => setCancelling(null)} />
+      )}
 
       <ShipmentReceiptImagePreviewDialog
         open={previewingReceipt !== null}

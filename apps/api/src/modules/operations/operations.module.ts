@@ -204,10 +204,11 @@ export const operationsModule: ModuleManifest = {
   //
   // Round 10 adds ONE permission, `operationsVault.cancelReceipt`, on the existing vault page — the
   // owner's «صلاحية خاصة» that undoes a vault receipt — and new routes under the existing
-  // `/operations/secured` prefix (the desk's pickup ✓ and its undo on the EXISTING
-  // `operationsShipment.complete`, «صرف الخزينة» on the EXISTING `operationsVault.view`). No page and
-  // no collection; two fields on the shipment and three on the custody, all optional (no migration),
-  // and one custody index.
+  // `/operations/secured` prefix (the pickup ✓ and its undo on the EXISTING
+  // `operationsShipment.complete`, «صرف الخزينة»'s board on the EXISTING `operationsVault.view`).
+  // No page and no collection; ONE field on the shipment (the pickup record — absent on older rows,
+  // read as their pickup leg says, so no migration: secured-stage.ts) and three on the custody (all
+  // optional), and one custody index.
   version: '0.12.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,

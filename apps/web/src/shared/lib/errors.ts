@@ -38,6 +38,21 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // back. Nothing is lost — it is on its day again — and the deleted list refreshes behind it.
     OPERATIONS_SHIPMENT_NOT_DELETED:
       'This shipment is no longer deleted — it is already back on its day.',
+    // Round 10, the secured shipment's acts. «الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد من
+    // القادة او العمليات او الخزنه يعدل عليها»: once the vault has received it, an edit, a delete, a
+    // receipt photo or a pickup undo is refused — the screens offer none of them, so these reach a
+    // reader whose screen was read before the vault's ✓ (or a colleague's ✓, for the pickup).
+    OPERATIONS_SECURED_LOCKED:
+      'The vault has received this secured shipment — it can no longer be changed.',
+    // «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault's ✓ before any pickup ✓,
+    // or a pickup undo with no ✓ left to take back.
+    OPERATIONS_SECURED_NOT_PICKED_UP:
+      'Nobody has confirmed collecting this secured shipment from the bank yet — the captain or Operations confirms it first.',
+    OPERATIONS_SECURED_ALREADY_PICKED_UP:
+      'The pickup of this secured shipment is already confirmed — by its captain or by Operations.',
+    // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
+    OPERATIONS_SECURED_NOT_IN_VAULT:
+      'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -72,6 +87,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION:
       'لا يمكن أن يسبق تاريخ التسليم تاريخ الاستلام — اختر اليوم نفسه أو يومًا بعده.',
     OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
+    OPERATIONS_SECURED_LOCKED: 'استلمت الخزينة هذه المحصنة، فلم يعد تغييرها ممكنًا.',
+    OPERATIONS_SECURED_NOT_PICKED_UP:
+      'لم يُؤكَّد استلام هذه المحصنة من البنك بعد — يؤكده القائد أو العمليات أولًا.',
+    OPERATIONS_SECURED_ALREADY_PICKED_UP:
+      'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
+    OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

@@ -34,6 +34,12 @@ export const SHIPMENT_PATH = {
   ],
   // The log's entries that no drawing above says.
   check: ['M5 13l4 4L19 7'],
+  // An open padlock — the vault's lock (`PATH.lock`) with its shackle lifted: a cancelled vault
+  // receipt (Round 10), in the log and on the row's act that cancels it.
+  unlock: [
+    'M5 11h14a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7a2 2 0 012-2z',
+    'M7 11V7a5 5 0 019.9-1',
+  ],
   checkCircle: ['M9 12l2 2 4-4', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
   undo: ['M9 14L4 9l5-5', 'M4 9h10.5a5.5 5.5 0 010 11H11'],
   play: ['M7 4.5v15l12-7.5z'],

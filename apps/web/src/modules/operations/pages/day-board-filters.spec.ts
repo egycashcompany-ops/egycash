@@ -144,9 +144,12 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
   it('is the order of the columns themselves', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | (قيمة الشحنة) | قائد الطاقم | التاريخ |
     // (تاريخ التسليم — the secured screen's) | النوع | الحالة | ملاحظات — the amount and the delivery
-    // date have nothing to type, and the status column is filtered by «التسليم» or the stage.
+    // date have nothing to type, and the status column is filtered by «التسليم» or the stage. The
+    // ticks' box (Round 10, a page that hands in `selection` — «صرف الخزينة») comes before them all
+    // and has nothing to filter by.
     const columns = [...BOARD.matchAll(/^ {6}key: '(\w+)',$/gm)].map((m) => m[1]);
     expect(columns).toEqual([
+      'select',
       'vehicle',
       'bank',
       'origin',

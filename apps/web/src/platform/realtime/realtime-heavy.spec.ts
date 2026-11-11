@@ -237,6 +237,16 @@ describe('the registry’s heavy topics and stale-only keys', () => {
       'dayBoard',
       'vaultQueue',
     ]);
+    // «صرف الخزينة» (Round 10): every محصنة in the vault, refetched like the queue — and reached by
+    // the vault's own topic, which carries a receipt, a cancelled receipt and a release.
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'securedDispatch', { date: 'all' }])).toBe(
+      false,
+    );
+    expect(keysForTopic('operations.vaultCustody')).toContainEqual([
+      'operations',
+      'dayBoard',
+      'securedDispatch',
+    ]);
   });
 });
 

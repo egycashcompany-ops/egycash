@@ -251,18 +251,20 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
     expect(entries[1]?.changes).toEqual([]);
   });
 
-  // Round 10 — «تم الاستلام من العمليات», its undo, and the vault's receipt cancelled with a reason.
-  it('reads the desk pickup ✓, its undo and a cancelled vault receipt as their own acts', () => {
+  // Round 10 — the pickup record («تم الاستلام من العمليات» / من القائد), its undo, and the vault's
+  // receipt cancelled with a reason.
+  it('reads the pickup ✓, its undo and a cancelled vault receipt as their own acts — saying WHO', () => {
     const custody = (action: AuditLogDto['action'], changes: AuditLogDto['changes'], req: string) =>
       row(SHIPMENT_LOG_ENTITY.custody, CUSTODY, action, changes, req);
     const entries = build([
       shipmentRow('update', [
-        { field: 'pickupConfirmedAt', old: null, new: '2026-11-11T08:00:00.000Z' },
-        { field: 'pickupConfirmedById', old: null, new: oid(99) },
+        { field: 'pickedUpBy', old: null, new: 'operations' },
+        { field: 'pickedUpAt', old: null, new: '2026-11-11T08:00:00.000Z' },
       ]),
+      // The desk takes a CAPTAIN's ✓ back — the entry says whose it was.
       shipmentRow('update', [
-        { field: 'pickupConfirmedAt', old: '2026-11-11T08:00:00.000Z', new: null },
-        { field: 'pickupConfirmedById', old: oid(99), new: null },
+        { field: 'pickedUpBy', old: 'captain', new: null },
+        { field: 'pickedUpAt', old: '2026-11-11T07:00:00.000Z', new: null },
       ]),
       custody('delete', [{ field: 'cancelReason', old: null, new: 'استلام بالخطأ' }], 'req-cancel'),
       shipmentRow(
@@ -276,11 +278,55 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
       ),
     ]);
     // ONE entry for the cancelled receipt — the custody's half is folded into the shipment's.
-    expect(entries.map((e) => e.kind)).toEqual(['pickupConfirmed', 'pickupUndone', 'receiptCancelled']);
-    // Who and when are the entry's own; no user id is ever printed.
-    expect(entries[0]?.changes).toEqual([]);
-    expect(entries[1]?.changes).toEqual([]);
+    expect(entries.map((e) => e.kind)).toEqual([
+      'pickupConfirmed',
+      'pickupUndone',
+      'receiptCancelled',
+    ]);
+    // Who and when are the entry's own; only whose ✓ it is, as a code, is printed — never a user id.
+    expect(entries[0]?.changes).toEqual([{ field: 'pickedUpBy', old: null, new: 'operations' }]);
+    expect(entries[1]?.changes).toEqual([{ field: 'pickedUpBy', old: 'captain', new: null }]);
     expect(entries[2]?.changes).toEqual([{ field: 'reason', old: null, new: 'استلام بالخطأ' }]);
+  });
+
+  it('the captain’s ✓ in the app is ONE entry — his leg’s — not a second pickupConfirmed beside it', () => {
+    const entries = build([
+      row(
+        SHIPMENT_LOG_ENTITY.leg,
+        LEG,
+        'update',
+        [{ field: 'executionStatus', old: 'active', new: 'pickedUp' }],
+        'req-app',
+      ),
+      shipmentRow(
+        'update',
+        [
+          { field: 'pickedUpBy', old: null, new: 'captain' },
+          { field: 'pickedUpAt', old: null, new: '2026-11-11T07:00:00.000Z' },
+        ],
+        'req-app',
+      ),
+    ]);
+    expect(entries.map((e) => e.kind)).toEqual(['executionPickedUp']);
+    // Without its leg's row (another request) the record's entry stands on its own.
+    const alone = build([
+      shipmentRow('update', [{ field: 'pickedUpBy', old: null, new: 'captain' }], 'req-x'),
+    ]);
+    expect(alone).toMatchObject([
+      { kind: 'pickupConfirmed', changes: [{ field: 'pickedUpBy', old: null, new: 'captain' }] },
+    ]);
+    // …and the DESK's ✓ is never folded, whatever shares its request.
+    const desk = build([
+      row(
+        SHIPMENT_LOG_ENTITY.leg,
+        LEG,
+        'update',
+        [{ field: 'executionStatus', old: 'active', new: 'pickedUp' }],
+        'req-y',
+      ),
+      shipmentRow('update', [{ field: 'pickedUpBy', old: null, new: 'operations' }], 'req-y'),
+    ]);
+    expect(desk.map((e) => e.kind)).toEqual(['executionPickedUp', 'pickupConfirmed']);
   });
 
   it('a cancelled receipt without the vault grant still says why — the reason is the shipment’s', () => {

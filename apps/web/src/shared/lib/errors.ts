@@ -53,6 +53,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
     OPERATIONS_SECURED_NOT_IN_VAULT:
       'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
+    // «صرف الخزينة» (Round 10): a delivery crew is planned on the shipment's own delivery day, and a
+    // release takes the shipments a vehicle was assigned. The screen offers only what fits; these
+    // reach a reader whose crew plan or list changed under the open dialog.
+    OPERATIONS_CREW_DAY_MISMATCH:
+      'That crew is not planned on this shipment’s delivery day — choose one of that day’s crews.',
+    OPERATIONS_CREW_CAPTAIN_MISMATCH: 'That captain is no longer on the chosen vehicle’s crew.',
+    OPERATIONS_DELIVERY_LEG_REQUIRED:
+      'A shipment has no delivery crew yet — assign its crew before releasing it.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -93,6 +101,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
+    OPERATIONS_CREW_DAY_MISMATCH:
+      'هذا الطاقم ليس مخططًا في يوم تسليم هذه الشحنة — اختر أحد أطقم ذلك اليوم.',
+    OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
+    OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

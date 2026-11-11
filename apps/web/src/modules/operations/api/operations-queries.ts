@@ -676,13 +676,24 @@ const securedDispatchBoardKey = (date: string | null): readonly unknown[] => [
  * «صرف الخزينة — كله يبقى موجود فى تاريخ يتفلتر»: `date` null lists every shipment in the vault,
  * a day lists that delivery day's. A 4xx (more rows than one screen may show, not allowed) is an
  * answer, not retried.
+ *
+ * `poll`: the reader hears no shipment signal (`VAULT_QUEUE_POLL_MS`, the receive queue's rule). A
+ * treasurer holding only the vault's grants hears the vault custody topic — a receipt, a cancelled
+ * receipt, a release — but NOT the delivery crew Operations assigns, which is announced on the
+ * shipment topics alone; and a crew is what a row waits for before it can go out.
  */
-export const useOperationsSecuredDispatchBoard = (date: string | null, enabled = true) =>
+export const useOperationsSecuredDispatchBoard = (
+  date: string | null,
+  enabled = true,
+  poll = false,
+) =>
   useQuery({
     queryKey: securedDispatchBoardKey(date === '' ? null : date),
     queryFn: () => api.getSecuredDispatchBoard(date === '' ? null : date),
     enabled,
     retry: retryUnless4xx,
+    refetchInterval: poll ? VAULT_QUEUE_POLL_MS : false,
+    refetchIntervalInBackground: false,
   });
 
 /** Exported for the cache tests — «صرف الخزينة» rides the board's subtree too. */
@@ -751,25 +762,37 @@ export const useCancelVaultReceipt = () => {
   });
 };
 
+/**
+ * «صرف الخزينة»'s assign dialog — the delivery crew of a محصنة in the vault. The dialog owns the
+ * refusal's message (declaring `onError` keeps the global notifier quiet, so it is said once), and
+ * a refusal re-reads as well as a success (`onSettled`): a STALE leg version or a shipment that
+ * left the vault meanwhile is a row the screen is still showing as it was.
+ */
 export const useAssignSecuredDelivery = () => {
   const invalidate = useSecuredInvalidation();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: AssignSecuredDeliveryLeg }) =>
       api.assignSecuredDelivery(id, body),
-    onSuccess: invalidate,
+    onSettled: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
+/**
+ * «صرف الخزينة»'s release — one vehicle's load per call. As the assignment: the dialog words a
+ * refusal, and a refusal re-reads too (a shipment dispatched by a colleague, a crew changed).
+ */
 export const useDispatchSecured = () => {
   const qc = useQueryClient();
   const invalidate = useSecuredInvalidation();
   return useMutation({
     mutationFn: (body: DispatchSecuredShipments) => api.dispatchSecured(body),
-    onSuccess: async () => {
+    onSettled: async () => {
       await invalidate();
       // Dispatch locks the crew row, so the board's state changed too.
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
     },
+    onError: formOwnsTheError,
   });
 };
 

@@ -81,6 +81,26 @@ describe('errorMessage', () => {
     }
     expect(new Set(words).size).toBe(words.length);
   });
+
+  // «صرف الخزينة» (Round 10) — its two dialogs say a refusal themselves (`errorMessage`): a crew
+  // from another day than the shipment's, a captain no longer on the van, a release of a shipment
+  // with no crew. Each in both languages, never the server's English.
+  it('words the dispatch screen’s crew and release refusals in both languages', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH,
+      ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH,
+      ErrorCodes.OPERATIONS_DELIVERY_LEG_REQUIRED,
+    ]) {
+      const refused = new ApiError(code, 'server english', 422);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+    }
+    expect(new Set(words).size).toBe(words.length);
+  });
 });
 
 describe('errorDiagnostic — a failure has to be findable in the API log', () => {

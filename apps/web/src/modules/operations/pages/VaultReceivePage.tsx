@@ -227,9 +227,10 @@ export const VaultReceivePage = (): JSX.Element => {
         data-vault-row={state}
         className={cn(
           'block text-[11px] text-slate-500 dark:text-slate-400',
-          // The view-only line may wrap — it is a sentence; a stamp keeps its one line.
+          // The view-only line may wrap — it is a sentence; a stamp keeps its one line. About a
+          // stamp's width, so it takes two lines rather than three beside the receipts' stamps.
           state === 'awaiting'
-            ? 'max-w-[11rem] whitespace-normal leading-tight'
+            ? 'min-w-[12rem] max-w-[14rem] whitespace-normal leading-tight'
             : 'whitespace-nowrap',
         )}
       >

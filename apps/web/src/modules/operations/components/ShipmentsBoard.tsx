@@ -39,7 +39,8 @@
 //
 // FOR «صرف الخزينة» (Round 10, its page rebuilt on this board): one delivery-day picker is one entry
 // of `datePickers`; the page's own acts on a row come through `rowAction`, its controls through
-// `toolbarExtras`; and `selection` ticks rows for an act over several at once — a release.
+// `toolbarExtras`; `selection` ticks rows for an act over several at once — a release; and
+// `deliveryNote` marks a row's «تاريخ التسليم» — late, or due out today.
 //
 // THE STATUS, ON EVERY SCREEN. A daily row says who delivered it — «لم يتم التسليم», then «تم
 // التسليم» on a yellow row (the crew captain, from the mobile app) or a green one (the desk's ✓).
@@ -232,6 +233,15 @@ export interface BoardDatePicker {
    * are two boxes of the same look a reader must not mix up.
    */
   showLabel?: boolean;
+  /**
+   * The box may be EMPTY, and empty narrows nothing — «صرف الخزينة»'s delivery day («كله يبقى موجود
+   * فى تاريخ يتفلتر»: every shipment in the vault until a day is chosen). While empty it writes its
+   * name where the browser would write «mm/dd/yyyy», which says nothing about what the box is for;
+   * once a day is in it — or while one is being typed — the day alone, the name staying its hover
+   * title and its screen-reader name. A long name beside a date does not fit the box (`showLabel`
+   * is for the history's short «من» and «إلى», which always hold a day).
+   */
+  optional?: boolean;
   value: string;
   onChange: (value: string) => void;
 }
@@ -277,6 +287,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   stages = SECURED_SCREEN_STAGES,
   rowAction,
   statusNote,
+  deliveryNote,
   tintOf,
   toolbarExtras,
   canConfirmPickup = false,
@@ -370,6 +381,11 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   rowAction?: ((row: T) => ReactNode) | undefined;
   /** A line under the row's «الحالة» badge — the vault queue's «استلمها القائد …» / «استُلمت …». */
   statusNote?: (row: T) => ReactNode;
+  /**
+   * A mark under the row's «تاريخ التسليم» (a secured board's column, `kind`) — «صرف الخزينة»'s
+   * «متأخرة» / «تسليمها اليوم», beside the day it is about rather than in another column.
+   */
+  deliveryNote?: (row: T) => ReactNode;
   /**
    * The row's colour, where a page colours by a rule of its own instead of the stage's
    * (`boardRowTint`) — the vault queue keeps a row it received today green even once it has left.
@@ -564,17 +580,19 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       );
     }
     if (canCancel && offersReceiptCancel(row)) {
+      // The way BACK from the vault's ✓: an undo arrow in the red of a heavy act — not an open
+      // lock, which beside the row's own lock (the pen's place) read as a second lock.
       return (
         <button
           type="button"
           data-cancel-receipt-open={row.id}
           aria-haspopup="dialog"
-          className={actionTone('reopen')}
+          className={actionTone('delete')}
           aria-label={t('operations.secured.cancelReceipt.action')}
           title={t('operations.secured.cancelReceipt.action')}
           onClick={() => setCancelling({ row, caption: shipmentCaption(row, bankNameOf, t) })}
         >
-          <BoardIcon d={SHIPMENT_PATH.unlock} className="h-4 w-4" />
+          <BoardIcon d={SHIPMENT_PATH.undo} className="h-4 w-4" />
         </button>
       );
     }
@@ -733,12 +751,24 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       key: 'deliveryDate',
       header: t('operations.shipment.deliveryDate'),
       // The secured screen's alone (`kind`) — see the filter after the list.
-      render: (row) =>
-        row.deliveryDate === null ? (
-          DASH
+      render: (row) => {
+        const day =
+          row.deliveryDate === null ? (
+            DASH
+          ) : (
+            <span className={FIGURE}>{row.deliveryDate.slice(0, 10)}</span>
+          );
+        // The page's mark under it, where it has one («صرف الخزينة»: late, or due today).
+        const note = deliveryNote?.(row);
+        return note === undefined || note === null ? (
+          day
         ) : (
-          <span className={FIGURE}>{row.deliveryDate.slice(0, 10)}</span>
-        ),
+          <div className="flex flex-col items-start gap-0.5">
+            {day}
+            {note}
+          </div>
+        );
+      },
     },
     {
       key: 'type',
@@ -1176,50 +1206,62 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
               place (the day board has no picker: it is always today). A date box draws its own
               format hint and ignores a placeholder, so its name is its title (on hover) and its
               aria-label. */}
-            {datePickers.map((picker) => (
-              <FilterWithIcon
-                key={picker.param}
-                icon={FILTER_ICON.calendar}
-                tone="text-cyan-600 dark:text-cyan-400"
-                // A box that writes its name measures itself (a size container), so the name shows
-                // only while the box has room for it AND the date — never over the digits.
-                className={cn(
-                  'w-36 shrink-0',
-                  picker.showLabel === true && '[container-type:inline-size]',
-                )}
-                datePicker={{ label: picker.label }}
-              >
-                <Input
-                  type="date"
-                  dir="ltr"
-                  density={TIGHT}
-                  aria-label={picker.label}
-                  title={picker.label}
-                  value={picker.value}
-                  onChange={(e) => picker.onChange(e.target.value)}
-                  // On an English page the date would start right after the calendar, where the
-                  // name is written: it goes to the box's far side instead, as on an Arabic page.
-                  // The browser pads a date's fields a pixel above and below, which stood the two
-                  // dates 2px taller than the boxes beside them in the one row.
+            {datePickers.map((picker) => {
+              // An optional box with no day in it (`optional`): its name in the day's place.
+              const blank = picker.optional === true && picker.value === '';
+              const named = picker.showLabel === true || blank;
+              return (
+                <FilterWithIcon
+                  key={picker.param}
+                  icon={FILTER_ICON.calendar}
+                  tone="text-cyan-600 dark:text-cyan-400"
+                  // A box that writes its name measures itself (a size container), so the name
+                  // shows only while the box has room for it AND the date — never over the digits.
+                  // A blank one gives the name up while a day is typed into it.
                   className={cn(
-                    'dark:[color-scheme:dark] [&::-webkit-datetime-edit-fields-wrapper]:py-0',
-                    picker.showLabel === true && '[[dir=ltr]_&]:text-right',
+                    'w-36 shrink-0',
+                    named && '[container-type:inline-size]',
+                    blank && '[&:has(input:focus)_[data-date-label]]:!hidden',
                   )}
-                />
-                {/* The date sits at the box's far side, so the name takes the free room beside the
-                    calendar — shown only from a box wide enough for both (the input already carries
-                    the name for a reader, and as its hover title). */}
-                {picker.showLabel === true && (
-                  <span
-                    aria-hidden
-                    data-date-label={picker.param}
-                    className="pointer-events-none absolute start-6 top-0 hidden h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400 [@container(min-width:8.75rem)]:flex"
-                  >
-                    {picker.label}
-                  </span>
-                )}
-              </FilterWithIcon>
-            ))}
+                  datePicker={{ label: picker.label }}
+                >
+                  <Input
+                    type="date"
+                    dir="ltr"
+                    density={TIGHT}
+                    aria-label={picker.label}
+                    title={picker.label}
+                    value={picker.value}
+                    onChange={(e) => picker.onChange(e.target.value)}
+                    // On an English page the date would start right after the calendar, where
+                    // the name is written: it goes to the box's far side instead, as on an Arabic
+                    // page. The browser pads a date's fields a pixel above and below, which stood
+                    // the two dates 2px taller than the boxes beside them in the one row.
+                    className={cn(
+                      'dark:[color-scheme:dark] [&::-webkit-datetime-edit-fields-wrapper]:py-0',
+                      picker.showLabel === true && '[[dir=ltr]_&]:text-right',
+                      // The browser's «mm/dd/yyyy» of an empty box, unseen until it is typed into.
+                      // The bar sets every box's text colour with `!important`, its dark rule as
+                      // `.dark .bar input`: `[&&]` (the class twice) outranks both.
+                      blank && '[&&:not(:focus)]:!text-transparent',
+                    )}
+                  />
+                  {/* The date sits at the box's far side, so the name takes the free room beside
+                      the calendar — shown only from a box wide enough for both (the input already
+                      carries the name for a reader, and as its hover title). A blank optional box
+                      shows it in the day's place. */}
+                  {named && (
+                    <span
+                      aria-hidden
+                      data-date-label={picker.param}
+                      className="pointer-events-none absolute start-6 top-0 hidden h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400 [@container(min-width:8.75rem)]:flex"
+                    >
+                      {picker.label}
+                    </span>
+                  )}
+                </FilterWithIcon>
+              );
+            })}
             {/* Two answers each — ONE at a time: ticking one replaces the other, and clearing it is
               «all», as the Fleet boards' two-answer filters read. No «النوع» on the secured screen,
               where every row is a محصنة. */}

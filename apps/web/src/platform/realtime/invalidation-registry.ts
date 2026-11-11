@@ -263,6 +263,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     // alone hears THIS topic (`operationsVault.view`), so a colleague's receive must turn the row
     // green here too, as it emptied the old draft queue (`securedBacklog`) before.
     ['operations', 'dayBoard', 'vaultQueue'],
+    // «صرف الخزينة» (Round 10) — every محصنة in the vault, under the day board's key too. A receipt
+    // puts a row on it, a cancelled receipt (`operations.custody.receiptCancelled`) or a release takes
+    // one off: all the vault's own topic, which is all a vault-only treasurer hears.
+    ['operations', 'dayBoard', 'securedDispatch'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [

@@ -214,6 +214,70 @@ describe('«اللى يتعدل يظهر ف السجل» — what an edit change
   });
 });
 
+// Round 10 — a محصنة's pickup confirmed by the desk, taken back from the captain, received into
+// the vault and that receipt cancelled: «لو العمليات تم الاستلام من العمليات», «لو القائد عمل صح ممكن
+// العمليات تشيلها», «بس صلاحية خاصة تقدر تلغى استلام الخزينة».
+describe('the secured shipment’s pickup ✓, its undo and a cancelled vault receipt', () => {
+  const SECURED: OperationsShipmentLogDto = {
+    shipmentId: 's-9',
+    truncated: false,
+    entries: [
+      entry('b1', { kind: 'executionPickedUp', leg: 'pickup', actorName: 'محمود حسن عبد الله' }),
+      entry('b2', {
+        kind: 'pickupUndone',
+        at: '2026-11-11T08:00:00.000Z',
+        changes: [{ field: 'pickedUpBy', old: 'captain', new: null }],
+      }),
+      entry('b3', {
+        kind: 'pickupConfirmed',
+        at: '2026-11-11T08:05:00.000Z',
+        changes: [{ field: 'pickedUpBy', old: null, new: 'operations' }],
+      }),
+      entry('b4', {
+        kind: 'vaultReceived',
+        at: '2026-11-11T09:40:00.000Z',
+        changes: [{ field: 'receiptNumber', old: null, new: 'R-2026-1111' }],
+      }),
+      entry('b5', {
+        kind: 'receiptCancelled',
+        at: '2026-11-11T11:00:00.000Z',
+        actorName: 'سامح فؤاد',
+        changes: [{ field: 'reason', old: null, new: 'أُدخلت بالخطأ قبل عدّ الأكياس' }],
+      }),
+    ],
+  };
+  const html = timeline(SECURED);
+
+  it('says the desk confirmed the pickup — «العمليات», under its label, in the row’s yellow', () => {
+    const confirmed = entryOf(html, 'pickupConfirmed');
+    expect(confirmed).toContain(ar('operations.shipment.log.kind.pickupConfirmed'));
+    expect(confirmed).toContain(ar('operations.shipment.log.field.pickedUpBy'));
+    expect(confirmed).toMatch(/data-log-new="true"[^>]*>العمليات</);
+    // A first value, listed plainly.
+    expect(confirmed).not.toContain('data-log-old');
+    expect(confirmed).toContain('text-amber-600');
+  });
+
+  it('says whose ✓ an undo took back — the captain’s, struck through, then nobody', () => {
+    const undone = entryOf(html, 'pickupUndone');
+    expect(undone).toContain(ar('operations.shipment.log.kind.pickupUndone'));
+    expect(undone).toMatch(/data-log-old="true"[^>]*>القائد</);
+    expect(undone).toMatch(/data-log-new="true"[^>]*>—</);
+  });
+
+  it('says a vault receipt was cancelled, and why — the reason as it was typed', () => {
+    const cancelled = entryOf(html, 'receiptCancelled');
+    expect(cancelled).toContain(ar('operations.shipment.log.kind.receiptCancelled'));
+    expect(cancelled).toContain(ar('operations.shipment.log.field.reason'));
+    expect(cancelled).toMatch(/data-log-new="true"[^>]*>أُدخلت بالخطأ قبل عدّ الأكياس</);
+    expect(cancelled).toContain('سامح فؤاد');
+    // After the receipt it undoes, as the server tells the story.
+    expect(html.indexOf('data-log-entry="vaultReceived"')).toBeLessThan(
+      html.indexOf('data-log-entry="receiptCancelled"'),
+    );
+  });
+});
+
 describe('the lines in the timeline’s place', () => {
   it('says the oldest were left out, at the top where they would be', () => {
     const html = timeline({ ...STORY, truncated: true });

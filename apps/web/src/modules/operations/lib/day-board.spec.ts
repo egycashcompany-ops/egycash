@@ -264,7 +264,8 @@ describe('isOtherOriginBank — money collected from a bank other than the one b
     crew: null,
     captainDeliveredAt: null,
     securedStage: null,
-    captainPickedUpAt: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
   });
 
   it('is false when the origin branch belongs to the billed bank', () => {
@@ -297,7 +298,8 @@ const boardRow = (
     crew: null,
     captainDeliveredAt: null,
     securedStage: null,
-    captainPickedUpAt: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
   };
 };
 
@@ -1012,7 +1014,8 @@ describe('the status filters over secured rows', () => {
     crew: null,
     captainDeliveredAt: null,
     securedStage: null,
-    captainPickedUpAt: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
     ...extra,
   });
   const ROWS = [
@@ -1023,7 +1026,13 @@ describe('the status filters over secured rows', () => {
     row(
       's-captain',
       { shipmentType: 'secured' },
-      { securedStage: 'withCaptain', captainPickedUpAt: at },
+      { securedStage: 'withCaptain', pickedUpBy: 'captain', pickedUpAt: at },
+    ),
+    // Round 10 — the desk confirmed the pickup instead: «تم الاستلام من العمليات», yellow too.
+    row(
+      's-operations',
+      { shipmentType: 'secured' },
+      { securedStage: 'withOperations', pickedUpBy: 'operations', pickedUpAt: at },
     ),
     row('s-vault', { shipmentType: 'secured', status: 'inVault' }, { securedStage: 'inVault' }),
     // On the road, not delivered yet — «خرجت للتسليم».
@@ -1058,6 +1067,7 @@ describe('the status filters over secured rows', () => {
       'daily-waiting',
       's-awaiting',
       's-captain',
+      's-operations',
       's-vault',
       's-road',
     ]);
@@ -1065,6 +1075,7 @@ describe('the status filters over secured rows', () => {
 
   it('saysDelivered reads the stage of a secured row and who delivered a daily one', () => {
     expect(saysDelivered({ status: 'draft', securedStage: 'withCaptain' })).toBe(false);
+    expect(saysDelivered({ status: 'draft', securedStage: 'withOperations' })).toBe(false);
     expect(saysDelivered({ status: 'dispatched', securedStage: 'dispatched' })).toBe(false);
     // Its delivery captain delivered it from the app: «تم التسليم» on a yellow row, as a daily row.
     expect(
@@ -1084,6 +1095,8 @@ describe('the status filters over secured rows', () => {
 
   it('the stage filter keeps that one stage — and no daily row, which has none', () => {
     expect(ids({ stage: 'withCaptain' })).toEqual(['s-captain']);
+    // The two yellows are two stages: the desk's pickup is found apart from the captain's.
+    expect(ids({ stage: 'withOperations' })).toEqual(['s-operations']);
     expect(ids({ stage: 'inVault' })).toEqual(['s-vault']);
     expect(ids({ stage: 'awaitingPickup' })).toEqual(['s-awaiting']);
     // The stage is the server's: one its delivery captain delivered is still on the road.

@@ -10,7 +10,9 @@
 //     DESTINATION, whose bank legacy stored (`sec_bank`). The origin's bank was never stored and
 //     is not the billed bank, so the origin carries no bank rule (see assertReferences).
 //   · Edit and soft-delete are allowed in ANY status — legacy gates them on nothing but
-//     `deleted_dock` (contad_app.js:481-547). PRESERVED, deliberately.
+//     `deleted_dock` (contad_app.js:481-547). PRESERVED, deliberately — with ONE exception the
+//     owner asked for in Round 10: a SECURED shipment the vault has received is locked («الشاشه
+//     بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها»), see secured-lock.ts.
 //   · Complete/reopen follow the observed transitions in shipment-status.ts; the legacy toggle's
 //     missing state guard is Q30's approved NORMALIZE. Reopen clears the receive stamp exactly as
 //     legacy does (`received_user:"", received_date:null` — :555).
@@ -23,6 +25,7 @@ import {
   OperationsEvents,
   cairoCalendarDate,
   cairoYmd,
+  isOperationsShipmentLocked,
   toMinorUnits,
   ymdOf,
   type CreateOperationsShipment,
@@ -33,6 +36,7 @@ import {
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredPickedUpBy,
   type OperationsSecuredStage,
   type OperationsShipmentLeg,
   type OperationsShipmentLogDto,
@@ -57,7 +61,8 @@ import { operationsBankBranchRepository } from '../bank-branches/bank-branch.rep
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
-import { crewLegOf, deliveryLegOf, isPickedUp, securedStageOf } from './secured-stage';
+import { crewLegOf, deliveryLegOf, securedPickupOf, securedStageOf } from './secured-stage';
+import { assertSecuredUnlocked } from './secured-lock';
 import { operationsShipmentRepository } from './shipment.repository';
 import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
@@ -226,10 +231,12 @@ export interface DayBoardRow {
   /** Where a secured shipment stands (secured-stage.ts); null on a daily row. */
   securedStage: OperationsSecuredStage | null;
   /**
-   * When the pickup leg's captain confirmed collecting a SECURED shipment from the bank — the
-   * yellow row's moment; null on a daily row, and before he has.
+   * Round 10 — who confirmed collecting a SECURED shipment, and when: its pickup record read by
+   * `securedPickupOf` (the captain's ✓ or the desk's). Both null on a daily row, and while nobody
+   * has picked it up.
    */
-  captainPickedUpAt: Date | null;
+  pickedUpBy: OperationsSecuredPickedUpBy | null;
+  pickedUpAt: Date | null;
 }
 
 /**
@@ -532,14 +539,15 @@ class OperationsShipmentService {
    * the deleted list is where one most needs its story.
    *
    * A FIXED NUMBER OF READS, whatever the length of the story: the shipment, its legs, its
-   * custody, ONE audit read for all three entities (`trailOf`), then one read per kind of name the
-   * values hold (banks, branches, currencies, people, vans).
+   * custody history, ONE audit read for all three entities (`trailOf`), then one read per kind of
+   * name the values hold (banks, branches, currencies, people, vans).
    *
-   * The legs read are the LIVE ones, through `ux_shipment_leg` (and the custody through the
-   * treasury port's own read): no path deletes a leg or a custody row today — a reassignment
-   * rewrites the leg in place, and a deleted shipment keeps its legs — and the only index that
-   * finds a shipment's legs is partial on `isDeleted: false`, so asking for deleted ones too would
-   * scan the whole collection on every log opened, for rows that do not exist.
+   * The legs read are the LIVE ones, through `ux_shipment_leg`: no path deletes a leg — a
+   * reassignment rewrites the leg in place, and a deleted shipment keeps its legs — and the only
+   * index that finds a shipment's legs is partial on `isDeleted: false`, so asking for deleted ones
+   * too would scan the whole collection on every log opened, for rows that do not exist. The
+   * custody is the exception since Round 10: a cancelled receipt IS a voided (soft-deleted) custody
+   * row, so the treasury port's `history` reads them all, through an index of its own.
    *
    * THE VAULT'S RECORD IS THE TREASURY'S. The custody rows (receipt number, counts, seals, the two
    * receiving treasurers) are read only for a reader who `seesVault` (`operationsVault.view`, the
@@ -551,7 +559,9 @@ class OperationsShipmentService {
     const shipment = await operationsShipmentRepository.findAnyById(id);
     if (shipment === null) throw new NotFoundError();
     const legs = await operationsShipmentAssignmentRepository.findByShipments([id]);
-    const custody = reader.seesVault ? await vaultCustody().find(id) : null;
+    // EVERY custody, a cancelled receipt included (Round 10): a receipt taken, cancelled and taken
+    // again is three acts in the shipment's story, and the first receipt's details are part of it.
+    const custody = reader.seesVault ? await vaultCustody().history(id) : [];
     const { rows, truncated } = await auditService.trailOf(
       'operations',
       [
@@ -559,7 +569,7 @@ class OperationsShipmentService {
         { entityType: SHIPMENT_LOG_ENTITY.leg, entityIds: legs.map((leg) => String(leg._id)) },
         {
           entityType: SHIPMENT_LOG_ENTITY.custody,
-          entityIds: custody === null ? [] : [custody.id],
+          entityIds: custody.map((c) => c.id),
         },
       ],
       OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES,
@@ -631,7 +641,7 @@ class OperationsShipmentService {
     );
 
     // Both legs of every row, in one read: the crew a row prints is the leg it is about now, and a
-    // secured row's stage reads its pickup leg whichever leg it prints.
+    // pre-Round-10 secured row with no pickup record reads its pickup leg (securedPickupOf).
     const legs = await operationsShipmentAssignmentRepository.findByShipments(
       docs.map((d) => String(d._id)),
     );
@@ -734,18 +744,18 @@ class OperationsShipmentService {
       const delivering = legFor(doc, deliveryLegOf(doc.shipmentType));
       const execution = delivering?.executionStatus ?? 'pending';
       const captainDelivered = execution === 'delivered' || execution === 'completed';
-      // A secured row's stage, and when its captain collected it — both read off the PICKUP leg.
-      const pickup = doc.shipmentType === 'secured' ? legFor(doc, 'pickup') : null;
+      // A secured row's stage, and who collected it — both read off the shipment's pickup record
+      // (Round 10); the PICKUP leg is consulted only for a row whose record was never written.
+      const pickup =
+        doc.shipmentType === 'secured' ? securedPickupOf(doc.pickup, legFor(doc, 'pickup')) : null;
       const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
       return {
         doc,
         captainDeliveredAt: captainDelivered ? (delivering?.deliveredAt ?? null) : null,
         securedStage:
-          doc.shipmentType === 'secured'
-            ? securedStageOf(doc.status, pickup?.executionStatus)
-            : null,
-        captainPickedUpAt:
-          pickup !== null && isPickedUp(pickup.executionStatus) ? (pickup.pickedUpAt ?? null) : null,
+          doc.shipmentType === 'secured' ? securedStageOf(doc.status, pickup) : null,
+        pickedUpBy: pickup?.by ?? null,
+        pickedUpAt: pickup?.at ?? null,
         origin: branchView.get(String(doc.originBranchId)) ?? null,
         destination: branchView.get(String(doc.destinationBranchId)) ?? null,
         crew:
@@ -778,6 +788,8 @@ class OperationsShipmentService {
     by: string,
   ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(id);
+    // Round 10 — checked before anything else: a received محصنة is not edited, whatever the edit.
+    assertSecuredUnlocked(before, 'editing it');
 
     await assertReferences({
       mainBankId: input.mainBankId ?? String(before.mainBankId),
@@ -912,9 +924,14 @@ class OperationsShipmentService {
   // ── The receipt photo (Files owns the bytes, the row owns the link) ─────────────────────────────
   //
   // «عمود كمان لصورة الإيصال زى شاشة السيارات» — the Fleet receipts' flow, unchanged in shape. No
-  // status gate: like every other shipment edit (legacy gates edits on nothing), the paper can be
-  // photographed whenever it arrives, before or after delivery. No event either, as for Fleet
-  // receipts: the audit row is the record, and the board refetches on the mutation itself.
+  // status gate on a DAILY shipment: like every other shipment edit (legacy gates edits on nothing),
+  // the paper can be photographed whenever it arrives, before or after delivery. No event either, as
+  // for Fleet receipts: the audit row is the record, and the board refetches on the mutation itself.
+  //
+  // Round 10 — a SECURED shipment the vault has received is locked here too, upload and delete
+  // alike: «ميقدر حد … يعدل عليها» names no exception, and the photo is part of the record the vault
+  // signed for. A photo needed after the receipt goes on through a cancelled receipt (the special
+  // grant), like any other change to a locked shipment. Reading the photo is never locked.
 
   async setReceiptImage(
     ctx: AuthContext,
@@ -922,6 +939,7 @@ class OperationsShipmentService {
     binary: UploadedBinary,
   ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(id);
+    assertSecuredUnlocked(before, 'its receipt photo');
     const current = before.receiptImage ?? null;
     let file: FileDoc;
     if (current === null) {
@@ -998,15 +1016,22 @@ class OperationsShipmentService {
             ? await operationsShipmentRepository.findById(id)
             : null;
         const nowLinked = now?.receiptImage == null ? null : String(now.receiptImage.fileId);
-        if (now !== null && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
+        // Round 10 — the write this upload lost to may be the VAULT'S ✓: the lock was checked
+        // before the bytes were stored, and the vault may have received the محصنة while they were.
+        // A locked row is never linked again, however the race fell («ميقدر حد … يعدل عليها»).
+        const locked = now !== null && isOperationsShipmentLocked(now);
+        if (now !== null && !locked && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
           version = now.__v;
           continue;
         }
         // A first upload that did not land is always an orphan. A replace is one only when the
-        // row has moved off its file group; otherwise it is the group's own newest version.
+        // row has moved off its file group; otherwise it is the group's own newest version. (On a
+        // row locked meanwhile Files refuses the clean-up too — the lock reaches its routes — so
+        // the orphan stays an unreachable file, never a changed row.)
         if (linked === null || (now !== null && nowLinked !== linked)) {
           await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
         }
+        if (now !== null && locked) assertSecuredUnlocked(now, 'its receipt photo');
         throw error;
       }
     }
@@ -1027,6 +1052,7 @@ class OperationsShipmentService {
 
   async deleteReceiptImage(ctx: AuthContext, id: string): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(id);
+    assertSecuredUnlocked(before, 'its receipt photo');
     if (before.receiptImage == null) {
       throw new ConflictError('this shipment has no receipt image to delete');
     }
@@ -1047,10 +1073,21 @@ class OperationsShipmentService {
     return updated;
   }
 
-  /** Legacy delete is a soft flag with no state guard (contad_app.js:545-547) — preserved. */
+  /**
+   * Legacy delete is a soft flag with no state guard (contad_app.js:545-547) — preserved, except
+   * for a SECURED shipment the vault has received (Round 10: locked, see secured-lock.ts).
+   */
   async softDelete(id: string, by: string): Promise<void> {
     const before = await operationsShipmentRepository.getById(id);
-    await operationsShipmentRepository.softDeleteById(id, { by });
+    assertSecuredUnlocked(before, 'deleting it');
+    // …and again AT the write: the delete carries no version, so the vault's ✓ landing between the
+    // check above and the write would otherwise be deleted over (shipment.repository.ts).
+    if ((await operationsShipmentRepository.softDeleteUnlocked(id, by)) === null) {
+      // Deleted meanwhile → 404 (getById), locked meanwhile → the coded 409. Neither is left only if
+      // it was locked AND unlocked again in that moment — someone else's write won: refetch.
+      assertSecuredUnlocked(await operationsShipmentRepository.getById(id), 'deleting it');
+      throw new StaleDocumentError();
+    }
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
     await emit(OperationsEvents.ShipmentDeleted, eventPayload(before));
   }
@@ -1063,7 +1100,8 @@ class OperationsShipmentService {
    * and `reopen` share theirs.
    *
    * No state guard and no date rule, like the delete it undoes: restoring dates nothing, it puts
-   * a row back on the day it was always on.
+   * a row back on the day it was always on. Round 10's lock does not reach it either: a received
+   * محصنة cannot be deleted, so any deleted shipment was deleted while it was still open.
    */
   async restore(id: string, by: string): Promise<OperationsShipmentDoc> {
     const restored = await operationsShipmentRepository.restoreById(id, { by });

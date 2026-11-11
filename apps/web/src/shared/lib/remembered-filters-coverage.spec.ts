@@ -174,6 +174,10 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // remembered alike; `all` («الكل») is not — the screen opens on the vault's work, the shipments
   // with the captain and today's receipts, and «الكل» is a look further for the moment.
   ['modules/operations/pages/VaultReceivePage.tsx', ['all']],
+  // «صرف الخزينة» on the same board (Round 10): its filters remembered alike; `date` is not — the
+  // screen IS every محصنة in the vault («كله يبقى موجود فى تاريخ يتفلتر»), and a delivery day looked
+  // at once is not where the next visit starts.
+  ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
@@ -226,10 +230,6 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
   ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
-  [
-    'modules/operations/pages/SecuredDispatchPage.tsx',
-    '`date` resolves to the due day being dispatched',
-  ],
 ];
 
 /**

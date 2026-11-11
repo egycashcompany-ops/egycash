@@ -28,6 +28,16 @@ export interface OperationsVaultCustodyDoc extends BaseDocFields {
   receivedAt: Date;
   releasedById: Types.ObjectId | null;
   releasedAt: Date | null;
+  /**
+   * Round 10 — a CANCELLED receipt («صلاحية خاصة تقدر تلغى استلام الخزينة»). The row is voided, never
+   * erased: it keeps everything the treasury stamped, gains when/who/why here, and is soft-deleted
+   * in the same write, so every live read (which all ask `isDeleted: false`) stops seeing it and
+   * `ux_shipment` frees the shipment for a fresh receipt. Optional: rows written before Round 10
+   * have none of the three, and absent reads as "not cancelled".
+   */
+  cancelledAt?: Date | null;
+  cancelledById?: Types.ObjectId | null;
+  cancelReason?: string | null;
 }
 
 const custodySchema = new Schema<OperationsVaultCustodyDoc>(
@@ -45,6 +55,9 @@ const custodySchema = new Schema<OperationsVaultCustodyDoc>(
     receivedAt: { type: Date, required: true },
     releasedById: { type: Schema.Types.ObjectId, default: null },
     releasedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledById: { type: Schema.Types.ObjectId, default: null },
+    cancelReason: { type: String, default: null },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -58,6 +71,10 @@ custodySchema.index(
 custodySchema.index({ state: 1 }, { name: 'ix_state' });
 // Round 8: the vault's receive queue lists what was received TODAY — a window on `receivedAt`.
 custodySchema.index({ receivedAt: -1 }, { name: 'ix_received_at' });
+// Round 10: a shipment's WHOLE custody history, a cancelled receipt included, oldest first — the
+// action log reads it. `ux_shipment` cannot serve it: it is partial on `isDeleted: false`, and a
+// cancelled receipt is exactly the row it leaves out.
+custodySchema.index({ shipmentId: 1, receivedAt: 1 }, { name: 'ix_shipment_received' });
 
 export const OperationsVaultCustodyModel = model<OperationsVaultCustodyDoc>(
   'OperationsVaultCustody',

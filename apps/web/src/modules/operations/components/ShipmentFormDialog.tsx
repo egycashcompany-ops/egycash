@@ -98,6 +98,7 @@ import {
   followMainBank,
   secondaryBankFor,
   shipmentDateProblem,
+  isLockedRefusal,
   shipmentSaveErrorKey,
   type ShipmentDateProblem,
 } from '../lib/shipment-form';
@@ -460,6 +461,11 @@ export const ShipmentFormDialog = ({
       // shared wording when the reason is not the values at all (a dropped connection, no rights).
       const key = shipmentSaveErrorKey(error);
       toast.error(key === null ? errorMessage(error, locale) : t(key));
+      // Round 10: the vault received this محصنة after the form was opened from a row read before
+      // its ✓ («ميقدر حد … يعدل عليها»). Nothing typed can be saved past that, so the form closes on
+      // its message — over a board the refusal re-reads (`useUpdateOperationsShipment`), where the
+      // row is now green and offers no edit.
+      if (isLockedRefusal(error)) onClose();
     }
   };
 

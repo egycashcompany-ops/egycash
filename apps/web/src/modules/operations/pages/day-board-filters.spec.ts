@@ -109,7 +109,13 @@ describe('the filters sit on the Fleet bar', () => {
   it('puts the history’s filters on ONE row from 1280px, its two dates at their own width', () => {
     expect(PERIOD_BAR_LAYOUT).toContain('xl:[&>div>*:has(>input[type=date])]:!flex-none');
     // The date box's own width is the one that holds then: a date and its «من» / «إلى».
-    expect(BAR).toMatch(/className=\{cn\(\s*'w-36 shrink-0',\s*picker\.showLabel === true/);
+    expect(BAR).toMatch(
+      /className=\{cn\(\s*'w-36 shrink-0',\s*named && '\[container-type:inline-size\]'/,
+    );
+    // A box that writes its name — the history's «من» / «إلى» always; «صرف الخزينة»'s optional
+    // delivery day only while it is empty (Round 10) — measures itself, so the name never covers
+    // the digits.
+    expect(BAR).toContain('const named = picker.showLabel === true || blank;');
     // No grid survives past 1279: every grid rule of the history's is bounded to 1024–1279.
     const gridRules = PERIOD_BAR_LAYOUT.split(' ').filter((rule) => rule.includes('grid'));
     expect(gridRules.length).toBeGreaterThan(0);
@@ -144,9 +150,12 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
   it('is the order of the columns themselves', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | (قيمة الشحنة) | قائد الطاقم | التاريخ |
     // (تاريخ التسليم — the secured screen's) | النوع | الحالة | ملاحظات — the amount and the delivery
-    // date have nothing to type, and the status column is filtered by «التسليم» or the stage.
+    // date have nothing to type, and the status column is filtered by «التسليم» or the stage. The
+    // ticks' box (Round 10, a page that hands in `selection` — «صرف الخزينة») comes before them all
+    // and has nothing to filter by.
     const columns = [...BOARD.matchAll(/^ {6}key: '(\w+)',$/gm)].map((m) => m[1]);
     expect(columns).toEqual([
+      'select',
       'vehicle',
       'bank',
       'origin',

@@ -124,6 +124,7 @@ describe('SecuredStageBadge — where a محصنة stands', () => {
   const WORDS: Record<(typeof OPERATIONS_SECURED_STAGES)[number], string> = {
     awaitingPickup: 'لم يتم التسليم',
     withCaptain: 'تم الاستلام من القائد',
+    withOperations: 'تم الاستلام من العمليات',
     inVault: 'بالخزينة',
     dispatched: 'خرجت للتسليم',
     completed: 'تم التسليم',

@@ -180,7 +180,7 @@ its entry here in the same PR.
     then «خرجت للتسليم» / «تم التسليم». `/operations/secured` is the shared board (with «تاريخ
     التسليم»; «إضافة محصنة» books a secured shipment whose delivery defaults to the next day and
     never falls before collection — `OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION`). API:
-    `GET /operations/secured/board`; board rows carry `securedStage` and `captainPickedUpAt`.
+    `GET /operations/secured/board`; board rows carry `securedStage`, `pickedUpBy` and `pickedUpAt`.
   - The vault's receive screen in the same look: the shipments with the captain (yellow) and
     those received today (green), «الكل» for the rest, and the vault's ✓ opening the receive
     form. API: `GET /operations/secured/vault-queue?all=` (`operationsVault.view`); the bank and
@@ -189,6 +189,32 @@ its entry here in the same PR.
     history lists a secured shipment by its collection OR delivery date.
   - «تتبّع أرقام الأوراق النقدية» left the form. Currencies follow the reference-data order,
     arranged by drag and drop as Fleet's lists are (`PUT /operations/currencies/order`).
+  - Who picked a secured shipment up, and the lock once the vault holds it: «ممكن القائد اللى يعمل
+    صح انه استلم او العمليات … الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او
+    العمليات او الخزنه يعدل عليها».
+    - One pickup record on the shipment, `pickup: {by: 'captain' | 'operations', at, userId}`. The
+      captain's ✓ in the app writes it; the desk's ✓ on «المحصنة» writes it as Operations (new
+      yellow stage «تم الاستلام من العمليات», `withOperations`). Operations may remove either ✓
+      until the vault receives — «لو القائد عمل صح ممكن العمليات تشيلها بس لو العمليات عملت صح
+      القائد مينفعش يشيلها»; removing it leaves the captain's leg as he recorded it. A row from
+      before this change with no record reads its pickup leg, so a leg already picked up is the
+      captain's. API: `POST` / `DELETE /operations/secured/:id/pickup` (`operationsShipment.complete`).
+    - The vault's ✓ needs a pickup first (409 `OPERATIONS_SECURED_NOT_PICKED_UP`); the white rows
+      stay under «الكل» to be read only. Receiving is one transaction with the custody.
+    - Once received, a secured shipment is locked: no edit, delete, pickup change, pickup crew or
+      receipt photo change (409 `OPERATIONS_SECURED_LOCKED`; the Files routes answer 403 for its
+      photo). The flow goes on: delivery crew, dispatch, the captains' app, completion, restore.
+    - «إلغاء استلام الخزينة» with a required reason, for the new grant
+      `operationsVault.cancelReceipt` (no role holds it but the super admin): the custody is voided
+      (kept, stamped who/when/why), the shipment goes back to yellow and can be received again.
+      `POST /operations/secured/:id/cancel-receipt` (409 `OPERATIONS_SECURED_NOT_IN_VAULT`).
+    - «السجل» shows «أكّد الاستلام» (by the captain or Operations), its removal, and the
+      cancelled receipt with its reason.
+  - «صرف الخزينة» in the boards' look: «كله يبقى موجود فى تاريخ يتفلتر». Every shipment in the
+    vault, overdue first (marked «متأخرة» / «تسليمها اليوم»), with an optional delivery-day filter;
+    the delivery crew is picked from the crew of the shipment's own delivery day, and ticked rows
+    are dispatched one load per van. API: `GET /operations/secured/dispatch-board?date=`
+    (`operationsVault.view`).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

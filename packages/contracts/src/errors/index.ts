@@ -163,6 +163,32 @@ export const ErrorCodes = {
   /** 409 — a restore asked for a shipment that is not deleted. */
   OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
 
+  // ── The secured pickup ✓, the vault lock and the cancelled receipt (Round 10) ────────────────
+  /**
+   * 409 — the shipment is LOCKED: a secured shipment the vault has received (status `inVault`,
+   * `dispatched` or `completed`) — «ميقدر حد من القادة او العمليات او الخزنه يعدل عليها». Refuses
+   * the edit, the delete, the receipt photo, the pickup crew, and the desk's pickup ✓ / its undo.
+   * The way back is the cancelled receipt (`operationsVault.cancelReceipt`).
+   */
+  OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
+  /**
+   * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
+   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
+   * desk's undo has no pickup ✓ to take back.
+   */
+  OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
+  /**
+   * 409 — the desk's pickup ✓ on a secured shipment whose pickup is already recorded — by its
+   * captain in the app or by the desk itself. The desk never stamps over the captain's ✓ (it may
+   * take it back, then confirm as Operations).
+   */
+  OPERATIONS_SECURED_ALREADY_PICKED_UP: 'OPERATIONS_SECURED_ALREADY_PICKED_UP',
+  /**
+   * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
+   * already dispatched or completed.
+   */
+  OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',

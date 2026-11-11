@@ -12,7 +12,13 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { Badge, StatusBadge, type Tone } from '../../../shared/ui/Badge';
 import { cn } from '../../../shared/lib/cn';
-import { CheckIcon, ExternalLinkIcon, LockIcon, TruckIcon } from '../../../shared/ui/icons';
+import {
+  BuildingIcon,
+  CheckIcon,
+  ExternalLinkIcon,
+  LockIcon,
+  TruckIcon,
+} from '../../../shared/ui/icons';
 
 const STATUS_TONES: Record<OperationsShipmentStatus, Tone> = {
   draft: 'neutral',
@@ -103,14 +109,16 @@ export const DeliveryStatusBadge = ({
 /**
  * A محصنة's «الحالة», on the secured screen and on the day board and the history alike — where it
  * stands (`securedStage`, `lib/secured-stage.ts`), in the owner's words: «لم يتم التسليم», «تم
- * الاستلام من القائد», «بالخزينة», «خرجت للتسليم», «تم التسليم». The row's colour says the same
- * (yellow with the captain, green in the vault, blue on the road); the badge says it WITHOUT
- * colour too, as the daily one does: a glyph per stage — the captain's van, the vault's lock, an
- * arrow leaving it, the desk's tick — and a sentence on hover and for a screen reader.
+ * الاستلام من القائد», «تم الاستلام من العمليات», «بالخزينة», «خرجت للتسليم», «تم التسليم». The row's
+ * colour says the same (yellow once collected, green in the vault, blue on the road); the badge says
+ * it WITHOUT colour too, as the daily one does: a glyph per stage — the captain's van, the
+ * Operations office (the two yellows are told apart by it, not by their colour), the vault's lock,
+ * an arrow leaving it, the desk's tick — and a sentence on hover and for a screen reader.
  */
 const STAGE_TONE: Record<OperationsSecuredStage, Tone> = {
   awaitingPickup: 'neutral',
   withCaptain: 'warning',
+  withOperations: 'warning',
   inVault: 'success',
   dispatched: 'info',
   completed: 'success',
@@ -120,6 +128,7 @@ const STAGE_TONE: Record<OperationsSecuredStage, Tone> = {
 const STAGE_GLYPH: Record<OperationsSecuredStage, JSX.Element> = {
   awaitingPickup: <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />,
   withCaptain: <TruckIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
+  withOperations: <BuildingIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
   inVault: <LockIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
   dispatched: <ExternalLinkIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
   completed: <CheckIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
@@ -130,11 +139,12 @@ export const SecuredStageBadge = ({ stage }: { stage: OperationsSecuredStage }):
   const hint = t(`operations.board.stageHint.${stage}`);
   return (
     <span data-secured-stage={stage} title={hint}>
-      {/* «تم الاستلام من القائد» is the longest status a board prints: on one line it widened
-          «الحالة» by some 60px, enough to push the actions past the edge of a 1440 laptop beside
-          the menu. So the label may wrap — but from a floor as wide as the daily badge's «لم يتم
-          التسليم», or the table, which squeezes a wrapping cell to its longest word, stacks it a
-          word a line. The short labels keep their one line; the long one takes exactly two. */}
+      {/* «تم الاستلام من القائد» and «تم الاستلام من العمليات» are the longest statuses a board
+          prints: on one line they widened «الحالة» by some 60px, enough to push the actions past
+          the edge of a 1440 laptop beside the menu. So the label may wrap — but from a floor as
+          wide as the daily badge's «لم يتم التسليم», or the table, which squeezes a wrapping cell
+          to its longest word, stacks it a word a line. The short labels keep their one line; the
+          long ones take exactly two. */}
       <Badge tone={STAGE_TONE[stage]} size="sm">
         {STAGE_GLYPH[stage]}
         <span className="min-w-[4.75rem] whitespace-normal">

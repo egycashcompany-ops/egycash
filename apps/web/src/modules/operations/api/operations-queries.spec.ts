@@ -5,12 +5,16 @@
 // operator simply reads a stale value and believes it. So the invalidation fan-out is asserted
 // directly, against a real QueryClient.
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ErrorCodes } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
 import { listKey } from '../../../shared/lib/query-keys';
 import {
   __deletedShipmentsKey,
   __operationsKeys,
+  __rereadIfLocked,
   __securedBoardKey,
+  __securedDispatchBoardKey,
   __shipmentHistoryKey,
   __shipmentLogKey,
   __vaultQueueKey,
@@ -328,6 +332,49 @@ describe('the secured screen rides the day board’s subtree (Round 8)', () => {
   });
 });
 
+describe('«صرف الخزينة» rides the day board’s subtree (Round 10)', () => {
+  // «كله يبقى موجود فى تاريخ يتفلتر»: every محصنة in the vault, one entry per delivery-day filter. A
+  // receipt puts a row on it, a cancelled receipt or a release takes one off, the desk's pickup ✓
+  // and its undo move rows towards it — every one a secured act, whose list includes the board.
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__securedDispatchBoardKey(null), { shipments: [], crews: [] });
+    qc.setQueryData(__securedDispatchBoardKey('2026-11-12'), { shipments: [], crews: [] });
+  };
+
+  it('keys every day and one day apart, inside the board’s subtree', () => {
+    expect(__securedDispatchBoardKey(null).slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__securedDispatchBoardKey('2026-11-12'));
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__vaultQueueKey(false));
+    expect(__securedDispatchBoardKey(null)).not.toEqual(__securedBoardKey());
+  });
+
+  it('the secured acts — a receipt, a cancelled one, a pickup ✓, a release — stale every entry', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useSecuredInvalidation` does (the receive, `useSetSecuredPickup`,
+    // `useCancelVaultReceipt`, the assign and the release).
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+    expect(isStale(qc, __securedDispatchBoardKey(null))).toBe(true);
+    expect(isStale(qc, __securedDispatchBoardKey('2026-11-12'))).toBe(true);
+  });
+
+  it('crew planning leaves it alone, as it leaves the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    expect(isStale(qc, __securedDispatchBoardKey(null))).toBe(false);
+  });
+});
+
 describe('crew board write fan-out (B3)', () => {
   // Two dependencies run in one direction each, and both are easy to get wrong:
   //   · planning changes who is TAKEN → the pool must restale, or a card stays draggable after
@@ -504,5 +551,29 @@ describe('vault roll-up and area caches (B6)', () => {
   it('keeps areas on their own subtree', () => {
     expect(__operationsKeys.areas).toEqual(['operations', 'areas']);
     expect(__operationsKeys.vaultReport).toEqual(['operations', 'vaultReport']);
+  });
+});
+
+// Round 10 — «ميقدر حد … يعدل عليها»: a delete or a receipt-photo change refused because the vault
+// received the محصنة after its row was read. The row on screen still offers the bin and the photo's
+// upload; only a re-read turns it green and locked. Any other refusal leaves the board alone, and
+// none of this silences the global notifier (it runs on `onSettled`, not `onError`).
+describe('a write refused as LOCKED re-reads the boards (Round 10)', () => {
+  const locked = new ApiError(ErrorCodes.OPERATIONS_SECURED_LOCKED, 'locked', 409);
+
+  it('re-reads on OPERATIONS_SECURED_LOCKED', async () => {
+    const invalidate = vi.fn(async () => undefined);
+    await __rereadIfLocked(invalidate)(undefined, locked);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the board alone on any other refusal, and on success (`onSuccess` re-reads that)', async () => {
+    const invalidate = vi.fn(async () => undefined);
+    const reread = __rereadIfLocked(invalidate);
+    await reread(undefined, new ApiError('STALE_DOCUMENT', 'stale', 409));
+    await reread(undefined, new ApiError('FILE_TOO_LARGE', 'too large', 413));
+    await reread(undefined, new TypeError('Failed to fetch'));
+    await reread({ id: 's-1' }, null);
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

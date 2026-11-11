@@ -14,7 +14,10 @@
 //     الجدول والحالة»: the secured screen is the same board, with a delivery-date column, the
 //     محصنة's stage as its status, and «إضافة محصنة» — but no ✓;
 //   · «اليوم التشغيلى هيظهر فيها اليومى والمحصنة»: a محصنة on the day board, whatever its stage, is
-//     coloured and worded by its stage, and takes the ✓ only once it has left the vault.
+//     coloured and worded by its stage, and takes the ✓ only once it has left the vault;
+//   · Round 10 — «فى شاشة المحصنات ممكن القائد اللى يعمل صح انه استلم او العمليات»: the secured screen
+//     has the desk's PICKUP ✓ and its undo; «ميقدر حد … يعدل عليها»: a محصنة the vault has received is
+//     locked on every board; «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: the cancelled receipt.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -28,6 +31,7 @@ const SECURED_PAGE = read('./SecuredBacklogPage.tsx');
 const TODAY_HOOK = read('../lib/use-cairo-today.ts');
 const DELETED = read('../components/DeletedShipments.tsx');
 const QUERIES = read('../api/operations-queries.ts');
+const RECEIPT_CELL = read('../components/ShipmentReceiptImageCell.tsx');
 
 /** The row actions' cell, from its key to the next column — the edit, the ✓ and the delete. */
 const ACTIONS = BOARD.slice(
@@ -112,8 +116,9 @@ describe('«مش هيقدر يضيف … ومش هيقدر منها يسلم ا�
     for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE]) {
       expect(page).not.toContain('canEditRows');
     }
-    expect(ACTIONS).toMatch(/\{canEdit && \(\s*<button[\s\S]*?setEditing\(row\)/);
-    expect(ACTIONS).toMatch(/\{canDelete && \(\s*<button[\s\S]*?removeShipment\(row\)/);
+    // …on a row that is not locked (Round 10, pinned below).
+    expect(ACTIONS).toMatch(/\{canEdit && !locked && \(\s*<button[\s\S]*?setEditing\(row\)/);
+    expect(ACTIONS).toMatch(/\{canDelete && !locked && \(\s*<button[\s\S]*?removeShipment\(row\)/);
     expect(BOARD).toMatch(
       /<ShipmentReceiptImageCell\s+row=\{row\}\s+onPreview=\{setPreviewingReceipt\}\s+readOnly=\{!canEditRows\}\s+\/>/,
     );
@@ -157,25 +162,34 @@ describe('«سجل بالاكشنز اللى حصلت على الشحنة» — 
 describe('the board’s page hooks — the vault queue’s, and no other screen’s', () => {
   it('draws a page’s own row act at the ✓’s place, before the log', () => {
     expect(ACTIONS).toContain('const own = rowAction?.(row) ?? null;');
-    const own = ACTIONS.indexOf('{rowAction !== undefined &&');
+    // One square for the row's act: the page's own, or the board's (Round 10: the pickup ✓, the
+    // cancelled receipt) — together, never two squares.
+    expect(ACTIONS).toContain('const securedAct = securedActOf(row);');
+    expect(ACTIONS).toMatch(
+      /const act =\s*own === null && securedAct === null \? null : \(\s*<>\s*\{own\}\s*\{securedAct\}\s*<\/>/,
+    );
+    expect(BOARD).toContain(
+      'const offersRowAct = rowAction !== undefined || canPickup || canCancel;',
+    );
+    const own = ACTIONS.indexOf('{offersRowAct &&');
     expect(own).toBeGreaterThan(-1);
     expect(ACTIONS.indexOf('{canComplete && !offersDeliveryToggle(row)')).toBeLessThan(own);
     expect(own).toBeLessThan(ACTIONS.indexOf('{canViewLog &&'));
-    // A row the page has no act for keeps the act's square, empty, while the log or the bin follow.
+    // A row with no act keeps the act's square, empty, while the log or the bin follow.
     expect(ACTIONS).toMatch(
-      /\(own \?\?\s*\(\(canViewLog \|\| canDelete\) && \(\s*<span aria-hidden className=\{cn\(actionTone\('status'\), 'invisible'\)\} \/>/,
+      /\(act \?\?\s*\(\(canViewLog \|\| canDelete\) && \(\s*<span aria-hidden className=\{cn\(actionTone\('status'\), 'invisible'\)\} \/>/,
     );
   });
 
   it('draws a dash, not an empty box, on a row with nothing to do', () => {
     expect(ACTIONS).toContain(
-      'if (!canEdit && !canComplete && !canViewLog && !canDelete && own === null) return DASH;',
+      'if (!canEdit && !canComplete && !canViewLog && !canDelete && act === null) return DASH;',
     );
   });
 
   it('draws no actions column for a reader the screen offers nothing to do on a row', () => {
     expect(BOARD).toContain(
-      'canEdit || canComplete || canViewLog || canDelete || rowAction !== undefined;',
+      'const offersRowActions = canEdit || canComplete || canViewLog || canDelete || offersRowAct;',
     );
     expect(BOARD).toMatch(
       /const columns = offersRowActions\s+\? boardColumns\s+: boardColumns\.filter\(\(column\) => column\.key !== 'actions'\);/,
@@ -257,7 +271,7 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
     // The delivery date is the secured screen's column; «النوع» everyone else's — every row on the
     // secured screen is a محصنة, and the type's width is what the extra date needs at 1440.
     expect(BOARD).toMatch(
-      /everyColumn\.filter\(\s*\(column\) => column\.key !== \(secured \? 'type' : 'deliveryDate'\),?\s*\)/,
+      /everyColumn\.filter\(\s*\(column\) =>\s*column\.key !== \(secured \? 'type' : 'deliveryDate'\) &&/,
     );
     // Neither of the other two screens is that board.
     expect(DAY_PAGE).not.toContain('kind=');
@@ -301,5 +315,140 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
 
   it('has no deleted-shipments icon — that is the history’s', () => {
     expect(SECURED_PAGE).not.toContain('deletedShipments');
+  });
+});
+
+// ── Round 10 ─────────────────────────────────────────────────────────────────────────────────────
+describe('«ممكن القائد اللى يعمل صح انه استلم او العمليات» — the desk’s pickup ✓, the secured screen’s', () => {
+  it('is offered where the page turns it on, to whoever holds the desk’s ✓ grant', () => {
+    expect(BOARD).toContain('canConfirmPickup = false,');
+    expect(BOARD).toContain(
+      "const canPickup = canConfirmPickup && can('operationsShipment.complete');",
+    );
+    expect(SECURED_PAGE).toMatch(/^\s+canConfirmPickup$/m);
+    for (const page of [DAY_PAGE, HISTORY_PAGE]) expect(page).not.toContain('canConfirmPickup');
+  });
+
+  it('is a toggle at the ✓’s place — pressed once somebody collected it — read from the row', () => {
+    const act = BOARD.slice(
+      BOARD.indexOf('const securedActOf'),
+      BOARD.indexOf('const removeShipment'),
+    );
+    expect(act).toContain('const toggle = canPickup ? pickupToggleOf(row) : null;');
+    expect(act).toContain("const pressed = toggle === 'undo';");
+    expect(act).toContain("className={cn(actionTone('status'), pressed && PRESSED)}");
+    expect(act).toContain('aria-pressed={pressed}');
+    expect(act).toContain("aria-label={t('operations.secured.pickup.toggle')}");
+    expect(act).toContain('onClick={() => togglePickup(row)}');
+  });
+
+  // «لو القائد عمل صح ممكن العمليات تشيلها»: the desk takes the captain's ✓ back too — his act, so
+  // it is confirmed first; the desk's own toggles back as the day board's ✓ does.
+  it('confirms before taking back the CAPTAIN’s ✓, and sends the version it was read at', () => {
+    const toggle = BOARD.slice(
+      BOARD.indexOf('const togglePickup'),
+      BOARD.indexOf('const securedActOf'),
+    );
+    expect(toggle).toMatch(
+      /undo &&\s*row\.pickedUpBy === 'captain' &&\s*!window\.confirm\(t\('operations\.secured\.pickup\.confirmUndoCaptain'\)\)/,
+    );
+    expect(toggle).toContain(
+      'setPickup.mutate({ id: row.id, pickedUp: !undo, body: { version: row.version } });',
+    );
+  });
+
+  it('re-reads every board on success and refusal alike — the secured acts’ invalidation', () => {
+    const hook = QUERIES.slice(QUERIES.indexOf('export const useSetSecuredPickup'));
+    expect(hook).toMatch(
+      /const invalidate = useSecuredInvalidation\(\);[\s\S]*?onSettled: invalidate,/,
+    );
+    expect(hook.slice(0, hook.indexOf('});'))).toContain(
+      '(pickedUp ? api.confirmSecuredPickup(id, body) : api.undoSecuredPickup(id, body))',
+    );
+  });
+});
+
+describe('«ميقدر حد … يعدل عليها» — a محصنة the vault has received is locked, on every board', () => {
+  it('offers no edit and no delete on a locked row — a lock in the pen’s place, the bin’s kept empty', () => {
+    expect(ACTIONS).toContain('const locked = isLockedRow(row);');
+    expect(ACTIONS).toMatch(
+      /\{canEdit && locked && \(\s*<span\s+data-row-locked=\{row\.id\}\s+title=\{t\('operations\.board\.locked'\)\}/,
+    );
+    expect(ACTIONS).toMatch(
+      /\{canDelete && locked && \(\s*<span aria-hidden className=\{cn\(actionTone\('delete'\), 'invisible'\)\} \/>/,
+    );
+  });
+
+  it('offers no receipt-photo upload, replace or delete on a locked row — the eye stays', () => {
+    expect(RECEIPT_CELL).toContain(
+      "const mayEdit = !readOnly && !isLockedRow(row) && can('operationsShipment.edit');",
+    );
+    expect(RECEIPT_CELL).toMatch(
+      /const mayDelete =\s*!readOnly && row !== null && !isLockedRow\(row\) && can\('operationsShipment\.edit'\);/,
+    );
+    // The eye is the read grant's alone.
+    expect(RECEIPT_CELL).toContain("const mayView = can('operationsShipment.view');");
+  });
+
+  it('closes a form opened before the vault’s ✓ on its refusal, over a re-read board', () => {
+    const update = QUERIES.slice(QUERIES.indexOf('export const useUpdateOperationsShipment'));
+    expect(update.slice(0, update.indexOf('\n};'))).toContain(
+      'if (isLockedRefusal(error)) void invalidate();',
+    );
+  });
+
+  // The bin and the photo's acts on a row read before the vault's ✓: their LOCKED refusal re-reads
+  // the boards too, so the row comes back locked instead of offering them again.
+  it('re-reads the boards when a delete or a photo change is refused as locked', () => {
+    for (const hook of [
+      'useDeleteOperationsShipment',
+      'useUploadShipmentReceiptImage',
+      'useDeleteShipmentReceiptImage',
+    ]) {
+      const body = QUERIES.slice(QUERIES.indexOf(`export const ${hook}`));
+      expect(body.slice(0, body.indexOf('\n};')), hook).toContain(
+        'onSettled: rereadIfLocked(invalidate),',
+      );
+    }
+  });
+});
+
+describe('«بس صلاحية خاصة تقدر تلغى استلام الخزينة» — the cancelled receipt', () => {
+  it('is offered where the page turns it on — the secured screen and the vault’s — to its grant alone', () => {
+    expect(BOARD).toContain('canCancelReceipt = false,');
+    expect(BOARD).toContain(
+      "const canCancel = canCancelReceipt && can('operationsVault.cancelReceipt');",
+    );
+    expect(SECURED_PAGE).toMatch(/^\s+canCancelReceipt$/m);
+    for (const page of [DAY_PAGE, HISTORY_PAGE]) expect(page).not.toContain('canCancelReceipt');
+  });
+
+  it('opens its dialog from a row in the vault, at the ✓’s place', () => {
+    const act = BOARD.slice(
+      BOARD.indexOf('const securedActOf'),
+      BOARD.indexOf('const removeShipment'),
+    );
+    expect(act).toMatch(
+      /if \(canCancel && offersReceiptCancel\(row\)\) \{[\s\S]*?setCancelling\(\{ row, caption: shipmentCaption\(row, bankNameOf, t\) \}\)/,
+    );
+    expect(BOARD).toMatch(
+      /\{canCancel && \(\s*<CancelVaultReceiptDialog target=\{cancelling\} onClose=\{\(\) => setCancelling\(null\)\} \/>/,
+    );
+  });
+});
+
+describe('«صرف الخزينة» on this board — what a page that hosts the release can hand it', () => {
+  it('draws the ticks’ column only for a page that hands in a selection, first in the row', () => {
+    expect(BOARD).toContain("(column.key !== 'select' || selection !== undefined),");
+    expect(BOARD).toMatch(/^\s+selection\?: BoardSelection<T>;$/m);
+    for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE])
+      expect(page).not.toContain('selection=');
+  });
+
+  it('reads every محصنة in the vault inside the day board’s subtree, its day left out when none', () => {
+    expect(QUERIES).toContain("...featureKey(MODULE, 'dayBoard'),\n  'securedDispatch',");
+    expect(QUERIES).toContain(
+      "queryFn: () => api.getSecuredDispatchBoard(date === '' ? null : date),",
+    );
   });
 });

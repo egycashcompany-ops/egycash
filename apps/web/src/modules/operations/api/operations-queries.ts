@@ -12,7 +12,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignSecuredDeliveryLeg,
+  type CancelVaultReceipt,
   type CompleteOperationsShipment,
+  type ConfirmSecuredPickup,
   type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
@@ -39,6 +41,7 @@ import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
+import { isLockedRefusal } from '../lib/shipment-form';
 import * as api from './operations-api';
 import { type OperationsListParams } from './operations-api';
 
@@ -283,6 +286,23 @@ const useShipmentInvalidation = () => {
 // tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
 const formOwnsTheError = (): void => undefined;
 
+/**
+ * Round 10 — a write refused because the vault received this محصنة after its row was read
+ * (`OPERATIONS_SECURED_LOCKED`, «ميقدر حد … يعدل عليها»). The row on screen is the stale thing: it
+ * still offers the bin or the photo's upload, replace or delete, so the boards are re-read and it
+ * comes back green and locked, offering none of them. Only that refusal: any other leaves the row as
+ * it is, for the reader to try again. Run from `onSettled`, not `onError`, so the global notifier
+ * still words the refusal (shared/lib/query-client.ts).
+ */
+const rereadIfLocked =
+  (invalidate: () => Promise<void>) =>
+  async (_data: unknown, error: unknown): Promise<void> => {
+    if (isLockedRefusal(error)) await invalidate();
+  };
+
+/** Exported for the cache tests — which refusals re-read the boards. */
+export const __rereadIfLocked = rereadIfLocked;
+
 export const useCreateOperationsShipment = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
@@ -298,7 +318,14 @@ export const useUpdateOperationsShipment = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
       api.updateShipment(id, body),
     onSuccess: invalidate,
-    onError: formOwnsTheError,
+    // The form still owns the message (declaring `onError` keeps the global notifier quiet). One
+    // refusal also re-reads the boards: the vault received this محصنة after the form was opened
+    // (Round 10, `OPERATIONS_SECURED_LOCKED`) — the row on screen is the stale thing, and the form
+    // closes onto it.
+    onError: (error: unknown) => {
+      formOwnsTheError();
+      if (isLockedRefusal(error)) void invalidate();
+    },
   });
 };
 
@@ -327,6 +354,8 @@ export const useDeleteOperationsShipment = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteShipment(id),
     onSuccess: invalidate,
+    // A محصنة the vault received since the board was read cannot be deleted (Round 10).
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 
@@ -345,13 +374,15 @@ export const useRestoreOperationsShipment = () => {
 
 // «صورة الإيصال». The photo is a field of the shipment row, so both acts stale the board and the
 // list like any other shipment write. No `onError` on purpose: the global notifier names the
-// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it.
+// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it. A photo on
+// a محصنة the vault received since the board was read is locked (Round 10): that refusal re-reads.
 export const useUploadShipmentReceiptImage = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) =>
       api.uploadShipmentReceiptImage(id, file),
     onSuccess: invalidate,
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 
@@ -360,6 +391,7 @@ export const useDeleteShipmentReceiptImage = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteShipmentReceiptImage(id),
     onSuccess: invalidate,
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 export const useCreateOperationsBank = () => {
@@ -649,6 +681,47 @@ export const useOperationsVaultQueue = (all: boolean, enabled = true, poll = fal
 export const __vaultQueueKey = vaultQueueKey;
 
 /**
+ * «صرف الخزينة» (Round 10) — every محصنة in the vault, as board rows, inside the DAY BOARD's subtree
+ * like the vault's receive queue: a receipt puts a row on it, a cancelled receipt or a dispatch takes
+ * one off, and a crew assigned changes one. Every one of those is a secured act, whose list
+ * includes the board's subtree, and every one is announced on the shipment topics, which sweep it —
+ * the vault custody topic too (`invalidation-registry.ts`), for a treasurer holding only the vault's
+ * grants. One entry per delivery-day filter; `null` is every day.
+ */
+const securedDispatchBoardKey = (date: string | null): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'securedDispatch',
+  { date: date ?? 'all' },
+];
+
+/**
+ * «صرف الخزينة — كله يبقى موجود فى تاريخ يتفلتر»: `date` null lists every shipment in the vault,
+ * a day lists that delivery day's. A 4xx (more rows than one screen may show, not allowed) is an
+ * answer, not retried.
+ *
+ * `poll`: the reader hears no shipment signal (`VAULT_QUEUE_POLL_MS`, the receive queue's rule). A
+ * treasurer holding only the vault's grants hears the vault custody topic — a receipt, a cancelled
+ * receipt, a release — but NOT the delivery crew Operations assigns, which is announced on the
+ * shipment topics alone; and a crew is what a row waits for before it can go out.
+ */
+export const useOperationsSecuredDispatchBoard = (
+  date: string | null,
+  enabled = true,
+  poll = false,
+) =>
+  useQuery({
+    queryKey: securedDispatchBoardKey(date === '' ? null : date),
+    queryFn: () => api.getSecuredDispatchBoard(date === '' ? null : date),
+    enabled,
+    retry: retryUnless4xx,
+    refetchInterval: poll ? VAULT_QUEUE_POLL_MS : false,
+    refetchIntervalInBackground: false,
+  });
+
+/** Exported for the cache tests — «صرف الخزينة» rides the board's subtree too. */
+export const __securedDispatchBoardKey = securedDispatchBoardKey;
+
+/**
  * A secured act moves several screens at once — receiving takes a shipment OUT of the backlog and
  * INTO the vault, dispatching takes it out of the vault and onto the day board. Staling one and
  * not the others is how a treasurer ends up receiving the same shipment twice.
@@ -669,25 +742,79 @@ export const useReceiveIntoVault = () => {
   });
 };
 
+/**
+ * Round 10 — the desk's pickup ✓ on the secured screen and its undo, as one toggle: the caller says
+ * which way it means (`pickedUp`), nothing infers it. Each moves the row's colour on every screen
+ * that shows it — the secured screen, the day board, the vault's receive queue (a yellow row is the
+ * vault's work, a white one is not) — so it runs the secured acts' invalidation. On a refusal too
+ * (`onSettled`): `OPERATIONS_SECURED_ALREADY_PICKED_UP` means the captain pressed ✓ in the app while
+ * the desk looked, `OPERATIONS_SECURED_LOCKED` that the vault received it — either way the row on
+ * screen is the stale thing. No `onError`: the global notifier words the refusal (`errors.ts`).
+ */
+export const useSetSecuredPickup = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({
+      id,
+      pickedUp,
+      body,
+    }: {
+      id: string;
+      pickedUp: boolean;
+      body: ConfirmSecuredPickup;
+    }) => (pickedUp ? api.confirmSecuredPickup(id, body) : api.undoSecuredPickup(id, body)),
+    onSettled: invalidate,
+  });
+};
+
+/**
+ * Round 10 — the vault's receipt cancelled (`operationsVault.cancelReceipt`): the row goes back from
+ * green to yellow on every screen, leaves «صرف الخزينة» and the vault's contents and roll-up, and its
+ * log gains the reason — all of it the secured acts' invalidation. The dialog owns the refusal's
+ * message (declaring `onError` keeps the global notifier quiet), and a refusal re-reads too: one
+ * dispatched meanwhile (`OPERATIONS_SECURED_NOT_IN_VAULT`) is a row the screen still shows green.
+ */
+export const useCancelVaultReceipt = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CancelVaultReceipt }) =>
+      api.cancelVaultReceipt(id, body),
+    onSettled: invalidate,
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * «صرف الخزينة»'s assign dialog — the delivery crew of a محصنة in the vault. The dialog owns the
+ * refusal's message (declaring `onError` keeps the global notifier quiet, so it is said once), and
+ * a refusal re-reads as well as a success (`onSettled`): a STALE leg version or a shipment that
+ * left the vault meanwhile is a row the screen is still showing as it was.
+ */
 export const useAssignSecuredDelivery = () => {
   const invalidate = useSecuredInvalidation();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: AssignSecuredDeliveryLeg }) =>
       api.assignSecuredDelivery(id, body),
-    onSuccess: invalidate,
+    onSettled: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
+/**
+ * «صرف الخزينة»'s release — one vehicle's load per call. As the assignment: the dialog words a
+ * refusal, and a refusal re-reads too (a shipment dispatched by a colleague, a crew changed).
+ */
 export const useDispatchSecured = () => {
   const qc = useQueryClient();
   const invalidate = useSecuredInvalidation();
   return useMutation({
     mutationFn: (body: DispatchSecuredShipments) => api.dispatchSecured(body),
-    onSuccess: async () => {
+    onSettled: async () => {
       await invalidate();
       // Dispatch locks the crew row, so the board's state changed too.
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
     },
+    onError: formOwnsTheError,
   });
 };
 

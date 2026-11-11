@@ -5,13 +5,17 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   AssignSecuredDeliveryLegSchema,
+  CancelVaultReceiptSchema,
+  ConfirmSecuredPickupSchema,
   DispatchSecuredShipmentsSchema,
   ListSecuredBacklogQuerySchema,
   ListSecuredDueQuerySchema,
   ListVaultInventoryQuerySchema,
   OperationsSecuredBoardQuerySchema,
+  OperationsSecuredDispatchBoardQuerySchema,
   OperationsVaultQueueQuerySchema,
   ReceiveIntoVaultSchema,
+  UndoSecuredPickupSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
@@ -19,13 +23,17 @@ import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   assignDeliveryLeg,
+  cancelVaultReceipt,
+  confirmSecuredPickup,
   dispatchSecured,
   getSecuredBoard,
+  getSecuredDispatchBoard,
   getVaultQueue,
   listBacklog,
   listDue,
   listVaultInventory,
   receiveIntoVault,
+  undoSecuredPickup,
 } from './secured.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -58,7 +66,19 @@ export const buildOperationsSecuredRouter = (): Router => {
     validate({ query: OperationsVaultQueueQuerySchema }),
     asyncHandler(getVaultQueue),
   );
-  // /tash4ela_mohasana + /deliver_mohsana — what is due for delivery on a date.
+  // «صرف الخزينة» (Round 10) — EVERY shipment in the vault as board rows, one delivery day an
+  // optional filter. The grant the `/operations/vault/dispatch` page itself rides — the vault
+  // screens' — rather than `/due`'s `operationsShipment.view`: the page and its list now ask for the
+  // same key, so nobody can open the screen and be refused its own list.
+  router.get(
+    '/dispatch-board',
+    authenticate,
+    authorize('operationsVault.view'),
+    validate({ query: OperationsSecuredDispatchBoardQuerySchema }),
+    asyncHandler(getSecuredDispatchBoard),
+  );
+  // /tash4ela_mohasana + /deliver_mohsana — what is due for delivery on a date (legacy parity; the
+  // dispatch screen reads `/dispatch-board` since Round 10).
   router.get(
     '/due',
     authenticate,
@@ -74,6 +94,22 @@ export const buildOperationsSecuredRouter = (): Router => {
     validate({ query: ListVaultInventoryQuerySchema }),
     asyncHandler(listVaultInventory),
   );
+  // The desk's pickup ✓ «تم الاستلام من العمليات» and its undo — of the captain's ✓ too — (Round 10):
+  // the desk's ✓ grant, one grant both directions, exactly as `complete` / `reopen` share it.
+  router.post(
+    '/:id/pickup',
+    authenticate,
+    authorize('operationsShipment.complete'),
+    validate({ body: ConfirmSecuredPickupSchema, params: IdParamSchema }),
+    asyncHandler(confirmSecuredPickup),
+  );
+  router.delete(
+    '/:id/pickup',
+    authenticate,
+    authorize('operationsShipment.complete'),
+    validate({ body: UndoSecuredPickupSchema, params: IdParamSchema }),
+    asyncHandler(undoSecuredPickup),
+  );
   // /receive_mohsana — treasury takes custody.
   router.post(
     '/:id/receive',
@@ -81,6 +117,15 @@ export const buildOperationsSecuredRouter = (): Router => {
     authorize('operationsVault.receive'),
     validate({ body: ReceiveIntoVaultSchema, params: IdParamSchema }),
     asyncHandler(receiveIntoVault),
+  );
+  // Cancel the vault's receipt (Round 10) — «صلاحية خاصة تقدر تلغى استلام الخزينة»: a grant of its
+  // own, held by no role by default, so neither receiving nor dispatching implies it.
+  router.post(
+    '/:id/cancel-receipt',
+    authenticate,
+    authorize('operationsVault.cancelReceipt'),
+    validate({ body: CancelVaultReceiptSchema, params: IdParamSchema }),
+    asyncHandler(cancelVaultReceipt),
   );
   // /tash4ela_mohasana — Operations assigns the delivery leg (leader2 + car_num2).
   router.post(

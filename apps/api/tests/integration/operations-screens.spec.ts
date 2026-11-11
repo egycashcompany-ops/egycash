@@ -124,6 +124,9 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   { screen: 'vault receive queue (board rows)', url: '/operations/secured/vault-queue', paginated: false },
   { screen: 'vault receive queue · «الكل»', url: '/operations/secured/vault-queue?all=true', paginated: false },
   { screen: 'vault dispatch due list', url: `/operations/secured/due?date=${TODAY}`, paginated: false },
+  // Round 10: «صرف الخزينة» in the board look — every shipment in the vault, and one delivery day.
+  { screen: 'vault dispatch board', url: '/operations/secured/dispatch-board', paginated: false },
+  { screen: 'vault dispatch board · one day', url: `/operations/secured/dispatch-board?date=${TODAY}`, paginated: false },
   { screen: 'vault inventory', url: '/operations/secured/vault?page=1&pageSize=25', paginated: true },
   { screen: 'vault roll-up', url: '/operations/reports/vault', paginated: false },
   { screen: 'crew board', url: `/operations/crew-board?date=${TODAY}`, paginated: false },

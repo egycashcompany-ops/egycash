@@ -3,6 +3,7 @@
 // show, and the AUTHORIZER (ADR-023) so the platform's own file endpoints ask the shipments' grants.
 import {
   OPERATIONS_SHIPMENT_RECEIPT_FILE_CATEGORY,
+  isOperationsShipmentLocked,
   type CreateFileCategory,
 } from '@ecms/contracts';
 import { fileCategoryService, type FileEntityAuthorizer } from '../../../platform/files';
@@ -44,8 +45,12 @@ export const shipmentFileAuthorizer: FileEntityAuthorizer = {
     const permission = intent === 'write' ? 'operationsShipment.edit' : 'operationsShipment.view';
     if (!hasPermission(ctx, permission)) return false;
     try {
-      await operationsShipmentRepository.getById(entityId);
-      return true;
+      const shipment = await operationsShipmentRepository.getById(entityId);
+      // Round 10 — the receipt photo of a محصنة the vault has received is locked like the rest of
+      // it («ميقدر حد … يعدل عليها»). The board's own routes refuse with the coded 409; this is the
+      // same lock on the platform's file endpoints (replace / delete), so the photo cannot be
+      // swapped behind the board's back. Reading it is never locked.
+      return intent !== 'write' || !isOperationsShipmentLocked(shipment);
     } catch {
       return false;
     }

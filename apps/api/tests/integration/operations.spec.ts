@@ -37,6 +37,8 @@ import {
   type OperationsShipmentLogDto,
   type OperationsDeletedShipmentsDto,
   type OperationsSecuredBoardDto,
+  type OperationsSecuredDispatchBoardDto,
+  type OperationsSecuredDispatchRowDto,
   type OperationsVaultQueueDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
@@ -245,6 +247,24 @@ const mkShipment = async (
       collectionDate: DEFAULT_SHIPMENT_DATE,
       ...overrides,
     });
+};
+
+/**
+ * The Operations desk's pickup ✓ on a secured shipment — «تم الاستلام من العمليات» (Round 10). Since
+ * Round 10 the vault receives only what somebody picked up, so every suite that walks a محصنة into
+ * the vault presses this first. Returns the shipment as the ✓ left it — its NEW version is the one
+ * the receive must send.
+ */
+const deskPickUp = async (shipmentId: string): Promise<OperationsShipmentDto> => {
+  const current = await request(app)
+    .get(`/api/v1/operations/shipments/${shipmentId}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  const res = await request(app)
+    .post(`/api/v1/operations/secured/${shipmentId}/pickup`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: data<OperationsShipmentDto>(current).version });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return data<OperationsShipmentDto>(res);
 };
 
 beforeAll(async () => {
@@ -1759,7 +1779,9 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       deliveryDate: DELIVERY_DATE,
     });
     expect(res.status).toBe(201);
-    return data<OperationsShipmentDto>(res);
+    // …and picked up (the desk's ✓): since Round 10 the vault receives nothing white. The returned
+    // shipment carries the version the ✓ left, the one a receive must send.
+    return deskPickUp(data<OperationsShipmentDto>(res).id);
   };
 
   const receive = async (
@@ -2169,15 +2191,16 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: handoverCrewId, captainEmployeeId, version });
 
-    /** A secured shipment delivered on the handover date, received into the vault. */
+    /** A secured shipment delivered on the handover date, picked up and received into the vault. */
     const readyShipment = async (): Promise<OperationsShipmentDto> => {
-      const shipment = data<OperationsShipmentDto>(
+      const booked = data<OperationsShipmentDto>(
         await mkShipment({
           shipmentType: 'secured',
           collectionDate: HANDOVER_DATE,
           deliveryDate: HANDOVER_DATE,
         }),
       );
+      const shipment = await deskPickUp(booked.id);
       expect((await receive(shipment)).status).toBe(200);
       return shipment;
     };
@@ -2828,6 +2851,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
       }),
     );
     const treasurer = await mkEmployee();
+    const pickedUp = await deskPickUp(secured.id);
     const received = await request(app)
       .post(`/api/v1/operations/secured/${secured.id}/receive`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -2835,7 +2859,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
         receiptNumber: `R-M-${secured.id.slice(-5)}`,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: treasurer,
-        version: secured.version,
+        version: pickedUp.version,
       });
     expect(received.status).toBe(200);
 
@@ -3377,7 +3401,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
         receiptNumber: `R-BOARD-${secured.id.slice(-5)}`,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: treasurer,
-        version: secured.version,
+        version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
 
@@ -3397,7 +3421,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
         receiptNumber: `R-BOARD-${inVault.id.slice(-5)}`,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: treasurer,
-        version: inVault.version,
+        version: (await deskPickUp(inVault.id)).version,
       });
     expect(vaulted.status).toBe(200);
 
@@ -3526,15 +3550,25 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       expect(found).toBeDefined();
       return found as OperationsDayBoardShipmentDto;
     };
-    expect(row(dailyToday)).toMatchObject({ securedStage: null, captainPickedUpAt: null });
+    expect(row(dailyToday)).toMatchObject({
+      securedStage: null,
+      pickedUpBy: null,
+      pickedUpAt: null,
+    });
     expect(row(securedDueDraft)).toMatchObject({
       securedStage: 'awaitingPickup',
-      captainPickedUpAt: null,
+      pickedUpBy: null,
+      pickedUpAt: null,
       // Booked with no collection crew — the pickup leg it is about has nobody yet.
       crew: null,
     });
-    // In the vault and not yet crewed for delivery: green, and nobody taking it anywhere yet.
-    expect(row(securedDueInVault)).toMatchObject({ securedStage: 'inVault', crew: null });
+    // In the vault and not yet crewed for delivery: green, and nobody taking it anywhere yet — and
+    // the row still says who brought it in (the desk's ✓, Round 10).
+    expect(row(securedDueInVault)).toMatchObject({
+      securedStage: 'inVault',
+      crew: null,
+      pickedUpBy: 'operations',
+    });
     // Out for delivery: the delivery leg's crew.
     expect(row(securedDueDispatched)).toMatchObject({
       securedStage: 'dispatched',
@@ -3553,14 +3587,16 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     expect(log.shipmentId).toBe(securedDueDispatched);
     expect(log.truncated).toBe(false);
     // Receiving and dispatching each write a custody row AND a shipment row in one request —
-    // shown once each, not twice.
+    // shown once each, not twice. Before the vault, the desk's pickup ✓ (Round 10) — with WHO.
     expect(log.entries.map((e) => e.kind)).toEqual([
       'created',
+      'pickupConfirmed',
       'vaultReceived',
       'crewAssigned',
       'dispatched',
     ]);
-    const [, intoVault, crewed] = log.entries;
+    const [, pickedUp, intoVault, crewed] = log.entries;
+    expect(pickedUp?.changes).toEqual([{ field: 'pickedUpBy', old: null, new: 'operations' }]);
     expect(intoVault?.changes).toEqual(
       expect.arrayContaining([
         {
@@ -3595,11 +3631,14 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const log = data<OperationsShipmentLogDto>(res);
     expect(log.entries.map((e) => e.kind)).toEqual([
       'created',
+      'pickupConfirmed',
       'vaultReceived',
       'crewAssigned',
       'dispatched',
     ]);
-    const [, intoVault, crewed] = log.entries;
+    const [, pickedUp, intoVault, crewed] = log.entries;
+    // Who picked it up is the shipment's own record — every reader sees it.
+    expect(pickedUp?.changes).toEqual([{ field: 'pickedUpBy', old: null, new: 'operations' }]);
     expect(intoVault?.changes).toEqual([]);
     // What a shipment reader already sees on the board — the captain and the van — stays.
     expect(crewed?.changes).toEqual([
@@ -3737,7 +3776,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
         receiptNumber: `R-BOARD-${twoLegs.id.slice(-5)}`,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: await mkEmployee(),
-        version: twoLegs.version,
+        version: (await deskPickUp(twoLegs.id)).version,
       });
     expect(received.status).toBe(200);
     const assigned = await request(app)
@@ -5239,7 +5278,7 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
         boxCount: 2,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: specialist1Id,
-        version: secured.version,
+        version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
 
@@ -5556,7 +5595,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
         boxCount: 1,
         receivedByPrimaryId: captainId,
         receivedBySecondaryId: specialist1Id,
-        version: secured.version,
+        version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
 
@@ -5622,7 +5661,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
             bagCount: 2,
             receivedByPrimaryId: captainId,
             receivedBySecondaryId: specialist1Id,
-            version: secured.version,
+            version: (await deskPickUp(secured.id)).version,
           })
       ).status,
     ).toBe(200);
@@ -6252,16 +6291,30 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     return data<OperationsShipmentDto>(res);
   };
-  /** The captain's ✓ in the app on collecting it from the bank — his pickup leg is picked up. */
+  /**
+   * The captain's ✓ in the app on collecting it from the bank — his pickup leg is picked up AND,
+   * since Round 10, the shipment's pickup record is written as his, through the very repository
+   * write the app's transition makes (the app itself is driven in the Round 10 suite below).
+   */
   const pickUp = async (shipmentId: string): Promise<void> => {
     const { OperationsShipmentAssignmentModel } = await import(
       '../../src/modules/operations/shipments/shipment-assignment.model'
     );
+    const { operationsShipmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment.repository'
+    );
+    const { Types } = await import('mongoose');
     const stamped = await OperationsShipmentAssignmentModel.updateOne(
       { shipmentId, leg: 'pickup' },
       { $set: { executionStatus: 'pickedUp', startedAt: PICKED_UP_AT, pickedUpAt: PICKED_UP_AT } },
     ).exec();
     expect(stamped.modifiedCount).toBe(1);
+    const recorded = await operationsShipmentRepository.recordCaptainPickup(shipmentId, {
+      by: 'captain',
+      at: PICKED_UP_AT,
+      userId: new Types.ObjectId(adminId),
+    });
+    expect(recorded?.pickup?.by).toBe('captain');
   };
   /** The vault's ✓ — the receive form, two treasurers. */
   const receive = async (shipmentId: string): Promise<OperationsShipmentDto> => {
@@ -6319,6 +6372,7 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
 
     // Received into the vault, and its receipt moved two days back — a past day's receipt.
     receivedYesterday = (await book()).id;
+    await deskPickUp(receivedYesterday);
     await receive(receivedYesterday);
     const { OperationsVaultCustodyModel } = await import(
       '../../src/modules/operations/vault/vault-custody.model'
@@ -6334,7 +6388,9 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
     await receive(dispatched);
     await sendOut(dispatched);
 
+    // Picked up by the DESK («تم الاستلام من العمليات») — the vault receives nothing white.
     completed = (await book()).id;
+    await deskPickUp(completed);
     await receive(completed);
     await sendOut(completed);
     const current = await request(app)
@@ -6361,18 +6417,24 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
         return found as OperationsDayBoardShipmentDto;
       };
 
-      expect(row(awaiting)).toMatchObject({ securedStage: 'awaitingPickup', captainPickedUpAt: null });
+      expect(row(awaiting)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
       expect(row(withCaptain)).toMatchObject({
         securedStage: 'withCaptain',
-        captainPickedUpAt: PICKED_UP_AT.toISOString(),
+        pickedUpBy: 'captain',
+        pickedUpAt: PICKED_UP_AT.toISOString(),
       });
-      // The vault received it: green — and when the captain collected it stays on the row.
+      // The vault received it: green — and who collected it, and when, stays on the row.
       expect(row(inVault)).toMatchObject({
         securedStage: 'inVault',
-        captainPickedUpAt: PICKED_UP_AT.toISOString(),
+        pickedUpBy: 'captain',
+        pickedUpAt: PICKED_UP_AT.toISOString(),
       });
-      expect(row(dispatched)).toMatchObject({ securedStage: 'dispatched' });
-      expect(row(completed)).toMatchObject({ securedStage: 'completed', captainPickedUpAt: null });
+      expect(row(dispatched)).toMatchObject({ securedStage: 'dispatched', pickedUpBy: 'captain' });
+      expect(row(completed)).toMatchObject({ securedStage: 'completed', pickedUpBy: 'operations' });
       // None of them was delivered by a captain to its branch yet.
       for (const id of [awaiting, withCaptain, inVault, dispatched, completed]) {
         expect(row(id).captainDeliveredAt).toBeNull();
@@ -6420,7 +6482,8 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       expect(dayRow).toMatchObject({
         status: 'draft',
         securedStage: 'withCaptain',
-        captainPickedUpAt: PICKED_UP_AT.toISOString(),
+        pickedUpBy: 'captain',
+        pickedUpAt: PICKED_UP_AT.toISOString(),
         captainDeliveredAt: null,
         crew: expect.objectContaining({ crewAssignmentId: pickupCrewId }),
       });
@@ -6608,12 +6671,15 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       expect([...created].sort((a, b) => b - a)).toEqual(created);
       for (const s of view.shipments) {
         expect(s.shipmentType).toBe('secured');
-        expect(['withCaptain', 'inVault', 'dispatched', 'completed']).toContain(s.securedStage);
+        // Yellow is the captain's ✓ or (Round 10) the desk's — other suites leave desk-picked drafts.
+        expect(['withCaptain', 'withOperations', 'inVault', 'dispatched', 'completed']).toContain(
+          s.securedStage,
+        );
       }
       expect(view.crews.map((c) => c.crewAssignmentId)).toContain(pickupCrewId);
     });
 
-    it('with all=true also lists every one not collected yet — a captain without the app strands nothing', async () => {
+    it('with all=true also lists every one not collected yet — for viewing (Round 10: no vault ✓ on a white row)', async () => {
       const res = await vaultQueue('?all=true');
       expect(res.status).toBe(200);
       const view = data<OperationsVaultQueueDto>(res);
@@ -6750,6 +6816,1076 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       expect(green?.securedStage).toBe('inVault');
       expect(green?.vaultReceivedAt).not.toBeNull();
     });
+  });
+});
+
+// ── Round 10 ────────────────────────────────────────────────────────────────────────────────────
+//
+// «فى شاشة المحصنات ممكن القائد اللى يعمل صح انه استلم او العمليات ف لو قائد تم الاستلام من القائد و لو
+// العمليات تم الاستلام من العمليات … مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح ،الشاشه
+// بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او العمليات او الخزنه يعدل عليها والمحصنة دى بتروح
+// تلقائى ل صرف الخزنة». The pickup is ONE record on the shipment (the captain's ✓ in the app or the
+// desk's), the vault receives only a picked-up shipment, a received one is locked, a special grant
+// cancels the receipt, and «صرف الخزينة» lists everything in the vault in the board look.
+describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and «صرف الخزينة»', () => {
+  const R10_PICKUP = shift(370);
+  const R10_OUT = shift(371);
+  const R10_OTHER_OUT = shift(372);
+  // The captain-with-the-app days come BEFORE the delivery day — nothing goes out before it is in.
+  const R10_APP_DAY = shift(365);
+  const R10_APP_DAY_2 = shift(366);
+  const R10_APP_DAY_3 = shift(367);
+  const R10_FILTER_DAY = shift(375);
+
+  let pickupCrewId = '';
+  let outCrewId = '';
+  let otherOutCrewId = '';
+  let appCrewId = '';
+  let appCrew2Id = '';
+  let appCrew3Id = '';
+  let appCaptainId = '';
+  let appCaptainToken = '';
+  let deskToken = ''; // the shipment view + the desk's ✓ grant
+  let vaultToken = ''; // the vault's view + receive — never the cancel
+  let cancelToken = ''; // the vault's view + the special cancel grant
+  let vaultViewToken = ''; // the vault's view alone
+
+  const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R10 ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return login(email);
+  };
+  const crewFor = async (date: string, captainEmployeeId: string): Promise<string> => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: vehicleAId, notes: 'round 10 seed' }] });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainEmployeeId] }] });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    const id =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(id).not.toBe('');
+    return id;
+  };
+  /** A محصنة collected on `collectionDate` by van A, due out on `deliveryDate`. */
+  const book = async (
+    deliveryDate = R10_OUT,
+    collectionDate = R10_PICKUP,
+    crewAssignmentId = pickupCrewId,
+    captainEmployeeId = captainId,
+  ): Promise<OperationsShipmentDto> => {
+    const res = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate,
+      deliveryDate,
+      pickup: { crewAssignmentId, captainEmployeeId },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<OperationsShipmentDto>(res);
+  };
+  const read = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const pickupCall = (
+    method: 'post' | 'delete',
+    id: string,
+    version: number | undefined,
+    token: string | null = adminToken,
+  ): Promise<request.Response> => {
+    const call = request(app)[method](`/api/v1/operations/secured/${id}/pickup`).send(
+      version === undefined ? {} : { version },
+    );
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const confirm = async (id: string, token: string | null = adminToken) =>
+    pickupCall('post', id, (await read(id)).version, token);
+  const undo = async (id: string, token: string | null = adminToken) =>
+    pickupCall('delete', id, (await read(id)).version, token);
+  const receive = async (id: string, token = adminToken): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/receive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        receiptNumber: `R10-${id.slice(-6)}`,
+        bagCount: 2,
+        bagSeals: ['R10-S1', 'R10-S2'],
+        receivedByPrimaryId: specialist1Id,
+        receivedBySecondaryId: specialist2Id,
+        version: (await read(id)).version,
+      });
+  const cancel = async (
+    id: string,
+    body: Record<string, unknown> = {},
+    token: string | null = adminToken,
+  ): Promise<request.Response> => {
+    const call = request(app)
+      .post(`/api/v1/operations/secured/${id}/cancel-receipt`)
+      .send({ reason: 'استلام بالخطأ', version: (await read(id)).version, ...body });
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const securedRow = async (id: string): Promise<OperationsDayBoardShipmentDto | undefined> =>
+    data<OperationsSecuredBoardDto>(
+      await request(app)
+        .get('/api/v1/operations/secured/board')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).shipments.find((s) => s.id === id);
+  const queueIds = async (all = false): Promise<string[]> =>
+    data<OperationsVaultQueueDto>(
+      await request(app)
+        .get(`/api/v1/operations/secured/vault-queue${all ? '?all=true' : ''}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).shipments.map((s) => s.id);
+  const dispatchBoard = (query = '', token: string | null = adminToken): Promise<request.Response> => {
+    const call = request(app).get(`/api/v1/operations/secured/dispatch-board${query}`);
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const logOf = async (id: string, token = adminToken): Promise<OperationsShipmentLogDto> =>
+    data<OperationsShipmentLogDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}/log`)
+        .set('Authorization', `Bearer ${token}`),
+    );
+  /** The captain's own acts in the mobile app, on his stop. */
+  const act = (assignmentId: string, step: string): request.Test =>
+    request(app)
+      .post(`/api/v1/operations/mobile/stops/${assignmentId}/${step}`)
+      .set('Authorization', `Bearer ${appCaptainToken}`)
+      .send({});
+  const pickupLegOf = async (shipmentId: string) => {
+    const { OperationsShipmentAssignmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.model'
+    );
+    const leg = await OperationsShipmentAssignmentModel.findOne({ shipmentId, leg: 'pickup' })
+      .lean()
+      .exec();
+    expect(leg).not.toBeNull();
+    return leg as unknown as {
+      _id: unknown;
+      __v: number;
+      executionStatus: string;
+      pickedUpAt: Date | null;
+    };
+  };
+  /** The captain walks to the bank and presses ✓ in his app — start, then pickup. */
+  const captainPicksUp = async (shipmentId: string): Promise<void> => {
+    const stop = String((await pickupLegOf(shipmentId))._id);
+    const started = await act(stop, 'start');
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    const picked = await act(stop, 'pickup');
+    expect(picked.status, JSON.stringify(picked.body)).toBe(200);
+  };
+
+  beforeAll(async () => {
+    pickupCrewId = await crewFor(R10_PICKUP, captainId);
+    outCrewId = await crewFor(R10_OUT, captainId);
+    otherOutCrewId = await crewFor(R10_OTHER_OUT, captainId);
+
+    // A captain WITH the app — an employee linked to a login holding his own execution grant —
+    // on two days of his own, one stop on each, so neither waits on the other in his route.
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+    appCaptainId = await mkEmployee();
+    const captainRole = await rbacService.createRole(
+      { name: { en: 'R10 captain', ar: 'قائد الجولة العاشرة' }, permissionKeys: ['operationsExecution.own'] },
+      adminId,
+    );
+    const captainUser = await mkUser('ops-r10-captain@ecms.local');
+    await rbacService.ensureAssignment(captainUser, String(captainRole._id), 'organization');
+    const employee = await employeeRepository.getById(appCaptainId);
+    await employeeRepository.updateById(
+      appCaptainId,
+      { userId: captainUser },
+      { by: null, version: employee.__v },
+    );
+    appCaptainToken = await login('ops-r10-captain@ecms.local');
+    appCrewId = await crewFor(R10_APP_DAY, appCaptainId);
+    appCrew2Id = await crewFor(R10_APP_DAY_2, appCaptainId);
+    appCrew3Id = await crewFor(R10_APP_DAY_3, appCaptainId);
+
+    deskToken = await tokenWith('ops-r10-desk@ecms.local', [
+      'operationsShipment.view',
+      'operationsShipment.complete',
+    ]);
+    vaultToken = await tokenWith('ops-r10-vault@ecms.local', [
+      'operationsVault.view',
+      'operationsVault.receive',
+    ]);
+    cancelToken = await tokenWith('ops-r10-cancel@ecms.local', [
+      'operationsVault.view',
+      'operationsVault.cancelReceipt',
+    ]);
+    vaultViewToken = await tokenWith('ops-r10-vault-view@ecms.local', ['operationsVault.view']);
+  });
+
+  describe('the pickup ✓ — one record, by the captain or by Operations (A)', () => {
+    it('the desk’s ✓ turns a white row yellow «من العمليات», its undo turns it white again', async () => {
+      const shipment = await book();
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      // Not on the vault's screen by default — under «الكل» only.
+      expect(await queueIds()).not.toContain(shipment.id);
+      expect(await queueIds(true)).toContain(shipment.id);
+
+      const confirmed = await pickupCall('post', shipment.id, shipment.version, deskToken);
+      expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200);
+      const afterConfirm = data<OperationsShipmentDto>(confirmed);
+      expect(afterConfirm.status).toBe('draft');
+      expect(afterConfirm.version).toBe(shipment.version + 1);
+      const yellow = await securedRow(shipment.id);
+      expect(yellow).toMatchObject({ securedStage: 'withOperations', pickedUpBy: 'operations' });
+      expect(Date.now() - new Date(yellow?.pickedUpAt ?? 0).getTime()).toBeLessThan(60_000);
+      // Yellow is yellow: the vault's screen lists it by default now.
+      expect(await queueIds()).toContain(shipment.id);
+      await waitFor(() =>
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupConfirmed &&
+            (e.payload as { shipmentId: string; by: string }).shipmentId === shipment.id,
+        ),
+      );
+      expect(
+        seenEvents.find(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupConfirmed &&
+            (e.payload as { shipmentId: string }).shipmentId === shipment.id,
+        )?.payload,
+      ).toMatchObject({ by: 'operations', status: 'draft' });
+
+      const undone = await pickupCall('delete', shipment.id, afterConfirm.version, deskToken);
+      expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      expect(await queueIds()).not.toContain(shipment.id);
+      await waitFor(() =>
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupUndone &&
+            (e.payload as { shipmentId: string; by: string }).shipmentId === shipment.id &&
+            (e.payload as { by: string }).by === 'operations',
+        ),
+      );
+      // …and may be pressed again.
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+
+      // Audited on the shipment, and told in «السجل» with WHO.
+      const { AuditLogModel } = await import('../../src/platform/audit/audit.model');
+      const audited = await AuditLogModel.find({
+        'entityRef.entityType': 'shipment',
+        'entityRef.entityId': shipment.id,
+        'changes.field': 'pickedUpBy',
+      })
+        .lean()
+        .exec();
+      expect(audited).toHaveLength(3);
+      const entries = (await logOf(shipment.id)).entries.filter((e) => e.kind.startsWith('pickup'));
+      expect(entries.map((e) => [e.kind, e.changes])).toEqual([
+        ['pickupConfirmed', [{ field: 'pickedUpBy', old: null, new: 'operations' }]],
+        ['pickupUndone', [{ field: 'pickedUpBy', old: 'operations', new: null }]],
+        ['pickupConfirmed', [{ field: 'pickedUpBy', old: null, new: 'operations' }]],
+      ]);
+    });
+
+    it('RBAC — both directions ride operationsShipment.complete; viewing or the vault grants are not enough', async () => {
+      const shipment = await book();
+      expect((await pickupCall('post', shipment.id, shipment.version, null)).status).toBe(401);
+      for (const token of [viewerToken, vaultToken, cancelToken]) {
+        expect((await pickupCall('post', shipment.id, shipment.version, token)).status).toBe(403);
+      }
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+      for (const token of [viewerToken, vaultToken]) {
+        expect((await undo(shipment.id, token)).status).toBe(403);
+      }
+      expect((await securedRow(shipment.id))?.pickedUpBy).toBe('operations');
+    });
+
+    it('refuses a daily shipment, a stale version, a second ✓ and an undo with nothing to undo', async () => {
+      const daily = data<OperationsShipmentDto>(await mkShipment({ collectionDate: R10_PICKUP }));
+      const dailyRes = await pickupCall('post', daily.id, daily.version);
+      expect(dailyRes.status).toBe(422);
+      expect(errorCode(dailyRes)).toBe(ErrorCodes.OPERATIONS_NOT_A_SECURED_SHIPMENT);
+
+      const shipment = await book();
+      const nothing = await pickupCall('delete', shipment.id, shipment.version);
+      expect(nothing.status).toBe(409);
+      expect(errorCode(nothing)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
+
+      const stale = await pickupCall('post', shipment.id, shipment.version + 3);
+      expect(stale.status).toBe(409);
+      expect(errorCode(stale)).toBe(ErrorCodes.STALE_DOCUMENT);
+
+      expect((await confirm(shipment.id)).status).toBe(200);
+      const twice = await confirm(shipment.id);
+      expect(twice.status).toBe(409);
+      expect(errorCode(twice)).toBe(ErrorCodes.OPERATIONS_SECURED_ALREADY_PICKED_UP);
+
+      // The undo is version-checked too.
+      const staleUndo = await pickupCall('delete', shipment.id, shipment.version);
+      expect(staleUndo.status).toBe(409);
+      expect(errorCode(staleUndo)).toBe(ErrorCodes.STALE_DOCUMENT);
+      expect((await pickupCall('post', shipment.id, undefined)).status).toBe(400);
+    });
+
+    // «لو القائد عمل صح ممكن العمليات تشيلها بس لو العمليات عملت صح القائد مينفعش يشيلها».
+    it('the captain’s ✓ in the app writes the record; the desk may take it back, and ✓ as Operations', async () => {
+      const shipment = await book(R10_OUT, R10_APP_DAY, appCrewId, appCaptainId);
+      await captainPicksUp(shipment.id);
+
+      const theirs = await securedRow(shipment.id);
+      expect(theirs).toMatchObject({ securedStage: 'withCaptain', pickedUpBy: 'captain' });
+      const leg = await pickupLegOf(shipment.id);
+      expect(theirs?.pickedUpAt).toBe(leg.pickedUpAt?.toISOString());
+      // The app's ✓ moved the shipment's version — a desk screen read before it is stale.
+      expect((await read(shipment.id)).version).toBe(shipment.version + 1);
+      expect(
+        (await pickupCall('delete', shipment.id, shipment.version)).status,
+        'an undo from a screen read before the captain’s ✓',
+      ).toBe(409);
+      // The desk never stamps over his ✓…
+      const over = await confirm(shipment.id);
+      expect(over.status).toBe(409);
+      expect(errorCode(over)).toBe(ErrorCodes.OPERATIONS_SECURED_ALREADY_PICKED_UP);
+      expect(await queueIds()).toContain(shipment.id);
+
+      // …but may take it back — white again, though his LEG still says picked up.
+      expect((await undo(shipment.id, deskToken)).status).toBe(200);
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+      });
+      expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pickedUp');
+      const white = await receive(shipment.id);
+      expect(white.status).toBe(409);
+      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
+
+      // Then the desk confirms it — as Operations.
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'withOperations',
+        pickedUpBy: 'operations',
+      });
+
+      // «السجل»: the captain's ✓ is ONE entry (his leg's), then the undo of HIS ✓, then the desk's.
+      const kinds = (await logOf(shipment.id)).entries
+        .filter((e) => ['executionPickedUp', 'pickupConfirmed', 'pickupUndone'].includes(e.kind))
+        .map((e) => [e.kind, e.changes]);
+      expect(kinds).toEqual([
+        ['executionPickedUp', []],
+        ['pickupUndone', [{ field: 'pickedUpBy', old: 'captain', new: null }]],
+        ['pickupConfirmed', [{ field: 'pickedUpBy', old: null, new: 'operations' }]],
+      ]);
+      expect(
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupConfirmed &&
+            (e.payload as { shipmentId: string; by: string }).shipmentId === shipment.id &&
+            (e.payload as { by: string }).by === 'captain',
+        ),
+      ).toBe(true);
+    });
+
+    it('the captain’s app never overwrites the desk’s ✓', async () => {
+      const shipment = await book(R10_OUT, R10_APP_DAY_2, appCrew2Id, appCaptainId);
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+      await captainPicksUp(shipment.id);
+      expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pickedUp');
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'withOperations',
+        pickedUpBy: 'operations',
+      });
+    });
+
+    // A row from before Round 10 has no pickup record at all; its stage read its leg.
+    it('a pre-Round-10 row (no record) whose leg is picked up reads as the captain’s — and its undo sticks', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { OperationsShipmentAssignmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment-assignment.model'
+      );
+      const LEG_AT = new Date(`${R10_PICKUP}T07:45:00.000Z`);
+      const legacy = await book();
+      await OperationsShipmentAssignmentModel.updateOne(
+        { shipmentId: legacy.id, leg: 'pickup' },
+        { $set: { executionStatus: 'pickedUp', startedAt: LEG_AT, pickedUpAt: LEG_AT } },
+      ).exec();
+      await OperationsShipmentModel.updateOne({ _id: legacy.id }, { $unset: { pickup: 1 } }).exec();
+      const raw = await OperationsShipmentModel.findById(legacy.id).lean().exec();
+      expect(raw).not.toHaveProperty('pickup');
+
+      expect(await securedRow(legacy.id)).toMatchObject({
+        securedStage: 'withCaptain',
+        pickedUpBy: 'captain',
+        pickedUpAt: LEG_AT.toISOString(),
+      });
+      expect(await queueIds()).toContain(legacy.id);
+      expect((await confirm(legacy.id)).status).toBe(409);
+
+      // The undo writes an EXPLICIT null — the leg is never read for this row again.
+      expect((await undo(legacy.id, deskToken)).status).toBe(200);
+      const after = await OperationsShipmentModel.findById(legacy.id).lean().exec();
+      expect(after).toHaveProperty('pickup', null);
+      expect(await securedRow(legacy.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+      });
+      expect((await receive(legacy.id)).status).toBe(409);
+
+      // And a legacy row whose leg was NOT picked up is white, and the captain's app records it:
+      // the app's conditional write (`pickup: null`) matches a record never written as well.
+      const untouched = await book(R10_OUT, R10_APP_DAY_3, appCrew3Id, appCaptainId);
+      await OperationsShipmentModel.updateOne({ _id: untouched.id }, { $unset: { pickup: 1 } }).exec();
+      expect((await securedRow(untouched.id))?.securedStage).toBe('awaitingPickup');
+      await captainPicksUp(untouched.id);
+      expect(await securedRow(untouched.id)).toMatchObject({
+        securedStage: 'withCaptain',
+        pickedUpBy: 'captain',
+      });
+      const recorded = await OperationsShipmentModel.findById(untouched.id).lean().exec();
+      expect(recorded?.pickup).toMatchObject({ by: 'captain' });
+    });
+  });
+
+  describe('the vault receives only a picked-up shipment (B)', () => {
+    it('refuses a white row with 409 OPERATIONS_SECURED_NOT_PICKED_UP — and takes no custody', async () => {
+      const { OperationsVaultCustodyModel } = await import(
+        '../../src/modules/operations/vault/vault-custody.model'
+      );
+      const shipment = await book();
+      const white = await receive(shipment.id, vaultToken);
+      expect(white.status).toBe(409);
+      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(0);
+      expect((await read(shipment.id)).status).toBe('draft');
+
+      // Picked up by the desk — now the vault takes it.
+      expect((await confirm(shipment.id)).status).toBe(200);
+      const green = await receive(shipment.id, vaultToken);
+      expect(green.status, JSON.stringify(green.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(green).status).toBe('inVault');
+    });
+
+    // The custody and the shipment's move are ONE write since Round 10.
+    it('a receive refused at the shipment’s write leaves NO custody behind', async () => {
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const { StaleDocumentError } = await import('../../src/shared/errors');
+      const { OperationsVaultCustodyModel } = await import(
+        '../../src/modules/operations/vault/vault-custody.model'
+      );
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      const write = vi
+        .spyOn(operationsShipmentRepository, 'updateById')
+        .mockRejectedValueOnce(new StaleDocumentError());
+      try {
+        const refused = await receive(shipment.id);
+        expect(refused.status).toBe(409);
+        expect(errorCode(refused)).toBe(ErrorCodes.STALE_DOCUMENT);
+      } finally {
+        write.mockRestore();
+      }
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(0);
+      const again = await receive(shipment.id);
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(1);
+    });
+  });
+
+  describe('the lock after the vault’s receipt (C)', () => {
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const imageUrl = (id: string): string => `/api/v1/operations/shipments/${id}/receipt-image`;
+    const edit = async (id: string, notes: string): Promise<request.Response> =>
+      request(app)
+        .patch(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ notes, version: (await read(id)).version });
+    const remove = (id: string): Promise<request.Response> =>
+      request(app)
+        .delete(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    const upload = (id: string): Promise<request.Response> =>
+      request(app)
+        .post(imageUrl(id))
+        .set('Authorization', `Bearer ${adminToken}`)
+        .attach('file', PNG, { filename: 'receipt.png', contentType: 'image/png' });
+    const dropImage = (id: string): Promise<request.Response> =>
+      request(app).delete(imageUrl(id)).set('Authorization', `Bearer ${adminToken}`);
+    const expectLocked = (res: request.Response, what: string): void => {
+      expect(res.status, `${what}: ${JSON.stringify(res.body)}`).toBe(409);
+      expect(errorCode(res), what).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+    };
+
+    it('a picked-up draft is still fully editable — edit, photo, pickup crew, undo, delete', async () => {
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await edit(shipment.id, 'قبل الخزينة')).status).toBe(200);
+      expect((await upload(shipment.id)).status).toBe(200);
+      expect((await dropImage(shipment.id)).status).toBe(200);
+      const leg = await request(app)
+        .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          crewAssignmentId: pickupCrewId,
+          captainEmployeeId: captainId,
+          version: (await pickupLegOf(shipment.id)).__v,
+        });
+      expect(leg.status, JSON.stringify(leg.body)).toBe(200);
+      expect((await undo(shipment.id)).status).toBe(200);
+      expect((await remove(shipment.id)).status).toBe(204);
+      // Deleted while open — so restoring it is never locked.
+      const restored = await request(app)
+        .post(`/api/v1/operations/shipments/${shipment.id}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(restored.status).toBe(200);
+    });
+
+    it('once received: edit, delete, the photo, the pickup ✓/undo and the pickup crew are refused (409)', async () => {
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await upload(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+
+      expectLocked(await edit(shipment.id, 'بعد الخزينة'), 'edit');
+      expectLocked(await remove(shipment.id), 'delete');
+      expectLocked(await upload(shipment.id), 'replace the photo');
+      expectLocked(await dropImage(shipment.id), 'remove the photo');
+      expectLocked(await undo(shipment.id), 'take the pickup ✓ back');
+      expectLocked(await confirm(shipment.id), 'press the pickup ✓');
+      const leg = await request(app)
+        .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: pickupCrewId, captainEmployeeId: captainId, version: 0 });
+      expectLocked(leg, 'the pickup crew');
+
+      // The photo is still READ; and the platform's own file routes cannot swap it either.
+      expect(
+        (await request(app).get(imageUrl(shipment.id)).set('Authorization', `Bearer ${adminToken}`))
+          .status,
+      ).toBe(200);
+      const fileId = (await read(shipment.id)).receiptImage?.fileId ?? '';
+      const replaced = await request(app)
+        .post(`/api/v1/platform/files/${fileId}/replace`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .attach('file', PNG, { filename: 'other.png', contentType: 'image/png' });
+      expect(replaced.status).toBe(403);
+      // Nothing moved.
+      const after = await read(shipment.id);
+      expect(after).toMatchObject({ status: 'inVault', notes: null });
+      expect(after.receiptImage?.fileId).toBe(fileId);
+      expect((await securedRow(shipment.id))?.pickedUpBy).toBe('operations');
+    });
+
+    // The lock is held AT THE WRITE, not only at the check before it: the vault's ✓ landing in the
+    // moment between the two must still win. A delete carries no version to catch it, and a photo
+    // upload stores its bytes first and links them after — retrying a link that lost to a write
+    // "about something else", which the vault's ✓ is not.
+    it('the vault’s ✓ landing mid-delete or mid-upload still locks the shipment', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const { fileService } = await import('../../src/platform/files');
+      /** What the vault's ✓ does to the row — landing at exactly the wrong moment. */
+      const vaultReceivesNow = async (id: string): Promise<void> => {
+        await OperationsShipmentModel.updateOne(
+          { _id: id },
+          { $set: { status: 'inVault' }, $inc: { __v: 1 } },
+        ).exec();
+      };
+
+      const deleting = await book();
+      expect((await confirm(deleting.id)).status).toBe(200);
+      const readRow = operationsShipmentRepository.getById.bind(operationsShipmentRepository);
+      const checked = vi
+        .spyOn(operationsShipmentRepository, 'getById')
+        .mockImplementationOnce(async (id) => {
+          const seen = await readRow(id);
+          await vaultReceivesNow(id);
+          return seen;
+        });
+      try {
+        expectLocked(await remove(deleting.id), 'a delete the vault’s ✓ overtook');
+      } finally {
+        checked.mockRestore();
+      }
+      expect(await OperationsShipmentModel.findById(deleting.id).lean().exec()).toMatchObject({
+        status: 'inVault',
+        isDeleted: false,
+      });
+
+      const photographed = await book();
+      expect((await confirm(photographed.id)).status).toBe(200);
+      const store = fileService.upload.bind(fileService);
+      const stored = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+        const file = await store(...args);
+        await vaultReceivesNow(photographed.id);
+        return file;
+      });
+      try {
+        expectLocked(await upload(photographed.id), 'a photo the vault’s ✓ overtook');
+      } finally {
+        stored.mockRestore();
+      }
+      expect(await read(photographed.id)).toMatchObject({ status: 'inVault', receiptImage: null });
+
+      // Both rows are "in the vault" with no custody — a state only this fixture makes. Taken off
+      // every board, so «صرف الخزينة» below reads only real receipts.
+      await OperationsShipmentModel.updateMany(
+        { _id: { $in: [deleting.id, photographed.id] } },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+      ).exec();
+    });
+
+    it('the flow acts stay open — delivery crew, dispatch, the desk’s completion ✓ and its undo', async () => {
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+      const assigned = await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+      const out = await request(app)
+        .post('/api/v1/operations/secured/dispatch')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: outCrewId, shipmentIds: [shipment.id] });
+      expect(out.status, JSON.stringify(out.body)).toBe(200);
+      expectLocked(await edit(shipment.id, 'خرجت'), 'edit a dispatched one');
+      const done = await request(app)
+        .post(`/api/v1/operations/shipments/${shipment.id}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: (await read(shipment.id)).version });
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      expectLocked(await remove(shipment.id), 'delete a completed one');
+      const reopened = await request(app)
+        .post(`/api/v1/operations/shipments/${shipment.id}/reopen`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: (await read(shipment.id)).version });
+      expect(reopened.status).toBe(200);
+      expect(data<OperationsShipmentDto>(reopened).status).toBe('dispatched');
+    });
+
+    it('a DAILY shipment is never locked — a completed one still takes an edit', async () => {
+      const daily = data<OperationsShipmentDto>(await mkShipment({ collectionDate: R10_PICKUP }));
+      const done = await request(app)
+        .post(`/api/v1/operations/shipments/${daily.id}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: daily.version });
+      expect(done.status).toBe(200);
+      expect((await edit(daily.id, 'بعد التسليم')).status).toBe(200);
+    });
+  });
+
+  describe('cancelling the vault’s receipt — the special grant (D)', () => {
+    it('RBAC — rides operationsVault.cancelReceipt alone; receiving or viewing the vault is not enough', async () => {
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+      expect((await cancel(shipment.id, {}, null)).status).toBe(401);
+      for (const token of [viewerToken, vaultToken, vaultViewToken, deskToken]) {
+        expect((await cancel(shipment.id, {}, token)).status).toBe(403);
+      }
+      expect((await read(shipment.id)).status).toBe('inVault');
+      // No role holds it by default — of the seeded roles, only super-admin, which holds every key
+      // by design (rbac.service keeps it on the full catalog).
+      const { RoleModel } = await import('../../src/platform/rbac/role.model');
+      const seeded = await RoleModel.find({
+        isSystem: true,
+        permissionKeys: 'operationsVault.cancelReceipt',
+      })
+        .lean()
+        .exec();
+      expect(seeded.map((r) => r.key)).toEqual(['super-admin']);
+    });
+
+    it('needs a reason (3..500 once trimmed) and the version', async () => {
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+      for (const reason of [undefined, '', '  ab  ', 'x'.repeat(501)]) {
+        const res = await cancel(shipment.id, { reason }, cancelToken);
+        expect(res.status, String(reason)).toBe(400);
+      }
+      const noVersion = await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/cancel-receipt`)
+        .set('Authorization', `Bearer ${cancelToken}`)
+        .send({ reason: 'سبب كاف' });
+      expect(noVersion.status).toBe(400);
+      const stale = await cancel(shipment.id, { version: 0 }, cancelToken);
+      expect(stale.status).toBe(409);
+      expect(errorCode(stale)).toBe(ErrorCodes.STALE_DOCUMENT);
+      expect((await read(shipment.id)).status).toBe('inVault');
+    });
+
+    it('only from the vault — never a draft, a dispatched or a daily shipment', async () => {
+      const draft = await book();
+      const notYet = await cancel(draft.id, {}, cancelToken);
+      expect(notYet.status).toBe(409);
+      expect(errorCode(notYet)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_IN_VAULT);
+
+      const gone = await book();
+      expect((await confirm(gone.id)).status).toBe(200);
+      expect((await receive(gone.id)).status).toBe(200);
+      await request(app)
+        .post(`/api/v1/operations/secured/${gone.id}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/operations/secured/dispatch')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ crewAssignmentId: outCrewId, shipmentIds: [gone.id] })
+        ).status,
+      ).toBe(200);
+      const left = await cancel(gone.id, {}, cancelToken);
+      expect(left.status).toBe(409);
+      expect(errorCode(left)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_IN_VAULT);
+
+      const daily = data<OperationsShipmentDto>(await mkShipment({ collectionDate: R10_PICKUP }));
+      const wrongType = await cancel(daily.id, {}, cancelToken);
+      expect(wrongType.status).toBe(422);
+      expect(errorCode(wrongType)).toBe(ErrorCodes.OPERATIONS_NOT_A_SECURED_SHIPMENT);
+    });
+
+    it('returns it to draft — yellow again, its pickup intact, editable, re-receivable — and keeps the voided custody', async () => {
+      const { OperationsVaultCustodyModel } = await import(
+        '../../src/modules/operations/vault/vault-custody.model'
+      );
+      const { AuditLogModel } = await import('../../src/platform/audit/audit.model');
+      const shipment = await book();
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+      const receivedNumber = (await read(shipment.id)).receiptNumber;
+      expect(receivedNumber).not.toBeNull();
+
+      const REASON = '  استلمت الخزينة الشحنة بالخطأ  ';
+      const res = await cancel(shipment.id, { reason: REASON }, cancelToken);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(res)).toMatchObject({
+        status: 'draft',
+        receiptNumber: null,
+      });
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'withOperations',
+        pickedUpBy: 'operations',
+      });
+      // Off the vault's books, back on the receive queue as a yellow row (not a receipt of today).
+      const inventory = (
+        await request(app)
+          .get('/api/v1/operations/secured/vault?page=1&pageSize=100')
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body as { data: OperationsVaultInventoryRowDto[] };
+      expect(inventory.data.map((r) => r.shipmentId)).not.toContain(shipment.id);
+      const queued = data<OperationsVaultQueueDto>(
+        await request(app)
+          .get('/api/v1/operations/secured/vault-queue')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(queued).toMatchObject({ securedStage: 'withOperations', vaultReceivedAt: null });
+
+      // The custody is VOIDED, never erased — every stamp kept, and why.
+      const voided = await OperationsVaultCustodyModel.find({ shipmentId: shipment.id }).lean().exec();
+      expect(voided).toHaveLength(1);
+      expect(voided[0]).toMatchObject({
+        receiptNumber: receivedNumber,
+        bagCount: 2,
+        isDeleted: true,
+        cancelReason: REASON.trim(),
+      });
+      expect(voided[0]?.cancelledAt).toBeInstanceOf(Date);
+
+      // Editable again, and the vault may receive it afresh.
+      const edited = await request(app)
+        .patch(`/api/v1/operations/shipments/${shipment.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ notes: 'بعد إلغاء الاستلام', version: (await read(shipment.id)).version });
+      expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+      const again = await receive(shipment.id);
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(2);
+      expect((await securedRow(shipment.id))?.securedStage).toBe('inVault');
+
+      // Audited with the reason on both halves, and announced.
+      const custodyRow = await AuditLogModel.findOne({
+        'entityRef.entityType': 'vaultCustody',
+        'entityRef.entityId': String(voided[0]?._id),
+        action: 'delete',
+      })
+        .lean()
+        .exec();
+      expect(custodyRow?.changes).toEqual([
+        expect.objectContaining({ field: 'cancelReason', new: REASON.trim() }),
+      ]);
+      await waitFor(() =>
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.VaultReceiptCancelled &&
+            (e.payload as { shipmentId: string }).shipmentId === shipment.id,
+        ),
+      );
+      expect(
+        seenEvents.find(
+          (e) =>
+            e.name === OperationsEvents.VaultReceiptCancelled &&
+            (e.payload as { shipmentId: string }).shipmentId === shipment.id,
+        )?.payload,
+      ).toMatchObject({ reason: REASON.trim(), custodyId: String(voided[0]?._id) });
+
+      // «السجل»: received, cancelled (with why — ONE entry), received again; the first receipt's
+      // details are still there for the vault's reader.
+      const kinds = (await logOf(shipment.id)).entries
+        .filter((e) => ['vaultReceived', 'receiptCancelled'].includes(e.kind))
+        .map((e) => e.kind);
+      expect(kinds).toEqual(['vaultReceived', 'receiptCancelled', 'vaultReceived']);
+      const cancelled = (await logOf(shipment.id)).entries.find((e) => e.kind === 'receiptCancelled');
+      expect(cancelled?.changes).toEqual([{ field: 'reason', old: null, new: REASON.trim() }]);
+      expect(
+        (await logOf(shipment.id)).entries.find((e) => e.kind === 'vaultReceived')?.changes,
+      ).toEqual(expect.arrayContaining([{ field: 'receiptNumber', old: null, new: receivedNumber }]));
+      // A reader without the vault grant still reads why.
+      const viewerLog = await logOf(shipment.id, viewerToken);
+      expect(viewerLog.entries.find((e) => e.kind === 'receiptCancelled')?.changes).toEqual([
+        { field: 'reason', old: null, new: REASON.trim() },
+      ]);
+    });
+  });
+
+  describe('«صرف الخزينة» — GET /operations/secured/dispatch-board (E)', () => {
+    let dueOut = '';
+    let dueOther = '';
+    let dueFilter = '';
+    let overdue = '';
+    let undated = '';
+    let stillDraft = '';
+    let alreadyOut = '';
+
+    const intoVault = async (deliveryDate: string): Promise<string> => {
+      const shipment = await book(deliveryDate);
+      expect((await confirm(shipment.id)).status).toBe(200);
+      expect((await receive(shipment.id)).status).toBe(200);
+      return shipment.id;
+    };
+    const boardOf = async (query = '', token = adminToken) => {
+      const res = await dispatchBoard(query, token);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsSecuredDispatchBoardDto>(res);
+    };
+
+    beforeAll(async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      dueOut = await intoVault(R10_OUT);
+      dueOther = await intoVault(R10_OTHER_OUT);
+      dueFilter = await intoVault(R10_FILTER_DAY);
+      // Overdue: its delivery day has passed (only the database can say so — no screen books a
+      // past day), and undated: a legacy row with no delivery date.
+      overdue = await intoVault(R10_FILTER_DAY);
+      await OperationsShipmentModel.updateOne(
+        { _id: overdue },
+        { $set: { deliveryDate: new Date(`${addDaysYmd(cairoYmd(new Date()), -3)}T00:00:00.000Z`) } },
+      ).exec();
+      undated = await intoVault(R10_FILTER_DAY);
+      await OperationsShipmentModel.updateOne({ _id: undated }, { $set: { deliveryDate: null } }).exec();
+      stillDraft = (await book(R10_FILTER_DAY)).id;
+      alreadyOut = await intoVault(R10_OUT);
+      await request(app)
+        .post(`/api/v1/operations/secured/${alreadyOut}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/operations/secured/dispatch')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ crewAssignmentId: outCrewId, shipmentIds: [alreadyOut] })
+        ).status,
+      ).toBe(200);
+    });
+
+    it('lists EVERY shipment in the vault, whatever its delivery day — as board rows', async () => {
+      const view = await boardOf();
+      expect(view.date).toBeNull();
+      expect(view.today).toBe(`${cairoYmd(new Date())}T00:00:00.000Z`);
+      const ids = view.shipments.map((s) => s.id);
+      expect(ids).toEqual(expect.arrayContaining([dueOut, dueOther, dueFilter, overdue, undated]));
+      expect(ids).not.toContain(stillDraft);
+      expect(ids).not.toContain(alreadyOut);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const row of view.shipments) {
+        expect(row).toMatchObject({ shipmentType: 'secured', status: 'inVault', securedStage: 'inVault' });
+        expect(row.vaultReceivedAt).not.toBeNull();
+      }
+      // The same row every board prints, plus the dispatch screen's three facts.
+      const one = view.shipments.find((s) => s.id === dueOut);
+      expect(one).toMatchObject({
+        pickedUpBy: 'operations',
+        overdue: false,
+        deliveryLegVersion: null,
+        crew: null,
+        origin: expect.objectContaining({ id: branchA1.id }) as unknown,
+      });
+    });
+
+    it('orders by delivery day — the overdue first — then oldest booked, the undated last', async () => {
+      const rows = (await boardOf()).shipments;
+      const key = (r: OperationsSecuredDispatchRowDto): number =>
+        r.deliveryDate === null ? Number.POSITIVE_INFINITY : new Date(r.deliveryDate).getTime();
+      for (let i = 1; i < rows.length; i += 1) {
+        const [a, b] = [rows[i - 1], rows[i]] as [OperationsSecuredDispatchRowDto, OperationsSecuredDispatchRowDto];
+        expect(key(a) <= key(b), `${a.id} before ${b.id}`).toBe(true);
+        if (key(a) === key(b)) {
+          expect(new Date(a.createdAt).getTime()).toBeLessThanOrEqual(new Date(b.createdAt).getTime());
+        }
+      }
+      expect(rows.find((r) => r.id === overdue)?.overdue).toBe(true);
+      // Every overdue row leads every row that is not.
+      const firstOnTime = rows.findIndex((r) => !r.overdue);
+      expect(rows.slice(Math.max(firstOnTime, 0)).some((r) => r.overdue)).toBe(firstOnTime === -1);
+      expect(rows[rows.length - 1]?.id).toBe(undated);
+      expect(rows.find((r) => r.id === undated)?.overdue).toBe(false);
+    });
+
+    it('filters on ONE delivery day — the undated and every other day left out', async () => {
+      const view = await boardOf(`?date=${R10_FILTER_DAY}`);
+      expect(view.date).toBe(`${R10_FILTER_DAY}T00:00:00.000Z`);
+      expect(view.shipments.map((s) => s.id)).toEqual([dueFilter]);
+      const outDay = (await boardOf(`?date=${R10_OUT}`)).shipments;
+      expect(outDay.map((s) => s.id)).toContain(dueOut);
+      expect(outDay.map((s) => s.id)).not.toContain(dueOther);
+      for (const row of outDay) expect(row.deliveryDate).toBe(`${R10_OUT}T00:00:00.000Z`);
+      for (const bad of ['?date=', '?date=not-a-day', `?from=${R10_OUT}`, '?all=true']) {
+        expect((await dispatchBoard(bad)).status, bad).toBe(400);
+      }
+    });
+
+    it('assigns a delivery crew from the SHIPMENT’s day, whatever the filter — then re-assigns with the leg’s version, and dispatches', async () => {
+      // On the board filtered to R10_OUT, a shipment due on R10_OTHER_OUT is not there — but on the
+      // whole board it is, and its crew comes from ITS day's crew board.
+      const wrongDay = await request(app)
+        .post(`/api/v1/operations/secured/${dueOther}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(wrongDay.status).toBe(422);
+      expect(errorCode(wrongDay)).toBe(ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH);
+      const itsDay = data<OperationsCrewBoardDto>(
+        await request(app)
+          .get(`/api/v1/operations/crew-board?date=${R10_OTHER_OUT}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id;
+      expect(itsDay).toBe(otherOutCrewId);
+      const assigned = await request(app)
+        .post(`/api/v1/operations/secured/${dueOther}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: otherOutCrewId, captainEmployeeId: captainId, version: 0 });
+      expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+
+      const row = (await boardOf()).shipments.find((s) => s.id === dueOther);
+      expect(row?.crew).toMatchObject({ crewAssignmentId: otherOutCrewId, captainEmployeeId: captainId });
+      expect(row?.deliveryLegVersion).toBe(0);
+      const reassigned = await request(app)
+        .post(`/api/v1/operations/secured/${dueOther}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          crewAssignmentId: otherOutCrewId,
+          captainEmployeeId: captainId,
+          version: row?.deliveryLegVersion ?? -1,
+        });
+      expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
+      expect((await boardOf()).shipments.find((s) => s.id === dueOther)?.deliveryLegVersion).toBe(1);
+
+      const out = await request(app)
+        .post('/api/v1/operations/secured/dispatch')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId: row?.crew?.crewAssignmentId, shipmentIds: [dueOther] });
+      expect(out.status, JSON.stringify(out.body)).toBe(200);
+      expect((await boardOf()).shipments.map((s) => s.id)).not.toContain(dueOther);
+    });
+
+    it('RBAC — rides operationsVault.view (the page’s own grant); the crew plan stays the crew grant’s', async () => {
+      expect((await dispatchBoard('', null)).status).toBe(401);
+      expect((await dispatchBoard('', viewerToken)).status).toBe(403);
+      const vaultOnly = await boardOf('', vaultViewToken);
+      expect(vaultOnly.crews).toEqual([]);
+      expect(vaultOnly.shipments.map((s) => s.id)).toContain(dueOut);
+      for (const row of vaultOnly.shipments) {
+        if (row.crew !== null) expect(row.crew.captainPhone).toBeNull();
+      }
+    });
+
+    it('refuses more than OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS in the vault — counted, never loaded', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const MARK = 'dispatch-board-cap-fixture';
+      const FAR = new Date(`${shift(399)}T00:00:00.000Z`);
+      try {
+        const held = await operationsShipmentRepository.countSecuredInVault();
+        await OperationsShipmentModel.insertMany(
+          Array.from({ length: OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS - held + 1 }, () => ({
+            shipmentType: 'secured',
+            status: 'inVault',
+            mainBankId: bankA.id,
+            secondaryBankId: null,
+            originBranchId: branchA1.id,
+            destinationBranchId: branchA1.id,
+            areaName: null,
+            lines: [{ currencyId: egp.id, amountMinor: 100 }],
+            collectionDate: FAR,
+            deliveryDate: FAR,
+            receiptNumber: null,
+            vaultReceiptNumber: null,
+            serialTracked: false,
+            notes: MARK,
+            receivedById: null,
+            receivedAt: null,
+          })),
+        );
+        const load = vi.spyOn(operationsShipmentRepository, 'securedInVault');
+        try {
+          const over = await dispatchBoard();
+          expect(over.status).toBe(422);
+          expect(errorCode(over)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE);
+          expect(load).not.toHaveBeenCalled();
+          // One day is still a question the vault can answer.
+          expect((await dispatchBoard(`?date=${R10_OUT}`)).status).toBe(200);
+        } finally {
+          load.mockRestore();
+        }
+      } finally {
+        await OperationsShipmentModel.deleteMany({ notes: MARK }).exec();
+      }
+      expect((await dispatchBoard()).status).toBe(200);
+    }, 60_000);
   });
 });
 

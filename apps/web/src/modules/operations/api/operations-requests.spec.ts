@@ -15,6 +15,8 @@
 // database: a failure here is a 400 in the browser.
 import { describe, expect, it } from 'vitest';
 import {
+  CancelVaultReceiptSchema,
+  ConfirmSecuredPickupSchema,
   ListOperationsBankBranchesQuerySchema,
   ListOperationsCrewRequirementsQuerySchema,
   ListOperationsReferenceQuerySchema,
@@ -29,6 +31,7 @@ import {
   OperationsDeletedShipmentsQuerySchema,
   OperationsReportQuerySchema,
   OperationsSecuredBoardQuerySchema,
+  OperationsSecuredDispatchBoardQuerySchema,
   OperationsShipmentHistoryQuerySchema,
   OperationsVaultQueueQuerySchema,
   OrderOperationsCurrenciesSchema,
@@ -113,6 +116,17 @@ const REQUESTS = [
     params: { all: true },
   },
   { screen: 'Vault dispatch · due list', schema: ListSecuredDueQuerySchema, params: { date: '2026-08-18' } },
+  // Round 10: «صرف الخزينة» — every محصنة in the vault (no key at all), or one delivery day.
+  {
+    screen: 'Vault dispatch · every shipment in the vault',
+    schema: OperationsSecuredDispatchBoardQuerySchema,
+    params: {},
+  },
+  {
+    screen: 'Vault dispatch · one delivery day',
+    schema: OperationsSecuredDispatchBoardQuerySchema,
+    params: { date: '2026-08-18' },
+  },
   { screen: 'Vault inventory', schema: ListVaultInventoryQuerySchema, params: { page: 1, pageSize: 25 } },
   { screen: 'Crew board', schema: OperationsCrewBoardQuerySchema, params: { date: '2026-08-18' } },
   { screen: 'Crew board · pool', schema: OperationsCrewDirectoryQuerySchema, params: { date: '2026-08-18' } },
@@ -146,6 +160,35 @@ describe('every Operations request parses against the schema that receives it (B
       expect(result.success, why).toBe(true);
     });
   }
+});
+
+// Round 10 — the bodies the secured screen and the vault's screens send, against the schemas that
+// receive them: the pickup ✓ and its undo carry the version the row was read at; a cancelled receipt
+// its reason, trimmed, within the server's bounds (the dialog sends `reason.trim()`).
+describe('the Round 10 acts’ bodies', () => {
+  it('sends the pickup ✓ and its undo the row’s version, and nothing else', () => {
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 4 }).success).toBe(true);
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 4, by: 'operations' }).success).toBe(
+      false,
+    );
+  });
+
+  it('sends a cancelled receipt its reason and the row’s version', () => {
+    expect(
+      CancelVaultReceiptSchema.safeParse({ reason: 'أُدخلت بالخطأ', version: 5 }).success,
+    ).toBe(true);
+    expect(CancelVaultReceiptSchema.safeParse({ reason: '', version: 5 }).success).toBe(false);
+  });
+
+  it('never asks «صرف الخزينة» for an empty day — the key is left out instead', () => {
+    // The server refuses `date=` (400): an empty day is not a day.
+    expect(OperationsSecuredDispatchBoardQuerySchema.safeParse({ date: '' }).success).toBe(false);
+    // So an empty value never reaches it: `buildQuery` drops it, and «every day» is no key at all.
+    expect(buildQuery({ date: '' })).toBe('');
+    expect(
+      OperationsSecuredDispatchBoardQuerySchema.safeParse(asServerQuery({ date: '' })).success,
+    ).toBe(true);
+  });
 });
 
 describe('the currencies’ dragged order (Round 8)', () => {

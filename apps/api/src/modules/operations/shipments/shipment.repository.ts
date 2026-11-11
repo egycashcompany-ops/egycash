@@ -1,4 +1,4 @@
-import { type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { OPERATIONS_SHIPMENT_STATUSES, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { OperationsShipmentModel, type OperationsShipmentDoc } from './shipment.model';
@@ -71,6 +71,19 @@ const securedDraftFilter: FilterQuery<OperationsShipmentDoc> = {
   shipmentType: 'secured',
   status: 'draft',
 };
+
+/**
+ * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, or only those whose delivery date
+ * is `day` (a UTC midnight — the stored form). Without a day it is served by
+ * `ix_type_status_created`; with one, by `ix_type_delivery_date_status`. A shipment with no delivery
+ * date matches only the unfiltered form — a day is a question about a date it lacks.
+ */
+const inVaultFilter = (day: Date | undefined): FilterQuery<OperationsShipmentDoc> => ({
+  isDeleted: false,
+  shipmentType: 'secured',
+  status: 'inVault',
+  ...(day === undefined ? {} : { deliveryDate: day }),
+});
 
 class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc> {
   constructor() {
@@ -165,6 +178,75 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   /** How many rows `securedDrafts` would return — counted before anything is loaded. */
   async countSecuredDrafts(): Promise<number> {
     return this.model.countDocuments(securedDraftFilter).exec();
+  }
+
+  /**
+   * «صرف الخزينة» — the secured shipments in the vault (`inVaultFilter`), in no particular order: the
+   * service orders them by delivery date with the undated ones last, which Mongo's ascending sort
+   * (nulls first) cannot say.
+   */
+  async securedInVault(day?: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model.find(inVaultFilter(day)).lean<OperationsShipmentDoc[]>().exec();
+  }
+
+  /** How many rows `securedInVault` would return — counted before anything is loaded. */
+  async countSecuredInVault(day?: Date): Promise<number> {
+    return this.model.countDocuments(inVaultFilter(day)).exec();
+  }
+
+  /**
+   * THE CAPTAIN'S PICKUP ✓, recorded on the shipment (Round 10) — in the caller's transaction, ONE
+   * conditional write: only a live SECURED shipment still in `draft` with NO pickup recorded
+   * (`pickup: null` matches the explicit null and a pre-Round-10 row without the field alike). So
+   * the desk's ✓ is never overwritten («لو العمليات عملت صح القائد مينفعش يشيلها»), a shipment the
+   * vault already has is never touched, and two racing writes cannot both land. The version moves
+   * like any other write's, so a desk screen read before it is refused as stale.
+   *
+   * Returns the updated row, or null when nothing matched — which is not an error: a daily
+   * shipment, or one whose pickup someone already recorded, simply keeps what it has.
+   */
+  async recordCaptainPickup(
+    id: string,
+    pickup: NonNullable<OperationsShipmentDoc['pickup']>,
+    session?: ClientSession,
+  ): Promise<OperationsShipmentDoc | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, isDeleted: false, shipmentType: 'secured', status: 'draft', pickup: null },
+        { $set: { pickup, updatedBy: pickup.userId }, $inc: { __v: 1 } },
+        { new: true, session: session ?? null },
+      )
+      .lean<OperationsShipmentDoc>()
+      .exec();
+  }
+
+  /**
+   * The soft delete held to the vault's lock AT THE WRITE (Round 10): ONE conditional write that
+   * matches only a live shipment that is not locked — a daily one, or a secured one still in
+   * `draft` (`isOperationsShipmentLocked`). The service checks the lock first for the plain answer;
+   * this closes the moment between that check and the write. A delete carries no version, so
+   * without it the vault's ✓ landing in that moment would be deleted over — a shipment off every
+   * board with its custody still held.
+   *
+   * Null when nothing matched (deleted meanwhile, or locked by then); the caller says which.
+   */
+  async softDeleteUnlocked(id: string, by: string): Promise<OperationsShipmentDoc | null> {
+    const actor = new Types.ObjectId(by);
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          $or: [{ shipmentType: { $ne: 'secured' } }, { status: 'draft' }],
+        },
+        {
+          $set: { isDeleted: true, deletedAt: new Date(), deletedBy: actor, updatedBy: actor },
+          $inc: { __v: 1 },
+        },
+        { new: true },
+      )
+      .lean<OperationsShipmentDoc>()
+      .exec();
   }
 
   /**

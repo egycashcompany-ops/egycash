@@ -1,8 +1,8 @@
 // The board rows of every Operations screen that prints them — the day board, the history, the
-// deleted list, the secured screen and the vault's receive queue — mapped for THE READER. HTTP-layer
-// only (it reads the caller's grants off the request); the rows themselves come from
-// `operationsShipmentService.boardView`, so all five screens print a shipment the same way and gate
-// the crew plan the same way.
+// deleted list, the secured screen, the vault's receive queue and (Round 10) «صرف الخزينة» — mapped
+// for THE READER. HTTP-layer only (it reads the caller's grants off the request); the rows
+// themselves come from `operationsShipmentService.boardView`, so all six screens print a shipment
+// the same way and gate the crew plan the same way.
 import { type Request } from 'express';
 import { type OperationsDayBoardDto } from '@ecms/contracts';
 import { authContext } from '../../../platform/auth';
@@ -42,7 +42,8 @@ export const boardForReader = (
         crew,
         captainDeliveredAt,
         securedStage,
-        captainPickedUpAt,
+        pickedUpBy,
+        pickedUpAt,
       }) => ({
         ...toShipmentDto(doc),
         origin,
@@ -50,7 +51,8 @@ export const boardForReader = (
         crew: crew === null || crewPlan ? crew : { ...crew, captainPhone: null },
         captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
         securedStage,
-        captainPickedUpAt: captainPickedUpAt === null ? null : captainPickedUpAt.toISOString(),
+        pickedUpBy,
+        pickedUpAt: pickedUpAt === null ? null : pickedUpAt.toISOString(),
       }),
     ),
     crews: crewPlan ? crews : [],

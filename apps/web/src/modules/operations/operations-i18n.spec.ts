@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
+  OPERATIONS_SECURED_PICKED_UP_BY,
   OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_LEGS,
   OPERATIONS_SHIPMENT_LOG_FIELDS,
@@ -170,6 +171,8 @@ const BOARD_KEYS = [
     'dateInPast', 'dateBeforeOriginal',
     // A محصنة's delivery never before its collection («تاريخ التسليم تانى يوم الاستلام»).
     'deliveryBeforeCollection',
+    // Round 10 — the vault received it after the form was opened («ميقدر حد … يعدل عليها»).
+    'locked',
   ].map((key) => `operations.shipment.errors.${key}`),
   // A محصنة's stage — its «الحالة» on the secured screen, the day board and the history — with
   // the sentence each says on hover; and the secured screen's «تاريخ الاستلام» beside «تاريخ التسليم».
@@ -178,6 +181,9 @@ const BOARD_KEYS = [
     `operations.board.stageHint.${stage}`,
   ]),
   'operations.board.collectedOn',
+  // Round 10 — the lock on a row the vault has received, and a page's ticks on the rows.
+  'operations.board.locked',
+  'operations.board.select',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens: its frame,
   // a sentence for every kind, a label for every field and a name for every leg the contract lists.
   ...[
@@ -186,6 +192,8 @@ const BOARD_KEYS = [
   ...OPERATIONS_SHIPMENT_LOG_KINDS.map((kind) => `operations.shipment.log.kind.${kind}`),
   ...OPERATIONS_SHIPMENT_LOG_FIELDS.map((field) => `operations.shipment.log.field.${field}`),
   ...OPERATIONS_SHIPMENT_LEGS.map((leg) => `operations.shipment.log.leg.${leg}`),
+  // Round 10 — who confirmed a pickup, as the log says it («القائد» / «العمليات»).
+  ...OPERATIONS_SECURED_PICKED_UP_BY.map((by) => `operations.shipment.log.pickedUpBy.${by}`),
   // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the history's deleted shipments.
   ...[
     'open', 'openCount', 'unavailable', 'title', 'subtitle', 'empty', 'loadFailed', 'deletedBy',
@@ -273,20 +281,18 @@ const SECURED_KEYS = [
   'operations.secured.receive.done',
   'operations.secured.receive.failed',
   'operations.secured.receive.noRoster',
-  'operations.secured.dispatch.title',
-  'operations.secured.dispatch.subtitle',
-  'operations.secured.dispatch.vehicle',
   'operations.secured.dispatch.noCrew',
-  'operations.secured.dispatch.pickCrew',
-  'operations.secured.dispatch.assign',
   'operations.secured.dispatch.assigned',
-  'operations.secured.dispatch.assignFailed',
-  'operations.secured.dispatch.select',
   'operations.secured.dispatch.release',
-  'operations.secured.dispatch.confirm',
   'operations.secured.dispatch.done',
-  'operations.secured.dispatch.failed',
   'operations.secured.dispatch.empty',
+  // Round 10 — «صرف الخزينة» on the boards' board: every محصنة in the vault, a delivery day as an
+  // optional filter, late / due today marked, the crew of the row's own day, a release per vehicle.
+  ...[
+    'emptyAll', 'tooLarge', 'overdue', 'dueToday', 'inVaultSince', 'assignAction', 'reassignAction', 'assignDay',
+    'assignHeld', 'assignNoAccess', 'back', 'action', 'body', 'loadCount', 'vehicleLoad',
+    'loadFailed', 'releaseSelected', 'selectRow',
+  ].map((key) => `operations.secured.dispatch.${key}`),
   'operations.vault.title',
   'operations.vault.subtitle',
   'operations.vault.packages',
@@ -297,12 +303,24 @@ const SECURED_KEYS = [
   // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
   'operations.vault.queue.all',
   'operations.vault.queue.allHint',
-  'operations.vault.queue.withCaptain',
+  // Round 10 — ONE yellow chip for the captain's pickup and the desk's («مع القائد أو العمليات»).
+  'operations.vault.queue.pickedUp',
   'operations.vault.queue.receivedToday',
   'operations.vault.queue.awaiting',
   'operations.vault.queue.pickedUpAt',
   'operations.vault.queue.receivedAt',
   'operations.vault.queue.receive',
+  // Round 10 — the desk's pickup under a yellow row, and why a white row has no ✓.
+  'operations.vault.queue.operationsPickedUpAt',
+  'operations.vault.queue.viewOnly',
+  // Round 10 — the desk's pickup ✓ on the secured screen and its undo («لو القائد عمل صح ممكن
+  // العمليات تشيلها»), and the special grant's «إلغاء استلام الخزينة».
+  ...['toggle', 'confirm', 'undo', 'undoCaptain', 'confirmUndoCaptain'].map(
+    (key) => `operations.secured.pickup.${key}`,
+  ),
+  ...[
+    'action', 'body', 'receiptNumber', 'reason', 'reasonHint', 'reasonShort', 'save', 'back', 'done',
+  ].map((key) => `operations.secured.cancelReceipt.${key}`),
 ];
 
 const REPORT_KEYS = [

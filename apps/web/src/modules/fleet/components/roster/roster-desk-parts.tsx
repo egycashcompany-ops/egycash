@@ -199,6 +199,12 @@ export const DeskDayStepper = ({
  * The day's tally (same tones, click = filter, active = ring) on the filter bar's 36px line. The
  * per-mission chip is the computer's only mission control now — «شيل الفلتر بتاع كل المهمات اللى
  * جمب كود السيارة بس وسيب الباقى».
+ *
+ * ONE row, never two — «فى مشكلة باقى الفلاتر مش ظاهرة» → «لا صغر شوية كود السيارة وخلى كله صف
+ * واحد». The chips sit 4px apart, 8px of padding each side and 4px between word and figure (the
+ * same 36px height, type, tones and ring): with «كود السيارة» at 12rem (RosterDeskBoard), the six
+ * counters and the twelve missions fit beside the red reset at 1920px with about 68px to spare
+ * (measured). Where they still do not fit, the row scrolls sideways as before.
  */
 export const DeskCounters = ({
   counters,
@@ -210,7 +216,7 @@ export const DeskCounters = ({
   <div
     data-counters="true"
     // `px-1 py-1`: the active chip's ring sits 3px outside it — room for it inside the scroller.
-    className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
   >
     {counters.map((counter) => (
       <button
@@ -221,7 +227,7 @@ export const DeskCounters = ({
         aria-pressed={counter.active}
         onClick={() => onApply(counter.apply)}
         className={cn(
-          'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-medium transition-shadow',
+          'inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-xs font-medium transition-shadow',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
           counter.tone,
           counter.active

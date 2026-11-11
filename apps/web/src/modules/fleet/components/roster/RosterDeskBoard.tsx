@@ -457,7 +457,11 @@ export const RosterDeskBoard = ({
             as the day being over, not as a permission problem. */}
         {!query.editable && <PastDayBanner />}
 
-        {/* The boards' dark bar: «كود السيارة» (typing inside), the counters, the red reset. */}
+        {/* The boards' dark bar: «كود السيارة» (typing inside), the counters, the red reset — ONE
+            row («لا صغر شوية كود السيارة وخلى كله صف واحد»). «كود السيارة» is 12rem, not 15rem:
+            its placeholder, its icon and one code or three («215, 216, 217») still whole, and the
+            48px it gives up (with DeskCounters' tighter chips) lets the six counters and the
+            twelve missions stand beside the reset at 1920px (measured). */}
         <div
           className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
           data-roster-filters="true"
@@ -466,7 +470,7 @@ export const RosterDeskBoard = ({
             <FilterWithIcon
               icon={FILTER_ICON.car}
               tone="text-emerald-600 dark:text-emerald-400"
-              className="w-60 shrink-0 lg:[&&]:!w-60 lg:[&&]:!flex-none"
+              className="w-48 shrink-0 lg:[&&]:!w-48 lg:[&&]:!flex-none"
             >
               <VehicleCodeFilter
                 fullWidth

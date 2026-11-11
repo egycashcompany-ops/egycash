@@ -286,6 +286,23 @@ const useShipmentInvalidation = () => {
 // tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
 const formOwnsTheError = (): void => undefined;
 
+/**
+ * Round 10 — a write refused because the vault received this محصنة after its row was read
+ * (`OPERATIONS_SECURED_LOCKED`, «ميقدر حد … يعدل عليها»). The row on screen is the stale thing: it
+ * still offers the bin or the photo's upload, replace or delete, so the boards are re-read and it
+ * comes back green and locked, offering none of them. Only that refusal: any other leaves the row as
+ * it is, for the reader to try again. Run from `onSettled`, not `onError`, so the global notifier
+ * still words the refusal (shared/lib/query-client.ts).
+ */
+const rereadIfLocked =
+  (invalidate: () => Promise<void>) =>
+  async (_data: unknown, error: unknown): Promise<void> => {
+    if (isLockedRefusal(error)) await invalidate();
+  };
+
+/** Exported for the cache tests — which refusals re-read the boards. */
+export const __rereadIfLocked = rereadIfLocked;
+
 export const useCreateOperationsShipment = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
@@ -337,6 +354,8 @@ export const useDeleteOperationsShipment = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteShipment(id),
     onSuccess: invalidate,
+    // A محصنة the vault received since the board was read cannot be deleted (Round 10).
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 
@@ -355,13 +374,15 @@ export const useRestoreOperationsShipment = () => {
 
 // «صورة الإيصال». The photo is a field of the shipment row, so both acts stale the board and the
 // list like any other shipment write. No `onError` on purpose: the global notifier names the
-// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it.
+// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it. A photo on
+// a محصنة the vault received since the board was read is locked (Round 10): that refusal re-reads.
 export const useUploadShipmentReceiptImage = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
     mutationFn: ({ id, file }: { id: string; file: File }) =>
       api.uploadShipmentReceiptImage(id, file),
     onSuccess: invalidate,
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 
@@ -370,6 +391,7 @@ export const useDeleteShipmentReceiptImage = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteShipmentReceiptImage(id),
     onSuccess: invalidate,
+    onSettled: rereadIfLocked(invalidate),
   });
 };
 export const useCreateOperationsBank = () => {

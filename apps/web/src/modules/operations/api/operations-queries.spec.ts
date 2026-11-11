@@ -5,11 +5,14 @@
 // operator simply reads a stale value and believes it. So the invalidation fan-out is asserted
 // directly, against a real QueryClient.
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { ErrorCodes } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
 import { listKey } from '../../../shared/lib/query-keys';
 import {
   __deletedShipmentsKey,
   __operationsKeys,
+  __rereadIfLocked,
   __securedBoardKey,
   __securedDispatchBoardKey,
   __shipmentHistoryKey,
@@ -548,5 +551,29 @@ describe('vault roll-up and area caches (B6)', () => {
   it('keeps areas on their own subtree', () => {
     expect(__operationsKeys.areas).toEqual(['operations', 'areas']);
     expect(__operationsKeys.vaultReport).toEqual(['operations', 'vaultReport']);
+  });
+});
+
+// Round 10 — «ميقدر حد … يعدل عليها»: a delete or a receipt-photo change refused because the vault
+// received the محصنة after its row was read. The row on screen still offers the bin and the photo's
+// upload; only a re-read turns it green and locked. Any other refusal leaves the board alone, and
+// none of this silences the global notifier (it runs on `onSettled`, not `onError`).
+describe('a write refused as LOCKED re-reads the boards (Round 10)', () => {
+  const locked = new ApiError(ErrorCodes.OPERATIONS_SECURED_LOCKED, 'locked', 409);
+
+  it('re-reads on OPERATIONS_SECURED_LOCKED', async () => {
+    const invalidate = vi.fn(async () => undefined);
+    await __rereadIfLocked(invalidate)(undefined, locked);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the board alone on any other refusal, and on success (`onSuccess` re-reads that)', async () => {
+    const invalidate = vi.fn(async () => undefined);
+    const reread = __rereadIfLocked(invalidate);
+    await reread(undefined, new ApiError('STALE_DOCUMENT', 'stale', 409));
+    await reread(undefined, new ApiError('FILE_TOO_LARGE', 'too large', 413));
+    await reread(undefined, new TypeError('Failed to fetch'));
+    await reread({ id: 's-1' }, null);
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

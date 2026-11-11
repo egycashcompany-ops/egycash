@@ -6834,6 +6834,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
   // The captain-with-the-app days come BEFORE the delivery day — nothing goes out before it is in.
   const R10_APP_DAY = shift(365);
   const R10_APP_DAY_2 = shift(366);
+  const R10_APP_DAY_3 = shift(367);
   const R10_FILTER_DAY = shift(375);
 
   let pickupCrewId = '';
@@ -6841,6 +6842,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
   let otherOutCrewId = '';
   let appCrewId = '';
   let appCrew2Id = '';
+  let appCrew3Id = '';
   let appCaptainId = '';
   let appCaptainToken = '';
   let deskToken = ''; // the shipment view + the desk's ✓ grant
@@ -7011,6 +7013,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
     appCaptainToken = await login('ops-r10-captain@ecms.local');
     appCrewId = await crewFor(R10_APP_DAY, appCaptainId);
     appCrew2Id = await crewFor(R10_APP_DAY_2, appCaptainId);
+    appCrew3Id = await crewFor(R10_APP_DAY_3, appCaptainId);
 
     deskToken = await tokenWith('ops-r10-desk@ecms.local', [
       'operationsShipment.view',
@@ -7246,10 +7249,18 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       });
       expect((await receive(legacy.id)).status).toBe(409);
 
-      // And a legacy row whose leg was NOT picked up is white, and the captain's app records it.
-      const untouched = await book();
+      // And a legacy row whose leg was NOT picked up is white, and the captain's app records it:
+      // the app's conditional write (`pickup: null`) matches a record never written as well.
+      const untouched = await book(R10_OUT, R10_APP_DAY_3, appCrew3Id, appCaptainId);
       await OperationsShipmentModel.updateOne({ _id: untouched.id }, { $unset: { pickup: 1 } }).exec();
       expect((await securedRow(untouched.id))?.securedStage).toBe('awaitingPickup');
+      await captainPicksUp(untouched.id);
+      expect(await securedRow(untouched.id)).toMatchObject({
+        securedStage: 'withCaptain',
+        pickedUpBy: 'captain',
+      });
+      const recorded = await OperationsShipmentModel.findById(untouched.id).lean().exec();
+      expect(recorded?.pickup).toMatchObject({ by: 'captain' });
     });
   });
 
@@ -7385,6 +7396,69 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       expect(after).toMatchObject({ status: 'inVault', notes: null });
       expect(after.receiptImage?.fileId).toBe(fileId);
       expect((await securedRow(shipment.id))?.pickedUpBy).toBe('operations');
+    });
+
+    // The lock is held AT THE WRITE, not only at the check before it: the vault's ✓ landing in the
+    // moment between the two must still win. A delete carries no version to catch it, and a photo
+    // upload stores its bytes first and links them after — retrying a link that lost to a write
+    // "about something else", which the vault's ✓ is not.
+    it('the vault’s ✓ landing mid-delete or mid-upload still locks the shipment', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const { fileService } = await import('../../src/platform/files');
+      /** What the vault's ✓ does to the row — landing at exactly the wrong moment. */
+      const vaultReceivesNow = async (id: string): Promise<void> => {
+        await OperationsShipmentModel.updateOne(
+          { _id: id },
+          { $set: { status: 'inVault' }, $inc: { __v: 1 } },
+        ).exec();
+      };
+
+      const deleting = await book();
+      expect((await confirm(deleting.id)).status).toBe(200);
+      const readRow = operationsShipmentRepository.getById.bind(operationsShipmentRepository);
+      const checked = vi
+        .spyOn(operationsShipmentRepository, 'getById')
+        .mockImplementationOnce(async (id) => {
+          const seen = await readRow(id);
+          await vaultReceivesNow(id);
+          return seen;
+        });
+      try {
+        expectLocked(await remove(deleting.id), 'a delete the vault’s ✓ overtook');
+      } finally {
+        checked.mockRestore();
+      }
+      expect(await OperationsShipmentModel.findById(deleting.id).lean().exec()).toMatchObject({
+        status: 'inVault',
+        isDeleted: false,
+      });
+
+      const photographed = await book();
+      expect((await confirm(photographed.id)).status).toBe(200);
+      const store = fileService.upload.bind(fileService);
+      const stored = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+        const file = await store(...args);
+        await vaultReceivesNow(photographed.id);
+        return file;
+      });
+      try {
+        expectLocked(await upload(photographed.id), 'a photo the vault’s ✓ overtook');
+      } finally {
+        stored.mockRestore();
+      }
+      expect(await read(photographed.id)).toMatchObject({ status: 'inVault', receiptImage: null });
+
+      // Both rows are "in the vault" with no custody — a state only this fixture makes. Taken off
+      // every board, so «صرف الخزينة» below reads only real receipts.
+      await OperationsShipmentModel.updateMany(
+        { _id: { $in: [deleting.id, photographed.id] } },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+      ).exec();
     });
 
     it('the flow acts stay open — delivery crew, dispatch, the desk’s completion ✓ and its undo', async () => {

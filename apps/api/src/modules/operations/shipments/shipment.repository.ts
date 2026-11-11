@@ -1,4 +1,4 @@
-import { type ClientSession, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { OPERATIONS_SHIPMENT_STATUSES, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { OperationsShipmentModel, type OperationsShipmentDoc } from './shipment.model';
@@ -215,6 +215,35 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
         { _id: id, isDeleted: false, shipmentType: 'secured', status: 'draft', pickup: null },
         { $set: { pickup, updatedBy: pickup.userId }, $inc: { __v: 1 } },
         { new: true, session: session ?? null },
+      )
+      .lean<OperationsShipmentDoc>()
+      .exec();
+  }
+
+  /**
+   * The soft delete held to the vault's lock AT THE WRITE (Round 10): ONE conditional write that
+   * matches only a live shipment that is not locked — a daily one, or a secured one still in
+   * `draft` (`isOperationsShipmentLocked`). The service checks the lock first for the plain answer;
+   * this closes the moment between that check and the write. A delete carries no version, so
+   * without it the vault's ✓ landing in that moment would be deleted over — a shipment off every
+   * board with its custody still held.
+   *
+   * Null when nothing matched (deleted meanwhile, or locked by then); the caller says which.
+   */
+  async softDeleteUnlocked(id: string, by: string): Promise<OperationsShipmentDoc | null> {
+    const actor = new Types.ObjectId(by);
+    return this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          isDeleted: false,
+          $or: [{ shipmentType: { $ne: 'secured' } }, { status: 'draft' }],
+        },
+        {
+          $set: { isDeleted: true, deletedAt: new Date(), deletedBy: actor, updatedBy: actor },
+          $inc: { __v: 1 },
+        },
+        { new: true },
       )
       .lean<OperationsShipmentDoc>()
       .exec();

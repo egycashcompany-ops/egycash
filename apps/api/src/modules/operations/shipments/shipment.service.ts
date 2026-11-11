@@ -25,6 +25,7 @@ import {
   OperationsEvents,
   cairoCalendarDate,
   cairoYmd,
+  isOperationsShipmentLocked,
   toMinorUnits,
   ymdOf,
   type CreateOperationsShipment,
@@ -1015,15 +1016,22 @@ class OperationsShipmentService {
             ? await operationsShipmentRepository.findById(id)
             : null;
         const nowLinked = now?.receiptImage == null ? null : String(now.receiptImage.fileId);
-        if (now !== null && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
+        // Round 10 — the write this upload lost to may be the VAULT'S ✓: the lock was checked
+        // before the bytes were stored, and the vault may have received the محصنة while they were.
+        // A locked row is never linked again, however the race fell («ميقدر حد … يعدل عليها»).
+        const locked = now !== null && isOperationsShipmentLocked(now);
+        if (now !== null && !locked && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
           version = now.__v;
           continue;
         }
         // A first upload that did not land is always an orphan. A replace is one only when the
-        // row has moved off its file group; otherwise it is the group's own newest version.
+        // row has moved off its file group; otherwise it is the group's own newest version. (On a
+        // row locked meanwhile Files refuses the clean-up too — the lock reaches its routes — so
+        // the orphan stays an unreachable file, never a changed row.)
         if (linked === null || (now !== null && nowLinked !== linked)) {
           await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
         }
+        if (now !== null && locked) assertSecuredUnlocked(now, 'its receipt photo');
         throw error;
       }
     }
@@ -1072,7 +1080,14 @@ class OperationsShipmentService {
   async softDelete(id: string, by: string): Promise<void> {
     const before = await operationsShipmentRepository.getById(id);
     assertSecuredUnlocked(before, 'deleting it');
-    await operationsShipmentRepository.softDeleteById(id, { by });
+    // …and again AT the write: the delete carries no version, so the vault's ✓ landing between the
+    // check above and the write would otherwise be deleted over (shipment.repository.ts).
+    if ((await operationsShipmentRepository.softDeleteUnlocked(id, by)) === null) {
+      // Deleted meanwhile → 404 (getById), locked meanwhile → the coded 409. Neither is left only if
+      // it was locked AND unlocked again in that moment — someone else's write won: refetch.
+      assertSecuredUnlocked(await operationsShipmentRepository.getById(id), 'deleting it');
+      throw new StaleDocumentError();
+    }
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
     await emit(OperationsEvents.ShipmentDeleted, eventPayload(before));
   }

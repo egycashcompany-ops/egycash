@@ -396,6 +396,21 @@ describe('«ميقدر حد … يعدل عليها» — a محصنة the vault
       'if (isLockedRefusal(error)) void invalidate();',
     );
   });
+
+  // The bin and the photo's acts on a row read before the vault's ✓: their LOCKED refusal re-reads
+  // the boards too, so the row comes back locked instead of offering them again.
+  it('re-reads the boards when a delete or a photo change is refused as locked', () => {
+    for (const hook of [
+      'useDeleteOperationsShipment',
+      'useUploadShipmentReceiptImage',
+      'useDeleteShipmentReceiptImage',
+    ]) {
+      const body = QUERIES.slice(QUERIES.indexOf(`export const ${hook}`));
+      expect(body.slice(0, body.indexOf('\n};')), hook).toContain(
+        'onSettled: rereadIfLocked(invalidate),',
+      );
+    }
+  });
 });
 
 describe('«بس صلاحية خاصة تقدر تلغى استلام الخزينة» — the cancelled receipt', () => {

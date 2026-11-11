@@ -38,6 +38,7 @@ import {
   listSubordinates,
   getEmployeeNationalIdCard,
   registerEmployeeDirect,
+  getLastExternalEmployeeCode,
   registerEmployeeExternal,
   rehireCheck,
   removeEmployeePhoto,
@@ -183,6 +184,13 @@ export const buildEmployeesRouter = (): Router => {
   // An EXTERNAL person (تعيين خارجى) — not a hire, and the smallest body in this router: a name,
   // where they sit, and what they do. Same permission as a direct registration, because it is the
   // same act (putting somebody in the registry) with less of it.
+  // Declared before '/:id', like the register screen's other helpers.
+  router.get(
+    '/external/last-code',
+    authenticate,
+    authorize('employee.registerDirect'),
+    asyncHandler(getLastExternalEmployeeCode),
+  );
   router.post(
     '/external',
     authenticate,

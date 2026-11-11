@@ -5,18 +5,28 @@
 // phone, a salary, a start date, a probation — would be asking the company to write down facts
 // about somebody it did not employ, so none of it is here.
 //
-// The branch is the one field the owner did not name, and it is not bureaucracy: the code's first
-// three digits ARE the hiring branch (ADR-017), and the branch is what decides who may see the
-// person afterwards — without it, a branch-scoped IT user could not find the very person they are
-// handing a laptop to. The code itself is never typed: the server composes it, and the toast says
-// what it issued, because that code is how IT will look this person up.
+// The branch is the one field the owner did not name, and it is not bureaucracy: it is what decides
+// who may see the person afterwards — without it, a branch-scoped IT user could not find the very
+// person they are handing a laptop to.
+//
+// THE CODE IS TYPED, AND MAY CARRY LETTERS — «زود فى الموظف الخارجى دا كود .. واسمح ان الكود يتكتب
+// فيه حروف انجليزي .. وبردو عرفنى تحته كدا أخر كود كام للموظفين الخارجيين دول». An external person's
+// code is the company's own name for them, not an issued employee code, so it is not composed from
+// the branch and the counter the way everybody else's is, and the last one issued is stated under
+// the box — the same help the ordinary registration screen gives, for the same reason: so the next
+// code can follow the last.
 import { useState } from 'react';
-import { type EmployeeDto, type Locale } from '@ecms/contracts';
+import {
+  EXTERNAL_EMPLOYEE_CODE_PATTERN,
+  type EmployeeDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
+import { ApiError } from '../../../../../shared/lib/api-client';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized, orgUnitLabel } from '../../../../../shared/lib/format';
 import {
@@ -25,7 +35,10 @@ import {
   useJobTitleReferenceOptions,
   useSectionOptions,
 } from '../../../../organization/shared/references';
-import { useRegisterEmployeeExternal } from '../api/employee-queries';
+import {
+  useLastExternalEmployeeCode,
+  useRegisterEmployeeExternal,
+} from '../api/employee-queries';
 
 export const ExternalEmployeeDialog = ({
   open,
@@ -41,6 +54,7 @@ export const ExternalEmployeeDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const register = useRegisterEmployeeExternal();
 
+  const [code, setCode] = useState('');
   const [fullNameAr, setFullNameAr] = useState('');
   const [branchId, setBranchId] = useState('');
   const [departmentId, setDepartmentId] = useState('');
@@ -51,8 +65,11 @@ export const ExternalEmployeeDialog = ({
   const { data: departments = [] } = useDepartmentOptions(branchId === '' ? undefined : branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
   const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  // Asked only while the dialog is open: a closed dialog has nothing to hint at.
+  const lastCode = useLastExternalEmployeeCode(open);
 
   const reset = (): void => {
+    setCode('');
     setFullNameAr('');
     setBranchId('');
     setDepartmentId('');
@@ -77,8 +94,13 @@ export const ExternalEmployeeDialog = ({
     setSectionId('');
   };
 
+  const codeShaped = EXTERNAL_EMPLOYEE_CODE_PATTERN.test(code.trim());
   const ready =
-    fullNameAr.trim().length >= 2 && branchId !== '' && departmentId !== '' && jobTitleId !== '';
+    codeShaped &&
+    fullNameAr.trim().length >= 2 &&
+    branchId !== '' &&
+    departmentId !== '' &&
+    jobTitleId !== '';
 
   const submit = async (): Promise<void> => {
     if (!ready) {
@@ -87,6 +109,7 @@ export const ExternalEmployeeDialog = ({
     }
     try {
       const employee = await register.mutateAsync({
+        code: code.trim(),
         fullNameAr: fullNameAr.trim(),
         branchId,
         departmentId,
@@ -103,7 +126,13 @@ export const ExternalEmployeeDialog = ({
       reset();
       onClose();
       onRegistered?.(employee);
-    } catch {
+    } catch (e) {
+      // The code is the one thing a second clerk can collide on, so that answer gets its own
+      // message instead of «تعذَّر التسجيل», which would leave HR guessing which field to change.
+      if (e instanceof ApiError && e.code === 'DUPLICATE') {
+        toast.error(t('employees.external.codeTaken'));
+        return;
+      }
       toast.error(t('employees.external.failed'));
     }
   };
@@ -126,6 +155,26 @@ export const ExternalEmployeeDialog = ({
       }
     >
       <div className="space-y-4">
+        <Field
+          label={t('employees.external.code')}
+          htmlFor="external-code"
+          required
+          hint={
+            lastCode.data?.code == null
+              ? t('employees.external.noneYet')
+              : t('employees.external.lastCode', { code: lastCode.data.code })
+          }
+          error={
+            code.trim() !== '' && !codeShaped ? t('employees.external.codeShape') : undefined
+          }
+        >
+          <Input
+            id="external-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            dir="ltr"
+          />
+        </Field>
         <Field label={t('employees.external.fullNameAr')} htmlFor="external-name" required>
           <Input
             id="external-name"

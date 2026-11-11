@@ -426,6 +426,11 @@ class EmployeeService {
     return { code: await employeeRepository.findHighestNumberedCode() };
   }
 
+  /** «أخر كود كام للموظفين الخارجيين دول» — the code of the external person registered last. */
+  async lastExternalCode(): Promise<LastEmployeeCodeDto> {
+    return { code: await employeeRepository.findLastExternalCode() };
+  }
+
   /**
    * What a code typed on the register screen means: the active branch its prefix names, and who —
    * if anybody — already holds its number under any prefix. Answers; refuses nothing.
@@ -799,7 +804,14 @@ class EmployeeService {
     if (title.status !== 'active') {
       throw new BusinessRuleError('the selected job title is not active');
     }
-    const branch = await branchService.getById(input.branchId);
+    await branchService.getById(input.branchId);
+    // The code is typed, so it is checked here rather than left to `ux_code` to reject: ANY state
+    // holds it, a deleted person's code included, and the message names who has it. The check is
+    // against the whole registry, not only external people — one code, one person, company-wide.
+    const taken = await employeeRepository.findByCodeAnyState(input.code);
+    if (taken !== null) {
+      throw new ConflictError(`the code ${input.code} is already held by employee ${taken.code}`);
+    }
 
     const personal: EmployeePersonalData = {
       fullNameAr: input.fullNameAr,
@@ -852,8 +864,11 @@ class EmployeeService {
 
     const registeredAt = employment.startDate;
     const doc = await unitOfWork(async (session) => {
+      // The number is still drawn — every employee has one, and the registry counts people — but
+      // the CODE is the one HR typed. For an external person the two are not related, which is the
+      // whole difference between a name the company gives somebody and an issued employee code.
       const employeeNumber = await nextEmployeeNumber(session);
-      const code = buildEmployeeCode(branch.code, employeeNumber);
+      const code = input.code;
       const entryEvent: EmployeeStatusEvent = {
         from: null,
         to: 'active',

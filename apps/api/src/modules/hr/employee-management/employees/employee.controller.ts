@@ -83,7 +83,12 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   );
 };
 
-/** An external person — name, branch, department, job title, and a code the server composes. */
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the code box on the register screen. */
+export const getLastExternalEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastExternalCode());
+};
+
+/** An external person — the code HR typed, their name, and where they sit. */
 export const registerEmployeeExternal = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<RegisterExternalEmployee>(req);

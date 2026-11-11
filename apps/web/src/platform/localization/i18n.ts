@@ -2819,6 +2819,11 @@ const en: Record<string, string> = {
   'employees.external.title': 'External employee',
   'employees.external.description':
     'A person the company did not hire. Their name, where they sit and what they do — enough to hand them custody. The code is issued here.',
+  'employees.external.code': 'Code',
+  'employees.external.codeShape': 'Letters, digits and a hyphen — 2 to 20 characters',
+  'employees.external.lastCode': 'Last external code: {{code}}',
+  'employees.external.noneYet': 'No external employee has been registered yet',
+  'employees.external.codeTaken': 'This code is already held by another employee',
   'employees.external.fullNameAr': 'Full name in Arabic',
   'employees.external.submit': 'Register',
   'employees.external.pickBranchFirst': 'Choose the branch first',
@@ -16074,6 +16079,11 @@ const ar: Record<string, string> = {
   'employees.external.title': 'موظف خارجي',
   'employees.external.description':
     'شخص لم تُعيِّنه الشركة. اسمه وموقعه ووظيفته، بما يكفي لتسليمه عهدة. ويُصدَر الكود من هنا.',
+  'employees.external.code': 'الكود',
+  'employees.external.codeShape': 'حروف إنجليزية وأرقام وشَرطة — من حرفين إلى عشرين',
+  'employees.external.lastCode': 'آخر كود خارجي: {{code}}',
+  'employees.external.noneYet': 'لم يُسجَّل موظف خارجي بعد',
+  'employees.external.codeTaken': 'هذا الكود مملوك بالفعل لموظف آخر',
   'employees.external.fullNameAr': 'الاسم الكامل بالعربية',
   'employees.external.submit': 'تسجيل',
   'employees.external.pickBranchFirst': 'اختر الفرع أولًا',

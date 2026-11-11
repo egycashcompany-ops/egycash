@@ -129,6 +129,10 @@ export const rehireCheck = (nationalId: string): Promise<RehireCheckResultDto | 
 export const lastEmployeeCode = (): Promise<LastEmployeeCodeDto> =>
   get<LastEmployeeCodeDto>('/hr/employees/last-code');
 
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the external dialog's code box. */
+export const lastExternalEmployeeCode = (): Promise<LastEmployeeCodeDto> =>
+  get<LastEmployeeCodeDto>('/hr/employees/external/last-code');
+
 /** A typed code's branch (by its prefix) and whether its number is already held. */
 export const checkEmployeeCode = (code: string): Promise<EmployeeCodeCheckDto> =>
   get<EmployeeCodeCheckDto>(`/hr/employees/code-check${buildQuery({ code })}`);

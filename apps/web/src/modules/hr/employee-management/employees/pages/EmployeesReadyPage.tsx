@@ -4,7 +4,7 @@
 // counter and this page can never disagree.
 //
 // Hiring copies the terms from the offer's immutable accepted snapshot, so this page only has to
-// get HR to the right offer.
+// get HR to the right offer — on «عقد جديد», where the papers print and the hire follows (A28).
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type JobOfferDto, type Locale } from '@ecms/contracts';
@@ -130,16 +130,19 @@ export const EmployeesReadyPage = (): JSX.Element => {
       key: 'actions',
       header: '',
       align: 'end',
+      // A28 — the hire is no longer here: the candidate's papers are printed first, on «عقد جديد»,
+      // and «تعيين» sits there beside the print, off until something was printed.
       render: (o) => (
-        <Can permission="employee.create">
+        <Can permission="contract.print">
           <Button
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/employees/new?offerId=${o.id}`);
+              navigate(`/contracts/new?offerId=${o.id}`);
             }}
+            data-print-candidate={o.id}
           >
-            {t('employees.ready.hire')}
+            {t('employees.ready.printPapers')}
           </Button>
         </Can>
       ),

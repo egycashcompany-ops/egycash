@@ -15,7 +15,12 @@
 //
 // A FORM IS NOT A CONTRACT. It is rendered fresh each time, keeps no snapshot and fails nothing:
 // a value the record lacks prints as a dotted line to fill in by hand.
-import { ErrorCodes, type HiringPackContractNote, type HiringPackDto } from '@ecms/contracts';
+import {
+  ErrorCodes,
+  type ContractOverride,
+  type HiringPackContractNote,
+  type HiringPackDto,
+} from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
@@ -31,6 +36,13 @@ import { renderHiringPackHtml, type HiringPackPart } from './contract-render';
 import { letterheadFor } from './letterhead';
 import { contractService } from './contract.service';
 import { type ContractDoc } from './contract.model';
+
+/** A28 — the term and typed-in values a candidate's contract is made with at the hire. */
+export interface ContractTerms {
+  startDate: string;
+  endDate: string | null;
+  overrides: ContractOverride[];
+}
 
 /** A generated contract that is still the employee's: printable as it stands. */
 const PRINTABLE = new Set(['active', 'signed']);
@@ -76,6 +88,8 @@ class HiringPackService {
     employee: EmployeeDoc,
     contractTemplates: readonly ContractTemplateDoc[],
     scope: ScopeSelector,
+    /** A28 — the term and values the candidate's papers were printed with; else the employment's. */
+    terms: ContractTerms | null = null,
   ): Promise<{ doc: ContractDoc | null; created: boolean; note: HiringPackContractNote | null }> {
     const id = String(employee._id);
     const contracts = await contractService.listForEmployee(id);
@@ -100,10 +114,11 @@ class HiringPackService {
             employeeId: id,
             typeId: String(template.contractTypeId),
             templateId: String(template._id),
-            startDate: dateOnlyIso(start),
-            endDate: type.allowsEndDate ? dateOnlyIso(oneYearFrom(start)) : null,
+            startDate: terms?.startDate ?? dateOnlyIso(start),
+            endDate: type.allowsEndDate ? (terms === null ? dateOnlyIso(oneYearFrom(start)) : terms.endDate) : null,
             referenceNumber: null,
-            overrides: [],
+            // Only what the contract prints: an override of a form's value is no contract's business.
+            overrides: (terms?.overrides ?? []).filter((o) => template.placeholders.includes(o.key)),
           },
           scope,
         );
@@ -131,6 +146,26 @@ class HiringPackService {
       }
       throw error;
     }
+  }
+
+  /**
+   * A28 — the contract of a candidate just hired from «عقد جديد»: made and generated from the
+   * contract template of the job, with the term and values the papers were printed with. Whatever
+   * stops that is returned as the note, as the printed set returns it; the hire stands regardless.
+   */
+  async contractForHire(
+    ctx: AuthContext,
+    employeeId: string,
+    scope: ScopeSelector,
+    terms: ContractTerms,
+  ): Promise<{ doc: ContractDoc | null; note: HiringPackContractNote | null }> {
+    const employee = await employeeService.getById(employeeId, scope);
+    const { contracts } = templatesForJob(
+      await contractTemplateService.listPublished(),
+      String(employee.employment.jobTitleId),
+    );
+    const made = await this.contractFor(ctx, employee, contracts, scope, terms);
+    return { doc: made.doc, note: made.note };
   }
 
   async build(ctx: AuthContext, employeeId: string, scope: ScopeSelector): Promise<HiringPackDto> {

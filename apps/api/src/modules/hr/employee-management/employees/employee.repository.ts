@@ -195,6 +195,26 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * The code of the EXTERNAL person registered most recently — «عرفنى تحته كدا أخر كود كام للموظفين
+   * الخارجيين دول».
+   *
+   * By when they were registered, not by the code's value, because an external code may carry
+   * letters and there is no order to "highest" across `EX7` and `EX10`. The last one issued is the
+   * question HR is actually asking: what did we give the person before this one.
+   *
+   * Any state, as `findHighestNumberedCode` is: a deleted external person's code is still spent.
+   */
+  async findLastExternalCode(): Promise<string | null> {
+    const row = await this.model
+      .findOne({ origin: 'external' })
+      .sort({ createdAt: -1, _id: -1 })
+      .select('code')
+      .lean<{ code: string }>()
+      .exec();
+    return row?.code ?? null;
+  }
+
+  /**
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.

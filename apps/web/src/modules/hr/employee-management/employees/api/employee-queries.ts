@@ -221,6 +221,15 @@ export const useLastEmployeeCode = () =>
     staleTime: 0,
   });
 
+/** The last external code issued — like the hint above it, read fresh so two clerks do not clash. */
+export const useLastExternalEmployeeCode = (enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'external', 'last-code'],
+    queryFn: api.lastExternalEmployeeCode,
+    staleTime: 0,
+    enabled,
+  });
+
 /** What a typed code means — asked only once it has the company's shape. */
 export const useEmployeeCodeCheck = (code: string) =>
   useQuery({

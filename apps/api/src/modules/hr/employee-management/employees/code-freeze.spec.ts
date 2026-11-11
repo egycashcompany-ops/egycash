@@ -55,26 +55,31 @@ describe('the Employee Code is frozen once issued', () => {
   });
 
   /**
-   * Composition is legitimate exactly four times, and the four are not the same kind of act.
+   * Composition is legitimate exactly three times, and the three are not the same kind of act.
    *
-   * THREE ISSUE a code — the three ways a person first enters the registry: hire from an accepted
-   * offer, direct registration, and registering an EXTERNAL person (تعيين خارجى), who is not hired
-   * at all but still carries a code, because everything that hands somebody a laptop names an
-   * employee by one. Each composes ONCE, at creation, and never re-derives.
+   * TWO ISSUE a code — the two ways an employee is HIRED: from an accepted offer, and by direct
+   * registration. Each composes ONCE, at creation, and never re-derives.
    *
    * ONE PREVIEWS one — a candidate's papers (A28) print the code the hire will compose from the
    * number kept for them. It writes nothing, which is what makes composing there harmless, so that
    * is asserted rather than assumed.
    *
-   * Both halves arrived at once, from different work, and the count alone would have hidden either:
-   * a bare `toHaveLength(4)` passes for a rewrite dressed as a creation path, and passes again if
-   * the preview quietly starts saving. So each issuing call is pinned to its method, and the
-   * preview is pinned to writing nothing. If one of the three falls to zero, that path has stopped
-   * issuing a code; if the total rises, something new is minting them.
+   * AND ONE CREATION PATH COMPOSES NOTHING AT ALL: `registerExternal`. An external person's code is
+   * typed by HR and may carry letters («واسمح ان الكود يتكتب فيه حروف انجليزي»), so it is a name,
+   * not an issued code — nothing may compose one for them, and nothing may read a branch or a
+   * number back out of it. That absence is asserted here, because it is the kind of thing a later
+   * change "fixes" by quietly composing a code when the typed one is missing.
+   *
+   * This count has moved twice in a week, and each time the guard was the thing that noticed: up to
+   * four when external registration first issued composed codes alongside the candidate preview,
+   * and back to three when those codes became typed. A bare count would have hidden both — it
+   * passes for a rewrite dressed as a creation path, and passes again if the preview starts saving.
+   * So each call is pinned to its method, the preview is pinned to writing nothing, and the one
+   * path that must not compose is pinned to not composing.
    */
-  it('three paths issue a code, one only previews one, and nothing else composes', () => {
+  it('two paths issue a code, one previews one, and external registration composes none', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
-    expect(composed).toHaveLength(4);
+    expect(composed).toHaveLength(3);
 
     const bodyOf = (method: string): string => {
       const start = SERVICE.indexOf(`async ${method}(`);
@@ -83,11 +88,17 @@ describe('the Employee Code is frozen once issued', () => {
       return next === -1 ? SERVICE.slice(start) : SERVICE.slice(start, start + 1 + next);
     };
 
-    for (const method of ['create', 'registerDirect', 'registerExternal']) {
+    for (const method of ['create', 'registerDirect']) {
       expect([...bodyOf(method).matchAll(/buildEmployeeCode\(/g)], method).toHaveLength(1);
     }
 
-    // The fourth is the candidate's preview — built, returned, never saved.
+    // An external person's code is typed, never minted: this path composes nothing, and takes the
+    // code from the request instead.
+    const external = bodyOf('registerExternal');
+    expect(external).not.toContain('buildEmployeeCode(');
+    expect(external).toContain('const code = input.code;');
+
+    // The third is the candidate's preview — built, returned, never saved.
     const preview = bodyOf('candidateFromOffer');
     expect(preview).toContain('buildEmployeeCode(');
     expect(preview).not.toMatch(/employeeRepository\.(create|update)/);

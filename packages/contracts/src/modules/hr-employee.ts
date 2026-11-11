@@ -232,6 +232,25 @@ export type EmployeeInsurance = z.infer<typeof EmployeeInsuranceSchema>;
  */
 export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
 
+/**
+ * An EXTERNAL person's code — «زود فى الموظف الخارجى دا كود .. واسمح ان الكود يتكتب فيه حروف
+ * انجليزي». Latin letters, digits and a hyphen; 2 to 20 characters.
+ *
+ * It is a SEPARATE pattern on purpose, and `EMPLOYEE_CODE_PATTERN` is untouched. An employee's code
+ * is `<branch prefix><employee number>` and the system reads both halves out of it: the prefix
+ * names the hiring branch, and the digits after it ARE the global employee number, which is why
+ * `employeeCodeSerial` can turn a code back into a number and the counter can be raised past a
+ * typed one. Letting a letter into that shape would make both meaningless — `Number('EX01')` is
+ * `NaN` — and would do it to all 2,699 real codes, not just to external people.
+ *
+ * So an external code is just a NAME, unique among employees and nothing more. The person still
+ * draws an `employeeNumber` from the same counter (every employee has one); their code simply is
+ * not composed from it. Nothing reads a branch or a number out of an external code, and nothing
+ * should: `findHighestNumberedCode` already matches digits only, so these never reach the hint the
+ * ordinary registration screen shows.
+ */
+export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
+
 /** The branch part of a code: its first three digits (`0702862` → `070`). */
 export const employeeCodeBranchPrefix = (code: string): string => code.slice(0, 3);
 
@@ -412,6 +431,11 @@ export type DirectRegisterEmployee = z.infer<typeof DirectRegisterEmployeeSchema
  */
 export const RegisterExternalEmployeeSchema = z
   .object({
+    /**
+     * Typed by HR, not composed: an external person's code is the company's own name for them, and
+     * the screen states the last one issued underneath the box so the next can follow it.
+     */
+    code: z.string().trim().regex(EXTERNAL_EMPLOYEE_CODE_PATTERN),
     fullNameAr: arabicName(z.string().trim().min(2).max(200)),
     branchId: objectId(),
     departmentId: objectId(),

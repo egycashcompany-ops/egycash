@@ -106,7 +106,12 @@ const asAdmin = (method: 'get' | 'post', path: string) =>
 const registerExternal = (token: string, body: Record<string, unknown>) =>
   request(app).post(EXTERNAL).set('Authorization', `Bearer ${token}`).send(body);
 
+/** A fresh external code per request — the company's own name for the person, letters and all. */
+let codeSerial = 0;
+const nextCode = (): string => `EX-${String(++codeSerial).padStart(3, '0')}`;
+
 const wellFormed = (fullNameAr: string): Record<string, unknown> => ({
+  code: nextCode(),
   fullNameAr,
   branchId: BRANCH_ID,
   departmentId: DEPARTMENT_ID,
@@ -200,18 +205,33 @@ beforeEach(async () => {
 });
 
 describe('POST /hr/employees/external', () => {
-  it('registers the person from four fields and issues the code itself', async () => {
-    const res = await registerExternal(registrarToken, wellFormed('شركة الحراسة محمد على'));
+  it('registers the person and keeps the code exactly as it was typed', async () => {
+    const body = { ...wellFormed('شركة الحراسة محمد على'), code: 'GUARD-7A' };
+
+    const res = await registerExternal(registrarToken, body);
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const employee = data<EmployeeDto>(res);
+    expect(employee.code).toBe('GUARD-7A');
     expect(employee.personal.fullNameAr).toBe('شركة الحراسة محمد على');
     expect(employee.origin).toBe('external');
     expect(employee.status).toBe('active');
-    // The branch's own prefix, then the number — the shape every employee code has.
-    expect(employee.code.startsWith(BRANCH_CODE)).toBe(true);
-    expect(employee.code).toMatch(/^\d{7,}$/);
-    expect(employee.employeeNumber).toBe(employee.code.slice(BRANCH_CODE.length));
+  });
+
+  /**
+   * The code is a NAME, not an issued employee code: it is not composed from the branch and it is
+   * not the employee number wearing a prefix. The number is still drawn — every employee has one —
+   * and the two simply do not match, which is the difference this test exists to hold.
+   */
+  it('does not compose the code from the branch, and does not tie it to the number', async () => {
+    const employee = data<EmployeeDto>(
+      await registerExternal(registrarToken, { ...wellFormed('خارجي بكود حروف'), code: 'ABC123' }),
+    );
+
+    expect(employee.code).toBe('ABC123');
+    expect(employee.code.startsWith(BRANCH_CODE)).toBe(false);
+    expect(employee.employeeNumber).toMatch(/^\d{4,}$/);
+    expect(employee.code).not.toContain(employee.employeeNumber);
   });
 
   /** «ملهمش كود عندنا ولا بيانات» — so nothing but what was asked for may end up on the record. */
@@ -227,7 +247,7 @@ describe('POST /hr/employees/external', () => {
     expect(employee).not.toHaveProperty('provisionedLogin');
   });
 
-  /** Two in a row take two numbers: the same global counter, not a series of their own. */
+  /** The NUMBER still comes from the one global counter, even though the code no longer does. */
   it('draws each one from the global employee counter', async () => {
     const first = data<EmployeeDto>(await registerExternal(registrarToken, wellFormed('خارجي أول')));
     const second = data<EmployeeDto>(
@@ -262,6 +282,102 @@ describe('POST /hr/employees/external', () => {
   });
 });
 
+describe('the code HR types', () => {
+  /** «واسمح ان الكود يتكتب فيه حروف انجليزي» — the whole reason this is not the employee pattern. */
+  it.each([['letters only', 'EXTERNAL'], ['letters and digits', 'EX2026A'], ['a hyphen', 'EX-01']])(
+    'accepts %s',
+    async (_label, code) => {
+      const res = await registerExternal(registrarToken, {
+        ...wellFormed('خارجي بكود مقبول'),
+        code,
+      });
+
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      expect(data<EmployeeDto>(res).code).toBe(code);
+    },
+  );
+
+  /** One code, one person, company-wide — and the second attempt is a 409, not a 500 from the index. */
+  it('refuses a code another external person already holds', async () => {
+    await registerExternal(registrarToken, { ...wellFormed('صاحب الكود'), code: 'TAKEN-1' });
+
+    const res = await registerExternal(registrarToken, {
+      ...wellFormed('من يريد نفس الكود'),
+      code: 'TAKEN-1',
+    });
+
+    expect(res.status).toBe(409);
+  });
+
+  /**
+   * The check is the WHOLE registry, not the external corner of it. An ordinary employee is hired
+   * with a typed code here and an external person then asks for that same code: one code, one
+   * person, company-wide — «مينفعش أكتب نفس الكود حتى لو لفرع تاني» applies to these people too.
+   */
+  it('refuses a code an ordinary employee already holds', async () => {
+    const hired = await request(app)
+      .post('/api/v1/hr/employees/direct')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `${BRANCH_CODE}8801`,
+        personal: {
+          identity: {
+            fullNameAr: 'موظف أصيل',
+            fullNameEn: 'Hired Person',
+            nationalId: '29003070118801',
+            nationality: 'Egyptian',
+          },
+          contact: { primaryPhone: '01020000801' },
+          experience: [],
+          drivingLicenses: [],
+          certifications: [],
+          references: [],
+        },
+        employment: {
+          jobTitleId: JOB_TITLE_ID,
+          branchId: BRANCH_ID,
+          departmentId: DEPARTMENT_ID,
+          employmentType: 'fullTime',
+          salary: { amount: 10000, currency: 'EGP' },
+          probationMonths: 0,
+          startDate: '2026-01-01T00:00:00.000Z',
+        },
+      });
+    expect(hired.status, JSON.stringify(hired.body)).toBe(201);
+    const taken = data<EmployeeDto>(hired).code;
+
+    const res = await registerExternal(registrarToken, {
+      ...wellFormed('خارجي يطلب كود موظف'),
+      code: taken,
+    });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('GET /hr/employees/external/last-code', () => {
+  /** «عرفنى تحته كدا أخر كود كام للموظفين الخارجيين دول» — the one registered last, not the largest. */
+  it('answers with the code of the external person registered most recently', async () => {
+    await registerExternal(registrarToken, { ...wellFormed('أقدم خارجي'), code: 'HINT-1' });
+    await registerExternal(registrarToken, { ...wellFormed('أحدث خارجي'), code: 'HINT-2' });
+
+    const res = await request(app)
+      .get('/api/v1/hr/employees/external/last-code')
+      .set('Authorization', `Bearer ${registrarToken}`);
+
+    expect(res.status).toBe(200);
+    expect(data<{ code: string | null }>(res).code).toBe('HINT-2');
+  });
+
+  it('refuses a reader who may not register, and an unauthenticated caller', async () => {
+    const path = '/api/v1/hr/employees/external/last-code';
+    expect((await request(app).get(path).set('Authorization', `Bearer ${viewerToken}`)).status).toBe(
+      403,
+    );
+    expect((await request(app).get(path)).status).toBe(401);
+  });
+});
+
 describe('what it refuses', () => {
   it('refuses a department that belongs to another branch', async () => {
     const res = await registerExternal(registrarToken, {
@@ -273,6 +389,11 @@ describe('what it refuses', () => {
   });
 
   it.each([
+    ['no code', { code: undefined }],
+    ['a one-character code', { code: 'A' }],
+    ['a code with Arabic letters', { code: 'كود1' }],
+    ['a code with a space', { code: 'EX 01' }],
+    ['a code past twenty characters', { code: 'E'.repeat(21) }],
     ['no name', { fullNameAr: '' }],
     ['a one-letter name', { fullNameAr: 'م' }],
     ['a Latin name', { fullNameAr: 'External Person' }],
@@ -286,16 +407,6 @@ describe('what it refuses', () => {
     }
 
     expect((await registerExternal(registrarToken, body)).status).toBe(400);
-  });
-
-  /** A body carrying a code would be typing one; the server composes it and nothing else may. */
-  it('refuses a request that tries to carry its own code', async () => {
-    const res = await registerExternal(registrarToken, {
-      ...wellFormed('خارجي بكود'),
-      code: '0019999',
-    });
-
-    expect(res.status).toBe(400);
   });
 
   it('refuses a reader who may see employees but not register one', async () => {

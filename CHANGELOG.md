@@ -11,6 +11,46 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: assets and consumables moved to another branch, several at once.** «هنا /it/consumables وهنا
+  /it/assets — عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني، وطبعاً المستهلكات لو مثلاً فى 10 ماوس ..
+  فممكن أنقل 5 لفرع تاني وهكذا»; then a held asset «ينتقل مع عهدته», recorded «فوراً», «لا، السجل
+  كفاية», and «كذا حاجة مرة واحدة».
+  - **Assets:** on `/it/assets`, pick assets and «نقل إلى فرع (n)»; on an asset's page, «نقل إلى
+    فرع». The branch, a date and notes; the assets that cannot move (disposed; under maintenance, by
+    its status or by a maintenance order still open or in progress; already in that branch) are
+    listed with the reason and left out. All move or none, at once, with no paper. One in stock
+    changes branch; one an employee holds moves with its custody, as a custody transfer to a new
+    branch in the same hands — the same holder, the receipt already signed, its due date, its
+    condition on issue and its notes. Either way it leaves its location behind (only the move
+    clears it; a custody transfer keeps it), and its history shows the move between the two
+    branches, with the move's notes.
+  - **Consumables:** on `/it/consumables`, pick items of one store (or one row's «تحويل إلى فرع»),
+    the branch, and how many of each — 5 of 10 mice, say. The units leave this store and reach the
+    other store's item of the same name, which is added there (same name, type and unit, a new code)
+    when it has none; another unit or a retired item there refuses the transfer, and nothing leaves
+    beyond what is on hand. A retired item may still send its stock out. An item with nothing on
+    hand is left out, and does not count toward the 50.
+  - Both dialogs offer only the branches the server says the account's custody grant reaches
+    (`GET /it/assets/move-targets`) — not the reach of all its grants, which offered branches the
+    move then refused; while that list loads the picker waits, and with none left they say so and
+    cannot be sent.
+  - The ledger, its filter and its Excel/PDF gain «تحويل إلى فرع» and «تحويل من فرع», each naming
+    the other branch and the other store's item code; both halves share one transfer id.
+  - No new grant: both ride `itAsset.assign`, the custody grant. API: `POST /it/assets/move-branch`
+    (up to 100 assets), `POST /it/consumables/transfer` (up to 50 items) and
+    `GET /it/assets/move-targets` (where both may go: every active branch that grant reaches). The
+    move and the transfer refuse a branch out of the grant's reach (403), an asset or item out of
+    its scope (404) and a branch that is not an active one (400). The move names, in ONE refusal,
+    every asset that holds it back — a held one dated before its custody began among them (422; 409
+    when all are under maintenance); the transfer refuses two stores, the same store, more than on
+    hand, another unit or a retired item (422). Every asset answer gains `hasActiveMaintenance`; the
+    movement gains `transferId`, `counterpartBranchId` and `counterpartConsumableId` (indexed on
+    `transferId`) ([IT design §2.2, §2.5, §2.11](docs/12-planning/it-module-design.md)).
+  - A custody transfer in the same hands now keeps the open interval's due date, condition on
+    issue and notes unless it gives its own; it and the move write their audit rows after the
+    commit ([IT design FR-3, §4.3, §10](docs/12-planning/it-module-design.md);
+    [ADR-021](docs/03-decisions/ADR-021-it-asset-custody-and-history.md), amended).
+
 - **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
   تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
   طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in
@@ -100,6 +140,39 @@ its entry here in the same PR.
   - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
     اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
     answer sends a driver's name only. The captain and the specialists keep their codes.
+  - «سجل الشحنات» (`/operations/shipments/history`): «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون
+    من الى». The same board — figures, filters, table, cards and row actions, one shared component
+    — over «من» … «إلى» (default: the 1st of the month to today), 100 rows a page. API:
+    `GET /operations/shipments/history?from=&to=` (the day board's union over a range, at most 366
+    days; a range holding more than 5,000 shipments is refused with
+    `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`, never cut short).
+  - The currency figures: «انا عاوز المصرى لوحده الدولار لوحده و اى حاجه غير الاتنين دول يتحسب
+    عملات اخرى». The pound and the dollar were recognised by the ISO code alone, and the live
+    catalog's codes are the legacy numbers (1, 2, 3), so every currency fell into «عملات أخرى». They
+    are now recognised by code, name or legacy spelling, matched whole («جنيه استرليني» stays
+    other). The «عملات أخرى» dialog is wider: the total on top, one card per currency, largest
+    first, with its share and how many shipments carry it.
+  - The filters follow the table's columns, and «كود السيارة» joins them.
+  - «اليوم التشغيلي» is today only: «هنشيل منها التاريخ … هو هيجيب بتاعت اليوم». The day picker is
+    gone; the board asks for Cairo's today by name and moves to the next day at Cairo midnight
+    (`GET /day-board` with no date now defaults to Cairo's today too). Its filters sit on one row
+    from 1024px; the history's from 1280px.
+  - «سجل الشحنات» cannot add or confirm delivery («مش هيقدر يضيف … ومش هيقدر منها يسلم او
+    يستلم»); edit, delete and the receipt image stay.
+  - No past dates: «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» / «ميقدرش يحدد يوم قبل يوم اللى كانت
+    عليه الشحنة». A new shipment's collection (and a secured one's delivery) day cannot be before
+    Cairo's today (`OPERATIONS_SHIPMENT_DATE_IN_PAST`); an edit cannot move a date earlier than it
+    was (`OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`). The form shows the floor and checks it
+    before sending.
+  - «السجل» on every shipment, on both screens: «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة».
+    `GET /operations/shipments/:id/log` (`operationsShipment.view`) reads the shipment's audit
+    trail and its legs' — created, each edit with old → new values resolved to names, crew,
+    the captain's steps, the desk's confirmation, the receipt image, vault and dispatch (their
+    custody details only for `operationsVault.view`), delete and restore.
+  - Deleted shipments: «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح». An icon on the history
+    lists the range's deleted shipments (who deleted them, when, their log) with «استرجاع» for
+    `operationsShipment.delete`. API: `GET /operations/shipments/deleted?from=&to=`,
+    `POST /operations/shipments/:id/restore` (409 `OPERATIONS_SHIPMENT_NOT_DELETED`).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

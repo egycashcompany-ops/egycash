@@ -123,6 +123,51 @@ describe('a movement on the ledger', () => {
     const row = toItConsumableMovementDto(issued(new Types.ObjectId()), labels());
     expect(row).toMatchObject({ memoId: null, memoNumber: null, memoSigned: null });
   });
+
+  it('is no transfer unless it says so — no transfer id, no other store', () => {
+    expect(toItConsumableMovementDto(issued(null), labels())).toMatchObject({
+      transferId: null,
+      counterpartBranchId: null,
+      counterpartConsumableId: null,
+      counterpartConsumableCode: null,
+    });
+  });
+
+  it('names a transfer’s other half: the shared id, the other store, and its item by code', () => {
+    const transferId = new Types.ObjectId();
+    const otherStore = new Types.ObjectId();
+    const otherItem = new Types.ObjectId();
+    const out = {
+      ...issued(null),
+      kind: 'transferredOut',
+      employeeId: null,
+      assetId: null,
+      reason: null,
+      transferId,
+      counterpartBranchId: otherStore,
+      counterpartConsumableId: otherItem,
+    } as unknown as ItConsumableMovementDoc;
+    const read = labels({
+      items: new Map([
+        [String(ITEM), { code: 'CON-00003', name: 'Mouse', typeId: String(TYPE) }],
+        [String(otherItem), { code: 'CON-00041', name: 'Mouse', typeId: String(TYPE) }],
+      ]),
+    });
+    expect(toItConsumableMovementDto(out, read)).toMatchObject({
+      kind: 'transferredOut',
+      branchId: String(STORE),
+      consumableCode: 'CON-00003',
+      transferId: String(transferId),
+      counterpartBranchId: String(otherStore),
+      counterpartConsumableId: String(otherItem),
+      counterpartConsumableCode: 'CON-00041',
+    });
+    // The other item unread: its id kept, its code unknown.
+    expect(toItConsumableMovementDto(out, labels())).toMatchObject({
+      counterpartConsumableId: String(otherItem),
+      counterpartConsumableCode: null,
+    });
+  });
 });
 
 describe('a memo', () => {

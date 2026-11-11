@@ -56,6 +56,29 @@ describe('what each movement moves', () => {
     });
   });
 
+  // «ممكن أنقل 5 لفرع تاني»: the units are still the company's, on another shelf — nothing issued to
+  // anybody, nothing written off — so a transfer moves on hand and nothing else, in either store.
+  it('a transfer takes stock off one store’s shelf and puts it on the other’s — and moves nothing else', () => {
+    expect(applyStockEffect(stocked, stockEffect('transferredOut', 5))).toEqual({
+      onHandQty: 5,
+      issuedQty: 4,
+      scrappedQty: 1,
+    });
+    expect(applyStockEffect(stocked, stockEffect('transferredIn', 5))).toEqual({
+      onHandQty: 15,
+      issuedQty: 4,
+      scrappedQty: 1,
+    });
+    // The two halves cancel: the company holds what it held.
+    const out = stockEffect('transferredOut', 5);
+    const into = stockEffect('transferredIn', 5);
+    expect(out.onHand + into.onHand).toBe(0);
+    // A new store's item takes its first units by a transfer as it would by a delivery.
+    expect(applyStockEffect(NO_STOCK, into)).toEqual(
+      applyStockEffect(NO_STOCK, stockEffect('received', 5)),
+    );
+  });
+
   it('knows the counters before a movement from the ones after it', () => {
     const effect = stockEffect('issued', 2, 'replacement');
     const after = applyStockEffect(stocked, effect);

@@ -82,6 +82,12 @@ describe('every endpoint the IT client calls exists on the API', () => {
         'post /:id/dispose',
         'get /:id/history',
         'get /:id/assignments',
+        // «نقل إلى فرع» (2026-11-11): several assets to ONE branch, all or none — a held one with
+        // its custody. A literal path, never under '/:id'.
+        'post /move-branch',
+        // …and where it (and «تحويل إلى فرع») may go: the branches the custody grant reaches, as
+        // only the server can judge them.
+        'get /move-targets',
       ]),
     );
     // …and the client calls exactly those.
@@ -96,6 +102,8 @@ describe('every endpoint the IT client calls exists on the API', () => {
       ASSET_ROUTES.search(new RegExp(`router\\.get\\(\\s*'${path}'`));
     expect(registered('/names')).toBeGreaterThan(-1);
     expect(registered('/names')).toBeLessThan(registered('/:id'));
+    expect(registered('/move-targets')).toBeGreaterThan(-1);
+    expect(registered('/move-targets')).toBeLessThan(registered('/:id'));
     expect(CLIENT).toContain('`/it/assets/${id}`');
     expect(CLIENT).toContain('`/it/assets/by-code/${encodeURIComponent(code)}`');
     expect(CLIENT).toContain("post<ItAssetDto>('/it/assets'");
@@ -106,6 +114,8 @@ describe('every endpoint the IT client calls exists on the API', () => {
     }
     expect(CLIENT).toContain('`/it/assets/${id}/history');
     expect(CLIENT).toContain('`/it/assets/${id}/assignments');
+    expect(CLIENT).toContain("post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch'");
+    expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/assets/move-targets')");
   });
 
   it('mounts the cross-asset custody register', () => {
@@ -503,6 +513,9 @@ describe('the consumables the IT client calls exist on the API, on the assets’
         // Stock moves only by a named movement, never by a PATCH of a quantity (ADR-024) — and
         // the issue is ONE action for one memo, however many items it carries.
         'post /issue',
+        // «تحويل إلى فرع»: one store's items, each with how many, to another branch's store — ONE
+        // action for the whole transfer, as the issue is for its memo.
+        'post /transfer',
         'post /:id/receive',
         'post /:id/scrap',
         'post /:id/return',
@@ -511,6 +524,7 @@ describe('the consumables the IT client calls exist on the API, on the assets’
     expect(CLIENT).toContain('getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`)');
     expect(CLIENT).toContain("post<ItConsumableDto>('/it/consumables'");
     expect(CLIENT).toContain("post<ItConsumableIssueResultDto>('/it/consumables/issue'");
+    expect(CLIENT).toContain("post<ItConsumableTransferResultDto>('/it/consumables/transfer'");
     expect(CLIENT).toContain('`/it/consumables/${id}`');
     for (const action of ['receive', 'scrap', 'return']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
@@ -548,6 +562,8 @@ describe('the consumables the IT client calls exist on the API, on the assets’
       [ITEMS, 'patch', '/:id', 'itAsset.edit'],
       [ITEMS, 'get', '/:id/movements', 'itAsset.view'],
       [ITEMS, 'post', '/issue', 'itAsset.assign'],
+      // No key of its own: a transfer rides the custody grant the issue and the return ride.
+      [ITEMS, 'post', '/transfer', 'itAsset.assign'],
       [ITEMS, 'post', '/:id/receive', 'itAsset.edit'],
       [ITEMS, 'post', '/:id/scrap', 'itAsset.edit'],
       [ITEMS, 'post', '/:id/return', 'itAsset.assign'],
@@ -839,6 +855,14 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
         '';
       expect(route, `${action} must ride itAsset.assign`).toContain("authorize('itAsset.assign')");
     }
+    // «نقل إلى فرع» moves a held asset's custody with it: the same grant, no key of its own.
+    const move = /router\.post\(\s*'\/move-branch'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(move, 'move-branch must ride itAsset.assign').toContain("authorize('itAsset.assign')");
+    // Where a move may go is judged by that same grant — the very test the move applies.
+    const targets = /router\.get\(\s*'\/move-targets'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(targets, 'move-targets must ride itAsset.assign').toContain(
+      "authorize('itAsset.assign')",
+    );
     const dispose = /router\.post\(\s*'\/:id\/dispose'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
     expect(dispose).toContain("authorize('itAsset.dispose')");
   });

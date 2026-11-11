@@ -4,7 +4,9 @@
 // ONE ROW PER ITEM PER BRANCH. «Each branch keeps its own stock» (the plan the owner approved), so
 // the HDMI cable in the Mohandessin store and the one in the October store are two rows with two
 // quantities, each read and written under its own branch's scope. The branch IS the store, and an
-// item never moves between stores: no write path changes `branchId`.
+// item never moves between stores: no write path changes `branchId`. What moves between stores is
+// STOCK («تحويل إلى فرع»): out of this store's item, into the other store's item of the same name —
+// made there, same name, type and unit, when that store has none yet.
 //
 // A register of its own beside the spare parts, not rows inside them: a spare part leaves the store
 // only through a maintenance order (FR-9), a consumable is handed to a PERSON, on a memo they sign.

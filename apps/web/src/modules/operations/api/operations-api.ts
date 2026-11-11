@@ -32,9 +32,12 @@ import {
   type OperationsCrewRequirementsDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardDto,
+  type OperationsDeletedShipmentsDto,
   type OperationsExecutionResultDto,
   type OperationsMobileDayDto,
   type OperationsShipmentDto,
+  type OperationsShipmentHistoryDto,
+  type OperationsShipmentLogDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
@@ -148,6 +151,17 @@ export const getDayBoard = (date: string | null): Promise<OperationsDayBoardDto>
     `/operations/shipments/day-board${date === null ? '' : buildQuery({ date })}`,
   );
 
+/**
+ * The shipments history — the day board's rows over a range of days, both bounds inclusive. The
+ * same server-side union and enrichment as `getDayBoard`; a range holding too many shipments is
+ * refused (`OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`), never cut short.
+ */
+export const getShipmentHistory = (range: {
+  from: string;
+  to: string;
+}): Promise<OperationsShipmentHistoryDto> =>
+  get<OperationsShipmentHistoryDto>(`/operations/shipments/history${buildQuery(range)}`);
+
 export const listShipments = (
   params: OperationsListParams,
 ): Promise<Paginated<OperationsShipmentDto>> =>
@@ -185,6 +199,28 @@ export const reopenShipment = (
 
 export const deleteShipment = (id: string): Promise<void> =>
   del<void>(`/operations/shipments/${id}`);
+
+/**
+ * «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — one shipment's story, oldest first: every
+ * recorded act on it and on its legs and vault custody, with every value already in words. It
+ * answers for a deleted shipment too.
+ */
+export const getShipmentLog = (id: string): Promise<OperationsShipmentLogDto> =>
+  get<OperationsShipmentLogDto>(`/operations/shipments/${id}/log`);
+
+/**
+ * «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the shipments deleted from the board days of a range
+ * (the history's own range and rules), newest deleted first.
+ */
+export const getDeletedShipments = (range: {
+  from: string;
+  to: string;
+}): Promise<OperationsDeletedShipmentsDto> =>
+  get<OperationsDeletedShipmentsDto>(`/operations/shipments/deleted${buildQuery(range)}`);
+
+/** Bring a deleted shipment back onto its day — the undo of `deleteShipment`, on the same grant. */
+export const restoreShipment = (id: string): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/shipments/${id}/restore`, {});
 
 // «صورة الإيصال» — the photo of a shipment's paper receipt, one per shipment (the Fleet receipts'
 // image endpoints, on the shipment). Upload answers the shipment with its new `receiptImage`; a

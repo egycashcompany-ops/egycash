@@ -789,8 +789,9 @@ export interface HireCandidateDto {
 }
 
 /**
- * A28 — printing for MANY candidates at once from «جاهزون للتعيين»: the people ticked, each with the
- * papers of their own job; the papers chosen once for all of them; one document out.
+ * A28 — printing for MANY candidates at once from «جاهزون للتعيين»: the people ticked, each on a line
+ * of their own with the papers of their own job, chosen for that person alone («كل واحد ليه line
+ * جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو»); one document out.
  */
 export const CANDIDATE_BULK_MAX = 50;
 
@@ -812,9 +813,18 @@ export interface CandidateBulkPersonDto {
 
 export const RenderCandidateBulkSchema = z
   .object({
-    offerIds: z.array(objectId()).min(1).max(CANDIDATE_BULK_MAX),
-    /** The papers chosen — each person prints those of them their own job has. */
-    keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+    /** Each person with the papers chosen for them — of their own job's papers. */
+    people: z
+      .array(
+        z
+          .object({
+            offerId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(CANDIDATE_BULK_MAX),
   })
   .strict();
 export type RenderCandidateBulk = z.infer<typeof RenderCandidateBulkSchema>;

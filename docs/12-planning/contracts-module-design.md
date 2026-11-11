@@ -571,6 +571,13 @@ which forms depends on the job.
   `dots`, `band`, `foot`, `rule`, `t10`–`t16`, `l15`/`l2`/`l3`), styled in the form stylesheet; any
   other class is dropped (A11). The template editor keeps them on save. A form's footer section sits
   at the foot of its page.
+- **His contract too.** Bold 14pt at near-single spacing (his Normal style), his basmala
+  calligraphy (a picture in his file, shown by the `basmala` class — the words stay, unseen), the
+  title at 20pt, clauses under starred bullets, his salary lines (no table), his spelling. His
+  document-control line prints at the foot of EVERY page and the page number at the top from the
+  second page («- 2 -»), as the page's own margin boxes (`@page @bottom-center/@top-center`). A
+  printed set numbers only when it holds one contract (page numbers run through the document);
+  forms' pages carry neither. On screen the line shows under the text.
 - **Reaching a database written before.** Each paper has a `revision`; the row carries the
   `paperRevision` it was written at. The boot rewrites a row it wrote, and nobody has touched since,
   to a newer revision (its sections, placeholders and signatures). A row somebody edited keeps their

@@ -15,13 +15,14 @@ const STYLE_RE = /^text-align:\s*(left|right|center|justify);?$/;
 /**
  * The few layout classes a printed paper may name (A27 — the owner's papers as he prints them):
  * a borderless table of label/dotted-line rows, the shaded heading box, the document-control line
- * at the foot of the page, a ruled paragraph, and the type sizes and line spacing of his Word files.
+ * at the foot of the page, a ruled paragraph, his contract's basmala and starred clauses, and the
+ * type sizes and line spacing of his Word files.
  * Each is plain CSS in the form stylesheet; any other class is dropped (A11).
  */
 export const PAPER_CLASSES: readonly string[] = [
-  'plain', 'cols', 'dots', 'band', 'foot', 'rule',
-  't10', 't12', 't14', 't16',
-  'l15', 'l2', 'l3',
+  'plain', 'cols', 'dots', 'band', 'foot', 'rule', 'basmala', 'star',
+  't10', 't12', 't14', 't16', 't20',
+  'l1', 'l15', 'l2', 'l3',
 ];
 const PAPER_CLASS_SET = new Set(PAPER_CLASSES);
 

@@ -3,7 +3,88 @@
 // logo, signature blocks and the resolved variables substituted via the platform's pure
 // template engine. Deterministic by construction (A21): fixed page box, fixed font stack.
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
+import { BASMALA_PNG } from './basmala';
 import { type ContractVariableValue } from './contract.model';
+
+/**
+ * The owner's papers as his Word files print them (A27, «رجعهم كلهم زي الاصل») — the classes
+ * `PAPER_CLASSES` allows, under `scope`: a form, or a contract's page.
+ */
+const paperCss = (scope: string): string => `
+  ${scope} .t10 { font-size: 10pt; }
+  ${scope} .t12 { font-size: 12pt; }
+  ${scope} .t14 { font-size: 14pt; }
+  ${scope} .t16 { font-size: 16pt; }
+  ${scope} .t20 { font-size: 20pt; }
+  ${scope} .l1 { line-height: 1.35; margin-top: 0; margin-bottom: 1.5mm; }
+  ${scope} .l15 { line-height: 1.5; }
+  ${scope} .l2 { line-height: 2; }
+  ${scope} .l3 { line-height: 3; }
+  ${scope} p.rule { border-bottom: 1.5px solid #111; }
+  /* His clauses' star. */
+  ${scope} ul.star { list-style-type: "☆  "; }
+  /* Label and dotted-line rows: no borders; a label keeps its width, a \`dots\` cell (and the last
+     cell of a row without one) takes the rest. */
+  ${scope} table.plain { width: 100%; border: none; }
+  ${scope} table.plain td, ${scope} table.plain th { border: none; padding: 0 1mm; width: 1%; white-space: nowrap;
+                                                     vertical-align: bottom; text-align: start; font-weight: inherit; }
+  ${scope} table.plain td.dots, ${scope} table.plain tr:not(:has(td.dots)) td:last-child { width: auto; }
+  ${scope} table.plain td.dots { border-bottom: 1.2px dotted #222; }
+  /* \`cols\`: columns of equal width whose text wraps — his card's job, manager and department. */
+  ${scope} table.plain.cols { table-layout: fixed; }
+  ${scope} table.plain.cols td { width: auto; white-space: normal; }
+  /* A row's spacing goes above it, so the dotted line stays on the label's own line. */
+  ${scope} table.plain.l2 td, ${scope} table.plain.l3 td { line-height: 1.5; }
+  ${scope} table.plain.l2 { margin-top: 3mm; }
+  ${scope} table.plain.l3 { margin-top: 8mm; }
+  /* The shaded heading box. */
+  ${scope} table.band { width: auto; margin: 3mm auto; }
+  ${scope} table.band td { background: #bfbfbf; border: 1px solid #111; padding: 0.5mm 10mm; font-weight: 700;
+                           text-align: center; }
+  /* The document-control line at the foot of the page. */
+  ${scope} table.foot { width: 100%; border: none; margin: 0; font-size: 9pt; direction: ltr; }
+  ${scope} table.foot td { border: none; padding: 0; text-align: center; }
+`;
+
+/**
+ * His «بسم الله الرحمن الرحيم», the calligraphy that heads his contract; the words stay, unseen. Only
+ * in a document that uses it — the picture is not small.
+ */
+const basmalaCss = (html: string): string =>
+  html.includes('class="basmala"')
+    ? `.page p.basmala { height: 11mm; margin: 0 0 2mm; color: transparent; overflow: hidden;
+                       background: url(${BASMALA_PNG}) center / contain no-repeat; }`
+    : '';
+
+/** A doc-control line in a template's footer (`table.foot`), cell by cell as text — or null. */
+export const pageFootCells = (footerHtml: string): string[] | null => {
+  const table = /<table class="foot">([\s\S]*?)<\/table>/.exec(footerHtml);
+  if (table === null) return null;
+  const cells = [...(table[1] ?? '').matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)]
+    .map((cell) => (cell[1] ?? '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter((text) => text !== '');
+  return cells.length === 0 ? null : cells;
+};
+
+/** Text as a CSS string — quotes, backslashes and `<` escaped, so it can never close the style. */
+const cssString = (text: string): string =>
+  `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/</g, '\\3c ').replace(/[\r\n]+/g, ' ')}"`;
+
+/**
+ * A contract whose footer is his doc-control line prints it at the foot of EVERY page, as his Word
+ * file does — the page's own margin box — and, when `numbered`, the page number at the top from
+ * the second page («- 2 -»). A printed set numbers only when it holds one contract: page numbers run
+ * through the whole document. On screen (no pages) the line shows under the text instead.
+ */
+const pageFootCss = (footerHtml: string, numbered: boolean): string => {
+  const cells = pageFootCells(footerHtml);
+  if (cells === null) return '';
+  return `
+  @page { @bottom-center { content: ${cssString(cells.join('          '))}; white-space: pre; font-size: 9pt; color: #222; }
+          ${numbered ? '@top-center { content: "- " counter(page) " -"; font-size: 12pt; }' : ''} }
+  ${numbered ? '@page :first { @top-center { content: none; } }' : ''}
+  @media print { .page-foot { display: none; } }`;
+};
 
 const PRINT_CSS = `
   @page { size: A4; margin: 20mm 18mm; }
@@ -21,7 +102,8 @@ const PRINT_CSS = `
   .signature .line { border-top: 1px solid #111; margin-top: 14mm; padding-top: 2mm; }
   .integrity { font-size: 7.5pt; color: #666; margin-top: 6mm; direction: ltr; text-align: left; }
   .integrity img.qr { width: 20mm; height: 20mm; float: right; margin-left: 4mm; }
-`;
+  header:empty, footer:empty { display: none; }
+${paperCss('.page')}`;
 
 export interface RenderOptions {
   /** A14 — printed as the integrity footer line once generation freezes it. */
@@ -109,7 +191,11 @@ const contractBody = (
     <header>${logo}${substitute(template.sections.header, values)}</header>
     <main>${substitute(template.sections.body, values)}</main>
     <div class="signatures">${signatures}</div>
-    <footer>${substitute(template.sections.footer, values)}${brandFooter}${integrity}</footer>
+    <footer>${
+      pageFootCells(template.sections.footer) === null
+        ? substitute(template.sections.footer, values)
+        : `<div class="page-foot">${substitute(template.sections.footer, values)}</div>`
+    }${brandFooter}${integrity}</footer>
   </div>`;
 };
 
@@ -121,7 +207,7 @@ export const renderContractHtml = (
   const dir = template.language === 'ar' ? 'rtl' : 'ltr';
   return `<!doctype html>
 <html lang="${template.language}" dir="${dir}">
-<head><meta charset="utf-8" /><style>${PRINT_CSS}${brandCssFor(options.branding)}</style></head>
+<head><meta charset="utf-8" /><style>${PRINT_CSS}${brandCssFor(options.branding)}${basmalaCss(template.sections.header + template.sections.body)}${pageFootCss(template.sections.footer, true)}</style></head>
 <body>
 ${contractBody(template, values, options)}
 </body>
@@ -171,38 +257,9 @@ const FORM_CSS = `
   .form-doc ul, .form-doc ol { margin: 0 0 2.5mm; }
   .form-doc td, .form-doc th { padding: 1mm 2.5mm; }
   .form-doc table { margin-bottom: 2.5mm; }
-
-  /* The owner's papers as his Word files print them (A27) — the classes \`PAPER_CLASSES\` allows. */
-  .form-doc .t10 { font-size: 10pt; }
-  .form-doc .t12 { font-size: 12pt; }
-  .form-doc .t14 { font-size: 14pt; }
-  .form-doc .t16 { font-size: 16pt; }
-  .form-doc .l15 { line-height: 1.5; }
-  .form-doc .l2 { line-height: 2; }
-  .form-doc .l3 { line-height: 3; }
-  .form-doc p.rule { border-bottom: 1.5px solid #111; }
-  /* Label and dotted-line rows: no borders; a label keeps its width, a \`dots\` cell (and the last
-     cell of a row) takes the rest. */
-  .form-doc table.plain { width: 100%; border: none; }
-  .form-doc table.plain td, .form-doc table.plain th { border: none; padding: 0 1mm; width: 1%; white-space: nowrap;
-                                                       vertical-align: bottom; text-align: start; font-weight: inherit; }
-  .form-doc table.plain td.dots, .form-doc table.plain tr:not(:has(td.dots)) td:last-child { width: auto; }
-  .form-doc table.plain td.dots { border-bottom: 1.2px dotted #222; }
-  /* \`cols\`: columns of equal width whose text wraps — his card's job, manager and department. */
-  .form-doc table.plain.cols { table-layout: fixed; }
-  .form-doc table.plain.cols td { width: auto; white-space: normal; }
-  /* A row's spacing goes above it, so the dotted line stays on the label's own line. */
-  .form-doc table.plain.l2 td, .form-doc table.plain.l3 td { line-height: 1.5; }
-  .form-doc table.plain.l2 { margin-top: 3mm; }
-  .form-doc table.plain.l3 { margin-top: 8mm; }
-  /* The shaded heading box. */
-  .form-doc table.band { width: auto; margin: 3mm auto; }
-  .form-doc table.band td { background: #bfbfbf; border: 1px solid #111; padding: 0.5mm 10mm; font-weight: 700;
-                            text-align: center; }
-  /* The document-control line at the foot of the page. */
-  .form-doc table.foot { width: 100%; border: none; margin: 0; font-size: 9pt; direction: ltr; }
-  .form-doc table.foot td { border: none; padding: 0; text-align: center; }
-`;
+  /* A contract's page foot and number (\`pageFootCss\`) are not the forms'. */
+  @page form { @top-center { content: none; } @bottom-center { content: none; } }
+${paperCss('.form-doc')}`;
 
 const formBody = (
   template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
@@ -281,7 +338,13 @@ export const renderHiringPackHtml = (
 ): string => {
   const dir = language === 'ar' ? 'rtl' : 'ltr';
   const contract = parts.find((part) => part.kind === 'contract');
-  const brandCss = contract?.kind === 'contract' ? brandCssFor(contract.options.branding, '.doc-contract') : '';
+  const contracts = parts.filter((part) => part.kind === 'contract').length;
+  const brandCss =
+    contract?.kind === 'contract'
+      ? brandCssFor(contract.options.branding, '.doc-contract') +
+        basmalaCss(contract.template.sections.header + contract.template.sections.body) +
+        pageFootCss(contract.template.sections.footer, contracts === 1)
+      : '';
   const sections = parts
     .map((part, index) => {
       const pageBreak = index === 0 ? '' : ' style="break-before: page;"';

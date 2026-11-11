@@ -128,6 +128,17 @@ describe('what they print', () => {
     for (const p of [WEAPON, paper('egycash.hiring.bank-letter'), ...CARDS]) expect(p.sections.footer, p.key).toBe('');
   });
 
+  it('prints his contract in his type: the basmala, starred clauses, the page foot', () => {
+    const body = CONTRACT.sections.body;
+    expect(body.startsWith('<p class="basmala">بسم الله الرحمن الرحيم</p>')).toBe(true);
+    expect(body).toContain('<ul class="t14 l1 star">');
+    expect(body).toContain('لدمة لا تقل عن خمس سنوات والا فيلتزن');
+    expect(body).toContain('ونسة للتأمينات الإجتماعية');
+    expect(CONTRACT.sections.header).toBe('');
+    expect(CONTRACT.sections.footer).toContain('<table class="foot">');
+    expect(CONTRACT.revision).toBe(2);
+  });
+
   it('keeps his words as he spells them', () => {
     expect(paper('egycash.hiring.card.atm-specialist').sections.body).toContain('لماكينات الصراف اللآلي .');
     expect(paper('egycash.hiring.card.cit-specialist').sections.body).toContain('القيام بهمام تجهيز');

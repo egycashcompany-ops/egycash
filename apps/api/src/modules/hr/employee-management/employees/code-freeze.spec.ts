@@ -55,13 +55,31 @@ describe('the Employee Code is frozen once issued', () => {
   });
 
   /**
-   * Composition is legitimate exactly twice — the two ways an employee is first created (hire from
-   * an accepted offer, and direct registration). If this count ever rises, a third path is issuing
-   * codes and needs to be looked at; if it falls, hiring has stopped composing one at all.
+   * Composition is legitimate exactly three times — the three ways a person first enters the
+   * registry: hire from an accepted offer, direct registration, and registering an EXTERNAL person
+   * (تعيين خارجى), who is not hired at all but still carries a code, because everything that hands
+   * somebody a laptop names an employee by one.
+   *
+   * This rose from two when external registration arrived, and the tripwire did its job: a third
+   * path HAD appeared and was looked at. It composes once, at creation, and never re-derives — the
+   * same rule as the other two, which is what makes it legitimate rather than a fourth rewrite.
+   *
+   * A bare count would pass for a rewrite dressed as a creation path, so each call is pinned to the
+   * method it belongs in. If one of these falls to zero, that path has stopped issuing a code; if
+   * the total rises, something new is minting them.
    */
-  it('only the two hire paths compose a code', () => {
+  it('only the three paths that create a person compose a code', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
-    expect(composed).toHaveLength(2);
+    expect(composed).toHaveLength(3);
+    const bodyOf = (method: string): string => {
+      const start = SERVICE.indexOf(`async ${method}(`);
+      expect(start, method).toBeGreaterThan(-1);
+      const next = SERVICE.slice(start + 1).search(/\n {2}(private )?async [a-zA-Z]+\(/);
+      return next === -1 ? SERVICE.slice(start) : SERVICE.slice(start, start + 1 + next);
+    };
+    for (const method of ['create', 'registerDirect', 'registerExternal']) {
+      expect([...bodyOf(method).matchAll(/buildEmployeeCode\(/g)], method).toHaveLength(1);
+    }
   });
 
   /**

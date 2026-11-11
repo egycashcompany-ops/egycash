@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import {
   EMPLOYEE_EXIT_TYPES,
   SALARY_BEARING_ACTION_TYPES,
+  type EmployeeOrigin,
   type ListEmployeeActionsQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -21,7 +22,7 @@ class EmployeeActionRepository {
     hiredAt: Date;
     by: Types.ObjectId | null;
     entryStatus: 'probation' | 'active';
-    origin: 'recruitment' | 'direct';
+    origin: EmployeeOrigin;
     note?: string;
   }): Promise<EmployeeActionDoc> {
     const existing = await EmployeeActionModel.findOne({ employeeId: params.employeeId, seq: 1 });

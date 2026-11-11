@@ -13,6 +13,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeActionDto,
   type EmployeeActionType,
   type AdminResetPasswordResultDto,
@@ -89,6 +90,13 @@ export const registerEmployeeDirect = (
   body: DirectRegisterEmployee,
 ): Promise<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }> =>
   post<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }>('/hr/employees/direct', body);
+
+/**
+ * An EXTERNAL person (تعيين خارجى) — a name, where they sit and what they do, so the company can
+ * hand them custody. No login comes back because none is provisioned.
+ */
+export const registerEmployeeExternal = (body: RegisterExternalEmployee): Promise<EmployeeDto> =>
+  post<EmployeeDto>('/hr/employees/external', body);
 
 /** Post-hire personal-data edits — plain audited updates, not personnel actions. */
 export const updateEmployeePersonal = (id: string, body: UpdateEmployeePersonal): Promise<EmployeeDto> =>

@@ -38,6 +38,7 @@ import {
   listSubordinates,
   getEmployeeNationalIdCard,
   registerEmployeeDirect,
+  registerEmployeeExternal,
   rehireCheck,
   removeEmployeePhoto,
   unlinkEmployeeUser,
@@ -51,6 +52,7 @@ import {
   CreateEmployeeLoginSchema,
   CreateEmployeeSchema,
   DirectRegisterEmployeeSchema,
+  RegisterExternalEmployeeSchema,
   EmployeeCodeCheckQuerySchema,
   EmployeeIdParamSchema,
   JobTitlePlacementQuerySchema,
@@ -177,6 +179,16 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.registerDirect'),
     validate({ body: DirectRegisterEmployeeSchema }),
     asyncHandler(registerEmployeeDirect),
+  );
+  // An EXTERNAL person (تعيين خارجى) — not a hire, and the smallest body in this router: a name,
+  // where they sit, and what they do. Same permission as a direct registration, because it is the
+  // same act (putting somebody in the registry) with less of it.
+  router.post(
+    '/external',
+    authenticate,
+    authorize('employee.registerDirect'),
+    validate({ body: RegisterExternalEmployeeSchema }),
+    asyncHandler(registerEmployeeExternal),
   );
   // The register screen's three helpers (declared before /:id), behind the permission to register:
   // the last code issued, what a typed code means, and where a job title's people sit in a branch.

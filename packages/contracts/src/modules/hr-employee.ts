@@ -23,6 +23,7 @@ import {
   PhoneNumberSchema,
   type Address,
   listQuery,
+  arabicName,
 } from '../common/index.js';
 import { UsernameSchema, type UserDto } from '../platform/users.js';
 import { type CredentialsDeliveryResultDto } from '../platform/auth.js';
@@ -71,8 +72,19 @@ export const EMPLOYEE_EXIT_TYPES = [
 export const EmployeeExitTypeSchema = z.enum(EMPLOYEE_EXIT_TYPES);
 export type EmployeeExitType = z.infer<typeof EmployeeExitTypeSchema>;
 
-/** How the employee entered the registry. Recruitment refs are null for `direct`. */
-export const EMPLOYEE_ORIGINS = ['recruitment', 'direct'] as const;
+/**
+ * How the employee entered the registry. Recruitment refs are null for `direct` and `external`.
+ *
+ * `external` is a person the company did NOT hire — «موظفين خارجيين .. يعني تعيين خارجى». They are
+ * in the registry for one reason: the company hands them things (IT custody above all), and
+ * everything that hands a person something names an employee. So they carry a name, a branch, a
+ * department, a job title and a code, and nothing else: no national ID, no salary, no login.
+ *
+ * THEY ARE NOT PAID. Anything that pays, or counts, the workforce must exclude them by this field
+ * — the payslip run does (see `payslip.service.ts`). A new batch that walks every employee has to
+ * decide the same question.
+ */
+export const EMPLOYEE_ORIGINS = ['recruitment', 'direct', 'external'] as const;
 export const EmployeeOriginSchema = z.enum(EMPLOYEE_ORIGINS);
 export type EmployeeOrigin = z.infer<typeof EmployeeOriginSchema>;
 
@@ -383,6 +395,31 @@ export const DirectRegisterEmployeeSchema = z
   })
   .strict();
 export type DirectRegisterEmployee = z.infer<typeof DirectRegisterEmployeeSchema>;
+
+/**
+ * Registering an EXTERNAL person — «موظفين خارجيين .. يعني تعيين خارجى .. بالتالى ملهمش كود عندنا
+ * ولا بيانات .. محتاج أسجل بس أسمهم والإدارة والوظيفة بتاعتهم عشان أقدر أسلملهم عهده فى الـ IT».
+ *
+ * Deliberately the smallest payload in this file. It is NOT a hire: there is no national ID, no
+ * contact, no salary, no employment type, no probation and no login — asking for any of them would
+ * be asking the company to invent facts about somebody it did not employ.
+ *
+ * The branch is here although the owner listed only three fields, and it earns its place twice: the
+ * code's first three digits ARE the hiring branch (ADR-017), and the branch is how scope decides
+ * who may see the person — without it a branch-scoped IT user could not find the very person they
+ * are handing a laptop to. The code itself is never typed: the server composes it from that branch
+ * and the next number on the global counter, exactly as it does for anyone else.
+ */
+export const RegisterExternalEmployeeSchema = z
+  .object({
+    fullNameAr: arabicName(z.string().trim().min(2).max(200)),
+    branchId: objectId(),
+    departmentId: objectId(),
+    sectionId: objectId().nullish(),
+    jobTitleId: objectId(),
+  })
+  .strict();
+export type RegisterExternalEmployee = z.infer<typeof RegisterExternalEmployeeSchema>;
 
 /** «تكتب تحته آخر كود موجود»: the code holding the highest number, any branch, any state. */
 export interface LastEmployeeCodeDto {

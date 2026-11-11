@@ -152,7 +152,14 @@ const act =
 const hiringPack = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<HiringPackRequest>(req);
-  ok(res, await hiringPackService.build(ctx, body.employeeId, scopeSelector(ctx, 'contract.print')));
+  ok(res, await hiringPackService.build(ctx, body.employeeId, scopeSelector(ctx, 'contract.print'), body.keys));
+};
+
+/** A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers and their contract. */
+const employeePapers = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, { employeeId: string }>(req);
+  ok(res, await hiringPackService.papersFor(params.employeeId, scopeSelector(ctx, 'contract.print')));
 };
 
 // ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
@@ -271,6 +278,8 @@ export const buildContractsRouter = (): Router => {
     validate({ body: PreviewContractSchema }), asyncHandler(previewContract));
   router.post('/hiring-pack', ...guard('contract.print'), validate({ body: HiringPackRequestSchema }),
     asyncHandler(hiringPack));
+  router.get('/employee-papers/:employeeId', ...guard('contract.print'),
+    validate({ params: z.object({ employeeId: objectId() }).strict() }), asyncHandler(employeePapers));
   // Before the `:offerId` routes, so «bulk» is never read as an offer id.
   router.post('/candidates/bulk/open', ...guard('contract.print'), validate({ body: CandidateBulkSchema }),
     asyncHandler(bulkOpenCandidates));

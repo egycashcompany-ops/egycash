@@ -46,8 +46,10 @@ describe('the Pay Items tab is wired into the profile the way every additive tab
     // added Loans, and in P-HR-11 it stopped being a ternary altogether: Settlement is gated on an
     // exit as well as on compensation, which a single condition could not express. What it protects
     // is unchanged — no money tab is offered to a caller the server redacts compensation from.
+    // A28 added a fourth answer (may this caller print contracts?) for the papers tab; the money
+    // tabs still turn on `compensationVisible` alone.
     expect(PROFILE).toMatch(
-      /visibleTabs = \(compensationVisible: boolean, exited: boolean, delegates: boolean\): readonly Tab\[\] =>/,
+      /visibleTabs = \(\s*compensationVisible: boolean,\s*exited: boolean,\s*delegates: boolean,\s*prints: boolean,?\s*\): readonly Tab\[\] =>/,
     );
     // P-HR-20 added the Payslips tab to the same branch — the rule is unchanged, and the
     // condition it is asserted against grew by one name.

@@ -144,6 +144,26 @@ export const useHiringPack = () => {
   });
 };
 
+/** A28 — an employee's papers and the contract they hold, for their «طباعة العقد والمستندات» tab. */
+export const useEmployeePapers = (employeeId: string) =>
+  useQuery({
+    queryKey: ['hr', 'contracts', 'employeePapers', employeeId],
+    queryFn: () => api.employeePapers(employeeId),
+  });
+
+/** Print the chosen papers of an employee — the contract made first if they hold none. */
+export const usePrintEmployeePapers = () => {
+  const invalidate = useContractsInvalidation();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { employeeId: string; keys: string[] }) => api.hiringPack(vars.employeeId, vars.keys),
+    onSuccess: (set, vars) => {
+      if (set.contract?.created === true) invalidate();
+      void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'employeePapers', vars.employeeId] });
+    },
+  });
+};
+
 /** A28 — the candidate's papers page: its saved state, made on the first visit. */
 export const useCandidateDraft = (offerId: string) =>
   useQuery({

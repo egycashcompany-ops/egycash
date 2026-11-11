@@ -12,6 +12,25 @@ const ALLOWED_TAGS = new Set([
 /** Only TipTap's text-align style survives; everything else is stripped (A11). */
 const STYLE_RE = /^text-align:\s*(left|right|center|justify);?$/;
 
+/**
+ * The few layout classes a printed paper may name (A27 — the owner's papers as he prints them):
+ * a borderless table of label/dotted-line rows, the shaded heading box, the document-control line
+ * at the foot of the page, a ruled paragraph, and the type sizes and line spacing of his Word files.
+ * Each is plain CSS in the form stylesheet; any other class is dropped (A11).
+ */
+export const PAPER_CLASSES: readonly string[] = [
+  'plain', 'cols', 'dots', 'band', 'foot', 'rule',
+  't10', 't12', 't14', 't16',
+  'l15', 'l2', 'l3',
+];
+const PAPER_CLASS_SET = new Set(PAPER_CLASSES);
+
+/** The allowed classes of a `class` value, in order, once each — or null when none is allowed. */
+export const allowedClasses = (value: string): string | null => {
+  const kept = [...new Set(value.split(/\s+/).filter((name) => PAPER_CLASS_SET.has(name)))];
+  return kept.length === 0 ? null : kept.join(' ');
+};
+
 const sanitizeAttributes = (attrs: string): string => {
   let out = '';
   const attrRe = /([a-zA-Z-]+)\s*=\s*("[^"]*"|'[^']*')/g;
@@ -22,14 +41,17 @@ const sanitizeAttributes = (attrs: string): string => {
     else if (name === 'style' && STYLE_RE.test(rawValue.trim())) out += ` style="${rawValue.trim()}"`;
     else if (name === 'colspan' || name === 'rowspan') {
       if (/^\d{1,2}$/.test(rawValue)) out += ` ${name}="${rawValue}"`;
+    } else if (name === 'class') {
+      const kept = allowedClasses(rawValue);
+      if (kept !== null) out += ` class="${kept}"`;
     }
-    // Everything else (class, id, on*, href, src, data-*) is dropped.
+    // Everything else (id, on*, href, src, data-*, any other class) is dropped.
   }
   return out;
 };
 
 /**
- * Allow-list sanitizer: keeps structural/print tags with dir/text-align only. Unknown
+ * Allow-list sanitizer: keeps structural/print tags with dir/text-align and the paper classes only. Unknown
  * tags are removed WITH their wrapper (content kept); script/style/iframe-like tags are
  * removed with their content.
  */

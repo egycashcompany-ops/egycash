@@ -7,6 +7,7 @@
 // (A6), the PDF-disabled fallback (D8) and the A22 query seam. The IMMUTABILITY PROOF:
 // editing the template after generation never changes a stored snapshot.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { Types } from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
@@ -1209,7 +1210,7 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
 
     // Again: nothing is written twice.
     const second = await syncHiringTemplates();
-    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting, widened: [] });
+    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting, widened: [], revised: [] });
     expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(13);
   });
 
@@ -1258,6 +1259,29 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     };
     expect(await offered(citJob)).toMatchObject({ optional: true });
     expect(await offered(crewLeaderJob)).toMatchObject({ optional: false });
+  });
+
+  it('rewrites a paper the boot wrote to his newer revision — never one somebody edited', async () => {
+    // As a database written by an earlier release: the rows the boot wrote, at revision 1, filled.
+    const old = { header: '<h3>قديم</h3>', body: '<p>{{employee.fullName}}</p>', footer: '' };
+    for (const name of ['relatives', 'work-receipt']) {
+      await ContractTemplateModel.updateOne(
+        { key: key(name) },
+        { $set: { sections: old, placeholders: ['employee.fullName'] }, $unset: { paperRevision: 1 } },
+      );
+    }
+    // Somebody edits one of them since: it is theirs now.
+    await ContractTemplateModel.updateOne({ key: key('work-receipt') }, { $set: { updatedBy: new Types.ObjectId() } });
+
+    const report = await syncHiringTemplates();
+    expect(report.revised).toEqual([key('relatives')]);
+    const relatives = await row('relatives');
+    expect(relatives.paperRevision).toBe(2);
+    expect(relatives.placeholders).toEqual([]); // blank, as his paper
+    expect(relatives.sections.footer).toContain('EGYCASH-HR-F-10-03');
+    expect((await row('work-receipt')).sections).toEqual(old);
+    // Again: nothing more.
+    expect((await syncHiringTemplates()).revised).toEqual([]);
   });
 
   it('prints the owner\'s contract and the papers of the employee\'s job', async () => {

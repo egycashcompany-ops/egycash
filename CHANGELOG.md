@@ -11,6 +11,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
+  تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
+  طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` (244 rows, no person).
+  - 68 new devices registered in their branch, in stock; a Dell's service tag is its serial number,
+    and its «CN-0…» label its printed tag.
+  - Devices already on the register get only what they lack («أكمّل الناقص بس»): specifications,
+    accessories, printed tag, make, model. A value already typed is kept. The Shorouk sheet's 13
+    Dell desktops get no processor or graphics: those cells repeat its all-in-ones'.
+  - 8 devices registered under another branch move to the sheet's when in stock, and their old
+    location (a place in the branch they left) is cleared; a held one stays and is reported.
+  - Left out: three repeated rows (two in Tanta, one in Assiut) and two rows in October with neither
+    serial nor tag; and, until the owner reads their labels, the Shorouk printer CNDRP8Z666 and
+    screen B3ZY8V3 (serials the October inventory found twice), three screens a character or two
+    off a register screen of their branch that the sheet does not list (October's B3SZ8V3, Assiut's
+    BR565G3 and 1Q1L1T3) and an HP Z240 whose only label is HP's product number.
+  - One transaction, run once (`go-live:it-branch-custody-2026-11:v1`), after the inventory, the
+    October all-in-ones and the specifications; a missing branch or category refuses it.
+
 - **«قص الوجه من صفحة A4»: the employee photo, cut from the A4 page it arrives on.** The photo
   dialog takes a PDF or a scanned page as well as a photo. Page 1 is drawn in the browser (pdf.js),
   the face is found (MediaPipe BlazeFace, run over the sheet whole and in overlapping tiles so a
@@ -54,6 +73,33 @@ its entry here in the same PR.
   handover), so reopening the card keeps that step done; the waiting card splits by whose turn it
   is — amber «طُبع ولم يُطبع الإقرار» (HR's) and sky «في انتظار استلام الموظف» (the employee's) — in
   the list's icon, the filter (`awaiting` / `receipt`) and the profile.
+
+- **Operations: the shipment form by bank → branch, and the day board in the Fleet look.** «عند اضافة
+  شحنة البنك الرئيسى دا اللى بيحاسب على الشحنة … عدل برضو الui بتاع الفورم والشاشة زى الحركة».
+  - «البنك الرئيسي» is the bank billed. «من فرع» and «إلى فرع» each pick a bank, then a branch of it
+    by typing (searched on the server, Arabic letter variants folded, no 100-branch cap). A branch
+    that is not there is offered as «+ إضافة … كفرع جديد», which opens the catalogs' branch form with
+    the bank and the name filled in; the saved branch is picked on the side that asked.
+  - The area fills from the destination branch and stays editable. «اسم قائد الطاقم» and «رقم
+    السيارة» pick each other from the collection day's crew plan.
+  - The origin branch may belong to any bank (legacy never posted its from-bank); the destination
+    rule is unchanged. A secured shipment's delivery date stays optional.
+  - `/operations/shipments` in the Fleet boards' look: «تشغيل يوم …», the dark icon filter bar with
+    a «قائد الطاقم» filter, the money per currency behind «الإحصائيات», and the legacy columns
+    (السيارة، اسم البنك، من فرع، إلى فرع، العملة، قيمة الشحنة، قائد الطاقم، التاريخ …).
+  - API: `GET /operations/shipments/day-board` rows carry their branches (with banks) and the crew of
+    the leg the row reports on; `GET /operations/bank-branches/:id`; catalog searches take typed
+    text literally (regex metacharacters escaped) and fold Arabic letter variants.
+  - Two hover cards on the board, on Fleet's card mechanics: «لما اقف على العربيه تجيب مين اللى
+    متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه». The
+    van code opens who rides that van on the leg's crew row (drivers from its Fleet duty row, the
+    captain, specialists 1 and 2, the direction and planned time); the captain's name opens the
+    Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
+    (`crews`, and the captain's code, phone and branch on each row); a reader without
+    `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
+  - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
+    اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
+    answer sends a driver's name only. The captain and the specialists keep their codes.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
@@ -678,6 +724,14 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
+  pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
+  (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and
+  [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c) (high: connection-level
+  `sanitizeFilter` not applied, fixed in 8.24.7). The API never turns `sanitizeFilter` on, so
+  neither reached it, but the gate blocks on both. The API's range moves from `^8.9.5` to `^8.24.8`
+  so a fresh lockfile cannot fall back below the fix; mquery follows to 5.0.1, and mongoose's own
+  MongoDB driver stays 6.20.0. No code changes.
 - **IT vehicle checks dashboard: the page no longer scrolls into empty space.** «بيعمل Scroll لمساحه
   فاضية». The matrix's last column has a heading only screen readers hear (`sr-only`, absolutely
   positioned). Its table's scroll box was not positioned, so the heading took the page as its

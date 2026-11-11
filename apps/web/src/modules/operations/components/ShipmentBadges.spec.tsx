@@ -17,7 +17,7 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { ShipmentStatusBadge, ShipmentTypeBadge } from './ShipmentBadges';
+import { DeliveryStatusBadge, ShipmentStatusBadge, ShipmentTypeBadge } from './ShipmentBadges';
 
 const withLocale = (locale: Locale, node: JSX.Element): string => {
   const store = configureStore({
@@ -84,4 +84,30 @@ describe('ShipmentTypeBadge', () => {
     const [daily, secured] = types.map((t) => withLocale('en', <ShipmentTypeBadge shipmentType={t} />));
     expect(daily).not.toBe(secured);
   });
+});
+
+// «لو تم التسليم من القائد … الحالة هتكون تم التسليم … ولما ادوس انا على صح … تم التسليم برضو».
+describe('DeliveryStatusBadge — the day board’s «الحالة»', () => {
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    const delivered = translate(locale, 'operations.board.status.delivered');
+    const notDelivered = translate(locale, 'operations.board.status.notDelivered');
+
+    it(`says «not delivered» until someone delivers (${locale})`, () => {
+      const html = withLocale(locale, <DeliveryStatusBadge delivery="none" />);
+      expect(html).toContain('data-delivery="none"');
+      expect(html).toContain(notDelivered);
+      // In Arabic «لم يتم التسليم» CONTAINS «تم التسليم», so look for it outside the label.
+      expect(html.replaceAll(notDelivered, '')).not.toContain(delivered);
+    });
+
+    it(`says «delivered» for the captain AND the desk — who it was is not left to colour (${locale})`, () => {
+      const captain = withLocale(locale, <DeliveryStatusBadge delivery="captain" />);
+      const desk = withLocale(locale, <DeliveryStatusBadge delivery="desk" />);
+      for (const html of [captain, desk]) expect(html).toContain(delivered);
+      expect(captain).toContain(translate(locale, 'operations.board.status.byCaptain'));
+      expect(desk).toContain(translate(locale, 'operations.board.status.byDesk'));
+      // Different glyphs, so the two read apart without their colours.
+      expect(captain).not.toEqual(desk.replace('data-delivery="desk"', 'data-delivery="captain"'));
+    });
+  }
 });

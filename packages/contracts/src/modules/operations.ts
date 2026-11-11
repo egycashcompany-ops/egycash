@@ -319,13 +319,33 @@ export interface OperationsShipmentLineDto {
   amount: number;
 }
 
+/** The file category a shipment's receipt photo is stored under (platform Files). */
+export const OPERATIONS_SHIPMENT_RECEIPT_FILE_CATEGORY = 'operations-shipment-receipts';
+
+/** A shipment's receipt photo — the file is read through the shipment, never by its id alone. */
+export interface OperationsShipmentReceiptImageDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface OperationsShipmentDto {
   id: string;
   shipmentType: OperationsShipmentType;
   status: OperationsShipmentStatus;
-  /** Legacy `main_bank` (the FROM side's bank; legacy requires it — contad_app.js:313). */
+  /**
+   * Legacy `main_bank` — البنك الرئيسي, the bank BILLED for the shipment (legacy requires it —
+   * contad_app.js:313). Every per-bank roll-up keys on it, in legacy (/ops_bank_report, /vault1)
+   * and here. It is NOT necessarily the bank the money is collected from: that is the origin
+   * branch's own bank, which legacy never stored and this DTO does not either.
+   */
   mainBankId: string;
-  /** Legacy `sec_bank` via `toBankSelect`; never server-validated in legacy, so nullable. */
+  /**
+   * Legacy `sec_bank` via `toBankSelect` — the DESTINATION branch's bank when it differs from the
+   * main bank; null means "the main bank". Never server-validated in legacy, so nullable.
+   */
   secondaryBankId: string | null;
   /** Legacy `from_name`/`from_code` — required in legacy (contad_app.js:313). */
   originBranchId: string;
@@ -341,6 +361,11 @@ export interface OperationsShipmentDto {
   /** Legacy `receipt_num` / `vault_receipt_num` — stamped by the vault flow (later slice). */
   receiptNumber: string | null;
   vaultReceiptNumber: string | null;
+  /**
+   * «صورة الإيصال» — a photo of the shipment's paper receipt, uploaded from the day board's row
+   * (`POST/GET/DELETE /operations/shipments/:id/receipt-image`), or null. No legacy counterpart.
+   */
+  receiptImage: OperationsShipmentReceiptImageDto | null;
   /** Legacy `serial` — whether banknote serials are tracked for this shipment. */
   serialTracked: boolean;
   notes: string | null;
@@ -465,7 +490,106 @@ export interface OperationsDayBoardDto {
    * The union the legacy board showed: daily shipments collected on the day, plus secured
    * shipments DELIVERED on the day that have left the vault. Newest created first.
    */
-  shipments: OperationsShipmentDto[];
+  shipments: OperationsDayBoardShipmentDto[];
+  /**
+   * The crews the rows ride, for the van's card. Empty for a reader without
+   * `operationsCrew.view` — the crew plan is that grant's.
+   */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
+/**
+ * A branch as the board prints it — the name and code legacy showed, and the bank it belongs to.
+ *
+ * Resolved on the server because the board's own branch lookups were capped at one page: past the
+ * hundredth branch, the screen printed a blank where a name belonged. The bank matters too — the
+ * main bank is the BILLED bank, so the bank the money came from is only known through its branch.
+ */
+export interface OperationsDayBoardBranchDto {
+  id: string;
+  name: string;
+  code: string;
+  bankId: string;
+  /** The bank's operational name (`opsName`), as every Operations screen labels a bank. */
+  bankName: string;
+}
+
+/**
+ * The crew this shipment rides with on the board: the PICKUP leg for a daily shipment, the
+ * DELIVERY leg for a secured one — the legacy board's `car_num1/leader1` vs `car_num2/leader2`
+ * (main_ops.ejs:858-881), and the same leg the captain report attributes the shipment to.
+ */
+export interface OperationsDayBoardCrewDto {
+  /** The crew row this leg rides — the key into `OperationsDayBoardDto.crews`. */
+  crewAssignmentId: string;
+  vehicleId: string;
+  /** Null when Fleet no longer answers for the vehicle — shown as missing, never as blank. */
+  vehicleCode: string | null;
+  captainEmployeeId: string;
+  /** Null when the directory cannot name the employee. */
+  captainName: string | null;
+  /**
+   * The captain's card on the board («زى ما عاملين فى الحركه» — the Fleet driver card's facts):
+   * his employee code and branch, and his phone. Null where the directory has none; the phone is
+   * also null for a reader without `operationsCrew.view`.
+   */
+  captainCode: string | null;
+  captainPhone: string | null;
+  captainBranchId: string | null;
+}
+
+/** A person on a board crew card — named from the HR directory, null where it cannot. */
+export interface OperationsDayBoardPersonDto {
+  employeeId: string;
+  code: string | null;
+  fullNameAr: string | null;
+}
+
+/**
+ * A DRIVER on a board crew card: the name, and nothing else. «انا وقفت العربية، انا هعرف مين
+ * السواقين اللي عليها، لكن مش عايز اعرف بياناتهم» — a driver's details (code, phone, branch) are
+ * Fleet's, kept apart from HR, so Operations names the driver and stops there.
+ */
+export interface OperationsDayBoardDriverDto {
+  employeeId: string;
+  fullNameAr: string | null;
+}
+
+/**
+ * WHO RIDES ONE VAN on the board's legs — «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين
+ * واخصائيين». One per crew row the day's legs ride (not per shipment): the Fleet duty row's two
+ * drivers, and the crew row's captains and specialists, in their slots.
+ */
+export interface OperationsDayBoardVehicleCrewDto {
+  crewAssignmentId: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  /** By name only — see `OperationsDayBoardDriverDto`. */
+  drivers: OperationsDayBoardDriverDto[];
+  captains: OperationsDayBoardPersonDto[];
+  specialist1: OperationsDayBoardPersonDto[];
+  specialist2: OperationsDayBoardPersonDto[];
+  direction: string | null;
+  plannedTime: string | null;
+}
+
+/**
+ * A board row: the shipment itself, plus what the legacy table printed beside it. EXTENDS the
+ * shipment DTO, so a reader that only knows a shipment reads it exactly as before.
+ */
+export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
+  /** Null only when the branch record itself is gone. */
+  origin: OperationsDayBoardBranchDto | null;
+  destination: OperationsDayBoardBranchDto | null;
+  /** Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. */
+  crew: OperationsDayBoardCrewDto | null;
+  /**
+   * When the crew captain confirmed DELIVERY of this row's leg from the mobile app (the leg's
+   * `executionStatus` reached `delivered` or `completed`; its `deliveredAt`), or null. Separate
+   * from the shipment's own `status`: the captain's act never completes the shipment — the desk's
+   * ✓ does. The board shows the first as «تم التسليم» on a yellow row, the second on a green one.
+   */
+  captainDeliveredAt: string | null;
 }
 
 export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({

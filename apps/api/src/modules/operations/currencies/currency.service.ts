@@ -10,6 +10,7 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsCurrencyRepository } from './currency.repository';
 import { type OperationsCurrencyDoc } from './currency.model';
+import { containsText } from '../catalog-search';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -40,8 +41,8 @@ class OperationsCurrencyService {
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     if (query.search !== undefined && query.search !== '') {
       filter.$or = [
-        { code: { $regex: query.search, $options: 'i' } },
-        { name: { $regex: query.search, $options: 'i' } },
+        { code: containsText(query.search) },
+        { name: containsText(query.search) },
       ];
     }
     return operationsCurrencyRepository.list({

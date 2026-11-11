@@ -219,7 +219,9 @@ describe('every Fleet date box opens through our calendar', () => {
       'components/ViolationDialogs',
       'pages/NoticeEditorPage',
       'pages/NoticeSetupPage',
-      'pages/RosterPage',
+      // «تعيين السيارات»: the computer's and the touch boards' day steppers, each its own file.
+      'components/roster/roster-desk-parts',
+      'components/roster/roster-touch-parts',
     ]);
     // The «of what month» lists wear the calendar too, but are lists, not date boxes.
     expect(

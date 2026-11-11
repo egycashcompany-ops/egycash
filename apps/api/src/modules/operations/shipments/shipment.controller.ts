@@ -4,12 +4,16 @@ import {
   type CompleteOperationsShipment,
   type CreateOperationsShipment,
   type ListOperationsShipmentsQuery,
+  type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { ValidationError } from '../../../shared/errors';
+import { hasPermission } from '../../../shared/types';
 import { toShipmentDto } from '../operations.mappers';
+import { receiptImageFileName } from './receipt-image-upload';
 import { operationsShipmentService } from './shipment.service';
 
 type IdParam = { id: string };
@@ -19,16 +23,33 @@ export const listShipments = async (req: Request, res: Response): Promise<void> 
   okPage(res, await operationsShipmentService.list(query), toShipmentDto);
 };
 
+/**
+ * Who rides which van, and how to reach its captain, is the crew plan — `operationsCrew.view`'s,
+ * the crew board's own grant. The day board itself rides `operationsShipment.view`, so a desk
+ * reader without the crew grant still sees the van and the captain's name the legacy table
+ * printed, but not the van's card or the captain's phone.
+ */
+const seesCrewPlan = (req: Request): boolean =>
+  hasPermission(authContext(req), 'operationsCrew.view');
+
 /** The legacy `/main_ops` board — one day's working set, unioned server-side. */
 export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsDayBoardQuery>(req);
   const day = query.date ?? new Date();
-  const docs = await operationsShipmentService.dayBoard(query.date);
-  ok(res, {
+  const { rows, crews } = await operationsShipmentService.dayBoardView(query.date);
+  const crewPlan = seesCrewPlan(req);
+  ok<OperationsDayBoardDto>(res, {
     date: new Date(
       Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
     ).toISOString(),
-    shipments: docs.map(toShipmentDto),
+    shipments: rows.map(({ doc, origin, destination, crew, captainDeliveredAt }) => ({
+      ...toShipmentDto(doc),
+      origin,
+      destination,
+      crew: crew === null || crewPlan ? crew : { ...crew, captainPhone: null },
+      captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
+    })),
+    crews: crewPlan ? crews : [],
   });
 };
 
@@ -73,4 +94,40 @@ export const deleteShipment = async (req: Request, res: Response): Promise<void>
   const { params } = validated<never, never, IdParam>(req);
   await operationsShipmentService.softDelete(params.id, authContext(req).userId);
   noContent(res);
+};
+
+export const uploadShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
+  }
+  const doc = await operationsShipmentService.setReceiptImage(authContext(req), params.id, {
+    // Multer reads the part's name as latin1; an Arabic «إيصال ١.jpg» is turned back here, so the
+    // Files row, its audit entry and the shipment's `receiptImage.fileName` all keep the real name.
+    originalName: receiptImageFileName(uploaded.originalname),
+    mime: uploaded.mimetype,
+    size: uploaded.size,
+    buffer: uploaded.buffer,
+  });
+  ok(res, toShipmentDto(doc));
+};
+
+export const getShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const image = await operationsShipmentService.readReceiptImage(authContext(req), params.id);
+  res.setHeader('Content-Type', image.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(image.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(image.buffer);
+};
+
+export const deleteShipmentReceiptImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    toShipmentDto(await operationsShipmentService.deleteReceiptImage(authContext(req), params.id)),
+  );
 };

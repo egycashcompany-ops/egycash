@@ -243,7 +243,9 @@ describe('the three WHOLE boards order what they already hold', () => {
   });
 
   it('offers both rosters the code and the state', () => {
-    for (const path of ['pages/RosterPage.tsx', 'pages/FixedRosterPage.tsx']) {
+    // The daily roster's columns live in the computer's board now; its page (`RosterPage.tsx`)
+    // keeps the order rules, below.
+    for (const path of ['components/roster/RosterDeskBoard.tsx', 'pages/FixedRosterPage.tsx']) {
       const cell = column(code(path), 'vehicle');
       expect(cell, `${path} offers the arrow`).toContain('sortable: true');
       expect(cell, `${path} orders by the code`).toContain("sortKey: 'code'");

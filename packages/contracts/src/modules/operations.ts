@@ -319,13 +319,33 @@ export interface OperationsShipmentLineDto {
   amount: number;
 }
 
+/** The file category a shipment's receipt photo is stored under (platform Files). */
+export const OPERATIONS_SHIPMENT_RECEIPT_FILE_CATEGORY = 'operations-shipment-receipts';
+
+/** A shipment's receipt photo — the file is read through the shipment, never by its id alone. */
+export interface OperationsShipmentReceiptImageDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface OperationsShipmentDto {
   id: string;
   shipmentType: OperationsShipmentType;
   status: OperationsShipmentStatus;
-  /** Legacy `main_bank` (the FROM side's bank; legacy requires it — contad_app.js:313). */
+  /**
+   * Legacy `main_bank` — البنك الرئيسي, the bank BILLED for the shipment (legacy requires it —
+   * contad_app.js:313). Every per-bank roll-up keys on it, in legacy (/ops_bank_report, /vault1)
+   * and here. It is NOT necessarily the bank the money is collected from: that is the origin
+   * branch's own bank, which legacy never stored and this DTO does not either.
+   */
   mainBankId: string;
-  /** Legacy `sec_bank` via `toBankSelect`; never server-validated in legacy, so nullable. */
+  /**
+   * Legacy `sec_bank` via `toBankSelect` — the DESTINATION branch's bank when it differs from the
+   * main bank; null means "the main bank". Never server-validated in legacy, so nullable.
+   */
   secondaryBankId: string | null;
   /** Legacy `from_name`/`from_code` — required in legacy (contad_app.js:313). */
   originBranchId: string;
@@ -341,6 +361,11 @@ export interface OperationsShipmentDto {
   /** Legacy `receipt_num` / `vault_receipt_num` — stamped by the vault flow (later slice). */
   receiptNumber: string | null;
   vaultReceiptNumber: string | null;
+  /**
+   * «صورة الإيصال» — a photo of the shipment's paper receipt, uploaded from the day board's row
+   * (`POST/GET/DELETE /operations/shipments/:id/receipt-image`), or null. No legacy counterpart.
+   */
+  receiptImage: OperationsShipmentReceiptImageDto | null;
   /** Legacy `serial` — whether banknote serials are tracked for this shipment. */
   serialTracked: boolean;
   notes: string | null;
@@ -451,12 +476,64 @@ export type ReopenOperationsShipment = CompleteOperationsShipment;
  *
  * No pagination: this is a day's work for one desk, and the legacy screen showed it whole. No
  * filters either; the board IS the filter. `date` defaults to today, exactly as the legacy screen
- * did with no picker at all.
+ * did with no picker at all — TODAY ON THE CAIRO CALENDAR, the same "today" the date rules below
+ * hold a new shipment to, so a shipment booked for today is on the board that opens with no date
+ * («هنشيل التاريخ لان هو هيجيب بتاعت اليوم»), even in the hours after Cairo midnight when UTC is
+ * still on yesterday.
  */
 export const OperationsDayBoardQuerySchema = z
   .object({ date: z.coerce.date().optional() })
   .strict();
 export type OperationsDayBoardQuery = z.infer<typeof OperationsDayBoardQuerySchema>;
+
+/**
+ * THE SHIPMENTS HISTORY — the day board over a RANGE of days: «عاوز اعمل dublicat للشاشة دى بس
+ * التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع الشحنات».
+ *
+ * The same union as the day board, over every day from `from` to `to` (both inclusive): daily
+ * shipments COLLECTED in the range, plus secured shipments DELIVERED in the range that have left
+ * the vault. Bounded twice so a history read stays a screen and not an export: at most
+ * `OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS` days, and a range holding more than
+ * `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` shipments is REFUSED (never cut short — totals over a
+ * silently truncated list would be wrong figures).
+ */
+export const OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS = 366;
+export const OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS = 5000;
+
+/**
+ * The UTC day an instant falls on, as a whole day number. The two rules below are checked on the
+ * DAYS the server resolves `from` and `to` to (it serves whole UTC days), not on the instants
+ * sent: on instants, `2026-08-01T18:00Z → 2026-08-01T06:00Z` (one day) read as backwards, and a
+ * pair of times a few hours either side of midnight slipped a 367th day past the cap.
+ */
+const historyDay = (d: Date): number => Math.floor(d.getTime() / 86_400_000);
+
+export const OperationsShipmentHistoryQuerySchema = z
+  .object({ from: z.coerce.date(), to: z.coerce.date() })
+  .strict()
+  .refine((q) => historyDay(q.from) <= historyDay(q.to), {
+    message: 'from must not be after to',
+    path: ['from'],
+  })
+  .refine(
+    (q) => historyDay(q.to) - historyDay(q.from) + 1 <= OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
+    {
+      message: `the range is longer than ${OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS} days`,
+      path: ['to'],
+    },
+  );
+export type OperationsShipmentHistoryQuery = z.infer<typeof OperationsShipmentHistoryQuerySchema>;
+
+/** The history answer: the day board's rows and crews, over the range. */
+export interface OperationsShipmentHistoryDto {
+  /** The resolved first and last day (UTC midnight ISO strings), both inclusive. */
+  from: string;
+  to: string;
+  /** Newest created first, as the day board. */
+  shipments: OperationsDayBoardShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
 
 export interface OperationsDayBoardDto {
   /** The resolved day, so a client never has to guess what "today" the server meant. */
@@ -465,7 +542,319 @@ export interface OperationsDayBoardDto {
    * The union the legacy board showed: daily shipments collected on the day, plus secured
    * shipments DELIVERED on the day that have left the vault. Newest created first.
    */
-  shipments: OperationsShipmentDto[];
+  shipments: OperationsDayBoardShipmentDto[];
+  /**
+   * The crews the rows ride, for the van's card. Empty for a reader without
+   * `operationsCrew.view` — the crew plan is that grant's.
+   */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
+/**
+ * A branch as the board prints it — the name and code legacy showed, and the bank it belongs to.
+ *
+ * Resolved on the server because the board's own branch lookups were capped at one page: past the
+ * hundredth branch, the screen printed a blank where a name belonged. The bank matters too — the
+ * main bank is the BILLED bank, so the bank the money came from is only known through its branch.
+ */
+export interface OperationsDayBoardBranchDto {
+  id: string;
+  name: string;
+  code: string;
+  bankId: string;
+  /** The bank's operational name (`opsName`), as every Operations screen labels a bank. */
+  bankName: string;
+}
+
+/**
+ * The crew this shipment rides with on the board: the PICKUP leg for a daily shipment, the
+ * DELIVERY leg for a secured one — the legacy board's `car_num1/leader1` vs `car_num2/leader2`
+ * (main_ops.ejs:858-881), and the same leg the captain report attributes the shipment to.
+ */
+export interface OperationsDayBoardCrewDto {
+  /** The crew row this leg rides — the key into `OperationsDayBoardDto.crews`. */
+  crewAssignmentId: string;
+  vehicleId: string;
+  /** Null when Fleet no longer answers for the vehicle — shown as missing, never as blank. */
+  vehicleCode: string | null;
+  captainEmployeeId: string;
+  /** Null when the directory cannot name the employee. */
+  captainName: string | null;
+  /**
+   * The captain's card on the board («زى ما عاملين فى الحركه» — the Fleet driver card's facts):
+   * his employee code and branch, and his phone. Null where the directory has none; the phone is
+   * also null for a reader without `operationsCrew.view`.
+   */
+  captainCode: string | null;
+  captainPhone: string | null;
+  captainBranchId: string | null;
+}
+
+/** A person on a board crew card — named from the HR directory, null where it cannot. */
+export interface OperationsDayBoardPersonDto {
+  employeeId: string;
+  code: string | null;
+  fullNameAr: string | null;
+}
+
+/**
+ * A DRIVER on a board crew card: the name, and nothing else. «انا وقفت العربية، انا هعرف مين
+ * السواقين اللي عليها، لكن مش عايز اعرف بياناتهم» — a driver's details (code, phone, branch) are
+ * Fleet's, kept apart from HR, so Operations names the driver and stops there.
+ */
+export interface OperationsDayBoardDriverDto {
+  employeeId: string;
+  fullNameAr: string | null;
+}
+
+/**
+ * WHO RIDES ONE VAN on the board's legs — «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين
+ * واخصائيين». One per crew row the day's legs ride (not per shipment): the Fleet duty row's two
+ * drivers, and the crew row's captains and specialists, in their slots.
+ */
+export interface OperationsDayBoardVehicleCrewDto {
+  crewAssignmentId: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  /** By name only — see `OperationsDayBoardDriverDto`. */
+  drivers: OperationsDayBoardDriverDto[];
+  captains: OperationsDayBoardPersonDto[];
+  specialist1: OperationsDayBoardPersonDto[];
+  specialist2: OperationsDayBoardPersonDto[];
+  direction: string | null;
+  plannedTime: string | null;
+}
+
+/**
+ * A board row: the shipment itself, plus what the legacy table printed beside it. EXTENDS the
+ * shipment DTO, so a reader that only knows a shipment reads it exactly as before.
+ */
+export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
+  /** Null only when the branch record itself is gone. */
+  origin: OperationsDayBoardBranchDto | null;
+  destination: OperationsDayBoardBranchDto | null;
+  /** Null until the shipment is crewed on its leg — "book now, crew later" is a normal state. */
+  crew: OperationsDayBoardCrewDto | null;
+  /**
+   * When the crew captain confirmed DELIVERY of this row's leg from the mobile app (the leg's
+   * `executionStatus` reached `delivered` or `completed`; its `deliveredAt`), or null. Separate
+   * from the shipment's own `status`: the captain's act never completes the shipment — the desk's
+   * ✓ does. The board shows the first as «تم التسليم» on a yellow row, the second on a green one.
+   */
+  captainDeliveredAt: string | null;
+}
+
+// ── The dates a person may give a shipment ──────────────────────────────────────────────────────
+//
+// «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» and «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة».
+// Enforced by the server on `POST /operations/shipments` and `PATCH /operations/shipments/:id`
+// (every screen that books or edits a shipment goes through those two):
+//
+//   · CREATE — `collectionDate`, and a secured shipment's `deliveryDate` when it is given, may not
+//     fall before TODAY on the Cairo calendar → 422 `OPERATIONS_SHIPMENT_DATE_IN_PAST`. A secured
+//     shipment's board day IS its delivery date, so a past one would book it onto a past board.
+//   · EDIT — a new `collectionDate` may not fall before the day the shipment is on now, and a new
+//     `deliveryDate` not before the one it has → 422 `OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`.
+//     Moving a date LATER, or sending it unchanged, is always accepted. A delivery date set for the
+//     first time on an edit is a fresh pick, so it follows the create rule (not before today).
+//
+// Both refusals carry one detail: `field` = the date field refused, `code` = 'MIN_DATE',
+// `message` = the earliest day it may take, as 'YYYY-MM-DD' — so a form can say «أقرب تاريخ مسموح».
+// The comparison is on calendar days ('YYYY-MM-DD'): the stored date is the UTC day the client
+// sent; "today" is the Cairo day of the server's clock.
+
+// ── The shipment's action log («سجل بالاكشنز اللى حصلت على الشحنة») ─────────────────────────────
+//
+// `GET /operations/shipments/:id/log` (`operationsShipment.view`) — every recorded act on ONE
+// shipment, oldest first, on the day board and on the history alike. It answers for a deleted
+// shipment too, so the deleted list can show why a row is there.
+//
+// A VIEW OVER THE AUDIT TRAIL, not a store of its own (ADR-012: the audit stream is the system's
+// memory). It reads the audit rows of the shipment itself AND of the entities that record acts on
+// it — its legs (`shipmentAssignment`: the crew, the route order, the captain's execution on the
+// mobile app) and its vault custody — and resolves every value on the server into what a person
+// reads: banks and branches by name, captains by name, vans by code, dates as 'YYYY-MM-DD', money as
+// «currency amount». The screen translates only the entry's `kind` and each change's `field`.
+//
+// The vault custody's own record (receipt number, counts, seals, the receiving treasurers) is the
+// treasury's, read only for a caller holding `operationsVault.view` — the grant of the vault
+// screens. Without it the log still says the shipment entered the vault and was dispatched (its
+// own status moves), with no custody details.
+
+/**
+ * What one log entry reports — a CLOSED list, every member labelled by the screen.
+ *
+ *   created              the shipment was booked; `changes` carry its first values (`old` = null).
+ *   edited               the edit form changed fields; `changes` carry each one, old → new.
+ *   deleted              it was deleted («حذف»).
+ *   restored             it was brought back from the deleted shipments.
+ *   received             the desk's ✓ — the shipment was received and completed.
+ *   receiveUndone        the ✓ was taken back (completed → draft for daily, → dispatched for secured).
+ *   receiptImageAdded    a receipt photo was attached where there was none.
+ *   receiptImageReplaced a new receipt photo replaced the one there.
+ *   receiptImageRemoved  the receipt photo was removed.
+ *   crewAssigned         a leg was crewed for the first time (`leg` says which; captain and van).
+ *   crewChanged          a leg's captain or van changed.
+ *   reordered            the leg's place on its captain's route changed (`sequence`).
+ *   executionStarted     the captain started the leg on the mobile app (pending → active).
+ *   executionPickedUp    he confirmed the pickup (active → pickedUp).
+ *   executionDelivered   he confirmed the delivery — «تم التسليم» (pickedUp → delivered).
+ *   executionCompleted   he closed the leg (delivered → completed).
+ *   vaultReceived        a secured shipment entered the vault; `changes` carry the receipt number,
+ *                        the package counts, the seals and the two receiving treasurers — for a
+ *                        reader with `operationsVault.view`; empty for anyone else.
+ *   dispatched           a secured shipment left the vault for delivery.
+ *   other                an audited act this list does not name yet — shown plainly, never hidden.
+ */
+export const OPERATIONS_SHIPMENT_LOG_KINDS = [
+  'created',
+  'edited',
+  'deleted',
+  'restored',
+  'received',
+  'receiveUndone',
+  'receiptImageAdded',
+  'receiptImageReplaced',
+  'receiptImageRemoved',
+  'crewAssigned',
+  'crewChanged',
+  'reordered',
+  'executionStarted',
+  'executionPickedUp',
+  'executionDelivered',
+  'executionCompleted',
+  'vaultReceived',
+  'dispatched',
+  'other',
+] as const;
+export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[number];
+
+/**
+ * Every `field` a log change can carry — a CLOSED list, so the screen can label each one. Values
+ * are display strings resolved on the server; `null` means empty (or a record that no longer
+ * resolves). No raw id is ever sent where a name exists.
+ *
+ * The shipment (on `created` / `edited`):
+ *   mainBank, secondaryBank      the bank's operational name (`opsName`)
+ *   originBranch, destinationBranch  «name (code)»
+ *   areaName, notes              as typed
+ *   lines                        every money line as «currency name amount», joined by «، » —
+ *                                the amount in major units, Latin digits, grouped («مصري 1,500.5»)
+ *   collectionDate, deliveryDate 'YYYY-MM-DD'
+ *   serialTracked                'true' / 'false' (see OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS)
+ * A leg (on `crewAssigned` / `crewChanged` / `reordered`):
+ *   captain                      the captain's full Arabic name
+ *   vehicle                      the van's code
+ *   sequence                     the leg's 1-based place on its captain's route
+ * The vault custody (on `vaultReceived`) — ONLY for a reader with `operationsVault.view`, the
+ * treasury's grant; anyone else gets the `vaultReceived` entry with no changes:
+ *   receiptNumber                the vault receipt number
+ *   bagCount, cartonCount, boxCount  whole numbers, as digits
+ *   bagSeals, boxSeals           the seal numbers, joined by «، »
+ *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names
+ */
+export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
+  'mainBank',
+  'secondaryBank',
+  'originBranch',
+  'destinationBranch',
+  'areaName',
+  'lines',
+  'collectionDate',
+  'deliveryDate',
+  'serialTracked',
+  'notes',
+  'captain',
+  'vehicle',
+  'sequence',
+  'receiptNumber',
+  'bagCount',
+  'cartonCount',
+  'boxCount',
+  'bagSeals',
+  'boxSeals',
+  'receivedByPrimary',
+  'receivedBySecondary',
+] as const;
+export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
+
+/** The fields whose values are 'true' / 'false' — the screen says yes / no in its own language. */
+export const OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS: readonly OperationsShipmentLogField[] = [
+  'serialTracked',
+];
+
+/**
+ * At most this many audit rows are read for one log — far beyond any real shipment's story. Past
+ * it, the NEWEST rows are kept and `truncated` says that older ones were left out.
+ */
+export const OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES = 500;
+
+/** One field of one log entry, old → new, both already display values. */
+export interface OperationsShipmentLogChangeDto {
+  field: OperationsShipmentLogField;
+  old: string | null;
+  new: string | null;
+}
+
+export interface OperationsShipmentLogEntryDto {
+  /** The audit row's id — stable, for a React key. */
+  id: string;
+  /** When it happened (ISO instant). */
+  at: string;
+  /**
+   * Who did it, as the audit row recorded them AT THE TIME (the Arabic display name, the English
+   * one when there is no Arabic). Null for a system act or a row written before names were kept.
+   */
+  actorName: string | null;
+  kind: OperationsShipmentLogKind;
+  /** Which leg a crew, order or execution entry is about; null for the shipment's own acts. */
+  leg: OperationsShipmentLeg | null;
+  /** What changed, in display values — empty when the `kind` says it all. */
+  changes: OperationsShipmentLogChangeDto[];
+}
+
+export interface OperationsShipmentLogDto {
+  shipmentId: string;
+  /** Oldest first. */
+  entries: OperationsShipmentLogEntryDto[];
+  /** True when more than `OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES` rows exist and the oldest were left out. */
+  truncated: boolean;
+}
+
+// ── The deleted shipments, and bringing one back («اعملى ايقون اقدر اجيب منه اللى اتمسح») ────────
+//
+// `GET /operations/shipments/deleted?from=&to=` (`operationsShipment.view`): the shipments that were
+// DELETED from the board days in the range — the history's own union (daily by collection day;
+// secured by delivery day once out of the vault) over deleted rows, so every row listed is one that
+// comes back onto that history when restored. Same range rules and the same row cap as the history
+// (a range holding more is refused with `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`). Newest deleted
+// first; rows enriched exactly as board rows are, crew facts gated the same way.
+//
+// `POST /operations/shipments/:id/restore` (`operationsShipment.delete` — the grant that deletes a
+// shipment brings it back), no body → the restored `OperationsShipmentDto`. It returns to its day's
+// board and to the history with its legs as they were. 404 when no such shipment exists; 409
+// `OPERATIONS_SHIPMENT_NOT_DELETED` when it is not deleted. Audited as `restore`; emits
+// `operations.shipment.restored`.
+
+export const OperationsDeletedShipmentsQuerySchema = OperationsShipmentHistoryQuerySchema;
+export type OperationsDeletedShipmentsQuery = OperationsShipmentHistoryQuery;
+
+/** A deleted shipment: its board row, plus when and by whom it was deleted. */
+export interface OperationsDeletedShipmentDto extends OperationsDayBoardShipmentDto {
+  /** ISO instant. */
+  deletedAt: string;
+  /** The deleting user's Arabic display name (English when there is none); null when unknown. */
+  deletedByName: string | null;
+}
+
+export interface OperationsDeletedShipmentsDto {
+  /** The resolved first and last day (UTC midnight ISO strings), both inclusive. */
+  from: string;
+  to: string;
+  /** Newest deleted first. */
+  shipments: OperationsDeletedShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
 }
 
 export const ListOperationsShipmentsQuerySchema = PaginationQuerySchema.extend({
@@ -1656,6 +2045,8 @@ export const OperationsEvents = {
   ShipmentCompleted: 'operations.shipment.completed',
   ShipmentReopened: 'operations.shipment.reopened',
   ShipmentDeleted: 'operations.shipment.deleted',
+  /** A deleted shipment brought back («اجيب منه اللى اتمسح») — the counterpart of `deleted`. */
+  ShipmentRestored: 'operations.shipment.restored',
   DayCreated: 'operations.day.created',
   DayOpened: 'operations.day.opened',
   DayClosed: 'operations.day.closed',

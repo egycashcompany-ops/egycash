@@ -73,6 +73,8 @@ import {
   FleetLicenseExpensePaidBySchema,
   ListFleetCustodyDeletedQuerySchema,
   UpdateFleetCatalogItemSchema,
+  UpdateFleetMaintenanceSchema,
+  CheckOutFleetMaintenanceSchema,
   foldSheetHeader,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
@@ -1648,5 +1650,45 @@ describe('«تصحيح أرقام الكروت» (6d)', () => {
     expect([FLEET_FUEL_CARD_THUMB_BLUR_PX, FLEET_FUEL_CARD_THUMB_JPEG_QUALITY]).toEqual([
       1.2, 0.55,
     ]);
+  });
+});
+
+describe('the workshop edit corrects «سائق الخروج» — «عاوز اقدر اعدل السواق التانى»', () => {
+  it('takes an employee id beside the version, and nothing else needs to come with it', () => {
+    expect(
+      UpdateFleetMaintenanceSchema.parse({ driverOutEmployeeId: oid('e1'), version: 3 }),
+    ).toEqual({ driverOutEmployeeId: oid('e1'), version: 3 });
+    // Absent stays absent: an edit that does not touch it says nothing about it.
+    expect(UpdateFleetMaintenanceSchema.parse({ version: 3 })).not.toHaveProperty(
+      'driverOutEmployeeId',
+    );
+  });
+
+  it('a correction, never a clear — null, empty and a non-id are refused', () => {
+    for (const value of [null, '', 'not-an-id']) {
+      expect(
+        UpdateFleetMaintenanceSchema.safeParse({ driverOutEmployeeId: value, version: 3 }).success,
+        JSON.stringify(value),
+      ).toBe(false);
+    }
+  });
+
+  it('stays strict — an unknown key is still refused', () => {
+    expect(
+      UpdateFleetMaintenanceSchema.safeParse({
+        driverOutEmployeeId: oid('e1'),
+        driverOutName: 'من الدفتر',
+        version: 3,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('check-out still requires it — the edit only corrects what check-out set', () => {
+    const checkOut = { outDate: '2026-10-04', version: 0 };
+    expect(CheckOutFleetMaintenanceSchema.safeParse(checkOut).success).toBe(false);
+    expect(
+      CheckOutFleetMaintenanceSchema.safeParse({ ...checkOut, driverOutEmployeeId: oid('e1') })
+        .success,
+    ).toBe(true);
   });
 });

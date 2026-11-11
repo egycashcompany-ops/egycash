@@ -14,10 +14,18 @@ import {
   LEGACY_OPERATIONS_SHIPMENT_TYPE_LABELS,
   OPERATIONS_DAY_STATUSES,
   OPERATIONS_EXECUTION_STATUSES,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_LEGS,
+  OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_KINDS,
+  OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   OperationsCrewBoardQuerySchema,
+  OperationsDeletedShipmentsQuerySchema,
+  OperationsEvents,
+  OperationsShipmentHistoryQuerySchema,
   OperationsShipmentStatusSchema,
   PlanOperationsCrewSchema,
   SetOperationsStandingCrewSchema,
@@ -336,5 +344,101 @@ describe('operations reference schemas', () => {
         location: { addressLine: null, coordinates: { lat: 100, lng: 0 } },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('operations shipments history query — whole days, both ends inclusive', () => {
+  const ok = (from: string, to: string): boolean =>
+    OperationsShipmentHistoryQuerySchema.safeParse({ from, to }).success;
+  const day = (offset: number): string => {
+    const d = new Date(Date.UTC(2025, 7, 1));
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+
+  it(`serves ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS)} days counting both ends, and refuses one more`, () => {
+    expect(ok(day(0), day(0))).toBe(true);
+    expect(ok(day(0), day(OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS - 1))).toBe(true);
+    expect(ok(day(0), day(OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS))).toBe(false);
+    expect(ok(day(1), day(0))).toBe(false);
+  });
+
+  // The server serves whole UTC days, so both rules are judged on the days the two values resolve
+  // to — a time of day on either end must neither make one day look backwards nor slip an extra
+  // day past the cap.
+  it('judges the days the values resolve to, not the instants sent', () => {
+    expect(ok(`${day(0)}T18:00:00.000Z`, `${day(0)}T06:00:00.000Z`)).toBe(true);
+    expect(ok(`${day(1)}T01:00:00.000Z`, `${day(0)}T23:00:00.000Z`)).toBe(false);
+    // 367 resolved days (day 0 .. day 366), sent as two times a couple of hours apart from 366 days.
+    expect(
+      ok(`${day(0)}T23:00:00.000Z`, `${day(OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS)}T01:00:00.000Z`),
+    ).toBe(false);
+    expect(
+      ok(
+        `${day(0)}T01:00:00.000Z`,
+        `${day(OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS - 1)}T23:00:00.000Z`,
+      ),
+    ).toBe(true);
+  });
+
+  it('needs both ends, and nothing else', () => {
+    expect(OperationsShipmentHistoryQuerySchema.safeParse({ from: day(0) }).success).toBe(false);
+    expect(
+      OperationsShipmentHistoryQuerySchema.safeParse({ from: day(0), to: day(0), status: 'draft' })
+        .success,
+    ).toBe(false);
+    expect(ok('not-a-day', day(0))).toBe(false);
+  });
+});
+
+// The action log's vocabulary is read by a screen that labels every member, so the lists are pinned
+// as data: a member renamed or dropped here would leave a log line the screen cannot name.
+describe('operations shipment log vocabulary — closed lists a screen can label', () => {
+  it('names every kind once, and keeps the generic `other` for acts not named yet', () => {
+    expect(new Set(OPERATIONS_SHIPMENT_LOG_KINDS).size).toBe(OPERATIONS_SHIPMENT_LOG_KINDS.length);
+    expect(OPERATIONS_SHIPMENT_LOG_KINDS).toEqual(
+      expect.arrayContaining([
+        'created',
+        'edited',
+        'deleted',
+        'restored',
+        'received',
+        'receiveUndone',
+        'receiptImageAdded',
+        'receiptImageRemoved',
+        'crewAssigned',
+        'crewChanged',
+        'executionStarted',
+        'executionDelivered',
+        'vaultReceived',
+        'dispatched',
+        'other',
+      ]),
+    );
+  });
+
+  it('names every field once, never an id, and the yes/no fields are fields of the list', () => {
+    expect(new Set(OPERATIONS_SHIPMENT_LOG_FIELDS).size).toBe(
+      OPERATIONS_SHIPMENT_LOG_FIELDS.length,
+    );
+    // Values are display values — a field named after an id would invite sending one.
+    expect(OPERATIONS_SHIPMENT_LOG_FIELDS.filter((field) => /Id$/.test(field))).toEqual([]);
+    for (const field of OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS) {
+      expect(OPERATIONS_SHIPMENT_LOG_FIELDS).toContain(field);
+    }
+    expect(OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES).toBeGreaterThan(0);
+  });
+
+  it("the deleted list takes the history's range, with the history's rules", () => {
+    expect(OperationsDeletedShipmentsQuerySchema).toBe(OperationsShipmentHistoryQuerySchema);
+    expect(
+      OperationsDeletedShipmentsQuerySchema.safeParse({ from: '2026-11-02', to: '2026-11-01' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('a restore is its own event, beside the delete it undoes', () => {
+    expect(OperationsEvents.ShipmentRestored).toBe('operations.shipment.restored');
+    expect(OperationsEvents.ShipmentRestored).not.toBe(OperationsEvents.ShipmentDeleted);
   });
 });

@@ -42,6 +42,17 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ClipboardIcon,
     permission: 'operationsShipment.view',
   },
+  /**
+   * NO legacy equivalent: the day board over a from–to range — «عشان اقدر امسك الhistory بتاع
+   * الشحنات». Beside the board it extends, under the board's own grant.
+   */
+  {
+    to: '/operations/shipments/history',
+    titleKey: 'operations.nav.shipmentsHistory',
+    descKey: 'operations.cards.shipmentsHistory',
+    icon: CalendarIcon,
+    permission: 'operationsShipment.view',
+  },
   /** Legacy `/tashghela` — tomorrow's crews, planned a day ahead. */
   {
     to: '/operations/crew-board',

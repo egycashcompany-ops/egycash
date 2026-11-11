@@ -33,6 +33,7 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { ApiError } from '../../../shared/lib/api-client';
 import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -51,6 +52,10 @@ const operationsKeys = {
   // The board and the shipment list are two views of the SAME facts, so every shipment write
   // stales both. Getting this wrong shows up as a receive toggle that appears not to have worked.
   shipments: featureKey(MODULE, 'shipments'),
+  // The shipments history is the day board over a range, so it lives UNDER the board's subtree
+  // (`shipmentHistoryKey`): every write that stales the board — a shipment saved, received, deleted
+  // or photographed, a bank or branch renamed, a captain's act — stales the history with it,
+  // without a second list that one of those mutations could forget.
   dayBoard: featureKey(MODULE, 'dayBoard'),
   // The board, its pool and the roster move together: planning changes who is taken, and editing
   // the roster changes who is offered. Splitting them would leave a stale pool beside a fresh board.
@@ -120,6 +125,29 @@ export const useOperationsCurrencies = (params: OperationsListParams, enabled = 
   });
 
 /** Branches of one bank — the cascading picker. Disabled until a bank is chosen. */
+/** One branch — cached under the branches feature, so a branch edit refreshes it too. */
+export const useBankBranch = (id: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { id }),
+    queryFn: () => api.getBankBranch(id),
+    enabled: id !== '',
+    staleTime: 60_000,
+  });
+
+/**
+ * A bank's active branches matching `search` — the branch picker's options. `placeholderData`
+ * keeps the previous answer on screen while the next one is fetched, so the list does not blink
+ * empty under the operator's fingers on every keystroke.
+ */
+export const useBranchSearch = (bankId: string, search: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'bankBranches', { bankId, search: search.trim(), picker: true }),
+    queryFn: () => api.searchBranchesOfBank(bankId, search),
+    enabled: bankId !== '',
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
+  });
+
 export const useBranchesOfBank = (bankId: string | null) =>
   useQuery({
     queryKey: listKey(MODULE, 'bankBranches', { bankId: bankId ?? '', all: true }),
@@ -128,14 +156,95 @@ export const useBranchesOfBank = (bankId: string | null) =>
   });
 
 /**
- * One day's board. `date` null means "today" — resolved by the SERVER, which also echoes back the
- * day it used, so a client near midnight can never disagree with it about which day this is.
+ * One day's board. «اليوم التشغيلي» names its day — Cairo's today (`useCairoToday`) — so the day on
+ * screen and the day a new shipment is floored at are one day, even in the hours after a Cairo
+ * midnight. `date` null still means "today", resolved by the server (today in Cairo there too), which
+ * echoes back the day it used.
  */
 export const useOperationsDayBoard = (date: string | null, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'dayBoard', { date: date ?? 'today' }),
     queryFn: () => api.getDayBoard(date),
     enabled,
+  });
+
+/** A 4xx is an answer (not found, not allowed, too large) that asking again cannot change. */
+const retryUnless4xx = (failures: number, error: unknown): boolean =>
+  !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 1;
+
+/** The history's cache entry: one per range, inside the day board's subtree (see `operationsKeys`). */
+const shipmentHistoryKey = (range: { from: string; to: string }): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'history',
+  { from: range.from, to: range.to },
+];
+
+/**
+ * The shipments over a range of days — «سجل الشحنات». `enabled` is false while the page holds a
+ * range the endpoint would refuse anyway (inverted, or too long), so no request is spent on it.
+ *
+ * A 4xx is an ANSWER, not a failure: the range holds too many shipments, or the reader may not see
+ * them. Asking again cannot change it, so it is not retried; only a network or server failure is.
+ */
+export const useOperationsShipmentHistory = (
+  range: { from: string; to: string },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: shipmentHistoryKey(range),
+    queryFn: () => api.getShipmentHistory(range),
+    enabled,
+    retry: retryUnless4xx,
+  });
+
+/**
+ * One shipment's log, inside the day board's subtree like the history. Every act that stales the
+ * board — a shipment saved, received, deleted, restored or photographed, a secured act, a
+ * captain's act from this browser — writes an entry into SOME shipment's log, so the same
+ * invalidation that refreshes the board refreshes an open log, with no list of its own to forget.
+ */
+const shipmentLogKey = (id: string): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'log',
+  { id },
+];
+
+/**
+ * «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — asked only while the log is open (`id` set): a
+ * board of a hundred rows does not read a hundred logs it may never show.
+ */
+export const useOperationsShipmentLog = (id: string | null) =>
+  useQuery({
+    queryKey: shipmentLogKey(id ?? ''),
+    queryFn: () => api.getShipmentLog(id ?? ''),
+    enabled: id !== null,
+    retry: retryUnless4xx,
+  });
+
+/**
+ * The deleted shipments of a range, beside the history's own entry in the day board's subtree: a
+ * delete takes a row OUT of the history and INTO this list, and a restore the other way, so the
+ * invalidation every shipment write runs refreshes both at once.
+ */
+const deletedShipmentsKey = (range: { from: string; to: string }): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'deleted',
+  { from: range.from, to: range.to },
+];
+
+/**
+ * «اعملى ايقون اقدر اجيب منه اللى اتمسح» — read while the history is open (the icon's count) and
+ * whenever its dialog is. `enabled` is false while the page holds a range the endpoint would refuse.
+ */
+export const useOperationsDeletedShipments = (
+  range: { from: string; to: string },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: deletedShipmentsKey(range),
+    queryFn: () => api.getDeletedShipments(range),
+    enabled,
+    retry: retryUnless4xx,
   });
 
 // ── Writes ─────────────────────────────────────────────────────────────────
@@ -148,11 +257,19 @@ const useShipmentInvalidation = () => {
   };
 };
 
+// THE FORM OWNS THESE MUTATIONS' ERRORS — the shipment form's two, and the branch form's two (which
+// the shipment form opens over itself for «+ إضافة»). The global notifier would toast the server's
+// own sentence — English, for the codes it has no translation of — and the form toasts its Arabic
+// one beside it, so a refused save showed two messages. Declaring `onError` here is what
+// tells the MutationCache to stay quiet (shared/lib/query-client.ts); the form's catch says it.
+const formOwnsTheError = (): void => undefined;
+
 export const useCreateOperationsShipment = () => {
   const invalidate = useShipmentInvalidation();
   return useMutation({
     mutationFn: (body: CreateOperationsShipment) => api.createShipment(body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -162,6 +279,7 @@ export const useUpdateOperationsShipment = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShipment }) =>
       api.updateShipment(id, body),
     onSuccess: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -192,6 +310,39 @@ export const useDeleteOperationsShipment = () => {
     onSuccess: invalidate,
   });
 };
+
+/**
+ * Bring a deleted shipment back — it returns to its day's board and to the history, and leaves the
+ * deleted list. Refreshed on failure too (`onSettled`): a 409 means someone else restored it first,
+ * and the list on screen is the stale thing. No `onError`: the global notifier words the refusal.
+ */
+export const useRestoreOperationsShipment = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreShipment(id),
+    onSettled: invalidate,
+  });
+};
+
+// «صورة الإيصال». The photo is a field of the shipment row, so both acts stale the board and the
+// list like any other shipment write. No `onError` on purpose: the global notifier names the
+// refusal (FILE_TOO_LARGE, a type the category does not accept…), and no form owns it.
+export const useUploadShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      api.uploadShipmentReceiptImage(id, file),
+    onSuccess: invalidate,
+  });
+};
+
+export const useDeleteShipmentReceiptImage = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteShipmentReceiptImage(id),
+    onSuccess: invalidate,
+  });
+};
 export const useCreateOperationsBank = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -212,6 +363,8 @@ export const useUpdateOperationsBank = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.banks });
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints the banks of a row's branches, joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
   });
 };
@@ -223,6 +376,7 @@ export const useCreateOperationsBankBranch = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -233,7 +387,10 @@ export const useUpdateOperationsBankBranch = () => {
       api.updateBankBranch(id, body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.branches });
+      // The day board prints branch names (and their banks) joined on the server.
+      await qc.invalidateQueries({ queryKey: operationsKeys.dayBoard });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -260,6 +417,11 @@ export const useUpdateOperationsCurrency = () => {
 
 /** Exported for the cache tests, which assert what a mutation moves — never used by a screen. */
 export const __operationsKeys = operationsKeys;
+/** Exported for the cache tests — the history's key, to prove the board's writes reach it. */
+export const __shipmentHistoryKey = shipmentHistoryKey;
+/** Exported for the cache tests — the log's and the deleted list's keys, for the same proof. */
+export const __shipmentLogKey = shipmentLogKey;
+export const __deletedShipmentsKey = deletedShipmentsKey;
 
 // ── Crew board, pool and roster (B3) ───────────────────────────────────────
 

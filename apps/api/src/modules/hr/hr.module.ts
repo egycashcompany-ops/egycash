@@ -1641,6 +1641,7 @@ export const hrModule: ModuleManifest = {
     'hr_contract_templates',
     'hr_contract_types',
     'hr_contract_branding',
+    'hr_candidate_drafts',
     'hr_shifts',
     'hr_shift_assignments',
     'hr_attendance_punches',

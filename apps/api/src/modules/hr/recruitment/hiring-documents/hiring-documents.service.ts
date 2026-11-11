@@ -2,7 +2,7 @@
 // documents are collected: an administrator defines the required/optional document types; each
 // document is an uploaded PDF whose bytes and version history live in the platform Files
 // service (the original is preserved; replacement is a new version). A set cannot be completed
-// while an active required type is missing, and once completed it is immutable except through
+// while an active required type the employee's job collects (A27) is missing, and once completed it is immutable except through
 // the versioning (replace) workflow. Creation/upload/replace/completion publish events, are
 // audited, and completion notifies. Scope is Stage 6 only.
 //
@@ -28,19 +28,44 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { notificationsService } from '../../../../platform/notifications';
-import { employeeService } from '../../employee-management/employees';
+import { employeeRepository, employeeService } from '../../employee-management/employees';
 import { runBulk } from '../workflow/bulk-runner';
 import { hiringDocumentsRepository, type HiringDocumentsListFilter } from './hiring-documents.repository';
 import { hiringDocumentTypeRepository } from './hiring-document-type.repository';
+import { collectsFor } from './hiring-document-type.model';
+import { computeMissingRequired, type HiringChecklist } from './hiring-documents.mapper';
 import { resolveHiringDocsCategoryId } from './hiring-documents.files';
 import { type HiringDocumentItem, type HiringDocumentsDoc } from './hiring-documents.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'hiringDocuments', entityId: id });
 
 class HiringDocumentsService {
-  /** Active required document-type keys — drives the completion gate and DTO `missingRequired`. */
-  async activeRequiredKeys(): Promise<string[]> {
-    return (await hiringDocumentTypeRepository.listActiveRequired()).map((t) => t.key);
+  /**
+   * What each set's employee's job collects (A27): the active types for that job, and the required
+   * ones among them — the checklist the set is shown with, and the completion gate. One read of the
+   * catalog and one of the employees, however many sets. An employee who cannot be read (gone
+   * from the register) is collected from as if the job were unknown: every-job types only.
+   */
+  async checklistsFor(docs: readonly HiringDocumentsDoc[]): Promise<Map<string, HiringChecklist>> {
+    const types = await hiringDocumentTypeRepository.listActive();
+    const employeeIds = [...new Set(docs.map((doc) => String(doc.employeeId)))];
+    const employees = employeeIds.length === 0 ? [] : await employeeRepository.findByIdsSystem(employeeIds);
+    const jobOf = new Map(employees.map((e) => [String(e._id), String(e.employment.jobTitleId)]));
+    const out = new Map<string, HiringChecklist>();
+    for (const doc of docs) {
+      const job = jobOf.get(String(doc.employeeId)) ?? null;
+      const mine = types.filter((type) => collectsFor(type, job));
+      out.set(String(doc._id), {
+        typeKeys: mine.map((type) => type.key),
+        requiredKeys: mine.filter((type) => type.required).map((type) => type.key),
+      });
+    }
+    return out;
+  }
+
+  /** One set's checklist. */
+  async checklistFor(doc: HiringDocumentsDoc): Promise<HiringChecklist> {
+    return (await this.checklistsFor([doc])).get(String(doc._id)) ?? { typeKeys: [], requiredKeys: [] };
   }
 
   /** Fire-and-forget completion notification to the reporting manager + the creator. */
@@ -278,10 +303,8 @@ class HiringDocumentsService {
     if (before.status === 'completed') {
       throw new BusinessRuleError('hiring documents are already completed');
     }
-    const present = new Set(before.documents.map((d) => d.typeKey));
-    const missing = (await hiringDocumentTypeRepository.listActiveRequired())
-      .map((t) => t.key)
-      .filter((k) => !present.has(k));
+    // Only what the employee's job collects is required of it (A27).
+    const missing = computeMissingRequired(before, (await this.checklistFor(before)).requiredKeys);
     if (missing.length > 0) {
       throw new BusinessRuleError(`cannot complete: missing required documents (${missing.join(', ')})`);
     }

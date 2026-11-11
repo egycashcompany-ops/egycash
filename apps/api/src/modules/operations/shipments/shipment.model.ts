@@ -21,6 +21,18 @@ export interface OperationsShipmentLine {
   amountMinor: number;
 }
 
+/**
+ * The photo of the paper receipt («صورة الإيصال») — the Fleet receipts' twin. Files owns the bytes
+ * (ADR-023); the row only keeps the link and what the board prints without fetching them.
+ */
+export interface OperationsShipmentReceiptImage {
+  fileId: Types.ObjectId;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface OperationsShipmentDoc extends BaseDocFields {
   shipmentType: OperationsShipmentType;
   status: OperationsShipmentStatus;
@@ -39,12 +51,28 @@ export interface OperationsShipmentDoc extends BaseDocFields {
   notes: string | null;
   receivedById: Types.ObjectId | null;
   receivedAt: Date | null;
+  /**
+   * Optional because rows written before the receipt column carry no such field, and the board
+   * reads `.lean()` — absent reads as "no image", so no migration is needed.
+   */
+  receiptImage?: OperationsShipmentReceiptImage | null;
 }
 
 const lineSchema = new Schema<OperationsShipmentLine>(
   {
     currencyId: { type: Schema.Types.ObjectId, required: true },
     amountMinor: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const receiptImageSchema = new Schema<OperationsShipmentReceiptImage>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: Date, required: true },
   },
   { _id: false },
 );
@@ -72,6 +100,7 @@ const shipmentSchema = new Schema<OperationsShipmentDoc>(
     notes: { type: String, default: null },
     receivedById: { type: Schema.Types.ObjectId, default: null },
     receivedAt: { type: Date, default: null },
+    receiptImage: { type: receiptImageSchema, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

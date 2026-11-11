@@ -4,7 +4,7 @@
 //
 // The look is `LOOK.add` from the fuel-card dialog, the one `VehicleFormDialog` wears. Fields go in
 // as `DesignField`s with `boxTone(LOOK.add)` boxes; this file only frames them.
-import { useEffect, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
@@ -14,7 +14,16 @@ import { CLOSE_PATH, LOOK, SANS, Stroke } from './FuelCardDialog';
 const look = LOOK.add;
 
 /** The panel's width: the vehicle form is `3xl`; a short form reads better narrower. */
-const WIDTH = { lg: '!max-w-lg', xl: '!max-w-xl', '2xl': '!max-w-2xl', '3xl': '!max-w-3xl' };
+const WIDTH = {
+  lg: '!max-w-lg',
+  xl: '!max-w-xl',
+  '2xl': '!max-w-2xl',
+  '3xl': '!max-w-3xl',
+  // A read-only panel of cards side by side — the shipments board's «عملات أخرى», three across.
+  '4xl': '!max-w-4xl',
+  // A form laid out in columns so it fits the screen with no scroll — the shipment form.
+  '6xl': '!max-w-6xl',
+};
 
 export const DesignDialog = ({
   open,
@@ -27,6 +36,7 @@ export const DesignDialog = ({
   children,
   panelProps,
   wrapTitle = false,
+  dense = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,12 +56,28 @@ export const DesignDialog = ({
    * instead of ending in «…». Off by default: every other form keeps its one-line title.
    */
   wrapTitle?: boolean;
+  /**
+   * Tighter spacing between and around the sections — for a wide form laid out in columns to fit
+   * the screen with no scroll (the shipment form: «الفورم … كبيرة انها متهكنش فيها اسكرول»).
+   */
+  dense?: boolean;
 }): JSX.Element | null => {
   const t = useT();
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return undefined;
     const escape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      // `defaultPrevented`: something above this form already answered this Escape — an open list
+      // closing, or a dialog opened FROM this form (the shipment form's «+ إضافة فرع») closing
+      // itself. Closing this form too would throw away everything typed into it.
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Only the dialog on TOP answers. Two of these both listen on the window, in an order React
+      // re-registers at will, so "who goes first" decides nothing; the stack of dialog roots on the
+      // page does (the shared Dialog reads the same `[data-dialog-root]` stack).
+      const roots = document.querySelectorAll('[data-dialog-root]');
+      if (roots.length > 0 && roots[roots.length - 1] !== rootRef.current) return;
+      e.preventDefault();
+      onClose();
     };
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
@@ -59,7 +85,11 @@ export const DesignDialog = ({
 
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
+    <div
+      ref={rootRef}
+      data-dialog-root=""
+      className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4"
+    >
       <div
         className="fixed inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-md dark:bg-[#03060c]/80"
         aria-hidden="true"
@@ -118,7 +148,14 @@ export const DesignDialog = ({
             <Stroke d={CLOSE_PATH} className="h-5 w-5" />
           </button>
         </header>
-        <div className={cn('min-h-0 flex-1 space-y-7 overflow-y-auto', look.body)}>{children}</div>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto',
+            dense ? 'space-y-5 p-5 sm:px-6' : cn('space-y-7', look.body),
+          )}
+        >
+          {children}
+        </div>
         <div
           className={cn(
             'flex shrink-0 items-center justify-start gap-3 border-t px-6 pb-5 sm:px-7',

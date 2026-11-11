@@ -10,6 +10,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
+  OPERATIONS_SHIPMENT_LEGS,
+  OPERATIONS_SHIPMENT_LOG_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_KINDS,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   type Locale,
@@ -70,7 +73,6 @@ const BOARD_KEYS = [
   'operations.cards.dailyOps',
   'operations.dailyOps.title',
   'operations.dailyOps.subtitle',
-  'operations.dailyOps.date',
   'operations.dailyOps.received',
   'operations.dailyOps.receivedYes',
   'operations.dailyOps.receivedNo',
@@ -104,6 +106,74 @@ const BOARD_KEYS = [
   'operations.shipment.deliveryDateHint',
   'operations.shipment.notes',
   'operations.shipment.serialTracked',
+  'operations.board.title',
+  'operations.board.stats',
+  'operations.board.statsHide',
+  'operations.board.no',
+  'operations.board.vehicle',
+  'operations.board.bank',
+  'operations.board.captain',
+  'operations.board.date',
+  'operations.board.actions',
+  'operations.board.figures.count',
+  'operations.board.figures.countUnit',
+  'operations.catalogs.branch.duplicate',
+  'operations.catalogs.branch.sections.details',
+  'operations.catalogs.branch.sections.areas',
+  'operations.catalogs.branch.sections.location',
+  'operations.board.figures.otherCurrencies',
+  'operations.board.figures.otherCurrenciesHint',
+  'operations.board.figures.otherCurrenciesTitle',
+  'operations.board.figures.otherCurrenciesEmpty',
+  'operations.board.card.crewTitle',
+  'operations.board.card.drivers',
+  'operations.board.status.delivered',
+  'operations.board.status.notDelivered',
+  'operations.board.status.byCaptain',
+  'operations.board.status.byDesk',
+  'operations.board.receiptImage',
+  'operations.board.vehicleCode',
+  'operations.board.figures.otherCurrenciesSubtitle',
+  'operations.board.figures.otherCurrenciesTotal',
+  ...['one', 'two', 'few', 'many', 'other'].flatMap((form) => [
+    `operations.board.figures.currencyCount.${form}`,
+    `operations.board.figures.inShipments.${form}`,
+  ]),
+  'operations.board.figures.share',
+  // «سجل الشحنات» — the day board over a from–to range.
+  'operations.nav.shipmentsHistory',
+  'operations.cards.shipmentsHistory',
+  ...['from', 'to', 'empty', 'rangeOrder', 'rangeTooLong', 'tooLarge'].map(
+    (key) => `operations.history.${key}`,
+  ),
+  ...[
+    'title', 'upload', 'view', 'replace', 'delete', 'uploaded', 'deleted', 'deleteTitle',
+    'deleteBody', 'loadFailed',
+  ].map((key) => `operations.shipment.receiptImage.${key}`),
+  ...[
+    'subtitle', 'mainBank', 'mainBankHint', 'pickBank', 'pickBankFirst', 'pickBranch', 'sideBank',
+    'branch', 'addBranch', 'date', 'amount', 'areaHint', 'areaEmpty', 'sections.shipment', 'sections.route',
+    'sections.money', 'sections.crew', 'captain', 'vehicle', 'crewHint', 'crewHeld',
+    'crewNotOnEdit', 'crewElsewhere', 'crewNoAccess',
+  ].map((key) => `operations.shipment.form.${key}`),
+  ...[
+    'branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale',
+    // The collection date's floor — a new shipment not before today, an edit not before its day.
+    'dateInPast', 'dateBeforeOriginal',
+  ].map((key) => `operations.shipment.errors.${key}`),
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens: its frame,
+  // a sentence for every kind, a label for every field and a name for every leg the contract lists.
+  ...[
+    'open', 'title', 'route', 'actorUnknown', 'empty', 'loadFailed', 'truncated', 'becomes', 'yes', 'no',
+  ].map((key) => `operations.shipment.log.${key}`),
+  ...OPERATIONS_SHIPMENT_LOG_KINDS.map((kind) => `operations.shipment.log.kind.${kind}`),
+  ...OPERATIONS_SHIPMENT_LOG_FIELDS.map((field) => `operations.shipment.log.field.${field}`),
+  ...OPERATIONS_SHIPMENT_LEGS.map((leg) => `operations.shipment.log.leg.${leg}`),
+  // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the history's deleted shipments.
+  ...[
+    'open', 'openCount', 'unavailable', 'title', 'subtitle', 'empty', 'loadFailed', 'deletedBy',
+    'deletedAt', 'log', 'restore', 'confirmRestore', 'restored',
+  ].map((key) => `operations.shipment.deletedList.${key}`),
 ];
 
 /** B3 — the crew board and the roster. */

@@ -19,6 +19,7 @@ import {
   type ContractTemplateDto,
   type ContractTypeDto,
   type EmployeeDto,
+  type EmployeePapersDto,
   type HiringPackDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -1111,6 +1112,41 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
     expect(res.status).toBe(422);
   });
 
+  it('offers an employee\'s papers on their tab, and prints only the ones chosen (A28)', async () => {
+    const employee = await employeeIn(jobId);
+    const listed = await request(app)
+      .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    const papers = listed.body.data as EmployeePapersDto;
+    // No contract held yet: «العقد» stands for the job's contract template.
+    expect(papers.contract).toBeNull();
+    expect(papers.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract', group: 'contract' });
+    expect(papers.papers.map((p) => p.key)).toContain(jobForm.key);
+    expect(papers.papers.map((p) => p.key)).not.toContain(otherJobForm.key);
+
+    // Only the job's form: no contract is made for a print that did not ask for it.
+    const formOnly = (
+      await request(app)
+        .post('/api/v1/hr/contracts/hiring-pack')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: employee.id, keys: [jobForm.key] })
+    ).body.data as HiringPackDto;
+    expect(formOnly.documents.map((d) => d.key)).toEqual([jobForm.key]);
+    expect(formOnly.contract).toBeNull();
+    expect(formOnly.contractNote).toBeNull();
+
+    // The contract asked for: made, printed, and then listed as the one held.
+    const withContract = (await pack(employee.id)).body.data as HiringPackDto;
+    expect(withContract.contract?.created).toBe(true);
+    const after = (
+      await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as EmployeePapersDto;
+    expect(after.contract).toMatchObject({ code: withContract.contract?.code, status: 'active', endDate: '2027-11-14' });
+  });
+
   it('publishes a form without a contract type, but not one printed for no job at all', async () => {
     const draft = await form({ name: { ar: 'نموذج بلا وظائف', en: 'For nobody' }, allJobs: false, jobTitleIds: [] });
     const res = await request(app)
@@ -1173,7 +1209,7 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
 
     // Again: nothing is written twice.
     const second = await syncHiringTemplates();
-    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting });
+    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting, widened: [] });
     expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(13);
   });
 
@@ -1198,6 +1234,30 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(await row('card.security-guard')).toMatchObject({ status: 'published' });
     expect(((await row('card.security-guard')).jobTitleIds ?? []).map(String)).toEqual([guardJob]);
     expect(await row('card.treasurer')).toMatchObject({ status: 'draft', jobTitleIds: [] });
+  });
+
+  it('adds a job named for a published paper on the boot after it is created', async () => {
+    // The weapon declaration is published for the crew leader; a cash-in-transit specialist's job
+    // made now is added to it, and publishes the waiting card of that job.
+    const citJob = await jobNamed('JT-PAPER-4', 'أخصائى نقل اموال');
+    const fourth = await syncHiringTemplates();
+    expect(fourth.widened).toEqual([key('weapon')]);
+    expect(fourth.linked).toEqual([key('card.cit-specialist')]);
+    expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob, citJob]);
+    // Again: nothing more.
+    expect((await syncHiringTemplates()).widened).toEqual([]);
+
+    // The specialist is offered it unticked; the crew leader, as a usual paper.
+    const offered = async (jobTitleId: string) => {
+      const employee = await employeeIn(jobTitleId);
+      const res = await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as EmployeePapersDto).papers.find((p) => p.key === key('weapon'));
+    };
+    expect(await offered(citJob)).toMatchObject({ optional: true });
+    expect(await offered(crewLeaderJob)).toMatchObject({ optional: false });
   });
 
   it('prints the owner\'s contract and the papers of the employee\'s job', async () => {

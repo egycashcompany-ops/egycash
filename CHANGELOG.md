@@ -11,6 +11,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: the branches' custody sheets, imported once by the deploy.** «هبعتلك عهده الأفرع وعايزك
+  تضيفهم مره واحده كل فرع فى فرعه فى الـ IT», then «هبعتلك أسيوط كمان». The five sheets (بورسعيد،
+  طنطا، الشروق، أكتوبر، أسيوط), reviewed with the owner, in
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` (244 rows, no person).
+  - 68 new devices registered in their branch, in stock; a Dell's service tag is its serial number,
+    and its «CN-0…» label its printed tag.
+  - Devices already on the register get only what they lack («أكمّل الناقص بس»): specifications,
+    accessories, printed tag, make, model. A value already typed is kept. The Shorouk sheet's 13
+    Dell desktops get no processor or graphics: those cells repeat its all-in-ones'.
+  - 8 devices registered under another branch move to the sheet's when in stock, and their old
+    location (a place in the branch they left) is cleared; a held one stays and is reported.
+  - Left out: three repeated rows (two in Tanta, one in Assiut) and two rows in October with neither
+    serial nor tag; and, until the owner reads their labels, the Shorouk printer CNDRP8Z666 and
+    screen B3ZY8V3 (serials the October inventory found twice), three screens a character or two
+    off a register screen of their branch that the sheet does not list (October's B3SZ8V3, Assiut's
+    BR565G3 and 1Q1L1T3) and an HP Z240 whose only label is HP's product number.
+  - One transaction, run once (`go-live:it-branch-custody-2026-11:v1`), after the inventory, the
+    October all-in-ones and the specifications; a missing branch or category refuses it.
+
 - **«قص الوجه من صفحة A4»: the employee photo, cut from the A4 page it arrives on.** The photo
   dialog takes a PDF or a scanned page as well as a photo. Page 1 is drawn in the browser (pdf.js),
   the face is found (MediaPipe BlazeFace, run over the sheet whole and in overlapping tiles so a
@@ -54,6 +73,66 @@ its entry here in the same PR.
   handover), so reopening the card keeps that step done; the waiting card splits by whose turn it
   is — amber «طُبع ولم يُطبع الإقرار» (HR's) and sky «في انتظار استلام الموظف» (the employee's) — in
   the list's icon, the filter (`awaiting` / `receipt`) and the profile.
+
+- **Operations: the shipment form by bank → branch, and the day board in the Fleet look.** «عند اضافة
+  شحنة البنك الرئيسى دا اللى بيحاسب على الشحنة … عدل برضو الui بتاع الفورم والشاشة زى الحركة».
+  - «البنك الرئيسي» is the bank billed. «من فرع» and «إلى فرع» each pick a bank, then a branch of it
+    by typing (searched on the server, Arabic letter variants folded, no 100-branch cap). A branch
+    that is not there is offered as «+ إضافة … كفرع جديد», which opens the catalogs' branch form with
+    the bank and the name filled in; the saved branch is picked on the side that asked.
+  - The area fills from the destination branch and stays editable. «اسم قائد الطاقم» and «رقم
+    السيارة» pick each other from the collection day's crew plan.
+  - The origin branch may belong to any bank (legacy never posted its from-bank); the destination
+    rule is unchanged. A secured shipment's delivery date stays optional.
+  - `/operations/shipments` in the Fleet boards' look: «تشغيل يوم …», the dark icon filter bar with
+    a «قائد الطاقم» filter, the money per currency behind «الإحصائيات», and the legacy columns
+    (السيارة، اسم البنك، من فرع، إلى فرع، العملة، قيمة الشحنة، قائد الطاقم، التاريخ …).
+  - API: `GET /operations/shipments/day-board` rows carry their branches (with banks) and the crew of
+    the leg the row reports on; `GET /operations/bank-branches/:id`; catalog searches take typed
+    text literally (regex metacharacters escaped) and fold Arabic letter variants.
+  - Two hover cards on the board, on Fleet's card mechanics: «لما اقف على العربيه تجيب مين اللى
+    متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه». The
+    van code opens who rides that van on the leg's crew row (drivers from its Fleet duty row, the
+    captain, specialists 1 and 2, the direction and planned time); the captain's name opens the
+    Fleet driver card's facts (code, mobile, the van, the branch). The board answer carries both
+    (`crews`, and the captain's code, phone and branch on each row); a reader without
+    `operationsCrew.view` gets no `crews` and no phone, so the van code stays plain text.
+  - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
+    اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
+    answer sends a driver's name only. The captain and the specialists keep their codes.
+  - «سجل الشحنات» (`/operations/shipments/history`): «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون
+    من الى». The same board — figures, filters, table, cards and row actions, one shared component
+    — over «من» … «إلى» (default: the 1st of the month to today), 100 rows a page. API:
+    `GET /operations/shipments/history?from=&to=` (the day board's union over a range, at most 366
+    days; a range holding more than 5,000 shipments is refused with
+    `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`, never cut short).
+  - The currency figures: «انا عاوز المصرى لوحده الدولار لوحده و اى حاجه غير الاتنين دول يتحسب
+    عملات اخرى». The pound and the dollar were recognised by the ISO code alone, and the live
+    catalog's codes are the legacy numbers (1, 2, 3), so every currency fell into «عملات أخرى». They
+    are now recognised by code, name or legacy spelling, matched whole («جنيه استرليني» stays
+    other). The «عملات أخرى» dialog is wider: the total on top, one card per currency, largest
+    first, with its share and how many shipments carry it.
+  - The filters follow the table's columns, and «كود السيارة» joins them.
+  - «اليوم التشغيلي» is today only: «هنشيل منها التاريخ … هو هيجيب بتاعت اليوم». The day picker is
+    gone; the board asks for Cairo's today by name and moves to the next day at Cairo midnight
+    (`GET /day-board` with no date now defaults to Cairo's today too). Its filters sit on one row
+    from 1024px; the history's from 1280px.
+  - «سجل الشحنات» cannot add or confirm delivery («مش هيقدر يضيف … ومش هيقدر منها يسلم او
+    يستلم»); edit, delete and the receipt image stay.
+  - No past dates: «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» / «ميقدرش يحدد يوم قبل يوم اللى كانت
+    عليه الشحنة». A new shipment's collection (and a secured one's delivery) day cannot be before
+    Cairo's today (`OPERATIONS_SHIPMENT_DATE_IN_PAST`); an edit cannot move a date earlier than it
+    was (`OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`). The form shows the floor and checks it
+    before sending.
+  - «السجل» on every shipment, on both screens: «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة».
+    `GET /operations/shipments/:id/log` (`operationsShipment.view`) reads the shipment's audit
+    trail and its legs' — created, each edit with old → new values resolved to names, crew,
+    the captain's steps, the desk's confirmation, the receipt image, vault and dispatch (their
+    custody details only for `operationsVault.view`), delete and restore.
+  - Deleted shipments: «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح». An icon on the history
+    lists the range's deleted shipments (who deleted them, when, their log) with «استرجاع» for
+    `operationsShipment.delete`. API: `GET /operations/shipments/deleted?from=&to=`,
+    `POST /operations/shipments/:id/restore` (409 `OPERATIONS_SHIPMENT_NOT_DELETED`).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
@@ -678,6 +757,49 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«تعيين السيارات» on a computer: every filter is on the bar's one row again.** «فى مشكلة باقى
+  الفلاتر مش ظاهرة». The bar holds «كود السيارة», one chip per counter and per mission, and the red
+  reset on a single line whose sideways scrollbar is hidden. With production's twelve missions the
+  eighteen chips needed 1599 px and were given 1478 at 1920 px (nav unpinned, the reset showing):
+  121 px short, so the last chip, «نقل أموال (يومي)», sat off the end where a mouse could not
+  reach it. The owner kept the one row: «لا صغر شوية كود السيارة وخلى كله صف واحد». «كود السيارة»
+  is 12rem instead of 15rem (192 px; its placeholder, icon, one code or three «215, 216, 217» still
+  whole), the chips are 4 px apart instead of 6, and each chip has 8 px of padding a side instead
+  of 10 and 4 px between word and figure instead of 6. Height, type, colours and the active ring
+  are unchanged. Measured on the real page at 1920 px with that day's figures (most missions 0,
+  «تشغيل» 45): all eighteen chips and the reset on one row, 68.6 px to spare (110.6 without the
+  reset), every ring whole at the start, middle and end. The spare is that day's, not every day's:
+  each extra digit in a chip's figure costs about 9 px, so a planned day («تشغيل» 143, four
+  missions in two digits) keeps 32 px, while a day with every mission in two digits is 41 px short
+  with the reset showing and «نقل أموال (يومي)» is cut again. At 1536 and 1366 px the row is still
+  273–485 px short and the last four to six chips are partly or wholly off its end, and a pinned
+  nav takes 240 px more. For those, the owner chose «أ اعمل الأسهم ولما يخضر اعمل ميرج»: the row
+  stays one line, and while its chips overflow — measured on the page, not guessed from the
+  screen's width — a small ‹ › stands at each end of it, outside the chips so it never covers one.
+  The start one, beside «كود السيارة», moves the chips toward the start; the end one, beside the
+  reset, toward the end; about 80% of the visible width a click, gliding, or at once for a reader
+  who asks for less motion. Both stay while the row overflows, the one whose end is reached dimmed
+  and disabled, so nothing shifts as it scrolls; they are named «عرض الفلاتر السابقة» and «عرض
+  الفلاتر التالية» on hover and to a screen reader. When everything fits there are none: at 1920
+  px on the measured day the bar is pixel for pixel as before. Measured on the real page, dark and
+  light: one click on the end arrow brings «نقل أموال (يومي)» whole into view, its ring whole
+  beside the arrow, at 1920 (every mission in two digits, the reset showing), at 1920 with the nav
+  pinned, at 1536 and at 1366, and one click on the start arrow comes back. A row scrolled to its
+  end stays at its end when the reset appears: the reset takes about 42 px off that end, and the
+  chip just revealed and clicked there — «نقل أموال (يومي)» — would otherwise be cut under the
+  pointer, its ring broken (the other chips move 42 px with it). A keyboard user who presses the end
+  arrow until the end, which disables it, finds the focus on the start arrow rather than lost, and
+  the other way round; a mouse sees no change. The scrollbar stays hidden, the wheel is not taken
+  over, and Tab still walks the chips. The phone and tablet boards, whose row is swiped, are not
+  changed.
+- **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
+  pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
+  (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and
+  [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c) (high: connection-level
+  `sanitizeFilter` not applied, fixed in 8.24.7). The API never turns `sanitizeFilter` on, so
+  neither reached it, but the gate blocks on both. The API's range moves from `^8.9.5` to `^8.24.8`
+  so a fresh lockfile cannot fall back below the fix; mquery follows to 5.0.1, and mongoose's own
+  MongoDB driver stays 6.20.0. No code changes.
 - **IT vehicle checks dashboard: the page no longer scrolls into empty space.** «بيعمل Scroll لمساحه
   فاضية». The matrix's last column has a heading only screen readers hear (`sr-only`, absolutely
   positioned). Its table's scroll box was not positioned, so the heading took the page as its
@@ -893,6 +1015,24 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«الصيانة»: «سائق الخروج» can be corrected in «تعديل الزيارة».** «دلوقتى عاوز ف الصيانة عاوز اقدر
+  اعدل السواق التانى اللى هو سائق الخروج». Before, a wrong exit driver could only be fixed by
+  reopening the visit, which also clears the exit date, the exit counter and the custody, and
+  checking it out again.
+  - On a visit that has left the workshop, the edit shows «سائق الخروج» right after «سائق الدخول»,
+    with the same picker, opened on the stored driver. A visit still in the workshop does not
+    show it: «إخراج من الورشة» sets it.
+  - A correction, never a clear, as for «سائق الدخول»: it can be changed to another driver but
+    not emptied. On an old visit with only the old book's spelling, it opens empty and stays
+    optional; choosing a driver records the employee, who is then shown instead of the spelling.
+  - `PATCH /fleet/maintenance/:id` takes an optional `driverOutEmployeeId`: refused on an open
+    visit (400 on `body.driverOutEmployeeId`, `INVALID`; a copy read before someone reopened the
+    visit gets 409 `STALE_DOCUMENT` instead), `null` refused, and checked against HR
+    only when it differs from the stored driver. Same permission (`fleetMaintenance.edit`),
+    version check and `update` audit as the rest of the edit. The screen sends it only when the
+    edit changed it.
+  - Unchanged: reopen still clears it, check-out still requires it, and the exit date stays
+    non-editable ([design §4.2](docs/12-planning/fleet-module-design.md)).
 - **IT vehicle check: every device opens at «يعمل»; a fault needs a note, and every report a
   photo.** «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى يغيرها»،
   «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل الحالات».

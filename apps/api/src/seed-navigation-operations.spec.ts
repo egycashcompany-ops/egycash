@@ -150,6 +150,8 @@ describe('the Operations navigation rows', () => {
         '/operations/requirements',
         '/operations/secured',
         '/operations/shipments',
+        // The day board over a range of days — the shipments history, on the board's own grant.
+        '/operations/shipments/history',
         '/operations/standing-crew',
         '/operations/vault',
         '/operations/vault/dispatch',

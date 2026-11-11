@@ -5,12 +5,16 @@
 // RBAC on every surface, version-aware updates, and the operations.shipment.* events.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   ErrorCodes,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
   SettingKeys,
+  addDaysYmd,
+  cairoYmd,
   platformPermissions,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
@@ -27,6 +31,11 @@ import {
   type OperationsCrewAttendanceDayDto,
   type OperationsAreaDto,
   type OperationsShipmentDto,
+  type OperationsDayBoardDto,
+  type OperationsDayBoardShipmentDto,
+  type OperationsShipmentHistoryDto,
+  type OperationsShipmentLogDto,
+  type OperationsDeletedShipmentsDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -94,6 +103,15 @@ const dayInMonth = (iso: string, offsetMonths: number, dayOfMonth: number): stri
   `${monthRange(iso, offsetMonths).from.slice(0, 8)}${String(dayOfMonth).padStart(2, '0')}`;
 
 const PLAN_DATE = shift(150);
+/**
+ * The day `mkShipment` books on when a case names none. FUTURE and RELATIVE, like every other
+ * fixture day here: a new shipment may not be dated before today in Cairo
+ * (`OPERATIONS_SHIPMENT_DATE_IN_PAST`), so a literal default goes stale the day it passes and takes
+ * every case that leans on it down. Far beyond every other fixture day, and every report window
+ * (the latest is two months around `shift(270)`), so a default-dated shipment — some are completed —
+ * never lands on a board, a history range or a month another case totals.
+ */
+const DEFAULT_SHIPMENT_DATE = shift(400);
 const DELIVERY_DATE = shift(151);
 const ORDER_DATE = shift(152);
 let branchId: string;
@@ -169,14 +187,25 @@ let phoneCounter = 50_000_000;
 const nextNid = (): string => `290010101${String(70_000 + nidCounter++).padStart(5, '0')}`;
 const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
 
-/** HR employee via the real direct-registration endpoint — Operations never fabricates one. */
-const mkEmployee = async (): Promise<string> => {
+/**
+ * HR employee via the real direct-registration endpoint — Operations never fabricates one.
+ *
+ * `seat` places them somewhere other than the crew department — a driver has to sit in a job title
+ * that requires a driving test, or Fleet will not put them on a van.
+ */
+const mkEmployee = async (
+  seat: { fullNameAr?: string; jobTitleId?: string; departmentId?: string } = {},
+): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       personal: {
-        identity: { fullNameAr: 'طاقم اختبار', nationalId: nextNid(), nationality: 'Egyptian' },
+        identity: {
+          fullNameAr: seat.fullNameAr ?? 'طاقم اختبار',
+          nationalId: nextNid(),
+          nationality: 'Egyptian',
+        },
         contact: { primaryPhone: nextPhone() },
         experience: [],
         drivingLicenses: [],
@@ -184,8 +213,8 @@ const mkEmployee = async (): Promise<string> => {
         references: [],
       },
       employment: {
-        jobTitleId,
-        departmentId,
+        jobTitleId: seat.jobTitleId ?? jobTitleId,
+        departmentId: seat.departmentId ?? departmentId,
         branchId,
         employmentType: 'fullTime',
         probationMonths: 0,
@@ -211,7 +240,7 @@ const mkShipment = async (
       originBranchId: branchA1.id,
       destinationBranchId: branchA1.id,
       lines: [{ currencyId: egp.id, amount: 1000 + shipmentCounter }],
-      collectionDate: '2026-08-17',
+      collectionDate: DEFAULT_SHIPMENT_DATE,
       ...overrides,
     });
 };
@@ -428,15 +457,27 @@ describe('cash shipments — the ported legacy create guard', () => {
   });
 
   it('normalizes the collection date to a UTC day — Q15, no more exact-midnight fragility', async () => {
-    const res = await mkShipment({ collectionDate: '2026-08-17T13:45:00.000+02:00' });
+    const day = shift(405);
+    const res = await mkShipment({ collectionDate: `${day}T13:45:00.000+02:00` });
     expect(res.status).toBe(201);
-    expect(data<OperationsShipmentDto>(res).collectionDate).toBe('2026-08-17T00:00:00.000Z');
+    expect(data<OperationsShipmentDto>(res).collectionDate).toBe(`${day}T00:00:00.000Z`);
   });
 
-  it('refuses an origin branch that does not belong to the main bank (client rule made domain)', async () => {
+  // The main bank is the BILLED bank. The money may be collected from a branch of another bank —
+  // legacy's from-branch list followed its own from-bank select (main_ops.ejs:497-499), which was
+  // never stored; the from-bank is the origin branch's own bank.
+  it('accepts an origin branch of another bank — the main bank is the billed one', async () => {
     const res = await mkShipment({ originBranchId: branchB1.id });
+    expect(res.status).toBe(201);
+    const dto = data<OperationsShipmentDto>(res);
+    expect(dto.originBranchId).toBe(branchB1.id);
+    expect(dto.mainBankId).not.toBe(bankB.id);
+  });
+
+  it('still refuses an unknown origin branch', async () => {
+    const res = await mkShipment({ originBranchId: '00000000000000000000beef' });
     expect(res.status).toBe(422);
-    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_BRANCH_BANK_MISMATCH);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_UNKNOWN_BRANCH);
   });
 
   it('destination side follows toBank ?? mainBank — bank B branch needs bank B declared', async () => {
@@ -460,7 +501,8 @@ describe('cash shipments — the ported legacy create guard', () => {
   });
 
   it('refuses a daily shipment with a delivery date at the schema boundary', async () => {
-    const res = await mkShipment({ deliveryDate: '2026-08-20' });
+    // A FUTURE delivery date, so the refusal can only be the schema's — never the date rule's.
+    const res = await mkShipment({ deliveryDate: shift(404) });
     expect(res.status).toBe(400);
   });
 
@@ -475,6 +517,164 @@ describe('cash shipments — the ported legacy create guard', () => {
       .set('Authorization', `Bearer ${viewerToken}`)
       .send({});
     expect(res.status).toBe(403);
+  });
+});
+
+// «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» and «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»:
+// a shipment is never BOOKED on a day that has passed, and an edit never moves it to a day before
+// the one it is on. "Today" is Cairo's — the desk's calendar, and the day the board opens on.
+describe('shipment dates — no past day on create, never an earlier day on edit', () => {
+  const today = (): string => cairoYmd(new Date());
+  const detailsOf = (res: request.Response): { field: string; code: string; message: string }[] =>
+    (res.body as { error: { details: { field: string; code: string; message: string }[] } }).error
+      .details;
+  const patch = (id: string, body: Record<string, unknown>): Promise<request.Response> =>
+    request(app)
+      .patch(`/api/v1/operations/shipments/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+
+  it('refuses a new shipment dated before today in Cairo, and names the earliest day allowed', async () => {
+    const yesterday = await mkShipment({ collectionDate: addDaysYmd(today(), -1) });
+    expect(yesterday.status).toBe(422);
+    expect(errorCode(yesterday)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_IN_PAST);
+    expect(detailsOf(yesterday)).toEqual([
+      expect.objectContaining({ field: 'collectionDate', code: 'MIN_DATE', message: today() }),
+    ]);
+    // A day long gone — this suite's own old default — is refused the same way.
+    const longGone = await mkShipment({ collectionDate: '2026-08-17' });
+    expect(longGone.status).toBe(422);
+    expect(errorCode(longGone)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_IN_PAST);
+  });
+
+  it('books today itself — today has not passed', async () => {
+    const res = await mkShipment({ collectionDate: today() });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(data<OperationsShipmentDto>(res).collectionDate.slice(0, 10)).toBe(today());
+  });
+
+  it('holds a secured shipment\'s delivery date — its board day — to the same rule', async () => {
+    const res = await mkShipment({
+      shipmentType: 'secured',
+      deliveryDate: addDaysYmd(today(), -1),
+    });
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_IN_PAST);
+    expect(detailsOf(res)).toEqual([
+      expect.objectContaining({ field: 'deliveryDate', code: 'MIN_DATE', message: today() }),
+    ]);
+    const onToday = await mkShipment({ shipmentType: 'secured', deliveryDate: today() });
+    expect(onToday.status).toBe(201);
+  });
+
+  it('an edit may keep the collection day or move it later — never earlier than the day it is on', async () => {
+    const day = shift(406);
+    const shipment = data<OperationsShipmentDto>(await mkShipment({ collectionDate: day }));
+
+    const earlier = await patch(shipment.id, {
+      collectionDate: shift(405),
+      version: shipment.version,
+    });
+    expect(earlier.status).toBe(422);
+    expect(errorCode(earlier)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL);
+    expect(detailsOf(earlier)).toEqual([
+      expect.objectContaining({ field: 'collectionDate', code: 'MIN_DATE', message: day }),
+    ]);
+
+    // The edit form sends every field back — the unchanged day among them.
+    const same = await patch(shipment.id, {
+      collectionDate: day,
+      notes: 'كما هو',
+      version: shipment.version,
+    });
+    expect(same.status, JSON.stringify(same.body)).toBe(200);
+    const later = await patch(shipment.id, {
+      collectionDate: shift(407),
+      version: data<OperationsShipmentDto>(same).version,
+    });
+    expect(later.status).toBe(200);
+    expect(data<OperationsShipmentDto>(later).collectionDate.slice(0, 10)).toBe(shift(407));
+
+    // From its new day, the day it left is now an earlier one.
+    const back = await patch(shipment.id, {
+      collectionDate: day,
+      version: data<OperationsShipmentDto>(later).version,
+    });
+    expect(back.status).toBe(422);
+    expect(errorCode(back)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL);
+  });
+
+  it('a shipment already on a past day keeps it through an edit, and may still only move later', async () => {
+    // Old shipments exist — yesterday's board, the imported legacy rows — but none can be BOOKED
+    // on a past day any more. So this one is booked on an allowed day and moved back the way
+    // imported data arrives: written straight into the collection.
+    const { OperationsShipmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment.model'
+    );
+    const shipment = data<OperationsShipmentDto>(await mkShipment({ collectionDate: shift(408) }));
+    const past = addDaysYmd(today(), -10);
+    await OperationsShipmentModel.updateOne(
+      { _id: shipment.id },
+      { $set: { collectionDate: new Date(`${past}T00:00:00.000Z`) } },
+    ).exec();
+
+    // Corrected on the history, its day sent back unchanged: accepted, though the day has passed.
+    const kept = await patch(shipment.id, {
+      collectionDate: past,
+      notes: 'تصحيح',
+      version: shipment.version,
+    });
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(kept).collectionDate.slice(0, 10)).toBe(past);
+
+    // Later is later, even while still in the past; earlier is refused.
+    const later = await patch(shipment.id, {
+      collectionDate: addDaysYmd(past, 2),
+      version: data<OperationsShipmentDto>(kept).version,
+    });
+    expect(later.status).toBe(200);
+    const earlier = await patch(shipment.id, {
+      collectionDate: addDaysYmd(past, 1),
+      version: data<OperationsShipmentDto>(later).version,
+    });
+    expect(earlier.status).toBe(422);
+    expect(errorCode(earlier)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL);
+  });
+
+  it('a secured delivery date never moves earlier; one set for the first time is held to today', async () => {
+    const shipment = data<OperationsShipmentDto>(
+      await mkShipment({ shipmentType: 'secured', deliveryDate: shift(409) }),
+    );
+    const earlier = await patch(shipment.id, {
+      deliveryDate: shift(408),
+      version: shipment.version,
+    });
+    expect(earlier.status).toBe(422);
+    expect(errorCode(earlier)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL);
+    expect(detailsOf(earlier)).toEqual([
+      expect.objectContaining({ field: 'deliveryDate', code: 'MIN_DATE', message: shift(409) }),
+    ]);
+
+    const later = await patch(shipment.id, { deliveryDate: shift(410), version: shipment.version });
+    expect(later.status).toBe(200);
+    // Clearing it dates nothing.
+    const cleared = await patch(shipment.id, {
+      deliveryDate: null,
+      version: data<OperationsShipmentDto>(later).version,
+    });
+    expect(cleared.status).toBe(200);
+    // With none on it, a delivery date is a fresh pick: not before today.
+    const past = await patch(shipment.id, {
+      deliveryDate: addDaysYmd(today(), -1),
+      version: data<OperationsShipmentDto>(cleared).version,
+    });
+    expect(past.status).toBe(422);
+    expect(errorCode(past)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_IN_PAST);
+    const fresh = await patch(shipment.id, {
+      deliveryDate: today(),
+      version: data<OperationsShipmentDto>(cleared).version,
+    });
+    expect(fresh.status).toBe(200);
   });
 });
 
@@ -507,7 +707,7 @@ describe('cash shipments — complete / reopen (the legacy receive toggle, state
   });
 
   it('Q30 — a secured shipment cannot complete from draft (no unguarded jump to terminal)', async () => {
-    const createRes = await mkShipment({ shipmentType: 'secured', deliveryDate: '2026-08-20' });
+    const createRes = await mkShipment({ shipmentType: 'secured', deliveryDate: shift(404) });
     expect(createRes.status).toBe(201);
     const shipment = data<OperationsShipmentDto>(createRes);
 
@@ -2102,7 +2302,8 @@ describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => 
 
   it('4. rejects a crew assignment that is not on the shipment\'s own day', async () => {
     const otherDay = data<OperationsShipmentDto>(
-      await mkShipment({ collectionDate: '2026-08-26' }),
+      // A future day nobody planned a crew on — the date rule takes no past day.
+      await mkShipment({ collectionDate: shift(402) }),
     );
     const res = await assignPickup(otherDay.id);
     expect(res.status).toBe(422);
@@ -2192,7 +2393,7 @@ describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => 
       await mkShipment({
         shipmentType: 'secured',
         collectionDate: ORDER_DATE,
-        deliveryDate: '2026-08-21',
+        deliveryDate: shift(403),
       }),
     );
     // Leg 1 — legacy leader1/car_num1, written for محصنة too (contad_app.js:725/733).
@@ -3023,6 +3224,11 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   let dailyOtherDay = '';
   let securedDueDraft = '';
   let securedDueDispatched = '';
+  /** The board day's one crew row — van A under `captainId` — for the legs booked below. */
+  let boardCrewId = '';
+  /** Van A's two drivers on the board day — FLEET's half of the van, on its duty row. */
+  let boardDriver1Id = '';
+  let boardDriver2Id = '';
 
   beforeAll(async () => {
     dailyToday = data<OperationsShipmentDto>(
@@ -3064,19 +3270,64 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       });
     expect(received.status).toBe(200);
 
+    // Van A goes out with BOTH halves of a crew, so the van's card has something in every line:
+    // two drivers on Fleet's duty row, and a captain plus a specialist in each slot on the crew
+    // row. The drivers sit in their own department, in a seat that requires a driving test —
+    // Fleet only seats a driver, and the crew department's roster (B3) stays as it was.
+    const driverDept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'OPS-BRD-DRV', name: { ar: 'سائقو اللوحة', en: 'Board Drivers' }, branchId });
+    expect(driverDept.status).toBe(201);
+    const driverTitle = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'OPS-BRD-DRV',
+        name: { ar: 'سائق', en: 'Driver' },
+        jobGrade: 'G1',
+        requiresDrivingTest: true,
+      });
+    expect(driverTitle.status).toBe(201);
+    const driverSeat = {
+      departmentId: data<{ id: string }>(driverDept).id,
+      jobTitleId: data<{ id: string }>(driverTitle).id,
+    };
+    boardDriver1Id = await mkEmployee({ ...driverSeat, fullNameAr: 'سائق اللوحة الأول' });
+    boardDriver2Id = await mkEmployee({ ...driverSeat, fullNameAr: 'سائق اللوحة الثاني' });
+
     const rosterRes = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: BOARD_DATE, rows: [{ vehicleId: vehicleAId, notes: 'board seed' }] });
-    expect(rosterRes.status).toBe(200);
+      .send({
+        date: BOARD_DATE,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            driver1EmployeeId: boardDriver1Id,
+            driver2EmployeeId: boardDriver2Id,
+            notes: 'board seed',
+          },
+        ],
+      });
+    expect(rosterRes.status, JSON.stringify(rosterRes.body)).toBe(200);
     const crewRes = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: BOARD_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeIds: [captainId],
+            specialist1EmployeeIds: [specialist1Id],
+            specialist2EmployeeIds: [specialist2Id],
+            direction: 'القاهرة',
+            plannedTime: '08:30',
+          },
+        ],
       });
-    expect(crewRes.status).toBe(200);
+    expect(crewRes.status, JSON.stringify(crewRes.body)).toBe(200);
 
     const { operationsCrewAssignmentRepository } = await import(
       '../../src/modules/operations/crew/crew-assignment.repository'
@@ -3084,18 +3335,18 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
     const dayDoc = await operationsDayService.findByDate(new Date(BOARD_DATE));
     const crewRows = await operationsCrewAssignmentRepository.findForDay(dayDoc?._id ?? '');
-    const crewId = String(crewRows[0]?._id ?? '');
+    boardCrewId = String(crewRows[0]?._id ?? '');
 
     const assigned = await request(app)
       .post(`/api/v1/operations/secured/${secured.id}/assign-delivery`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewId, captainEmployeeId: captainId, version: 0 });
+      .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
 
     const dispatched = await request(app)
       .post('/api/v1/operations/secured/dispatch')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [secured.id], crewAssignmentId: crewId });
+      .send({ shipmentIds: [secured.id], crewAssignmentId: boardCrewId });
     expect(dispatched.status).toBe(200);
   });
 
@@ -3121,6 +3372,73 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     expect(ids).not.toContain(securedDueDraft);
   });
 
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة»: the secured fixture above walked the vault flow,
+  // so its log has every act the secured screens record, each once and in names.
+  it('tells a secured shipment\'s story in its log — into the vault with its receipt, crewed for delivery, dispatched', async () => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${securedDueDispatched}/log`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const log = data<OperationsShipmentLogDto>(res);
+    expect(log.shipmentId).toBe(securedDueDispatched);
+    expect(log.truncated).toBe(false);
+    // Receiving and dispatching each write a custody row AND a shipment row in one request —
+    // shown once each, not twice.
+    expect(log.entries.map((e) => e.kind)).toEqual([
+      'created',
+      'vaultReceived',
+      'crewAssigned',
+      'dispatched',
+    ]);
+    const [, intoVault, crewed] = log.entries;
+    expect(intoVault?.changes).toEqual(
+      expect.arrayContaining([
+        {
+          field: 'receiptNumber',
+          old: null,
+          new: `R-BOARD-${securedDueDispatched.slice(-5)}`,
+        },
+        { field: 'receivedByPrimary', old: null, new: 'طاقم اختبار' },
+        { field: 'receivedBySecondary', old: null, new: 'طاقم اختبار' },
+      ]),
+    );
+    expect(crewed).toMatchObject({
+      leg: 'delivery',
+      changes: [
+        { field: 'captain', old: null, new: 'طاقم اختبار' },
+        { field: 'vehicle', old: null, new: 'OPS-V1' },
+      ],
+    });
+    for (const entry of log.entries) expect(entry.actorName).toBe('م م');
+    // No raw id rides a value — names, codes and numbers only.
+    expect(JSON.stringify(log.entries.map((e) => e.changes))).not.toMatch(/[0-9a-f]{24}/);
+  });
+
+  // The vault's record is the treasury's (`operationsVault.view`, the vault screens' grant): a
+  // shipment reader sees the same story — into the vault, crewed, dispatched — without the receipt
+  // number, the seals or the treasurers the custody row holds.
+  it('keeps the vault custody\'s details behind operationsVault.view — the entries stay, the treasury\'s record does not', async () => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${securedDueDispatched}/log`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const log = data<OperationsShipmentLogDto>(res);
+    expect(log.entries.map((e) => e.kind)).toEqual([
+      'created',
+      'vaultReceived',
+      'crewAssigned',
+      'dispatched',
+    ]);
+    const [, intoVault, crewed] = log.entries;
+    expect(intoVault?.changes).toEqual([]);
+    // What a shipment reader already sees on the board — the captain and the van — stays.
+    expect(crewed?.changes).toEqual([
+      { field: 'captain', old: null, new: 'طاقم اختبار' },
+      { field: 'vehicle', old: null, new: 'OPS-V1' },
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain(`R-BOARD-${securedDueDispatched.slice(-5)}`);
+  });
+
   it('returns newest-created first — the legacy input_date ordering', async () => {
     const res = await board(BOARD_DATE);
     const rows = data<{ shipments: OperationsShipmentDto[] }>(res).shipments;
@@ -3132,11 +3450,560 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     const explicit = await board(BOARD_DATE);
     expect(data<{ date: string }>(explicit).date.slice(0, 10)).toBe(BOARD_DATE);
 
+    // Today on the CAIRO calendar — the same today a new shipment may not be dated before — so
+    // between Cairo midnight and UTC midnight the board does not open on yesterday.
     const today = await board();
     expect(today.status).toBe(200);
-    expect(data<{ date: string }>(today).date.slice(0, 10)).toBe(
-      new Date().toISOString().slice(0, 10),
+    expect(data<{ date: string }>(today).date.slice(0, 10)).toBe(cairoYmd(new Date()));
+  });
+
+  // What the legacy table printed beside each shipment (main_ops.ejs:829-897), resolved on the
+  // server: both branches by name, code and bank, and the crew of the leg the type reports on.
+  it('prints each row as the legacy table did — branches with their banks, and the leg\'s crew', async () => {
+    // The billed bank is A; the money is collected from a branch of bank B (the from-bank is the
+    // origin branch's own bank, never stored on the shipment).
+    const crossBank = data<OperationsShipmentDto>(
+      await mkShipment({ collectionDate: BOARD_DATE, originBranchId: branchB1.id }),
+    ).id;
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const rows = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments;
+    const row = (id: string): OperationsDayBoardShipmentDto => {
+      const found = rows.find((r) => r.id === id);
+      expect(found).toBeDefined();
+      return found as OperationsDayBoardShipmentDto;
+    };
+
+    // A daily shipment booked with no crew: branches resolved, crew honestly null.
+    const daily = row(dailyToday);
+    expect(daily.origin).toEqual({
+      id: branchA1.id,
+      name: 'فرع المهندسين',
+      code: 'A-101',
+      bankId: bankA.id,
+      bankName: bankA.opsName,
+    });
+    expect(daily.destination?.id).toBe(branchA1.id);
+    expect(daily.crew).toBeNull();
+
+    // Billed to A, collected from B — the board shows where the money came from.
+    const cross = row(crossBank);
+    expect(cross.mainBankId).toBe(bankA.id);
+    expect(cross.origin?.bankId).toBe(bankB.id);
+    expect(cross.origin?.bankName).toBe(bankB.opsName);
+
+    // A secured shipment reports on its DELIVERY leg — the van and captain that delivered it.
+    const secured = row(securedDueDispatched);
+    expect(secured.crew?.vehicleId).toBe(vehicleAId);
+    expect(secured.crew?.vehicleCode).toBe('OPS-V1');
+    expect(secured.crew?.captainEmployeeId).toBe(captainId);
+    expect(typeof secured.crew?.captainName).toBe('string');
+    expect(secured.crew?.captainName).not.toBe('');
+
+    // Still a shipment underneath: every field a shipment reader expects is there.
+    expect(secured.shipmentType).toBe('secured');
+    expect(secured.lines.length).toBeGreaterThan(0);
+  });
+
+  // WHICH leg's crew a row prints is the type's rule — the same split the captain report makes:
+  // a daily shipment is reported under the crew that COLLECTED it, a secured one under the crew
+  // that DELIVERED it. The case above only had one leg to choose from. Here each type has a way to
+  // answer wrongly: the daily one is booked WITH its collection crew, and the secured one was
+  // collected the day before by another van and captain, then delivered by van A on the board day.
+  it('prints the crew of the leg the type reports on — collection for daily, delivery for secured', async () => {
+    const { operationsShipmentAssignmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.repository'
     );
+
+    // DAILY, with the collection crew named at booking — the shipment form's own path.
+    const booked = await mkShipment({
+      collectionDate: BOARD_DATE,
+      pickup: { crewAssignmentId: boardCrewId, captainEmployeeId: captainId },
+    });
+    expect(booked.status).toBe(201);
+    const dailyCrewed = data<OperationsShipmentDto>(booked).id;
+    const dailyPickup = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      dailyCrewed,
+      'pickup',
+    );
+    expect(dailyPickup).not.toBeNull();
+
+    // SECURED, collected the day before by van B under its own captain.
+    const PICKUP_DATE = shift(219);
+    const pickupCaptainId = await mkEmployee();
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: PICKUP_DATE, rows: [{ vehicleId: vehicleBId, notes: 'board pickup seed' }] });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: PICKUP_DATE,
+        rows: [{ vehicleId: vehicleBId, captainEmployeeIds: [pickupCaptainId] }],
+      });
+    expect(plan.status).toBe(200);
+    const pickupCrewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleBId)?.crew?.id ??
+      '';
+    expect(pickupCrewId).not.toBe('');
+
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: PICKUP_DATE,
+      deliveryDate: BOARD_DATE,
+      pickup: { crewAssignmentId: pickupCrewId, captainEmployeeId: pickupCaptainId },
+    });
+    expect(created.status).toBe(201);
+    const twoLegs = data<OperationsShipmentDto>(created);
+
+    // ...then into the vault, out on van A under `captainId` on the board day.
+    const received = await request(app)
+      .post(`/api/v1/operations/secured/${twoLegs.id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-BOARD-${twoLegs.id.slice(-5)}`,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: await mkEmployee(),
+        version: twoLegs.version,
+      });
+    expect(received.status).toBe(200);
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${twoLegs.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
+    expect(assigned.status).toBe(200);
+    const dispatched = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ shipmentIds: [twoLegs.id], crewAssignmentId: boardCrewId });
+    expect(dispatched.status).toBe(200);
+
+    // The fixture really has two legs on two different crews — otherwise the board could pass
+    // below by finding only one.
+    const securedPickup = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      twoLegs.id,
+      'pickup',
+    );
+    const securedDelivery = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      twoLegs.id,
+      'delivery',
+    );
+    expect(String(securedPickup?.vehicleId)).toBe(vehicleBId);
+    expect(String(securedPickup?.captainEmployeeId)).toBe(pickupCaptainId);
+    expect(String(securedDelivery?.vehicleId)).toBe(vehicleAId);
+    expect(String(securedDelivery?.captainEmployeeId)).toBe(captainId);
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const rows = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments;
+    const crewOf = (id: string): OperationsDayBoardShipmentDto['crew'] | undefined =>
+      rows.find((r) => r.id === id)?.crew;
+
+    // The daily row prints its COLLECTION leg.
+    expect(crewOf(dailyCrewed)).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleId: String(dailyPickup?.vehicleId),
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: String(dailyPickup?.captainEmployeeId),
+    });
+
+    // The secured row prints who DELIVERED it — van A and `captainId` — never who collected it.
+    // Its crew key is the delivery crew's too, so the van's card names the crew that delivered.
+    expect(crewOf(twoLegs.id)).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+    });
+    expect(crewOf(twoLegs.id)?.vehicleCode).not.toBe('OPS-V2');
+    expect(crewOf(twoLegs.id)?.captainEmployeeId).not.toBe(pickupCaptainId);
+
+    // The captain's «تم التسليم» on a SECURED row is the DELIVERY leg's too. The collection run's
+    // own "delivered" is the cash reaching the VAULT, never the destination branch. The legs are
+    // stamped directly here; the real mobile acts are driven in the daily case below.
+    const { OperationsShipmentAssignmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.model'
+    );
+    const stamp = (id: unknown, set: Record<string, unknown>, unset?: Record<string, 1>) =>
+      OperationsShipmentAssignmentModel.updateOne(
+        { _id: id },
+        unset === undefined ? { $set: set } : { $set: set, $unset: unset },
+      ).exec();
+    const deliveredOnBoard = async (): Promise<string | null | undefined> =>
+      data<{ shipments: OperationsDayBoardShipmentDto[] }>(await board(BOARD_DATE)).shipments.find(
+        (r) => r.id === twoLegs.id,
+      )?.captainDeliveredAt;
+    await stamp(securedPickup?._id, {
+      executionStatus: 'completed',
+      deliveredAt: new Date(`${PICKUP_DATE}T09:00:00.000Z`),
+    });
+    expect(await deliveredOnBoard()).toBeNull();
+    // A leg written before OP-7 carries no execution state at all: read as not started.
+    await stamp(securedDelivery?._id, {}, { executionStatus: 1, deliveredAt: 1 });
+    expect(await deliveredOnBoard()).toBeNull();
+    const atBranch = new Date(`${BOARD_DATE}T11:30:00.000Z`);
+    await stamp(securedDelivery?._id, { executionStatus: 'delivered', deliveredAt: atBranch });
+    expect(await deliveredOnBoard()).toBe(atBranch.toISOString());
+  });
+
+  // «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين و لما اقف على القائد يجيب
+  // بياناته زى ما عاملين فى الحركه»: hovering a van names everyone on it — Fleet's two drivers and
+  // Operations' captain and specialists — and hovering the captain gives the facts the Fleet driver
+  // card prints. Both come from the crew plan, so a reader without `operationsCrew.view` keeps
+  // the board the legacy table printed and gets neither card's crew facts.
+  it('names who rides the van and gives the captain\'s card — behind the crew grant', async () => {
+    // A second leg on van A, booked here so this case does not lean on the ones above: two rows
+    // ride one crew row, and the van's card must still be listed once.
+    const booked = await mkShipment({
+      collectionDate: BOARD_DATE,
+      pickup: { crewAssignmentId: boardCrewId, captainEmployeeId: captainId },
+    });
+    expect(booked.status).toBe(201);
+
+    // What HR itself says about each person — the board must hand on the same facts.
+    const hrRecord = async (
+      id: string,
+    ): Promise<{
+      code: string;
+      personal: { fullNameAr: string; contact: { primaryPhone: string } };
+    }> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/employees/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data(res);
+    };
+    const person = async (employeeId: string) => {
+      const hr = await hrRecord(employeeId);
+      return { employeeId, code: hr.code, fullNameAr: hr.personal.fullNameAr };
+    };
+    const captain = await hrRecord(captainId);
+
+    const res = await board(BOARD_DATE);
+    expect(res.status).toBe(200);
+    const view = data<OperationsDayBoardDto>(res);
+
+    // The captain's card: his employee code, phone and branch, beside the van he drove out in and
+    // the key of the crew row he rides.
+    const secured = view.shipments.find((r) => r.id === securedDueDispatched);
+    expect(secured?.crew).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+      captainCode: captain.code,
+      captainPhone: captain.personal.contact.primaryPhone,
+      captainBranchId: branchId,
+    });
+
+    // One card per crew ROW, not per shipment, and only for crews a row on the board rides.
+    expect(
+      view.shipments.filter((r) => r.crew?.crewAssignmentId === boardCrewId).length,
+    ).toBeGreaterThan(1);
+    expect(view.crews.filter((c) => c.crewAssignmentId === boardCrewId)).toHaveLength(1);
+    const ridden = new Set(view.shipments.map((r) => r.crew?.crewAssignmentId));
+    for (const crew of view.crews) expect(ridden.has(crew.crewAssignmentId)).toBe(true);
+
+    // The van's card: Fleet's drivers in their seat order — BY NAME ONLY («هعرف مين السواقين اللي
+    // عليها، لكن مش عايز اعرف بياناتهم»: a driver's details are Fleet's) — then the crew row slot
+    // by slot, each with the code Operations reads its own people by.
+    const driver = async (employeeId: string) => {
+      const hr = await hrRecord(employeeId);
+      return { employeeId, fullNameAr: hr.personal.fullNameAr };
+    };
+    const vanCard = view.crews.find((c) => c.crewAssignmentId === boardCrewId);
+    expect(vanCard).toEqual({
+      crewAssignmentId: boardCrewId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      drivers: [await driver(boardDriver1Id), await driver(boardDriver2Id)],
+      captains: [await person(captainId)],
+      specialist1: [await person(specialist1Id)],
+      specialist2: [await person(specialist2Id)],
+      direction: 'القاهرة',
+      plannedTime: '08:30',
+    });
+    expect(vanCard?.drivers.map((d) => d.fullNameAr)).toEqual([
+      'سائق اللوحة الأول',
+      'سائق اللوحة الثاني',
+    ]);
+    // Not a key more than the name: no code, no phone, no branch reaches Operations for a driver
+    // — `toEqual` above would let an `undefined` key through, so the keys are pinned outright, and
+    // the drivers' HR codes appear nowhere in the board's answer.
+    for (const d of vanCard?.drivers ?? []) {
+      expect(Object.keys(d).sort()).toEqual(['employeeId', 'fullNameAr']);
+    }
+    const body = JSON.stringify(view);
+    for (const id of [boardDriver1Id, boardDriver2Id]) {
+      expect(body).not.toContain(`"${(await hrRecord(id)).code}"`);
+    }
+
+    // The viewer holds `operationsShipment.view` only: the same rows, the same van and captain
+    // name, but no crew cards and no captain's phone.
+    const viewerRes = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(viewerRes.status).toBe(200);
+    const viewerView = data<OperationsDayBoardDto>(viewerRes);
+    expect(viewerView.crews).toEqual([]);
+    expect(viewerView.shipments.find((r) => r.id === securedDueDispatched)?.crew).toMatchObject({
+      crewAssignmentId: boardCrewId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+      captainName: captain.personal.fullNameAr,
+      captainPhone: null,
+    });
+    const crewedForViewer = viewerView.shipments.filter((r) => r.crew !== null);
+    expect(crewedForViewer.length).toBeGreaterThan(0);
+    for (const row of crewedForViewer) expect(row.crew?.captainPhone).toBeNull();
+  });
+
+  // The van's card reads two rows the shipment does not own: the crew row the leg rides, and the
+  // Fleet duty row that crew row anchors on. Either can be taken off the plan after the leg was
+  // booked, and `findByIdsSystem` hands soft-deleted rows back on purpose. A crew row that is off
+  // the plan puts nobody on the van, and a duty row that is off the plan seats no driver. Neither
+  // may cost the desk its board: the row still prints the van and the captain its own leg names.
+  // On a day of its own, so taking rows away here cannot touch the cases above.
+  it('a crew or duty row taken off the plan leaves the van card empty — never the board', async () => {
+    const GONE_DATE = shift(227);
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: GONE_DATE,
+        rows: [
+          { vehicleId: vehicleAId, driver1EmployeeId: boardDriver1Id },
+          { vehicleId: vehicleBId, driver1EmployeeId: boardDriver2Id },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: GONE_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [specialist2Id] },
+        ],
+      });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    const crewOn = (vehicleId: string) =>
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleId)?.crew;
+    const crewAId = crewOn(vehicleAId)?.id ?? '';
+    const crewBId = crewOn(vehicleBId)?.id ?? '';
+    expect(crewAId).not.toBe('');
+    expect(crewBId).not.toBe('');
+
+    const onA = await mkShipment({
+      collectionDate: GONE_DATE,
+      pickup: { crewAssignmentId: crewAId, captainEmployeeId: captainId },
+    });
+    expect(onA.status, JSON.stringify(onA.body)).toBe(201);
+    const onB = await mkShipment({
+      collectionDate: GONE_DATE,
+      pickup: { crewAssignmentId: crewBId, captainEmployeeId: specialist2Id },
+    });
+    expect(onB.status, JSON.stringify(onB.body)).toBe(201);
+
+    // Both rows come off the plan underneath the legs: van A's crew row, and van B's duty row.
+    const { operationsCrewAssignmentRepository } = await import(
+      '../../src/modules/operations/crew/crew-assignment.repository'
+    );
+    const { fleetDutyAssignmentRepository } = await import(
+      '../../src/modules/operations/fleet-boundary'
+    );
+    await operationsCrewAssignmentRepository.softDeleteById(crewAId, { by: null });
+    const crewB = await operationsCrewAssignmentRepository.getById(crewBId);
+    await fleetDutyAssignmentRepository.softDeleteById(String(crewB.fleetDutyAssignmentId), {
+      by: null,
+    });
+
+    const res = await board(GONE_DATE);
+    expect(res.status).toBe(200);
+    const view = data<OperationsDayBoardDto>(res);
+
+    // The rows still print what their own legs say: the van, the captain, the crew key.
+    const rowOf = (id: string) => view.shipments.find((r) => r.id === id)?.crew;
+    expect(rowOf(data<OperationsShipmentDto>(onA).id)).toMatchObject({
+      crewAssignmentId: crewAId,
+      vehicleId: vehicleAId,
+      vehicleCode: 'OPS-V1',
+      captainEmployeeId: captainId,
+    });
+    expect(rowOf(data<OperationsShipmentDto>(onB).id)).toMatchObject({
+      crewAssignmentId: crewBId,
+      vehicleId: vehicleBId,
+      captainEmployeeId: specialist2Id,
+    });
+
+    // Van A's crew row is gone, so it has no card. Van B keeps its card with its captain, but its
+    // duty row is gone, so nobody drives it.
+    expect(view.crews.map((c) => c.crewAssignmentId)).toEqual([crewBId]);
+    expect(view.crews[0]?.drivers).toEqual([]);
+    expect(view.crews[0]?.captains.map((p) => p.employeeId)).toEqual([specialist2Id]);
+  });
+
+  // «لو تم التسليم من القائد من برا الحالة هتكون تم التسليم بس الصف لونه اصفر ولما ادوس انا على صح
+  // من عندى يبقى الصف اخضر»: the board needs the CAPTAIN's delivery as its own fact beside the
+  // desk's. Driven through the real mobile API, on a day and a captain of its own — the captain's
+  // route is sequential across the whole day, so sharing `captainId`'s board day would put this
+  // stop behind stops other cases booked and never let it start.
+  /** The shipment the case below walks through the captain's steps — its log is read after it. */
+  let deliveredShipmentId = '';
+
+  it('carries when the captain delivered the board leg — and delivering never completes the shipment', async () => {
+    const DELIVERY_BOARD_DATE = shift(225);
+    const { employeeRepository } = await import(
+      '../../src/modules/hr/employee-management/employees/employee.repository'
+    );
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Captain on the board', ar: 'قائد لوحة التشغيل' },
+        permissionKeys: ['operationsExecution.own'],
+      },
+      adminId,
+    );
+    const deliveringCaptainId = await mkEmployee();
+    const userId = await mkUser('board-captain@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const employee = await employeeRepository.getById(deliveringCaptainId);
+    await employeeRepository.updateById(
+      deliveringCaptainId,
+      { userId },
+      { by: null, version: employee.__v },
+    );
+    const captainToken = await login('board-captain@ecms.local');
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELIVERY_BOARD_DATE,
+        rows: [{ vehicleId: vehicleAId, notes: 'delivery seed' }],
+      });
+    expect(roster.status).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELIVERY_BOARD_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [deliveringCaptainId] }],
+      });
+    expect(plan.status).toBe(200);
+    const crewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(crewId).not.toBe('');
+
+    const booked = await mkShipment({
+      collectionDate: DELIVERY_BOARD_DATE,
+      pickup: { crewAssignmentId: crewId, captainEmployeeId: deliveringCaptainId },
+    });
+    expect(booked.status).toBe(201);
+    const shipmentId = data<OperationsShipmentDto>(booked).id;
+    deliveredShipmentId = shipmentId;
+    const { operationsShipmentAssignmentRepository } = await import(
+      '../../src/modules/operations/shipments/shipment-assignment.repository'
+    );
+    const pickupLeg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      shipmentId,
+      'pickup',
+    );
+    const legId = String(pickupLeg?._id ?? '');
+    expect(legId).not.toBe('');
+
+    const rowOnBoard = async (): Promise<OperationsDayBoardShipmentDto> => {
+      const res = await board(DELIVERY_BOARD_DATE);
+      expect(res.status).toBe(200);
+      const found = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+        (r) => r.id === shipmentId,
+      );
+      expect(found).toBeDefined();
+      return found as OperationsDayBoardShipmentDto;
+    };
+    const act = async (step: string): Promise<void> => {
+      const res = await request(app)
+        .post(`/api/v1/operations/mobile/stops/${legId}/${step}`)
+        .set('Authorization', `Bearer ${captainToken}`)
+        .send({});
+      expect(res.status, step).toBe(200);
+    };
+
+    // Before the captain acts: nothing delivered.
+    expect((await rowOnBoard()).captainDeliveredAt).toBeNull();
+
+    // Started and picked up is not delivered — the money is still in the van.
+    await act('start');
+    await act('pickup');
+    expect((await rowOnBoard()).captainDeliveredAt).toBeNull();
+
+    // «تم التسليم» from the captain: stamped on the row, while the shipment itself is untouched —
+    // still `draft`, still not received by the desk (execution.service.ts: deliberately).
+    await act('deliver');
+    const delivered = await rowOnBoard();
+    expect(delivered.captainDeliveredAt).not.toBeNull();
+    expect(Number.isNaN(Date.parse(delivered.captainDeliveredAt ?? ''))).toBe(false);
+    expect(delivered.status).toBe('draft');
+    expect(delivered.receivedAt).toBeNull();
+
+    // The desk ticks it: now completed, and the captain's fact is kept beside the desk's.
+    const completed = await request(app)
+      .post(`/api/v1/operations/shipments/${shipmentId}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: delivered.version });
+    expect(completed.status).toBe(200);
+    const received = await rowOnBoard();
+    expect(received.status).toBe('completed');
+    expect(received.captainDeliveredAt).toBe(delivered.captainDeliveredAt);
+
+    // Un-ticking takes back only the desk's confirmation; what the captain did still stands.
+    const reopened = await request(app)
+      .post(`/api/v1/operations/shipments/${shipmentId}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: received.version });
+    expect(reopened.status).toBe(200);
+    const back = await rowOnBoard();
+    expect(back.status).toBe('draft');
+    expect(back.captainDeliveredAt).toBe(delivered.captainDeliveredAt);
+  });
+
+  it('tells the same story in the shipment\'s log — crewed at booking, each captain step, the desk\'s ✓ and its undo', async () => {
+    expect(deliveredShipmentId).not.toBe('');
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${deliveredShipmentId}/log`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const { entries } = data<OperationsShipmentLogDto>(res);
+    expect(entries.map((e) => e.kind)).toEqual([
+      'created',
+      'crewAssigned',
+      'executionStarted',
+      'executionPickedUp',
+      'executionDelivered',
+      'received',
+      'receiveUndone',
+    ]);
+    // The leg's entries say which leg; the shipment's own say none.
+    expect(entries.map((e) => e.leg)).toEqual([
+      null,
+      'pickup',
+      'pickup',
+      'pickup',
+      'pickup',
+      null,
+      null,
+    ]);
+    expect(entries[1]?.changes).toEqual([
+      { field: 'captain', old: null, new: 'طاقم اختبار' },
+      { field: 'vehicle', old: null, new: 'OPS-V1' },
+    ]);
+    // Oldest first.
+    const at = entries.map((e) => Date.parse(e.at));
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
   it('is empty, not an error, on a day with no work', async () => {
@@ -3157,6 +4024,634 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}&status=draft`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(tampered.status).toBe(400);
+  });
+
+  // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع الشحنات»:
+  // the same board over a range of days. Nested here so it runs on the board's own fixtures — the
+  // property worth proving is that a day in the history IS that day's board, row for row.
+  describe('the shipments history — the day board over from..to', () => {
+    const PICKUP_DATE = shift(219);
+    const history = async (
+      from: string,
+      to: string,
+      token: string = adminToken,
+    ): Promise<request.Response> =>
+      request(app)
+        .get(`/api/v1/operations/shipments/history?from=${from}&to=${to}`)
+        .set('Authorization', `Bearer ${token}`);
+    const historyOf = async (from: string, to: string): Promise<OperationsShipmentHistoryDto> => {
+      const res = await history(from, to);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsShipmentHistoryDto>(res);
+    };
+    const boardIds = async (date: string): Promise<string[]> => {
+      const res = await board(date);
+      expect(res.status).toBe(200);
+      return data<OperationsDayBoardDto>(res).shipments.map((s) => s.id);
+    };
+
+    it('is the union of its days\' boards — daily by collection, secured by delivery once out of the vault', async () => {
+      const view = await historyOf(PICKUP_DATE, OTHER_DATE);
+      const ids = view.shipments.map((s) => s.id);
+
+      // Exactly the three boards together: nothing a board would hide, nothing a board would show
+      // left out, and no row twice.
+      const expected = [
+        ...(await boardIds(PICKUP_DATE)),
+        ...(await boardIds(BOARD_DATE)),
+        ...(await boardIds(OTHER_DATE)),
+      ];
+      expect(new Set(ids).size).toBe(ids.length);
+      expect([...ids].sort()).toEqual([...expected].sort());
+
+      // The union, named: both days' dailies, the secured shipment out of the vault, and never the
+      // one still in it.
+      expect(ids).toEqual(
+        expect.arrayContaining([dailyToday, dailyOtherDay, securedDueDispatched]),
+      );
+      expect(ids).not.toContain(securedDueDraft);
+
+      // Newest created first across the whole range, as on one day.
+      const created = view.shipments.map((s) => new Date(s.createdAt).getTime());
+      expect([...created].sort((a, b) => b - a)).toEqual(created);
+    });
+
+    it('takes both ends inclusive, and leaves out the days outside them', async () => {
+      const oneDay = (await historyOf(BOARD_DATE, BOARD_DATE)).shipments.map((s) => s.id);
+      expect([...oneDay].sort()).toEqual([...(await boardIds(BOARD_DATE))].sort());
+      expect(oneDay).toContain(dailyToday);
+      expect(oneDay).not.toContain(dailyOtherDay); // the day after `to`
+
+      // `to` is the LAST day shown, not the first one left out.
+      const twoDays = (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id);
+      expect(twoDays).toContain(dailyOtherDay);
+
+      // A secured shipment COLLECTED the day before the board day and DELIVERED on it belongs to
+      // its delivery day: in a range that holds the delivery day, absent from one that only holds
+      // the collection day.
+      const collectedBefore = (await historyOf(BOARD_DATE, BOARD_DATE)).shipments.filter(
+        (s) => s.shipmentType === 'secured' && s.collectionDate.slice(0, 10) === PICKUP_DATE,
+      );
+      expect(collectedBefore.length).toBeGreaterThan(0);
+      const pickupDay = (await historyOf(PICKUP_DATE, PICKUP_DATE)).shipments.map((s) => s.id);
+      for (const s of collectedBefore) expect(pickupDay).not.toContain(s.id);
+    });
+
+    it('echoes the resolved days as UTC midnights, whatever time of day it was asked for', async () => {
+      const res = await history(`${BOARD_DATE}T18:45:00.000Z`, `${OTHER_DATE}T01:00:00.000Z`);
+      expect(res.status).toBe(200);
+      const view = data<OperationsShipmentHistoryDto>(res);
+      expect(view.from).toBe(`${BOARD_DATE}T00:00:00.000Z`);
+      expect(view.to).toBe(`${OTHER_DATE}T00:00:00.000Z`);
+      expect(view.shipments.map((s) => s.id)).toEqual(
+        (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id),
+      );
+    });
+
+    it('prints every row and van card exactly as the day board does', async () => {
+      const day = data<OperationsDayBoardDto>(await board(BOARD_DATE));
+      const view = await historyOf(BOARD_DATE, BOARD_DATE);
+      expect(view.shipments).toEqual(day.shipments);
+      expect(view.crews).toEqual(day.crews);
+      // Not vacuous: the board day carries crewed rows and a van card.
+      expect(view.crews.length).toBeGreaterThan(0);
+      expect(
+        view.shipments.find((s) => s.id === securedDueDispatched)?.crew?.captainPhone,
+      ).not.toBeNull();
+
+      // Over several days a van card is still listed once per crew row.
+      const wide = await historyOf(PICKUP_DATE, OTHER_DATE);
+      const cardIds = wide.crews.map((c) => c.crewAssignmentId);
+      expect(new Set(cardIds).size).toBe(cardIds.length);
+      expect(cardIds).toContain(boardCrewId);
+    });
+
+    it('is empty, not an error, over days with no work', async () => {
+      const view = await historyOf(shift(222), shift(223));
+      expect(view.shipments).toEqual([]);
+      expect(view.crews).toEqual([]);
+    });
+
+    it('refuses a backwards, an over-long or an incomplete range — and serves exactly the longest one', async () => {
+      const backwards = await history(OTHER_DATE, BOARD_DATE);
+      expect(backwards.status).toBe(400);
+      expect(errorCode(backwards)).toBe(ErrorCodes.VALIDATION_FAILED);
+
+      // OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS days, counting both ends, is served; one more is not.
+      const first = shift(100);
+      const lastAllowed = shift(100 + OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS - 1);
+      expect((await history(first, lastAllowed)).status).toBe(200);
+      const tooLong = await history(first, shift(100 + OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS));
+      expect(tooLong.status).toBe(400);
+      expect(errorCode(tooLong)).toBe(ErrorCodes.VALIDATION_FAILED);
+
+      const noTo = await request(app)
+        .get(`/api/v1/operations/shipments/history?from=${BOARD_DATE}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(noTo.status).toBe(400);
+      const tampered = await request(app)
+        .get(
+          `/api/v1/operations/shipments/history?from=${BOARD_DATE}&to=${BOARD_DATE}&status=draft`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(tampered.status).toBe(400);
+    });
+
+    it('keeps the crew plan behind its grant — the same rows for a reader without it, no cards, no phone', async () => {
+      const res = await history(BOARD_DATE, OTHER_DATE, viewerToken);
+      expect(res.status).toBe(200);
+      const view = data<OperationsShipmentHistoryDto>(res);
+      expect(view.crews).toEqual([]);
+      expect(view.shipments.map((s) => s.id)).toEqual(
+        (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id),
+      );
+      const crewed = view.shipments.filter((s) => s.crew !== null);
+      expect(crewed.length).toBeGreaterThan(0);
+      for (const row of crewed) {
+        expect(row.crew?.captainPhone).toBeNull();
+        // Still the van and the captain's name the legacy table printed.
+        expect(row.crew?.vehicleCode).toBe('OPS-V1');
+      }
+    });
+
+    it('RBAC — needs operationsShipment.view; the crew grant alone does not open it', async () => {
+      const anonymous = await request(app).get(
+        `/api/v1/operations/shipments/history?from=${BOARD_DATE}&to=${BOARD_DATE}`,
+      );
+      expect(anonymous.status).toBe(401);
+
+      const crewOnly = await rbacService.createRole(
+        { name: { en: 'Crew reader', ar: 'قارئ الطاقم' }, permissionKeys: ['operationsCrew.view'] },
+        adminId,
+      );
+      const userId = await mkUser('ops-history-crew@ecms.local');
+      await rbacService.ensureAssignment(userId, String(crewOnly._id), 'organization');
+      const res = await history(BOARD_DATE, BOARD_DATE, await login('ops-history-crew@ecms.local'));
+      expect(res.status).toBe(403);
+    });
+
+    // The cap is the REAL one — `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` rows really stored — rather
+    // than a test-only knob in the service: what is proven is the guard production runs. The rows
+    // go straight into the collection (the API would take minutes to book 5,000 shipments) on two
+    // days nothing else uses, and are taken out again whatever happens.
+    it('refuses a range holding more than OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS shipments — counted, never loaded, never cut short', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const HEAVY_DATE = shift(228);
+      const HEAVY_NEXT = shift(229);
+      const MARK = 'history-cap-fixture';
+      const row = (over: Record<string, unknown> = {}) => ({
+        shipmentType: 'daily',
+        status: 'draft',
+        mainBankId: bankA.id,
+        secondaryBankId: null,
+        originBranchId: branchA1.id,
+        destinationBranchId: branchA1.id,
+        areaName: null,
+        lines: [{ currencyId: egp.id, amountMinor: 100 }],
+        collectionDate: new Date(`${HEAVY_DATE}T00:00:00.000Z`),
+        deliveryDate: null,
+        receiptNumber: null,
+        vaultReceiptNumber: null,
+        serialTracked: false,
+        notes: MARK,
+        receivedById: null,
+        receivedAt: null,
+        ...over,
+      });
+      try {
+        await OperationsShipmentModel.insertMany([
+          // Exactly the cap on the first day...
+          ...Array.from({ length: OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS }, () => row()),
+          // ...beside two rows that are NOT on its board, so cannot count towards the cap: a secured
+          // shipment due that day but still in the vault, and a deleted daily one.
+          row({
+            shipmentType: 'secured',
+            deliveryDate: new Date(`${HEAVY_DATE}T00:00:00.000Z`),
+          }),
+          row({ isDeleted: true, deletedAt: new Date() }),
+          // ...and one more on the next day.
+          row({ collectionDate: new Date(`${HEAVY_NEXT}T00:00:00.000Z`) }),
+        ]);
+
+        // At the cap: served, whole.
+        const atCap = await historyOf(HEAVY_DATE, HEAVY_DATE);
+        expect(atCap.shipments).toHaveLength(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS);
+
+        // One over: refused with both figures, and refused on the COUNT — the rows are never read.
+        const load = vi.spyOn(operationsShipmentRepository, 'boardInRange');
+        try {
+          const over = await history(HEAVY_DATE, HEAVY_NEXT);
+          expect(over.status).toBe(422);
+          expect(errorCode(over)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE);
+          const details = (
+            over.body as { error: { details: { field: string; message: string }[] } }
+          ).error.details;
+          expect(details).toEqual([
+            expect.objectContaining({
+              field: 'count',
+              message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS + 1),
+            }),
+            expect.objectContaining({
+              field: 'max',
+              message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS),
+            }),
+          ]);
+          expect(load).not.toHaveBeenCalled();
+        } finally {
+          load.mockRestore();
+        }
+      } finally {
+        await OperationsShipmentModel.deleteMany({ notes: MARK }).exec();
+      }
+      expect((await historyOf(HEAVY_DATE, HEAVY_NEXT)).shipments).toEqual([]);
+    }, 60_000);
+  });
+});
+
+describe('the shipment receipt image — «صورة الإيصال», the Fleet receipts\' twin', () => {
+  // NO legacy counterpart: main_ops.ejs never held a photo. The owner asked for the vehicles
+  // screen's image column on the board, so this is Fleet's receipt-photo flow on a shipment —
+  // Files owns the bytes, the row keeps the link, and the shipment's own grants guard both.
+  const IMAGE_DATE = shift(226);
+
+  /** A 1×1 PNG — a real image, so the category's mime check passes on its true bytes. */
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  /** A DIFFERENT 1×1 PNG, so a replace can be told from the photo it replaced by its bytes. */
+  const PNG_2 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGMQaPgAAAIkAYFvkeRkAAAAAElFTkSuQmCC',
+    'base64',
+  );
+
+  const imageUrl = (id: string): string => `/api/v1/operations/shipments/${id}/receipt-image`;
+  const upload = (id: string, body: Buffer = PNG, name = 'receipt.png', token = adminToken) =>
+    request(app)
+      .post(imageUrl(id))
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', body, name);
+  const fresh = async (): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(await mkShipment({ collectionDate: IMAGE_DATE }));
+  const readBack = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const bytesOf = async (id: string): Promise<Buffer> => {
+    const res = await request(app)
+      .get(imageUrl(id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse((r, done) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (chunk: Buffer) => chunks.push(chunk));
+        r.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    return res.body as Buffer;
+  };
+  /** The desk's ✓ (or its undo) — a write on the SAME row that has nothing to do with the photo. */
+  const tick = async (id: string, step: 'complete' | 'reopen'): Promise<void> => {
+    const res = await request(app)
+      .post(`/api/v1/operations/shipments/${id}/${step}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await readBack(id)).version });
+    expect(res.status, step).toBe(200);
+  };
+
+  it('starts with no image', async () => {
+    const shipment = await fresh();
+    expect(shipment.receiptImage).toBeNull();
+    const res = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404); // absent is absent, not an empty body
+  });
+
+  it('uploads the photo, links it to the shipment, and serves the bytes back with their type', async () => {
+    const shipment = await fresh();
+    const res = await upload(shipment.id);
+    expect(res.status).toBe(200);
+    const updated = data<OperationsShipmentDto>(res);
+    expect(updated.receiptImage).toMatchObject({
+      fileName: 'receipt.png',
+      mime: 'image/png',
+      size: PNG.length,
+    });
+    expect(updated.receiptImage?.fileId).toMatch(/^[a-f0-9]{24}$/);
+    expect(Number.isNaN(Date.parse(updated.receiptImage?.uploadedAt ?? ''))).toBe(false);
+    // A real write on the row — a form still holding the old version must refetch.
+    expect(updated.version).toBeGreaterThan(shipment.version);
+
+    const bytes = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse((r, done) => {
+        const chunks: Buffer[] = [];
+        r.on('data', (chunk: Buffer) => chunks.push(chunk));
+        r.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['content-type']).toContain('image/png');
+    // Private document: no shared cache may keep it.
+    expect(bytes.headers['cache-control']).toContain('no-store');
+    expect(Buffer.compare(bytes.body as Buffer, PNG)).toBe(0);
+  });
+
+  it('a second upload REPLACES the photo — one current receipt per shipment', async () => {
+    const shipment = await fresh();
+    const first = data<OperationsShipmentDto>(await upload(shipment.id));
+    const second = await upload(shipment.id, PNG_2, 'receipt-2.png');
+    expect(second.status).toBe(200);
+    const replaced = data<OperationsShipmentDto>(second).receiptImage;
+    expect(replaced?.fileName).toBe('receipt-2.png');
+    // A new version is a new file id, and the GET serves ITS bytes — not the first photo's.
+    expect(replaced?.fileId).not.toBe(first.receiptImage?.fileId);
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG_2)).toBe(0);
+  });
+
+  it('keeps an Arabic file name as the person named it — not multer\'s latin1 reading of it', async () => {
+    // Multer 2 reads a multipart `filename` as latin1, so «إيصال ١.png» would arrive as mojibake
+    // unless the controller turns it back (Fleet's `uploadFileName` rule).
+    const name = 'إيصال ١.png';
+    const shipment = await fresh();
+    const res = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', PNG, { filename: name, contentType: 'image/png' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const image = data<OperationsShipmentDto>(res).receiptImage;
+    expect(image?.fileName).toBe(name);
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe(name);
+    // The platform Files row (and so its audit entry) carries the same, real name.
+    const { FileModel } = await import('../../src/platform/files/file.model');
+    expect((await FileModel.findById(image?.fileId).lean().exec())?.originalName).toBe(name);
+  });
+
+  it('REJECTS an oversized photo — the category caps it at 10 MB', async () => {
+    const shipment = await fresh();
+    const res = await upload(shipment.id, Buffer.alloc(11 * 1024 * 1024, 1), 'huge.png');
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe(ErrorCodes.FILE_TOO_LARGE);
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+  });
+
+  it('the day board row carries the photo, so the column needs no second read', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${IMAGE_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const row = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+      (r) => r.id === shipment.id,
+    );
+    expect(row?.receiptImage).toMatchObject({ fileName: 'receipt.png', mime: 'image/png' });
+  });
+
+  it('deletes the photo and keeps the SHIPMENT; a second delete finds nothing to delete', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+    const res = await request(app)
+      .delete(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<OperationsShipmentDto>(res).receiptImage).toBeNull();
+
+    const still = await readBack(shipment.id);
+    expect(still.receiptImage).toBeNull();
+    expect(still.lines).toEqual(shipment.lines);
+    expect(
+      (await request(app).get(imageUrl(shipment.id)).set('Authorization', `Bearer ${adminToken}`))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await request(app)
+          .delete(imageUrl(shipment.id))
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(409);
+  });
+
+  it('REJECTS a non-image — the file category is the authority, and it allows images only', async () => {
+    const shipment = await fresh();
+    const pdf = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('%PDF-1.4 not an image'), {
+        filename: 'receipt.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(pdf.status).toBe(422);
+    expect(errorCode(pdf)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED);
+    const text = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', Buffer.from('not an image either'), {
+        filename: 'receipt.txt',
+        contentType: 'text/plain',
+      });
+    expect(text.status).toBe(422);
+    expect(errorCode(text)).toBe(ErrorCodes.FILE_TYPE_NOT_ALLOWED);
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+  });
+
+  it('refuses an upload with no file part instead of crashing on it', async () => {
+    const shipment = await fresh();
+    const res = await request(app)
+      .post(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('RBAC — view may see the photo, only edit may change it, and nobody anonymous', async () => {
+    const shipment = await fresh();
+    await upload(shipment.id);
+
+    // The viewer holds operationsShipment.view only: may look, may not upload or delete.
+    const seen = await request(app)
+      .get(imageUrl(shipment.id))
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(seen.status).toBe(200);
+    expect((await upload(shipment.id, PNG, 'viewer.png', viewerToken)).status).toBe(403);
+    expect(
+      (
+        await request(app)
+          .delete(imageUrl(shipment.id))
+          .set('Authorization', `Bearer ${viewerToken}`)
+      ).status,
+    ).toBe(403);
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe('receipt.png');
+
+    expect((await request(app).get(imageUrl(shipment.id))).status).toBe(401);
+    expect(
+      (await request(app).post(imageUrl(shipment.id)).attach('file', PNG, 'x.png')).status,
+    ).toBe(401);
+    expect((await request(app).delete(imageUrl(shipment.id))).status).toBe(401);
+  });
+
+  it('the platform file endpoints ask the SHIPMENT grants too — nobody goes around them (ADR-023)', async () => {
+    // Knowing the FILE id must be no better than knowing the shipment id. Both callers below hold
+    // the platform's own file grants, so the route lets them in and only the operations authorizer
+    // stands between them and the photo: read on `operationsShipment.view`, write on `.edit`.
+    const shipment = await fresh();
+    const fileId =
+      data<OperationsShipmentDto>(await upload(shipment.id)).receiptImage?.fileId ?? '';
+    expect(fileId).not.toBe('');
+    const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+      const role = await rbacService.createRole(
+        { name: { en: `Receipt files ${email}`, ar: `ملفات الإيصالات ${email}` }, permissionKeys },
+        adminId,
+      );
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+      return login(email);
+    };
+    const fileGrants = ['file.view', 'file.download', 'file.edit'];
+    const outsider = await tokenWith('receipt-outsider@ecms.local', fileGrants);
+    const looker = await tokenWith('receipt-looker@ecms.local', [
+      'operationsShipment.view',
+      ...fileGrants,
+    ]);
+    const replaceVia = (token: string) =>
+      request(app)
+        .post(`/api/v1/platform/files/${fileId}/replace`)
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', PNG_2, 'around.png');
+
+    // No shipment grant: to a reader the photo does not exist (ADR-023 answers reads with 404),
+    // and a write is refused.
+    for (const path of [
+      `/api/v1/platform/files/${fileId}`,
+      `/api/v1/platform/files/${fileId}/download`,
+    ]) {
+      const res = await request(app).get(path).set('Authorization', `Bearer ${outsider}`);
+      expect(res.status, path).toBe(404);
+    }
+    expect((await replaceVia(outsider)).status).toBe(403);
+
+    // `.view` sees it through the platform as well — but `.view` is not `.edit`.
+    const meta = await request(app)
+      .get(`/api/v1/platform/files/${fileId}`)
+      .set('Authorization', `Bearer ${looker}`);
+    expect(meta.status).toBe(200);
+    const download = await request(app)
+      .get(`/api/v1/platform/files/${fileId}/download`)
+      .set('Authorization', `Bearer ${looker}`);
+    expect(download.status).toBe(302);
+    expect((await replaceVia(looker)).status).toBe(403);
+    expect((await readBack(shipment.id)).receiptImage?.fileId).toBe(fileId);
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG)).toBe(0);
+  });
+
+  it('a desk ✓ that lands mid-upload costs neither the ✓ nor the photo', async () => {
+    // The race the version guard meets most on a busy board: the photo is still being stored
+    // when the desk ticks the row. That write was about the STATUS, so both must stand.
+    const { fileService } = await import('../../src/platform/files');
+    const shipment = await fresh();
+    const realUpload = fileService.upload.bind(fileService);
+    const spy = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+      const stored = await realUpload(...args);
+      await tick(shipment.id, 'complete');
+      return stored;
+    });
+    try {
+      const res = await upload(shipment.id);
+      expect(res.status).toBe(200);
+      expect(data<OperationsShipmentDto>(res)).toMatchObject({
+        status: 'completed',
+        receiptImage: { fileName: 'receipt.png' },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a REPLACE that meets a desk ✓ mid-flight never strands the photo on a superseded version', async () => {
+    // Worse than a 409: by the time the row write runs, Files has already made the old photo a
+    // superseded version, and Files never replaces a superseded version. A row left pointing at
+    // it could never take another photo — every later upload would be refused.
+    const { fileService } = await import('../../src/platform/files');
+    const shipment = await fresh();
+    expect((await upload(shipment.id)).status).toBe(200);
+    const realReplace = fileService.replace.bind(fileService);
+    const spy = vi.spyOn(fileService, 'replace').mockImplementationOnce(async (...args) => {
+      const stored = await realReplace(...args);
+      await tick(shipment.id, 'complete');
+      return stored;
+    });
+    let raced: request.Response;
+    try {
+      raced = await upload(shipment.id, PNG_2, 'receipt-2.png');
+    } finally {
+      spy.mockRestore();
+    }
+    const after = await upload(shipment.id, PNG, 'receipt-3.png');
+    expect([raced.status, after.status]).toEqual([200, 200]);
+    expect(data<OperationsShipmentDto>(raced)).toMatchObject({
+      status: 'completed',
+      receiptImage: { fileName: 'receipt-2.png' },
+    });
+    expect(Buffer.compare(await bytesOf(shipment.id), PNG)).toBe(0);
+  });
+
+  it('a photo someone ELSE put on the row mid-upload wins — a 409, and the loser is not left behind', async () => {
+    const { fileService } = await import('../../src/platform/files');
+    const { FileModel } = await import('../../src/platform/files/file.model');
+    const shipment = await fresh();
+    let losing = '';
+    const realUpload = fileService.upload.bind(fileService);
+    const spy = vi.spyOn(fileService, 'upload').mockImplementationOnce(async (...args) => {
+      const stored = await realUpload(...args);
+      losing = String(stored._id);
+      // A second desk's photo lands first. Its own upload reaches the real service: this mock
+      // answers once only.
+      expect((await upload(shipment.id, PNG_2, 'theirs.png')).status).toBe(200);
+      return stored;
+    });
+    try {
+      const res = await upload(shipment.id, PNG, 'mine.png');
+      expect(res.status).toBe(409);
+      expect(errorCode(res)).toBe(ErrorCodes.STALE_DOCUMENT);
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await readBack(shipment.id)).receiptImage?.fileName).toBe('theirs.png');
+    expect(losing).not.toBe('');
+    expect((await FileModel.findById(losing).lean().exec())?.isDeleted).toBe(true);
+  });
+
+  it('a row written before the column existed reads as "no photo", with no migration', async () => {
+    const shipment = await fresh();
+    const { OperationsShipmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment.model'
+    );
+    await OperationsShipmentModel.updateOne(
+      { _id: shipment.id },
+      { $unset: { receiptImage: 1 } },
+    ).exec();
+    const raw = await OperationsShipmentModel.findById(shipment.id).lean().exec();
+    expect(raw !== null && 'receiptImage' in raw).toBe(false);
+
+    expect((await readBack(shipment.id)).receiptImage).toBeNull();
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${IMAGE_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const row = data<{ shipments: OperationsDayBoardShipmentDto[] }>(res).shipments.find(
+      (r) => r.id === shipment.id,
+    );
+    expect(row?.receiptImage).toBeNull();
+    // ...and the first upload onto such a row works like any other.
+    expect((await upload(shipment.id)).status).toBe(200);
   });
 });
 
@@ -4025,6 +5520,95 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     expect(rows[0]?.opsAreaName).toBe('حلوان');
   });
 
+  // The shipment form filters a bank's branches as the operator types. Before the search was
+  // escaped, a typed "(" reached $regex as a pattern and the request failed with a 500; "." matched
+  // any character.
+  it('9b. searches for the text typed, brackets and dots included', async () => {
+    const make = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع (المعادي) 2.0', code: 'V-9' });
+    expect(make.status).toBe(201);
+
+    const bracket = await request(app)
+      .get(
+        `/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent('(المعادي')}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bracket.status).toBe(200);
+    expect((bracket.body as { data: OperationsBankBranchDto[] }).data.map((b) => b.code)).toEqual([
+      'V-9',
+    ]);
+
+    // Syntax is text: read as a pattern, ".*" would match every branch of the bank (this one
+    // included); read as text, no branch name contains it.
+    const wildcard = await request(app)
+      .get(`/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent('.*')}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(wildcard.status).toBe(200);
+    expect((wildcard.body as { data: OperationsBankBranchDto[] }).data).toEqual([]);
+  });
+
+  // A search miss on a spelling variant is how a duplicate branch is born: the operator typed
+  // «الاسكندريه», the catalog held «الإسكندرية», nothing came back, and the form offered to add it
+  // «كفرع جديد». The folding runs inside Mongo's own regex engine here, not only in a unit test.
+  it('9b2. finds a branch whatever hamza or taa marbuta the operator typed', async () => {
+    const make = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع الإسكندرية', code: 'V-10' });
+    expect(make.status).toBe(201);
+
+    const codesFor = async (search: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(
+          `/api/v1/operations/bank-branches?bankId=${vaultBank.id}&search=${encodeURIComponent(search)}`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: OperationsBankBranchDto[] }).data.map((b) => b.code);
+    };
+
+    expect(await codesFor('الاسكندريه')).toEqual(['V-10']); // no hamza, haa for taa marbuta
+    expect(await codesFor('اسكندرية')).toEqual(['V-10']); // no article, no hamza
+    expect(await codesFor('الإسْكَنْدَرِيَّة')).toEqual(['V-10']); // typed with tashkeel
+    // Still a literal underneath: a bracket beside a folded letter is text, not a group.
+    expect(await codesFor('(الاسكندريه')).toEqual([]);
+    // A long paste is still a search, not a 500: folded in full, 600 letters is a pattern mongod
+    // refuses as longer than its limit.
+    expect(await codesFor('الاسكندريه'.repeat(60))).toEqual([]);
+
+    // And the other side: a name STORED with tashkeel and tatweel is found by its bare letters.
+    const marked = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: vaultBank.id, name: 'فرع دَمَنْهُـور', code: 'V-11' });
+    expect(marked.status).toBe(201);
+    expect(await codesFor('دمنهور')).toEqual(['V-11']);
+  });
+
+  // A shipment's edit form names its branches — and the bank the money came from — by reading the
+  // branch it holds; listing a whole bank's branches would stop at one page.
+  it('9c. reads one branch by id on the shipment grant, and 404s an unknown one', async () => {
+    const one = await request(app)
+      .get(`/api/v1/operations/bank-branches/${branchA1.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(one.status).toBe(200);
+    expect(data<OperationsBankBranchDto>(one)).toMatchObject({
+      id: branchA1.id,
+      bankId: bankA.id,
+      name: 'فرع المهندسين',
+      code: 'A-101',
+    });
+
+    const missing = await request(app)
+      .get('/api/v1/operations/bank-branches/00000000000000000000dead')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(missing.status).toBe(404);
+
+    expect((await request(app).get(`/api/v1/operations/bank-branches/${branchA1.id}`)).status).toBe(401);
+  });
+
   it('10. reads ride the shipment grant; writes need the catalog grant', async () => {
     const read = await request(app)
       .get('/api/v1/operations/areas')
@@ -4033,5 +5617,357 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
     const write = await area({ name: 'العبور' }, viewerToken);
     expect(write.status).toBe(403);
+  });
+});
+
+// «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة»: every act on one shipment, oldest first, in names —
+// read from the audit trail, never stored twice. The board-day cases above read the crew, the
+// captain's steps and the vault from it; this one walks the desk's own acts end to end.
+describe('the shipment action log — GET /operations/shipments/:id/log', () => {
+  const LOG_DATE = shift(415);
+  const LATER_DATE = shift(416);
+  /** A 1×1 PNG — a real image, so the receipt category's mime check passes on its true bytes. */
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const logOf = (id: string, token: string | null = adminToken): Promise<request.Response> => {
+    const call = request(app).get(`/api/v1/operations/shipments/${id}/log`);
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const as = (res: request.Response): OperationsShipmentDto => {
+    expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
+    return data<OperationsShipmentDto>(res);
+  };
+  let storyId = '';
+
+  it('tells one shipment\'s story oldest first — booked, edited in names, received and undone, the photo, deleted, restored', async () => {
+    const booked = as(
+      await mkShipment({
+        collectionDate: LOG_DATE,
+        lines: [{ currencyId: egp.id, amount: 1500.5 }],
+        notes: 'أولى',
+      }),
+    );
+    storyId = booked.id;
+    const edited = as(
+      await request(app)
+        .patch(`/api/v1/operations/shipments/${booked.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          originBranchId: branchB1.id,
+          lines: [{ currencyId: egp.id, amount: 2000 }],
+          collectionDate: LATER_DATE,
+          serialTracked: true,
+          notes: 'ثانية',
+          version: booked.version,
+        }),
+    );
+    const received = as(
+      await request(app)
+        .post(`/api/v1/operations/shipments/${booked.id}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: edited.version }),
+    );
+    as(
+      await request(app)
+        .post(`/api/v1/operations/shipments/${booked.id}/reopen`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: received.version }),
+    );
+    as(
+      await request(app)
+        .post(`/api/v1/operations/shipments/${booked.id}/receipt-image`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .attach('file', PNG, 'receipt.png'),
+    );
+    as(
+      await request(app)
+        .delete(`/api/v1/operations/shipments/${booked.id}/receipt-image`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const deleted = await request(app)
+      .delete(`/api/v1/operations/shipments/${booked.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleted.status).toBe(204);
+
+    // A DELETED shipment still answers — the deleted list is where its story is wanted most.
+    const whileDeleted = await logOf(booked.id);
+    expect(whileDeleted.status, JSON.stringify(whileDeleted.body)).toBe(200);
+    expect(data<OperationsShipmentLogDto>(whileDeleted).entries.at(-1)?.kind).toBe('deleted');
+
+    as(
+      await request(app)
+        .post(`/api/v1/operations/shipments/${booked.id}/restore`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+    const res = await logOf(booked.id);
+    expect(res.status).toBe(200);
+    const log = data<OperationsShipmentLogDto>(res);
+    expect(log).toMatchObject({ shipmentId: booked.id, truncated: false });
+    expect(log.entries.map((e) => e.kind)).toEqual([
+      'created',
+      'edited',
+      'received',
+      'receiveUndone',
+      'receiptImageAdded',
+      'receiptImageRemoved',
+      'deleted',
+      'restored',
+    ]);
+    const [created, edit] = log.entries;
+    // The first values, printed as the board prints them — never the type or the status.
+    expect(created?.changes).toEqual([
+      { field: 'mainBank', old: null, new: 'الأهلي' },
+      { field: 'originBranch', old: null, new: 'فرع المهندسين (A-101)' },
+      { field: 'destinationBranch', old: null, new: 'فرع المهندسين (A-101)' },
+      { field: 'lines', old: null, new: 'مصري 1,500.5' },
+      { field: 'collectionDate', old: null, new: LOG_DATE },
+      { field: 'serialTracked', old: null, new: 'false' },
+      { field: 'notes', old: null, new: 'أولى' },
+    ]);
+    // Each changed field, old → new, resolved on the server: the branch by name and code, the
+    // money as «currency amount» from minor units, the day as YYYY-MM-DD, the flag as true/false.
+    expect(edit?.changes).toEqual([
+      { field: 'originBranch', old: 'فرع المهندسين (A-101)', new: 'فرع وسط البلد (B-201)' },
+      { field: 'lines', old: 'مصري 1,500.5', new: 'مصري 2,000' },
+      { field: 'collectionDate', old: LOG_DATE, new: LATER_DATE },
+      { field: 'serialTracked', old: 'false', new: 'true' },
+      { field: 'notes', old: 'أولى', new: 'ثانية' },
+    ]);
+    for (const entry of log.entries) {
+      expect(entry.actorName).toBe('م م');
+      expect(entry.leg).toBeNull();
+    }
+    // The photo's file id, like every other id, never reaches a value.
+    expect(JSON.stringify(log.entries.map((e) => e.changes))).not.toMatch(/[0-9a-f]{24}/);
+    const at = log.entries.map((e) => Date.parse(e.at));
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+  });
+
+  it('RBAC — whoever may see the shipment reads its story; nobody else, and never anonymously', async () => {
+    expect(storyId).not.toBe('');
+    expect((await logOf(storyId, viewerToken)).status).toBe(200);
+    expect((await logOf(storyId, null)).status).toBe(401);
+
+    const crewOnly = await rbacService.createRole(
+      {
+        name: { en: 'Crew log reader', ar: 'قارئ الطاقم للسجل' },
+        permissionKeys: ['operationsCrew.view'],
+      },
+      adminId,
+    );
+    const userId = await mkUser('ops-log-crew@ecms.local');
+    await rbacService.ensureAssignment(userId, String(crewOnly._id), 'organization');
+    expect((await logOf(storyId, await login('ops-log-crew@ecms.local'))).status).toBe(403);
+  });
+
+  it('404s a shipment that never existed, and 400s an id that is not one', async () => {
+    expect((await logOf('00000000000000000000beef')).status).toBe(404);
+    expect((await logOf('not-an-id')).status).toBe(400);
+  });
+});
+
+// «عاوز عادى يعدل و يحذف … واللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح»: what was deleted from
+// the history's days, and the way back. The list is the history's own union over deleted rows, so
+// what it shows is exactly what a restore puts back on that history.
+describe('the deleted shipments and restore — «اقدر اجيب منه اللى اتمسح»', () => {
+  const DELETED_DATE = shift(418);
+  const NEXT_DATE = shift(419);
+  const OUTSIDE_DATE = shift(420);
+  const deletedList = (
+    from: string,
+    to: string,
+    token: string | null = adminToken,
+  ): Promise<request.Response> => {
+    const call = request(app).get(`/api/v1/operations/shipments/deleted?from=${from}&to=${to}`);
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const deletedOf = async (from: string, to: string): Promise<OperationsDeletedShipmentsDto> => {
+    const res = await deletedList(from, to);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsDeletedShipmentsDto>(res);
+  };
+  const remove = async (id: string): Promise<void> => {
+    const res = await request(app)
+      .delete(`/api/v1/operations/shipments/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(204);
+  };
+  const restore = (id: string, token: string = adminToken): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/shipments/${id}/restore`)
+      .set('Authorization', `Bearer ${token}`);
+  const historyIds = async (from: string, to: string): Promise<string[]> => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/history?from=${from}&to=${to}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<OperationsShipmentHistoryDto>(res).shipments.map((s) => s.id);
+  };
+  const idOf = async (overrides: Record<string, unknown>): Promise<string> => {
+    const res = await mkShipment(overrides);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<OperationsShipmentDto>(res).id;
+  };
+
+  /** Deleted from DELETED_DATE's board, crewed on van A under `captainId`. */
+  let crewedDeleted = '';
+  /** Deleted from NEXT_DATE's board, after `crewedDeleted` — so newest deleted first. */
+  let laterDeleted = '';
+  let kept = '';
+  let securedInVaultDeleted = '';
+  let outsideDeleted = '';
+
+  beforeAll(async () => {
+    // Van A goes out on the deleted day with `captainId`, so one deleted row carries a crew — the
+    // crew plan must stay behind its grant here exactly as on the history.
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: DELETED_DATE, rows: [{ vehicleId: vehicleAId, notes: 'deleted-list seed' }] });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: DELETED_DATE,
+        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
+      });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    const crewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(crewId).not.toBe('');
+
+    crewedDeleted = await idOf({
+      collectionDate: DELETED_DATE,
+      pickup: { crewAssignmentId: crewId, captainEmployeeId: captainId },
+    });
+    laterDeleted = await idOf({ collectionDate: NEXT_DATE });
+    kept = await idOf({ collectionDate: DELETED_DATE });
+    // Due on the deleted day but never out of the vault: not on that day's board, so not on its
+    // deleted list either — a restore would not put it on the history.
+    securedInVaultDeleted = await idOf({ shipmentType: 'secured', deliveryDate: DELETED_DATE });
+    outsideDeleted = await idOf({ collectionDate: OUTSIDE_DATE });
+
+    await remove(crewedDeleted);
+    await remove(securedInVaultDeleted);
+    await remove(outsideDeleted);
+    await remove(laterDeleted);
+  });
+
+  it('lists what was deleted from the range\'s boards — newest deleted first, with when and by whom', async () => {
+    const view = await deletedOf(DELETED_DATE, NEXT_DATE);
+    expect(view.from).toBe(`${DELETED_DATE}T00:00:00.000Z`);
+    expect(view.to).toBe(`${NEXT_DATE}T00:00:00.000Z`);
+    expect(view.shipments.map((s) => s.id)).toEqual([laterDeleted, crewedDeleted]);
+
+    const row = view.shipments.find((s) => s.id === crewedDeleted);
+    expect(row?.deletedByName).toBe('م م');
+    expect(Number.isNaN(Date.parse(row?.deletedAt ?? ''))).toBe(false);
+    // Enriched exactly as a board row is: the branches by name, and the crew of its leg.
+    expect(row?.origin).toMatchObject({
+      id: branchA1.id,
+      name: 'فرع المهندسين',
+      bankName: 'الأهلي',
+    });
+    expect(row?.crew).toMatchObject({ captainEmployeeId: captainId, vehicleCode: 'OPS-V1' });
+    expect(row?.crew?.captainPhone).not.toBeNull();
+    expect(view.crews.map((c) => c.crewAssignmentId)).toEqual([row?.crew?.crewAssignmentId]);
+
+    // Deleted rows are off the history; the one kept is on it.
+    const onHistory = await historyIds(DELETED_DATE, NEXT_DATE);
+    expect(onHistory).toContain(kept);
+    expect(onHistory).not.toContain(crewedDeleted);
+    expect(onHistory).not.toContain(laterDeleted);
+  });
+
+  it('keeps the crew plan behind its grant, as the history does', async () => {
+    const res = await deletedList(DELETED_DATE, NEXT_DATE, viewerToken);
+    expect(res.status).toBe(200);
+    const view = data<OperationsDeletedShipmentsDto>(res);
+    expect(view.crews).toEqual([]);
+    const row = view.shipments.find((s) => s.id === crewedDeleted);
+    expect(row?.crew?.captainPhone).toBeNull();
+    expect(row?.crew?.vehicleCode).toBe('OPS-V1');
+  });
+
+  it('takes the history\'s range rules — whole days, both ends inclusive, never backwards', async () => {
+    expect((await deletedOf(DELETED_DATE, DELETED_DATE)).shipments.map((s) => s.id)).toEqual([
+      crewedDeleted,
+    ]);
+    expect((await deletedOf(OUTSIDE_DATE, OUTSIDE_DATE)).shipments.map((s) => s.id)).toEqual([
+      outsideDeleted,
+    ]);
+    expect((await deletedList(NEXT_DATE, DELETED_DATE)).status).toBe(400);
+    expect((await deletedList(DELETED_DATE, shift(418 + 366))).status).toBe(400);
+    expect((await deletedOf(shift(421), shift(422))).shipments).toEqual([]);
+  });
+
+  it('restores a deleted shipment onto its day\'s board with its legs, audits it, and announces it', async () => {
+    const res = await restore(crewedDeleted);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(res).id).toBe(crewedDeleted);
+
+    const board = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${DELETED_DATE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const back = data<OperationsDayBoardDto>(board).shipments.find((s) => s.id === crewedDeleted);
+    expect(back).toBeDefined();
+    // The delete never touched its leg, so the crew it had is the crew it has.
+    expect(back?.crew).toMatchObject({ captainEmployeeId: captainId, vehicleCode: 'OPS-V1' });
+    expect(await historyIds(DELETED_DATE, NEXT_DATE)).toContain(crewedDeleted);
+    expect((await deletedOf(DELETED_DATE, NEXT_DATE)).shipments.map((s) => s.id)).toEqual([
+      laterDeleted,
+    ]);
+
+    const { AuditLogModel } = await import('../../src/platform/audit/audit.model');
+    const audited = await AuditLogModel.find({
+      'entityRef.entityType': 'shipment',
+      'entityRef.entityId': crewedDeleted,
+      action: 'restore',
+    })
+      .lean()
+      .exec();
+    expect(audited).toHaveLength(1);
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.ShipmentRestored &&
+          (e.payload as { shipmentId: string }).shipmentId === crewedDeleted,
+      ),
+    );
+    expect(
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.ShipmentRestored &&
+          (e.payload as { shipmentId: string }).shipmentId === crewedDeleted,
+      ),
+    ).toBe(true);
+  });
+
+  it('refuses to restore a shipment that is not deleted (409) or does not exist (404)', async () => {
+    const live = await restore(kept);
+    expect(live.status).toBe(409);
+    expect(errorCode(live)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_NOT_DELETED);
+    // A second restore of the one just brought back is the same 409 — never a second restore.
+    expect((await restore(crewedDeleted)).status).toBe(409);
+    expect((await restore('00000000000000000000beef')).status).toBe(404);
+  });
+
+  it('RBAC — the list rides operationsShipment.view; a restore needs operationsShipment.delete', async () => {
+    expect((await deletedList(DELETED_DATE, NEXT_DATE, null)).status).toBe(401);
+    expect((await deletedList(DELETED_DATE, NEXT_DATE, viewerToken)).status).toBe(200);
+    const denied = await restore(laterDeleted, viewerToken);
+    expect(denied.status).toBe(403);
+    // Still deleted: the refusal changed nothing.
+    expect((await deletedOf(NEXT_DATE, NEXT_DATE)).shipments.map((s) => s.id)).toEqual([
+      laterDeleted,
+    ]);
+    expect(
+      (await request(app).post(`/api/v1/operations/shipments/${laterDeleted}/restore`)).status,
+    ).toBe(401);
   });
 });

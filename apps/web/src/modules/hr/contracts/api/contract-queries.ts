@@ -12,8 +12,11 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type PreviewContract,
+  type RenderCandidateBulk,
+  type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
+  type UpdateCandidateDraft,
   type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
@@ -137,6 +140,79 @@ export const useHiringPack = () => {
     mutationFn: (employeeId: string) => api.hiringPack(employeeId),
     onSuccess: (set) => {
       if (set.contract?.created === true) invalidate();
+    },
+  });
+};
+
+/** A28 — an employee's papers and the contract they hold, for their «طباعة العقد والمستندات» tab. */
+export const useEmployeePapers = (employeeId: string) =>
+  useQuery({
+    queryKey: ['hr', 'contracts', 'employeePapers', employeeId],
+    queryFn: () => api.employeePapers(employeeId),
+  });
+
+/** Print the chosen papers of an employee — the contract made first if they hold none. */
+export const usePrintEmployeePapers = () => {
+  const invalidate = useContractsInvalidation();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { employeeId: string; keys: string[] }) => api.hiringPack(vars.employeeId, vars.keys),
+    onSuccess: (set, vars) => {
+      if (set.contract?.created === true) invalidate();
+      void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'employeePapers', vars.employeeId] });
+    },
+  });
+};
+
+/** A28 — the candidate's papers page: its saved state, made on the first visit. */
+export const useCandidateDraft = (offerId: string) =>
+  useQuery({
+    queryKey: ['hr', 'contracts', 'candidate', offerId],
+    queryFn: () => api.openCandidate(offerId),
+    enabled: offerId !== '',
+    // The page's own saves keep it fresh; a refetch on focus would undo a choice in flight.
+    refetchOnWindowFocus: false,
+  });
+
+export const useUpdateCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateCandidateDraft) => api.updateCandidate(offerId, body),
+    onSuccess: (draft) => client.setQueryData(['hr', 'contracts', 'candidate', offerId], draft),
+  });
+};
+
+export const useRenderCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderCandidatePapers) => api.renderCandidate(offerId, body),
+    onSuccess: (out) => client.setQueryData(['hr', 'contracts', 'candidate', offerId], out.draft),
+  });
+};
+
+/** «طباعة لكل المحدد» — the ticked people, each with their own job's papers. */
+export const useBulkOpenCandidates = () => useMutation({ mutationFn: (offerIds: string[]) => api.bulkOpenCandidates(offerIds) });
+
+/** Print the chosen papers for every ticked person; each one's page then shows the print. */
+export const useBulkRenderCandidates = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderCandidateBulk) => api.bulkRenderCandidates(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] }),
+  });
+};
+
+/** The hire: a new employee and contract, and the offer leaves «جاهزون للتعيين». */
+export const useHireCandidate = (offerId: string) => {
+  const client = useQueryClient();
+  const invalidate = useContractsInvalidation();
+  return useMutation({
+    mutationFn: (version: number) => api.hireCandidate(offerId, version),
+    onSuccess: () => {
+      invalidate();
+      void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate', offerId] });
+      void client.invalidateQueries({ queryKey: ['hr', 'jobOffers'] });
+      void client.invalidateQueries({ queryKey: ['hr', 'employees'] });
     },
   });
 };

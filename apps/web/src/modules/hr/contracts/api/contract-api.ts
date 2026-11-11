@@ -3,6 +3,14 @@
 // the server-owned variable catalog. Document HTML rides outside the JSON envelope.
 import {
   type AddContractAttachment,
+  type CandidateBulkPersonDto,
+  type CandidateDraftDto,
+  type HireCandidateDto,
+  type RenderCandidateBulk,
+  type RenderCandidateBulkDto,
+  type RenderCandidatePapers,
+  type RenderCandidatePapersDto,
+  type UpdateCandidateDraft,
   type AmendOrRenewContract,
   type CloneContractTemplate,
   type ContractBrandingDto,
@@ -16,6 +24,7 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type DownloadTicketDto,
+  type EmployeePapersDto,
   type HiringPackDto,
   type Paginated,
   type PreviewContract,
@@ -92,8 +101,25 @@ export const removeContractAttachment = (id: string, attachmentId: string, versi
 // Exports (audited server-side under contract.print).
 export const contractDocumentHtml = (id: string): Promise<string> => getText(`/hr/contracts/${id}/document`);
 /** «مستندات التعيين» (A27): the employee's contract (made if missing) and every form for the job. */
-export const hiringPack = (employeeId: string): Promise<HiringPackDto> =>
-  post<HiringPackDto>('/hr/contracts/hiring-pack', { employeeId });
+export const hiringPack = (employeeId: string, keys?: string[]): Promise<HiringPackDto> =>
+  post<HiringPackDto>('/hr/contracts/hiring-pack', keys === undefined ? { employeeId } : { employeeId, keys });
+/** A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers and their contract. */
+export const employeePapers = (employeeId: string): Promise<EmployeePapersDto> =>
+  get<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}`);
+
+// ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
+export const openCandidate = (offerId: string): Promise<CandidateDraftDto> =>
+  post<CandidateDraftDto>(`/hr/contracts/candidates/${offerId}/open`, {});
+export const updateCandidate = (offerId: string, body: UpdateCandidateDraft): Promise<CandidateDraftDto> =>
+  patch<CandidateDraftDto>(`/hr/contracts/candidates/${offerId}`, body);
+export const renderCandidate = (offerId: string, body: RenderCandidatePapers): Promise<RenderCandidatePapersDto> =>
+  post<RenderCandidatePapersDto>(`/hr/contracts/candidates/${offerId}/render`, body);
+export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPersonDto[]> =>
+  post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
+export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
+  post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
+export const hireCandidate = (offerId: string, version: number): Promise<HireCandidateDto> =>
+  post<HireCandidateDto>(`/hr/contracts/candidates/${offerId}/hire`, { version });
 export const contractPdfTicket = (id: string): Promise<{ ready: boolean; ticket: DownloadTicketDto | null }> =>
   get<{ ready: boolean; ticket: DownloadTicketDto | null }>(`/hr/contracts/${id}/pdf`);
 

@@ -148,9 +148,10 @@ export const SecuredBacklogPage = (): JSX.Element => {
       )}
 
       <ShipmentFormDialog
+        // The secured register adds secured shipments, as legacy `/mohsana` did.
+        createType="secured"
         open={creating || editing !== null}
         shipment={editing}
-        defaultDate={new Date().toISOString().slice(0, 10)}
         banks={banks.data?.items ?? []}
         currencies={currencies.data?.items ?? []}
         onClose={() => {

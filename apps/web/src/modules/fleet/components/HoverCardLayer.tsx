@@ -250,7 +250,8 @@ export const HoverCardLayer = ({
 }: {
   id: string;
   anchor: RefObject<HTMLElement | null>;
-  mark: 'driver' | 'vehicle';
+  /** `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), on these mechanics. */
+  mark: 'driver' | 'vehicle' | 'captain' | 'crew';
   children: ReactNode;
 }): JSX.Element | null => {
   const panel = useRef<HTMLDivElement>(null);

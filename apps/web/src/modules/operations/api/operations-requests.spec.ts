@@ -27,7 +27,9 @@ import {
   OperationsCrewBoardQuerySchema,
   OperationsCrewDirectoryQuerySchema,
   OperationsDayBoardQuerySchema,
+  OperationsDeletedShipmentsQuerySchema,
   OperationsReportQuerySchema,
+  OperationsShipmentHistoryQuerySchema,
 } from '@ecms/contracts';
 import { buildQuery, type QueryParams } from '../../../shared/lib/api-client';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -88,6 +90,16 @@ const REQUESTS = [
     params: { page: 1, pageSize: 25, sortDir: 'desc' },
   },
   { screen: 'Daily operations · the board', schema: OperationsDayBoardQuerySchema, params: { date: '2026-08-18' } },
+  {
+    screen: 'Shipments history · the default range (this month to date)',
+    schema: OperationsShipmentHistoryQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-18' },
+  },
+  {
+    screen: 'Shipments history · the deleted shipments of the same range',
+    schema: OperationsDeletedShipmentsQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-18' },
+  },
   {
     screen: 'Secured backlog',
     schema: ListSecuredBacklogQuerySchema,

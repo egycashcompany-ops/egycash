@@ -103,7 +103,11 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
-  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  /**
+   * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
+   * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
+   * carries no bank rule: it may belong to any bank, the main bank being the billed one.
+   */
   OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
   /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
   OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
@@ -130,6 +134,27 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+  /**
+   * 422 — the shipments history range holds more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments. Refused, never cut short: totals over a silently truncated list would be wrong
+   * figures. Details carry `count` and `max` (field = the name, message = the number).
+   */
+  OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE: 'OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE',
+  /**
+   * 422 — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a NEW shipment dated before today on the
+   * Cairo calendar (its collection date, or a secured one's delivery date), or a delivery date set
+   * for the first time on an edit before today. One detail: `field` = the date refused,
+   * `code` = 'MIN_DATE', `message` = the earliest day allowed ('YYYY-MM-DD').
+   */
+  OPERATIONS_SHIPMENT_DATE_IN_PAST: 'OPERATIONS_SHIPMENT_DATE_IN_PAST',
+  /**
+   * 422 — «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»: an edit moving the collection date (or
+   * the delivery date) EARLIER than the day the shipment is on. Later, or unchanged, is accepted.
+   * Same detail shape as `OPERATIONS_SHIPMENT_DATE_IN_PAST`; `message` = the shipment's current day.
+   */
+  OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: 'OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL',
+  /** 409 — a restore asked for a shipment that is not deleted. */
+  OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */

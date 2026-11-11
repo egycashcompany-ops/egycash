@@ -7531,6 +7531,9 @@ const en: Record<string, string> = {
     'Plan one day of duty assignments — availability, workshop and exclusivity rules are enforced by the server.',
   'fleet.roster.date': 'Date',
   'fleet.roster.prevDay': 'Previous day',
+  // The computer's filter row, when its chips do not fit: ‹ › at each end move them.
+  'fleet.roster.filtersPrev': 'Show previous filters',
+  'fleet.roster.filtersNext': 'Show more filters',
   'fleet.roster.pastDayTitle': 'A past day.',
   'fleet.roster.pastDayBody': 'Shown as it was recorded — a roster is planned for today onward.',
   'fleet.roster.counter.total': 'Total',
@@ -20482,6 +20485,9 @@ const ar: Record<string, string> = {
   'fleet.roster.subtitle': 'تخطيط تعيينات يوم واحد — قواعد الإتاحة والورشة والحصرية يفرضها الخادم.',
   'fleet.roster.date': 'التاريخ',
   'fleet.roster.prevDay': 'اليوم السابق',
+  // The computer's filter row, when its chips do not fit: ‹ › at each end move them.
+  'fleet.roster.filtersPrev': 'عرض الفلاتر السابقة',
+  'fleet.roster.filtersNext': 'عرض الفلاتر التالية',
   'fleet.roster.pastDayTitle': 'يوم سابق.',
   'fleet.roster.pastDayBody': 'معروض كما سُجّل — التخطيط يبدأ من اليوم فصاعدًا.',
   'fleet.roster.counter.total': 'إجمالي',

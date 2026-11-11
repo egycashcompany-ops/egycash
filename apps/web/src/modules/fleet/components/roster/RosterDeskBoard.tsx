@@ -462,7 +462,9 @@ export const RosterDeskBoard = ({
             its placeholder, its icon and one code or three («215, 216, 217») still whole, and the
             48px it gives up (with DeskCounters' tighter chips) lets the six counters and the
             twelve missions stand beside the reset at 1920px on the measured day's figures —
-            longer figures take more room (see DeskCounters). */}
+            longer figures take more room (see DeskCounters). Where they do not fit (a laptop, a
+            pinned nav, a busy day), the row stays one line and DeskCounters stands a ‹ › at each
+            end of it («أ اعمل الأسهم»). */}
         <div
           className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
           data-roster-filters="true"

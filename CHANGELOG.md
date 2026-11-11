@@ -739,10 +739,21 @@ its entry here in the same PR.
   each extra digit in a chip's figure costs about 9 px, so a planned day («تشغيل» 143, four
   missions in two digits) keeps 32 px, while a day with every mission in two digits is 41 px short
   with the reset showing and «نقل أموال (يومي)» is cut again. At 1536 and 1366 px the row is still
-  273–485 px short and the last four to six chips are partly or wholly off its end. What the row
-  does when its chips do not fit — those screens, and such a day at 1920 — is a decision still
-  pending with the owner, and its sideways scroll is unchanged. The phone and tablet boards, whose
-  row is swiped, are not changed.
+  273–485 px short and the last four to six chips are partly or wholly off its end, and a pinned
+  nav takes 240 px more. For those, the owner chose «أ اعمل الأسهم ولما يخضر اعمل ميرج»: the row
+  stays one line, and while its chips overflow — measured on the page, not guessed from the
+  screen's width — a small ‹ › stands at each end of it, outside the chips so it never covers one.
+  The start one, beside «كود السيارة», moves the chips toward the start; the end one, beside the
+  reset, toward the end; about 80% of the visible width a click, gliding, or at once for a reader
+  who asks for less motion. Both stay while the row overflows, the one whose end is reached dimmed
+  and disabled, so nothing shifts as it scrolls; they are named «عرض الفلاتر السابقة» and «عرض
+  الفلاتر التالية» on hover and to a screen reader. When everything fits there are none: at 1920
+  px on the measured day the bar is pixel for pixel as before. Measured on the real page, dark and
+  light: one click on the end arrow brings «نقل أموال (يومي)» whole into view, its ring whole
+  beside the arrow, at 1920 (every mission in two digits, the reset showing), at 1920 with the nav
+  pinned, at 1536 and at 1366, and one click on the start arrow comes back. The scrollbar stays
+  hidden, the wheel is not taken over, and Tab still walks the chips. The phone and tablet boards,
+  whose row is swiped, are not changed.
 - **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
   pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
   (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and

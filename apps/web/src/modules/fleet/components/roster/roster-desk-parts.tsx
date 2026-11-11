@@ -7,12 +7,13 @@
 //   DeskDayStepper  the approved stepper (weekday · 2026/11/09 · «اليوم») at the toolbar's 36px.
 //                   The date opens the browser's calendar through the date box's own calendar
 //                   button and through the date itself.
-//   DeskCounters    the day's six counters, tap = filter, active = ring — on the filter bar's
-//                   36px line, figures in Latin digits.
+//   DeskCounters    the day's six counters and a chip per mission, tap = filter, active = ring —
+//                   ONE line on the filter bar's 36px, figures in Latin digits; while they do not
+//                   fit, ‹ › at each end of the line move them.
 //   DriversPanel    «السائقون المتاحون (n)» / «غير المتاحين (n)» as tabs over ONE list (both lists
 //                   are in the page, the other one hidden), the lists draggable on a computer with
 //                   the driver card on every name, and the licence block pinned under the list.
-import { useId, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
@@ -25,6 +26,7 @@ import { ChevronEndIcon, ChevronStartIcon } from '../../../../shared/ui/icons';
 import { BoardIcon, PATH } from '../FuelCardBoard';
 import { DateBox } from '../DateBox';
 import { type RosterBoardModel, type RosterCounter } from '../../lib/roster-board';
+import { ROW_FITS, rowEnds, rowStep, sameRowEnds, type RowEnds } from '../../lib/row-scroll';
 import {
   AvailableList,
   DriverSearch,
@@ -195,6 +197,50 @@ export const DeskDayStepper = ({
 };
 
 // ── the counters ────────────────────────────────────────────────────────────────────────────────
+const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/**
+ * The counters' row, measured — not guessed from the screen's width: whether its chips overflow
+ * the room the bar gives it, and which end it stands at (`rowEnds`). Read again when the row, its
+ * frame or a chip is resized (the window, the nav pinned or not, the reset showing; a figure, a
+ * font), on every scroll of the row, and when the counters change. No polling.
+ */
+const useRowEnds = (
+  shape: string,
+): [RefObject<HTMLDivElement>, RefObject<HTMLDivElement>, RowEnds] => {
+  const frame = useRef<HTMLDivElement>(null);
+  const row = useRef<HTMLDivElement>(null);
+  const [ends, setEnds] = useState<RowEnds>(ROW_FITS);
+  useBrowserLayoutEffect(() => {
+    const room = frame.current;
+    const box = row.current;
+    if (room === null || box === null) return undefined;
+    const measure = (): void => {
+      const next = rowEnds(box, room.clientWidth);
+      setEnds((was) => (sameRowEnds(was, next) ? was : next));
+    };
+    measure();
+    box.addEventListener('scroll', measure, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(room);
+    observer?.observe(box);
+    for (const chip of Array.from(box.children)) observer?.observe(chip);
+    return () => {
+      box.removeEventListener('scroll', measure);
+      observer?.disconnect();
+    };
+  }, [shape]);
+  return [frame, row, ends];
+};
+
+/**
+ * The row's arrows, in the stepper's own tones (DeskDayStepper) at the chips' 36px, narrow, with
+ * the chips' focus ring. A spent one — its end reached — stays in place, dimmed and disabled, so
+ * nothing moves sideways as the row scrolls.
+ */
+const ROW_ARROW =
+  'inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition-colors enabled:hover:bg-slate-100 enabled:active:bg-slate-200 disabled:cursor-default disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 dark:border-slate-700 dark:bg-[#111827] dark:text-slate-300 dark:enabled:hover:bg-slate-800 dark:enabled:active:bg-slate-700';
+
 /**
  * The day's tally (same tones, click = filter, active = ring) on the filter bar's 36px line. The
  * per-mission chip is the computer's only mission control now — «شيل الفلتر بتاع كل المهمات اللى
@@ -205,8 +251,16 @@ export const DeskDayStepper = ({
  * same 36px height, type, tones and ring): with «كود السيارة» at 12rem (RosterDeskBoard), the six
  * counters and the twelve missions fit beside the red reset at 1920px with about 68px to spare on
  * the measured day's figures. Each extra digit in a figure costs about 9px, so a day with every
- * mission in two digits is cut again there (measured: 41px short with the reset). Where they do
- * not fit, the row scrolls sideways as before.
+ * mission in two digits is cut again there (measured: 41px short with the reset), and a laptop or
+ * a pinned nav cuts more.
+ *
+ * Where they do not fit — «أ اعمل الأسهم» — a ‹ › arrow stands at each end of the row, OUTSIDE its
+ * scroller so it never covers a chip: the start one (beside «كود السيارة») moves the row toward
+ * its start, the end one (beside the reset) toward its end, about 80% of the visible width a
+ * click (`rowStep`: smooth, instant for a reader who asked for less motion). The row's scrollbar
+ * stays hidden; the arrows are how a mouse reaches the rest, and Tab still walks the chips (the
+ * browser brings a hidden one into view). When everything fits there are no arrows and the bar is
+ * exactly as it was.
  */
 export const DeskCounters = ({
   counters,
@@ -214,35 +268,79 @@ export const DeskCounters = ({
 }: {
   counters: readonly RosterCounter[];
   onApply: (apply: Record<string, string | null>) => void;
-}): JSX.Element => (
-  <div
-    data-counters="true"
-    // `px-1 py-1`: the active chip's ring sits 3px outside it — room for it inside the scroller.
-    className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-  >
-    {counters.map((counter) => (
-      <button
-        key={counter.key}
-        type="button"
-        data-counter={counter.key}
-        data-active={counter.active ? 'true' : undefined}
-        aria-pressed={counter.active}
-        onClick={() => onApply(counter.apply)}
-        className={cn(
-          'inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-xs font-medium transition-shadow',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
-          counter.tone,
-          counter.active
-            ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-[#111827]'
-            : 'ring-0',
-        )}
+}): JSX.Element => {
+  const t = useT();
+  // What changes a chip's width: which chips there are, their words and their figures.
+  const shape = counters
+    .map((counter) => `${counter.key}:${counter.label}:${counter.value}`)
+    .join('|');
+  const [frame, row, ends] = useRowEnds(shape);
+  const step = (toward: 'start' | 'end'): void => {
+    const box = row.current;
+    if (box === null) return;
+    const direction = getComputedStyle(box).direction === 'rtl' ? 'rtl' : 'ltr';
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    box.scrollBy(rowStep(toward, direction, box.clientWidth, reduced));
+  };
+  return (
+    <div ref={frame} data-counters-frame="true" className="flex min-w-0 flex-1 items-center gap-1">
+      {ends.overflowing && (
+        <button
+          type="button"
+          data-counters-arrow="start"
+          aria-label={t('fleet.roster.filtersPrev')}
+          title={t('fleet.roster.filtersPrev')}
+          disabled={ends.atStart}
+          onClick={() => step('start')}
+          className={ROW_ARROW}
+        >
+          <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
+        </button>
+      )}
+      <div
+        ref={row}
+        data-counters="true"
+        // `px-1 py-1`: the active chip's ring sits 3px outside it — room for it inside the scroller.
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <span>{counter.label}</span>
-        <span className="font-figures text-sm font-bold">{num(counter.value)}</span>
-      </button>
-    ))}
-  </div>
-);
+        {counters.map((counter) => (
+          <button
+            key={counter.key}
+            type="button"
+            data-counter={counter.key}
+            data-active={counter.active ? 'true' : undefined}
+            aria-pressed={counter.active}
+            onClick={() => onApply(counter.apply)}
+            className={cn(
+              'inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 text-xs font-medium transition-shadow',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+              counter.tone,
+              counter.active
+                ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-[#111827]'
+                : 'ring-0',
+            )}
+          >
+            <span>{counter.label}</span>
+            <span className="font-figures text-sm font-bold">{num(counter.value)}</span>
+          </button>
+        ))}
+      </div>
+      {ends.overflowing && (
+        <button
+          type="button"
+          data-counters-arrow="end"
+          aria-label={t('fleet.roster.filtersNext')}
+          title={t('fleet.roster.filtersNext')}
+          disabled={ends.atEnd}
+          onClick={() => step('end')}
+          className={ROW_ARROW}
+        >
+          <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 // ── the drivers panel ───────────────────────────────────────────────────────────────────────────
 /**

@@ -13,12 +13,16 @@
 // The shots are the proof of the pixels; these claims pin the classes behind them.
 //
 // Narrower screens (a laptop, a pinned nav), and such a day at 1920, still cannot hold eighteen
-// chips; what the row does there is unchanged here (a decision pending with the owner). The touch
-// boards are not part of it — their row scrolls under a finger.
+// chips. There the owner chose «أ اعمل الأسهم ولما يخضر اعمل ميرج» — option أ: a small ‹ › at
+// each end of the row moves the chips, and the row stays ONE line. The arrows show only while the
+// chips overflow, OUTSIDE the scroller, the spent one dimmed and disabled; their arithmetic is
+// `lib/row-scroll.ts` (its own spec). The touch boards are not part of it — their row scrolls
+// under a finger.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { translate } from '../../platform/localization/i18n';
 import { rosterSource } from './roster-spec-sources';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -43,6 +47,17 @@ const px = (classes: string, utility: string): number => {
 };
 
 const COUNTERS = declaration(DESK, 'export const DeskCounters');
+/** The hook that measures the row for the arrows. */
+const ROW_ENDS = declaration(DESK, 'const useRowEnds');
+/** The arrows' own look. */
+const ARROW = /const ROW_ARROW =\s*'([^']*)'/u.exec(DESK)?.[1] ?? '';
+/** One arrow button, by its end: from its `<button` to its `</button>`. */
+const arrow = (end: 'start' | 'end'): string => {
+  const at = COUNTERS.indexOf(`data-counters-arrow="${end}"`);
+  if (at === -1) throw new Error(`no ${end} arrow`);
+  const open = COUNTERS.lastIndexOf('<button', at);
+  return COUNTERS.slice(open, COUNTERS.indexOf('</button>', at) + '</button>'.length);
+};
 /** The row the chips stand in. */
 const ROW = /data-counters="true"\s+className="([^"]*)"/u.exec(COUNTERS)?.[1] ?? '';
 /** One chip, before its tone and its ring. */
@@ -110,8 +125,106 @@ describe('«تعيين السيارات» on a computer: every filter on ONE row
     expect(given + saved - 121.4, 'px to spare at 1920 with the reset').toBeCloseTo(68.6, 1);
   });
 
+  it('puts a ‹ › at each end only while the chips overflow — «أ اعمل الأسهم»', () => {
+    // Both arrows hang on the one measured flag: none when everything fits (the bar exactly as it
+    // was), both while it overflows — the spent one disabled, not removed, so nothing shifts.
+    expect(
+      COUNTERS.match(/\{ends\.overflowing && \(/gu),
+      'each arrow behind the overflow',
+    ).toHaveLength(2);
+    expect(arrow('start'), 'spent at the start').toContain('disabled={ends.atStart}');
+    expect(arrow('end'), 'spent at the end').toContain('disabled={ends.atEnd}');
+    expect(arrow('start')).toContain("onClick={() => step('start')}");
+    expect(arrow('end')).toContain("onClick={() => step('end')}");
+    for (const end of ['start', 'end'] as const)
+      expect(arrow(end), 'a real button').toMatch(/^<button\s+type="button"/u);
+  });
+
+  it('stands the arrows OUTSIDE the scroller, so they never cover a chip', () => {
+    // [start arrow][the row][end arrow], siblings in a frame that takes the row's old place on
+    // the bar (one line, no scroll of its own). In RTL the start is the right, beside «كود
+    // السيارة»; the end the left, beside the reset.
+    const start = COUNTERS.indexOf('data-counters-arrow="start"');
+    const row = COUNTERS.indexOf('data-counters="true"');
+    const chips = COUNTERS.indexOf('{counters.map(', row);
+    const rowClose = COUNTERS.indexOf('</div>', COUNTERS.indexOf('))}', chips));
+    const end = COUNTERS.indexOf('data-counters-arrow="end"');
+    expect(start).toBeGreaterThan(-1);
+    expect(start, 'start arrow before the row').toBeLessThan(row);
+    expect(rowClose, 'the row closes before the end arrow').toBeLessThan(end);
+    expect(COUNTERS.slice(row, rowClose), 'no arrow inside the scroller').not.toContain(
+      'data-counters-arrow',
+    );
+    expect(COUNTERS).toContain(
+      '<div ref={frame} data-counters-frame="true" className="flex min-w-0 flex-1 items-center gap-1">',
+    );
+  });
+
+  it('names each arrow in formal Arabic and English, through i18n', () => {
+    expect(arrow('start')).toContain("aria-label={t('fleet.roster.filtersPrev')}");
+    expect(arrow('start')).toContain("title={t('fleet.roster.filtersPrev')}");
+    expect(arrow('end')).toContain("aria-label={t('fleet.roster.filtersNext')}");
+    expect(arrow('end')).toContain("title={t('fleet.roster.filtersNext')}");
+    expect(translate('ar', 'fleet.roster.filtersPrev')).toBe('عرض الفلاتر السابقة');
+    expect(translate('ar', 'fleet.roster.filtersNext')).toBe('عرض الفلاتر التالية');
+    expect(translate('en', 'fleet.roster.filtersPrev')).toBe('Show previous filters');
+    expect(translate('en', 'fleet.roster.filtersNext')).toBe('Show more filters');
+  });
+
+  it('points each chevron its way, flipped under RTL as the day stepper’s are', () => {
+    expect(arrow('start')).toContain('<ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />');
+    expect(arrow('end')).toContain('<ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />');
+    // The look: the chips' 36px, narrow, the stepper's tones, the chips' focus ring, dimmed spent.
+    for (const piece of [
+      'h-9',
+      'w-8',
+      'rounded-lg',
+      'border-slate-300',
+      'dark:border-slate-700',
+      'bg-white',
+      'dark:bg-[#111827]',
+      'enabled:hover:bg-slate-100',
+      'dark:enabled:hover:bg-slate-800',
+      'focus-visible:ring-2',
+      'focus-visible:ring-offset-1',
+      'disabled:opacity-40',
+    ])
+      expect(ARROW.split(/\s+/u), piece).toContain(piece);
+  });
+
+  it('moves the row with the tested arithmetic: the direction read, less motion honoured', () => {
+    expect(COUNTERS).toContain("getComputedStyle(box).direction === 'rtl' ? 'rtl' : 'ltr'");
+    expect(COUNTERS).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches");
+    expect(COUNTERS).toContain(
+      'box.scrollBy(rowStep(toward, direction, box.clientWidth, reduced));',
+    );
+    // No other behaviour: no wheel taken over, no chip scrolled to on its own.
+    expect(COUNTERS).not.toMatch(/onWheel|'wheel'|scrollIntoView/u);
+  });
+
+  it('measures on resize, on scroll and on new counters — and lets go on unmount', () => {
+    // The room WITHOUT the arrows decides whether they show (rowEnds), so they never keep
+    // themselves on screen.
+    expect(ROW_ENDS).toContain('const next = rowEnds(box, room.clientWidth);');
+    expect(ROW_ENDS).toContain('new ResizeObserver(measure)');
+    expect(ROW_ENDS).toContain('observer?.observe(room);');
+    expect(ROW_ENDS).toContain('observer?.observe(box);');
+    expect(ROW_ENDS, 'each chip, for its figure and its font').toContain(
+      'for (const chip of Array.from(box.children)) observer?.observe(chip);',
+    );
+    expect(ROW_ENDS).toContain("box.addEventListener('scroll', measure, { passive: true });");
+    expect(ROW_ENDS).toContain("box.removeEventListener('scroll', measure);");
+    expect(ROW_ENDS).toContain('observer?.disconnect();');
+    expect(ROW_ENDS, 'again when the counters change').toContain('}, [shape]);');
+    expect(ROW_ENDS, 'no polling').not.toMatch(/setInterval|setTimeout|requestAnimationFrame/u);
+    expect(COUNTERS).toContain('const [frame, row, ends] = useRowEnds(shape);');
+  });
+
   it('leaves the touch boards’ row and chips as they were', () => {
     // Under a finger the row swipes; nothing of this change reaches it.
+    expect(TOUCH, 'no arrows under a finger').not.toMatch(
+      /data-counters-arrow|filtersPrev|filtersNext|rowStep|useRowEnds/u,
+    );
     expect(TOUCH).toContain(
       'className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto scroll-px-1 px-1 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"',
     );

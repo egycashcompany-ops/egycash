@@ -33,6 +33,7 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { ApiError } from '../../../shared/lib/api-client';
 import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -51,6 +52,10 @@ const operationsKeys = {
   // The board and the shipment list are two views of the SAME facts, so every shipment write
   // stales both. Getting this wrong shows up as a receive toggle that appears not to have worked.
   shipments: featureKey(MODULE, 'shipments'),
+  // The shipments history is the day board over a range, so it lives UNDER the board's subtree
+  // (`shipmentHistoryKey`): every write that stales the board — a shipment saved, received, deleted
+  // or photographed, a bank or branch renamed, a captain's act — stales the history with it,
+  // without a second list that one of those mutations could forget.
   dayBoard: featureKey(MODULE, 'dayBoard'),
   // The board, its pool and the roster move together: planning changes who is taken, and editing
   // the roster changes who is offered. Splitting them would leave a stale pool beside a fresh board.
@@ -159,6 +164,32 @@ export const useOperationsDayBoard = (date: string | null, enabled = true) =>
     queryKey: listKey(MODULE, 'dayBoard', { date: date ?? 'today' }),
     queryFn: () => api.getDayBoard(date),
     enabled,
+  });
+
+/** The history's cache entry: one per range, inside the day board's subtree (see `operationsKeys`). */
+const shipmentHistoryKey = (range: { from: string; to: string }): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'history',
+  { from: range.from, to: range.to },
+];
+
+/**
+ * The shipments over a range of days — «سجل الشحنات». `enabled` is false while the page holds a
+ * range the endpoint would refuse anyway (inverted, or too long), so no request is spent on it.
+ *
+ * A 4xx is an ANSWER, not a failure: the range holds too many shipments, or the reader may not see
+ * them. Asking again cannot change it, so it is not retried; only a network or server failure is.
+ */
+export const useOperationsShipmentHistory = (
+  range: { from: string; to: string },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: shipmentHistoryKey(range),
+    queryFn: () => api.getShipmentHistory(range),
+    enabled,
+    retry: (failures, error) =>
+      !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 1,
   });
 
 // ── Writes ─────────────────────────────────────────────────────────────────
@@ -318,6 +349,8 @@ export const useUpdateOperationsCurrency = () => {
 
 /** Exported for the cache tests, which assert what a mutation moves — never used by a screen. */
 export const __operationsKeys = operationsKeys;
+/** Exported for the cache tests — the history's key, to prove the board's writes reach it. */
+export const __shipmentHistoryKey = shipmentHistoryKey;
 
 // ── Crew board, pool and roster (B3) ───────────────────────────────────────
 

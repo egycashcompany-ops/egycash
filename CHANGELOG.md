@@ -100,6 +100,19 @@ its entry here in the same PR.
   - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
     اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
     answer sends a driver's name only. The captain and the specialists keep their codes.
+  - «سجل الشحنات» (`/operations/shipments/history`): «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون
+    من الى». The same board — figures, filters, table, cards and row actions, one shared component
+    — over «من» … «إلى» (default: the 1st of the month to today), 100 rows a page. API:
+    `GET /operations/shipments/history?from=&to=` (the day board's union over a range, at most 366
+    days; a range holding more than 5,000 shipments is refused with
+    `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`, never cut short).
+  - The currency figures: «انا عاوز المصرى لوحده الدولار لوحده و اى حاجه غير الاتنين دول يتحسب
+    عملات اخرى». The pound and the dollar were recognised by the ISO code alone, and the live
+    catalog's codes are the legacy numbers (1, 2, 3), so every currency fell into «عملات أخرى». They
+    are now recognised by code, name or legacy spelling, matched whole («جنيه استرليني» stays
+    other). The «عملات أخرى» dialog is wider: the total on top, one card per currency, largest
+    first, with its share and how many shipments carry it.
+  - The filters follow the table's columns, and «كود السيارة» joins them.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

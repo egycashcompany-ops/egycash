@@ -19,6 +19,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'The selected cars no longer have enough left for this amount — their figures changed since they were shown.',
     FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT:
       'The amount taken is more than this accident’s negative remaining.',
+    // The shipments history refuses a range holding too many shipments rather than cutting it
+    // short; the page says so in place, and this is the same refusal for a background refetch.
+    OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE:
+      'This range holds too many shipments to show at once — narrow the dates.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -44,6 +48,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     FLEET_ACCIDENT_TRANSFER_SHORT:
       'لم يعد في السيارات المحددة ما يكفي لهذا المبلغ، فقد تغيّرت أرقامها منذ عرضها.',
     FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'المبلغ المأخوذ أكبر من سالب هذا الحادث.',
+    OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE:
+      'هذه المدة تضم شحنات أكثر مما يمكن عرضه مرة واحدة — يُرجى تضييق التاريخ.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

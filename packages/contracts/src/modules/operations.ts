@@ -483,6 +483,55 @@ export const OperationsDayBoardQuerySchema = z
   .strict();
 export type OperationsDayBoardQuery = z.infer<typeof OperationsDayBoardQuerySchema>;
 
+/**
+ * THE SHIPMENTS HISTORY — the day board over a RANGE of days: «عاوز اعمل dublicat للشاشة دى بس
+ * التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع الشحنات».
+ *
+ * The same union as the day board, over every day from `from` to `to` (both inclusive): daily
+ * shipments COLLECTED in the range, plus secured shipments DELIVERED in the range that have left
+ * the vault. Bounded twice so a history read stays a screen and not an export: at most
+ * `OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS` days, and a range holding more than
+ * `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` shipments is REFUSED (never cut short — totals over a
+ * silently truncated list would be wrong figures).
+ */
+export const OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS = 366;
+export const OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS = 5000;
+
+/**
+ * The UTC day an instant falls on, as a whole day number. The two rules below are checked on the
+ * DAYS the server resolves `from` and `to` to (it serves whole UTC days), not on the instants
+ * sent: on instants, `2026-08-01T18:00Z → 2026-08-01T06:00Z` (one day) read as backwards, and a
+ * pair of times a few hours either side of midnight slipped a 367th day past the cap.
+ */
+const historyDay = (d: Date): number => Math.floor(d.getTime() / 86_400_000);
+
+export const OperationsShipmentHistoryQuerySchema = z
+  .object({ from: z.coerce.date(), to: z.coerce.date() })
+  .strict()
+  .refine((q) => historyDay(q.from) <= historyDay(q.to), {
+    message: 'from must not be after to',
+    path: ['from'],
+  })
+  .refine(
+    (q) => historyDay(q.to) - historyDay(q.from) + 1 <= OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
+    {
+      message: `the range is longer than ${OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS} days`,
+      path: ['to'],
+    },
+  );
+export type OperationsShipmentHistoryQuery = z.infer<typeof OperationsShipmentHistoryQuerySchema>;
+
+/** The history answer: the day board's rows and crews, over the range. */
+export interface OperationsShipmentHistoryDto {
+  /** The resolved first and last day (UTC midnight ISO strings), both inclusive. */
+  from: string;
+  to: string;
+  /** Newest created first, as the day board. */
+  shipments: OperationsDayBoardShipmentDto[];
+  /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
+  crews: OperationsDayBoardVehicleCrewDto[];
+}
+
 export interface OperationsDayBoardDto {
   /** The resolved day, so a client never has to guess what "today" the server meant. */
   date: string;

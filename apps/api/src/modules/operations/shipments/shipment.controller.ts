@@ -6,6 +6,8 @@ import {
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
+  type OperationsShipmentHistoryDto,
+  type OperationsShipmentHistoryQuery,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -14,7 +16,7 @@ import { ValidationError } from '../../../shared/errors';
 import { hasPermission } from '../../../shared/types';
 import { toShipmentDto } from '../operations.mappers';
 import { receiptImageFileName } from './receipt-image-upload';
-import { operationsShipmentService } from './shipment.service';
+import { operationsShipmentService, type DayBoardView } from './shipment.service';
 
 type IdParam = { id: string };
 
@@ -32,16 +34,21 @@ export const listShipments = async (req: Request, res: Response): Promise<void> 
 const seesCrewPlan = (req: Request): boolean =>
   hasPermission(authContext(req), 'operationsCrew.view');
 
-/** The legacy `/main_ops` board — one day's working set, unioned server-side. */
-export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, OperationsDayBoardQuery>(req);
-  const day = query.date ?? new Date();
-  const { rows, crews } = await operationsShipmentService.dayBoardView(query.date);
+/** A resolved operating day on the wire: its UTC midnight, as an ISO string. */
+const utcDayIso = (d: Date): string =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+
+/**
+ * The rows and van cards of a board, mapped for THIS reader — the one place the crew plan is
+ * taken back out for a reader without `operationsCrew.view`. The day board and the history both
+ * answer through it, so a crew fact gated on one can never leak through the other.
+ */
+const boardForReader = (
+  req: Request,
+  { rows, crews }: DayBoardView,
+): Pick<OperationsDayBoardDto, 'shipments' | 'crews'> => {
   const crewPlan = seesCrewPlan(req);
-  ok<OperationsDayBoardDto>(res, {
-    date: new Date(
-      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
-    ).toISOString(),
+  return {
     shipments: rows.map(({ doc, origin, destination, crew, captainDeliveredAt }) => ({
       ...toShipmentDto(doc),
       origin,
@@ -50,6 +57,25 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
       captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
     })),
     crews: crewPlan ? crews : [],
+  };
+};
+
+/** The legacy `/main_ops` board — one day's working set, unioned server-side. */
+export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDayBoardQuery>(req);
+  const day = query.date ?? new Date();
+  const view = await operationsShipmentService.dayBoardView(query.date);
+  ok<OperationsDayBoardDto>(res, { date: utcDayIso(day), ...boardForReader(req, view) });
+};
+
+/** The shipments history — the day board over `from`..`to`, both inclusive. */
+export const getShipmentHistory = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsShipmentHistoryQuery>(req);
+  const view = await operationsShipmentService.historyView(query.from, query.to);
+  ok<OperationsShipmentHistoryDto>(res, {
+    from: utcDayIso(query.from),
+    to: utcDayIso(query.to),
+    ...boardForReader(req, view),
   });
 };
 

@@ -134,6 +134,12 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+  /**
+   * 422 — the shipments history range holds more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments. Refused, never cut short: totals over a silently truncated list would be wrong
+   * figures. Details carry `count` and `max` (field = the name, message = the number).
+   */
+  OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE: 'OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */

@@ -35,6 +35,7 @@ import {
   type OperationsExecutionResultDto,
   type OperationsMobileDayDto,
   type OperationsShipmentDto,
+  type OperationsShipmentHistoryDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
@@ -147,6 +148,17 @@ export const getDayBoard = (date: string | null): Promise<OperationsDayBoardDto>
   get<OperationsDayBoardDto>(
     `/operations/shipments/day-board${date === null ? '' : buildQuery({ date })}`,
   );
+
+/**
+ * The shipments history — the day board's rows over a range of days, both bounds inclusive. The
+ * same server-side union and enrichment as `getDayBoard`; a range holding too many shipments is
+ * refused (`OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`), never cut short.
+ */
+export const getShipmentHistory = (range: {
+  from: string;
+  to: string;
+}): Promise<OperationsShipmentHistoryDto> =>
+  get<OperationsShipmentHistoryDto>(`/operations/shipments/history${buildQuery(range)}`);
 
 export const listShipments = (
   params: OperationsListParams,

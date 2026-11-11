@@ -17,6 +17,8 @@
 //   · The creation-time captain/vehicle (leader1/car_num1) live on the ASSIGNMENT entity per the
 //     approved SPLIT and arrive with that slice; until then a shipment can exist unassigned.
 import {
+  ErrorCodes,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
   toMinorUnits,
   type CreateOperationsShipment,
@@ -31,6 +33,7 @@ import {
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -80,6 +83,31 @@ const snapshot = (doc: OperationsShipmentDoc) => ({
 /** Q15 NORMALIZE: the identity of an operating date is the day, stored as UTC midnight. */
 const utcDay = (d: Date): Date =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+
+/** The UTC midnight after `day` — the exclusive end of a half-open day range. */
+const nextDay = (day: Date): Date => {
+  const next = new Date(day);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+};
+
+/**
+ * 422 `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` — the range holds more shipments than one history
+ * screen serves. Both figures ride in the details, so the screen can say how far over it is and
+ * the owner can narrow the range rather than guess.
+ */
+const historyTooLarge = (count: number): AppError =>
+  new AppError(
+    ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE,
+    422,
+    `the range holds ${String(count)} shipments — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown; narrow the dates`,
+    {
+      details: [
+        { field: 'count', code: 'COUNT', message: String(count) },
+        { field: 'max', code: 'MAX', message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) },
+      ],
+    },
+  );
 
 const eventPayload = (doc: OperationsShipmentDoc) => ({
   shipmentId: String(doc._id),
@@ -306,27 +334,51 @@ class OperationsShipmentService {
    */
   async dayBoard(date: Date | undefined): Promise<OperationsShipmentDoc[]> {
     const day = utcDay(date ?? new Date());
-    const next = new Date(day);
-    next.setUTCDate(next.getUTCDate() + 1);
-    return operationsShipmentRepository.dayBoard(day, next);
+    return operationsShipmentRepository.boardInRange(day, nextDay(day));
+  }
+
+  /** The day board with what the legacy table printed beside each shipment (see `boardView`). */
+  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
+    return this.boardView(await this.dayBoard(date));
   }
 
   /**
-   * The day board with what the legacy table printed beside each shipment: both branches by name
-   * and code with their banks, and the crew of the leg the shipment's type reports on — plus, for
-   * the hover cards, who rides each van and the captain's own card.
+   * THE SHIPMENTS HISTORY — «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك
+   * الhistory بتاع الشحنات»: the day board over every day from `from` to `to`, both inclusive.
+   *
+   * The same union and the same enrichment as the day board, on purpose: a day in the history is
+   * the board of that day, row for row, so the owner can trust that what he looks back at is what
+   * the desk saw.
+   *
+   * COUNTED BEFORE IT IS READ. A range holding more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments is refused for the price of an index count, before a row is loaded or joined — and
+   * refused, never cut short: the screen totals what it is given, and totals over a silently
+   * truncated list would be wrong money figures with nothing on screen to say so.
+   */
+  async historyView(from: Date, to: Date): Promise<DayBoardView> {
+    const first = utcDay(from);
+    const toExclusive = nextDay(utcDay(to));
+    const count = await operationsShipmentRepository.countBoardInRange(first, toExclusive);
+    if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
+    return this.boardView(await operationsShipmentRepository.boardInRange(first, toExclusive));
+  }
+
+  /**
+   * Board rows with what the legacy table printed beside each shipment: both branches by name and
+   * code with their banks, and the crew of the leg the shipment's type reports on — plus, for the
+   * hover cards, who rides each van and the captain's own card. Shared by the day board and the
+   * history, so a history day can never print a row differently from that day's board.
    *
    * ONE READ PER KIND, never one per row: the branches, their banks, the legs, the crew rows, their
    * Fleet duty rows, the vehicle codes and every person's name are each fetched once for the whole
-   * day and joined in memory. A busy day is a few hundred shipments; a per-row lookup would make
-   * the board a thousand queries.
+   * set and joined in memory. A busy day is a few hundred shipments and a history range is capped
+   * at a few thousand; a per-row lookup would make either thousands of queries.
    *
    * Nothing here can fail a row. A branch, vehicle or name that no longer resolves comes back as
    * null and the screen says so — a board that refused to load because one van was scrapped would
    * be worse than a board with one blank cell.
    */
-  async dayBoardView(date: Date | undefined): Promise<DayBoardView> {
-    const docs = await this.dayBoard(date);
+  private async boardView(docs: OperationsShipmentDoc[]): Promise<DayBoardView> {
     if (docs.length === 0) return { rows: [], crews: [] };
 
     const branchIds = docs.flatMap((d) => [String(d.originBranchId), String(d.destinationBranchId)]);

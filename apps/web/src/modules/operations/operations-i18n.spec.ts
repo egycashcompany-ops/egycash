@@ -130,6 +130,20 @@ const BOARD_KEYS = [
   'operations.board.status.byCaptain',
   'operations.board.status.byDesk',
   'operations.board.receiptImage',
+  'operations.board.vehicleCode',
+  'operations.board.figures.otherCurrenciesSubtitle',
+  'operations.board.figures.otherCurrenciesTotal',
+  ...['one', 'two', 'few', 'many', 'other'].flatMap((form) => [
+    `operations.board.figures.currencyCount.${form}`,
+    `operations.board.figures.inShipments.${form}`,
+  ]),
+  'operations.board.figures.share',
+  // «سجل الشحنات» — the day board over a from–to range.
+  'operations.nav.shipmentsHistory',
+  'operations.cards.shipmentsHistory',
+  ...['from', 'to', 'empty', 'rangeOrder', 'rangeTooLong', 'tooLarge'].map(
+    (key) => `operations.history.${key}`,
+  ),
   ...[
     'title', 'upload', 'view', 'replace', 'delete', 'uploaded', 'deleted', 'deleteTitle',
     'deleteBody', 'loadFailed',

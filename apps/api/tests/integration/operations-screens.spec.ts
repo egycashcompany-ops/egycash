@@ -115,6 +115,8 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   // The rest of the module's opening requests.
   { screen: 'shipments list', url: '/operations/shipments?page=1&pageSize=25&sortDir=desc', paginated: true },
   { screen: 'daily operations board', url: `/operations/shipments/day-board?date=${TODAY}`, paginated: false },
+  // A bare visit opens on the month to date — the web's `defaultHistoryRange` (shipment-history.ts).
+  { screen: 'shipments history', url: `/operations/shipments/history?from=${TODAY.slice(0, 7)}-01&to=${TODAY}`, paginated: false },
   { screen: 'secured backlog', url: '/operations/secured/backlog?page=1&pageSize=25&sortDir=desc', paginated: true },
   { screen: 'vault receive queue', url: `/operations/secured/backlog?page=1&pageSize=${String(MAX_PAGE_SIZE)}&sortDir=desc&status=draft`, paginated: true },
   { screen: 'vault dispatch due list', url: `/operations/secured/due?date=${TODAY}`, paginated: false },

@@ -7,7 +7,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { listKey } from '../../../shared/lib/query-keys';
-import { __operationsKeys } from './operations-queries';
+import { __operationsKeys, __shipmentHistoryKey } from './operations-queries';
 
 /** Seed one cache entry per feature so "did it become stale?" is answerable per feature. */
 const seed = (qc: QueryClient): void => {
@@ -114,6 +114,38 @@ describe('shipment write fan-out (B2)', () => {
   it('keeps the board on its own subtree, distinct from the list', () => {
     expect(__operationsKeys.dayBoard).toEqual(['operations', 'dayBoard']);
     expect(__operationsKeys.shipments).toEqual(['operations', 'shipments']);
+  });
+});
+
+describe('the shipments history rides the day board’s subtree', () => {
+  // «سجل الشحنات» is the day board over a range: a shipment saved, received, deleted or
+  // photographed from either screen changes both. Living UNDER the board's key, the history is
+  // staled by every write that stales the board — shipment writes, a secured act, a bank or branch
+  // renamed, a captain's act — with no second list for one of them to forget.
+  const range = { from: '2026-11-01', to: '2026-11-11' };
+
+  it('is keyed inside the board’s subtree, one entry per range', () => {
+    const key = __shipmentHistoryKey(range);
+    expect(key.slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__shipmentHistoryKey({ from: '2026-10-01', to: '2026-10-31' })).not.toEqual(key);
+  });
+
+  it('is staled by the invalidation every shipment write runs', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(__shipmentHistoryKey(range), { shipments: [] });
+    qc.setQueryData(listKey('operations', 'dayBoard', { date: 'today' }), { shipments: [] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __shipmentHistoryKey(range))).toBe(true);
+    expect(isStale(qc, __operationsKeys.dayBoard)).toBe(true);
+  });
+
+  it('is left alone by crew planning, as the board is', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(__shipmentHistoryKey(range), { shipments: [] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+
+    expect(isStale(qc, __shipmentHistoryKey(range))).toBe(false);
   });
 });
 

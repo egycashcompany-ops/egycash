@@ -9,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   ErrorCodes,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
   SettingKeys,
   platformPermissions,
@@ -29,6 +31,7 @@ import {
   type OperationsShipmentDto,
   type OperationsDayBoardDto,
   type OperationsDayBoardShipmentDto,
+  type OperationsShipmentHistoryDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReportDto,
@@ -3741,6 +3744,252 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .get(`/api/v1/operations/shipments/day-board?date=${BOARD_DATE}&status=draft`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(tampered.status).toBe(400);
+  });
+
+  // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع الشحنات»:
+  // the same board over a range of days. Nested here so it runs on the board's own fixtures — the
+  // property worth proving is that a day in the history IS that day's board, row for row.
+  describe('the shipments history — the day board over from..to', () => {
+    const PICKUP_DATE = shift(219);
+    const history = async (
+      from: string,
+      to: string,
+      token: string = adminToken,
+    ): Promise<request.Response> =>
+      request(app)
+        .get(`/api/v1/operations/shipments/history?from=${from}&to=${to}`)
+        .set('Authorization', `Bearer ${token}`);
+    const historyOf = async (from: string, to: string): Promise<OperationsShipmentHistoryDto> => {
+      const res = await history(from, to);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsShipmentHistoryDto>(res);
+    };
+    const boardIds = async (date: string): Promise<string[]> => {
+      const res = await board(date);
+      expect(res.status).toBe(200);
+      return data<OperationsDayBoardDto>(res).shipments.map((s) => s.id);
+    };
+
+    it('is the union of its days\' boards — daily by collection, secured by delivery once out of the vault', async () => {
+      const view = await historyOf(PICKUP_DATE, OTHER_DATE);
+      const ids = view.shipments.map((s) => s.id);
+
+      // Exactly the three boards together: nothing a board would hide, nothing a board would show
+      // left out, and no row twice.
+      const expected = [
+        ...(await boardIds(PICKUP_DATE)),
+        ...(await boardIds(BOARD_DATE)),
+        ...(await boardIds(OTHER_DATE)),
+      ];
+      expect(new Set(ids).size).toBe(ids.length);
+      expect([...ids].sort()).toEqual([...expected].sort());
+
+      // The union, named: both days' dailies, the secured shipment out of the vault, and never the
+      // one still in it.
+      expect(ids).toEqual(
+        expect.arrayContaining([dailyToday, dailyOtherDay, securedDueDispatched]),
+      );
+      expect(ids).not.toContain(securedDueDraft);
+
+      // Newest created first across the whole range, as on one day.
+      const created = view.shipments.map((s) => new Date(s.createdAt).getTime());
+      expect([...created].sort((a, b) => b - a)).toEqual(created);
+    });
+
+    it('takes both ends inclusive, and leaves out the days outside them', async () => {
+      const oneDay = (await historyOf(BOARD_DATE, BOARD_DATE)).shipments.map((s) => s.id);
+      expect([...oneDay].sort()).toEqual([...(await boardIds(BOARD_DATE))].sort());
+      expect(oneDay).toContain(dailyToday);
+      expect(oneDay).not.toContain(dailyOtherDay); // the day after `to`
+
+      // `to` is the LAST day shown, not the first one left out.
+      const twoDays = (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id);
+      expect(twoDays).toContain(dailyOtherDay);
+
+      // A secured shipment COLLECTED the day before the board day and DELIVERED on it belongs to
+      // its delivery day: in a range that holds the delivery day, absent from one that only holds
+      // the collection day.
+      const collectedBefore = (await historyOf(BOARD_DATE, BOARD_DATE)).shipments.filter(
+        (s) => s.shipmentType === 'secured' && s.collectionDate.slice(0, 10) === PICKUP_DATE,
+      );
+      expect(collectedBefore.length).toBeGreaterThan(0);
+      const pickupDay = (await historyOf(PICKUP_DATE, PICKUP_DATE)).shipments.map((s) => s.id);
+      for (const s of collectedBefore) expect(pickupDay).not.toContain(s.id);
+    });
+
+    it('echoes the resolved days as UTC midnights, whatever time of day it was asked for', async () => {
+      const res = await history(`${BOARD_DATE}T18:45:00.000Z`, `${OTHER_DATE}T01:00:00.000Z`);
+      expect(res.status).toBe(200);
+      const view = data<OperationsShipmentHistoryDto>(res);
+      expect(view.from).toBe(`${BOARD_DATE}T00:00:00.000Z`);
+      expect(view.to).toBe(`${OTHER_DATE}T00:00:00.000Z`);
+      expect(view.shipments.map((s) => s.id)).toEqual(
+        (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id),
+      );
+    });
+
+    it('prints every row and van card exactly as the day board does', async () => {
+      const day = data<OperationsDayBoardDto>(await board(BOARD_DATE));
+      const view = await historyOf(BOARD_DATE, BOARD_DATE);
+      expect(view.shipments).toEqual(day.shipments);
+      expect(view.crews).toEqual(day.crews);
+      // Not vacuous: the board day carries crewed rows and a van card.
+      expect(view.crews.length).toBeGreaterThan(0);
+      expect(
+        view.shipments.find((s) => s.id === securedDueDispatched)?.crew?.captainPhone,
+      ).not.toBeNull();
+
+      // Over several days a van card is still listed once per crew row.
+      const wide = await historyOf(PICKUP_DATE, OTHER_DATE);
+      const cardIds = wide.crews.map((c) => c.crewAssignmentId);
+      expect(new Set(cardIds).size).toBe(cardIds.length);
+      expect(cardIds).toContain(boardCrewId);
+    });
+
+    it('is empty, not an error, over days with no work', async () => {
+      const view = await historyOf(shift(222), shift(223));
+      expect(view.shipments).toEqual([]);
+      expect(view.crews).toEqual([]);
+    });
+
+    it('refuses a backwards, an over-long or an incomplete range — and serves exactly the longest one', async () => {
+      const backwards = await history(OTHER_DATE, BOARD_DATE);
+      expect(backwards.status).toBe(400);
+      expect(errorCode(backwards)).toBe(ErrorCodes.VALIDATION_FAILED);
+
+      // OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS days, counting both ends, is served; one more is not.
+      const first = shift(100);
+      const lastAllowed = shift(100 + OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS - 1);
+      expect((await history(first, lastAllowed)).status).toBe(200);
+      const tooLong = await history(first, shift(100 + OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS));
+      expect(tooLong.status).toBe(400);
+      expect(errorCode(tooLong)).toBe(ErrorCodes.VALIDATION_FAILED);
+
+      const noTo = await request(app)
+        .get(`/api/v1/operations/shipments/history?from=${BOARD_DATE}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(noTo.status).toBe(400);
+      const tampered = await request(app)
+        .get(
+          `/api/v1/operations/shipments/history?from=${BOARD_DATE}&to=${BOARD_DATE}&status=draft`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(tampered.status).toBe(400);
+    });
+
+    it('keeps the crew plan behind its grant — the same rows for a reader without it, no cards, no phone', async () => {
+      const res = await history(BOARD_DATE, OTHER_DATE, viewerToken);
+      expect(res.status).toBe(200);
+      const view = data<OperationsShipmentHistoryDto>(res);
+      expect(view.crews).toEqual([]);
+      expect(view.shipments.map((s) => s.id)).toEqual(
+        (await historyOf(BOARD_DATE, OTHER_DATE)).shipments.map((s) => s.id),
+      );
+      const crewed = view.shipments.filter((s) => s.crew !== null);
+      expect(crewed.length).toBeGreaterThan(0);
+      for (const row of crewed) {
+        expect(row.crew?.captainPhone).toBeNull();
+        // Still the van and the captain's name the legacy table printed.
+        expect(row.crew?.vehicleCode).toBe('OPS-V1');
+      }
+    });
+
+    it('RBAC — needs operationsShipment.view; the crew grant alone does not open it', async () => {
+      const anonymous = await request(app).get(
+        `/api/v1/operations/shipments/history?from=${BOARD_DATE}&to=${BOARD_DATE}`,
+      );
+      expect(anonymous.status).toBe(401);
+
+      const crewOnly = await rbacService.createRole(
+        { name: { en: 'Crew reader', ar: 'قارئ الطاقم' }, permissionKeys: ['operationsCrew.view'] },
+        adminId,
+      );
+      const userId = await mkUser('ops-history-crew@ecms.local');
+      await rbacService.ensureAssignment(userId, String(crewOnly._id), 'organization');
+      const res = await history(BOARD_DATE, BOARD_DATE, await login('ops-history-crew@ecms.local'));
+      expect(res.status).toBe(403);
+    });
+
+    // The cap is the REAL one — `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` rows really stored — rather
+    // than a test-only knob in the service: what is proven is the guard production runs. The rows
+    // go straight into the collection (the API would take minutes to book 5,000 shipments) on two
+    // days nothing else uses, and are taken out again whatever happens.
+    it('refuses a range holding more than OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS shipments — counted, never loaded, never cut short', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const { operationsShipmentRepository } = await import(
+        '../../src/modules/operations/shipments/shipment.repository'
+      );
+      const HEAVY_DATE = shift(228);
+      const HEAVY_NEXT = shift(229);
+      const MARK = 'history-cap-fixture';
+      const row = (over: Record<string, unknown> = {}) => ({
+        shipmentType: 'daily',
+        status: 'draft',
+        mainBankId: bankA.id,
+        secondaryBankId: null,
+        originBranchId: branchA1.id,
+        destinationBranchId: branchA1.id,
+        areaName: null,
+        lines: [{ currencyId: egp.id, amountMinor: 100 }],
+        collectionDate: new Date(`${HEAVY_DATE}T00:00:00.000Z`),
+        deliveryDate: null,
+        receiptNumber: null,
+        vaultReceiptNumber: null,
+        serialTracked: false,
+        notes: MARK,
+        receivedById: null,
+        receivedAt: null,
+        ...over,
+      });
+      try {
+        await OperationsShipmentModel.insertMany([
+          // Exactly the cap on the first day...
+          ...Array.from({ length: OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS }, () => row()),
+          // ...beside two rows that are NOT on its board, so cannot count towards the cap: a secured
+          // shipment due that day but still in the vault, and a deleted daily one.
+          row({
+            shipmentType: 'secured',
+            deliveryDate: new Date(`${HEAVY_DATE}T00:00:00.000Z`),
+          }),
+          row({ isDeleted: true, deletedAt: new Date() }),
+          // ...and one more on the next day.
+          row({ collectionDate: new Date(`${HEAVY_NEXT}T00:00:00.000Z`) }),
+        ]);
+
+        // At the cap: served, whole.
+        const atCap = await historyOf(HEAVY_DATE, HEAVY_DATE);
+        expect(atCap.shipments).toHaveLength(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS);
+
+        // One over: refused with both figures, and refused on the COUNT — the rows are never read.
+        const load = vi.spyOn(operationsShipmentRepository, 'boardInRange');
+        try {
+          const over = await history(HEAVY_DATE, HEAVY_NEXT);
+          expect(over.status).toBe(422);
+          expect(errorCode(over)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE);
+          const details = (
+            over.body as { error: { details: { field: string; message: string }[] } }
+          ).error.details;
+          expect(details).toEqual([
+            expect.objectContaining({
+              field: 'count',
+              message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS + 1),
+            }),
+            expect.objectContaining({
+              field: 'max',
+              message: String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS),
+            }),
+          ]);
+          expect(load).not.toHaveBeenCalled();
+        } finally {
+          load.mockRestore();
+        }
+      } finally {
+        await OperationsShipmentModel.deleteMany({ notes: MARK }).exec();
+      }
+      expect((await historyOf(HEAVY_DATE, HEAVY_NEXT)).shipments).toEqual([]);
+    }, 60_000);
   });
 });
 

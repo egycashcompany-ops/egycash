@@ -8,11 +8,12 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 const FORM = read('./ShipmentFormDialog.tsx');
-const BOARD = read('../pages/DailyOperationsPage.tsx');
+// The day board's and the history's board — both add through it (`components/ShipmentsBoard.tsx`).
+const BOARD = read('./ShipmentsBoard.tsx');
 const SECURED = read('../pages/SecuredBacklogPage.tsx');
 
 describe('«اشيل النوع ويكون يومى بس» — the screen decides the type, not a box in the form', () => {
-  it('the day board creates daily shipments, the secured register secured ones', () => {
+  it('the shipments board creates daily shipments, the secured register secured ones', () => {
     expect(BOARD).toContain('createType="daily"');
     expect(SECURED).toContain('createType="secured"');
   });

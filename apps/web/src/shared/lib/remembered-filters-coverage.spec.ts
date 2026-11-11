@@ -162,6 +162,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/it/pages/VehicleChecksPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
   ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
+  // «سجل الشحنات»: the day board's filters, remembered alike; `from`/`to` open on this month to
+  // date — the range is what the screen IS, as `date` is the day board's.
+  ['modules/operations/pages/ShipmentsHistoryPage.tsx', ['from', 'to']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],

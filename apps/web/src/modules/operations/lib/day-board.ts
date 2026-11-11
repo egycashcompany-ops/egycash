@@ -14,15 +14,28 @@ import {
   type OperationsShipmentStatus,
   type OperationsShipmentType,
 } from '@ecms/contracts';
+import { fold } from '../../../shared/lib/fold';
+import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
 
 /**
- * The eight filters the legacy board offered (main_ops.ejs:966-1010), as data.
+ * The eight filters the legacy board offered (main_ops.ejs:966-1010), as data — and the van's code,
+ * which it did not: «ضيف كود العربيه ف الفلاتر».
  *
  * Legacy matched each with a case-insensitive substring test over the rendered cell text. That
  * behaviour is PRESERVED — an operator types a fragment of a bank or branch name, not an exact
  * value — but it now runs over the shipment's fields rather than over its HTML.
+ *
+ * Declared in the order the bar shows them, which is the table's column order («ارتب الفلاتر على
+ * حسب عواميد الجدول»): the van, the bank, the two branches, the area, the captain, (the day), the
+ * type, the delivery, the notes.
  */
 export interface DayBoardFilters {
+  /**
+   * The «السيارة» column's code — the van of the row's leg (`row.crew.vehicleCode`). Matched the
+   * way every vehicle-code box in the application matches (`matchesVehicleCode`): Arabic-Indic
+   * digits folded, and «150 - 151» naming both vans.
+   */
+  vehicle: string;
   bank: string;
   origin: string;
   destination: string;
@@ -35,14 +48,38 @@ export interface DayBoardFilters {
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
+  vehicle: '',
   bank: '',
   origin: '',
   destination: '',
   area: '',
-  notes: '',
   captain: '',
   type: '',
   received: '',
+  notes: '',
+};
+
+/** The URL params the board's filters live in — one per filter, by the filter's own name. */
+export const DAY_BOARD_FILTER_PARAMS = Object.keys(EMPTY_DAY_BOARD_FILTERS) as readonly (keyof DayBoardFilters)[];
+
+/**
+ * The filters a URL holds. A value the select filters cannot take (a hand-edited `?type=x`) reads
+ * as no filter rather than as a filter nothing matches — an empty board with no way to tell why.
+ */
+export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters => {
+  const type = params.get('type') ?? '';
+  const received = params.get('received') ?? '';
+  return {
+    vehicle: params.get('vehicle') ?? '',
+    bank: params.get('bank') ?? '',
+    origin: params.get('origin') ?? '',
+    destination: params.get('destination') ?? '',
+    area: params.get('area') ?? '',
+    captain: params.get('captain') ?? '',
+    type: type === 'daily' || type === 'secured' ? type : '',
+    received: received === 'yes' || received === 'no' ? received : '',
+    notes: params.get('notes') ?? '',
+  };
 };
 
 export const hasActiveFilter = (filters: DayBoardFilters): boolean =>
@@ -118,9 +155,13 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
   bankNameOf: (bankId: string) => string,
   cellTextOf: (shipment: T, side: BoardBranchSide) => string,
   captainNameOf: (shipment: T) => string = () => '',
+  vehicleCodeOf: (shipment: T) => string = () => '',
 ): T[] =>
   shipments.filter(
     (shipment) =>
+      // A row with no van yet ("book now, crew later") has no code to match: it drops out of a van
+      // filter rather than matching every code. A box holding no code narrows nothing.
+      matchesVehicleCode(vehicleCodeOf(shipment), filters.vehicle) &&
       matches(bankNameOf(shipment.mainBankId), filters.bank) &&
       matches(cellTextOf(shipment, 'origin'), filters.origin) &&
       matches(cellTextOf(shipment, 'destination'), filters.destination) &&
@@ -174,21 +215,148 @@ export const boardTotals = (
 };
 
 /**
+ * What a spelling is compared as, folded — `fold`, with tatweel dropped and spaces made one.
+ *
+ * The spaces are made one BEFORE folding as well as after: `fold` keeps only the plain space and
+ * drops every other blank as punctuation, so a name pasted from Excel or Word with a no-break space
+ * or a tab between its words («جنيه مصري») would otherwise fold to one word, «جنيهمصري», which
+ * spells nothing.
+ */
+const foldedCurrency = (value: string): string =>
+  fold(value.replace(/\u0640/gu, '').replace(/\s+/gu, ' '))
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+/** What a spelling is compared as, raw — for the ones whose punctuation is the word. */
+const rawCurrency = (value: string): string => value.replace(/\s+/gu, '').toUpperCase();
+
+/**
+ * WHICH CURRENCY IS THE POUND, AND WHICH THE DOLLAR — «انا عاوز المصرى لوحده الدولار لوحده و اى حاجه
+ * غير الاتنين دول يتحسب عملات اخرى».
+ *
+ * The figures used to know the two by their CODE alone (`EGP`, `USD`). The production catalog's
+ * codes are the legacy numbers the owner typed — «1» مصري, «2» دولار, «3» يورو — so neither was
+ * found, and the whole day's money landed in «عملات أخرى» beside a pound and a dollar of 0. The
+ * catalog was never wrong: a currency is the code, the name and the legacy spellings together
+ * (legacy classified money by literal synonym lists, `['مصري','جنيه','EGP']` and
+ * `['دولار','USD']` — contad_app.js:5029, 5043), so all three are read here.
+ *
+ * Each value is compared WHOLE, never by "contains": «جنيه استرليني» is pound sterling and «دولار
+ * كندي» the Canadian dollar, and both are other currencies. Two forms are compared, because the
+ * shared Arabic fold removes punctuation, and for some spellings the punctuation is the word:
+ *
+ *   · folded (`fold`: hamza forms, ى/ي, ة/ه, diacritics, Arabic-Indic digits, punctuation dropped;
+ *     runs of spaces made one) — «مصرى», «جنية», «الدولار الأمريكى», «L.E», «ج.م», «U.S. Dollar»;
+ *   · raw, upper-cased with the spaces taken out — «$», «US$», «E£», which fold to nothing or to a
+ *     fragment («US$» → «us», «E£» → «e») that is not worth recognising on its own.
+ */
+const POUND_FOLDED = new Set(
+  [
+    'EGP',
+    'LE',
+    'مصري',
+    'المصري',
+    'جنيه',
+    'الجنيه',
+    'جنيه مصري',
+    'الجنيه المصري',
+    // «ج.م» and «ج. م» — what fold leaves of them.
+    'جم',
+    'ج م',
+    'egyptian pound',
+    'egyptian pounds',
+  ].map((value) => foldedCurrency(value)),
+);
+const POUND_RAW = new Set(['E£', '£E']);
+const DOLLAR_FOLDED = new Set(
+  [
+    'USD',
+    'دولار',
+    'الدولار',
+    'دولار امريكي',
+    'الدولار الامريكي',
+    'dollar',
+    'dollars',
+    'us dollar',
+    'us dollars',
+  ].map((value) => foldedCurrency(value)),
+);
+const DOLLAR_RAW = new Set(['$', 'US$', 'USD$', 'U.S.$']);
+
+const spells = (value: string, folded: ReadonlySet<string>, raw: ReadonlySet<string>): boolean => {
+  const key = foldedCurrency(value);
+  return (key !== '' && folded.has(key)) || raw.has(rawCurrency(value));
+};
+
+/** The two currencies the figures keep apart, and everything else. */
+export type CurrencyKind = 'pound' | 'dollar' | 'other';
+
+/**
+ * Is this currency the Egyptian pound, the US dollar, or another one? By its code, its name or any
+ * legacy alias (`legacyAliases`), each compared whole. A currency that spells BOTH (a catalog entry
+ * named «دولار» with «EGP» among its aliases) is a contradiction the figures cannot settle, so it
+ * is counted with the others rather than guessed at; so is one the catalog cannot name yet.
+ */
+export const currencyKind = (
+  currency:
+    | (Pick<OperationsCurrencyDto, 'code' | 'name'> &
+        Partial<Pick<OperationsCurrencyDto, 'legacyAliases'>>)
+    | undefined,
+): CurrencyKind => {
+  if (currency === undefined) return 'other';
+  const spellings = [currency.code, currency.name, ...(currency.legacyAliases ?? [])];
+  const pound = spellings.some((value) => spells(value, POUND_FOLDED, POUND_RAW));
+  const dollar = spellings.some((value) => spells(value, DOLLAR_FOLDED, DOLLAR_RAW));
+  return pound === dollar ? 'other' : pound ? 'pound' : 'dollar';
+};
+
+/**
+ * The catalog's pound or dollar — what the figures' «مصري» and «دولار» pills are labelled with.
+ * The first one, if a catalog holds two (an old `1` and a new `EGP`, say): the sums count both.
+ */
+export const currencyOfKind = <C extends Pick<OperationsCurrencyDto, 'code' | 'name'>>(
+  currencies: readonly C[],
+  kind: Exclude<CurrencyKind, 'other'>,
+): C | undefined => currencies.find((currency) => currencyKind(currency) === kind);
+
+/**
+ * The code worth printing beside an amount as its unit: an alphabetic one (EUR, GBP, SAR). The
+ * legacy catalog's numbers — «1», «2», «3» — are row numbers the owner typed, not units, and a
+ * reader seeing «450,000 3» would read a figure that is not there.
+ */
+export const currencyUnit = (currency: Pick<OperationsCurrencyDto, 'code'> | undefined): string => {
+  const code = currency?.code.trim() ?? '';
+  return /^[A-Za-z]{2,5}$/u.test(code) ? code.toUpperCase() : '';
+};
+
+/**
  * Where a currency sits in the figures: the domestic currency first, then the dollar, then the
  * rest — the order the legacy strip read «مصري = … دولار = …» in (main_ops.ejs:3315). A currency
  * the catalog cannot name goes last: its chip says «…», which is not worth reading first.
  */
-const currencyRank = (currency: Pick<OperationsCurrencyDto, 'code'> | undefined): number =>
-  currency === undefined ? 3 : currency.code === 'EGP' ? 0 : currency.code === 'USD' ? 1 : 2;
+const currencyRank = (currency: Parameters<typeof currencyKind>[0]): number => {
+  if (currency === undefined) return 3;
+  const kind = currencyKind(currency);
+  return kind === 'pound' ? 0 : kind === 'dollar' ? 1 : 2;
+};
+
+/** How the figures look a currency up — the page passes the catalog's own rows. */
+type CurrencyLookup = (
+  currencyId: string,
+) =>
+  | (Pick<OperationsCurrencyDto, 'code' | 'name'> &
+      Partial<Pick<OperationsCurrencyDto, 'legacyAliases'>>)
+  | undefined;
 
 /**
  * The board's figures in the order they are shown: `boardTotals` over the rows it is GIVEN — the
- * page passes the filtered rows, so a bank filter answers "how much for this bank" — then EGP,
- * USD, the rest by name, and an unknown currency last. Ties keep `boardTotals`' order.
+ * page passes the filtered rows, so a bank filter answers "how much for this bank" — then the
+ * pound, the dollar, the rest by name, and an unknown currency last. Ties keep `boardTotals`'
+ * order.
  */
 export const orderedBoardTotals = (
   shipments: readonly OperationsShipmentDto[],
-  currencyOf: (currencyId: string) => Pick<OperationsCurrencyDto, 'code' | 'name'> | undefined,
+  currencyOf: CurrencyLookup,
 ): { currencyId: string; amount: number }[] =>
   boardTotals(shipments).sort((a, b) => {
     const left = currencyOf(a.currencyId);
@@ -205,12 +373,13 @@ export const orderedBoardTotals = (
  * currencies apart. Legacy summed the same set (main_ops.ejs:3309 `foregn = euro1 + gbp1 + …`,
  * every currency but the pound and the dollar) and printed «عملات أجنبية = …».
  *
- * The pound and the dollar are known by their CODE (EGP, USD); a currency the catalog cannot name
- * yet counts with the others. `others` reads by name, as the breakdown lists it.
+ * The pound and the dollar are known by `currencyKind` — code, name or legacy alias — never by
+ * the code alone; a currency the catalog cannot name yet counts with the others. `others` reads by
+ * name, as `orderedBoardTotals` orders it.
  */
 export const boardFigures = (
   shipments: readonly OperationsShipmentDto[],
-  currencyOf: (currencyId: string) => Pick<OperationsCurrencyDto, 'code' | 'name'> | undefined,
+  currencyOf: CurrencyLookup,
 ): {
   egp: number;
   usd: number;
@@ -221,12 +390,53 @@ export const boardFigures = (
   let usd = 0;
   const others: { currencyId: string; amount: number }[] = [];
   for (const total of orderedBoardTotals(shipments, currencyOf)) {
-    const code = currencyOf(total.currencyId)?.code;
-    if (code === 'EGP') egp += total.amount;
-    else if (code === 'USD') usd += total.amount;
+    const kind = currencyKind(currencyOf(total.currencyId));
+    if (kind === 'pound') egp += total.amount;
+    else if (kind === 'dollar') usd += total.amount;
     else others.push(total);
   }
   return { egp, usd, others, othersSum: others.reduce((sum, total) => sum + total.amount, 0) };
+};
+
+/** One card of the «عملات أخرى» dialog. */
+export interface OtherCurrencyCard {
+  currencyId: string;
+  amount: number;
+  /** How many of the shipments shown carry this currency on at least one line. */
+  shipments: number;
+  /** Its part of the «عملات أخرى» sum, 0..1 — the card's slim bar. */
+  share: number;
+}
+
+/**
+ * What the «عملات أخرى» dialog shows — «يفتح فورم ب كل عملة لوحدها كام»: every currency the figure
+ * adds together (exactly `boardFigures().others`, so the dialog can never list a currency the pill
+ * did not count), each with its sum, the number of shipments shown that carry it and its share of
+ * the figure; LARGEST FIRST, because the question a reader brings is "what is most of this?".
+ * Also the figure itself and how many shipments carry any of them.
+ */
+export const otherCurrencies = (
+  shipments: readonly OperationsShipmentDto[],
+  currencyOf: CurrencyLookup,
+): { cards: OtherCurrencyCard[]; sum: number; shipments: number } => {
+  const { others, othersSum } = boardFigures(shipments, currencyOf);
+  const ids = new Set(others.map((total) => total.currencyId));
+  const carrying = new Map<string, number>();
+  let anyOther = 0;
+  for (const shipment of shipments) {
+    const own = new Set(shipment.lines.map((line) => line.currencyId).filter((id) => ids.has(id)));
+    if (own.size > 0) anyOther += 1;
+    for (const id of own) carrying.set(id, (carrying.get(id) ?? 0) + 1);
+  }
+  const cards = others
+    .map((total) => ({
+      ...total,
+      shipments: carrying.get(total.currencyId) ?? 0,
+      share: othersSum === 0 ? 0 : total.amount / othersSum,
+    }))
+    // Stable: equal sums keep the by-name order `boardFigures` gave them.
+    .sort((a, b) => b.amount - a.amount);
+  return { cards, sum: othersSum, shipments: anyOther };
 };
 
 /**

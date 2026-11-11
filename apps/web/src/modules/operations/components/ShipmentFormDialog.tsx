@@ -76,6 +76,7 @@ import {
   secondaryBankFor,
   shipmentSaveErrorKey,
 } from '../lib/shipment-form';
+import { currencyOfKind } from '../lib/day-board';
 import { BankBranchDialog } from './CatalogDialogs';
 import { ShipmentBranchSide } from './ShipmentBranchSide';
 import { SHIPMENT_PATH } from './shipment-icons';
@@ -115,13 +116,11 @@ export const deliveryDateFor = (shipmentType: OperationsShipmentType, raw: strin
 
 /**
  * The currency a new line starts on: the domestic one — legacy's form opened on «مصري»
- * (main_ops.ejs:376-387). Found by its code (`EGP`, as the reports know it) or a legacy alias.
+ * (main_ops.ejs:376-387). Found the way the board's figures find it (`currencyKind`): by its code,
+ * its name or a legacy alias, so a catalog whose pound is coded «1» still opens on it.
  */
 export const defaultCurrencyId = (currencies: readonly OperationsCurrencyDto[]): string =>
-  (
-    currencies.find((c) => c.code === 'EGP') ??
-    currencies.find((c) => c.legacyAliases.includes('مصري') || c.name === 'مصري')
-  )?.id ?? '';
+  currencyOfKind(currencies, 'pound')?.id ?? '';
 
 const dateOnly = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
 

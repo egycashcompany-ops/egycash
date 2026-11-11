@@ -8,6 +8,7 @@ import {
   CreateOperationsShipmentSchema,
   ListOperationsShipmentsQuerySchema,
   OperationsDayBoardQuerySchema,
+  OperationsShipmentHistoryQuerySchema,
   ReopenOperationsShipmentSchema,
   UpdateOperationsShipmentSchema,
   objectId,
@@ -22,6 +23,7 @@ import {
   deleteShipmentReceiptImage,
   getDayBoard,
   getShipment,
+  getShipmentHistory,
   getShipmentReceiptImage,
   listShipments,
   reopenShipment,
@@ -48,6 +50,15 @@ export const buildOperationsShipmentsRouter = (): Router => {
     authorize('operationsShipment.view'),
     validate({ query: OperationsDayBoardQuerySchema }),
     asyncHandler(getDayBoard),
+  );
+  // The shipments history — the day board over a range of days. BEFORE `/:id` for the same
+  // reason as `day-board`, and behind the same grant: it is the same board, looked back at.
+  router.get(
+    '/history',
+    authenticate,
+    authorize('operationsShipment.view'),
+    validate({ query: OperationsShipmentHistoryQuerySchema }),
+    asyncHandler(getShipmentHistory),
   );
   router.get(
     '/:id',

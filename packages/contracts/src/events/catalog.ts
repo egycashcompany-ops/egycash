@@ -1430,6 +1430,7 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.ShipmentCompleted]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentReopened]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentDeleted]: OperationsShipmentEventPayloadV1,
+  [OperationsEvents.ShipmentRestored]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.DayCreated]: OperationsDayEventPayloadV1,
   [OperationsEvents.DayOpened]: OperationsDayEventPayloadV1,
   [OperationsEvents.DayClosed]: OperationsDayEventPayloadV1,

@@ -100,6 +100,39 @@ its entry here in the same PR.
   - The van card names the drivers and nothing more: «هعرف مين السواقين اللي عليها، لكن مش عايز
     اعرف بياناتهم». A driver's code, phone and branch stay Fleet's (its driver card); the board
     answer sends a driver's name only. The captain and the specialists keep their codes.
+  - «سجل الشحنات» (`/operations/shipments/history`): «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون
+    من الى». The same board — figures, filters, table, cards and row actions, one shared component
+    — over «من» … «إلى» (default: the 1st of the month to today), 100 rows a page. API:
+    `GET /operations/shipments/history?from=&to=` (the day board's union over a range, at most 366
+    days; a range holding more than 5,000 shipments is refused with
+    `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`, never cut short).
+  - The currency figures: «انا عاوز المصرى لوحده الدولار لوحده و اى حاجه غير الاتنين دول يتحسب
+    عملات اخرى». The pound and the dollar were recognised by the ISO code alone, and the live
+    catalog's codes are the legacy numbers (1, 2, 3), so every currency fell into «عملات أخرى». They
+    are now recognised by code, name or legacy spelling, matched whole («جنيه استرليني» stays
+    other). The «عملات أخرى» dialog is wider: the total on top, one card per currency, largest
+    first, with its share and how many shipments carry it.
+  - The filters follow the table's columns, and «كود السيارة» joins them.
+  - «اليوم التشغيلي» is today only: «هنشيل منها التاريخ … هو هيجيب بتاعت اليوم». The day picker is
+    gone; the board asks for Cairo's today by name and moves to the next day at Cairo midnight
+    (`GET /day-board` with no date now defaults to Cairo's today too). Its filters sit on one row
+    from 1024px; the history's from 1280px.
+  - «سجل الشحنات» cannot add or confirm delivery («مش هيقدر يضيف … ومش هيقدر منها يسلم او
+    يستلم»); edit, delete and the receipt image stay.
+  - No past dates: «مينفعش لما يجى يضيف شحنه يختار تاريخ فات» / «ميقدرش يحدد يوم قبل يوم اللى كانت
+    عليه الشحنة». A new shipment's collection (and a secured one's delivery) day cannot be before
+    Cairo's today (`OPERATIONS_SHIPMENT_DATE_IN_PAST`); an edit cannot move a date earlier than it
+    was (`OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL`). The form shows the floor and checks it
+    before sending.
+  - «السجل» on every shipment, on both screens: «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة».
+    `GET /operations/shipments/:id/log` (`operationsShipment.view`) reads the shipment's audit
+    trail and its legs' — created, each edit with old → new values resolved to names, crew,
+    the captain's steps, the desk's confirmation, the receipt image, vault and dispatch (their
+    custody details only for `operationsVault.view`), delete and restore.
+  - Deleted shipments: «اللى اتمسح اعملى ايقون اقدر اجيب منه اللى اتمسح». An icon on the history
+    lists the range's deleted shipments (who deleted them, when, their log) with «استرجاع» for
+    `operationsShipment.delete`. API: `GET /operations/shipments/deleted?from=&to=`,
+    `POST /operations/shipments/:id/restore` (409 `OPERATIONS_SHIPMENT_NOT_DELETED`).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

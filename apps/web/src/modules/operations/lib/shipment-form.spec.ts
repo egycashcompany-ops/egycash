@@ -6,9 +6,12 @@ import { ApiError } from '../../../shared/lib/api-client';
 import { translate } from '../../../platform/localization/i18n';
 import {
   BRANCH_DUPLICATE_KEY,
+  SHIPMENT_DATE_PROBLEM_KEY,
   SHIPMENT_SAVE_ERROR_KEYS,
   branchSaveErrorKey,
   areaOfDestination,
+  shipmentDateProblem,
+  earliestShipmentDate,
   followMainBank,
   secondaryBankFor,
   shipmentSaveErrorKey,
@@ -51,6 +54,88 @@ describe('areaOfDestination — المنطقة from the TO branch, not typed', (
     expect(areaOfDestination({ opsAreaName: null })).toBe('');
     expect(areaOfDestination({ opsAreaName: '  ' })).toBe('');
     expect(areaOfDestination(null)).toBe('');
+  });
+});
+
+describe('a shipment date’s floor — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»', () => {
+  const TODAY = '2026-11-11';
+
+  describe('a NEW shipment — not before today', () => {
+    it('opens its calendar on today as the earliest day', () => {
+      expect(earliestShipmentDate(null, TODAY)).toBe(TODAY);
+    });
+
+    it('takes today or any later day', () => {
+      expect(shipmentDateProblem(TODAY, null, TODAY)).toBeNull();
+      expect(shipmentDateProblem('2026-11-12', null, TODAY)).toBeNull();
+      expect(shipmentDateProblem('2027-01-01', null, TODAY)).toBeNull();
+    });
+
+    it('refuses any day before today — yesterday as much as last year', () => {
+      expect(shipmentDateProblem('2026-11-10', null, TODAY)).toBe('inPast');
+      expect(shipmentDateProblem('2025-11-11', null, TODAY)).toBe('inPast');
+    });
+
+    it('compares whole days across a month and a year', () => {
+      expect(shipmentDateProblem('2026-10-31', null, '2026-11-01')).toBe('inPast');
+      expect(shipmentDateProblem('2026-12-31', null, '2027-01-01')).toBe('inPast');
+      expect(shipmentDateProblem('2027-01-01', null, '2026-12-31')).toBeNull();
+    });
+  });
+
+  // «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة».
+  describe('an EDIT — not before the day the shipment was on', () => {
+    it('floors the calendar at the shipment’s own day, not at today', () => {
+      expect(earliestShipmentDate('2026-11-03', TODAY)).toBe('2026-11-03');
+      // A shipment already dated ahead cannot be pulled back to today either.
+      expect(earliestShipmentDate('2026-11-20', TODAY)).toBe('2026-11-20');
+    });
+
+    it('keeps a past shipment editable on its own day — the floor is its day, not today', () => {
+      expect(shipmentDateProblem('2026-11-03', '2026-11-03', TODAY)).toBeNull();
+    });
+
+    it('may move the shipment later — past today, too', () => {
+      expect(shipmentDateProblem('2026-11-05', '2026-11-03', TODAY)).toBeNull();
+      expect(shipmentDateProblem('2026-11-15', '2026-11-03', TODAY)).toBeNull();
+    });
+
+    it('refuses moving it earlier than it was', () => {
+      expect(shipmentDateProblem('2026-11-02', '2026-11-03', TODAY)).toBe('beforeOriginal');
+      expect(shipmentDateProblem('2026-11-19', '2026-11-20', TODAY)).toBe('beforeOriginal');
+    });
+  });
+
+  // A secured shipment's delivery date is held to the same floor; one never set before is a NEW
+  // date, so it is floored at today — however old the shipment.
+  it('treats a delivery date set for the first time on an edit as a new date', () => {
+    expect(earliestShipmentDate(null, TODAY)).toBe(TODAY);
+    expect(shipmentDateProblem('2026-11-10', null, TODAY)).toBe('inPast');
+    expect(shipmentDateProblem(TODAY, null, TODAY)).toBeNull();
+  });
+
+  it('leaves an empty or half-typed date to the required check — nothing to compare yet', () => {
+    for (const value of ['', '2026-11', '2026-02-30', 'not a date']) {
+      expect(shipmentDateProblem(value, null, TODAY), value).toBeNull();
+      expect(shipmentDateProblem(value, '2026-11-03', TODAY), value).toBeNull();
+    }
+  });
+
+  it('says the server’s refusal of the same two in the same words', () => {
+    const failed = (code: string): ApiError => new ApiError(code, 'english server sentence', 422);
+    // Typed as plain strings: the codes are the server's, named here as it sends them.
+    expect(shipmentSaveErrorKey(failed('OPERATIONS_SHIPMENT_DATE_IN_PAST'))).toBe(
+      SHIPMENT_DATE_PROBLEM_KEY.inPast,
+    );
+    expect(shipmentSaveErrorKey(failed('OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL'))).toBe(
+      SHIPMENT_DATE_PROBLEM_KEY.beforeOriginal,
+    );
+  });
+
+  it('has its words in both catalogs', () => {
+    for (const key of Object.values(SHIPMENT_DATE_PROBLEM_KEY)) {
+      for (const locale of ['ar', 'en'] as const) expect(translate(locale, key)).not.toBe(key);
+    }
   });
 });
 

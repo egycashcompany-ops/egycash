@@ -6,6 +6,11 @@ import {
   type ListOperationsShipmentsQuery,
   type OperationsDayBoardDto,
   type OperationsDayBoardQuery,
+  type OperationsDeletedShipmentsDto,
+  type OperationsDeletedShipmentsQuery,
+  type OperationsShipmentHistoryDto,
+  type OperationsShipmentHistoryQuery,
+  type OperationsShipmentLogDto,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -14,7 +19,7 @@ import { ValidationError } from '../../../shared/errors';
 import { hasPermission } from '../../../shared/types';
 import { toShipmentDto } from '../operations.mappers';
 import { receiptImageFileName } from './receipt-image-upload';
-import { operationsShipmentService } from './shipment.service';
+import { operationsShipmentService, type DayBoardView } from './shipment.service';
 
 type IdParam = { id: string };
 
@@ -32,16 +37,21 @@ export const listShipments = async (req: Request, res: Response): Promise<void> 
 const seesCrewPlan = (req: Request): boolean =>
   hasPermission(authContext(req), 'operationsCrew.view');
 
-/** The legacy `/main_ops` board — one day's working set, unioned server-side. */
-export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, OperationsDayBoardQuery>(req);
-  const day = query.date ?? new Date();
-  const { rows, crews } = await operationsShipmentService.dayBoardView(query.date);
+/** A resolved operating day on the wire: its UTC midnight, as an ISO string. */
+const utcDayIso = (d: Date): string =>
+  new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+
+/**
+ * The rows and van cards of a board, mapped for THIS reader — the one place the crew plan is
+ * taken back out for a reader without `operationsCrew.view`. The day board and the history both
+ * answer through it, so a crew fact gated on one can never leak through the other.
+ */
+const boardForReader = (
+  req: Request,
+  { rows, crews }: DayBoardView,
+): Pick<OperationsDayBoardDto, 'shipments' | 'crews'> => {
   const crewPlan = seesCrewPlan(req);
-  ok<OperationsDayBoardDto>(res, {
-    date: new Date(
-      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
-    ).toISOString(),
+  return {
     shipments: rows.map(({ doc, origin, destination, crew, captainDeliveredAt }) => ({
       ...toShipmentDto(doc),
       origin,
@@ -50,7 +60,77 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
       captainDeliveredAt: captainDeliveredAt === null ? null : captainDeliveredAt.toISOString(),
     })),
     crews: crewPlan ? crews : [],
+  };
+};
+
+/** The legacy `/main_ops` board — one day's working set, unioned server-side. */
+export const getDayBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDayBoardQuery>(req);
+  // The day the SERVICE resolves — today in Cairo when none is asked for — resolved ONCE and read
+  // with, so the echoed date is always the day whose rows came back (two reads of the clock would
+  // disagree on a request that straddles Cairo midnight).
+  const day = operationsShipmentService.boardDay(query.date);
+  const view = await operationsShipmentService.dayBoardView(day);
+  ok<OperationsDayBoardDto>(res, { date: utcDayIso(day), ...boardForReader(req, view) });
+};
+
+/** The shipments history — the day board over `from`..`to`, both inclusive. */
+export const getShipmentHistory = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsShipmentHistoryQuery>(req);
+  const view = await operationsShipmentService.historyView(query.from, query.to);
+  ok<OperationsShipmentHistoryDto>(res, {
+    from: utcDayIso(query.from),
+    to: utcDayIso(query.to),
+    ...boardForReader(req, view),
   });
+};
+
+/**
+ * The deleted shipments of `from`..`to` — the history's rows that were deleted, each with when and
+ * by whom, mapped for this reader through the same `boardForReader` as the history.
+ */
+export const getDeletedShipments = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsDeletedShipmentsQuery>(req);
+  const view = await operationsShipmentService.deletedView(query.from, query.to);
+  const board = boardForReader(req, view);
+  const docOf = new Map(view.rows.map(({ doc }) => [String(doc._id), doc]));
+  ok<OperationsDeletedShipmentsDto>(res, {
+    from: utcDayIso(query.from),
+    to: utcDayIso(query.to),
+    shipments: board.shipments.map((row) => {
+      const deletedAt = docOf.get(row.id)?.deletedAt;
+      return {
+        ...row,
+        // Every row of this list was read on `isDeleted: true`, which the delete stamps together
+        // with `deletedAt`; `updatedAt` stands in only for a row deleted by hand without one.
+        deletedAt: deletedAt == null ? row.updatedAt : deletedAt.toISOString(),
+        deletedByName: view.deletedByName.get(row.id) ?? null,
+      };
+    }),
+    crews: board.crews,
+  });
+};
+
+/**
+ * The shipment's action log — every recorded act on it, oldest first (deleted ones answer too).
+ *
+ * The vault's own record — the receipt number, the package counts, the seals and the two
+ * treasurers — is the treasury's, behind `operationsVault.view` like the vault screens and the
+ * custody's realtime topic. A reader without it still sees that the shipment entered the vault
+ * and left it (its own status moves), just not what the treasury wrote down.
+ */
+export const getShipmentLog = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const seesVault = hasPermission(authContext(req), 'operationsVault.view');
+  ok<OperationsShipmentLogDto>(res, await operationsShipmentService.log(params.id, { seesVault }));
+};
+
+export const restoreShipment = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    toShipmentDto(await operationsShipmentService.restore(params.id, authContext(req).userId)),
+  );
 };
 
 export const getShipment = async (req: Request, res: Response): Promise<void> => {

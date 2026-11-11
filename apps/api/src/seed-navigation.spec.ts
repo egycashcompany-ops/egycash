@@ -70,7 +70,8 @@ describe('the seeded navigation catalog', () => {
     // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
     // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
     // 134 → 135: «فحص أجهزة السيارات», IT's dashboard over those reports, right before the form.
-    expect(rows).toHaveLength(135);
+    // 135 → 136: «سجل الشحنات», Operations' day board over a range, right beneath the day board.
+    expect(rows).toHaveLength(136);
   });
 
   /**

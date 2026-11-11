@@ -7,7 +7,12 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import { listKey } from '../../../shared/lib/query-keys';
-import { __operationsKeys } from './operations-queries';
+import {
+  __deletedShipmentsKey,
+  __operationsKeys,
+  __shipmentHistoryKey,
+  __shipmentLogKey,
+} from './operations-queries';
 
 /** Seed one cache entry per feature so "did it become stale?" is answerable per feature. */
 const seed = (qc: QueryClient): void => {
@@ -114,6 +119,96 @@ describe('shipment write fan-out (B2)', () => {
   it('keeps the board on its own subtree, distinct from the list', () => {
     expect(__operationsKeys.dayBoard).toEqual(['operations', 'dayBoard']);
     expect(__operationsKeys.shipments).toEqual(['operations', 'shipments']);
+  });
+});
+
+describe('the shipments history rides the day board’s subtree', () => {
+  // «سجل الشحنات» is the day board over a range: a shipment saved, received, deleted or
+  // photographed from either screen changes both. Living UNDER the board's key, the history is
+  // staled by every write that stales the board — shipment writes, a secured act, a bank or branch
+  // renamed, a captain's act — with no second list for one of them to forget.
+  const range = { from: '2026-11-01', to: '2026-11-11' };
+
+  it('is keyed inside the board’s subtree, one entry per range', () => {
+    const key = __shipmentHistoryKey(range);
+    expect(key.slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__shipmentHistoryKey({ from: '2026-10-01', to: '2026-10-31' })).not.toEqual(key);
+  });
+
+  it('is staled by the invalidation every shipment write runs', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(__shipmentHistoryKey(range), { shipments: [] });
+    qc.setQueryData(listKey('operations', 'dayBoard', { date: 'today' }), { shipments: [] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __shipmentHistoryKey(range))).toBe(true);
+    expect(isStale(qc, __operationsKeys.dayBoard)).toBe(true);
+  });
+
+  it('is left alone by crew planning, as the board is', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(__shipmentHistoryKey(range), { shipments: [] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+
+    expect(isStale(qc, __shipmentHistoryKey(range))).toBe(false);
+  });
+});
+
+describe('the action log and the deleted shipments ride the day board’s subtree too', () => {
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة»: every write that stales the board writes an entry
+  // into some shipment's log; a delete moves a row from the history INTO the deleted list, and a
+  // restore moves it back. Living under the board's key, both are staled by the one invalidation
+  // every shipment write — the restore included — already runs (`useShipmentInvalidation`).
+  const range = { from: '2026-11-01', to: '2026-11-11' };
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__shipmentLogKey('s-1'), { entries: [] });
+    qc.setQueryData(__shipmentLogKey('s-2'), { entries: [] });
+    qc.setQueryData(__deletedShipmentsKey(range), { shipments: [] });
+    qc.setQueryData(__shipmentHistoryKey(range), { shipments: [] });
+  };
+
+  it('keys one log per shipment and one deleted list per range, inside the board’s subtree', () => {
+    expect(__shipmentLogKey('s-1').slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__shipmentLogKey('s-1')).not.toEqual(__shipmentLogKey('s-2'));
+    expect(__deletedShipmentsKey(range).slice(0, 2)).toEqual(__operationsKeys.dayBoard);
+    expect(__deletedShipmentsKey({ from: '2026-10-01', to: '2026-10-31' })).not.toEqual(
+      __deletedShipmentsKey(range),
+    );
+    // Distinct from the history's own entry for the same range.
+    expect(__deletedShipmentsKey(range)).not.toEqual(__shipmentHistoryKey(range));
+  });
+
+  it('a shipment write — an edit, a delete, a restore — stales every log, the deleted list and the history', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // Exactly what `useShipmentInvalidation` does.
+    await qc.invalidateQueries({ queryKey: __operationsKeys.shipments });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __shipmentLogKey('s-1'))).toBe(true);
+    expect(isStale(qc, __shipmentLogKey('s-2'))).toBe(true);
+    expect(isStale(qc, __deletedShipmentsKey(range))).toBe(true);
+    expect(isStale(qc, __shipmentHistoryKey(range))).toBe(true);
+  });
+
+  it('a captain’s act from the mobile app stales an open log, as it stales the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    // `useExecutionInvalidation`: myDay, then the board's subtree.
+    await qc.invalidateQueries({ queryKey: ['operations', 'myDay'] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.dayBoard });
+
+    expect(isStale(qc, __shipmentLogKey('s-1'))).toBe(true);
+  });
+
+  it('crew planning leaves them alone, as it leaves the board', async () => {
+    const qc = new QueryClient();
+    seed(qc);
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewDirectory });
+
+    expect(isStale(qc, __shipmentLogKey('s-1'))).toBe(false);
+    expect(isStale(qc, __deletedShipmentsKey(range))).toBe(false);
   });
 });
 

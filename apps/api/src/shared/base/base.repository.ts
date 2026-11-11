@@ -625,4 +625,39 @@ export class BaseRepository<T extends BaseDocFields> {
     if (current !== null) this.assertWritable(current);
     throw new NotFoundError();
   }
+
+  /**
+   * Bring a soft-deleted row back — the inverse of `softDeleteById`: the delete stamp is cleared,
+   * `updatedBy` is the restorer and the version moves on, so a client holding the row from before
+   * its deletion cannot write over the restored one unseen.
+   *
+   * ONE atomic write that matches only a row that IS deleted, so of two restores racing on the
+   * same row exactly one succeeds. Null when no deleted row has that id within scope; telling
+   * "never existed" (404) from "is not deleted" (409) is the caller's, because only the caller can
+   * name the second in its own vocabulary.
+   */
+  async restoreById(
+    id: string,
+    meta: WriteMeta & { scope?: ScopeSelector | undefined },
+  ): Promise<T | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+    const scoped = this.scopeFilter(meta.scope);
+    const target = {
+      _id: new Types.ObjectId(id),
+      isDeleted: true,
+      ...this.writeConditions(),
+    } as FilterQuery<T>;
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    return this.model
+      .findOneAndUpdate(
+        (Object.keys(scoped).length === 0 ? target : { $and: [target, scoped] }) as FilterQuery<T>,
+        {
+          $set: { isDeleted: false, deletedAt: null, deletedBy: null, updatedBy: by },
+          $inc: { __v: 1 },
+        } as UpdateQuery<T>,
+        { new: true, session: meta.session ?? null },
+      )
+      .lean<T>()
+      .exec();
+  }
 }

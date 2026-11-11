@@ -157,7 +157,8 @@ const FORM_CSS = `
   @media screen {
     .form-doc { max-width: 174mm; margin: 0 auto 8mm; padding: 6mm; border: 1.5px solid #111; }
   }
-  .form-doc { font-size: 11pt; line-height: 1.5; }
+  .form-doc { font-size: 12pt; line-height: 1.5; display: flex; flex-direction: column; min-height: 254mm; }
+  .form-doc .form-foot { margin-top: auto; padding-top: 4mm; }
   .form-doc .letterhead { display: flex; justify-content: space-between; align-items: flex-start;
                           margin-bottom: 4mm; }
   .form-doc .letterhead .lines { font-weight: 700; line-height: 1.5; text-align: center; }
@@ -170,6 +171,37 @@ const FORM_CSS = `
   .form-doc ul, .form-doc ol { margin: 0 0 2.5mm; }
   .form-doc td, .form-doc th { padding: 1mm 2.5mm; }
   .form-doc table { margin-bottom: 2.5mm; }
+
+  /* The owner's papers as his Word files print them (A27) — the classes \`PAPER_CLASSES\` allows. */
+  .form-doc .t10 { font-size: 10pt; }
+  .form-doc .t12 { font-size: 12pt; }
+  .form-doc .t14 { font-size: 14pt; }
+  .form-doc .t16 { font-size: 16pt; }
+  .form-doc .l15 { line-height: 1.5; }
+  .form-doc .l2 { line-height: 2; }
+  .form-doc .l3 { line-height: 3; }
+  .form-doc p.rule { border-bottom: 1.5px solid #111; }
+  /* Label and dotted-line rows: no borders; a label keeps its width, a \`dots\` cell (and the last
+     cell of a row) takes the rest. */
+  .form-doc table.plain { width: 100%; border: none; }
+  .form-doc table.plain td, .form-doc table.plain th { border: none; padding: 0 1mm; width: 1%; white-space: nowrap;
+                                                       vertical-align: bottom; text-align: start; font-weight: inherit; }
+  .form-doc table.plain td.dots, .form-doc table.plain tr:not(:has(td.dots)) td:last-child { width: auto; }
+  .form-doc table.plain td.dots { border-bottom: 1.2px dotted #222; }
+  /* \`cols\`: columns of equal width whose text wraps — his card's job, manager and department. */
+  .form-doc table.plain.cols { table-layout: fixed; }
+  .form-doc table.plain.cols td { width: auto; white-space: normal; }
+  /* A row's spacing goes above it, so the dotted line stays on the label's own line. */
+  .form-doc table.plain.l2 td, .form-doc table.plain.l3 td { line-height: 1.5; }
+  .form-doc table.plain.l2 { margin-top: 3mm; }
+  .form-doc table.plain.l3 { margin-top: 8mm; }
+  /* The shaded heading box. */
+  .form-doc table.band { width: auto; margin: 3mm auto; }
+  .form-doc table.band td { background: #bfbfbf; border: 1px solid #111; padding: 0.5mm 10mm; font-weight: 700;
+                            text-align: center; }
+  /* The document-control line at the foot of the page. */
+  .form-doc table.foot { width: 100%; border: none; margin: 0; font-size: 9pt; direction: ltr; }
+  .form-doc table.foot td { border: none; padding: 0; text-align: center; }
 `;
 
 const formBody = (
@@ -203,7 +235,7 @@ const formBody = (
     ${fill(template.sections.header)}
     <main>${fill(template.sections.body)}</main>
     ${signatures === '' ? '' : `<div class="signatures">${signatures}</div>`}
-    ${fill(template.sections.footer)}
+    ${template.sections.footer.trim() === '' ? '' : `<div class="form-foot">${fill(template.sections.footer)}</div>`}
   </div>`;
 };
 

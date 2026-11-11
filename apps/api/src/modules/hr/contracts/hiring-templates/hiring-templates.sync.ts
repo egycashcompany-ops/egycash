@@ -13,6 +13,9 @@
 //   · a job's paper published here and untouched since FOLLOWS ITS JOBS: a job carrying its name
 //     created since (or a name the paper gained in a release) is added on the next boot. None is
 //     ever taken away.
+//   · a paper's NEWER REVISION (`HiringPaper.revision`: his words and layout as a release changes
+//     them) rewrites the row the boot wrote, if nobody has touched it since — its sections, its
+//     placeholders, its signatures. A row somebody edited keeps their edit.
 //
 // IDEMPOTENT, AND NEVER OVER SOMEBODY'S EDIT. A paper is recognized by its template key. Once a
 // row with that key exists, this file leaves it alone — unless it is still the untouched row it
@@ -80,10 +83,12 @@ export interface HiringTemplatesReport {
   linked: string[];
   /** A published paper given a job named for it since. */
   widened: string[];
+  /** A paper the boot wrote, rewritten to the paper's newer revision. */
+  revised: string[];
 }
 
 export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
-  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [], widened: [] };
+  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [], widened: [], revised: [] };
   const titles = await JobTitleModel.find({ isDeleted: false, status: 'active' }, { name: 1 }).lean<JobRow[]>();
 
   for (const paper of HIRING_PAPERS) {
@@ -93,10 +98,31 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
       const rows = await ContractTemplateModel.find({ key: paper.key }).lean();
 
       if (rows.length > 0) {
-        const [row] = rows;
+        let [row] = rows;
         const untouched =
           rows.length === 1 && row !== undefined && !row.isDeleted && row.changedBy === null && row.updatedBy === null;
-        if (!untouched) continue;
+        if (!untouched || row === undefined) continue;
+        const revision = paper.revision ?? 1;
+        if ((row.paperRevision ?? 1) < revision) {
+          // His newer words and layout, only over the row as the boot wrote it.
+          const { sections, placeholders } = preparedSections(paper);
+          const done = await ContractTemplateModel.updateOne(
+            { _id: row._id, __v: row.__v, changedBy: null, updatedBy: null },
+            { $set: { sections, placeholders, signatures: paper.signatures, paperRevision: revision }, $inc: { __v: 1 } },
+          );
+          if (done.modifiedCount === 1) {
+            await auditService.record({
+              entityRef: templateRef(String(row._id)),
+              action: 'update',
+              changes: [{ field: 'paperRevision', old: row.paperRevision ?? 1, new: revision }],
+              actor: SYSTEM,
+            });
+            report.revised.push(paper.key);
+          }
+          const fresh = await ContractTemplateModel.findById(row._id).lean();
+          if (fresh === null) continue;
+          row = fresh;
+        }
         if (row.status === 'published') {
           // A job named for it since: added, never one taken away — and only to the row as written.
           if (paper.jobs === 'all' || (row.allJobs ?? true)) continue;
@@ -158,6 +184,7 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
         printOrder: paper.printOrder,
         placeholders,
         changedBy: null,
+        paperRevision: paper.revision ?? 1,
       });
       await auditService.record({
         entityRef: templateRef(String(doc._id)),
@@ -176,7 +203,7 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
     }
   }
 
-  if (report.published.length + report.linked.length + report.waiting.length + report.widened.length > 0) {
+  if (report.published.length + report.linked.length + report.waiting.length + report.widened.length + report.revised.length > 0) {
     logger.info(report, 'hiring templates: the owner\'s papers synced');
   }
   return report;

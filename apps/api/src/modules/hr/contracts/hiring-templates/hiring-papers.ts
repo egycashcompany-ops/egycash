@@ -2,19 +2,19 @@
 //
 // «بص هبعتلك الفايلات و قولي تتعمل ازاي»: the contract, the data sheet, the work-receipt, relatives
 // and weapon declarations, the bank letter, and the seven job description cards, copied from his
-// Word files. The words are his, as he prints them today; only unmistakable slips of the keyboard
-// are corrected («لدمة» → «لمدة», «فيلتزن» → «فيلتزم», «ونسة» → «ونسخة», «اثتاء» → «أثناء»,
-// «متاابعة» → «متابعة», «بهمام» → «بمهام», «إداراة» / «إدراة» → «إدارة», «اللآلي» → «الآلي»).
-// That is why this file is in `VERBATIM_PAPERS` (scripts/check-formal-arabic.mjs): a record of his
-// documents, not prose of ours.
+// Word files. The words are his, as he prints them today. That is why this file is in
+// `VERBATIM_PAPERS` (scripts/check-formal-arabic.mjs): a record of his documents, not prose of ours.
 //
-// Where his paper leaves a line for the employee's own facts — name, national ID, job, start date,
-// salary — the line is a `{{placeholder}}` and the set fills it; a fact the record lacks prints as
-// a dotted line. Lines the employee fills by hand (a signature, an emergency number, the bank
-// branch) stay dotted. His sample bank letter carried one employee's facts; none of them is here.
+// The forms are his BLANK papers («رجعهم كلهم زي الاصل»): his spelling, sizes and layout, a dotted
+// line where the employee writes by hand. Only the bank letter (with the contract) is filled: where
+// it leaves a line for the employee's own facts the line is a `{{placeholder}}`, and a fact the
+// record lacks prints as a dotted line. His sample bank letter carried one employee's facts; none of
+// them is here. The contract still carries the first copy's corrections of his keyboard slips
+// («لدمة» → «لمدة», «فيلتزن» → «فيلتزم», «ونسة» → «ونسخة»).
 //
 // These are only the STARTING papers. `syncHiringTemplates` writes each one once; HR edits them
-// in «قوالب العقود» like any template, and an edit is never overwritten.
+// in «قوالب العقود» like any template, and an edit is never overwritten. A paper's `revision`
+// rewrites the row the boot wrote, while nobody has touched it.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
 import { CIT_SPECIALISTS, WEAPON_HOLDERS, matchesJob, type JobMatch, type JobNames } from '../../shared/job-match';
 
@@ -33,19 +33,50 @@ export interface HiringPaper {
    */
   optionalFor?: JobNames;
   printOrder: number;
+  /**
+   * The paper's own version. A row the boot wrote, and no person has touched since, is rewritten to
+   * a newer revision on the next boot (`syncHiringTemplates`); missing means 1.
+   */
+  revision?: number;
   sections: { header: string; body: string; footer: string };
   signatures: SignatureBlock[];
 }
 
-const DOTS = '..............................';
-/** A shorter line, where two facts share one row of the data sheet. */
-const SHORT_DOTS = '....................';
-const title = (text: string): string => `<h3 style="text-align: center"><u>${text}</u></h3>`;
 const clause = (text: string): string => `<h4 style="text-align: center"><u>${text}</u></h4>`;
 const bullets = (items: readonly string[]): string => `<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
 const numbered = (items: readonly string[]): string => `<ol>${items.map((item) => `<li>${item}</li>`).join('')}</ol>`;
-const band = (text: string): string =>
-  `<table><tbody><tr><td style="text-align: center"><b>${text}</b></td></tr></tbody></table>`;
+
+// ── As his Word files print them: the forms are BLANK, written on by hand ─────────────────────
+//
+// «نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو … و الباقي لازم يكون فاضي الموظف هو اللي
+// يكتب بياناته فيه و يمضي»; «رجعهم كلهم زي الاصل». Every form but the bank letter carries no
+// placeholder: it prints as his blank paper — his words and spelling, his type sizes and line
+// spacing, a dotted line where the employee writes, his document-control line at the foot of the
+// page. The layout classes are the few the sanitizer allows (`PAPER_CLASSES`).
+
+/** Spaces that hold their width — his papers leave room with them. */
+const gap = (count: number): string => '&nbsp;'.repeat(count);
+/** His title: bold, underlined, centered. */
+const heading = (text: string, size: 't12' | 't14' | 't16'): string =>
+  `<h3 class="${size}" style="text-align: center"><u>${text}</u></h3>`;
+/**
+ * One line of labels and dotted lines to write on: a string is printed as it is, `null` is the
+ * dotted line, taking the room the labels leave.
+ */
+const line = (cells: readonly (string | null)[], cls = ''): string =>
+  `<table class="plain${cls === '' ? '' : ` ${cls}`}"><tbody><tr>${cells
+    .map((cell) => (cell === null ? '<td class="dots"></td>' : `<td>${cell}</td>`))
+    .join('')}</tr></tbody></table>`;
+/** His shaded heading box. */
+const shaded = (text: string): string => `<table class="band"><tbody><tr><td>${text}</td></tr></tbody></table>`;
+/** Two labels on one line, one at each end — where his paper spaces them apart (signatures). */
+const apart = (start: string, end: string, cls = ''): string =>
+  `<table class="plain${cls === '' ? '' : ` ${cls}`}"><tbody><tr><td>${gap(6)}${start}</td><td style="text-align: left">${end}${gap(6)}</td></tr></tbody></table>`;
+/** His document-control line, at the foot of the page. */
+const docControl = (code: string): string =>
+  `<table class="foot"><tbody><tr><td>${code}</td><td>Issue / Rev. no.: 1/0</td><td>Issue date: 1/5/2022</td></tr></tbody></table>`;
+/** «   /        /   202» — a date written by hand. */
+const handDate = (year: string): string => `${gap(4)}/${gap(8)}/${gap(4)}${year}`;
 
 // ── The contract ─────────────────────────────────────────────────────────────────────────────
 
@@ -188,28 +219,31 @@ const DATA_SHEET: HiringPaper = {
   kind: 'form',
   jobs: 'all',
   printOrder: 10,
+  revision: 2,
   sections: {
-    header: title('صـحـيـفــة بـيــانــات'),
+    header: heading('صـحـيـفــة بـيــانــات', 't14'),
     body: [
-      '<p>تحريراً فى : {{contract.currentDate}}</p>',
-      band('الـبـيــانــات الـشـخـصـيـــة'),
-      '<p>الإســـم : {{employee.fullName}} — تـاريـخ الميــلاد : {{employee.birthDate}}</p>',
-      '<p>الـرقـم الـقـومــي : {{employee.nationalId}} — الـموقف من التجنـيـد : {{employee.militaryStatus}}</p>',
-      '<p>الـعـنـوان : {{employee.address}}</p>',
-      `<p>رقـم الـتـلـيـفــون : {{employee.phone}} — رقم هاتف للطوارئ : ${SHORT_DOTS} الصفة (${SHORT_DOTS})</p>`,
-      band('الـمــؤهــلات الــدراسـيــة'),
-      '<p>الـمؤهــل الـدراســي : {{employee.qualification}} — سـنــة الـتخـــرج : {{employee.graduationYear}}</p>',
-      `<p>جـهـة الـحصـول عـليـه : {{employee.institution}} — مـؤهــلات اخـــرى : ${SHORT_DOTS}</p>`,
-      band('الـحـالـة الاجـتـمـاعـيـة'),
-      '<p>الـحـالــة الإجـتمــاعـيـــة : {{employee.maritalStatus}} ( أعزب – متزوج – أرمل – مطلق )</p>',
-      '<p><u>بـيـانــات من يعول</u></p>',
-      '<table><thead><tr><th>#</th><th>الإسم</th><th>تـاريــخ الـمـيــلاد</th><th>صـلـة الـقـرابــة</th></tr></thead><tbody>' +
-        [1, 2, 3, 4, 5].map((row) => `<tr><td>${row}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('') +
+      `<p>تحريراً فى : ${handDate('20')}</p>`,
+      shaded('الـبـيــانــات الـشـخـصـيـــة'),
+      line(['الإســـم :', null, 'تـاريـخ الميــلاد :', null]),
+      line(['الـرقـم الـقـومــي :', null, 'الـموقف من التجنـيـد :', null]),
+      line(['الـعـنـوان :', null]),
+      line(['رقـم الـتـلـيـفــون :', null, 'رقم هاتف للطوارئى :', null, 'الصفه(.......)']),
+      shaded('الـمــؤهــلات الــدراسـيــة'),
+      line(['الـمؤهــل الـدراســي :', null, 'سـنــة الـتخـــرج :', null]),
+      line(['جـهـة الـحصـول عـليـه :', null, 'مـؤهــلات اخـــرى :', null]),
+      shaded('الـحـالـة الاجـتـمـاعـيـة'),
+      '<p>الـحـالــة الإجـتمــاعـيـــة : ................................ ( أعزب – متزوج – أرمل – مطلق )</p>',
+      '<ul><li><u>بـيـانــات من يعول</u></li></ul>',
+      '<table><tbody>' +
+        '<tr><td style="text-align: center">#</td><td style="text-align: center">الإسـم</td><td style="text-align: center">تـاريــخ الـمـيــلاد</td><td style="text-align: center">صـلـة الـقـرابــة</td></tr>' +
+        [1, 2, 3, 4, 5].map(() => '<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>').join('') +
         '</tbody></table>',
-      '<p>أقر وأتعهد بأن جميع المعلومات الواردة بهذه الصحيفة و الخاصة بي صحيحة و كاملة، و أني علي دراية تامة بأنه في حالة ثبوت خطأ في تلك المعلومـــات فإن ذلك قـد يؤدى إلي إتخاذ الشركة لكافة الإجراءات القانونية ، و كذا أتعهد بإبلاغ إدارة الموارد البشرية بأى تعديلات قد تطرأ على البيانات المذكورة .</p>',
-      `<p>الإســــــم : {{employee.fullName}} — الـتـوقـيــع : ${DOTS}</p>`,
+      '<p class="l15" style="text-align: justify">أقر وأتعهد بأن جميع المعلومات الواردة بهذه الصحيفة و الخاصة بي صحيحة و كاملة، و أني علي دراية تامة بأنه في حالة ثبوت خطأ في تلك المعلومـــات فإن ذلك قـد يؤدى إلي إتخاذ الشركة لكافة الإجراءات القانونية ، و كذا أتعهد بإبلاغ إدارة الموارد البشرية بأى  تعديلات قد تطرأ على البيانات المذكورة .</p>',
+      '<p style="text-align: center">الإســــــم :</p>',
+      '<p style="text-align: center">الـتـوقـيــع :</p>',
     ].join('\n'),
-    footer: '',
+    footer: docControl('EGYCASH-HR-F-10-04'),
   },
   signatures: [],
 };
@@ -220,23 +254,24 @@ const WORK_RECEIPT: HiringPaper = {
   kind: 'form',
   jobs: 'all',
   printOrder: 20,
+  revision: 2,
   sections: {
-    header: title('إقـرار إسـتـلام العـمـل'),
+    header: heading('إقـرار إسـتـلام العـمـل', 't12'),
     body: [
-      '<p><b>أنـه فـى يـوم :</b> {{employment.startDayName}} الموافق {{employment.startDate}}</p>',
-      '<p><b>إسـتـلـمـت أنـا :</b> {{employee.fullName}}</p>',
-      '<p><b>رقــم قــومــى :</b> {{employee.nationalId}}</p>',
-      '<p><b>الموقـــــــــــع :</b> {{branch.name}}</p>',
-      '<p><b>الـعـمـل بـإدارة :</b> {{department.name}}</p>',
-      '<p><b>بــوظـيـفــــــــة :</b> {{job.title}}</p>',
-      '<p><b>و بنــــاءاً عليــه أقر بأننى قد تسلمت مهام وظيفتى بـــدءاً من هــــــذا التـــاريخ و هـــــذا إقرار منــــى بــذلك .</b></p>',
+      `<p class="l2"><b>أنـه فـى يـوم : ${handDate('202')}</b></p>`,
+      line(['<b>إسـتـلـمـت أنـا :</b>', null], 'l3'),
+      line(['<b>رقــم قــومــى :</b>', null], 'l3'),
+      line(['<b>الموقـــــــــــع :</b>', null], 'l3'),
+      line(['<b>الـعـمـل بـإدارة :</b>', null], 'l3'),
+      line(['<b>بــوظـيـفــــــــة :</b>', null], 'l3'),
+      '<p class="l2">&nbsp;</p>',
+      '<p class="l2" style="text-align: center"><b>و بنــــاءاً عليــه أقر بأننى قد تسلمت مهام وظيفتى بـــدءاً من هــــــذا التـــاريخ و هـــــذا إقرار منــــى بــذلك .</b></p>',
+      '<p class="l2">&nbsp;</p>',
+      apart('<b>الـمـقـر بـما فـيـه</b>', '<b>الـمديـر الـمبـاشــر</b>', 'l2'),
     ].join('\n'),
-    footer: '',
+    footer: docControl('EGYCASH-HR-F-10-05'),
   },
-  signatures: [
-    { key: 'declarant', label: 'الـمـقـر بـما فـيـه' },
-    { key: 'manager', label: 'الـمديـر الـمبـاشــر' },
-  ],
+  signatures: [],
 };
 
 const RELATIVES: HiringPaper = {
@@ -245,53 +280,62 @@ const RELATIVES: HiringPaper = {
   kind: 'form',
   jobs: 'all',
   printOrder: 30,
+  revision: 2,
   sections: {
-    header: title('اقـــــرار'),
+    header: heading('اقـــــرار', 't16'),
     body: [
-      '<p>اقر انا / {{employee.fullName}} بانني لا يوجد لدى اقارب يعملون بشركة إيجى كاش للحلول النقدية واتحمل المسئولية الكاملة فى حالة ثبوت مايخالف ذلك مستقبلا وللشركة الحق فى اتخاذ الاجراء المناسب حيال ذلك .</p>',
-      '<p>وهذا اقرار منى بذلك ،،،</p>',
-      '<p><b>المقر بما فيه</b></p>',
-      '<p>الاسم : {{employee.fullName}}</p>',
-      '<p>الرقم القومى : {{employee.nationalId}}</p>',
-      `<p>التوقيع : ${DOTS}</p>`,
-      '<p>التاريخ : {{contract.currentDate}}</p>',
+      `<p class="t14 l2" style="text-align: justify">اقر انا /${gap(44)}بانني لا يوجد لدى اقارب يعملون بشركة إيجى كاش للحلول النقدية واتحمل المسئولية الكاملة فى حالة ثبوت مايخالف ذلك مستقبلا وللشركة الحق فى اتخاذ الاجراء المناسب حيال ذلك  .</p>`,
+      '<p class="t16 l2" style="text-align: center">وهذا اقرار منى بذلك ،،،</p>',
+      `<p class="t16 l2" style="text-align: left">المقر بما فية${gap(24)}</p>`,
+      '<p class="t16 l2" style="text-align: center">الاسم :</p>',
+      '<p class="t16 l2" style="text-align: center">الرقم القومى :</p>',
+      '<p class="t16 l2" style="text-align: center">التوقيع :</p>',
+      '<p class="t16 l2" style="text-align: center">التاريخ :</p>',
     ].join('\n'),
-    footer: '',
+    footer: docControl('EGYCASH-HR-F-10-03'),
   },
   signatures: [],
 };
 
+/**
+ * The one form that is still FILLED (with the contract and «نموذج رقم (1)»): «خطاب البنك … كله
+ * بيتعملي لوحدو علي حسب مين الشخص و الكود … الحاجه الوحيده المتغيره هي الفرع». His layout: bold
+ * 14pt at 1.5 lines, the employee's facts as label : value rows without borders.
+ */
 const BANK_LETTER: HiringPaper = {
   key: 'egycash.hiring.bank-letter',
   name: { ar: 'خطاب بنك', en: 'Bank letter' },
   kind: 'form',
   jobs: 'all',
   printOrder: 40,
+  revision: 2,
   sections: {
-    header: title('خطاب بنك'),
+    header: heading('خطاب بنك', 't14'),
     body: [
-      `<p><b>السادة البنك الاهلى المصرى فرع / ${DOTS}</b></p>`,
-      '<p><b>تحية طيبة و بعد</b></p>',
-      '<p><b>يرجى من سيادتكم فتح حسابات المرتبات تحت كود و اسم الشركة المسجلة لدى بنككم الموقر للموظفين التالى بيانهم و المرجين بالشركة و على قوة و طبقا للبيانات التالية :</b></p>',
-      bullets([
-        '<b>فتح حساب جارى مرتبات</b>',
-        '<b>ربط الحساب بكود الشركة (12879)</b>',
-        '<b>ربط الحساب بكود الموظف {{employee.employeeCode}}</b>',
-      ]),
-      '<p><b><u>شركة ايجى كاش للحلول النقدية</u></b></p>',
-      '<table><tbody>' +
-        '<tr><td><b>كود الموظف</b></td><td>{{employee.employeeCode}}</td></tr>' +
-        '<tr><td><b>الاســــــــــم</b></td><td>{{employee.fullName}}</td></tr>' +
-        '<tr><td><b>تاريخ التعيين</b></td><td>{{employee.hireDate}}</td></tr>' +
-        '<tr><td><b>الوظيفـــــــة</b></td><td>{{job.title}}</td></tr>' +
-        '<tr><td><b>الرقم القومى</b></td><td>{{employee.nationalId}}</td></tr>' +
-        '<tr><td><b>رقم موبايــل</b></td><td>{{employee.phone}}</td></tr>' +
+      '<p class="t14 l15"><b>السادة البنك الاهلى المصرى فرع / ..................</b></p>',
+      '<p class="t14 l15"><b>تحية طيبة و بعد</b></p>',
+      '<p class="t14 l15" style="text-align: justify"><b>يرجى من سيادتكم فتح حسابات المرتبات تحت كود و اسم الشركة المسجلة لدى بنككم الموقر للموظفين التالى بيانهم و المرجين بالشركة و على قوة و طبقا للبيانات التالية :</b></p>',
+      '<ul class="t14 l15">' +
+        '<li><b>فتح حساب جارى مرتبات</b></li>' +
+        '<li><b>ربط الحساب بكود الشركة (12879)</b></li>' +
+        '<li><b>ربط الحساب بكود الموظف  {{employee.employeeCode}}</b></li>' +
+        '</ul>',
+      '<p class="t14 l15"><b><u>شركة ايجى كاش للحلول النقدية</u></b></p>',
+      '<table class="plain t14 l15"><tbody>' +
+        '<tr><td><b>كود الموظف</b></td><td><b>:</b></td><td><b>{{employee.employeeCode}}</b></td></tr>' +
+        '<tr><td><b>الاســــــــــم</b></td><td><b>:</b></td><td><b>{{employee.fullName}}</b></td></tr>' +
+        '<tr><td><b>تاريخ التعيين</b></td><td><b>:</b></td><td><b>{{employee.hireDate}}</b></td></tr>' +
+        '<tr><td><b>الوظيفـــــــة</b></td><td><b>:</b></td><td><b>{{job.title}}</b></td></tr>' +
+        '<tr><td><b>الرقم القومى</b></td><td><b>:</b></td><td><b>{{employee.nationalId}}</b></td></tr>' +
+        '<tr><td><b>رقم موبايــل</b></td><td><b>:</b></td><td><b>{{employee.phone}}</b></td></tr>' +
         '</tbody></table>',
-      '<p style="text-align: center"><b>تفضلوا بقبول فائق الاحترام</b></p>',
+      '<p class="t14 l15" style="text-align: center"><b>تفضلو بقبول فائق الاحترام</b></p>',
+      '<p class="t14 l15">&nbsp;</p>',
+      `<p class="t14 l15" style="text-align: left"><b>إدارة الموارد البشرية</b>${gap(10)}</p>`,
     ].join('\n'),
     footer: '',
   },
-  signatures: [{ key: 'hr', label: 'إدارة الموارد البشرية' }],
+  signatures: [],
 };
 
 // ── The crew leader's weapon declaration ─────────────────────────────────────────────────────
@@ -309,20 +353,20 @@ const WEAPON: HiringPaper = {
   // «اخصائي نقل اموال بتبقا اوبشن … منغير علامه»: offered to the specialist, unticked.
   optionalFor: CIT_SPECIALISTS,
   printOrder: 50,
+  revision: 2,
   sections: {
-    header: title('إقـرار حيازة سلاح'),
+    header: heading('إقـرار حيازة سلاح', 't16'),
     body: [
-      '<p><b>التاريخ : {{contract.currentDate}}</b></p>',
-      '<p>اقر انا / {{employee.fullName}} رقم قومى / {{employee.nationalId}} باننى احمل رخصة سلاح سارية بتاريخ إنتهاء / {{employee.weaponLicenseExpiry}} وان السلاح الشخصى المرخص فى حيازتى الشخصية و تحت مسؤوليتى و اتحمل المسئولية الكاملة فى حالة ثبوت مايخالف ذلك مستقبلا وللشركة الحق فى اتخاذ الاجراء المناسب حيال ذلك.</p>',
-      '<p>وهذا اقرار منى بذلك ،،،</p>',
-      `<p><b>الـتـوقـيـع/</b> ${DOTS}</p>`,
+      `<p class="l2"><b>التاريخ : ${handDate('202')}</b></p>`,
+      `<p class="t14 l2" style="text-align: justify">اقر انا / ..............................................${gap(8)}رقم قومى / ....................................... باننى احمل رخصة سلاح سارية بتاريخ إنتهاء ${handDate('202')} وان السلاح الشخصى المرخص فى حيازتى الشخصية و تحت مسؤوليتى و اتحمل المسئولية الكاملة فى حالة ثبوت مايخالف ذلك مستقبلا وللشركة الحق فى اتخاذ الاجراء المناسب حيال ذلك.</p>`,
+      '<p class="t16 l2" style="text-align: center">وهذا اقرار منى بذلك ،،،</p>',
+      '<p><b>الـتـوقـيـع/</b></p>',
+      '<p class="rule l2">&nbsp;</p>',
+      apart('<b>إدراة الـمـوارد الـبـشـريـة</b>', '<b>إدارة الأمـــن</b>', 't14 l2'),
     ].join('\n'),
     footer: '',
   },
-  signatures: [
-    { key: 'hr', label: 'إدارة الـمـوارد الـبـشـريـة' },
-    { key: 'security', label: 'إدارة الأمـــن' },
-  ],
+  signatures: [],
 };
 
 // ── The job description cards ────────────────────────────────────────────────────────────────
@@ -350,38 +394,61 @@ const duty = (item: Duty): string =>
     ? `<li>${item}</li>`
     : `<li>${item.text}<ul>${item.items.map((sub) => `<li>${sub}</li>`).join('')}</ul></li>`;
 
-const jobCardPaper = (card: JobCard): HiringPaper => ({
-  key: card.key,
-  name: card.name,
-  kind: 'form',
-  jobs: card.jobs,
-  printOrder: 60,
-  sections: {
-    header: title('بـطـاقـة وصـف وظـيـفـي'),
-    body: [
-      '<table><tbody>' +
-        `<tr><td><b>الـمـسـمـى الـوظـيـفـي :</b></td><td><b>${card.jobTitle}</b></td></tr>` +
-        `<tr><td><b>الـمـديــر الـمـبـاشـر :</b></td><td><b>${card.manager}</b></td></tr>` +
-        `<tr><td><b>الإدارة الـتـابـع لـهـا :</b></td><td><b>${card.department}</b></td></tr>` +
-        '</tbody></table>',
-      '<hr />',
-      `<p><b><u>الإطـار الـعـام للـوظـيـفة :</u></b> ${card.frame}</p>`,
-      '<p><b><u>مـهام شـاغـل الـوظـيـفـة :</u></b></p>',
-      ...card.duties.map(
-        (group) =>
-          (group.heading === undefined ? '' : `<p><b><u>${group.heading}</u></b></p>`) +
-          `<ul>${group.items.map(duty).join('')}</ul>`,
-      ),
-      `<p><b><u>نــطـاق الاشــراف :</u></b> ${card.supervision}</p>`,
-      '<p><b><u>نـطـاق الـمـسـئـولـية :</u></b></p>',
-      bullets(card.responsibilities),
-      '<hr />',
-      `<p><b>الإسم :</b> {{employee.fullName}} — <b>التوقيع :</b> ${DOTS}</p>`,
-    ].join('\n'),
-    footer: '',
-  },
-  signatures: [],
-});
+/**
+ * His cards come in two shapes. Three (the ATM specialist's, the preparation specialist's, the ATM
+ * crew leader's) set the job, manager and department in four columns and spell «الإدارة»,
+ * «الإطـار», «الـمـسـئـولـية»; the other four write each label and its value in one cell and spell
+ * «الادارة», «الاطـار», «الـمـسـئـولـيه». Each card keeps its own.
+ */
+const JOINED_CARDS: ReadonlySet<string> = new Set([
+  'egycash.hiring.card.counting-specialist',
+  'egycash.hiring.card.cit-specialist',
+  'egycash.hiring.card.treasurer',
+  'egycash.hiring.card.security-guard',
+]);
+
+const jobCardPaper = (card: JobCard): HiringPaper => {
+  const joined = JOINED_CARDS.has(card.key);
+  const facts = joined
+    ? '<table class="plain cols l2"><tbody>' +
+      `<tr><td><b>الـمـسـمـى الـوظـيـفـي : ${card.jobTitle}</b></td><td><b>الـمـديــر الـمـبـاشـر : ${card.manager}</b></td></tr>` +
+      `<tr><td><b>الادارة الـتـابـع لـهـا : ${card.department}</b></td><td></td></tr>` +
+      '</tbody></table>'
+    : '<table class="plain cols l2"><tbody>' +
+      `<tr><td><b>الـمـسـمـى الـوظـيـفـي :</b></td><td><b>${card.jobTitle}</b></td><td><b>الـمـديــر الـمـبـاشـر :</b></td><td><b>${card.manager}</b></td></tr>` +
+      `<tr><td><b>الإدارة الـتـابـع لـهـا :</b></td><td><b>${card.department}</b></td><td></td><td></td></tr>` +
+      '</tbody></table>';
+  return {
+    key: card.key,
+    name: card.name,
+    kind: 'form',
+    jobs: card.jobs,
+    printOrder: 60,
+    revision: 2,
+    sections: {
+      header: heading('بـطـاقـة وصـف وظـيـفـي', 't12'),
+      body: [
+        facts,
+        '<p class="rule">&nbsp;</p>',
+        `<p class="l2"><b><u>${joined ? 'الاطـار' : 'الإطـار'} الـعـام للـوظـيـفة  :</u></b>  ${card.frame}</p>`,
+        '<p class="l2"><b><u>مـهام شـاغـل الـوظـيـفـة  :</u></b></p>',
+        ...card.duties.map(
+          (group) =>
+            (group.heading === undefined ? '' : `<p class="l2"><b><u>${group.heading}</u></b></p>`) +
+            `<ul class="l2">${group.items.map(duty).join('')}</ul>`,
+        ),
+        '<p class="l2">&nbsp;</p>',
+        `<p class="l2"><b><u>نــطـاق الاشــراف :</u></b>  ${card.supervision}</p>`,
+        `<p class="l2"><b><u>نـطـاق الـمـسـئـولـي${joined ? 'ه' : 'ة'} :</u></b></p>`,
+        `<ul class="l2">${card.responsibilities.map((item) => `<li>${item}</li>`).join('')}</ul>`,
+        '<p class="rule">&nbsp;</p>',
+        '<table class="plain l2"><tbody><tr><td><b>الإسم :</b></td></tr><tr><td><b>التوقيع :</b></td></tr></tbody></table>',
+      ].join('\n'),
+      footer: '',
+    },
+    signatures: [],
+  };
+};
 
 /** Every card's closing duty of discretion, word for word. */
 const DISCRETION =
@@ -396,7 +463,7 @@ const JOB_CARDS: readonly JobCard[] = [
     jobTitle: 'أخـصـائـى صـراف آلـى',
     manager: 'مـشـرف تـشـغـيـل الـصـراف آلـى',
     department: 'عـمـلـيـات الـصـراف الآلـى',
-    frame: 'تغذيه و إجراء الصيانه الأوليه لماكينات الصراف الآلي .',
+    frame: 'تغذيه و إجراء الصيانه الأوليه لماكينات الصراف اللآلي .',
     duties: [
       {
         items: [
@@ -455,7 +522,7 @@ const JOB_CARDS: readonly JobCard[] = [
     jobTitle: 'أخـصـائـى نـقـل امـوال',
     manager: 'مـشـرف تـشـغـيـل نـقـل الأمـوال',
     department: 'نـقـل الأموال',
-    frame: 'القيام بمهام تجهيز ونقل شحنات الاموال من والى سيارة نقل الاموال وذلك تحت اشراف فني وامني لقائد الطاقم .',
+    frame: 'القيام بهمام تجهيز ونقل شحنات الاموال من والى سيارة نقل الاموال وذلك تحت اشراف فني وامني لقائد الطاقم .',
     duties: [
       {
         items: [
@@ -503,7 +570,7 @@ const JOB_CARDS: readonly JobCard[] = [
     jobTitle: 'أمـيـن خـزيـنـة',
     manager: 'مـشـرف خـزيـنـة',
     department: 'عـمـلـيـات مـركـز الـنـقـديـة',
-    frame: 'استلام و تسليم عهده إدارة العمليات .',
+    frame: 'استلام و تسليم عهده إداراة العمليات .',
     duties: [
       {
         items: [
@@ -527,7 +594,7 @@ const JOB_CARDS: readonly JobCard[] = [
     jobTitle: 'قائــد طــاقــم صـراف آلـى',
     manager: 'مشرف تشغيل صراف آلى',
     department: 'عـمـلـيـات الـصـراف الآلـى',
-    frame: 'الإشراف على تغذية و إجراء الصيانه الأوليه لماكينات الصراف الآلى و تأمين السيارة .',
+    frame: 'الإشراف على تغذية و إجراء الصيانه الأوليه لماكينات الصراف اللآلى و تأمين السيارة .',
     duties: [
       {
         items: [
@@ -542,10 +609,10 @@ const JOB_CARDS: readonly JobCard[] = [
             ],
           },
           'الاشراف علي تحميل السياره بأدراج النقود (الكاسيتات) الخاصة بكل ماكينة طبقا لخط السير.',
-          'إخطار عمليات الصراف الآلي هاتفيا ببدء و انتهاء العمل علي كل ماكينة .',
+          'إخطار عمليات الصراف اللآلي هاتفيا ببدء و انتهاء العمل علي كل ماكينة .',
           'تصوير و توثيق الخطوات من بدء فتح الماكينه لحين غلقها بالتطبيق المخصص من الشركة .',
           'الاشراف علي فتح الماكينه بالمفتاح (حيث يكون في حيازه القائد) و الرقم السري (حيث يكون في حيازه الاخصائي) .',
-          'الاشراف علي عمل اخصائي الصراف الآلي أثناء عمليه التغذيه (يتطلب معرفه مسبقه بمهام الاخصائي و الخطوات الصحيحه للقيام بالمهمه) .',
+          'الاشراف علي عمل اخصائي الصراف الآلي اثتاء عمليه التغذيه (يتطلب معرفه مسبقه بمهام الاخصائي و الخطوات الصحيحه للقيام بالمهمه) .',
           'التأكد من إثبات إجمالى النقديه المحشوره و ضعها في ظرف مغلق مع كتابه التاريخ و الوقت و إبلاغ العمليات .',
           'الاشراف علي خطوات الصيانه و ابلاغ العمليات في حاله وجود اعطال تستوجب وجود المهندس المختص .',
           'التأكد من وجود السائق بالسيارة أثناء القيام بمهام التغذية و الصيانة .',
@@ -614,7 +681,7 @@ const JOB_CARDS: readonly JobCard[] = [
       {
         heading: 'خامسا : غرفة الكاميرات',
         items: [
-          'متابعة ومراقبة كافة الكاميرات الداخلية والخارجية .',
+          'متاابعة ومراقبة كافة الكاميرات الداخلية والخارجية .',
           'الابلاغ الفورى لمدير الامن حال ملاحظة اية تحركات غير عادية سواء للعاملين بالشركة او افراد من خارج الشركة .',
           'الابلاغ عن اية اعطال قد تطرا على الكاميرات لضمان الجودة والاستمرارية .',
           'عمل تقرير يومي بكل المخالفات الامنية بالفرع وتقديمه لمدير الامن مع تسجيلها بدفتر سير الحوادث .',

@@ -554,6 +554,28 @@ which forms depends on the job.
   the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
   and never stops the boot.
 
+### A27, stage 2b — his papers as he prints them: blank, his layout, his words
+
+- **Blank.** «نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو … و الباقي لازم يكون فاضي
+  الموظف هو اللي يكتب بياناته فيه و يمضي». Every form but the bank letter carries no placeholder:
+  the data sheet, the work-receipt, relatives and weapon declarations and the seven cards print as
+  his blank paper, a dotted line where the employee writes. On «عقد جديد» their «تعديل» shows the
+  paper and says it prints blank.
+- **As the original.** «رجعهم كلهم زي الاصل»: his type sizes and line spacing, his shaded heading
+  boxes, label-and-dotted-line rows without borders, his signature lines as words only, each card in
+  his own shape (four columns, or label and value in one cell, with that card's spelling), his
+  document-control line at the foot of the page (`EGYCASH-HR-F-10-03/04/05 · Issue / Rev. no.: 1/0
+  · Issue date: 1/5/2022`) where his paper has one — and his spelling, the slips the first copy
+  corrected put back.
+- **How.** The sanitizer allows a fixed set of layout classes (`PAPER_CLASSES`: `plain`, `cols`,
+  `dots`, `band`, `foot`, `rule`, `t10`–`t16`, `l15`/`l2`/`l3`), styled in the form stylesheet; any
+  other class is dropped (A11). The template editor keeps them on save. A form's footer section sits
+  at the foot of its page.
+- **Reaching a database written before.** Each paper has a `revision`; the row carries the
+  `paperRevision` it was written at. The boot rewrites a row it wrote, and nobody has touched since,
+  to a newer revision (its sections, placeholders and signatures). A row somebody edited keeps their
+  edit.
+
 ### A27, stage 3 — the papers COLLECTED are the employee's job's too
 
 - **What.** A hiring document type (the signed papers uploaded to «مستندات التعيين») is collected

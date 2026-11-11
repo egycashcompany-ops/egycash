@@ -38,6 +38,11 @@ export interface ContractTemplateDoc extends BaseDocFields {
   /** Derived on save — placeholder keys the sections use (D5 validation + A16 resolver). */
   placeholders: string[];
   changedBy: Types.ObjectId | null;
+  /**
+   * A27 — on a row the boot wrote from the owner's papers: the paper's revision it holds (missing
+   * means 1). The boot rewrites an untouched row to a newer revision (`syncHiringTemplates`).
+   */
+  paperRevision?: number;
 }
 
 // Drafts may be incomplete while being authored (names/type/body/labels empty —
@@ -77,6 +82,7 @@ const contractTemplateSchema = new Schema<ContractTemplateDoc>(
     printOrder: { type: Number, default: 100 },
     placeholders: { type: [String], default: [] },
     changedBy: { type: Schema.Types.ObjectId, default: null },
+    paperRevision: { type: Number },
     ...baseFields,
   },
   baseSchemaOptions,

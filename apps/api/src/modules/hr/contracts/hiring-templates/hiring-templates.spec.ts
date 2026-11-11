@@ -99,13 +99,59 @@ describe('what they print', () => {
     expect(html).not.toContain('{{');
   });
 
-  it('fills every form, and leaves a line where the record has nothing', () => {
-    for (const p of HIRING_PAPERS.filter((x) => x.kind === 'form')) {
-      const filled = renderFormHtml({ ...p, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
-      expect(filled, p.key).not.toContain('{{');
-      const empty = renderFormHtml({ ...p, language: 'ar' }, [], { logoDataUri: 'data:,', lines: ['شركة'] });
-      expect(empty, p.key).toContain('<span class="blank">&nbsp;</span>');
+  it('prints every form but the bank letter BLANK, for the employee to write on by hand', () => {
+    // «نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو … و الباقي لازم يكون فاضي».
+    const forms = HIRING_PAPERS.filter((x) => x.kind === 'form');
+    for (const p of forms.filter((x) => x.key !== 'egycash.hiring.bank-letter')) {
+      expect(preparedSections(p).placeholders, p.key).toEqual([]);
+      const printed = renderFormHtml({ ...p, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
+      expect(printed, p.key).not.toContain('أحمد محمد علي');
     }
+    // The bank letter is filled, and leaves a line where the record has nothing.
+    const letter = paper('egycash.hiring.bank-letter');
+    const filled = renderFormHtml({ ...letter, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
+    expect(filled).not.toContain('{{');
+    const empty = renderFormHtml({ ...letter, language: 'ar' }, [], { logoDataUri: 'data:,', lines: ['شركة'] });
+    expect(empty).toContain('<span class="blank">&nbsp;</span>');
+  });
+
+  it('prints his document-control line at the foot of the page, where his paper has one', () => {
+    const codes: Record<string, string> = {
+      'egycash.hiring.data-sheet': 'EGYCASH-HR-F-10-04',
+      'egycash.hiring.work-receipt': 'EGYCASH-HR-F-10-05',
+      'egycash.hiring.relatives': 'EGYCASH-HR-F-10-03',
+    };
+    for (const [key, code] of Object.entries(codes)) {
+      const html = renderFormHtml({ ...paper(key), language: 'ar' }, [], { logoDataUri: 'data:,', lines: ['شركة'] });
+      expect(html, key).toMatch(new RegExp(`<div class="form-foot"><table class="foot">.*${code}.*Issue / Rev\\. no\\.: 1/0.*Issue date: 1/5/2022`, 's'));
+    }
+    for (const p of [WEAPON, paper('egycash.hiring.bank-letter'), ...CARDS]) expect(p.sections.footer, p.key).toBe('');
+  });
+
+  it('keeps his words as he spells them', () => {
+    expect(paper('egycash.hiring.card.atm-specialist').sections.body).toContain('لماكينات الصراف اللآلي .');
+    expect(paper('egycash.hiring.card.cit-specialist').sections.body).toContain('القيام بهمام تجهيز');
+    expect(paper('egycash.hiring.card.treasurer').sections.body).toContain('عهده إداراة العمليات');
+    expect(paper('egycash.hiring.card.atm-crew-leader').sections.body).toContain('اثتاء عمليه التغذيه');
+    expect(paper('egycash.hiring.card.security-guard').sections.body).toContain('متاابعة ومراقبة');
+    expect(WEAPON.sections.body).toContain('إدراة الـمـوارد الـبـشـريـة');
+    expect(paper('egycash.hiring.bank-letter').sections.body).toContain('تفضلو بقبول فائق الاحترام');
+    expect(paper('egycash.hiring.data-sheet').sections.body).toContain('رقم هاتف للطوارئى :');
+  });
+
+  it('sets each card in his own shape for it', () => {
+    // Four columns and «الإدارة / الإطـار / الـمـسـئـولـية» …
+    const columns = paper('egycash.hiring.card.atm-specialist').sections.body;
+    expect(columns).toContain('<td><b>الـمـسـمـى الـوظـيـفـي :</b></td><td><b>أخـصـائـى صـراف آلـى</b>');
+    expect(columns).toContain('الإطـار الـعـام للـوظـيـفة');
+    expect(columns).toContain('نـطـاق الـمـسـئـولـية :');
+    // … or each label and its value in one cell, «الادارة / الاطـار / الـمـسـئـولـيه».
+    const joined = paper('egycash.hiring.card.security-guard').sections.body;
+    expect(joined).toContain('<td><b>الادارة الـتـابـع لـهـا : ');
+    expect(joined).toContain('الاطـار الـعـام للـوظـيـفة');
+    expect(joined).toContain('نـطـاق الـمـسـئـولـيه :');
+    // Both end with the name and signature left blank.
+    for (const card of CARDS) expect(card.sections.body, card.key).toContain('<td><b>الإسم :</b></td></tr><tr><td><b>التوقيع :</b></td>');
   });
 
   it('puts the employee\'s code into the bank letter, twice, and leaves the bank branch to fill in', () => {
@@ -115,14 +161,14 @@ describe('what they print', () => {
     expect(body).toMatch(/فرع \/ \.{10,}/);
   });
 
-  it('dates the work receipt by the first working day, and names the place of work', () => {
+  it('leaves the work receipt\'s day and five lines to write on', () => {
     const body = paper('egycash.hiring.work-receipt').sections.body;
-    expect(body).toContain('{{employment.startDayName}} الموافق {{employment.startDate}}');
-    for (const key of ['branch.name', 'department.name', 'job.title']) expect(body).toContain(`{{${key}}}`);
+    expect(body).toContain('أنـه فـى يـوم :');
+    expect(body.match(/<td class="dots"><\/td>/g)).toHaveLength(5);
   });
 
-  it('asks the crew leader for his licence\'s expiry on the weapon declaration', () => {
-    expect(WEAPON.sections.body).toContain('{{employee.weaponLicenseExpiry}}');
+  it('leaves the licence\'s expiry to write on the weapon declaration', () => {
+    expect(WEAPON.sections.body).toMatch(/بتاريخ إنتهاء (&nbsp;)+\/(&nbsp;)+\/(&nbsp;)+202 /);
   });
 });
 

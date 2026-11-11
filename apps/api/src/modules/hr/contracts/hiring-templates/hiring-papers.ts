@@ -318,7 +318,7 @@ const BANK_LETTER: HiringPaper = {
       '<ul class="t14 l15">' +
         '<li><b>فتح حساب جارى مرتبات</b></li>' +
         '<li><b>ربط الحساب بكود الشركة (12879)</b></li>' +
-        '<li><b>ربط الحساب بكود الموظف  {{employee.employeeCode}}</b></li>' +
+        '<li><b>ربط الحساب بكود الموظف {{employee.employeeCode}}</b></li>' +
         '</ul>',
       '<p class="t14 l15"><b><u>شركة ايجى كاش للحلول النقدية</u></b></p>',
       '<table class="plain t14 l15"><tbody>' +

@@ -2,7 +2,14 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
-import { renderFormHtml, renderHiringPackHtml, type Letterhead } from './contract-render';
+import {
+  pageFootCells,
+  renderContractHtml,
+  renderFormHtml,
+  renderHiringPackHtml,
+  type HiringPackPart,
+  type Letterhead,
+} from './contract-render';
 import { dayNameOf, formatTemplateDate } from './contract-variables';
 import { appliesToJob, oneYearFrom, templatesForJob } from './hiring-pack.service';
 
@@ -161,5 +168,64 @@ describe('the salary on the contract', () => {
       'salary.attendanceBonus': '3,000',
       'salary.grossInWords': 'عشرة آلاف جنيه لا غير',
     });
+  });
+});
+
+describe('his contract as printed — the page foot, the page number, the basmala (A27)', () => {
+  const FOOT =
+    '<table class="foot"><tbody><tr><td>EGYCASH-HR-F-10-04</td><td>Issue / Rev. no.: 1/0</td><td>Issue date: 1/5/2022</td></tr></tbody></table>';
+  const contract = (footer: string, body = '<p>نص</p>') =>
+    template({ kind: 'contract', sections: { header: '', body, footer } });
+  const part = (footer: string, body?: string): HiringPackPart => ({
+    kind: 'contract',
+    template: contract(footer, body),
+    values: [],
+    options: {},
+  });
+  const form: HiringPackPart = { kind: 'form', template: template({ kind: 'form' }), values: [] };
+
+  it('reads the doc-control line cell by cell, and nothing else as one', () => {
+    expect(pageFootCells(FOOT)).toEqual(['EGYCASH-HR-F-10-04', 'Issue / Rev. no.: 1/0', 'Issue date: 1/5/2022']);
+    expect(pageFootCells('<p>تذييل</p>')).toBeNull();
+    expect(pageFootCells('')).toBeNull();
+  });
+
+  it('prints it at the foot of every page, and the page number from the second page', () => {
+    const html = renderContractHtml(contract(FOOT), []);
+    expect(html).toContain('@bottom-center { content: "EGYCASH-HR-F-10-04');
+    expect(html).toContain('@top-center { content: "- " counter(page) " -"');
+    expect(html).toContain('@page :first { @top-center { content: none; } }');
+    // On screen (no pages) the line shows under the text instead.
+    expect(html).toContain('<div class="page-foot"><table class="foot">');
+    // A contract without one prints as before.
+    expect(renderContractHtml(contract('<p>تذييل</p>'), [])).not.toContain('@bottom-center');
+  });
+
+  it('numbers a printed set only when it holds one contract, and never a form\'s page', () => {
+    const one = renderHiringPackHtml([part(FOOT), form], 'ar', LETTERHEAD);
+    expect(one).toContain('counter(page)');
+    expect(one).toContain('@page form { @top-center { content: none; } @bottom-center { content: none; } }');
+    const two = renderHiringPackHtml([part(FOOT), form, part(FOOT)], 'ar', LETTERHEAD);
+    expect(two).not.toContain('counter(page)');
+    expect(two).toContain('@bottom-center { content: "EGYCASH-HR-F-10-04');
+  });
+
+  it('can never close the style with what a footer holds', () => {
+    // Tags are dropped from the line; a bare «<», a quote and a backslash are escaped.
+    const html = renderContractHtml(
+      contract('<table class="foot"><tbody><tr><td>a"b\\c </style x</td><td>y<script>z</td></tr></tbody></table>'),
+      [],
+    );
+    const style = html.slice(html.indexOf('<style>'), html.indexOf('</style>') + 8);
+    expect(style).toContain('content: "a\\"b\\\\c \\3c /style x          yz"');
+    expect(style.match(/<\/style>/g)).toHaveLength(1);
+    expect(style).not.toContain('<script>');
+  });
+
+  it('carries the basmala picture only in a document that uses it', () => {
+    expect(renderContractHtml(contract(FOOT, '<p class="basmala">بسم الله الرحمن الرحيم</p>'), [])).toContain(
+      'p.basmala { height: 11mm',
+    );
+    expect(renderContractHtml(contract(FOOT), [])).not.toContain('data:image/png;base64,iVBOR');
   });
 });

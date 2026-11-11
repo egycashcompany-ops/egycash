@@ -19,7 +19,11 @@ import { cn } from '../../../../shared/lib/cn';
  * server allows exactly these, \`PAPER_CLASSES\`). Kept on the nodes that hold them, so editing such
  * a paper here keeps its layout instead of dropping it on save.
  */
-const PAPER_CLASSES = new Set(['plain', 'cols', 'dots', 'band', 'foot', 'rule', 't10', 't12', 't14', 't16', 'l15', 'l2', 'l3']);
+const PAPER_CLASSES = new Set([
+  'plain', 'cols', 'dots', 'band', 'foot', 'rule', 'basmala', 'star',
+  't10', 't12', 't14', 't16', 't20',
+  'l1', 'l15', 'l2', 'l3',
+]);
 
 const paperClasses = (value: string | null): string | null => {
   const kept = (value ?? '').split(/\s+/).filter((name) => PAPER_CLASSES.has(name));

@@ -593,9 +593,17 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   the weapon declaration for crew leaders only. Each print is recorded as on the person's own page
   (the code kept, so «تعيين» opens there). A person who cannot be printed for is reported, not
   dropped; the others print. At most 50 at a time.
+- **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
+  اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
+  the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
+  the contract's own renewal (`contract.renew`), opened from the day after it ends for one year — and
+  their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
+  chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
+  the contract held, or makes one as «مستندات التعيين» does.
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
-  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {offerIds, keys}`.
+  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {offerIds, keys}`;
+  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`.
 
 ## Review trail
 

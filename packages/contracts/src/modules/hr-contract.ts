@@ -648,8 +648,34 @@ export const HIRING_PACK_CONTRACT_NOTES = [
 ] as const;
 export type HiringPackContractNote = (typeof HIRING_PACK_CONTRACT_NOTES)[number];
 
-export const HiringPackRequestSchema = z.object({ employeeId: objectId() }).strict();
+export const HiringPackRequestSchema = z
+  .object({
+    employeeId: objectId(),
+    /**
+     * A28 — only these papers (template keys), from the employee's «طباعة العقد والمستندات» tab.
+     * Absent: the whole set, as «مستندات التعيين» prints it.
+     */
+    keys: z.array(z.string().min(1).max(100)).min(1).max(60).optional(),
+  })
+  .strict();
 export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
+
+/**
+ * A28 — what an EMPLOYEE's «طباعة العقد والمستندات» tab offers: the papers of their job (their
+ * contract — the one they hold, else the one their job's template would make — then the forms) and
+ * the contract they hold now, to print again or renew.
+ */
+export interface EmployeePapersDto {
+  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind; group: CandidatePaperGroup }[];
+  contract: {
+    id: string;
+    code: string;
+    status: string;
+    startDate: string;
+    endDate: string | null;
+    version: number;
+  } | null;
+}
 
 /**
  * Everything one employee signs on joining, ready to print in one go: the contract first, then

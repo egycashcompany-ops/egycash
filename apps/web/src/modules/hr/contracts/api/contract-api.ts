@@ -24,6 +24,7 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type DownloadTicketDto,
+  type EmployeePapersDto,
   type HiringPackDto,
   type Paginated,
   type PreviewContract,
@@ -100,8 +101,11 @@ export const removeContractAttachment = (id: string, attachmentId: string, versi
 // Exports (audited server-side under contract.print).
 export const contractDocumentHtml = (id: string): Promise<string> => getText(`/hr/contracts/${id}/document`);
 /** «مستندات التعيين» (A27): the employee's contract (made if missing) and every form for the job. */
-export const hiringPack = (employeeId: string): Promise<HiringPackDto> =>
-  post<HiringPackDto>('/hr/contracts/hiring-pack', { employeeId });
+export const hiringPack = (employeeId: string, keys?: string[]): Promise<HiringPackDto> =>
+  post<HiringPackDto>('/hr/contracts/hiring-pack', keys === undefined ? { employeeId } : { employeeId, keys });
+/** A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers and their contract. */
+export const employeePapers = (employeeId: string): Promise<EmployeePapersDto> =>
+  get<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}`);
 
 // ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
 export const openCandidate = (offerId: string): Promise<CandidateDraftDto> =>

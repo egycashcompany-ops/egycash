@@ -55,17 +55,40 @@ describe('the Employee Code is frozen once issued', () => {
   });
 
   /**
-   * Composition is legitimate exactly twice as an ISSUE — the two ways an employee is first created
-   * (hire from an accepted offer, and direct registration) — and once more as a PREVIEW: a
-   * candidate's papers (A28) print the code the hire will compose from the number kept for them,
-   * and that path writes nothing. If this count ever rises, another path is composing codes and
-   * needs to be looked at; if it falls, hiring has stopped composing one at all.
+   * Composition is legitimate exactly four times, and the four are not the same kind of act.
+   *
+   * THREE ISSUE a code — the three ways a person first enters the registry: hire from an accepted
+   * offer, direct registration, and registering an EXTERNAL person (تعيين خارجى), who is not hired
+   * at all but still carries a code, because everything that hands somebody a laptop names an
+   * employee by one. Each composes ONCE, at creation, and never re-derives.
+   *
+   * ONE PREVIEWS one — a candidate's papers (A28) print the code the hire will compose from the
+   * number kept for them. It writes nothing, which is what makes composing there harmless, so that
+   * is asserted rather than assumed.
+   *
+   * Both halves arrived at once, from different work, and the count alone would have hidden either:
+   * a bare `toHaveLength(4)` passes for a rewrite dressed as a creation path, and passes again if
+   * the preview quietly starts saving. So each issuing call is pinned to its method, and the
+   * preview is pinned to writing nothing. If one of the three falls to zero, that path has stopped
+   * issuing a code; if the total rises, something new is minting them.
    */
-  it('only the two hire paths, and the candidate\'s unsaved preview, compose a code', () => {
+  it('three paths issue a code, one only previews one, and nothing else composes', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
-    expect(composed).toHaveLength(3);
-    // The third is the candidate's preview — built, returned, never saved.
-    const preview = SERVICE.slice(SERVICE.indexOf('async candidateFromOffer('), SERVICE.indexOf('async reserveEmployeeNumber('));
+    expect(composed).toHaveLength(4);
+
+    const bodyOf = (method: string): string => {
+      const start = SERVICE.indexOf(`async ${method}(`);
+      expect(start, method).toBeGreaterThan(-1);
+      const next = SERVICE.slice(start + 1).search(/\n {2}(private )?async [a-zA-Z]+\(/);
+      return next === -1 ? SERVICE.slice(start) : SERVICE.slice(start, start + 1 + next);
+    };
+
+    for (const method of ['create', 'registerDirect', 'registerExternal']) {
+      expect([...bodyOf(method).matchAll(/buildEmployeeCode\(/g)], method).toHaveLength(1);
+    }
+
+    // The fourth is the candidate's preview — built, returned, never saved.
+    const preview = bodyOf('candidateFromOffer');
     expect(preview).toContain('buildEmployeeCode(');
     expect(preview).not.toMatch(/employeeRepository\.(create|update)/);
   });

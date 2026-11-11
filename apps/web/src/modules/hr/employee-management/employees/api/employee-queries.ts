@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeActionType,
   type EmployeeDto,
   type EmploymentAction,
@@ -132,6 +133,18 @@ export const useRegisterEmployeeDirect = () => {
   return useMutation({
     mutationFn: (body: DirectRegisterEmployee) => api.registerEmployeeDirect(body),
     onSuccess: ({ provisionedLogin: _login, ...employee }) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+    },
+  });
+};
+
+/** Registering an external person. Same cache moves as a direct registration, minus the login. */
+export const useRegisterEmployeeExternal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterExternalEmployee) => api.registerEmployeeExternal(body),
+    onSuccess: (employee: EmployeeDto) => {
       qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
       void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
     },

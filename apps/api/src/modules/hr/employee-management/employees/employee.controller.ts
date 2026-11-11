@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
   type JobTitlePlacementQuery,
@@ -78,6 +79,23 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   created(
     res,
     { ...toEmployeeDto(doc, visibility(req), placement.for(doc)), provisionedLogin },
+    `/api/v1/hr/employees/${String(doc._id)}`,
+  );
+};
+
+/** An external person — name, branch, department, job title, and a code the server composes. */
+export const registerEmployeeExternal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RegisterExternalEmployee>(req);
+  const doc = await employeeService.registerExternal(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.registerDirect'),
+  );
+  const placement = await resolvePlacements([doc]);
+  created(
+    res,
+    toEmployeeDto(doc, visibility(req), placement.for(doc)),
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };

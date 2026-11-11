@@ -19,6 +19,7 @@ import {
   type CreateEmployeeLogin,
   type CreateUser,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeTimelineItemDto,
   type ListEmployeesQuery,
   type Paginated,
@@ -751,6 +752,169 @@ class EmployeeService {
       return { doc, provisionedLogin };
     }
     return { doc, provisionedLogin: null };
+  }
+
+  /**
+   * Register an EXTERNAL person — «موظفين خارجيين .. يعني تعيين خارجى .. بالتالى ملهمش كود عندنا
+   * ولا بيانات .. محتاج أسجل بس أسمهم والإدارة والوظيفة بتاعتهم عشان أقدر أسلملهم عهده فى الـ IT».
+   *
+   * NOT A HIRE. The company did not employ this person; the registry holds them for one reason —
+   * everything that hands somebody something (IT custody above all) names an employee, so a person
+   * who is to receive custody has to be one.
+   *
+   * It therefore writes the least it can and invents nothing. No national ID, so the person guard
+   * and the live-applicant check have nothing to run on and are not called. No salary and no
+   * `salaryForAssignment`, which would copy the job title's pay onto somebody the company does not
+   * pay. No probation: the status is `active` from the first moment, because an external person has
+   * no probation to serve. No login is provisioned and no hire notification is sent — both reach a
+   * human, and neither has anything true to say here.
+   *
+   * The phone is `'N/A'`, which is not a placeholder invented here: the schema requires a phone,
+   * the company holds none, and those exact words are already stored for every employee the go-live
+   * migration loaded without a number (`employee.migration.ts`).
+   *
+   * The code is composed, never typed: the branch's code plus the next number on the global counter
+   * (ADR-017) — the same identity every other employee carries, which is what «واديله كود بردو»
+   * asks for and what lets custody, the profile and the card treat them like anyone else.
+   */
+  async registerExternal(
+    ctx: AuthContext,
+    input: RegisterExternalEmployee,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    void scope;
+    // The org coherence rules `registerDirect` applies, and for the same reasons: a department
+    // belongs to its branch, a section to its department, and a retired title is not handed out.
+    const department = await departmentService.getById(input.departmentId);
+    if (String(department.branchId) !== input.branchId) {
+      throw new BusinessRuleError('the department does not belong to the selected branch');
+    }
+    if (input.sectionId != null) {
+      const section = await sectionService.getById(input.sectionId);
+      if (String(section.departmentId) !== input.departmentId) {
+        throw new BusinessRuleError('the section does not belong to the selected department');
+      }
+    }
+    const title = await jobTitleService.getById(input.jobTitleId);
+    if (title.status !== 'active') {
+      throw new BusinessRuleError('the selected job title is not active');
+    }
+    const branch = await branchService.getById(input.branchId);
+
+    const personal: EmployeePersonalData = {
+      fullNameAr: input.fullNameAr,
+      fullNameEn: null,
+      searchName: normalizeArabic(input.fullNameAr),
+      nationalId: null,
+      birthDate: null,
+      gender: null,
+      // The schema's own default. Nothing is asked, so nothing beyond it is claimed.
+      nationality: 'Egyptian',
+      placeOfBirth: null,
+      photoFileId: null,
+      maritalStatus: null,
+      religion: null,
+      nationalIdExpiry: null,
+      dependentsCount: null,
+      contact: {
+        primaryPhone: 'N/A',
+        secondaryPhone: null,
+        email: null,
+        preferredContactChannel: null,
+      },
+      officialAddress: null,
+      currentAddress: null,
+      military: null,
+      education: null,
+      experience: [],
+      drivingLicenses: [],
+      certifications: [],
+      references: [],
+    };
+
+    const employment: EmploymentDetails = {
+      jobTitleId: new Types.ObjectId(input.jobTitleId),
+      departmentId: new Types.ObjectId(input.departmentId),
+      sectionId: input.sectionId == null ? null : new Types.ObjectId(input.sectionId),
+      branchId: new Types.ObjectId(input.branchId),
+      managerId: null,
+      // The honest reading of somebody working here on somebody else's books.
+      employmentType: 'contract',
+      // Never `salaryForAssignment`: see the note above. `manual` because a human decided there is
+      // no pay here, which is exactly what that flag means — not that a job default was applied.
+      salary: null,
+      salarySource: 'manual',
+      allowances: [],
+      benefits: [],
+      probationMonths: 0,
+      startDate: new Date(),
+    };
+
+    const registeredAt = employment.startDate;
+    const doc = await unitOfWork(async (session) => {
+      const employeeNumber = await nextEmployeeNumber(session);
+      const code = buildEmployeeCode(branch.code, employeeNumber);
+      const entryEvent: EmployeeStatusEvent = {
+        from: null,
+        to: 'active',
+        reason: null,
+        effectiveDate: registeredAt,
+        at: new Date(),
+        by: new Types.ObjectId(ctx.userId),
+        actionId: null,
+      };
+      return employeeRepository.create(
+        {
+          employeeNumber,
+          code,
+          status: 'active',
+          origin: 'external',
+          personal,
+          insurance: null,
+          officer: null,
+          probation: null,
+          exit: null,
+          // The registry's record of when this person appeared, not a term of employment.
+          employmentPeriods: [{ hiredAt: registeredAt, exitedAt: null, exitType: null }],
+          actionSeq: 1,
+          statusHistory: [entryEvent],
+          userId: null,
+          applicantId: null,
+          applicantCode: null,
+          jobRequisitionId: null,
+          jobOfferId: null,
+          offerCode: null,
+          acceptedOfferRevision: null,
+          employment,
+          branchId: employment.branchId,
+          departmentId: employment.departmentId,
+          sectionId: employment.sectionId,
+          hiredAt: registeredAt,
+        },
+        { by: ctx.userId, session },
+      );
+    });
+
+    // The engine stays the only writer of employment facts, and the row it writes carries
+    // `origin: 'external'` — so the history says how this person entered, not that they were hired.
+    await this.recordHireAction(doc, 'active', ctx.userId);
+    await auditService.record({
+      entityRef: entityRef(String(doc._id)),
+      action: 'create',
+      changes: [
+        { field: 'code', old: null, new: doc.code },
+        { field: 'origin', old: null, new: 'external' },
+        { field: 'status', old: null, new: 'active' },
+      ],
+    });
+    await emit(HrEmployeeEvents.EmployeeCreated, {
+      employeeId: String(doc._id),
+      code: doc.code,
+      applicantId: null,
+      jobOfferId: null,
+      origin: 'external',
+    });
+    return doc;
   }
 
   /**

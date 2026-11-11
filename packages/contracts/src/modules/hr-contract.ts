@@ -753,6 +753,43 @@ export interface HireCandidateDto {
   contractNote: HiringPackContractNote | null;
 }
 
+/**
+ * A28 — printing for MANY candidates at once from «جاهزون للتعيين»: the people ticked, each with the
+ * papers of their own job; the papers chosen once for all of them; one document out.
+ */
+export const CANDIDATE_BULK_MAX = 50;
+
+export const CandidateBulkSchema = z
+  .object({ offerIds: z.array(objectId()).min(1).max(CANDIDATE_BULK_MAX) })
+  .strict();
+export type CandidateBulk = z.infer<typeof CandidateBulkSchema>;
+
+export interface CandidateBulkPersonDto {
+  offerId: string;
+  applicantName: string;
+  offerCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** The person's papers, in print order — what their job prints. */
+  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind; group: CandidatePaperGroup }[];
+  /** Why the person cannot be printed for (the offer is no longer accepted…), else null. */
+  error: string | null;
+}
+
+export const RenderCandidateBulkSchema = z
+  .object({
+    offerIds: z.array(objectId()).min(1).max(CANDIDATE_BULK_MAX),
+    /** The papers chosen — each person prints those of them their own job has. */
+    keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+  })
+  .strict();
+export type RenderCandidateBulk = z.infer<typeof RenderCandidateBulkSchema>;
+
+export interface RenderCandidateBulkDto {
+  html: string;
+  /** Per person: printed (and how many papers), or why not. */
+  results: { offerId: string; printed: number; error: string | null }[];
+}
+
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',
 } as const;

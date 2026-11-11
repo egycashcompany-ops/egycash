@@ -32,6 +32,7 @@ export const PaperTile = ({
   onToggle,
   onEdit,
   onPrint,
+  caption,
 }: {
   paperKey: string;
   name: string;
@@ -41,8 +42,11 @@ export const PaperTile = ({
   active?: boolean;
   disabled?: boolean;
   onToggle: (checked: boolean) => void;
-  onEdit: () => void;
-  onPrint: () => void;
+  /** «تعديل» and «طباعة» under the card — left out where there is nothing to open or print alone. */
+  onEdit?: () => void;
+  onPrint?: () => void;
+  /** A line under the card instead — «لـ ٣ أشخاص» in the printing for many. */
+  caption?: string;
 }): JSX.Element => {
   const t = useT();
   return (
@@ -69,29 +73,32 @@ export const PaperTile = ({
           <span className="text-center text-[11px] font-medium leading-snug transition-all duration-300">{name}</span>
         </span>
       </label>
-      <div className="flex items-center justify-center gap-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-pressed={active}
-          className={[
-            'rounded px-2 py-0.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-800',
-            active
-              ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-slate-800 dark:text-blue-300'
-              : 'text-slate-600 dark:text-slate-300',
-          ].join(' ')}
-        >
-          {t('contracts.candidate.edit')}
-        </button>
-        <span className="text-slate-300 dark:text-slate-600">|</span>
-        <button
-          type="button"
-          onClick={onPrint}
-          className="rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-800"
-        >
-          {t('contracts.candidate.printOne')}
-        </button>
-      </div>
+      {caption !== undefined && <p className="text-center text-[11px] text-slate-500 dark:text-slate-400">{caption}</p>}
+      {onEdit !== undefined && onPrint !== undefined && (
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-pressed={active}
+            className={[
+              'rounded px-2 py-0.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-800',
+              active
+                ? 'bg-blue-50 font-semibold text-blue-700 dark:bg-slate-800 dark:text-blue-300'
+                : 'text-slate-600 dark:text-slate-300',
+            ].join(' ')}
+          >
+            {t('contracts.candidate.edit')}
+          </button>
+          <span className="text-slate-300 dark:text-slate-600">|</span>
+          <button
+            type="button"
+            onClick={onPrint}
+            className="rounded px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-800"
+          >
+            {t('contracts.candidate.printOne')}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

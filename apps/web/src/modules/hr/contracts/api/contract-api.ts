@@ -3,8 +3,11 @@
 // the server-owned variable catalog. Document HTML rides outside the JSON envelope.
 import {
   type AddContractAttachment,
+  type CandidateBulkPersonDto,
   type CandidateDraftDto,
   type HireCandidateDto,
+  type RenderCandidateBulk,
+  type RenderCandidateBulkDto,
   type RenderCandidatePapers,
   type RenderCandidatePapersDto,
   type UpdateCandidateDraft,
@@ -107,6 +110,10 @@ export const updateCandidate = (offerId: string, body: UpdateCandidateDraft): Pr
   patch<CandidateDraftDto>(`/hr/contracts/candidates/${offerId}`, body);
 export const renderCandidate = (offerId: string, body: RenderCandidatePapers): Promise<RenderCandidatePapersDto> =>
   post<RenderCandidatePapersDto>(`/hr/contracts/candidates/${offerId}/render`, body);
+export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPersonDto[]> =>
+  post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
+export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
+  post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
 export const hireCandidate = (offerId: string, version: number): Promise<HireCandidateDto> =>
   post<HireCandidateDto>(`/hr/contracts/candidates/${offerId}/hire`, { version });
 export const contractPdfTicket = (id: string): Promise<{ ready: boolean; ticket: DownloadTicketDto | null }> =>

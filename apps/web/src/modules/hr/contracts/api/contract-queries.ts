@@ -12,6 +12,7 @@ import {
   type CreateContractType,
   type DecideContractApproval,
   type PreviewContract,
+  type RenderCandidateBulk,
   type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
@@ -166,6 +167,18 @@ export const useRenderCandidate = (offerId: string) => {
   return useMutation({
     mutationFn: (body: RenderCandidatePapers) => api.renderCandidate(offerId, body),
     onSuccess: (out) => client.setQueryData(['hr', 'contracts', 'candidate', offerId], out.draft),
+  });
+};
+
+/** «طباعة لكل المحدد» — the ticked people, each with their own job's papers. */
+export const useBulkOpenCandidates = () => useMutation({ mutationFn: (offerIds: string[]) => api.bulkOpenCandidates(offerIds) });
+
+/** Print the chosen papers for every ticked person; each one's page then shows the print. */
+export const useBulkRenderCandidates = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderCandidateBulk) => api.bulkRenderCandidates(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] }),
   });
 };
 

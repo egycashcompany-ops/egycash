@@ -585,8 +585,17 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   with the kept number, then the contract — through the A27 path, from the job's contract template
   with the printed term and the typed-in values the contract prints. What stops the contract is
   returned as a note; the hire stands. The page then lands on the employee's «مستندات التعيين».
+- **Many at once** («لو معايا 20 شخص و عاوز اطبعلهم كلهم فنفس الوقت»). «جاهزون للتعيين» ticks
+  people (one by one, or all on the page) and offers «طباعة لكل المحدد». Its popup lists them, each
+  with their job and how many papers they get, beside every paper any of them prints as the same
+  tiles, each saying for how many it is («للجميع», «لـ ٣»). «تأكيد الطباعة» prints ONE document,
+  person after person, each with those of the chosen papers their own job has — their job's card,
+  the weapon declaration for crew leaders only. Each print is recorded as on the person's own page
+  (the code kept, so «تعيين» opens there). A person who cannot be printed for is reported, not
+  dropped; the others print. At most 50 at a time.
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
-  `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`.
+  `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
+  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {offerIds, keys}`.
 
 ## Review trail
 

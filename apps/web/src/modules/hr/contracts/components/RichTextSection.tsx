@@ -23,6 +23,7 @@ const PAPER_CLASSES = new Set([
   'plain', 'cols', 'dots', 'band', 'foot', 'rule', 'basmala', 'star',
   't10', 't12', 't14', 't16', 't20',
   'l1', 'l15', 'l2', 'l3',
+  'cells', 'c1', 'c2', 'c3', 'c4', 'c8', 'c9', 'c14', 'mini', 'divider', 'ownhead', 'nosi', 'newpage',
 ]);
 
 const paperClasses = (value: string | null): string | null => {

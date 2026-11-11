@@ -1,4 +1,4 @@
-// The owner's thirteen hiring papers — «مستندات التعيين» — as templates (A27, stage 2).
+// The owner's fourteen hiring papers — «مستندات التعيين» — as templates (A27, stage 2).
 //
 // «بص هبعتلك الفايلات و قولي تتعمل ازاي»: the contract, the data sheet, the work-receipt, relatives
 // and weapon declarations, the bank letter, and the seven job description cards, copied from his
@@ -223,6 +223,144 @@ const CONTRACT: HiringPaper = {
     ].join('\n'),
     // His document-control line, at the foot of every page; the page number at the top.
     footer: docControl('EGYCASH-HR-F-10-04'),
+  },
+  signatures: [],
+};
+
+// ── «نموذج رقم (1)» — the social-insurance registration ─────────────────────────────────────
+
+/**
+ * «دا هنزودوا مع النمازج … نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو»; «عاوزين نخلي رقم
+ * 2720 دا يبقا الاجر الاساسي في نموزج 1». The authority's form as he sent it (two pages, its own head
+ * and emblem, no company letterhead or frame), FILLED from the record: the category, the company,
+ * the employee's insurance number, national ID, name, nationality, qualification and job, the
+ * start date in its boxes, the address, phone and email, the date it is written, his name in the
+ * declaration overleaf — and the basic wage, 2720 pounds. What the record does not hold (the
+ * establishment number, codes, signatures) stays for the hand.
+ */
+const boxes = (count: number, value = ''): string => `<span class="cells c${count}">${value}</span>`;
+/** «يوم / شهر / سنة» in their boxes, right to left as the form draws them. */
+const boxedDate = (day = '', month = '', year = ''): string => `${boxes(2, day)} / ${boxes(2, month)} / ${boxes(4, year)}`;
+/** A wage in its boxes: five for the pounds, two for the piasters, written left to right. */
+const wageBoxes = (pounds = '', piasters = ''): string => {
+  const digits = (value: string, count: number): string =>
+    value
+      .padStart(count, ' ')
+      .split('')
+      .map((digit) => `<td>${digit === ' ' ? '&nbsp;' : digit}</td>`)
+      .join('');
+  return (
+    '<table class="mini" dir="ltr"><tbody>' +
+    '<tr><td colspan="5">جنيـــه</td><td colspan="2">قرش</td></tr>' +
+    `<tr>${digits(pounds, 5)}${digits(piasters, 2)}</tr>` +
+    '</tbody></table>'
+  );
+};
+/** A boxed caption over boxes («نوع المدة», «كود الاشتراك»). */
+const captionBoxes = (caption: string): string =>
+  `<table class="mini"><tbody><tr><td colspan="2">${caption}</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table>`;
+/** Label, value on a dotted line — one or more to a line. */
+const filledLine = (cells: readonly (string | { value: string })[]): string =>
+  `<table class="plain"><tbody><tr>${cells
+    .map((cell) => (typeof cell === 'string' ? `<td>${cell}</td>` : `<td class="dots">${cell.value}</td>`))
+    .join('')}</tr></tbody></table>`;
+
+/** The basic wage the owner registers every new hire at: «رقم 2720 دا يبقا الاجر الاساسي». */
+const INSURED_BASIC_WAGE = '2720';
+
+const FORM_ONE: HiringPaper = {
+  key: 'egycash.hiring.insurance-form-1',
+  name: { ar: 'نموذج رقم (1) — طلب اشتراك مؤمن عليه', en: 'Form 1 — insured person registration' },
+  kind: 'form',
+  jobs: 'all',
+  printOrder: 5,
+  sections: {
+    header:
+      '<table class="plain cols ownhead"><tbody><tr>' +
+      '<td><b>الهيئة القومية للتأمين الاجتماعي</b><br /><b>مكتب</b> ........................................</td>' +
+      '<td><p class="nosi">الهيئة القومية للتأمين الاجتماعي</p></td>' +
+      '<td style="text-align: left"><b>نموذج رقم (1)</b></td>' +
+      '</tr></tbody></table>',
+    body: [
+      '<p class="rule">&nbsp;</p>',
+      '<p class="t16" style="text-align: center"><b>طلـــب اشتراك مـؤمـــن عليـــه</b></p>',
+      '<table class="plain cols"><tbody>' +
+        `<tr><td><b>الفئة :</b> ${boxes(1, '١')} <b>عاملين لدى الغير</b> ${boxes(1, '✓')}</td><td>${boxes(1, '٢')} <b>أصحاب أعمال</b> ${boxes(1)}</td></tr>` +
+        `<tr><td>${gap(12)}${boxes(1, '٣')} <b>المصريين بالخارج</b> ${boxes(1)}</td><td>${boxes(1, '٤')} <b>عمالة غير منتظمة</b> ${boxes(1)}</td></tr>` +
+        '</tbody></table>',
+      `<p><b>رقـــم المنشـــأة:</b> ${boxes(8)}${gap(30)}${boxes(2)}</p>`,
+      filledLine(['<b>اسـم المنشـــأة:</b>', { value: '{{company.name}}' }]),
+      '<p class="divider"><span>بيانات المؤمن عليه</span></p>',
+      `<p><b>الرقــم التأمينـــي:</b> ${boxes(9, '{{employee.insuranceNumber}}')}</p>`,
+      `<p><b>الرقــم القومـــي:</b> ${boxes(14, '{{employee.nationalId}}')}</p>`,
+      filledLine(['<b>اسم المؤمن عليه:</b>', { value: '{{employee.fullName}}' }, '<b>الجنســـية:</b>', { value: '{{employee.nationality}}' }]),
+      filledLine([
+        '<b>المؤهـــل:</b>',
+        { value: '{{employee.qualification}}' },
+        `<b>كـود المهنة:</b> ${boxes(3)} / ${boxes(3)}`,
+        '<b>المسمـى:</b>',
+        { value: '{{job.title}}' },
+      ]),
+      `<p><b>تاريخ بـــدء الاشتـــراك:</b> ${boxedDate('{{employment.startDay}}', '{{employment.startMonth}}', '{{employment.startYear}}')}</p>`,
+      filledLine([
+        captionBoxes('نــوع المـدة'),
+        '<b>المسمـى:</b>',
+        { value: '' },
+        captionBoxes('كود الاشتراك'),
+        '<b>المسمـى:</b>',
+        { value: '' },
+        '<b>القطاع :</b>',
+        { value: '' },
+        boxes(1),
+      ]),
+      '<table class="plain cols"><tbody>' +
+        `<tr><td><b>*أجر أساسي:</b> ${wageBoxes(INSURED_BASIC_WAGE, '00')}</td><td><b>*أجر /دخل الاشتراك :</b> ${wageBoxes()}</td><td><b>*الأجر الشامل :</b> ${wageBoxes()}</td></tr>` +
+        '<tr><td class="t10"><b>(لحساب ٧٪ وفقاً لقانون العمل )</b></td><td></td><td class="t10"><b>(لحساب اشتراك التأمين الصحي الشامل)</b></td></tr>' +
+        '</tbody></table>',
+      filledLine([`<b>صلة القرابة بصاحب العمل:</b> ${boxes(1)}`, { value: '' }, '<b>* تستوفى للأقارب حتى الدرجة الثانية بالمنشآت الفردية.</b>']),
+      filledLine([`<b>بيانات العجز إن وجدت:تاريخ بداية العجز:</b> ${boxedDate()}`, '<b>نسبة العجز:</b>', { value: '' }, '٪']),
+      '<p class="divider"><span>بيانات محل إقامة المؤمن عليه</span></p>',
+      '<table class="plain cols"><tbody>' +
+        '<tr><td style="text-align: center"><b>العنوان داخل مصر</b></td><td style="text-align: center"><b>العنوان خارج مصر</b></td></tr>' +
+        `<tr><td><b>عقـار رقـم :</b> ${boxes(4)}</td><td><b>الدولة :</b> .............................. ${boxes(2)}</td></tr>` +
+        `<tr><td><b>شياخة / قرية :</b> ${boxes(2)}</td><td><b>المدينة :</b> .............................. ${boxes(2)}</td></tr>` +
+        '<tr><td><b>شارع / حارة:</b> {{employee.address}}</td><td><b>جهة العمل:</b> ..............................</td></tr>' +
+        `<tr><td><b>قسم / مركز:</b> ${boxes(2)}${gap(4)}<b>محافظة :</b> ${boxes(2)}</td><td></td></tr>` +
+        '<tr><td><b>توقيع المؤمن عليه:</b> ..............................</td><td><b>توقيع المدير المسئول:</b> ..............................</td></tr>' +
+        '</tbody></table>',
+      '<p><b>رقم التليفون :</b> {{employee.phone}}</p>',
+      '<p><b>البريد الإلكتروني :</b> {{employee.email}}</p>',
+      '<p><b>تحريراً في:</b> {{contract.currentDate}}</p>',
+      '<p style="text-align: left"><b>تم مطابقة التوقيع بمعرفتي:</b> ................................................</p>',
+      '<table><tbody>' +
+        '<tr><td><b>البيــان</b></td><td style="text-align: center"><b>مستلـم الطلب</b></td><td style="text-align: center"><b>المراجـــع</b></td><td style="text-align: center"><b>سجل آليــاً بمعرفة</b></td><td style="text-align: center"><b>روجـع آليـاً بمعرفة</b></td></tr>' +
+        ['الاســـم', 'التوقيـــع', 'التاريـــخ']
+          .map((row) => `<tr><td><b>${row}</b></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`)
+          .join('') +
+        '</tbody></table>',
+      `<p class="t10"><b>ملحوظة</b>: على صاحب العمل والعامل الإطلاع على التوجيهات الموضحة خلف النموذج مع التوقيع على الإقرار.${gap(4)}(أنظر خلفه)</p>`,
+      // ── Overleaf ──
+      '<p class="newpage">&nbsp;</p>',
+      '<p class="t14" style="text-align: center"><b>إرشـــادات</b></p>',
+      '<p class="t12 l15" style="text-align: justify"><b>١. على صاحب العمل بالقطاع الخاص أن يرسل هذا النموذج من أصل وصورتين بالنسبة لكل مـــن العاملين لديه مع طلب اشتراكه في الهيئة لأول مرة وخلال أسبوعين على الأكثر من تـاريخ التحـاق أي عامل جديد بالعمل لديه سواءً كان التحاقاً نهائياً أو تحت الاختبار.</b></p>',
+      '<p class="t12 l15" style="text-align: justify"><b>٢. يرفق بالنموذج لدى اشتراك المؤمن عليه لأول مرة بالهيئة صورة شهادة الميلاد المميكنة وصورة بطاقة الرقم القومي أو صورة جواز السفر يتـــم مطابقتها على الأصل بمعرفة الموظف المختص.</b></p>',
+      '<p class="t12 l15" style="text-align: justify"><b>٣. التوقيع على هذا النموذج بما يفيد الإطلاع والموافقة على جميع البيانات الـواردة بـه ولا يجوز لمـــن وقَّع عليه أن يعارض في تلك البيانات أمام الهيئة وله أن يلجأ إلى مكتب علاقات العمل المختص أو القضاء.</b></p>',
+      '<p class="t12 l15"><b>٤. يستخدم هذا النموذج كطلب اشتراك في تأمين إصابات العمل فقط بالنسبة للفئات التالية:</b></p>',
+      `<p class="t12 l15">${gap(8)}<b>(أ)  من تجاوز سن الشيخوخة وأوقف انتفاعه بتأمين الشيخوخة والعجز والوفاة.</b></p>`,
+      `<p class="t12 l15">${gap(8)}<b>(ب)العاملون الذين يخضعون لأحكام قانون العمل ممن تقل أعمارهم عن ١٨ سنة.</b></p>`,
+      `<p class="t12 l15" style="text-align: justify">${gap(8)}<b>(ج) العاملون المتدرجون والتلاميذ الصناعيون والطلاب المشتغلون في مشروعات التشغيل الصيفـي والخدمة العامة، ويشترط اعتمادالنموذج المحرر لهم من المدير المسئول بالهيئة التي تشرفعلى التلمذة الصناعية، والتدريب مع ختمها بخاتم هذه الجهة مع إرفاق نسخة من عقد عمل المتدرب أو المستند المثبت لنوع العمل في جميع هذه الحالات.</b></p>`,
+      `<p class="t12 l15">${gap(8)}<b>(د)  يقتصر استيفاء الأجر على الفئات التي يتقاضى فيها المؤمن عليه أجراً من صاحب العمل.</b></p>`,
+      '<p class="t14" style="text-align: center"><b>إقـــــرار</b></p>',
+      filledLine(['<b>اســم المنشأة:</b>', { value: '{{company.name}}' }, '<b>رقمها التأميني:</b>', { value: '' }]),
+      filledLine(['<b>العنـــــوان:</b>', { value: '' }]),
+      '<p class="t12 l15" style="text-align: justify"><b>أقر أنـا الموقِّع علـى هـذا النمـوذج بـالالتزام بعـرض المـؤمن عليـه علـى اللجنـة الطبيـة المختصـة بالهيئـة المعنيةبالتأمين الصحي أو الجهة الطبية المختصة لإجراء الفحص الطبي الأولي وإثبات حالته الصحية وقت توقيع الكشف الطبي مع الالتزام بموافاة مكتب الهيئة التابع لـه المنشأة بتقرير اللياقة الطبية الصادر من الجهة الطبية المختصة عن حالته الصحية خلالأسبوعين على الأكثر من تـاريخ التحاقه بالعمل تطبيقاًلأحكام قـانون العمل.</b></p>',
+      '<p class="t12 l15"><b>توقيع (صاحب العمل / المدير المسئول)</b></p>',
+      `<p class="t12 l15">${gap(16)}(${gap(44)})</p>`,
+      '<p class="t12 l15" style="text-align: justify"><b>١- أقر أنا {{employee.fullName}} العامل بالمنشأة عاليه بـأن أثبت حـالتي الصحية أمام اللجنة الطبية المختصـة بالهيئة المعنيـة بالتأمين الصـحي أو الجهة الطبية المختصة وموافـاة مكتب الهيئة التابع له المنشــأة بالتقرير الطبي عن حالتي الصحية خلال أسبوعين من تاريخ التحاقي بالعمـل وفي حالـة عــدم قيامي بذلك فــإن الهيئة القومية للتأمين الاجتماعي ليس عليها أدنــى التزام قانونــي بصرف أية مستحقات تأمينية تترتب على العجز أياً كان نوعه السابق أو المعاصر لتاريخ الالتحاق بالعمل.</b></p>',
+      `<p class="t12 l15">${gap(30)}<b>توقيع المؤمن عليه</b></p>`,
+      `<p class="t12 l15">${gap(24)}(${gap(44)})</p>`,
+    ].join('\n'),
+    footer: '',
   },
   signatures: [],
 };
@@ -709,9 +847,10 @@ const JOB_CARDS: readonly JobCard[] = [
   },
 ];
 
-/** All thirteen, in the order they print. */
+/** All fourteen, in the order they print. */
 export const HIRING_PAPERS: readonly HiringPaper[] = [
   CONTRACT,
+  FORM_ONE,
   DATA_SHEET,
   WORK_RECEIPT,
   RELATIVES,

@@ -171,6 +171,23 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
       return formatTemplateDate(employee.employment.startDate, input.language);
     case 'employment.startDayName':
       return dayNameOf(employee.employment.startDate, input.language);
+    case 'employment.startDay':
+    case 'employment.startMonth':
+    case 'employment.startYear': {
+      // The boxes of «نموذج رقم (1)»: two digits for the day and the month, four for the year.
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOnlyIso(employee.employment.startDate));
+      if (match === null) return '';
+      return key === 'employment.startYear' ? (match[1] ?? '') : key === 'employment.startMonth' ? (match[2] ?? '') : (match[3] ?? '');
+    }
+    case 'employee.nationality': {
+      const nationality = employee.personal.nationality;
+      if (input.language === 'ar' && nationality.trim().toLowerCase() === 'egyptian') return 'مصري';
+      return nationality;
+    }
+    case 'employee.email':
+      return employee.personal.contact.email ?? '';
+    case 'employee.insuranceNumber':
+      return employee.insurance?.insuranceNumber ?? '';
     case 'salary.gross':
     case 'salary.fixed':
     case 'salary.attendanceBonus':

@@ -1,4 +1,4 @@
-// The owner's thirteen hiring papers as templates (A27, stage 2) — what each one prints, and for
+// The owner's fourteen hiring papers as templates (A27, stage 2) — what each one prints, and for
 // which jobs, without a database.
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
@@ -29,12 +29,12 @@ const SAMPLES: ContractVariableValue[] = CONTRACT_VARIABLE_CATALOG.map((v) => ({
   overriddenBy: null,
 }));
 
-describe('the thirteen papers', () => {
-  it('are the contract, five forms for every job and seven job description cards', () => {
-    expect(HIRING_PAPERS).toHaveLength(13);
-    expect(new Set(HIRING_PAPERS.map((p) => p.key)).size).toBe(13);
+describe('the fourteen papers', () => {
+  it('are the contract, «نموذج رقم (1)», four more forms for every job and seven job description cards', () => {
+    expect(HIRING_PAPERS).toHaveLength(14);
+    expect(new Set(HIRING_PAPERS.map((p) => p.key)).size).toBe(14);
     expect(HIRING_PAPERS.filter((p) => p.kind === 'contract')).toEqual([CONTRACT]);
-    expect(HIRING_PAPERS.filter((p) => p.kind === 'form' && p.jobs === 'all')).toHaveLength(4);
+    expect(HIRING_PAPERS.filter((p) => p.kind === 'form' && p.jobs === 'all')).toHaveLength(5);
     expect(CARDS).toHaveLength(7);
   });
 
@@ -102,15 +102,16 @@ describe('what they print', () => {
   it('prints every form but the bank letter BLANK, for the employee to write on by hand', () => {
     // «نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو … و الباقي لازم يكون فاضي».
     const forms = HIRING_PAPERS.filter((x) => x.kind === 'form');
-    for (const p of forms.filter((x) => x.key !== 'egycash.hiring.bank-letter')) {
+    const filled = new Set(['egycash.hiring.bank-letter', 'egycash.hiring.insurance-form-1']);
+    for (const p of forms.filter((x) => !filled.has(x.key))) {
       expect(preparedSections(p).placeholders, p.key).toEqual([]);
       const printed = renderFormHtml({ ...p, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
       expect(printed, p.key).not.toContain('أحمد محمد علي');
     }
     // The bank letter is filled, and leaves a line where the record has nothing.
     const letter = paper('egycash.hiring.bank-letter');
-    const filled = renderFormHtml({ ...letter, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
-    expect(filled).not.toContain('{{');
+    const printed = renderFormHtml({ ...letter, language: 'ar' }, SAMPLES, { logoDataUri: 'data:,', lines: ['شركة'] });
+    expect(printed).not.toContain('{{');
     const empty = renderFormHtml({ ...letter, language: 'ar' }, [], { logoDataUri: 'data:,', lines: ['شركة'] });
     expect(empty).toContain('<span class="blank">&nbsp;</span>');
   });
@@ -232,5 +233,49 @@ describe('which job prints which paper — matched by the job\'s name', () => {
     const driver = { _id: new Types.ObjectId(), name: { ar: 'سائق' } };
     expect(jobsFor(WEAPON.jobs, [leader, driver])).toEqual([leader._id]);
     expect(jobsFor(CONTRACT.jobs, [leader, driver])).toEqual([]);
+  });
+});
+
+describe('«نموذج رقم (1)» — the social-insurance registration', () => {
+  const FORM = paper('egycash.hiring.insurance-form-1');
+  const LETTERHEAD = { logoDataUri: 'data:image/png;base64,LOGO', lines: ['شركة'] };
+  const value = (key: string, text: string): ContractVariableValue => ({ key, value: text, source: 'employee', overriddenBy: null });
+  const html = renderFormHtml({ ...FORM, language: 'ar' }, [
+    value('employee.nationalId', '29501011234567'),
+    value('employee.fullName', 'أحمد محمد علي'),
+    value('employment.startDay', '05'),
+    value('employment.startMonth', '11'),
+    value('employment.startYear', '2026'),
+    value('company.name', 'إيجي كاش'),
+  ], LETTERHEAD);
+
+  it('prints for every job, right after the contract, filled from the record', () => {
+    expect(FORM).toMatchObject({ kind: 'form', jobs: 'all', printOrder: 5 });
+    expect(preparedSections(FORM).placeholders).toEqual(
+      expect.arrayContaining(['employee.nationalId', 'employee.fullName', 'employment.startYear', 'company.name']),
+    );
+  });
+
+  it('writes each digit in its own box, left to right, and leaves the rest of a row empty', () => {
+    const boxes = (count: number, chars: string) =>
+      `<span class="cells c${count}">${[...chars.padEnd(count, ' ')].map((c) => `<i>${c === ' ' ? '&nbsp;' : c}</i>`).join('')}</span>`;
+    expect(html).toContain(boxes(14, '29501011234567'));
+    expect(html).toContain(`${boxes(2, '05')} / ${boxes(2, '11')} / ${boxes(4, '2026')}`);
+    expect(html).toContain(boxes(9, '')); // the insurance number the record does not hold
+    expect(html).toContain(boxes(1, '✓')); // «عاملين لدى الغير»
+  });
+
+  it('registers the basic wage at 2720 pounds — «رقم 2720 دا يبقا الاجر الاساسي»', () => {
+    expect(FORM.sections.body).toContain(
+      '<b>*أجر أساسي:</b> <table class="mini" dir="ltr"><tbody><tr><td colspan="5">جنيـــه</td><td colspan="2">قرش</td></tr>' +
+        '<tr><td>&nbsp;</td><td>2</td><td>7</td><td>2</td><td>0</td><td>0</td><td>0</td></tr>',
+    );
+  });
+
+  it('wears its own head and emblem: no company letterhead, no frame', () => {
+    expect(html).not.toContain('data:image/png;base64,LOGO');
+    expect(html).toContain('<section class="doc doc-form doc-bare">');
+    expect(html).toContain('p.nosi { height: 20mm');
+    expect(html).toContain('<p class="newpage">'); // and its second page overleaf
   });
 });

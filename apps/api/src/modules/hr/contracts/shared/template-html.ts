@@ -23,6 +23,9 @@ export const PAPER_CLASSES: readonly string[] = [
   'plain', 'cols', 'dots', 'band', 'foot', 'rule', 'basmala', 'star',
   't10', 't12', 't14', 't16', 't20',
   'l1', 'l15', 'l2', 'l3',
+  // «نموذج رقم (1)»: digit boxes and their widths, small boxed tables, the section heading on a
+  // line, his own head and emblem (no company letterhead, no frame), the second page.
+  'cells', 'c1', 'c2', 'c3', 'c4', 'c8', 'c9', 'c14', 'mini', 'divider', 'ownhead', 'nosi', 'newpage',
 ];
 const PAPER_CLASS_SET = new Set(PAPER_CLASSES);
 

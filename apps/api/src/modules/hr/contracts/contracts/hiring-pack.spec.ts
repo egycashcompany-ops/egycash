@@ -135,7 +135,7 @@ describe('the printed set', () => {
   it('is one document, the contract first, every later part on a fresh page', () => {
     expect(html.indexOf('CONTRACT أحمد')).toBeLessThan(html.indexOf('FORM-A'));
     expect(html.indexOf('FORM-A')).toBeLessThan(html.indexOf('FORM-B'));
-    expect(html.match(/break-before: page/g)).toHaveLength(2);
+    expect(html.match(/style="break-before: page;"/g)).toHaveLength(2);
     expect(html.match(/<!doctype html>/g)).toHaveLength(1);
   });
 

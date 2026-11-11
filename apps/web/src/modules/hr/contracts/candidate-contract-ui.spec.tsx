@@ -17,6 +17,7 @@ const code = (path: string): string =>
 const READY = code('../employee-management/employees/pages/EmployeesReadyPage.tsx');
 const PAGE = code('pages/CandidateContractPage.tsx');
 const TILE = code('components/PaperTile.tsx');
+const FORM = code('components/PaperValuesForm.tsx');
 const ROUTES = code('routes.tsx');
 
 describe('«جاهزون للتعيين»', () => {
@@ -47,9 +48,21 @@ describe('the candidate\'s page', () => {
     expect(PAGE.indexOf('openPrintWindow(')).toBeLessThan(PAGE.indexOf('render.mutateAsync({ keys, print: true })'));
   });
 
-  it('groups the papers — the contract, every job\'s, this job\'s — with select all', () => {
+  it('shows every paper in ONE row beside the title — the contract, every job\'s, this job\'s', () => {
     expect(PAGE).toContain("const GROUPS: CandidatePaperGroup[] = ['contract', 'everyJob', 'thisJob'];");
+    expect(PAGE).toContain('toolbar={row}');
+    expect(PAGE).toContain('flex min-w-0 flex-nowrap gap-2 overflow-x-auto');
     expect(PAGE).toContain("t('contracts.candidate.selectAll')");
+  });
+
+  it('opens a paper\'s «تعديل» as a form in the page, beside that paper as it prints', () => {
+    expect(PAGE).toContain('onEdit={() => setOpened(p.key)}');
+    expect(PAGE).toContain('<PaperValuesForm paper={active}');
+    expect(PAGE).toContain('render\n        .mutateAsync({ keys: [active.key], print: false })');
+    expect(FORM).toContain('onBlur={() => {');
+    // The employee code is shown, never typed: the hire gives the one kept at the first print.
+    expect(FORM).toContain("new Set(['employee.employeeCode'])");
+    expect(FORM).toContain('disabled={disabled || READ_ONLY_VALUES.has(v.key)}');
   });
 
   it('saves every change to the server as it is made, one after another', () => {
@@ -83,10 +96,8 @@ describe('the words', () => {
       for (const key of [
         'contracts.candidate.subtitle',
         'contracts.candidate.details',
-        'contracts.candidate.papers',
-        'contracts.candidate.groups.contract',
-        'contracts.candidate.groups.everyJob',
-        'contracts.candidate.groups.thisJob',
+        'contracts.candidate.formTitle',
+        'contracts.candidate.previewOf',
         'contracts.candidate.edit',
         'contracts.candidate.printOne',
         'contracts.candidate.printSelected',
@@ -94,7 +105,6 @@ describe('the words', () => {
         'contracts.candidate.hired',
         'contracts.candidate.savedAuto',
         'contracts.candidate.codeAtPrint',
-        'contracts.candidate.editTitle',
       ]) {
         expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
       }

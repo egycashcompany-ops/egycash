@@ -563,12 +563,17 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
 - **The candidate is not an employee yet.** The papers print from the employee the accepted offer
   WOULD make (`employeeService.candidateFromOffer`): the offer's terms and the applicant's personal
   data, built exactly as the hire builds the record. Nothing is written by a preview.
-- **The page.** The contract's term (start; end one year on when the type is fixed-term) and the
-  hiring date; the contract's shape as it prints; the job's papers in three groups — its contract
-  (the first by print order), the forms every job signs, the forms of this job — each a tile to tick
-  (the owner's own tile pattern), with «تعديل» and «طباعة». At the foot, «طباعة المحدد» and «تعيين».
-- **«تعديل»** types a value in for the candidate (A16 overrides). It is kept on the record and used
-  by every paper that prints that value; no template changes.
+- **The page.** The job's papers are ONE row beside the title — its contract (the first by print
+  order), the forms every job signs, the forms of this job — each a tile to tick for printing (the
+  owner's own tile pattern), with «تعديل» and «طباعة» under it («عاوز المستندات كلها تظهر ك line
+  واحد … جمب كلمه عقد جديد»). Below: the form — the contract's term (start; end one year on when
+  the type is fixed-term) and the hiring date, then the paper opened by its «تعديل» — and beside it
+  that paper as it prints (the contract until another is opened). At the foot, «طباعة المحدد» and
+  «تعيين».
+- **«تعديل»** opens the paper's values in the form, each typed in for the candidate (A16
+  overrides) and saved as its box is left. A value is kept on the record and used by every paper
+  that prints it; no template changes. The employee code is shown, never typed — the server drops
+  an override of it — because the hire gives exactly the code kept at the first print.
 - **The record** (`hr_candidate_drafts`, one per offer) holds the papers ticked, the typed-in
   values, the term, the employee number kept, and the prints. Every change is saved as it is made,
   in sequence with the version each save returns; a stale save is refused (409) and the page reloads

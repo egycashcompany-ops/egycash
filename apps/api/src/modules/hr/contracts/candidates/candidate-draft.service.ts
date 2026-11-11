@@ -46,6 +46,9 @@ import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { candidateDraftRepository } from './candidate-draft.repository';
 import { type CandidateDraftDoc } from './candidate-draft.model';
 
+/** Values the papers print that are never typed in for a candidate. */
+const NOT_TYPED = new Set(['employee.employeeCode']);
+
 const offerRef = (offerId: string) => ({ moduleId: 'hr', entityType: 'jobOffer', entityId: offerId });
 
 /** A paper of the candidate's job, in print order, with where it belongs on the page. */
@@ -216,8 +219,9 @@ class CandidateDraftService {
       set.selected = input.selected.filter((key) => known.has(key));
     }
     if (input.overrides !== undefined) {
-      // A blank value gives the record's own back; only what was typed is kept.
-      set.overrides = input.overrides.filter((o) => o.value.trim() !== '');
+      // A blank value gives the record's own back; only what was typed is kept. The employee code
+      // is never typed: it is the one kept at the first print, and the hire gives exactly that.
+      set.overrides = input.overrides.filter((o) => o.value.trim() !== '' && !NOT_TYPED.has(o.key));
     }
     if (input.startDate !== undefined) set.startDate = input.startDate;
     if (input.endDate !== undefined) set.endDate = c.allowsEndDate ? input.endDate : null;

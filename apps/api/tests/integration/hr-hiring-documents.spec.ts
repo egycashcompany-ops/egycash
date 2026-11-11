@@ -570,12 +570,15 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
         overrides: [
           { key: 'employee.address', value: 'العجوزة' },
           { key: 'job.title', value: 'أخصائى صراف آلى' },
+          // Never typed: the code is the one the first print keeps.
+          { key: 'employee.employeeCode', value: '9999999' },
         ],
         version: draft.version,
       })
     ).body.data as CandidateDraftDto;
     expect(draft.papers.filter((p) => p.selected).map((p) => p.key)).toEqual([PAPER('contract'), PAPER('bank-letter')]);
     expect(draft.values.find((v) => v.key === 'employee.address')).toMatchObject({ value: 'العجوزة', overridden: true });
+    expect(draft.values.find((v) => v.key === 'employee.employeeCode')).toMatchObject({ value: '', overridden: false });
     expect((await call('patch', base(offer.id), { selected: [], version: draft.version - 1 })).status).toBe(409);
 
     // A preview changes nothing.

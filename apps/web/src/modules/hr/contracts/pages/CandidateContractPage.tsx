@@ -2,12 +2,15 @@
 //
 // «اول مندخل عل عقد جديد … فيها الform و شكل العقد اللي هيطلع للشخص علي حسب وظيفتو و اسمو … toggle
 // buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار بقا ف اخر الصفحه واحد للطباعه … و زرار جمبو علطول
-// اللي هو التعيين … الزرار ميبقاش active الا لما يطبع اول».
+// اللي هو التعيين … الزرار ميبقاش active الا لما يطبع اول». Then: «عاوز المستندات كلها تظهر ك line
+// واحد بنفس ال toggle دا جمب كلمه عقد جديد فوق … و عاوز فالمساحه اللي انت عامل فيها ال المستندات
+// دي دلوقت … تبقي علي اساس انها form ساعت ميدوس علي اي نموزج فيهم كتعديل وريني».
 //
-//   · THE FORM is the contract's term and the hiring date, from the offer; the contract's shape is
-//     beside it, as it will print for this person.
-//   · THE PAPERS are the job's, grouped — the contract, every job's forms, this job's — each a tile
-//     to tick, with «تعديل» (this candidate's values) and «طباعة» (that paper alone).
+//   · THE PAPERS are ONE ROW beside the title — the contract, every job's forms, this job's — each
+//     a tile to tick for printing, with «تعديل» and «طباعة» (that paper alone) under it.
+//   · THE FORM below is the contract's term and the hiring date, then the paper opened by its
+//     «تعديل»: every value it prints, changeable for this candidate. Beside it, that paper as it
+//     prints — the contract until another paper is opened.
 //   · «طباعة المحدد» prints the ticked papers; «تعيين» stays off until something was printed, then
 //     hires the candidate and records the contract.
 //   · Every change is saved to the server as it is made — a closed tab or an expired session loses
@@ -17,7 +20,6 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   type CandidateDraftDto,
-  type CandidatePaperDto,
   type CandidatePaperGroup,
   type Locale,
   type UpdateCandidateDraft,
@@ -38,8 +40,9 @@ import {
   useUpdateCandidate,
 } from '../api/contract-queries';
 import { PaperTile } from '../components/PaperTile';
-import { EditPaperValuesDialog } from '../components/EditPaperValuesDialog';
+import { PaperValuesForm } from '../components/PaperValuesForm';
 
+/** The order the row reads in: the contract, every job's forms, then this job's own. */
 const GROUPS: CandidatePaperGroup[] = ['contract', 'everyJob', 'thisJob'];
 
 /** One year from an ISO start, the day before its anniversary — as the server makes it. */
@@ -64,7 +67,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
   const hire = useHireCandidate(offerId);
   const openDocs = useOpenHiringDocs();
   const [preview, setPreview] = useState('');
-  const [editing, setEditing] = useState<CandidatePaperDto | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const chain = useRef<Promise<void>>(Promise.resolve());
 
@@ -72,7 +75,10 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
    * Save one change. Changes are queued — each one carries the version the previous one returned,
    * so quick ticks never race each other into a conflict.
    */
-  const save = (change: Omit<UpdateCandidateDraft, 'version'>, optimistic?: (d: CandidateDraftDto) => CandidateDraftDto): Promise<void> => {
+  const save = (
+    change: Omit<UpdateCandidateDraft, 'version'>,
+    optimistic?: (d: CandidateDraftDto) => CandidateDraftDto,
+  ): Promise<void> => {
     if (optimistic !== undefined) {
       client.setQueryData<CandidateDraftDto>(queryKey, (d) => (d === undefined ? d : optimistic(d)));
     }
@@ -91,19 +97,22 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     return chain.current;
   };
 
-  // The contract's shape, re-drawn whenever what it prints changed.
-  const contractKey = draft?.papers.find((p) => p.group === 'contract')?.key ?? null;
+  // The papers in the row's order; the one in the form is the one opened, else the contract.
+  const papers = draft === undefined ? [] : GROUPS.flatMap((g) => draft.papers.filter((p) => p.group === g));
+  const active = papers.find((p) => p.key === opened) ?? papers[0] ?? null;
+
+  // That paper as it prints, re-drawn whenever what it prints changed.
   const shapeOf = draft === undefined ? '' : `${draft.version}:${draft.startDate}:${draft.endDate ?? ''}:${draft.hiringDate}`;
   useEffect(() => {
-    if (contractKey === null || draft === undefined) return;
+    if (active === null) return;
     const id = window.setTimeout(() => {
       render
-        .mutateAsync({ keys: [contractKey], print: false })
+        .mutateAsync({ keys: [active.key], print: false })
         .then((out) => setPreview(out.html))
         .catch(() => undefined);
     }, 350);
     return () => window.clearTimeout(id);
-  }, [contractKey, shapeOf]);
+  }, [active?.key, shapeOf]);
 
   if (isLoading) {
     return (
@@ -122,7 +131,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     );
   }
 
-  const selected = draft.papers.filter((p) => p.selected);
+  const selected = papers.filter((p) => p.selected);
   const hired = draft.employeeId !== null;
   const printed = draft.printedAt !== null;
 
@@ -134,7 +143,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     }));
   };
   const toggle = (key: string, on: boolean): void =>
-    setSelected(draft.papers.filter((p) => (p.key === key ? on : p.selected)).map((p) => p.key));
+    setSelected(papers.filter((p) => (p.key === key ? on : p.selected)).map((p) => p.key));
 
   const print = async (keys: string[]): Promise<void> => {
     if (keys.length === 0) return;
@@ -174,18 +183,45 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     }
   };
 
-  const saveValues = async (changed: { key: string; value: string }[]): Promise<void> => {
+  /** One value typed in for this candidate ('' gives the record's own back). */
+  const saveValue = (change: { key: string; value: string }): void => {
     const kept = new Map(draft.values.filter((v) => v.overridden).map((v) => [v.key, v.value]));
-    for (const c of changed) kept.set(c.key, c.value);
-    await save({ overrides: [...kept].map(([key, value]) => ({ key, value })) });
-    setEditing(null);
+    kept.set(change.key, change.value);
+    void save({ overrides: [...kept].map(([key, value]) => ({ key, value })) });
   };
 
-  const groupTitle: Record<CandidatePaperGroup, string> = {
-    contract: t('contracts.candidate.groups.contract'),
-    everyJob: t('contracts.candidate.groups.everyJob'),
-    thisJob: t('contracts.candidate.groups.thisJob'),
-  };
+  // ── The papers, ONE row beside the title ──────────────────────────────────────────────────
+  const row = (
+    <div className="flex min-w-0 items-start gap-3" data-papers-row>
+      <div className="flex shrink-0 flex-col gap-1 pt-1">
+        <Button size="sm" variant="ghost" onClick={() => setSelected(papers.map((p) => p.key))}>
+          {t('contracts.candidate.selectAll')}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
+          {t('contracts.candidate.selectNone')}
+        </Button>
+      </div>
+      {papers.length === 0 ? (
+        <p className="self-center text-sm text-slate-500">{t('contracts.candidate.noPapers')}</p>
+      ) : (
+        <div className="flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
+          {papers.map((p) => (
+            <PaperTile
+              key={p.key}
+              paperKey={p.key}
+              name={localized(p.name, locale)}
+              kind={p.kind}
+              checked={p.selected}
+              active={active?.key === p.key}
+              onToggle={(on) => toggle(p.key, on)}
+              onEdit={() => setOpened(p.key)}
+              onPrint={() => void print([p.key])}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <PageContainer>
@@ -195,8 +231,8 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
           { label: t('employees.ready.title'), to: '/employees/ready' },
           { label: t('contracts.create.title') },
         ]}
+        toolbar={row}
       />
-      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{t('contracts.candidate.subtitle')}</p>
 
       {hired && (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
@@ -207,138 +243,106 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader title={t('contracts.candidate.details')} />
-            <CardBody>
-              <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-slate-500">{t('contracts.candidate.name')}</dt>
-                  <dd className="font-medium">{draft.applicantName}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">{t('contracts.candidate.job')}</dt>
-                  <dd className="font-medium">{draft.jobTitle === null ? '—' : localized(draft.jobTitle, locale)}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">{t('contracts.candidate.offer')}</dt>
-                  <dd className="font-mono text-xs" dir="ltr">{draft.offerCode ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">{t('contracts.candidate.employeeCode')}</dt>
-                  <dd className="font-mono text-xs" dir="ltr">{draft.employeeCode ?? t('contracts.candidate.codeAtPrint')}</dd>
-                </div>
-              </dl>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label={t('contracts.fields.startDate')} required>
-                  <Input
-                    type="date"
-                    value={draft.startDate}
-                    disabled={hired}
-                    onChange={(e) => {
-                      const startDate = e.target.value;
-                      if (startDate === '') return;
-                      const endDate = draft.allowsEndDate ? oneYearFromIso(startDate) : null;
-                      void save({ startDate, endDate }, (d) => ({ ...d, startDate, endDate }));
-                    }}
-                  />
-                </Field>
-                {draft.allowsEndDate && (
-                  <Field label={t('contracts.fields.endDate')}>
-                    <Input
-                      type="date"
-                      value={draft.endDate ?? ''}
-                      disabled={hired}
-                      onChange={(e) => {
-                        const endDate = e.target.value === '' ? null : e.target.value;
-                        void save({ endDate }, (d) => ({ ...d, endDate }));
-                      }}
-                    />
-                  </Field>
-                )}
-                <Field label={t('contracts.candidate.hiringDate')}>
-                  <Input
-                    type="date"
-                    value={draft.hiringDate}
-                    disabled={hired}
-                    onChange={(e) => {
-                      const hiringDate = e.target.value;
-                      if (hiringDate === '') return;
-                      void save({ hiringDate }, (d) => ({ ...d, hiringDate }));
-                    }}
-                  />
-                </Field>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title={t('contracts.candidate.details')} description={t('contracts.candidate.subtitle')} />
+          <CardBody>
+            <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <dt className="text-slate-500">{t('contracts.candidate.name')}</dt>
+                <dd className="font-medium">{draft.applicantName}</dd>
               </div>
-              <p className="mt-3 text-xs text-slate-500" data-save-state={saveState}>
-                {saveState === 'saving'
-                  ? t('contracts.candidate.saving')
-                  : saveState === 'error'
-                    ? t('contracts.candidate.saveFailed')
-                    : t('contracts.candidate.savedAuto', { at: formatDateTime(draft.updatedAt, locale) })}
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader
-              title={t('contracts.candidate.papers')}
-              description={t('contracts.candidate.papersHint')}
-              actions={
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" onClick={() => setSelected(draft.papers.map((p) => p.key))}>
-                    {t('contracts.candidate.selectAll')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-                    {t('contracts.candidate.selectNone')}
-                  </Button>
-                </div>
-              }
-            />
-            <CardBody>
-              {draft.papers.length === 0 ? (
-                <p className="text-sm text-slate-500">{t('contracts.candidate.noPapers')}</p>
-              ) : (
-                <div className="space-y-5">
-                  {GROUPS.map((group) => {
-                    const papers = draft.papers.filter((p) => p.group === group);
-                    if (papers.length === 0) return null;
-                    return (
-                      <section key={group} data-paper-group={group}>
-                        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{groupTitle[group]}</h3>
-                        <div className="flex flex-wrap gap-3">
-                          {papers.map((p) => (
-                            <PaperTile
-                              key={p.key}
-                              paperKey={p.key}
-                              name={localized(p.name, locale)}
-                              kind={p.kind}
-                              checked={p.selected}
-                              onToggle={(on) => toggle(p.key, on)}
-                              onEdit={() => setEditing(p)}
-                              onPrint={() => void print([p.key])}
-                            />
-                          ))}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
+              <div>
+                <dt className="text-slate-500">{t('contracts.candidate.job')}</dt>
+                <dd className="font-medium">{draft.jobTitle === null ? '—' : localized(draft.jobTitle, locale)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">{t('contracts.candidate.offer')}</dt>
+                <dd className="font-mono text-xs" dir="ltr">{draft.offerCode ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">{t('contracts.candidate.employeeCode')}</dt>
+                <dd className="font-mono text-xs" dir="ltr">{draft.employeeCode ?? t('contracts.candidate.codeAtPrint')}</dd>
+              </div>
+            </dl>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={t('contracts.fields.startDate')} required>
+                <Input
+                  type="date"
+                  value={draft.startDate}
+                  disabled={hired}
+                  onChange={(e) => {
+                    const startDate = e.target.value;
+                    if (startDate === '') return;
+                    const endDate = draft.allowsEndDate ? oneYearFromIso(startDate) : null;
+                    void save({ startDate, endDate }, (d) => ({ ...d, startDate, endDate }));
+                  }}
+                />
+              </Field>
+              {draft.allowsEndDate && (
+                <Field label={t('contracts.fields.endDate')}>
+                  <Input
+                    type="date"
+                    value={draft.endDate ?? ''}
+                    disabled={hired}
+                    onChange={(e) => {
+                      const endDate = e.target.value === '' ? null : e.target.value;
+                      void save({ endDate }, (d) => ({ ...d, endDate }));
+                    }}
+                  />
+                </Field>
               )}
-            </CardBody>
-          </Card>
-        </div>
+              <Field label={t('contracts.candidate.hiringDate')}>
+                <Input
+                  type="date"
+                  value={draft.hiringDate}
+                  disabled={hired}
+                  onChange={(e) => {
+                    const hiringDate = e.target.value;
+                    if (hiringDate === '') return;
+                    void save({ hiringDate }, (d) => ({ ...d, hiringDate }));
+                  }}
+                />
+              </Field>
+            </div>
+
+            {active !== null && (
+              <section className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700" data-paper-form-of={active.key}>
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {t('contracts.candidate.formTitle', { name: localized(active.name, locale) })}
+                </h3>
+                <p className="mb-3 mt-0.5 text-xs text-slate-500">{t('contracts.candidate.formHint')}</p>
+                <PaperValuesForm paper={active} values={draft.values} disabled={hired} onSave={saveValue} />
+              </section>
+            )}
+
+            <p className="mt-4 text-xs text-slate-500" data-save-state={saveState}>
+              {saveState === 'saving'
+                ? t('contracts.candidate.saving')
+                : saveState === 'error'
+                  ? t('contracts.candidate.saveFailed')
+                  : t('contracts.candidate.savedAuto', { at: formatDateTime(draft.updatedAt, locale) })}
+            </p>
+          </CardBody>
+        </Card>
 
         <Card>
-          <CardHeader title={t('contracts.candidate.shape')} description={t('contracts.candidate.shapeHint')} />
+          <CardHeader
+            title={
+              active === null
+                ? t('contracts.candidate.noContract')
+                : t('contracts.candidate.previewOf', { name: localized(active.name, locale) })
+            }
+            description={t('contracts.candidate.previewHint')}
+          />
           <CardBody>
-            {contractKey === null ? (
-              <div className="grid min-h-96 place-items-center text-sm text-slate-400">{t('contracts.candidate.noContract')}</div>
+            {active === null ? (
+              <div className="grid min-h-96 place-items-center text-sm text-slate-400">{t('contracts.candidate.noPapers')}</div>
             ) : preview === '' ? (
               <div className="grid min-h-96 place-items-center text-sm text-slate-400">{t('common.loading')}</div>
             ) : (
               <iframe
-                title={t('contracts.candidate.shape')}
+                title={localized(active.name, locale)}
                 sandbox=""
                 srcDoc={preview}
                 className="h-[75vh] w-full rounded border border-slate-200 bg-white dark:border-slate-700"
@@ -371,14 +375,6 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
           </Can>
         )}
       </div>
-
-      <EditPaperValuesDialog
-        paper={editing}
-        values={draft.values}
-        saving={update.isPending}
-        onClose={() => setEditing(null)}
-        onSave={(changed) => void saveValues(changed)}
-      />
     </PageContainer>
   );
 };

@@ -136,18 +136,21 @@ describe('which job prints which paper — matched by the job\'s name', () => {
   it('gives each job its own card', () => {
     expect(papersFor('اخصائى صراف الى')).toEqual(['egycash.hiring.card.atm-specialist']);
     expect(papersFor('اخصائي عد وفرز')).toEqual(['egycash.hiring.card.counting-specialist']);
-    expect(papersFor('أخصائي نقل أموال')).toEqual(['egycash.hiring.card.cit-specialist']);
+    expect(papersFor('أخصائي نقل أموال')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.cit-specialist']);
     expect(papersFor('اخصائي تجهيز')).toEqual(['egycash.hiring.card.preparation-specialist']);
     expect(papersFor('امين خزينة')).toEqual(['egycash.hiring.card.treasurer']);
     expect(papersFor('مراقب امن')).toEqual(['egycash.hiring.card.security-guard']);
   });
 
-  it('gives the weapon declaration to crew leaders only — «قائد طاقم»', () => {
+  it('gives the weapon declaration to crew leaders and cash-in-transit specialists only', () => {
     expect(papersFor('قائد طاقم')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.atm-crew-leader']);
     expect(papersFor('قائد طاقم صراف آلي')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.atm-crew-leader']);
     // Another crew leader signs the declaration, but the ATM card is not his.
     expect(papersFor('قائد طاقم نقل أموال')).toEqual(['egycash.hiring.weapon']);
     expect(papersFor('اخصائى صراف الى')).not.toContain('egycash.hiring.weapon');
+    // The cash-in-transit specialist may sign it too (optional when collected).
+    expect(papersFor('اخصائي نقل اموال')).toContain('egycash.hiring.weapon');
+    expect(papersFor('أمين خزينة')).not.toContain('egycash.hiring.weapon');
   });
 
   it('takes a grade after the name, and nothing that merely shares a word', () => {

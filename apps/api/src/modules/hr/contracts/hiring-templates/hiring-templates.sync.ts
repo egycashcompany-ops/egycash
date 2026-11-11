@@ -10,9 +10,12 @@
 //     names it carries. When no job by that name exists yet, it waits as a DRAFT — and a draft no
 //     person has touched is matched again on every boot, so it publishes on the boot after the job
 //     is created. HR can also tick its jobs by hand and publish it.
+//   · a job's paper published here and untouched since FOLLOWS ITS JOBS: a job carrying its name
+//     created since (or a name the paper gained in a release) is added on the next boot. None is
+//     ever taken away.
 //
 // IDEMPOTENT, AND NEVER OVER SOMEBODY'S EDIT. A paper is recognized by its template key. Once a
-// row with that key exists, this file leaves it alone — unless it is still the untouched draft it
+// row with that key exists, this file leaves it alone — unless it is still the untouched row it
 // wrote, in which case it only matches the jobs again. An edit, a publish, an archive or a delete
 // by a person is final. Re-running it on a database where every paper is in place writes nothing.
 //
@@ -75,10 +78,12 @@ export interface HiringTemplatesReport {
   waiting: string[];
   /** A waiting draft matched to its jobs now, and published. */
   linked: string[];
+  /** A published paper given a job named for it since. */
+  widened: string[];
 }
 
 export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
-  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [] };
+  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [], widened: [] };
   const titles = await JobTitleModel.find({ isDeleted: false, status: 'active' }, { name: 1 }).lean<JobRow[]>();
 
   for (const paper of HIRING_PAPERS) {
@@ -90,13 +95,31 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
       if (rows.length > 0) {
         const [row] = rows;
         const untouched =
-          rows.length === 1 &&
-          row !== undefined &&
-          !row.isDeleted &&
-          row.status === 'draft' &&
-          row.changedBy === null &&
-          row.updatedBy === null;
+          rows.length === 1 && row !== undefined && !row.isDeleted && row.changedBy === null && row.updatedBy === null;
         if (!untouched) continue;
+        if (row.status === 'published') {
+          // A job named for it since: added, never one taken away — and only to the row as written.
+          if (paper.jobs === 'all' || (row.allJobs ?? true)) continue;
+          const held = row.jobTitleIds ?? [];
+          const added = jobTitleIds.filter((id) => !held.some((own) => String(own) === String(id)));
+          if (added.length === 0) continue;
+          const next = [...held, ...added];
+          const done = await ContractTemplateModel.updateOne(
+            { _id: row._id, __v: row.__v, status: 'published', changedBy: null, updatedBy: null },
+            { $set: { jobTitleIds: next }, $inc: { __v: 1 } },
+          );
+          if (done.modifiedCount === 1) {
+            await auditService.record({
+              entityRef: templateRef(String(row._id)),
+              action: 'update',
+              changes: [{ field: 'jobTitleIds', old: held.map(String).join(','), new: next.map(String).join(',') }],
+              actor: SYSTEM,
+            });
+            report.widened.push(paper.key);
+          }
+          continue;
+        }
+        if (row.status !== 'draft') continue;
         if (!ready) {
           report.waiting.push(paper.key);
           continue;
@@ -153,7 +176,7 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
     }
   }
 
-  if (report.published.length + report.linked.length + report.waiting.length > 0) {
+  if (report.published.length + report.linked.length + report.waiting.length + report.widened.length > 0) {
     logger.info(report, 'hiring templates: the owner\'s papers synced');
   }
   return report;

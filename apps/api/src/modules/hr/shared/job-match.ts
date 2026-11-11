@@ -29,8 +29,14 @@ export const matchesJob = (jobs: JobMatch, jobName: string): boolean => {
   return inFamily || (jobs.exact ?? []).some((name) => job === jobKey(name));
 };
 
-/**
- * «قائد طاقم» — crew leaders, of every kind («قائد طاقم صراف آلي» …): the weapon declaration is
- * printed for them and collected from them, and from no other job.
- */
+/** «قائد طاقم» — crew leaders, of every kind («قائد طاقم صراف آلي» …). */
 export const CREW_LEADERS: JobNames = { family: ['قائد طاقم'] };
+
+/** «أخصائي نقل أموال» — the cash-in-transit specialists who ride with the crew leader. */
+export const CIT_SPECIALISTS: JobNames = { family: ['أخصائى نقل اموال'] };
+
+/**
+ * The weapon declaration is for these two jobs and no other: REQUIRED of a crew leader, OPTIONAL
+ * for a cash-in-transit specialist — «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن».
+ */
+export const WEAPON_HOLDERS: JobNames = { family: [...CREW_LEADERS.family, ...CIT_SPECIALISTS.family] };

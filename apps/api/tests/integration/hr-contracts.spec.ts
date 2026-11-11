@@ -1173,7 +1173,7 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
 
     // Again: nothing is written twice.
     const second = await syncHiringTemplates();
-    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting });
+    expect(second).toEqual({ published: [], linked: [], waiting: first.waiting, widened: [] });
     expect(await ContractTemplateModel.countDocuments({ key: { $regex: '^egycash\\.hiring\\.' } })).toBe(13);
   });
 
@@ -1198,6 +1198,18 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(await row('card.security-guard')).toMatchObject({ status: 'published' });
     expect(((await row('card.security-guard')).jobTitleIds ?? []).map(String)).toEqual([guardJob]);
     expect(await row('card.treasurer')).toMatchObject({ status: 'draft', jobTitleIds: [] });
+  });
+
+  it('adds a job named for a published paper on the boot after it is created', async () => {
+    // The weapon declaration is published for the crew leader; a cash-in-transit specialist's job
+    // made now is added to it, and publishes the waiting card of that job.
+    const citJob = await jobNamed('JT-PAPER-4', 'أخصائى نقل اموال');
+    const fourth = await syncHiringTemplates();
+    expect(fourth.widened).toEqual([key('weapon')]);
+    expect(fourth.linked).toEqual([key('card.cit-specialist')]);
+    expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob, citJob]);
+    // Again: nothing more.
+    expect((await syncHiringTemplates()).widened).toEqual([]);
   });
 
   it('prints the owner\'s contract and the papers of the employee\'s job', async () => {

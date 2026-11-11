@@ -16,7 +16,7 @@
 // These are only the STARTING papers. `syncHiringTemplates` writes each one once; HR edits them
 // in «قوالب العقود» like any template, and an edit is never overwritten.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
-import { CREW_LEADERS, type JobMatch } from '../../shared/job-match';
+import { CIT_SPECIALISTS, WEAPON_HOLDERS, type JobMatch } from '../../shared/job-match';
 
 /** The jobs a paper prints for, by name — job titles carry no other link to a paper. */
 export type PaperJobs = JobMatch;
@@ -298,7 +298,9 @@ const WEAPON: HiringPaper = {
   key: 'egycash.hiring.weapon',
   name: { ar: 'إقرار حيازة سلاح', en: 'Weapon possession declaration' },
   kind: 'form',
-  jobs: CREW_LEADERS, // crew leaders only, of every kind
+  // Crew leaders (of every kind) and cash-in-transit specialists — required of the first, optional
+  // for the second when the signed copy is collected; printed for both.
+  jobs: WEAPON_HOLDERS,
   printOrder: 50,
   sections: {
     header: title('إقـرار حيازة سلاح'),
@@ -442,7 +444,7 @@ const JOB_CARDS: readonly JobCard[] = [
   {
     key: 'egycash.hiring.card.cit-specialist',
     name: { ar: 'بطاقة وصف وظيفي — أخصائي نقل أموال', en: 'Job description — cash-in-transit specialist' },
-    jobs: { family: ['أخصائى نقل اموال'] },
+    jobs: CIT_SPECIALISTS,
     jobTitle: 'أخـصـائـى نـقـل امـوال',
     manager: 'مـشـرف تـشـغـيـل نـقـل الأمـوال',
     department: 'نـقـل الأموال',

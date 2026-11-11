@@ -45,7 +45,7 @@ import {
   hiringDocumentTypeService,
   type HiringDocumentTypeSeed,
 } from './recruitment/hiring-documents';
-import { CREW_LEADERS } from './shared/job-match';
+import { CIT_SPECIALISTS, CREW_LEADERS, type JobNames } from './shared/job-match';
 import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
@@ -253,22 +253,33 @@ const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
 ];
 
 /**
- * A27, stage 3 — the crew leader's signed weapon declaration, asked of crew leaders only (the
- * printed «إقرار حيازة سلاح» is theirs alone too). OPTIONAL: «اوبشن مش اجباري لقائد الطقم» — not
- * every crew leader carries a licensed weapon, so it never holds the set's completion back. Written
- * for the jobs named «قائد طاقم…»; with none yet it waits for the boot after one is created.
+ * A27, stage 3 — the signed weapon declaration, asked of the jobs the printed «إقرار حيازة سلاح» is
+ * for: «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن». Two rows of the one paper — REQUIRED of
+ * crew leaders, OPTIONAL for cash-in-transit specialists (a job is never both). Each is written for
+ * the jobs carrying its name; with none yet it waits for the boot after one is created.
  */
-const WEAPON_DECLARATION: HiringDocumentTypeSeed = {
-  key: 'weaponDeclaration',
-  name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' },
-  required: false,
-};
+const WEAPON_DECLARATIONS: { seed: HiringDocumentTypeSeed; jobs: JobNames }[] = [
+  {
+    seed: { key: 'weaponDeclaration', name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' }, required: true },
+    jobs: CREW_LEADERS,
+  },
+  {
+    seed: {
+      key: 'citWeaponDeclaration',
+      name: { en: 'Weapon Possession Declaration (optional)', ar: 'إقرار حيازة سلاح' },
+      required: false,
+    },
+    jobs: CIT_SPECIALISTS,
+  },
+];
 
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {
   for (const type of HIRING_DOCUMENT_TYPES) {
     await hiringDocumentTypeService.ensure(type);
   }
-  await hiringDocumentTypeService.ensureForJobs(WEAPON_DECLARATION, CREW_LEADERS);
+  for (const { seed, jobs } of WEAPON_DECLARATIONS) {
+    await hiringDocumentTypeService.ensureForJobs(seed, jobs);
+  }
   await ensureHiringDocsCategory();
   // P-HR-APP §5 — the candidate's own uploads: images AND PDF, because what is being asked for is
   // a photograph of a certificate taken on a phone. The five catalogue rows follow (D-APP-4);

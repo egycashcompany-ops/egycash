@@ -543,11 +543,14 @@ which forms depends on the job.
   lines filled by hand stay dotted. His sample bank letter's employee is not in it.
 - **Which jobs.** By name, folded (`أخصائى عد و فرز` = `اخصائي عد وفرز`): a job named as the paper
   says, or that name followed by more words (`أمين خزينة أول`). The weapon declaration goes to every
-  `قائد طاقم…`; the ATM crew leader's card to `قائد طاقم صراف آلي…` and to plain `قائد طاقم`.
+  `قائد طاقم…` and every `أخصائي نقل أموال…` (stage 3); the ATM crew leader's card to
+  `قائد طاقم صراف آلي…` and to plain `قائد طاقم`.
 - **How.** `syncHiringTemplates()` on every API boot, after the navigation sync. A paper is known by
   its template key (`egycash.hiring.*`) and written once: published when it is for every job or has a
   job, else a draft. A draft nobody has touched is matched again on each boot and published once a
-  job carries its name. Any edit, publish, archive or delete by a person is final. The contract gets
+  job carries its name; a published paper nobody has touched gains, on the next boot, a job carrying
+  its name created since (stage 3 — none is ever taken away). Any edit, publish, archive or delete by
+  a person is final. The contract gets
   the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
   and never stops the boot.
 
@@ -561,12 +564,13 @@ which forms depends on the job.
   (`HiringDocumentsDto.typeKeys`; `missingRequired` and the completion gate follow it). An employee
   who cannot be read is treated as an unknown job: every-job types only. A document already uploaded
   under a type outside the list still shows.
-- **The weapon declaration.** `weaponDeclaration` («إقرار حيازة سلاح») is asked of crew leaders
-  only, and is OPTIONAL — the owner: «اوبشن مش اجباري لقائد الطقم»; it never holds a set's
-  completion back. It is matched by name as the printed paper is (`hr/shared/job-match.ts`,
-  `CREW_LEADERS`). The boot seed writes it once a `قائد طاقم…` job exists, for those jobs; while no
-  person has edited it, a crew leader's job created since is added on the next boot. A person's edit
-  is final.
+- **The weapon declaration.** «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن»: REQUIRED of
+  crew leaders (`weaponDeclaration`), OPTIONAL for cash-in-transit specialists
+  (`citWeaponDeclaration`, never holding a set's completion back), asked of no other job. Two rows
+  of the one paper, both «إقرار حيازة سلاح» — a job is never both. Matched by name as the printed
+  paper is (`hr/shared/job-match.ts`: `CREW_LEADERS`, `CIT_SPECIALISTS`, `WEAPON_HOLDERS`). The
+  boot seed writes each once a job carrying its name exists, for those jobs; while no person has
+  edited it, a job of that name created since is added on the next boot. A person's edit is final.
 
 ## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
 

@@ -748,12 +748,11 @@ describe('hiring documents — collected by the employee\'s job (A27)', () => {
 });
 
 /**
- * A27, stage 3 — the crew leader's signed weapon declaration is asked of crew leaders only, and is
- * optional.
- * The boot writes it for the jobs named «قائد طاقم…» once one exists, adds a crew leader's job made
- * since, and leaves it alone once a person has set its jobs.
+ * A27, stage 3 — the signed weapon declaration: REQUIRED of crew leaders, OPTIONAL for cash-in-transit
+ * specialists, asked of no other job. The boot writes each once a job carrying its name exists, adds
+ * a job of that name made since, and leaves it alone once a person has set its jobs.
  */
-describe('hiring documents — the weapon declaration, for crew leaders (A27)', () => {
+describe('hiring documents — the weapon declaration, by job (A27)', () => {
   const jobNamed = async (code: string, ar: string): Promise<string> => {
     const res = await request(app)
       .post('/api/v1/platform/job-titles')
@@ -762,33 +761,38 @@ describe('hiring documents — the weapon declaration, for crew leaders (A27)', 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     return (res.body as { data: { id: string } }).data.id;
   };
-  const weapon = async (): Promise<HiringDocumentTypeDto | undefined> => {
+  const typeOf = async (key: string): Promise<HiringDocumentTypeDto | undefined> => {
     const res = await request(app)
       .get('/api/v1/hr/hiring-document-types')
       .query({ pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    return (res.body as { data: HiringDocumentTypeDto[] }).data.find((t) => t.key === 'weaponDeclaration');
+    return (res.body as { data: HiringDocumentTypeDto[] }).data.find((t) => t.key === key);
   };
 
-  it('is written for the crew leaders\' jobs, follows new ones, and keeps a person\'s choice', async () => {
+  it('is required of crew leaders, optional for cash-in-transit specialists, and follows new jobs', async () => {
     await jobNamed('JT-WPN-0', 'سائق');
     await seedHrRecruitment();
-    expect(await weapon()).toBeUndefined(); // no crew leader yet
+    expect(await typeOf('weaponDeclaration')).toBeUndefined(); // no crew leader yet
+    expect(await typeOf('citWeaponDeclaration')).toBeUndefined();
 
-    const cit = await jobNamed('JT-WPN-1', 'قائد طاقم نقل أموال');
+    const cashLeader = await jobNamed('JT-WPN-1', 'قائد طاقم نقل أموال');
+    const citSpecialist = await jobNamed('JT-WPN-5', 'أخصائي نقل أموال');
     await seedHrRecruitment();
-    const written = await weapon();
-    // Optional: asked of crew leaders, never holding their set's completion back.
-    expect(written).toMatchObject({ required: false, active: true, allJobs: false, jobTitleIds: [cit] });
-    expect(written?.name.ar).toBe('إقرار حيازة سلاح');
+    const leaders = await typeOf('weaponDeclaration');
+    expect(leaders).toMatchObject({ required: true, active: true, allJobs: false, jobTitleIds: [cashLeader] });
+    expect(leaders?.name.ar).toBe('إقرار حيازة سلاح');
+    const specialists = await typeOf('citWeaponDeclaration');
+    expect(specialists).toMatchObject({ required: false, active: true, allJobs: false, jobTitleIds: [citSpecialist] });
+    expect(specialists?.name.ar).toBe('إقرار حيازة سلاح');
 
     // A crew leader's job made since is added on the next boot; any other job is not.
     const atm = await jobNamed('JT-WPN-2', 'قائد طاقم صراف آلى');
     await jobNamed('JT-WPN-3', 'أمين خزينة');
     await seedHrRecruitment();
-    const widened = await weapon();
-    expect([...(widened?.jobTitleIds ?? [])].sort()).toEqual([cit, atm].sort());
+    const widened = await typeOf('weaponDeclaration');
+    expect([...(widened?.jobTitleIds ?? [])].sort()).toEqual([cashLeader, atm].sort());
+    expect((await typeOf('citWeaponDeclaration'))?.jobTitleIds).toEqual([citSpecialist]);
 
     // Once HR sets its jobs, the boot leaves them as HR set them.
     const set = await request(app)
@@ -798,6 +802,6 @@ describe('hiring documents — the weapon declaration, for crew leaders (A27)', 
     expect(set.status, JSON.stringify(set.body)).toBe(200);
     await jobNamed('JT-WPN-4', 'قائد طاقم');
     await seedHrRecruitment();
-    expect((await weapon())?.jobTitleIds).toEqual([atm]);
+    expect((await typeOf('weaponDeclaration'))?.jobTitleIds).toEqual([atm]);
   });
 });

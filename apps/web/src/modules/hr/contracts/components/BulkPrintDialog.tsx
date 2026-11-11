@@ -141,7 +141,10 @@ export const BulkPrintDialog = ({
                     <p className="text-xs text-slate-500">
                       {person.jobTitle === null ? '—' : localized(person.jobTitle, locale)}
                       {person.offerCode !== null && (
-                        <span className="ms-2 font-mono" dir="ltr">{person.offerCode}</span>
+                        <>
+                          <span className="mx-1.5" aria-hidden="true">·</span>
+                          <span className="font-mono" dir="ltr">{person.offerCode}</span>
+                        </>
                       )}
                     </p>
                   </div>

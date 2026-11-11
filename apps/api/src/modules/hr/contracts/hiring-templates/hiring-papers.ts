@@ -16,16 +16,10 @@
 // These are only the STARTING papers. `syncHiringTemplates` writes each one once; HR edits them
 // in «قوالب العقود» like any template, and an edit is never overwritten.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
+import { CREW_LEADERS, type JobMatch } from '../../shared/job-match';
 
 /** The jobs a paper prints for, by name — job titles carry no other link to a paper. */
-export type PaperJobs =
-  | 'all'
-  | {
-      /** A job named exactly this, or this followed by more words («أمين خزينة أول»). */
-      family: readonly string[];
-      /** A job named exactly this and nothing more. */
-      exact?: readonly string[];
-    };
+export type PaperJobs = JobMatch;
 
 export interface HiringPaper {
   /** Stable identity — the template key. Never change one: it is how a paper is recognized. */
@@ -297,14 +291,14 @@ const BANK_LETTER: HiringPaper = {
 
 // ── The crew leader's weapon declaration ─────────────────────────────────────────────────────
 
-/** «قائد طاقم» — the weapon declaration is for crew leaders only, of every kind. */
+/** «قائد طاقم» alone — the crew leader the workforce book records. */
 const CREW_LEADER = 'قائد طاقم';
 
 const WEAPON: HiringPaper = {
   key: 'egycash.hiring.weapon',
   name: { ar: 'إقرار حيازة سلاح', en: 'Weapon possession declaration' },
   kind: 'form',
-  jobs: { family: [CREW_LEADER] },
+  jobs: CREW_LEADERS, // crew leaders only, of every kind
   printOrder: 50,
   sections: {
     header: title('إقـرار حيازة سلاح'),

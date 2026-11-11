@@ -45,6 +45,7 @@ import {
   hiringDocumentTypeService,
   type HiringDocumentTypeSeed,
 } from './recruitment/hiring-documents';
+import { CREW_LEADERS } from './shared/job-match';
 import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
@@ -251,10 +252,22 @@ const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
   { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: true },
 ];
 
+/**
+ * A27, stage 3 — the crew leader's signed weapon declaration, collected from crew leaders only (the
+ * printed «إقرار حيازة سلاح» is theirs alone too). Written for the jobs named «قائد طاقم…»; with
+ * none yet it waits for the boot after one is created.
+ */
+const WEAPON_DECLARATION: HiringDocumentTypeSeed = {
+  key: 'weaponDeclaration',
+  name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' },
+  required: true,
+};
+
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {
   for (const type of HIRING_DOCUMENT_TYPES) {
     await hiringDocumentTypeService.ensure(type);
   }
+  await hiringDocumentTypeService.ensureForJobs(WEAPON_DECLARATION, CREW_LEADERS);
   await ensureHiringDocsCategory();
   // P-HR-APP §5 — the candidate's own uploads: images AND PDF, because what is being asked for is
   // a photograph of a certificate taken on a phone. The five catalogue rows follow (D-APP-4);

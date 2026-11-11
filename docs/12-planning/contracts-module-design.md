@@ -551,6 +551,22 @@ which forms depends on the job.
   the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
   and never stops the boot.
 
+### A27, stage 3 — the papers COLLECTED are the employee's job's too
+
+- **What.** A hiring document type (the signed papers uploaded to «مستندات التعيين») is collected
+  for every job (`allJobs`, the default and what every type written before reads as), or only for
+  `jobTitleIds`. A type for chosen jobs with none chosen is refused (400): it would be collected from
+  nobody.
+- **The checklist.** Each set shows and requires only the active types its employee's job collects
+  (`HiringDocumentsDto.typeKeys`; `missingRequired` and the completion gate follow it). An employee
+  who cannot be read is treated as an unknown job: every-job types only. A document already uploaded
+  under a type outside the list still shows.
+- **The weapon declaration.** `weaponDeclaration` («إقرار حيازة سلاح», required) is collected from
+  crew leaders only, matched by name as the printed paper is (`hr/shared/job-match.ts`,
+  `CREW_LEADERS`). The boot seed writes it once a `قائد طاقم…` job exists, for those jobs; while no
+  person has edited it, a crew leader's job created since is added on the next boot. A person's edit
+  is final.
+
 ## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
 
 The owner: «هنستبدل زرار التعيين بزرار اسمو طباعه العقد و المستندات … جوه حتت عقد الجديد … toggle

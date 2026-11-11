@@ -6,7 +6,8 @@ import { renderContractHtml, renderFormHtml } from '../contracts/contract-render
 import { type ContractVariableValue } from '../contracts/contract.model';
 import { CATALOG_KEYS, CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { HIRING_PAPERS, type HiringPaper } from './hiring-papers';
-import { jobKey, jobsFor, matchesJob, preparedSections } from './hiring-templates.sync';
+import { jobKey, matchesJob } from '../../shared/job-match';
+import { jobsFor, preparedSections } from './hiring-templates.sync';
 
 const paper = (key: string): HiringPaper => {
   const found = HIRING_PAPERS.find((p) => p.key === key);

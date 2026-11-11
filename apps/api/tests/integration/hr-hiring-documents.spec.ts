@@ -38,6 +38,7 @@ import { type AuthContext } from '../../src/shared/types';
 import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 import { nextNationalId } from './helpers/national-id';
 import { syncHiringTemplates } from '../../src/modules/hr/contracts/hiring-templates';
+import { seedHrRecruitment } from '../../src/modules/hr/hr.seed';
 
 const PASSWORD = 'Str0ng#Pass!';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
@@ -299,6 +300,8 @@ describe('hiring documents — types catalog & permissions', () => {
     const required = types.filter((t) => t.required).map((t) => t.key);
     expect(required).toEqual(expect.arrayContaining(REQUIRED_KEYS));
     expect(required).toHaveLength(7);
+    // The crew leader's weapon declaration waits for a crew leader's job; this database has none yet.
+    expect(types.map((t) => t.key)).not.toContain('weaponDeclaration');
 
     const denied = await request(app).get('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${aliceToken}`);
     expect(denied.status).toBe(403);
@@ -741,5 +744,58 @@ describe('hiring documents — collected by the employee\'s job (A27)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version });
     expect(done.status, JSON.stringify(done.body)).toBe(200);
+  });
+});
+
+/**
+ * A27, stage 3 — the crew leader's signed weapon declaration is collected from crew leaders only.
+ * The boot writes it for the jobs named «قائد طاقم…» once one exists, adds a crew leader's job made
+ * since, and leaves it alone once a person has set its jobs.
+ */
+describe('hiring documents — the weapon declaration, for crew leaders (A27)', () => {
+  const jobNamed = async (code: string, ar: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar, en: code }, jobGrade: 'G5' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+  const weapon = async (): Promise<HiringDocumentTypeDto | undefined> => {
+    const res = await request(app)
+      .get('/api/v1/hr/hiring-document-types')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return (res.body as { data: HiringDocumentTypeDto[] }).data.find((t) => t.key === 'weaponDeclaration');
+  };
+
+  it('is written for the crew leaders\' jobs, follows new ones, and keeps a person\'s choice', async () => {
+    await jobNamed('JT-WPN-0', 'سائق');
+    await seedHrRecruitment();
+    expect(await weapon()).toBeUndefined(); // no crew leader yet
+
+    const cit = await jobNamed('JT-WPN-1', 'قائد طاقم نقل أموال');
+    await seedHrRecruitment();
+    const written = await weapon();
+    expect(written).toMatchObject({ required: true, active: true, allJobs: false, jobTitleIds: [cit] });
+    expect(written?.name.ar).toBe('إقرار حيازة سلاح');
+
+    // A crew leader's job made since is added on the next boot; any other job is not.
+    const atm = await jobNamed('JT-WPN-2', 'قائد طاقم صراف آلى');
+    await jobNamed('JT-WPN-3', 'أمين خزينة');
+    await seedHrRecruitment();
+    const widened = await weapon();
+    expect([...(widened?.jobTitleIds ?? [])].sort()).toEqual([cit, atm].sort());
+
+    // Once HR sets its jobs, the boot leaves them as HR set them.
+    const set = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${widened?.id ?? ''}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [atm], version: widened?.version });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await jobNamed('JT-WPN-4', 'قائد طاقم');
+    await seedHrRecruitment();
+    expect((await weapon())?.jobTitleIds).toEqual([atm]);
   });
 });

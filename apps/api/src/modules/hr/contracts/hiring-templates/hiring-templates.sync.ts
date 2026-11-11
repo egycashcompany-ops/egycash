@@ -22,24 +22,11 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
 import { JobTitleModel } from '../../../../platform/organization/job-titles/job-title.model';
 import { normalizeArabic } from '../../shared/arabic';
+import { matchesJob } from '../../shared/job-match';
 import { ContractTemplateModel } from '../contract-templates/contract-template.model';
 import { ContractTypeModel } from '../contract-types/contract-type.model';
 import { extractPlaceholders, sanitizeTemplateHtml } from '../shared/template-html';
 import { HIRING_PAPERS, type HiringPaper, type PaperJobs } from './hiring-papers';
-
-/** A job name folded for matching: «أخصائى عد و فرز» meets «اخصائي عد وفرز». */
-export const jobKey = (name: string): string => normalizeArabic(name).replace(/ و /g, ' و');
-
-/** Does a paper print for the job named `jobName`? */
-export const matchesJob = (jobs: PaperJobs, jobName: string): boolean => {
-  if (jobs === 'all') return true;
-  const job = jobKey(jobName);
-  const inFamily = jobs.family.some((name) => {
-    const key = jobKey(name);
-    return job === key || job.startsWith(`${key} `);
-  });
-  return inFamily || (jobs.exact ?? []).some((name) => job === jobKey(name));
-};
 
 interface JobRow {
   _id: Types.ObjectId;

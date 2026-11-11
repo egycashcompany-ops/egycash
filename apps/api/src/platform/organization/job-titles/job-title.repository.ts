@@ -1,3 +1,4 @@
+import { type Types } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { JobTitleModel, type JobTitleDoc } from './job-title.model';
 
@@ -26,6 +27,18 @@ class JobTitleRepository extends BaseRepository<JobTitleDoc> {
       .lean<{ _id: unknown }[]>()
       .exec();
     return rows.map((row) => String(row._id));
+  }
+
+  /**
+   * Every ACTIVE job title's id and Arabic name — for a feature that links its own rows to jobs by
+   * name (the hiring papers, A27). System-level and unscoped, as above.
+   */
+  async activeNamesSystem(): Promise<{ _id: Types.ObjectId; name: { ar: string } }[]> {
+    return this.model
+      .find({ status: 'active', isDeleted: false })
+      .select({ _id: 1, name: 1 })
+      .lean<{ _id: Types.ObjectId; name: { ar: string } }[]>()
+      .exec();
   }
 }
 

@@ -724,6 +724,14 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
+  pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
+  (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and
+  [GHSA-gg4r-jv3p-qx3c](https://github.com/advisories/GHSA-gg4r-jv3p-qx3c) (high: connection-level
+  `sanitizeFilter` not applied, fixed in 8.24.7). The API never turns `sanitizeFilter` on, so
+  neither reached it, but the gate blocks on both. The API's range moves from `^8.9.5` to `^8.24.8`
+  so a fresh lockfile cannot fall back below the fix; mquery follows to 5.0.1, and mongoose's own
+  MongoDB driver stays 6.20.0. No code changes.
 - **IT vehicle checks dashboard: the page no longer scrolls into empty space.** «بيعمل Scroll لمساحه
   فاضية». The matrix's last column has a heading only screen readers hear (`sr-only`, absolutely
   positioned). Its table's scroll box was not positioned, so the heading took the page as its

@@ -724,6 +724,41 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«تعيين السيارات» on a computer: every filter is on the bar's one row again.** «فى مشكلة باقى
+  الفلاتر مش ظاهرة». The bar holds «كود السيارة», one chip per counter and per mission, and the red
+  reset on a single line whose sideways scrollbar is hidden. With production's twelve missions the
+  eighteen chips needed 1599 px and were given 1478 at 1920 px (nav unpinned, the reset showing):
+  121 px short, so the last chip, «نقل أموال (يومي)», sat off the end where a mouse could not
+  reach it. The owner kept the one row: «لا صغر شوية كود السيارة وخلى كله صف واحد». «كود السيارة»
+  is 12rem instead of 15rem (192 px; its placeholder, icon, one code or three «215, 216, 217» still
+  whole), the chips are 4 px apart instead of 6, and each chip has 8 px of padding a side instead
+  of 10 and 4 px between word and figure instead of 6. Height, type, colours and the active ring
+  are unchanged. Measured on the real page at 1920 px with that day's figures (most missions 0,
+  «تشغيل» 45): all eighteen chips and the reset on one row, 68.6 px to spare (110.6 without the
+  reset), every ring whole at the start, middle and end. The spare is that day's, not every day's:
+  each extra digit in a chip's figure costs about 9 px, so a planned day («تشغيل» 143, four
+  missions in two digits) keeps 32 px, while a day with every mission in two digits is 41 px short
+  with the reset showing and «نقل أموال (يومي)» is cut again. At 1536 and 1366 px the row is still
+  273–485 px short and the last four to six chips are partly or wholly off its end, and a pinned
+  nav takes 240 px more. For those, the owner chose «أ اعمل الأسهم ولما يخضر اعمل ميرج»: the row
+  stays one line, and while its chips overflow — measured on the page, not guessed from the
+  screen's width — a small ‹ › stands at each end of it, outside the chips so it never covers one.
+  The start one, beside «كود السيارة», moves the chips toward the start; the end one, beside the
+  reset, toward the end; about 80% of the visible width a click, gliding, or at once for a reader
+  who asks for less motion. Both stay while the row overflows, the one whose end is reached dimmed
+  and disabled, so nothing shifts as it scrolls; they are named «عرض الفلاتر السابقة» and «عرض
+  الفلاتر التالية» on hover and to a screen reader. When everything fits there are none: at 1920
+  px on the measured day the bar is pixel for pixel as before. Measured on the real page, dark and
+  light: one click on the end arrow brings «نقل أموال (يومي)» whole into view, its ring whole
+  beside the arrow, at 1920 (every mission in two digits, the reset showing), at 1920 with the nav
+  pinned, at 1536 and at 1366, and one click on the start arrow comes back. A row scrolled to its
+  end stays at its end when the reset appears: the reset takes about 42 px off that end, and the
+  chip just revealed and clicked there — «نقل أموال (يومي)» — would otherwise be cut under the
+  pointer, its ring broken (the other chips move 42 px with it). A keyboard user who presses the end
+  arrow until the end, which disables it, finds the focus on the start arrow rather than lost, and
+  the other way round; a mouse sees no change. The scrollbar stays hidden, the wheel is not taken
+  over, and Tab still walks the chips. The phone and tablet boards, whose row is swiped, are not
+  changed.
 - **mongoose 8.24.1 → 8.24.8.** Two new advisories turned the dependency gate red for every
   pipeline, main included: [GHSA-pcrw-h46h-c93h](https://github.com/advisories/GHSA-pcrw-h46h-c93h)
   (critical: `sanitizeFilter` not applied on `countDocuments`, fixed in 8.24.3) and

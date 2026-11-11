@@ -25,12 +25,14 @@ import {
 import { AppError } from '../../../../shared/errors';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
+import { jobTitleService } from '../../../../platform/organization';
 import { addDays, dateOnlyIso } from '../../shared/business-date';
 import { employeeService } from '../../employee-management/employees';
 import { type EmployeeDoc } from '../../employee-management/employees/employee.model';
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
+import { optionalForJob } from '../hiring-templates';
 import { printSettings, type ContractTemplateDoc } from '../contract-templates/contract-template.model';
 import { resolveContractVariables } from './contract-variables';
 import { renderHiringPackHtml, type HiringPackPart } from './contract-render';
@@ -195,6 +197,7 @@ class HiringPackService {
       await contractTemplateService.listPublished(),
       String(employee.employment.jobTitleId),
     );
+    const job = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
     const { held, key } = await this.heldContract(employeeId, contracts);
     const papers: EmployeePapersDto['papers'] = [];
     if (key !== null) {
@@ -204,6 +207,7 @@ class HiringPackService {
         name: template?.name ?? { ar: 'العقد', en: 'Contract' },
         kind: 'contract',
         group: 'contract',
+        optional: false,
       });
     }
     for (const form of forms) {
@@ -212,6 +216,7 @@ class HiringPackService {
         name: form.name,
         kind: 'form',
         group: printSettings(form).allJobs ? 'everyJob' : 'thisJob',
+        optional: optionalForJob(form.key, job?.name.ar ?? null),
       });
     }
     return {

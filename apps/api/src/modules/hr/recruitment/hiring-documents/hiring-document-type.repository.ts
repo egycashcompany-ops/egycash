@@ -22,6 +22,11 @@ class HiringDocumentTypeRepository extends BaseRepository<HiringDocumentTypeDoc>
       .lean<HiringDocumentTypeDoc[]>()
       .exec();
   }
+
+  /** Every active type, required or not — the checklists are cut from these per job (A27). */
+  async listActive(): Promise<HiringDocumentTypeDoc[]> {
+    return this.model.find({ isDeleted: false, active: true }).lean<HiringDocumentTypeDoc[]>().exec();
+  }
 }
 
 export const hiringDocumentTypeRepository = new HiringDocumentTypeRepository();

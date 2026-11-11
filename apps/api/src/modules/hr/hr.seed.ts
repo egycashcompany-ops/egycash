@@ -17,7 +17,6 @@ import {
   HrPayrollTemplates,
   type CreateApplicantSource,
   type CreateEvaluationPhase,
-  type CreateHiringDocumentType,
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
@@ -41,7 +40,12 @@ import {
   applicantPortalIdentityResolver,
 } from './recruitment/applicant-portal';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
-import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
+import {
+  ensureHiringDocsCategory,
+  hiringDocumentTypeService,
+  type HiringDocumentTypeSeed,
+} from './recruitment/hiring-documents';
+import { CIT_SPECIALISTS, CREW_LEADERS, type JobNames } from './shared/job-match';
 import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
@@ -238,7 +242,7 @@ const ensureOfferTemplates = async (): Promise<void> => {
 
 // The standard hiring-documents checklist (approved Recruitment spec — 7 documents, ALL required
 // for completion). The set stays admin-configurable thereafter (add / remove / toggle required).
-const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
+const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
   { key: 'employmentContract', name: { en: 'Employment Contract', ar: 'عقد العمل' }, required: true },
   { key: 'employmentAcceptance', name: { en: 'Employment Acceptance Acknowledgment', ar: 'إقرار قبول التعيين' }, required: true },
   { key: 'socialStatusForm', name: { en: 'Social Status Form', ar: 'استمارة الحالة الاجتماعية' }, required: true },
@@ -248,9 +252,33 @@ const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
   { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: true },
 ];
 
+/**
+ * A27, stage 3 — the signed weapon declaration, asked of the jobs the printed «إقرار حيازة سلاح» is
+ * for: «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن». Two rows of the one paper — REQUIRED of
+ * crew leaders, OPTIONAL for cash-in-transit specialists (a job is never both). Each is written for
+ * the jobs carrying its name; with none yet it waits for the boot after one is created.
+ */
+const WEAPON_DECLARATIONS: { seed: HiringDocumentTypeSeed; jobs: JobNames }[] = [
+  {
+    seed: { key: 'weaponDeclaration', name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' }, required: true },
+    jobs: CREW_LEADERS,
+  },
+  {
+    seed: {
+      key: 'citWeaponDeclaration',
+      name: { en: 'Weapon Possession Declaration (optional)', ar: 'إقرار حيازة سلاح' },
+      required: false,
+    },
+    jobs: CIT_SPECIALISTS,
+  },
+];
+
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {
   for (const type of HIRING_DOCUMENT_TYPES) {
     await hiringDocumentTypeService.ensure(type);
+  }
+  for (const { seed, jobs } of WEAPON_DECLARATIONS) {
+    await hiringDocumentTypeService.ensureForJobs(seed, jobs);
   }
   await ensureHiringDocsCategory();
   // P-HR-APP §5 — the candidate's own uploads: images AND PDF, because what is being asked for is

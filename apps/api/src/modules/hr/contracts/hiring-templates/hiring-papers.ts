@@ -16,16 +16,10 @@
 // These are only the STARTING papers. `syncHiringTemplates` writes each one once; HR edits them
 // in «قوالب العقود» like any template, and an edit is never overwritten.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
+import { CIT_SPECIALISTS, WEAPON_HOLDERS, matchesJob, type JobMatch, type JobNames } from '../../shared/job-match';
 
 /** The jobs a paper prints for, by name — job titles carry no other link to a paper. */
-export type PaperJobs =
-  | 'all'
-  | {
-      /** A job named exactly this, or this followed by more words («أمين خزينة أول»). */
-      family: readonly string[];
-      /** A job named exactly this and nothing more. */
-      exact?: readonly string[];
-    };
+export type PaperJobs = JobMatch;
 
 export interface HiringPaper {
   /** Stable identity — the template key. Never change one: it is how a paper is recognized. */
@@ -33,6 +27,11 @@ export interface HiringPaper {
   name: LocalizedString;
   kind: ContractTemplateKind;
   jobs: PaperJobs;
+  /**
+   * Jobs among `jobs` the paper is OFFERED to but not ticked for: the print pages list it unticked,
+   * for HR to tick when it applies (the cash-in-transit specialist's weapon declaration).
+   */
+  optionalFor?: JobNames;
   printOrder: number;
   sections: { header: string; body: string; footer: string };
   signatures: SignatureBlock[];
@@ -297,14 +296,18 @@ const BANK_LETTER: HiringPaper = {
 
 // ── The crew leader's weapon declaration ─────────────────────────────────────────────────────
 
-/** «قائد طاقم» — the weapon declaration is for crew leaders only, of every kind. */
+/** «قائد طاقم» alone — the crew leader the workforce book records. */
 const CREW_LEADER = 'قائد طاقم';
 
 const WEAPON: HiringPaper = {
   key: 'egycash.hiring.weapon',
   name: { ar: 'إقرار حيازة سلاح', en: 'Weapon possession declaration' },
   kind: 'form',
-  jobs: { family: [CREW_LEADER] },
+  // Crew leaders (of every kind) and cash-in-transit specialists — required of the first, optional
+  // for the second when the signed copy is collected; printed for both.
+  jobs: WEAPON_HOLDERS,
+  // «اخصائي نقل اموال بتبقا اوبشن … منغير علامه»: offered to the specialist, unticked.
+  optionalFor: CIT_SPECIALISTS,
   printOrder: 50,
   sections: {
     header: title('إقـرار حيازة سلاح'),
@@ -448,7 +451,7 @@ const JOB_CARDS: readonly JobCard[] = [
   {
     key: 'egycash.hiring.card.cit-specialist',
     name: { ar: 'بطاقة وصف وظيفي — أخصائي نقل أموال', en: 'Job description — cash-in-transit specialist' },
-    jobs: { family: ['أخصائى نقل اموال'] },
+    jobs: CIT_SPECIALISTS,
     jobTitle: 'أخـصـائـى نـقـل امـوال',
     manager: 'مـشـرف تـشـغـيـل نـقـل الأمـوال',
     department: 'نـقـل الأموال',
@@ -633,3 +636,12 @@ export const HIRING_PAPERS: readonly HiringPaper[] = [
   WEAPON,
   ...JOB_CARDS.map(jobCardPaper),
 ];
+
+/**
+ * Is the paper `key` offered to the job named `jobName` unticked (`optionalFor`)? False for a paper
+ * not written from this file, or a job whose name is unknown.
+ */
+export const optionalForJob = (key: string, jobName: string | null): boolean => {
+  const optional = HIRING_PAPERS.find((paper) => paper.key === key)?.optionalFor;
+  return optional !== undefined && jobName !== null && matchesJob(optional, jobName);
+};

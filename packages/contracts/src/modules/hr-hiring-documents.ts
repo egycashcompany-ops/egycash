@@ -25,14 +25,30 @@ export type HiringDocumentsStatus = z.infer<typeof HiringDocumentsStatusSchema>;
 
 // ── Document types (admin-defined required/optional catalog) ────────────────
 
+/**
+ * A27, stage 3 — the jobs a document type is collected for: every job, or only `jobTitleIds` (the
+ * crew leader's weapon declaration). A type for no job would be collected from nobody, so it is
+ * refused rather than read as every job.
+ */
+const typeJobFields = {
+  allJobs: z.boolean(),
+  jobTitleIds: z.array(objectId()).max(300),
+};
+const forSomeJob = (value: { allJobs?: boolean | undefined; jobTitleIds?: string[] | undefined }): boolean =>
+  value.allJobs !== false || value.jobTitleIds === undefined || value.jobTitleIds.length > 0;
+const FOR_SOME_JOB = { message: 'a document type for chosen jobs needs at least one job', path: ['jobTitleIds'] };
+
 export const CreateHiringDocumentTypeSchema = z
   .object({
     key: z.string().regex(/^[a-z][a-zA-Z0-9.]{1,49}$/),
     name: LocalizedStringSchema,
     /** Required types must all be present before a hiring set can be completed. */
     required: z.boolean().default(false),
+    allJobs: typeJobFields.allJobs.default(true),
+    jobTitleIds: typeJobFields.jobTitleIds.default([]),
   })
-  .strict();
+  .strict()
+  .refine(forSomeJob, FOR_SOME_JOB);
 export type CreateHiringDocumentType = z.infer<typeof CreateHiringDocumentTypeSchema>;
 
 export const UpdateHiringDocumentTypeSchema = z
@@ -40,9 +56,12 @@ export const UpdateHiringDocumentTypeSchema = z
     name: LocalizedStringSchema.optional(),
     required: z.boolean().optional(),
     active: z.boolean().optional(),
+    allJobs: typeJobFields.allJobs.optional(),
+    jobTitleIds: typeJobFields.jobTitleIds.optional(),
     version: z.number().int().min(0),
   })
-  .strict();
+  .strict()
+  .refine(forSomeJob, FOR_SOME_JOB);
 export type UpdateHiringDocumentType = z.infer<typeof UpdateHiringDocumentTypeSchema>;
 
 export const ListHiringDocumentTypesQuerySchema = PaginationQuerySchema.extend({
@@ -57,6 +76,9 @@ export interface HiringDocumentTypeDto {
   name: LocalizedString;
   required: boolean;
   active: boolean;
+  /** A27 — collected for every job, or only for `jobTitleIds`. */
+  allJobs: boolean;
+  jobTitleIds: string[];
   version: number;
 }
 
@@ -138,6 +160,11 @@ export interface HiringDocumentsDto {
   documents: HiringDocumentItemDto[];
   /** Active required type keys still missing a document (empty ⇒ completable). */
   missingRequired: string[];
+  /**
+   * A27 — the active document types this employee's job collects, required or not: the checklist
+   * the set is shown with. A type outside it is still listed once a document of it is uploaded.
+   */
+  typeKeys: string[];
   completedAt: string | null;
   version: number;
   createdAt: string;

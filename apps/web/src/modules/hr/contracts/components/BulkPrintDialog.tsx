@@ -39,6 +39,14 @@ export const papersOfPeople = (
     .map(({ seen: _seen, ...paper }) => paper);
 };
 
+/**
+ * The papers ticked when the popup opens: every one, but one the people's jobs are only offered
+ * unticked (the cash-in-transit specialist's weapon declaration) — ticked when it is a usual paper
+ * for any of them.
+ */
+export const startingChoice = (people: readonly CandidateBulkPersonDto[]): Set<string> =>
+  new Set(people.flatMap((person) => person.papers.filter((paper) => !paper.optional).map((paper) => paper.key)));
+
 export const BulkPrintDialog = ({
   offerIds,
   open,
@@ -58,7 +66,7 @@ export const BulkPrintDialog = ({
   const [people, setPeople] = useState<CandidateBulkPersonDto[]>([]);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
 
-  // The people and their papers, each time the dialog opens; every paper chosen to start with.
+  // The people and their papers, each time the dialog opens, the usual papers chosen to start with.
   useEffect(() => {
     if (!open) return;
     setPeople([]);
@@ -66,7 +74,7 @@ export const BulkPrintDialog = ({
       .mutateAsync(offerIds)
       .then((loaded) => {
         setPeople(loaded);
-        setChosen(new Set(loaded.flatMap((p) => p.papers.map((paper) => paper.key))));
+        setChosen(startingChoice(loaded));
       })
       .catch(() => undefined);
   }, [open, offerIds.join(',')]);

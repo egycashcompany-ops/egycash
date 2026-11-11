@@ -48,6 +48,7 @@ import { renderHiringPackHtml, type HiringPackPart } from '../contracts/contract
 import { resolveContractVariables } from '../contracts/contract-variables';
 import { hiringPackService, oneYearFrom, templatesForJob } from '../contracts/hiring-pack.service';
 import { letterheadFor } from '../contracts/letterhead';
+import { optionalForJob } from '../hiring-templates';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { candidateDraftRepository } from './candidate-draft.repository';
 import { type CandidateDraftDoc } from './candidate-draft.model';
@@ -61,6 +62,8 @@ const offerRef = (offerId: string) => ({ moduleId: 'hr', entityType: 'jobOffer',
 interface Paper {
   template: ContractTemplateDoc;
   group: CandidatePaperDto['group'];
+  /** Offered to the job unticked (`optionalForJob`). */
+  optional: boolean;
 }
 
 /** Everything the page is drawn from: the draft, the would-be employee, the job's papers. */
@@ -72,19 +75,29 @@ interface Context {
   hiredEmployeeId: string | null;
   papers: Paper[];
   allowsEndDate: boolean;
+  /** The job the candidate is hired into, when it can be read. */
+  jobTitle: { ar: string; en: string } | null;
 }
 
 const dateOf = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
-/** The job's papers: its contract (the first by print order), then every-job forms, then its own. */
-export const papersOfJob = (published: readonly ContractTemplateDoc[], jobTitleId: string): Paper[] => {
+/**
+ * The job's papers: its contract (the first by print order), then every-job forms, then its own —
+ * each marked `optional` when the job named `jobName` is offered it unticked.
+ */
+export const papersOfJob = (
+  published: readonly ContractTemplateDoc[],
+  jobTitleId: string,
+  jobName: string | null = null,
+): Paper[] => {
   const { contracts, forms } = templatesForJob(published, jobTitleId);
   const contract = contracts[0];
   return [
-    ...(contract === undefined ? [] : [{ template: contract, group: 'contract' as const }]),
+    ...(contract === undefined ? [] : [{ template: contract, group: 'contract' as const, optional: false }]),
     ...forms.map((template) => ({
       template,
       group: printSettings(template).allJobs ? ('everyJob' as const) : ('thisJob' as const),
+      optional: optionalForJob(template.key, jobName),
     })),
   ];
 };
@@ -98,9 +111,11 @@ class CandidateDraftService {
       hiredAt: draft === null ? new Date() : dateOf(draft.hiringDate),
     });
     const { employee } = candidate;
+    const job = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
     const papers = papersOfJob(
       await contractTemplateService.listPublished(),
       String(employee.employment.jobTitleId),
+      job?.name.ar ?? null,
     );
     const contract = papers.find((paper) => paper.group === 'contract');
     const allowsEndDate =
@@ -147,6 +162,7 @@ class CandidateDraftService {
       hiredEmployeeId: candidate.hiredEmployeeId,
       papers,
       allowsEndDate,
+      jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
     };
   }
 
@@ -167,25 +183,26 @@ class CandidateDraftService {
     const { draft } = c;
     const keys = [...new Set(c.papers.flatMap((paper) => paper.template.placeholders))];
     const { values } = await this.valuesFor(c, keys);
-    const job = await jobTitleService.getById(String(c.employee.employment.jobTitleId)).catch(() => null);
+    // Never chosen yet: every paper ticked, but one the job is offered unticked.
     const chosen = draft.selected === null ? null : new Set(draft.selected);
     return {
       id: String(draft._id),
       offerId: String(draft.offerId),
       offerCode: c.offerCode,
       applicantName: c.applicantName,
-      jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
+      jobTitle: c.jobTitle,
       startDate: draft.startDate,
       endDate: draft.endDate,
       hiringDate: draft.hiringDate,
       allowsEndDate: c.allowsEndDate,
-      papers: c.papers.map(({ template, group }) => ({
+      papers: c.papers.map(({ template, group, optional }) => ({
         key: template.key,
         name: template.name,
         kind: printSettings(template).kind,
         group,
+        optional,
         placeholders: template.placeholders,
-        selected: chosen === null || chosen.has(template.key),
+        selected: chosen === null ? !optional : chosen.has(template.key),
       })),
       values: values.map((v) => {
         const entry = CONTRACT_VARIABLE_CATALOG.find((x) => x.key === v.key);
@@ -328,17 +345,17 @@ class CandidateDraftService {
     for (const offerId of new Set(offerIds)) {
       try {
         const c = await this.context(ctx, offerId, scope, true);
-        const job = await jobTitleService.getById(String(c.employee.employment.jobTitleId)).catch(() => null);
         out.push({
           offerId,
           applicantName: c.applicantName,
           offerCode: c.offerCode,
-          jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
-          papers: c.papers.map(({ template, group }) => ({
+          jobTitle: c.jobTitle,
+          papers: c.papers.map(({ template, group, optional }) => ({
             key: template.key,
             name: template.name,
             kind: printSettings(template).kind,
             group,
+            optional,
           })),
           error: null,
         });

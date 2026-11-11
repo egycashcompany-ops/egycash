@@ -666,7 +666,7 @@ export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
  * the contract they hold now, to print again or renew.
  */
 export interface EmployeePapersDto {
-  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind; group: CandidatePaperGroup }[];
+  papers: JobPaperDto[];
   contract: {
     id: string;
     code: string;
@@ -698,12 +698,21 @@ export interface HiringPackDto {
 export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob'] as const;
 export type CandidatePaperGroup = (typeof CANDIDATE_PAPER_GROUPS)[number];
 
-export interface CandidatePaperDto {
+/** One paper a job prints, as the print pages list it. */
+export interface JobPaperDto {
   key: string;
   name: { ar: string; en: string };
   kind: ContractTemplateKind;
   /** The contract; a form every job signs; a form for this job only (its card, its declarations). */
   group: CandidatePaperGroup;
+  /**
+   * Offered to this job but left unticked until HR ticks it — the cash-in-transit specialist's
+   * weapon declaration («اخصائي نقل اموال بتبقا اوبشن … منغير علامه»). Every other paper starts ticked.
+   */
+  optional: boolean;
+}
+
+export interface CandidatePaperDto extends JobPaperDto {
   /** The values it prints — what «تعديل» offers to change. */
   placeholders: string[];
   selected: boolean;
@@ -796,7 +805,7 @@ export interface CandidateBulkPersonDto {
   offerCode: string | null;
   jobTitle: { ar: string; en: string } | null;
   /** The person's papers, in print order — what their job prints. */
-  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind; group: CandidatePaperGroup }[];
+  papers: JobPaperDto[];
   /** Why the person cannot be printed for (the offer is no longer accepted…), else null. */
   error: string | null;
 }

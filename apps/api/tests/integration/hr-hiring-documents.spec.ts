@@ -38,6 +38,7 @@ import { type AuthContext } from '../../src/shared/types';
 import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
 import { nextNationalId } from './helpers/national-id';
 import { syncHiringTemplates } from '../../src/modules/hr/contracts/hiring-templates';
+import { seedHrRecruitment } from '../../src/modules/hr/hr.seed';
 
 const PASSWORD = 'Str0ng#Pass!';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
@@ -299,6 +300,8 @@ describe('hiring documents — types catalog & permissions', () => {
     const required = types.filter((t) => t.required).map((t) => t.key);
     expect(required).toEqual(expect.arrayContaining(REQUIRED_KEYS));
     expect(required).toHaveLength(7);
+    // The crew leader's weapon declaration waits for a crew leader's job; this database has none yet.
+    expect(types.map((t) => t.key)).not.toContain('weaponDeclaration');
 
     const denied = await request(app).get('/api/v1/hr/hiring-documents').set('Authorization', `Bearer ${aliceToken}`);
     expect(denied.status).toBe(403);
@@ -501,10 +504,11 @@ describe('hiring documents — opened for an employee, once', () => {
         .send({ employeeId: emp.id });
     const first = await open();
     expect(first.status, JSON.stringify(first.body)).toBe(200);
-    const id = (first.body.data as HiringDocumentsDto).id;
+    const id = mutated<HiringDocumentsDto>(first).id;
+    expect(id).toEqual(expect.any(String));
     const second = await open();
     expect(second.status).toBe(200);
-    expect((second.body.data as HiringDocumentsDto).id).toBe(id);
+    expect(mutated<HiringDocumentsDto>(second).id).toBe(id);
     // …and an explicit create still refuses a second set.
     const dup = await request(app)
       .post('/api/v1/hr/hiring-documents')
@@ -672,5 +676,133 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     // More than the cap is refused at the door.
     const many = Array.from({ length: 51 }, () => first.id);
     expect((await call('bulk/open', { offerIds: many })).status).toBe(400);
+  });
+});
+
+/**
+ * A27, stage 3 — the checklist is the employee's JOB's: «إقرار حيازة سلاح» is collected from crew
+ * leaders only. A type for chosen jobs is asked of those jobs alone, and a type for no job at all is
+ * refused rather than read as every job.
+ */
+describe('hiring documents — collected by the employee\'s job (A27)', () => {
+  const OTHER_JOB = '64b1f0cccccccccccccccc0f';
+  const mkType = (key: string, jobTitleIds: string[]) =>
+    request(app)
+      .post('/api/v1/hr/hiring-document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ key, name: { ar: key, en: key }, required: true, allJobs: false, jobTitleIds });
+
+  it('asks a job\'s own document of that job only', async () => {
+    expect((await mkType('forNoJob', [])).status).toBe(400);
+    expect((await mkType('otherJobPaper', [OTHER_JOB])).status).toBe(201);
+
+    const emp = await hiredEmployee();
+    const opened = await request(app)
+      .post('/api/v1/hr/hiring-documents/open')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: emp.id });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const set = mutated<HiringDocumentsDto>(opened);
+    expect(set.typeKeys).toEqual(expect.arrayContaining(REQUIRED_KEYS));
+    expect(set.typeKeys).not.toContain('otherJobPaper');
+    expect(set.missingRequired).not.toContain('otherJobPaper');
+
+    // A required paper for the employee's own job is asked of it, and holds the completion back.
+    const own = await mkType('ownJobPaper', [emp.employment.jobTitleId]);
+    expect(own.status).toBe(201);
+    const read = async (): Promise<HiringDocumentsDto> =>
+      (
+        await request(app)
+          .get(`/api/v1/hr/hiring-documents/${set.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).body.data as HiringDocumentsDto;
+    const withOwn = await read();
+    expect(withOwn.typeKeys).toContain('ownJobPaper');
+    expect(withOwn.missingRequired).toContain('ownJobPaper');
+    const version = await uploadAllRequired(withOwn);
+    const blocked = await request(app)
+      .post(`/api/v1/hr/hiring-documents/${set.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version });
+    expect(blocked.status).toBe(422);
+    expect(JSON.stringify(blocked.body)).toContain('ownJobPaper');
+
+    // Narrowing it to chosen jobs with none chosen is refused; moved to another job, it is not asked.
+    const ownDto = own.body.data as HiringDocumentTypeDto;
+    const emptied = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${ownDto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [], version: ownDto.version });
+    expect(emptied.status).toBe(400);
+    const moved = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${ownDto.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [OTHER_JOB], version: ownDto.version });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect((moved.body.data as HiringDocumentTypeDto).jobTitleIds).toEqual([OTHER_JOB]);
+    const done = await request(app)
+      .post(`/api/v1/hr/hiring-documents/${set.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+  });
+});
+
+/**
+ * A27, stage 3 — the signed weapon declaration: REQUIRED of crew leaders, OPTIONAL for cash-in-transit
+ * specialists, asked of no other job. The boot writes each once a job carrying its name exists, adds
+ * a job of that name made since, and leaves it alone once a person has set its jobs.
+ */
+describe('hiring documents — the weapon declaration, by job (A27)', () => {
+  const jobNamed = async (code: string, ar: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar, en: code }, jobGrade: 'G5' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return (res.body as { data: { id: string } }).data.id;
+  };
+  const typeOf = async (key: string): Promise<HiringDocumentTypeDto | undefined> => {
+    const res = await request(app)
+      .get('/api/v1/hr/hiring-document-types')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return (res.body as { data: HiringDocumentTypeDto[] }).data.find((t) => t.key === key);
+  };
+
+  it('is required of crew leaders, optional for cash-in-transit specialists, and follows new jobs', async () => {
+    await jobNamed('JT-WPN-0', 'سائق');
+    await seedHrRecruitment();
+    expect(await typeOf('weaponDeclaration')).toBeUndefined(); // no crew leader yet
+    expect(await typeOf('citWeaponDeclaration')).toBeUndefined();
+
+    const cashLeader = await jobNamed('JT-WPN-1', 'قائد طاقم نقل أموال');
+    const citSpecialist = await jobNamed('JT-WPN-5', 'أخصائي نقل أموال');
+    await seedHrRecruitment();
+    const leaders = await typeOf('weaponDeclaration');
+    expect(leaders).toMatchObject({ required: true, active: true, allJobs: false, jobTitleIds: [cashLeader] });
+    expect(leaders?.name.ar).toBe('إقرار حيازة سلاح');
+    const specialists = await typeOf('citWeaponDeclaration');
+    expect(specialists).toMatchObject({ required: false, active: true, allJobs: false, jobTitleIds: [citSpecialist] });
+    expect(specialists?.name.ar).toBe('إقرار حيازة سلاح');
+
+    // A crew leader's job made since is added on the next boot; any other job is not.
+    const atm = await jobNamed('JT-WPN-2', 'قائد طاقم صراف آلى');
+    await jobNamed('JT-WPN-3', 'أمين خزينة');
+    await seedHrRecruitment();
+    const widened = await typeOf('weaponDeclaration');
+    expect([...(widened?.jobTitleIds ?? [])].sort()).toEqual([cashLeader, atm].sort());
+    expect((await typeOf('citWeaponDeclaration'))?.jobTitleIds).toEqual([citSpecialist]);
+
+    // Once HR sets its jobs, the boot leaves them as HR set them.
+    const set = await request(app)
+      .patch(`/api/v1/hr/hiring-document-types/${widened?.id ?? ''}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobTitleIds: [atm], version: widened?.version });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await jobNamed('JT-WPN-4', 'قائد طاقم');
+    await seedHrRecruitment();
+    expect((await typeOf('weaponDeclaration'))?.jobTitleIds).toEqual([atm]);
   });
 });

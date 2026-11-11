@@ -40,6 +40,22 @@ describe('the papers of a candidate\'s job', () => {
     expect(papersOfJob(PUBLISHED, String(GUARD)).map((p) => p.template.key)).toEqual(['contract', 'sheet', 'guard-card']);
   });
 
+  it('offer the weapon declaration to a cash-in-transit specialist unticked, and ticked to a crew leader', () => {
+    const SPECIALIST = new Types.ObjectId();
+    const weapon = template('egycash.hiring.weapon', {
+      kind: 'form',
+      allJobs: false,
+      jobTitleIds: [LEADER, SPECIALIST],
+      printOrder: 50,
+    });
+    const optional = (job: Types.ObjectId, name: string): boolean | undefined =>
+      papersOfJob([...PUBLISHED, weapon], String(job), name).find((p) => p.template.key === weapon.key)?.optional;
+    expect(optional(SPECIALIST, 'أخصائي نقل أموال')).toBe(true);
+    expect(optional(LEADER, 'قائد طاقم')).toBe(false);
+    // A job whose name is unknown is offered every paper as usual.
+    expect(papersOfJob([...PUBLISHED, weapon], String(SPECIALIST)).every((p) => !p.optional)).toBe(true);
+  });
+
   it('have no contract heading when no contract is published', () => {
     expect(papersOfJob(PUBLISHED.filter((t) => t.kind !== 'contract'), String(LEADER)).map((p) => p.group)).toEqual([
       'everyJob',

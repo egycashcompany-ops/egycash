@@ -504,10 +504,11 @@ describe('hiring documents — opened for an employee, once', () => {
         .send({ employeeId: emp.id });
     const first = await open();
     expect(first.status, JSON.stringify(first.body)).toBe(200);
-    const id = (first.body.data as HiringDocumentsDto).id;
+    const id = mutated<HiringDocumentsDto>(first).id;
+    expect(id).toEqual(expect.any(String));
     const second = await open();
     expect(second.status).toBe(200);
-    expect((second.body.data as HiringDocumentsDto).id).toBe(id);
+    expect(mutated<HiringDocumentsDto>(second).id).toBe(id);
     // …and an explicit create still refuses a second set.
     const dup = await request(app)
       .post('/api/v1/hr/hiring-documents')
@@ -701,7 +702,7 @@ describe('hiring documents — collected by the employee\'s job (A27)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ employeeId: emp.id });
     expect(opened.status, JSON.stringify(opened.body)).toBe(200);
-    const set = opened.body.data as HiringDocumentsDto;
+    const set = mutated<HiringDocumentsDto>(opened);
     expect(set.typeKeys).toEqual(expect.arrayContaining(REQUIRED_KEYS));
     expect(set.typeKeys).not.toContain('otherJobPaper');
     expect(set.missingRequired).not.toContain('otherJobPaper');

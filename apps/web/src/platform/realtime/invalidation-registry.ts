@@ -349,6 +349,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],
+  'hr.insuranceJobTitle': [['hr', 'contracts', 'insuranceJobTitles']],
   'hr.contractType': [['hr', 'contracts']],
   'hr.costCenterAssignment': [
     ['hr', 'employeeCostCenters'],

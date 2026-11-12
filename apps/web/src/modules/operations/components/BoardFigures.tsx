@@ -156,11 +156,13 @@ const CurrencyCard = ({
           <p className="truncate text-lg font-black text-slate-900 dark:text-white">
             {currency?.name ?? '…'}
           </p>
-          <p className="mt-0.5 text-xs font-bold text-slate-500 dark:text-slate-400">
-            {t(`operations.board.figures.inShipments.${pluralForm(locale, card.shipments)}`, {
-              count: formatNumber(card.shipments, locale),
-            })}
-          </p>
+          {card.shipments !== undefined && (
+            <p className="mt-0.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+              {t(`operations.board.figures.inShipments.${pluralForm(locale, card.shipments)}`, {
+                count: formatNumber(card.shipments, locale),
+              })}
+            </p>
+          )}
         </div>
         {unit !== '' && (
           <span
@@ -212,8 +214,11 @@ export const OtherCurrenciesList = ({
   cards: readonly OtherCurrencyCard[];
   /** The «عملات أخرى» figure — the cards' amounts added together. */
   sum: number;
-  /** How many of the shipments shown carry any of these currencies. */
-  shipments: number;
+  /**
+   * How many of the shipments shown carry any of these currencies — absent for a report's row,
+   * which no longer knows (`OtherCurrencyCard.shipments`); its chip is then left out.
+   */
+  shipments?: number | undefined;
   currencyOf: (id: string) => OperationsCurrencyDto | undefined;
   locale: 'ar' | 'en';
 }): JSX.Element => {
@@ -267,15 +272,17 @@ export const OtherCurrenciesList = ({
               count: formatNumber(cards.length, locale),
             })}
           </BandChip>
-          <BandChip>
-            <BoardIcon
-              d={[...SHIPMENT_PATH.shipment]}
-              className="h-3.5 w-3.5 text-brand-600 dark:text-brand-300"
-            />
-            {t(`operations.board.figures.inShipments.${pluralForm(locale, shipments)}`, {
-              count: formatNumber(shipments, locale),
-            })}
-          </BandChip>
+          {shipments !== undefined && (
+            <BandChip>
+              <BoardIcon
+                d={[...SHIPMENT_PATH.shipment]}
+                className="h-3.5 w-3.5 text-brand-600 dark:text-brand-300"
+              />
+              {t(`operations.board.figures.inShipments.${pluralForm(locale, shipments)}`, {
+                count: formatNumber(shipments, locale),
+              })}
+            </BandChip>
+          )}
         </div>
       </section>
       <ul className={cn('grid gap-3', cardColumns(cards.length))}>
@@ -300,14 +307,20 @@ export const OtherCurrenciesDialog = ({
   shipments,
   currencyOf,
   locale,
+  subtitle,
 }: {
   open: boolean;
   onClose: () => void;
   cards: readonly OtherCurrencyCard[];
   sum: number;
-  shipments: number;
+  shipments?: number | undefined;
   currencyOf: (id: string) => OperationsCurrencyDto | undefined;
   locale: 'ar' | 'en';
+  /**
+   * What the figure is over, under the title. The boards' «في الشحنات المعروضة» by default; a
+   * report names its row instead — one bank's, one captain's, or the whole report's.
+   */
+  subtitle?: string | undefined;
 }): JSX.Element | null => {
   const t = useT();
   return (
@@ -315,7 +328,7 @@ export const OtherCurrenciesDialog = ({
       open={open}
       onClose={onClose}
       title={t('operations.board.figures.otherCurrenciesTitle')}
-      subtitle={t('operations.board.figures.otherCurrenciesSubtitle')}
+      subtitle={subtitle ?? t('operations.board.figures.otherCurrenciesSubtitle')}
       icon={SHIPMENT_PATH.money}
       width="4xl"
       // A phone reads the whole title rather than «العملات الأخرى، كل عمل…».

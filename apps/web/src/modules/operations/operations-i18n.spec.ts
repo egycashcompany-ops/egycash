@@ -370,8 +370,19 @@ const VAULT_REPORT_KEYS = [
   'operations.cards.vaultReport',
   'operations.vaultReport.title',
   'operations.vaultReport.subtitle',
-  'operations.vaultReport.foreign',
-  'operations.vaultReport.noForeign',
+  // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
+  // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
+  // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)
+  'operations.vaultReport.table',
+  'operations.vaultReport.securedCount',
+  'operations.vaultReport.value',
+  'operations.vaultReport.totalPound',
+  'operations.vaultReport.totalForeign',
+  'operations.reports.captains.table',
+  'operations.reports.captainName',
+  ...['serial', 'pound', 'dollar', 'bags', 'cartons', 'boxes', 'total', 'othersOf'].map(
+    (key) => `operations.reportBoard.${key}`,
+  ),
 ];
 
 const AREA_KEYS = [

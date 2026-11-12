@@ -1,75 +1,110 @@
-// Vault roll-up (B6) — the legacy `/vault1_reports` screen.
+// Vault roll-up (B6) — the legacy `/vault1_reports` screen, «تجميع الخزينة».
 //
-// WHAT `/vault1_reports` ACTUALLY WAS (discovery §C, contad_app.js:1311-1333): a SHELL. It loaded
-// `DataLists`, threw it away, and rendered a template carrying nothing but the session. Every
-// figure on the page came from the client re-hitting `/vault1`, which ran two aggregations:
-// a per-bank roll-up of what the vault holds, and the non-EGP breakdown of that same set.
+// «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك»: the legacy screen's layout — «من» /
+// «إلى», the table «بيان الشحنات لكل بنك» (م | البنك | عدد المحصنات | المصري | الدولار | عملات أخرى |
+// الحقائب | كرتونة | صندوق, «الإجمالي» under it) and beside it «إجمالي قيمة الشحنات» — on the boards'
+// look (`components/ReportBoard.tsx`, `components/VaultValuePanel.tsx`).
 //
-// Both are one server answer here, and it runs through the SAME roll-up as the bank report. That
-// is deliberate: legacy computed package counts two different ways over overlapping sets — per
-// document on this screen, per currency line on the reports (Q26) — so the two screens disagreed
-// about the same shipments. One code path cannot.
+// WHAT `/vault1_reports` ACTUALLY WAS (discovery §C, contad_app.js:1311-1333): a SHELL. Every figure
+// on the page came from the client re-hitting `/vault1`, which ran two aggregations: a per-bank
+// roll-up of what the vault holds (the table), and the non-EGP breakdown of that same set (the
+// panel). Both are one server answer here, through the SAME roll-up as the bank report, so the two
+// screens cannot disagree about the same packages (Q26).
 //
-// NO DATE PICKER (Q32 PRESERVE): the legacy screen had one and both of its aggregations had their
-// date filters commented out, so it was always all-time. That is also the right answer — "what is
-// in the vault" is a question about now — so the control is dropped rather than reproduced dead.
+// THE BANKS IN THE REFERENCE ORDER (Q31): legacy ranked them by a hardcoded list of 22 names; the
+// bank's own `sortOrder` replaced it, and the rows follow it here (`bankRank`).
+import { useSearchParams } from 'react-router-dom';
+import { MAX_PAGE_SIZE } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { formatAmount } from '../../../shared/lib/format';
-import { useAppSelector } from '../../../store';
-import { useVaultReport } from '../api/operations-queries';
-import { ReportView, type ReportRow } from '../components/ReportView';
+import { PageContainer } from '../../../platform/layout/PageContainer';
+import { useOperationsBanks, useVaultReport } from '../api/operations-queries';
+import { ReportBoard } from '../components/ReportBoard';
+import { SHIPMENT_PATH } from '../components/shipment-icons';
+import { VaultValuePanel } from '../components/VaultValuePanel';
+import { bankRank, reportRowsInOrder, type ReportBoardRow } from '../lib/report-board';
 
 export const VaultReportPage = (): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((s) => s.locale.locale);
+  const [sp, setSp] = useSearchParams();
   const report = useVaultReport();
+  // The boards' own query (the same parameters), so the catalog is one cache across them.
+  const banks = useOperationsBanks({
+    page: 1,
+    pageSize: MAX_PAGE_SIZE,
+    sortBy: 'code',
+    sortDir: 'asc',
+  });
 
-  const rows: ReportRow[] = (report.data?.rows ?? []).map((row) => ({
+  // ── PENDING THE OWNER'S DECISION: what «من» / «إلى» filter. ─────────────────────────────────
+  // «زى الشاشة اللى بعتهالك» — legacy's screen had the two dates, so the sample shows them, empty
+  // (empty = everything in the vault now). They are SHOWN, NOT SENT: the server's vault roll-up
+  // refuses `?from` / `?to` on purpose (report.routes.ts, Q32 — legacy's picker filtered nothing, its
+  // date filters were commented out in both aggregations), and what the dates should mean is the
+  // owner's to say: the vault-receipt day of what is held now, or everything received in the
+  // period whether or not it is still held. Until he answers, these two values reach no query —
+  // wire them to `useVaultReport` (and the route's schema) once he does.
+  const pendingFrom = sp.get('from') ?? '';
+  const pendingTo = sp.get('to') ?? '';
+  const setPending = (param: 'from' | 'to', value: string): void => {
+    const next = new URLSearchParams(sp);
+    if (value === '') next.delete(param);
+    else next.set(param, value);
+    setSp(next, { replace: true });
+  };
+
+  const rankOf = bankRank(banks.data?.items ?? []);
+  const rows: ReportBoardRow[] = reportRowsInOrder(
+    report.data?.rows ?? [],
+    (row) => row.bankId === null,
+    (row) => rankOf(row.bankId),
+  ).map((row) => ({
     key: row.bankId ?? 'unattributed',
     label: row.bankName,
     unattributed: row.bankId === null,
     totals: row.totals,
   }));
 
-  const foreign = report.data?.foreignCurrencies ?? [];
-
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('operations.vaultReport.title')}
-      />
-      <ReportView
+    <PageContainer fullHeight>
+      <ReportBoard
+        label={t('operations.vaultReport.title')}
+        title={t('operations.vaultReport.table')}
+        titleIcon={SHIPMENT_PATH.bank}
         keyHeader={t('operations.reports.bank')}
+        countHeader={t('operations.vaultReport.securedCount')}
         rows={rows}
         grandTotal={report.data?.grandTotal}
         loading={report.isLoading}
         error={report.error}
         onRetry={() => void report.refetch()}
         empty={t('operations.vault.empty')}
+        datePickers={[
+          {
+            param: 'from',
+            label: t('operations.reports.from'),
+            showLabel: true,
+            optional: true,
+            value: pendingFrom,
+            onChange: (value) => setPending('from', value),
+          },
+          {
+            param: 'to',
+            label: t('operations.reports.to'),
+            showLabel: true,
+            optional: true,
+            value: pendingTo,
+            onChange: (value) => setPending('to', value),
+          },
+        ]}
+        periodActive={pendingFrom !== '' || pendingTo !== ''}
+        onResetPeriod={() => {
+          const next = new URLSearchParams(sp);
+          next.delete('from');
+          next.delete('to');
+          setSp(next, { replace: true });
+        }}
+        aside={<VaultValuePanel grandTotal={report.data?.grandTotal} loading={report.isLoading} />}
       />
-
-      {/* The legacy second aggregation. It is a VIEW of the totals above, not a second question —
-          the server decides which currency is domestic so no screen has to carry that list. */}
-      {report.data !== undefined && rows.length > 0 && (
-        <div className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-          <div className="mb-2 text-sm font-semibold">
-            {t('operations.vaultReport.foreign', { base: report.data.baseCurrencyCode })}
-          </div>
-          {foreign.length === 0 ? (
-            <p className="text-sm text-slate-500">{t('operations.vaultReport.noForeign')}</p>
-          ) : (
-            <div className="space-y-1">
-              {foreign.map((line) => (
-                <div key={line.currencyId ?? line.currencyName} className="flex gap-2 text-sm">
-                  <span className="tabular-nums">{formatAmount(line.amount, locale)}</span>
-                  <span className="text-slate-500">{line.currencyName}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </PageContainer>
   );
 };

@@ -158,12 +158,20 @@ export const BRAND_BUTTON =
 export const ADD_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95';
 
-/** The Fleet boards' table — no column lines, every value in Cairo's bold. */
-const SHIPMENTS_TABLE = cn(
+/**
+ * The Fleet boards' table — no column lines, every value in Cairo's bold. Exported for the reports
+ * (`ReportBoard.tsx`), whose tables are this board's table over other rows.
+ */
+export const BOARD_TABLE_LOOK = cn(
   DARK_TABLE,
-  BOARD_TABLE_FILL,
   '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
   "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+);
+
+/** This board's table: the look, filling the height left, with room made for the row actions. */
+const SHIPMENTS_TABLE = cn(
+  BOARD_TABLE_LOOK,
+  BOARD_TABLE_FILL,
   // Fourteen columns beside the menu on a laptop: the two icon boxes (the receipt's and the row's
   // actions) sit their icons closer than the Fleet boards' twelve-column tables need to.
   '[&_[data-row-actions]]:!gap-1 [&_[data-row-actions]]:!px-1 [&_[data-image-actions]]:!gap-1 [&_[data-image-actions]]:!px-1',
@@ -192,7 +200,7 @@ const SHIPMENTS_TABLE = cn(
  *
  * Written out because Tailwind reads class names from the source text, never a built one.
  */
-const BAR_LAYOUT =
+export const BAR_LAYOUT =
   'max-sm:[&>div]:!grid max-sm:[&>div]:!grid-cols-2 max-sm:[&>div>*:not(.ms-auto)]:!w-auto';
 const PERIOD_BAR_LAYOUT = cn(
   'lg:max-xl:[&>div]:!grid lg:max-xl:[&>div]:!grid-cols-6 lg:max-xl:[&>div>.ms-auto]:!col-start-7',
@@ -263,6 +271,83 @@ export interface BoardSelection<T> {
   /** The row's box's name, for a screen reader and on hover («تحديد الشحنة …»). */
   label: (row: T) => string;
 }
+
+/**
+ * One date box of the bar — the history's «من» / «إلى», «صرف الخزينة»'s delivery day, the reports'
+ * period — at the «التاريخ» column's place. Its own component so a screen that is not this board
+ * (the reports, `ReportBoard.tsx`) draws the SAME box rather than a copy: a fix to the label, the
+ * calendar or the empty box's hint is then made once, for every screen that has one.
+ */
+export const BoardDateBox = ({ picker }: { picker: BoardDatePicker }): JSX.Element => {
+  // An optional box with no day in it (`optional`): its name in the day's place.
+  const blank = picker.optional === true && picker.value === '';
+  const named = picker.showLabel === true || blank;
+  return (
+    <FilterWithIcon
+      icon={FILTER_ICON.calendar}
+      tone="text-cyan-600 dark:text-cyan-400"
+      // A box that writes its name measures itself (a size container), so the name
+      // shows only while the box has room for it AND the date — never over the digits.
+      // A blank one gives the name up while a day is typed into it.
+      className={cn(
+        'w-36 shrink-0',
+        named && '[container-type:inline-size]',
+        blank && '[&:has(input:focus)_[data-date-label]]:!hidden',
+      )}
+      datePicker={{ label: picker.label }}
+    >
+      <Input
+        type="date"
+        dir="ltr"
+        density={TIGHT}
+        aria-label={picker.label}
+        title={picker.label}
+        value={picker.value}
+        onChange={(e) => picker.onChange(e.target.value)}
+        // On an English page the date would start right after the calendar, where
+        // the name is written: it goes to the box's far side instead, as on an Arabic
+        // page. The browser pads a date's fields a pixel above and below, which stood
+        // the two dates 2px taller than the boxes beside them in the one row.
+        className={cn(
+          'dark:[color-scheme:dark] [&::-webkit-datetime-edit-fields-wrapper]:py-0',
+          picker.showLabel === true && '[[dir=ltr]_&]:text-right',
+          // The browser's «mm/dd/yyyy» of an empty box, unseen until it is typed into.
+          // The bar sets every box's text colour with `!important`, its dark rule as
+          // `.dark .bar input`: `[&&]` (the class twice) outranks both.
+          blank && '[&&:not(:focus)]:!text-transparent',
+        )}
+      />
+      {/* The date sits at the box's far side, so the name takes the free room beside
+          the calendar — shown only from a box wide enough for both (the input already
+          carries the name for a reader, and as its hover title). A blank optional box
+          shows it in the day's place. */}
+      {named && (
+        <span
+          aria-hidden
+          data-date-label={picker.param}
+          className="pointer-events-none absolute start-6 top-0 hidden h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400 [@container(min-width:8.75rem)]:flex"
+        >
+          {picker.label}
+        </span>
+      )}
+    </FilterWithIcon>
+  );
+};
+
+/**
+ * Why the rows were not asked for, or were refused — said in the table's place, in words that name
+ * what to change. Shared with the reports (`ReportBoard.tsx`), whose period can be refused too.
+ */
+export const BoardRefusal = ({ children }: { children: ReactNode }): JSX.Element => (
+  <div
+    role="alert"
+    data-shipments-refusal="true"
+    className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+  >
+    <BoardIcon d={PATH.warn} className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+    <p>{children}</p>
+  </div>
+);
 
 export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   search: [sp, setSp],
@@ -1206,62 +1291,9 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
               place (the day board has no picker: it is always today). A date box draws its own
               format hint and ignores a placeholder, so its name is its title (on hover) and its
               aria-label. */}
-            {datePickers.map((picker) => {
-              // An optional box with no day in it (`optional`): its name in the day's place.
-              const blank = picker.optional === true && picker.value === '';
-              const named = picker.showLabel === true || blank;
-              return (
-                <FilterWithIcon
-                  key={picker.param}
-                  icon={FILTER_ICON.calendar}
-                  tone="text-cyan-600 dark:text-cyan-400"
-                  // A box that writes its name measures itself (a size container), so the name
-                  // shows only while the box has room for it AND the date — never over the digits.
-                  // A blank one gives the name up while a day is typed into it.
-                  className={cn(
-                    'w-36 shrink-0',
-                    named && '[container-type:inline-size]',
-                    blank && '[&:has(input:focus)_[data-date-label]]:!hidden',
-                  )}
-                  datePicker={{ label: picker.label }}
-                >
-                  <Input
-                    type="date"
-                    dir="ltr"
-                    density={TIGHT}
-                    aria-label={picker.label}
-                    title={picker.label}
-                    value={picker.value}
-                    onChange={(e) => picker.onChange(e.target.value)}
-                    // On an English page the date would start right after the calendar, where
-                    // the name is written: it goes to the box's far side instead, as on an Arabic
-                    // page. The browser pads a date's fields a pixel above and below, which stood
-                    // the two dates 2px taller than the boxes beside them in the one row.
-                    className={cn(
-                      'dark:[color-scheme:dark] [&::-webkit-datetime-edit-fields-wrapper]:py-0',
-                      picker.showLabel === true && '[[dir=ltr]_&]:text-right',
-                      // The browser's «mm/dd/yyyy» of an empty box, unseen until it is typed into.
-                      // The bar sets every box's text colour with `!important`, its dark rule as
-                      // `.dark .bar input`: `[&&]` (the class twice) outranks both.
-                      blank && '[&&:not(:focus)]:!text-transparent',
-                    )}
-                  />
-                  {/* The date sits at the box's far side, so the name takes the free room beside
-                      the calendar — shown only from a box wide enough for both (the input already
-                      carries the name for a reader, and as its hover title). A blank optional box
-                      shows it in the day's place. */}
-                  {named && (
-                    <span
-                      aria-hidden
-                      data-date-label={picker.param}
-                      className="pointer-events-none absolute start-6 top-0 hidden h-9 items-center text-xs font-bold text-slate-500 dark:text-slate-400 [@container(min-width:8.75rem)]:flex"
-                    >
-                      {picker.label}
-                    </span>
-                  )}
-                </FilterWithIcon>
-              );
-            })}
+            {datePickers.map((picker) => (
+              <BoardDateBox key={picker.param} picker={picker} />
+            ))}
             {/* Two answers each — ONE at a time: ticking one replaces the other, and clearing it is
               «all», as the Fleet boards' two-answer filters read. No «النوع» on the secured screen,
               where every row is a محصنة. */}
@@ -1347,17 +1379,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         {refusal !== null ? (
           // Said where the rows would be, in words that name what to change — not an empty table
           // that reads as "nothing happened", nor a failure with a retry that would only fail again.
-          <div
-            role="alert"
-            data-shipments-refusal="true"
-            className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
-          >
-            <BoardIcon
-              d={PATH.warn}
-              className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
-            />
-            <p>{refusal}</p>
-          </div>
+          <BoardRefusal>{refusal}</BoardRefusal>
         ) : (
           <>
             <div className={SHIPMENTS_TABLE}>

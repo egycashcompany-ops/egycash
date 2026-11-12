@@ -24,7 +24,6 @@ import { Types } from 'mongoose';
 import {
   type CandidateBulkPersonDto,
   type CandidateDraftDto,
-  type CandidatePaperDto,
   type HireCandidate,
   type HireCandidateDto,
   type RenderCandidateBulk,
@@ -43,12 +42,13 @@ import { type EmployeeDoc } from '../../employee-management/employees/employee.m
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
-import { printSettings, type ContractTemplateDoc } from '../contract-templates/contract-template.model';
+import { printSettings } from '../contract-templates/contract-template.model';
 import { renderHiringPackHtml, type HiringPackPart } from '../contracts/contract-render';
 import { resolveContractVariables } from '../contracts/contract-variables';
-import { hiringPackService, oneYearFrom, templatesForJob } from '../contracts/hiring-pack.service';
+import { hiringPackService, oneYearFrom } from '../contracts/hiring-pack.service';
 import { letterheadFor } from '../contracts/letterhead';
-import { optionalForJob } from '../hiring-templates';
+import { isTickedForJob, type JobPaper } from '../job-papers/job-papers.rules';
+import { papersOfPerson } from '../job-papers/person-papers';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { candidateDraftRepository } from './candidate-draft.repository';
 import { type CandidateDraftDoc } from './candidate-draft.model';
@@ -58,13 +58,8 @@ const NOT_TYPED = new Set(['employee.employeeCode']);
 
 const offerRef = (offerId: string) => ({ moduleId: 'hr', entityType: 'jobOffer', entityId: offerId });
 
-/** A paper of the candidate's job, in print order, with where it belongs on the page. */
-interface Paper {
-  template: ContractTemplateDoc;
-  group: CandidatePaperDto['group'];
-  /** Offered to the job unticked (`optionalForJob`). */
-  optional: boolean;
-}
+/** One of the candidate's papers — their department's and job's (`job-papers.rules.ts`). */
+type Paper = JobPaper;
 
 /** Everything the page is drawn from: the draft, the would-be employee, the job's papers. */
 interface Context {
@@ -81,26 +76,8 @@ interface Context {
 
 const dateOf = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
-/**
- * The job's papers: its contract (the first by print order), then every-job forms, then its own —
- * each marked `optional` when the job named `jobName` is offered it unticked.
- */
-export const papersOfJob = (
-  published: readonly ContractTemplateDoc[],
-  jobTitleId: string,
-  jobName: string | null = null,
-): Paper[] => {
-  const { contracts, forms } = templatesForJob(published, jobTitleId);
-  const contract = contracts[0];
-  return [
-    ...(contract === undefined ? [] : [{ template: contract, group: 'contract' as const, optional: false }]),
-    ...forms.map((template) => ({
-      template,
-      group: printSettings(template).allJobs ? ('everyJob' as const) : ('thisJob' as const),
-      optional: optionalForJob(template.key, jobName),
-    })),
-  ];
-};
+// The papers of a candidate's department and job, and which start ticked, are read here by name too.
+export { isTickedForJob, papersOfJob } from '../job-papers/job-papers.rules';
 
 class CandidateDraftService {
   /** The page's context; with `create`, the draft is made on the first visit, from the offer. */
@@ -111,12 +88,13 @@ class CandidateDraftService {
       hiredAt: draft === null ? new Date() : dateOf(draft.hiringDate),
     });
     const { employee } = candidate;
-    const job = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
-    const papers = papersOfJob(
-      await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
-      job?.name.ar ?? null,
-    );
+    const jobTitleId = String(employee.employment.jobTitleId);
+    const job = await jobTitleService.getById(jobTitleId).catch(() => null);
+    const papers = await papersOfPerson(await contractTemplateService.listPublished(), {
+      departmentId: String(employee.employment.departmentId),
+      jobTitleId,
+      jobName: job?.name.ar ?? null,
+    });
     const contract = papers.find((paper) => paper.group === 'contract');
     const allowsEndDate =
       contract?.template.contractTypeId == null
@@ -183,7 +161,7 @@ class CandidateDraftService {
     const { draft } = c;
     const keys = [...new Set(c.papers.flatMap((paper) => paper.template.placeholders))];
     const { values } = await this.valuesFor(c, keys);
-    // Never chosen yet: every paper ticked, but one the job is offered unticked.
+    // Never chosen yet: the candidate's papers ticked, but one only offered unticked.
     const chosen = draft.selected === null ? null : new Set(draft.selected);
     return {
       id: String(draft._id),
@@ -202,7 +180,7 @@ class CandidateDraftService {
         group,
         optional,
         placeholders: template.placeholders,
-        selected: chosen === null ? !optional : chosen.has(template.key),
+        selected: chosen === null ? isTickedForJob({ optional }) : chosen.has(template.key),
       })),
       values: values.map((v) => {
         const entry = CONTRACT_VARIABLE_CATALOG.find((x) => x.key === v.key);
@@ -278,7 +256,7 @@ class CandidateDraftService {
     const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
     if (papers.length !== wanted.size) {
       throw new ValidationError([
-        { field: 'body.keys', code: 'INVALID', message: 'a paper that is not one of the job\'s papers' },
+        { field: 'body.keys', code: 'INVALID', message: 'a paper that is not one of the candidate\'s papers' },
       ]);
     }
     if (input.print) c = await this.markPrinted(ctx, c, papers, scope);
@@ -336,8 +314,8 @@ class CandidateDraftService {
   }
 
   /**
-   * «طباعة لكل المحدد» — each ticked person with the papers of their own job, opened (and their
-   * record made) as one is when their page is opened. A person who cannot be printed for — the offer
+   * «طباعة لكل المحدد» — each ticked person with their own papers (their department's and job's),
+   * opened (and their record made) as one is when their page is opened. A person who cannot be printed for — the offer
    * no longer accepted, out of the caller's reach — is listed with why, not dropped.
    */
   async bulkOpen(ctx: AuthContext, offerIds: readonly string[], scope: ScopeSelector): Promise<CandidateBulkPersonDto[]> {
@@ -368,11 +346,11 @@ class CandidateDraftService {
   }
 
   /**
-   * Print the papers chosen for each person, as ONE document: each person in turn, with those of
-   * the papers chosen for them that their own job has, in print order — a paper of another job is
-   * never printed for them. Each print is recorded as a single person's is (the code kept, the print
-   * counted and audited). A person with nothing to print, or who cannot be printed for, is reported
-   * and skipped; the others print.
+   * Print the papers chosen for each person, as ONE document: each person in turn, with those of the
+   * papers chosen for them that are their own (their department's and job's), in print order — a
+   * paper not theirs is never printed for them. Each print is recorded as a single person's is (the
+   * code kept, the print counted and audited). A person with nothing to print, or who cannot be
+   * printed for, is reported and skipped; the others print.
    */
   async bulkRender(ctx: AuthContext, input: RenderCandidateBulk, scope: ScopeSelector): Promise<RenderCandidateBulkDto> {
     // Each person's own choice; a person listed twice prints what both lines chose, once.
@@ -389,7 +367,7 @@ class CandidateDraftService {
         let c = await this.context(ctx, offerId, scope, true);
         const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
         if (papers.length === 0) {
-          results.push({ offerId, printed: 0, error: 'none of the chosen papers is one of this job\'s papers' });
+          results.push({ offerId, printed: 0, error: 'none of the chosen papers is one of this person\'s papers' });
           continue;
         }
         c = await this.markPrinted(ctx, c, papers, scope);

@@ -537,14 +537,15 @@ which forms depends on the job.
 ### A27, stage 2 — the owner's papers, written on boot
 
 - **What.** His contract (fixed-term, one year), the data sheet, the work-receipt and relatives
-  declarations and the bank letter (every job), the weapon declaration (crew leaders), and seven job
+  declarations and the bank letter (every job), the weapon declaration (every job, ticked for crew
+  leaders only — A28), and seven job
   description cards — `hiring-templates/hiring-papers.ts`, his words as he prints them (listed in
   `VERBATIM_PAPERS`). Where his paper leaves a line for the employee's facts it is a placeholder;
   lines filled by hand stay dotted. His sample bank letter's employee is not in it.
 - **Which jobs.** By name, folded (`أخصائى عد و فرز` = `اخصائي عد وفرز`): a job named as the paper
-  says, or that name followed by more words (`أمين خزينة أول`). The weapon declaration goes to every
-  `قائد طاقم…` and every `أخصائي نقل أموال…` (stage 3); the ATM crew leader's card to
-  `قائد طاقم صراف آلي…` and to plain `قائد طاقم`.
+  says, or that name followed by more words (`أمين خزينة أول`). The ATM crew leader's card goes to
+  `قائد طاقم صراف آلي…` and to plain `قائد طاقم`. (The weapon declaration went to every `قائد طاقم…`
+  and `أخصائي نقل أموال…`; A28 gives it to every job — the boot widens the row as it wrote it.)
 - **How.** `syncHiringTemplates()` on every API boot, after the navigation sync. A paper is known by
   its template key (`egycash.hiring.*`) and written once: published when it is for every job or has a
   job, else a draft. A draft nobody has touched is matched again on each boot and published once a
@@ -617,14 +618,15 @@ which forms depends on the job.
   crew leaders (`weaponDeclaration`), OPTIONAL for cash-in-transit specialists
   (`citWeaponDeclaration`, never holding a set's completion back), asked of no other job. Two rows
   of the one paper, both «إقرار حيازة سلاح» — a job is never both. Matched by name as the printed
-  paper is (`hr/shared/job-match.ts`: `CREW_LEADERS`, `CIT_SPECIALISTS`, `WEAPON_HOLDERS`). The
+  paper is (`hr/shared/job-match.ts`: `CREW_LEADERS`, `CIT_SPECIALISTS`). The
   boot seed writes each once a job carrying its name exists, for those jobs; while no person has
   edited it, a job of that name created since is added on the next boot. A person's edit is final.
-- **Printed, unticked for the specialist.** The printed «إقرار حيازة سلاح» is offered to both jobs.
-  On every print page («عقد جديد», «طباعة لكل المحدد», the employee's tab) it starts TICKED for a crew
-  leader and UNTICKED for a cash-in-transit specialist («منغير علامه»): `HiringPaper.optionalFor`,
-  read through `optionalForJob(key, jobName)` into the papers' `optional` flag. In «طباعة لكل
-  المحدد» each person's line starts as their own job has it.
+- **Printed, unticked but for crew leaders** (A28: «حيازه السلاح هتبقا لكلو بس مطفيه وللقائد هتبقا
+  معموله mark»). The printed «إقرار حيازة سلاح» is offered to EVERY job. On every print page («عقد
+  جديد», «طباعة لكل المحدد», the employee's tab) it starts TICKED for a crew leader and UNTICKED for
+  everyone else: `HiringPaper.tickedFor`, read through `optionalForJob(key, jobName)` into the
+  papers' `optional` flag (a job whose name is unknown is offered it unticked). The signed copy
+  collected stays as above: required of crew leaders, optional for the specialist.
 
 ## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
 
@@ -666,10 +668,34 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   بعض فنفس الاختيارات»: their name, job and how many papers are ticked, then the tiles of their own
   job's papers, ticked for that person alone (all / none per line, and for everyone at once). Each
   line starts with every paper of the job ticked but one the job is only offered (`optional`).
-  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line;
-  a paper not of the person's job is never printed for them. Each print is recorded as on the
-  person's own page (the code kept, so «تعيين» opens there). A person who cannot be printed for is
-  reported, not dropped; the others print. At most 50 at a time.
+  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line.
+  Each print is recorded as on the person's own page (the code kept, so «تعيين» opens there). A
+  person who cannot be printed for is reported, not dropped; the others print. At most 50 at a time.
+- **Only the person's papers, by department and job** («النمازج المخصصه بس للاداره او الوظائف هي
+  اللي هتكون موجوده … فيه وظائف تتفتحلها نمازج معينه و وظائف تانيه ملهاش علاقه بنمازج معينه … علي
+  حسب الاداره و الوظيفه»). «عقد جديد», each line of «طباعة لكل المحدد», the employee's tab, the
+  printed set and the hire's contract offer a person THEIR papers only, in print order (contracts
+  first): what the templates give their job — ticked, but one only offered —, as «مستندات الوظائف»
+  changed it for their job in their department. A paper not theirs is never offered nor printed
+  for them. One contract: the first ticked by print order. `job-papers/job-papers.rules.ts`.
+- **«مستندات الوظائف»** («اعرض الادارات كدا و الوظائف اللي جوه الادارات»). A button at the top of
+  «جاهزون للتعيين» (`contractTemplate.manage`) opens every department, closed, with how many jobs are
+  in it; opened, a line «كل وظائف الإدارة» that ticks or unticks a paper for all its jobs at once,
+  then each job on a line of its own beside every paper — ticked, what a person of that job in that
+  department prints. A job nobody holds there yet is added from the department's foot; «حفظ» saves
+  the changed lines (audited on the job title, `hiringPapers.<department>`). A job prints one
+  contract: ticking a contract unticks the line's other.
+  - **A department** is the company's: a branch's department row is keyed by the catalog entry it
+    declares (ADR-031), so «العمليات» in every branch is one; a row that declares none is its own.
+  - **The jobs in it** are those its people hold — employees who have not exited and candidates
+    accepted and not hired yet (the terms they accepted) — and any saved for it here. Job titles
+    carry no department of their own.
+  - **A line is kept** as what was ADDED to, and TAKEN OFF, what the templates tick for the job
+    (`hr_job_papers`, one row per department and job), so a paper published later for every job
+    still reaches it, and a line never saved follows its templates. A paper only offered (the
+    weapon declaration) stays offered, unticked, unless the line ticks it. A row with no department
+    is a job-wide line, as the first release of the popup saved them; a department's own line is
+    read first.
 - **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
   اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
   the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
@@ -680,7 +706,8 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
   `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
-  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`.
+  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {lines: [{departmentId, jobTitleId, keys}]}`.
 
 ## Review trail
 

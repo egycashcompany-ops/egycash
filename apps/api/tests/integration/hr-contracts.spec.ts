@@ -22,6 +22,7 @@ import {
   type EmployeeDto,
   type EmployeePapersDto,
   type HiringPackDto,
+  type JobPapersDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { cairoToday } from '../../src/modules/hr/shared/business-date';
@@ -1204,7 +1205,8 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const contract = await row('contract');
     expect(contract).toMatchObject({ status: 'published', kind: 'contract', allJobs: true, printOrder: 0 });
     expect(contract.contractTypeId).not.toBeNull();
-    expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob]);
+    // The weapon declaration prints for every job — ticked for crew leaders only.
+    expect(await row('weapon')).toMatchObject({ status: 'published', allJobs: true, jobTitleIds: [] });
     expect(((await row('card.atm-specialist')).jobTitleIds ?? []).map(String)).toEqual([specialistJob]);
     expect(await row('card.security-guard')).toMatchObject({ status: 'draft', jobTitleIds: [] });
 
@@ -1237,18 +1239,25 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(await row('card.treasurer')).toMatchObject({ status: 'draft', jobTitleIds: [] });
   });
 
-  it('adds a job named for a published paper on the boot after it is created', async () => {
-    // The weapon declaration is published for the crew leader; a cash-in-transit specialist's job
-    // made now is added to it, and publishes the waiting card of that job.
+  it('publishes the card of a job created since, and prints the weapon declaration for every job', async () => {
+    // A cash-in-transit specialist's job made now publishes the waiting card of that job.
     const citJob = await jobNamed('JT-PAPER-4', 'أخصائى نقل اموال');
     const fourth = await syncHiringTemplates();
-    expect(fourth.widened).toEqual([key('weapon')]);
     expect(fourth.linked).toEqual([key('card.cit-specialist')]);
-    expect(((await row('weapon')).jobTitleIds ?? []).map(String)).toEqual([crewLeaderJob, citJob]);
+    expect(((await row('card.cit-specialist')).jobTitleIds ?? []).map(String)).toEqual([citJob]);
+
+    // A database an earlier release wrote: the weapon declaration for crew leaders and specialists.
+    // The boot makes it every job's, as the release says — but only the row as the boot wrote it.
+    await ContractTemplateModel.updateOne(
+      { key: key('weapon') },
+      { $set: { allJobs: false, jobTitleIds: [new Types.ObjectId(crewLeaderJob), new Types.ObjectId(citJob)] } },
+    );
+    expect((await syncHiringTemplates()).widened).toEqual([key('weapon')]);
+    expect(await row('weapon')).toMatchObject({ allJobs: true, jobTitleIds: [] });
     // Again: nothing more.
     expect((await syncHiringTemplates()).widened).toEqual([]);
 
-    // The specialist is offered it unticked; the crew leader, as a usual paper.
+    // «لكلو بس مطفيه وللقائد معموله mark»: the specialist is offered it unticked; the crew leader, ticked.
     const offered = async (jobTitleId: string) => {
       const employee = await employeeIn(jobTitleId);
       const res = await request(app)
@@ -1303,5 +1312,67 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const keys = leaders.documents.map((d) => d.key);
     expect(keys).toEqual(expect.arrayContaining([key('weapon'), key('card.atm-crew-leader')]));
     expect(keys).not.toContain(key('card.atm-specialist'));
+  });
+
+  it('«مستندات الوظائف»: every department, its jobs, and what each prints there — saved, and printed so (A28)', async () => {
+    const read = async (token = adminToken) =>
+      request(app).get('/api/v1/hr/contracts/job-papers').set('Authorization', `Bearer ${token}`);
+    const save = async (body: object, token = adminToken) =>
+      request(app).patch('/api/v1/hr/contracts/job-papers').set('Authorization', `Bearer ${token}`).send(body);
+    const lineOf = (data: JobPapersDto, departmentId: string, jobTitleId: string) =>
+      data.departments.find((d) => d.departmentId === departmentId)?.jobs.find((j) => j.jobTitleId === jobTitleId)?.keys;
+
+    // Somebody holds the ATM specialist's job in «العمليات»: the job is listed in it.
+    const employee = await employeeIn(specialistJob);
+    const res = await read();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const before = res.body.data as JobPapersDto;
+    expect(before.papers[0]?.key).toBe(key('contract'));
+    expect(before.papers.map((p) => p.key)).toEqual(expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-specialist')]));
+    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_ID);
+    expect(ops?.name.ar).toBe('العمليات');
+    // His papers as the templates tick them: the weapon declaration only offered, so not ticked.
+    expect(lineOf(before, DEPARTMENT_ID, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    // Every active job, to add one to a department.
+    expect(before.jobs.find((j) => j.jobTitleId === crewLeaderJob)?.keys).toContain(key('weapon'));
+
+    // In «العمليات» the ATM specialist gains the weapon declaration and the crew leader's card, and
+    // loses the bank letter.
+    const keys = [
+      ...ALL_JOBS.filter((k) => k !== key('bank-letter')),
+      key('weapon'),
+      key('card.atm-specialist'),
+      key('card.atm-crew-leader'),
+    ];
+    const saved = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys }] });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(keys);
+
+    // The employee's papers and their printed set follow what was saved for their department and job.
+    const papers = (
+      await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as EmployeePapersDto;
+    expect(papers.papers.map((p) => p.key)).toEqual(keys);
+    expect(papers.papers.every((p) => !p.optional)).toBe(true);
+    expect(((await pack(employee.id)).body.data as HiringPackDto).documents.map((d) => d.key)).toEqual(keys);
+
+    // A job added to a department nobody holds it in yet is listed there from now on.
+    const added = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
+    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_ID, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
+
+    // Saved again as it was: back to its templates' papers.
+    const back = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_ID, specialistJob) }] });
+    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(lineOf(before, DEPARTMENT_ID, specialistJob));
+
+    // An unpublished paper, an unknown department, an empty request and a user without the permission
+    // are refused.
+    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys, ...over }] });
+    expect((await save(line({ keys: ['not.a.paper'] }))).status).toBe(400);
+    expect((await save(line({ departmentId: '64b1f0cccccccccccccccc0e' }))).status).toBe(404);
+    expect((await save({ lines: [] })).status).toBe(400);
+    expect((await read(aliceToken)).status).toBe(403);
+    expect((await save(line({}), aliceToken)).status).toBe(403);
   });
 });

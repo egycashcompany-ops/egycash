@@ -698,12 +698,16 @@ export interface HiringPackDto {
 export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob'] as const;
 export type CandidatePaperGroup = (typeof CANDIDATE_PAPER_GROUPS)[number];
 
-/** One paper a job prints, as the print pages list it. */
+/**
+ * One paper as the print pages list it. Only the person's own papers are listed — those of their
+ * department and job, as «مستندات الوظائف» set them: «النمازج المخصصه بس للاداره او الوظائف هي اللي هتكون
+ * موجوده … فيه وظائف تتفتحلها نمازج معينه و وظائف تانيه ملهاش علاقه بنمازج معينه».
+ */
 export interface JobPaperDto {
   key: string;
   name: { ar: string; en: string };
   kind: ContractTemplateKind;
-  /** The contract; a form every job signs; a form for this job only (its card, its declarations). */
+  /** The contract; a form every job signs; a form for this department and job only. */
   group: CandidatePaperGroup;
   /**
    * Offered to this job but left unticked until HR ticks it — the cash-in-transit specialist's
@@ -834,6 +838,47 @@ export interface RenderCandidateBulkDto {
   /** Per person: printed (and how many papers), or why not. */
   results: { offerId: string; printed: number; error: string | null }[];
 }
+
+/**
+ * A28 — «مستندات الوظائف» on «جاهزون للتعيين», by department and job — «علي حسب الاداره و الوظيفه»:
+ * every department, the jobs in it, and beside each job every paper — ticked, what a person of that
+ * job in that department prints. What is ticked here is what «عقد جديد», «طباعة لكل المحدد» and the
+ * employee's tab offer that person.
+ *
+ * A department is the company's («العمليات» in every branch is one), or a branch's own when it
+ * names none. The jobs in it are those its people hold — employees and accepted candidates — and
+ * any added to it here.
+ */
+export interface JobPapersDto {
+  /** Every published paper, in print order. */
+  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
+  departments: {
+    departmentId: string;
+    name: { ar: string; en: string };
+    jobs: { jobTitleId: string; name: { ar: string; en: string }; keys: string[] }[];
+  }[];
+  /** Every active job, with the papers it prints in a department never set here — to add one to a department. */
+  jobs: { jobTitleId: string; name: { ar: string; en: string }; keys: string[] }[];
+}
+
+export const UpdateJobPapersSchema = z
+  .object({
+    /** The lines changed — a job in a department — each with every paper it now prints. */
+    lines: z
+      .array(
+        z
+          .object({
+            departmentId: objectId(),
+            jobTitleId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1000),
+  })
+  .strict();
+export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

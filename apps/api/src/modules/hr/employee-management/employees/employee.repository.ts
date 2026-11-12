@@ -372,6 +372,23 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return new Set(rows.map((row) => String(row._id)));
   }
 
+  /**
+   * A28 — the jobs held in each department: one row per department and job among the employees who
+   * have not exited, for «مستندات الوظائف», which shows every department with the jobs in it.
+   * `System`: it names no person and no figure, and the popup is the whole company's.
+   */
+  async jobsByDepartmentSystem(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: { departmentId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null } }>([
+        { $match: { isDeleted: false, status: { $ne: 'exited' } } },
+        { $group: { _id: { departmentId: '$employment.departmentId', jobTitleId: '$employment.jobTitleId' } } },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({ departmentId: String(row._id.departmentId), jobTitleId: String(row._id.jobTitleId) }));
+  }
+
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
   async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(userId)) return null;

@@ -3,12 +3,11 @@
 //
 // EACH PERSON ON A LINE OF THEIR OWN — «عاوز لكل واحد منهم النمازج لكل واحد منفصل عن التاني مش كله
 // مع بعض فنفس الاختيارات لا كل واحد ليه line جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو». The
-// line holds that person's name and job, then the tiles of their own job's papers — the contract,
-// every job's forms, their job's own card and declarations — ticked for that person alone. Every
-// paper starts ticked, but one their job is only offered unticked (the cash-in-transit specialist's
-// weapon declaration). «تأكيد الطباعة» prints ONE document, person after person, each with what was
-// ticked on their line; each print is recorded as on the person's own page (their code kept, so
-// «تعيين» opens there).
+// line holds that person's name and job, then the tiles of THEIR papers only — those of their
+// department and job, as «مستندات الوظائف» sets them («النمازج المخصصه بس للاداره او الوظائف هي اللي
+// هتكون موجوده») — ticked for that person alone. «تأكيد الطباعة» prints ONE document, person after
+// person, each with what was ticked on their line; each print is recorded as on the person's own
+// page (their code kept, so «تعيين» opens there).
 import { useEffect, useState } from 'react';
 import { type CandidateBulkPersonDto, type Locale, type RenderCandidateBulk } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -24,10 +23,7 @@ import { PaperTile } from './PaperTile';
 /** What is ticked on each person's line, by offer. */
 export type BulkChoice = ReadonlyMap<string, ReadonlySet<string>>;
 
-/**
- * Each person's line as the popup opens: every paper of their job ticked, but one their job is only
- * offered unticked (the cash-in-transit specialist's weapon declaration).
- */
+/** Each person's line as the popup opens: their papers ticked, but one only offered unticked. */
 export const startingChoice = (people: readonly CandidateBulkPersonDto[]): BulkChoice =>
   new Map(people.map((person) => [person.offerId, new Set(person.papers.filter((p) => !p.optional).map((p) => p.key))]));
 

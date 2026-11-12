@@ -36,15 +36,16 @@ const person = (
 });
 
 describe('each ticked person on a line of their own', () => {
-  const leader = person('leader', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'thisJob'], ['card.leader', 'thisJob']]);
-  const coder = person('coder', [['contract', 'contract'], ['sheet', 'everyJob']]);
-  const cit = person('cit', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'thisJob'], ['card.cit', 'thisJob']], ['weapon']);
+  // Their own papers only; the weapon declaration offered to every job, ticked for the crew leader.
+  const leader = person('leader', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob'], ['card.leader', 'thisJob']]);
+  const coder = person('coder', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob']], ['weapon']);
+  const cit = person('cit', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob'], ['card.cit', 'thisJob']], ['weapon']);
 
-  it('starts each line with every paper of that person\'s job ticked — but one only offered', () => {
+  it('starts each line with that person\'s papers ticked — but one only offered', () => {
     const start = startingChoice([leader, coder, cit]);
     expect([...(start.get('leader') ?? [])]).toEqual(['contract', 'sheet', 'weapon', 'card.leader']);
     expect([...(start.get('coder') ?? [])]).toEqual(['contract', 'sheet']);
-    // The cash-in-transit specialist's weapon declaration starts unticked; the crew leader's does not.
+    // «لكلو بس مطفيه وللقائد معموله mark»: on every line, ticked on the crew leader's only.
     expect(start.get('cit')?.has('weapon')).toBe(false);
   });
 
@@ -52,13 +53,13 @@ describe('each ticked person on a line of their own', () => {
     const chosen = new Map([
       ['leader', new Set(['card.leader', 'contract'])],
       ['coder', new Set<string>()],
-      // A key of another job's paper on this line is never sent for this person.
-      ['cit', new Set(['sheet', 'card.leader'])],
+      // A key of another job's paper is never on this line, so never sent for this person.
+      ['cit', new Set(['sheet', 'card.leader', 'weapon'])],
     ]);
     expect(printRequest([leader, coder, cit], chosen)).toEqual({
       people: [
         { offerId: 'leader', keys: ['contract', 'card.leader'] },
-        { offerId: 'cit', keys: ['sheet'] },
+        { offerId: 'cit', keys: ['sheet', 'weapon'] },
       ],
     });
   });

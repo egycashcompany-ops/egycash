@@ -15,7 +15,7 @@
 // in «قوالب العقود» like any template, and an edit is never overwritten. A paper's `revision`
 // rewrites the row the boot wrote, while nobody has touched it.
 import { type ContractTemplateKind, type LocalizedString, type SignatureBlock } from '@ecms/contracts';
-import { CIT_SPECIALISTS, WEAPON_HOLDERS, matchesJob, type JobMatch, type JobNames } from '../../shared/job-match';
+import { CIT_SPECIALISTS, CREW_LEADERS, matchesJob, type JobMatch, type JobNames } from '../../shared/job-match';
 
 /** The jobs a paper prints for, by name — job titles carry no other link to a paper. */
 export type PaperJobs = JobMatch;
@@ -27,10 +27,11 @@ export interface HiringPaper {
   kind: ContractTemplateKind;
   jobs: PaperJobs;
   /**
-   * Jobs among `jobs` the paper is OFFERED to but not ticked for: the print pages list it unticked,
-   * for HR to tick when it applies (the cash-in-transit specialist's weapon declaration).
+   * The only jobs the paper starts TICKED for. Every other job it prints for is offered it
+   * unticked — listed, for HR to tick when it applies (the weapon declaration: «لكلو بس مطفيه
+   * وللقائد هتبقا معموله mark»). Missing: ticked for every job it prints for.
    */
-  optionalFor?: JobNames;
+  tickedFor?: JobNames;
   printOrder: number;
   /**
    * The paper's own version. A row the boot wrote, and no person has touched since, is rewritten to
@@ -501,11 +502,10 @@ const WEAPON: HiringPaper = {
   key: 'egycash.hiring.weapon',
   name: { ar: 'إقرار حيازة سلاح', en: 'Weapon possession declaration' },
   kind: 'form',
-  // Crew leaders (of every kind) and cash-in-transit specialists — required of the first, optional
-  // for the second when the signed copy is collected; printed for both.
-  jobs: WEAPON_HOLDERS,
-  // «اخصائي نقل اموال بتبقا اوبشن … منغير علامه»: offered to the specialist, unticked.
-  optionalFor: CIT_SPECIALISTS,
+  // «حيازه السلاح هتبقا لكلو بس مطفيه وللقائد هتبقا معموله mark»: every job is offered it, unticked;
+  // crew leaders (of every kind) have it ticked.
+  jobs: 'all',
+  tickedFor: CREW_LEADERS,
   printOrder: 50,
   revision: 2,
   sections: {
@@ -860,10 +860,11 @@ export const HIRING_PAPERS: readonly HiringPaper[] = [
 ];
 
 /**
- * Is the paper `key` offered to the job named `jobName` unticked (`optionalFor`)? False for a paper
- * not written from this file, or a job whose name is unknown.
+ * Is the paper `key` offered to the job named `jobName` unticked — a paper ticked only for some jobs
+ * (`tickedFor`), and this job not one of them? A job whose name is unknown is offered it unticked
+ * too; a paper not written from this file is ticked as usual.
  */
 export const optionalForJob = (key: string, jobName: string | null): boolean => {
-  const optional = HIRING_PAPERS.find((paper) => paper.key === key)?.optionalFor;
-  return optional !== undefined && jobName !== null && matchesJob(optional, jobName);
+  const ticked = HIRING_PAPERS.find((paper) => paper.key === key)?.tickedFor;
+  return ticked !== undefined && (jobName === null || !matchesJob(ticked, jobName));
 };

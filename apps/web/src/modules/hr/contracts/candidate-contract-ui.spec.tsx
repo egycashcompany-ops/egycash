@@ -48,10 +48,11 @@ describe('the candidate\'s page', () => {
     expect(PAGE.indexOf('openPrintWindow(')).toBeLessThan(PAGE.indexOf('render.mutateAsync({ keys, print: true })'));
   });
 
-  it('shows every paper in ONE row beside the title — the contract, every job\'s, this job\'s', () => {
-    expect(PAGE).toContain("const GROUPS: CandidatePaperGroup[] = ['contract', 'everyJob', 'thisJob'];");
+  it('shows the candidate\'s own papers in one row beside the title, in print order', () => {
+    // The server lists their department's and job's papers in print order; the page keeps that order.
+    expect(PAGE).toContain('const papers = draft?.papers ?? [];');
     expect(PAGE).toContain('toolbar={row}');
-    expect(PAGE).toContain('flex min-w-0 flex-nowrap gap-2 overflow-x-auto');
+    expect(PAGE).toContain('flex min-w-0 flex-wrap gap-2 pb-1');
     expect(PAGE).toContain("t('contracts.candidate.selectAll')");
   });
 

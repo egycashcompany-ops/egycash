@@ -12,6 +12,8 @@ import {
   CreateContractSchema,
   DecideContractApprovalSchema,
   CandidateBulkSchema,
+  UpdateJobPapersSchema,
+  type UpdateJobPapers,
   HireCandidateSchema,
   RenderCandidateBulkSchema,
   type CandidateBulk,
@@ -53,6 +55,7 @@ import { contractTypeService } from '../contract-types';
 import { contractService } from './contract.service';
 import { hiringPackService } from './hiring-pack.service';
 import { candidateDraftService } from '../candidates';
+import { jobPapersService } from '../job-papers';
 import { verifyContract } from './contract-verify';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -264,6 +267,16 @@ const removeAttachment = async (req: Request, res: Response): Promise<void> => {
   ok(res, await withTypeName(params.id, ctx));
 };
 
+const listJobPapers = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await jobPapersService.list());
+};
+
+const saveJobPapers = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<UpdateJobPapers>(req);
+  ok(res, await jobPapersService.update(ctx, body));
+};
+
 export const buildContractsRouter = (): Router => {
   const router = Router();
   const guard = (permission: string) => [authenticate, authorize(permission)] as const;
@@ -280,6 +293,10 @@ export const buildContractsRouter = (): Router => {
     asyncHandler(hiringPack));
   router.get('/employee-papers/:employeeId', ...guard('contract.print'),
     validate({ params: z.object({ employeeId: objectId() }).strict() }), asyncHandler(employeePapers));
+  // A28 — «مستندات الوظائف»: every job beside every paper; what each job prints. Before '/:id'.
+  router.get('/job-papers', ...guard('contractTemplate.manage'), asyncHandler(listJobPapers));
+  router.patch('/job-papers', ...guard('contractTemplate.manage'), validate({ body: UpdateJobPapersSchema }),
+    asyncHandler(saveJobPapers));
   // Before the `:offerId` routes, so «bulk» is never read as an offer id.
   router.post('/candidates/bulk/open', ...guard('contract.print'), validate({ body: CandidateBulkSchema }),
     asyncHandler(bulkOpenCandidates));

@@ -169,6 +169,30 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   }
 
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
+  /**
+   * A28 — the jobs the candidates ready to hire (accepted, not hired yet) are taking, by department:
+   * one row per department and job, for «مستندات الوظائف».
+   */
+  async acceptedJobsByDepartment(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: { departmentId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null } }>([
+        { $match: { isDeleted: false, status: 'accepted', hiredEmployeeId: null } },
+        // The terms accepted — what the hire copies — else the offer's own.
+        {
+          $group: {
+            _id: {
+              departmentId: { $ifNull: ['$acceptedSnapshot.terms.departmentId', '$terms.departmentId'] },
+              jobTitleId: { $ifNull: ['$acceptedSnapshot.terms.jobTitleId', '$terms.jobTitleId'] },
+            },
+          },
+        },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({ departmentId: String(row._id.departmentId), jobTitleId: String(row._id.jobTitleId) }));
+  }
+
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
     return this.model

@@ -300,6 +300,10 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',
     'the select assigns a category to this contract',
   ],
+  [
+    'modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx',
+    'its search finds the row to type a title into; the boxes are the titles being edited',
+  ],
   ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
   [
     'modules/hr/contracts/pages/TemplatesListPage.tsx',

@@ -179,6 +179,13 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // at once is not where the next visit starts.
   ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
+  // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
+  ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
+  ['modules/operations/pages/VaultReportPage.tsx', ['from', 'to']],
+  // Round 12 — «سجل الخزينة» is «سجل الشحنات» for the محصنات: the secured board's filters remembered
+  // alike; `from`/`to` open on this month to date, as the history's.
+  ['modules/operations/pages/VaultInventoryPage.tsx', ['from', 'to']],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
   ['modules/organization/branches/pages/BranchesListPage.tsx', []],
@@ -230,6 +237,16 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
   ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
+  // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
+  // محصنات); nothing else is read from the URL.
+  [
+    'modules/operations/pages/SecuredDistributionPage.tsx',
+    '`date` opens on cairoToday() — the day being distributed',
+  ],
+  [
+    'modules/operations/pages/VaultHandoverPage.tsx',
+    '`date` opens on cairoToday() — the day being handed over',
+  ],
 ];
 
 /**
@@ -363,13 +380,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/operations/pages/BankReportPage.tsx',
     '`from`/`to` arrive from the link; the page renders no control for them',
   ],
-  [
-    'modules/operations/pages/CaptainReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
-  ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultReportPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
   ['modules/organization/application-sections/pages/OrganizeApplicationsPage.tsx'],

@@ -61,6 +61,17 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'That captain is no longer on the chosen vehicle’s crew.',
     OPERATIONS_DELIVERY_LEG_REQUIRED:
       'A shipment has no delivery crew yet — assign its crew before releasing it.',
+    // «توزيع المحصنات» (Round 12): the save is all or nothing, and each refusal names the shipment
+    // (the screen marks its card). These reach a desk whose screen was read before a colleague, the
+    // vault or the captain acted — or that was left open past midnight.
+    OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
+      'That day has passed — its vans have left. Distribute today or a later day.',
+    OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
+      'A secured shipment on this screen has already left the vault — it can no longer be placed on a van.',
+    OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
+      'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
+    OPERATIONS_DISTRIBUTION_LEG_STARTED:
+      'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -105,6 +116,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'هذا الطاقم ليس مخططًا في يوم تسليم هذه الشحنة — اختر أحد أطقم ذلك اليوم.',
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
     OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
+    OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
+      'هذا اليوم قد مضى وغادرت سياراته — وزّع على اليوم أو على يوم بعده.',
+    OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
+      'إحدى المحصنات في هذه الشاشة غادرت الخزينة بالفعل، فلم يعد وضعها على سيارة ممكنًا.',
+    OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
+      'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
+    OPERATIONS_DISTRIBUTION_LEG_STARTED:
+      'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

@@ -71,7 +71,9 @@ describe('the seeded navigation catalog', () => {
     // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
     // 134 → 135: «فحص أجهزة السيارات», IT's dashboard over those reports, right before the form.
     // 135 → 136: «سجل الشحنات», Operations' day board over a range, right beneath the day board.
-    expect(rows).toHaveLength(136);
+    // 136 → 138: «توزيع المحصنات» beneath the secured screen and «تسليم المحصنات» beneath the vault's
+    //   receive screen (Operations, Round 12).
+    expect(rows).toHaveLength(138);
   });
 
   /**
@@ -208,6 +210,31 @@ describe('the seeded navigation catalog', () => {
       ['/atm/control', 'atmControl.view', 'truck'],
     ]);
     expect(rows.some((row) => row.route === '/atm/settlements/layouts/import')).toBe(false);
+  });
+
+  it('renames a row only where the name actually changes — Round 12’s two vault screens', () => {
+    // `previousName` mirrors `previousIcon`: the boot renames a live row only while it still wears
+    // the old default, so a correction naming the value it already holds would be a no-op that
+    // reads like a fix. «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة», and «جرد الخزينة» became
+    // «سجل الخزينة».
+    const renamed = rows.filter((row) => row.previousName !== undefined);
+    for (const row of renamed) {
+      expect(
+        row.previousName?.ar !== row.ar || row.previousName.en !== row.en,
+        `${row.route} must actually change`,
+      ).toBe(true);
+    }
+    const byRoute = (route: string) => rows.find((row) => row.route === route);
+    expect(byRoute('/operations/vault/dispatch')).toMatchObject({
+      ar: 'محصنات الخزينة',
+      en: 'Vault Shipments',
+      previousName: { ar: 'صرف الخزينة', en: 'Vault Dispatch' },
+    });
+    expect(byRoute('/operations/vault')).toMatchObject({
+      ar: 'سجل الخزينة',
+      en: 'Vault History',
+      previousName: { ar: 'جرد الخزينة', en: 'Vault Inventory' },
+    });
   });
 
   it('corrects a permission only where the key actually changes', () => {

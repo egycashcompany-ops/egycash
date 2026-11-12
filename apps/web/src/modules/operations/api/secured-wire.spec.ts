@@ -6,13 +6,16 @@
 //     same path — both carry the version the row was read at;
 //   · «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: the cancelled receipt POSTs its reason and version;
 //   · «كله يبقى موجود فى تاريخ يتفلتر»: «صرف الخزينة» asks for every day with NO `date` key (the
-//     server refuses an empty one), or for one delivery day.
+//     server refuses an empty one), or for one delivery day;
+//   · «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» (Round 11): «تجميع الخزينة» asks for
+//     its period — `from` and `to` on the request, as the captain report's.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { del, get, post } from '../../../shared/lib/api-client';
 import {
   cancelVaultReceipt,
   confirmSecuredPickup,
   getSecuredDispatchBoard,
+  getVaultReport,
   undoSecuredPickup,
 } from './operations-api';
 
@@ -70,5 +73,12 @@ describe('«صرف الخزينة» — every shipment in the vault, or one deli
   it('asks for one delivery day by its date', async () => {
     await getSecuredDispatchBoard('2026-11-12');
     expect(get).toHaveBeenCalledWith('/operations/secured/dispatch-board?date=2026-11-12');
+  });
+});
+
+describe('«تجميع الخزينة» — the period of vault receipts', () => {
+  it('carries `from` and `to` on the request, both days inclusive', async () => {
+    await getVaultReport({ from: '2026-11-01', to: '2026-11-30' });
+    expect(get).toHaveBeenCalledWith('/operations/reports/vault?from=2026-11-01&to=2026-11-30');
   });
 });

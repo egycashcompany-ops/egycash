@@ -173,6 +173,8 @@ const BOARD_KEYS = [
     'deliveryBeforeCollection',
     // Round 10 — the vault received it after the form was opened («ميقدر حد … يعدل عليها»).
     'locked',
+    // Round 12 — the delivery date edit refused: its captain has started that delivery in the app.
+    'legStarted',
   ].map((key) => `operations.shipment.errors.${key}`),
   // A محصنة's stage — its «الحالة» on the secured screen, the day board and the history — with
   // the sentence each says on hover; and the secured screen's «تاريخ الاستلام» beside «تاريخ التسليم».
@@ -329,7 +331,6 @@ const REPORT_KEYS = [
   'operations.nav.bankReport',
   'operations.cards.bankReport',
   'operations.reports.captains.title',
-  'operations.reports.captains.subtitle',
   'operations.reports.banks.title',
   'operations.reports.banks.subtitle',
   'operations.reports.captain',
@@ -369,9 +370,55 @@ const VAULT_REPORT_KEYS = [
   'operations.nav.vaultReport',
   'operations.cards.vaultReport',
   'operations.vaultReport.title',
-  'operations.vaultReport.subtitle',
-  'operations.vaultReport.foreign',
-  'operations.vaultReport.noForeign',
+  // Round 11 — the roll-up's period («يجيب اللى اتسلم واللى متسلمش»): an empty one says no محصنة
+  // ENTERED the vault in it, not that the vault is empty. (`subtitle`, «بلا فترة زمنية عن قصد», went
+  // when the owner gave the dates a meaning.)
+  'operations.vaultReport.empty',
+  // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
+  // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
+  // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)
+  'operations.vaultReport.table',
+  'operations.vaultReport.securedCount',
+  'operations.vaultReport.value',
+  'operations.vaultReport.totalPound',
+  'operations.vaultReport.totalForeign',
+  'operations.reports.captains.table',
+  'operations.reports.captainName',
+  ...['serial', 'pound', 'dollar', 'bags', 'cartons', 'boxes', 'total', 'othersOf'].map(
+    (key) => `operations.reportBoard.${key}`,
+  ),
+];
+
+/**
+ * Round 12 (web A) — the reports' name filter and files («فلتر ب اسم القائد … و ان اكسيل او pdf»),
+ * «سجل الخزينة» with its live «تقرير الخزينة», and the renamed vault screens' cards.
+ */
+const ROUND12_REPORT_AND_VAULT_KEYS = [
+  'operations.reports.bankName',
+  'operations.reports.captains.noName',
+  'operations.vaultReport.noName',
+  ...['department', 'period', 'filter', 'item', 'amount', 'empty', 'popupBlocked'].map(
+    (key) => `operations.reportExport.${key}`,
+  ),
+  ...['title', 'held', 'heldAsOf', 'heldEmpty', 'empty', 'needsShipmentView'].map(
+    (key) => `operations.vaultHistory.${key}`,
+  ),
+  // «تقرير الخزينة» opens over the screen from the history's toolbar («يفتح ززى موديل زى لوحة
+  // التحكم اللى عملنها فى العهدة»): the button, its figure tiles' name, and the two package tiles the
+  // table's heads («كرتونة», «صندوق») do not name as a count.
+  'operations.vaultHistory.open',
+  'operations.vaultHistory.figures',
+  'operations.vaultHistory.tiles.cartons',
+  'operations.vaultHistory.tiles.boxes',
+  'operations.nav.vaultDispatch',
+  'operations.cards.vaultDispatch',
+  'operations.nav.vault',
+  'operations.cards.vault',
+  // The module home's cards for «توزيع المحصنات» and «تسليم المحصنات».
+  'operations.nav.securedDistribution',
+  'operations.cards.securedDistribution',
+  'operations.nav.vaultHandover',
+  'operations.cards.vaultHandover',
 ];
 
 const AREA_KEYS = [
@@ -384,6 +431,26 @@ const AREA_KEYS = [
   'operations.catalogs.area.governorateHint',
 ];
 
+/** Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات». */
+const DISTRIBUTION_KEYS = [
+  ...[
+    'allPlaced', 'auto', 'autoDone', 'autoHint', 'autoNone', 'bags', 'boxes', 'captains', 'cartons',
+    'day', 'discard', 'dragHint', 'dropBack', 'dropHere', 'empty', 'emptyVan', 'leaveBody',
+    'leaveConfirm', 'leaveStay', 'leaveTitle', 'loadCount', 'moveTo', 'moved', 'movedHint', 'noArea',
+    'noCaptain', 'noDirection', 'noVans', 'overdue', 'overdueHint', 'proposed', 'proposedCount',
+    'proposedHint', 'refused', 'refusedMark', 'remove', 'reschedules', 'save', 'saved',
+    'savedRescheduled', 'shipments', 'started', 'startedHint', 'switchCaptain', 'tooLarge',
+    'unplaced', 'vanLabel', 'vans', 'viewOnly', 'withCaptain',
+  ].map((key) => `operations.distribution.${key}`),
+  ...[
+    'back', 'confirm', 'confirmBody', 'confirmTitle', 'done', 'failed', 'handover', 'heldNote',
+    'hint', 'notInVault', 'notInVaultHint', 'notToday', 'nothing', 'planDay', 'popupBlocked',
+    'print', 'ready',
+    'sheet.captains', 'sheet.count', 'sheet.day', 'sheet.department', 'sheet.empty',
+    'sheet.packages', 'sheet.title', 'unplacedHint',
+  ].map((key) => `operations.handover.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -393,7 +460,9 @@ const ALL_KEYS = [
   ...REPORT_KEYS,
   ...ATTENDANCE_KEYS,
   ...VAULT_REPORT_KEYS,
+  ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
+  ...DISTRIBUTION_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {

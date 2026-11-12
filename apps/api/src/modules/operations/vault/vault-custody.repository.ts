@@ -22,19 +22,11 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
   }
 
   /**
-   * Everything the treasury holds right now, UNPAGED — the vault roll-up's input set.
-   *
-   * Unpaged on purpose: a roll-up over page 1 of the vault is not a roll-up of the vault, and the
-   * held set is bounded by what physically fits in a treasury, not by a growing history.
+   * Every custody received in [from, toExclusive), held or released, newest first — served by
+   * `ix_received_at`. Cancelled receipts are OUT: a cancel stamps `cancelledAt` and soft-deletes the
+   * row in one write (vault-custody.service.ts), so `isDeleted: false` is what leaves them out. The
+   * vault roll-up reads a whole period with it, unpaged like the captain and bank reports.
    */
-  async findAllHeld(): Promise<OperationsVaultCustodyDoc[]> {
-    return this.model
-      .find({ state: 'held', isDeleted: false })
-      .lean<OperationsVaultCustodyDoc[]>()
-      .exec();
-  }
-
-  /** Every custody received in [from, toExclusive), newest first — served by `ix_received_at`. */
   async findReceivedBetween(from: Date, toExclusive: Date): Promise<OperationsVaultCustodyDoc[]> {
     return this.model
       .find({ receivedAt: { $gte: from, $lt: toExclusive }, isDeleted: false })

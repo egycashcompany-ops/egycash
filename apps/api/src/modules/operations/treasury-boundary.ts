@@ -88,14 +88,11 @@ export interface VaultCustodyProvider {
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
   /**
-   * The same set, UNPAGED, for the vault roll-up. A roll-up over one page is not a roll-up, and
-   * what a treasury physically holds is bounded in a way its history is not.
-   */
-  allHeld(): Promise<VaultCustodyView[]>;
-  /**
    * Every custody the treasury TOOK in the half-open window [from, toExclusive) — held or since
-   * released — newest received first. The vault's receive queue asks it for one Cairo day: the
-   * shipments received today, which it lists green beside the ones still to receive.
+   * released — newest received first. A CANCELLED receipt is not one: the treasury took nothing
+   * it kept, and the shipment's fresh receipt, if any, is its own row on its own day. Two readers:
+   * the vault's receive queue asks for one Cairo day (the shipments received today, green beside
+   * the ones still to receive), and the vault roll-up for its period («يجيب اللى اتسلم واللى متسلمش»).
    */
   receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]>;
   /**

@@ -1,5 +1,9 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { OPERATIONS_SHIPMENT_STATUSES, type Paginated } from '@ecms/contracts';
+import {
+  OPERATIONS_SHIPMENT_STATUSES,
+  type OperationsShipmentType,
+  type Paginated,
+} from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { OperationsShipmentModel, type OperationsShipmentDoc } from './shipment.model';
 
@@ -26,27 +30,34 @@ export type BoardUnion = 'day' | 'history';
  * `{shipmentType, deliveryDate}` prefix) for the delivery-date one. A secured shipment both collected
  * and delivered in a history range matches two branches and is still ONE document — `$or` is a
  * filter, not a concatenation, so it is listed and counted once.
+ *
+ * `type` (Round 12) keeps one half of the union — «سجل الخزينة» is the history of the محصنات alone.
+ * It drops the other type's BRANCHES rather than adding a condition beside them, so each branch left
+ * is still the exact one its index serves, and the count measures the filtered set — the cap is
+ * judged on what is shown.
  */
 const boardFilter = (
   from: Date,
   toExclusive: Date,
   union: BoardUnion,
   deleted = false,
+  type?: OperationsShipmentType,
 ): FilterQuery<OperationsShipmentDoc> => {
   const range = { $gte: from, $lt: toExclusive };
+  const branches: FilterQuery<OperationsShipmentDoc>[] = [
+    // The days' collection runs.
+    { shipmentType: 'daily', collectionDate: range },
+    // Secured shipments due out in the range — any stage.
+    { shipmentType: 'secured', deliveryDate: range },
+    // …and, over a history, the secured ones collected in it too.
+    ...(union === 'history' ? [{ shipmentType: 'secured', collectionDate: range }] : []),
+  ];
   return {
     // `deleted` reads the SAME union over the rows that were deleted from those days — the
     // deleted shipments list («اعملى ايقون اقدر اجيب منه اللى اتمسح»). One filter for both, so a row
     // listed there is exactly a row that comes back onto that history when it is restored.
     isDeleted: deleted,
-    $or: [
-      // The days' collection runs.
-      { shipmentType: 'daily', collectionDate: range },
-      // Secured shipments due out in the range — any stage.
-      { shipmentType: 'secured', deliveryDate: range },
-      // …and, over a history, the secured ones collected in it too.
-      ...(union === 'history' ? [{ shipmentType: 'secured', collectionDate: range }] : []),
-    ],
+    $or: type === undefined ? branches : branches.filter((b) => b.shipmentType === type),
   };
 };
 
@@ -85,6 +96,24 @@ const inVaultFilter = (day: Date | undefined): FilterQuery<OperationsShipmentDoc
   ...(day === undefined ? {} : { deliveryDate: day }),
 });
 
+/**
+ * «توزيع المحصنات» (Round 12) — the secured shipments of ONE distribution day (`day`, a UTC
+ * midnight): due out on the day and not out yet (draft at any stage, or in the vault), plus the
+ * OVERDUE ones still in the vault — due before `today` (Cairo's, a UTC midnight), the rule
+ * «محصنات الخزينة» marks «متأخرة» by. Before TODAY, not before `day`: on a later day's screen a
+ * shipment due today is not late, it is today's — listing it there would offer today's load to
+ * tomorrow's vans. Both branches ride `ix_type_delivery_date_status`. Dispatched and completed
+ * ones are gone from the vault and are never here; a draft due another day is that day's.
+ */
+const distributionFilter = (day: Date, today: Date): FilterQuery<OperationsShipmentDoc> => ({
+  isDeleted: false,
+  shipmentType: 'secured',
+  $or: [
+    { deliveryDate: day, status: { $in: ['draft', 'inVault'] } },
+    { deliveryDate: { $lt: today }, status: 'inVault' },
+  ],
+});
+
 class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc> {
   constructor() {
     super(OperationsShipmentModel, {}); // org scoping arrives with the day/board slice if needed
@@ -116,9 +145,10 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
     from: Date,
     toExclusive: Date,
     union: BoardUnion,
+    type?: OperationsShipmentType,
   ): Promise<OperationsShipmentDoc[]> {
     return this.model
-      .find(boardFilter(from, toExclusive, union))
+      .find(boardFilter(from, toExclusive, union, false, type))
       .sort({ createdAt: -1 })
       .lean<OperationsShipmentDoc[]>()
       .exec();
@@ -128,25 +158,38 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
    * How many rows `boardInRange` would return, without loading one — so a history range that is
    * too large is refused for the price of an index count, before anything is read or joined.
    */
-  async countBoardInRange(from: Date, toExclusive: Date, union: BoardUnion): Promise<number> {
-    return this.model.countDocuments(boardFilter(from, toExclusive, union)).exec();
+  async countBoardInRange(
+    from: Date,
+    toExclusive: Date,
+    union: BoardUnion,
+    type?: OperationsShipmentType,
+  ): Promise<number> {
+    return this.model.countDocuments(boardFilter(from, toExclusive, union, false, type)).exec();
   }
 
   /**
    * The rows DELETED from the history of [from, toExclusive) — the history's union over deleted
-   * rows, newest deleted first.
+   * rows (one type of it with `type`), newest deleted first.
    */
-  async deletedBoardInRange(from: Date, toExclusive: Date): Promise<OperationsShipmentDoc[]> {
+  async deletedBoardInRange(
+    from: Date,
+    toExclusive: Date,
+    type?: OperationsShipmentType,
+  ): Promise<OperationsShipmentDoc[]> {
     return this.model
-      .find(boardFilter(from, toExclusive, 'history', true))
+      .find(boardFilter(from, toExclusive, 'history', true, type))
       .sort({ deletedAt: -1, _id: -1 })
       .lean<OperationsShipmentDoc[]>()
       .exec();
   }
 
   /** How many rows `deletedBoardInRange` would return — counted before anything is loaded. */
-  async countDeletedBoardInRange(from: Date, toExclusive: Date): Promise<number> {
-    return this.model.countDocuments(boardFilter(from, toExclusive, 'history', true)).exec();
+  async countDeletedBoardInRange(
+    from: Date,
+    toExclusive: Date,
+    type?: OperationsShipmentType,
+  ): Promise<number> {
+    return this.model.countDocuments(boardFilter(from, toExclusive, 'history', true, type)).exec();
   }
 
   /** THE SECURED SCREEN — every open secured shipment, newest created first (`openSecuredFilter`). */
@@ -192,6 +235,20 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   /** How many rows `securedInVault` would return — counted before anything is loaded. */
   async countSecuredInVault(day?: Date): Promise<number> {
     return this.model.countDocuments(inVaultFilter(day)).exec();
+  }
+
+  /**
+   * «توزيع المحصنات» — the shipments of one distribution day (`distributionFilter`; `today` is
+   * Cairo's, what «overdue» is judged by), in no particular order: the service orders them
+   * (overdue first) over a set the cap bounds.
+   */
+  async securedForDistribution(day: Date, today: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model.find(distributionFilter(day, today)).lean<OperationsShipmentDoc[]>().exec();
+  }
+
+  /** How many rows `securedForDistribution` would return — counted before anything is loaded. */
+  async countSecuredForDistribution(day: Date, today: Date): Promise<number> {
+    return this.model.countDocuments(distributionFilter(day, today)).exec();
   }
 
   /**

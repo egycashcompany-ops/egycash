@@ -177,6 +177,10 @@ const SAVE_ERRORS: Record<string, string> = {
   // Round 10: the vault received this محصنة after the form was opened — «ميقدر حد … يعدل عليها».
   // The board offers no edit on a locked row (`isLockedRow`), so only a stale row reaches this.
   OPERATIONS_SECURED_LOCKED: 'operations.shipment.errors.locked',
+  // Round 12: a محصنة on a van whose delivery date this edit moves to another day (or clears) — and
+  // its captain has already started that delivery in the app, so the server will not take the stop
+  // off his van. Nothing is wrong with the values themselves; the date has to stay where it is.
+  OPERATIONS_DISTRIBUTION_LEG_STARTED: 'operations.shipment.errors.legStarted',
 };
 
 export const SHIPMENT_SAVE_ERROR_KEYS = Object.values(SAVE_ERRORS);

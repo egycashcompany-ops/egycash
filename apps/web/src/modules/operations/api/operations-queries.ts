@@ -24,6 +24,7 @@ import {
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
   type OperationsExecutionResultDto,
+  type OperationsShipmentType,
   type OrderOperationsCurrencies,
   type PlanOperationsCrew,
   type SetOperationsStandingCrew,
@@ -36,6 +37,7 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
 import { ApiError } from '../../../shared/lib/api-client';
 import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
@@ -78,7 +80,8 @@ const operationsKeys = {
   // would be churn; one that refetched on none is correct, because completing a shipment TODAY
   // cannot change last month's totals.
   // B6. The area list is reference data like the other three catalogs; the vault ROLL-UP is a
-  // view of the vault, so it stales with every secured act exactly as the inventory does.
+  // view of the vault's receipts, so it stales with every secured act as the inventory does — a
+  // receipt adds a shipment to this month's roll-up, a cancelled receipt takes it off again.
   areas: featureKey(MODULE, 'areas'),
   vaultReport: featureKey(MODULE, 'vaultReport'),
   reportCaptains: featureKey(MODULE, 'reportCaptains'),
@@ -91,8 +94,9 @@ const securedSubtrees = [
   featureKey(MODULE, 'securedBacklog'),
   featureKey(MODULE, 'securedDue'),
   featureKey(MODULE, 'vault'),
-  // The roll-up is the SAME question as the inventory, asked differently — receiving a shipment
-  // changes both, and staling one without the other is how two vault screens disagree.
+  // The roll-up and the inventory are both read off the vault's receipts — receiving a shipment
+  // (or cancelling its receipt) changes both, and staling one without the other is how two vault
+  // screens disagree. Every period's entry goes stale at once: they all sit under this subtree.
   featureKey(MODULE, 'vaultReport'),
   featureKey(MODULE, 'shipments'),
   featureKey(MODULE, 'dayBoard'),
@@ -173,11 +177,19 @@ export const useOperationsDayBoard = (date: string | null, enabled = true) =>
 const retryUnless4xx = (failures: number, error: unknown): boolean =>
   !(error instanceof ApiError && error.status >= 400 && error.status < 500) && failures < 1;
 
-/** The history's cache entry: one per range, inside the day board's subtree (see `operationsKeys`). */
-const shipmentHistoryKey = (range: { from: string; to: string }): readonly unknown[] => [
+/**
+ * The history's cache entry: one per range, inside the day board's subtree (see `operationsKeys`).
+ * Round 12 — and per shipment type when one is asked (`type`, «سجل الخزينة»'s `secured`): a range
+ * read for one type is not the same answer as the whole history's. With none the key is exactly
+ * what it always was.
+ */
+const shipmentHistoryKey = (
+  range: { from: string; to: string },
+  type?: OperationsShipmentType,
+): readonly unknown[] => [
   ...featureKey(MODULE, 'dayBoard'),
   'history',
-  { from: range.from, to: range.to },
+  type === undefined ? { from: range.from, to: range.to } : { from: range.from, to: range.to, type },
 ];
 
 /**
@@ -187,10 +199,14 @@ const shipmentHistoryKey = (range: { from: string; to: string }): readonly unkno
  * A 4xx is an ANSWER, not a failure: the range holds too many shipments, or the reader may not see
  * them. Asking again cannot change it, so it is not retried; only a network or server failure is.
  */
-export const useOperationsShipmentHistory = (range: { from: string; to: string }, enabled = true) =>
+export const useOperationsShipmentHistory = (
+  range: { from: string; to: string },
+  enabled = true,
+  type?: OperationsShipmentType,
+) =>
   useQuery({
-    queryKey: shipmentHistoryKey(range),
-    queryFn: () => api.getShipmentHistory(range),
+    queryKey: shipmentHistoryKey(range, type),
+    queryFn: () => api.getShipmentHistory(range, type),
     enabled,
     retry: retryUnless4xx,
   });
@@ -224,10 +240,14 @@ export const useOperationsShipmentLog = (id: string | null) =>
  * delete takes a row OUT of the history and INTO this list, and a restore the other way, so the
  * invalidation every shipment write runs refreshes both at once.
  */
-const deletedShipmentsKey = (range: { from: string; to: string }): readonly unknown[] => [
+const deletedShipmentsKey = (
+  range: { from: string; to: string },
+  type?: OperationsShipmentType,
+): readonly unknown[] => [
   ...featureKey(MODULE, 'dayBoard'),
   'deleted',
-  { from: range.from, to: range.to },
+  // One shipment type when asked (Round 12, «سجل الخزينة»), as the history's own key.
+  type === undefined ? { from: range.from, to: range.to } : { from: range.from, to: range.to, type },
 ];
 
 /**
@@ -237,10 +257,11 @@ const deletedShipmentsKey = (range: { from: string; to: string }): readonly unkn
 export const useOperationsDeletedShipments = (
   range: { from: string; to: string },
   enabled = true,
+  type?: OperationsShipmentType,
 ) =>
   useQuery({
-    queryKey: deletedShipmentsKey(range),
-    queryFn: () => api.getDeletedShipments(range),
+    queryKey: deletedShipmentsKey(range, type),
+    queryFn: () => api.getDeletedShipments(range, type),
     enabled,
     retry: retryUnless4xx,
   });
@@ -818,6 +839,92 @@ export const useDispatchSecured = () => {
   });
 };
 
+// ── Round 12 (web B): «توزيع المحصنات» and «تسليم المحصنات» ─────────────────────────────────────────
+
+/**
+ * The distribution read — both screens' — inside the DAY BOARD's subtree, as «محصنات الخزينة» and the
+ * vault's receive queue are: every secured act (a receipt, a cancelled receipt, a hand-over, a
+ * placement saved) runs `useSecuredInvalidation`, whose list includes the board's subtree, and the
+ * shipment topics (`operations.shipment`, `operations.shipmentAssignment`) and the crew plan's
+ * (`operations.crewAssignment` — a van re-planned) sweep it. The vault custody topic names it too
+ * (`invalidation-registry.ts`), for a treasurer who hears nothing else. One entry per day; `null` is
+ * the server's today.
+ */
+const securedDistributionKey = (date: string | null): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'securedDistribution',
+  { date: date ?? 'today' },
+];
+
+/**
+ * «توزيع المحصنات» / «تسليم المحصنات» — the day's vans and محصنات. A 4xx (a past day, more rows
+ * than one screen may show, not allowed) is an answer, not retried.
+ *
+ * `poll`: the reader hears no assignment signal — a treasurer holding only the vault's grants
+ * hears the vault custody topic, but a placement Operations saves is announced on the shipment
+ * topics alone (`VAULT_QUEUE_POLL_MS`, the receive queue's rule), so the hand-over screen re-reads
+ * itself once a minute for them, and whenever the tab comes back into view.
+ */
+export const useOperationsSecuredDistribution = (
+  date: string | null,
+  enabled = true,
+  poll = false,
+) =>
+  useQuery({
+    queryKey: securedDistributionKey(date === '' ? null : date),
+    queryFn: () => api.getSecuredDistribution(date === '' ? null : date),
+    enabled,
+    retry: retryUnless4xx,
+    refetchInterval: poll ? VAULT_QUEUE_POLL_MS : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: poll,
+  });
+
+/** Exported for the cache tests — the distribution rides the board's subtree too. */
+export const __securedDistributionKey = securedDistributionKey;
+
+/**
+ * «حفظ» — the day's placements in ONE request. A placement moves every screen that shows the
+ * shipment's van (the boards, «محصنات الخزينة», the hand-over, «السجل»): the secured acts'
+ * invalidation, on a refusal too (`onSettled`) — a stale version or a shipment that left the vault
+ * meanwhile is a screen showing what no longer is. The page words the refusal (it marks the card
+ * the refusal names), so the global notifier stays quiet.
+ */
+export const useSaveSecuredDistribution = () => {
+  const invalidate = useSecuredInvalidation();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.saveSecuredDistribution>[0]) =>
+      api.saveSecuredDistribution(body),
+    onSettled: invalidate,
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * The packages the vault counted on each shipment it holds (`GET /operations/secured/vault`, the
+ * custody list, `operationsVault.view`) — every page of it, as one map by shipment. The distribution
+ * read carries no package counts (they are the custody's, counted at the vault's receipt), so the
+ * hand-over screen and its load sheet read them here; under the vault's subtree, which every secured
+ * act and the vault custody topic stale.
+ */
+export const useVaultPackaging = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vault', { packaging: true }),
+    queryFn: async () => {
+      const held = await fetchWholeCatalog((page, pageSize) =>
+        api.listVaultInventory({ page, pageSize }),
+      );
+      return new Map(
+        held.items.map((row) => [
+          row.shipmentId,
+          { bags: row.bagCount, cartons: row.cartonCount, boxes: row.boxCount },
+        ]),
+      );
+    },
+    enabled,
+    retry: retryUnless4xx,
+  });
+
 // ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
 //
 // Reports are pure reads over a settled past: nothing in the app invalidates them, and re-fetching
@@ -879,13 +986,38 @@ export const useUpdateOperationsArea = () => {
   });
 };
 
-/** The vault roll-up. No parameters at all — the legacy picker never filtered (Q32 PRESERVE). */
-export const useVaultReport = (enabled = true) =>
+/**
+ * The vault roll-up over a period — every محصنة received into the vault in it, delivered since or
+ * not («يجيب اللى اتسلم واللى متسلمش»). Keyed by its range, as the captain and bank reports are, so
+ * switching months is a cache hit on the way back; unlike theirs, it is in the secured fan-out
+ * above, because a receipt today changes this month's figures.
+ */
+export const useVaultReport = (range: { from: string; to: string }, enabled = true) =>
   useQuery({
-    queryKey: listKey(MODULE, 'vaultReport', {}),
-    queryFn: () => api.getVaultReport(),
+    queryKey: listKey(MODULE, 'vaultReport', range),
+    queryFn: () => api.getVaultReport(range),
+    enabled: enabled && range.from !== '' && range.to !== '',
+  });
+
+/** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside its periods' entries. */
+const vaultHeldReportKey = (): readonly unknown[] => listKey(MODULE, 'vaultReport', { held: true });
+
+/**
+ * Round 12 — «تقرير الخزينة» on «سجل الخزينة»: what the vault holds NOW, per bank. Under the
+ * roll-up's subtree, so it moves exactly when the roll-up does — every secured act stales it (a
+ * receipt adds a shipment, a cancelled receipt or a release takes one away: `securedSubtrees`), and
+ * the vault custody topic sweeps it for every reader of the vault, a treasurer holding only the
+ * vault's grants included (`invalidation-registry.ts`).
+ */
+export const useVaultHeldReport = (enabled = true) =>
+  useQuery({
+    queryKey: vaultHeldReportKey(),
+    queryFn: () => api.getVaultHeldReport(),
     enabled,
   });
+
+/** Exported for the page specs — the live report's entry. */
+export const __vaultHeldReportKey = vaultHeldReportKey;
 
 // ── Captain mobile (Phase C) ────────────────────────────────────────────────
 

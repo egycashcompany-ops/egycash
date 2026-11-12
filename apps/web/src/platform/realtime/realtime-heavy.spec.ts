@@ -247,6 +247,20 @@ describe('the registry’s heavy topics and stale-only keys', () => {
       'dayBoard',
       'securedDispatch',
     ]);
+    // «تجميع الخزينة» (Round 11): the period's roll-up, keyed by its `from`/`to` — a receipt or a
+    // cancelled one on another desk moves this month's figures, so it is refetched on screen like
+    // the vault's other reads, by the vault's own topic and by a shipment's.
+    const vaultRollUp = listKey('operations', 'vaultReport', {
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+    expect(isStaleOnlyKey(vaultRollUp)).toBe(false);
+    const reaches = (prefix: readonly unknown[]): boolean =>
+      prefix.every((part, index) => vaultRollUp[index] === part);
+    // ...and by a bank's: its rows carry the bank's name, as the bank report's do.
+    for (const topic of ['operations.vaultCustody', 'operations.shipment', 'operations.bank']) {
+      expect(keysForTopic(topic).some(reaches), topic).toBe(true);
+    }
   });
 });
 

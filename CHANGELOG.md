@@ -215,6 +215,128 @@ its entry here in the same PR.
     the delivery crew is picked from the crew of the shipment's own delivery day, and ticked rows
     are dispatched one load per van. API: `GET /operations/secured/dispatch-board?date=`
     (`operationsVault.view`).
+  - The two reports in the boards' look: «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك
+    وتقرير القادة الشاشة هتكون الشاشة التانية». «من» / «إلى» on the dark filter card, applied as
+    they are chosen (an inverted range is refused on the screen), over the dark table: م | the key |
+    the count | المصري | الدولار | عملات أخرى | الحقائب | كرتونة | صندوق, «الإجمالي» under the rows.
+    - «تجميع الخزينة» (`/operations/reports/vault`), one row per bank with «عدد المحصنات», and beside
+      it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات الأجنبية» (the dollar included),
+      then every active currency of the reference list but the pound, in its order, zeros dimmed.
+      Its period: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» — every محصنة the vault
+      received from «من» to «إلى» (the receipt's Cairo day), still held, gone out or delivered; by
+      default the 1st of the month to its last day. A cancelled receipt does not count; a shipment
+      received again counts once, on its new receipt's day; deleted shipments are left out. API:
+      `GET /operations/reports/vault?from=&to=` (`operationsVault.view`, the captain report's
+      parameters; a day left out falls back on its own to the first or last day of Cairo's current
+      month) answers `from` and `to`; `baseCurrencyCode` and `foreignCurrencies` are gone — they
+      told the pound by the code `EGP`, which the live catalog does not use.
+    - «تقرير القادة» (`/operations/reports/captains`), the same columns per captain under «عدد
+      الشحنات»: the period's completed shipments (daily by collection day, secured by delivery
+      day), the 1st of the month to its last day by default, the unassigned row last.
+    - All three report screens — these two and «تقرير البنوك» — open on CAIRO's current month: at
+      00:30 on the 1st they already show the new month, where they showed the one just ended until
+      UTC's midnight.
+    - «عملات أخرى» is the boards' rule in both: every currency neither the pound nor the dollar,
+      told by code, name or legacy spelling, never by `EGP`; its click opens the boards' breakdown.
+  - The vault's screens, renamed and re-cut: «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة وتكون
+    وظيفتها انها بتعرض اللى موجود دلوقتى فى الخزنة», and «شاشة جرد الخزينة تكون سجل الخزينه المحصنات
+    زى شاشة سجل الشحنات بالظبط واعمل فوق تقرير الخزينة … بس مفيش فتر من الى هيكون لحظى».
+    - The sidebar rows «صرف الخزينة» → «محصنات الخزينة» (`/operations/vault/dispatch`, en «Vault
+      Shipments») and «جرد الخزينة» → «سجل الخزينة» (`/operations/vault`, en «Vault History»); same
+      routes and grants. A live installation is renamed on its next boot in each language that still
+      carries the old default — an administrator's own name stays (new `previousName` on a catalog
+      row, the `previousIcon` rule).
+    - «تقرير الخزينة», what the vault holds NOW per bank — the same roll-up and table as «بيان الشحنات
+      لكل بنك», no period: `GET /operations/reports/vault/held` (`operationsVault.view`, no
+      parameters) → `{asOf, rows, grandTotal}`. Exactly the shipments «محصنات الخزينة» lists (in the
+      vault: received, not dispatched; a cancelled receipt is back to draft); packages from the
+      custody, once per shipment.
+    - «سجل الخزينة» is «سجل الشحنات» for the محصنات alone: `GET /operations/shipments/history` and
+      `/deleted` take an optional `type` (`secured` or `daily`); the 5,000-row cap is counted after it.
+    - «وعاوز فى استلام الخزينة انه يقدر يعمل اضافة ل محصنة زى شاشة الشحنات المحصنة بالظبط»: the
+      branch search (`GET /operations/bank-branches`, `/:id`) and the areas list now also answer
+      `operationsVault.view`, as the banks and currencies already did, so the secured screen's form
+      works on the vault's receive screen; booking stays `operationsShipment.create`'s.
+  - «توزيع المحصنات» and «تسليم المحصنات»: «المحصنة اللى يومها هتخرج هتظهر تلقائى فى شاشة توزيع
+    المحصنات هيكون فيها العربيه اللى اتحط عليها القادة والاخصائين والاتجاه … وهشد المحصنة احطها على
+    العربيه او المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى ولما يحفظ نفس الشاشة هنعمل زيها
+    للخزنة هيكون فوق كل عربيه تسليم وطباعه … بس لما يدوس تسليم المحصنات هتتسلم ساعتها وخلاص مش
+    هتبقى ف الخزنة».
+    - Two sidebar rows: «توزيع المحصنات» (`/operations/secured/distribution`, beneath «الشحنات
+      المحصنة», `operationsShipment.view`) and «تسليم المحصنات» (`/operations/vault/handover`,
+      beneath «استلام الخزينة», `operationsVault.view`). No new grant, page or collection.
+    - One read for both: `GET /operations/secured/distribution?date=` (`operationsShipment.view` or
+      `operationsVault.view`; today in Cairo by default, a past day refused with
+      `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). Every van of the day's crew board (captains, direction,
+      time; specialists and drivers for `operationsCrew.view` only), and every secured shipment due
+      out that day at any stage before dispatch, plus the overdue ones still in the vault — due
+      before TODAY, the rule «محصنات الخزينة» marks «متأخرة» by, so a later day's screen never offers
+      today's load to its vans — each with its delivery leg, the leg's version, the van of the day
+      it is on, and the vans whose direction names its area.
+    - «نفس الاتجاه»: a van's direction is split into its areas («المعادي - حلوان», «/», «،», a lone
+      «و» …), each folded the boards' way (hamza, ى/ي, ة/ه, digits, tashkeel, the article) and
+      compared WHOLE with the shipment's area — one matching van with a captain is proposed, several
+      or none are left to the person. One pure rule in the contract
+      (`operationsDirectionMatchesArea`), used by the server for every row.
+    - «حفظ»: `POST /operations/secured/distribution` (`operationsShipment.edit`, assign-delivery's
+      grant) `{date, changes: [{shipmentId, crewAssignmentId, captainEmployeeId, version}]}` — all or
+      nothing, in one transaction, each change checked against its delivery leg's version. On a van
+      (either of a van's two captains), moved, or taken off (the leg retired, its story kept).
+      Refused: a dispatched or completed shipment (`OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED`), one
+      not the day's (`OPERATIONS_DISTRIBUTION_NOT_ON_DAY`), a leg its captain started in the app
+      (`OPERATIONS_DISTRIBUTION_LEG_STARTED`), a van of another day, a captain not on the van; each
+      refusal names its shipment.
+    - An overdue shipment in the vault placed on a van of the day has its delivery date moved to the
+      day in the same save — the one change a received محصنة takes, because it is a flow act, not an
+      edit. «السجل» shows it as its own entry, and a shipment taken off its van as «أُزيلت من السيارة»
+      (log kind `crewRemoved`).
+    - A draft on a van whose delivery date is then edited to another day, or cleared (`PATCH
+      /operations/shipments/:id`), comes off that van in the same transaction — the leg retired as
+      «إزالة» retires it (`crewRemoved` after the edit in «السجل», event
+      `operations.shipmentAssignment.removed`) — so it no longer stays on the old day's route in the
+      captain's app, where it could hold back his later stops. A leg he has started refuses the
+      edit (`OPERATIONS_DISTRIBUTION_LEG_STARTED`, nothing written); an edit that keeps the day
+      keeps the van. The pickup leg is not touched by an edit.
+    - «تسليم» is the existing dispatch per van: the van's shipments in the vault leave it at once; one
+      on the van the vault has not received yet stays behind.
+  - The screens of Round 12: «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان
+    اعمل فلتر ب اسم القائد [اسم البنك] و ان اكسيل او pdf», «الlist بتاعت جمالى العملات … عاوز حجمها
+    يكون بطول الشاشة كامله», «الصف بتاع الجماليات يفضل ظاهر حتى لو الجدول كبر يحصل اسكرول جوا الجدول».
+    - «تقرير القادة» and «تجميع الخزينة»: the date card is gone; «من» / «إلى» sit in the boards' one
+      dark filter bar beside a name filter («اسم القائد» / «اسم البنك» — applied as typed, Arabic
+      letter forms folded, remembered across visits; the period is not), the reset and «Excel |
+      PDF». With a name typed, «الإجمالي» and the vault's panel are the shown rows' sum; with none,
+      the server's grand total.
+    - The files are what the screen shows: the rows the filter left and «الإجمالي», through the
+      app's one xlsx writer and the company report form (the period and the filter under the
+      title); the vault's adds «إجمالي قيمة الشحنات» as a second sheet and a second printed page.
+    - On a computer the table's card runs to the bottom of the screen: its head stays at the top,
+      «الإجمالي» at the bottom, and only the rows scroll. The vault's currency panel is as tall, its
+      list scrolling inside it.
+    - «محصنات الخزينة» is view only: the list, overdue first, the optional delivery-day filter and
+      «السجل» — no delivery crew, no release, no ticks, no cancelled receipt (that stays on
+      «الشحنات المحصنة»).
+    - «سجل الخزينة» is «سجل الشحنات» for the محصنات (from–to by collection or delivery day, the
+      filters, «السجل», the deleted list with restore, paging), on the whole page. «تقرير الخزينة»,
+      beside «إخفاء الإحصائيات», opens what the vault holds now over the whole screen, built like
+      Fleet's custody dashboard: «حتى …», figure tiles (count, pound, dollar, «عملات أخرى» with its
+      breakdown, bags, cartons, boxes), the per-bank table with its panel beside it, Excel and PDF.
+      It is read only while open. A reader without `operationsShipment.view` gets the same report
+      on the page at full height and a line saying what the history needs.
+    - «استلام الخزينة» has «إضافة محصنة» — the secured screen's button and form (delivery the next
+      day by default), for `operationsShipment.create`.
+    - «توزيع المحصنات»: the day's vans on the right (number, time, direction, captains, specialists,
+      what each carries), the day's محصنات on no van on the left (stage, «متأخرة»). A محصنة is
+      dragged onto a van, or moved with «نقل إلى…» on its card (keyboard and phone); dragged back,
+      or «إزالة من السيارة», it comes off. On a two-captain van it goes with the first captain; the
+      chip on its card switches it. On the day's first read and on «توزيع تلقائي», each محصنة on no
+      van whose area exactly one van's direction names is proposed onto it («مقترحة» until saved).
+      «حفظ» sends every change at once; a refusal marks the card it names and keeps the other
+      moves; leaving with unsaved moves asks first.
+    - «تسليم المحصنات»: the same two columns, read only. Over each van «تسليم»
+      (`operationsVault.dispatch`) confirms, then hands over the van's محصنات in the vault; those
+      not received yet are listed and stay. «طباعة» prints the van's load sheet on the company form
+      — provisional until the owner says what the paper carries («اللى هيطبع هقولك عليه بعدين»).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

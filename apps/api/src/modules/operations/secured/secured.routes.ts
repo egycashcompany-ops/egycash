@@ -13,13 +13,15 @@ import {
   ListVaultInventoryQuerySchema,
   OperationsSecuredBoardQuerySchema,
   OperationsSecuredDispatchBoardQuerySchema,
+  OperationsSecuredDistributionQuerySchema,
+  SaveSecuredDistributionSchema,
   OperationsVaultQueueQuerySchema,
   ReceiveIntoVaultSchema,
   UndoSecuredPickupSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   assignDeliveryLeg,
@@ -33,6 +35,8 @@ import {
   listDue,
   listVaultInventory,
   receiveIntoVault,
+  saveSecuredDistribution,
+  getSecuredDistribution,
   undoSecuredPickup,
 } from './secured.controller';
 
@@ -76,6 +80,27 @@ export const buildOperationsSecuredRouter = (): Router => {
     authorize('operationsVault.view'),
     validate({ query: OperationsSecuredDispatchBoardQuerySchema }),
     asyncHandler(getSecuredDispatchBoard),
+  );
+  // «توزيع المحصنات» and «تسليم المحصنات» (Round 12) — ONE read for both screens: Operations
+  // distributes from it (`operationsShipment.view`, the secured screen's grant) and the vault hands
+  // each van over from it (`operationsVault.view`, the vault screens'). Either grant opens it; the
+  // acts stay apart — placing is `operationsShipment.edit` (below, assign-delivery's grant), handing
+  // over is the dispatch's `operationsVault.dispatch`.
+  router.get(
+    '/distribution',
+    authenticate,
+    authorizeAny('operationsShipment.view', 'operationsVault.view'),
+    validate({ query: OperationsSecuredDistributionQuerySchema }),
+    asyncHandler(getSecuredDistribution),
+  );
+  // «ولما يحفظ» — every placement of the screen in one transaction, on the grant that already
+  // places a delivery leg (`/:id/assign-delivery`): distributing is that act, for many at once.
+  router.post(
+    '/distribution',
+    authenticate,
+    authorize('operationsShipment.edit'),
+    validate({ body: SaveSecuredDistributionSchema }),
+    asyncHandler(saveSecuredDistribution),
   );
   // /tash4ela_mohasana + /deliver_mohsana — what is due for delivery on a date (legacy parity; the
   // dispatch screen reads `/dispatch-board` since Round 10).

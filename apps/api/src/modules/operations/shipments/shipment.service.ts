@@ -40,6 +40,7 @@ import {
   type OperationsSecuredStage,
   type OperationsShipmentLeg,
   type OperationsShipmentLogDto,
+  type OperationsShipmentType,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -55,11 +56,19 @@ import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { emit } from '../../../platform/kernel/event-bus';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
+import {
+  isLegStarted,
+  legStartedRefusal,
+  recordLegRetired,
+  retireLeg,
+} from '../assignments/leg-retire';
+import { operationsDayService } from '../days/day.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { crewLegOf, deliveryLegOf, securedPickupOf, securedStageOf } from './secured-stage';
 import { assertSecuredUnlocked } from './secured-lock';
@@ -68,9 +77,11 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
+import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { directoryProfileService, getDirectoryEmployees } from '../../../platform/directory';
 import { vaultCustody } from '../treasury-boundary';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
+import { type OperationsShipmentAssignmentDoc } from './shipment-assignment.model';
 import { resolveShipmentReceiptCategoryId } from './shipment-files';
 import {
   SHIPMENT_LOG_ENTITY,
@@ -176,6 +187,38 @@ const assertDeliveryNotBeforeCollection = (delivery: Date, collection: Date): vo
       `the deliveryDate ${ymdOf(delivery)} is before the collectionDate ${ymdOf(collection)} — a shipment cannot go out before it is collected`,
     );
   }
+};
+
+/** A date as its calendar day ('YYYY-MM-DD'), null kept — for "did this date move?". */
+const ymdOrNull = (value: Date | null): string | null => (value === null ? null : ymdOf(value));
+
+/**
+ * The delivery leg an edit of a secured shipment's delivery date LEAVES BEHIND — null when it has
+ * none, or when the new date is still the day its van rides. Refused with the coded 409 when the
+ * captain has started it: his stop is not taken from under him, and the edit writes nothing.
+ *
+ * "Its van's day" is the leg's own operating day compared with the new date's: a leg is a captain
+ * and a van OF ONE DAY (the delivery leg rides a crew row of its delivery day — the rule the
+ * captain's route, the reports and the dispatch all read by). A new date with no operating day yet
+ * has no van of the leg's at all. A cleared date (`null`) leaves the leg on no day.
+ */
+const deliveryLegLeftBehind = async (
+  shipmentId: string,
+  nextDeliveryDate: Date | null,
+): Promise<OperationsShipmentAssignmentDoc | null> => {
+  const leg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+    shipmentId,
+    'delivery',
+  );
+  if (leg === null) return null;
+  if (nextDeliveryDate !== null) {
+    const day = await operationsDayService.findByDate(nextDeliveryDate);
+    if (day !== null && String(day._id) === String(leg.operationsDayId)) return null;
+  }
+  if (isLegStarted(leg)) {
+    throw legStartedRefusal(shipmentId, "its delivery date cannot move off his van's day");
+  }
+  return leg;
 };
 
 /** The UTC midnight after `day` — the exclusive end of a half-open day range. */
@@ -485,17 +528,20 @@ class OperationsShipmentService {
    * refused, never cut short: the screen totals what it is given, and totals over a silently
    * truncated list would be wrong money figures with nothing on screen to say so.
    */
-  async historyView(from: Date, to: Date): Promise<DayBoardView> {
+  async historyView(from: Date, to: Date, type?: OperationsShipmentType): Promise<DayBoardView> {
     const first = utcDay(from);
     const toExclusive = nextDay(utcDay(to));
+    // Round 12 — `type` narrows the union BEFORE it is counted («سجل الخزينة» is the محصنات alone),
+    // so the cap judges the rows that would be shown, not the whole history's.
     const count = await operationsShipmentRepository.countBoardInRange(
       first,
       toExclusive,
       'history',
+      type,
     );
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
     return this.boardView(
-      await operationsShipmentRepository.boardInRange(first, toExclusive, 'history'),
+      await operationsShipmentRepository.boardInRange(first, toExclusive, 'history', type),
     );
   }
 
@@ -509,12 +555,17 @@ class OperationsShipmentService {
   async deletedView(
     from: Date,
     to: Date,
+    type?: OperationsShipmentType,
   ): Promise<DayBoardView & { deletedByName: Map<string, string | null> }> {
     const first = utcDay(from);
     const toExclusive = nextDay(utcDay(to));
-    const count = await operationsShipmentRepository.countDeletedBoardInRange(first, toExclusive);
+    const count = await operationsShipmentRepository.countDeletedBoardInRange(
+      first,
+      toExclusive,
+      type,
+    );
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
-    const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive);
+    const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive, type);
     // The deleter is the user stamped on the row (`deletedBy`), named in ONE directory read for
     // the whole list — a handful of desk users delete, however many rows they deleted.
     const deleters = [
@@ -542,12 +593,14 @@ class OperationsShipmentService {
    * custody history, ONE audit read for all three entities (`trailOf`), then one read per kind of
    * name the values hold (banks, branches, currencies, people, vans).
    *
-   * The legs read are the LIVE ones, through `ux_shipment_leg`: no path deletes a leg — a
-   * reassignment rewrites the leg in place, and a deleted shipment keeps its legs — and the only
-   * index that finds a shipment's legs is partial on `isDeleted: false`, so asking for deleted ones
-   * too would scan the whole collection on every log opened, for rows that do not exist. The
-   * custody is the exception since Round 10: a cancelled receipt IS a voided (soft-deleted) custody
-   * row, so the treasury port's `history` reads them all, through an index of its own.
+   * The legs read are ALL of them, the retired ones included (Round 12), through
+   * `ix_shipment_all_legs`: a reassignment rewrites a leg in place and a deleted shipment keeps its
+   * legs, but «توزيع المحصنات» takes a shipment off its van by RETIRING its delivery leg (a soft
+   * delete — a leg with no captain and no van is no leg; an edit moving the delivery date off the
+   * van's day retires it the same way, `update`), and that leg's story — assigned, moved,
+   * taken off — stays the shipment's. The custody is the same since Round 10: a cancelled receipt IS
+   * a voided (soft-deleted) custody row, so the treasury port's `history` reads them all, through an
+   * index of its own.
    *
    * THE VAULT'S RECORD IS THE TREASURY'S. The custody rows (receipt number, counts, seals, the two
    * receiving treasurers) are read only for a reader who `seesVault` (`operationsVault.view`, the
@@ -558,7 +611,7 @@ class OperationsShipmentService {
   async log(id: string, reader: { seesVault: boolean }): Promise<OperationsShipmentLogDto> {
     const shipment = await operationsShipmentRepository.findAnyById(id);
     if (shipment === null) throw new NotFoundError();
-    const legs = await operationsShipmentAssignmentRepository.findByShipments([id]);
+    const legs = await operationsShipmentAssignmentRepository.findAllByShipment(id);
     // EVERY custody, a cancelled receipt included (Round 10): a receipt taken, cancelled and taken
     // again is three acts in the shipment's story, and the first receipt's details are part of it.
     const custody = reader.seesVault ? await vaultCustody().history(id) : [];
@@ -669,69 +722,11 @@ class OperationsShipmentService {
       const row = crewById.get(id);
       return row === undefined ? [] : [row];
     });
-    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
-    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
-    // boundary, read-only, like every other Fleet fact Operations shows.
-    const dutyById = new Map(
-      (
-        await fleetDutyAssignmentRepository.findByIdsSystem(
-          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
-        )
-      )
-        .filter((d) => !d.isDeleted)
-        .map((d) => [String(d._id), d]),
-    );
-    const driversOf = (crew: (typeof crewRows)[number]): string[] => {
-      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
-      if (duty === undefined) return [];
-      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
-      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
-      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
-        .filter((id) => id != null)
-        .map(String);
-    };
-
-    const vehicleCodes = await fleetVehicleRepository.codesByIds([
-      ...new Set([
-        ...crewed.map((a) => String(a.vehicleId)),
-        ...crewRows.map((c) => String(c.vehicleId)),
-      ]),
-    ]);
-    // ONE directory read for everyone the board names — the legs' captains, and the drivers,
-    // captains and specialists on every van card.
-    const people = await getDirectoryEmployees([
-      ...new Set([
-        ...crewed.map((a) => String(a.captainEmployeeId)),
-        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
-      ]),
-    ]);
-    const person = (employeeId: string): OperationsDayBoardPersonDto => {
-      const found = people.get(employeeId);
-      return {
-        employeeId,
-        code: found?.code ?? null,
-        fullNameAr: found?.fullNameAr ?? null,
-      };
-    };
-
-    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
-      crewAssignmentId: String(c._id),
-      vehicleId: String(c.vehicleId),
-      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
-      // The driver by NAME only, built field by field so no code can ride along: a driver's
-      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
-      drivers: driversOf(c).map(
-        (employeeId): OperationsDayBoardDriverDto => ({
-          employeeId,
-          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
-        }),
-      ),
-      captains: slotIds(c.captainEmployeeIds).map(person),
-      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
-      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
-      direction: c.direction ?? null,
-      plannedTime: c.plannedTime ?? null,
-    }));
+    // The van cards, with the legs' captains and vans named in the SAME reads (one per kind).
+    const { crews, people, vehicleCodes } = await this.vanCardsOf(crewRows, {
+      employeeIds: crewed.map((a) => String(a.captainEmployeeId)),
+      vehicleIds: crewed.map((a) => String(a.vehicleId)),
+    });
 
     const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
@@ -776,6 +771,88 @@ class OperationsShipmentService {
       };
     });
     return { rows, crews };
+  }
+
+  /**
+   * «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين» — the van card of each crew
+   * row, in the order given: its van's code, its drivers by NAME only (Fleet's duty row for the same
+   * van and day, read through the §9.4 boundary), and its captains and specialists by name and code.
+   *
+   * Shared by the boards (`boardView` — the vans the rows ride) and «توزيع المحصنات» (every van of the
+   * day, Round 12), so a van card reads the same on both. `extra` names more people and vans to
+   * resolve in the SAME two reads — the board's legs' captains and vans — and the maps come back
+   * for the caller to read them from: one directory read and one Fleet read per call, however many
+   * rows.
+   */
+  async vanCardsOf(
+    crewRows: readonly OperationsCrewAssignmentDoc[],
+    extra: { employeeIds?: readonly string[]; vehicleIds?: readonly string[] } = {},
+  ): Promise<{
+    crews: OperationsDayBoardVehicleCrewDto[];
+    people: Awaited<ReturnType<typeof getDirectoryEmployees>>;
+    vehicleCodes: Map<string, string>;
+  }> {
+    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
+    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
+    // boundary, read-only, like every other Fleet fact Operations shows.
+    const dutyById = new Map(
+      (
+        await fleetDutyAssignmentRepository.findByIdsSystem(
+          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
+        )
+      )
+        .filter((d) => !d.isDeleted)
+        .map((d) => [String(d._id), d]),
+    );
+    const driversOf = (crew: OperationsCrewAssignmentDoc): string[] => {
+      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
+      if (duty === undefined) return [];
+      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
+      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
+      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
+        .filter((id) => id != null)
+        .map(String);
+    };
+
+    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+      ...new Set([...(extra.vehicleIds ?? []), ...crewRows.map((c) => String(c.vehicleId))]),
+    ]);
+    // ONE directory read for everyone named — the caller's extra people, and the drivers, captains
+    // and specialists on every van card.
+    const people = await getDirectoryEmployees([
+      ...new Set([
+        ...(extra.employeeIds ?? []),
+        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
+      ]),
+    ]);
+    const person = (employeeId: string): OperationsDayBoardPersonDto => {
+      const found = people.get(employeeId);
+      return {
+        employeeId,
+        code: found?.code ?? null,
+        fullNameAr: found?.fullNameAr ?? null,
+      };
+    };
+
+    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
+      crewAssignmentId: String(c._id),
+      vehicleId: String(c.vehicleId),
+      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
+      // The driver by NAME only, built field by field so no code can ride along: a driver's
+      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
+      drivers: driversOf(c).map(
+        (employeeId): OperationsDayBoardDriverDto => ({
+          employeeId,
+          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
+        }),
+      ),
+      captains: slotIds(c.captainEmployeeIds).map(person),
+      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
+      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
+      direction: c.direction ?? null,
+      plannedTime: c.plannedTime ?? null,
+    }));
+    return { crews, people, vehicleCodes };
   }
 
   async getById(id: string): Promise<OperationsShipmentDoc> {
@@ -831,13 +908,28 @@ class OperationsShipmentService {
     // this edit. Only when the edit moves one of them: the form sends every field back, and a row
     // already stored the wrong way round (legacy never checked) must still take a notes fix.
     const nextCollectionDate = input.collectionDate ?? before.collectionDate;
-    const datesMoved =
-      ymdOf(nextCollectionDate) !== ymdOf(before.collectionDate) ||
-      (nextDeliveryDate === null ? null : ymdOf(nextDeliveryDate)) !==
-        (before.deliveryDate === null ? null : ymdOf(before.deliveryDate));
+    const deliveryMoved = ymdOrNull(nextDeliveryDate) !== ymdOrNull(before.deliveryDate);
+    const datesMoved = ymdOf(nextCollectionDate) !== ymdOf(before.collectionDate) || deliveryMoved;
     if (datesMoved && nextDeliveryDate !== null) {
       assertDeliveryNotBeforeCollection(nextDeliveryDate, nextCollectionDate);
     }
+    // A DELIVERY LEG RIDES A VAN OF ITS DELIVERY DAY. Since Round 12 a secured DRAFT can be on a van
+    // («توزيع المحصنات» places it before the vault has it). Moving its delivery date to another day,
+    // or clearing it, takes it off that van — the leg is retired in the SAME transaction as the
+    // edit, exactly as the distribution's «إزالة» retires it (leg-retire.ts). Left in place, the
+    // stop would stay on the old day's route in the captain's app, where the sequential lock could
+    // make it his "current" stop and hold back every stop after it. Only when the day itself moves:
+    // the form sends every field back, and an edit of anything else keeps the van.
+    //
+    // The PICKUP leg is deliberately not touched here. It rides the collection date, and it is the
+    // one leg of every DAILY shipment, whose edit is legacy parity (allowed in any status, a past
+    // day's row corrected on the history) and whose executed leg is who carried the money — the
+    // captain report's attribution and the board's «تم التسليم». Retiring or refusing there is a
+    // decision of its own, not this one's.
+    const leftBehind =
+      before.shipmentType === 'secured' && deliveryMoved
+        ? await deliveryLegLeftBehind(id, nextDeliveryDate)
+        : null;
 
     const set: Partial<OperationsShipmentDoc> = {};
     const { version, lines, collectionDate, deliveryDate } = input;
@@ -857,13 +949,29 @@ class OperationsShipmentService {
       set.deliveryDate = deliveryDate === null ? null : utcDay(deliveryDate);
     }
 
-    const updated = await operationsShipmentRepository.updateById(id, set, { by, version });
+    // One write needs no transaction; the edit and the leg it leaves behind are one act — both
+    // land or neither does (a stale shipment version, or a captain who started the leg since it
+    // was read, fails the pair).
+    const updated =
+      leftBehind === null
+        ? await operationsShipmentRepository.updateById(id, set, { by, version })
+        : await unitOfWork(async (session) => {
+            const doc = await operationsShipmentRepository.updateById(id, set, {
+              by,
+              version,
+              session,
+            });
+            await retireLeg(leftBehind, { by, at: new Date(), session });
+            return doc;
+          });
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     await emit(OperationsEvents.ShipmentUpdated, eventPayload(updated));
+    // After the edit's own row, so «السجل» reads the new date first and then the van it left.
+    if (leftBehind !== null) await recordLegRetired(leftBehind);
     return updated;
   }
 

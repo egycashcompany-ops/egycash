@@ -4,6 +4,7 @@
 // The legacy screens defaulted to the current month (contad_app.js:4862) and both bounds were
 // INCLUSIVE there; the API keeps that contract, so nothing here converts to an exclusive bound —
 // doing that in two places is how a report quietly loses its last day.
+import { cairoYmd } from '@ecms/contracts';
 
 /** `YYYY-MM-DD` in UTC. Reports are date-only; a local-timezone render would shift the month. */
 export const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10);
@@ -13,11 +14,21 @@ export interface ReportRange {
   to: string;
 }
 
-/** The current month, both bounds inclusive — the legacy default. */
-export const currentMonthRange = (now: Date): ReportRange => ({
-  from: toIsoDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))),
-  to: toIsoDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0))),
-});
+/**
+ * The current month, both bounds inclusive — the legacy default, and the owner's for the vault
+ * roll-up («ويجيب البداية كل اول شهر»).
+ *
+ * The month is CAIRO's, not UTC's: the desk's calendar turns at Cairo's midnight, two or three
+ * hours before UTC's, and the server judges the vault's receipts on Cairo days. Read off the UTC
+ * month, a screen opened in those first hours of the 1st still showed the month that had ended.
+ */
+export const currentMonthRange = (now: Date): ReportRange => {
+  const [year, month] = cairoYmd(now).split('-').map(Number) as [number, number];
+  return {
+    from: toIsoDate(new Date(Date.UTC(year, month - 1, 1))),
+    to: toIsoDate(new Date(Date.UTC(year, month, 0))),
+  };
+};
 
 /**
  * The range a URL asks for, falling back to the current month per field.

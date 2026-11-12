@@ -189,6 +189,34 @@ export const ErrorCodes = {
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
 
+  // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
+  /**
+   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
+   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
+   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
+  /**
+   * 409 — a distribution change named a secured shipment that is already `dispatched` or `completed`:
+   * it has left the vault, and its van is history. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED: 'OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED',
+  /**
+   * 422 — a distribution change named a shipment that is not this day's: neither due on the day
+   * (draft or in the vault) nor OVERDUE in the vault (delivery date before TODAY, Cairo). A draft due
+   * another day, one with no delivery date, or one in the vault due on its own day between today and
+   * the day asked for. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
+  /**
+   * 409 — a distribution change would move or clear a delivery leg its captain has already started
+   * in the app (`executionStatus` past `pending`). Also the shipment edit's (`PATCH
+   * /operations/shipments/:id`) when it would move a secured shipment's delivery date off the day of
+   * such a leg, or clear it — the edit would take the stop off his van just the same; nothing is
+   * written. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
+
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',

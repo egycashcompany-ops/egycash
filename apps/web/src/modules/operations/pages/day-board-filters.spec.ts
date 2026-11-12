@@ -28,6 +28,16 @@ const FLEET_BAR = read('../../../shared/ui/dark-filter-bar.ts');
 
 /** The filter bar's own markup, from `<FilterBar` to its close — not the rest of the board. */
 const BAR = BOARD.slice(BOARD.indexOf('<FilterBar'), BOARD.indexOf('</FilterBar>'));
+/**
+ * The date box the bar draws each period picker with — its own component since Round 11, so the
+ * reports (`ReportBoard.tsx`) draw the same box. The bar hands it each picker.
+ */
+const DATE_BOX = BOARD.slice(
+  BOARD.indexOf('export const BoardDateBox'),
+  BOARD.indexOf('export const BoardRefusal'),
+);
+/** How the bar draws a period picker — the one date box. */
+const DATE_BOX_IN_BAR = '<BoardDateBox key={picker.param} picker={picker} />';
 /** A layout constant's classes, as written in the board — its quoted strings, comments left out. */
 const layout = (name: string): string => {
   const start = BOARD.indexOf(`const ${name} =`);
@@ -58,7 +68,7 @@ const FILTERS = [
 ];
 /** Where a control's name is first written in the bar. */
 const at = (key: string): number => {
-  const named = key === 'picker.label' ? 'aria-label={picker.label}' : `label={t('${key}')}`;
+  const named = key === 'picker.label' ? DATE_BOX_IN_BAR : `label={t('${key}')}`;
   return BAR.indexOf(named);
 };
 
@@ -77,13 +87,19 @@ describe('the filters sit on the Fleet bar', () => {
     // `cn` has no tailwind-merge, so a width passed to the Input loses to its own `w-full` and
     // every box would stretch the bar — one filter per line, which is the bug being fixed.
     // The width may be the first class of a `cn(…)` (the history's dates add a size container).
-    const sized =
-      BAR.match(/className=(?:"w-\d+ shrink-0"|\{cn\(\s*'w-\d+ shrink-0')[^>]*>\s*<Input/g) ?? [];
-    const inputs = BAR.match(/<Input\b/g) ?? [];
-    // Seven typed boxes (the van, the bank, the two branches, the area, the captain, the notes)
-    // and the date box the period's pickers are drawn with.
-    expect(inputs.length).toBe(8);
-    expect(sized.length).toBe(inputs.length);
+    const sizedIn = (source: string): number =>
+      (
+        source.match(/className=(?:"w-\d+ shrink-0"|\{cn\(\s*'w-\d+ shrink-0')[^>]*>\s*<Input/g) ??
+        []
+      ).length;
+    const inputsIn = (source: string): number => (source.match(/<Input\b/g) ?? []).length;
+    // Seven typed boxes in the bar (the van, the bank, the two branches, the area, the captain, the
+    // notes) and the date box the period's pickers are drawn with (`BoardDateBox`).
+    expect(inputsIn(BAR)).toBe(7);
+    expect(inputsIn(DATE_BOX)).toBe(1);
+    expect(BAR).toContain(DATE_BOX_IN_BAR);
+    expect(sizedIn(BAR)).toBe(inputsIn(BAR));
+    expect(sizedIn(DATE_BOX)).toBe(inputsIn(DATE_BOX));
   });
 
   it('wears the Fleet boards’ dark bar', () => {
@@ -109,13 +125,13 @@ describe('the filters sit on the Fleet bar', () => {
   it('puts the history’s filters on ONE row from 1280px, its two dates at their own width', () => {
     expect(PERIOD_BAR_LAYOUT).toContain('xl:[&>div>*:has(>input[type=date])]:!flex-none');
     // The date box's own width is the one that holds then: a date and its «من» / «إلى».
-    expect(BAR).toMatch(
+    expect(DATE_BOX).toMatch(
       /className=\{cn\(\s*'w-36 shrink-0',\s*named && '\[container-type:inline-size\]'/,
     );
     // A box that writes its name — the history's «من» / «إلى» always; «صرف الخزينة»'s optional
     // delivery day only while it is empty (Round 10) — measures itself, so the name never covers
     // the digits.
-    expect(BAR).toContain('const named = picker.showLabel === true || blank;');
+    expect(DATE_BOX).toContain('const named = picker.showLabel === true || blank;');
     // No grid survives past 1279: every grid rule of the history's is bounded to 1024–1279.
     const gridRules = PERIOD_BAR_LAYOUT.split(' ').filter((rule) => rule.includes('grid'));
     expect(gridRules.length).toBeGreaterThan(0);
@@ -188,7 +204,7 @@ describe('nothing lost its name when the labels went', () => {
       // A MultiSelect's `label` is its trigger's `aria-label`.
       const named =
         key === 'picker.label'
-          ? BAR.includes('aria-label={picker.label}')
+          ? BAR.includes(DATE_BOX_IN_BAR) && DATE_BOX.includes('aria-label={picker.label}')
           : BAR.includes(`aria-label={t('${key}')}`) || BAR.includes(`label={t('${key}')}`);
       expect(named, key).toBe(true);
     }
@@ -200,7 +216,7 @@ describe('nothing lost its name when the labels went', () => {
         key === 'picker.label'
           ? // A date input renders its own format hint and ignores `placeholder`; `title` is
             // what survives the hover.
-            BAR.includes('title={picker.label}')
+            BAR.includes(DATE_BOX_IN_BAR) && DATE_BOX.includes('title={picker.label}')
           : BAR.includes(`placeholder={t('${key}')}`) ||
             // A MultiSelect writes its label in the empty trigger.
             BAR.includes(`label={t('${key}')}`);

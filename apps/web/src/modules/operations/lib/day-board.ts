@@ -520,8 +520,12 @@ export const boardFigures = (
 export interface OtherCurrencyCard {
   currencyId: string;
   amount: number;
-  /** How many of the shipments shown carry this currency on at least one line. */
-  shipments: number;
+  /**
+   * How many of the shipments shown carry this currency on at least one line. Absent where the
+   * figure is a report's, whose rows are already rolled up and no longer say which shipment carried
+   * which currency — the card then says nothing about it rather than guess.
+   */
+  shipments?: number | undefined;
   /** Its part of the «عملات أخرى» sum, 0..1 — the card's slim bar. */
   share: number;
 }

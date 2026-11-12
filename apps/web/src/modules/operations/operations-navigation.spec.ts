@@ -56,9 +56,13 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       ['Crew Requirements', '/operations/requirements', 'badge'],
       ['Crew Attendance', '/operations/attendance', 'calendar'],
       ['Secured Shipments', '/operations/secured', 'inbox'],
+      // Round 12 — the day's محصنات onto the day's vans, and the vault handing each van its load.
+      ['Secured Distribution', '/operations/secured/distribution', 'link'],
       ['Vault Receive', '/operations/vault/receive', 'shield'],
-      ['Vault Dispatch', '/operations/vault/dispatch', 'truck'],
-      ['Vault Inventory', '/operations/vault', 'folder'],
+      ['Secured Handover', '/operations/vault/handover', 'receipt'],
+      // Round 12 renamed these two: «محصنات الخزينة» and «سجل الخزينة».
+      ['Vault Shipments', '/operations/vault/dispatch', 'truck'],
+      ['Vault History', '/operations/vault', 'folder'],
       ['Vault Roll-up', '/operations/reports/vault', 'chart'],
       ['Captain Report', '/operations/reports/captains', 'chart'],
       ['Bank Report', '/operations/reports/banks', 'chart'],
@@ -80,7 +84,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
 describe('the parse itself', () => {
   it('found the routes this module serves', () => {
     // Guards the joins below: an empty set makes "all covered" vacuously true.
-    expect(SERVED.length).toBeGreaterThanOrEqual(16);
+    expect(SERVED.length).toBeGreaterThanOrEqual(18);
     expect(SERVED).toContain('/operations/crew-board');
   });
 });
@@ -92,7 +96,7 @@ describe('the shell renders the Operations module (B7)', () => {
     expect(modules).toHaveLength(1);
     expect(modules[0]?.name.en).toBe('Operations');
     expect(modules[0]?.name.ar).toBe('العمليات');
-    expect(moduleApps(modules[0]!)).toHaveLength(16);
+    expect(moduleApps(modules[0]!)).toHaveLength(18);
   });
 
   it('resolves every catalog icon to a real glyph, not the silent fallback', () => {
@@ -110,7 +114,7 @@ describe('the shell renders the Operations module (B7)', () => {
 
   it('puts every page in the command palette, each carrying its module', () => {
     const flat = flattenApps(OPERATIONS_PAYLOAD);
-    expect(flat).toHaveLength(16);
+    expect(flat).toHaveLength(18);
     for (const app of flat) expect(app.moduleName.en).toBe('Operations');
   });
 });

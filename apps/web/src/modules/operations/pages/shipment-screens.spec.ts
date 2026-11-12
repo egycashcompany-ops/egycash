@@ -216,7 +216,12 @@ describe('the board’s page hooks — the vault queue’s, and no other screen�
 describe('«اعملى ايقون اقدر اجيب منه اللى اتمسح» — the deleted shipments, on the history', () => {
   it('the board shows the icon only where the page hands it a range', () => {
     expect(BOARD).toMatch(/\{deletedShipments !== undefined && \(\s*<DeletedShipmentsControl/);
-    expect(BOARD).toMatch(/^\s+deletedShipments\?: \{ range: HistoryRange; enabled: boolean \};$/m);
+    // Round 12 — with the history's shipment type too, where a page reads one («سجل الخزينة»).
+    expect(BOARD).toMatch(
+      /^\s+deletedShipments\?: \{ range: HistoryRange; enabled: boolean; type\?: OperationsShipmentType \};$/m,
+    );
+    expect(BOARD).toContain('type={deletedShipments.type}');
+    expect(DELETED).toContain('useOperationsDeletedShipments(range, enabled, type)');
   });
 
   it('the history hands in its own range, asked for only when the range itself may be', () => {

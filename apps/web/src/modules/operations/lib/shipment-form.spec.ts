@@ -176,6 +176,16 @@ describe('shipmentSaveErrorKey — a refused save, in the reader’s language', 
     expect(isLockedRefusal(new TypeError('Failed to fetch'))).toBe(false);
   });
 
+  // Round 12: an edit that moves a placed محصنة's delivery date off its van's day, refused because
+  // its captain has started that delivery — «راجع القيم» would send the desk hunting for a typo.
+  it('says a started delivery holds the date, rather than «check the values»', () => {
+    expect(shipmentSaveErrorKey(failed(ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED))).toBe(
+      'operations.shipment.errors.legStarted',
+    );
+    // The row on screen is not stale and nothing is locked: the form stays open to put the date back.
+    expect(isLockedRefusal(failed(ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED))).toBe(false);
+  });
+
   it('falls back to the generic message for a refusal about the values', () => {
     expect(shipmentSaveErrorKey(failed('SOMETHING_ELSE'))).toBe('operations.shipment.saveFailed');
     expect(shipmentSaveErrorKey(failed(ErrorCodes.VALIDATION_FAILED))).toBe(

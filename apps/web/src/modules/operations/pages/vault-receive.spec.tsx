@@ -13,6 +13,8 @@
 // ظاهره ل شاشة استلام الخزينة بس مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح» — the
 // desk's pickup is yellow and receivable like the captain's, a white row under «الكل» is for viewing
 // only, and «إلغاء استلام الخزينة» sits on a green row still in the vault for its special grant.
+//
+// Round 12: «إضافة محصنة» — the secured screen's button and form — for whoever may book.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -371,8 +373,7 @@ describe('«خليها زى شاشة التشغيل اليومى» — the opera
     expect(head).not.toContain(`>${ar('operations.shipment.type')}<`);
   });
 
-  it('offers no «إضافة», no edit or delete and no desk ✓ — only the vault’s ✓ and «السجل»', () => {
-    expect(html).not.toContain('data-shipment-new');
+  it('offers no edit or delete and no desk ✓ — only the vault’s ✓ and «السجل» on a row', () => {
     expect(html).not.toContain(`aria-label="${ar('common.edit')}"`);
     expect(html).not.toContain(`aria-label="${ar('common.remove')}"`);
     expect(html).not.toContain(`aria-label="${ar('operations.shipment.receive')}"`);
@@ -629,10 +630,17 @@ describe('what the page hands the board — the lines a refactor could quietly u
     expect(PAGE).not.toContain('<PageHeader');
   });
 
-  it('offers no «إضافة», no desk ✓, no edit or delete — the treasury receives here', () => {
-    expect(PAGE).toContain('canCreate={false}');
+  it('offers no desk ✓, no edit or delete — the treasury receives here', () => {
     expect(PAGE).toContain('canToggleReceived={false}');
     expect(PAGE).toContain('canEditRows={false}');
+  });
+
+  it('Round 12 — books a محصنة as the secured screen does, through the board’s own button', () => {
+    // «يقدر يعمل اضافة ل محصنة زى شاشة الشحنات المحصنة بالظبط»: the same two props the secured
+    // screen hands the board — the board gates the button on `operationsShipment.create`.
+    expect(PAGE).toMatch(/^\s+canCreate$/m);
+    expect(PAGE).toContain('createType="secured"');
+    expect(PAGE).not.toContain('canCreate={false}');
   });
 
   it('is the secured board, with the stages its list can hold and its own colours', () => {
@@ -719,5 +727,37 @@ describe('a queue too large to show', () => {
   it('still offers «الكل» beside a refusal — the screen’s view, not part of the answer', () => {
     const html = render({ seed: (qc) => refused(qc) });
     expect(html).toContain('data-vault-all-toggle="true"');
+  });
+});
+
+// Round 12 — «وعاوز فى استلام الخزينة انه يقدر يعمل اضافة ل محصنة زى شاشة الشحنات المحصنة بالظبط».
+describe('«إضافة محصنة» on the vault’s receive screen', () => {
+  const seed = (qc: QueryClient): void => {
+    qc.setQueryData(__vaultQueueKey(false), queue(false, [WITH_CAPTAIN]));
+  };
+
+  it('is offered to whoever may book — the secured screen’s words, after the legend and «الكل»', () => {
+    const html = render({ permissions: DESK_TREASURER, seed });
+    const toolbar = html.slice(
+      html.indexOf('data-shipments-toolbar'),
+      html.indexOf('data-shipment-filters'),
+    );
+    expect(toolbar).toContain('data-shipment-new="true"');
+    expect(toolbar).toContain(ar('operations.secured.backlog.add'));
+    expect(toolbar.indexOf('data-vault-all-toggle')).toBeLessThan(
+      toolbar.indexOf('data-shipment-new="true"'),
+    );
+  });
+
+  it('is offered to nobody without the booking grant — a treasurer who receives only', () => {
+    const html = render({ permissions: ['operationsVault.view', 'operationsVault.receive'], seed });
+    expect(html).not.toContain('data-shipment-new');
+  });
+
+  it('adds nothing else a desk does: still no edit, no delete, no desk ✓ on a row', () => {
+    const html = render({ permissions: DESK_TREASURER, seed });
+    expect(html).not.toContain(`aria-label="${ar('common.edit')}"`);
+    expect(html).not.toContain(`aria-label="${ar('common.remove')}"`);
+    expect(html).not.toContain(`aria-label="${ar('operations.shipment.receive')}"`);
   });
 });

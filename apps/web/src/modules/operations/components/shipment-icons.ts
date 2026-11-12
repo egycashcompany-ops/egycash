@@ -47,4 +47,11 @@ export const SHIPMENT_PATH = {
   reorder: ['M7 20V4', 'M3 8l4-4 4 4', 'M17 4v16', 'M13 16l4 4 4-4'],
   info: ['M12 16v-4m0-4h.01', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
   person: ['M16 7a4 4 0 11-8 0 4 4 0 018 0z', 'M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
+  // «تقرير الخزينة»'s package figures — a bag for «الحقائب», a cube for «الصناديق» («الكراتين» take
+  // the shipment's own carton, `shipment` above): three counts side by side need three drawings, or
+  // they read as one figure written three times.
+  bag: [
+    'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z',
+  ],
+  cube: ['M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9'],
 } as const;

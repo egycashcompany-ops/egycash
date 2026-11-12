@@ -45,8 +45,9 @@
 //   · in the toolbar, the legend's counts (over the rows shown, as the figures are) and «الكل»;
 //   · a «الحالة» filter offering exactly the stages the list can hold (`vaultQueueStages`).
 //
-// And what it does not: no «إضافة», no edit or delete, no desk ✓, and the receipt image is looked
-// at, never managed (`canEditRows={false}`) — the treasury receives here, the desk edits elsewhere.
+// And what it does not: no edit or delete, no desk ✓, and the receipt image is looked at, never
+// managed (`canEditRows={false}`) — the treasury receives here, the desk edits elsewhere. (Round 12
+// added «إضافة محصنة» — below.)
 //
 // WHO READS IT. The screen is the vault's grant (`operationsVault.view`), and a treasurer may hold
 // it without `operationsShipment.view`. The bank and currency names the board prints are read on
@@ -72,6 +73,16 @@
 //
 // The queue rides the day board's cache subtree: a captain's ✓, the desk's pickup ✓ or its undo, a
 // receive, a cancelled receipt or a shipment edit refreshes it like the boards.
+//
+// ROUND 12 — «إضافة محصنة» HERE TOO. «وعاوز فى استلام الخزينة انه يقدر يعمل اضافة ل محصنة زى شاشة
+// الشحنات المحصنة بالظبط»: the secured screen's button, in the same place in the toolbar (after the
+// legend and «الكل»), opening the same form for a SECURED shipment (`createType="secured"` — its
+// delivery date the day after collection unless changed), offered on the same grant
+// (`operationsShipment.create`, which the board checks). The form's catalogs — banks, branches,
+// areas, currencies — are read on the vault's grant too, so a treasurer who may book can fill it.
+// A محصنة booked here starts where every new one starts: nobody has collected it yet, so it is a
+// white row, listed under «الكل», receivable once the captain or the desk confirms the pickup. Only
+// ADDING moves here: the rows themselves stay the desk's to edit (`canEditRows={false}`).
 import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -313,9 +324,11 @@ export const VaultReceivePage = (): JSX.Element => {
         loading={queue.isLoading}
         error={tooLarge ? null : queue.error}
         onRetry={() => void queue.refetch()}
-        // The treasury receives here; shipments are booked, delivered and edited on the desk's
-        // screens.
-        canCreate={false}
+        // Round 12 — «يقدر يعمل اضافة ل محصنة زى شاشة الشحنات المحصنة بالظبط»: the secured screen's
+        // «إضافة محصنة», for whoever may book (the board checks `operationsShipment.create`). The rows
+        // are still delivered and edited on the desk's screens.
+        canCreate
+        createType="secured"
         canToggleReceived={false}
         canEditRows={false}
         kind="secured"

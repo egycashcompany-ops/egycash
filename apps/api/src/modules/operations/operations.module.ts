@@ -209,7 +209,16 @@ export const operationsModule: ModuleManifest = {
   // No page and no collection; ONE field on the shipment (the pickup record — absent on older rows,
   // read as their pickup leg says, so no migration: secured-stage.ts) and three on the custody (all
   // optional), and one custody index.
-  version: '0.12.0',
+  //
+  // Round 12 adds NO permission, page, prefix or collection. «توزيع المحصنات» is
+  // `GET`/`POST /operations/secured/distribution` on the EXISTING grants — read under
+  // `operationsShipment.view` or `operationsVault.view` (the vault's «تسليم المحصنات» reads it too),
+  // saved under `operationsShipment.edit`, assign-delivery's — and the vault's handover is the
+  // existing dispatch. «تقرير الخزينة» is `GET /operations/reports/vault/held` on
+  // `operationsVault.view`, and «سجل الخزينة» is the shipments history with `type=secured`. One
+  // assignment index (`ix_shipment_all_legs`, the action log's read of a retired leg) and one event
+  // (`operations.shipmentAssignment.removed`).
+  version: '0.13.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,

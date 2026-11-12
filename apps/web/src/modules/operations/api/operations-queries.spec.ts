@@ -507,13 +507,21 @@ describe('report and attendance caches (B5)', () => {
 // ── Vault roll-up + areas (B6) ──────────────────────────────────────────────────────────────────
 //
 // The roll-up is the OPPOSITE case from the reports: it IS part of the secured fan-out. It answers
-// "what is in the vault now", so receiving or dispatching changes it — and if it did not stale
-// alongside the inventory, the two vault screens would show different holdings side by side.
+// "what entered the vault in the period" («يجيب اللى اتسلم واللى متسلمش»), so a receipt — or a
+// cancelled one — changes this month's figures, and if it did not stale alongside the inventory the
+// two vault screens would disagree about the same receipt side by side. Keyed by its period, like
+// the reports, so every period on file goes stale together.
 describe('vault roll-up and area caches (B6)', () => {
-  it('stales with the vault inventory on a secured act — they are one question', async () => {
+  it('stales with the vault inventory on a secured act — every period of it', async () => {
     const qc = new QueryClient();
+    const november = listKey('operations', 'vaultReport', { from: '2026-11-01', to: '2026-11-30' });
+    const october = listKey('operations', 'vaultReport', { from: '2026-10-01', to: '2026-10-31' });
     qc.setQueryData(listKey('operations', 'vault', { page: 1 }), { items: [] });
-    qc.setQueryData(listKey('operations', 'vaultReport', {}), { rows: [] });
+    qc.setQueryData(november, { rows: ['november'] });
+    qc.setQueryData(october, { rows: ['october'] });
+    // Two periods, two cache entries — switching months never shows the other month's roll-up.
+    expect(qc.getQueryData(november)).toEqual({ rows: ['november'] });
+    expect(qc.getQueryData(october)).toEqual({ rows: ['october'] });
     qc.setQueryData(listKey('operations', 'reportBanks', { from: 'x', to: 'y' }), { rows: [] });
 
     for (const key of [
@@ -528,7 +536,8 @@ describe('vault roll-up and area caches (B6)', () => {
     }
 
     expect(isStale(qc, __operationsKeys.vault)).toBe(true);
-    expect(isStale(qc, __operationsKeys.vaultReport)).toBe(true);
+    expect(qc.getQueryState(november)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(october)?.isInvalidated).toBe(true);
     // ...while the completed-shipment report is still untouched: dispatching does not complete.
     expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
   });

@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { type AuditLogDto } from '@ecms/contracts';
 import {
+  DISTRIBUTION_RESCHEDULE_MARKER,
   SHIPMENT_LOG_ENTITY,
   buildShipmentLogEntries,
   collectShipmentLogRefs,
@@ -340,6 +341,67 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
       kind: 'receiptCancelled',
       changes: [{ field: 'reason', old: null, new: 'سبب' }],
     });
+  });
+
+  // Round 12 — «توزيع المحصنات»: a shipment taken off its van retires its delivery leg, and an
+  // overdue one placed on a van of a later day moves its delivery date. Both are the shipment's
+  // story, printed in names.
+  it('prints a van taken off as `crewRemoved` — the captain and van it was on', () => {
+    const delivery = oid(23);
+    const [assigned, removed] = buildShipmentLogEntries(
+      [
+        row(SHIPMENT_LOG_ENTITY.leg, delivery, 'create', [
+          { field: 'leg', old: null, new: 'delivery' },
+          { field: 'captainEmployeeId', old: null, new: CAPTAIN_1 },
+          { field: 'vehicleId', old: null, new: VAN_1 },
+        ]),
+        row(SHIPMENT_LOG_ENTITY.leg, delivery, 'delete', [
+          { field: 'captainEmployeeId', old: CAPTAIN_1, new: null },
+          { field: 'vehicleId', old: VAN_1, new: null },
+          { field: 'crewAssignmentId', old: oid(600), new: null },
+        ]),
+      ],
+      new Map([[delivery, 'delivery' as const]]),
+      names,
+    );
+    expect(assigned).toMatchObject({ kind: 'crewAssigned', leg: 'delivery' });
+    expect(removed).toMatchObject({
+      kind: 'crewRemoved',
+      leg: 'delivery',
+      changes: [
+        { field: 'captain', old: 'قائد أول', new: null },
+        { field: 'vehicle', old: 'ك-12', new: null },
+      ],
+    });
+  });
+
+  it('prints an overdue day moved on distribution as `deliveryRescheduled`, the marker unprinted', () => {
+    const [moved] = build([
+      shipmentRow('update', [
+        {
+          field: 'deliveryDate',
+          old: '2026-11-10T00:00:00.000Z',
+          new: '2026-11-12T00:00:00.000Z',
+        },
+        { field: DISTRIBUTION_RESCHEDULE_MARKER, old: null, new: true },
+      ]),
+    ]);
+    expect(moved).toMatchObject({
+      kind: 'deliveryRescheduled',
+      leg: null,
+      changes: [{ field: 'deliveryDate', old: '2026-11-10', new: '2026-11-12' }],
+    });
+    // The same date moved by the edit form is an ordinary edit.
+    const [edited] = build([
+      shipmentRow('update', [
+        {
+          field: 'deliveryDate',
+          old: '2026-11-10T00:00:00.000Z',
+          new: '2026-11-12T00:00:00.000Z',
+        },
+      ]),
+    ]);
+    expect(edited?.kind).toBe('edited');
   });
 
   it('a value that no longer resolves is null — never the id in its place', () => {

@@ -1,13 +1,16 @@
-// «صرف الخزينة» in Round 10, rendered against the real Arabic catalog, a real store and query client
-// — what reaches the screen; the rules themselves are pinned in lib/secured-dispatch.spec.ts.
+// «محصنات الخزينة» (Round 12 — «صرف الخزينة» renamed and made VIEW ONLY: «وعاوز اغير اسم صرف الخزينة
+// ل محصنات الخزينة وتكون وظيفتها انها بتعرض اللى موجود دلوقتى فى الخزنة»), rendered against the real
+// Arabic catalog, a real store and query client — what reaches the screen; the rules themselves are
+// pinned in lib/secured-dispatch.spec.ts.
 //
 //   · «صرف الخزنية … اعملها بقى بشكل الجديد للشاشات اللى احنا عملناها»: the secured screen's board —
 //     its figures, filter bar, dark table with «تاريخ الاستلام» and «تاريخ التسليم», stage badges;
 //   · «كله يبقى موجود فى تاريخ يتفلتر»: every محصنة in the vault, in the server's order (late first),
 //     with ONE optional delivery-day picker; late and due-today rows marked and counted;
-//   · its two acts kept — the delivery crew, read from the ROW's own delivery day, and the release,
-//     of one row or of the rows ticked, one vehicle per call — each for its own grant; and nothing
-//     that edits a row the vault has received.
+//   · NO ACTS, whoever reads it: no crew, no release, no ticks, no cancelled receipt — crewing moved
+//     to «توزيع المحصنات» and the release to «تسليم المحصنات». The two dialogs the screen used to open
+//     stay in the codebase (the new screens may reuse them) and keep their own pins below; and
+//     nothing edits a row the vault has received.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -318,40 +321,16 @@ describe('«صرف الخزينة» — every محصنة in the vault, on the bo
     );
   });
 
-  it('offers the crew on every row with a delivery day — «تغيير» where one is assigned', () => {
-    expect(rowOf(html, 's-late')).toContain('data-assign-delivery-open="s-late"');
-    expect(rowOf(html, 's-late')).toContain(
-      `aria-label="${ar('operations.secured.dispatch.reassignAction')}"`,
-    );
-    expect(rowOf(html, 's-today')).toContain(
-      `aria-label="${ar('operations.secured.dispatch.assignAction')}"`,
-    );
-    // No delivery day: no crew can be planned for it — its square stays, empty.
-    expect(rowOf(html, 's-undated')).not.toContain('data-assign-delivery-open');
-  });
-
-  it('offers the release only on a row that has its crew — and its tick box with it', () => {
-    for (const id of ['s-late', 's-later']) {
-      const tr = rowOf(html, id);
-      expect(tr).toContain(`data-dispatch-open="${id}"`);
-      expect(tr).toContain(`data-board-select="${id}"`);
-    }
-    for (const id of ['s-today', 's-undated']) {
-      const tr = rowOf(html, id);
-      expect(tr).not.toContain('data-dispatch-open');
-      expect(tr).not.toContain('data-board-select');
-    }
+  it('is VIEW ONLY — no crew, no release, no ticks, even for the desk treasurer who holds them all', () => {
+    // FULL holds the shipment edit and the vault's dispatch: on Round 10's screen both acts showed.
+    expect(html).not.toContain('data-assign-delivery-open');
+    expect(html).not.toContain('data-dispatch-open');
+    expect(html).not.toContain('data-board-select');
+    expect(html).not.toContain('data-dispatch-selected');
     const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-    expect(head).toContain(`>${ar('operations.board.select')}<`);
-  });
-
-  it('offers «صرف المحدد» in the toolbar, off while nothing is ticked', () => {
-    const button = html.slice(html.lastIndexOf('<button', html.indexOf('data-dispatch-selected')));
-    expect(button).toMatch(/^<button type="button" data-dispatch-selected="0"/);
-    expect(button.slice(0, button.indexOf('>'))).toContain('disabled=""');
-    expect(button).toContain(
-      ar('operations.secured.dispatch.releaseSelected', { count: formatNumber(0, 'ar') }),
-    );
+    expect(head).not.toContain(`>${ar('operations.board.select')}<`);
+    // Its one thing to open on a row is «السجل» — its story, a view like the screen.
+    expect(rowOf(html, 's-late')).toContain('data-row-actions="shipment"');
   });
 
   it('offers no add, no edit, no delete and no photo change — every row is locked', () => {
@@ -410,42 +389,33 @@ describe('«صرف الخزينة» filtered on a delivery day', () => {
   });
 });
 
-describe('each act for its own grant', () => {
+describe('no act for any grant — «وظيفتها انها بتعرض اللى موجود دلوقتى فى الخزنة»', () => {
   const seed = (qc: QueryClient): void => {
     qc.setQueryData(__securedDispatchBoardKey(null), answer(null, ROWS));
   };
+  const ACTS = [
+    'data-assign-delivery-open',
+    'data-dispatch-open',
+    'data-board-select',
+    'data-dispatch-selected',
+    'data-cancel-receipt-open',
+  ];
 
-  it('a treasurer who may only look sees the rows, the marks — and no acts', () => {
-    const html = render({ permissions: ['operationsVault.view'], seed });
+  it.each([
+    ['a treasurer who may only look', ['operationsVault.view']],
+    ['a treasurer who may release', ['operationsVault.view', 'operationsVault.dispatch']],
+    ['the desk that may crew', ['operationsVault.view', 'operationsShipment.edit']],
+    ['whoever holds every grant, the special one too', [...FULL, 'operationsVault.cancelReceipt']],
+  ])('%s sees the rows and their marks — and nothing to do', (_who, permissions) => {
+    const html = render({ permissions, seed });
     expect(html).toContain('data-dispatch-due="overdue"');
+    expect(html).toContain('data-dispatch-legend="overdue"');
+    for (const act of ACTS) expect(html).not.toContain(act);
+  });
+
+  it('a vault-only reader is offered no row actions at all — not even «السجل», read on the shipment grant', () => {
+    const html = render({ permissions: ['operationsVault.view'], seed });
     expect(html).not.toContain('data-row-actions="shipment"');
-    expect(html).not.toContain('data-board-select');
-    expect(html).not.toContain('data-dispatch-selected');
-    expect(html).not.toContain('data-assign-delivery-open');
-  });
-
-  it('a treasurer who releases but does not crew: the release and the ticks, no crew act', () => {
-    const html = render({
-      permissions: ['operationsVault.view', 'operationsVault.dispatch'],
-      seed,
-    });
-    expect(html).toContain('data-dispatch-open="s-late"');
-    expect(html).toContain('data-board-select="s-late"');
-    expect(html).toContain('data-dispatch-selected="0"');
-    expect(html).not.toContain('data-assign-delivery-open');
-  });
-
-  it('the desk that crews but does not release: the crew act, no ticks and no release', () => {
-    const html = render({ permissions: ['operationsVault.view', 'operationsShipment.edit'], seed });
-    expect(html).toContain('data-assign-delivery-open="s-today"');
-    expect(html).not.toContain('data-dispatch-open');
-    expect(html).not.toContain('data-board-select');
-    expect(html).not.toContain('data-dispatch-selected');
-  });
-
-  it('whoever holds the special grant may cancel a receipt here — every row is in the vault', () => {
-    const html = render({ permissions: [...FULL, 'operationsVault.cancelReceipt'], seed });
-    expect(rowOf(html, 's-late')).toContain('data-cancel-receipt-open="s-late"');
   });
 });
 
@@ -664,9 +634,22 @@ describe('the lines a refactor could quietly undo', () => {
     );
   });
 
-  it('lets only shown, crewed ticks go out', () => {
-    expect(PAGE).toContain('const ticked = canDispatch ? tickedForDispatch(shown, selected) : [];');
-    expect(PAGE).toContain('selectable: offersDispatch,');
+  it('hands the board no act and no ticks — view only (Round 12)', () => {
+    // The code, its comments left out (they name what moved where).
+    const code = PAGE.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*\*[\s\S]*?\*\//g, '');
+    for (const gone of [
+      'rowAction',
+      'selection',
+      'canCancelReceipt',
+      'AssignDeliveryCrewDialog',
+      'DispatchSecuredDialog',
+      'tickedForDispatch',
+      "can('operationsVault.dispatch')",
+      "can('operationsShipment.edit')",
+    ]) {
+      expect(code).not.toContain(gone);
+    }
+    expect(PAGE).toContain('canToggleReceived={false}');
   });
 
   it('words a refusal once, in the dialog, and re-reads the board on it', () => {

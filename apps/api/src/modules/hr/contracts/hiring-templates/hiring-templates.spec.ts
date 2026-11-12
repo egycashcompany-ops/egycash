@@ -30,11 +30,12 @@ const SAMPLES: ContractVariableValue[] = CONTRACT_VARIABLE_CATALOG.map((v) => ({
 }));
 
 describe('the fourteen papers', () => {
-  it('are the contract, «نموذج رقم (1)», four more forms for every job and seven job description cards', () => {
+  it('are the contract, «نموذج رقم (1)», five more forms for every job and seven job description cards', () => {
     expect(HIRING_PAPERS).toHaveLength(14);
     expect(new Set(HIRING_PAPERS.map((p) => p.key)).size).toBe(14);
     expect(HIRING_PAPERS.filter((p) => p.kind === 'contract')).toEqual([CONTRACT]);
-    expect(HIRING_PAPERS.filter((p) => p.kind === 'form' && p.jobs === 'all')).toHaveLength(5);
+    // The weapon declaration among them — for every job, ticked for crew leaders only.
+    expect(HIRING_PAPERS.filter((p) => p.kind === 'form' && p.jobs === 'all')).toHaveLength(6);
     expect(CARDS).toHaveLength(7);
   });
 
@@ -194,30 +195,29 @@ describe('which job prints which paper — matched by the job\'s name', () => {
   it('gives each job its own card', () => {
     expect(papersFor('اخصائى صراف الى')).toEqual(['egycash.hiring.card.atm-specialist']);
     expect(papersFor('اخصائي عد وفرز')).toEqual(['egycash.hiring.card.counting-specialist']);
-    expect(papersFor('أخصائي نقل أموال')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.cit-specialist']);
+    expect(papersFor('أخصائي نقل أموال')).toEqual(['egycash.hiring.card.cit-specialist']);
     expect(papersFor('اخصائي تجهيز')).toEqual(['egycash.hiring.card.preparation-specialist']);
     expect(papersFor('امين خزينة')).toEqual(['egycash.hiring.card.treasurer']);
     expect(papersFor('مراقب امن')).toEqual(['egycash.hiring.card.security-guard']);
   });
 
-  it('gives the weapon declaration to crew leaders and cash-in-transit specialists only', () => {
-    expect(papersFor('قائد طاقم')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.atm-crew-leader']);
-    expect(papersFor('قائد طاقم صراف آلي')).toEqual(['egycash.hiring.weapon', 'egycash.hiring.card.atm-crew-leader']);
-    // Another crew leader signs the declaration, but the ATM card is not his.
-    expect(papersFor('قائد طاقم نقل أموال')).toEqual(['egycash.hiring.weapon']);
-    expect(papersFor('اخصائى صراف الى')).not.toContain('egycash.hiring.weapon');
-    // The cash-in-transit specialist may sign it too (optional when collected).
-    expect(papersFor('اخصائي نقل اموال')).toContain('egycash.hiring.weapon');
-    expect(papersFor('أمين خزينة')).not.toContain('egycash.hiring.weapon');
+  it('gives the crew leader his ATM card — another crew leader none', () => {
+    expect(papersFor('قائد طاقم')).toEqual(['egycash.hiring.card.atm-crew-leader']);
+    expect(papersFor('قائد طاقم صراف آلي')).toEqual(['egycash.hiring.card.atm-crew-leader']);
+    expect(papersFor('قائد طاقم نقل أموال')).toEqual([]);
   });
 
-  it('offers it to the cash-in-transit specialist unticked — «اوبشن … منغير علامه»', () => {
-    expect(optionalForJob(WEAPON.key, 'أخصائي نقل أموال')).toBe(true);
+  it('offers the weapon declaration to every job, ticked for crew leaders only — «لكلو بس مطفيه وللقائد معموله mark»', () => {
+    expect(WEAPON.jobs).toBe('all');
+    expect(optionalForJob(WEAPON.key, 'قائد طاقم')).toBe(false);
     expect(optionalForJob(WEAPON.key, 'قائد طاقم نقل أموال')).toBe(false);
-    expect(optionalForJob(WEAPON.key, null)).toBe(false);
-    // Every other paper is ticked for every job.
+    expect(optionalForJob(WEAPON.key, 'أخصائي نقل أموال')).toBe(true);
+    expect(optionalForJob(WEAPON.key, 'مراقب أمن')).toBe(true);
+    // A job whose name is unknown is offered it unticked too.
+    expect(optionalForJob(WEAPON.key, null)).toBe(true);
+    // Every other paper is ticked for every job it prints for.
     for (const p of HIRING_PAPERS.filter((x) => x.key !== WEAPON.key)) {
-      expect(optionalForJob(p.key, 'أخصائي نقل أموال'), p.key).toBe(false);
+      expect(optionalForJob(p.key, 'مراقب أمن'), p.key).toBe(false);
     }
   });
 
@@ -231,8 +231,9 @@ describe('which job prints which paper — matched by the job\'s name', () => {
   it('lists the matching jobs\' ids, and none for a paper every job prints', () => {
     const leader = { _id: new Types.ObjectId(), name: { ar: 'قائد طاقم' } };
     const driver = { _id: new Types.ObjectId(), name: { ar: 'سائق' } };
-    expect(jobsFor(WEAPON.jobs, [leader, driver])).toEqual([leader._id]);
+    expect(jobsFor(paper('egycash.hiring.card.atm-crew-leader').jobs, [leader, driver])).toEqual([leader._id]);
     expect(jobsFor(CONTRACT.jobs, [leader, driver])).toEqual([]);
+    expect(jobsFor(WEAPON.jobs, [leader, driver])).toEqual([]);
   });
 });
 

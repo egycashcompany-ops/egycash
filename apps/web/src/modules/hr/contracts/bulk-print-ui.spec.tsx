@@ -18,7 +18,7 @@ const DIALOG = code('components/BulkPrintDialog.tsx');
 
 const person = (
   offerId: string,
-  keys: [string, 'contract' | 'everyJob' | 'thisJob' | 'other'][],
+  keys: [string, 'contract' | 'everyJob' | 'thisJob'][],
   optional: readonly string[] = [],
 ): CandidateBulkPersonDto => ({
   offerId,
@@ -36,30 +36,30 @@ const person = (
 });
 
 describe('each ticked person on a line of their own', () => {
-  const leader = person('leader', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'thisJob'], ['card.leader', 'thisJob'], ['card.cit', 'other']]);
-  const coder = person('coder', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'other'], ['card.leader', 'other'], ['card.cit', 'other']]);
-  const cit = person('cit', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'thisJob'], ['card.leader', 'other'], ['card.cit', 'thisJob']], ['weapon']);
+  // Their own papers only; the weapon declaration offered to every job, ticked for the crew leader.
+  const leader = person('leader', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob'], ['card.leader', 'thisJob']]);
+  const coder = person('coder', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob']], ['weapon']);
+  const cit = person('cit', [['contract', 'contract'], ['sheet', 'everyJob'], ['weapon', 'everyJob'], ['card.cit', 'thisJob']], ['weapon']);
 
-  it('starts each line with the papers of that person\'s job ticked — but one only offered — and the rest off', () => {
+  it('starts each line with that person\'s papers ticked — but one only offered', () => {
     const start = startingChoice([leader, coder, cit]);
     expect([...(start.get('leader') ?? [])]).toEqual(['contract', 'sheet', 'weapon', 'card.leader']);
     expect([...(start.get('coder') ?? [])]).toEqual(['contract', 'sheet']);
-    // The cash-in-transit specialist's weapon declaration starts unticked; the crew leader's does not.
+    // «لكلو بس مطفيه وللقائد معموله mark»: on every line, ticked on the crew leader's only.
     expect(start.get('cit')?.has('weapon')).toBe(false);
-    expect(start.get('cit')?.has('card.leader')).toBe(false);
   });
 
-  it('prints for each person what is ticked on their own line — another job\'s paper too — and no key off it', () => {
+  it('prints for each person what is ticked on their own line, and nothing of another job', () => {
     const chosen = new Map([
       ['leader', new Set(['card.leader', 'contract'])],
       ['coder', new Set<string>()],
-      // Another job's card ticked on this line prints for this person; a key not on it never does.
-      ['cit', new Set(['sheet', 'card.leader', 'not.a.paper'])],
+      // A key of another job's paper is never on this line, so never sent for this person.
+      ['cit', new Set(['sheet', 'card.leader', 'weapon'])],
     ]);
     expect(printRequest([leader, coder, cit], chosen)).toEqual({
       people: [
         { offerId: 'leader', keys: ['contract', 'card.leader'] },
-        { offerId: 'cit', keys: ['sheet', 'card.leader'] },
+        { offerId: 'cit', keys: ['sheet', 'weapon'] },
       ],
     });
   });
@@ -93,8 +93,6 @@ describe('the popup', () => {
     expect(DIALOG).toContain('<PaperTile');
     expect(DIALOG).toContain('onToggle={(on) => toggle(person.offerId, paper.key, on)}');
     expect(DIALOG).toContain("t('contracts.candidate.selectAll')");
-    // «حسب الوظيفة» puts a line back to the papers of that person's job.
-    expect(DIALOG).toContain('setLine(person.offerId, startingChoice([person]).get(person.offerId) ?? [])');
     expect(DIALOG).toContain("t('contracts.bulk.everyoneAll')");
     expect(DIALOG).toContain('setChosen(startingChoice(loaded))');
     expect(DIALOG).toContain('render.mutateAsync(request)');

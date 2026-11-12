@@ -179,6 +179,11 @@ class JobOfferService {
   }
 
   /** The applicant's accepted offer, if any — the Employee-Creation gate (Stage 5). */
+  /** A28 — the jobs the candidates ready to hire are taking, by department («مستندات الوظائف»). */
+  async acceptedJobsByDepartment(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    return jobOfferRepository.acceptedJobsByDepartment();
+  }
+
   async acceptedOfferFor(applicantId: string): Promise<JobOfferDoc | null> {
     return jobOfferRepository.findAcceptedByApplicantId(applicantId);
   }

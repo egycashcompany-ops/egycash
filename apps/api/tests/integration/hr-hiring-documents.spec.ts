@@ -560,7 +560,10 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
       PAPER('work-receipt'),
       PAPER('relatives'),
       PAPER('bank-letter'),
+      PAPER('weapon'),
     ]);
+    // Every job is offered the weapon declaration; it starts ticked for crew leaders only.
+    expect(draft.papers.find((p) => p.key === PAPER('weapon'))).toMatchObject({ optional: true, selected: false });
     expect(draft).toMatchObject({ startDate: '2027-04-01', endDate: '2028-03-31', employeeCode: null, printedAt: null });
     expect(draft.values.find((v) => v.key === 'employee.fullName')?.value).toBe('أحمد محمد');
     // Opened again: the same record, not a second one.
@@ -630,9 +633,9 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
 });
 
 /**
- * A28 — «طباعة لكل المحدد»: the ticked people, each with every paper — their own job's marked, the
- * rest there to add — printed as one document; each print recorded as on the person's own page; a
- * person who cannot be printed for is reported, not dropped, and the others still print.
+ * A28 — «طباعة لكل المحدد»: the ticked people, each with the papers of their own department and job,
+ * printed as one document; each print recorded as on the person's own page; a person who cannot be
+ * printed for is reported, not dropped, and the others still print.
  */
 describe('«طباعة لكل المحدد» on «جاهزون للتعيين» (A28)', () => {
   const PAPER = (name: string): string => `egycash.hiring.${name}`;
@@ -640,7 +643,7 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     request(app).post(`/api/v1/hr/contracts/candidates/${path}`).set('Authorization', `Bearer ${adminToken}`).send(body);
 
   it('prints for every ticked person the papers chosen for them, in one document', async () => {
-    // A job the guard's card is for, so the card is published — another job's paper for these people.
+    // A job the guard's card is for, so the card is published — another job's paper, never these people's.
     const guard = await request(app)
       .post('/api/v1/platform/job-titles')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -656,16 +659,15 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     const people = opened.body.data as CandidateBulkPersonDto[];
     expect(people.map((p) => p.offerId)).toEqual([first.id, second.id, nobody]);
     expect(people[0]?.papers.find((p) => p.key === PAPER('bank-letter'))).toMatchObject({ group: 'everyJob' });
-    // Every paper is on each line: another job's there, unticked until it is chosen.
-    expect(people[0]?.papers.find((p) => p.key === PAPER('card.security-guard'))).toMatchObject({
-      group: 'other',
-      optional: false,
-    });
+    // Only their own papers: another job's card is not on their line; the weapon declaration is,
+    // unticked — they are no crew leaders.
+    expect(people[0]?.papers.map((p) => p.key)).not.toContain(PAPER('card.security-guard'));
+    expect(people[0]?.papers.find((p) => p.key === PAPER('weapon'))).toMatchObject({ optional: true });
     expect(people[0]?.error).toBeNull();
     expect(people[2]?.error).not.toBeNull();
 
-    // Each person's own line: three papers for the first — another job's card among them — one for
-    // the second.
+    // Each person's own line: two papers for the first — another job's card sent besides is never
+    // printed for them — one for the second.
     const printed = await call('bulk/render', {
       people: [
         { offerId: first.id, keys: [PAPER('bank-letter'), PAPER('relatives'), PAPER('card.security-guard')] },
@@ -676,14 +678,14 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     expect(printed.status, JSON.stringify(printed.body)).toBe(200);
     const out = printed.body.data as RenderCandidateBulkDto;
     expect(out.results).toEqual([
-      { offerId: first.id, printed: 3, error: null },
-      // A key that is no published paper prints nothing.
+      { offerId: first.id, printed: 2, error: null },
+      // A paper that is not the person's is never printed for them.
       { offerId: second.id, printed: 1, error: null },
       expect.objectContaining({ offerId: nobody, printed: 0 }),
     ]);
-    // Four documents in all, each on its own page after the first.
-    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(4);
-    expect(out.html).toContain('مراقب امن'); // the guard's card, in his spelling
+    // Three documents in all, each on its own page after the first.
+    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(3);
+    expect(out.html).not.toContain('مراقب امن'); // the guard's card, in his spelling
 
     // Each person's page shows the print, with the code kept — the hire is open there now.
     const codes: string[] = [];

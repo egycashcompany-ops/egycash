@@ -12,7 +12,7 @@
 //     is created. HR can also tick its jobs by hand and publish it.
 //   · a job's paper published here and untouched since FOLLOWS ITS JOBS: a job carrying its name
 //     created since (or a name the paper gained in a release) is added on the next boot. None is
-//     ever taken away.
+//     ever taken away — and a paper a release makes for every job prints for every job.
 //   · a paper's NEWER REVISION (`HiringPaper.revision`: his words and layout as a release changes
 //     them) rewrites the row the boot wrote, if nobody has touched it since — its sections, its
 //     placeholders, its signatures. A row somebody edited keeps their edit.
@@ -124,8 +124,27 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
           row = fresh;
         }
         if (row.status === 'published') {
+          // A paper now for every job (the weapon declaration, once for crew leaders and the
+          // cash-in-transit specialists): the row as written prints for every job too.
+          if (paper.jobs === 'all') {
+            if (row.allJobs ?? true) continue;
+            const done = await ContractTemplateModel.updateOne(
+              { _id: row._id, __v: row.__v, status: 'published', changedBy: null, updatedBy: null },
+              { $set: { allJobs: true, jobTitleIds: [] }, $inc: { __v: 1 } },
+            );
+            if (done.modifiedCount === 1) {
+              await auditService.record({
+                entityRef: templateRef(String(row._id)),
+                action: 'update',
+                changes: [{ field: 'allJobs', old: false, new: true }],
+                actor: SYSTEM,
+              });
+              report.widened.push(paper.key);
+            }
+            continue;
+          }
           // A job named for it since: added, never one taken away — and only to the row as written.
-          if (paper.jobs === 'all' || (row.allJobs ?? true)) continue;
+          if (row.allJobs ?? true) continue;
           const held = row.jobTitleIds ?? [];
           const added = jobTitleIds.filter((id) => !held.some((own) => String(own) === String(id)));
           if (added.length === 0) continue;

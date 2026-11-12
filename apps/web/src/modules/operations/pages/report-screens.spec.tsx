@@ -59,6 +59,7 @@ const VAULT_PAGE = read('./VaultReportPage.tsx');
 const CAPTAIN_PAGE = read('./CaptainReportPage.tsx');
 const BANK_PAGE = read('./BankReportPage.tsx');
 const INVENTORY_PAGE = read('./VaultInventoryPage.tsx');
+const HELD_DIALOG = read('../components/VaultHeldReportDialog.tsx');
 const SHIPMENTS_BOARD = read('../components/ShipmentsBoard.tsx');
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -565,10 +566,15 @@ describe('one board for both reports, built from the boards’ own pieces', () =
     expect(BANK_PAGE).not.toContain('ReportBoard');
   });
 
-  it('lends «سجل الخزينة» its table — the same «بيان الشحنات لكل بنك» over what is held now', () => {
+  it('lends «سجل الخزينة»’s «تقرير الخزينة» its table and its files — the same «بيان الشحنات لكل بنك» over what is held now', () => {
     expect(BOARD).toMatch(/export const ReportTable = \(/);
-    expect(INVENTORY_PAGE).toContain("import { ReportTable } from '../components/ReportBoard';");
-    expect(INVENTORY_PAGE).toContain('<ReportTable');
+    expect(BOARD).toMatch(/export const ReportExportPair = \(/);
+    expect(HELD_DIALOG).toContain("import { ReportExportPair, ReportTable } from './ReportBoard';");
+    expect(HELD_DIALOG).toContain('<ReportTable');
+    expect(HELD_DIALOG).toContain('<ReportExportPair');
+    // The page opens it; it draws no table of its own.
+    expect(INVENTORY_PAGE).toContain('<VaultHeldReportDialog');
+    expect(INVENTORY_PAGE).not.toContain('<ReportTable');
   });
 });
 

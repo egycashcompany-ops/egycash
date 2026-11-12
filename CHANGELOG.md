@@ -316,11 +316,13 @@ its entry here in the same PR.
     - «محصنات الخزينة» is view only: the list, overdue first, the optional delivery-day filter and
       «السجل» — no delivery crew, no release, no ticks, no cancelled receipt (that stays on
       «الشحنات المحصنة»).
-    - «سجل الخزينة»: «تقرير الخزينة» (the per-bank table of what the vault holds now, its panel
-      beside it, «حتى …») over «سجل الشحنات» for the محصنات (from–to by collection or delivery
-      day, the filters, «السجل», the deleted list with restore, paging). A reader without
-      `operationsShipment.view` gets the report at full height and a line saying what the history
-      needs.
+    - «سجل الخزينة» is «سجل الشحنات» for the محصنات (from–to by collection or delivery day, the
+      filters, «السجل», the deleted list with restore, paging), on the whole page. «تقرير الخزينة»,
+      beside «إخفاء الإحصائيات», opens what the vault holds now over the whole screen, built like
+      Fleet's custody dashboard: «حتى …», figure tiles (count, pound, dollar, «عملات أخرى» with its
+      breakdown, bags, cartons, boxes), the per-bank table with its panel beside it, Excel and PDF.
+      It is read only while open. A reader without `operationsShipment.view` gets the same report
+      on the page at full height and a line saying what the history needs.
     - «استلام الخزينة» has «إضافة محصنة» — the secured screen's button and form (delivery the next
       day by default), for `operationsShipment.create`.
     - «توزيع المحصنات»: the day's vans on the right (number, time, direction, captains, specialists,

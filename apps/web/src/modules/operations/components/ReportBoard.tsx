@@ -155,7 +155,7 @@ export const ReportTitle = ({
 }: {
   icon: readonly string[];
   title: string;
-  /** A note at the strip's far end — «سجل الخزينة»'s «حتى الآن …» on its live report. */
+  /** A note at the strip's far end, after the title. */
   aside?: ReactNode;
 }): JSX.Element => (
   <div
@@ -197,7 +197,7 @@ const useLineName = (): ((line: ReportTableLine) => string) => {
 /**
  * One report's table in its card — the title strip, the nine columns, «الإجمالي» pinned under the
  * rows, the «عملات أخرى» breakdown. The reports' board draws it (`ReportBoard`), and so does
- * «سجل الخزينة»'s live «تقرير الخزينة» (`pages/VaultInventoryPage.tsx`) — the same table «بيان الشحنات
+ * «سجل الخزينة»'s live «تقرير الخزينة» (`VaultHeldReportDialog.tsx`) — the same table «بيان الشحنات
  * لكل بنك» over what the vault holds now («نفس الداتا … ونفس الشكل وكل حاجه»).
  */
 export const ReportTable = ({
@@ -417,51 +417,29 @@ export interface ReportExportSpec {
   withValuePanel?: boolean;
 }
 
-export const ReportBoard = ({
-  label,
+/**
+ * «Excel | PDF» over a report's table — the reports' bar end, and «تقرير الخزينة»'s header on
+ * «سجل الخزينة» (`VaultHeldReportDialog.tsx`), so the live report's files are the period report's
+ * files over another answer: the lines the table draws, «الإجمالي» under them, and — on the vault —
+ * «إجمالي قيمة الشحنات» as a second sheet and a second printed page.
+ */
+export const ReportExportPair = ({
   title,
-  titleIcon,
   keyHeader,
   countHeader,
-  rows,
+  lines,
   total,
-  loading,
-  error,
-  onRetry,
-  empty,
-  refusal = null,
-  nameFilter,
-  datePickers,
-  filtersActive,
-  onResetFilters,
   exportSpec,
-  aside,
 }: {
-  /** The screen's name, for a reader — the page draws no title, as no board does. */
-  label: string;
+  /** The table's strip — the sheet's name. */
   title: string;
-  titleIcon: readonly string[];
   keyHeader: string;
   countHeader: string;
-  /** The rows SHOWN, in the order to draw them — the name filter already applied (`reportView`). */
-  rows: readonly ReportBoardRow[];
-  /** «الإجمالي» for those rows (`reportView`): the server's grand total, or theirs with a name typed. */
+  /** The lines the table draws (`reportTableLines`) — none, and there is nothing to export. */
+  lines: readonly ReportTableLine[];
+  /** «الإجمالي» — what the vault's panel is read off. */
   total: OperationsReportTotalsDto | undefined;
-  loading: boolean;
-  error: unknown;
-  onRetry: () => void;
-  empty: string;
-  /** Why the report was not asked for — said in the table's place (an inverted range). */
-  refusal?: string | null;
-  nameFilter: ReportNameFilter;
-  /** «من» and «إلى». The page owns their values and what they ask the server for. */
-  datePickers: readonly BoardDatePicker[];
-  /** A name is typed, or the period is not the page's default — the reset has something to undo. */
-  filtersActive: boolean;
-  onResetFilters: () => void;
   exportSpec: ReportExportSpec;
-  /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
-  aside?: ReactNode;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -469,10 +447,7 @@ export const ReportBoard = ({
   const catalog = currencies.data?.items ?? [];
   const nameOf = useLineName();
 
-  // The files carry the lines the table draws — nothing to carry while there are none (loading,
-  // refused, empty, or a name that matched nobody), and the money waits for the catalog it is
-  // split by, as the table's does.
-  const lines = refusal === null ? reportTableLines(rows, total) : [];
+  // The money waits for the catalog it is split by, as the table's does.
   const canExport = lines.length > 0 && currencies.data !== undefined;
 
   const table = () =>
@@ -526,7 +501,7 @@ export const ReportBoard = ({
     if (!printReportDocs(docs)) toast.error(t('operations.reportExport.popupBlocked'));
   };
 
-  const exports = (
+  return (
     <span className={EXPORT_PAIR} data-report-export="true">
       <button
         type="button"
@@ -556,6 +531,67 @@ export const ReportBoard = ({
         PDF
       </button>
     </span>
+  );
+};
+
+export const ReportBoard = ({
+  label,
+  title,
+  titleIcon,
+  keyHeader,
+  countHeader,
+  rows,
+  total,
+  loading,
+  error,
+  onRetry,
+  empty,
+  refusal = null,
+  nameFilter,
+  datePickers,
+  filtersActive,
+  onResetFilters,
+  exportSpec,
+  aside,
+}: {
+  /** The screen's name, for a reader — the page draws no title, as no board does. */
+  label: string;
+  title: string;
+  titleIcon: readonly string[];
+  keyHeader: string;
+  countHeader: string;
+  /** The rows SHOWN, in the order to draw them — the name filter already applied (`reportView`). */
+  rows: readonly ReportBoardRow[];
+  /** «الإجمالي» for those rows (`reportView`): the server's grand total, or theirs with a name typed. */
+  total: OperationsReportTotalsDto | undefined;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  empty: string;
+  /** Why the report was not asked for — said in the table's place (an inverted range). */
+  refusal?: string | null;
+  nameFilter: ReportNameFilter;
+  /** «من» and «إلى». The page owns their values and what they ask the server for. */
+  datePickers: readonly BoardDatePicker[];
+  /** A name is typed, or the period is not the page's default — the reset has something to undo. */
+  filtersActive: boolean;
+  onResetFilters: () => void;
+  exportSpec: ReportExportSpec;
+  /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
+  aside?: ReactNode;
+}): JSX.Element => {
+  // The files carry the lines the table draws — nothing to carry while there are none (loading,
+  // refused, empty, or a name that matched nobody).
+  const lines = refusal === null ? reportTableLines(rows, total) : [];
+  const exports = (
+    <ReportExportPair
+      title={title}
+      keyHeader={keyHeader}
+      countHeader={countHeader}
+      lines={lines}
+      total={total}
+      exportSpec={exportSpec}
+    />
   );
 
   return (

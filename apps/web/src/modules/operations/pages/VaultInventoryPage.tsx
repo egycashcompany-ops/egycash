@@ -2,74 +2,59 @@
 //
 // THE OWNER: «شاشة جرد الخزينة تكون سجل الخزينه المحصنات زى شاشة سجل الشحنات بالظبط واعمل فوق تقرير
 // الخزينة يكون نفس الداتا اللى فى بيان الشحنات لكل بنك ونفس الشكل وكل حاجه بس مفيش فتر من الى هيكون
-// لحظى على ف الخزينة». So the screen is two things, one over the other:
+// لحظى على ف الخزينة». And then: «سجل الخزينه لما اوس على تقرير يفتح ززى موديل زى لوحة التحكم اللى
+// عملنها فى العهدة». So the screen is the secured history, and the report opens over it:
 //
-//   · ON TOP, «تقرير الخزينة» — what the vault holds NOW, per bank, in the very table «تجميع الخزينة»
-//     draws («بيان الشحنات لكل بنك»: the same columns, the «عملات أخرى» breakdown, «الإجمالي» pinned
-//     under the rows — `ReportTable`), with no «من» / «إلى»: it is live («لحظى»), read from
-//     `GET /operations/reports/vault/held` — every محصنة IN the vault, exactly the list «محصنات
-//     الخزينة» shows — through the same server roll-up as the period's report. Its card says when
-//     it was read («حتى …»), and it moves on every receipt, cancelled receipt and release (it rides
-//     the roll-up's cache, which every secured act and the vault custody topic refresh).
-//     BESIDE IT, «إجمالي قيمة الشحنات» over the same total: the vault's money now, per currency —
-//     the treasurer's own question. It sits in the table's row and takes the table's height, so it
-//     costs the history below no space; it is not dropped (the brief allowed it where it fits).
-//     The two share a fixed band (`HELD_BAND`), the table's rows scrolling inside it under a total
-//     that stays, so the history keeps the rest of the screen.
-//     THE BAND FOLDS. At 1366×768 that rest is about two rows of history, so the history's toolbar
-//     carries «إخفاء التقرير» / «إظهار التقرير» beside «إخفاء الإحصائيات», in its look: folded, the
-//     band is gone (and not read) and the history takes the screen. Open by default, remembered per
-//     viewer in this browser (`lib/vault-history-band.ts`).
-//   · UNDER IT, the secured history — «سجل الشحنات» exactly (`ShipmentsHistoryPage.tsx`, the shared
-//     `ShipmentsBoard`): «من» / «إلى» opening on this month to date, every محصنة COLLECTED OR
-//     DELIVERED in the range whatever its stage (the server's `type=secured` — the dailies left
-//     out, the 5,000-row cap counted after them), the board's filters, figures, edit and delete
-//     (a row the vault holds stays locked), «السجل», the deleted محصنات of the range with their
-//     restore, paging, and the refusal of a range too long or too large. On the secured board's
-//     columns («تاريخ الاستلام» beside «تاريخ التسليم», the stage as the status — any of the six).
+//   · THE SCREEN is the secured history — «سجل الشحنات» exactly (`ShipmentsHistoryPage.tsx`, the
+//     shared `ShipmentsBoard`), taking the whole page as that one does: «من» / «إلى» opening on this
+//     month to date, every محصنة COLLECTED OR DELIVERED in the range whatever its stage (the
+//     server's `type=secured` — the dailies left out, the 5,000-row cap counted after them), the
+//     board's filters, figures, edit and delete (a row the vault holds stays locked), «السجل», the
+//     deleted محصنات of the range with their restore, paging, and the refusal of a range too long
+//     or too large. On the secured board's columns («تاريخ الاستلام» beside «تاريخ التسليم», the
+//     stage as the status — any of the six).
+//   · «تقرير الخزينة» — what the vault holds NOW, per bank — is a button in the history's toolbar,
+//     right beside «إخفاء الإحصائيات» and in its look, as «لوحة تحكم» sits beside «الإحصائيات» on
+//     Fleet's custody board. It opens the report over the whole screen
+//     (`components/VaultHeldReportDialog.tsx`): its figure tiles, the very table of «تجميع الخزينة»
+//     («بيان الشحنات لكل بنك»), «إجمالي قيمة الشحنات» beside it, Excel and PDF — live («لحظى»),
+//     with no «من» / «إلى». It used to be a band over the history, folding away to give the history
+//     its rows back (and remembering that per browser); as a modal it costs the history nothing, so
+//     the band, its fold and what it remembered are gone.
 //
 // WHO SEES WHAT. The screen is the vault's grant (`operationsVault.view`), and so is the live
 // report. The history is the shipments' history endpoint, on the SHIPMENT grant
-// (`operationsShipment.view`) — as «سجل الشحنات»; a treasurer holding only the vault's grants gets
-// the report and a line saying what the history needs, never a request refused under his eyes. His
-// report never folds: it is the whole screen, and there is no history toolbar to fold it from.
+// (`operationsShipment.view`) — as «سجل الشحنات». A treasurer holding only the vault's grants has
+// no history, so no toolbar to open the report from: the page shows him the report itself, the
+// modal's own body at the screen's height (`VaultHeldReportInline`), and a line saying what the
+// history needs — never a request refused under his eyes.
 //
 // What went: the old inventory's receipt-by-receipt table (receipt number, packaging, the two
 // treasurers, when). The report counts the same custody's packages per bank, and each محصنة's own
-// story — who received it, when — is its «السجل» on the history below.
+// story — who received it, when — is its «السجل» in the history.
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
-  MAX_PAGE_SIZE,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
-import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAppSelector } from '../../../store';
-import {
-  useOperationsBanks,
-  useOperationsShipmentHistory,
-  useVaultHeldReport,
-} from '../api/operations-queries';
-import { ReportTable } from '../components/ReportBoard';
+import { BoardIcon, PATH } from '../../fleet/components/FuelCardBoard';
+import { useOperationsShipmentHistory } from '../api/operations-queries';
 import { BRAND_BUTTON, BoardRefusal, ShipmentsBoard } from '../components/ShipmentsBoard';
-import { SHIPMENT_PATH } from '../components/shipment-icons';
-import { VaultValuePanel } from '../components/VaultValuePanel';
-import { bankRank, reportRowsInOrder, type ReportBoardRow } from '../lib/report-board';
+import { VaultHeldReportDialog, VaultHeldReportInline } from '../components/VaultHeldReportDialog';
 import {
   cairoToday,
   historyRangeProblem,
   isHistoryTooLarge,
   resolveHistoryRange,
 } from '../lib/shipment-history';
-import { cairoStampText, ltrIsolate } from '../lib/shipment-log';
-import { heldBandShown, loadHeldBandOpen, saveHeldBandOpen } from '../lib/vault-history-band';
 
 /**
  * Remembered across visits: the secured board's filters (`boardFilterParams('secured')` —
@@ -87,21 +72,6 @@ const REMEMBERED_FILTERS = [
   'notes',
 ] as const;
 
-/**
- * «تقرير الخزينة»'s band on a computer: a fixed height (at most a third of the screen and a bit),
- * the report's table and its panel side by side in it, each scrolling inside — so the history
- * under it keeps the rest of the screen whatever the vault holds. Stacked on a phone, each card
- * capped so the page reaches the history.
- */
-const HELD_BAND = 'mb-4 flex shrink-0 flex-col gap-4 lg:h-[min(19rem,36vh)] lg:flex-row';
-
-/**
- * The band for a treasurer who may not read the history (no `operationsShipment.view`): nothing
- * comes under it but one line, so the report takes the screen's height, as «تجميع الخزينة»'s
- * table does — rather than four rows in a third of the screen over an empty two thirds.
- */
-const HELD_BAND_ALONE = 'mb-4 flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row';
-
 /** The history's stage filter: any of the six — a history holds every stage a محصنة passes. */
 const HISTORY_STAGES = OPERATIONS_SECURED_STAGES;
 
@@ -114,36 +84,8 @@ export const VaultInventoryPage = (): JSX.Element => {
 
   const canSeeHistory = can('operationsShipment.view');
 
-  // ── «تقرير الخزينة» — live, no period ────────────────────────────────────────────────────────
-  // Folded or open as this viewer left it; always open with no history under it.
-  const [reportOpen, setReportOpen] = useState(loadHeldBandOpen);
-  const bandShown = heldBandShown(reportOpen, canSeeHistory);
-  const toggleReport = (): void => {
-    const next = !reportOpen;
-    setReportOpen(next);
-    saveHeldBandOpen(next);
-  };
-  // Not read while folded: nothing shows it, and every secured act would re-read it for nobody.
-  const held = useVaultHeldReport(bandShown);
-  // The boards' own query (the same parameters), so the catalog is one cache across them.
-  const banks = useOperationsBanks({
-    page: 1,
-    pageSize: MAX_PAGE_SIZE,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
-  const rankOf = bankRank(banks.data?.items ?? []);
-  // The banks in the reference order (Q31), the unattributed bucket last — as «تجميع الخزينة».
-  const heldRows: ReportBoardRow[] = reportRowsInOrder(
-    held.data?.rows ?? [],
-    (row) => row.bankId === null,
-    (row) => rankOf(row.bankId),
-  ).map((row) => ({
-    key: row.bankId ?? 'unattributed',
-    label: row.bankName,
-    unattributed: row.bankId === null,
-    totals: row.totals,
-  }));
+  // ── «تقرير الخزينة» — over the whole screen, read only while open (closed on the way in) ──────
+  const [reportOpen, setReportOpen] = useState(false);
 
   // ── The secured history — «سجل الشحنات» for the محصنات ───────────────────────────────────────
   const today = cairoToday();
@@ -179,127 +121,82 @@ export const VaultInventoryPage = (): JSX.Element => {
   // last answer beside the error, and figures summed from it would contradict the message.
   const answered = problem === null && !tooLarge;
 
+  if (!canSeeHistory) {
+    // A vault-only reader: the report itself, at the screen's height, and what the history needs.
+    // A computer: the report takes the screen, its banks scrolling in its table. A phone: ONE
+    // scroll for the whole page.
+    return (
+      <PageContainer fullHeight>
+        <div
+          className="flex min-h-0 flex-1 flex-col gap-4 max-lg:block max-lg:space-y-4 max-lg:overflow-y-auto"
+          role="region"
+          aria-label={t('operations.vaultHistory.title')}
+          data-vault-history="true"
+        >
+          <VaultHeldReportInline />
+          <BoardRefusal>{t('operations.vaultHistory.needsShipmentView')}</BoardRefusal>
+        </div>
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer fullHeight>
-      {/* A computer: the band keeps its height and the history takes the rest, its rows scrolling
-          in its table. A phone: ONE scroll for the whole page — the band, then the history at its
-          own height — rather than the history squeezed into what the band leaves of the screen. */}
-      <div
-        className="flex min-h-0 flex-1 flex-col max-lg:block max-lg:overflow-y-auto"
-        role="region"
-        aria-label={t('operations.vaultHistory.title')}
-        data-vault-history="true"
-      >
-        {bandShown && (
-          <section
-            className={canSeeHistory ? HELD_BAND : HELD_BAND_ALONE}
-            aria-label={t('operations.vaultHistory.held')}
-            data-vault-held="true"
+      <ShipmentsBoard
+        search={search}
+        shipments={answered ? (history.data?.shipments ?? []) : []}
+        crews={answered ? (history.data?.crews ?? []) : []}
+        loaded={answered && history.data !== undefined}
+        loading={answered && history.isLoading}
+        error={refusal === null ? history.error : null}
+        onRetry={() => void history.refetch()}
+        datePickers={[
+          {
+            param: 'from',
+            label: t('operations.history.from'),
+            showLabel: true,
+            value: range.from,
+            onChange: (value) => setBound('from', value),
+          },
+          {
+            param: 'to',
+            label: t('operations.history.to'),
+            showLabel: true,
+            value: range.to,
+            onChange: (value) => setBound('to', value),
+          },
+        ]}
+        periodActive={sp.get('from') !== null || sp.get('to') !== null}
+        periodParams={['from', 'to']}
+        // «مش هيقدر يضيف … ومش هيقدر منها يسلم او يستلم» — the history's rule, as on «سجل الشحنات».
+        canCreate={false}
+        canToggleReceived={false}
+        kind="secured"
+        stages={HISTORY_STAGES}
+        empty={t('operations.vaultHistory.empty')}
+        refusal={refusal}
+        paged
+        // The deleted محصنات of the SAME range — asked for only when the range itself may be.
+        deletedShipments={{ range, enabled: problem === null, type: 'secured' }}
+        // «لما اوس على تقرير يفتح … زى لوحة التحكم اللى عملنها فى العهدة»: right beside «إخفاء
+        // الإحصائيات», in its look — as «لوحة تحكم» sits beside «الإحصائيات» on the custody board.
+        // Drawn whatever the history's own answer: the report is not the history's, and a range
+        // refused or still loading leaves what the vault holds now as readable as ever.
+        toolbarExtras={() => (
+          <button
+            type="button"
+            data-vault-held-open="true"
+            aria-haspopup="dialog"
+            aria-expanded={reportOpen}
+            onClick={() => setReportOpen(true)}
+            className={BRAND_BUTTON}
           >
-            <ReportTable
-              title={t('operations.vaultHistory.held')}
-              titleIcon={SHIPMENT_PATH.bank}
-              titleAside={
-                held.data === undefined ? undefined : (
-                  // When it was read — Latin figures, the Cairo clock, kept in their own order.
-                  <span
-                    data-vault-held-as-of="true"
-                    className="shrink-0 whitespace-nowrap text-[11px] font-bold text-slate-500 dark:text-slate-400"
-                  >
-                    {t('operations.vaultHistory.heldAsOf', {
-                      at: ltrIsolate(cairoStampText(held.data.asOf)),
-                    })}
-                  </span>
-                )
-              }
-              keyHeader={t('operations.reports.bank')}
-              countHeader={t('operations.vaultReport.securedCount')}
-              rows={heldRows}
-              total={held.data?.grandTotal}
-              loading={held.isLoading}
-              error={held.error}
-              onRetry={() => void held.refetch()}
-              empty={t('operations.vaultHistory.heldEmpty')}
-              className="max-lg:max-h-[60vh] lg:min-h-0 lg:flex-1"
-            />
-            <VaultValuePanel
-              grandTotal={held.data?.grandTotal}
-              loading={held.isLoading}
-              className="max-lg:max-h-[60vh] lg:w-80 lg:shrink-0 xl:w-[22rem]"
-            />
-          </section>
+            <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            {t('operations.vaultHistory.open')}
+          </button>
         )}
-
-        {canSeeHistory ? (
-          <ShipmentsBoard
-            search={search}
-            shipments={answered ? (history.data?.shipments ?? []) : []}
-            crews={answered ? (history.data?.crews ?? []) : []}
-            loaded={answered && history.data !== undefined}
-            loading={answered && history.isLoading}
-            error={refusal === null ? history.error : null}
-            onRetry={() => void history.refetch()}
-            datePickers={[
-              {
-                param: 'from',
-                label: t('operations.history.from'),
-                showLabel: true,
-                value: range.from,
-                onChange: (value) => setBound('from', value),
-              },
-              {
-                param: 'to',
-                label: t('operations.history.to'),
-                showLabel: true,
-                value: range.to,
-                onChange: (value) => setBound('to', value),
-              },
-            ]}
-            periodActive={sp.get('from') !== null || sp.get('to') !== null}
-            periodParams={['from', 'to']}
-            // «مش هيقدر يضيف … ومش هيقدر منها يسلم او يستلم» — the history's rule, as on «سجل الشحنات».
-            canCreate={false}
-            canToggleReceived={false}
-            kind="secured"
-            stages={HISTORY_STAGES}
-            empty={t('operations.vaultHistory.empty')}
-            refusal={refusal}
-            paged
-            // The deleted محصنات of the SAME range — asked for only when the range itself may be.
-            deletedShipments={{ range, enabled: problem === null, type: 'secured' }}
-            // Beside «إخفاء الإحصائيات», in its look: the report folds the same way the figures do,
-            // its chevron pointing where the band goes (up, folding; down, opening).
-            toolbarExtras={() => (
-              <button
-                type="button"
-                data-vault-held-toggle="true"
-                aria-expanded={reportOpen}
-                onClick={toggleReport}
-                className={BRAND_BUTTON}
-              >
-                {reportOpen
-                  ? t('operations.vaultHistory.heldHide')
-                  : t('operations.vaultHistory.heldShow')}
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                  className={cn(
-                    'h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5',
-                    reportOpen && 'rotate-180',
-                  )}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                >
-                  <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            )}
-          />
-        ) : (
-          <BoardRefusal>{t('operations.vaultHistory.needsShipmentView')}</BoardRefusal>
-        )}
-      </div>
+      />
+      <VaultHeldReportDialog open={reportOpen} onClose={() => setReportOpen(false)} />
     </PageContainer>
   );
 };

@@ -403,9 +403,13 @@ const ROUND12_REPORT_AND_VAULT_KEYS = [
   ...['title', 'held', 'heldAsOf', 'heldEmpty', 'empty', 'needsShipmentView'].map(
     (key) => `operations.vaultHistory.${key}`,
   ),
-  // The report band folds — «إخفاء التقرير» / «إظهار التقرير».
-  'operations.vaultHistory.heldHide',
-  'operations.vaultHistory.heldShow',
+  // «تقرير الخزينة» opens over the screen from the history's toolbar («يفتح ززى موديل زى لوحة
+  // التحكم اللى عملنها فى العهدة»): the button, its figure tiles' name, and the two package tiles the
+  // table's heads («كرتونة», «صندوق») do not name as a count.
+  'operations.vaultHistory.open',
+  'operations.vaultHistory.figures',
+  'operations.vaultHistory.tiles.cartons',
+  'operations.vaultHistory.tiles.boxes',
   'operations.nav.vaultDispatch',
   'operations.cards.vaultDispatch',
   'operations.nav.vault',

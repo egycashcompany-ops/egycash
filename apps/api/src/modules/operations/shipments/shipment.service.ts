@@ -40,6 +40,7 @@ import {
   type OperationsSecuredStage,
   type OperationsShipmentLeg,
   type OperationsShipmentLogDto,
+  type OperationsShipmentType,
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
@@ -68,6 +69,7 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
+import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { directoryProfileService, getDirectoryEmployees } from '../../../platform/directory';
 import { vaultCustody } from '../treasury-boundary';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
@@ -485,17 +487,20 @@ class OperationsShipmentService {
    * refused, never cut short: the screen totals what it is given, and totals over a silently
    * truncated list would be wrong money figures with nothing on screen to say so.
    */
-  async historyView(from: Date, to: Date): Promise<DayBoardView> {
+  async historyView(from: Date, to: Date, type?: OperationsShipmentType): Promise<DayBoardView> {
     const first = utcDay(from);
     const toExclusive = nextDay(utcDay(to));
+    // Round 12 — `type` narrows the union BEFORE it is counted («سجل الخزينة» is the محصنات alone),
+    // so the cap judges the rows that would be shown, not the whole history's.
     const count = await operationsShipmentRepository.countBoardInRange(
       first,
       toExclusive,
       'history',
+      type,
     );
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
     return this.boardView(
-      await operationsShipmentRepository.boardInRange(first, toExclusive, 'history'),
+      await operationsShipmentRepository.boardInRange(first, toExclusive, 'history', type),
     );
   }
 
@@ -509,12 +514,17 @@ class OperationsShipmentService {
   async deletedView(
     from: Date,
     to: Date,
+    type?: OperationsShipmentType,
   ): Promise<DayBoardView & { deletedByName: Map<string, string | null> }> {
     const first = utcDay(from);
     const toExclusive = nextDay(utcDay(to));
-    const count = await operationsShipmentRepository.countDeletedBoardInRange(first, toExclusive);
+    const count = await operationsShipmentRepository.countDeletedBoardInRange(
+      first,
+      toExclusive,
+      type,
+    );
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) throw historyTooLarge(count);
-    const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive);
+    const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive, type);
     // The deleter is the user stamped on the row (`deletedBy`), named in ONE directory read for
     // the whole list — a handful of desk users delete, however many rows they deleted.
     const deleters = [
@@ -542,12 +552,13 @@ class OperationsShipmentService {
    * custody history, ONE audit read for all three entities (`trailOf`), then one read per kind of
    * name the values hold (banks, branches, currencies, people, vans).
    *
-   * The legs read are the LIVE ones, through `ux_shipment_leg`: no path deletes a leg — a
-   * reassignment rewrites the leg in place, and a deleted shipment keeps its legs — and the only
-   * index that finds a shipment's legs is partial on `isDeleted: false`, so asking for deleted ones
-   * too would scan the whole collection on every log opened, for rows that do not exist. The
-   * custody is the exception since Round 10: a cancelled receipt IS a voided (soft-deleted) custody
-   * row, so the treasury port's `history` reads them all, through an index of its own.
+   * The legs read are ALL of them, the retired ones included (Round 12), through
+   * `ix_shipment_all_legs`: a reassignment rewrites a leg in place and a deleted shipment keeps its
+   * legs, but «توزيع المحصنات» takes a shipment off its van by RETIRING its delivery leg (a soft
+   * delete — a leg with no captain and no van is no leg), and that leg's story — assigned, moved,
+   * taken off — stays the shipment's. The custody is the same since Round 10: a cancelled receipt IS
+   * a voided (soft-deleted) custody row, so the treasury port's `history` reads them all, through an
+   * index of its own.
    *
    * THE VAULT'S RECORD IS THE TREASURY'S. The custody rows (receipt number, counts, seals, the two
    * receiving treasurers) are read only for a reader who `seesVault` (`operationsVault.view`, the
@@ -558,7 +569,7 @@ class OperationsShipmentService {
   async log(id: string, reader: { seesVault: boolean }): Promise<OperationsShipmentLogDto> {
     const shipment = await operationsShipmentRepository.findAnyById(id);
     if (shipment === null) throw new NotFoundError();
-    const legs = await operationsShipmentAssignmentRepository.findByShipments([id]);
+    const legs = await operationsShipmentAssignmentRepository.findAllByShipment(id);
     // EVERY custody, a cancelled receipt included (Round 10): a receipt taken, cancelled and taken
     // again is three acts in the shipment's story, and the first receipt's details are part of it.
     const custody = reader.seesVault ? await vaultCustody().history(id) : [];
@@ -669,69 +680,11 @@ class OperationsShipmentService {
       const row = crewById.get(id);
       return row === undefined ? [] : [row];
     });
-    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
-    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
-    // boundary, read-only, like every other Fleet fact Operations shows.
-    const dutyById = new Map(
-      (
-        await fleetDutyAssignmentRepository.findByIdsSystem(
-          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
-        )
-      )
-        .filter((d) => !d.isDeleted)
-        .map((d) => [String(d._id), d]),
-    );
-    const driversOf = (crew: (typeof crewRows)[number]): string[] => {
-      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
-      if (duty === undefined) return [];
-      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
-      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
-      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
-        .filter((id) => id != null)
-        .map(String);
-    };
-
-    const vehicleCodes = await fleetVehicleRepository.codesByIds([
-      ...new Set([
-        ...crewed.map((a) => String(a.vehicleId)),
-        ...crewRows.map((c) => String(c.vehicleId)),
-      ]),
-    ]);
-    // ONE directory read for everyone the board names — the legs' captains, and the drivers,
-    // captains and specialists on every van card.
-    const people = await getDirectoryEmployees([
-      ...new Set([
-        ...crewed.map((a) => String(a.captainEmployeeId)),
-        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
-      ]),
-    ]);
-    const person = (employeeId: string): OperationsDayBoardPersonDto => {
-      const found = people.get(employeeId);
-      return {
-        employeeId,
-        code: found?.code ?? null,
-        fullNameAr: found?.fullNameAr ?? null,
-      };
-    };
-
-    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
-      crewAssignmentId: String(c._id),
-      vehicleId: String(c.vehicleId),
-      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
-      // The driver by NAME only, built field by field so no code can ride along: a driver's
-      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
-      drivers: driversOf(c).map(
-        (employeeId): OperationsDayBoardDriverDto => ({
-          employeeId,
-          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
-        }),
-      ),
-      captains: slotIds(c.captainEmployeeIds).map(person),
-      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
-      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
-      direction: c.direction ?? null,
-      plannedTime: c.plannedTime ?? null,
-    }));
+    // The van cards, with the legs' captains and vans named in the SAME reads (one per kind).
+    const { crews, people, vehicleCodes } = await this.vanCardsOf(crewRows, {
+      employeeIds: crewed.map((a) => String(a.captainEmployeeId)),
+      vehicleIds: crewed.map((a) => String(a.vehicleId)),
+    });
 
     const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
@@ -776,6 +729,88 @@ class OperationsShipmentService {
       };
     });
     return { rows, crews };
+  }
+
+  /**
+   * «لما اقف على العربيه تجيب مين اللى متعين عليها من سواقيين واخصائيين» — the van card of each crew
+   * row, in the order given: its van's code, its drivers by NAME only (Fleet's duty row for the same
+   * van and day, read through the §9.4 boundary), and its captains and specialists by name and code.
+   *
+   * Shared by the boards (`boardView` — the vans the rows ride) and «توزيع المحصنات» (every van of the
+   * day, Round 12), so a van card reads the same on both. `extra` names more people and vans to
+   * resolve in the SAME two reads — the board's legs' captains and vans — and the maps come back
+   * for the caller to read them from: one directory read and one Fleet read per call, however many
+   * rows.
+   */
+  async vanCardsOf(
+    crewRows: readonly OperationsCrewAssignmentDoc[],
+    extra: { employeeIds?: readonly string[]; vehicleIds?: readonly string[] } = {},
+  ): Promise<{
+    crews: OperationsDayBoardVehicleCrewDto[];
+    people: Awaited<ReturnType<typeof getDirectoryEmployees>>;
+    vehicleCodes: Map<string, string>;
+  }> {
+    // The drivers are FLEET's half of the van — the crew row anchors on the Fleet duty row for
+    // the same (vehicle, day), and that row holds driver 1 and driver 2. Read through the §9.4
+    // boundary, read-only, like every other Fleet fact Operations shows.
+    const dutyById = new Map(
+      (
+        await fleetDutyAssignmentRepository.findByIdsSystem(
+          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
+        )
+      )
+        .filter((d) => !d.isDeleted)
+        .map((d) => [String(d._id), d]),
+    );
+    const driversOf = (crew: OperationsCrewAssignmentDoc): string[] => {
+      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
+      if (duty === undefined) return [];
+      // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
+      // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
+      return [duty.driver1EmployeeId, duty.driver2EmployeeId]
+        .filter((id) => id != null)
+        .map(String);
+    };
+
+    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+      ...new Set([...(extra.vehicleIds ?? []), ...crewRows.map((c) => String(c.vehicleId))]),
+    ]);
+    // ONE directory read for everyone named — the caller's extra people, and the drivers, captains
+    // and specialists on every van card.
+    const people = await getDirectoryEmployees([
+      ...new Set([
+        ...(extra.employeeIds ?? []),
+        ...crewRows.flatMap((c) => [...driversOf(c), ...crewMembers(c)]),
+      ]),
+    ]);
+    const person = (employeeId: string): OperationsDayBoardPersonDto => {
+      const found = people.get(employeeId);
+      return {
+        employeeId,
+        code: found?.code ?? null,
+        fullNameAr: found?.fullNameAr ?? null,
+      };
+    };
+
+    const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
+      crewAssignmentId: String(c._id),
+      vehicleId: String(c.vehicleId),
+      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
+      // The driver by NAME only, built field by field so no code can ride along: a driver's
+      // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
+      drivers: driversOf(c).map(
+        (employeeId): OperationsDayBoardDriverDto => ({
+          employeeId,
+          fullNameAr: people.get(employeeId)?.fullNameAr ?? null,
+        }),
+      ),
+      captains: slotIds(c.captainEmployeeIds).map(person),
+      specialist1: slotIds(c.specialist1EmployeeIds).map(person),
+      specialist2: slotIds(c.specialist2EmployeeIds).map(person),
+      direction: c.direction ?? null,
+      plannedTime: c.plannedTime ?? null,
+    }));
+    return { crews, people, vehicleCodes };
   }
 
   async getById(id: string): Promise<OperationsShipmentDoc> {

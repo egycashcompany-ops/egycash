@@ -74,6 +74,11 @@ export const LOG_KIND_LOOK: Readonly<Record<OperationsShipmentLogKind, LogKindLo
   pickupConfirmed: { tone: 'amber', icon: SHIPMENT_PATH.check },
   pickupUndone: { tone: 'rose', icon: SHIPMENT_PATH.undo },
   receiptCancelled: { tone: 'rose', icon: SHIPMENT_PATH.unlock },
+  // Round 12 — «توزيع المحصنات». A van taken off is the crew entries' drawing in the rose of every
+  // undo; an overdue shipment's delivery day moved on the distribution is the calendar, in the
+  // amber of a shipment that is running late.
+  crewRemoved: { tone: 'rose', icon: SHIPMENT_PATH.crew },
+  deliveryRescheduled: { tone: 'amber', icon: SHIPMENT_PATH.calendar },
   other: { tone: 'slate', icon: SHIPMENT_PATH.info },
 };
 

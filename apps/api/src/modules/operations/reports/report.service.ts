@@ -21,6 +21,7 @@ import {
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsReportQuery,
+  type OperationsVaultHeldReportDto,
   type OperationsVaultReportDto,
 } from '@ecms/contracts';
 import { fromMinorUnits, ymdToUtcDate } from '@ecms/contracts';
@@ -211,6 +212,62 @@ class OperationsReportService {
       rows: built,
       grandTotal,
     };
+  }
+
+  /**
+   * «تقرير الخزينة» (Round 12) — what the vault HOLDS NOW, per bank: «نفس الداتا اللى فى بيان الشحنات
+   * لكل بنك ونفس الشكل وكل حاجه بس مفيش فتر من الى هيكون لحظى على ف الخزينة».
+   *
+   * WHICH SHIPMENTS: every secured shipment whose status is `inVault` — the very set «محصنات الخزينة»
+   * lists (`securedInVault`, the dispatch board without a day), so the report on top of «سجل الخزينة»
+   * and the list one row below it in the menu can never disagree. A dispatched shipment has left the
+   * vault; a cancelled receipt put it back to draft; neither is held. Deleted shipments are out.
+   *
+   * Not `listHeld` (the treasury's custody inventory): that answers in pages, and the shipment's own
+   * status is the fact every Operations screen reads — the custody and the status move in ONE
+   * transaction (receive, dispatch, cancel), so the two sets are the same, and this one is the one the
+   * neighbouring screen shows. The custody is read for the packages only, counted once per shipment.
+   *
+   * Through `bankReportRows`, like the roll-up and the bank report: one code path, one answer.
+   */
+  async vaultHeldReport(now: Date = new Date()): Promise<OperationsVaultHeldReportDto> {
+    const shipments = await operationsShipmentRepository.securedInVault();
+    const custody = await vaultCustody().findMany(shipments.map((doc) => String(doc._id)));
+
+    const currencies = (
+      await operationsCurrencyRepository.list({ filter: {}, page: 1, pageSize: 500 })
+    ).items;
+    const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
+    // The banks named in ONE read — what the vault holds is a few dozen banks at most.
+    const banks = await operationsBankRepository.findByIdsSystem([
+      ...new Set(shipments.map((doc) => String(doc.mainBankId))),
+    ]);
+    const bankName = new Map(banks.map((b) => [String(b._id), b.opsName]));
+
+    const rows: ReportInputRow[] = shipments.map((shipment) => {
+      const shipmentId = String(shipment._id);
+      const held = custody.get(shipmentId);
+      const bankId = String(shipment.mainBankId);
+      return {
+        shipmentId,
+        // Like the roll-up, keyed on the bank: custody is the treasury's, not a route's.
+        captainEmployeeId: null,
+        captainName: '',
+        bankId,
+        bankName: bankName.get(bankId) ?? '',
+        bagCount: held?.bagCount ?? 0,
+        cartonCount: held?.cartonCount ?? 0,
+        boxCount: held?.boxCount ?? 0,
+        lines: shipment.lines.map((line: OperationsShipmentLine) => ({
+          currencyId: String(line.currencyId),
+          currencyName: currencyName.get(String(line.currencyId)) ?? '',
+          amount: fromMinorUnits(line.amountMinor),
+        })),
+      };
+    });
+
+    const { rows: built, grandTotal } = bankReportRows(rows);
+    return { asOf: now.toISOString(), rows: built, grandTotal };
   }
 
   /** The legacy `/ops_bank_report` — one row per bank. */

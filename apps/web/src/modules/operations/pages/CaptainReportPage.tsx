@@ -17,24 +17,41 @@
 // were multiplied by the number of currencies on each shipment (Q26), so a multi-currency
 // shipment's bags were counted two or three times. Corrected server-side; totals here read lower
 // and right. The other two fixes (Q27's grand total, Q28's dropped zero-currency shipments) are
-// also the server's — this page renders what it is given and computes no totals of its own.
+// also the server's — this page renders what it is given, and adds rows up in one case only (below).
+//
+// ROUND 12 — «شاشة القائد بتاعت المحصنات شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر
+// عادى وزود ان اعمل فلتر ب اسم القائد و ان اكسيل او pdf»: «من» / «إلى» in the boards' one bar beside a
+// text filter «اسم القائد» (`?name=`, applied as typed, Arabic folded — `reportView`), «Excel | PDF»
+// at the bar's end carrying exactly the rows shown and their «الإجمالي». With no name typed that
+// total is the server's grand total; with one, the shown rows' own — each captain is one row, so
+// their sum counts every shipment once. The name is remembered across visits, as the boards'
+// filters are; the period is not — the screen opens on the current month, as legacy's did.
 import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer } from '../../../platform/layout/PageContainer';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useCaptainReport } from '../api/operations-queries';
 import { ReportBoard } from '../components/ReportBoard';
 import { FILTER_ICON } from '../../fleet/components/FilterWithIcon';
-import { reportRowsInOrder, type ReportBoardRow } from '../lib/report-board';
+import { reportRowsInOrder, reportView, type ReportBoardRow } from '../lib/report-board';
+import { reportExportSubtitle } from '../lib/report-export';
 import { isRangeValid, rangeFromParams } from '../lib/report-range';
+
+/** Remembered across visits: the name filter — NOT the period, which opens on the current month. */
+const REMEMBERED_FILTERS = ['name'] as const;
 
 export const CaptainReportPage = (): JSX.Element => {
   const t = useT();
-  const [sp, setSp] = useSearchParams();
+  const search = useSearchParams();
+  const [sp, setSp] = search;
   const range = rangeFromParams({ from: sp.get('from'), to: sp.get('to') }, new Date());
   // An inverted range is refused here, in words, rather than sent (`isRangeValid`).
   const valid = isRangeValid(range);
+  const name = sp.get('name') ?? '';
 
   const report = useCaptainReport(range, valid);
+
+  useRememberedFilters(search, REMEMBERED_FILTERS);
 
   // Applied as it is chosen, as the boards apply a filter. Emptied, a bound goes back to its
   // default — the first or the last day of the current month (`rangeFromParams`, per field).
@@ -43,6 +60,13 @@ export const CaptainReportPage = (): JSX.Element => {
     if (value === '') next.delete(param);
     else next.set(param, value);
     setSp(next);
+  };
+  // Typed, a name narrows the table at once — a view of the same report, not a place to go Back to.
+  const setName = (value: string): void => {
+    const next = new URLSearchParams(sp);
+    if (value === '') next.delete('name');
+    else next.set('name', value);
+    setSp(next, { replace: true });
   };
 
   // The server sorts by the captain's name; the unassigned bucket (no captain, so no name) is
@@ -56,6 +80,13 @@ export const CaptainReportPage = (): JSX.Element => {
     unattributed: row.captainEmployeeId === null,
     totals: row.totals,
   }));
+  // The rows the name leaves, and «الإجمالي» under them — the server's, or theirs with a name typed.
+  const view = reportView(
+    valid ? rows : [],
+    valid ? report.data?.grandTotal : undefined,
+    name,
+    t('operations.reports.unattributed'),
+  );
 
   return (
     <PageContainer fullHeight>
@@ -65,13 +96,19 @@ export const CaptainReportPage = (): JSX.Element => {
         titleIcon={FILTER_ICON.person}
         keyHeader={t('operations.reports.captainName')}
         countHeader={t('operations.reports.shipmentCount')}
-        rows={valid ? rows : []}
-        grandTotal={valid ? report.data?.grandTotal : undefined}
+        rows={view.rows}
+        total={view.total}
         loading={valid && report.isLoading}
         error={report.error}
         onRetry={() => void report.refetch()}
-        empty={t('operations.reports.empty')}
+        empty={t(view.filtered ? 'operations.reports.captains.noName' : 'operations.reports.empty')}
         refusal={valid ? null : t('operations.reports.invalidRange')}
+        nameFilter={{
+          label: t('operations.reports.captainName'),
+          icon: FILTER_ICON.person,
+          value: name,
+          onChange: setName,
+        }}
         datePickers={[
           {
             param: 'from',
@@ -88,12 +125,21 @@ export const CaptainReportPage = (): JSX.Element => {
             onChange: (value) => setBound('to', value),
           },
         ]}
-        periodActive={sp.get('from') !== null || sp.get('to') !== null}
-        onResetPeriod={() => {
+        filtersActive={sp.get('from') !== null || sp.get('to') !== null || name !== ''}
+        onResetFilters={() => {
+          // ONE write: the name and the period together, as the boards' reset clears both.
           const next = new URLSearchParams(sp);
           next.delete('from');
           next.delete('to');
-          setSp(next);
+          next.delete('name');
+          setSp(next, { replace: true });
+        }}
+        exportSpec={{
+          name: t('operations.reports.captains.title'),
+          subtitle: reportExportSubtitle(t, {
+            period: range,
+            filter: { label: t('operations.reports.captainName'), value: name },
+          }),
         }}
       />
     </PageContainer>

@@ -10,11 +10,32 @@
 // `BOARD_TABLE_LOOK`, `BAR_LAYOUT`, the breakdown dialog — so a fix to one of them reaches the
 // reports too, and the reports cannot drift from the boards they sit beside in the menu.
 //
+// ROUND 12 — THE FILTERS, THE FILES, THE HEIGHT. On both reports: «شيل الديف اللى فيها الفلاتر بتاعت
+// التاريخ وخليها زى الفلاتر عادى وزود ان اعمل فلتر ب اسم القائد [اسم البنك] و ان اكسيل او pdf», and
+// «الصف بتاع الجماليات يفضل ظاهر حتى لو الجدول كبر يحصل اسكرول جوا الجدول». So:
+//
+//   · ONE BAR, THE BOARDS' — the dates no longer sit in a card of their own at the bar's start (the
+//     «ديف» the owner circled): the bar runs the screen's width, as «سجل الشحنات»'s does, holding
+//     the name filter (the boards' text box with its icon, widest), then «من» and «إلى» at a date's
+//     own width, then the reset, then «Excel | PDF» — the Fleet boards' export pair — at its end;
+//   · THE NAME FILTER narrows the rows as it is typed (`reportView`, Arabic folded), and «الإجمالي»
+//     — and the vault's panel — FOLLOW it: the server's grand total with no name typed, the rows
+//     on screen added up with one (the rows are disjoint, so nothing is counted twice);
+//   · THE FILES are what the screen shows (`lib/report-export.ts`): the rows left, «الإجمالي» under
+//     them, through the app's one xlsx writer and the company's report form;
+//   · THE HEIGHT — on a computer the table's card runs to the bottom of the screen; its head stays
+//     at the top and «الإجمالي» at the bottom of the card's own scroll, so the total is ALWAYS on
+//     screen and only the rows move. The vault's panel beside it is as tall («عاوز حجمها يكون بطول
+//     الشاشة كامله»), its list scrolling inside it when the currencies outrun it. On a phone the
+//     cards stack and the page scrolls; the table's card stops at three quarters of the screen so
+//     its total stays in sight there too.
+//
 // THREE THINGS THIS WILL NOT DO, each a legacy defect the server already fixed (as `ReportView`
-// before it): it never adds the rows up — «الإجمالي» is the server's `grandTotal` (Q27); it never
-// multiplies packages by currencies (Q26); and it never hides a row whose money is zero (Q28).
-// What it does to the answer is a VIEW of it (`lib/report-board.ts`): the money split the boards'
-// way, the currencies in the reference list's order, the unattributed row last.
+// before it): it never adds the WHOLE report up — with no name typed, «الإجمالي» is the server's
+// `grandTotal` (Q27); it never multiplies packages by currencies (Q26); and it never hides a row
+// whose money is zero (Q28). What it does to the answer is a VIEW of it (`lib/report-board.ts`):
+// the money split the boards' way, the currencies in the reference list's order, the unattributed
+// row last, the name filter.
 //
 // «اجمالي العملات» IS NAMED «عملات أخرى» here: legacy's column was every currency that is neither the
 // pound nor the dollar (`total_other`), which is exactly what the boards call «عملات أخرى» — so the
@@ -28,12 +49,15 @@ import { MAX_PAGE_SIZE, type OperationsReportTotalsDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { Input } from '../../../shared/ui/form';
+import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { formatAmount } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { DARK_FILTER_BAR } from '../../fleet/components/dark-filter-bar';
-import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
+import { FilterWithIcon } from '../../fleet/components/FilterWithIcon';
+import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { useOperationsCurrencies } from '../api/operations-queries';
 import {
   reportCurrencyLookup,
@@ -44,6 +68,16 @@ import {
   type ReportMoney,
   type ReportTableLine,
 } from '../lib/report-board';
+import {
+  printReportDocs,
+  reportExportHeader,
+  reportExportTable,
+  reportPrintDoc,
+  reportSheet,
+  saveReportWorkbook,
+  vaultPanelExport,
+} from '../lib/report-export';
+import { cairoToday } from '../lib/shipment-history';
 import { FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
 import {
   BAR_LAYOUT,
@@ -54,15 +88,14 @@ import {
 } from './ShipmentsBoard';
 
 /**
- * The report's bar: the board's dark card and its phone layout (two even columns). A report has
- * only its two dates, so from a tablet up the card holds just them — at the start, as legacy's
- * «من» / «الى» sat — rather than a screen-wide band with two boxes at one end: each date keeps a
- * date's width instead of the Fleet bar's even share of the whole row.
+ * The report's bar: the board's dark card across the screen, and its phone layout (two even
+ * columns, the name filter across both). From a computer up the name filter takes the row's give
+ * and each date keeps a date's width — as the history's dates do (`PERIOD_BAR_LAYOUT`) — rather
+ * than three boxes sharing the row evenly, which made a date box half the screen wide.
  */
 const REPORT_BAR = cn(
   DARK_FILTER_BAR,
   BAR_LAYOUT,
-  'sm:[&>div]:!w-fit',
   'lg:[&>div>*:has(>input[type=date])]:!flex-none lg:[&>div>*:has(>input[type=date])]:!w-44',
 );
 
@@ -97,6 +130,13 @@ const TOTAL_ROW_MARK = { 'data-report-total': 'true' } as HTMLAttributes<HTMLTab
  */
 const MIN_COLUMN_REM = 5.25;
 
+/**
+ * The report's content row: on a computer the table and the panel side by side, each as tall as
+ * what is left of the screen under the bar (`items-stretch` — the panel takes the table card's
+ * height, `VaultValuePanel.tsx`); on a phone stacked, the page scrolling.
+ */
+const REPORT_ROW = 'flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch';
+
 /** A figure in a cell: the figures' face, isolated left-to-right, never broken over two lines. */
 const Figure = ({ value, dim = false }: { value: string; dim?: boolean }): JSX.Element => (
   <span
@@ -111,9 +151,12 @@ const Figure = ({ value, dim = false }: { value: string; dim?: boolean }): JSX.E
 export const ReportTitle = ({
   icon,
   title,
+  aside,
 }: {
   icon: readonly string[];
   title: string;
+  /** A note at the strip's far end — «سجل الخزينة»'s «حتى الآن …» on its live report. */
+  aside?: ReactNode;
 }): JSX.Element => (
   <div
     data-report-title="true"
@@ -130,6 +173,7 @@ export const ReportTitle = ({
     <h2 className="min-w-0 flex-1 text-sm font-black text-slate-900 sm:text-[15px] dark:text-white">
       {title}
     </h2>
+    {aside}
   </div>
 );
 
@@ -139,50 +183,55 @@ interface OpenOthers {
   name: string;
 }
 
-export const ReportBoard = ({
-  label,
+/** A line's name as the table shows it: the row's, «غير منسوب» for the bucket, «الإجمالي». */
+const useLineName = (): ((line: ReportTableLine) => string) => {
+  const t = useT();
+  return (line) =>
+    line.kind === 'total'
+      ? t('operations.reportBoard.total')
+      : line.unattributed
+        ? t('operations.reports.unattributed')
+        : line.label;
+};
+
+/**
+ * One report's table in its card — the title strip, the nine columns, «الإجمالي» pinned under the
+ * rows, the «عملات أخرى» breakdown. The reports' board draws it (`ReportBoard`), and so does
+ * «سجل الخزينة»'s live «تقرير الخزينة» (`pages/VaultInventoryPage.tsx`) — the same table «بيان الشحنات
+ * لكل بنك» over what the vault holds now («نفس الداتا … ونفس الشكل وكل حاجه»).
+ */
+export const ReportTable = ({
   title,
   titleIcon,
+  titleAside,
   keyHeader,
   countHeader,
   rows,
-  grandTotal,
+  total,
   loading,
   error,
   onRetry,
   empty,
-  refusal = null,
-  datePickers,
-  periodActive,
-  onResetPeriod,
-  aside,
+  className,
 }: {
-  /** The screen's name, for a reader — the page draws no title, as no board does. */
-  label: string;
   /** The table's strip — «بيان الشحنات لكل بنك», «بيان عدد الشحنات لكل قائد طاقم». */
   title: string;
   titleIcon: readonly string[];
+  titleAside?: ReactNode;
   /** What the rows are keyed on — «البنك», «اسم القائد». */
   keyHeader: string;
   /** What the count counts — «عدد المحصنات» on the vault, «عدد الشحنات» on the captains. */
   countHeader: string;
-  /** The server's rows, in the order to draw them (`reportRowsInOrder`). */
+  /** The rows to draw, in their order (`reportRowsInOrder`, then the name filter — `reportView`). */
   rows: readonly ReportBoardRow[];
-  /** The server's own total — drawn as «الإجمالي», never a sum of `rows` (Q27). */
-  grandTotal: OperationsReportTotalsDto | undefined;
+  /** «الإجمالي» — the server's grand total, or the shown rows' with a name typed (`reportView`). */
+  total: OperationsReportTotalsDto | undefined;
   loading: boolean;
   error: unknown;
   onRetry: () => void;
   empty: string;
-  /** Why the report was not asked for — said in the table's place (an inverted range). */
-  refusal?: string | null;
-  /** «من» and «إلى». The page owns their values and what they ask the server for. */
-  datePickers: readonly BoardDatePicker[];
-  /** The period is not the page's default — the reset has something to undo. */
-  periodActive: boolean;
-  onResetPeriod: () => void;
-  /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
-  aside?: ReactNode;
+  /** The card's size where it sits — the reports' full height, the vault history's capped one. */
+  className?: string;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -190,20 +239,15 @@ export const ReportBoard = ({
   const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
   const catalog = currencies.data?.items ?? [];
   const [others, setOthers] = useState<OpenOthers | null>(null);
+  const nameOf = useLineName();
 
-  const lines = reportTableLines(rows, grandTotal);
+  const lines = reportTableLines(rows, total);
   // A line's money, split once per draw — the pound, the dollar, the others.
   const moneyOf = new Map(
     lines.map((line) => [line.key, reportMoney(line.totals.currencies, catalog)]),
   );
   const money = (line: ReportTableLine): ReportMoney =>
     moneyOf.get(line.key) ?? { egp: 0, usd: 0, others: [], othersSum: 0 };
-  const nameOf = (line: ReportTableLine): string =>
-    line.kind === 'total'
-      ? t('operations.reportBoard.total')
-      : line.unattributed
-        ? t('operations.reports.unattributed')
-        : line.label;
 
   // Counts and money in ONE set of digits, the boards' amounts' (Western, with thousands
   // separators): a row reading «١٤» beside «48,500,000» reads as two different tables.
@@ -304,50 +348,34 @@ export const ReportBoard = ({
   const shownOthers = others === null ? null : reportOtherCards(others.money);
 
   return (
-    <div className={BOARD_FRAME} role="region" aria-label={label} data-report-board="true">
-      <div className={REPORT_BAR} data-report-filters="true">
-        <FilterBar hasActiveFilters={periodActive} onClear={onResetPeriod}>
-          {datePickers.map((picker) => (
-            <BoardDateBox key={picker.param} picker={picker} />
-          ))}
-        </FilterBar>
+    <section className={cn(REPORT_CARD, className)} data-report-table="true">
+      <ReportTitle icon={titleIcon} title={title} aside={titleAside} />
+      <div
+        className={cn(
+          BOARD_TABLE_LOOK,
+          TOTAL_ROW,
+          // The card draws the frame; the table inside it takes the card's height left under the
+          // strip, and only its rows scroll — under the head, over «الإجمالي». `flex-1` from a
+          // computer up only: on a phone the card's height is its content's, up to its cap, and a
+          // zero basis there would fold the table to nothing.
+          'flex min-h-0 flex-col lg:flex-1 [&>div]:min-h-0 lg:[&>div]:flex-1 [&>div]:!rounded-none [&>div]:!border-0',
+          '[&_thead_th]:!text-center [&_thead_th:nth-child(2)]:!text-start',
+        )}
+      >
+        <DataTable
+          columns={columns}
+          rows={lines}
+          rowKey={(line) => line.key}
+          rowProps={(line) => (line.kind === 'total' ? TOTAL_ROW_MARK : undefined)}
+          loading={loading || currencies.isLoading}
+          error={error}
+          onRetry={onRetry}
+          empty={empty}
+          embedded
+          stickyHead
+          minColumnWidth={MIN_COLUMN_REM}
+        />
       </div>
-
-      {refusal !== null ? (
-        <BoardRefusal>{refusal}</BoardRefusal>
-      ) : (
-        // On a computer the table and the panel sit side by side and each scrolls inside its own
-        // card, the head and «الإجمالي» staying put; on a phone they stack and the page scrolls.
-        <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-start">
-          <section className={cn(REPORT_CARD, 'lg:max-h-full lg:flex-1')} data-report-table="true">
-            <ReportTitle icon={titleIcon} title={title} />
-            <div
-              className={cn(
-                BOARD_TABLE_LOOK,
-                TOTAL_ROW,
-                // The card draws the frame; the table inside it fills it and scrolls.
-                'flex min-h-0 flex-col [&>div]:min-h-0 [&>div]:!rounded-none [&>div]:!border-0',
-                '[&_thead_th]:!text-center [&_thead_th:nth-child(2)]:!text-start',
-              )}
-            >
-              <DataTable
-                columns={columns}
-                rows={lines}
-                rowKey={(line) => line.key}
-                rowProps={(line) => (line.kind === 'total' ? TOTAL_ROW_MARK : undefined)}
-                loading={loading || currencies.isLoading}
-                error={error}
-                onRetry={onRetry}
-                empty={empty}
-                embedded
-                stickyHead
-                minColumnWidth={MIN_COLUMN_REM}
-              />
-            </div>
-          </section>
-          {aside}
-        </div>
-      )}
 
       <OtherCurrenciesDialog
         open={others !== null}
@@ -360,6 +388,212 @@ export const ReportBoard = ({
           others === null ? undefined : t('operations.reportBoard.othersOf', { name: others.name })
         }
       />
+    </section>
+  );
+};
+
+/** The two export buttons — the Fleet boards' «Excel | PDF» pair, in the bar's trailing group. */
+const EXPORT_PAIR =
+  'inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80';
+const EXPORT_BUTTON =
+  'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+
+/** The name filter of the bar — «اسم القائد» or «اسم البنك»: the boards' text box with its icon. */
+export interface ReportNameFilter {
+  /** Its name — on the box, as its placeholder, and to a screen reader. */
+  label: string;
+  icon: readonly string[];
+  value: string;
+  onChange: (value: string) => void;
+}
+
+/** What the files are called and say, beside the table they carry. */
+export interface ReportExportSpec {
+  /** The file's stem and the printed title — the screen's name. */
+  name: string;
+  /** The line under the printed title: the period, and the name filter when one is typed. */
+  subtitle: string;
+  /** The vault's: carry «إجمالي قيمة الشحنات» too — a second sheet, a second printed page. */
+  withValuePanel?: boolean;
+}
+
+export const ReportBoard = ({
+  label,
+  title,
+  titleIcon,
+  keyHeader,
+  countHeader,
+  rows,
+  total,
+  loading,
+  error,
+  onRetry,
+  empty,
+  refusal = null,
+  nameFilter,
+  datePickers,
+  filtersActive,
+  onResetFilters,
+  exportSpec,
+  aside,
+}: {
+  /** The screen's name, for a reader — the page draws no title, as no board does. */
+  label: string;
+  title: string;
+  titleIcon: readonly string[];
+  keyHeader: string;
+  countHeader: string;
+  /** The rows SHOWN, in the order to draw them — the name filter already applied (`reportView`). */
+  rows: readonly ReportBoardRow[];
+  /** «الإجمالي» for those rows (`reportView`): the server's grand total, or theirs with a name typed. */
+  total: OperationsReportTotalsDto | undefined;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  empty: string;
+  /** Why the report was not asked for — said in the table's place (an inverted range). */
+  refusal?: string | null;
+  nameFilter: ReportNameFilter;
+  /** «من» and «إلى». The page owns their values and what they ask the server for. */
+  datePickers: readonly BoardDatePicker[];
+  /** A name is typed, or the period is not the page's default — the reset has something to undo. */
+  filtersActive: boolean;
+  onResetFilters: () => void;
+  exportSpec: ReportExportSpec;
+  /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
+  aside?: ReactNode;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const catalog = currencies.data?.items ?? [];
+  const nameOf = useLineName();
+
+  // The files carry the lines the table draws — nothing to carry while there are none (loading,
+  // refused, empty, or a name that matched nobody), and the money waits for the catalog it is
+  // split by, as the table's does.
+  const lines = refusal === null ? reportTableLines(rows, total) : [];
+  const canExport = lines.length > 0 && currencies.data !== undefined;
+
+  const table = () =>
+    reportExportTable(lines, catalog, reportExportHeader(t, keyHeader, countHeader), nameOf);
+  const panel = () =>
+    exportSpec.withValuePanel === true && total !== undefined
+      ? vaultPanelExport(t, total, catalog)
+      : null;
+
+  const exportExcel = (): void => {
+    const own = panel();
+    saveReportWorkbook(
+      exportSpec.name,
+      [
+        reportSheet(title, t('operations.reportBoard.serial'), table()),
+        ...(own === null
+          ? []
+          : [reportSheet(t('operations.vaultReport.value'), t('operations.reportBoard.serial'), own)]),
+      ],
+      cairoToday(),
+    );
+  };
+  const exportPdf = (): void => {
+    const own = panel();
+    const docs = [
+      reportPrintDoc({ t, locale, title: exportSpec.name, subtitle: exportSpec.subtitle, table: table() }),
+      ...(own === null
+        ? []
+        : [
+            reportPrintDoc({
+              t,
+              locale,
+              title: t('operations.vaultReport.value'),
+              subtitle: exportSpec.subtitle,
+              table: own,
+            }),
+          ]),
+    ];
+    if (!printReportDocs(docs)) toast.error(t('operations.reportExport.popupBlocked'));
+  };
+
+  const exports = (
+    <span className={EXPORT_PAIR} data-report-export="true">
+      <button
+        type="button"
+        data-report-export-excel="true"
+        disabled={!canExport}
+        onClick={exportExcel}
+        className={cn(
+          EXPORT_BUTTON,
+          'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+        )}
+      >
+        <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+        Excel
+      </button>
+      <span aria-hidden className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+      <button
+        type="button"
+        data-report-export-pdf="true"
+        disabled={!canExport}
+        onClick={exportPdf}
+        className={cn(
+          EXPORT_BUTTON,
+          'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400',
+        )}
+      >
+        <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+        PDF
+      </button>
+    </span>
+  );
+
+  return (
+    <div className={BOARD_FRAME} role="region" aria-label={label} data-report-board="true">
+      <div className={REPORT_BAR} data-report-filters="true">
+        <FilterBar hasActiveFilters={filtersActive} onClear={onResetFilters} trailing={exports}>
+          {/* «فلتر ب اسم القائد» / «ب اسم البنك» — first, as the name is the table's first column
+              after «م»; the boards' text box, applied as it is typed. */}
+          <FilterWithIcon
+            icon={nameFilter.icon}
+            tone="text-emerald-600 dark:text-emerald-400"
+            className="w-56 shrink-0 max-sm:col-span-2"
+          >
+            <Input
+              density="tight"
+              data-report-name-filter="true"
+              aria-label={nameFilter.label}
+              placeholder={nameFilter.label}
+              value={nameFilter.value}
+              onChange={(e) => nameFilter.onChange(e.target.value)}
+            />
+          </FilterWithIcon>
+          {datePickers.map((picker) => (
+            <BoardDateBox key={picker.param} picker={picker} />
+          ))}
+        </FilterBar>
+      </div>
+
+      {refusal !== null ? (
+        <BoardRefusal>{refusal}</BoardRefusal>
+      ) : (
+        <div className={REPORT_ROW} data-report-row="true">
+          <ReportTable
+            title={title}
+            titleIcon={titleIcon}
+            keyHeader={keyHeader}
+            countHeader={countHeader}
+            rows={rows}
+            total={total}
+            loading={loading}
+            error={error}
+            onRetry={onRetry}
+            empty={empty}
+            // A computer: the card runs to the screen's bottom (its rows scroll inside it). A
+            // phone: at most three quarters of the screen, so its «الإجمالي» stays in sight.
+            className="max-lg:max-h-[75vh] lg:min-h-0 lg:flex-1"
+          />
+          {aside}
+        </div>
+      )}
     </div>
   );
 };

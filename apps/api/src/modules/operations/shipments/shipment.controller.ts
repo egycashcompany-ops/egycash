@@ -42,11 +42,12 @@ export const getDayBoard = async (req: Request, res: Response): Promise<void> =>
 
 /**
  * The shipments history over `from`..`to`, both inclusive — the dailies collected in it and every
- * secured shipment collected or delivered in it («شحنات ومحصنات»).
+ * secured shipment collected or delivered in it («شحنات ومحصنات»), or one of the two with `type`
+ * (Round 12 — «سجل الخزينة» asks for the محصنات alone).
  */
 export const getShipmentHistory = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsShipmentHistoryQuery>(req);
-  const view = await operationsShipmentService.historyView(query.from, query.to);
+  const view = await operationsShipmentService.historyView(query.from, query.to, query.type);
   ok<OperationsShipmentHistoryDto>(res, {
     from: utcDayIso(query.from),
     to: utcDayIso(query.to),
@@ -60,7 +61,7 @@ export const getShipmentHistory = async (req: Request, res: Response): Promise<v
  */
 export const getDeletedShipments = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsDeletedShipmentsQuery>(req);
-  const view = await operationsShipmentService.deletedView(query.from, query.to);
+  const view = await operationsShipmentService.deletedView(query.from, query.to, query.type);
   const board = boardForReader(req, view);
   const docOf = new Map(view.rows.map(({ doc }) => [String(doc._id), doc]));
   ok<OperationsDeletedShipmentsDto>(res, {

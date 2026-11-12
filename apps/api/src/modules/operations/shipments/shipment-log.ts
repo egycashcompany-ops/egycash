@@ -30,6 +30,13 @@ export const SHIPMENT_LOG_ENTITY = {
   custody: 'vaultCustody',
 } as const;
 
+/**
+ * The field a shipment's audit row carries when «توزيع المحصنات» moved an overdue shipment's delivery
+ * date to the distribution day (Round 12) — written by the distribution service, read here. Never
+ * printed itself: the entry's kind (`deliveryRescheduled`) is what it means.
+ */
+export const DISTRIBUTION_RESCHEDULE_MARKER = 'rescheduledOnDistribution';
+
 /** The names a trail's values resolve to — read once for the whole trail, by the service. */
 export interface ShipmentLogNames {
   bank: (id: string) => string | null;
@@ -287,6 +294,15 @@ const shipmentEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | nul
               : 'receiptImageReplaced';
         return { kind, changes: [] };
       }
+      // Round 12 — «توزيع المحصنات» placed an OVERDUE shipment in the vault on a van of a later day,
+      // and its delivery date moved with it: the one change a received محصنة takes, because it is a
+      // flow act. The marker says so; only the date is printed (the kind is the explanation).
+      if (changeOf(row, DISTRIBUTION_RESCHEDULE_MARKER) !== undefined) {
+        return {
+          kind: 'deliveryRescheduled',
+          changes: printed(row, SHIPMENT_FIELDS, names),
+        };
+      }
       // Round 10 — the pickup record written («تم الاستلام من العمليات», or the captain's ✓ from
       // the app) or cleared by the desk's undo. Only WHO is printed — on the ✓ who confirmed it, on
       // the undo whose ✓ was removed; the instant and the user are the entry's own time and actor.
@@ -313,6 +329,11 @@ const shipmentEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | nul
 const legEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => {
   if (row.action === 'create') {
     return { kind: 'crewAssigned', changes: printed(row, LEG_CREW_FIELDS, names) };
+  }
+  // Round 12 — the leg RETIRED: «توزيع المحصنات» took the shipment off its van. The row carries the
+  // captain and van it was on (old → null), which is what the entry prints.
+  if (row.action === 'delete') {
+    return { kind: 'crewRemoved', changes: printed(row, LEG_CREW_FIELDS, names) };
   }
   if (row.action !== 'update') return { kind: 'other', changes: [] };
   if (row.changes.length === 0) return null;

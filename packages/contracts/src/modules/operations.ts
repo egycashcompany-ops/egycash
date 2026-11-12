@@ -16,6 +16,7 @@ import { type AttendanceDayStatus } from './hr-attendance.js';
 import {
   LocalizedStringSchema,
   PaginationQuerySchema,
+  asciiDigits,
   booleanQuery,
   listQuery,
   objectId,
@@ -652,7 +653,19 @@ export const OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS = 5000;
 const historyDay = (d: Date): number => Math.floor(d.getTime() / 86_400_000);
 
 export const OperationsShipmentHistoryQuerySchema = z
-  .object({ from: z.coerce.date(), to: z.coerce.date() })
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    /**
+     * Round 12 — OPTIONAL, one shipment type only. «سجل الخزينة» is «سجل الشحنات» for the محصنات
+     * alone («شاشة جرد الخزينة تكون سجل الخزينه المحصنات زى شاشة سجل الشحنات بالظبط»), so it asks
+     * `type=secured`: the secured half of the union exactly as it stands (collected OR delivered in
+     * the range, any stage), no dailies. `type=daily` is the other half (collected in the range).
+     * Left out → both, as before. The row cap is counted AFTER the filter, so a range too large for
+     * the whole history may still be served for one type. The answer's shape does not change.
+     */
+    type: OperationsShipmentTypeSchema.optional(),
+  })
   .strict()
   .refine((q) => historyDay(q.from) <= historyDay(q.to), {
     message: 'from must not be after to',
@@ -918,6 +931,17 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *                        `operationsVault.cancelReceipt` — the shipment went back from the vault to
  *                        draft. `changes` carry ONE change, `reason` (old = null, new = the reason
  *                        typed), for every reader of the log.
+ *   crewRemoved          (Round 12) a leg's crew was taken off — «توزيع المحصنات» dragged the
+ *                        shipment off its van (or «إزالة»), so the DELIVERY leg has no captain and no
+ *                        van any more (`leg` = 'delivery'). `changes` carry `captain` and `vehicle`
+ *                        (old = who / which van it was on, new = null). The leg's earlier
+ *                        `crewAssigned` / `crewChanged` entries stay in the log.
+ *   deliveryRescheduled  (Round 12) placing an OVERDUE shipment still in the vault on a van of the
+ *                        distribution day moved its delivery date to that day, as part of the same
+ *                        save. `changes` carry ONE change, `deliveryDate` (old → new, 'YYYY-MM-DD').
+ *                        The one change a received (locked) محصنة may take: a FLOW act — it goes out
+ *                        on a later day than planned — not an edit of what the vault signed for. The
+ *                        screen says so in the entry's sentence.
  *   other                an audited act this list does not name yet — shown plainly, never hidden.
  */
 export const OPERATIONS_SHIPMENT_LOG_KINDS = [
@@ -942,6 +966,8 @@ export const OPERATIONS_SHIPMENT_LOG_KINDS = [
   'pickupConfirmed',
   'pickupUndone',
   'receiptCancelled',
+  'crewRemoved',
+  'deliveryRescheduled',
   'other',
 ] as const;
 export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[number];
@@ -957,9 +983,9 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *   areaName, notes              as typed
  *   lines                        every money line as «currency name amount», joined by «، » —
  *                                the amount in major units, Latin digits, grouped («مصري 1,500.5»)
- *   collectionDate, deliveryDate 'YYYY-MM-DD'
+ *   collectionDate, deliveryDate 'YYYY-MM-DD' (also on `deliveryRescheduled`, Round 12)
  *   serialTracked                'true' / 'false' (see OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS)
- * A leg (on `crewAssigned` / `crewChanged` / `reordered`):
+ * A leg (on `crewAssigned` / `crewChanged` / `crewRemoved` / `reordered`):
  *   captain                      the captain's full Arabic name
  *   vehicle                      the van's code
  *   sequence                     the leg's 1-based place on its captain's route
@@ -1056,12 +1082,14 @@ export interface OperationsShipmentLogDto {
 
 // ── The deleted shipments, and bringing one back («اعملى ايقون اقدر اجيب منه اللى اتمسح») ────────
 //
-// `GET /operations/shipments/deleted?from=&to=` (`operationsShipment.view`): the shipments that were
-// DELETED from the history of the range — the history's own union (daily by collection day;
-// secured by collection OR delivery day, any stage) over deleted rows, so every row listed is one
-// that comes back onto that history when restored. Same range rules and the same row cap as the history
-// (a range holding more is refused with `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`). Newest deleted
-// first; rows enriched exactly as board rows are, crew facts gated the same way.
+// `GET /operations/shipments/deleted?from=&to=[&type=]` (`operationsShipment.view`): the shipments
+// that were DELETED from the history of the range — the history's own union (daily by collection
+// day; secured by collection OR delivery day, any stage) over deleted rows, so every row listed is
+// one that comes back onto that history when restored. Same range rules, the same optional `type`
+// (Round 12 — «سجل الخزينة» lists the deleted محصنات only) and the same row cap as the history,
+// counted after the type filter (a range holding more is refused with
+// `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`). Newest deleted first; rows enriched exactly as board
+// rows are, crew facts gated the same way.
 //
 // `POST /operations/shipments/:id/restore` (`operationsShipment.delete` — the grant that deletes a
 // shipment brings it back), no body → the restored `OperationsShipmentDto`. It returns to its day's
@@ -1227,6 +1255,37 @@ export interface OperationsVaultReportDto {
   /** The last day of the period, inclusive — the day asked for, not the query's exclusive bound. */
   to: string;
   /** Per-bank roll-up of every shipment received into the vault in the period. */
+  rows: OperationsBankReportRowDto[];
+  /** Q27 NORMALIZE — separate from `rows`, so summing the rows cannot double-count. */
+  grandTotal: OperationsReportTotalsDto;
+}
+
+/**
+ * «تقرير الخزينة» — WHAT THE VAULT HOLDS NOW, per bank (Round 12): «اعمل فوق تقرير الخزينة يكون نفس
+ * الداتا اللى فى بيان الشحنات لكل بنك ونفس الشكل وكل حاجه بس مفيش فتر من الى هيكون لحظى على ف
+ * الخزينة». On top of «سجل الخزينة» (`/operations/vault`).
+ *
+ * `GET /operations/reports/vault/held` (`operationsVault.view` — the vault screens' grant, as the
+ * roll-up's). NO parameters (any query key → 400): it is live, not a period.
+ *
+ * WHICH SHIPMENTS: every secured shipment IN THE VAULT right now — status `inVault`, not deleted —
+ * which is exactly the set «محصنات الخزينة» lists (`GET /operations/secured/dispatch-board` with no
+ * `date`), so the report and the list beside it cannot disagree. Received and not yet dispatched:
+ * a dispatched one has left («هتتسلم ساعتها وخلاص مش هتبقى ف الخزنة»), a cancelled receipt put it
+ * back to draft — neither is held. Packages come from the live custody, counted once per shipment.
+ *
+ * THE SAME ROLL-UP as «تجميع الخزينة» (`OperationsVaultReportDto`) and the bank report — the same
+ * `bankReportRows`, the same rows keyed on the MAIN (billed) bank, the same `grandTotal` (Q27) — so
+ * a screen prints it with the very table «بيان الشحنات لكل بنك» uses; only the period is gone.
+ * Unpaged, like the reports.
+ */
+export const OperationsVaultHeldReportQuerySchema = z.object({}).strict();
+export type OperationsVaultHeldReportQuery = z.infer<typeof OperationsVaultHeldReportQuerySchema>;
+
+export interface OperationsVaultHeldReportDto {
+  /** When the roll-up was read (ISO instant) — the screen may print «حتى الآن» against it. */
+  asOf: string;
+  /** Per main bank, every shipment held now; bank name ascending (as the other reports). */
   rows: OperationsBankReportRowDto[];
   /** Q27 NORMALIZE — separate from `rows`, so summing the rows cannot double-count. */
   grandTotal: OperationsReportTotalsDto;
@@ -2114,6 +2173,14 @@ export type CancelVaultReceipt = z.infer<typeof CancelVaultReceiptSchema>;
  * «صرف الخزينة» — THE VAULT'S DISPATCH BOARD (Round 10): «كله يبقى موجود فى تاريخ يتفلتر», in the
  * shared board look («اعملها بقى بشكل الجديد للشاشات اللى احنا عملناها»).
  *
+ * ROUND 12 RENAMED THE SCREEN «محصنات الخزينة» and made it VIEW ONLY: «وعاوز اغير اسم صرف الخزينة ل
+ * محصنات الخزينة وتكون وظيفتها انها بتعرض اللى موجود دلوقتى فى الخزنة». The endpoint below is
+ * unchanged and still answers it (route `/operations/vault/dispatch` kept). Placing a shipment on a
+ * van moved to «توزيع المحصنات» (`GET`/`POST /operations/secured/distribution`), and handing a van's
+ * load over to «تسليم المحصنات» (which calls the dispatch below) — so the screen offers neither the
+ * assign dialog nor the dispatch any more. Both endpoints stay, unchanged, for those screens and for
+ * parity.
+ *
  * `GET /operations/secured/dispatch-board?date=` (`operationsVault.view` — the grant the
  * `/operations/vault/dispatch` page already rides): EVERY secured shipment in the vault right now
  * (status `inVault`), whatever its delivery date, as BOARD ROWS (`boardForReader`: the same row as
@@ -2176,6 +2243,323 @@ export interface OperationsSecuredDispatchBoardDto {
   /** As `OperationsDayBoardDto.crews` — empty without `operationsCrew.view`. */
   crews: OperationsDayBoardVehicleCrewDto[];
 }
+
+// ── Round 12: «توزيع المحصنات» and «تسليم المحصنات» ─────────────────────────────────────────────
+//
+// The owner: «المحصنة اللى يومها هتخرج هتظهر تلقائى فى شاشة توزيع المحصنات هيكون فيها العربيه اللى
+// اتحط عليها القادة والاخصائين والاتجاه هتبقى العربيات على اليمين والمحصنات على الشمال وهشد المحصنة
+// احطها على العربيه او المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى ولما يحفظ نفس الشاشة هنعمل
+// زيها للخزنة هيكون فوق كل عربيه تسليم وطباعه … بس لما يدوس تسليم المحصنات هتتسلم ساعتها وخلاص مش
+// هتبقى ف الخزنة».
+//
+// ONE READ FOR BOTH SCREENS — `GET /operations/secured/distribution?date=` — and two ways to act on
+// it: Operations places shipments on the day's vans and saves them in ONE request (`POST
+// /operations/secured/distribution`), and the vault hands each van's load over with the dispatch
+// that already exists (`POST /operations/secured/dispatch`, `operationsVault.dispatch`).
+//
+// WHERE A SHIPMENT IS "ON A VAN" — its DELIVERY leg (`OperationsShipmentAssignmentDto`, leg
+// 'delivery'), the same row «صرف الخزينة»'s assign dialog wrote and the dispatch checks: the leg's
+// crew row is the van, its captain the captain. Distribution writes nothing else, so a van's load
+// as the vault sees it, as the captain's phone sees it, and as the reports attribute it are the
+// same fact.
+
+/** The most changes one distribution save may carry — far above a day's محصنات, a bound, not a quota. */
+export const OPERATIONS_DISTRIBUTION_MAX_CHANGES = 500;
+
+/**
+ * `GET /operations/secured/distribution?date=` — `operationsShipment.view` OR `operationsVault.view`
+ * (Operations distributes, the vault hands over: one read for both screens).
+ *
+ *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. A day before today is
+ *     refused with 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` (detail: `field` 'date', `code`
+ *     'MIN_DATE', `message` = today as 'YYYY-MM-DD') — the boards' «no past day» rule: a past day's
+ *     vans have left. An empty `date=` is a 400 (omit the key).
+ */
+export const OperationsSecuredDistributionQuerySchema = z
+  .object({ date: z.coerce.date().optional() })
+  .strict();
+export type OperationsSecuredDistributionQuery = z.infer<
+  typeof OperationsSecuredDistributionQuerySchema
+>;
+
+/** A shipment's delivery leg as it stands — on whatever day it is planned. */
+export interface OperationsSecuredDistributionLegDto {
+  /** The crew row (the van of that day) the leg rides. */
+  crewAssignmentId: string;
+  captainEmployeeId: string;
+  vehicleId: string;
+  /**
+   * The captain's progress on it in the app. Anything but `pending` means he has started it: the
+   * leg is his now and the save refuses to move or clear it (409
+   * `OPERATIONS_DISTRIBUTION_LEG_STARTED`) — the screen shows the card as fixed.
+   */
+  executionStatus: OperationsExecutionStatus;
+}
+
+/**
+ * A shipment on the distribution screen: a BOARD ROW (`OperationsDayBoardShipmentDto` — bank,
+ * branches with their banks, area, the money lines, `securedStage` and its colour; its `crew` is the
+ * leg the board prints NOW, which for a draft is still the PICKUP leg — read `delivery` for the van),
+ * plus the distribution's own facts.
+ */
+export interface OperationsSecuredDistributionRowDto extends OperationsDayBoardShipmentDto {
+  /** When the vault took it in (custody `receivedAt`, ISO instant); null while it is not in the vault. */
+  vaultReceivedAt: string | null;
+  /**
+   * «متأخرة» — an IN-VAULT shipment whose delivery date is BEFORE the screen's day. Placing it on a
+   * van of the day moves its delivery date to the day (see the save). False for every shipment due
+   * on the day.
+   */
+  overdue: boolean;
+  /** Its DELIVERY leg as it stands (any day), or null when it has none. */
+  delivery: OperationsSecuredDistributionLegDto | null;
+  /**
+   * The delivery leg's version, to send back as the change's `version`; null when it has no
+   * delivery leg (send null). Never the shipment's own `version`.
+   */
+  deliveryLegVersion: number | null;
+  /**
+   * The van of THIS DAY it is on: `delivery.crewAssignmentId` when that crew row is one of `crews`,
+   * else null — UNPLACED (the left column). An overdue shipment whose leg is still on its old day's
+   * van is unplaced here.
+   */
+  placedCrewAssignmentId: string | null;
+  /**
+   * AUTO BY DIRECTION — «المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى»: the crew rows of `crews`
+   * that have at least one captain and whose `direction` names this shipment's `areaName`
+   * (`operationsDirectionMatchesArea`), in `crews` order. The screen PROPOSES the shipment onto the
+   * van when it is unplaced and this holds EXACTLY ONE id — on load, and again on «توزيع تلقائي»;
+   * with none or several it is left for the person. A proposal is the screen's until «حفظ».
+   */
+  directionCrewAssignmentIds: string[];
+}
+
+export interface OperationsSecuredDistributionDto {
+  /** The day distributed (its UTC midnight, ISO) — today in Cairo when none was asked for. */
+  date: string;
+  /** TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day the screen may pick. */
+  today: string;
+  /**
+   * Whether the reader holds `operationsCrew.view` — the crew plan's grant. Without it every van is
+   * still listed (the vans ARE this screen: number, captains, direction, time — what every board
+   * prints beside a row), but its `drivers`, `specialist1` and `specialist2` come back EMPTY; this
+   * says so, so an empty slot is not read as «no specialist».
+   */
+  crewPlanVisible: boolean;
+  /**
+   * THE VANS OF THE DAY (the right column): EVERY crew row of the day's crew board (`GET
+   * /operations/crew-board?date=`), one card each — van code, captains, both specialists, drivers by
+   * name, `direction`, `plannedTime` — ordered by van code (numbers in number order). A van with no
+   * captain is listed but cannot take a shipment (the save answers `OPERATIONS_CREW_CAPTAIN_MISMATCH`).
+   * Empty when nothing is planned for the day.
+   */
+  crews: OperationsDayBoardVehicleCrewDto[];
+  /**
+   * THE MAHSANAT (the left column, and each van's load): every SECURED shipment, not deleted, that is
+   *   · due on the day (`deliveryDate` = `date`) and not yet out — status `draft` (any stage:
+   *     awaitingPickup / withCaptain / withOperations — placeable now, handed over only once the
+   *     vault has it) or `inVault`; or
+   *   · OVERDUE in the vault — status `inVault` with a delivery date before `date` (`overdue`).
+   * Never one dispatched or completed (gone from the vault), never a draft due another day.
+   * Order: delivery date ascending (the overdue first), then oldest booked. Counted before it is
+   * read: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` → 422
+   * `OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE` (details `count`, `max`), never cut short.
+   * The row's `crew.captainPhone` is null without `operationsCrew.view`, as on every board.
+   */
+  shipments: OperationsSecuredDistributionRowDto[];
+}
+
+/**
+ * One shipment's place after the save — the van (crew row of `date`) and the captain it goes with,
+ * or both null to take it OFF its van («إزالة», or dragged back to the left).
+ *
+ * `version` is the row's `deliveryLegVersion` AS THE SCREEN READ IT — null when it had no delivery
+ * leg. Checked against the leg as it is now: a leg created, moved or cleared by someone else since
+ * (another desk, or the assign dialog) makes the WHOLE save stale.
+ */
+export const SecuredDistributionChangeSchema = z
+  .object({
+    shipmentId: objectId(),
+    crewAssignmentId: objectId().nullable(),
+    captainEmployeeId: objectId().nullable(),
+    version: z.number().int().min(0).nullable(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    // A van without a captain carries nothing, and a captain without a van is no place at all.
+    if ((value.crewAssignmentId === null) !== (value.captainEmployeeId === null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['captainEmployeeId'],
+        message: 'a van and its captain are given together — both, or neither to take it off',
+      });
+    }
+  });
+export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChangeSchema>;
+
+/**
+ * `POST /operations/secured/distribution` (`operationsShipment.edit` — assign-delivery's grant) —
+ * «ولما يحفظ»: EVERY change on the screen in ONE request, ALL OR NOTHING (one transaction: a single
+ * refusal writes nothing at all). Send only the shipments whose place changed (a proposal the person
+ * kept is a change like any other).
+ *
+ * Per change, in this order:
+ *   · the shipment: 404 when there is none (or it is deleted); 422 `OPERATIONS_NOT_A_SECURED_SHIPMENT`;
+ *     409 `OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED` when it is `dispatched` or `completed` — it has
+ *     left the vault, its van is history; 422 `OPERATIONS_DISTRIBUTION_NOT_ON_DAY` unless it is due
+ *     on `date` (draft or in the vault) or is OVERDUE in the vault (in the vault, delivery date
+ *     before `date`) — a draft due another day, or one with no delivery date, is not this day's;
+ *   · the version: 409 `STALE_DOCUMENT` unless `version` is its delivery leg's current version
+ *     (null ⇔ no leg);
+ *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app
+ *     (its `executionStatus` is not `pending`) and the change would move or clear it;
+ *   · the van: 404 when the crew row does not exist; 422 `OPERATIONS_CREW_DAY_MISMATCH` when it is a
+ *     crew row of another day; 422 `OPERATIONS_CREW_CAPTAIN_MISMATCH` when the captain is not one of
+ *     its captains (a van with two captains takes either — the screen sends the one chosen on the
+ *     van card, the first by default).
+ * Every refusal names the shipment: `details` = [{ field: 'shipmentId', code: 'SHIPMENT', message:
+ * <its id> }] (the 404 of a missing crew row and `STALE_DOCUMENT` included), so the screen can mark
+ * its card. Then the day itself: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` for a day before today
+ * (Cairo), checked before any shipment.
+ *
+ * What a change WRITES (only when it changes something — a change that names the place the shipment
+ * already has writes nothing and is not counted):
+ *   · onto a van — the delivery leg is created (`crewAssigned` in «السجل», leg 'delivery') or moved
+ *     (`crewChanged`): its crew row, captain and van, on the day's operating day; a stop that changes
+ *     captain lands at the END of the new captain's delivery route (the assign-delivery rule).
+ *     Events `operations.shipmentAssignment.assigned` (`OperationsShipmentAssignmentPayloadV1`).
+ *   · OVERDUE — placing an overdue in-vault shipment on a van of `date` also moves its DELIVERY DATE
+ *     to `date`, in the same transaction: the ONE change a received (locked, `isOperationsShipmentLocked`)
+ *     محصنة may take, because it is a FLOW act — it goes out later than planned, nothing the vault
+ *     signed for changes. Audited on the shipment, shown in «السجل» as `deliveryRescheduled`
+ *     (old → new delivery day); event `operations.shipment.updated`. Taking an overdue shipment OFF
+ *     a van moves no date.
+ *   · off the van — the delivery leg is CLEARED (no captain, no van; the leg row is retired, its
+ *     history kept): `crewRemoved` in «السجل»; event `operations.shipmentAssignment.removed`
+ *     (`OperationsShipmentAssignmentPayloadV1`, the captain and van it was on). Off a van it was not
+ *     on (no leg, `version` null) is no change.
+ * Realtime: topics `operations.shipmentAssignment` and `operations.shipment` (the boards' sweep).
+ *
+ * Answers 200 with `OperationsSecuredDistributionSaveDto`; read the screen again
+ * (`GET …/distribution?date=`) for the new versions.
+ *
+ * THEN «تسليم المحصنات» (the vault, `operationsVault.dispatch`): per van, `POST
+ * /operations/secured/dispatch` with that van's `crewAssignmentId` and the ids of ITS shipments that
+ * are IN THE VAULT (`status === 'inVault'` and `placedCrewAssignmentId` = the van). They leave the
+ * vault at once (`dispatched` — «هتتسلم ساعتها وخلاص مش هتبقى ف الخزنة»). A shipment on the van that
+ * the vault has not received yet (draft) is not sent: the dispatch would refuse it (422
+ * `OPERATIONS_INVALID_SHIPMENT_TRANSITION`) — the vault cannot hand over what it does not hold.
+ */
+export const SaveSecuredDistributionSchema = z
+  .object({
+    date: z.coerce.date(),
+    changes: z
+      .array(SecuredDistributionChangeSchema)
+      .min(1)
+      .max(OPERATIONS_DISTRIBUTION_MAX_CHANGES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.changes.forEach((change, index) => {
+      if (seen.has(change.shipmentId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['changes', index, 'shipmentId'],
+          message: 'a shipment appears twice in one distribution',
+        });
+      }
+      seen.add(change.shipmentId);
+    });
+  });
+export type SaveSecuredDistribution = z.infer<typeof SaveSecuredDistributionSchema>;
+
+export interface OperationsSecuredDistributionSaveDto {
+  /** The day saved (UTC midnight, ISO). */
+  date: string;
+  /**
+   * How many shipments the save changed — placed on a van, moved to another, taken off, or (an
+   * overdue one already on a van of the day) only re-dated. A change naming the place a shipment
+   * already had is not counted.
+   */
+  changed: number;
+  /** Of them, the overdue ones whose delivery date moved to `date`. */
+  rescheduled: number;
+}
+
+// ── Matching a shipment's area to a van's direction (pure, shared by the server and the screen) ──
+//
+// «المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى». A van's DIRECTION is free text on its crew row
+// («الاتجاه» on the crew board) and may name several areas; a shipment's AREA is its `areaName` (the
+// destination branch's operations area). The rule, precisely:
+//
+//   1. The direction is split into areas at «-» «–» «—» «/» «\» «|» «،» «,» «؛» «;» «+» «&», and at a
+//      standalone «و» between spaces («المعادي و حلوان»). A «و» joined to the next word is part of
+//      that word («وسط البلد» stays whole).
+//   2. Each area, and the shipment's area, is FOLDED: Arabic-Indic digits to Latin; lower case;
+//      tashkeel, tatweel and invisible marks dropped; «أ إ آ ٱ» → «ا», «ى» → «ي», «ة» → «ه»; every
+//      other character that is not a letter, a digit or a space dropped; a leading «ال» taken off
+//      each word longer than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
+//   3. The shipment matches the van when its folded area EQUALS one folded area of the direction —
+//      equal, never "contains": «مصر» does not match «مصر الجديدة».
+//   4. No area, or no direction, or either folding to nothing → no match.
+
+/** Where a direction is split into its areas (rule 1). */
+const DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+
+/** One area name, folded (rule 2) — exported so a screen can show what was compared. */
+export const foldOperationsAreaName = (value: string): string =>
+  asciiDigits(value)
+    .toLowerCase()
+    .replace(/[ؐ-ًؚ-ٰٟۖ-ۜ۟-۪ۨ-ۭـ]/gu, '')
+    .replace(/\p{Cf}/gu, '')
+    .replace(/[أإآٱ]/gu, 'ا')
+    .replace(/ى/gu, 'ي')
+    .replace(/ة/gu, 'ه')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .trim()
+    .split(/\s+/u)
+    .map((word) => ([...word].length > 3 && word.startsWith('ال') ? word.slice(2) : word))
+    .join(' ');
+
+/** The areas a van's direction names, folded and without repeats (rules 1-2); [] for none. */
+export const operationsDirectionAreas = (direction: string | null | undefined): string[] => {
+  if (direction == null) return [];
+  return [
+    ...new Set(
+      direction
+        .split(DIRECTION_SEPARATOR)
+        .map(foldOperationsAreaName)
+        .filter((area) => area !== ''),
+    ),
+  ];
+};
+
+/** Does this van's direction name this shipment's area (rules 3-4)? */
+export const operationsDirectionMatchesArea = (
+  direction: string | null | undefined,
+  areaName: string | null | undefined,
+): boolean => {
+  if (areaName == null) return false;
+  const area = foldOperationsAreaName(areaName);
+  return area !== '' && operationsDirectionAreas(direction).includes(area);
+};
+
+/**
+ * The vans a shipment's area points at: those with at least one captain whose direction matches
+ * (`operationsDirectionMatchesArea`), in the order given. EXACTLY ONE → the screen proposes it.
+ */
+export const operationsDirectionVanIds = (
+  areaName: string | null | undefined,
+  vans: readonly {
+    crewAssignmentId: string;
+    direction: string | null;
+    captains: readonly unknown[];
+  }[],
+): string[] =>
+  vans
+    .filter((van) => van.captains.length > 0 && operationsDirectionMatchesArea(van.direction, areaName))
+    .map((van) => van.crewAssignmentId);
 
 // ── The secured screen and the vault's receive queue (Round 8) ─────────────────────────────────
 //
@@ -2574,6 +2958,12 @@ export const OperationsEvents = {
    */
   ShipmentPickupUndone: 'operations.shipment.pickupUndone',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
+  /**
+   * Round 12 — a secured shipment taken OFF its van on «توزيع المحصنات»: its delivery leg cleared.
+   * `OperationsShipmentAssignmentPayloadV1` carries the leg that was retired — the captain and van it
+   * was on — the counterpart of `assigned`.
+   */
+  SecuredLegRemoved: 'operations.shipmentAssignment.removed',
   SecuredDispatched: 'operations.shipment.dispatched',
   ShipmentOrderReordered: 'operations.shipmentAssignment.reordered',
   // Captain execution (OP-7, NEW). The entity is `shipmentAssignment` because that is the row the

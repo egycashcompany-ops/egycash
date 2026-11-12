@@ -15,6 +15,7 @@ import {
   type Locale,
   type OperationsCurrencyDto,
   type OperationsDeletedShipmentDto,
+  type OperationsShipmentType,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -311,19 +312,25 @@ export const DeletedShipmentsList = ({
 export const DeletedShipmentsControl = ({
   range,
   enabled,
+  type,
   bankNameOf,
   currencyOf,
 }: {
   range: HistoryRange;
   /** False while the page holds a range the endpoint would refuse — the icon waits, disabled. */
   enabled: boolean;
+  /**
+   * Round 12 — one shipment type only, as the page's history reads it: «سجل الخزينة» lists the
+   * deleted محصنات alone, never the deleted dailies beside them. Left out, both («سجل الشحنات»).
+   */
+  type?: OperationsShipmentType | undefined;
   bankNameOf: (bankId: string) => string;
   currencyOf: (id: string) => OperationsCurrencyDto | undefined;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
-  const deleted = useOperationsDeletedShipments(range, enabled);
+  const deleted = useOperationsDeletedShipments(range, enabled, type);
   const restore = useRestoreOperationsShipment();
   const [open, setOpen] = useState(false);
   const [logOf, setLogOf] = useState<ShipmentLogTarget | null>(null);

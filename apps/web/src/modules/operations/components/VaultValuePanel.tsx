@@ -1,9 +1,15 @@
 // «اجمالى قيمة الشحنات» — the panel legacy's vault roll-up drew beside its table: «إجمالي المصري»,
 // «إجمالي العملات الأجنبية», then every currency of its list with its amount. It is legacy's SECOND
 // aggregation (contad_app.js:1524 — the same vault set, the pound taken out), here a view of the
-// server's grand total (`vaultValuePanel`, lib/report-board.ts) — so it covers the same period as
-// the table: what entered the vault in it («يجيب اللى اتسلم واللى متسلمش») — in the report board's
-// card and the boards' palette: the pound in the pound's green, the foreign sum in the others' amber.
+// total the table beside it shows (`vaultValuePanel`, lib/report-board.ts) — so it covers what the
+// table covers: on «تجميع الخزينة» what entered the vault in the period («يجيب اللى اتسلم واللى
+// متسلمش»), narrowed with the table when a bank's name is typed (Round 12, `reportView`); on
+// «سجل الخزينة»'s «تقرير الخزينة» what the vault holds now — in the report board's card and the
+// boards' palette: the pound in the pound's green, the foreign sum in the others' amber.
+//
+// ROUND 12 — «الlist بتاعت جمالى العملات اللى على الشمال دى عاوز حجمها يكون بطول الشاشة كامله»: on a
+// computer the panel is as tall as the table's card beside it, which runs to the screen's bottom;
+// its two sums stay at its top and the currency list scrolls inside it when it outruns the screen.
 //
 // THE FULL LIST, ZEROS INCLUDED, as legacy listed it: the treasurer reads down a list he knows by
 // heart, and a currency missing from it reads as "not counted" rather than "none received". The
@@ -51,10 +57,16 @@ const Headline = ({
 export const VaultValuePanel = ({
   grandTotal,
   loading,
+  className = 'lg:w-80 lg:shrink-0 xl:w-[22rem]',
 }: {
-  /** The server's grand total — the panel's only source (never the rows, Q27). */
+  /**
+   * The total the table beside it shows (`reportView`) — the server's grand total, or with a name
+   * typed the shown rows' own. The panel's only source: never its own sum of anything.
+   */
   grandTotal: OperationsReportTotalsDto | undefined;
   loading: boolean;
+  /** The panel's size where it sits — the reports' full-height column by default. */
+  className?: string;
 }): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -70,7 +82,7 @@ export const VaultValuePanel = ({
 
   return (
     <aside
-      className={cn(REPORT_CARD, 'lg:max-h-full lg:w-80 lg:shrink-0 xl:w-[22rem]')}
+      className={cn(REPORT_CARD, className)}
       aria-label={t('operations.vaultReport.value')}
       data-vault-value="true"
     >
@@ -82,8 +94,8 @@ export const VaultValuePanel = ({
           ))}
         </div>
       ) : (
-        <div className="min-h-0 overflow-y-auto">
-          <div className="divide-y divide-slate-200 border-b-2 border-slate-200 bg-slate-50 dark:divide-slate-800 dark:border-slate-700 dark:bg-[#0c121e]">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 divide-y divide-slate-200 border-b-2 border-slate-200 bg-slate-50 dark:divide-slate-800 dark:border-slate-700 dark:bg-[#0c121e]">
             <Headline
               tone={FIGURE_TONE.pound}
               label={t('operations.vaultReport.totalPound')}
@@ -97,7 +109,8 @@ export const VaultValuePanel = ({
               data-vault-value-total="foreign"
             />
           </div>
-          <ul>
+          {/* The list scrolls under the two sums, which stay at the panel's top. */}
+          <ul className="min-h-0 flex-1 overflow-y-auto" data-vault-value-list="true">
             {panel.lines.map((line) => (
               <li
                 key={line.key}

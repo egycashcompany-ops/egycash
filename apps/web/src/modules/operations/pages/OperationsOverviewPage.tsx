@@ -85,7 +85,7 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ShieldIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/tash4ela_mohasana` + `/deliver_mohsana` — one list, two acts. */
+  /** «محصنات الخزينة» (Round 12, was «صرف الخزينة») — every محصنة in the vault now, view only. */
   {
     to: '/operations/vault/dispatch',
     titleKey: 'operations.nav.vaultDispatch',
@@ -93,7 +93,7 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: TruckIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/vault1` — what is in the vault right now. */
+  /** «سجل الخزينة» (Round 12, was «جرد الخزينة») — «تقرير الخزينة» now, and the secured history. */
   {
     to: '/operations/vault',
     titleKey: 'operations.nav.vault',

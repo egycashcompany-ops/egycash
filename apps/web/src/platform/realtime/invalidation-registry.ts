@@ -267,6 +267,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     // puts a row on it, a cancelled receipt (`operations.custody.receiptCancelled`) or a release takes
     // one off: all the vault's own topic, which is all a vault-only treasurer hears.
     ['operations', 'dayBoard', 'securedDispatch'],
+    // «تسليم المحصنات» (Round 12) reads the distribution, under the day board's key: a receipt makes
+    // a shipment on a van one the vault can hand over, a hand-over takes it off. A vault-only
+    // treasurer hears only this topic (a placement Operations saves reaches them by the screen's
+    // own once-a-minute re-read).
+    ['operations', 'dayBoard', 'securedDistribution'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [

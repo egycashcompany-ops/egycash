@@ -109,6 +109,19 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .exec();
   }
 
+  /**
+   * EVERY leg one shipment ever had — live and RETIRED (Round 12: «توزيع المحصنات» retires the
+   * delivery leg of a shipment taken off its van) — oldest first, through `ix_shipment_all_legs`.
+   * For the action log only: every other read asks for the live legs, which are the plan.
+   */
+  async findAllByShipment(shipmentId: string): Promise<OperationsShipmentAssignmentDoc[]> {
+    return this.model
+      .find({ shipmentId: new Types.ObjectId(shipmentId) })
+      .sort({ leg: 1, createdAt: 1, _id: 1 })
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
+  }
+
   async findByShipmentAndLeg(
     shipmentId: string,
     leg: OperationsShipmentLeg,

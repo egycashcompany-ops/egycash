@@ -913,6 +913,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   pickupConfirmed: { en: 'pickup confirmed', ar: 'تأكيد استلام' },
   pickupUndone: { en: 'pickup undone', ar: 'التراجع عن استلام' },
   receiptCancelled: { en: 'receipt cancelled', ar: 'إلغاء استلام' },
+  // operations (Round 12): «توزيع المحصنات» takes a shipment off its van — the counterpart of
+  // `assigned` on the same entity.
+  removed: { en: 'removed', ar: 'إزالة' },
   disposed: { en: 'disposed', ar: 'استبعاد' },
   // `opened` is already defined above (recruitment uses it) — one entry serves both modules,
   // which is the point of a shared action vocabulary.
@@ -1453,6 +1456,8 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
+  // Round 12 — «توزيع المحصنات» takes a shipment off its van: the leg that was retired.
+  [OperationsEvents.SecuredLegRemoved]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,
   // OP-7 — the four captain execution facts. One payload shape for all four: they differ only in

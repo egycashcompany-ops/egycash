@@ -7,7 +7,9 @@
 // (`OperationsReportTotalsDto.currencies`), and the contract leaves the legacy «المصري / الدولار /
 // اجمالي العملات» buckets to the client as a VIEW of those. This file is that view, and nothing
 // more: it splits a row's money by the boards' own classifier, orders it by the reference list,
-// and puts the rows in the order the screen reads them. It never adds one row to another.
+// and puts the rows in the order the screen reads them. It adds rows together in ONE case only
+// (Round 12, `reportView`): when the name filter has narrowed the table, «الإجمالي» is the total of
+// the rows on screen — never otherwise, where it is the server's own grand total.
 //
 // «اجمالي العملات» IS «عملات أخرى». Legacy's `total_other` (contad_app.js:5057) was every currency
 // that is neither the pound nor the dollar — exactly the boards' rule, «المصرى لوحده الدولار لوحده و
@@ -20,6 +22,7 @@ import {
   type OperationsReportCurrencyTotalDto,
   type OperationsReportTotalsDto,
 } from '@ecms/contracts';
+import { fold } from '../../../shared/lib/fold';
 import {
   compareCurrencies,
   currencyKind,
@@ -191,8 +194,10 @@ export interface VaultValuePanel {
 }
 
 /**
- * The panel, from the server's GRAND TOTAL — its own currencies, split by the boards' classifier.
- * Not from the rows (Q27), and never by the code `EGP` alone: on the production catalog, whose
+ * The panel, from the server's GRAND TOTAL — its own currencies, split by the boards' classifier
+ * (or, while the name filter narrows the table, from the total of the rows shown — `reportView`:
+ * the panel always reads the same «الإجمالي» as the table under it). Not from the rows (Q27), and
+ * never by the code `EGP` alone: on the production catalog, whose
  * pound is coded «1», that test counts the pound as foreign. (It is why the server stopped sending
  * a list of its own "foreign" currencies — this split is the only one.)
  */
@@ -279,10 +284,11 @@ export type ReportTableLine =
   | { kind: 'total'; key: 'total'; totals: OperationsReportTotalsDto };
 
 /**
- * The table's lines: the rows, numbered («م») in the order given, then «الإجمالي» — the SERVER's
- * grand total, handed through as it came (Q27: legacy appended its total INTO the rows, and a
- * reader who added the rows up counted everything twice; here no row is ever added to another).
- * No rows, no total: an empty report says so in the table's place instead of a row of zeros.
+ * The table's lines: the rows, numbered («م») in the order given, then «الإجمالي» — the total it is
+ * handed, as it came: the SERVER's grand total, or with a name typed the shown rows' own
+ * (`reportView`). Kept OUT of the rows (Q27: legacy appended its total INTO the rows, and a reader
+ * who added the rows up counted everything twice). No rows, no total: an empty report says so in
+ * the table's place instead of a row of zeros.
  */
 export const reportTableLines = (
   rows: readonly ReportBoardRow[],
@@ -294,3 +300,95 @@ export const reportTableLines = (
         ...rows.map((row, index) => ({ kind: 'row' as const, serial: index + 1, ...row })),
         { kind: 'total', key: 'total', totals: grandTotal },
       ];
+
+// ── Round 12 — the name filter, and the total that follows it ──────────────────────────────────
+//
+// «وزود ان اعمل فلتر ب اسم القائد» / «فلتر ب اسم البنك»: one text box in the reports' bar, narrowing
+// the rows to the captains (or banks) whose name holds what was typed. Typed the way an Arabic
+// typist types — «احمد» finds «أحمد», «الاسكندريه» finds «الإسكندرية», «١٥» finds «15» — by the
+// app's one fold (`shared/lib/fold.ts`, every search box's), with the two things it leaves alone
+// for a NAME taken care of here: the tatweel («محـمود») and runs of spaces («أحمد  فتحي»).
+
+/** A name as the reports' filter compares it: folded, tatweel dropped, one space between words. */
+export const foldReportName = (value: string): string =>
+  // Spaces made one BEFORE the fold as well as after: `fold` drops a tab or a no-break space as
+  // punctuation, which would glue two words into one; and dropping punctuation can leave two.
+  fold(value.replace(/\u0640/gu, '').replace(/\s+/gu, ' '))
+    .replace(/ +/gu, ' ')
+    .trim();
+
+/** Does the name hold the query, both folded? An empty (or blank) query matches every name. */
+export const reportNameMatches = (name: string, query: string): boolean => {
+  const needle = foldReportName(query);
+  return needle === '' || foldReportName(name).includes(needle);
+};
+
+/** Is the name filter narrowing anything — a query that folds to nothing does not. */
+export const isReportNameFiltered = (query: string): boolean => foldReportName(query) !== '';
+
+/**
+ * The name a row is SHOWN under — what the filter matches, as the boards' text filters match what
+ * their cells print: the bank's or the captain's, and for the row the server could not attribute,
+ * the words it is drawn with («غير منسوب»), never its empty name.
+ */
+export const reportShownName = (row: ReportBoardRow, unattributedLabel: string): string =>
+  row.unattributed ? unattributedLabel : row.label;
+
+/**
+ * The rows SHOWN rolled up into one total — for «الإجمالي» while the name filter narrows the table.
+ * The rows are disjoint (one per captain, one per main bank: the server files every shipment under
+ * exactly one), so their sum counts each shipment once, its packages once (Q26), and every currency
+ * on its own, keyed as `reportLineKey` keys it, in the order first met (`reportMoney` orders them).
+ */
+export const sumReportTotals = (rows: readonly ReportBoardRow[]): OperationsReportTotalsDto => {
+  const money = new Map<string, OperationsReportCurrencyTotalDto>();
+  let shipmentCount = 0;
+  let bagCount = 0;
+  let cartonCount = 0;
+  let boxCount = 0;
+  for (const row of rows) {
+    shipmentCount += row.totals.shipmentCount;
+    bagCount += row.totals.bagCount;
+    cartonCount += row.totals.cartonCount;
+    boxCount += row.totals.boxCount;
+    for (const line of row.totals.currencies) {
+      const key = reportLineKey(line);
+      const held = money.get(key);
+      money.set(key, held === undefined ? { ...line } : { ...held, amount: held.amount + line.amount });
+    }
+  }
+  return { shipmentCount, bagCount, cartonCount, boxCount, currencies: [...money.values()] };
+};
+
+/** What a report shows: the rows the name filter left, and the «الإجمالي» that goes under them. */
+export interface ReportView {
+  rows: ReportBoardRow[];
+  /** Undefined while the server's answer is not in (or the period was refused). */
+  total: OperationsReportTotalsDto | undefined;
+  /** The name filter narrows the rows — so `total` is theirs, not the server's. */
+  filtered: boolean;
+}
+
+/**
+ * THE TOTAL FOLLOWS THE FILTER. With no name typed, «الإجمالي» is the SERVER's grand total, handed
+ * through as it came (Q27 — never the rows added up: the server's figure is the one every report
+ * agrees on). With a name typed, the rows on screen are a part of the report, and a total of the
+ * whole under them would read as theirs: it is then those rows summed (`sumReportTotals`) — and the
+ * vault's panel, read off the same total, follows. A filter that matches nothing has no total.
+ */
+export const reportView = (
+  rows: readonly ReportBoardRow[],
+  grandTotal: OperationsReportTotalsDto | undefined,
+  query: string,
+  unattributedLabel: string,
+): ReportView => {
+  if (!isReportNameFiltered(query)) return { rows: [...rows], total: grandTotal, filtered: false };
+  const shown = rows.filter((row) =>
+    reportNameMatches(reportShownName(row, unattributedLabel), query),
+  );
+  return {
+    rows: shown,
+    total: grandTotal === undefined || shown.length === 0 ? undefined : sumReportTotals(shown),
+    filtered: true,
+  };
+};

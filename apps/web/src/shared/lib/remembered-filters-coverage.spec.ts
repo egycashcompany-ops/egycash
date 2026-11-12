@@ -373,6 +373,10 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     '`from`/`to` arrive from the link; the page renders no control for them',
   ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
+  // Round 12 — routed with the server half; each renders the standard 404 until its screen lands,
+  // which classifies it again by what it reads.
+  ['modules/operations/pages/SecuredDistributionPage.tsx'],
+  ['modules/operations/pages/VaultHandoverPage.tsx'],
   ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],

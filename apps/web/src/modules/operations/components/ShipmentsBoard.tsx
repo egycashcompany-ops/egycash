@@ -446,7 +446,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
    * deleted from the period's days, and brings one back. The history's: it hands in its range (and
    * whether the endpoint would take it). The day board has none.
    */
-  deletedShipments?: { range: HistoryRange; enabled: boolean };
+  deletedShipments?: { range: HistoryRange; enabled: boolean; type?: OperationsShipmentType };
   /**
    * The row's edit and delete, and its receipt image's upload / replace / delete, are offered here
    * — still subject to the permissions, and to the row's lock (a محصنة the vault has received,
@@ -1177,6 +1177,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
               <DeletedShipmentsControl
                 range={deletedShipments.range}
                 enabled={deletedShipments.enabled}
+                // One type only where the page's history reads one (Round 12, «سجل الخزينة»).
+                type={deletedShipments.type}
                 bankNameOf={bankNameOf}
                 currencyOf={currencyOf}
               />

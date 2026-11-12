@@ -137,6 +137,12 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   { screen: 'crew attendance', url: `/operations/crew-board/attendance?date=${TODAY}`, paginated: false },
   { screen: 'captain report', url: '/operations/reports/captains?from=2026-08-01&to=2026-08-31', paginated: false },
   { screen: 'bank report', url: '/operations/reports/banks?from=2026-08-01&to=2026-08-31', paginated: false },
+  // Round 12: «سجل الخزينة» — «تقرير الخزينة» on top (live, no period) and «سجل الشحنات» for the
+  // محصنات alone beneath it, its deleted list too; «توزيع المحصنات» / «تسليم المحصنات» open on today.
+  { screen: 'vault history · held report', url: '/operations/reports/vault/held', paginated: false },
+  { screen: 'vault history · secured history', url: `/operations/shipments/history?from=${TODAY.slice(0, 7)}-01&to=${TODAY}&type=secured`, paginated: false },
+  { screen: 'vault history · deleted', url: `/operations/shipments/deleted?from=${TODAY.slice(0, 7)}-01&to=${TODAY}&type=secured`, paginated: false },
+  { screen: 'secured distribution / handover', url: '/operations/secured/distribution', paginated: false },
 ];
 
 describe('every Operations screen opens without an API error (B8)', () => {

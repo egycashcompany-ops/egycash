@@ -15,9 +15,15 @@
 //   /operations/secured       operationsShipment.view   B4  (legacy /mohsana — every open محصنة, on the
 //                                                       day board's own board with its delivery date
 //                                                       and its stage: «شكلها يكون زى شاشة اليوم التشغيلى»)
+//   /operations/secured/distribution operationsShipment.view  (Round 12 — «توزيع المحصنات»: the
+//                                                       day's محصنات onto the day's vans; saving is
+//                                                       `operationsShipment.edit`, on the server)
 //   /operations/vault/receive operationsVault.view      B4  (legacy /receive_mohsana)
-//   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana)
-//   /operations/vault         operationsVault.view      B4  (legacy /vault1)
+//   /operations/vault/handover operationsVault.view     (Round 12 — «تسليم المحصنات»: each van's load
+//                                                       handed over; the act is `operationsVault.dispatch`)
+//   /operations/vault/dispatch operationsVault.view     B4  (legacy /deliver_mohsana + /tash4ela_mohasana;
+//                                                       Round 12: «محصنات الخزينة», view only)
+//   /operations/vault         operationsVault.view      B4  (legacy /vault1; Round 12: «سجل الخزينة»)
 //   /operations/reports/vault    operationsVault.view    B6 (legacy /vault1_reports)
 //   /operations/reports/captains operationsShipment.view B5 (legacy /ops_report)
 //   /operations/reports/banks    operationsShipment.view B5 (legacy /ops_bank_report)
@@ -43,6 +49,8 @@ import { RequirementsPage } from './pages/RequirementsPage';
 import { StandingCrewPage } from './pages/StandingCrewPage';
 import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
 import { SecuredDispatchPage } from './pages/SecuredDispatchPage';
+import { SecuredDistributionPage } from './pages/SecuredDistributionPage';
+import { VaultHandoverPage } from './pages/VaultHandoverPage';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
 import { VaultReceivePage } from './pages/VaultReceivePage';
 import { CaptainReportPage } from './pages/CaptainReportPage';
@@ -106,11 +114,29 @@ export default function OperationsRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
+        {/* Round 12 — the day's محصنات onto the day's vans, on the secured screen's own grant. */}
+        <Route
+          path="secured/distribution"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <SecuredDistributionPage />
+            </RequirePermission>
+          }
+        />
         <Route
           path="vault/receive"
           element={
             <RequirePermission permission="operationsVault.view">
               <VaultReceivePage />
+            </RequirePermission>
+          }
+        />
+        {/* Round 12 — the vault hands each van its load, on the vault screens' grant. */}
+        <Route
+          path="vault/handover"
+          element={
+            <RequirePermission permission="operationsVault.view">
+              <VaultHandoverPage />
             </RequirePermission>
           }
         />

@@ -10,6 +10,10 @@ import {
   type ListSecuredDueQuery,
   type ListVaultInventoryQuery,
   type OperationsSecuredBoardDto,
+  type OperationsSecuredDistributionDto,
+  type OperationsSecuredDistributionQuery,
+  type OperationsSecuredDistributionSaveDto,
+  type SaveSecuredDistribution,
   type OperationsSecuredDispatchBoardDto,
   type OperationsSecuredDispatchBoardQuery,
   type OperationsVaultQueueDto,
@@ -18,6 +22,7 @@ import {
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { hasPermission } from '../../../shared/types';
 import {
   toShipmentAssignmentDto,
   toShipmentDto,
@@ -26,6 +31,7 @@ import {
 import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
 import { vaultCustody } from '../treasury-boundary';
 import { operationsSecuredService } from './secured.service';
+import { operationsDistributionService } from './distribution.service';
 
 type IdParam = { id: string };
 
@@ -173,4 +179,70 @@ export const assignDeliveryLeg = async (req: Request, res: Response): Promise<vo
 export const dispatchSecured = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<DispatchSecuredShipments>(req);
   ok(res, await operationsSecuredService.dispatch(body, authContext(req).userId));
+};
+
+/**
+ * «توزيع المحصنات» / «تسليم المحصنات» (Round 12) — the day's vans and its محصنات, for this reader.
+ *
+ * The shipments go through `boardForReader` like every board (the captain's phone behind the crew
+ * grant). The VANS are this screen's subject, so they are listed for every reader allowed on it —
+ * van, captains, direction, time: what every board already prints beside a row. The rest of the
+ * crew plan — the specialists and the drivers — stays `operationsCrew.view`'s, as on the boards'
+ * van cards, and `crewPlanVisible` tells the screen an empty slot was withheld, not empty.
+ */
+export const getSecuredDistribution = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsSecuredDistributionQuery>(req);
+  const view = await operationsDistributionService.view(query.date);
+  const board = boardForReader(req, view);
+  const crewPlanVisible = hasPermission(authContext(req), 'operationsCrew.view');
+  const dayCrews = new Set(view.vans.map((van) => van.crewAssignmentId));
+  ok<OperationsSecuredDistributionDto>(res, {
+    date: utcDayIso(view.day),
+    today: utcDayIso(view.today),
+    crewPlanVisible,
+    crews: crewPlanVisible
+      ? view.vans
+      : view.vans.map((van) => ({ ...van, drivers: [], specialist1: [], specialist2: [] })),
+    shipments: board.shipments.map((row) => {
+      const receivedAt = view.receivedAt.get(row.id);
+      const leg = view.deliveryLeg.get(row.id);
+      const placed =
+        leg === undefined || !dayCrews.has(String(leg.crewAssignmentId))
+          ? null
+          : String(leg.crewAssignmentId);
+      return {
+        ...row,
+        vaultReceivedAt: receivedAt === undefined ? null : receivedAt.toISOString(),
+        // Due before the screen's day and still in the vault — only those are listed with an
+        // earlier date, so a delivery day before the day IS overdue here.
+        overdue:
+          row.status === 'inVault' &&
+          row.deliveryDate !== null &&
+          ymdOf(row.deliveryDate) < ymdOf(view.day),
+        delivery:
+          leg === undefined
+            ? null
+            : {
+                crewAssignmentId: String(leg.crewAssignmentId),
+                captainEmployeeId: String(leg.captainEmployeeId),
+                vehicleId: String(leg.vehicleId),
+                executionStatus: leg.executionStatus ?? 'pending',
+              },
+        deliveryLegVersion: leg === undefined ? null : leg.__v,
+        placedCrewAssignmentId: placed,
+        directionCrewAssignmentIds: view.directionVanIds.get(row.id) ?? [],
+      };
+    }),
+  });
+};
+
+/** «حفظ» on «توزيع المحصنات» — every change in one transaction (Round 12). */
+export const saveSecuredDistribution = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<SaveSecuredDistribution>(req);
+  const saved = await operationsDistributionService.save(body, authContext(req).userId);
+  ok<OperationsSecuredDistributionSaveDto>(res, {
+    date: utcDayIso(saved.date),
+    changed: saved.changed,
+    rescheduled: saved.rescheduled,
+  });
 };

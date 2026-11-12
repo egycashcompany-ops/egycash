@@ -417,6 +417,25 @@ const AREA_KEYS = [
   'operations.catalogs.area.governorateHint',
 ];
 
+/** Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات». */
+const DISTRIBUTION_KEYS = [
+  ...[
+    'allPlaced', 'auto', 'autoDone', 'autoHint', 'autoNone', 'bags', 'boxes', 'captains', 'cartons',
+    'day', 'discard', 'dragHint', 'dropBack', 'dropHere', 'empty', 'emptyVan', 'leaveBody',
+    'leaveConfirm', 'leaveStay', 'leaveTitle', 'loadCount', 'moveTo', 'moved', 'movedHint', 'noArea',
+    'noCaptain', 'noDirection', 'noVans', 'overdue', 'overdueHint', 'proposed', 'proposedCount',
+    'proposedHint', 'refused', 'refusedMark', 'remove', 'reschedules', 'save', 'saved',
+    'savedRescheduled', 'shipments', 'started', 'startedHint', 'switchCaptain', 'tooLarge',
+    'unplaced', 'vanLabel', 'vans', 'viewOnly', 'withCaptain',
+  ].map((key) => `operations.distribution.${key}`),
+  ...[
+    'back', 'confirm', 'confirmBody', 'confirmTitle', 'done', 'failed', 'handover', 'heldNote',
+    'hint', 'notInVault', 'notInVaultHint', 'nothing', 'popupBlocked', 'print', 'ready',
+    'sheet.captains', 'sheet.count', 'sheet.day', 'sheet.department', 'sheet.empty',
+    'sheet.packages', 'sheet.title', 'unplacedHint',
+  ].map((key) => `operations.handover.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -428,6 +447,7 @@ const ALL_KEYS = [
   ...VAULT_REPORT_KEYS,
   ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
+  ...DISTRIBUTION_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {

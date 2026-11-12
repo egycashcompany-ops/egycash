@@ -50,8 +50,18 @@ const input = (over: Partial<VanLoadSheetInput> = {}): VanLoadSheetInput => ({
   van: VAN,
   crewPlanVisible: true,
   rows: [
-    shipment('a', [['egp', 5_600_000], ['usd', 40_000]]),
-    shipment('b', [['egp', 9_200_000], ['sar', 80_000]], { securedStage: 'withCaptain', areaName: null }),
+    shipment('a', [
+      ['egp', 5_600_000],
+      ['usd', 40_000],
+    ]),
+    shipment(
+      'b',
+      [
+        ['egp', 9_200_000],
+        ['sar', 80_000],
+      ],
+      { securedStage: 'withCaptain', areaName: null },
+    ),
   ],
   bankNameOf: (id) => (id === 'b-ahly' ? 'الأهلي' : ''),
   currencyOf: (id) => CURRENCIES.get(id),
@@ -99,8 +109,28 @@ describe('the van’s load sheet (provisional)', () => {
       ar('operations.handover.sheet.packages'),
     ]);
     expect(sheet.rows).toEqual([
-      ['الأهلي', 'الدقي', 'عباس العقاد', 'مدينة نصر', ar('operations.board.stage.inVault'), '5,600,000', '40,000', '0', '3 / 0 / 1'],
-      ['الأهلي', 'الدقي', 'عباس العقاد', '—', ar('operations.board.stage.withCaptain'), '9,200,000', '0', '80,000', '—'],
+      [
+        'الأهلي',
+        'الدقي',
+        'عباس العقاد',
+        'مدينة نصر',
+        ar('operations.board.stage.inVault'),
+        '5,600,000',
+        '40,000',
+        '0',
+        '3 / 0 / 1',
+      ],
+      [
+        'الأهلي',
+        'الدقي',
+        'عباس العقاد',
+        '—',
+        ar('operations.board.stage.withCaptain'),
+        '9,200,000',
+        '0',
+        '80,000',
+        '—',
+      ],
     ]);
   });
 
@@ -115,7 +145,9 @@ describe('the van’s load sheet (provisional)', () => {
       { label: ar('operations.distribution.boxes'), value: '1' },
     ]);
     const uncounted = vanLoadSheet(input({ packagingOf: () => undefined }));
-    expect(uncounted.totals.map((total) => total.label)).not.toContain(ar('operations.distribution.bags'));
+    expect(uncounted.totals.map((total) => total.label)).not.toContain(
+      ar('operations.distribution.bags'),
+    );
   });
 
   it('an empty van still prints — the page says it carries nothing', () => {

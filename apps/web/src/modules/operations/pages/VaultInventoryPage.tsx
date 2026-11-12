@@ -87,6 +87,13 @@ const REMEMBERED_FILTERS = [
  */
 const HELD_BAND = 'mb-4 flex shrink-0 flex-col gap-4 lg:h-[min(19rem,36vh)] lg:flex-row';
 
+/**
+ * The band for a treasurer who may not read the history (no `operationsShipment.view`): nothing
+ * comes under it but one line, so the report takes the screen's height, as «تجميع الخزينة»'s
+ * table does — rather than four rows in a third of the screen over an empty two thirds.
+ */
+const HELD_BAND_ALONE = 'mb-4 flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row';
+
 /** The history's stage filter: any of the six — a history holds every stage a محصنة passes. */
 const HISTORY_STAGES = OPERATIONS_SECURED_STAGES;
 
@@ -166,7 +173,7 @@ export const VaultInventoryPage = (): JSX.Element => {
         data-vault-history="true"
       >
         <section
-          className={HELD_BAND}
+          className={canSeeHistory ? HELD_BAND : HELD_BAND_ALONE}
           aria-label={t('operations.vaultHistory.held')}
           data-vault-held="true"
         >

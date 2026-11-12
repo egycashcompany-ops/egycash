@@ -2306,9 +2306,15 @@ export interface OperationsSecuredDistributionRowDto extends OperationsDayBoardS
   /** When the vault took it in (custody `receivedAt`, ISO instant); null while it is not in the vault. */
   vaultReceivedAt: string | null;
   /**
-   * «متأخرة» — an IN-VAULT shipment whose delivery date is BEFORE the screen's day. Placing it on a
-   * van of the day moves its delivery date to the day (see the save). False for every shipment due
-   * on the day.
+   * «متأخرة» — an IN-VAULT shipment whose delivery date has PASSED: before TODAY on the Cairo
+   * calendar (`today`), the very rule «محصنات الخزينة» marks it by. Placing it on a van of the day
+   * moves its delivery date to the day (see the save). False for every shipment due on the day.
+   *
+   * Before TODAY, not before the screen's day: on a later day's screen a shipment due today (or
+   * any day before that later day) is not late — it is its own day's, and is not listed there at
+   * all. Otherwise a desk planning tomorrow would see today's load marked «متأخرة», unplaced (its
+   * van is today's), proposed onto tomorrow's van by its direction — and one «حفظ» would pull it
+   * off today's van and push its delivery to tomorrow.
    */
   overdue: boolean;
   /** Its DELIVERY leg as it stands (any day), or null when it has none. */
@@ -2359,7 +2365,9 @@ export interface OperationsSecuredDistributionDto {
    *   · due on the day (`deliveryDate` = `date`) and not yet out — status `draft` (any stage:
    *     awaitingPickup / withCaptain / withOperations — placeable now, handed over only once the
    *     vault has it) or `inVault`; or
-   *   · OVERDUE in the vault — status `inVault` with a delivery date before `date` (`overdue`).
+   *   · OVERDUE in the vault — status `inVault` with a delivery date before TODAY (`today`, Cairo
+   *     — see `overdue`). On today's screen that is "before `date`"; on a later day's, a shipment
+   *     due between today and that day is its own day's and is not listed.
    * Never one dispatched or completed (gone from the vault), never a draft due another day.
    * Order: delivery date ascending (the overdue first), then oldest booked. Counted before it is
    * read: more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` → 422
@@ -2408,7 +2416,9 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     409 `OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED` when it is `dispatched` or `completed` — it has
  *     left the vault, its van is history; 422 `OPERATIONS_DISTRIBUTION_NOT_ON_DAY` unless it is due
  *     on `date` (draft or in the vault) or is OVERDUE in the vault (in the vault, delivery date
- *     before `date`) — a draft due another day, or one with no delivery date, is not this day's;
+ *     before TODAY, Cairo — `overdue`) — a draft due another day, one with no delivery date, or one
+ *     in the vault due on a later day than today but before `date` (it is its own day's), is not
+ *     this day's;
  *   · the version: 409 `STALE_DOCUMENT` unless `version` is its delivery leg's current version
  *     (null ⇔ no leg);
  *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app

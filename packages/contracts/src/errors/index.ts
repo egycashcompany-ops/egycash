@@ -203,8 +203,9 @@ export const ErrorCodes = {
   OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED: 'OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED',
   /**
    * 422 — a distribution change named a shipment that is not this day's: neither due on the day
-   * (draft or in the vault) nor OVERDUE in the vault (delivery date before the day). A draft due
-   * another day, or one with no delivery date. Detail: `field` 'shipmentId', `message` its id.
+   * (draft or in the vault) nor OVERDUE in the vault (delivery date before TODAY, Cairo). A draft due
+   * another day, one with no delivery date, or one in the vault due on its own day between today and
+   * the day asked for. Detail: `field` 'shipmentId', `message` its id.
    */
   OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
   /**

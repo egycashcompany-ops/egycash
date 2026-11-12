@@ -190,7 +190,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const rowById = new Map(rows.map((row) => [row.id, row]));
 
   /** Put a shipment somewhere — the drag's drop and the menu's choice. */
-  const move = (row: OperationsSecuredDistributionRowDto, van: OperationsDayBoardVehicleCrewDto | null): void => {
+  const move = (
+    row: OperationsSecuredDistributionRowDto,
+    van: OperationsDayBoardVehicleCrewDto | null,
+  ): void => {
     if (!canEdit) return;
     setDraft((current) =>
       van === null ? placeShipment(current, row, UNPLACED) : moveToVan(current, row, van),
@@ -203,7 +206,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
     const added = [...next.keys()].filter((id) => !draft.has(id)).length;
     setDraft(next);
     if (added === 0) toast.info(t('operations.distribution.autoNone'));
-    else toast.success(t('operations.distribution.autoDone', { count: formatNumber(added, locale) }));
+    else
+      toast.success(t('operations.distribution.autoDone', { count: formatNumber(added, locale) }));
   };
 
   const onSave = async (): Promise<void> => {
@@ -303,11 +307,15 @@ export const SecuredDistributionPage = (): JSX.Element => {
 
   const card = (row: OperationsSecuredDistributionRowDto): ReactNode => {
     const placement = placementOf(row, draft);
-    const van = placement.crewAssignmentId === null ? undefined : vanById.get(placement.crewAssignmentId);
+    const van =
+      placement.crewAssignmentId === null ? undefined : vanById.get(placement.crewAssignmentId);
     const started = isStartedLeg(row);
     const movable = canEdit && !started;
-    const proposed = isProposed(row, draft);
-    const moved = !proposed && changes.some((change) => change.shipmentId === row.id);
+    // Marked only while it is a change to save — a proposal a colleague has since made true (the
+    // re-read already has it there) is nothing to save, and nothing to mark.
+    const changed = changes.some((change) => change.shipmentId === row.id);
+    const proposed = changed && isProposed(row, draft);
+    const moved = changed && !proposed;
     const wasRefused = refused?.id === row.id;
     const captain = van === undefined ? null : captainOn(van, placement.captainEmployeeId);
     const other = van === undefined ? null : nextCaptain(van, placement.captainEmployeeId);
@@ -331,12 +339,20 @@ export const SecuredDistributionPage = (): JSX.Element => {
               </CardMark>
             )}
             {proposed && (
-              <CardMark tone="proposed" data-mark="proposed" title={t('operations.distribution.proposedHint')}>
+              <CardMark
+                tone="proposed"
+                data-mark="proposed"
+                title={t('operations.distribution.proposedHint')}
+              >
                 {t('operations.distribution.proposed')}
               </CardMark>
             )}
             {moved && (
-              <CardMark tone="moved" data-mark="moved" title={t('operations.distribution.movedHint')}>
+              <CardMark
+                tone="moved"
+                data-mark="moved"
+                title={t('operations.distribution.movedHint')}
+              >
                 {t('operations.distribution.moved')}
               </CardMark>
             )}
@@ -346,7 +362,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
               </CardMark>
             )}
             {started && (
-              <CardMark tone="started" data-mark="started" title={t('operations.distribution.startedHint')}>
+              <CardMark
+                tone="started"
+                data-mark="started"
+                title={t('operations.distribution.startedHint')}
+              >
                 <BoardIcon d={[...PATH.lock]} className="h-2.5 w-2.5" />
                 {t('operations.distribution.started')}
               </CardMark>
@@ -361,13 +381,17 @@ export const SecuredDistributionPage = (): JSX.Element => {
         controls={
           <>
             {/* A van with two captains: who this one goes with, and the switch to the other. */}
-            {van !== undefined && van.captains.length > 1 && captain !== null && (
-              movable && other !== null ? (
+            {van !== undefined &&
+              van.captains.length > 1 &&
+              captain !== null &&
+              (movable && other !== null ? (
                 <button
                   type="button"
                   data-captain-switch={row.id}
                   title={t('operations.distribution.switchCaptain', { name: personName(other) })}
-                  aria-label={t('operations.distribution.switchCaptain', { name: personName(other) })}
+                  aria-label={t('operations.distribution.switchCaptain', {
+                    name: personName(other),
+                  })}
                   onClick={() =>
                     setDraft((current) =>
                       placeShipment(current, row, {
@@ -382,14 +406,16 @@ export const SecuredDistributionPage = (): JSX.Element => {
                   <span className="truncate">
                     {t('operations.distribution.withCaptain', { name: personName(captain) })}
                   </span>
-                  <BoardIcon d={[...SHIPMENT_PATH.reorder]} className="h-3 w-3 shrink-0 rotate-90" />
+                  <BoardIcon
+                    d={[...SHIPMENT_PATH.reorder]}
+                    className="h-3 w-3 shrink-0 rotate-90"
+                  />
                 </button>
               ) : (
                 <span className="truncate text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
                   {t('operations.distribution.withCaptain', { name: personName(captain) })}
                 </span>
-              )
-            )}
+              ))}
             {movable && (
               <MoveMenu
                 rowId={row.id}
@@ -429,7 +455,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-distribution-page="true">
         {/* The boards' toolbar: the figures at the start, the acts at the end. */}
-        <div className="flex flex-wrap items-center justify-between gap-2" data-distribution-toolbar="true">
+        <div
+          className="flex flex-wrap items-center justify-between gap-2"
+          data-distribution-toolbar="true"
+        >
           <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5">
             <BoardFigurePill
               icon={PATH.truck}
@@ -510,11 +539,15 @@ export const SecuredDistributionPage = (): JSX.Element => {
             onChange={setDay}
           />
           <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
-            {canEdit ? t('operations.distribution.dragHint') : t('operations.distribution.viewOnly')}
+            {canEdit
+              ? t('operations.distribution.dragHint')
+              : t('operations.distribution.viewOnly')}
           </p>
           {canEdit && proposedCount > 0 && (
             <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
-              {t('operations.distribution.proposedCount', { count: formatNumber(proposedCount, locale) })}
+              {t('operations.distribution.proposedCount', {
+                count: formatNumber(proposedCount, locale),
+              })}
             </CardMark>
           )}
         </div>
@@ -590,8 +623,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 'data-drop-over': over === UNPLACED_KEY ? 'true' : undefined,
                 className: cn(
                   'rounded-b-2xl transition-colors',
-                  canEdit && accepts(UNPLACED_KEY) && 'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
-                  over === UNPLACED_KEY && 'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
+                  canEdit &&
+                    accepts(UNPLACED_KEY) &&
+                    'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
+                  over === UNPLACED_KEY &&
+                    'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
                 ),
                 ...(canEdit ? dropTarget(UNPLACED_KEY, (row) => move(row, null)) : {}),
               }}

@@ -14,7 +14,6 @@
 import {
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type DragEvent,
@@ -145,7 +144,10 @@ export const DistributionColumn = ({
       </header>
       <div
         {...bodyProps}
-        className={cn('min-h-[10rem] flex-1 p-3 lg:min-h-0 lg:overflow-y-auto', bodyProps?.className)}
+        className={cn(
+          'min-h-[10rem] flex-1 p-3 lg:min-h-0 lg:overflow-y-auto',
+          bodyProps?.className,
+        )}
       >
         {children}
       </div>
@@ -272,8 +274,7 @@ export const CardMark = ({
           'bg-brand-100 text-brand-700 ring-brand-300 dark:bg-brand-500/20 dark:text-brand-200 dark:ring-brand-400/40',
         overdue:
           'bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-400/40',
-        refused:
-          'bg-rose-600 text-white ring-rose-700 dark:bg-rose-500 dark:ring-rose-300/60',
+        refused: 'bg-rose-600 text-white ring-rose-700 dark:bg-rose-500 dark:ring-rose-300/60',
         started:
           'bg-slate-200 text-slate-700 ring-slate-300 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-slate-500/50',
         waiting:
@@ -323,8 +324,9 @@ export const MoveMenu = ({
   const id = useId();
 
   // Placed under the button (over it near the bottom of the screen), kept inside the viewport — and
-  // kept there while anything under it scrolls (the column, the page) or the window is resized.
-  useLayoutEffect(() => {
+  // kept there while anything under it scrolls (the column, the page) or the window is resized. An
+  // effect, not a layout effect: the menu is drawn only once placed, so nothing shows unplaced.
+  useEffect(() => {
     if (!open) return undefined;
     const reposition = (): void => {
       if (button.current === null) return;
@@ -364,7 +366,9 @@ export const MoveMenu = ({
   }, [open, placed]);
 
   const items = (): HTMLButtonElement[] =>
-    Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not([disabled])') ?? []);
+    Array.from(
+      menu.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not([disabled])') ?? [],
+    );
   const onKey = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' || event.key === 'Tab') {
       if (event.key === 'Escape') event.preventDefault();
@@ -521,7 +525,9 @@ export const VanCard = ({
       className={cn(
         'flex min-w-0 flex-col gap-2.5 rounded-xl border bg-white p-3 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
         'border-slate-200 dark:border-[#24305a]',
-        drop?.armed === true && !drop.over && 'border-dashed border-brand-300 dark:border-brand-500/50',
+        drop?.armed === true &&
+          !drop.over &&
+          'border-dashed border-brand-300 dark:border-brand-500/50',
         drop?.over === true &&
           'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400',
         noCaptain && 'opacity-80',
@@ -568,7 +574,9 @@ export const VanCard = ({
         className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2 py-1 text-[13px] font-black text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-200"
       >
         <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3.5 w-3.5 shrink-0 rtl:-scale-x-100" />
-        <span className="shrink-0 text-[11px] font-bold opacity-80">{t('operations.crew.direction')}</span>
+        <span className="shrink-0 text-[11px] font-bold opacity-80">
+          {t('operations.crew.direction')}
+        </span>
         <span className="min-w-0 truncate">
           {van.direction === null || van.direction.trim() === ''
             ? t('operations.distribution.noDirection')
@@ -672,8 +680,10 @@ export const ShipmentCard = ({
         'border-slate-200 dark:border-[#2b3b6b]',
         tone === 'proposed' &&
           'border-dashed border-amber-500 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
-        tone === 'moved' && 'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
-        tone === 'refused' && 'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
+        tone === 'moved' &&
+          'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
+        tone === 'refused' &&
+          'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
         drag !== undefined && 'cursor-grab active:cursor-grabbing',
         drag?.dragging === true && 'opacity-40',
       )}
@@ -700,7 +710,9 @@ export const ShipmentCard = ({
         </span>
         {row.securedStage !== null && <SecuredStageBadge stage={row.securedStage} />}
         {marks}
-        {controls !== undefined && <span className="ms-auto flex items-center gap-1">{controls}</span>}
+        {controls !== undefined && (
+          <span className="ms-auto flex items-center gap-1">{controls}</span>
+        )}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-bold text-slate-600 dark:text-slate-300">
         <span className="min-w-0 truncate" title={t('operations.shipment.origin')}>

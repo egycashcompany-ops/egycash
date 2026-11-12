@@ -23994,7 +23994,7 @@ const ar: Record<string, string> = {
   'operations.distribution.unplaced': 'بلا سيارة',
   'operations.distribution.auto': 'توزيع تلقائي',
   'operations.distribution.autoHint':
-    'تضع كل محصنة بلا سيارة على السيارة الوحيدة التي يطابق اتجاهها منطقة المحصنة',
+    'تضع كل محصنة بلا سيارة على السيارة الوحيدة التي يذكر اتجاه سيرها منطقة المحصنة',
   'operations.distribution.discard': 'التراجع عن التغييرات',
   'operations.distribution.save': 'حفظ ({{count}})',
   'operations.distribution.day': 'يوم التسليم',

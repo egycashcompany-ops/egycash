@@ -66,7 +66,10 @@ export interface Placement {
   captainEmployeeId: string | null;
 }
 
-export const UNPLACED: Placement = Object.freeze({ crewAssignmentId: null, captainEmployeeId: null });
+export const UNPLACED: Placement = Object.freeze({
+  crewAssignmentId: null,
+  captainEmployeeId: null,
+});
 
 /** One shipment's place in the draft — where the person (or the direction) put it. */
 export interface DraftPlacement extends Placement {
@@ -128,8 +131,10 @@ export const placementOf = (
 };
 
 /** A proposal not yet saved — the card says so («مقترحة»). */
-export const isProposed = (row: Pick<DistributionRowFacts, 'id'>, draft: DistributionDraft): boolean =>
-  draft.get(row.id)?.proposed === true;
+export const isProposed = (
+  row: Pick<DistributionRowFacts, 'id'>,
+  draft: DistributionDraft,
+): boolean => draft.get(row.id)?.proposed === true;
 
 /**
  * The draft with one shipment put somewhere — a van and its captain, or `UNPLACED` («إزالة», or
@@ -187,7 +192,10 @@ export const moveToVan = <R extends DistributionRowFacts>(
 ): DistributionDraft => {
   const captain = landingCaptain(van, placementOf(row, draft));
   if (captain === null) return draft;
-  return placeShipment(draft, row, { crewAssignmentId: van.crewAssignmentId, captainEmployeeId: captain });
+  return placeShipment(draft, row, {
+    crewAssignmentId: van.crewAssignmentId,
+    captainEmployeeId: captain,
+  });
 };
 
 /**
@@ -293,7 +301,10 @@ export interface VanLoad<V, R> {
  * shipments on no van of the day (the left column). A place naming a van the read no longer lists
  * (re-planned meanwhile) counts as unplaced, so no shipment ever disappears from the screen.
  */
-export const distributionColumns = <V extends Pick<DistributionVan, 'crewAssignmentId'>, R extends DistributionRowFacts>(
+export const distributionColumns = <
+  V extends Pick<DistributionVan, 'crewAssignmentId'>,
+  R extends DistributionRowFacts,
+>(
   rows: readonly R[],
   vans: readonly V[],
   draft: DistributionDraft,
@@ -327,7 +338,9 @@ export const reschedulesOnSave = (
  * vault HOLDS (`inVault`). They leave the vault on the click — «هتتسلم ساعتها وخلاص مش هتبقى ف
  * الخزنة».
  */
-export const handoverShipments = <R extends Pick<DistributionRowFacts, 'status' | 'placedCrewAssignmentId'>>(
+export const handoverShipments = <
+  R extends Pick<DistributionRowFacts, 'status' | 'placedCrewAssignmentId'>,
+>(
   rows: readonly R[],
   crewAssignmentId: string,
 ): R[] =>
@@ -339,14 +352,18 @@ export const handoverShipments = <R extends Pick<DistributionRowFacts, 'status' 
  * has not received (422 `OPERATIONS_INVALID_SHIPMENT_TRANSITION`) — it cannot hand over what it
  * does not hold.
  */
-export const notYetInVault = <R extends Pick<DistributionRowFacts, 'status' | 'placedCrewAssignmentId'>>(
+export const notYetInVault = <
+  R extends Pick<DistributionRowFacts, 'status' | 'placedCrewAssignmentId'>,
+>(
   rows: readonly R[],
   crewAssignmentId: string,
 ): R[] =>
   rows.filter((row) => row.placedCrewAssignmentId === crewAssignmentId && row.status !== 'inVault');
 
 /** The dispatch a van's «تسليم» sends — `POST /operations/secured/dispatch` — or null with nothing to hand over. */
-export const handoverRequest = <R extends Pick<DistributionRowFacts, 'id' | 'status' | 'placedCrewAssignmentId'>>(
+export const handoverRequest = <
+  R extends Pick<DistributionRowFacts, 'id' | 'status' | 'placedCrewAssignmentId'>,
+>(
   rows: readonly R[],
   crewAssignmentId: string,
 ): { crewAssignmentId: string; shipmentIds: string[] } | null => {
@@ -434,7 +451,10 @@ export const refusedShipmentId = (error: unknown): string | null => {
  * server says it is NOW — a colleague's move, a hand-over, a captain's start — and the person's
  * other moves stay, to be saved without it.
  */
-export const withoutShipment = (draft: DistributionDraft, shipmentId: string): DistributionDraft => {
+export const withoutShipment = (
+  draft: DistributionDraft,
+  shipmentId: string,
+): DistributionDraft => {
   if (!draft.has(shipmentId)) return draft;
   const next = new Map(draft);
   next.delete(shipmentId);

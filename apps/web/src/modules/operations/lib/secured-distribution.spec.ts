@@ -42,7 +42,10 @@ import {
 
 const TODAY = '2026-11-12';
 
-const person = (employeeId: string, fullNameAr: string | null = employeeId): OperationsDayBoardPersonDto => ({
+const person = (
+  employeeId: string,
+  fullNameAr: string | null = employeeId,
+): OperationsDayBoardPersonDto => ({
   employeeId,
   code: null,
   fullNameAr,
@@ -85,7 +88,12 @@ const placed = (
 ): DistributionRowFacts =>
   row(id, {
     placedCrewAssignmentId: vanId,
-    delivery: { crewAssignmentId: vanId, captainEmployeeId: captain, vehicleId: 'v', executionStatus: 'pending' },
+    delivery: {
+      crewAssignmentId: vanId,
+      captainEmployeeId: captain,
+      vehicleId: 'v',
+      executionStatus: 'pending',
+    },
     deliveryLegVersion: version,
     ...over,
   });
@@ -121,7 +129,12 @@ describe('where a shipment stands', () => {
   it('is unplaced when its leg rides another day’s van (an overdue one), or it has none', () => {
     const overdue = row('s', {
       overdue: true,
-      delivery: { crewAssignmentId: 'van-yesterday', captainEmployeeId: 'c1', vehicleId: 'v', executionStatus: 'pending' },
+      delivery: {
+        crewAssignmentId: 'van-yesterday',
+        captainEmployeeId: 'c1',
+        vehicleId: 'v',
+        executionStatus: 'pending',
+      },
       deliveryLegVersion: 3,
     });
     expect(savedPlacement(overdue)).toEqual(UNPLACED);
@@ -130,18 +143,32 @@ describe('where a shipment stands', () => {
 
   it('compares places by van and — on a van — by captain', () => {
     expect(samePlacement(UNPLACED, { crewAssignmentId: null, captainEmployeeId: 'x' })).toBe(true);
-    expect(samePlacement({ crewAssignmentId: 'a', captainEmployeeId: 'c1' }, { crewAssignmentId: 'a', captainEmployeeId: 'c1' })).toBe(true);
-    expect(samePlacement({ crewAssignmentId: 'a', captainEmployeeId: 'c1' }, { crewAssignmentId: 'a', captainEmployeeId: 'c2' })).toBe(false);
+    expect(
+      samePlacement(
+        { crewAssignmentId: 'a', captainEmployeeId: 'c1' },
+        { crewAssignmentId: 'a', captainEmployeeId: 'c1' },
+      ),
+    ).toBe(true);
+    expect(
+      samePlacement(
+        { crewAssignmentId: 'a', captainEmployeeId: 'c1' },
+        { crewAssignmentId: 'a', captainEmployeeId: 'c2' },
+      ),
+    ).toBe(false);
     expect(samePlacement({ crewAssignmentId: 'a', captainEmployeeId: 'c1' }, UNPLACED)).toBe(false);
   });
 
   it('holds a leg the captain has started — anything past `pending`', () => {
     const started = placed('s', 'van-101', 'c1', 2);
     expect(isStartedLeg(started)).toBe(false);
-    for (const executionStatus of ['started', 'pickedUp', 'delivered', 'completed'] as const) {
-      expect(
-        isStartedLeg({ delivery: { ...started.delivery!, executionStatus } }),
-      ).toBe(true);
+    for (const executionStatus of [
+      'active',
+      'pickedUp',
+      'delivered',
+      'completed',
+      'cancelled',
+    ] as const) {
+      expect(isStartedLeg({ delivery: { ...started.delivery!, executionStatus } })).toBe(true);
     }
     expect(isStartedLeg(row('s'))).toBe(false);
   });
@@ -189,18 +216,28 @@ describe('moving a shipment (the drag, «نقل إلى…», «إزالة»)', (
     expect(moveToVan(away, s, V1).size).toBe(0);
     const off = placeShipment(EMPTY_DRAFT, s, UNPLACED);
     expect(off.get('s')).toEqual({ ...UNPLACED, version: 1, proposed: false });
-    expect(placeShipment(off, s, { crewAssignmentId: 'van-101', captainEmployeeId: 'c1' }).size).toBe(0);
+    expect(
+      placeShipment(off, s, { crewAssignmentId: 'van-101', captainEmployeeId: 'c1' }).size,
+    ).toBe(0);
   });
 
   it('a van without its captain (or a captain without a van) is no place: taken as «off»', () => {
     const s = placed('s', 'van-101', 'c1', 1);
-    expect(placeShipment(EMPTY_DRAFT, s, { crewAssignmentId: 'van-104', captainEmployeeId: null }).get('s'))
-      .toEqual({ ...UNPLACED, version: 1, proposed: false });
+    expect(
+      placeShipment(EMPTY_DRAFT, s, { crewAssignmentId: 'van-104', captainEmployeeId: null }).get(
+        's',
+      ),
+    ).toEqual({ ...UNPLACED, version: 1, proposed: false });
   });
 
   it('never moves a started leg', () => {
     const s = placed('s', 'van-101', 'c1', 1, {
-      delivery: { crewAssignmentId: 'van-101', captainEmployeeId: 'c1', vehicleId: 'v', executionStatus: 'started' },
+      delivery: {
+        crewAssignmentId: 'van-101',
+        captainEmployeeId: 'c1',
+        vehicleId: 'v',
+        executionStatus: 'active',
+      },
     });
     expect(moveToVan(EMPTY_DRAFT, s, V3)).toBe(EMPTY_DRAFT);
     expect(placeShipment(EMPTY_DRAFT, s, UNPLACED)).toBe(EMPTY_DRAFT);
@@ -271,7 +308,12 @@ describe('AUTO BY DIRECTION — «المحصنة اللى نفس الاتجاه 
   it('never a started leg', () => {
     const s = row('s', {
       directionCrewAssignmentIds: ['van-101'],
-      delivery: { crewAssignmentId: 'van-x', captainEmployeeId: 'c1', vehicleId: 'v', executionStatus: 'pickedUp' },
+      delivery: {
+        crewAssignmentId: 'van-x',
+        captainEmployeeId: 'c1',
+        vehicleId: 'v',
+        executionStatus: 'pickedUp',
+      },
       deliveryLegVersion: 2,
     });
     expect(proposeByDirection([s], VANS, EMPTY_DRAFT).size).toBe(0);
@@ -281,11 +323,20 @@ describe('AUTO BY DIRECTION — «المحصنة اللى نفس الاتجاه 
     const late = row('late', {
       overdue: true,
       directionCrewAssignmentIds: ['van-104'],
-      delivery: { crewAssignmentId: 'van-yesterday', captainEmployeeId: 'c1', vehicleId: 'v', executionStatus: 'pending' },
+      delivery: {
+        crewAssignmentId: 'van-yesterday',
+        captainEmployeeId: 'c1',
+        vehicleId: 'v',
+        executionStatus: 'pending',
+      },
       deliveryLegVersion: 3,
     });
     const draft = proposeByDirection([late], VANS, EMPTY_DRAFT);
-    expect(draft.get('late')).toMatchObject({ crewAssignmentId: 'van-104', version: 3, proposed: true });
+    expect(draft.get('late')).toMatchObject({
+      crewAssignmentId: 'van-104',
+      version: 3,
+      proposed: true,
+    });
     expect(reschedulesOnSave(late, draft)).toBe(true);
     expect(reschedulesOnSave(late, EMPTY_DRAFT)).toBe(false);
   });
@@ -311,10 +362,9 @@ describe('AUTO BY DIRECTION — «المحصنة اللى نفس الاتجاه 
     expect(operationsDirectionMatchesArea('٦ أكتوبر', '6 اكتوبر')).toBe(true);
     expect(operationsDirectionMatchesArea(null, 'الجيزة')).toBe(false);
     // A van with no captain is never a match.
-    expect(operationsDirectionVanIds('الجيزة', [V3, V4, { ...EMPTY_VAN, direction: 'الجيزة' }])).toEqual([
-      'van-112',
-      'van-125',
-    ]);
+    expect(
+      operationsDirectionVanIds('الجيزة', [V3, V4, { ...EMPTY_VAN, direction: 'الجيزة' }]),
+    ).toEqual(['van-112', 'van-125']);
   });
 });
 
@@ -324,7 +374,12 @@ describe('«حفظ» — every change in ONE request', () => {
   const c = placed('c', 'van-112', 'c4', 0);
   const late = row('late', {
     overdue: true,
-    delivery: { crewAssignmentId: 'van-yesterday', captainEmployeeId: 'c1', vehicleId: 'v', executionStatus: 'pending' },
+    delivery: {
+      crewAssignmentId: 'van-yesterday',
+      captainEmployeeId: 'c1',
+      vehicleId: 'v',
+      executionStatus: 'pending',
+    },
     deliveryLegVersion: 3,
   });
   const rows = [late, a, b, c];
@@ -347,7 +402,9 @@ describe('«حفظ» — every change in ONE request', () => {
     const draft = moveToVan(EMPTY_DRAFT, a, V1);
     expect(distributionSaveBody(TODAY, rows, draft)).toEqual({
       date: TODAY,
-      changes: [{ shipmentId: 'a', crewAssignmentId: 'van-101', captainEmployeeId: 'c1', version: null }],
+      changes: [
+        { shipmentId: 'a', crewAssignmentId: 'van-101', captainEmployeeId: 'c1', version: null },
+      ],
     });
   });
 
@@ -364,7 +421,7 @@ describe('«حفظ» — every change in ONE request', () => {
     draft = moveToVan(draft, b, V3);
     const startedB = {
       ...b,
-      delivery: { ...b.delivery!, executionStatus: 'started' as const },
+      delivery: { ...b.delivery!, executionStatus: 'active' as const },
     };
     // `a` dispatched since (no longer read), `b` started since.
     expect(distributionChanges([startedB, c], draft)).toEqual([]);
@@ -376,13 +433,23 @@ describe('«حفظ» — every change in ONE request', () => {
   it('an unplaced shipment left unplaced is no change, even when its leg rides another day’s van', () => {
     const draft = placeShipment(EMPTY_DRAFT, late, UNPLACED);
     expect(draft.size).toBe(0);
-    expect(distributionChanges(rows, new Map([['late', { ...UNPLACED, version: 3, proposed: false }]]))).toEqual([]);
+    expect(
+      distributionChanges(rows, new Map([['late', { ...UNPLACED, version: 3, proposed: false }]])),
+    ).toEqual([]);
   });
 
   it('a refusal names its shipment; that move leaves the draft, the others stay', () => {
-    const error = { code: 'STALE_DOCUMENT', details: [{ field: 'shipmentId', code: 'SHIPMENT', message: 'b' }] };
+    const error = {
+      code: 'STALE_DOCUMENT',
+      details: [{ field: 'shipmentId', code: 'SHIPMENT', message: 'b' }],
+    };
     expect(refusedShipmentId(error)).toBe('b');
-    expect(refusedShipmentId({ code: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST', details: [{ field: 'date', code: 'MIN_DATE', message: TODAY }] })).toBeNull();
+    expect(
+      refusedShipmentId({
+        code: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
+        details: [{ field: 'date', code: 'MIN_DATE', message: TODAY }],
+      }),
+    ).toBeNull();
     expect(refusedShipmentId(new Error('network'))).toBeNull();
     expect(refusedShipmentId(null)).toBeNull();
     const draft = moveToVan(moveToVan(EMPTY_DRAFT, a, V1), b, V3);
@@ -394,7 +461,12 @@ describe('«حفظ» — every change in ONE request', () => {
 
 describe('the two columns', () => {
   it('puts each shipment under its van (vans in the read’s order) or on the left', () => {
-    const rows = [row('x'), placed('y', 'van-104', 'c2', 0), row('z'), placed('w', 'van-gone', 'c1', 0)];
+    const rows = [
+      row('x'),
+      placed('y', 'van-104', 'c2', 0),
+      row('z'),
+      placed('w', 'van-gone', 'c1', 0),
+    ];
     const draft = moveToVan(EMPTY_DRAFT, rows[2]!, V1);
     const { vans, unplaced } = distributionColumns(rows, [V1, V2, EMPTY_VAN], draft);
     expect(vans.map((load) => [load.van.crewAssignmentId, load.rows.map((r) => r.id)])).toEqual([
@@ -431,7 +503,9 @@ describe('«تسليم» — only what the vault holds, of that van', () => {
 
   it('nothing to hand over → no request', () => {
     expect(handoverRequest(rows, 'van-112')).toBeNull();
-    expect(handoverRequest([placed('d', 'van-112', 'c4', 0, { status: 'draft' })], 'van-112')).toBeNull();
+    expect(
+      handoverRequest([placed('d', 'van-112', 'c4', 0, { status: 'draft' })], 'van-112'),
+    ).toBeNull();
   });
 });
 
@@ -442,12 +516,21 @@ describe('a van’s figures', () => {
     ['eur', { code: 'EUR', name: 'يورو', sortOrder: 2 }],
   ]);
   const shipment = (id: string, lines: [string, number][]) =>
-    ({ id, lines: lines.map(([currencyId, amount]) => ({ currencyId, amount })) }) as unknown as OperationsSecuredDistributionRowDto;
+    ({
+      id,
+      lines: lines.map(([currencyId, amount]) => ({ currencyId, amount })),
+    }) as unknown as OperationsSecuredDistributionRowDto;
 
   it('counts, sums the pound and the dollar, and «عملات أخرى» by the boards’ rule', () => {
     const load = [
-      shipment('a', [['egp', 1_000_000], ['usd', 5_000]]),
-      shipment('b', [['egp', 250_000], ['eur', 3_000]]),
+      shipment('a', [
+        ['egp', 1_000_000],
+        ['usd', 5_000],
+      ]),
+      shipment('b', [
+        ['egp', 250_000],
+        ['eur', 3_000],
+      ]),
     ];
     expect(loadFigures(load, (id) => currencies.get(id))).toEqual({
       count: 2,
@@ -459,12 +542,22 @@ describe('a van’s figures', () => {
   });
 
   it('adds the packages the vault counted — null when it counted none', () => {
-    const load = [shipment('a', [['egp', 1]]), shipment('b', [['egp', 1]]), shipment('c', [['egp', 1]])];
+    const load = [
+      shipment('a', [['egp', 1]]),
+      shipment('b', [['egp', 1]]),
+      shipment('c', [['egp', 1]]),
+    ];
     const counted = new Map([
       ['a', { bags: 3, cartons: 1, boxes: 0 }],
       ['c', { bags: 2, cartons: 0, boxes: 1 }],
     ]);
-    expect(loadFigures(load, (id) => currencies.get(id), (id) => counted.get(id)).packages).toEqual({
+    expect(
+      loadFigures(
+        load,
+        (id) => currencies.get(id),
+        (id) => counted.get(id),
+      ).packages,
+    ).toEqual({
       bags: 5,
       cartons: 1,
       boxes: 1,

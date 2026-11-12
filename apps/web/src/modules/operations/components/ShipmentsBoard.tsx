@@ -40,7 +40,9 @@
 // FOR «صرف الخزينة» (Round 10, its page rebuilt on this board): one delivery-day picker is one entry
 // of `datePickers`; the page's own acts on a row come through `rowAction`, its controls through
 // `toolbarExtras`; `selection` ticks rows for an act over several at once — a release; and
-// `deliveryNote` marks a row's «تاريخ التسليم» — late, or due out today.
+// `deliveryNote` marks a row's «تاريخ التسليم» — late, or due out today. (Round 12 renamed that
+// screen «محصنات الخزينة» and made it view only — it hands in neither `rowAction` nor `selection`
+// any more; both stay here for a page that acts on rows.)
 //
 // THE STATUS, ON EVERY SCREEN. A daily row says who delivered it — «لم يتم التسليم», then «تم
 // التسليم» on a yellow row (the crew captain, from the mobile app) or a green one (the desk's ✓).

@@ -132,9 +132,13 @@ export const VaultHandoverPage = (): JSX.Element => {
 
   // The SAVED places — the vault moves nothing.
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
-  const confirmVan = confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
+  const confirmVan =
+    confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
 
-  const print = (van: OperationsDayBoardVehicleCrewDto, load: readonly OperationsSecuredDistributionRowDto[]): void => {
+  const print = (
+    van: OperationsDayBoardVehicleCrewDto,
+    load: readonly OperationsSecuredDistributionRowDto[],
+  ): void => {
     try {
       printFleetReport(
         vanLoadSheet({
@@ -182,8 +186,12 @@ export const VaultHandoverPage = (): JSX.Element => {
   };
 
   /** A shipment's card — read-only: where it stands, and whether the vault holds it. */
-  const card = (row: OperationsSecuredDistributionRowDto, van?: OperationsDayBoardVehicleCrewDto) => {
-    const captain = van === undefined ? null : captainOn(van, row.delivery?.captainEmployeeId ?? null);
+  const card = (
+    row: OperationsSecuredDistributionRowDto,
+    van?: OperationsDayBoardVehicleCrewDto,
+  ) => {
+    const captain =
+      van === undefined ? null : captainOn(van, row.delivery?.captainEmployeeId ?? null);
     return (
       <ShipmentCard
         key={row.id}
@@ -199,7 +207,11 @@ export const VaultHandoverPage = (): JSX.Element => {
               </CardMark>
             )}
             {van !== undefined && row.status !== 'inVault' && (
-              <CardMark tone="waiting" data-mark="not-in-vault" title={t('operations.handover.notInVaultHint')}>
+              <CardMark
+                tone="waiting"
+                data-mark="not-in-vault"
+                title={t('operations.handover.notInVaultHint')}
+              >
                 {t('operations.handover.notInVault')}
               </CardMark>
             )}
@@ -216,13 +228,18 @@ export const VaultHandoverPage = (): JSX.Element => {
     );
   };
 
-  const confirmLoad = confirmVan === undefined ? [] : handoverShipments(rows, confirmVan.crewAssignmentId);
-  const confirmHeld = confirmVan === undefined ? [] : notYetInVault(rows, confirmVan.crewAssignmentId);
+  const confirmLoad =
+    confirmVan === undefined ? [] : handoverShipments(rows, confirmVan.crewAssignmentId);
+  const confirmHeld =
+    confirmVan === undefined ? [] : notYetInVault(rows, confirmVan.crewAssignmentId);
 
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-handover-page="true">
-        <div className="flex flex-wrap items-center justify-between gap-2" data-handover-toolbar="true">
+        <div
+          className="flex flex-wrap items-center justify-between gap-2"
+          data-handover-toolbar="true"
+        >
           <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5">
             <BoardFigurePill
               icon={PATH.truck}
@@ -238,7 +255,10 @@ export const VaultHandoverPage = (): JSX.Element => {
               value={
                 loaded
                   ? formatNumber(
-                      vans.reduce((sum, van) => sum + handoverShipments(rows, van.crewAssignmentId).length, 0),
+                      vans.reduce(
+                        (sum, van) => sum + handoverShipments(rows, van.crewAssignmentId).length,
+                        0,
+                      ),
                       locale,
                     )
                   : '…'
@@ -256,7 +276,12 @@ export const VaultHandoverPage = (): JSX.Element => {
         </div>
 
         <div className={DAY_BAR} data-handover-bar="true">
-          <DayBox label={t('operations.distribution.day')} value={day} min={minDay} onChange={setDay} />
+          <DayBox
+            label={t('operations.distribution.day')}
+            value={day}
+            min={minDay}
+            onChange={setDay}
+          />
           <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
             {t('operations.handover.hint')}
           </p>
@@ -306,7 +331,9 @@ export const VaultHandoverPage = (): JSX.Element => {
                                 data-handover-open={van.crewAssignmentId}
                                 aria-haspopup="dialog"
                                 disabled={ready.length === 0}
-                                title={ready.length === 0 ? t('operations.handover.nothing') : undefined}
+                                title={
+                                  ready.length === 0 ? t('operations.handover.nothing') : undefined
+                                }
                                 onClick={() => setConfirming(van.crewAssignmentId)}
                                 className={cn(
                                   ready.length > 0 ? ADD_BUTTON : BRAND_BUTTON,
@@ -336,8 +363,13 @@ export const VaultHandoverPage = (): JSX.Element => {
                               data-handover-held={held.length}
                               className="flex items-start gap-1.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
                             >
-                              <BoardIcon d={[...SHIPMENT_PATH.info]} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                              {t('operations.handover.heldNote', { count: formatNumber(held.length, locale) })}
+                              <BoardIcon
+                                d={[...SHIPMENT_PATH.info]}
+                                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                              />
+                              {t('operations.handover.heldNote', {
+                                count: formatNumber(held.length, locale),
+                              })}
                             </p>
                           ) : undefined
                         }
@@ -409,7 +441,10 @@ export const VaultHandoverPage = (): JSX.Element => {
                 })}
                 data-handover-confirm-save="true"
               />
-              <DesignCancel onClick={() => setConfirming(null)} label={t('operations.handover.back')} />
+              <DesignCancel
+                onClick={() => setConfirming(null)}
+                label={t('operations.handover.back')}
+              />
             </>
           }
         >
@@ -417,7 +452,10 @@ export const VaultHandoverPage = (): JSX.Element => {
             data-handover-confirm-body="true"
             className="flex items-start gap-3 rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-[15px] font-semibold leading-7 text-violet-900 dark:border-violet-500/40 dark:bg-violet-500/[0.08] dark:text-violet-100"
           >
-            <BoardIcon d={[...PATH.truck]} className="mt-1.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
+            <BoardIcon
+              d={[...PATH.truck]}
+              className="mt-1.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300"
+            />
             <span>
               {t('operations.handover.confirmBody', {
                 count: formatNumber(confirmLoad.length, locale),
@@ -446,14 +484,17 @@ export const VaultHandoverPage = (): JSX.Element => {
               className="space-y-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
             >
               <p>
-                {t('operations.handover.heldNote', { count: formatNumber(confirmHeld.length, locale) })}
+                {t('operations.handover.heldNote', {
+                  count: formatNumber(confirmHeld.length, locale),
+                })}
               </p>
               <ul className="space-y-0.5 text-xs font-bold">
                 {confirmHeld.map((row) => (
                   <li key={row.id} data-handover-held-row={row.id}>
                     {bankNameOf(row.mainBankId) || '…'} · {row.origin?.name ?? '…'} ←{' '}
                     {row.destination?.name ?? '…'}
-                    {row.securedStage !== null && ` — ${t(`operations.board.stage.${row.securedStage}`)}`}
+                    {row.securedStage !== null &&
+                      ` — ${t(`operations.board.stage.${row.securedStage}`)}`}
                   </li>
                 ))}
               </ul>

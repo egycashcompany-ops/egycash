@@ -5,7 +5,8 @@
 // Every job on a line of its own, and beside it EVERY paper, as the same tiles as «عقد جديد»: the
 // papers the job prints ticked, the rest there and unticked. Tick one to add it to the job, untick
 // one to take it off; «حفظ» keeps the lines that changed. From then on, a person of that job opens
-// «عقد جديد» and «طباعة لكل المحدد» with exactly these ticked.
+// «عقد جديد» and «طباعة لكل المحدد» with exactly these ticked. A job prints ONE contract: ticking a
+// contract unticks the line's other one.
 import { useEffect, useMemo, useState } from 'react';
 import { type JobPapersDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -24,6 +25,35 @@ export type JobChoice = ReadonlyMap<string, ReadonlySet<string>>;
 
 export const choiceOf = (data: JobPapersDto): JobChoice =>
   new Map(data.jobs.map((job) => [job.jobTitleId, new Set(job.keys)]));
+
+/**
+ * A line with one paper ticked or not. A job prints one contract: ticking a contract unticks the
+ * line's other contracts.
+ */
+export const toggled = (
+  papers: JobPapersDto['papers'],
+  line: ReadonlySet<string>,
+  key: string,
+  on: boolean,
+): Set<string> => {
+  const next = new Set(line);
+  if (!on) {
+    next.delete(key);
+    return next;
+  }
+  if (papers.find((p) => p.key === key)?.kind === 'contract') {
+    for (const paper of papers) if (paper.kind === 'contract') next.delete(paper.key);
+  }
+  next.add(key);
+  return next;
+};
+
+/** «تحديد الكل» on a line: every form, and its contract — the one ticked, else the first. */
+export const everyPaper = (papers: JobPapersDto['papers'], line: ReadonlySet<string>): string[] => {
+  const contracts = papers.filter((p) => p.kind === 'contract');
+  const contract = contracts.find((p) => line.has(p.key)) ?? contracts[0];
+  return papers.filter((p) => p.kind === 'form' || p.key === contract?.key).map((p) => p.key);
+};
 
 /** The lines that differ from what was loaded, each with every paper it now prints, in print order. */
 export const changedJobs = (data: JobPapersDto, chosen: JobChoice): { jobTitleId: string; keys: string[] }[] =>
@@ -56,12 +86,8 @@ export const JobPapersDialog = ({ open, onClose }: { open: boolean; onClose: () 
 
   const setLine = (jobTitleId: string, keys: Iterable<string>): void =>
     setChosen((current) => new Map(current).set(jobTitleId, new Set(keys)));
-  const toggle = (jobTitleId: string, key: string, on: boolean): void => {
-    const next = new Set(chosen.get(jobTitleId) ?? []);
-    if (on) next.add(key);
-    else next.delete(key);
-    setLine(jobTitleId, next);
-  };
+  const toggle = (jobTitleId: string, key: string, on: boolean): void =>
+    setLine(jobTitleId, toggled(data?.papers ?? [], chosen.get(jobTitleId) ?? new Set(), key, on));
 
   const confirm = async (): Promise<void> => {
     if (changed.length === 0) return;
@@ -131,7 +157,7 @@ export const JobPapersDialog = ({ open, onClose }: { open: boolean; onClose: () 
                         </span>
                         {dirty && <span className="text-xs text-amber-700 dark:text-amber-300">{t('contracts.jobPapers.changed')}</span>}
                         <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => setLine(job.jobTitleId, data.papers.map((p) => p.key))}>
+                          <Button size="sm" variant="ghost" onClick={() => setLine(job.jobTitleId, everyPaper(data.papers, mine))}>
                             {t('contracts.candidate.selectAll')}
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => setLine(job.jobTitleId, [])}>

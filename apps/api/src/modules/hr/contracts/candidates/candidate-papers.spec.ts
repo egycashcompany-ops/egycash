@@ -2,7 +2,7 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
-import { papersOfJob } from './candidate-draft.service';
+import { isTickedForJob, papersOfJob } from './candidate-draft.service';
 
 const LEADER = new Types.ObjectId();
 const GUARD = new Types.ObjectId();
@@ -28,16 +28,22 @@ const PUBLISHED = [
 ];
 
 describe('the papers of a candidate\'s job', () => {
-  it('are its contract first, then every job\'s forms, then its own — one contract only', () => {
+  it('are every paper, in print order: the job\'s contract first, then the forms — the job\'s marked, the rest `other`', () => {
     expect(papersOfJob(PUBLISHED, String(LEADER)).map((p) => [p.template.key, p.group])).toEqual([
       ['contract', 'contract'],
+      // A second contract is never the job's: one contract only, and it is the first.
+      ['old-contract', 'other'],
       ['sheet', 'everyJob'],
       ['card', 'thisJob'],
+      ['guard-card', 'other'],
     ]);
   });
 
-  it('leave out another job\'s papers', () => {
-    expect(papersOfJob(PUBLISHED, String(GUARD)).map((p) => p.template.key)).toEqual(['contract', 'sheet', 'guard-card']);
+  it('tick the job\'s own and leave another job\'s there unticked', () => {
+    const ticked = (job: Types.ObjectId): string[] =>
+      papersOfJob(PUBLISHED, String(job)).filter(isTickedForJob).map((p) => p.template.key);
+    expect(ticked(GUARD)).toEqual(['contract', 'sheet', 'guard-card']);
+    expect(papersOfJob(PUBLISHED, String(GUARD)).find((p) => p.template.key === 'card')?.group).toBe('other');
   });
 
   it('offer the weapon declaration to a cash-in-transit specialist unticked, and ticked to a crew leader', () => {
@@ -52,7 +58,7 @@ describe('the papers of a candidate\'s job', () => {
       papersOfJob([...PUBLISHED, weapon], String(job), name).find((p) => p.template.key === weapon.key)?.optional;
     expect(optional(SPECIALIST, 'أخصائي نقل أموال')).toBe(true);
     expect(optional(LEADER, 'قائد طاقم')).toBe(false);
-    // A job whose name is unknown is offered every paper as usual.
+    // A job whose name is unknown is offered every paper of its own as usual.
     expect(papersOfJob([...PUBLISHED, weapon], String(SPECIALIST)).every((p) => !p.optional)).toBe(true);
   });
 
@@ -60,6 +66,32 @@ describe('the papers of a candidate\'s job', () => {
     expect(papersOfJob(PUBLISHED.filter((t) => t.kind !== 'contract'), String(LEADER)).map((p) => p.group)).toEqual([
       'everyJob',
       'thisJob',
+      'other',
     ]);
+  });
+});
+
+describe('a job «مستندات الوظائف» changed', () => {
+  it('prints what was added to it and not what was taken off', () => {
+    const papers = papersOfJob(PUBLISHED, String(LEADER), null, { added: ['guard-card'], removed: ['sheet'] });
+    expect(papers.map((p) => [p.template.key, p.group])).toEqual([
+      ['contract', 'contract'],
+      ['old-contract', 'other'],
+      ['sheet', 'other'],
+      ['card', 'thisJob'],
+      ['guard-card', 'thisJob'],
+    ]);
+  });
+
+  it('takes another contract when its own is taken off and the other added', () => {
+    const papers = papersOfJob(PUBLISHED, String(LEADER), null, { added: [], removed: ['contract'] });
+    expect(papers.find((p) => p.group === 'contract')?.template.key).toBe('old-contract');
+  });
+
+  it('prints exactly what was ticked: an optional paper it kept is ticked', () => {
+    const SPECIALIST = new Types.ObjectId();
+    const weapon = template('egycash.hiring.weapon', { kind: 'form', allJobs: false, jobTitleIds: [SPECIALIST], printOrder: 50 });
+    const papers = papersOfJob([...PUBLISHED, weapon], String(SPECIALIST), 'أخصائي نقل أموال', { added: [], removed: [] });
+    expect(papers.find((p) => p.template.key === weapon.key)).toMatchObject({ group: 'thisJob', optional: false });
   });
 });

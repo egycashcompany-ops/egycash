@@ -22,6 +22,7 @@ import {
   type EmployeeDto,
   type EmployeePapersDto,
   type HiringPackDto,
+  type JobPapersDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { cairoToday } from '../../src/modules/hr/shared/business-date';
@@ -1303,5 +1304,57 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const keys = leaders.documents.map((d) => d.key);
     expect(keys).toEqual(expect.arrayContaining([key('weapon'), key('card.atm-crew-leader')]));
     expect(keys).not.toContain(key('card.atm-specialist'));
+  });
+
+  it('«مستندات الوظائف»: every job beside every paper, what it prints ticked — saved, and printed so (A28)', async () => {
+    const read = async (token = adminToken) =>
+      request(app).get('/api/v1/hr/contracts/job-papers').set('Authorization', `Bearer ${token}`);
+    const save = async (body: object, token = adminToken) =>
+      request(app).patch('/api/v1/hr/contracts/job-papers').set('Authorization', `Bearer ${token}`).send(body);
+    const lineOf = (data: JobPapersDto, jobTitleId: string) => data.jobs.find((j) => j.jobTitleId === jobTitleId)?.keys;
+
+    const res = await read();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const before = res.body.data as JobPapersDto;
+    // Every published paper, the contract first; each job with the papers its templates give it.
+    expect(before.papers[0]?.key).toBe(key('contract'));
+    expect(before.papers.map((p) => p.key)).toEqual(
+      expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-specialist'), key('card.atm-crew-leader')]),
+    );
+    expect(lineOf(before, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    expect(lineOf(before, crewLeaderJob)).toEqual(expect.arrayContaining([key('weapon'), key('card.atm-crew-leader')]));
+
+    // The ATM specialist gains the weapon declaration and the crew leader's card, and loses the bank letter.
+    const keys = [
+      ...ALL_JOBS.filter((k) => k !== key('bank-letter')),
+      key('weapon'),
+      key('card.atm-specialist'),
+      key('card.atm-crew-leader'),
+    ];
+    const saved = await save({ jobs: [{ jobTitleId: specialistJob, keys }] });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(lineOf(saved.body.data as JobPapersDto, specialistJob)).toEqual(keys);
+    expect(lineOf((await read()).body.data as JobPapersDto, crewLeaderJob)).toEqual(lineOf(before, crewLeaderJob));
+
+    // The employee's papers and their printed set follow what was saved.
+    const employee = await employeeIn(specialistJob);
+    const papers = (
+      await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+    ).body.data as EmployeePapersDto;
+    expect(papers.papers.map((p) => p.key)).toEqual(keys);
+    expect(papers.papers.every((p) => !p.optional)).toBe(true);
+    expect(((await pack(employee.id)).body.data as HiringPackDto).documents.map((d) => d.key)).toEqual(keys);
+
+    // Saved again as it was: back to its templates' papers.
+    const back = await save({ jobs: [{ jobTitleId: specialistJob, keys: lineOf(before, specialistJob) }] });
+    expect(lineOf(back.body.data as JobPapersDto, specialistJob)).toEqual(lineOf(before, specialistJob));
+
+    // A paper that is not published, an empty request and a user without the permission are refused.
+    expect((await save({ jobs: [{ jobTitleId: specialistJob, keys: ['not.a.paper'] }] })).status).toBe(400);
+    expect((await save({ jobs: [] })).status).toBe(400);
+    expect((await read(aliceToken)).status).toBe(403);
+    expect((await save({ jobs: [{ jobTitleId: specialistJob, keys }] }, aliceToken)).status).toBe(403);
   });
 });

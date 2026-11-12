@@ -26,6 +26,7 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { BulkPrintDialog } from '../../../contracts/components/BulkPrintDialog';
+import { JobPapersDialog } from '../../../contracts/components/JobPapersDialog';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -105,6 +106,8 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const can = useCan();
   const selection = useTableSelection(rows.map((o) => o.id));
   const [printing, setPrinting] = useState(false);
+  // «مستندات الوظائف» — every job beside every paper, the papers it prints ticked.
+  const [jobPapers, setJobPapers] = useState(false);
 
   const columns: Column<JobOfferDto>[] = [
     {
@@ -162,6 +165,13 @@ export const EmployeesReadyPage = (): JSX.Element => {
       <PageHeader
         title={t('employees.ready.title')}
         breadcrumbs={[{ label: t('employees.title'), to: '/employees' }, { label: t('employees.ready.title') }]}
+        actions={
+          <Can permission="contractTemplate.manage">
+            <Button variant="secondary" onClick={() => setJobPapers(true)} data-job-papers-open>
+              {t('employees.ready.jobPapers')}
+            </Button>
+          </Can>
+        }
       />
 
       <div className="space-y-4">
@@ -201,6 +211,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
         onClose={() => setPrinting(false)}
         onPrinted={selection.clear}
       />
+      <JobPapersDialog open={jobPapers} onClose={() => setJobPapers(false)} />
     </PageContainer>
   );
 };

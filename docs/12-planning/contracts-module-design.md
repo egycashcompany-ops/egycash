@@ -666,10 +666,26 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   بعض فنفس الاختيارات»: their name, job and how many papers are ticked, then the tiles of their own
   job's papers, ticked for that person alone (all / none per line, and for everyone at once). Each
   line starts with every paper of the job ticked but one the job is only offered (`optional`).
-  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line;
-  a paper not of the person's job is never printed for them. Each print is recorded as on the
-  person's own page (the code kept, so «تعيين» opens there). A person who cannot be printed for is
-  reported, not dropped; the others print. At most 50 at a time.
+  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line.
+  Each print is recorded as on the person's own page (the code kept, so «تعيين» opens there). A
+  person who cannot be printed for is reported, not dropped; the others print. At most 50 at a time.
+- **Every paper, the job's marked** («هنحط كل النمازج بس النمازج هتكون معموله mark علي حسب الوظيفه …
+  لو عاوز ازود اي حاجه من النمازج الباقيه اقدر ازودها براحتي»; for the popup too: «هنزود النمازج كلها
+  مع mark علي حسب الوظيفه و الباقي مطفي»). «عقد جديد» and each line of «طباعة لكل المحدد» list EVERY
+  published paper in print order (contracts first): the job's own ticked (its contract — the first
+  by print order —, the forms every job signs, its own forms; one it is only offered unticked), and
+  every other paper as `other`, there and unticked, to add. Any published paper ticked prints; a key
+  that is no published paper prints nothing. «حسب الوظيفة» puts the ticks back to the job's.
+- **«مستندات الوظائف»** («اول مدوس عليه هيكون pop up يظهر كل الوظاءف و جمبو كل المستنات بس بردو متعلم
+  علي النمازج الخاصه بوظيفتو»). A button at the top of «جاهزون للتعيين» (`contractTemplate.manage`)
+  opens every active job on a line of its own beside every paper, the papers the job prints ticked;
+  tick to add, untick to take off, «حفظ» saves the changed lines (audited on the job title,
+  `hiringPapers`). A job prints one contract: ticking a contract unticks the line's other. A job is
+  kept as what was ADDED to, and TAKEN OFF, the papers its templates give it (`hr_job_papers`, one row
+  per job), so a paper published later for every job still reaches it, and a job never changed here
+  keeps following its templates. A job changed here prints exactly what was ticked — nothing is
+  «only offered» any more. «عقد جديد», «طباعة لكل المحدد», the employee's tab, the printed set and the
+  hire's contract all read a job's papers through it.
 - **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
   اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
   the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
@@ -680,7 +696,8 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
   `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
-  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`.
+  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {jobs: [{jobTitleId, keys}]}`.
 
 ## Review trail
 

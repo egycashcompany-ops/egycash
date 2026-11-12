@@ -630,9 +630,9 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
 });
 
 /**
- * A28 — «طباعة لكل المحدد»: the ticked people, each with the papers of their own job, printed as
- * one document; each print recorded as on the person's own page; a person who cannot be printed
- * for is reported, not dropped, and the others still print.
+ * A28 — «طباعة لكل المحدد»: the ticked people, each with every paper — their own job's marked, the
+ * rest there to add — printed as one document; each print recorded as on the person's own page; a
+ * person who cannot be printed for is reported, not dropped, and the others still print.
  */
 describe('«طباعة لكل المحدد» on «جاهزون للتعيين» (A28)', () => {
   const PAPER = (name: string): string => `egycash.hiring.${name}`;
@@ -640,6 +640,12 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     request(app).post(`/api/v1/hr/contracts/candidates/${path}`).set('Authorization', `Bearer ${adminToken}`).send(body);
 
   it('prints for every ticked person the papers chosen for them, in one document', async () => {
+    // A job the guard's card is for, so the card is published — another job's paper for these people.
+    const guard = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-BULK-1', name: { ar: 'مراقب أمن', en: 'JT-BULK-1' }, jobGrade: 'G5' });
+    expect(guard.status, JSON.stringify(guard.body)).toBe(201);
     await syncHiringTemplates();
     const first = await acceptedOffer();
     const second = await acceptedOffer();
@@ -649,14 +655,20 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     expect(opened.status, JSON.stringify(opened.body)).toBe(200);
     const people = opened.body.data as CandidateBulkPersonDto[];
     expect(people.map((p) => p.offerId)).toEqual([first.id, second.id, nobody]);
-    expect(people[0]?.papers.map((p) => p.key)).toContain(PAPER('bank-letter'));
+    expect(people[0]?.papers.find((p) => p.key === PAPER('bank-letter'))).toMatchObject({ group: 'everyJob' });
+    // Every paper is on each line: another job's there, unticked until it is chosen.
+    expect(people[0]?.papers.find((p) => p.key === PAPER('card.security-guard'))).toMatchObject({
+      group: 'other',
+      optional: false,
+    });
     expect(people[0]?.error).toBeNull();
     expect(people[2]?.error).not.toBeNull();
 
-    // Each person's own line: two papers for the first, one for the second.
+    // Each person's own line: three papers for the first — another job's card among them — one for
+    // the second.
     const printed = await call('bulk/render', {
       people: [
-        { offerId: first.id, keys: [PAPER('bank-letter'), PAPER('relatives')] },
+        { offerId: first.id, keys: [PAPER('bank-letter'), PAPER('relatives'), PAPER('card.security-guard')] },
         { offerId: second.id, keys: [PAPER('relatives'), 'egycash.hiring.card.not-this-job'] },
         { offerId: nobody, keys: [PAPER('relatives')] },
       ],
@@ -664,13 +676,14 @@ describe('«طباعة لكل المحدد» on «جاهزون للتعيين» 
     expect(printed.status, JSON.stringify(printed.body)).toBe(200);
     const out = printed.body.data as RenderCandidateBulkDto;
     expect(out.results).toEqual([
-      { offerId: first.id, printed: 2, error: null },
-      // A paper that is not of the person's job is never printed for them.
+      { offerId: first.id, printed: 3, error: null },
+      // A key that is no published paper prints nothing.
       { offerId: second.id, printed: 1, error: null },
       expect.objectContaining({ offerId: nobody, printed: 0 }),
     ]);
-    // Three documents in all, each on its own page after the first.
-    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(3);
+    // Four documents in all, each on its own page after the first.
+    expect(out.html.match(/class="doc doc-form"/g)).toHaveLength(4);
+    expect(out.html).toContain('مراقب امن'); // the guard's card, in his spelling
 
     // Each person's page shows the print, with the code kept — the hire is open there now.
     const codes: string[] = [];

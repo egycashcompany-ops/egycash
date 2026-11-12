@@ -13,6 +13,7 @@ import {
   type DecideContractApproval,
   type PreviewContract,
   type RenderCandidateBulk,
+  type UpdateJobPapers,
   type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
@@ -199,6 +200,22 @@ export const useBulkRenderCandidates = () => {
   return useMutation({
     mutationFn: (body: RenderCandidateBulk) => api.bulkRenderCandidates(body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] }),
+  });
+};
+
+/** «مستندات الوظائف» — every job beside every paper, the papers it prints ticked. */
+export const useJobPapers = (enabled: boolean) =>
+  useQuery({ queryKey: ['hr', 'contracts', 'jobPapers'], queryFn: api.getJobPapers, enabled });
+
+/** Save what each changed job prints; every person's page and popup tick from it from now on. */
+export const useSaveJobPapers = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateJobPapers) => api.saveJobPapers(body),
+    onSuccess: (saved) => {
+      client.setQueryData(['hr', 'contracts', 'jobPapers'], saved);
+      void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] });
+    },
   });
 };
 

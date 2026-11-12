@@ -39,6 +39,8 @@ import { renderHiringPackHtml, type HiringPackPart } from './contract-render';
 import { letterheadFor } from './letterhead';
 import { contractService } from './contract.service';
 import { type ContractDoc } from './contract.model';
+import { type JobPaperOverride } from '../job-papers/job-papers.model';
+import { jobPapersRepository } from '../job-papers/job-papers.repository';
 
 /** A28 — the term and typed-in values a candidate's contract is made with at the hire. */
 export interface ContractTerms {
@@ -58,13 +60,22 @@ export const appliesToJob = (template: ContractTemplateDoc, jobTitleId: string):
   return settings.allJobs || settings.jobTitleIds.some((id) => String(id) === jobTitleId);
 };
 
-/** The published templates an employee's job prints, contracts and forms, in print order. */
+/**
+ * The published templates an employee's job prints, contracts and forms, in print order: those its
+ * templates give it, as «مستندات الوظائف» changed them (`override`) — added to, or taken off.
+ */
 export const templatesForJob = (
   published: readonly ContractTemplateDoc[],
   jobTitleId: string,
+  override: JobPaperOverride | null = null,
 ): { contracts: ContractTemplateDoc[]; forms: ContractTemplateDoc[] } => {
+  const added = new Set(override?.added ?? []);
+  const removed = new Set(override?.removed ?? []);
   const mine = published
-    .filter((template) => appliesToJob(template, jobTitleId))
+    .filter(
+      (template) =>
+        added.has(template.key) || (appliesToJob(template, jobTitleId) && !removed.has(template.key)),
+    )
     .sort(
       (a, b) =>
         printSettings(a).printOrder - printSettings(b).printOrder || a.name.ar.localeCompare(b.name.ar, 'ar'),
@@ -163,9 +174,11 @@ class HiringPackService {
     terms: ContractTerms,
   ): Promise<{ doc: ContractDoc | null; note: HiringPackContractNote | null }> {
     const employee = await employeeService.getById(employeeId, scope);
+    const jobTitleId = String(employee.employment.jobTitleId);
     const { contracts } = templatesForJob(
       await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
+      jobTitleId,
+      await jobPapersRepository.overrideOf(jobTitleId),
     );
     const made = await this.contractFor(ctx, employee, contracts, scope, terms);
     return { doc: made.doc, note: made.note };
@@ -193,11 +206,10 @@ class HiringPackService {
    */
   async papersFor(employeeId: string, scope: ScopeSelector): Promise<EmployeePapersDto> {
     const employee = await employeeService.getById(employeeId, scope);
-    const { contracts, forms } = templatesForJob(
-      await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
-    );
-    const job = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+    const jobTitleId = String(employee.employment.jobTitleId);
+    const override = await jobPapersRepository.overrideOf(jobTitleId);
+    const { contracts, forms } = templatesForJob(await contractTemplateService.listPublished(), jobTitleId, override);
+    const job = await jobTitleService.getById(jobTitleId).catch(() => null);
     const { held, key } = await this.heldContract(employeeId, contracts);
     const papers: EmployeePapersDto['papers'] = [];
     if (key !== null) {
@@ -216,7 +228,8 @@ class HiringPackService {
         name: form.name,
         kind: 'form',
         group: printSettings(form).allJobs ? 'everyJob' : 'thisJob',
-        optional: optionalForJob(form.key, job?.name.ar ?? null),
+        // A job «مستندات الوظائف» changed prints exactly what was ticked there.
+        optional: override === null && optionalForJob(form.key, job?.name.ar ?? null),
       });
     }
     return {
@@ -244,7 +257,11 @@ class HiringPackService {
   ): Promise<HiringPackDto> {
     const employee = await employeeService.getById(employeeId, scope);
     const jobTitleId = String(employee.employment.jobTitleId);
-    const published = templatesForJob(await contractTemplateService.listPublished(), jobTitleId);
+    const published = templatesForJob(
+      await contractTemplateService.listPublished(),
+      jobTitleId,
+      await jobPapersRepository.overrideOf(jobTitleId),
+    );
     const wanted = keys === undefined ? null : new Set(keys);
     const contracts = published.contracts;
     const forms = published.forms.filter((form) => wanted === null || wanted.has(form.key));

@@ -3,11 +3,11 @@
 //
 // EACH PERSON ON A LINE OF THEIR OWN — «عاوز لكل واحد منهم النمازج لكل واحد منفصل عن التاني مش كله
 // مع بعض فنفس الاختيارات لا كل واحد ليه line جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو». The
-// line holds that person's name and job, then the tiles of their own job's papers — the contract,
-// every job's forms, their job's own card and declarations — ticked for that person alone. Every
-// paper starts ticked, but one their job is only offered unticked (the cash-in-transit specialist's
-// weapon declaration). «تأكيد الطباعة» prints ONE document, person after person, each with what was
-// ticked on their line; each print is recorded as on the person's own page (their code kept, so
+// line holds that person's name and job, then EVERY paper as a tile — «هنزود النمازج كلها مع mark علي
+// حسب الوظيفه و الباقي مطفي»: their own job's papers (the contract, every job's forms, their job's
+// card and declarations, as «مستندات الوظائف» sets them) ticked, every other paper there unticked, to
+// add for that person alone. «تأكيد الطباعة» prints ONE document, person after person, each with what
+// was ticked on their line; each print is recorded as on the person's own page (their code kept, so
 // «تعيين» opens there).
 import { useEffect, useState } from 'react';
 import { type CandidateBulkPersonDto, type Locale, type RenderCandidateBulk } from '@ecms/contracts';
@@ -25,11 +25,17 @@ import { PaperTile } from './PaperTile';
 export type BulkChoice = ReadonlyMap<string, ReadonlySet<string>>;
 
 /**
- * Each person's line as the popup opens: every paper of their job ticked, but one their job is only
- * offered unticked (the cash-in-transit specialist's weapon declaration).
+ * Each person's line as the popup opens: the papers of their job ticked — but one their job is only
+ * offered unticked (the cash-in-transit specialist's weapon declaration) — and every other paper
+ * (`other`) there and unticked.
  */
 export const startingChoice = (people: readonly CandidateBulkPersonDto[]): BulkChoice =>
-  new Map(people.map((person) => [person.offerId, new Set(person.papers.filter((p) => !p.optional).map((p) => p.key))]));
+  new Map(
+    people.map((person) => [
+      person.offerId,
+      new Set(person.papers.filter((p) => p.group !== 'other' && !p.optional).map((p) => p.key)),
+    ]),
+  );
 
 /** The print request: each person who can be printed for with what is ticked on their line, in print order. */
 export const printRequest = (people: readonly CandidateBulkPersonDto[], chosen: BulkChoice): RenderCandidateBulk => ({
@@ -171,7 +177,10 @@ export const BulkPrintDialog = ({
                         <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-slate-800 dark:text-blue-300">
                           {t('contracts.bulk.paperCount', { count: person.papers.filter((p) => mine.has(p.key)).length })}
                         </span>
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => setLine(person.offerId, startingChoice([person]).get(person.offerId) ?? [])}>
+                            {t('contracts.candidate.selectJob')}
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => setLine(person.offerId, person.papers.map((p) => p.key))}>
                             {t('contracts.candidate.selectAll')}
                           </Button>

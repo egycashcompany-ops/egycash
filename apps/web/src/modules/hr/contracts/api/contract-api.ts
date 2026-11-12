@@ -6,6 +6,8 @@ import {
   type CandidateBulkPersonDto,
   type CandidateDraftDto,
   type HireCandidateDto,
+  type JobPapersDto,
+  type UpdateJobPapers,
   type RenderCandidateBulk,
   type RenderCandidateBulkDto,
   type RenderCandidatePapers,
@@ -118,6 +120,9 @@ export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPer
   post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
 export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
   post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
+export const getJobPapers = (): Promise<JobPapersDto> => get<JobPapersDto>('/hr/contracts/job-papers');
+export const saveJobPapers = (body: UpdateJobPapers): Promise<JobPapersDto> =>
+  patch<JobPapersDto>('/hr/contracts/job-papers', body);
 export const hireCandidate = (offerId: string, version: number): Promise<HireCandidateDto> =>
   post<HireCandidateDto>(`/hr/contracts/candidates/${offerId}/hire`, { version });
 export const contractPdfTicket = (id: string): Promise<{ ready: boolean; ticket: DownloadTicketDto | null }> =>

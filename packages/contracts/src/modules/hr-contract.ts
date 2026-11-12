@@ -695,15 +695,22 @@ export interface HiringPackDto {
  * before the hire, and the hire itself once it is printed. The page's state is a server record —
  * saved as it changes, so a closed tab, a dropped connection or an expired session loses nothing.
  */
-export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob'] as const;
+export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob', 'other'] as const;
 export type CandidatePaperGroup = (typeof CANDIDATE_PAPER_GROUPS)[number];
 
-/** One paper a job prints, as the print pages list it. */
+/**
+ * One paper as the print pages list it. EVERY paper is listed, the job's own ticked and the rest
+ * offered unticked — «هنحط كل النمازج بس النمازج هتكون معموله mark علي حسب الوظيفه … لو عاوز ازود اي
+ * حاجه من النمازج الباقيه اقدر ازودها براحتي».
+ */
 export interface JobPaperDto {
   key: string;
   name: { ar: string; en: string };
   kind: ContractTemplateKind;
-  /** The contract; a form every job signs; a form for this job only (its card, its declarations). */
+  /**
+   * The contract; a form every job signs; a form for this job only (its card, its declarations);
+   * or `other` — not one of this job's papers, offered unticked so it can be added.
+   */
   group: CandidatePaperGroup;
   /**
    * Offered to this job but left unticked until HR ticks it — the cash-in-transit specialist's
@@ -834,6 +841,37 @@ export interface RenderCandidateBulkDto {
   /** Per person: printed (and how many papers), or why not. */
   results: { offerId: string; printed: number; error: string | null }[];
 }
+
+/**
+ * A28 — «مستندات الوظائف» on «جاهزون للتعيين»: every job on a line of its own beside every paper,
+ * the papers it prints ticked and the rest unticked — «يظهر كل الوظاءف و جمبو كل المستنات بس بردو
+ * متعلم علي النمازج الخاصه بوظيفتو و فنفس الوقت باقي النمازج موجوده بس مش معموله mark». What is ticked
+ * here is what «عقد جديد» and «طباعة لكل المحدد» tick for a person of that job.
+ */
+export interface JobPapersDto {
+  /** Every published paper, in print order. */
+  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
+  /** Every active job, with the keys of the papers it prints. */
+  jobs: { jobTitleId: string; name: { ar: string; en: string }; keys: string[] }[];
+}
+
+export const UpdateJobPapersSchema = z
+  .object({
+    /** The jobs changed, each with every paper it now prints. */
+    jobs: z
+      .array(
+        z
+          .object({
+            jobTitleId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(500),
+  })
+  .strict();
+export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

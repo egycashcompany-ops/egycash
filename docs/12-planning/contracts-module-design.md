@@ -696,6 +696,19 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
     weapon declaration) stays offered, unticked, unless the line ticks it. A row with no department
     is a job-wide line, as the first release of the popup saved them; a department's own line is
     read first.
+- **«مسميات الوظائف لدى التأمينات»** («فيه مسميات وظائف … عندنا مختلفه عن مسميات الوظائف عند
+  التامينات»; «انا عاوز انا اللي احط المسميات الوظيفه بتاعتنا و المسميات الوظيفيه بتاعت التامينات و
+  هنزود column … كود المهنه و كله هيتحط manual»). A tab of «الإعدادات» beside «نموذج التقديم»
+  (`insuranceJobTitle.manage`, its own page): a table HR types by hand — our job title (the company's
+  titles offered while typing, a note when none carries it), its title at the social-insurance
+  authority, its occupation code (up to six digits, or «123/456»). «حفظ» keeps the table as it stands:
+  a row left out is taken off (`hr_insurance_job_titles`, one row per title, keyed by the title folded
+  as job names are matched; each change audited, `hr.insuranceJobTitle`). A title listed twice, a code
+  form 1 cannot box and a row with no title are refused. «نموذج رقم (1)» prints, for a person whose job
+  carries a row's title, `job.insuranceTitle` (the row's title at the authority, else the job's own)
+  in «المسمى» and `job.occupationCode1`/`2` in «كود المهنة»'s two groups of boxes (revision 2, so the
+  boot rewrites the row it wrote). The contract keeps the company's own name for the job.
+  `GET`/`PATCH /hr/contracts/insurance-job-titles {rows: [{jobTitle, insuranceTitle, occupationCode}]}`.
 - **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
   اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
   the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —

@@ -35,6 +35,8 @@ export const HR_SETTINGS_HUB = {
   tabs: [
     // «إعدادات التوظيف»
     { key: 'recruitment-form', permission: 'recruitmentForm.manage', group: 'recruitment' },
+    // «جمب نموزج التقديم … مسميات الوظائف لدى التامينات» — what «نموذج رقم (1)» prints for a job.
+    { key: 'insurance-job-titles', permission: 'insuranceJobTitle.manage', group: 'recruitment' },
     { key: 'applicant-sources', permission: 'applicant.view', group: 'recruitment' },
     { key: 'interview-stages', permission: 'interviewStage.manage', group: 'recruitment' },
     { key: 'evaluation-phases', permission: 'evaluationPhase.manage', group: 'recruitment' },

@@ -1170,6 +1170,22 @@ const contractTemplatePermissions = declarePermissions(
   'hr.contract-templates',
 );
 
+// A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority, what «نموذج رقم (1)»
+// prints. A tab of «الإعدادات», beside «نموذج التقديم».
+const insuranceJobTitlePermissions = declarePermissions(
+  'hr',
+  'insuranceJobTitle',
+  { en: 'job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage the job titles at social insurance', ar: 'إدارة مسميات الوظائف لدى التأمينات' },
+    },
+  ],
+  'hr.insurance-job-titles',
+);
+
 const contractTypePermissions = declarePermissions(
   'hr',
   'contractType',
@@ -1183,6 +1199,7 @@ export const hrPermissions: PermissionDef[] = [
   ...contractPermissions,
   ...contractTemplatePermissions,
   ...contractTypePermissions,
+  ...insuranceJobTitlePermissions,
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
@@ -1269,6 +1286,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Application form', ar: 'نموذج التقديم' },
     route: '/hr-settings/recruitment-form',
     sortOrder: 30,
+  },
+  {
+    id: 'hr.insurance-job-titles',
+    moduleId: 'hr',
+    name: { en: 'Job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+    route: '/hr-settings/insurance-job-titles',
+    sortOrder: 35,
   },
   {
     id: 'hr.screening',

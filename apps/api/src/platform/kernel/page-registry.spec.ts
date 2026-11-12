@@ -37,9 +37,10 @@ describe('the assembled page registry', () => {
   // `itVehicleCheck.create`.
   // Their dashboard («فحص أجهزة السيارات») added two keys and no page, `itVehicleCheck.view` and
   // `.delete`, on the same `it.vehicle-checks`.
-  it('declares 84 pages over 317 permissions', () => {
-    expect(pages).toHaveLength(84);
-    expect(permissions).toHaveLength(317);
+  // HR's «مسميات الوظائف لدى التأمينات» (A28) added one page and its one key, `insuranceJobTitle.manage`.
+  it('declares 85 pages over 318 permissions', () => {
+    expect(pages).toHaveLength(85);
+    expect(permissions).toHaveLength(318);
   });
 
   /**
@@ -125,9 +126,9 @@ describe('the assembled page registry', () => {
    * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
    * dashboard, so the unassigned count does not move.
    */
-  it('assigns 288 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 289 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(288);
+    expect(assigned).toHaveLength(289);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -154,7 +155,7 @@ describe('the assembled page registry', () => {
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
     // IT's tenth page is the vehicle device checks (`it.vehicle-checks`, FR-21) — the form's page,
     // whose route the dashboard took over (2026-11-10): one page, not a second.
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 37, fleet: 19, it: 10 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 38, fleet: 19, it: 10 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

@@ -22,6 +22,7 @@ describe('navigation hubs', () => {
   it('opens a hub row with any tab key, and nothing else with one', () => {
     expect(hubPermissions(HR_SETTINGS_HUB.route)).toEqual([
       'recruitmentForm.manage',
+      'insuranceJobTitle.manage',
       'applicant.view',
       'interviewStage.manage',
       'evaluationPhase.manage',

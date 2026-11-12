@@ -880,6 +880,51 @@ export const UpdateJobPapersSchema = z
   .strict();
 export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
+/**
+ * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: a table HR fills by hand, one row per job — the
+ * company's job title, its title at the social-insurance authority, and its occupation code
+ * («كود المهنه … كله هيتحط manual»). Once saved, «نموذج رقم (1)» prints, for a person whose job carries
+ * a row's title, that row's insurance title and occupation code («لما اجي احط المسمي الوظيفي بتاعنا
+ * هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
+ */
+export const INSURANCE_JOB_TITLE_MAX = 150;
+/** An occupation code: up to six digits, or two groups of up to three — «123/456» — as form 1 boxes it. */
+export const OCCUPATION_CODE_PATTERN = /^(\d{1,6}|\d{1,3}\/\d{1,3})?$/;
+
+export interface InsuranceJobTitleRowDto {
+  id: string;
+  /** The company's job title, as typed. */
+  jobTitle: string;
+  insuranceTitle: string;
+  occupationCode: string;
+  /** A job of the company carries this title — the row reaches form 1. */
+  matched: boolean;
+}
+
+export interface InsuranceJobTitlesDto {
+  rows: InsuranceJobTitleRowDto[];
+  /** The company's active job titles — offered while a title is typed. */
+  jobNames: string[];
+}
+
+export const UpdateInsuranceJobTitlesSchema = z
+  .object({
+    /** The whole table as it now stands: a row left out is taken off. */
+    rows: z
+      .array(
+        z
+          .object({
+            jobTitle: z.string().trim().min(1).max(INSURANCE_JOB_TITLE_MAX),
+            insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
+            occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
+          })
+          .strict(),
+      )
+      .max(1000),
+  })
+  .strict();
+export type UpdateInsuranceJobTitles = z.infer<typeof UpdateInsuranceJobTitlesSchema>;
+
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',
 } as const;

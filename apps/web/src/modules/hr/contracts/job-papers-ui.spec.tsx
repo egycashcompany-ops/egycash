@@ -1,13 +1,13 @@
-// «مستندات الوظائف» on «جاهزون للتعيين» (A28) — every job beside every paper, the job's ticked; what
-// a line holds as it is ticked, and what «حفظ» sends. Read from source where the screen needs a
-// live client.
+// «مستندات الوظائف» on «جاهزون للتعيين» (A28) — every department, the jobs in it, and beside each job
+// every paper: what a line holds as it is ticked, a department's line for all its jobs, a job added,
+// and what «حفظ» sends. Read from source where the screen needs a live client.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type JobPapersDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
-import { changedJobs, choiceOf, everyPaper, toggled } from './components/JobPapersDialog';
+import { changedLines, choiceOf, everyPaper, jobsOf, lineKey, toggled } from './components/JobPapersDialog';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -18,19 +18,21 @@ const READY = code('../employee-management/employees/pages/EmployeesReadyPage.ts
 const DIALOG = code('components/JobPapersDialog.tsx');
 
 const paper = (key: string, kind: 'contract' | 'form' = 'form') => ({ key, name: { ar: key, en: key }, kind });
+const job = (jobTitleId: string, keys: string[]) => ({ jobTitleId, name: { ar: jobTitleId, en: jobTitleId }, keys });
 const DATA: JobPapersDto = {
   papers: [paper('contract', 'contract'), paper('old-contract', 'contract'), paper('sheet'), paper('weapon'), paper('card.leader'), paper('card.guard')],
-  jobs: [
-    { jobTitleId: 'leader', name: { ar: 'قائد طاقم', en: 'Crew leader' }, keys: ['contract', 'sheet', 'weapon', 'card.leader'] },
-    { jobTitleId: 'guard', name: { ar: 'مراقب أمن', en: 'Guard' }, keys: ['contract', 'sheet', 'card.guard'] },
+  departments: [
+    { departmentId: 'ops', name: { ar: 'العمليات', en: 'Ops' }, jobs: [job('leader', ['contract', 'sheet', 'weapon', 'card.leader']), job('guard', ['contract', 'sheet', 'card.guard'])] },
+    { departmentId: 'it', name: { ar: 'تكنولوجيا المعلومات', en: 'IT' }, jobs: [] },
   ],
+  jobs: [job('leader', ['contract', 'sheet', 'weapon', 'card.leader']), job('guard', ['contract', 'sheet', 'card.guard']), job('coder', ['contract', 'sheet'])],
 };
 
-describe('a job\'s line', () => {
-  it('starts with the papers the job prints ticked', () => {
+describe('a job\'s line in a department', () => {
+  it('starts with the papers the job prints there ticked', () => {
     const start = choiceOf(DATA);
-    expect([...(start.get('leader') ?? [])]).toEqual(['contract', 'sheet', 'weapon', 'card.leader']);
-    expect(start.get('guard')?.has('card.leader')).toBe(false);
+    expect([...(start.get(lineKey('ops', 'leader')) ?? [])]).toEqual(['contract', 'sheet', 'weapon', 'card.leader']);
+    expect(start.get(lineKey('ops', 'guard'))?.has('weapon')).toBe(false);
   });
 
   it('adds and takes off a paper; ticking a contract unticks the other — a job prints one', () => {
@@ -49,9 +51,16 @@ describe('a job\'s line', () => {
 describe('«حفظ»', () => {
   it('sends only the lines that changed, each with every paper it now prints, in print order', () => {
     const chosen = choiceOf(DATA);
-    expect(changedJobs(DATA, chosen)).toEqual([]);
-    const next = new Map(chosen).set('guard', new Set(['card.guard', 'card.leader', 'contract']));
-    expect(changedJobs(DATA, next)).toEqual([{ jobTitleId: 'guard', keys: ['contract', 'card.leader', 'card.guard'] }]);
+    expect(changedLines(DATA, chosen, new Map())).toEqual([]);
+    const next = new Map(chosen).set(lineKey('ops', 'guard'), new Set(['card.guard', 'weapon', 'contract']));
+    expect(changedLines(DATA, next, new Map())).toEqual([{ departmentId: 'ops', jobTitleId: 'guard', keys: ['contract', 'weapon', 'card.guard'] }]);
+  });
+
+  it('sends a job added to a department, as it was added', () => {
+    const coder = DATA.jobs.find((j) => j.jobTitleId === 'coder')!;
+    const added = new Map([['it', [coder]]]);
+    expect(jobsOf(DATA.departments[1]!, added).map((j) => j.jobTitleId)).toEqual(['coder']);
+    expect(changedLines(DATA, choiceOf(DATA), added)).toEqual([{ departmentId: 'it', jobTitleId: 'coder', keys: ['contract', 'sheet'] }]);
   });
 });
 
@@ -63,17 +72,19 @@ describe('«جاهزون للتعيين»', () => {
     expect(translate('ar', 'employees.ready.jobPapers')).toBe('مستندات الوظائف');
   });
 
-  it('shows every job on a line with every paper as tiles, and saves the changed lines', () => {
-    expect(DIALOG).toContain('data-job-line={job.jobTitleId}');
-    expect(DIALOG).toContain('{data.papers.map((paper) => (');
-    expect(DIALOG).toContain('checked={mine.has(paper.key)}');
-    expect(DIALOG).toContain('save.mutateAsync({ jobs: changed })');
+  it('opens each department to its jobs, a line for all of them first, and saves the changed lines', () => {
+    expect(DIALOG).toContain('data-department-toggle={id}');
+    expect(DIALOG).toContain('data-department-all={id}');
+    expect(DIALOG).toContain('(key, on) => toggleAll(id, jobs, key, on)');
+    expect(DIALOG).toContain('data-job-line={lineKey(id, job.jobTitleId)}');
+    expect(DIALOG).toContain('data-department-add={id}');
+    expect(DIALOG).toContain('save.mutateAsync({ lines: changed })');
     expect(DIALOG).toContain('disabled={changed.length === 0}');
   });
 
   it('names everything in both languages', () => {
     const used = [...DIALOG.matchAll(/t\('([a-zA-Z.]+)'/g)].map((m) => m[1] ?? '');
-    expect(used.length).toBeGreaterThan(5);
+    expect(used.length).toBeGreaterThan(8);
     for (const locale of ['ar', 'en'] as Locale[]) {
       for (const key of used) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
     }

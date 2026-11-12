@@ -13,6 +13,7 @@ export interface JobPaperOverride {
 }
 
 export interface JobPapersDoc extends BaseDocFields {
+  departmentId: Types.ObjectId | null;
   jobTitleId: Types.ObjectId;
   added: string[];
   removed: string[];
@@ -20,6 +21,7 @@ export interface JobPapersDoc extends BaseDocFields {
 
 const jobPapersSchema = new Schema<JobPapersDoc>(
   {
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     jobTitleId: { type: Schema.Types.ObjectId, required: true },
     added: { type: [String], default: [] },
     removed: { type: [String], default: [] },
@@ -29,8 +31,8 @@ const jobPapersSchema = new Schema<JobPapersDoc>(
 );
 
 jobPapersSchema.index(
-  { jobTitleId: 1 },
-  { unique: true, name: 'ux_job_title', partialFilterExpression: { isDeleted: false } },
+  { departmentId: 1, jobTitleId: 1 },
+  { unique: true, name: 'ux_department_job', partialFilterExpression: { isDeleted: false } },
 );
 
 export const JobPapersModel = model<JobPapersDoc>('HrJobPapers', jobPapersSchema, 'hr_job_papers');

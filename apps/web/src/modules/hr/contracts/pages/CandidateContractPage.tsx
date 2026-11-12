@@ -6,11 +6,10 @@
 // واحد بنفس ال toggle دا جمب كلمه عقد جديد فوق … و عاوز فالمساحه اللي انت عامل فيها ال المستندات
 // دي دلوقت … تبقي علي اساس انها form ساعت ميدوس علي اي نموزج فيهم كتعديل وريني».
 //
-//   · THE PAPERS are ONE ROW beside the title — EVERY paper, in print order, each a tile to tick for
-//     printing, with «تعديل» and «طباعة» (that paper alone) under it. The job's own papers (as
-//     «مستندات الوظائف» sets them) start ticked; every other paper is there unticked, to add —
-//     «هنحط كل النمازج بس النمازج هتكون معموله mark علي حسب الوظيفه … لو عاوز ازود اي حاجه من
-//     النمازج الباقيه اقدر ازودها براحتي».
+//   · THE PAPERS are ONE ROW beside the title — the candidate's own, in print order: those of their
+//     department and job, as «مستندات الوظائف» sets them («النمازج المخصصه بس للاداره او الوظائف هي
+//     اللي هتكون موجوده») — each a tile to tick for printing, with «تعديل» and «طباعة» (that paper
+//     alone) under it.
 //   · THE FORM below is the contract's term and the hiring date, then the paper opened by its
 //     «تعديل»: every value it prints, changeable for this candidate. Beside it, that paper as it
 //     prints — the contract until another paper is opened.
@@ -96,8 +95,8 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     return chain.current;
   };
 
-  // Every paper, in print order as the server lists them; the one in the form is the one opened,
-  // else the first — the contract.
+  // The candidate's papers, in print order as the server lists them; the one in the form is the one
+  // opened, else the first — the contract.
   const papers = draft?.papers ?? [];
   const active = papers.find((p) => p.key === opened) ?? papers[0] ?? null;
 
@@ -194,13 +193,6 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
   const row = (
     <div className="flex min-w-0 items-start gap-3" data-papers-row>
       <div className="flex shrink-0 flex-col gap-1 pt-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setSelected(papers.filter((p) => p.group !== 'other' && !p.optional).map((p) => p.key))}
-        >
-          {t('contracts.candidate.selectJob')}
-        </Button>
         <Button size="sm" variant="ghost" onClick={() => setSelected(papers.map((p) => p.key))}>
           {t('contracts.candidate.selectAll')}
         </Button>

@@ -33,6 +33,7 @@ import {
   type OperationsCrewBoardDto,
   type OperationsCurrencyDto,
   type OperationsDeletedShipmentsDto,
+  type OperationsMobileDayDto,
   type OperationsSecuredDispatchBoardDto,
   type OperationsSecuredDistributionDto,
   type OperationsSecuredDistributionRowDto,
@@ -1301,5 +1302,236 @@ describe('the shipment’s own record is untouched by distribution', () => {
     expect(shipment?.pickup ?? null).toBeNull();
     // Created at version 0; distributing it three times never wrote the shipment.
     expect(shipment?.__v).toBe(0);
+  });
+});
+
+// The round-12 verifier's finding: a secured DRAFT placed on a van keeps a delivery leg on that day's
+// van. Editing its delivery date (PATCH /operations/shipments/:id) used to leave the leg behind — the
+// stop stayed on the captain's route for the old day, where the sequential lock could make it his
+// current stop and hold back every stop after it. The edit now retires the leg, in the same
+// transaction, through the distribution's own «إزالة» path.
+describe('an edit that moves a placed محصنة’s delivery day takes it off its van', () => {
+  /** The day the drafts are distributed on, and the day the edit moves one to — each with a van. */
+  const MOVE_FROM = shift(50);
+  const MOVE_TO = shift(51);
+  let capD = '';
+  let captainToken = '';
+  let fromCrew = '';
+  let moved = ''; // first on capD's route — its delivery day moves
+  let behind = ''; // second on the same route — held back while `moved` is his current stop
+  let cleared = ''; // its delivery date cleared
+  let started = ''; // its leg started by the captain
+  let kept = ''; // edited in everything but its delivery day
+
+  const patch = (id: string, body: Record<string, unknown>): request.Test =>
+    request(app)
+      .patch(`/api/v1/operations/shipments/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+  /** The captain's own day in the app, read as him. */
+  const myDay = async (date: string): Promise<OperationsMobileDayDto> => {
+    const res = await request(app)
+      .get(`/api/v1/operations/mobile/my-day?date=${date}`)
+      .set('Authorization', `Bearer ${captainToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsMobileDayDto>(res);
+  };
+  const stopOf = (day: OperationsMobileDayDto, shipmentId: string) =>
+    day.stops.find((stop) => stop.shipmentId === shipmentId);
+
+  beforeAll(async () => {
+    const { employeeRepository } =
+      await import('../../src/modules/hr/employee-management/employees/employee.repository');
+    capD = await mkEmployee('قائد رابع');
+    // His own login, linked to his employee record — the route is read through the app, as him.
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'R12 captain', ar: 'قائد الجولة 12' },
+        permissionKeys: ['operationsExecution.own'],
+      },
+      adminId,
+    );
+    const userId = await mkUser('ops-r12-captain@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const employee = await employeeRepository.getById(capD);
+    await employeeRepository.updateById(capD, { userId }, { by: null, version: employee.__v });
+    captainToken = await login('ops-r12-captain@ecms.local');
+
+    fromCrew =
+      (await planDay(MOVE_FROM, [{ vehicleId: van2, captainEmployeeIds: [capD] }])).get(van2) ?? '';
+    const toCrew =
+      (await planDay(MOVE_TO, [{ vehicleId: van2, captainEmployeeIds: [capD] }])).get(van2) ?? '';
+    expect([fromCrew, toCrew].every((id) => id !== '')).toBe(true);
+
+    moved = (await book(MOVE_FROM, 'الهرم')).id;
+    behind = (await book(MOVE_FROM, 'الهرم')).id;
+    cleared = (await book(MOVE_FROM, 'الهرم')).id;
+    started = (await book(MOVE_FROM, 'الهرم')).id;
+    kept = (await book(MOVE_FROM, 'الهرم')).id;
+    // All five drafts onto MOVE_FROM's van in one «حفظ» — at the end of capD's route, in this order.
+    const res = await save(
+      [moved, behind, cleared, started, kept].map((shipmentId) => ({
+        shipmentId,
+        crewAssignmentId: fromCrew,
+        captainEmployeeId: capD,
+        version: null,
+      })),
+      MOVE_FROM,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsSecuredDistributionSaveDto>(res).changed).toBe(5);
+  });
+
+  it('retires the leg — gone from the van and from the captain’s route, the stop after it now his current one', async () => {
+    const before = await myDay(MOVE_FROM);
+    expect(stopOf(before, moved)).toMatchObject({ leg: 'delivery', progress: 'current' });
+    expect(stopOf(before, behind)?.progress).toBe('locked');
+    const leg = await deliveryLegOf(moved);
+    expect(leg).not.toBeNull();
+    const seen = seenEvents.length;
+
+    const res = await patch(moved, { deliveryDate: MOVE_TO, version: (await read(moved)).version });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(res).deliveryDate).toBe(iso(MOVE_TO));
+
+    // Retired, not erased: the row keeps the van and captain it was on, for «السجل».
+    expect(await deliveryLegOf(moved)).toBeNull();
+    const retired = await OperationsShipmentAssignmentModel.findById(leg?._id).lean().exec();
+    expect(retired?.isDeleted).toBe(true);
+    expect(String(retired?.deletedBy)).toBe(adminId);
+    expect(String(retired?.crewAssignmentId)).toBe(fromCrew);
+
+    // The captain's app: off the old day's route, and the stop after it is the one he may start.
+    const after = await myDay(MOVE_FROM);
+    expect(stopOf(after, moved)).toBeUndefined();
+    expect(stopOf(after, behind)?.progress).toBe('current');
+    expect(after.currentAssignmentId).toBe(stopOf(after, behind)?.assignmentId);
+    // …and it did not ride along to the new day: there it waits, on no van, to be distributed.
+    expect(stopOf(await myDay(MOVE_TO), moved)).toBeUndefined();
+    expect((await viewOf(MOVE_TO)).shipments.find((s) => s.id === moved)).toMatchObject({
+      delivery: null,
+      deliveryLegVersion: null,
+      placedCrewAssignmentId: null,
+    });
+    // The old day's van carries the others, not it.
+    const onVan = (await viewOf(MOVE_FROM)).shipments
+      .filter((s) => s.placedCrewAssignmentId === fromCrew)
+      .map((s) => s.id);
+    expect(onVan).not.toContain(moved);
+    expect(onVan.sort()).toEqual([behind, cleared, started, kept].sort());
+
+    // «السجل»: the edit (the new day), then the van it left — `crewRemoved`, as on distribution.
+    const entries = (await logOf(moved)).entries;
+    const edited = entries.findIndex((e) => e.kind === 'edited');
+    const removed = entries.findIndex((e) => e.kind === 'crewRemoved');
+    expect(entries[edited]?.changes).toEqual(
+      expect.arrayContaining([{ field: 'deliveryDate', old: MOVE_FROM, new: MOVE_TO }]),
+    );
+    expect(removed).toBeGreaterThan(edited);
+    expect(entries[removed]).toMatchObject({
+      leg: 'delivery',
+      changes: [
+        { field: 'captain', old: 'قائد رابع', new: null },
+        { field: 'vehicle', old: 'OPS-D2', new: null },
+      ],
+    });
+    expect(entries.filter((e) => e.leg === 'delivery').map((e) => e.kind)).toEqual([
+      'crewAssigned',
+      'crewRemoved',
+    ]);
+
+    await waitFor(() =>
+      seenEvents.slice(seen).some((e) => e.name === OperationsEvents.SecuredLegRemoved),
+    );
+    expect(
+      seenEvents.slice(seen).find((e) => e.name === OperationsEvents.SecuredLegRemoved)?.payload,
+    ).toMatchObject({
+      shipmentId: moved,
+      leg: 'delivery',
+      captainEmployeeId: capD,
+      vehicleId: van2,
+    });
+  });
+
+  it('retires it when the delivery date is cleared, too', async () => {
+    const res = await patch(cleared, {
+      deliveryDate: null,
+      version: (await read(cleared)).version,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(res).deliveryDate).toBeNull();
+    expect(await deliveryLegOf(cleared)).toBeNull();
+    expect(stopOf(await myDay(MOVE_FROM), cleared)).toBeUndefined();
+    expect(
+      (await logOf(cleared)).entries.filter((e) => e.leg === 'delivery').map((e) => e.kind),
+    ).toEqual(['crewAssigned', 'crewRemoved']);
+  });
+
+  it('refuses to move it while the captain has started the leg — and writes nothing', async () => {
+    await OperationsShipmentAssignmentModel.updateOne(
+      { shipmentId: started, leg: 'delivery', isDeleted: false },
+      { $set: { executionStatus: 'active' } },
+    ).exec();
+    const legBefore = await deliveryLegOf(started);
+    const shipmentBefore = await read(started);
+    for (const deliveryDate of [MOVE_TO, null]) {
+      const res = await patch(started, {
+        deliveryDate,
+        notes: 'نقل',
+        version: shipmentBefore.version,
+      });
+      expect(res.status, String(deliveryDate)).toBe(409);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED);
+      expect(errorOf(res).details).toEqual([
+        { field: 'shipmentId', code: 'SHIPMENT', message: started },
+      ]);
+    }
+    // Nothing written — neither the shipment nor its leg.
+    expect(await read(started)).toMatchObject({
+      version: shipmentBefore.version,
+      deliveryDate: iso(MOVE_FROM),
+      notes: shipmentBefore.notes,
+    });
+    const legAfter = await deliveryLegOf(started);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    expect(
+      (await logOf(started)).entries.some((e) => e.kind === 'edited' || e.kind === 'crewRemoved'),
+    ).toBe(false);
+
+    // A started leg holds the van's DAY only: an edit that keeps it is still the desk's to make.
+    const notes = await patch(started, {
+      notes: 'ملاحظة',
+      deliveryDate: MOVE_FROM,
+      version: shipmentBefore.version,
+    });
+    expect(notes.status, JSON.stringify(notes.body)).toBe(200);
+    expect((await deliveryLegOf(started))?.__v).toBe(legBefore?.__v);
+
+    await OperationsShipmentAssignmentModel.updateOne(
+      { shipmentId: started, leg: 'delivery', isDeleted: false },
+      { $set: { executionStatus: 'pending' } },
+    ).exec();
+  });
+
+  it('keeps the van through every edit that leaves the delivery day where it is', async () => {
+    const leg = await deliveryLegOf(kept);
+    const res = await patch(kept, {
+      // The form sends every field back: the same delivery day (another hour of it), a later
+      // collection day, new notes and area.
+      deliveryDate: `${MOVE_FROM}T13:45:00.000+02:00`,
+      collectionDate: shift(45),
+      notes: 'تعديل',
+      areaName: 'الهرم',
+      version: (await read(kept)).version,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(res).deliveryDate).toBe(iso(MOVE_FROM));
+    const after = await deliveryLegOf(kept);
+    expect(String(after?._id)).toBe(String(leg?._id));
+    expect(after?.__v).toBe(leg?.__v);
+    expect(String(after?.crewAssignmentId)).toBe(fromCrew);
+    expect(stopOf(await myDay(MOVE_FROM), kept)).toBeDefined();
+    expect((await logOf(kept)).entries.some((e) => e.kind === 'crewRemoved')).toBe(false);
   });
 });

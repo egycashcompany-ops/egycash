@@ -1456,7 +1456,8 @@ export const OPERATIONS_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [OperationsEvents.ShipmentPickupConfirmed]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.ShipmentPickupUndone]: OperationsShipmentPickupPayloadV1,
   [OperationsEvents.SecuredLegAssigned]: OperationsShipmentAssignmentPayloadV1,
-  // Round 12 — «توزيع المحصنات» takes a shipment off its van: the leg that was retired.
+  // Round 12 — «توزيع المحصنات» takes a shipment off its van, or an edit moves its delivery date off
+  // the van's day: the leg that was retired.
   [OperationsEvents.SecuredLegRemoved]: OperationsShipmentAssignmentPayloadV1,
   [OperationsEvents.SecuredDispatched]: OperationsShipmentEventPayloadV1,
   [OperationsEvents.ShipmentOrderReordered]: OperationsShipmentReorderedPayloadV1,

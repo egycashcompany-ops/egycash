@@ -56,11 +56,19 @@ import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { emit } from '../../../platform/kernel/event-bus';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsAssignmentService, resolveCrew } from '../assignments/assignment.service';
+import {
+  isLegStarted,
+  legStartedRefusal,
+  recordLegRetired,
+  retireLeg,
+} from '../assignments/leg-retire';
+import { operationsDayService } from '../days/day.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { crewLegOf, deliveryLegOf, securedPickupOf, securedStageOf } from './secured-stage';
 import { assertSecuredUnlocked } from './secured-lock';
@@ -73,6 +81,7 @@ import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model'
 import { directoryProfileService, getDirectoryEmployees } from '../../../platform/directory';
 import { vaultCustody } from '../treasury-boundary';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
+import { type OperationsShipmentAssignmentDoc } from './shipment-assignment.model';
 import { resolveShipmentReceiptCategoryId } from './shipment-files';
 import {
   SHIPMENT_LOG_ENTITY,
@@ -178,6 +187,38 @@ const assertDeliveryNotBeforeCollection = (delivery: Date, collection: Date): vo
       `the deliveryDate ${ymdOf(delivery)} is before the collectionDate ${ymdOf(collection)} — a shipment cannot go out before it is collected`,
     );
   }
+};
+
+/** A date as its calendar day ('YYYY-MM-DD'), null kept — for "did this date move?". */
+const ymdOrNull = (value: Date | null): string | null => (value === null ? null : ymdOf(value));
+
+/**
+ * The delivery leg an edit of a secured shipment's delivery date LEAVES BEHIND — null when it has
+ * none, or when the new date is still the day its van rides. Refused with the coded 409 when the
+ * captain has started it: his stop is not taken from under him, and the edit writes nothing.
+ *
+ * "Its van's day" is the leg's own operating day compared with the new date's: a leg is a captain
+ * and a van OF ONE DAY (the delivery leg rides a crew row of its delivery day — the rule the
+ * captain's route, the reports and the dispatch all read by). A new date with no operating day yet
+ * has no van of the leg's at all. A cleared date (`null`) leaves the leg on no day.
+ */
+const deliveryLegLeftBehind = async (
+  shipmentId: string,
+  nextDeliveryDate: Date | null,
+): Promise<OperationsShipmentAssignmentDoc | null> => {
+  const leg = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+    shipmentId,
+    'delivery',
+  );
+  if (leg === null) return null;
+  if (nextDeliveryDate !== null) {
+    const day = await operationsDayService.findByDate(nextDeliveryDate);
+    if (day !== null && String(day._id) === String(leg.operationsDayId)) return null;
+  }
+  if (isLegStarted(leg)) {
+    throw legStartedRefusal(shipmentId, "its delivery date cannot move off his van's day");
+  }
+  return leg;
 };
 
 /** The UTC midnight after `day` — the exclusive end of a half-open day range. */
@@ -555,7 +596,8 @@ class OperationsShipmentService {
    * The legs read are ALL of them, the retired ones included (Round 12), through
    * `ix_shipment_all_legs`: a reassignment rewrites a leg in place and a deleted shipment keeps its
    * legs, but «توزيع المحصنات» takes a shipment off its van by RETIRING its delivery leg (a soft
-   * delete — a leg with no captain and no van is no leg), and that leg's story — assigned, moved,
+   * delete — a leg with no captain and no van is no leg; an edit moving the delivery date off the
+   * van's day retires it the same way, `update`), and that leg's story — assigned, moved,
    * taken off — stays the shipment's. The custody is the same since Round 10: a cancelled receipt IS
    * a voided (soft-deleted) custody row, so the treasury port's `history` reads them all, through an
    * index of its own.
@@ -866,13 +908,28 @@ class OperationsShipmentService {
     // this edit. Only when the edit moves one of them: the form sends every field back, and a row
     // already stored the wrong way round (legacy never checked) must still take a notes fix.
     const nextCollectionDate = input.collectionDate ?? before.collectionDate;
-    const datesMoved =
-      ymdOf(nextCollectionDate) !== ymdOf(before.collectionDate) ||
-      (nextDeliveryDate === null ? null : ymdOf(nextDeliveryDate)) !==
-        (before.deliveryDate === null ? null : ymdOf(before.deliveryDate));
+    const deliveryMoved = ymdOrNull(nextDeliveryDate) !== ymdOrNull(before.deliveryDate);
+    const datesMoved = ymdOf(nextCollectionDate) !== ymdOf(before.collectionDate) || deliveryMoved;
     if (datesMoved && nextDeliveryDate !== null) {
       assertDeliveryNotBeforeCollection(nextDeliveryDate, nextCollectionDate);
     }
+    // A DELIVERY LEG RIDES A VAN OF ITS DELIVERY DAY. Since Round 12 a secured DRAFT can be on a van
+    // («توزيع المحصنات» places it before the vault has it). Moving its delivery date to another day,
+    // or clearing it, takes it off that van — the leg is retired in the SAME transaction as the
+    // edit, exactly as the distribution's «إزالة» retires it (leg-retire.ts). Left in place, the
+    // stop would stay on the old day's route in the captain's app, where the sequential lock could
+    // make it his "current" stop and hold back every stop after it. Only when the day itself moves:
+    // the form sends every field back, and an edit of anything else keeps the van.
+    //
+    // The PICKUP leg is deliberately not touched here. It rides the collection date, and it is the
+    // one leg of every DAILY shipment, whose edit is legacy parity (allowed in any status, a past
+    // day's row corrected on the history) and whose executed leg is who carried the money — the
+    // captain report's attribution and the board's «تم التسليم». Retiring or refusing there is a
+    // decision of its own, not this one's.
+    const leftBehind =
+      before.shipmentType === 'secured' && deliveryMoved
+        ? await deliveryLegLeftBehind(id, nextDeliveryDate)
+        : null;
 
     const set: Partial<OperationsShipmentDoc> = {};
     const { version, lines, collectionDate, deliveryDate } = input;
@@ -892,13 +949,29 @@ class OperationsShipmentService {
       set.deliveryDate = deliveryDate === null ? null : utcDay(deliveryDate);
     }
 
-    const updated = await operationsShipmentRepository.updateById(id, set, { by, version });
+    // One write needs no transaction; the edit and the leg it leaves behind are one act — both
+    // land or neither does (a stale shipment version, or a captain who started the leg since it
+    // was read, fails the pair).
+    const updated =
+      leftBehind === null
+        ? await operationsShipmentRepository.updateById(id, set, { by, version })
+        : await unitOfWork(async (session) => {
+            const doc = await operationsShipmentRepository.updateById(id, set, {
+              by,
+              version,
+              session,
+            });
+            await retireLeg(leftBehind, { by, at: new Date(), session });
+            return doc;
+          });
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     await emit(OperationsEvents.ShipmentUpdated, eventPayload(updated));
+    // After the edit's own row, so «السجل» reads the new date first and then the van it left.
+    if (leftBehind !== null) await recordLegRetired(leftBehind);
     return updated;
   }
 

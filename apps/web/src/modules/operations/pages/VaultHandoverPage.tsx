@@ -19,6 +19,11 @@
 //   · «طباعة» — the van's load on the company's report form (`lib/van-load-sheet.ts`), PROVISIONAL
 //     until the owner says what the paper is («اللى هيطبع هقولك عليه بعدين»).
 //
+// WHICH DAY. «تسليم» is TODAY's act (`handoverBlock`): the vault hands a van its load on the day the
+// van goes out. A future day stays on screen — it is the plan, and «طباعة» works there so a sheet can
+// be ready ahead — but its «تسليم» is off, with why, and the day bar says so. The confirmation names
+// the day it hands over on.
+//
 // WHO. The screen is `operationsVault.view`'s; «تسليم» is `operationsVault.dispatch`'s. A treasurer
 // holding only the vault's grants does not hear a placement Operations saves (the assignment
 // topics are the shipment grant's), so the screen re-reads itself once a minute and whenever the
@@ -73,6 +78,7 @@ import {
   EMPTY_DRAFT,
   captainOn,
   distributionColumns,
+  handoverBlock,
   handoverRequest,
   handoverShipments,
   loadFigures,
@@ -160,9 +166,14 @@ export const VaultHandoverPage = (): JSX.Element => {
     }
   };
 
+  // «تسليم» is today's only: a future day is the plan. Against the LIVE Cairo day, so a screen left
+  // open past midnight on yesterday's read turns it off as well.
+  const handoverToday = day === today;
+
   const handOver = async (van: OperationsDayBoardVehicleCrewDto): Promise<void> => {
     const body = handoverRequest(rows, van.crewAssignmentId);
-    if (body === null || sending.current) return;
+    // The button and the dialog are off on any other day; this is the last word before the request.
+    if (body === null || !handoverToday || sending.current) return;
     sending.current = true;
     try {
       await dispatch.mutateAsync(body);
@@ -282,9 +293,21 @@ export const VaultHandoverPage = (): JSX.Element => {
             min={minDay}
             onChange={setDay}
           />
-          <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
-            {t('operations.handover.hint')}
-          </p>
+          {handoverToday ? (
+            <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
+              {t('operations.handover.hint')}
+            </p>
+          ) : (
+            // A future day: said once, in the bar, beside the day it is about — the vans' buttons
+            // only repeat it on hover.
+            <p
+              data-handover-plan-day={day}
+              className="flex w-full min-w-0 items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-bold leading-5 text-amber-900 sm:w-auto sm:flex-1 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+            >
+              <BoardIcon d={[...SHIPMENT_PATH.info]} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {t('operations.handover.planDay', { day: dayText(day) })}
+            </p>
+          )}
         </div>
 
         {tooLarge ? (
@@ -317,6 +340,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                   {columns.vans.map(({ van, rows: load }) => {
                     const ready = handoverShipments(load, van.crewAssignmentId);
                     const held = notYetInVault(load, van.crewAssignmentId);
+                    const block = handoverBlock(day, today, ready.length);
                     return (
                       <VanCard
                         key={van.crewAssignmentId}
@@ -329,14 +353,19 @@ export const VaultHandoverPage = (): JSX.Element => {
                               <button
                                 type="button"
                                 data-handover-open={van.crewAssignmentId}
+                                data-handover-block={block ?? undefined}
                                 aria-haspopup="dialog"
-                                disabled={ready.length === 0}
+                                disabled={block !== null}
                                 title={
-                                  ready.length === 0 ? t('operations.handover.nothing') : undefined
+                                  block === 'notToday'
+                                    ? t('operations.handover.notToday')
+                                    : block === 'nothing'
+                                      ? t('operations.handover.nothing')
+                                      : undefined
                                 }
                                 onClick={() => setConfirming(van.crewAssignmentId)}
                                 className={cn(
-                                  ready.length > 0 ? ADD_BUTTON : BRAND_BUTTON,
+                                  block === null ? ADD_BUTTON : BRAND_BUTTON,
                                   'disabled:cursor-not-allowed disabled:opacity-50',
                                 )}
                               >
@@ -435,7 +464,7 @@ export const VaultHandoverPage = (): JSX.Element => {
               <DesignSave
                 onClick={() => void handOver(confirmVan)}
                 busy={dispatch.isPending}
-                disabled={confirmLoad.length === 0}
+                disabled={confirmLoad.length === 0 || !handoverToday}
                 label={t('operations.handover.confirm', {
                   count: formatNumber(confirmLoad.length, locale),
                 })}
@@ -460,6 +489,8 @@ export const VaultHandoverPage = (): JSX.Element => {
               {t('operations.handover.confirmBody', {
                 count: formatNumber(confirmLoad.length, locale),
                 code: confirmVan.vehicleCode ?? '…',
+                // The day it leaves on, named before the click — it can only be today.
+                day: dayText(day),
               })}
             </span>
           </div>

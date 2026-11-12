@@ -401,10 +401,18 @@ const ROUND12_REPORT_AND_VAULT_KEYS = [
   ...['title', 'held', 'heldAsOf', 'heldEmpty', 'empty', 'needsShipmentView'].map(
     (key) => `operations.vaultHistory.${key}`,
   ),
+  // The report band folds — «إخفاء التقرير» / «إظهار التقرير».
+  'operations.vaultHistory.heldHide',
+  'operations.vaultHistory.heldShow',
   'operations.nav.vaultDispatch',
   'operations.cards.vaultDispatch',
   'operations.nav.vault',
   'operations.cards.vault',
+  // The module home's cards for «توزيع المحصنات» and «تسليم المحصنات».
+  'operations.nav.securedDistribution',
+  'operations.cards.securedDistribution',
+  'operations.nav.vaultHandover',
+  'operations.cards.vaultHandover',
 ];
 
 const AREA_KEYS = [
@@ -430,7 +438,8 @@ const DISTRIBUTION_KEYS = [
   ].map((key) => `operations.distribution.${key}`),
   ...[
     'back', 'confirm', 'confirmBody', 'confirmTitle', 'done', 'failed', 'handover', 'heldNote',
-    'hint', 'notInVault', 'notInVaultHint', 'nothing', 'popupBlocked', 'print', 'ready',
+    'hint', 'notInVault', 'notInVaultHint', 'notToday', 'nothing', 'planDay', 'popupBlocked',
+    'print', 'ready',
     'sheet.captains', 'sheet.count', 'sheet.day', 'sheet.department', 'sheet.empty',
     'sheet.packages', 'sheet.title', 'unplacedHint',
   ].map((key) => `operations.handover.${key}`),

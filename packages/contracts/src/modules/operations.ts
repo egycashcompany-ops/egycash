@@ -583,7 +583,19 @@ export const CreateOperationsShipmentSchema = z
   .superRefine(forbidDailyDeliveryDate);
 export type CreateOperationsShipment = z.infer<typeof CreateOperationsShipmentSchema>;
 
-/** `shipmentType` is immutable — legacy has no path that turns a يومي into a محصنة or back. */
+/**
+ * `PATCH /operations/shipments/:id`. `shipmentType` is immutable — legacy has no path that turns a
+ * يومي into a محصنة or back.
+ *
+ * A secured shipment's DELIVERY LEG rides a van of its delivery day (since Round 12 a draft can be on
+ * one, placed by «توزيع المحصنات»). An edit that moves `deliveryDate` to another day, or clears it,
+ * takes it off that van in the same transaction: the leg is retired exactly as the distribution's
+ * «إزالة» retires it — `crewRemoved` in «السجل» (after the edit's own entry), event
+ * `operations.shipmentAssignment.removed`. Refused with 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED`
+ * (detail `field` 'shipmentId', `message` its id), nothing written, when the captain has started
+ * that leg in the app. An edit that keeps the delivery day keeps the van. The pickup leg (the
+ * collection date's) is not touched by an edit.
+ */
 export const UpdateOperationsShipmentSchema = z
   .object({
     mainBankId: objectId().optional(),
@@ -932,10 +944,12 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *                        draft. `changes` carry ONE change, `reason` (old = null, new = the reason
  *                        typed), for every reader of the log.
  *   crewRemoved          (Round 12) a leg's crew was taken off — «توزيع المحصنات» dragged the
- *                        shipment off its van (or «إزالة»), so the DELIVERY leg has no captain and no
- *                        van any more (`leg` = 'delivery'). `changes` carry `captain` and `vehicle`
- *                        (old = who / which van it was on, new = null). The leg's earlier
- *                        `crewAssigned` / `crewChanged` entries stay in the log.
+ *                        shipment off its van (or «إزالة»), or an edit moved its delivery date off
+ *                        its van's day or cleared it (that `edited` entry comes just before), so the
+ *                        DELIVERY leg has no captain and no van any more (`leg` = 'delivery').
+ *                        `changes` carry `captain` and `vehicle` (old = who / which van it was on,
+ *                        new = null). The leg's earlier `crewAssigned` / `crewChanged` entries stay
+ *                        in the log.
  *   deliveryRescheduled  (Round 12) placing an OVERDUE shipment still in the vault on a van of the
  *                        distribution day moved its delivery date to that day, as part of the same
  *                        save. `changes` carry ONE change, `deliveryDate` (old → new, 'YYYY-MM-DD').
@@ -2969,7 +2983,8 @@ export const OperationsEvents = {
   ShipmentPickupUndone: 'operations.shipment.pickupUndone',
   SecuredLegAssigned: 'operations.shipmentAssignment.assigned',
   /**
-   * Round 12 — a secured shipment taken OFF its van on «توزيع المحصنات»: its delivery leg cleared.
+   * Round 12 — a secured shipment taken OFF its van on «توزيع المحصنات», or by an edit that moves its
+   * delivery date off the van's day (or clears it): its delivery leg cleared.
    * `OperationsShipmentAssignmentPayloadV1` carries the leg that was retired — the captain and van it
    * was on — the counterpart of `assigned`.
    */

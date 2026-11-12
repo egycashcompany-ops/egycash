@@ -330,8 +330,9 @@ const legEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => 
   if (row.action === 'create') {
     return { kind: 'crewAssigned', changes: printed(row, LEG_CREW_FIELDS, names) };
   }
-  // Round 12 — the leg RETIRED: «توزيع المحصنات» took the shipment off its van. The row carries the
-  // captain and van it was on (old → null), which is what the entry prints.
+  // Round 12 — the leg RETIRED: «توزيع المحصنات» took the shipment off its van, or an edit moved its
+  // delivery date off its van's day (that edit's own entry comes just before this one). The row
+  // carries the captain and van it was on (old → null), which is what the entry prints.
   if (row.action === 'delete') {
     return { kind: 'crewRemoved', changes: printed(row, LEG_CREW_FIELDS, names) };
   }

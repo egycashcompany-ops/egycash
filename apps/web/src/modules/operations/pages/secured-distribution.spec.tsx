@@ -9,7 +9,8 @@
 //   · «او المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى»: on the day's first read, a shipment
 //     whose area one van's direction names is on that van, marked «مقترحة» — and «حفظ» counts it;
 //   · «نفس الشاشة هنعمل زيها للخزنة هيكون فوق كل عربيه تسليم وطباعه»: the vault's screen is the same
-//     two columns, read-only, with «تسليم» and «طباعة» over each van.
+//     two columns, read-only, with «تسليم» and «طباعة» over each van — «تسليم» on TODAY's screen
+//     only: a future day is the plan, to read and print.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -50,6 +51,7 @@ const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
 const TODAY = cairoToday();
+const TOMORROW = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 const me = (permissions: string[]): MeDto =>
   ({
@@ -248,12 +250,15 @@ const render = ({
   permissions,
   data,
   refused = false,
+  date = null,
 }: {
   path: '/operations/secured/distribution' | '/operations/vault/handover';
   permissions: string[];
   data: OperationsSecuredDistributionDto | null;
   /** The server refused the day as too large to show — with `data` kept from an earlier answer. */
   refused?: boolean;
+  /** A day after today (`?date=`) — the read filed under its own key; null for today. */
+  date?: string | null;
 }): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
@@ -275,7 +280,7 @@ const render = ({
     listKey('operations', 'vault', { packaging: true }),
     new Map([['s-maadi', { bags: 4, cartons: 0, boxes: 1 }]]),
   );
-  if (data !== null) qc.setQueryData(__securedDistributionKey(null), data);
+  if (data !== null) qc.setQueryData(__securedDistributionKey(date), data);
   if (refused) {
     qc.setDefaultOptions({ queries: { ...qc.getDefaultOptions().queries, retryOnMount: false } });
     const query = qc.getQueryCache().build(qc, { queryKey: [...__securedDistributionKey(null)] });
@@ -290,7 +295,7 @@ const render = ({
   return renderToStaticMarkup(
     <Provider store={storeFor(permissions)}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[path]}>
+        <MemoryRouter initialEntries={[date === null ? path : `${path}?date=${date}`]}>
           <Routes>
             <Route path="/operations/secured/distribution" element={<SecuredDistributionPage />} />
             <Route path="/operations/vault/handover" element={<VaultHandoverPage />} />
@@ -556,6 +561,84 @@ describe('«تسليم المحصنات» — the vault', () => {
   });
 });
 
+describe('«تسليم المحصنات» — «تسليم» on the day the van goes out, and on no other', () => {
+  const placedOn = (day: string) =>
+    answer({
+      date: `${day}T00:00:00.000Z`,
+      shipments: [
+        shipment('h-1', {
+          deliveryDate: `${day}T00:00:00.000Z`,
+          delivery: leg('cr-101', 'c1'),
+          deliveryLegVersion: 0,
+          placedCrewAssignmentId: 'cr-101',
+        }),
+        { ...ON_104, deliveryDate: `${day}T00:00:00.000Z` },
+      ],
+    });
+  /** One button's opening tag. */
+  const tagOf = (html: string, attr: string): string => {
+    const at = html.indexOf(attr);
+    expect(at, attr).toBeGreaterThan(-1);
+    return html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at));
+  };
+
+  it('today: «تسليم» is on where the vault holds the load, and the bar keeps its hint', () => {
+    const html = render({
+      path: '/operations/vault/handover',
+      permissions: VAULT,
+      data: placedOn(TODAY),
+    });
+    const open = tagOf(html, 'data-handover-open="cr-101"');
+    expect(open).not.toContain('disabled=""');
+    expect(open).not.toContain('data-handover-block');
+    expect(html).toContain(ar('operations.handover.hint'));
+    expect(html).not.toContain('data-handover-plan-day');
+  });
+
+  it('a future day: the plan is shown, every «تسليم» is off with why, «طباعة» stays on', () => {
+    const html = render({
+      path: '/operations/vault/handover',
+      permissions: VAULT,
+      data: placedOn(TOMORROW),
+      date: TOMORROW,
+    });
+    // The plan: each van's saved load, as on today.
+    expect(vanOf(html, 'cr-101')).toContain('data-distribution-shipment="h-1"');
+    expect(vanOf(html, 'cr-104')).toContain('data-distribution-shipment="s-104"');
+    for (const v of VANS) {
+      const open = tagOf(html, `data-handover-open="${v.crewAssignmentId}"`);
+      expect(open, v.crewAssignmentId).toContain('disabled=""');
+      expect(open).toContain('data-handover-block="notToday"');
+      expect(open).toContain(`title="${ar('operations.handover.notToday')}"`);
+      const print = tagOf(html, `data-handover-print="${v.crewAssignmentId}"`);
+      expect(print).not.toContain('disabled');
+    }
+    expect(ar('operations.handover.notToday')).toBe('التسليم يتم يوم خروج السيارة فقط');
+    // Said once in the day bar, naming the day — in place of the today-only hint.
+    expect(html).toContain(`data-handover-plan-day="${TOMORROW}"`);
+    expect(html).toContain(ar('operations.handover.planDay', { day: `⁦${TOMORROW}⁩` }));
+    expect(html).not.toContain(ar('operations.handover.hint'));
+  });
+
+  it('a future day with nothing in the vault on a van says the day, not «nothing» — the day comes first', () => {
+    const html = render({
+      path: '/operations/vault/handover',
+      permissions: VAULT,
+      data: placedOn(TOMORROW),
+      date: TOMORROW,
+    });
+    const open = tagOf(html, 'data-handover-open="cr-112"');
+    expect(open).toContain('data-handover-block="notToday"');
+    expect(open).not.toContain(ar('operations.handover.nothing'));
+  });
+
+  it('the confirmation names the day it hands over on', () => {
+    const body = ar('operations.handover.confirmBody', { count: '1', code: '101', day: TODAY });
+    expect(body).toContain(TODAY);
+    expect(translate('en', 'operations.handover.confirmBody', { day: TODAY })).toContain(TODAY);
+  });
+});
+
 // ── Source pins — what each screen is built from ───────────────────────────────────────────────
 
 const read = (rel: string): string =>
@@ -578,6 +661,12 @@ describe('what the screens are built from', () => {
 
   it('the vault hands over through the existing dispatch with the van’s in-vault shipments only', () => {
     expect(HANDOVER).toContain('handoverRequest(rows, van.crewAssignmentId)');
+    // Today only — the button by the pure rule, the dialog's save and the act itself by the day.
+    expect(HANDOVER).toContain('handoverBlock(day, today, ready.length)');
+    expect(HANDOVER).toContain('const handoverToday = day === today;');
+    expect(HANDOVER).toContain('if (body === null || !handoverToday || sending.current) return;');
+    expect(HANDOVER).toContain('disabled={confirmLoad.length === 0 || !handoverToday}');
+    expect(HANDOVER).toContain('day: dayText(day),');
     expect(HANDOVER).toContain('useDispatchSecured()');
     expect(HANDOVER).toContain('printFleetReport(');
     expect(HANDOVER).not.toContain('useSaveSecuredDistribution');

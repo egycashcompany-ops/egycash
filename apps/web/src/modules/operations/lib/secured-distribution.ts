@@ -371,6 +371,24 @@ export const notYetInVault = <
 ): R[] =>
   rows.filter((row) => row.placedCrewAssignmentId === crewAssignmentId && row.status !== 'inVault');
 
+/**
+ * Why a van's «تسليم» is off — or null when it is on.
+ *
+ *   · `notToday` — the screen is on another day than TODAY in Cairo. The vault hands a van its load
+ *     on the day the van goes out, and on no other: a future day is the PLAN, there to read (and to
+ *     print, so a sheet can be ready ahead), but a shipment handed over for tomorrow's van would
+ *     leave the vault a day early, with nobody to carry it. This comes first: on a day that is not
+ *     today, what the van carries does not matter. It also covers a screen left open past midnight
+ *     on yesterday's read — those vans have left.
+ *   · `nothing` — on today, nothing on the van is in the vault to hand over (`handoverShipments`).
+ *
+ * `day` is the day the screen SHOWS (the read's), `today` Cairo's today, both 'YYYY-MM-DD'.
+ */
+export type HandoverBlock = 'notToday' | 'nothing';
+
+export const handoverBlock = (day: string, today: string, ready: number): HandoverBlock | null =>
+  day !== today ? 'notToday' : ready === 0 ? 'nothing' : null;
+
 /** The dispatch a van's «تسليم» sends — `POST /operations/secured/dispatch` — or null with nothing to hand over. */
 export const handoverRequest = <
   R extends Pick<DistributionRowFacts, 'id' | 'status' | 'placedCrewAssignmentId'>,

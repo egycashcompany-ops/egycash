@@ -10747,6 +10747,9 @@ const en: Record<string, string> = {
   'operations.handover.hint':
     'Each van has Hand over and Print. Only shipments in the vault are handed over, and they leave the vault on handover.',
   'operations.handover.nothing': 'Nothing on this van is in the vault to hand over',
+  'operations.handover.notToday': 'Handover happens only on the day the van goes out',
+  'operations.handover.planDay':
+    'The plan for {{day}} — to view and print. Handover happens only on the day the van goes out.',
   'operations.handover.handover': 'Hand over ({{count}})',
   'operations.handover.print': 'Print',
   'operations.handover.heldNote':
@@ -10756,7 +10759,7 @@ const en: Record<string, string> = {
   'operations.handover.confirm': 'Hand over {{count}}',
   'operations.handover.back': 'Back',
   'operations.handover.confirmBody':
-    'These {{count}} secured shipments leave the vault now with van {{code}}’s crew, and are no longer held in the vault.',
+    'These {{count}} secured shipments leave the vault now — today, {{day}} — with van {{code}}’s crew, and are no longer held in the vault.',
   'operations.handover.sheet.title': 'Van {{code}} load sheet',
   'operations.handover.sheet.department': 'Operations — Vault',
   'operations.handover.sheet.day': 'Delivery day: {{day}}',
@@ -10908,8 +10911,14 @@ const en: Record<string, string> = {
   // ── Operations B4 — the four secured screens
   'operations.nav.secured': 'Secured shipments',
   'operations.cards.secured': 'The open secured backlog — everything not yet delivered',
+  'operations.nav.securedDistribution': 'Secured distribution',
+  'operations.cards.securedDistribution':
+    'The day’s secured shipments onto the day’s vans — by hand, or by direction',
   'operations.nav.vaultReceive': 'Receive into vault',
   'operations.cards.vaultReceive': "The treasurer's receiving queue",
+  'operations.nav.vaultHandover': 'Secured handover',
+  'operations.cards.vaultHandover':
+    'The vault hands each van its load on the day it goes out, and prints its sheet',
   'operations.nav.vaultDispatch': 'Vault shipments',
   'operations.cards.vaultDispatch': 'Every secured shipment in the vault right now — view only',
   'operations.nav.vault': 'Vault history',
@@ -11044,6 +11053,8 @@ const en: Record<string, string> = {
   'operations.vaultHistory.held': 'Vault report — held now',
   'operations.vaultHistory.heldAsOf': 'As of {{at}}',
   'operations.vaultHistory.heldEmpty': 'The vault holds no secured shipment right now',
+  'operations.vaultHistory.heldHide': 'Hide report',
+  'operations.vaultHistory.heldShow': 'Show report',
   'operations.vaultHistory.empty': 'No secured shipment was collected or delivered in this range',
   'operations.vaultHistory.needsShipmentView':
     'The secured shipments history needs the permission to view shipments.',
@@ -24028,6 +24039,9 @@ const ar: Record<string, string> = {
   'operations.handover.hint':
     'فوق كل سيارة «تسليم» و«طباعة». لا تُسلَّم إلا المحصنات الموجودة بالخزينة، وتغادر الخزينة عند التسليم.',
   'operations.handover.nothing': 'لا توجد على هذه السيارة محصنة بالخزينة لتسليمها',
+  'operations.handover.notToday': 'التسليم يتم يوم خروج السيارة فقط',
+  'operations.handover.planDay':
+    'خطة يوم {{day}} — للاطلاع والطباعة. التسليم يتم يوم خروج السيارة فقط.',
   'operations.handover.handover': 'تسليم ({{count}})',
   'operations.handover.print': 'طباعة',
   'operations.handover.heldNote':
@@ -24037,7 +24051,7 @@ const ar: Record<string, string> = {
   'operations.handover.confirm': 'تسليم {{count}} محصنة',
   'operations.handover.back': 'رجوع',
   'operations.handover.confirmBody':
-    'ستغادر هذه المحصنات ({{count}}) الخزينة الآن مع طاقم السيارة {{code}}، ولن تبقى بالخزينة.',
+    'ستغادر هذه المحصنات ({{count}}) الخزينة الآن، اليوم {{day}}، مع طاقم السيارة {{code}}، ولن تبقى بالخزينة.',
   'operations.handover.sheet.title': 'كشف تحميل السيارة {{code}}',
   'operations.handover.sheet.department': 'إدارة العمليات — الخزينة',
   'operations.handover.sheet.day': 'يوم التسليم: {{day}}',
@@ -24186,8 +24200,12 @@ const ar: Record<string, string> = {
   // ── العمليات B4 — شاشات المحصنات الأربع
   'operations.nav.secured': 'الشحنات المحصنة',
   'operations.cards.secured': 'سجل المحصنات المفتوح — كل ما لم يُسلَّم بعد',
+  'operations.nav.securedDistribution': 'توزيع المحصنات',
+  'operations.cards.securedDistribution': 'محصنات اليوم على سيارات اليوم — يدويًا أو حسب الاتجاه',
   'operations.nav.vaultReceive': 'استلام في الخزينة',
   'operations.cards.vaultReceive': 'قائمة استلام أمين الخزينة',
+  'operations.nav.vaultHandover': 'تسليم المحصنات',
+  'operations.cards.vaultHandover': 'تسلّم الخزينة كل سيارة حمولتها يوم خروجها، وتطبع كشفها',
   'operations.nav.vaultDispatch': 'محصنات الخزينة',
   'operations.cards.vaultDispatch': 'كل المحصنات الموجودة في الخزينة الآن — للعرض فقط',
   'operations.nav.vault': 'سجل الخزينة',
@@ -24319,6 +24337,8 @@ const ar: Record<string, string> = {
   'operations.vaultHistory.held': 'تقرير الخزينة — الموجود الآن',
   'operations.vaultHistory.heldAsOf': 'حتى {{at}}',
   'operations.vaultHistory.heldEmpty': 'لا توجد محصنات بالخزينة الآن',
+  'operations.vaultHistory.heldHide': 'إخفاء التقرير',
+  'operations.vaultHistory.heldShow': 'إظهار التقرير',
   'operations.vaultHistory.empty': 'لا توجد محصنات استُلمت أو سُلِّمت في هذه المدة',
   'operations.vaultHistory.needsShipmentView': 'يتطلب سجل المحصنات صلاحية عرض الشحنات.',
   'operations.catalogs.tab.areas': 'المناطق',

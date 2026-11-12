@@ -21,7 +21,9 @@
 //   · a shipment still in DRAFT may be placed («المحصنة اللى يومها هتخرج» — the day's, whatever its
 //     stage): the van is planned before the vault has it, and the vault hands over only what it holds;
 //   · a shipment may be taken OFF its van — the leg is RETIRED (soft-deleted): a leg is a captain and
-//     a van, and with neither it is no leg. Its history stays in «السجل» (`crewRemoved`);
+//     a van, and with neither it is no leg. Its history stays in «السجل» (`crewRemoved`). The
+//     retirement is assignments/leg-retire.ts's, shared with the edit that moves a shipment's
+//     delivery date off its van's day, so both leave the same trace;
 //   · an OVERDUE shipment in the vault (due before TODAY — its day has passed) placed on a van of
 //     the day has its delivery date moved to the day, in the same transaction — see `save`;
 //   · the version guards the LEG as the screen read it, null meaning "it had none", so two desks
@@ -46,6 +48,12 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { vaultCustody } from '../treasury-boundary';
 import { nextSequence } from '../assignments/leg-sequence';
+import {
+  isLegStarted,
+  legStartedRefusal,
+  recordLegRetired,
+  retireLeg,
+} from '../assignments/leg-retire';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
@@ -85,13 +93,11 @@ const legSnapshot = (doc: OperationsShipmentAssignmentDoc) => ({
   operationsDayId: String(doc.operationsDayId),
 });
 
-/** Has the captain started this leg in the app? Then it is his, and distribution leaves it be. */
-const started = (leg: OperationsShipmentAssignmentDoc): boolean =>
-  (leg.executionStatus ?? 'pending') !== 'pending';
-
 /**
  * A refusal that NAMES THE SHIPMENT — every distribution refusal is about one card on a screen that
  * shows dozens, so the detail says which: `{ field: 'shipmentId', code: 'SHIPMENT', message: id }`.
+ * (The started-leg refusal is leg-retire.ts's `legStartedRefusal`, the same shape, because the
+ * shipment edit answers it too.)
  */
 const refused = (code: ErrorCode, status: number, shipmentId: string, message: string): AppError =>
   new AppError(code, status, message, {
@@ -327,14 +333,7 @@ class OperationsDistributionService {
       if (change.crewAssignmentId === null || change.captainEmployeeId === null) {
         // Off its van. Off a van it was not on is no change at all.
         if (leg === null) continue;
-        if (started(leg)) {
-          throw refused(
-            ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED,
-            409,
-            id,
-            `the captain has started shipment ${id}'s delivery in the app — it cannot be taken off`,
-          );
-        }
+        if (isLegStarted(leg)) throw legStartedRefusal(id, 'it cannot be taken off');
         plans.push({ kind: 'remove', shipment, leg });
         continue;
       }
@@ -367,13 +366,8 @@ class OperationsDistributionService {
         String(leg.captainEmployeeId) === change.captainEmployeeId &&
         String(leg.operationsDayId) === String(dayDoc._id);
       if (legUnchanged && !overdue) continue;
-      if (leg !== null && !legUnchanged && started(leg)) {
-        throw refused(
-          ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED,
-          409,
-          id,
-          `the captain has started shipment ${id}'s delivery in the app — it cannot be moved`,
-        );
+      if (leg !== null && !legUnchanged && isLegStarted(leg)) {
+        throw legStartedRefusal(id, 'it cannot be moved');
       }
       plans.push({
         kind: 'place',
@@ -392,12 +386,9 @@ class OperationsDistributionService {
       const out: Written[] = [];
       for (const plan of plans) {
         if (plan.kind === 'remove') {
-          // RETIRED, not erased: the leg row keeps who and which van, and «السجل» reads it back.
-          await operationsShipmentAssignmentRepository.updateById(
-            String(plan.leg._id),
-            { isDeleted: true, deletedAt: now, deletedBy: new Types.ObjectId(by) },
-            { by, version: plan.leg.__v, session },
-          );
+          // RETIRED, not erased — the one path that takes a leg off its van (leg-retire.ts), shared
+          // with the edit that moves a shipment's delivery date off its van's day.
+          await retireLeg(plan.leg, { by, at: now, session });
           out.push({ kind: 'removed', before: plan.leg });
           continue;
         }
@@ -497,24 +488,8 @@ class OperationsDistributionService {
         continue;
       }
       if (entry.kind === 'removed') {
-        const leg = entry.before;
-        changedShipments.add(String(leg.shipmentId));
-        await auditService.record({
-          entityRef: assignmentRef(String(leg._id)),
-          action: 'delete',
-          changes: [
-            { field: 'captainEmployeeId', old: String(leg.captainEmployeeId), new: null },
-            { field: 'vehicleId', old: String(leg.vehicleId), new: null },
-            { field: 'crewAssignmentId', old: String(leg.crewAssignmentId), new: null },
-          ],
-        });
-        await emit(OperationsEvents.SecuredLegRemoved, {
-          assignmentId: String(leg._id),
-          shipmentId: String(leg.shipmentId),
-          leg: leg.leg,
-          captainEmployeeId: String(leg.captainEmployeeId),
-          vehicleId: String(leg.vehicleId),
-        });
+        changedShipments.add(String(entry.before.shipmentId));
+        await recordLegRetired(entry.before);
         continue;
       }
       const { before, after } = entry;

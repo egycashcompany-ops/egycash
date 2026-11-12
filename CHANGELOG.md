@@ -290,6 +290,13 @@ its entry here in the same PR.
       day in the same save — the one change a received محصنة takes, because it is a flow act, not an
       edit. «السجل» shows it as its own entry, and a shipment taken off its van as «أُزيلت من السيارة
       عند التوزيع» (log kind `crewRemoved`).
+    - A draft on a van whose delivery date is then edited to another day, or cleared (`PATCH
+      /operations/shipments/:id`), comes off that van in the same transaction — the leg retired as
+      «إزالة» retires it (`crewRemoved` after the edit in «السجل», event
+      `operations.shipmentAssignment.removed`) — so it no longer stays on the old day's route in the
+      captain's app, where it could hold back his later stops. A leg he has started refuses the
+      edit (`OPERATIONS_DISTRIBUTION_LEG_STARTED`, nothing written); an edit that keeps the day
+      keeps the van. The pickup leg is not touched by an edit.
     - «تسليم» is the existing dispatch per van: the van's shipments in the vault leave it at once; one
       on the van the vault has not received yet stays behind.
   - The screens of Round 12: «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان

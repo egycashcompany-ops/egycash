@@ -8,7 +8,9 @@
 //     the panel over the same total;
 //   · under it, «سجل الشحنات» for the محصنات alone: the history read with `type=secured`, on the
 //     secured board's columns, its range opening on this month to date, its deleted محصنات;
-//   · a treasurer holding only the vault's grants gets the report and a line about the history.
+//   · a treasurer holding only the vault's grants gets the report and a line about the history;
+//   · the report band folds («إخفاء التقرير» / «إظهار التقرير», beside «إخفاء الإحصائيات»), open by
+//     default and remembered per viewer, so at 1366×768 the history can take the screen.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,6 +42,7 @@ import {
   __vaultHeldReportKey,
 } from '../api/operations-queries';
 import { boardFilterParams } from '../lib/day-board';
+import { HELD_BAND_KEY } from '../lib/vault-history-band';
 import { VaultInventoryPage } from './VaultInventoryPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -333,7 +336,8 @@ describe('«تقرير الخزينة» — on top, live, the very table of «ب
   it('has NO dates — it is now («بس مفيش فتر من الى هيكون لحظى»)', () => {
     const band = heldBand(render({ seed: seedAll }));
     expect(band).not.toContain('type="date"');
-    expect(PAGE).toContain('const held = useVaultHeldReport();');
+    // Its one argument is whether it is read at all (the band folded or not) — never a period.
+    expect(PAGE).toContain('const held = useVaultHeldReport(bandShown);');
   });
 
   it('keeps the panel beside it, over the same total', () => {
@@ -458,6 +462,79 @@ describe('a treasurer holding only the vault’s grants', () => {
     // With the history under it, the band keeps its fixed height.
     expect(band(render({ seed: seedAll }))).toContain('lg:h-[min(19rem,36vh)]');
     expect(PAGE).toContain('className={canSeeHistory ? HELD_BAND : HELD_BAND_ALONE}');
+  });
+});
+
+describe('«إخفاء التقرير» — the report band folds, so the history can take the screen', () => {
+  /** This browser's storage, as the page reads it — folded or not as a viewer left it. */
+  const remembering = (value: string | null): void => {
+    const kept = new Map<string, string>(value === null ? [] : [[HELD_BAND_KEY, value]]);
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => kept.get(key) ?? null,
+        setItem: (key: string, next: string) => void kept.set(key, next),
+      },
+    });
+  };
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The history's toolbar — the stats toggle and what the page adds beside it. */
+  const toolbar = (html: string): string => {
+    const at = html.indexOf('data-shipments-toolbar');
+    return html.slice(at, html.indexOf('data-shipment-filters', at));
+  };
+
+  it('opens by default, its toggle in the history’s toolbar beside «إخفاء الإحصائيات», in its look', () => {
+    remembering(null);
+    const html = render({ seed: seedAll });
+    expect(html).toContain('data-vault-held="true"');
+    const bar = toolbar(html);
+    const stats = bar.indexOf('data-shipment-stats-toggle="true"');
+    const fold = bar.indexOf('data-vault-held-toggle="true"');
+    expect(stats).toBeGreaterThan(-1);
+    expect(fold).toBeGreaterThan(stats);
+    const button = bar.slice(bar.lastIndexOf('<button', fold), bar.indexOf('</button>', fold));
+    expect(button).toContain('aria-expanded="true"');
+    expect(button).toContain(`>${ar('operations.vaultHistory.heldHide')}<`);
+    expect(ar('operations.vaultHistory.heldHide')).toBe('إخفاء التقرير');
+    // The stats toggle's own button classes — one look for the two.
+    const statsButton = bar.slice(bar.lastIndexOf('<button', stats), bar.indexOf('>', stats));
+    const statsClass = /class="([^"]+)"/.exec(statsButton)?.[1];
+    expect(statsClass).toBeTruthy();
+    expect(button).toContain(`class="${statsClass}"`);
+  });
+
+  it('folded as this viewer left it: no band, the history first, and «إظهار التقرير»', () => {
+    remembering('0');
+    const html = render({ seed: seedAll });
+    expect(html).not.toContain('data-vault-held="true"');
+    expect(html).not.toContain(ar('operations.vaultHistory.held'));
+    expect(html).toContain('data-shipment-filters="true"');
+    const bar = toolbar(html);
+    const fold = bar.indexOf('data-vault-held-toggle="true"');
+    const button = bar.slice(bar.lastIndexOf('<button', fold), bar.indexOf('</button>', fold));
+    expect(button).toContain('aria-expanded="false"');
+    expect(button).toContain(`>${ar('operations.vaultHistory.heldShow')}<`);
+    expect(ar('operations.vaultHistory.heldShow')).toBe('إظهار التقرير');
+  });
+
+  it('never folds for a vault-only reader — the report alone, full height, whatever is remembered', () => {
+    remembering('0');
+    const html = render({ permissions: ['operationsVault.view'], seed: seedAll });
+    expect(html).toContain('data-vault-held="true"');
+    expect(html).not.toContain('data-vault-held-toggle');
+    const at = html.indexOf('data-vault-held="true"');
+    expect(html.slice(html.lastIndexOf('<section', at), at)).toContain('lg:flex-1');
+  });
+
+  it('reads the report only while it is drawn, and saves the choice on the click', () => {
+    expect(PAGE).toContain('const bandShown = heldBandShown(reportOpen, canSeeHistory);');
+    expect(PAGE).toContain('const held = useVaultHeldReport(bandShown);');
+    expect(PAGE).toContain('useState(loadHeldBandOpen)');
+    expect(PAGE).toContain('saveHeldBandOpen(next);');
+    expect(PAGE).toContain('{bandShown && (');
   });
 });
 

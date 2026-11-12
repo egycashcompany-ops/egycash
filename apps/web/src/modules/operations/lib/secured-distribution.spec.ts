@@ -16,6 +16,7 @@ import {
   distributionChanges,
   distributionColumns,
   distributionSaveBody,
+  handoverBlock,
   handoverRequest,
   handoverShipments,
   isProposed,
@@ -520,6 +521,27 @@ describe('«تسليم» — only what the vault holds, of that van', () => {
     expect(
       handoverRequest([placed('d', 'van-112', 'c4', 0, { status: 'draft' })], 'van-112'),
     ).toBeNull();
+  });
+});
+
+describe('«تسليم» — only on the day the van goes out', () => {
+  const TODAY = '2026-11-12';
+
+  it('is on today, with something in the vault to hand over', () => {
+    expect(handoverBlock(TODAY, TODAY, 3)).toBeNull();
+  });
+
+  it('is off on a future day — the plan, to read and print — whatever the van carries', () => {
+    expect(handoverBlock('2026-11-13', TODAY, 3)).toBe('notToday');
+    expect(handoverBlock('2026-12-01', TODAY, 0)).toBe('notToday');
+  });
+
+  it('is off on yesterday’s read left open past midnight — those vans have left', () => {
+    expect(handoverBlock('2026-11-11', TODAY, 2)).toBe('notToday');
+  });
+
+  it('on today, is off with nothing in the vault on the van', () => {
+    expect(handoverBlock(TODAY, TODAY, 0)).toBe('nothing');
   });
 });
 

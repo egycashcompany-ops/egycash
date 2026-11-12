@@ -210,7 +210,10 @@ export const ErrorCodes = {
   OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
   /**
    * 409 — a distribution change would move or clear a delivery leg its captain has already started
-   * in the app (`executionStatus` past `pending`). Detail: `field` 'shipmentId', `message` its id.
+   * in the app (`executionStatus` past `pending`). Also the shipment edit's (`PATCH
+   * /operations/shipments/:id`) when it would move a secured shipment's delivery date off the day of
+   * such a leg, or clear it — the edit would take the stop off his van just the same; nothing is
+   * written. Detail: `field` 'shipmentId', `message` its id.
    */
   OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
 

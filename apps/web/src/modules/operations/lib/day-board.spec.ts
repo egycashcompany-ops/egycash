@@ -7,12 +7,23 @@
 import { describe, expect, it } from 'vitest';
 import { type OperationsDayBoardShipmentDto, type OperationsShipmentDto } from '@ecms/contracts';
 import {
+  DAY_BOARD_FILTER_PARAMS,
   EMPTY_DAY_BOARD_FILTERS,
   boardDateOf,
   boardDelivery,
   boardFigures,
   boardTotals,
+  compareCurrencies,
+  currencyKind,
+  currencyOfKind,
+  currencyOrder,
+  currencyUnit,
+  otherCurrencies,
+  readDayBoardFilters,
   rowTint,
+  saysDelivered,
+  boardFilterParams,
+  offeredFilters,
   branchCell,
   branchCellText,
   filterDayBoard,
@@ -242,10 +253,19 @@ describe('isOtherOriginBank — money collected from a bank other than the one b
     origin:
       originBankId === null
         ? null
-        : { id: 'branch-1', name: 'فرع المهندسين', code: 'B1', bankId: originBankId, bankName: 'x' },
+        : {
+            id: 'branch-1',
+            name: 'فرع المهندسين',
+            code: 'B1',
+            bankId: originBankId,
+            bankName: 'x',
+          },
     destination: null,
     crew: null,
     captainDeliveredAt: null,
+    securedStage: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
   });
 
   it('is false when the origin branch belongs to the billed bank', () => {
@@ -277,6 +297,9 @@ const boardRow = (
     destination: resolved('d', destination),
     crew: null,
     captainDeliveredAt: null,
+    securedStage: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
   };
 };
 
@@ -402,18 +425,84 @@ describe('filterDayBoard over board rows — «من فرع» / «الى فرع»
   });
 });
 
-describe('orderedBoardTotals — the figures, in the legacy strip’s order', () => {
-  const CURRENCIES: Record<string, { code: string; name: string }> = {
-    egp: { code: 'EGP', name: 'مصري' },
-    usd: { code: 'USD', name: 'دولار' },
-    eur: { code: 'EUR', name: 'يورو' },
-    sar: { code: 'SAR', name: 'ريال' },
+// «ترتيب العملات فى الجدول لما تظهر تكون على حسب ترتيبها ف شاشة البيانات المرجعية» — the catalog's
+// dragged order, the server's `byCatalogOrder` exactly (currency.service.ts).
+describe('compareCurrencies / currencyOrder — the catalog’s order', () => {
+  const at = (id: string, code: string, name: string, sortOrder: number | null) => ({
+    id,
+    code,
+    name,
+    sortOrder,
+  });
+
+  it('puts the dragged places first, in their order, and a currency nobody placed after them', () => {
+    const catalog = [
+      at('egp', '1', 'مصري', 2),
+      at('usd', '2', 'دولار', 0),
+      at('new', '0', 'جديدة', null),
+      at('eur', '3', 'يورو', 1),
+    ];
+    expect([...catalog].sort(compareCurrencies).map((c) => c.id)).toEqual([
+      'usd',
+      'eur',
+      'egp',
+      'new',
+    ]);
+  });
+
+  it('reads the codes as numbers while nobody has arranged the list — «2» before «10»', () => {
+    const catalog = [
+      at('ten', '10', 'عشرة', null),
+      at('two', '2', 'اثنان', null),
+      at('one', '1', 'واحد', null),
+      at('eur', 'EUR', 'يورو', null),
+    ];
+    // Text order would put «10» before «2»; a person reads 1, 2, 10. Digits sort before letters.
+    expect([...catalog].sort(compareCurrencies).map((c) => c.id)).toEqual([
+      'one',
+      'two',
+      'ten',
+      'eur',
+    ]);
+  });
+
+  it('settles a tie on the place and the code by the name', () => {
+    expect(compareCurrencies(at('a', 'X', 'يورو', 1), at('b', 'X', 'دولار', 1))).toBeGreaterThan(0);
+    expect(compareCurrencies(at('a', 'X', 'دولار', 1), at('a', 'X', 'دولار', 1))).toBe(0);
+  });
+
+  it('orders ids by it, an id the catalog does not hold last, ties in the caller’s order', () => {
+    const order = currencyOrder([
+      at('egp', '1', 'مصري', 1),
+      at('usd', '2', 'دولار', 0),
+      at('eur', '3', 'يورو', null),
+    ]);
+    expect(['gone', 'egp', 'other-gone', 'eur', 'usd'].sort(order)).toEqual([
+      'usd',
+      'egp',
+      'eur',
+      'gone',
+      'other-gone',
+    ]);
+  });
+
+  it('changes nothing over an empty catalog — every id is unknown alike', () => {
+    expect(['usd', 'egp', 'eur'].sort(currencyOrder([]))).toEqual(['usd', 'egp', 'eur']);
+  });
+});
+
+describe('orderedBoardTotals — a row’s money, in the catalog’s order', () => {
+  const CURRENCIES: Record<string, { code: string; name: string; sortOrder?: number | null }> = {
+    egp: { code: 'EGP', name: 'مصري', sortOrder: 1 },
+    usd: { code: 'USD', name: 'دولار', sortOrder: 0 },
+    eur: { code: 'EUR', name: 'يورو', sortOrder: null },
+    sar: { code: 'SAR', name: 'ريال', sortOrder: 2 },
   };
   const currencyOf = (id: string) => CURRENCIES[id];
   const ids = (rows: OperationsShipmentDto[]) =>
     orderedBoardTotals(rows, currencyOf).map((total) => total.currencyId);
 
-  it('puts EGP first, then USD, then the rest by name, and a currency it cannot name last', () => {
+  it('follows the catalog’s places — not the pound first — and a currency it cannot name last', () => {
     const rows = [
       shipment({
         lines: [
@@ -429,8 +518,9 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
         ],
       }),
     ];
-    // ريال before يورو by name; `gone` is not in the catalog.
-    expect(ids(rows)).toEqual(['egp', 'usd', 'sar', 'eur', 'gone']);
+    // The dollar was dragged above the pound; the euro has no place, so it follows every placed
+    // one; `gone` is not in the catalog.
+    expect(ids(rows)).toEqual(['usd', 'egp', 'sar', 'eur', 'gone']);
   });
 
   it('keeps each currency’s sum — ordering never merges or drops a figure', () => {
@@ -440,8 +530,8 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
       shipment({ lines: [{ currencyId: 'egp', amount: 250 }] }),
     ];
     expect(orderedBoardTotals(rows, currencyOf)).toEqual([
-      { currencyId: 'egp', amount: 750 },
       { currencyId: 'usd', amount: 40 },
+      { currencyId: 'egp', amount: 750 },
     ]);
   });
 
@@ -458,8 +548,8 @@ describe('orderedBoardTotals — the figures, in the legacy strip’s order', ()
     const shown = run([ahly, misr], { bank: 'أهل' });
     expect(orderedBoardTotals(shown, currencyOf)).toEqual([{ currencyId: 'egp', amount: 100 }]);
     expect(orderedBoardTotals([ahly, misr], currencyOf)).toEqual([
-      { currencyId: 'egp', amount: 1000 },
       { currencyId: 'usd', amount: 5 },
+      { currencyId: 'egp', amount: 1000 },
     ]);
   });
 
@@ -503,11 +593,8 @@ describe('boardDelivery — who delivered: «القائد» yellow, «المكت
       { ...shipment({ id: 'desk', status: 'completed' }), captainDeliveredAt: null },
     ];
     const by = (received: 'yes' | 'no') =>
-      filterDayBoard(
-        rows,
-        { ...EMPTY_DAY_BOARD_FILTERS, received },
-        bankNameOf,
-        (row, side) => branchNameOf(side === 'origin' ? row.originBranchId : row.destinationBranchId),
+      filterDayBoard(rows, { ...EMPTY_DAY_BOARD_FILTERS, received }, bankNameOf, (row, side) =>
+        branchNameOf(side === 'origin' ? row.originBranchId : row.destinationBranchId),
       ).map((r) => r.id);
     expect(by('yes')).toEqual(['captain', 'desk']);
     expect(by('no')).toEqual(['waiting']);
@@ -523,8 +610,18 @@ describe('boardFigures — «مصري», «دولار», then «عملات أخ�
   };
   const currencyOf = (id: string) => CURRENCIES[id];
   const rows = [
-    shipment({ lines: [{ currencyId: 'egp', amount: 12_000_000 }, { currencyId: 'gbp', amount: 60_000 }] }),
-    shipment({ lines: [{ currencyId: 'usd', amount: 100_000 }, { currencyId: 'eur', amount: 30_000 }] }),
+    shipment({
+      lines: [
+        { currencyId: 'egp', amount: 12_000_000 },
+        { currencyId: 'gbp', amount: 60_000 },
+      ],
+    }),
+    shipment({
+      lines: [
+        { currencyId: 'usd', amount: 100_000 },
+        { currencyId: 'eur', amount: 30_000 },
+      ],
+    }),
   ];
 
   it('keeps the pound and the dollar apart, and sums every other currency into one figure', () => {
@@ -535,16 +632,20 @@ describe('boardFigures — «مصري», «دولار», then «عملات أخ�
     expect(figures.othersSum).toBe(90_000);
   });
 
-  it('lists the others each on its own, by name — what a click on «عملات أخرى» shows', () => {
+  it('lists the others each on its own, in the catalog’s order — what «عملات أخرى» opens on', () => {
+    // Nobody has placed these two, so the codes decide: EUR before GBP.
     expect(boardFigures(rows, currencyOf).others).toEqual([
-      { currencyId: 'gbp', amount: 60_000 },
       { currencyId: 'eur', amount: 30_000 },
+      { currencyId: 'gbp', amount: 60_000 },
     ]);
   });
 
   it('is all zeros for an empty board, and counts an unnamed currency with the others', () => {
     expect(boardFigures([], currencyOf)).toEqual({ egp: 0, usd: 0, others: [], othersSum: 0 });
-    const unknown = boardFigures([shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })], currencyOf);
+    const unknown = boardFigures(
+      [shipment({ lines: [{ currencyId: 'xyz', amount: 5 }] })],
+      currencyOf,
+    );
     expect(unknown.othersSum).toBe(5);
   });
 });
@@ -561,5 +662,450 @@ describe('rowTint — yellow for the captain, green for the desk', () => {
   });
   it('is no colour before either', () => {
     expect(rowTint('none')).toBeUndefined();
+  });
+});
+
+// «فى مشكلة فى حسبة العملات بيحسب اى حاجه عملات اخرى لا انا عاوز المصرى لوحده الدولار لوحده و اى
+// حاجه غير الاتنين دول يتحسب عملات اخرى». Production showed «مصري 0 EGP», «دولار 0 USD» and «عملات
+// أخرى 55,750,000»: its catalog codes are the legacy numbers «1», «2», «3», and the figures knew
+// the pound and the dollar by the codes EGP and USD alone.
+describe('currencyKind — the pound and the dollar by code, name or legacy alias', () => {
+  const cur = (code: string, name: string, legacyAliases: string[] = []) => ({
+    code,
+    name,
+    legacyAliases,
+  });
+
+  it('knows the production catalog, whose codes are legacy numbers', () => {
+    expect(currencyKind(cur('1', 'مصري'))).toBe('pound');
+    expect(currencyKind(cur('2', 'دولار'))).toBe('dollar');
+    expect(currencyKind(cur('3', 'يورو'))).toBe('other');
+  });
+
+  it('knows the ISO codes whatever the name says', () => {
+    expect(currencyKind(cur('EGP', 'الجنيه'))).toBe('pound');
+    expect(currencyKind(cur('egp', 'Pound'))).toBe('pound');
+    expect(currencyKind(cur('USD', 'Greenback'))).toBe('dollar');
+  });
+
+  it('knows a currency by a legacy alias alone', () => {
+    expect(currencyKind(cur('7', 'عملة محلية', ['جنيه مصري']))).toBe('pound');
+    expect(currencyKind(cur('8', 'عملة أجنبية', ['USD']))).toBe('dollar');
+  });
+
+  it('reads the spellings an Egyptian typist uses — hamza, ى/ي, ة/ه, the dots', () => {
+    for (const name of [
+      'مصرى',
+      'جنية',
+      'جنيه مصرى',
+      'الجنيه المصرى',
+      'L.E',
+      'LE',
+      'ج.م',
+      'ج. م',
+      'E£',
+    ]) {
+      expect(currencyKind(cur('x', name)), name).toBe('pound');
+    }
+    for (const name of ['الدولار', 'دولار أمريكى', 'الدولار الأمريكي', 'US$', '$', 'U.S. Dollar']) {
+      expect(currencyKind(cur('x', name)), name).toBe('dollar');
+    }
+  });
+
+  it('reads a name pasted with a no-break space or a tab as the words it is', () => {
+    // `fold` keeps only the plain space; a no-break space (Excel, Word) or a tab between the words
+    // must not glue «جنيه مصري» into «جنيهمصري», which spells nothing.
+    expect(currencyKind(cur('1', 'جنيه\u00A0مصري'))).toBe('pound');
+    expect(currencyKind(cur('1', 'الجنيه\tالمصري'))).toBe('pound');
+    expect(currencyKind(cur('2', 'دولار\u00A0أمريكي'))).toBe('dollar');
+    expect(currencyKind(cur('2', 'US\u00A0Dollar'))).toBe('dollar');
+    // …and still whole: sterling with a no-break space is sterling.
+    expect(currencyKind(cur('4', 'جنيه\u00A0استرليني'))).toBe('other');
+  });
+
+  it('compares WHOLE values — pound sterling and the Canadian dollar are other currencies', () => {
+    expect(currencyKind(cur('GBP', 'جنيه استرليني'))).toBe('other');
+    expect(currencyKind(cur('4', 'جنيه استرلينى'))).toBe('other');
+    expect(currencyKind(cur('CAD', 'دولار كندي'))).toBe('other');
+    expect(currencyKind(cur('AUD', 'Australian dollar'))).toBe('other');
+    // «us» is what fold leaves of «US$» — not a currency on its own.
+    expect(currencyKind(cur('9', 'US'))).toBe('other');
+  });
+
+  it('counts a contradiction with the others rather than guessing', () => {
+    expect(currencyKind(cur('2', 'دولار', ['EGP']))).toBe('other');
+  });
+
+  it('counts a currency the catalog cannot name yet with the others', () => {
+    expect(currencyKind(undefined)).toBe('other');
+  });
+
+  it('finds the catalog’s pound and dollar for the pills’ labels', () => {
+    const catalog = [cur('3', 'يورو'), cur('2', 'دولار'), cur('1', 'مصري')];
+    expect(currencyOfKind(catalog, 'pound')?.name).toBe('مصري');
+    expect(currencyOfKind(catalog, 'dollar')?.name).toBe('دولار');
+    expect(currencyOfKind([cur('3', 'يورو')], 'pound')).toBeUndefined();
+  });
+
+  it('prints only an alphabetic code as a unit — never a legacy number', () => {
+    expect(currencyUnit({ code: 'EUR' })).toBe('EUR');
+    expect(currencyUnit({ code: 'gbp' })).toBe('GBP');
+    expect(currencyUnit({ code: '3' })).toBe('');
+    expect(currencyUnit({ code: '٣' })).toBe('');
+    expect(currencyUnit({ code: 'يورو' })).toBe('');
+    expect(currencyUnit(undefined)).toBe('');
+  });
+});
+
+describe('the figures over the production catalog', () => {
+  const PRODUCTION: Record<string, { code: string; name: string; legacyAliases: string[] }> = {
+    egp: { code: '1', name: 'مصري', legacyAliases: [] },
+    usd: { code: '2', name: 'دولار', legacyAliases: [] },
+    eur: { code: '3', name: 'يورو', legacyAliases: [] },
+    sar: { code: '4', name: 'ريال سعودي', legacyAliases: [] },
+  };
+  const currencyOf = (id: string) => PRODUCTION[id];
+  // The owner's screenshot: 55,000,000 مصري, 300,000 دولار, 450,000 يورو.
+  const rows = [
+    shipment({
+      id: 'a',
+      lines: [
+        { currencyId: 'eur', amount: 450_000 },
+        { currencyId: 'usd', amount: 300_000 },
+        { currencyId: 'egp', amount: 55_000_000 },
+      ],
+    }),
+  ];
+
+  it('keeps the pound and the dollar apart, and «عملات أخرى» is the euro alone', () => {
+    const figures = boardFigures(rows, currencyOf);
+    expect(figures.egp).toBe(55_000_000);
+    expect(figures.usd).toBe(300_000);
+    expect(figures.others).toEqual([{ currencyId: 'eur', amount: 450_000 }]);
+    expect(figures.othersSum).toBe(450_000);
+  });
+
+  it('orders a row’s money by the catalog’s codes, read as numbers, until somebody drags it', () => {
+    const more = [...rows, shipment({ lines: [{ currencyId: 'sar', amount: 9 }] })];
+    // «1» مصري, «2» دولار, «3» يورو, «4» ريال سعودي — the order the owner typed them in.
+    expect(orderedBoardTotals(more, currencyOf).map((total) => total.currencyId)).toEqual([
+      'egp',
+      'usd',
+      'eur',
+      'sar',
+    ]);
+  });
+
+  it('follows the order dragged on the reference-data screen once there is one', () => {
+    const dragged = (id: string) => {
+      const places: Record<string, number> = { sar: 0, eur: 1, usd: 2, egp: 3 };
+      const currency = PRODUCTION[id];
+      return currency === undefined ? undefined : { ...currency, sortOrder: places[id] ?? null };
+    };
+    const more = [...rows, shipment({ lines: [{ currencyId: 'sar', amount: 9 }] })];
+    expect(orderedBoardTotals(more, dragged).map((total) => total.currencyId)).toEqual([
+      'sar',
+      'eur',
+      'usd',
+      'egp',
+    ]);
+    // The pills do not move: the pound and the dollar are still the pound and the dollar.
+    const figures = boardFigures(more, dragged);
+    expect([figures.egp, figures.usd]).toEqual([55_000_000, 300_000]);
+    expect(figures.others.map((total) => total.currencyId)).toEqual(['sar', 'eur']);
+  });
+});
+
+describe('otherCurrencies — what the «عملات أخرى» dialog shows', () => {
+  // Arranged on the reference-data screen: the riyal dragged first, the euro — the largest sum
+  // here — last.
+  const CATALOG: Record<string, { code: string; name: string; sortOrder: number | null }> = {
+    egp: { code: '1', name: 'مصري', sortOrder: 1 },
+    usd: { code: '2', name: 'دولار', sortOrder: 2 },
+    eur: { code: '3', name: 'يورو', sortOrder: 4 },
+    gbp: { code: 'GBP', name: 'جنيه استرليني', sortOrder: 3 },
+    sar: { code: 'SAR', name: 'ريال', sortOrder: 0 },
+  };
+  const currencyOf = (id: string) => CATALOG[id];
+  const rows = [
+    shipment({
+      id: 'a',
+      lines: [
+        { currencyId: 'egp', amount: 1_000 },
+        { currencyId: 'gbp', amount: 10_000 },
+        { currencyId: 'gbp', amount: 5_000 },
+      ],
+    }),
+    shipment({ id: 'b', lines: [{ currencyId: 'eur', amount: 60_000 }] }),
+    shipment({
+      id: 'c',
+      lines: [
+        { currencyId: 'eur', amount: 15_000 },
+        { currencyId: 'sar', amount: 15_000 },
+      ],
+    }),
+    shipment({ id: 'd', lines: [{ currencyId: 'usd', amount: 500 }] }),
+  ];
+  const result = otherCurrencies(rows, currencyOf);
+
+  it('lists exactly the currencies the figure counted — never the pound or the dollar', () => {
+    expect(result.cards.map((card) => card.currencyId).sort()).toEqual(['eur', 'gbp', 'sar']);
+    expect(result.sum).toBe(boardFigures(rows, currencyOf).othersSum);
+    expect(result.sum).toBe(105_000);
+  });
+
+  it('lists them in the catalog’s order, as every list of currencies reads — not by size', () => {
+    // يورو is 75,000 of the 105,000, yet it was dragged last; ريال was dragged first.
+    expect(result.cards.map((card) => card.currencyId)).toEqual(['sar', 'gbp', 'eur']);
+  });
+
+  it('counts the SHIPMENTS carrying each currency, not its lines', () => {
+    const by = Object.fromEntries(result.cards.map((card) => [card.currencyId, card.shipments]));
+    // Two pound-sterling lines on one shipment are one shipment.
+    expect(by).toEqual({ eur: 2, gbp: 1, sar: 1 });
+    // a, b and c carry some other currency; d carries only dollars.
+    expect(result.shipments).toBe(3);
+  });
+
+  it('gives each its share of the figure', () => {
+    const shares = result.cards.map((card) => card.share);
+    expect(result.cards.find((card) => card.currencyId === 'eur')?.share).toBeCloseTo(
+      75_000 / 105_000,
+    );
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBeCloseTo(1);
+  });
+
+  it('is empty for rows with no other currency', () => {
+    expect(otherCurrencies([rows[3]!], currencyOf)).toEqual({ cards: [], sum: 0, shipments: 0 });
+  });
+});
+
+describe('the van filter — «ضيف كود العربيه ف الفلاتر»', () => {
+  const VANS: Record<string, string | null> = { a: '150', b: 'ن ص 1237', c: null };
+  const rows = [shipment({ id: 'a' }), shipment({ id: 'b' }), shipment({ id: 'c' })];
+  const byVan = (vehicle: string) =>
+    filterDayBoard(
+      rows,
+      { ...EMPTY_DAY_BOARD_FILTERS, vehicle },
+      bankNameOf,
+      branchTextOf,
+      () => '',
+      (row) => VANS[row.id] ?? '',
+    ).map((r) => r.id);
+
+  it('matches the code the «السيارة» column prints, by fragment', () => {
+    expect(byVan('15')).toEqual(['a']);
+    expect(byVan('237')).toEqual(['b']);
+    expect(byVan('ن ص')).toEqual(['b']);
+  });
+
+  it('reads Arabic-Indic digits as the digits they are', () => {
+    expect(byVan('١٥٠')).toEqual(['a']);
+  });
+
+  it('names several vans at once, as every vehicle-code box does', () => {
+    expect(byVan('150 - 1237')).toEqual(['a', 'b']);
+  });
+
+  it('drops a row with no van yet, and narrows nothing when empty', () => {
+    expect(byVan('1')).toEqual(['a', 'b']);
+    expect(byVan('')).toEqual(['a', 'b', 'c']);
+    expect(byVan('   ')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('counts as a filter the reset can clear', () => {
+    expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, vehicle: '150' })).toBe(true);
+  });
+});
+
+describe('the filters in the URL — «ارتب الفلاتر على حسب عواميد الجدول»', () => {
+  it('names them in the table’s column order', () => {
+    // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | قائد الطاقم | (التاريخ) | النوع | الحالة |
+    // ملاحظات — the day is the page's, not a filter. «الحالة» is two params, one per board: the
+    // delivery (the day board and the history) and the محصنة's stage (the secured screen).
+    expect([...DAY_BOARD_FILTER_PARAMS]).toEqual([
+      'vehicle',
+      'bank',
+      'origin',
+      'destination',
+      'area',
+      'captain',
+      'type',
+      'received',
+      'stage',
+      'notes',
+    ]);
+  });
+
+  it('reads every filter from its param', () => {
+    const params = new URLSearchParams(
+      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&notes=e&date=2026-11-01',
+    );
+    expect(readDayBoardFilters(params)).toEqual({
+      vehicle: '150',
+      bank: 'أهل',
+      origin: 'a',
+      destination: 'b',
+      area: 'c',
+      captain: 'd',
+      type: 'secured',
+      received: 'no',
+      stage: 'inVault',
+      notes: 'e',
+    });
+    expect(readDayBoardFilters(new URLSearchParams())).toEqual(EMPTY_DAY_BOARD_FILTERS);
+  });
+
+  it('reads a hand-edited select value as no filter, not as one nothing matches', () => {
+    const filters = readDayBoardFilters(new URLSearchParams('type=all&received=maybe&stage=lost'));
+    expect(filters.type).toBe('');
+    expect(filters.received).toBe('');
+    expect(filters.stage).toBe('');
+  });
+
+  // A param with no box on screen must not narrow the table: the day board offers «التسليم» and
+  // not the stage; the secured screen the stage, and neither «التسليم» nor «النوع» (every row on
+  // it is a محصنة).
+  it('reads only the filters a board offers, and a page remembers exactly those', () => {
+    const all = {
+      ...EMPTY_DAY_BOARD_FILTERS,
+      type: 'daily' as const,
+      received: 'yes' as const,
+      stage: 'inVault' as const,
+      bank: 'أهل',
+    };
+    expect(offeredFilters(all, 'shipments')).toEqual({ ...all, stage: '' });
+    expect(offeredFilters(all, 'secured')).toEqual({ ...all, type: '', received: '' });
+    expect(boardFilterParams('shipments')).toEqual(
+      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'stage'),
+    );
+    expect(boardFilterParams('secured')).toEqual(
+      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'type' && name !== 'received'),
+    );
+  });
+
+  // The vault queue offers «لم يتم التسليم» only with «الكل»: a stage its box does not offer is
+  // read as no stage, rather than as a filter nothing on screen explains.
+  it('reads a stage the board’s box does not offer as no stage', () => {
+    const waiting = { ...EMPTY_DAY_BOARD_FILTERS, stage: 'awaitingPickup' as const, bank: 'أهل' };
+    expect(offeredFilters(waiting, 'secured', ['withCaptain', 'inVault'])).toEqual({
+      ...waiting,
+      stage: '',
+    });
+    expect(offeredFilters(waiting, 'secured', ['awaitingPickup', 'withCaptain'])).toEqual(waiting);
+    // No list given: every stage is read, as before.
+    expect(offeredFilters(waiting, 'secured')).toEqual(waiting);
+  });
+});
+
+// «اليوم التشغيلى هيظهر فيها اليومى والمحصنة اللى اليوم بتاعها فى اليوم اللى هتخرج فيه»: a محصنة is on
+// the day board whatever its stage, and its status cell reads the stage — so «التسليم» must answer
+// for it by what that cell says, and the secured screen's «الحالة» by the stage itself.
+describe('the status filters over secured rows', () => {
+  const at = '2026-11-10T09:30:00.000Z';
+  const row = (
+    id: string,
+    over: Partial<OperationsShipmentDto>,
+    extra: Partial<OperationsDayBoardShipmentDto>,
+  ): OperationsDayBoardShipmentDto => ({
+    ...shipment({ id, ...over }),
+    origin: null,
+    destination: null,
+    crew: null,
+    captainDeliveredAt: null,
+    securedStage: null,
+    pickedUpBy: null,
+    pickedUpAt: null,
+    ...extra,
+  });
+  const ROWS = [
+    row('daily-waiting', {}, {}),
+    row('daily-captain', {}, { captainDeliveredAt: at }),
+    row('daily-desk', { status: 'completed' }, {}),
+    row('s-awaiting', { shipmentType: 'secured' }, { securedStage: 'awaitingPickup' }),
+    row(
+      's-captain',
+      { shipmentType: 'secured' },
+      { securedStage: 'withCaptain', pickedUpBy: 'captain', pickedUpAt: at },
+    ),
+    // Round 10 — the desk confirmed the pickup instead: «تم الاستلام من العمليات», yellow too.
+    row(
+      's-operations',
+      { shipmentType: 'secured' },
+      { securedStage: 'withOperations', pickedUpBy: 'operations', pickedUpAt: at },
+    ),
+    row('s-vault', { shipmentType: 'secured', status: 'inVault' }, { securedStage: 'inVault' }),
+    // On the road, not delivered yet — «خرجت للتسليم».
+    row(
+      's-road',
+      { shipmentType: 'secured', status: 'dispatched' },
+      { securedStage: 'dispatched' },
+    ),
+    // On the road, and its delivery captain has pressed «تم التسليم» in the app — the cell says
+    // «تم التسليم» on a yellow row, as a daily row the captain delivered (`shownStage`), and its
+    // stage is still `dispatched`.
+    row(
+      's-road-captain',
+      { shipmentType: 'secured', status: 'dispatched' },
+      { securedStage: 'dispatched', captainDeliveredAt: at },
+    ),
+    row('s-done', { shipmentType: 'secured', status: 'completed' }, { securedStage: 'completed' }),
+  ];
+  const ids = (over: Partial<typeof EMPTY_DAY_BOARD_FILTERS>): string[] =>
+    filterDayBoard(ROWS, { ...EMPTY_DAY_BOARD_FILTERS, ...over }, bankNameOf, () => '').map(
+      (r) => r.id,
+    );
+
+  it('«تم التسليم» finds a محصنة only once it is delivered — its cell says so then, and only then', () => {
+    expect(ids({ received: 'yes' })).toEqual([
+      'daily-captain',
+      'daily-desk',
+      's-road-captain',
+      's-done',
+    ]);
+    expect(ids({ received: 'no' })).toEqual([
+      'daily-waiting',
+      's-awaiting',
+      's-captain',
+      's-operations',
+      's-vault',
+      's-road',
+    ]);
+  });
+
+  it('saysDelivered reads the stage of a secured row and who delivered a daily one', () => {
+    expect(saysDelivered({ status: 'draft', securedStage: 'withCaptain' })).toBe(false);
+    expect(saysDelivered({ status: 'draft', securedStage: 'withOperations' })).toBe(false);
+    expect(saysDelivered({ status: 'dispatched', securedStage: 'dispatched' })).toBe(false);
+    // Its delivery captain delivered it from the app: «تم التسليم» on a yellow row, as a daily row.
+    expect(
+      saysDelivered({ status: 'dispatched', securedStage: 'dispatched', captainDeliveredAt: at }),
+    ).toBe(true);
+    // Before it leaves the vault, no captain's «delivered» can make it say so.
+    expect(
+      saysDelivered({ status: 'inVault', securedStage: 'inVault', captainDeliveredAt: at }),
+    ).toBe(false);
+    expect(saysDelivered({ status: 'completed', securedStage: 'completed' })).toBe(true);
+    // No stage (a daily row, or a plain shipment): the daily rule.
+    expect(saysDelivered({ status: 'draft', securedStage: null, captainDeliveredAt: at })).toBe(
+      true,
+    );
+    expect(saysDelivered({ status: 'draft' })).toBe(false);
+  });
+
+  it('the stage filter keeps that one stage — and no daily row, which has none', () => {
+    expect(ids({ stage: 'withCaptain' })).toEqual(['s-captain']);
+    // The two yellows are two stages: the desk's pickup is found apart from the captain's.
+    expect(ids({ stage: 'withOperations' })).toEqual(['s-operations']);
+    expect(ids({ stage: 'inVault' })).toEqual(['s-vault']);
+    expect(ids({ stage: 'awaitingPickup' })).toEqual(['s-awaiting']);
+    // The stage is the server's: one its delivery captain delivered is still on the road.
+    expect(ids({ stage: 'dispatched' })).toEqual(['s-road', 's-road-captain']);
+    // A plain shipment carries no stage to match.
+    expect(run([shipment({ shipmentType: 'secured' })], { stage: 'awaitingPickup' })).toEqual([]);
+  });
+
+  it('a stage narrows the board as any filter does', () => {
+    expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, stage: 'dispatched' })).toBe(true);
   });
 });

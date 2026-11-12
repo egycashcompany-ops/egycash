@@ -1,4 +1,4 @@
-// Secured shipments register (B4) — the legacy `/mohsana` screen.
+// «الشحنات المحصنة» (B4) — the legacy `/mohsana` screen, on the day board's own board.
 //
 // WHAT THE LEGACY SCREEN WAS (discovery §7.1, contad_app.js:648-960): every secured shipment not
 // yet completed, with NO DATE FILTER at all — an open working list, not a day's work. Shipments
@@ -7,158 +7,110 @@
 //
 // PARITY: the unbounded, all-time backlog is preserved — it is what makes this a backlog rather
 // than a board. NORMALIZED: the orphan `received` toggle is gone (Q23 — one lifecycle), so this
-// screen shows status and leaves confirming delivery to the day board, where the legacy system
-// actually did it.
-import { useState } from 'react';
+// screen offers no delivery ✓: a محصنة's delivery is confirmed on the day board, where the legacy
+// system actually did it. (Its PICKUP ✓ is this screen's since Round 10 — below.)
+//
+// «شاشة الشحنات المحصنة عاوز شكلها يكون زى شاشة اليوم التشغيلى بس هنزود التاريخ التسليم يظهر فى
+// الجدول والحالة لم التسليم و تم الاستلام من القائد و بالخزينة»: the screen IS the day board —
+// the figures and their «عملات أخرى», the one-row filter bar, the dark table with its hover cards,
+// «السجل», the receipt image, edit and delete — drawn by the shared board
+// (`components/ShipmentsBoard.tsx`), with what only this screen has:
+//
+//   · «تاريخ التسليم», a column beside the date, which is then named «تاريخ الاستلام»;
+//   · the status of each row is its STAGE, and so is its colour — white until somebody collects
+//     it, yellow once the captain has («تم الاستلام من القائد») or the desk has confirmed it («تم
+//     الاستلام من العمليات»), green once the vault has it («بالخزينة»), blue on its way out («خرجت
+//     للتسليم») — and the status filter offers those stages;
+//   · no «النوع», column or filter: every row here is a محصنة;
+//   · «إضافة محصنة» books a SECURED shipment («الفورم بتاعت الاضافى لما اضيف اتوماتيك محصنة»),
+//     its delivery date the day after collection unless changed (`ShipmentFormDialog`).
+//
+// ROUND 10 — THE DESK'S PICKUP ✓, THE LOCK, THE CANCELLED RECEIPT. «فى شاشة المحصنات ممكن القائد اللى
+// يعمل صح انه استلم او العمليات ف لو قائد تم الاستلام من القائد و لو العمليات تم الاستلام من العمليات
+// وهتبقى صفر»: this screen now has a ✓ of its own after all — not the delivery ✓ (that stays the day
+// board's) but the PICKUP's (`canConfirmPickup`): on a white row the desk confirms collecting it
+// from the bank, «تم الاستلام من العمليات», and the row turns yellow for the vault to receive; pressed
+// on a yellow row it takes the ✓ back — the desk's own, or the captain's from the app («لو القائد عمل
+// صح ممكن العمليات تشيلها بس لو العمليات عملت صح القائد مينفعش يشيلها»), confirmed first — until the
+// vault receives. A green row is LOCKED (no edit, delete or photo change, on every board), and for
+// whoever holds the special grant it offers «إلغاء استلام الخزينة» (`canCancelReceipt`), which turns
+// it yellow again. All three are the board's own acts (`ShipmentsBoard`).
+//
+// The rows are the SERVER's (`GET /operations/secured/board`): every open محصنة as a board row —
+// its branches with their banks, its stage, and the crew of the leg it is on: the pickup crew
+// while it is on its way to the vault, the delivery crew once it is in it (none until the vault
+// names one). Counted before it is read: past `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS` open ones the
+// server refuses rather than cutting the list short, and the refusal is said in the table's place.
+// The table is cut into pages; the filters and figures run over every row.
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type OperationsShipmentDto } from '@ecms/contracts';
+import { OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Pagination } from '../../../shared/ui/Pagination';
-import { Button } from '../../../shared/ui/Button';
-import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { formatAmount, formatDate } from '../../../shared/lib/format';
+import { PageContainer } from '../../../platform/layout/PageContainer';
+import { formatNumber } from '../../../shared/lib/format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAppSelector } from '../../../store';
-import {
-  useOperationsBankBranches,
-  useOperationsBanks,
-  useOperationsCurrencies,
-  useSecuredBacklog,
-} from '../api/operations-queries';
-import { totalsByCurrency } from '../lib/day-board';
-import { ShipmentStatusBadge } from '../components/ShipmentBadges';
-import { ShipmentFormDialog } from '../components/ShipmentFormDialog';
+import { useOperationsSecuredBoard } from '../api/operations-queries';
+import { ShipmentsBoard } from '../components/ShipmentsBoard';
+import { isHistoryTooLarge } from '../lib/shipment-history';
 
-const DEFAULT_PAGE_SIZE = 25;
+/**
+ * Remembered across visits: the filters — the screen has no period, it is every open محصنة. The
+ * day board's list without «النوع» and with the stage in place of «التسليم»: exactly the filters
+ * this board reads (`boardFilterParams('secured')`) — day-board-filters.spec holds them together.
+ */
+const REMEMBERED_FILTERS = [
+  'vehicle',
+  'bank',
+  'origin',
+  'destination',
+  'area',
+  'captain',
+  'stage',
+  'notes',
+] as const;
 
 export const SecuredBacklogPage = (): JSX.Element => {
   const t = useT();
-  const can = useCan();
-  const locale = useAppSelector((s) => s.locale.locale);
-  const [sp, setSp] = useSearchParams();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const search = useSearchParams();
+  const [sp, setSp] = search;
 
-  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
-  const backlog = useSecuredBacklog({ page, pageSize: DEFAULT_PAGE_SIZE, sortDir: 'desc' });
-  const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
-  const branches = useOperationsBankBranches({ page: 1, pageSize: MAX_PAGE_SIZE });
-  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
+  const board = useOperationsSecuredBoard();
 
-  const [editing, setEditing] = useState<OperationsShipmentDto | null>(null);
-  const [creating, setCreating] = useState(false);
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const nameOf = (list: { id: string }[] | undefined, id: string, key: string): string =>
-    ((list ?? []).find((x) => x.id === id) as Record<string, string> | undefined)?.[key] ?? '—';
-
-  const columns: Column<OperationsShipmentDto>[] = [
-    {
-      key: 'bank',
-      header: t('operations.shipment.mainBank'),
-      render: (row) => nameOf(banks.data?.items, row.mainBankId, 'opsName'),
-    },
-    {
-      key: 'origin',
-      header: t('operations.shipment.origin'),
-      render: (row) => nameOf(branches.data?.items, row.originBranchId, 'name'),
-    },
-    {
-      key: 'destination',
-      header: t('operations.shipment.destination'),
-      render: (row) => nameOf(branches.data?.items, row.destinationBranchId, 'name'),
-    },
-    {
-      key: 'amount',
-      header: t('operations.shipment.amount'),
-      render: (row) => (
-        <div className="space-y-0.5">
-          {totalsByCurrency(row).map((total) => (
-            <div key={total.currencyId} className="whitespace-nowrap tabular-nums">
-              {formatAmount(total.amount, locale)}{' '}
-              {nameOf(currencies.data?.items, total.currencyId, 'name')}
-            </div>
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: 'collectionDate',
-      header: t('operations.shipment.collectionDate'),
-      render: (row) => formatDate(row.collectionDate, locale),
-    },
-    {
-      key: 'deliveryDate',
-      header: t('operations.shipment.deliveryDate'),
-      render: (row) => (row.deliveryDate === null ? '—' : formatDate(row.deliveryDate, locale)),
-    },
-    {
-      key: 'status',
-      header: t('operations.common.status'),
-      render: (row) => <ShipmentStatusBadge status={row.status} />,
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (row) =>
-        can('operationsShipment.edit') ? (
-          <button
-            type="button"
-            aria-label={t('common.edit')}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-            onClick={() => setEditing(row)}
-          >
-            <EditIcon className="h-4 w-4" />
-          </button>
-        ) : null,
-    },
-  ];
+  // A refusal replaces the rows AND the figures, as on the history: a refetch the server refuses
+  // keeps its last answer beside the error, and figures summed from it would sit above a message
+  // saying the list was refused.
+  const tooLarge = isHistoryTooLarge(board.error);
+  const refusal = tooLarge
+    ? t('operations.secured.backlog.tooLarge', {
+        max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
+      })
+    : null;
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('operations.secured.backlog.title')}
-        actions={
-          can('operationsShipment.create') ? (
-            <Button onClick={() => setCreating(true)}>
-              <PlusIcon className="h-4 w-4" />
-              {t('operations.secured.backlog.add')}
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <DataTable
-        columns={columns}
-        rows={backlog.data?.items ?? []}
-        rowKey={(row) => row.id}
-        loading={backlog.isLoading}
-        error={backlog.error}
-        onRetry={() => void backlog.refetch()}
-        empty={t('operations.secured.backlog.empty')}
-      />
-      {backlog.data !== undefined && (
-        <Pagination
-          meta={backlog.data.meta}
-          onPageChange={(next) => {
-            const params = new URLSearchParams(sp);
-            params.set('page', String(next));
-            setSp(params);
-          }}
-        />
-      )}
-
-      <ShipmentFormDialog
-        // The secured register adds secured shipments, as legacy `/mohsana` did.
+    <PageContainer fullHeight>
+      <ShipmentsBoard
+        search={search}
+        shipments={tooLarge ? [] : (board.data?.shipments ?? [])}
+        crews={tooLarge ? [] : (board.data?.crews ?? [])}
+        loaded={!tooLarge && board.data !== undefined}
+        loading={board.isLoading}
+        error={tooLarge ? null : board.error}
+        onRetry={() => void board.refetch()}
+        // Secured shipments are booked here, as on legacy /mohsana — and only secured ones.
+        canCreate
         createType="secured"
-        open={creating || editing !== null}
-        shipment={editing}
-        defaultDate={new Date().toISOString().slice(0, 10)}
-        banks={banks.data?.items ?? []}
-        currencies={currencies.data?.items ?? []}
-        onClose={() => {
-          setCreating(false);
-          setEditing(null);
-        }}
+        canToggleReceived={false}
+        // «لو العمليات تم الاستلام من العمليات»: the desk's pickup ✓ and its undo, until the vault.
+        canConfirmPickup
+        // «بس صلاحية خاصة تقدر تلغى استلام الخزينة» — on a green row, for whoever holds that grant.
+        canCancelReceipt
+        kind="secured"
+        empty={t('operations.secured.backlog.empty')}
+        refusal={refusal}
+        paged
       />
     </PageContainer>
   );

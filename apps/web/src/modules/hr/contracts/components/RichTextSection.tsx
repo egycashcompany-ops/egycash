@@ -3,7 +3,7 @@
 // so nothing an author produces here is stripped on save. Variables are plain
 // `{{key}}` text — the parent inserts them at the caret via the exposed editor.
 import { useEffect } from 'react';
-import { EditorContent, useEditor, type Editor } from '@tiptap/react';
+import { EditorContent, Extension, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -13,6 +13,42 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
+
+/**
+ * The layout classes a printed paper may carry (A27 — the owner's papers as he prints them; the
+ * server allows exactly these, \`PAPER_CLASSES\`). Kept on the nodes that hold them, so editing such
+ * a paper here keeps its layout instead of dropping it on save.
+ */
+const PAPER_CLASSES = new Set([
+  'plain', 'cols', 'dots', 'band', 'foot', 'rule', 'basmala', 'star',
+  't10', 't12', 't14', 't16', 't20',
+  'l1', 'l15', 'l2', 'l3',
+  'cells', 'c1', 'c2', 'c3', 'c4', 'c8', 'c9', 'c14', 'mini', 'divider', 'ownhead', 'nosi', 'newpage',
+]);
+
+const paperClasses = (value: string | null): string | null => {
+  const kept = (value ?? '').split(/\s+/).filter((name) => PAPER_CLASSES.has(name));
+  return kept.length === 0 ? null : [...new Set(kept)].join(' ');
+};
+
+const PaperClasses = Extension.create({
+  name: 'paperClasses',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading', 'bulletList', 'orderedList', 'table', 'tableCell', 'tableHeader'],
+        attributes: {
+          class: {
+            default: null,
+            parseHTML: (element: HTMLElement) => paperClasses(element.getAttribute('class')),
+            renderHTML: (attributes: { class?: string | null }) =>
+              attributes.class == null ? {} : { class: attributes.class },
+          },
+        },
+      },
+    ];
+  },
+});
 
 const ToolButton = ({
   active = false,
@@ -69,11 +105,12 @@ export const RichTextSection = ({
         codeBlock: false,
       }),
       Underline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextAlign.configure({ types: ['heading', 'paragraph', 'tableCell', 'tableHeader'] }),
       Table.configure({ resizable: false }),
       TableRow,
       TableCell,
       TableHeader,
+      PaperClasses,
     ],
     content: value,
     editable: !disabled,

@@ -214,6 +214,53 @@ describe('the registry’s heavy topics and stale-only keys', () => {
     expect(isStaleOnlyKey(listKey('atm', 'leaders', { kind: 'options' }))).toBe(false);
     expect(isStaleOnlyKey(listKey('fleet', 'vehicles', { kind: 'done' }))).toBe(false);
     expect(isStaleOnlyKey(['atm', 'replenishments'])).toBe(false);
+    // The Operations shipments history — a whole range of day boards — is marked stale only; the
+    // day board itself, a single day, is still refetched.
+    expect(
+      isStaleOnlyKey(['operations', 'dayBoard', 'history', { from: '2026-11-01', to: '2026-11-11' }]),
+    ).toBe(true);
+    // ...and so are its deleted shipments, the same range over deleted rows. One shipment's log
+    // is a small read and is refetched like the day board, so an open log follows another desk.
+    expect(
+      isStaleOnlyKey(['operations', 'dayBoard', 'deleted', { from: '2026-11-01', to: '2026-11-11' }]),
+    ).toBe(true);
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'log', { id: 's1' }])).toBe(false);
+    expect(isStaleOnlyKey(listKey('operations', 'dayBoard', { date: 'today' }))).toBe(false);
+    // The secured screen — every open محصنة — is refetched like the day board: its rows turn yellow
+    // and green as the captain and the vault act from other desks («realtime like the day board»).
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'secured'])).toBe(false);
+    // The vault's receive queue is refetched too — and the vault's own topic reaches it, for a
+    // treasurer who holds the vault grant without the shipments one.
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'vaultQueue', { all: false }])).toBe(false);
+    expect(keysForTopic('operations.vaultCustody')).toContainEqual([
+      'operations',
+      'dayBoard',
+      'vaultQueue',
+    ]);
+    // «صرف الخزينة» (Round 10): every محصنة in the vault, refetched like the queue — and reached by
+    // the vault's own topic, which carries a receipt, a cancelled receipt and a release.
+    expect(isStaleOnlyKey(['operations', 'dayBoard', 'securedDispatch', { date: 'all' }])).toBe(
+      false,
+    );
+    expect(keysForTopic('operations.vaultCustody')).toContainEqual([
+      'operations',
+      'dayBoard',
+      'securedDispatch',
+    ]);
+    // «تجميع الخزينة» (Round 11): the period's roll-up, keyed by its `from`/`to` — a receipt or a
+    // cancelled one on another desk moves this month's figures, so it is refetched on screen like
+    // the vault's other reads, by the vault's own topic and by a shipment's.
+    const vaultRollUp = listKey('operations', 'vaultReport', {
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+    expect(isStaleOnlyKey(vaultRollUp)).toBe(false);
+    const reaches = (prefix: readonly unknown[]): boolean =>
+      prefix.every((part, index) => vaultRollUp[index] === part);
+    // ...and by a bank's: its rows carry the bank's name, as the bank report's do.
+    for (const topic of ['operations.vaultCustody', 'operations.shipment', 'operations.bank']) {
+      expect(keysForTopic(topic).some(reaches), topic).toBe(true);
+    }
   });
 });
 

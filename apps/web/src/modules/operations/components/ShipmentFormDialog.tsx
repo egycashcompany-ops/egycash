@@ -14,6 +14,22 @@
 // «المنطقة» is filled from the TO branch's operations area when that branch is picked, and stays
 // editable — legacy main_ops.ejs:520-531.
 //
+// «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a new shipment opens on today and cannot be dated
+// earlier; an edit cannot move a date earlier than the day it was on (`shipmentDateProblem`) — the
+// collection date, and a secured shipment's delivery date, as the server holds them. The date boxes
+// offer no earlier day, and one typed earlier is said in words on the box, and again if saved —
+// before anything is sent.
+//
+// A محصنة's TWO DATES — «تاريخ المحصنة اجبارى … وتاريخ التسليم تانى يوم الاستلام افتراضى وممكن
+// يغير»: the collection date («تاريخ الاستلام» on a محصنة) is required, as on every shipment; the
+// delivery date opens on the day after it and FOLLOWS it while the person has not picked another
+// (`followCollectionDate`), may be moved, is required of a new one, and never falls before the
+// collection date (`deliveryDateProblem` — the server refuses the same,
+// `OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION`).
+//
+// «تتبّع أرقام الأوراق النقدية» is gone from the form — «ومحتاج اشيل دا». The API keeps the field:
+// a new shipment is sent `false` (its default), and an edit leaves whatever is stored untouched.
+//
 // «اسم القائد وكود العربيه»: two boxes over ONE choice — a crew row of the collection date's plan.
 // Picking a vehicle names the captain on it; picking a captain names his vehicle. Only on CREATE:
 // re-crewing a saved shipment moves a stop between captains' ordered days, which is not an edit.
@@ -37,7 +53,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
 import { Combobox } from '../../../shared/ui/Combobox';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
-import { Checkbox, Input, Select, Textarea } from '../../../shared/ui/form';
+import { Input, Select, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -71,11 +87,23 @@ import {
   vehiclesOf,
 } from '../lib/dispatch-crew';
 import {
+  SHIPMENT_DATE_PROBLEM_KEY,
   areaOfDestination,
+  defaultDeliveryDate,
+  deliveryDateMin,
+  deliveryDateProblem,
+  deliveryDateRequired,
+  earliestShipmentDate,
+  followCollectionDate,
   followMainBank,
   secondaryBankFor,
+  shipmentDateProblem,
+  isLockedRefusal,
   shipmentSaveErrorKey,
+  type ShipmentDateProblem,
 } from '../lib/shipment-form';
+import { cairoToday } from '../lib/shipment-history';
+import { compareCurrencies, currencyOfKind } from '../lib/day-board';
 import { BankBranchDialog } from './CatalogDialogs';
 import { ShipmentBranchSide } from './ShipmentBranchSide';
 import { SHIPMENT_PATH } from './shipment-icons';
@@ -115,13 +143,11 @@ export const deliveryDateFor = (shipmentType: OperationsShipmentType, raw: strin
 
 /**
  * The currency a new line starts on: the domestic one — legacy's form opened on «مصري»
- * (main_ops.ejs:376-387). Found by its code (`EGP`, as the reports know it) or a legacy alias.
+ * (main_ops.ejs:376-387). Found the way the board's figures find it (`currencyKind`): by its code,
+ * its name or a legacy alias, so a catalog whose pound is coded «1» still opens on it.
  */
 export const defaultCurrencyId = (currencies: readonly OperationsCurrencyDto[]): string =>
-  (
-    currencies.find((c) => c.code === 'EGP') ??
-    currencies.find((c) => c.legacyAliases.includes('مصري') || c.name === 'مصري')
-  )?.id ?? '';
+  currencyOfKind(currencies, 'pound')?.id ?? '';
 
 const dateOnly = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
 
@@ -134,7 +160,6 @@ const boardRow = (
 export const ShipmentFormDialog = ({
   open,
   shipment,
-  defaultDate,
   banks,
   currencies,
   createType,
@@ -148,10 +173,11 @@ export const ShipmentFormDialog = ({
    * shipment's own type — it never changes (legacy had no path between the two).
    */
   createType: OperationsShipmentType;
-  /** A board row (with its branches resolved) or a plain shipment; null creates one. */
+  /**
+   * A board row (with its branches resolved) or a plain shipment; null creates one — dated today
+   * (Cairo), the earliest day a new shipment may have, whichever screen it is added from.
+   */
   shipment: OperationsShipmentDto | OperationsDayBoardShipmentDto | null;
-  /** The board's day — a new shipment defaults to the day being looked at, not to "today". */
-  defaultDate: string;
   banks: OperationsBankDto[];
   currencies: OperationsCurrencyDto[];
   onClose: () => void;
@@ -173,7 +199,6 @@ export const ShipmentFormDialog = ({
   const [areaName, setAreaName] = useState('');
   const [collectionDate, setCollectionDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
-  const [serialTracked, setSerialTracked] = useState(false);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([EMPTY_LINE]);
   const [crewKey, setCrewKey] = useState('');
@@ -185,7 +210,12 @@ export const ShipmentFormDialog = ({
   } | null>(null);
 
   const activeBanks = useMemo(() => banks.filter((bank) => bank.isActive), [banks]);
-  const activeCurrencies = useMemo(() => currencies.filter((c) => c.isActive), [currencies]);
+  // «ترتيب العملات … على حسب ترتيبها ف شاشة البيانات المرجعية»: the pickers list the currencies in
+  // the catalog's dragged order, whatever order the caller's list came in (`compareCurrencies`).
+  const activeCurrencies = useMemo(
+    () => currencies.filter((c) => c.isActive).sort(compareCurrencies),
+    [currencies],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -196,9 +226,16 @@ export const ShipmentFormDialog = ({
     setOriginBranchId(shipment?.originBranchId ?? '');
     setDestinationBranchId(shipment?.destinationBranchId ?? '');
     setAreaName(shipment?.areaName ?? '');
-    setCollectionDate(shipment === null ? defaultDate : dateOnly(shipment.collectionDate));
-    setDeliveryDate(shipment === null ? '' : dateOnly(shipment.deliveryDate));
-    setSerialTracked(shipment?.serialTracked ?? false);
+    const openedOn = cairoToday();
+    setCollectionDate(shipment === null ? openedOn : dateOnly(shipment.collectionDate));
+    // A new محصنة opens on the day after its collection — «تانى يوم الاستلام افتراضى».
+    setDeliveryDate(
+      shipment === null
+        ? createType === 'secured'
+          ? defaultDeliveryDate(openedOn)
+          : ''
+        : dateOnly(shipment.deliveryDate),
+    );
     setNotes(shipment?.notes ?? '');
     setLines(
       shipment === null || shipment.lines.length === 0
@@ -211,7 +248,7 @@ export const ShipmentFormDialog = ({
     setCrewKey('');
     setAdding(null);
     // `row` and the currencies are read on OPEN only — the form is the operator's from then on.
-  }, [open, shipment, defaultDate]);
+  }, [open, shipment]);
 
   // Editing a plain shipment (the secured backlog's): its origin branch names the from-bank.
   const heldOrigin = useBankBranch(open && editing && row === null ? originBranchId : '');
@@ -295,6 +332,53 @@ export const ShipmentFormDialog = ({
   };
   const vehicles = vehiclesOf(crewOptions);
 
+  // ── The dates' floor ───────────────────────────────────────────────────────────────────────────
+  //
+  // Today for a new date, the day it was on for an edit — a delivery date never set before is a new
+  // one. Today is read per render (cheap), so a form left open over midnight moves its floor with
+  // the clock.
+  const heldDate = shipment === null ? null : dateOnly(shipment.collectionDate);
+  const heldDeliveryDate = shipment?.deliveryDate == null ? null : dateOnly(shipment.deliveryDate);
+  const today = cairoToday();
+  const earliestDate = earliestShipmentDate(heldDate, today);
+  // A delivery date's calendar starts at the later of its own floor and the collection date.
+  const earliestDeliveryDate = deliveryDateMin(
+    earliestShipmentDate(heldDeliveryDate, today),
+    collectionDate,
+  );
+  /** The two dates as stored on the shipment being edited — null for a new one. */
+  const heldDates = heldDate === null ? null : { delivery: heldDeliveryDate, collection: heldDate };
+  /** Both dates' problems as of `day` — the delivery date only where the form has one. */
+  const dateProblems = (
+    day: string,
+  ): { collection: ShipmentDateProblem | null; delivery: ShipmentDateProblem | null } => ({
+    collection: shipmentDateProblem(collectionDate, heldDate, day),
+    delivery:
+      shipmentType === 'secured'
+        ? deliveryDateProblem(deliveryDate, collectionDate, heldDates, day)
+        : null,
+  });
+  const dateProblem = dateProblems(today);
+  const problemText = (problem: ShipmentDateProblem | null): string | undefined =>
+    problem === null ? undefined : t(SHIPMENT_DATE_PROBLEM_KEY[problem]);
+
+  /**
+   * A new محصنة's delivery date follows its collection date until the person picks one
+   * (`followCollectionDate`); an edit's dates are the person's from the start.
+   */
+  const changeCollectionDate = (next: string): void => {
+    if (!editing && shipmentType === 'secured') {
+      setDeliveryDate((current) => followCollectionDate(current, collectionDate, next));
+    }
+    setCollectionDate(next);
+  };
+  const needsDeliveryDate = deliveryDateRequired(shipmentType, heldDeliveryDate, !editing);
+  // On a محصنة the collection date is named for what it is — the day it is collected from the bank —
+  // beside «تاريخ التسليم»; a daily shipment has the one date, «تاريخ الشحنة».
+  const collectionLabel = t(
+    shipmentType === 'secured' ? 'operations.board.collectedOn' : 'operations.shipment.form.date',
+  );
+
   // ── Required fields ────────────────────────────────────────────────────────────────────────────
   const required = useRequiredFields(
     [
@@ -307,18 +391,32 @@ export const ShipmentFormDialog = ({
       },
       {
         key: 'collectionDate',
-        label: t('operations.shipment.form.date'),
+        label: collectionLabel,
         ok: collectionDate !== '',
       },
+      // A new محصنة's delivery date — it opens filled in (the day after collection), so this only
+      // ever names one the person emptied. Not an old محصنة stored without one (legacy never
+      // required it, receive_mohsana.ejs:644): a date invented to get past the form would put it
+      // on that day's dispatch list (`deliveryDateRequired`).
+      {
+        key: 'deliveryDate',
+        label: t('operations.shipment.deliveryDate'),
+        ok: !needsDeliveryDate || deliveryDate !== '',
+      },
       { key: 'amount', label: t('operations.shipment.form.amount'), ok: hasUsableLine(lines) },
-      // NOT the delivery date of a secured shipment: the contract keeps it nullable, legacy never
-      // required it (receive_mohsana.ejs:644), and a date invented to get past the form would put
-      // the shipment on that day's dispatch list.
     ],
     open,
   );
 
   const submit = async (): Promise<void> => {
+    // Refused here first, in words, rather than sent to be refused by the server. Today is read
+    // again: the save may come after a midnight the last render did not see.
+    const problems = dateProblems(cairoToday());
+    const problem = problems.collection ?? problems.delivery;
+    if (problem !== null) {
+      toast.error(t(SHIPMENT_DATE_PROBLEM_KEY[problem]));
+      return;
+    }
     const core = {
       mainBankId,
       secondaryBankId: secondaryBankFor(mainBankId, toBankId),
@@ -330,7 +428,6 @@ export const ShipmentFormDialog = ({
       // which is exactly what the server coerces back.
       collectionDate: new Date(collectionDate),
       deliveryDate: deliveryDateFor(shipmentType, deliveryDate),
-      serialTracked,
       notes: notes.trim() === '' ? null : notes.trim(),
     };
     try {
@@ -338,6 +435,9 @@ export const ShipmentFormDialog = ({
         await create.mutateAsync({
           ...core,
           shipmentType,
+          // «تتبّع أرقام الأوراق النقدية» is no longer asked: a new shipment takes the field's
+          // default. An edit sends nothing for it, so whatever is stored stays.
+          serialTracked: false,
           // The VEHICLE IS NOT SENT. `crewAssignmentId` is a (day, vehicle) row, so the vehicle is
           // a fact the server reads off it — a client that named its own could claim a captain was
           // on a van he was never planned onto.
@@ -361,6 +461,11 @@ export const ShipmentFormDialog = ({
       // shared wording when the reason is not the values at all (a dropped connection, no rights).
       const key = shipmentSaveErrorKey(error);
       toast.error(key === null ? errorMessage(error, locale) : t(key));
+      // Round 10: the vault received this محصنة after the form was opened from a row read before
+      // its ✓ («ميقدر حد … يعدل عليها»). Nothing typed can be saved past that, so the form closes on
+      // its message — over a board the refusal re-reads (`useUpdateOperationsShipment`), where the
+      // row is now green and offers no edit.
+      if (isLockedRefusal(error)) onClose();
     }
   };
 
@@ -387,7 +492,14 @@ export const ShipmentFormDialog = ({
         onClose={() => {
           if (adding === null) onClose();
         }}
-        title={t(editing ? 'operations.shipment.edit' : 'operations.shipment.add')}
+        // A new محصنة says so — «إضافة محصنة», as the secured screen's button does.
+        title={t(
+          editing
+            ? 'operations.shipment.edit'
+            : shipmentType === 'secured'
+              ? 'operations.secured.backlog.add'
+              : 'operations.shipment.add',
+        )}
         subtitle={t('operations.shipment.form.subtitle')}
         icon={SHIPMENT_PATH.shipment}
         width="6xl"
@@ -443,16 +555,19 @@ export const ShipmentFormDialog = ({
               </div>
             </DesignField>
             <DesignField
-              label={t('operations.shipment.form.date')}
+              label={collectionLabel}
               required
               missing={required.isMissing('collectionDate')}
+              error={problemText(dateProblem.collection)}
               datePicker
             >
               <Input
                 type="date"
                 dir="ltr"
+                // The calendar offers no earlier day; one typed earlier is named under the box.
+                min={earliestDate}
                 value={collectionDate}
-                onChange={(e) => setCollectionDate(e.target.value)}
+                onChange={(e) => changeCollectionDate(e.target.value)}
                 tone={cn(box, MONO)}
                 data-shipment-date="true"
               />
@@ -461,14 +576,20 @@ export const ShipmentFormDialog = ({
               <DesignField
                 label={t('operations.shipment.deliveryDate')}
                 hint={t('operations.shipment.deliveryDateHint')}
+                required={needsDeliveryDate}
+                missing={required.isMissing('deliveryDate')}
+                error={problemText(dateProblem.delivery)}
                 datePicker
               >
                 <Input
                   type="date"
                   dir="ltr"
+                  // Not before its floor, nor before the collection date.
+                  min={earliestDeliveryDate}
                   value={deliveryDate}
                   onChange={(e) => setDeliveryDate(e.target.value)}
                   tone={cn(box, MONO)}
+                  data-shipment-delivery-date="true"
                 />
               </DesignField>
             )}
@@ -483,11 +604,6 @@ export const ShipmentFormDialog = ({
                 className={cn(selectBox, '!pe-4')}
               />
             </DesignField>
-            <Checkbox
-              label={t('operations.shipment.serialTracked')}
-              checked={serialTracked}
-              onChange={(e) => setSerialTracked(e.target.checked)}
-            />
           </DesignSection>
 
           <DesignSection
@@ -658,10 +774,11 @@ export const ShipmentFormDialog = ({
                         captain: row.crew.captainName ?? '—',
                         vehicle: row.crew.vehicleCode ?? '—',
                       })
-                    : // «No crew yet» is a fact only where this form KNOWS the legs: a day-board row
-                      // reports the pickup leg of a daily shipment. A secured row reports its delivery
-                      // leg (a pickup may exist), and a shipment opened from elsewhere (the secured
-                      // backlog) carries no legs at all — for those, say where the crew is set.
+                    : // «No crew yet» is said plainly only of a daily row, whose one leg the row
+                      // reports. A secured row reports the leg it is ON — the pickup on its way to the
+                      // vault, the delivery from the vault on — and its crews are named on the
+                      // vault's screens; a plain shipment carries no legs at all. For those, say
+                      // where the crew is set.
                       t(
                         row !== null && row.shipmentType === 'daily'
                           ? 'operations.shipment.form.crewNotOnEdit'

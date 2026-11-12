@@ -103,6 +103,8 @@ const opsRoutesOf = async (token: string): Promise<string[]> =>
 const ALL_OPS_ROUTES = [
   '/operations',
   '/operations/shipments',
+  // «سجل الشحنات» — the day board over a range of days, on the board's own grant.
+  '/operations/shipments/history',
   '/operations/crew-board',
   // الطاقم الثابت — the permanent crew each day's board is seeded from. No legacy equivalent, and
   // no permission of its own: deciding who crews which vehicle is one authority, said once here
@@ -111,7 +113,11 @@ const ALL_OPS_ROUTES = [
   '/operations/requirements',
   '/operations/attendance',
   '/operations/secured',
+  // Round 12 — «توزيع المحصنات», the day's محصنات onto the day's vans, on the secured screen's grant.
+  '/operations/secured/distribution',
   '/operations/vault/receive',
+  // Round 12 — «تسليم المحصنات», the vault handing each van its load, on the vault screens' grant.
+  '/operations/vault/handover',
   '/operations/vault/dispatch',
   '/operations/vault',
   '/operations/reports/vault',
@@ -207,7 +213,9 @@ describe('the catalog reaches the database (B7)', () => {
     expect(byRoute.get('/operations/requirements')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/attendance')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/secured')).toBe('operationsShipment.view');
+    expect(byRoute.get('/operations/secured/distribution')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/vault/receive')).toBe('operationsVault.view');
+    expect(byRoute.get('/operations/vault/handover')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/vault/dispatch')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/vault')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/reports/vault')).toBe('operationsVault.view');
@@ -251,12 +259,14 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     expect(await opsRoutesOf(token)).toEqual([]);
   });
 
-  it('8. gives a vault-only account exactly the four vault rows', async () => {
+  it('8. gives a vault-only account exactly the five vault rows', async () => {
     const token = await accountWith(['operationsVault.view']);
     expect((await opsRoutesOf(token)).sort()).toEqual(
       [
         '/operations/vault',
         '/operations/vault/dispatch',
+        // Round 12 — «تسليم المحصنات» is the vault's, like the receive screen above it.
+        '/operations/vault/handover',
         '/operations/vault/receive',
         '/operations/reports/vault',
       ].sort(),
@@ -279,13 +289,16 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     );
   });
 
-  it('10. gives a shipment-only account the home, the board, the backlog and the two reports', async () => {
+  it('10. gives a shipment-only account the home, the board and its history, the backlog, its distribution and the two reports', async () => {
     const token = await accountWith(['operationsShipment.view']);
     expect((await opsRoutesOf(token)).sort()).toEqual(
       [
         '/operations',
         '/operations/shipments',
+        '/operations/shipments/history',
         '/operations/secured',
+        // Round 12 — «توزيع المحصنات» reads on the secured screen's own grant.
+        '/operations/secured/distribution',
         '/operations/reports/captains',
         '/operations/reports/banks',
       ].sort(),
@@ -316,6 +329,15 @@ describe('the sidebar never contradicts the server (B7)', () => {
       .get('/api/v1/operations/reports/vault')
       .set('Authorization', `Bearer ${token}`);
     expect(rollUp.status).toBe(200);
+    // Round 12 — «سجل الخزينة»'s report on top, and «تسليم المحصنات»'s read: both the vault's.
+    const held = await request(app)
+      .get('/api/v1/operations/reports/vault/held')
+      .set('Authorization', `Bearer ${token}`);
+    expect(held.status).toBe(200);
+    const handover = await request(app)
+      .get('/api/v1/operations/secured/distribution')
+      .set('Authorization', `Bearer ${token}`);
+    expect(handover.status).toBe(200);
 
     // ...and a route it is NOT offered is refused at the API too, not merely hidden.
     const shipments = await request(app)
@@ -361,6 +383,47 @@ describe('the sync is additive and idempotent (B7)', () => {
     await ApplicationModel.updateOne(
       { route: '/operations/crew-board' },
       { $set: { 'name.en': original } },
+    );
+  });
+
+  it('15. renames the two vault rows on a live installation still wearing the old names (Round 12)', async () => {
+    // «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة», and «جرد الخزينة» became «سجل الخزينة». An
+    // installation seeded before Round 12 holds the old names; the boot renames them while they are
+    // still the old defaults — and leaves a language an administrator renamed alone.
+    await ApplicationModel.updateOne(
+      { route: '/operations/vault/dispatch' },
+      { $set: { name: { ar: 'صرف الخزينة', en: 'Vault Dispatch' } } },
+    );
+    await ApplicationModel.updateOne(
+      { route: '/operations/vault' },
+      { $set: { name: { ar: 'جرد الخزينة', en: 'Our Vault' } } },
+    );
+
+    await syncNavigationCatalog();
+
+    const dispatch = await ApplicationModel.findOne({ route: '/operations/vault/dispatch' }).lean();
+    expect(dispatch?.name).toEqual({ ar: 'محصنات الخزينة', en: 'Vault Shipments' });
+    const history = await ApplicationModel.findOne({ route: '/operations/vault' }).lean();
+    // Arabic was the old default → renamed; English was the administrator's → kept.
+    expect(history?.name).toEqual({ ar: 'سجل الخزينة', en: 'Our Vault' });
+
+    // An administrator's Arabic name survives the next boot too.
+    await ApplicationModel.updateOne(
+      { route: '/operations/vault/dispatch' },
+      { $set: { 'name.ar': 'خزنتنا' } },
+    );
+    await syncNavigationCatalog();
+    expect(
+      (await ApplicationModel.findOne({ route: '/operations/vault/dispatch' }).lean())?.name.ar,
+    ).toBe('خزنتنا');
+
+    await ApplicationModel.updateOne(
+      { route: '/operations/vault/dispatch' },
+      { $set: { name: { ar: 'محصنات الخزينة', en: 'Vault Shipments' } } },
+    );
+    await ApplicationModel.updateOne(
+      { route: '/operations/vault' },
+      { $set: { name: { ar: 'سجل الخزينة', en: 'Vault History' } } },
     );
   });
 });

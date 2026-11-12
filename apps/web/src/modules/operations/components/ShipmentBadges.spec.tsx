@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import {
+  OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   type Locale,
@@ -17,7 +18,12 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { DeliveryStatusBadge, ShipmentStatusBadge, ShipmentTypeBadge } from './ShipmentBadges';
+import {
+  DeliveryStatusBadge,
+  SecuredStageBadge,
+  ShipmentStatusBadge,
+  ShipmentTypeBadge,
+} from './ShipmentBadges';
 
 const withLocale = (locale: Locale, node: JSX.Element): string => {
   const store = configureStore({
@@ -110,4 +116,54 @@ describe('DeliveryStatusBadge — the day board’s «الحالة»', () => {
       expect(captain).not.toEqual(desk.replace('data-delivery="desk"', 'data-delivery="captain"'));
     });
   }
+});
+
+// «والحالة لم التسليم و تم الاستلام من القائد و بالخزينة» — a محصنة's «الحالة», on the secured
+// screen, the day board and the history.
+describe('SecuredStageBadge — where a محصنة stands', () => {
+  const WORDS: Record<(typeof OPERATIONS_SECURED_STAGES)[number], string> = {
+    awaitingPickup: 'لم يتم التسليم',
+    withCaptain: 'تم الاستلام من القائد',
+    withOperations: 'تم الاستلام من العمليات',
+    inVault: 'بالخزينة',
+    dispatched: 'خرجت للتسليم',
+    completed: 'تم التسليم',
+  };
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    for (const stage of OPERATIONS_SECURED_STAGES) {
+      it(`says ${stage} in ${locale}, with its sentence on hover and for a screen reader`, () => {
+        const labelKey = `operations.board.stage.${stage}`;
+        const hintKey = `operations.board.stageHint.${stage}`;
+        const label = translate(locale, labelKey);
+        const hint = translate(locale, hintKey);
+        expect(label).not.toBe(labelKey);
+        expect(hint).not.toBe(hintKey);
+        const html = withLocale(locale, <SecuredStageBadge stage={stage} />);
+        expect(html).toContain(`data-secured-stage="${stage}"`);
+        expect(html).toContain(label);
+        expect(html).toContain(`title="${hint}"`);
+        expect(html).toContain('sr-only');
+      });
+    }
+  }
+
+  it('speaks the owner’s own words in Arabic', () => {
+    for (const stage of OPERATIONS_SECURED_STAGES) {
+      expect(translate('ar', `operations.board.stage.${stage}`)).toBe(WORDS[stage]);
+    }
+  });
+
+  // Yellow and green are the pair a red-green colour-blind reader confuses: each stage has a glyph.
+  it('draws each stage with a glyph of its own, so none is told apart by colour alone', () => {
+    const glyphs = OPERATIONS_SECURED_STAGES.map((stage) => {
+      const html = withLocale('ar', <SecuredStageBadge stage={stage} />);
+      // The badge's markup without its words and its data attribute: what is left is the glyph.
+      return html
+        .replace(/data-secured-stage="[^"]*"/, '')
+        .replace(/title="[^"]*"/, '')
+        .replace(/>[^<]*</g, '><');
+    });
+    expect(new Set(glyphs).size).toBe(OPERATIONS_SECURED_STAGES.length);
+  });
 });

@@ -12,7 +12,9 @@
 import {
   MAX_PAGE_SIZE,
   type AssignSecuredDeliveryLeg,
+  type CancelVaultReceipt,
   type CompleteOperationsShipment,
+  type ConfirmSecuredPickup,
   type CreateOperationsArea,
   type CreateOperationsBank,
   type CreateOperationsBankBranch,
@@ -32,13 +34,23 @@ import {
   type OperationsCrewRequirementsDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardDto,
+  type OperationsDeletedShipmentsDto,
   type OperationsExecutionResultDto,
   type OperationsMobileDayDto,
   type OperationsShipmentDto,
+  type OperationsShipmentHistoryDto,
+  type OperationsShipmentType,
+  type OperationsSecuredBoardDto,
+  type OperationsSecuredDispatchBoardDto,
+  type OperationsSecuredDistributionDto,
+  type OperationsSecuredDistributionSaveDto,
+  type OperationsShipmentLogDto,
   type OperationsStandingCrewBoardDto,
-  type OperationsVaultCustodyDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultHeldReportDto,
+  type OperationsVaultQueueDto,
   type OperationsVaultReportDto,
+  type OrderOperationsCurrencies,
   type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVault,
@@ -102,6 +114,12 @@ export const updateCurrency = (
   body: UpdateOperationsCurrency,
 ): Promise<OperationsCurrencyDto> =>
   patch<OperationsCurrencyDto>(`/operations/currencies/${id}`, body);
+/**
+ * «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل زى شاشة الحركة بالظبط» — the currencies' dragged
+ * order, saved as Fleet's catalogs save theirs (`orderCatalog`): the ids in their new order; 204.
+ */
+export const orderCurrencies = (body: OrderOperationsCurrencies): Promise<void> =>
+  put<void>('/operations/currencies/order', body);
 
 /** One branch by id — how a shipment's edit form names the branch it holds, and that branch's bank. */
 export const getBankBranch = (id: string): Promise<OperationsBankBranchDto> =>
@@ -148,6 +166,23 @@ export const getDayBoard = (date: string | null): Promise<OperationsDayBoardDto>
     `/operations/shipments/day-board${date === null ? '' : buildQuery({ date })}`,
   );
 
+/**
+ * The shipments history — the day board's rows over a range of days, both bounds inclusive. The
+ * same server-side union and enrichment as `getDayBoard`; a range holding too many shipments is
+ * refused (`OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE`), never cut short.
+ *
+ * Round 12 — `type` keeps one shipment type: «سجل الخزينة» asks `secured` (the secured half of the
+ * union, collected OR delivered in the range, any stage; the cap counted after the filter). Left
+ * out, both — «سجل الشحنات», unchanged.
+ */
+export const getShipmentHistory = (
+  range: { from: string; to: string },
+  type?: OperationsShipmentType,
+): Promise<OperationsShipmentHistoryDto> =>
+  get<OperationsShipmentHistoryDto>(
+    `/operations/shipments/history${buildQuery(type === undefined ? range : { ...range, type })}`,
+  );
+
 export const listShipments = (
   params: OperationsListParams,
 ): Promise<Paginated<OperationsShipmentDto>> =>
@@ -185,6 +220,31 @@ export const reopenShipment = (
 
 export const deleteShipment = (id: string): Promise<void> =>
   del<void>(`/operations/shipments/${id}`);
+
+/**
+ * «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — one shipment's story, oldest first: every
+ * recorded act on it and on its legs and vault custody, with every value already in words. It
+ * answers for a deleted shipment too.
+ */
+export const getShipmentLog = (id: string): Promise<OperationsShipmentLogDto> =>
+  get<OperationsShipmentLogDto>(`/operations/shipments/${id}/log`);
+
+/**
+ * «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the shipments deleted from the board days of a range
+ * (the history's own range and rules), newest deleted first — one shipment type with `type`, as
+ * the history (Round 12: «سجل الخزينة»'s deleted محصنات).
+ */
+export const getDeletedShipments = (
+  range: { from: string; to: string },
+  type?: OperationsShipmentType,
+): Promise<OperationsDeletedShipmentsDto> =>
+  get<OperationsDeletedShipmentsDto>(
+    `/operations/shipments/deleted${buildQuery(type === undefined ? range : { ...range, type })}`,
+  );
+
+/** Bring a deleted shipment back onto its day — the undo of `deleteShipment`, on the same grant. */
+export const restoreShipment = (id: string): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/shipments/${id}/restore`, {});
 
 // «صورة الإيصال» — the photo of a shipment's paper receipt, one per shipment (the Fleet receipts'
 // image endpoints, on the shipment). Upload answers the shipment with its new `receiptImage`; a
@@ -281,6 +341,14 @@ export const listSecuredBacklog = (
     `/operations/secured/backlog${buildQuery(params as QueryParams)}`,
   );
 
+/**
+ * «شاشة الشحنات المحصنة» — the same open backlog as BOARD ROWS (branches with their banks, the crew
+ * of the leg the row is on, each row's `securedStage`), so the screen draws them on the day board's
+ * own table. No parameters: every open محصنة, whatever its dates.
+ */
+export const getSecuredBoard = (): Promise<OperationsSecuredBoardDto> =>
+  get<OperationsSecuredBoardDto>('/operations/secured/board');
+
 /** `/tash4ela_mohasana` + `/deliver_mohsana` — held shipments due for delivery on a date. */
 export const listSecuredDue = (date: string): Promise<OperationsShipmentDto[]> =>
   get<OperationsShipmentDto[]>(`/operations/secured/due${buildQuery({ date })}`);
@@ -291,12 +359,68 @@ export const listVaultInventory = (
 ): Promise<Paginated<OperationsVaultInventoryRowDto>> =>
   getPage<OperationsVaultInventoryRowDto>(`/operations/secured/vault${buildQuery(params)}`);
 
-/** `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). */
+/**
+ * «شاشة استلام الخزينه» — the vault's receive queue, as board rows: by default the secured
+ * shipments the captain has collected (yellow) and those received into the vault today (green);
+ * `all` adds the ones no captain has collected yet (white). `all=false` is the default, so it is
+ * not sent.
+ */
+export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
+  get<OperationsVaultQueueDto>(`/operations/secured/vault-queue${buildQuery(all ? { all } : {})}`);
+
+/**
+ * `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). Answers the SHIPMENT
+ * (now `inVault`, its new version) — not its custody, which this file had typed it as before Round
+ * 10 although the route never sent one. Since Round 10 only a shipment somebody has collected
+ * (`OPERATIONS_SECURED_RECEIVABLE_STAGES`); a white one is refused, 409
+ * `OPERATIONS_SECURED_NOT_PICKED_UP`.
+ */
 export const receiveIntoVault = (
   id: string,
   body: ReceiveIntoVault,
-): Promise<OperationsVaultCustodyDto> =>
-  post<OperationsVaultCustodyDto>(`/operations/secured/${id}/receive`, body);
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/receive`, body);
+
+/**
+ * Round 10 — the desk's pickup ✓ on the secured screen («تم الاستلام من العمليات») and its undo,
+ * which takes back whoever's ✓ it was, the captain's included, until the vault receives. Each
+ * answers the shipment with its new version. The undo is a DELETE that carries a body: the version
+ * it was read at, as every write here does.
+ */
+export const confirmSecuredPickup = (
+  id: string,
+  body: ConfirmSecuredPickup,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/pickup`, body);
+
+export const undoSecuredPickup = (
+  id: string,
+  body: ConfirmSecuredPickup,
+): Promise<OperationsShipmentDto> =>
+  del<OperationsShipmentDto>(`/operations/secured/${id}/pickup`, body);
+
+/**
+ * Round 10 — «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: the vault's receipt cancelled, with the
+ * reason, while the shipment is still in the vault (`operationsVault.cancelReceipt`). It goes back to
+ * draft — yellow, editable and receivable again — and the custody is voided, kept as history.
+ */
+export const cancelVaultReceipt = (
+  id: string,
+  body: CancelVaultReceipt,
+): Promise<OperationsShipmentDto> =>
+  post<OperationsShipmentDto>(`/operations/secured/${id}/cancel-receipt`, body);
+
+/**
+ * Round 10 — «صرف الخزينة»: EVERY secured shipment in the vault, whatever its delivery day («كله يبقى
+ * موجود فى تاريخ يتفلتر»), as board rows; `date` narrows it to one delivery day. Without a day the
+ * key is left out — the server refuses an empty `date=`.
+ */
+export const getSecuredDispatchBoard = (
+  date: string | null,
+): Promise<OperationsSecuredDispatchBoardDto> =>
+  get<OperationsSecuredDispatchBoardDto>(
+    `/operations/secured/dispatch-board${buildQuery(date === null || date === '' ? {} : { date })}`,
+  );
 
 /** `/tash4ela_mohasana` — the legacy leader2 + car_num2 pair, as the delivery leg. */
 export const assignSecuredDelivery = (
@@ -307,6 +431,27 @@ export const assignSecuredDelivery = (
 /** `/deliver_mohsana/data` — release and dispatch a vehicle's load, in ONE transaction. */
 export const dispatchSecured = (body: DispatchSecuredShipments): Promise<unknown> =>
   post('/operations/secured/dispatch', body);
+
+// ── Round 12 (web B): «توزيع المحصنات» and «تسليم المحصنات» ─────────────────────────────────────────
+
+/**
+ * One read for both screens — the day's vans and its محصنات, each with its delivery leg as it stands
+ * and the vans its area points at. `date` null → the server's today (Cairo); never an empty `date=`
+ * (a 400).
+ */
+export const getSecuredDistribution = (
+  date: string | null,
+): Promise<OperationsSecuredDistributionDto> =>
+  get<OperationsSecuredDistributionDto>(
+    `/operations/secured/distribution${buildQuery(date === null || date === '' ? {} : { date })}`,
+  );
+
+/** «حفظ» — every change of the screen in ONE request, all or nothing (`distributionSaveBody`). */
+export const saveSecuredDistribution = (body: {
+  date: string;
+  changes: { shipmentId: string; crewAssignmentId: string | null; captainEmployeeId: string | null; version: number | null }[];
+}): Promise<OperationsSecuredDistributionSaveDto> =>
+  post<OperationsSecuredDistributionSaveDto>('/operations/secured/distribution', body);
 
 // ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
 
@@ -346,9 +491,23 @@ export const updateOperationsArea = (
   body: UpdateOperationsArea,
 ): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
 
-/** `/vault1_reports` — the vault roll-up. NO date range, deliberately (Q32 PRESERVE). */
-export const getVaultReport = (): Promise<OperationsVaultReportDto> =>
-  get<OperationsVaultReportDto>('/operations/reports/vault');
+/**
+ * `/vault1_reports` — the vault roll-up over a period, both days inclusive, as the captain and bank
+ * reports take theirs. Legacy's two dates filtered nothing (Q32); the owner gave them a meaning —
+ * «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: every محصنة RECEIVED into the vault in
+ * the period, whether it has gone out since or not, judged on the receipt's Cairo day.
+ */
+export const getVaultReport = (
+  params: { from: string; to: string },
+): Promise<OperationsVaultReportDto> =>
+  get<OperationsVaultReportDto>(`/operations/reports/vault${buildQuery(params)}`);
+
+/**
+ * Round 12 — «تقرير الخزينة»: what the vault holds NOW, per main bank, through the same roll-up as
+ * the period's (`getVaultReport`). Live, so it takes no parameter at all (the server refuses one).
+ */
+export const getVaultHeldReport = (): Promise<OperationsVaultHeldReportDto> =>
+  get<OperationsVaultHeldReportDto>('/operations/reports/vault/held');
 
 // ── Captain mobile (Phase C) ────────────────────────────────────────────────
 //

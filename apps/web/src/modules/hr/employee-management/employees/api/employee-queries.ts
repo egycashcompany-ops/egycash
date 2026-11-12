@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeActionType,
   type EmployeeDto,
   type EmploymentAction,
@@ -138,6 +139,18 @@ export const useRegisterEmployeeDirect = () => {
   });
 };
 
+/** Registering an external person. Same cache moves as a direct registration, minus the login. */
+export const useRegisterEmployeeExternal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterExternalEmployee) => api.registerEmployeeExternal(body),
+    onSuccess: (employee: EmployeeDto) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+    },
+  });
+};
+
 export const useUpdateEmployeePersonal = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
@@ -206,6 +219,15 @@ export const useLastEmployeeCode = () =>
     queryKey: [MODULE, FEATURE, 'last-code'],
     queryFn: api.lastEmployeeCode,
     staleTime: 0,
+  });
+
+/** The last external code issued — like the hint above it, read fresh so two clerks do not clash. */
+export const useLastExternalEmployeeCode = (enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'external', 'last-code'],
+    queryFn: api.lastExternalEmployeeCode,
+    staleTime: 0,
+    enabled,
   });
 
 /** What a typed code means — asked only once it has the company's shape. */

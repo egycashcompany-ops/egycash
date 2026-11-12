@@ -161,8 +161,31 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // report), «بها عطل» and the device, all remembered.
   ['modules/it/pages/VehicleChecksPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
+  // `date`: the old day picker's, only ever deleted — the board is always today, and an old link
+  // or bookmark sheds it.
   ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
+  // «سجل الشحنات»: the day board's filters, remembered alike; `from`/`to` open on this month to
+  // date — the range is what the screen IS, as `date` is the day board's.
+  ['modules/operations/pages/ShipmentsHistoryPage.tsx', ['from', 'to']],
+  // «الشحنات المحصنة» on the day board's board (Round 8): its filters remembered alike, the stage
+  // in «التسليم»'s place; there is no period — it is every open محصنة.
+  ['modules/operations/pages/SecuredBacklogPage.tsx', []],
+  // «شاشة الاستلام من الخزنة … زى شاشة التشغيل اليومى» (Round 9): the secured board's filters,
+  // remembered alike; `all` («الكل») is not — the screen opens on the vault's work, the shipments
+  // with the captain and today's receipts, and «الكل» is a look further for the moment.
+  ['modules/operations/pages/VaultReceivePage.tsx', ['all']],
+  // «صرف الخزينة» on the same board (Round 10): its filters remembered alike; `date` is not — the
+  // screen IS every محصنة in the vault («كله يبقى موجود فى تاريخ يتفلتر»), and a delivery day looked
+  // at once is not where the next visit starts.
+  ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
+  // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
+  ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
+  ['modules/operations/pages/VaultReportPage.tsx', ['from', 'to']],
+  // Round 12 — «سجل الخزينة» is «سجل الشحنات» for the محصنات: the secured board's filters remembered
+  // alike; `from`/`to` open on this month to date, as the history's.
+  ['modules/operations/pages/VaultInventoryPage.tsx', ['from', 'to']],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
   ['modules/organization/branches/pages/BranchesListPage.tsx', []],
@@ -214,9 +237,15 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
   ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
+  // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
+  // محصنات); nothing else is read from the URL.
   [
-    'modules/operations/pages/SecuredDispatchPage.tsx',
-    '`date` resolves to the due day being dispatched',
+    'modules/operations/pages/SecuredDistributionPage.tsx',
+    '`date` opens on cairoToday() — the day being distributed',
+  ],
+  [
+    'modules/operations/pages/VaultHandoverPage.tsx',
+    '`date` opens on cairoToday() — the day being handed over',
   ],
 ];
 
@@ -351,15 +380,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/operations/pages/BankReportPage.tsx',
     '`from`/`to` arrive from the link; the page renders no control for them',
   ],
-  [
-    'modules/operations/pages/CaptainReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
-  ['modules/operations/pages/SecuredBacklogPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultReceivePage.tsx'],
-  ['modules/operations/pages/VaultReportPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
   ['modules/organization/application-sections/pages/OrganizeApplicationsPage.tsx'],

@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
   type JobTitlePlacementQuery,
@@ -78,6 +79,28 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   created(
     res,
     { ...toEmployeeDto(doc, visibility(req), placement.for(doc)), provisionedLogin },
+    `/api/v1/hr/employees/${String(doc._id)}`,
+  );
+};
+
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the code box on the register screen. */
+export const getLastExternalEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastExternalCode());
+};
+
+/** An external person — the code HR typed, their name, and where they sit. */
+export const registerEmployeeExternal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RegisterExternalEmployee>(req);
+  const doc = await employeeService.registerExternal(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.registerDirect'),
+  );
+  const placement = await resolvePlacements([doc]);
+  created(
+    res,
+    toEmployeeDto(doc, visibility(req), placement.for(doc)),
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };

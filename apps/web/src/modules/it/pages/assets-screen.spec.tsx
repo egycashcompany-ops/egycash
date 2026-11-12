@@ -75,6 +75,7 @@ const asset = (over: Partial<ItAssetDto> = {}): ItAssetDto => ({
     employeeName: 'محمد أحمد علي',
     assignedAt: '2026-10-07T09:00:00.000Z',
   },
+  hasActiveMaintenance: false,
   version: 0,
   createdAt: '2026-10-07T09:00:00.000Z',
   updatedAt: '2026-10-07T09:00:00.000Z',

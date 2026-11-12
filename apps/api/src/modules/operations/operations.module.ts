@@ -105,6 +105,14 @@ const vaultPermissions = declarePermissions(
     // screens had different owners, and the Treasury port exists to keep them different.
     { action: 'receive', name: { en: 'Receive into the vault', ar: 'استلام في الخزينة' } },
     { action: 'dispatch', name: { en: 'Release and dispatch from the vault', ar: 'صرف من الخزينة' } },
+    // Round 10 — after the vault's ✓ nobody edits a محصنة, «بس صلاحية خاصة تقدر تلغى استلام الخزينة».
+    // A grant of its OWN, apart from `receive`: undoing the treasury's signature is a rarer and
+    // heavier decision than giving it, so no role holds it unless an administrator grants it (the
+    // `super-admin` role holds every key by design — rbac.service.ts keeps it on the full catalog).
+    {
+      action: 'cancelReceipt',
+      name: { en: 'Cancel a vault receipt', ar: 'إلغاء استلام الخزينة' },
+    },
   ],
   'operations.vault',
 );
@@ -193,7 +201,24 @@ export const operationsModule: ModuleManifest = {
   // The receipt photo on a shipment is the first Operations file: three routes under the existing
   // shipments prefix, on the EXISTING `operationsShipment.view` / `.edit` grants, plus the file
   // authorizer below. Still no new permission, page or collection.
-  version: '0.11.0',
+  //
+  // Round 10 adds ONE permission, `operationsVault.cancelReceipt`, on the existing vault page — the
+  // owner's «صلاحية خاصة» that undoes a vault receipt — and new routes under the existing
+  // `/operations/secured` prefix (the pickup ✓ and its undo on the EXISTING
+  // `operationsShipment.complete`, «صرف الخزينة»'s board on the EXISTING `operationsVault.view`).
+  // No page and no collection; ONE field on the shipment (the pickup record — absent on older rows,
+  // read as their pickup leg says, so no migration: secured-stage.ts) and three on the custody (all
+  // optional), and one custody index.
+  //
+  // Round 12 adds NO permission, page, prefix or collection. «توزيع المحصنات» is
+  // `GET`/`POST /operations/secured/distribution` on the EXISTING grants — read under
+  // `operationsShipment.view` or `operationsVault.view` (the vault's «تسليم المحصنات» reads it too),
+  // saved under `operationsShipment.edit`, assign-delivery's — and the vault's handover is the
+  // existing dispatch. «تقرير الخزينة» is `GET /operations/reports/vault/held` on
+  // `operationsVault.view`, and «سجل الخزينة» is the shipments history with `type=secured`. One
+  // assignment index (`ix_shipment_all_legs`, the action log's read of a retired leg) and one event
+  // (`operations.shipmentAssignment.removed`).
+  version: '0.13.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,

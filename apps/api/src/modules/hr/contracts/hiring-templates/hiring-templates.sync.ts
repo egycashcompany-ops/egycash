@@ -10,9 +10,15 @@
 //     names it carries. When no job by that name exists yet, it waits as a DRAFT — and a draft no
 //     person has touched is matched again on every boot, so it publishes on the boot after the job
 //     is created. HR can also tick its jobs by hand and publish it.
+//   · a job's paper published here and untouched since FOLLOWS ITS JOBS: a job carrying its name
+//     created since (or a name the paper gained in a release) is added on the next boot. None is
+//     ever taken away — and a paper a release makes for every job prints for every job.
+//   · a paper's NEWER REVISION (`HiringPaper.revision`: his words and layout as a release changes
+//     them) rewrites the row the boot wrote, if nobody has touched it since — its sections, its
+//     placeholders, its signatures. A row somebody edited keeps their edit.
 //
 // IDEMPOTENT, AND NEVER OVER SOMEBODY'S EDIT. A paper is recognized by its template key. Once a
-// row with that key exists, this file leaves it alone — unless it is still the untouched draft it
+// row with that key exists, this file leaves it alone — unless it is still the untouched row it
 // wrote, in which case it only matches the jobs again. An edit, a publish, an archive or a delete
 // by a person is final. Re-running it on a database where every paper is in place writes nothing.
 //
@@ -22,24 +28,11 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
 import { JobTitleModel } from '../../../../platform/organization/job-titles/job-title.model';
 import { normalizeArabic } from '../../shared/arabic';
+import { matchesJob } from '../../shared/job-match';
 import { ContractTemplateModel } from '../contract-templates/contract-template.model';
 import { ContractTypeModel } from '../contract-types/contract-type.model';
 import { extractPlaceholders, sanitizeTemplateHtml } from '../shared/template-html';
 import { HIRING_PAPERS, type HiringPaper, type PaperJobs } from './hiring-papers';
-
-/** A job name folded for matching: «أخصائى عد و فرز» meets «اخصائي عد وفرز». */
-export const jobKey = (name: string): string => normalizeArabic(name).replace(/ و /g, ' و');
-
-/** Does a paper print for the job named `jobName`? */
-export const matchesJob = (jobs: PaperJobs, jobName: string): boolean => {
-  if (jobs === 'all') return true;
-  const job = jobKey(jobName);
-  const inFamily = jobs.family.some((name) => {
-    const key = jobKey(name);
-    return job === key || job.startsWith(`${key} `);
-  });
-  return inFamily || (jobs.exact ?? []).some((name) => job === jobKey(name));
-};
 
 interface JobRow {
   _id: Types.ObjectId;
@@ -88,10 +81,14 @@ export interface HiringTemplatesReport {
   waiting: string[];
   /** A waiting draft matched to its jobs now, and published. */
   linked: string[];
+  /** A published paper given a job named for it since. */
+  widened: string[];
+  /** A paper the boot wrote, rewritten to the paper's newer revision. */
+  revised: string[];
 }
 
 export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
-  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [] };
+  const report: HiringTemplatesReport = { published: [], waiting: [], linked: [], widened: [], revised: [] };
   const titles = await JobTitleModel.find({ isDeleted: false, status: 'active' }, { name: 1 }).lean<JobRow[]>();
 
   for (const paper of HIRING_PAPERS) {
@@ -101,15 +98,73 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
       const rows = await ContractTemplateModel.find({ key: paper.key }).lean();
 
       if (rows.length > 0) {
-        const [row] = rows;
+        let [row] = rows;
         const untouched =
-          rows.length === 1 &&
-          row !== undefined &&
-          !row.isDeleted &&
-          row.status === 'draft' &&
-          row.changedBy === null &&
-          row.updatedBy === null;
-        if (!untouched) continue;
+          rows.length === 1 && row !== undefined && !row.isDeleted && row.changedBy === null && row.updatedBy === null;
+        if (!untouched || row === undefined) continue;
+        const revision = paper.revision ?? 1;
+        if ((row.paperRevision ?? 1) < revision) {
+          // His newer words and layout, only over the row as the boot wrote it.
+          const { sections, placeholders } = preparedSections(paper);
+          const done = await ContractTemplateModel.updateOne(
+            { _id: row._id, __v: row.__v, changedBy: null, updatedBy: null },
+            { $set: { sections, placeholders, signatures: paper.signatures, paperRevision: revision }, $inc: { __v: 1 } },
+          );
+          if (done.modifiedCount === 1) {
+            await auditService.record({
+              entityRef: templateRef(String(row._id)),
+              action: 'update',
+              changes: [{ field: 'paperRevision', old: row.paperRevision ?? 1, new: revision }],
+              actor: SYSTEM,
+            });
+            report.revised.push(paper.key);
+          }
+          const fresh = await ContractTemplateModel.findById(row._id).lean();
+          if (fresh === null) continue;
+          row = fresh;
+        }
+        if (row.status === 'published') {
+          // A paper now for every job (the weapon declaration, once for crew leaders and the
+          // cash-in-transit specialists): the row as written prints for every job too.
+          if (paper.jobs === 'all') {
+            if (row.allJobs ?? true) continue;
+            const done = await ContractTemplateModel.updateOne(
+              { _id: row._id, __v: row.__v, status: 'published', changedBy: null, updatedBy: null },
+              { $set: { allJobs: true, jobTitleIds: [] }, $inc: { __v: 1 } },
+            );
+            if (done.modifiedCount === 1) {
+              await auditService.record({
+                entityRef: templateRef(String(row._id)),
+                action: 'update',
+                changes: [{ field: 'allJobs', old: false, new: true }],
+                actor: SYSTEM,
+              });
+              report.widened.push(paper.key);
+            }
+            continue;
+          }
+          // A job named for it since: added, never one taken away — and only to the row as written.
+          if (row.allJobs ?? true) continue;
+          const held = row.jobTitleIds ?? [];
+          const added = jobTitleIds.filter((id) => !held.some((own) => String(own) === String(id)));
+          if (added.length === 0) continue;
+          const next = [...held, ...added];
+          const done = await ContractTemplateModel.updateOne(
+            { _id: row._id, __v: row.__v, status: 'published', changedBy: null, updatedBy: null },
+            { $set: { jobTitleIds: next }, $inc: { __v: 1 } },
+          );
+          if (done.modifiedCount === 1) {
+            await auditService.record({
+              entityRef: templateRef(String(row._id)),
+              action: 'update',
+              changes: [{ field: 'jobTitleIds', old: held.map(String).join(','), new: next.map(String).join(',') }],
+              actor: SYSTEM,
+            });
+            report.widened.push(paper.key);
+          }
+          continue;
+        }
+        if (row.status !== 'draft') continue;
         if (!ready) {
           report.waiting.push(paper.key);
           continue;
@@ -148,6 +203,7 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
         printOrder: paper.printOrder,
         placeholders,
         changedBy: null,
+        paperRevision: paper.revision ?? 1,
       });
       await auditService.record({
         entityRef: templateRef(String(doc._id)),
@@ -166,7 +222,7 @@ export const syncHiringTemplates = async (): Promise<HiringTemplatesReport> => {
     }
   }
 
-  if (report.published.length + report.linked.length + report.waiting.length > 0) {
+  if (report.published.length + report.linked.length + report.waiting.length + report.widened.length + report.revised.length > 0) {
     logger.info(report, 'hiring templates: the owner\'s papers synced');
   }
   return report;

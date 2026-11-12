@@ -33,7 +33,7 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 135;
+const SEEDED_APPLICATIONS = 138;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -249,6 +249,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/operations/catalogs');
     // الطاقم الثابت — the permanent crew each day's board is seeded from.
     expect(routes).toContain('/operations/standing-crew');
+    // Round 12 — «توزيع المحصنات» (the day's محصنات onto the day's vans) and the vault's «تسليم
+    // المحصنات» (each van's load handed over).
+    expect(routes).toContain('/operations/secured/distribution');
+    expect(routes).toContain('/operations/vault/handover');
     // The ported gold sidebar, screen for screen.
     expect(routes).toContain('/gold');
     expect(routes).toContain('/gold/vaults');
@@ -280,8 +284,8 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/map');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 31 (HR) + 24 (Fleet) + 15 (Operations) + 6 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 11 (Administration) = 135. Re-counted from `seed-navigation.ts`, because an
+    // 31 (HR) + 24 (Fleet) + 18 (Operations) + 6 (Organization) + 18 (IT) + 12 (Gold Vault)
+    //   + 18 (ATM) + 11 (Administration) = 138. Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than

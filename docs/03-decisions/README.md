@@ -29,7 +29,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-018](ADR-018-automation-engine.md) | A provider-backed Automation Service, alongside (not replacing) the Workflow Engine | Accepted |
 | [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted; rules 4–5 superseded for vehicle-code pickers by ADR-037 |
 | [ADR-020](ADR-020-shared-file-storage.md) | Shared file storage for a multi-service deployment (object store, not a local disk) | Accepted |
-| [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted |
+| [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted, amended 2026-11-11 (a transfer — and the move to another branch — writes its audit after its commit) |
 | ADR-022 | Help-desk SLA & ticket lifecycle placement | **Reserved, unwritten** |
 | [ADR-023](ADR-023-entity-derived-file-authorization.md) | File authorization is derived from the owning entity, not from the file | Accepted |
 | [ADR-024](ADR-024-minimal-spare-parts-ledger.md) | The spare-parts ledger is a store record, not inventory accounting | Accepted |

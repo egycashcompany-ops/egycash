@@ -81,6 +81,11 @@ assignmentSchema.index(
   { operationsDayId: 1, captainEmployeeId: 1 },
   { name: 'ix_day_captain' }, // the captain's day — what the mobile slice will read
 );
+// Every leg a shipment EVER had, the retired ones included — the action log's read (Round 12).
+// «توزيع المحصنات» takes a shipment off its van by retiring its delivery leg (soft delete), and the
+// log must still tell that leg's story; `ux_shipment_leg` is partial on live rows, so it cannot
+// serve a read that includes the retired ones without a collection scan per log opened.
+assignmentSchema.index({ shipmentId: 1, leg: 1, createdAt: 1 }, { name: 'ix_shipment_all_legs' });
 // No two stops share a position on one captain-day-leg. The service derives positions from the
 // payload's array index (so a duplicate cannot be expressed) — this index is the DB-level second
 // guard, the same belt-and-braces the fleet roster uses for its own identity pair.

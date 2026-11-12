@@ -21,4 +21,37 @@ export const SHIPMENT_PATH = {
   shipment: [
     'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z',
   ],
+  // The action log («السجل») and the deleted shipments («اللى اتمسح») — the clock turned back, as
+  // the shared `HistoryIcon` draws it, and the bin with an arrow rising out of it: what was thrown
+  // away, coming back.
+  history: ['M3 12a9 9 0 1 0 3-6.7', 'M3 3v5h5', 'M12 7v5l3 2'],
+  trashRestore: [
+    'M3 6h18',
+    'M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6',
+    'M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2',
+    'M12 18v-6',
+    'M9 15l3-3 3 3',
+  ],
+  // The log's entries that no drawing above says.
+  check: ['M5 13l4 4L19 7'],
+  // An open padlock — the vault's lock (`PATH.lock`) with its shackle lifted: a cancelled vault
+  // receipt (Round 10), in the log and on the row's act that cancels it.
+  unlock: [
+    'M5 11h14a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2v-7a2 2 0 012-2z',
+    'M7 11V7a5 5 0 019.9-1',
+  ],
+  checkCircle: ['M9 12l2 2 4-4', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+  undo: ['M9 14L4 9l5-5', 'M4 9h10.5a5.5 5.5 0 010 11H11'],
+  play: ['M7 4.5v15l12-7.5z'],
+  flag: ['M4 21V4', 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1'],
+  reorder: ['M7 20V4', 'M3 8l4-4 4 4', 'M17 4v16', 'M13 16l4 4 4-4'],
+  info: ['M12 16v-4m0-4h.01', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
+  person: ['M16 7a4 4 0 11-8 0 4 4 0 018 0z', 'M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
+  // «تقرير الخزينة»'s package figures — a bag for «الحقائب», a cube for «الصناديق» («الكراتين» take
+  // the shipment's own carton, `shipment` above): three counts side by side need three drawings, or
+  // they read as one figure written three times.
+  bag: [
+    'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z',
+  ],
+  cube: ['M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9'],
 } as const;

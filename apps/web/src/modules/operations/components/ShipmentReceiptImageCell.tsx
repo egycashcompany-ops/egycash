@@ -7,6 +7,16 @@
 //
 // The cell checks the grant itself, as the Fleet cells do, so the board never gates the column:
 // whoever may edit the shipment (`operationsShipment.edit`) manages its photo; a reader only sees it.
+// And SEEING it is a grant too: the bytes are served on `operationsShipment.view`, which the vault's
+// receive queue does not require — a treasurer without it gets a dash, never an eye that answers
+// 403. A screen that only looks (`readOnly`, the vault queue) offers no upload, replace or delete
+// to anyone.
+//
+// AND A ROW THAT IS LOCKED (Round 10). «الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او
+// العمليات او الخزنه يعدل عليها»: once the vault has received a محصنة, its photo is part of what the
+// vault signed for — the server refuses an upload, a replace or a delete (`OPERATIONS_SECURED_LOCKED`,
+// and the platform's own file routes too), so the cell offers none of them, on every board; the eye
+// stays. The rule is the row's (`isLockedRow`), so no screen has to remember it.
 import { useEffect, useState } from 'react';
 import { type OperationsShipmentDto } from '@ecms/contracts';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
@@ -24,6 +34,7 @@ import {
   Trash2Icon,
 } from '../../fleet/components/row-action-icons';
 import { fetchShipmentReceiptImage } from '../api/operations-api';
+import { isLockedRow } from '../lib/secured-stage';
 import {
   useDeleteShipmentReceiptImage,
   useUploadShipmentReceiptImage,
@@ -112,13 +123,19 @@ export const ShipmentReceiptImagePreviewDialog = ({
   open,
   onClose,
   row,
+  readOnly = false,
 }: {
   open: boolean;
   onClose: () => void;
   row: OperationsShipmentDto | null;
+  /** Opened from a screen that only looks — no delete, whoever is reading. */
+  readOnly?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
+  // A محصنة the vault has received keeps its photo as it was (see the head of this file).
+  const mayDelete =
+    !readOnly && row !== null && !isLockedRow(row) && can('operationsShipment.edit');
   const fileId = row?.receiptImage?.fileId ?? null;
   const { url, loading, failed } = useShipmentReceiptImageUrl(row?.id ?? '', open ? fileId : null);
   const [confirming, setConfirming] = useState(false);
@@ -137,7 +154,7 @@ export const ShipmentReceiptImagePreviewDialog = ({
             <Button variant="secondary" onClick={onClose}>
               {t('common.close')}
             </Button>
-            {can('operationsShipment.edit') && (
+            {mayDelete && (
               <Button variant="danger" onClick={() => setConfirming(true)}>
                 {t('operations.shipment.receiptImage.delete')}
               </Button>
@@ -172,15 +189,22 @@ export const ShipmentReceiptImagePreviewDialog = ({
 export const ShipmentReceiptImageCell = ({
   row,
   onPreview,
+  readOnly = false,
 }: {
   row: OperationsShipmentDto;
   onPreview: (row: OperationsShipmentDto) => void;
+  /** A screen that only looks at the photo (the vault queue) — no upload, replace or delete. */
+  readOnly?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const upload = useUploadShipmentReceiptImage();
   const [confirming, setConfirming] = useState(false);
-  const mayEdit = can('operationsShipment.edit');
+  // The screen, the row and the reader, all three: a screen that only looks, a محصنة the vault has
+  // received (locked — its photo is looked at, never changed) and a reader who may not edit.
+  const mayEdit = !readOnly && !isLockedRow(row) && can('operationsShipment.edit');
+  // The bytes are read on the shipment grant (`GET …/receipt-image`).
+  const mayView = can('operationsShipment.view');
   // `?? null`: a board row from before the column existed may not carry the field at all.
   const image = row.receiptImage ?? null;
 
@@ -206,20 +230,26 @@ export const ShipmentReceiptImageCell = ({
     );
   }
 
+  // A photo the reader may neither open nor manage: a dash, as a row with none reads for someone
+  // who may not add one.
+  if (!mayView && !mayEdit) return <span className="text-slate-400">—</span>;
+
   // The owner's image box, as on the vehicles and receipts screens — the eye, the replace arrow,
   // the bin.
   return (
     <span className={IMAGE_GROUP} data-image-actions="shipment-receipt">
-      <button
-        type="button"
-        data-shipment-receipt-view={row.id}
-        className={actionTone('view')}
-        aria-label={t('operations.shipment.receiptImage.view')}
-        title={t('operations.shipment.receiptImage.view')}
-        onClick={() => onPreview(row)}
-      >
-        <EyeIcon className="h-4 w-4" />
-      </button>
+      {mayView && (
+        <button
+          type="button"
+          data-shipment-receipt-view={row.id}
+          className={actionTone('view')}
+          aria-label={t('operations.shipment.receiptImage.view')}
+          title={t('operations.shipment.receiptImage.view')}
+          onClick={() => onPreview(row)}
+        >
+          <EyeIcon className="h-4 w-4" />
+        </button>
+      )}
       {mayEdit && (
         <PhotoPickButton
           accept={SHIPMENT_RECEIPT_IMAGE_ACCEPT}

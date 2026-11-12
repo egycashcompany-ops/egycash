@@ -19,6 +19,8 @@ const WIDTH = {
   xl: '!max-w-xl',
   '2xl': '!max-w-2xl',
   '3xl': '!max-w-3xl',
+  // A read-only panel of cards side by side — the shipments board's «عملات أخرى», three across.
+  '4xl': '!max-w-4xl',
   // A form laid out in columns so it fits the screen with no scroll — the shipment form.
   '6xl': '!max-w-6xl',
 };

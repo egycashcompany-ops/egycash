@@ -117,12 +117,15 @@ export const toItAssetSpecsDto = (
 /**
  * Who holds each asset on ONE response — «لو متسلم اسم الشخص اللى متسلمله الحاجة» — resolved by the
  * caller and handed in: the intervals the assets point at, by id, and their employees' labels (the
- * mobile lines' shape, without the paper). The mapper only reads the maps, so the number of
- * round-trips a response costs is decided in one place.
+ * mobile lines' shape, without the paper); and which of them a maintenance order holds instead —
+ * the technician has the machine. The mapper only reads the maps, so the number of round-trips a
+ * response costs is decided in one place.
  */
 export interface ItAssetHolderLabels {
   intervals: ReadonlyMap<string, ItAssetAssignmentDoc>;
   employees: ItHolderLabels;
+  /** The ids of the assets an order open or in progress still governs (`hasActiveMaintenance`). */
+  activeMaintenance: ReadonlySet<string>;
 }
 
 /**
@@ -202,6 +205,8 @@ export const toItAssetDto = (doc: ItAssetDoc, holders: ItAssetHolderLabels): ItA
   specs: toItAssetSpecsDto(doc.specs),
   accessories: doc.accessories ?? [],
   holder: assetHolder(doc, holders),
+  // Its status alone does not say so: an `open` order leaves the asset `inStock`.
+  hasActiveMaintenance: holders.activeMaintenance.has(String(doc._id)),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -543,9 +548,10 @@ export const toItConsumableDto = (doc: ItConsumableDoc): ItConsumableDto => ({
 
 /**
  * What a page of the ledger shows beside each movement, resolved ONCE per page by the caller and
- * handed in: the items, the employees (through the directory), the assets (under the reader's
- * scope — an asset from a branch they cannot see is not named), and the memos with their signed
- * state. The mapper only reads the maps, so what a page costs is decided in one place.
+ * handed in: the items (a transfer's other store's item among them, for its code), the employees
+ * (through the directory), the assets (under the reader's scope — an asset from a branch they cannot
+ * see is not named), and the memos with their signed state. The mapper only reads the maps, so what
+ * a page costs is decided in one place.
  */
 export interface ItConsumableMovementLabels {
   items: ReadonlyMap<string, { code: string; name: string; typeId: string }>;
@@ -574,6 +580,11 @@ export const toItConsumableMovementDto = (
   const asset = assetId === null ? undefined : labels.assets.get(assetId);
   const memoId = paperOf(idOrNull(doc.memoId), labels.memos);
   const memo = memoId === null ? undefined : labels.memos.get(memoId);
+  // A transfer's other half — the other store's item of the same name — named by its code, read
+  // with the page's items.
+  const counterpartConsumableId = idOrNull(doc.counterpartConsumableId);
+  const counterpart =
+    counterpartConsumableId === null ? undefined : labels.items.get(counterpartConsumableId);
   return {
     id: String(doc._id),
     consumableId: String(doc.consumableId),
@@ -594,6 +605,10 @@ export const toItConsumableMovementDto = (
     memoId,
     memoNumber: memo?.memoNumber ?? null,
     memoSigned: memo === undefined ? null : memo.signed,
+    transferId: idOrNull(doc.transferId),
+    counterpartBranchId: idOrNull(doc.counterpartBranchId),
+    counterpartConsumableId,
+    counterpartConsumableCode: counterpart?.code ?? null,
     byUserId: idOrNull(doc.byUserId),
     notes: doc.notes ?? null,
     createdAt: iso(doc.createdAt),

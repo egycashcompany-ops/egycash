@@ -13,6 +13,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeActionDto,
   type EmployeeActionType,
   type AdminResetPasswordResultDto,
@@ -90,6 +91,13 @@ export const registerEmployeeDirect = (
 ): Promise<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }> =>
   post<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }>('/hr/employees/direct', body);
 
+/**
+ * An EXTERNAL person (تعيين خارجى) — a name, where they sit and what they do, so the company can
+ * hand them custody. No login comes back because none is provisioned.
+ */
+export const registerEmployeeExternal = (body: RegisterExternalEmployee): Promise<EmployeeDto> =>
+  post<EmployeeDto>('/hr/employees/external', body);
+
 /** Post-hire personal-data edits — plain audited updates, not personnel actions. */
 export const updateEmployeePersonal = (id: string, body: UpdateEmployeePersonal): Promise<EmployeeDto> =>
   patch<EmployeeDto>(`/hr/employees/${id}/personal`, body);
@@ -120,6 +128,10 @@ export const rehireCheck = (nationalId: string): Promise<RehireCheckResultDto | 
 /** The code holding the highest number, any branch — the register screen's hint. */
 export const lastEmployeeCode = (): Promise<LastEmployeeCodeDto> =>
   get<LastEmployeeCodeDto>('/hr/employees/last-code');
+
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the external dialog's code box. */
+export const lastExternalEmployeeCode = (): Promise<LastEmployeeCodeDto> =>
+  get<LastEmployeeCodeDto>('/hr/employees/external/last-code');
 
 /** A typed code's branch (by its prefix) and whether its number is already held. */
 export const checkEmployeeCode = (code: string): Promise<EmployeeCodeCheckDto> =>

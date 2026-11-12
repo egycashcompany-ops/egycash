@@ -55,17 +55,51 @@ describe('the Employee Code is frozen once issued', () => {
   });
 
   /**
-   * Composition is legitimate exactly twice as an ISSUE — the two ways an employee is first created
-   * (hire from an accepted offer, and direct registration) — and once more as a PREVIEW: a
-   * candidate's papers (A28) print the code the hire will compose from the number kept for them,
-   * and that path writes nothing. If this count ever rises, another path is composing codes and
-   * needs to be looked at; if it falls, hiring has stopped composing one at all.
+   * Composition is legitimate exactly three times, and the three are not the same kind of act.
+   *
+   * TWO ISSUE a code — the two ways an employee is HIRED: from an accepted offer, and by direct
+   * registration. Each composes ONCE, at creation, and never re-derives.
+   *
+   * ONE PREVIEWS one — a candidate's papers (A28) print the code the hire will compose from the
+   * number kept for them. It writes nothing, which is what makes composing there harmless, so that
+   * is asserted rather than assumed.
+   *
+   * AND ONE CREATION PATH COMPOSES NOTHING AT ALL: `registerExternal`. An external person's code is
+   * typed by HR and may carry letters («واسمح ان الكود يتكتب فيه حروف انجليزي»), so it is a name,
+   * not an issued code — nothing may compose one for them, and nothing may read a branch or a
+   * number back out of it. That absence is asserted here, because it is the kind of thing a later
+   * change "fixes" by quietly composing a code when the typed one is missing.
+   *
+   * This count has moved twice in a week, and each time the guard was the thing that noticed: up to
+   * four when external registration first issued composed codes alongside the candidate preview,
+   * and back to three when those codes became typed. A bare count would have hidden both — it
+   * passes for a rewrite dressed as a creation path, and passes again if the preview starts saving.
+   * So each call is pinned to its method, the preview is pinned to writing nothing, and the one
+   * path that must not compose is pinned to not composing.
    */
-  it('only the two hire paths, and the candidate\'s unsaved preview, compose a code', () => {
+  it('two paths issue a code, one previews one, and external registration composes none', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
     expect(composed).toHaveLength(3);
+
+    const bodyOf = (method: string): string => {
+      const start = SERVICE.indexOf(`async ${method}(`);
+      expect(start, method).toBeGreaterThan(-1);
+      const next = SERVICE.slice(start + 1).search(/\n {2}(private )?async [a-zA-Z]+\(/);
+      return next === -1 ? SERVICE.slice(start) : SERVICE.slice(start, start + 1 + next);
+    };
+
+    for (const method of ['create', 'registerDirect']) {
+      expect([...bodyOf(method).matchAll(/buildEmployeeCode\(/g)], method).toHaveLength(1);
+    }
+
+    // An external person's code is typed, never minted: this path composes nothing, and takes the
+    // code from the request instead.
+    const external = bodyOf('registerExternal');
+    expect(external).not.toContain('buildEmployeeCode(');
+    expect(external).toContain('const code = input.code;');
+
     // The third is the candidate's preview — built, returned, never saved.
-    const preview = SERVICE.slice(SERVICE.indexOf('async candidateFromOffer('), SERVICE.indexOf('async reserveEmployeeNumber('));
+    const preview = bodyOf('candidateFromOffer');
     expect(preview).toContain('buildEmployeeCode(');
     expect(preview).not.toMatch(/employeeRepository\.(create|update)/);
   });

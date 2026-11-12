@@ -25,18 +25,21 @@ import {
 import { AppError } from '../../../../shared/errors';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
+import { jobTitleService } from '../../../../platform/organization';
 import { addDays, dateOnlyIso } from '../../shared/business-date';
 import { employeeService } from '../../employee-management/employees';
 import { type EmployeeDoc } from '../../employee-management/employees/employee.model';
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
-import { printSettings, type ContractTemplateDoc } from '../contract-templates/contract-template.model';
+import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
 import { resolveContractVariables } from './contract-variables';
 import { renderHiringPackHtml, type HiringPackPart } from './contract-render';
 import { letterheadFor } from './letterhead';
 import { contractService } from './contract.service';
 import { type ContractDoc } from './contract.model';
+import { papersOfPerson } from '../job-papers/person-papers';
+import { type JobPaper } from '../job-papers/job-papers.rules';
 
 /** A28 — the term and typed-in values a candidate's contract is made with at the hire. */
 export interface ContractTerms {
@@ -50,28 +53,9 @@ const PRINTABLE = new Set(['active', 'signed']);
 /** A contract on its way: the set finishes it when it may, or says why it cannot. */
 const IN_PROGRESS = new Set(['draft', 'pendingApproval', 'approved']);
 
-/** Does this template print for `jobTitleId`? */
-export const appliesToJob = (template: ContractTemplateDoc, jobTitleId: string): boolean => {
-  const settings = printSettings(template);
-  return settings.allJobs || settings.jobTitleIds.some((id) => String(id) === jobTitleId);
-};
-
-/** The published templates an employee's job prints, contracts and forms, in print order. */
-export const templatesForJob = (
-  published: readonly ContractTemplateDoc[],
-  jobTitleId: string,
-): { contracts: ContractTemplateDoc[]; forms: ContractTemplateDoc[] } => {
-  const mine = published
-    .filter((template) => appliesToJob(template, jobTitleId))
-    .sort(
-      (a, b) =>
-        printSettings(a).printOrder - printSettings(b).printOrder || a.name.ar.localeCompare(b.name.ar, 'ar'),
-    );
-  return {
-    contracts: mine.filter((template) => printSettings(template).kind === 'contract'),
-    forms: mine.filter((template) => printSettings(template).kind === 'form'),
-  };
-};
+// What a job's templates give it, and a person's papers by department and job, live in
+// `job-papers.rules.ts`; these two are read here by name as well.
+export { appliesToJob, templatesForJob } from '../job-papers/job-papers.rules';
 
 /** One year from `start`, the day before its anniversary: 15/11/2026 → 14/11/2027. */
 export const oneYearFrom = (start: Date): Date => {
@@ -80,6 +64,17 @@ export const oneYearFrom = (start: Date): Date => {
 };
 
 class HiringPackService {
+  /** The employee's papers — their department's and job's, as «مستندات الوظائف» set them. */
+  private async papersOfEmployee(employee: EmployeeDoc): Promise<JobPaper[]> {
+    const jobTitleId = String(employee.employment.jobTitleId);
+    const job = await jobTitleService.getById(jobTitleId).catch(() => null);
+    return papersOfPerson(await contractTemplateService.listPublished(), {
+      departmentId: String(employee.employment.departmentId),
+      jobTitleId,
+      jobName: job?.name.ar ?? null,
+    });
+  }
+
   /**
    * The employee's contract for the set: one already generated, or one this request finishes or
    * makes. Never throws for a reason the HR clerk can act on — it reports it as the note.
@@ -161,10 +156,8 @@ class HiringPackService {
     terms: ContractTerms,
   ): Promise<{ doc: ContractDoc | null; note: HiringPackContractNote | null }> {
     const employee = await employeeService.getById(employeeId, scope);
-    const { contracts } = templatesForJob(
-      await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
-    );
+    const papers = await this.papersOfEmployee(employee);
+    const contracts = papers.filter((paper) => paper.group === 'contract').map((paper) => paper.template);
     const made = await this.contractFor(ctx, employee, contracts, scope, terms);
     return { doc: made.doc, note: made.note };
   }
@@ -191,10 +184,9 @@ class HiringPackService {
    */
   async papersFor(employeeId: string, scope: ScopeSelector): Promise<EmployeePapersDto> {
     const employee = await employeeService.getById(employeeId, scope);
-    const { contracts, forms } = templatesForJob(
-      await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
-    );
+    const mine = await this.papersOfEmployee(employee);
+    const contracts = mine.filter((paper) => paper.group === 'contract').map((paper) => paper.template);
+    const forms = mine.filter((paper) => paper.group !== 'contract');
     const { held, key } = await this.heldContract(employeeId, contracts);
     const papers: EmployeePapersDto['papers'] = [];
     if (key !== null) {
@@ -204,15 +196,11 @@ class HiringPackService {
         name: template?.name ?? { ar: 'العقد', en: 'Contract' },
         kind: 'contract',
         group: 'contract',
+        optional: false,
       });
     }
-    for (const form of forms) {
-      papers.push({
-        key: form.key,
-        name: form.name,
-        kind: 'form',
-        group: printSettings(form).allJobs ? 'everyJob' : 'thisJob',
-      });
+    for (const { template, group, optional } of forms) {
+      papers.push({ key: template.key, name: template.name, kind: 'form', group, optional });
     }
     return {
       papers,
@@ -238,11 +226,13 @@ class HiringPackService {
     keys?: readonly string[],
   ): Promise<HiringPackDto> {
     const employee = await employeeService.getById(employeeId, scope);
-    const jobTitleId = String(employee.employment.jobTitleId);
-    const published = templatesForJob(await contractTemplateService.listPublished(), jobTitleId);
+    const mine = await this.papersOfEmployee(employee);
     const wanted = keys === undefined ? null : new Set(keys);
-    const contracts = published.contracts;
-    const forms = published.forms.filter((form) => wanted === null || wanted.has(form.key));
+    const contracts = mine.filter((paper) => paper.group === 'contract').map((paper) => paper.template);
+    // The whole set is what is ticked for the employee; a choice may take a paper only offered too.
+    const forms = mine
+      .filter((paper) => paper.group !== 'contract' && (wanted === null ? !paper.optional : wanted.has(paper.template.key)))
+      .map((paper) => paper.template);
     const contractKey = wanted === null ? null : (await this.heldContract(employeeId, contracts)).key;
     const withContract = wanted === null || (contractKey !== null && wanted.has(contractKey));
 

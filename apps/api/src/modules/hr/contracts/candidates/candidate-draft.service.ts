@@ -17,14 +17,13 @@
 //     hire stands.
 //   · Everything the page changes is saved as it changes («يتعملو ريكورد»): a closed tab or an
 //     expired session resumes where it stopped.
-//   · MANY AT ONCE («طباعة لكل المحدد» on «جاهزون للتعيين»): the people ticked, the papers chosen
-//     once for all; each person prints those of them their own job has, all in one document, each
-//     print recorded as a single person's is.
+//   · MANY AT ONCE («طباعة لكل المحدد» on «جاهزون للتعيين»): the people ticked, each on a line of
+//     their own with their own job's papers, chosen for that person alone; all in one document,
+//     each print recorded as a single person's is.
 import { Types } from 'mongoose';
 import {
   type CandidateBulkPersonDto,
   type CandidateDraftDto,
-  type CandidatePaperDto,
   type HireCandidate,
   type HireCandidateDto,
   type RenderCandidateBulk,
@@ -43,11 +42,13 @@ import { type EmployeeDoc } from '../../employee-management/employees/employee.m
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
-import { printSettings, type ContractTemplateDoc } from '../contract-templates/contract-template.model';
+import { printSettings } from '../contract-templates/contract-template.model';
 import { renderHiringPackHtml, type HiringPackPart } from '../contracts/contract-render';
 import { resolveContractVariables } from '../contracts/contract-variables';
-import { hiringPackService, oneYearFrom, templatesForJob } from '../contracts/hiring-pack.service';
+import { hiringPackService, oneYearFrom } from '../contracts/hiring-pack.service';
 import { letterheadFor } from '../contracts/letterhead';
+import { isTickedForJob, type JobPaper } from '../job-papers/job-papers.rules';
+import { papersOfPerson } from '../job-papers/person-papers';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { candidateDraftRepository } from './candidate-draft.repository';
 import { type CandidateDraftDoc } from './candidate-draft.model';
@@ -57,11 +58,8 @@ const NOT_TYPED = new Set(['employee.employeeCode']);
 
 const offerRef = (offerId: string) => ({ moduleId: 'hr', entityType: 'jobOffer', entityId: offerId });
 
-/** A paper of the candidate's job, in print order, with where it belongs on the page. */
-interface Paper {
-  template: ContractTemplateDoc;
-  group: CandidatePaperDto['group'];
-}
+/** One of the candidate's papers — their department's and job's (`job-papers.rules.ts`). */
+type Paper = JobPaper;
 
 /** Everything the page is drawn from: the draft, the would-be employee, the job's papers. */
 interface Context {
@@ -72,22 +70,14 @@ interface Context {
   hiredEmployeeId: string | null;
   papers: Paper[];
   allowsEndDate: boolean;
+  /** The job the candidate is hired into, when it can be read. */
+  jobTitle: { ar: string; en: string } | null;
 }
 
 const dateOf = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
-/** The job's papers: its contract (the first by print order), then every-job forms, then its own. */
-export const papersOfJob = (published: readonly ContractTemplateDoc[], jobTitleId: string): Paper[] => {
-  const { contracts, forms } = templatesForJob(published, jobTitleId);
-  const contract = contracts[0];
-  return [
-    ...(contract === undefined ? [] : [{ template: contract, group: 'contract' as const }]),
-    ...forms.map((template) => ({
-      template,
-      group: printSettings(template).allJobs ? ('everyJob' as const) : ('thisJob' as const),
-    })),
-  ];
-};
+// The papers of a candidate's department and job, and which start ticked, are read here by name too.
+export { isTickedForJob, papersOfJob } from '../job-papers/job-papers.rules';
 
 class CandidateDraftService {
   /** The page's context; with `create`, the draft is made on the first visit, from the offer. */
@@ -98,10 +88,13 @@ class CandidateDraftService {
       hiredAt: draft === null ? new Date() : dateOf(draft.hiringDate),
     });
     const { employee } = candidate;
-    const papers = papersOfJob(
-      await contractTemplateService.listPublished(),
-      String(employee.employment.jobTitleId),
-    );
+    const jobTitleId = String(employee.employment.jobTitleId);
+    const job = await jobTitleService.getById(jobTitleId).catch(() => null);
+    const papers = await papersOfPerson(await contractTemplateService.listPublished(), {
+      departmentId: String(employee.employment.departmentId),
+      jobTitleId,
+      jobName: job?.name.ar ?? null,
+    });
     const contract = papers.find((paper) => paper.group === 'contract');
     const allowsEndDate =
       contract?.template.contractTypeId == null
@@ -147,6 +140,7 @@ class CandidateDraftService {
       hiredEmployeeId: candidate.hiredEmployeeId,
       papers,
       allowsEndDate,
+      jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
     };
   }
 
@@ -167,25 +161,26 @@ class CandidateDraftService {
     const { draft } = c;
     const keys = [...new Set(c.papers.flatMap((paper) => paper.template.placeholders))];
     const { values } = await this.valuesFor(c, keys);
-    const job = await jobTitleService.getById(String(c.employee.employment.jobTitleId)).catch(() => null);
+    // Never chosen yet: the candidate's papers ticked, but one only offered unticked.
     const chosen = draft.selected === null ? null : new Set(draft.selected);
     return {
       id: String(draft._id),
       offerId: String(draft.offerId),
       offerCode: c.offerCode,
       applicantName: c.applicantName,
-      jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
+      jobTitle: c.jobTitle,
       startDate: draft.startDate,
       endDate: draft.endDate,
       hiringDate: draft.hiringDate,
       allowsEndDate: c.allowsEndDate,
-      papers: c.papers.map(({ template, group }) => ({
+      papers: c.papers.map(({ template, group, optional }) => ({
         key: template.key,
         name: template.name,
         kind: printSettings(template).kind,
         group,
+        optional,
         placeholders: template.placeholders,
-        selected: chosen === null || chosen.has(template.key),
+        selected: chosen === null ? isTickedForJob({ optional }) : chosen.has(template.key),
       })),
       values: values.map((v) => {
         const entry = CONTRACT_VARIABLE_CATALOG.find((x) => x.key === v.key);
@@ -261,7 +256,7 @@ class CandidateDraftService {
     const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
     if (papers.length !== wanted.size) {
       throw new ValidationError([
-        { field: 'body.keys', code: 'INVALID', message: 'a paper that is not one of the job\'s papers' },
+        { field: 'body.keys', code: 'INVALID', message: 'a paper that is not one of the candidate\'s papers' },
       ]);
     }
     if (input.print) c = await this.markPrinted(ctx, c, papers, scope);
@@ -319,8 +314,8 @@ class CandidateDraftService {
   }
 
   /**
-   * «طباعة لكل المحدد» — each ticked person with the papers of their own job, opened (and their
-   * record made) as one is when their page is opened. A person who cannot be printed for — the offer
+   * «طباعة لكل المحدد» — each ticked person with their own papers (their department's and job's),
+   * opened (and their record made) as one is when their page is opened. A person who cannot be printed for — the offer
    * no longer accepted, out of the caller's reach — is listed with why, not dropped.
    */
   async bulkOpen(ctx: AuthContext, offerIds: readonly string[], scope: ScopeSelector): Promise<CandidateBulkPersonDto[]> {
@@ -328,17 +323,17 @@ class CandidateDraftService {
     for (const offerId of new Set(offerIds)) {
       try {
         const c = await this.context(ctx, offerId, scope, true);
-        const job = await jobTitleService.getById(String(c.employee.employment.jobTitleId)).catch(() => null);
         out.push({
           offerId,
           applicantName: c.applicantName,
           offerCode: c.offerCode,
-          jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
-          papers: c.papers.map(({ template, group }) => ({
+          jobTitle: c.jobTitle,
+          papers: c.papers.map(({ template, group, optional }) => ({
             key: template.key,
             name: template.name,
             kind: printSettings(template).kind,
             group,
+            optional,
           })),
           error: null,
         });
@@ -351,22 +346,28 @@ class CandidateDraftService {
   }
 
   /**
-   * Print the chosen papers for every ticked person, as ONE document: each person in turn, each
-   * with those of the chosen papers their own job has, in print order — so a crew leader gets the
-   * weapon declaration and every person their own job's card. Each print is recorded as a single
-   * person's is (the code kept, the print counted and audited). A person with nothing to print, or
-   * who cannot be printed for, is reported and skipped; the others print.
+   * Print the papers chosen for each person, as ONE document: each person in turn, with those of the
+   * papers chosen for them that are their own (their department's and job's), in print order — a
+   * paper not theirs is never printed for them. Each print is recorded as a single person's is (the
+   * code kept, the print counted and audited). A person with nothing to print, or who cannot be
+   * printed for, is reported and skipped; the others print.
    */
   async bulkRender(ctx: AuthContext, input: RenderCandidateBulk, scope: ScopeSelector): Promise<RenderCandidateBulkDto> {
-    const wanted = new Set(input.keys);
+    // Each person's own choice; a person listed twice prints what both lines chose, once.
+    const chosen = new Map<string, Set<string>>();
+    for (const person of input.people) {
+      const keys = chosen.get(person.offerId) ?? new Set<string>();
+      for (const key of person.keys) keys.add(key);
+      chosen.set(person.offerId, keys);
+    }
     const parts: HiringPackPart[] = [];
     const results: RenderCandidateBulkDto['results'] = [];
-    for (const offerId of new Set(input.offerIds)) {
+    for (const [offerId, wanted] of chosen) {
       try {
         let c = await this.context(ctx, offerId, scope, true);
         const papers = c.papers.filter((paper) => wanted.has(paper.template.key));
         if (papers.length === 0) {
-          results.push({ offerId, printed: 0, error: 'none of the chosen papers is one of this job\'s papers' });
+          results.push({ offerId, printed: 0, error: 'none of the chosen papers is one of this person\'s papers' });
           continue;
         }
         c = await this.markPrinted(ctx, c, papers, scope);

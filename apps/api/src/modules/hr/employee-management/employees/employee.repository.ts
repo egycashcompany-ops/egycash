@@ -195,6 +195,26 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * The code of the EXTERNAL person registered most recently — «عرفنى تحته كدا أخر كود كام للموظفين
+   * الخارجيين دول».
+   *
+   * By when they were registered, not by the code's value, because an external code may carry
+   * letters and there is no order to "highest" across `EX7` and `EX10`. The last one issued is the
+   * question HR is actually asking: what did we give the person before this one.
+   *
+   * Any state, as `findHighestNumberedCode` is: a deleted external person's code is still spent.
+   */
+  async findLastExternalCode(): Promise<string | null> {
+    const row = await this.model
+      .findOne({ origin: 'external' })
+      .sort({ createdAt: -1, _id: -1 })
+      .select('code')
+      .lean<{ code: string }>()
+      .exec();
+    return row?.code ?? null;
+  }
+
+  /**
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
@@ -350,6 +370,23 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
+   * A28 — the jobs held in each department: one row per department and job among the employees who
+   * have not exited, for «مستندات الوظائف», which shows every department with the jobs in it.
+   * `System`: it names no person and no figure, and the popup is the whole company's.
+   */
+  async jobsByDepartmentSystem(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: { departmentId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null } }>([
+        { $match: { isDeleted: false, status: { $ne: 'exited' } } },
+        { $group: { _id: { departmentId: '$employment.departmentId', jobTitleId: '$employment.jobTitleId' } } },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({ departmentId: String(row._id.departmentId), jobTitleId: String(row._id.jobTitleId) }));
   }
 
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */

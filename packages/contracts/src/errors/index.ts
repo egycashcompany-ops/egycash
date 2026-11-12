@@ -134,6 +134,88 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+  /**
+   * 422 — the shipments history range holds more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments. Refused, never cut short: totals over a silently truncated list would be wrong
+   * figures. Details carry `count` and `max` (field = the name, message = the number).
+   */
+  OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE: 'OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE',
+  /**
+   * 422 — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a NEW shipment dated before today on the
+   * Cairo calendar (its collection date, or a secured one's delivery date), or a delivery date set
+   * for the first time on an edit before today. One detail: `field` = the date refused,
+   * `code` = 'MIN_DATE', `message` = the earliest day allowed ('YYYY-MM-DD').
+   */
+  OPERATIONS_SHIPMENT_DATE_IN_PAST: 'OPERATIONS_SHIPMENT_DATE_IN_PAST',
+  /**
+   * 422 — «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»: an edit moving the collection date (or
+   * the delivery date) EARLIER than the day the shipment is on. Later, or unchanged, is accepted.
+   * Same detail shape as `OPERATIONS_SHIPMENT_DATE_IN_PAST`; `message` = the shipment's current day.
+   */
+  OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: 'OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL',
+  /**
+   * 422 — a secured shipment's delivery date before its collection date («تاريخ التسليم تانى يوم
+   * الاستلام افتراضى وممكن يغير» — it may move, never to before the collection day; the same day
+   * is accepted). Checked on create and on an edit that changes either date. Same detail shape as
+   * `OPERATIONS_SHIPMENT_DATE_IN_PAST`, `field` = 'deliveryDate', `message` = the collection day.
+   */
+  OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION: 'OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION',
+  /** 409 — a restore asked for a shipment that is not deleted. */
+  OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
+
+  // ── The secured pickup ✓, the vault lock and the cancelled receipt (Round 10) ────────────────
+  /**
+   * 409 — the shipment is LOCKED: a secured shipment the vault has received (status `inVault`,
+   * `dispatched` or `completed`) — «ميقدر حد من القادة او العمليات او الخزنه يعدل عليها». Refuses
+   * the edit, the delete, the receipt photo, the pickup crew, and the desk's pickup ✓ / its undo.
+   * The way back is the cancelled receipt (`operationsVault.cancelReceipt`).
+   */
+  OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
+  /**
+   * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
+   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
+   * desk's undo has no pickup ✓ to take back.
+   */
+  OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
+  /**
+   * 409 — the desk's pickup ✓ on a secured shipment whose pickup is already recorded — by its
+   * captain in the app or by the desk itself. The desk never stamps over the captain's ✓ (it may
+   * take it back, then confirm as Operations).
+   */
+  OPERATIONS_SECURED_ALREADY_PICKED_UP: 'OPERATIONS_SECURED_ALREADY_PICKED_UP',
+  /**
+   * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
+   * already dispatched or completed.
+   */
+  OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
+  // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
+  /**
+   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
+   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
+   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
+  /**
+   * 409 — a distribution change named a secured shipment that is already `dispatched` or `completed`:
+   * it has left the vault, and its van is history. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED: 'OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED',
+  /**
+   * 422 — a distribution change named a shipment that is not this day's: neither due on the day
+   * (draft or in the vault) nor OVERDUE in the vault (delivery date before TODAY, Cairo). A draft due
+   * another day, one with no delivery date, or one in the vault due on its own day between today and
+   * the day asked for. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
+  /**
+   * 409 — a distribution change would move or clear a delivery leg its captain has already started
+   * in the app (`executionStatus` past `pending`). Also the shipment edit's (`PATCH
+   * /operations/shipments/:id`) when it would move a secured shipment's delivery date off the day of
+   * such a leg, or clear it — the edit would take the stop off his van just the same; nothing is
+   * written. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */

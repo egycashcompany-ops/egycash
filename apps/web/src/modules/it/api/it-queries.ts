@@ -41,6 +41,7 @@ import {
   type CreateItVendor,
   type DisposeItAsset,
   type HandOverItAssets,
+  type MoveItAssetsToBranch,
   type AssignItMobileLine,
   type CreateItMobileLine,
   type ItMobileLineStatusAction,
@@ -51,6 +52,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
   type ReturnItAsset,
@@ -120,6 +122,19 @@ export const useItBranchOptions = () =>
     queryKey: listKey(MODULE, 'branchOptions'),
     queryFn: api.listBranchOptions,
     staleTime: 5 * 60_000,
+  });
+
+/**
+ * The branches «نقل إلى فرع» and «تحويل إلى فرع» may go to, as the server judges the caller's
+ * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while a dialog is OPEN: both
+ * dialogs stay mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to
+ * whoever lacks the grant. Its own subtree: no asset or item write changes a grant's reach.
+ */
+export const useItMoveTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'moveTargets'),
+    queryFn: api.moveTargets,
+    enabled,
   });
 
 /**
@@ -380,6 +395,24 @@ export const useDisposeItAsset = () =>
     api.disposeAsset(id, body),
   );
 
+/**
+ * «نقل إلى فرع»: every asset named changes branch, and a held one's custody interval with it — so
+ * everything a custody action invalidates is invalidated: the register and its dashboard (the
+ * assets subtree, each asset's cached detail included), the intervals and the history, and the
+ * people's counts.
+ */
+export const useMoveItAssetsToBranch = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MoveItAssetsToBranch) => api.moveAssetsToBranch(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+      void qc.invalidateQueries({ queryKey: itKeys.people });
+    },
+  });
+};
+
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 
 /** A stored receipt — what «طباعة الإيصال» prints again, and what the signed copy hangs off. */
@@ -617,6 +650,9 @@ export const useReturnItConsumable = () =>
   );
 export const useIssueItConsumables = () =>
   useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body));
+/** «تحويل إلى فرع» — both stores' figures and the two movements of every line, in the one subtree. */
+export const useTransferItConsumables = () =>
+  useConsumableMutation((body: TransferItConsumables) => api.transferConsumables(body));
 export const useUploadConsumableMemoSignedCopy = () =>
   useConsumableMutation(({ id, file }: { id: string; file: File }) =>
     api.uploadConsumableMemoSignedCopy(id, file),

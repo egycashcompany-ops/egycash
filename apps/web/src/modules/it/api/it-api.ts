@@ -56,6 +56,9 @@ import {
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
   type ItAssetNamesDto,
+  type ItAssetsBranchMoveResultDto,
+  type ItMoveTargetsDto,
+  type MoveItAssetsToBranch,
   type ItDashboardActivityDto,
   type ItDashboardAssetsDto,
   type ItCatalogItemDto,
@@ -86,6 +89,8 @@ import {
   type ItConsumableIssueResultDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
+  type ItConsumableTransferResultDto,
+  type TransferItConsumables,
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
@@ -246,6 +251,24 @@ export const transferAsset = (id: string, body: TransferItAsset): Promise<ItAsse
   post<ItAssetDto>(`/it/assets/${id}/transfer`, body);
 export const disposeAsset = (id: string, body: DisposeItAsset): Promise<ItAssetDto> =>
   post<ItAssetDto>(`/it/assets/${id}/dispose`, body);
+
+/**
+ * «نقل إلى فرع» — several assets to ONE branch in one transaction, all of them or none. One held by
+ * an employee moves with its custody («ينتقل مع عهدته»); no paper — the history is the record.
+ */
+export const moveAssetsToBranch = (
+  body: MoveItAssetsToBranch,
+): Promise<ItAssetsBranchMoveResultDto> =>
+  post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch', body);
+
+/**
+ * Where «نقل إلى فرع» and «تحويل إلى فرع» may go: the active branches the caller's `itAsset.assign`
+ * reaches WHOLE — the server's own test, the one both actions apply before they write. Only the
+ * server can say it: `me` carries the reach of all the account's grants, not of this one key, so a
+ * picker built from it offered branches the action then refused with 403.
+ */
+export const moveTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/assets/move-targets');
 
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 // Printed BEFORE the hand-over (`preview` writes nothing), recorded WITH it (`handOver` opens the
@@ -410,6 +433,16 @@ export const returnConsumable = (id: string, body: ReturnItConsumable): Promise<
  */
 export const issueConsumables = (body: IssueItConsumables): Promise<ItConsumableIssueResultDto> =>
   post<ItConsumableIssueResultDto>('/it/consumables/issue', body);
+
+/**
+ * «تحويل إلى فرع» — «ممكن أنقل 5 لفرع تاني»: items of ONE branch's store, each with how many, to ONE
+ * other branch, in one transaction. Each line reaches the other store's item of the same name, made
+ * there when it had none (`created`).
+ */
+export const transferConsumables = (
+  body: TransferItConsumables,
+): Promise<ItConsumableTransferResultDto> =>
+  post<ItConsumableTransferResultDto>('/it/consumables/transfer', body);
 
 /**
  * The ledger across items, newest first, each row labelled — the movements screen, one item's

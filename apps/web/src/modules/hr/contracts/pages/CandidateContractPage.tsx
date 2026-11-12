@@ -6,8 +6,10 @@
 // واحد بنفس ال toggle دا جمب كلمه عقد جديد فوق … و عاوز فالمساحه اللي انت عامل فيها ال المستندات
 // دي دلوقت … تبقي علي اساس انها form ساعت ميدوس علي اي نموزج فيهم كتعديل وريني».
 //
-//   · THE PAPERS are ONE ROW beside the title — the contract, every job's forms, this job's — each
-//     a tile to tick for printing, with «تعديل» and «طباعة» (that paper alone) under it.
+//   · THE PAPERS are ONE ROW beside the title — the candidate's own, in print order: those of their
+//     department and job, as «مستندات الوظائف» sets them («النمازج المخصصه بس للاداره او الوظائف هي
+//     اللي هتكون موجوده») — each a tile to tick for printing, with «تعديل» and «طباعة» (that paper
+//     alone) under it.
 //   · THE FORM below is the contract's term and the hiring date, then the paper opened by its
 //     «تعديل»: every value it prints, changeable for this candidate. Beside it, that paper as it
 //     prints — the contract until another paper is opened.
@@ -20,7 +22,6 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   type CandidateDraftDto,
-  type CandidatePaperGroup,
   type Locale,
   type UpdateCandidateDraft,
 } from '@ecms/contracts';
@@ -41,9 +42,6 @@ import {
 } from '../api/contract-queries';
 import { PaperTile } from '../components/PaperTile';
 import { PaperValuesForm } from '../components/PaperValuesForm';
-
-/** The order the row reads in: the contract, every job's forms, then this job's own. */
-const GROUPS: CandidatePaperGroup[] = ['contract', 'everyJob', 'thisJob'];
 
 /** One year from an ISO start, the day before its anniversary — as the server makes it. */
 export const oneYearFromIso = (start: string): string => {
@@ -97,8 +95,9 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     return chain.current;
   };
 
-  // The papers in the row's order; the one in the form is the one opened, else the contract.
-  const papers = draft === undefined ? [] : GROUPS.flatMap((g) => draft.papers.filter((p) => p.group === g));
+  // The candidate's papers, in print order as the server lists them; the one in the form is the one
+  // opened, else the first — the contract.
+  const papers = draft?.papers ?? [];
   const active = papers.find((p) => p.key === opened) ?? papers[0] ?? null;
 
   // That paper as it prints, re-drawn whenever what it prints changed.
@@ -204,7 +203,7 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
       {papers.length === 0 ? (
         <p className="self-center text-sm text-slate-500">{t('contracts.candidate.noPapers')}</p>
       ) : (
-        <div className="flex min-w-0 flex-nowrap gap-2 overflow-x-auto pb-1">
+        <div className="flex min-w-0 flex-wrap gap-2 pb-1">
           {papers.map((p) => (
             <PaperTile
               key={p.key}

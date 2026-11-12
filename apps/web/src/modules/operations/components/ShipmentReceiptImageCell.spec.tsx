@@ -191,6 +191,31 @@ describe('the receipt-image cell on a row with a photo', () => {
     expect(html).not.toContain('data-shipment-receipt-delete');
     expect(html).not.toContain('type="file"');
   });
+
+  // The vault's receive queue is read on `operationsVault.view`; the photo's bytes on the shipment
+  // grant. A treasurer without it is shown a dash — never an eye whose request would answer 403.
+  it('gives a reader without the shipment grant a dash, not an eye that would be refused', () => {
+    const html = cell(['operationsVault.view'], WITH_PHOTO);
+    expect(html).toBe('<span class="text-slate-400">—</span>');
+  });
+
+  // «NO edit/delete» on the vault's receive queue: the photo is looked at there, never managed —
+  // whatever the reader holds.
+  it('offers an editor the eye alone on a screen that only looks', () => {
+    const html = render(
+      [VIEW, EDIT],
+      <ShipmentReceiptImageCell row={WITH_PHOTO} onPreview={() => undefined} readOnly />,
+    );
+    expect(html).toContain('data-shipment-receipt-view="s-1"');
+    expect(html).not.toContain('data-shipment-receipt-replace');
+    expect(html).not.toContain('data-shipment-receipt-delete');
+    expect(html).not.toContain('type="file"');
+    const empty = render(
+      [VIEW, EDIT],
+      <ShipmentReceiptImageCell row={shipment()} onPreview={() => undefined} readOnly />,
+    );
+    expect(empty).toBe('<span class="text-slate-400">—</span>');
+  });
 });
 
 describe('the receipt-image preview', () => {
@@ -211,6 +236,20 @@ describe('the receipt-image preview', () => {
     const remove = ar('operations.shipment.receiptImage.delete');
     expect(preview([VIEW, EDIT])).toContain(remove);
     expect(preview([VIEW])).not.toContain(remove);
+  });
+
+  it('offers no delete, to anyone, when opened from a screen that only looks', () => {
+    const html = render(
+      [VIEW, EDIT],
+      <ShipmentReceiptImagePreviewDialog
+        open
+        onClose={() => undefined}
+        row={WITH_PHOTO}
+        readOnly
+      />,
+    );
+    expect(html).toContain(ar('common.close'));
+    expect(html).not.toContain(ar('operations.shipment.receiptImage.delete'));
   });
 
   it('renders nothing while closed', () => {

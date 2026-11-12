@@ -35,6 +35,14 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   { key: 'salary.fixed', label: { en: 'Basic pay (70%)', ar: 'الأجر الأساسي (70%)' }, source: 'employment', sample: '7,000', required: false },
   { key: 'salary.attendanceBonus', label: { en: 'Attendance allowance (30%)', ar: 'بدل الانتظام (30%)' }, source: 'employment', sample: '3,000', required: false },
   { key: 'salary.grossInWords', label: { en: 'Gross salary in words', ar: 'الراتب الشامل بالحروف' }, source: 'employment', sample: 'عشرة آلاف جنيه لا غير', required: false },
+  // A27 — «نموذج رقم (1)», the social-insurance registration: his facts, and the start date in its
+  // day, month and year boxes.
+  { key: 'employee.nationality', label: { en: 'Nationality', ar: 'الجنسية' }, source: 'employee', sample: 'مصري', required: false },
+  { key: 'employee.email', label: { en: 'Email', ar: 'البريد الإلكتروني' }, source: 'employee', sample: 'name@example.com', required: false },
+  { key: 'employee.insuranceNumber', label: { en: 'Social insurance number', ar: 'الرقم التأميني' }, source: 'employee', sample: '123456789', required: false },
+  { key: 'employment.startDay', label: { en: 'Start date — day', ar: 'تاريخ المباشرة — اليوم' }, source: 'employment', sample: '15', required: false },
+  { key: 'employment.startMonth', label: { en: 'Start date — month', ar: 'تاريخ المباشرة — الشهر' }, source: 'employment', sample: '11', required: false },
+  { key: 'employment.startYear', label: { en: 'Start date — year', ar: 'تاريخ المباشرة — السنة' }, source: 'employment', sample: '2026', required: false },
 ];
 
 export const CATALOG_KEYS = new Set(CONTRACT_VARIABLE_CATALOG.map((v) => v.key));

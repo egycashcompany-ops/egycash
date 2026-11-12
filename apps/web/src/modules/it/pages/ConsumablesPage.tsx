@@ -15,6 +15,12 @@
 // starts an empty memo; the row's «صرف» starts it with that item. «سجل الحركات» is the ledger of
 // every item, a screen of its own.
 //
+// «تحويل إلى فرع» (2026-11-11) — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: tick items of ONE
+// store and «تحويل إلى فرع (n)» sends each of them, by the quantity asked, to another branch's
+// store; the row's own «تحويل إلى فرع» starts it with that item. Ticked from two stores, the action
+// says why it waits (`lib/consumable-transfer.ts`). A retired item may still send its stock out —
+// emptying its shelf, as a scrap does — so the row offers it whenever there is stock.
+//
 // URL-synced like every IT register — a filtered view is a link, and the filters are remembered
 // across visits. Excel and PDF, before the screen's own actions, as on the other registers: every
 // item the filters match, in the table's order (`lib/consumable-register-export.ts`).
@@ -31,6 +37,8 @@ import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
+import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
+import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { Checkbox, Select } from '../../../shared/ui/form';
 import {
   DownloadIcon,
@@ -38,6 +46,7 @@ import {
   HistoryIcon,
   PlusIcon,
   ResetIcon,
+  SwapIcon,
   TrashIcon,
   UsersIcon,
 } from '../../../shared/ui/icons';
@@ -54,7 +63,9 @@ import {
   ReceiveConsumableDialog,
   ReturnConsumableDialog,
   ScrapConsumableDialog,
+  TransferConsumablesDialog,
 } from '../components/ConsumableDialogs';
+import { consumableTransferSelection } from '../lib/consumable-transfer';
 import { saveSheet } from '../../fleet/lib/fleet-sheet';
 import {
   consumableRegisterFilters,
@@ -77,9 +88,11 @@ type ItemDialog =
   | {
       kind: 'edit' | 'receive' | 'scrap' | 'return' | 'movements';
       item: ItConsumableDto;
-    };
+    }
+  /** The items as they were when it opened — a refetch underneath must not change the rows. */
+  | { kind: 'transfer'; items: ItConsumableDto[] };
 
-type RowAction = 'receive' | 'issue' | 'scrap' | 'return' | 'edit' | 'movements';
+type RowAction = 'receive' | 'issue' | 'scrap' | 'return' | 'transfer' | 'edit' | 'movements';
 
 export const ConsumablesPage = (): JSX.Element => {
   const t = useT();
@@ -156,6 +169,11 @@ export const ConsumablesPage = (): JSX.Element => {
   const [dialog, setDialog] = useState<ItemDialog | null>(null);
   const close = (): void => setDialog(null);
 
+  // What is ticked, as the rows on screen — and whether one transfer can carry it.
+  const selection = useTableSelection(rows.map((item) => item.id));
+  const ticked = rows.filter((item) => selection.selectedIds.has(item.id));
+  const transferable = consumableTransferSelection(ticked);
+
   // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
   const exportContext = { t, locale, branchName, typeName };
   // Every item the filters match, in the table's order — the table's own params, unpaged.
@@ -201,7 +219,7 @@ export const ConsumablesPage = (): JSX.Element => {
       className={actionButton}
       aria-label={`${label} — ${item.name}`}
       title={label}
-      onClick={() => setDialog({ kind, item })}
+      onClick={() => setDialog(kind === 'transfer' ? { kind, items: [item] } : { kind, item })}
     >
       {icon}
     </button>
@@ -335,6 +353,14 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.return'),
               <ResetIcon className="h-4 w-4" />,
             )}
+          {can('itAsset.assign') &&
+            item.onHandQty > 0 &&
+            action(
+              item,
+              'transfer',
+              t('it.consumables.transfer.title'),
+              <SwapIcon className="h-4 w-4" />,
+            )}
           {can('itAsset.edit') &&
             action(item, 'edit', t('it.consumables.edit'), <EditIcon className="h-4 w-4" />)}
           {action(
@@ -444,6 +470,41 @@ export const ConsumablesPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          <Can permission="itAsset.assign">
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<SwapIcon className="h-4 w-4" />}
+              data-bulk-transfer={transferable.state}
+              disabled={transferable.state !== 'ready'}
+              onClick={() => setDialog({ kind: 'transfer', items: ticked })}
+            >
+              {t('it.consumables.transfer.bulkAction', {
+                n: formatNumber(selection.count, locale),
+              })}
+            </Button>
+            {/* Why it waits, in words beside it — a disabled button alone says nothing. */}
+            {transferable.state === 'mixedBranches' && (
+              <span className="text-xs text-amber-700 dark:text-amber-400" role="note">
+                {t('it.consumables.transfer.mixedBranches')}
+              </span>
+            )}
+            {transferable.state === 'nothingOnHand' && (
+              <span className="text-xs text-amber-700 dark:text-amber-400" role="note">
+                {t('it.consumables.transfer.noneOnHand')}
+              </span>
+            )}
+            {transferable.state === 'tooMany' && (
+              <span className="text-xs text-amber-700 dark:text-amber-400" role="note">
+                {t('it.consumables.transfer.tooMany', {
+                  max: formatNumber(transferable.max, locale),
+                })}
+              </span>
+            )}
+          </Can>
+        </BulkActionBar>
+
         <DataTable
           columns={columns}
           rows={rows}
@@ -454,6 +515,7 @@ export const ConsumablesPage = (): JSX.Element => {
           {...(sort === null ? {} : { sort })}
           onSortChange={changeSort}
           empty={t('it.consumables.empty')}
+          selection={selection}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
@@ -483,6 +545,14 @@ export const ConsumablesPage = (): JSX.Element => {
       )}
       {dialog !== null && dialog.kind === 'movements' && (
         <ConsumableMovementsDialog open onClose={close} item={dialog.item} />
+      )}
+      {dialog !== null && dialog.kind === 'transfer' && (
+        <TransferConsumablesDialog
+          open
+          onClose={close}
+          items={dialog.items}
+          onTransferred={selection.clear}
+        />
       )}
     </PageContainer>
   );

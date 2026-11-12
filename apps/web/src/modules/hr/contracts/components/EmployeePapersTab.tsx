@@ -42,9 +42,10 @@ const EmployeePapersTab = ({ employee }: { employee: EmployeeDto }): JSX.Element
   const [renewing, setRenewing] = useState(false);
 
   const papers = data === undefined ? [] : GROUPS.flatMap((g) => data.papers.filter((p) => p.group === g));
-  // Every paper ticked to start with, each time the list arrives.
+  // Every paper ticked to start with, each time the list arrives — but one the job is only offered
+  // unticked (the cash-in-transit specialist's weapon declaration).
   useEffect(() => {
-    if (data !== undefined) setChosen(new Set(data.papers.map((p) => p.key)));
+    if (data !== undefined) setChosen(new Set(data.papers.filter((p) => !p.optional).map((p) => p.key)));
   }, [data]);
 
   const run = async (keys: string[]): Promise<void> => {

@@ -87,6 +87,19 @@ const STALE_ONLY_LISTS: readonly { prefix: KeyPrefix; kinds: readonly string[] }
  * `[module, feature, 'list', { kind, … }]` (`shared/lib/query-keys.ts`).
  */
 export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
+  // The Operations shipments history (`['operations', 'dayBoard', 'history', { from, to }]`) — a
+  // whole range of day boards, up to a year and five thousand shipments. It sits under the day
+  // board's key so the reader's own saves refresh it at once; another desk's single write only marks
+  // it stale, rather than re-reading the whole range for every viewer on every signal. Its deleted
+  // shipments (`[…, 'deleted', { from, to }]`, the «المحذوفة» icon's count) are the same range read
+  // over deleted rows, and follow the same rule; their dialog reads them afresh when it opens.
+  if (
+    queryKey[0] === 'operations' &&
+    queryKey[1] === 'dayBoard' &&
+    (queryKey[2] === 'history' || queryKey[2] === 'deleted')
+  ) {
+    return true;
+  }
   const params = queryKey[3];
   if (queryKey[2] !== 'list' || typeof params !== 'object' || params === null) return false;
   const kind = (params as { kind?: unknown }).kind;
@@ -245,12 +258,29 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'vaultReport'],
     ['operations', 'securedDue'],
     ['operations', 'securedBacklog'],
+    // «شاشة استلام الخزينه» (Round 8) lives under the day board's key, which only the shipment
+    // topics sweep — and those need `operationsShipment.view`. A treasurer with the vault grant
+    // alone hears THIS topic (`operationsVault.view`), so a colleague's receive must turn the row
+    // green here too, as it emptied the old draft queue (`securedBacklog`) before.
+    ['operations', 'dayBoard', 'vaultQueue'],
+    // «صرف الخزينة» (Round 10) — every محصنة in the vault, under the day board's key too. A receipt
+    // puts a row on it, a cancelled receipt (`operations.custody.receiptCancelled`) or a release takes
+    // one off: all the vault's own topic, which is all a vault-only treasurer hears.
+    ['operations', 'dayBoard', 'securedDispatch'],
+    // «تسليم المحصنات» (Round 12) reads the distribution, under the day board's key: a receipt makes
+    // a shipment on a van one the vault can hand over, a hand-over takes it off. A vault-only
+    // treasurer hears only this topic (a placement Operations saves reaches them by the screen's
+    // own once-a-minute re-read).
+    ['operations', 'dayBoard', 'securedDistribution'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [
     ['operations', 'banks'],
     ['operations', 'bankBranches'],
     ['operations', 'reportBanks'],
+    // «تجميع الخزينة» prints each row's bank name as the server sent it, as the bank report does —
+    // a bank renamed on another desk would keep its old name on the roll-up until the next receipt.
+    ['operations', 'vaultReport'],
   ],
   'operations.bankBranch': [
     ['operations', 'bankBranches'],

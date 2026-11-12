@@ -149,10 +149,16 @@ describe('the Operations navigation rows', () => {
         '/operations/reports/vault',
         '/operations/requirements',
         '/operations/secured',
+        // Round 12 — the day's محصنات onto the day's vans, on the secured screen's grant.
+        '/operations/secured/distribution',
         '/operations/shipments',
+        // The day board over a range of days — the shipments history, on the board's own grant.
+        '/operations/shipments/history',
         '/operations/standing-crew',
         '/operations/vault',
         '/operations/vault/dispatch',
+        // Round 12 — the vault hands each van its load («تسليم المحصنات»).
+        '/operations/vault/handover',
         '/operations/vault/receive',
       ].sort(),
     );

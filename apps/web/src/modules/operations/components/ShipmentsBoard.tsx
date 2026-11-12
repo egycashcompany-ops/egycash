@@ -344,7 +344,10 @@ export const BoardRefusal = ({ children }: { children: ReactNode }): JSX.Element
     data-shipments-refusal="true"
     className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-bold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
   >
-    <BoardIcon d={PATH.warn} className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+    <BoardIcon
+      d={PATH.warn}
+      className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
+    />
     <p>{children}</p>
   </div>
 );

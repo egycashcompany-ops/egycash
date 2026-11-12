@@ -230,6 +230,15 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
   ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
+  // Round 11 — both reports on the boards' look, «من» / «إلى» drawn as the history's are.
+  [
+    'modules/operations/pages/CaptainReportPage.tsx',
+    '`from`/`to` open on the current month \u2014 the period the report IS, as legacy\u2019s did',
+  ],
+  [
+    'modules/operations/pages/VaultReportPage.tsx',
+    '`from`/`to` filter nothing yet (pending the owner) \u2014 the roll-up is what the vault holds NOW',
+  ],
 ];
 
 /**
@@ -363,13 +372,8 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/operations/pages/BankReportPage.tsx',
     '`from`/`to` arrive from the link; the page renders no control for them',
   ],
-  [
-    'modules/operations/pages/CaptainReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
   ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultReportPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
   ['modules/organization/application-sections/pages/OrganizeApplicationsPage.tsx'],

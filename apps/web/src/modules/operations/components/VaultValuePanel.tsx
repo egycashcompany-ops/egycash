@@ -31,7 +31,7 @@ const Headline = ({
   label: string;
   value: string;
 } & Record<`data-${string}`, string>): JSX.Element => (
-  <div className="flex items-center gap-2.5 px-4 py-2.5" {...rest}>
+  <div className="flex items-center gap-2.5 px-4 py-2" {...rest}>
     <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', tone)}>
       <BoardIcon d={[...SHIPMENT_PATH.money]} className="h-4 w-4" />
     </span>
@@ -103,7 +103,7 @@ export const VaultValuePanel = ({
                 data-vault-value-line={line.key}
                 data-zero={line.zero ? 'true' : undefined}
                 className={cn(
-                  'flex items-center justify-between gap-3 px-4 py-[7px] text-sm font-bold even:bg-slate-50/70 dark:even:bg-white/[0.025]',
+                  'flex items-center justify-between gap-3 px-4 py-1 text-[13px] font-bold even:bg-slate-50/70 dark:even:bg-white/[0.025]',
                   line.zero
                     ? 'text-slate-400 dark:text-slate-500'
                     : 'text-slate-800 dark:text-slate-100',

@@ -20,7 +20,12 @@ import {
   type OperationsReportCurrencyTotalDto,
   type OperationsReportTotalsDto,
 } from '@ecms/contracts';
-import { compareCurrencies, currencyKind, type CurrencyKind, type OtherCurrencyCard } from './day-board';
+import {
+  compareCurrencies,
+  currencyKind,
+  type CurrencyKind,
+  type OtherCurrencyCard,
+} from './day-board';
 
 /** One currency's money in a report row, with what the screen needs to name and key it. */
 export interface ReportMoneyLine {

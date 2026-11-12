@@ -24,15 +24,12 @@
 // a report a sibling of theirs does the same — one less step, and no screen showing figures for a
 // period other than the one its boxes read.
 import { useState, type HTMLAttributes, type ReactNode } from 'react';
-import {
-  MAX_PAGE_SIZE,
-  type OperationsReportTotalsDto,
-} from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type OperationsReportTotalsDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { cn } from '../../../shared/lib/cn';
-import { formatAmount, formatNumber } from '../../../shared/lib/format';
+import { formatAmount } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { DARK_FILTER_BAR } from '../../fleet/components/dark-filter-bar';
@@ -57,13 +54,15 @@ import {
 } from './ShipmentsBoard';
 
 /**
- * The report's bar: the board's dark card and its phone layout (two even columns), and — since a
- * report has only its two dates — the dates keep a date's width on a computer instead of the Fleet
- * bar's even share of the whole row, which would stretch each box across half the screen.
+ * The report's bar: the board's dark card and its phone layout (two even columns). A report has
+ * only its two dates, so from a tablet up the card holds just them — at the start, as legacy's
+ * «من» / «الى» sat — rather than a screen-wide band with two boxes at one end: each date keeps a
+ * date's width instead of the Fleet bar's even share of the whole row.
  */
 const REPORT_BAR = cn(
   DARK_FILTER_BAR,
   BAR_LAYOUT,
+  'sm:[&>div]:!w-fit',
   'lg:[&>div>*:has(>input[type=date])]:!flex-none lg:[&>div>*:has(>input[type=date])]:!w-44',
 );
 
@@ -78,7 +77,9 @@ export const REPORT_CARD =
  */
 const TOTAL_ROW = cn(
   '[&_tr[data-report-total]_td]:sticky [&_tr[data-report-total]_td]:bottom-0 [&_tr[data-report-total]_td]:z-[1]',
-  '[&_tr[data-report-total]_td]:!border-t-2 [&_tr[data-report-total]_td]:!border-brand-500/40',
+  // Its top line as a shadow, not a border: a collapsed table's border does not travel with a
+  // sticky cell, so it would stay behind with the rows.
+  '[&_tr[data-report-total]_td]:shadow-[inset_0_2px_0_rgb(var(--brand-500)/0.45)]',
   '[&_tr[data-report-total]_td]:!bg-brand-50 dark:[&_tr[data-report-total]_td]:!bg-[#1c1a4a]',
   '[&_tr[data-report-total]_td]:!text-brand-800 dark:[&_tr[data-report-total]_td]:!text-brand-100',
   '[&_tr[data-report-total]_td]:!py-3 [&_tr[data-report-total]_td_*]:!font-black',
@@ -88,11 +89,13 @@ const TOTAL_ROW = cn(
 const TOTAL_ROW_MARK = { 'data-report-total': 'true' } as HTMLAttributes<HTMLTableRowElement>;
 
 /**
- * The table's columns are short — a number, a name, figures — so the floor per column is the
- * boards' (5.5rem), not the default 7.5: nine columns then fit beside the vault's panel on a
- * laptop. On a phone the table scrolls sideways inside its card, never the page.
+ * The table's columns are short — a number, a name, figures — so the floor per column is under
+ * the default 7.5rem: nine columns then fit beside the vault's panel on a laptop. 5.25, a hair
+ * under the boards' 5.5: at 1280px the panel widens to 22rem and leaves the table 790px, and
+ * nine 5.5rem columns (792px) overflowed it by 2px — a sideways scrollbar under a table that
+ * holds nothing hidden. On a phone the table scrolls sideways inside its card, never the page.
  */
-const MIN_COLUMN_REM = 5.5;
+const MIN_COLUMN_REM = 5.25;
 
 /** A figure in a cell: the figures' face, isolated left-to-right, never broken over two lines. */
 const Figure = ({ value, dim = false }: { value: string; dim?: boolean }): JSX.Element => (
@@ -108,23 +111,25 @@ const Figure = ({ value, dim = false }: { value: string; dim?: boolean }): JSX.E
 export const ReportTitle = ({
   icon,
   title,
-  children,
 }: {
   icon: readonly string[];
   title: string;
-  children?: ReactNode;
 }): JSX.Element => (
   <div
     data-report-title="true"
     className="flex shrink-0 items-center gap-2.5 border-b border-slate-200 bg-gradient-to-l from-brand-500/10 via-transparent to-transparent px-4 py-3 dark:border-slate-800"
   >
-    <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', FIGURE_TONE.count)}>
+    <span
+      className={cn(
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+        FIGURE_TONE.count,
+      )}
+    >
       <BoardIcon d={[...icon]} className="h-4 w-4" />
     </span>
     <h2 className="min-w-0 flex-1 text-sm font-black text-slate-900 sm:text-[15px] dark:text-white">
       {title}
     </h2>
-    {children}
   </div>
 );
 
@@ -176,7 +181,7 @@ export const ReportBoard = ({
   /** The period is not the page's default — the reset has something to undo. */
   periodActive: boolean;
   onResetPeriod: () => void;
-  /** Beside the table (the start side's opposite), under it on a phone — the vault's panel. */
+  /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
   aside?: ReactNode;
 }): JSX.Element => {
   const t = useT();
@@ -188,7 +193,9 @@ export const ReportBoard = ({
 
   const lines = reportTableLines(rows, grandTotal);
   // A line's money, split once per draw — the pound, the dollar, the others.
-  const moneyOf = new Map(lines.map((line) => [line.key, reportMoney(line.totals.currencies, catalog)]));
+  const moneyOf = new Map(
+    lines.map((line) => [line.key, reportMoney(line.totals.currencies, catalog)]),
+  );
   const money = (line: ReportTableLine): ReportMoney =>
     moneyOf.get(line.key) ?? { egp: 0, usd: 0, others: [], othersSum: 0 };
   const nameOf = (line: ReportTableLine): string =>
@@ -198,11 +205,10 @@ export const ReportBoard = ({
         ? t('operations.reports.unattributed')
         : line.label;
 
-  const amount = (value: number): JSX.Element => (
+  // Counts and money in ONE set of digits, the boards' amounts' (Western, with thousands
+  // separators): a row reading «١٤» beside «48,500,000» reads as two different tables.
+  const figure = (value: number): JSX.Element => (
     <Figure value={formatAmount(value, locale)} dim={value === 0} />
-  );
-  const count = (value: number): JSX.Element => (
-    <Figure value={formatNumber(value, locale)} dim={value === 0} />
   );
 
   const columns: Column<ReportTableLine>[] = [
@@ -211,7 +217,7 @@ export const ReportBoard = ({
       header: t('operations.reportBoard.serial'),
       align: 'center',
       headerClassName: 'w-12',
-      render: (line) => (line.kind === 'row' ? count(line.serial) : null),
+      render: (line) => (line.kind === 'row' ? figure(line.serial) : null),
     },
     {
       key: 'label',
@@ -230,19 +236,19 @@ export const ReportBoard = ({
       key: 'count',
       header: countHeader,
       align: 'center',
-      render: (line) => count(line.totals.shipmentCount),
+      render: (line) => figure(line.totals.shipmentCount),
     },
     {
       key: 'egp',
       header: t('operations.reportBoard.pound'),
       align: 'center',
-      render: (line) => amount(money(line).egp),
+      render: (line) => figure(money(line).egp),
     },
     {
       key: 'usd',
       header: t('operations.reportBoard.dollar'),
       align: 'center',
-      render: (line) => amount(money(line).usd),
+      render: (line) => figure(money(line).usd),
     },
     {
       key: 'others',
@@ -252,14 +258,13 @@ export const ReportBoard = ({
       // pill and its dialog. Nothing to list on a zero.
       render: (line) => {
         const own = money(line);
-        if (own.othersSum === 0) return amount(0);
+        if (own.othersSum === 0) return figure(0);
         const name = nameOf(line);
         return (
           <button
             type="button"
             data-report-others={line.key}
             aria-haspopup="dialog"
-            aria-label={t('operations.reportBoard.othersOf', { name })}
             title={t('operations.board.figures.otherCurrenciesHint')}
             onClick={() => setOthers({ money: own, name })}
             // `[&&]`: the board table sizes every button in a cell as an icon square; this one is
@@ -267,6 +272,11 @@ export const ReportBoard = ({
             className="[&&]:!h-auto [&&]:!w-auto rounded-md px-1.5 py-0.5 text-amber-700 underline decoration-amber-500/50 decoration-dotted underline-offset-4 transition hover:bg-amber-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 dark:text-amber-300"
           >
             <Figure value={formatAmount(own.othersSum, locale)} />
+            {/* What the figure is, for a reader — said AFTER the figure, never in place of it: an
+                `aria-label` would replace the button's own digits, and a screen reader would
+                announce a description with no amount (the boards' pill is named by its content
+                too). */}
+            <span className="sr-only">{t('operations.reportBoard.othersOf', { name })}</span>
           </button>
         );
       },
@@ -275,19 +285,19 @@ export const ReportBoard = ({
       key: 'bags',
       header: t('operations.reportBoard.bags'),
       align: 'center',
-      render: (line) => count(line.totals.bagCount),
+      render: (line) => figure(line.totals.bagCount),
     },
     {
       key: 'cartons',
       header: t('operations.reportBoard.cartons'),
       align: 'center',
-      render: (line) => count(line.totals.cartonCount),
+      render: (line) => figure(line.totals.cartonCount),
     },
     {
       key: 'boxes',
       header: t('operations.reportBoard.boxes'),
       align: 'center',
-      render: (line) => count(line.totals.boxCount),
+      render: (line) => figure(line.totals.boxCount),
     },
   ];
 
@@ -309,10 +319,7 @@ export const ReportBoard = ({
         // On a computer the table and the panel sit side by side and each scrolls inside its own
         // card, the head and «الإجمالي» staying put; on a phone they stack and the page scrolls.
         <div className="flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-start">
-          <section
-            className={cn(REPORT_CARD, 'lg:max-h-full lg:flex-1')}
-            data-report-table="true"
-          >
+          <section className={cn(REPORT_CARD, 'lg:max-h-full lg:flex-1')} data-report-table="true">
             <ReportTitle icon={titleIcon} title={title} />
             <div
               className={cn(

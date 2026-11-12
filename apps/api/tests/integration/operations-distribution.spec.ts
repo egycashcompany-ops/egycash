@@ -10,7 +10,10 @@
 //
 // Every day here is RELATIVE and in the future (the boards refuse a past day, and the Fleet roster
 // plans the future), far from every other suite's fixture days — each integration file boots its own
-// database, so nothing here can collide with another file's rows anyway.
+// database, so nothing here can collide with another file's rows anyway. The one exception is the
+// OVERDUE fixtures: «متأخرة» means the delivery day has PASSED (before today), and nothing books or
+// plans a past day, so they are booked and planned on EARLY and then the clock is played forward
+// for them — their dates, and EARLY's operating day, moved to PAST in the database.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -70,8 +73,18 @@ const shift = (days: number): string => {
   return d.toISOString().slice(0, 10);
 };
 const COLLECT = shift(40);
-/** The day the overdue ones were due — before DAY, so on DAY's screen they are «متأخرة». */
+/** Where the overdue ones are booked and planned before their dates are moved to PAST. */
 const EARLY = shift(41);
+/**
+ * YESTERDAY on the Cairo calendar — the day the overdue ones were due: it has passed, so on every
+ * screen from today on they are «متأخرة».
+ */
+const PAST = addDaysYmd(cairoYmd(new Date()), -1);
+/**
+ * A day AFTER today and BEFORE DAY, with a van of its own. A shipment in the vault due on it is
+ * NOT late on DAY's screen — it is SOON's, on SOON's van — and is not listed there.
+ */
+const SOON = shift(42);
 /** THE distribution day. */
 const DAY = shift(43);
 /** Another day with its own vans — a crew row of it is refused on DAY's save. */
@@ -102,6 +115,7 @@ let crew1 = '';
 let crew2 = '';
 let crew3 = '';
 let earlyCrew = '';
+let soonCrew = '';
 let otherCrew = '';
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -360,9 +374,10 @@ let dueDraft = ''; // draft, due on DAY, «المعادى» → proposed onto va
 let dueVault = ''; // in the vault, due on DAY, «الهرم» → van 2
 let dueVault2 = ''; // in the vault, due on DAY, «حلوان» → van 1
 let dueNowhere = ''; // in the vault, due on DAY, «الدقي» → no van
-let overdueWithLeg = ''; // in the vault, due on EARLY, its leg on EARLY's van
-let overdueNoLeg = ''; // in the vault, due on EARLY, no leg
-let overdueDraft = ''; // draft due on EARLY — not DAY's: never listed, refused on save
+let overdueWithLeg = ''; // in the vault, due on PAST, its leg on PAST's van — «متأخرة»
+let overdueNoLeg = ''; // in the vault, due on PAST, no leg — «متأخرة»
+let overdueDraft = ''; // draft due on PAST — not in the vault, so not DAY's: never listed, refused
+let heldSoon = ''; // in the vault, due on SOON, on SOON's van — not late: SOON's, never DAY's
 let otherDayDraft = ''; // draft due on OTHER — not DAY's
 let alreadyOut = ''; // due on DAY, dispatched on van 2 — gone from the vault
 let daily = ''; // a daily shipment — not a محصنة at all
@@ -464,6 +479,10 @@ beforeAll(async () => {
   expect([crew1, crew2, crew3].every((id) => id !== '')).toBe(true);
   earlyCrew =
     (await planDay(EARLY, [{ vehicleId: van1, captainEmployeeIds: [capA] }])).get(van1) ?? '';
+  soonCrew =
+    (
+      await planDay(SOON, [{ vehicleId: van2, captainEmployeeIds: [capC], direction: 'الهرم' }])
+    ).get(van2) ?? '';
   otherCrew =
     (await planDay(OTHER, [{ vehicleId: van2, captainEmployeeIds: [capC] }])).get(van2) ?? '';
 
@@ -509,6 +528,19 @@ beforeAll(async () => {
   overdueNoLeg = (await book(EARLY, 'الهرم')).id;
   await intoVault(overdueNoLeg);
   overdueDraft = (await book(EARLY, 'المعادي')).id;
+  // …and their day passes: due on PAST (collected then too), EARLY's operating day — the van
+  // overdueWithLeg was put on — becoming PAST's. The API books and plans no past day, so the clock
+  // is played forward here, in the database.
+  await OperationsShipmentModel.updateMany(
+    { _id: { $in: [overdueWithLeg, overdueNoLeg, overdueDraft] } },
+    { $set: { collectionDate: new Date(iso(PAST)), deliveryDate: new Date(iso(PAST)) } },
+  ).exec();
+  await OperationsShipmentModel.db
+    .collection('operations_days')
+    .updateOne({ date: new Date(iso(EARLY)) }, { $set: { date: new Date(iso(PAST)) } });
+  heldSoon = (await book(SOON, 'الهرم')).id;
+  await intoVault(heldSoon);
+  await assignDelivery(heldSoon, soonCrew, capC);
   otherDayDraft = (await book(OTHER, 'الهرم')).id;
   alreadyOut = (await book(DAY, 'الهرم')).id;
   await intoVault(alreadyOut);
@@ -584,8 +616,9 @@ describe('«توزيع المحصنات» — GET /operations/secured/distributi
     expect(ids.sort()).toEqual(
       [dueDraft, dueVault, dueVault2, dueNowhere, overdueWithLeg, overdueNoLeg].sort(),
     );
-    // Never: a draft due on another day (overdue or not), a dispatched one, a daily one.
-    for (const out of [overdueDraft, otherDayDraft, alreadyOut, daily]) {
+    // Never: a draft due on another day (overdue or not), a dispatched one, a daily one — nor one
+    // in the vault due between today and DAY: it is not late, it is its own day's.
+    for (const out of [overdueDraft, otherDayDraft, alreadyOut, daily, heldSoon]) {
       expect(ids).not.toContain(out);
     }
     // The overdue lead.
@@ -610,8 +643,8 @@ describe('«توزيع المحصنات» — GET /operations/secured/distributi
     expect(late).toMatchObject({
       status: 'inVault',
       overdue: true,
-      deliveryDate: iso(EARLY),
-      // Its leg rides EARLY's van — not a van of this day, so it is unplaced here.
+      deliveryDate: iso(PAST),
+      // Its leg rides its own (passed) day's van — not a van of this day, so it is unplaced here.
       delivery: {
         crewAssignmentId: earlyCrew,
         captainEmployeeId: capA,
@@ -621,6 +654,54 @@ describe('«توزيع المحصنات» — GET /operations/secured/distributi
       placedCrewAssignmentId: null,
     });
     expect(late?.vaultReceivedAt).not.toBeNull();
+  });
+
+  it('calls «متأخرة» only a day that has PASSED — one due between today and the day is its own day’s', async () => {
+    // heldSoon is in the vault, due on SOON (after today, before DAY) and on SOON's van. On DAY's
+    // screen it is not late and not listed (above); were it, it would sit unplaced (its van is
+    // SOON's), its area would propose it onto DAY's «الهرم» van, and one «حفظ» would pull it off
+    // SOON's van and push its delivery to DAY.
+    const onSoon = (await viewOf(SOON)).shipments;
+    expect(onSoon.find((s) => s.id === heldSoon)).toMatchObject({
+      status: 'inVault',
+      overdue: false,
+      deliveryDate: iso(SOON),
+      placedCrewAssignmentId: soonCrew,
+    });
+    // The ones whose day has passed are late on every screen from today on — today's included.
+    const late = (view: OperationsSecuredDistributionDto) =>
+      view.shipments
+        .filter((s) => s.overdue)
+        .map((s) => s.id)
+        .sort();
+    const passed = [overdueWithLeg, overdueNoLeg].sort();
+    expect(late(await viewOf(SOON))).toEqual(passed);
+    expect(late(await viewOf(cairoYmd(new Date())))).toEqual(passed);
+    expect(late(await viewOf())).toEqual(passed);
+
+    // …and the save agrees with the read: DAY's van cannot take it.
+    const res = await save([
+      {
+        shipmentId: heldSoon,
+        crewAssignmentId: crew2,
+        captainEmployeeId: capC,
+        version: onSoon.find((s) => s.id === heldSoon)?.deliveryLegVersion ?? null,
+      },
+    ]);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_NOT_ON_DAY);
+    expect(errorOf(res).details).toEqual([
+      { field: 'shipmentId', code: 'SHIPMENT', message: heldSoon },
+    ]);
+    expect((await read(heldSoon)).deliveryDate).toBe(iso(SOON));
+    expect(String((await deliveryLegOf(heldSoon))?.crewAssignmentId)).toBe(soonCrew);
+
+    // It goes out on its own day's van — and so leaves the vault the reports below count.
+    const out = await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: soonCrew, shipmentIds: [heldSoon] });
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
   });
 
   it('points each shipment at the vans its area’s direction names — a captainless van never', async () => {
@@ -860,7 +941,7 @@ describe('«حفظ» — POST /operations/secured/distribution', () => {
       const row = await rowOf(id);
       expect(row).toMatchObject({ overdue: false, placedCrewAssignmentId: crew });
     }
-    // The leg left EARLY's van for a van of DAY — on DAY's operating day.
+    // The leg left PAST's van for a van of DAY — on DAY's operating day.
     const leg = await deliveryLegOf(overdueWithLeg);
     expect(String(leg?.crewAssignmentId)).toBe(crew1);
     const dayCrew =
@@ -875,7 +956,7 @@ describe('«حفظ» — POST /operations/secured/distribution', () => {
     // «السجل»: the date moved on distribution — its own entry, not an edit — and the crew moved.
     const entries = (await logOf(overdueWithLeg)).entries;
     const moved = entries.find((e) => e.kind === 'deliveryRescheduled');
-    expect(moved?.changes).toEqual([{ field: 'deliveryDate', old: EARLY, new: DAY }]);
+    expect(moved?.changes).toEqual([{ field: 'deliveryDate', old: PAST, new: DAY }]);
     expect(entries.some((e) => e.kind === 'edited')).toBe(false);
     expect(entries.filter((e) => e.kind === 'crewChanged').at(-1)?.leg).toBe('delivery');
 
@@ -1030,7 +1111,7 @@ describe('«سجل الخزينة» — the history and the deleted list of the 
     const secured = (await history(`${range}&type=secured`)).shipments;
     expect(secured.every((s) => s.shipmentType === 'secured')).toBe(true);
     expect(secured.map((s) => s.id)).toEqual(
-      expect.arrayContaining([dueDraft, overdueDraft, otherDayDraft, alreadyOut]),
+      expect.arrayContaining([dueDraft, otherDayDraft, alreadyOut]),
     );
     expect(secured.map((s) => s.id)).not.toContain(daily);
     // Collected OR delivered in the range, any stage — a dispatched one included.

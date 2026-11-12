@@ -184,13 +184,23 @@ export const landingCaptain = (
   return van.captains[0]?.employeeId ?? null;
 };
 
-/** The draft with a shipment dropped on a van — the drag's drop and «نقل إلى…»'s choice. */
+/**
+ * The draft with a shipment dropped on a van — the drag's drop and «نقل إلى…»'s choice.
+ *
+ * Dropped back on the van the READ has it on, it goes back to the captain the read has too — not
+ * the van's first: on a two-captain van, a shipment saved with the second captain, dragged away and
+ * back, is where it was (no change to save), as the header of this file promises.
+ */
 export const moveToVan = <R extends DistributionRowFacts>(
   draft: DistributionDraft,
   row: R,
   van: Pick<DistributionVan, 'crewAssignmentId' | 'captains'>,
 ): DistributionDraft => {
-  const captain = landingCaptain(van, placementOf(row, draft));
+  const current = placementOf(row, draft);
+  const captain = landingCaptain(
+    van,
+    current.crewAssignmentId === van.crewAssignmentId ? current : savedPlacement(row),
+  );
   if (captain === null) return draft;
   return placeShipment(draft, row, {
     crewAssignmentId: van.crewAssignmentId,
@@ -322,8 +332,9 @@ export const distributionColumns = <
 };
 
 /**
- * Will saving move this shipment's DELIVERY DAY? An overdue shipment («متأخرة» — in the vault, due
- * before the screen's day) placed on a van of the day is re-dated to the day by the save — the one
+ * Will saving move this shipment's DELIVERY DAY? An overdue shipment («متأخرة» — in the vault, its
+ * delivery day already past: before TODAY, the server's `overdue`, not merely before the screen's
+ * day) placed on a van of the day is re-dated to the day by the save — the one
  * change a received محصنة takes, because it is a flow act: it goes out later than planned.
  */
 export const reschedulesOnSave = (

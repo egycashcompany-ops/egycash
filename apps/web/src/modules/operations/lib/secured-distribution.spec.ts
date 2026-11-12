@@ -198,6 +198,20 @@ describe('moving a shipment (the drag, «نقل إلى…», «إزالة»)', (
     expect(moveToVan(EMPTY_DRAFT, s, V2).size).toBe(0);
   });
 
+  it('dragged away and back to its two-captain van, it keeps the SECOND captain it was saved with', () => {
+    // Saved on van-104 with its second captain: away to another van, then back — no change.
+    const s = placed('s', 'van-104', 'c3', 4);
+    const away = moveToVan(EMPTY_DRAFT, s, V3);
+    expect(placementOf(s, away).crewAssignmentId).toBe('van-112');
+    const back = moveToVan(away, s, V2);
+    expect(back.size).toBe(0);
+    expect(placementOf(s, back)).toEqual({ crewAssignmentId: 'van-104', captainEmployeeId: 'c3' });
+    expect(distributionChanges([s], back)).toEqual([]);
+    // Taken off, then put back by the menu: the same.
+    const off = placeShipment(EMPTY_DRAFT, s, UNPLACED);
+    expect(moveToVan(off, s, V2).size).toBe(0);
+  });
+
   it('takes the first captain of a NEW van even when its own captain is not on it', () => {
     const s = placed('s', 'van-101', 'c1', 1);
     expect(landingCaptain(V2, savedPlacement(s))).toBe('c2');

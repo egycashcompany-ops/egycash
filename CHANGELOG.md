@@ -269,9 +269,10 @@ its entry here in the same PR.
       `operationsVault.view`; today in Cairo by default, a past day refused with
       `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). Every van of the day's crew board (captains, direction,
       time; specialists and drivers for `operationsCrew.view` only), and every secured shipment due
-      out that day at any stage before dispatch, plus the overdue ones still in the vault, each with
-      its delivery leg, the leg's version, the van of the day it is on, and the vans whose direction
-      names its area.
+      out that day at any stage before dispatch, plus the overdue ones still in the vault — due
+      before TODAY, the rule «محصنات الخزينة» marks «متأخرة» by, so a later day's screen never offers
+      today's load to its vans — each with its delivery leg, the leg's version, the van of the day
+      it is on, and the vans whose direction names its area.
     - «نفس الاتجاه»: a van's direction is split into its areas («المعادي - حلوان», «/», «،», a lone
       «و» …), each folded the boards' way (hamza, ى/ي, ة/ه, digits, tashkeel, the article) and
       compared WHOLE with the shipment's area — one matching van with a captain is proposed, several
@@ -287,9 +288,46 @@ its entry here in the same PR.
       refusal names its shipment.
     - An overdue shipment in the vault placed on a van of the day has its delivery date moved to the
       day in the same save — the one change a received محصنة takes, because it is a flow act, not an
-      edit. «السجل» shows it as its own entry, and a van taken off as «crewRemoved».
+      edit. «السجل» shows it as its own entry, and a shipment taken off its van as «أُزيلت من السيارة
+      عند التوزيع» (log kind `crewRemoved`).
     - «تسليم» is the existing dispatch per van: the van's shipments in the vault leave it at once; one
       on the van the vault has not received yet stays behind.
+  - The screens of Round 12: «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان
+    اعمل فلتر ب اسم القائد [اسم البنك] و ان اكسيل او pdf», «الlist بتاعت جمالى العملات … عاوز حجمها
+    يكون بطول الشاشة كامله», «الصف بتاع الجماليات يفضل ظاهر حتى لو الجدول كبر يحصل اسكرول جوا الجدول».
+    - «تقرير القادة» and «تجميع الخزينة»: the date card is gone; «من» / «إلى» sit in the boards' one
+      dark filter bar beside a name filter («اسم القائد» / «اسم البنك» — applied as typed, Arabic
+      letter forms folded, remembered across visits; the period is not), the reset and «Excel |
+      PDF». With a name typed, «الإجمالي» and the vault's panel are the shown rows' sum; with none,
+      the server's grand total.
+    - The files are what the screen shows: the rows the filter left and «الإجمالي», through the
+      app's one xlsx writer and the company report form (the period and the filter under the
+      title); the vault's adds «إجمالي قيمة الشحنات» as a second sheet and a second printed page.
+    - On a computer the table's card runs to the bottom of the screen: its head stays at the top,
+      «الإجمالي» at the bottom, and only the rows scroll. The vault's currency panel is as tall, its
+      list scrolling inside it.
+    - «محصنات الخزينة» is view only: the list, overdue first, the optional delivery-day filter and
+      «السجل» — no delivery crew, no release, no ticks, no cancelled receipt (that stays on
+      «الشحنات المحصنة»).
+    - «سجل الخزينة»: «تقرير الخزينة» (the per-bank table of what the vault holds now, its panel
+      beside it, «حتى …») over «سجل الشحنات» for the محصنات (from–to by collection or delivery
+      day, the filters, «السجل», the deleted list with restore, paging). A reader without
+      `operationsShipment.view` gets the report at full height and a line saying what the history
+      needs.
+    - «استلام الخزينة» has «إضافة محصنة» — the secured screen's button and form (delivery the next
+      day by default), for `operationsShipment.create`.
+    - «توزيع المحصنات»: the day's vans on the right (number, time, direction, captains, specialists,
+      what each carries), the day's محصنات on no van on the left (stage, «متأخرة»). A محصنة is
+      dragged onto a van, or moved with «نقل إلى…» on its card (keyboard and phone); dragged back,
+      or «إزالة من السيارة», it comes off. On a two-captain van it goes with the first captain; the
+      chip on its card switches it. On the day's first read and on «توزيع تلقائي», each محصنة on no
+      van whose area exactly one van's direction names is proposed onto it («مقترحة» until saved).
+      «حفظ» sends every change at once; a refusal marks the card it names and keeps the other
+      moves; leaving with unsaved moves asks first.
+    - «تسليم المحصنات»: the same two columns, read only. Over each van «تسليم»
+      (`operationsVault.dispatch`) confirms, then hands over the van's محصنات in the vault; those
+      not received yet are listed and stay. «طباعة» prints the van's load sheet on the company form
+      — provisional until the owner says what the paper carries («اللى هيطبع هقولك عليه بعدين»).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

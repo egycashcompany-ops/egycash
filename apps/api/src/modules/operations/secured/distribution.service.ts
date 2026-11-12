@@ -22,8 +22,8 @@
 //     stage): the van is planned before the vault has it, and the vault hands over only what it holds;
 //   · a shipment may be taken OFF its van — the leg is RETIRED (soft-deleted): a leg is a captain and
 //     a van, and with neither it is no leg. Its history stays in «السجل» (`crewRemoved`);
-//   · an OVERDUE shipment in the vault (due before the day) placed on a van of the day has its
-//     delivery date moved to the day, in the same transaction — see `save`;
+//   · an OVERDUE shipment in the vault (due before TODAY — its day has passed) placed on a van of
+//     the day has its delivery date moved to the day, in the same transaction — see `save`;
 //   · the version guards the LEG as the screen read it, null meaning "it had none", so two desks
 //     placing the same never-placed shipment cannot both win (assign-delivery's 0 cannot say that).
 import {
@@ -189,23 +189,25 @@ class OperationsDistributionService {
    *
    * THE SHIPMENTS (`securedForDistribution`): due out on the day and not out yet — DRAFT at any stage
    * (placed now, handed over once the vault has it) or IN THE VAULT — plus the OVERDUE ones still in
-   * the vault (due before the day: they missed their van and are still the vault's to send). Counted
-   * before they are read, against the history's cap, like every board. Ordered by delivery date —
-   * the overdue first, the vault must see them first — then oldest booked.
+   * the vault (due before TODAY: they missed their van and are still the vault's to send). Not "due
+   * before the screen's day": on tomorrow's screen a shipment due today is today's load, on today's
+   * van — listing it as late would propose it onto tomorrow's van and a «حفظ» would move it there.
+   * Counted before they are read, against the history's cap, like every board. Ordered by delivery
+   * date — the overdue first, the vault must see them first — then oldest booked.
    *
    * THE VANS: every crew row of the day, whether or not anything rides it yet — the van IS where a
    * shipment is dropped. Van cards built by the same code as the boards' (`vanCardsOf`).
    */
   async view(date: Date | undefined, now: Date = new Date()): Promise<DistributionView> {
     const { day, today } = this.resolveDay(date, now);
-    const count = await operationsShipmentRepository.countSecuredForDistribution(day);
+    const count = await operationsShipmentRepository.countSecuredForDistribution(day, today);
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
       throw historyTooLarge(
         count,
         `${String(count)} secured shipments are due or overdue for ${ymdOf(day)} — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown`,
       );
     }
-    const docs = (await operationsShipmentRepository.securedForDistribution(day)).sort(
+    const docs = (await operationsShipmentRepository.securedForDistribution(day, today)).sort(
       (a, b) =>
         (a.deliveryDate?.getTime() ?? 0) - (b.deliveryDate?.getTime() ?? 0) ||
         a.createdAt.getTime() - b.createdAt.getTime() ||
@@ -254,22 +256,23 @@ class OperationsDistributionService {
    * (another desk's save, the assign dialog, the vault's dispatch) still fails the whole save rather
    * than half of it. Audit rows and events follow the commit, as every Operations transaction does.
    *
-   * OVERDUE — «المحصنة اللى يومها هتخرج»: a shipment in the vault whose delivery day has passed missed
-   * its van. Placing it on a van of the day MOVES ITS DELIVERY DATE to the day, in the same
-   * transaction, because its delivery leg has to ride a crew row of its delivery day (the rule every
-   * other reader of the leg relies on — the captain's day, the reports, the dispatch board). That
-   * date is the one field a received محصنة may still have changed (Round 10 locked the rest,
-   * `isOperationsShipmentLocked`): it is a FLOW act — the shipment goes out later than planned —
-   * not an edit of anything the vault signed for. The log says so (`deliveryRescheduled`). Taking an
-   * overdue shipment OFF a van moves no date.
+   * OVERDUE — «المحصنة اللى يومها هتخرج»: a shipment in the vault whose delivery day has passed
+   * (before TODAY, Cairo) missed its van. Placing it on a van of the day MOVES ITS DELIVERY DATE to
+   * the day, in the same transaction, because its delivery leg has to ride a crew row of its
+   * delivery day (the rule every other reader of the leg relies on — the captain's day, the
+   * reports, the dispatch board). That date is the one field a received محصنة may still have
+   * changed (Round 10 locked the rest, `isOperationsShipmentLocked`): it is a FLOW act — the
+   * shipment goes out later than planned — not an edit of anything the vault signed for. The log
+   * says so (`deliveryRescheduled`). Taking an overdue shipment OFF a van moves no date.
    */
   async save(
     input: SaveSecuredDistribution,
     by: string,
     now: Date = new Date(),
   ): Promise<{ date: Date; changed: number; rescheduled: number }> {
-    const { day } = this.resolveDay(input.date, now);
+    const { day, today } = this.resolveDay(input.date, now);
     const dayYmd = ymdOf(day);
+    const todayYmd = ymdOf(today);
     const dayDoc = await operationsDayService.findByDate(day);
 
     const plans: Plan[] = [];
@@ -296,13 +299,15 @@ class OperationsDistributionService {
         );
       }
       const due = shipment.deliveryDate === null ? null : ymdOf(shipment.deliveryDate);
-      const overdue = shipment.status === 'inVault' && due !== null && due < dayYmd;
+      // Late = its day has PASSED (before today), as the read lists it — not merely before the day
+      // saved: a shipment due today, saved onto tomorrow's van, would leave today's van unseen.
+      const overdue = shipment.status === 'inVault' && due !== null && due < todayYmd;
       if (due !== dayYmd && !overdue) {
         throw refused(
           ErrorCodes.OPERATIONS_DISTRIBUTION_NOT_ON_DAY,
           422,
           id,
-          `shipment ${id} is not due on ${dayYmd} and is not an overdue one in the vault`,
+          `shipment ${id} is not due on ${dayYmd} and is not an overdue one in the vault (due before ${todayYmd})`,
         );
       }
 

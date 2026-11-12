@@ -445,6 +445,20 @@ describe('a treasurer holding only the vault’s grants', () => {
     expect(html).toContain(ar('operations.vaultHistory.needsShipmentView'));
     expect(html).not.toContain('data-shipment-filters');
   });
+
+  it('gives him the report at the screen’s height — no fixed band over an empty screen', () => {
+    const band = (html: string): string => {
+      const at = html.indexOf('data-vault-held="true"');
+      const open = html.lastIndexOf('<section', at);
+      return html.slice(open, at);
+    };
+    const alone = band(render({ permissions: ['operationsVault.view'], seed: seedAll }));
+    expect(alone).toContain('lg:flex-1');
+    expect(alone).not.toContain('lg:h-[min(19rem,36vh)]');
+    // With the history under it, the band keeps its fixed height.
+    expect(band(render({ seed: seedAll }))).toContain('lg:h-[min(19rem,36vh)]');
+    expect(PAGE).toContain('className={canSeeHistory ? HELD_BAND : HELD_BAND_ALONE}');
+  });
 });
 
 describe('the caches — one type, one entry; the live report rides the roll-up', () => {

@@ -213,12 +213,12 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
       return {
         ...row,
         vaultReceivedAt: receivedAt === undefined ? null : receivedAt.toISOString(),
-        // Due before the screen's day and still in the vault — only those are listed with an
-        // earlier date, so a delivery day before the day IS overdue here.
+        // Due before TODAY (Cairo) and still in the vault — its day has passed, the rule «محصنات
+        // الخزينة» marks «متأخرة» by. Only those are listed with a date other than the screen's day.
         overdue:
           row.status === 'inVault' &&
           row.deliveryDate !== null &&
-          ymdOf(row.deliveryDate) < ymdOf(view.day),
+          ymdOf(row.deliveryDate) < ymdOf(view.today),
         delivery:
           leg === undefined
             ? null

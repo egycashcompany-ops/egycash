@@ -99,16 +99,18 @@ const inVaultFilter = (day: Date | undefined): FilterQuery<OperationsShipmentDoc
 /**
  * «توزيع المحصنات» (Round 12) — the secured shipments of ONE distribution day (`day`, a UTC
  * midnight): due out on the day and not out yet (draft at any stage, or in the vault), plus the
- * OVERDUE ones still in the vault (due before the day). Both branches ride
- * `ix_type_delivery_date_status`. Dispatched and completed ones are gone from the vault and are
- * never here; a draft due another day is that day's.
+ * OVERDUE ones still in the vault — due before `today` (Cairo's, a UTC midnight), the rule
+ * «محصنات الخزينة» marks «متأخرة» by. Before TODAY, not before `day`: on a later day's screen a
+ * shipment due today is not late, it is today's — listing it there would offer today's load to
+ * tomorrow's vans. Both branches ride `ix_type_delivery_date_status`. Dispatched and completed
+ * ones are gone from the vault and are never here; a draft due another day is that day's.
  */
-const distributionFilter = (day: Date): FilterQuery<OperationsShipmentDoc> => ({
+const distributionFilter = (day: Date, today: Date): FilterQuery<OperationsShipmentDoc> => ({
   isDeleted: false,
   shipmentType: 'secured',
   $or: [
     { deliveryDate: day, status: { $in: ['draft', 'inVault'] } },
-    { deliveryDate: { $lt: day }, status: 'inVault' },
+    { deliveryDate: { $lt: today }, status: 'inVault' },
   ],
 });
 
@@ -236,16 +238,17 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   }
 
   /**
-   * «توزيع المحصنات» — the shipments of one distribution day (`distributionFilter`), in no particular
-   * order: the service orders them (overdue first) over a set the cap bounds.
+   * «توزيع المحصنات» — the shipments of one distribution day (`distributionFilter`; `today` is
+   * Cairo's, what «overdue» is judged by), in no particular order: the service orders them
+   * (overdue first) over a set the cap bounds.
    */
-  async securedForDistribution(day: Date): Promise<OperationsShipmentDoc[]> {
-    return this.model.find(distributionFilter(day)).lean<OperationsShipmentDoc[]>().exec();
+  async securedForDistribution(day: Date, today: Date): Promise<OperationsShipmentDoc[]> {
+    return this.model.find(distributionFilter(day, today)).lean<OperationsShipmentDoc[]>().exec();
   }
 
   /** How many rows `securedForDistribution` would return — counted before anything is loaded. */
-  async countSecuredForDistribution(day: Date): Promise<number> {
-    return this.model.countDocuments(distributionFilter(day)).exec();
+  async countSecuredForDistribution(day: Date, today: Date): Promise<number> {
+    return this.model.countDocuments(distributionFilter(day, today)).exec();
   }
 
   /**

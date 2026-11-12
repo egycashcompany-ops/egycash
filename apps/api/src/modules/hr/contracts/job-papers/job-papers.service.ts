@@ -20,7 +20,8 @@ import { templatesForJob } from '../contracts/hiring-pack.service';
 import { type JobPaperOverride } from './job-papers.model';
 import { jobPapersRepository } from './job-papers.repository';
 
-const jobRef = (jobTitleId: string) => ({ moduleId: 'hr', entityType: 'jobTitle', entityId: jobTitleId });
+// On the job title's own history, where its other changes are.
+const jobRef = (jobTitleId: string) => ({ moduleId: 'platform', entityType: 'jobTitle', entityId: jobTitleId });
 
 /** The keys a job prints — ticked on its line — in print order. */
 export const tickedKeys = (

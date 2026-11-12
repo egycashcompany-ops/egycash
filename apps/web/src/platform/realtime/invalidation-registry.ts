@@ -273,6 +273,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'banks'],
     ['operations', 'bankBranches'],
     ['operations', 'reportBanks'],
+    // «تجميع الخزينة» prints each row's bank name as the server sent it, as the bank report does —
+    // a bank renamed on another desk would keep its old name on the roll-up until the next receipt.
+    ['operations', 'vaultReport'],
   ],
   'operations.bankBranch': [
     ['operations', 'bankBranches'],

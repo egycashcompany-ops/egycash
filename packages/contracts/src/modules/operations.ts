@@ -1124,6 +1124,11 @@ export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipment
 // approved SPLIT put the legacy `leader1`/`leader2` fields. A shipment with no assignment has no
 // captain to group under and is reported under the unassigned bucket rather than silently dropped.
 
+/**
+ * The period of all three reports — the captain and bank reports here, and the vault roll-up below
+ * (which judges it on the vault receipt's Cairo day rather than a shipment date). One schema, so the
+ * three screens' «من» / «إلى» mean the same days and refuse the same malformed ones.
+ */
 export const OperationsReportQuerySchema = z
   .object({
     /** Inclusive. Defaults to the first day of the current month — the legacy default (:4862). */
@@ -1197,22 +1202,34 @@ export interface OperationsBankReportDto {
 //
 // ONE QUESTION, ASKED ONCE. Both are views of one roll-up here, and it runs through the SAME code
 // path as the bank report — which is what makes it impossible for two screens to report different
-// package counts for the same shipments. `foreignCurrencies` is computed server-side rather than
-// filtered in a browser, because "which currency is domestic" is a system fact (ECMS's base
-// currency, EGP everywhere else in the platform) and not a list a screen should carry.
+// package counts for the same shipments.
 //
-// NO DATE RANGE, deliberately (Q32 PRESERVE): the legacy screen had a date picker whose filters
-// were commented out in BOTH aggregations, so it was always all-time — which is the right answer
-// for a question about what is in the vault NOW.
+// THE PERIOD IS THE OWNER'S, NOT LEGACY'S. Legacy's picker filtered nothing (Q32: its date filters
+// were commented out in both aggregations), so the screen was always "what is held now" under two
+// dates that meant nothing. The owner gave them a meaning: «يجيب اللى اتسلم واللى متسلمش ويجيب
+// البداية كل اول شهر». The roll-up is every secured shipment that ENTERED THE VAULT in [from, to] —
+// judged on the vault receipt's Cairo calendar day — whether it is still held, has gone out for
+// delivery or has been delivered since; the period opens on the first of the current month by
+// default, exactly as the captain and bank reports' does (`OperationsReportQuerySchema`). A receipt
+// that was CANCELLED (Round 10) never entered the vault for this purpose; a shipment received again
+// counts once, on its new receipt's day. Deleted shipments are left out, as in the other reports.
+// What the vault holds right now is still the inventory's question (`ListVaultInventoryQuerySchema`).
+//
+// NO "WHICH CURRENCY IS THE POUND" FIELDS. An earlier version sent `baseCurrencyCode` and a
+// `foreignCurrencies` list that told the pound by `code === 'EGP'` — wrong on the production
+// catalog, whose codes are the legacy numbers «1», «2», «3», where it counted the pound as foreign.
+// No client read them: the screen splits `grandTotal.currencies` with the boards' own classifier
+// (code, name or legacy alias), so the pound/dollar/other split is a VIEW in exactly one place.
 
 export interface OperationsVaultReportDto {
-  /** Per-bank roll-up of everything currently held. */
+  /** The first day of the period (UTC midnight of the Cairo calendar day), inclusive. */
+  from: string;
+  /** The last day of the period, inclusive — the day asked for, not the query's exclusive bound. */
+  to: string;
+  /** Per-bank roll-up of every shipment received into the vault in the period. */
   rows: OperationsBankReportRowDto[];
+  /** Q27 NORMALIZE — separate from `rows`, so summing the rows cannot double-count. */
   grandTotal: OperationsReportTotalsDto;
-  /** The system's domestic currency, so no client has to know which one that is. */
-  baseCurrencyCode: string;
-  /** The legacy second aggregation: the same grand total with the base currency taken out. */
-  foreignCurrencies: OperationsReportCurrencyTotalDto[];
 }
 // ── Crew requirements (B3 — the legacy /requirement screen) ─────────────────────────────────────
 //

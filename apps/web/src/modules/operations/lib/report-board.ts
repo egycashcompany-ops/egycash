@@ -166,7 +166,7 @@ export const reportCurrencyLookup = (
 
 /** One line of «إجمالي قيمة الشحنات»'s currency list. */
 export interface VaultValueLine extends ReportMoneyLine {
-  /** Nothing of it is held — drawn dimmed, so the money stands out of the full list. */
+  /** None of it came in during the period — drawn dimmed, so the money stands out of the list. */
   zero: boolean;
 }
 
@@ -183,18 +183,18 @@ export interface VaultValuePanel {
   /**
    * Each currency but the pound, in the reference list's order, as legacy listed every currency of
    * its data list (امريكى، يورو، جنيه استرلينى …) whether or not the vault held any: every ACTIVE
-   * currency of the catalog — 0 where none is held — then any the vault holds that the catalog has
-   * retired or does not list. A retired currency with nothing held is not listed: it is not one
-   * the vault can still receive.
+   * currency of the catalog — 0 where none came in during the period — then any the period brought
+   * in that the catalog has retired or does not list. A retired currency with nothing in the period
+   * is not listed: it is not one the vault can still receive.
    */
   lines: VaultValueLine[];
 }
 
 /**
  * The panel, from the server's GRAND TOTAL — its own currencies, split by the boards' classifier.
- * Not from the rows (Q27), and not from the server's `foreignCurrencies`, which tells the pound by
- * its code alone (`EGP`): on the production catalog, whose pound is coded «1», that list would
- * count the pound as foreign.
+ * Not from the rows (Q27), and never by the code `EGP` alone: on the production catalog, whose
+ * pound is coded «1», that test counts the pound as foreign. (It is why the server stopped sending
+ * a list of its own "foreign" currencies — this split is the only one.)
  */
 export const vaultValuePanel = (
   grandTotal: readonly OperationsReportCurrencyTotalDto[],
@@ -215,7 +215,7 @@ export const vaultValuePanel = (
     const key = reportLineKey(line);
     held.set(key, (held.get(key) ?? 0) + line.amount);
   }
-  // The catalog's currencies with nothing held, as zero lines beside the ones the vault holds.
+  // The catalog's currencies the period brought none of, as zero lines beside the ones it did.
   const unheld: OperationsReportCurrencyTotalDto[] = catalog
     .filter(
       (currency) =>

@@ -7,12 +7,13 @@
 //   · «الإجمالي» is the server's grand total, never the rows added up (Q27);
 //   · the vault's «إجمالي قيمة الشحنات»: the pound, the foreign sum with the dollar, then every
 //     currency of the reference list, zeros dimmed;
-//   · the vault's «من» / «إلى» are SHOWN and NOT SENT — pending the owner's decision (Q32);
+//   · the vault's «من» / «إلى» are the period it covers — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية
+//     كل اول شهر»: they go with the request, open on the current month, refuse an inverted range;
 //   · the captain report's range opens on the current month and refuses an inverted one in words;
 //   · «تقرير البنوك» and «جرد الخزينة» are left as they were.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -129,6 +130,8 @@ const totals = (
  * of the rows — what «الإجمالي» shows must be this figure, so it can only have come from here.
  */
 const VAULT: OperationsVaultReportDto = {
+  from: '2026-11-01T00:00:00.000Z',
+  to: '2026-11-30T00:00:00.000Z',
   rows: [
     {
       bankId: 'bq',
@@ -168,9 +171,6 @@ const VAULT: OperationsVaultReportDto = {
       line('eur', 'يورو', 900_000),
     ],
   ),
-  baseCurrencyCode: 'EGP',
-  // What the server sends on a catalog coded «1»: the pound too. The page does not read it.
-  foreignCurrencies: [line('egp', 'مصري', 123_456_000)],
 };
 
 const RANGE = { from: '2026-11-01', to: '2026-11-30' };
@@ -250,9 +250,17 @@ const render = (path: string, element: JSX.Element, seed: (qc: QueryClient) => v
   );
 };
 
-const renderVault = (data: OperationsVaultReportDto = VAULT, query = ''): string =>
+/**
+ * The page over a cache seeded for ONE period (`range`): the rows can only be on screen if the page
+ * asked for exactly that period — the range IS the query key, as it is the request's `from`/`to`.
+ */
+const renderVault = (
+  data: OperationsVaultReportDto = VAULT,
+  query = `?from=${RANGE.from}&to=${RANGE.to}`,
+  range: { from: string; to: string } = RANGE,
+): string =>
   render(`/operations/reports/vault${query}`, <VaultReportPage />, (qc) =>
-    qc.setQueryData(listKey('operations', 'vaultReport', {}), data),
+    qc.setQueryData(listKey('operations', 'vaultReport', range), data),
   );
 const renderCaptains = (query = `?from=${RANGE.from}&to=${RANGE.to}`): string =>
   render(`/operations/reports/captains${query}`, <CaptainReportPage />, (qc) =>
@@ -380,39 +388,82 @@ describe('«تجميع الخزينة» — the legacy vault roll-up, on the boa
       (m) => (m[0].includes('data-zero') ? `${m[1] ?? ''}:0` : (m[1] ?? '')),
     );
     expect(lines).toEqual(['usd', 'eur', 'gbp:0', 'sar:0']);
-    // The panel never reads the server's `foreignCurrencies`, which tells the pound by `EGP` alone.
-    expect(PANEL).not.toContain('foreignCurrencies');
-    expect(VAULT_PAGE).not.toContain('foreignCurrencies');
+    // Split by the boards' classifier (code, name or alias) — never by the code `EGP` alone.
     expect(PANEL).toContain('vaultValuePanel(grandTotal.currencies,');
   });
 
-  it('shows «من» / «إلى» empty — everything in the vault now', () => {
-    const html = renderVault();
-    expect(html).toContain(`aria-label="${ar('operations.reports.from')}"`);
-    expect(html).toContain(`aria-label="${ar('operations.reports.to')}"`);
-    expect(html).toContain('data-date-label="from"');
-    expect(html).toContain('data-date-label="to"');
+  describe('«من» / «إلى» — the period the roll-up covers («ويجيب البداية كل اول شهر»)', () => {
+    // A fixed "now", so "the current month" is a fact of the test rather than of the day it runs.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      // 00:30 in Cairo on 1 November — still 31 October in UTC: the month is Cairo's.
+      vi.setSystemTime(new Date('2026-10-31T22:30:00.000Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('opens on the current month — its first and last day in the boxes, and in the request', () => {
+      // Nothing in the URL: the page must ask for 1–30 November, or this seeded answer is not shown.
+      const html = renderVault(VAULT, '', RANGE);
+      expect(html).toContain(`value="${RANGE.from}"`);
+      expect(html).toContain(`value="${RANGE.to}"`);
+      expect(bodyRows(html)).toHaveLength(4);
+      expect(html).toContain(`aria-label="${ar('operations.reports.from')}"`);
+      expect(html).toContain(`aria-label="${ar('operations.reports.to')}"`);
+      expect(html).toContain('data-date-label="from"');
+      expect(html).toContain('data-date-label="to"');
+    });
+
+    it('asks for the period in the URL — and for no other', () => {
+      const october = { from: '2026-10-01', to: '2026-10-31' };
+      const html = renderVault(VAULT, `?from=${october.from}&to=${october.to}`, october);
+      expect(html).toContain(`value="${october.from}"`);
+      expect(bodyRows(html)).toHaveLength(4);
+      // The same answer filed under November is not October's: the page asks for what it shows.
+      const elsewhere = renderVault(VAULT, `?from=${october.from}&to=${october.to}`, RANGE);
+      expect(elsewhere).not.toContain('data-report-total="true"');
+    });
+
+    it('fills an emptied bound back from the current month, per field', () => {
+      // Only «من» typed: «إلى» is the month's last day.
+      const html = renderVault(VAULT, '?from=2026-11-10', { from: '2026-11-10', to: RANGE.to });
+      expect(html).toContain('value="2026-11-10"');
+      expect(html).toContain(`value="${RANGE.to}"`);
+      expect(bodyRows(html)).toHaveLength(4);
+    });
+
+    it('refuses an inverted range in words, in the table’s place — never sent', () => {
+      const html = renderVault(VAULT, '?from=2026-11-20&to=2026-11-05', {
+        from: '2026-11-20',
+        to: '2026-11-05',
+      });
+      expect(html).toContain(ar('operations.reports.invalidRange'));
+      expect(html).toContain('data-shipments-refusal="true"');
+      expect(html).not.toContain('<table');
+      // Nor the panel: its figures would be a period nobody asked for.
+      expect(html).not.toContain('data-vault-value-total=');
+    });
+
+    it('sends the range, as «تقرير القادة» does — no dates held back', () => {
+      expect(VAULT_PAGE).toContain(
+        "const range = rangeFromParams({ from: sp.get('from'), to: sp.get('to') }, new Date());",
+      );
+      expect(VAULT_PAGE).toContain('const report = useVaultReport(range, valid);');
+      expect(VAULT_PAGE).not.toContain('PENDING');
+      expect(VAULT_PAGE).not.toContain('optional: true');
+    });
   });
 
-  it('SENDS NOTHING from the dates — pending the owner’s decision on what they filter (Q32)', () => {
-    // The server refuses `?from` / `?to` on the vault roll-up; the sample shows the boxes only.
-    expect(VAULT_PAGE).toContain("PENDING THE OWNER'S DECISION");
-    expect(VAULT_PAGE).toContain('const report = useVaultReport();');
-    expect(VAULT_PAGE).not.toMatch(/useVaultReport\([^)]/);
-    // A picked date keeps the same report on screen — the same cache entry, asked with no query.
-    const html = renderVault(VAULT, '?from=2026-11-01');
-    expect(html).toContain('value="2026-11-01"');
-    expect(bodyRows(html)).toHaveLength(4);
-  });
-
-  it('says the vault is empty in the table’s place, with no row of zeros', () => {
+  it('says nothing entered the vault in the period, in the table’s place, with no row of zeros', () => {
     const html = renderVault({
       ...VAULT,
       rows: [],
       grandTotal: totals(0, [0, 0, 0], []),
-      foreignCurrencies: [],
     });
-    expect(html).toContain(ar('operations.vault.empty'));
+    // Not «الخزينة فارغة»: a month with no receipt says nothing about what the vault holds now.
+    expect(html).toContain(ar('operations.vaultReport.empty'));
+    expect(html).not.toContain(ar('operations.vault.empty'));
     expect(html).not.toContain('data-report-total="true"');
     expect(bodyRows(html)).toHaveLength(1);
   });

@@ -10,8 +10,13 @@
 // decisions a line somebody can read and a test somebody can write, which is worth more here than
 // pushing the work into the database.
 import {
+  addDaysYmd,
+  cairoDayStart,
+  cairoYmd,
+  ymdOf,
   type OperationsBankReportRowDto,
   type OperationsCaptainReportRowDto,
+  type OperationsReportQuery,
   type OperationsReportTotalsDto,
 } from '@ecms/contracts';
 
@@ -138,4 +143,63 @@ export const explicitReportRange = (from: Date, to: Date): { from: Date; toExclu
   const start = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
   const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate() + 1));
   return { from: start, toExclusive: end };
+};
+
+/** The vault roll-up's period: its two calendar days, and the instants that bound the receipts. */
+export interface VaultReceiptRange {
+  /** First Cairo day of the period, 'YYYY-MM-DD', inclusive. */
+  from: string;
+  /** Last Cairo day of the period, 'YYYY-MM-DD', inclusive. */
+  to: string;
+  /** The instant `from` begins in Cairo. */
+  start: Date;
+  /** The instant the day after `to` begins in Cairo — exclusive, so `to` is counted whole. */
+  endExclusive: Date;
+}
+
+/**
+ * The days the Cairo calendar helpers can name: 0100-01-01 to 9999-12-30. `z.coerce.date` accepts
+ * more, and the screens send more — a date box applies each keystroke, so a year typed into it
+ * arrives as it grows (0002, 0020, 0202, 2026). `cairoDayStart` refuses a year below 100 (`Date.UTC`
+ * reads it as 19xx) and a day after 9999-12-30 (the day after it has a five-digit year), which made
+ * a half-typed year a 500. No receipt lies outside these days, so pulling a bound back inside them
+ * changes no answer — the captain and bank reports, which never call those helpers, answer 200 too.
+ */
+const FIRST_NAMEABLE_DAY = Date.UTC(100, 0, 1);
+const LAST_NAMEABLE_DAY = Date.UTC(9999, 11, 30);
+const nameableDay = (day: Date): string =>
+  ymdOf(new Date(Math.min(Math.max(day.getTime(), FIRST_NAMEABLE_DAY), LAST_NAMEABLE_DAY)));
+
+/**
+ * The vault roll-up's period — «ويجيب البداية كل اول شهر»: by default the current month.
+ *
+ * WHY THIS IS NOT `explicitReportRange`. The captain and bank reports bound a DATE-ONLY field (a
+ * collection or delivery day, stored as UTC midnight of the day typed), so UTC day bounds are those
+ * days exactly. The vault roll-up bounds an INSTANT — the moment the vault signed for a shipment —
+ * and the desk's day is Cairo's: a receipt at 00:30 Cairo on the 1st is the 1st's, although UTC
+ * still reads the previous day. So the same inclusive days become Cairo midnights here, and "the
+ * current month" is the month of Cairo's today. (The vault's receive queue reads `receivedAt` the
+ * same way for "received today".)
+ *
+ * Each bound falls back on its own, as the schema documents and the screens read the URL
+ * (`rangeFromParams`, report-range.ts): a caller who sent only a start asked for that start.
+ * An inverted range is not refused — it is an empty period, as it is in the other two reports.
+ */
+export const vaultReceiptRange = (query: OperationsReportQuery, now: Date): VaultReceiptRange => {
+  const today = cairoYmd(now);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  // `Date.UTC` rolls month 12 over into January of the next year.
+  const nextMonthStart = ymdOf(new Date(Date.UTC(year, month, 1)));
+  // The query's dates are the days typed ('YYYY-MM-DD' coerces to UTC midnight), read the way the
+  // other reports read them: their UTC date part.
+  const from = query.from === undefined ? monthStart : nameableDay(query.from);
+  const to = query.to === undefined ? addDaysYmd(nextMonthStart, -1) : nameableDay(query.to);
+  return {
+    from,
+    to,
+    start: cairoDayStart(from),
+    endExclusive: cairoDayStart(addDaysYmd(to, 1)),
+  };
 };

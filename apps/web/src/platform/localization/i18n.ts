@@ -10918,10 +10918,9 @@ const en: Record<string, string> = {
   'operations.vault.queue.receive': 'Receive into the vault',
   // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
   'operations.nav.vaultReport': 'Vault roll-up',
-  'operations.cards.vaultReport': 'What the vault holds now, by bank',
+  'operations.cards.vaultReport': 'Secured shipments received into the vault in the period, by bank',
   'operations.vaultReport.title': 'Vault roll-up',
-  'operations.vaultReport.subtitle':
-    'Everything currently held, by bank. All-time by design — the vault is a question about now.',
+  'operations.vaultReport.empty': 'No secured shipment was received into the vault in this period',
   // Round 11 — the vault roll-up and the captain report on the boards' look (`ReportBoard`).
   'operations.vaultReport.table': 'Shipments by bank',
   'operations.vaultReport.securedCount': 'Secured shipments',
@@ -10953,8 +10952,6 @@ const en: Record<string, string> = {
   'operations.nav.attendance': 'Crew attendance',
   'operations.cards.attendance': "The crew's attendance for a day — information only",
   'operations.reports.captains.title': 'Captain report',
-  'operations.reports.captains.subtitle':
-    'Completed shipments in the period, grouped by the captain who ran them.',
   'operations.reports.banks.title': 'Bank report',
   'operations.reports.banks.subtitle': 'The same completed shipments, grouped by bank.',
   'operations.reports.captain': 'Captain',
@@ -24090,10 +24087,9 @@ const ar: Record<string, string> = {
   'operations.vault.queue.receive': 'استلام في الخزينة',
   // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────
   'operations.nav.vaultReport': 'تجميع الخزينة',
-  'operations.cards.vaultReport': 'ما بالخزينة الآن، حسب البنك',
+  'operations.cards.vaultReport': 'المحصنات المستلمة في الخزينة خلال الفترة، حسب البنك',
   'operations.vaultReport.title': 'تجميع الخزينة',
-  'operations.vaultReport.subtitle':
-    'كل ما هو محتفَظ به الآن، حسب البنك. بلا فترة زمنية عن قصد — الخزينة سؤال عن اللحظة.',
+  'operations.vaultReport.empty': 'لم تُستلم أي محصنة في الخزينة خلال هذه الفترة',
   // Round 11 — تجميع الخزينة وتقرير القادة بشكل لوحات التشغيل (`ReportBoard`).
   'operations.vaultReport.table': 'بيان الشحنات لكل بنك',
   'operations.vaultReport.securedCount': 'عدد المحصنات',
@@ -24125,8 +24121,6 @@ const ar: Record<string, string> = {
   'operations.nav.attendance': 'حضور الطاقم',
   'operations.cards.attendance': 'حضور الطاقم في يوم محدد — للعلم فقط',
   'operations.reports.captains.title': 'تقرير القادة',
-  'operations.reports.captains.subtitle':
-    'الشحنات المكتملة خلال الفترة، مجمّعة حسب القائد المنفّذ.',
   'operations.reports.banks.title': 'تقرير البنوك',
   'operations.reports.banks.subtitle': 'نفس الشحنات المكتملة، مجمّعة حسب البنك.',
   'operations.reports.captain': 'القائد',

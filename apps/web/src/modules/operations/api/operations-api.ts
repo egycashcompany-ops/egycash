@@ -457,9 +457,16 @@ export const updateOperationsArea = (
   body: UpdateOperationsArea,
 ): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
 
-/** `/vault1_reports` — the vault roll-up. NO date range, deliberately (Q32 PRESERVE). */
-export const getVaultReport = (): Promise<OperationsVaultReportDto> =>
-  get<OperationsVaultReportDto>('/operations/reports/vault');
+/**
+ * `/vault1_reports` — the vault roll-up over a period, both days inclusive, as the captain and bank
+ * reports take theirs. Legacy's two dates filtered nothing (Q32); the owner gave them a meaning —
+ * «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: every محصنة RECEIVED into the vault in
+ * the period, whether it has gone out since or not, judged on the receipt's Cairo day.
+ */
+export const getVaultReport = (
+  params: { from: string; to: string },
+): Promise<OperationsVaultReportDto> =>
+  get<OperationsVaultReportDto>(`/operations/reports/vault${buildQuery(params)}`);
 
 // ── Captain mobile (Phase C) ────────────────────────────────────────────────
 //

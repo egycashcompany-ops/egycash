@@ -1,6 +1,7 @@
-// The two Operations reports — the legacy /ops_report (by captain) and /ops_bank_report (by bank).
+// The Operations reports — the legacy /ops_report (by captain) and /ops_bank_report (by bank), and
+// the vault roll-up /vault1_reports (by bank, over the vault's receipts: see `vaultReport`).
 //
-// WHAT IS BEING REPORTED, precisely (discovery §D): COMPLETED shipments in a date range, where
+// WHAT THE FIRST TWO REPORT, precisely (discovery §D): COMPLETED shipments in a date range, where
 // daily shipments are attributed by their COLLECTION date and secured ones by their DELIVERY date.
 // That two-date split is not a detail — it is the same distinction the day board turns on, and
 // getting it wrong moves money between months.
@@ -22,7 +23,7 @@ import {
   type OperationsReportQuery,
   type OperationsVaultReportDto,
 } from '@ecms/contracts';
-import { fromMinorUnits } from '@ecms/contracts';
+import { fromMinorUnits, ymdToUtcDate } from '@ecms/contracts';
 import { getDirectoryEmployee } from '../../../platform/directory';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
@@ -35,15 +36,9 @@ import {
   captainReportRows,
   defaultReportRange,
   explicitReportRange,
+  vaultReceiptRange,
   type ReportInputRow,
 } from './report-aggregation';
-
-/**
- * ECMS's domestic currency. It is `EGP` everywhere else in the platform — `MoneyCurrencySchema`
- * defaults to it and every money value object does — so the vault roll-up names the same one
- * instead of reproducing the legacy screen's literal synonym list (contad_app.js:1409).
- */
-const BASE_CURRENCY_CODE = 'EGP';
 
 const resolveRange = (query: OperationsReportQuery): { from: Date; toExclusive: Date } =>
   query.from !== undefined && query.to !== undefined
@@ -139,21 +134,33 @@ class OperationsReportService {
   }
 
   /**
-   * The legacy `/vault1_reports` + `/vault1` aggregations — everything the treasury holds NOW,
-   * rolled up by bank (B6).
+   * The legacy `/vault1_reports` + `/vault1` aggregations, rolled up by bank (B6) — over the
+   * period the owner gave the screen's dates: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
+   *
+   * WHICH SHIPMENTS. Every custody the vault TOOK in the period, judged on the receipt's Cairo day
+   * (`vaultReceiptRange`), whatever happened to it since — still held, released on dispatch, the
+   * shipment delivered and completed. "Delivered or not" is the point: a month's roll-up of what
+   * came into the vault must not shrink each time a van leaves. A CANCELLED receipt is not in it:
+   * the cancel voids the custody and soft-deletes it in one write, and `receivedBetween` reads live
+   * custody only — so a shipment received again counts once, on its new receipt's day, with that
+   * receipt's packages. A deleted shipment is not in it either (`findByIds` reads live rows), as
+   * in the other two reports.
    *
    * It goes through the SAME `bankReportRows` the bank report uses. That is the point: the legacy
    * pair computed package counts two different ways over overlapping sets — the vault screen per
    * document, the bank report per currency line (Q26) — so the two screens disagreed about the
    * same shipments. One code path cannot.
-   *
-   * NO date range (Q32 PRESERVE): the legacy picker's filters were commented out in BOTH
-   * aggregations, and "what is in the vault" is a question about now.
    */
-  async vaultReport(): Promise<OperationsVaultReportDto> {
-    const held = await vaultCustody().allHeld();
+  async vaultReport(
+    query: OperationsReportQuery,
+    now: Date = new Date(),
+  ): Promise<OperationsVaultReportDto> {
+    const range = vaultReceiptRange(query, now);
+    // One custody per shipment at most: `ux_shipment` allows a single live custody, so a shipment
+    // cannot appear twice however many times it was received and cancelled.
+    const received = await vaultCustody().receivedBetween(range.start, range.endExclusive);
     const shipments = await operationsShipmentRepository.findByIds(
-      held.map((custody) => custody.shipmentId),
+      received.map((custody) => custody.shipmentId),
     );
     const byId = new Map(shipments.map((doc) => [String(doc._id), doc]));
 
@@ -161,17 +168,13 @@ class OperationsReportService {
       await operationsCurrencyRepository.list({ filter: {}, page: 1, pageSize: 500 })
     ).items;
     const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
-    const baseCurrencyIds = new Set(
-      currencies.filter((c) => c.code === BASE_CURRENCY_CODE).map((c) => String(c._id)),
-    );
     const bankNames = new Map<string, string>();
 
     const rows: ReportInputRow[] = [];
-    for (const custody of held) {
+    for (const custody of received) {
       const shipment = byId.get(custody.shipmentId);
-      // Custody with no readable shipment is a broken reference, not a zero. Skipping it makes the
-      // roll-up's count differ from the inventory's — which is visible — rather than quietly
-      // emitting a row with no money.
+      // No live shipment: deleted (the other reports leave those out too), or a broken reference —
+      // which is visible as a count lower than the receipts', rather than a row with no money.
       if (shipment === undefined) continue;
 
       const bankId = String(shipment.mainBankId);
@@ -201,15 +204,12 @@ class OperationsReportService {
 
     const { rows: built, grandTotal } = bankReportRows(rows);
     return {
+      // The days asked for, stored the date-only way (UTC midnight) as the other reports send
+      // theirs — not the Cairo instants the query used, which a header would read as the day before.
+      from: ymdToUtcDate(range.from).toISOString(),
+      to: ymdToUtcDate(range.to).toISOString(),
       rows: built,
       grandTotal,
-      baseCurrencyCode: BASE_CURRENCY_CODE,
-      // The legacy SECOND aggregation, as a view of the first rather than a second query. Matched
-      // on the currency's CODE, not on its Arabic display name — which is what the legacy synonym
-      // list was working around.
-      foreignCurrencies: grandTotal.currencies.filter(
-        (line) => line.currencyId === null || !baseCurrencyIds.has(line.currencyId),
-      ),
     };
   }
 

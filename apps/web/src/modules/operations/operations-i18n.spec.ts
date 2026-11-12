@@ -329,7 +329,6 @@ const REPORT_KEYS = [
   'operations.nav.bankReport',
   'operations.cards.bankReport',
   'operations.reports.captains.title',
-  'operations.reports.captains.subtitle',
   'operations.reports.banks.title',
   'operations.reports.banks.subtitle',
   'operations.reports.captain',
@@ -369,7 +368,10 @@ const VAULT_REPORT_KEYS = [
   'operations.nav.vaultReport',
   'operations.cards.vaultReport',
   'operations.vaultReport.title',
-  'operations.vaultReport.subtitle',
+  // Round 11 — the roll-up's period («يجيب اللى اتسلم واللى متسلمش»): an empty one says no محصنة
+  // ENTERED the vault in it, not that the vault is empty. (`subtitle`, «بلا فترة زمنية عن قصد», went
+  // when the owner gave the dates a meaning.)
+  'operations.vaultReport.empty',
   // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
   // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
   // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)

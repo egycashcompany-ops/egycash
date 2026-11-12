@@ -147,6 +147,13 @@ const REQUESTS = [
     schema: OperationsReportQuerySchema,
     params: { from: '2026-08-01', to: '2026-08-31' },
   },
+  // Round 11 — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: the vault roll-up takes the
+  // same period as the two reports (it refused any query before the owner's answer).
+  {
+    screen: 'Vault roll-up · the current month',
+    schema: OperationsReportQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-31' },
+  },
 ] as const;
 
 describe('every Operations request parses against the schema that receives it (B8)', () => {

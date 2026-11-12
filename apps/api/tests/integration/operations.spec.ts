@@ -14,6 +14,7 @@ import {
   OperationsEvents,
   SettingKeys,
   addDaysYmd,
+  cairoDayStart,
   cairoYmd,
   platformPermissions,
   type FleetVehicleDto,
@@ -5524,14 +5525,98 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
 });
 
 describe('vault roll-up and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+  // THE ROLL-UP'S PERIOD IS THE OWNER'S: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
+  // Every shipment the vault RECEIVED in the period, on the receipt's Cairo day, whether it has gone
+  // out since or not; the current month by default. Every receipt in this file is stamped "now", so
+  // the cases read the vault bank's own row (a bank nothing else uses) and compare it with what it
+  // was a moment before, rather than asserting a whole-vault total that other suites also move.
   const VAULT_DATE = shift(230);
   let vaultBank: OperationsBankDto;
   let vaultBranch: OperationsBankBranchDto;
 
-  const vaultReport = (token = adminToken): request.Test =>
+  const vaultReport = (query = '', token = adminToken): request.Test =>
     request(app)
-      .get('/api/v1/operations/reports/vault')
+      .get(`/api/v1/operations/reports/vault${query}`)
       .set('Authorization', `Bearer ${token}`);
+
+  /** The vault bank's row of a roll-up, or undefined when the period holds none of its shipments. */
+  const vaultBankRow = async (
+    query = '',
+  ): Promise<OperationsVaultReportDto['rows'][number] | undefined> => {
+    const res = await vaultReport(query);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsVaultReportDto>(res).rows.find((r) => r.bankId === vaultBank.id);
+  };
+  const countOf = (row: OperationsVaultReportDto['rows'][number] | undefined): number =>
+    row?.totals.shipmentCount ?? 0;
+
+  /** A Cairo calendar month as the screens send it: two inclusive days. */
+  const cairoMonth = (offsetMonths: number): { from: string; to: string } => {
+    const today = cairoYmd(new Date());
+    const first = (months: number): string =>
+      new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1 + months, 1))
+        .toISOString()
+        .slice(0, 10);
+    return { from: first(offsetMonths), to: addDaysYmd(first(offsetMonths + 1), -1) };
+  };
+  const period = (range: { from: string; to: string }): string =>
+    `?from=${range.from}&to=${range.to}`;
+
+  const readShipment = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+
+  let receiptCounter = 0;
+  const receiveInto = async (id: string, bagCount: number): Promise<request.Response> => {
+    receiptCounter += 1;
+    return request(app)
+      .post(`/api/v1/operations/secured/${id}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        receiptNumber: `R-VLT-${String(receiptCounter)}-${id.slice(-5)}`,
+        bagCount,
+        receivedByPrimaryId: captainId,
+        receivedBySecondaryId: specialist1Id,
+        version: (await readShipment(id)).version,
+      });
+  };
+
+  /** A secured shipment of the vault bank, picked up by the desk and received into the vault now. */
+  const receivedSecured = async (bagCount: number): Promise<OperationsShipmentDto> => {
+    const created = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: VAULT_DATE,
+      deliveryDate: VAULT_DATE,
+      mainBankId: vaultBank.id,
+      originBranchId: vaultBranch.id,
+      destinationBranchId: vaultBranch.id,
+      lines: [{ currencyId: egp.id, amount: 250 }],
+    });
+    expect(created.status).toBe(201);
+    const secured = data<OperationsShipmentDto>(created);
+    await deskPickUp(secured.id);
+    const received = await receiveInto(secured.id, bagCount);
+    expect(received.status, JSON.stringify(received.body)).toBe(200);
+    return secured;
+  };
+
+  /**
+   * Move a receipt to another moment. The API stamps a receipt with the clock, so a receipt of
+   * another day — last month's, or one just across Cairo midnight — can only be made this way.
+   */
+  const moveReceipt = async (shipmentId: string, at: Date, cancelled = false): Promise<void> => {
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    const moved = await OperationsVaultCustodyModel.updateOne(
+      { shipmentId, isDeleted: cancelled },
+      { $set: { receivedAt: at } },
+    ).exec();
+    expect(moved.modifiedCount).toBe(1);
+  };
 
   const area = (body: Record<string, unknown>, token = adminToken): request.Test =>
     request(app)
@@ -5543,7 +5628,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
   beforeAll(async () => {
     // USD already exists (the reports suite created it) and its code is unique, so it is looked
-    // up rather than re-created — the roll-up's base-currency split needs a non-EGP currency.
+    // up rather than re-created — the roll-up must carry more than one currency per shipment.
     const list = await request(app)
       .get('/api/v1/operations/currencies?page=1&pageSize=100')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -5569,7 +5654,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     vaultBranch = data<OperationsBankBranchDto>(branchRes);
   });
 
-  it('1. rolls up what the vault HOLDS, counting packages once per shipment (Q26)', async () => {
+  it('1. rolls up what the vault RECEIVED this month, counting packages once per shipment (Q26)', async () => {
     const created = await mkShipment({
       shipmentType: 'secured',
       collectionDate: VAULT_DATE,
@@ -5611,24 +5696,27 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     expect(row?.totals.currencies.map((c) => c.amount).sort((a, b) => a - b)).toEqual([500, 1000]);
   });
 
-  it('2. separates the non-base currencies — the legacy second aggregation, as a view', async () => {
+  it('2. sends the period it rolled up — the current Cairo month by default, «البداية كل اول شهر»', async () => {
+    const month = cairoMonth(0);
     const report = data<OperationsVaultReportDto>(await vaultReport());
-    expect(report.baseCurrencyCode).toBe('EGP');
-    // The legacy screen excluded EGP by a literal Arabic synonym list (:1409). Here it is matched
-    // on the currency's CODE, so a currency named `مصري` with code EGP is correctly excluded.
-    expect(report.foreignCurrencies.some((c) => c.currencyName === 'مصري')).toBe(false);
-    expect(report.foreignCurrencies.some((c) => c.currencyName === 'دولار')).toBe(true);
-    // ...and the grand total still carries BOTH — the split is a view, not a filtered query.
+    // The days, sent the way the captain and bank reports send theirs: UTC midnight of each.
+    expect(report.from).toBe(`${month.from}T00:00:00.000Z`);
+    expect(report.to).toBe(`${month.to}T00:00:00.000Z`);
+    // The same days asked for by name are the same answer.
+    expect(data<OperationsVaultReportDto>(await vaultReport(period(month)))).toEqual(report);
+
+    // The grand total carries every currency, the pound with the rest. Which one is «المصري» is the
+    // screen's to decide, with the boards' classifier — the server used to guess it by `EGP`, which
+    // on the production catalog (codes «1», «2», «3») counted the pound as foreign.
     expect(report.grandTotal.currencies.some((c) => c.currencyName === 'مصري')).toBe(true);
+    expect(report.grandTotal.currencies.some((c) => c.currencyName === 'دولار')).toBe(true);
+    expect(report).not.toHaveProperty('baseCurrencyCode');
+    expect(report).not.toHaveProperty('foreignCurrencies');
   });
 
-  it('3. drops a shipment OUT of the roll-up the moment it leaves the vault', async () => {
-    const before = data<OperationsVaultReportDto>(await vaultReport());
-    const heldBefore = before.grandTotal.shipmentCount;
-    expect(heldBefore).toBeGreaterThanOrEqual(1);
+  it('3. keeps a shipment IN after it leaves the vault and is delivered — «اللى اتسلم واللى متسلمش»', async () => {
+    const before = countOf(await vaultBankRow());
 
-    // A second shipment received and then released changes the answer: the roll-up is about what
-    // is here NOW, which is exactly why it has no date range (Q32 PRESERVE).
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -5641,39 +5729,9 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     expect(plan.status).toBe(200);
     const crewRow = await crewAssignmentIdForDay(VAULT_DATE);
 
-    const created = await mkShipment({
-      shipmentType: 'secured',
-      collectionDate: VAULT_DATE,
-      deliveryDate: VAULT_DATE,
-      mainBankId: vaultBank.id,
-      originBranchId: vaultBranch.id,
-      destinationBranchId: vaultBranch.id,
-      lines: [{ currencyId: egp.id, amount: 250 }],
-    });
-    const secured = data<OperationsShipmentDto>(created);
-    expect(
-      (
-        await request(app)
-          .post(`/api/v1/operations/secured/${secured.id}/receive`)
-          .set('Authorization', `Bearer ${adminToken}`)
-          .send({
-            receiptNumber: `R-VLT2-${secured.id.slice(-5)}`,
-            bagCount: 2,
-            receivedByPrimaryId: captainId,
-            receivedBySecondaryId: specialist1Id,
-            version: (await deskPickUp(secured.id)).version,
-          })
-      ).status,
-    ).toBe(200);
+    const secured = await receivedSecured(2);
+    expect(countOf(await vaultBankRow())).toBe(before + 1);
 
-    const withBoth = data<OperationsVaultReportDto>(await vaultReport());
-    expect(withBoth.grandTotal.shipmentCount).toBe(heldBefore + 1);
-
-    const inVault = data<OperationsShipmentDto>(
-      await request(app)
-        .get(`/api/v1/operations/shipments/${secured.id}`)
-        .set('Authorization', `Bearer ${adminToken}`),
-    );
     expect(
       (
         await request(app)
@@ -5682,7 +5740,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
           .send({
             crewAssignmentId: crewRow,
             captainEmployeeId: captainId,
-            version: inVault.version,
+            version: (await readShipment(secured.id)).version,
           })
       ).status,
     ).toBe(200);
@@ -5694,23 +5752,139 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
           .send({ crewAssignmentId: crewRow, shipmentIds: [secured.id] })
       ).status,
     ).toBe(200);
+    // Out of the vault, on its way: still received in the period, so still in the roll-up — a
+    // month's roll-up of what came in does not shrink each time a van leaves.
+    expect(countOf(await vaultBankRow())).toBe(before + 1);
 
-    const after = data<OperationsVaultReportDto>(await vaultReport());
-    expect(after.grandTotal.shipmentCount).toBe(heldBefore);
+    const dispatched = await readShipment(secured.id);
+    expect(dispatched.status).toBe('dispatched');
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${secured.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: dispatched.version });
+    expect(done.status).toBe(200);
+    // Delivered: still in.
+    expect(countOf(await vaultBankRow())).toBe(before + 1);
   });
 
-  it('4. takes NO date range — the legacy picker never filtered anything (Q32)', async () => {
-    const res = await request(app)
-      .get('/api/v1/operations/reports/vault?from=2026-10-01&to=2026-10-31')
+  it('4. judges the period on the receipt\'s CAIRO day — last month\'s out, this month\'s in', async () => {
+    const thisMonth = cairoMonth(0);
+    const lastMonth = cairoMonth(-1);
+    const nowBefore = await vaultBankRow();
+    const lastBefore = await vaultBankRow(period(lastMonth));
+
+    // Two receipts either side of Cairo midnight on the 1st. The early one — 00:30 in Cairo, still
+    // the previous day in UTC — is this month's: a UTC bound would have put it in last month.
+    const firstInstant = cairoDayStart(thisMonth.from).getTime();
+    const late = await receivedSecured(3);
+    const early = await receivedSecured(4);
+    await moveReceipt(late.id, new Date(firstInstant - 30 * 60_000));
+    await moveReceipt(early.id, new Date(firstInstant + 30 * 60_000));
+
+    const now = await vaultBankRow();
+    expect(countOf(now)).toBe(countOf(nowBefore) + 1);
+    expect(now?.totals.bagCount).toBe((nowBefore?.totals.bagCount ?? 0) + 4);
+
+    const last = await vaultBankRow(period(lastMonth));
+    expect(countOf(last)).toBe(countOf(lastBefore) + 1);
+    expect(last?.totals.bagCount).toBe((lastBefore?.totals.bagCount ?? 0) + 3);
+
+    // A one-day period is that Cairo day, whole and alone: last month's last day holds the late
+    // receipt (23:30 Cairo) and not the early one, though both fall on that day in UTC.
+    const lastDay = await vaultBankRow(period({ from: lastMonth.to, to: lastMonth.to }));
+    expect(countOf(lastDay)).toBe(1);
+    expect(lastDay?.totals.bagCount).toBe(3);
+  });
+
+  it('5. leaves a CANCELLED receipt out, and counts the shipment\'s new receipt on its own', async () => {
+    const lastMonth = cairoMonth(-1);
+    const before = await vaultBankRow();
+    const lastBefore = countOf(await vaultBankRow(period(lastMonth)));
+
+    const shipment = await receivedSecured(5);
+    expect(countOf(await vaultBankRow())).toBe(countOf(before) + 1);
+
+    const cancelled = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/cancel-receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'استلام بالخطأ', version: (await readShipment(shipment.id)).version });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    // The vault never kept it: out of the period it was received in.
+    expect(countOf(await vaultBankRow())).toBe(countOf(before));
+    // Not counted on its own day either — moved to last month, it is still nobody's receipt.
+    await moveReceipt(shipment.id, new Date(cairoDayStart(lastMonth.from).getTime() + 86_400_000), true);
+    expect(countOf(await vaultBankRow(period(lastMonth)))).toBe(lastBefore);
+
+    // Received again: ONE shipment, on its new receipt's day, with the new receipt's packages — not
+    // the two receipts added up.
+    const again = await receiveInto(shipment.id, 6);
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const after = await vaultBankRow();
+    expect(countOf(after)).toBe(countOf(before) + 1);
+    expect(after?.totals.bagCount).toBe((before?.totals.bagCount ?? 0) + 6);
+  });
+
+  it('5b. leaves out a deleted shipment, as the captain and bank reports do', async () => {
+    const shipment = await receivedSecured(1);
+    const before = countOf(await vaultBankRow());
+    const { OperationsShipmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment.model'
+    );
+    // Written directly: the API refuses to delete a محصنة the vault has received (Round 10's lock),
+    // so a deleted shipment with a live receipt is one deleted before the lock existed, or migrated.
+    await OperationsShipmentModel.updateOne(
+      { _id: shipment.id },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    ).exec();
+    try {
+      expect(countOf(await vaultBankRow())).toBe(before - 1);
+    } finally {
+      await OperationsShipmentModel.updateOne(
+        { _id: shipment.id },
+        { $set: { isDeleted: false, deletedAt: null } },
+      ).exec();
+    }
+    expect(countOf(await vaultBankRow())).toBe(before);
+  });
+
+  it('5c. validates its period as the other reports do — 400 on a bad date, an inverted range is empty', async () => {
+    expect((await vaultReport('?from=not-a-date')).status).toBe(400);
+    expect((await vaultReport('?to=2026-13-01')).status).toBe(400);
+    // Strict: a parameter it does not know is refused, never quietly ignored (Q32's lesson).
+    expect((await vaultReport('?month=11')).status).toBe(400);
+
+    // An inverted range is an EMPTY period, not a swapped one — exactly as the captain report
+    // answers the same request (the screens refuse it before sending, report-range.ts).
+    const month = cairoMonth(0);
+    const inverted = { from: month.to, to: month.from };
+    const res = await vaultReport(period(inverted));
+    expect(res.status).toBe(200);
+    const report = data<OperationsVaultReportDto>(res);
+    expect(report.rows).toEqual([]);
+    expect(report.grandTotal.shipmentCount).toBe(0);
+    expect(report.from.slice(0, 10)).toBe(inverted.from);
+    expect(report.to.slice(0, 10)).toBe(inverted.to);
+    const captains = await request(app)
+      .get(`/api/v1/operations/reports/captains${period(inverted)}`)
       .set('Authorization', `Bearer ${adminToken}`);
-    // The endpoint accepts no query at all rather than accepting one and ignoring it, which is
-    // the legacy behaviour that made the screen lie about what it was showing.
-    expect(res.status).toBe(400);
+    expect(captains.status).toBe(200);
+    expect(data<OperationsCaptainReportDto>(captains).rows).toEqual([]);
+
+    // A year still being typed: the «من» box sends each keystroke, so «2026» arrives as 0002 first.
+    // It is a period reaching back before any receipt — answered, never a 500. Nor is an end on the
+    // last day of 9999, whose next day the Cairo calendar helpers cannot name.
+    const halfTyped = await vaultReport(`?from=0002-11-05&to=${month.to}`);
+    expect(halfTyped.status, JSON.stringify(halfTyped.body)).toBe(200);
+    expect(
+      countOf(data<OperationsVaultReportDto>(halfTyped).rows.find((r) => r.bankId === vaultBank.id)),
+    ).toBeGreaterThanOrEqual(countOf(await vaultBankRow(period(month))));
+    expect((await vaultReport(`?from=${month.from}&to=9999-12-31`)).status).toBe(200);
   });
 
-  it('5. rides operationsVault.view, not the shipment grant', async () => {
-    const res = await vaultReport(viewerToken); // viewer holds operationsShipment.view only
+  it('5d. rides operationsVault.view, not the shipment grant', async () => {
+    const res = await vaultReport('', viewerToken); // viewer holds operationsShipment.view only
     expect(res.status).toBe(403);
+    expect((await vaultReport(period(cairoMonth(0)), viewerToken)).status).toBe(403);
     expect((await request(app).get('/api/v1/operations/reports/vault')).status).toBe(401);
   });
 

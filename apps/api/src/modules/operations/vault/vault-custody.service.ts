@@ -253,11 +253,6 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     return { items: found.items.map(toCustodyView), total: found.meta.totalItems };
   }
 
-  async allHeld(): Promise<VaultCustodyView[]> {
-    const docs = await operationsVaultCustodyRepository.findAllHeld();
-    return docs.map(toCustodyView);
-  }
-
   async receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]> {
     const docs = await operationsVaultCustodyRepository.findReceivedBetween(from, toExclusive);
     return docs.map(toCustodyView);

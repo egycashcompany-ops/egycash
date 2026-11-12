@@ -1,10 +1,10 @@
-// The two Operations reports.
+// The Operations reports.
 //
-// Both ride `operationsShipment.view`: a report is a READ of the shipments the caller can already
-// see, not a separate decision. Legacy had no working authorization on either — `/ops_report`'s
-// check was commented out entirely (discovery Q36) — so this is a gap being closed, not parity.
+// The captain and bank reports ride `operationsShipment.view`: a report is a READ of the
+// shipments the caller can already see, not a separate decision. Legacy had no working
+// authorization on either — `/ops_report`'s check was commented out entirely (discovery Q36) — so
+// this is a gap being closed, not parity.
 import { Router } from 'express';
-import { z } from 'zod';
 import { OperationsReportQuerySchema } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
@@ -28,17 +28,18 @@ export const buildOperationsReportsRouter = (): Router => {
     asyncHandler(getBankReport),
   );
   // The vault roll-up rides `operationsVault.view`, NOT the shipment grant: it reports on what
-  // the treasury holds, and the legacy screen sat behind the vault screens for the same reason.
+  // the treasury took in, and the legacy screen sat behind the vault screens for the same reason.
   //
-  // The query schema is EMPTY AND STRICT, so a caller passing `?from=…&to=…` gets a 400 rather
-  // than a report that quietly ignores it. That is precisely the legacy defect (Q32): the screen
-  // had a date picker whose filters were commented out, so it answered a question nobody asked
-  // and looked like it had answered theirs. Refusing is the honest version of "no date filter".
+  // Its «من» / «إلى» are the other reports' (the same schema, the same defaults): legacy's picker
+  // filtered nothing (Q32), and this route used to refuse the two dates rather than pretend to
+  // honour them. The owner has since said what they mean — «يجيب اللى اتسلم واللى متسلمش ويجيب
+  // البداية كل اول شهر»: everything the vault received in the period, delivered or not, opening on
+  // the first of the month — so they are honoured now, on the receipt's Cairo day.
   router.get(
     '/vault',
     authenticate,
     authorize('operationsVault.view'),
-    validate({ query: z.object({}).strict() }),
+    validate({ query: OperationsReportQuerySchema }),
     asyncHandler(getVaultReport),
   );
 

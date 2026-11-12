@@ -175,8 +175,8 @@ describe('vaultValuePanel — «إجمالي قيمة الشحنات»', () => {
   });
 
   it('never counts the pound as foreign on a catalog whose pound is coded «1»', () => {
-    // The server's `foreignCurrencies` keeps every currency not coded `EGP` — on this catalog that
-    // is the pound too. The panel does not read it.
+    // A test of the code `EGP` alone would keep every currency here as foreign — the pound too,
+    // which this catalog codes «1». The panel classifies as the boards do (code, name or alias).
     const panel = vaultValuePanel(GRAND, CATALOG);
     expect(panel.lines.map((l) => l.key)).not.toContain('egp');
   });

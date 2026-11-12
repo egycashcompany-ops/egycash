@@ -69,7 +69,9 @@ custodySchema.index(
   { unique: true, name: 'ux_shipment', partialFilterExpression: { isDeleted: false } },
 );
 custodySchema.index({ state: 1 }, { name: 'ix_state' });
-// Round 8: the vault's receive queue lists what was received TODAY — a window on `receivedAt`.
+// Round 8: the vault's receive queue lists what was received TODAY — a window on `receivedAt`. The
+// vault roll-up's period (a month by default) is the same kind of window, so it rides this index
+// too rather than scanning the collection.
 custodySchema.index({ receivedAt: -1 }, { name: 'ix_received_at' });
 // Round 10: a shipment's WHOLE custody history, a cancelled receipt included, oldest first — the
 // action log reads it. `ux_shipment` cannot serve it: it is partial on `isDeleted: false`, and a

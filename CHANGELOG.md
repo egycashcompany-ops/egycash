@@ -215,6 +215,29 @@ its entry here in the same PR.
     the delivery crew is picked from the crew of the shipment's own delivery day, and ticked rows
     are dispatched one load per van. API: `GET /operations/secured/dispatch-board?date=`
     (`operationsVault.view`).
+  - The two reports in the boards' look: «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك
+    وتقرير القادة الشاشة هتكون الشاشة التانية». «من» / «إلى» on the dark filter card, applied as
+    they are chosen (an inverted range is refused on the screen), over the dark table: م | the key |
+    the count | المصري | الدولار | عملات أخرى | الحقائب | كرتونة | صندوق, «الإجمالي» under the rows.
+    - «تجميع الخزينة» (`/operations/reports/vault`), one row per bank with «عدد المحصنات», and beside
+      it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات الأجنبية» (the dollar included),
+      then every active currency of the reference list but the pound, in its order, zeros dimmed.
+      Its period: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» — every محصنة the vault
+      received from «من» to «إلى» (the receipt's Cairo day), still held, gone out or delivered; by
+      default the 1st of the month to its last day. A cancelled receipt does not count; a shipment
+      received again counts once, on its new receipt's day; deleted shipments are left out. API:
+      `GET /operations/reports/vault?from=&to=` (`operationsVault.view`, the captain report's
+      parameters; a day left out falls back on its own to the first or last day of Cairo's current
+      month) answers `from` and `to`; `baseCurrencyCode` and `foreignCurrencies` are gone — they
+      told the pound by the code `EGP`, which the live catalog does not use.
+    - «تقرير القادة» (`/operations/reports/captains`), the same columns per captain under «عدد
+      الشحنات»: the period's completed shipments (daily by collection day, secured by delivery
+      day), the 1st of the month to its last day by default, the unassigned row last.
+    - All three report screens — these two and «تقرير البنوك» — open on CAIRO's current month: at
+      00:30 on the 1st they already show the new month, where they showed the one just ended until
+      UTC's midnight.
+    - «عملات أخرى» is the boards' rule in both: every currency neither the pound nor the dollar,
+      told by code, name or legacy spelling, never by `EGP`; its click opens the boards' breakdown.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

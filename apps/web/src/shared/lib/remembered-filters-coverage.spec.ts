@@ -237,7 +237,7 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
   ],
   [
     'modules/operations/pages/VaultReportPage.tsx',
-    '`from`/`to` filter nothing yet (pending the owner) \u2014 the roll-up is what the vault holds NOW',
+    '`from`/`to` open on the current month \u2014 the period of vault receipts the roll-up IS, as the captain report\u2019s',
   ],
 ];
 

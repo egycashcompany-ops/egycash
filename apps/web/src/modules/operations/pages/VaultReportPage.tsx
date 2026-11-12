@@ -11,6 +11,14 @@
 // panel). Both are one server answer here, through the SAME roll-up as the bank report, so the two
 // screens cannot disagree about the same packages (Q26).
 //
+// THE PERIOD IS THE OWNER'S: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر». Legacy's
+// «من» / «إلى» filtered nothing (Q32); here they are the period the roll-up covers — every محصنة
+// RECEIVED into the vault in it, whether it is still held, has gone out or has been delivered since,
+// judged on the receipt's Cairo day (the server's `vaultReceiptRange`). A cancelled receipt does
+// not count; a shipment received again counts on its new receipt's day. The period opens on the
+// current month, exactly as «تقرير القادة» (`CaptainReportPage.tsx`) does, with the same refusal of
+// an inverted range. What the vault holds right NOW is «جرد الخزينة»'s question, not this screen's.
+//
 // THE BANKS IN THE REFERENCE ORDER (Q31): legacy ranked them by a hardcoded list of 22 names; the
 // bank's own `sortOrder` replaced it, and the rows follow it here (`bankRank`).
 import { useSearchParams } from 'react-router-dom';
@@ -22,11 +30,17 @@ import { ReportBoard } from '../components/ReportBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 import { VaultValuePanel } from '../components/VaultValuePanel';
 import { bankRank, reportRowsInOrder, type ReportBoardRow } from '../lib/report-board';
+import { isRangeValid, rangeFromParams } from '../lib/report-range';
 
 export const VaultReportPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
-  const report = useVaultReport();
+  // «ويجيب البداية كل اول شهر»: an empty URL is the current month, both days inclusive.
+  const range = rangeFromParams({ from: sp.get('from'), to: sp.get('to') }, new Date());
+  // An inverted range is refused here, in words, rather than sent (`isRangeValid`).
+  const valid = isRangeValid(range);
+
+  const report = useVaultReport(range, valid);
   // The boards' own query (the same parameters), so the catalog is one cache across them.
   const banks = useOperationsBanks({
     page: 1,
@@ -35,21 +49,13 @@ export const VaultReportPage = (): JSX.Element => {
     sortDir: 'asc',
   });
 
-  // ── PENDING THE OWNER'S DECISION: what «من» / «إلى» filter. ─────────────────────────────────
-  // «زى الشاشة اللى بعتهالك» — legacy's screen had the two dates, so the sample shows them, empty
-  // (empty = everything in the vault now). They are SHOWN, NOT SENT: the server's vault roll-up
-  // refuses `?from` / `?to` on purpose (report.routes.ts, Q32 — legacy's picker filtered nothing, its
-  // date filters were commented out in both aggregations), and what the dates should mean is the
-  // owner's to say: the vault-receipt day of what is held now, or everything received in the
-  // period whether or not it is still held. Until he answers, these two values reach no query —
-  // wire them to `useVaultReport` (and the route's schema) once he does.
-  const pendingFrom = sp.get('from') ?? '';
-  const pendingTo = sp.get('to') ?? '';
-  const setPending = (param: 'from' | 'to', value: string): void => {
+  // Applied as it is chosen, as the boards apply a filter. Emptied, a bound goes back to its
+  // default — the first or the last day of the current month (`rangeFromParams`, per field).
+  const setBound = (param: 'from' | 'to', value: string): void => {
     const next = new URLSearchParams(sp);
     if (value === '') next.delete(param);
     else next.set(param, value);
-    setSp(next, { replace: true });
+    setSp(next);
   };
 
   const rankOf = bankRank(banks.data?.items ?? []);
@@ -72,36 +78,35 @@ export const VaultReportPage = (): JSX.Element => {
         titleIcon={SHIPMENT_PATH.bank}
         keyHeader={t('operations.reports.bank')}
         countHeader={t('operations.vaultReport.securedCount')}
-        rows={rows}
-        grandTotal={report.data?.grandTotal}
-        loading={report.isLoading}
+        rows={valid ? rows : []}
+        grandTotal={valid ? report.data?.grandTotal : undefined}
+        loading={valid && report.isLoading}
         error={report.error}
         onRetry={() => void report.refetch()}
-        empty={t('operations.vault.empty')}
+        empty={t('operations.vaultReport.empty')}
+        refusal={valid ? null : t('operations.reports.invalidRange')}
         datePickers={[
           {
             param: 'from',
             label: t('operations.reports.from'),
             showLabel: true,
-            optional: true,
-            value: pendingFrom,
-            onChange: (value) => setPending('from', value),
+            value: range.from,
+            onChange: (value) => setBound('from', value),
           },
           {
             param: 'to',
             label: t('operations.reports.to'),
             showLabel: true,
-            optional: true,
-            value: pendingTo,
-            onChange: (value) => setPending('to', value),
+            value: range.to,
+            onChange: (value) => setBound('to', value),
           },
         ]}
-        periodActive={pendingFrom !== '' || pendingTo !== ''}
+        periodActive={sp.get('from') !== null || sp.get('to') !== null}
         onResetPeriod={() => {
           const next = new URLSearchParams(sp);
           next.delete('from');
           next.delete('to');
-          setSp(next, { replace: true });
+          setSp(next);
         }}
         aside={<VaultValuePanel grandTotal={report.data?.grandTotal} loading={report.isLoading} />}
       />

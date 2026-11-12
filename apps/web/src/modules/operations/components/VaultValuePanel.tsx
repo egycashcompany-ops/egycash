@@ -1,12 +1,13 @@
 // «اجمالى قيمة الشحنات» — the panel legacy's vault roll-up drew beside its table: «إجمالي المصري»,
-// «إجمالي العملات الأجنبية», then every currency of its list with what the vault holds of it. It is
-// legacy's SECOND aggregation (contad_app.js:1524 — the same vault set, the pound taken out), here a
-// view of the server's grand total (`vaultValuePanel`, lib/report-board.ts), in the report board's
+// «إجمالي العملات الأجنبية», then every currency of its list with its amount. It is legacy's SECOND
+// aggregation (contad_app.js:1524 — the same vault set, the pound taken out), here a view of the
+// server's grand total (`vaultValuePanel`, lib/report-board.ts) — so it covers the same period as
+// the table: what entered the vault in it («يجيب اللى اتسلم واللى متسلمش») — in the report board's
 // card and the boards' palette: the pound in the pound's green, the foreign sum in the others' amber.
 //
 // THE FULL LIST, ZEROS INCLUDED, as legacy listed it: the treasurer reads down a list he knows by
-// heart, and a currency missing from it reads as "not counted" rather than "none held". The zeros
-// are drawn dimmed, so what the vault does hold stands out of the list.
+// heart, and a currency missing from it reads as "not counted" rather than "none received". The
+// zeros are drawn dimmed, so what the period did bring in stands out of the list.
 import { MAX_PAGE_SIZE, type OperationsReportTotalsDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Skeleton } from '../../../shared/ui/Skeleton';

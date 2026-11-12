@@ -173,6 +173,8 @@ const BOARD_KEYS = [
     'deliveryBeforeCollection',
     // Round 10 — the vault received it after the form was opened («ميقدر حد … يعدل عليها»).
     'locked',
+    // Round 12 — the delivery date edit refused: its captain has started that delivery in the app.
+    'legStarted',
   ].map((key) => `operations.shipment.errors.${key}`),
   // A محصنة's stage — its «الحالة» on the secured screen, the day board and the history — with
   // the sentence each says on hover; and the secured screen's «تاريخ الاستلام» beside «تاريخ التسليم».

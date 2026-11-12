@@ -288,8 +288,8 @@ its entry here in the same PR.
       refusal names its shipment.
     - An overdue shipment in the vault placed on a van of the day has its delivery date moved to the
       day in the same save — the one change a received محصنة takes, because it is a flow act, not an
-      edit. «السجل» shows it as its own entry, and a shipment taken off its van as «أُزيلت من السيارة
-      عند التوزيع» (log kind `crewRemoved`).
+      edit. «السجل» shows it as its own entry, and a shipment taken off its van as «أُزيلت من السيارة»
+      (log kind `crewRemoved`).
     - A draft on a van whose delivery date is then edited to another day, or cleared (`PATCH
       /operations/shipments/:id`), comes off that van in the same transaction — the leg retired as
       «إزالة» retires it (`crewRemoved` after the edit in «السجل», event

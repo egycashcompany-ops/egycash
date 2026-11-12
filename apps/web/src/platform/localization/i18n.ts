@@ -10638,6 +10638,8 @@ const en: Record<string, string> = {
     'The delivery date cannot come before the collection date — choose the same day or a later one.',
   'operations.shipment.errors.locked':
     'The vault has received this shipment since it was opened — it can no longer be edited.',
+  'operations.shipment.errors.legStarted':
+    'Its captain has already started this delivery in the app — its delivery date can no longer move to another day or be cleared.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens.
   'operations.shipment.log.open': 'Shipment log',
   'operations.shipment.log.title': 'Shipment log',
@@ -10673,7 +10675,9 @@ const en: Record<string, string> = {
   'operations.shipment.log.kind.pickupConfirmed': 'Pickup from the bank confirmed',
   'operations.shipment.log.kind.pickupUndone': 'Pickup confirmation undone',
   'operations.shipment.log.kind.receiptCancelled': 'Vault receipt cancelled',
-  'operations.shipment.log.kind.crewRemoved': 'Taken off its vehicle on the distribution',
+  // Not only «توزيع المحصنات»'s «إزالة»: an edit that moves the delivery date off the van's day (or
+  // clears it) takes the shipment off its van too, right after its own «edited» entry.
+  'operations.shipment.log.kind.crewRemoved': 'Taken off its vehicle',
   'operations.shipment.log.kind.deliveryRescheduled':
     'Delivery day moved to the distribution day — overdue in the vault (a flow action, allowed after the vault receipt)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».
@@ -23935,6 +23939,8 @@ const ar: Record<string, string> = {
   'operations.shipment.errors.deliveryBeforeCollection':
     'لا يمكن أن يسبق تاريخ التسليم تاريخ الاستلام — اختر اليوم نفسه أو يومًا بعده.',
   'operations.shipment.errors.locked': 'استلمت الخزينة هذه الشحنة بعد فتحها، فلم يعد تعديلها ممكنًا.',
+  'operations.shipment.errors.legStarted':
+    'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقل تاريخ تسليمها إلى يوم آخر أو حذفه ممكنًا.',
   // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — سجل الإجراءات، على الشاشتين.
   'operations.shipment.log.open': 'سجل الشحنة',
   'operations.shipment.log.title': 'سجل الشحنة',
@@ -23969,7 +23975,7 @@ const ar: Record<string, string> = {
   'operations.shipment.log.kind.pickupConfirmed': 'أُكّد الاستلام من البنك',
   'operations.shipment.log.kind.pickupUndone': 'أُلغي تأكيد الاستلام من البنك',
   'operations.shipment.log.kind.receiptCancelled': 'أُلغي استلام الخزينة',
-  'operations.shipment.log.kind.crewRemoved': 'أُزيلت من السيارة عند التوزيع',
+  'operations.shipment.log.kind.crewRemoved': 'أُزيلت من السيارة',
   'operations.shipment.log.kind.deliveryRescheduled':
     'نُقل يوم التسليم إلى يوم التوزيع لتأخرها في الخزينة (إجراء تشغيلي مستثنى من قفل الخزينة)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».

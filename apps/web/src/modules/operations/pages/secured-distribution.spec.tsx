@@ -632,6 +632,27 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
     expect(open).not.toContain(ar('operations.handover.nothing'));
   });
 
+  it('yesterday’s read left open past Cairo midnight: «تسليم» is off, the load in the vault notwithstanding', () => {
+    // No `?date=` — the screen opened on "today", read before midnight and not read again since.
+    // The live Cairo day has moved on, so those vans have left: the day the read SHOWS is checked
+    // against today, not the day the read was made on.
+    const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const html = render({
+      path: '/operations/vault/handover',
+      permissions: VAULT,
+      data: { ...placedOn(YESTERDAY), today: `${YESTERDAY}T00:00:00.000Z` },
+    });
+    // cr-101's load is in the vault — on today's read its «تسليم» is on (the first case above).
+    for (const v of VANS) {
+      const open = tagOf(html, `data-handover-open="${v.crewAssignmentId}"`);
+      expect(open, v.crewAssignmentId).toContain('disabled=""');
+      expect(open).toContain('data-handover-block="notToday"');
+    }
+    expect(html).not.toContain(ar('operations.handover.hint'));
+  });
+
   it('the confirmation names the day it hands over on', () => {
     const body = ar('operations.handover.confirmBody', { count: '1', code: '101', day: TODAY });
     expect(body).toContain(TODAY);

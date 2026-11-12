@@ -23,6 +23,7 @@ import {
   type EmployeePapersDto,
   type HiringPackDto,
   type JobPapersDto,
+  type InsuranceJobTitlesDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { cairoToday } from '../../src/modules/hr/shared/business-date';
@@ -1374,5 +1375,40 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect((await save({ lines: [] })).status).toBe(400);
     expect((await read(aliceToken)).status).toBe(403);
     expect((await save(line({}), aliceToken)).status).toBe(403);
+  });
+
+  it('«مسميات الوظائف لدى التأمينات»: form 1 prints the job as social insurance names it, else its own (A28)', async () => {
+    const read = async (token = adminToken) =>
+      request(app).get('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`);
+    const save = async (body: object, token = adminToken) =>
+      request(app).patch('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`).send(body);
+    const titleOf = (data: InsuranceJobTitlesDto) => data.jobs.find((j) => j.jobTitleId === specialistJob)?.insuranceTitle;
+
+    const res = await read();
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const before = res.body.data as InsuranceJobTitlesDto;
+    expect(before.jobs.find((j) => j.jobTitleId === specialistJob)).toMatchObject({ code: 'JT-PAPER-1', insuranceTitle: '' });
+
+    const saved = await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: '  فني صيانة ماكينات ' }] });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(titleOf(saved.body.data as InsuranceJobTitlesDto)).toBe('فني صيانة ماكينات');
+    // Form 1 alone prints it — the contract keeps the company's own name for the job.
+    const employee = await employeeIn(specialistJob);
+    const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
+    expect(html).toContain('فني صيانة ماكينات');
+    expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
+
+    // Emptied: form 1 prints the job's own name again.
+    const cleared = await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: '' }] });
+    expect(titleOf(cleared.body.data as InsuranceJobTitlesDto)).toBe('');
+    const later = await employeeIn(specialistJob);
+    expect(((await pack(later.id)).body.data as HiringPackDto).html).not.toContain('فني صيانة ماكينات');
+
+    // Too long, an unknown job, an empty request and a user without the permission are refused.
+    expect((await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: 'م'.repeat(151) }] })).status).toBe(400);
+    expect((await save({ titles: [{ jobTitleId: '64b1f0cccccccccccccccc0e', insuranceTitle: 'أي' }] })).status).toBe(404);
+    expect((await save({ titles: [] })).status).toBe(400);
+    expect((await read(aliceToken)).status).toBe(403);
+    expect((await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: 'أي' }] }, aliceToken)).status).toBe(403);
   });
 });

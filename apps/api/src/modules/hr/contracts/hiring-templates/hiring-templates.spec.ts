@@ -257,6 +257,14 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
     );
   });
 
+  it('prints the job as social insurance names it — «مسميات الوظائف لدى التأمينات»', () => {
+    const { placeholders } = preparedSections(FORM);
+    expect(placeholders).toContain('job.insuranceTitle');
+    expect(placeholders).not.toContain('job.title');
+    // A newer revision: the boot rewrites the row it wrote with the new field.
+    expect(FORM.revision).toBe(2);
+  });
+
   it('writes each digit in its own box, left to right, and leaves the rest of a row empty', () => {
     const boxes = (count: number, chars: string) =>
       `<span class="cells c${count}">${[...chars.padEnd(count, ' ')].map((c) => `<i>${c === ' ' ? '&nbsp;' : c}</i>`).join('')}</span>`;

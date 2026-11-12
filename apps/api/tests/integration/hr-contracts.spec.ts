@@ -1377,38 +1377,50 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect((await save(line({}), aliceToken)).status).toBe(403);
   });
 
-  it('«مسميات الوظائف لدى التأمينات»: form 1 prints the job as social insurance names it, else its own (A28)', async () => {
+  it('«مسميات الوظائف لدى التأمينات»: rows typed by hand; form 1 prints the matching row\'s title and code (A28)', async () => {
     const read = async (token = adminToken) =>
       request(app).get('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`);
     const save = async (body: object, token = adminToken) =>
       request(app).patch('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`).send(body);
-    const titleOf = (data: InsuranceJobTitlesDto) => data.jobs.find((j) => j.jobTitleId === specialistJob)?.insuranceTitle;
+    const row = (jobTitle: string, insuranceTitle = '', occupationCode = '') => ({ jobTitle, insuranceTitle, occupationCode });
 
     const res = await read();
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const before = res.body.data as InsuranceJobTitlesDto;
-    expect(before.jobs.find((j) => j.jobTitleId === specialistJob)).toMatchObject({ code: 'JT-PAPER-1', insuranceTitle: '' });
+    const empty = res.body.data as InsuranceJobTitlesDto;
+    expect(empty.rows).toEqual([]);
+    // The company's job titles are offered while ours is typed.
+    expect(empty.jobNames).toContain('أخصائى صراف آلى');
 
-    const saved = await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: '  فني صيانة ماكينات ' }] });
+    // Typed as HR spells it — folded, it meets the job «أخصائى صراف آلى».
+    const saved = await save({
+      rows: [row(' اخصائي صراف الي ', ' فني صيانة ماكينات ', '742/115'), row('مندوب مبيعات', 'مندوب مبيعات', '123456')],
+    });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(titleOf(saved.body.data as InsuranceJobTitlesDto)).toBe('فني صيانة ماكينات');
-    // Form 1 alone prints it — the contract keeps the company's own name for the job.
+    const table = saved.body.data as InsuranceJobTitlesDto;
+    expect(table.rows.map((r) => [r.jobTitle, r.insuranceTitle, r.occupationCode, r.matched])).toEqual([
+      ['اخصائي صراف الي', 'فني صيانة ماكينات', '742/115', true],
+      ['مندوب مبيعات', 'مندوب مبيعات', '123456', false],
+    ]);
+
+    // Form 1 prints the row's title and its code in the code's boxes; the contract keeps ours.
     const employee = await employeeIn(specialistJob);
     const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
     expect(html).toContain('فني صيانة ماكينات');
+    expect(html).toContain('<span class="cells c3"><i>7</i><i>4</i><i>2</i></span> / <span class="cells c3"><i>1</i><i>1</i><i>5</i></span>');
     expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
 
-    // Emptied: form 1 prints the job's own name again.
-    const cleared = await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: '' }] });
-    expect(titleOf(cleared.body.data as InsuranceJobTitlesDto)).toBe('');
+    // Taken off (left out of the table): form 1 prints the job's own name and empty code boxes.
+    const cleared = await save({ rows: [row('مندوب مبيعات', 'مندوب مبيعات', '123456')] });
+    expect((cleared.body.data as InsuranceJobTitlesDto).rows.map((r) => r.jobTitle)).toEqual(['مندوب مبيعات']);
     const later = await employeeIn(specialistJob);
     expect(((await pack(later.id)).body.data as HiringPackDto).html).not.toContain('فني صيانة ماكينات');
 
-    // Too long, an unknown job, an empty request and a user without the permission are refused.
-    expect((await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: 'م'.repeat(151) }] })).status).toBe(400);
-    expect((await save({ titles: [{ jobTitleId: '64b1f0cccccccccccccccc0e', insuranceTitle: 'أي' }] })).status).toBe(404);
-    expect((await save({ titles: [] })).status).toBe(400);
+    // A title listed twice, a code form 1 cannot box, a row with no title and a user without the
+    // permission are refused.
+    expect((await save({ rows: [row('سائق'), row('ســائق ')] })).status).toBe(400);
+    expect((await save({ rows: [row('سائق', '', '12a')] })).status).toBe(400);
+    expect((await save({ rows: [row('', 'x')] })).status).toBe(400);
     expect((await read(aliceToken)).status).toBe(403);
-    expect((await save({ titles: [{ jobTitleId: specialistJob, insuranceTitle: 'أي' }] }, aliceToken)).status).toBe(403);
+    expect((await save({ rows: [] }, aliceToken)).status).toBe(403);
   });
 });

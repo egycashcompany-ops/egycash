@@ -1,25 +1,33 @@
-// A28 — «مسميات الوظائف لدى التأمينات»: a job title's title as the social-insurance authority knows it,
-// what «نموذج رقم (1)» prints for a person of that job. One row per job that has one.
-import { Schema, model, type Types } from 'mongoose';
+// A28 — «مسميات الوظائف لدى التأمينات»: a row HR types by hand — the company's job title, its title at
+// the social-insurance authority, and its occupation code. «نموذج رقم (1)» prints the row's title and
+// code for a person whose job carries the row's title (folded, as job names are matched).
+import { Schema, model } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface InsuranceJobTitleDoc extends BaseDocFields {
-  jobTitleId: Types.ObjectId;
-  title: string;
+  /** The company's job title, as typed. */
+  jobTitle: string;
+  /** `jobTitle` folded (`jobKey`) — what a person's job is matched on. */
+  nameKey: string;
+  insuranceTitle: string;
+  /** «123/456», or up to six digits. */
+  occupationCode: string;
 }
 
 const insuranceJobTitleSchema = new Schema<InsuranceJobTitleDoc>(
   {
-    jobTitleId: { type: Schema.Types.ObjectId, required: true },
-    title: { type: String, required: true, trim: true },
+    jobTitle: { type: String, required: true, trim: true },
+    nameKey: { type: String, required: true },
+    insuranceTitle: { type: String, default: '', trim: true },
+    occupationCode: { type: String, default: '', trim: true },
     ...baseFields,
   },
   baseSchemaOptions,
 );
 
 insuranceJobTitleSchema.index(
-  { jobTitleId: 1 },
-  { unique: true, name: 'ux_job_title', partialFilterExpression: { isDeleted: false } },
+  { nameKey: 1 },
+  { unique: true, name: 'ux_name_key', partialFilterExpression: { isDeleted: false } },
 );
 
 export const InsuranceJobTitleModel = model<InsuranceJobTitleDoc>(

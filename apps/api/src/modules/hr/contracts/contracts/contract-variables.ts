@@ -14,7 +14,7 @@ import {
   type MilitaryStatus,
 } from '@ecms/contracts';
 import { branchService, departmentService, jobTitleService, organizationService } from '../../../../platform/organization';
-import { insuranceJobTitleService } from '../insurance-job-titles';
+import { insuranceJobTitleService, occupationCodeParts } from '../insurance-job-titles';
 import { cairoToday, dateOnlyIso } from '../../shared/business-date';
 import { type EmployeeDoc } from '../../employee-management/employees/employee.model';
 import { CONTRACT_VARIABLE_CATALOG, isRequiredVariable } from '../shared/variable-catalog';
@@ -116,11 +116,19 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
     }
     case 'job.insuranceTitle': {
       // «نموذج رقم (1)»: the job as the social-insurance authority names it, else as the company does.
-      const own = await insuranceJobTitleService.titleOf(String(employee.employment.jobTitleId));
-      if (own !== null) return own;
       const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
       if (title === null) return '';
+      const row = await insuranceJobTitleService.rowForJob(title.name.ar);
+      if (row !== null && row.insuranceTitle !== '') return row.insuranceTitle;
       return input.language === 'ar' ? title.name.ar : title.name.en;
+    }
+    case 'job.occupationCode1':
+    case 'job.occupationCode2': {
+      // The occupation code of the job's row in «مسميات الوظائف لدى التأمينات», in form 1's two groups.
+      const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+      const row = title === null ? null : await insuranceJobTitleService.rowForJob(title.name.ar);
+      const [first, second] = occupationCodeParts(row?.occupationCode ?? '');
+      return key === 'job.occupationCode1' ? first : second;
     }
     case 'department.name': {
       const dep = await departmentService.getById(String(employee.employment.departmentId)).catch(() => null);

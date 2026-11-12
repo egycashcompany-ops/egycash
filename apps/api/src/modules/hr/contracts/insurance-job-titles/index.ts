@@ -1,1 +1,1 @@
-export { insuranceJobTitleService } from './insurance-job-title.service';
+export { insuranceJobTitleService, occupationCodeParts } from './insurance-job-title.service';

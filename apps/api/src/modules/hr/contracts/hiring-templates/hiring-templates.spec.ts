@@ -257,10 +257,13 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
     );
   });
 
-  it('prints the job as social insurance names it — «مسميات الوظائف لدى التأمينات»', () => {
+  it('prints the job as social insurance names it, and its occupation code — «مسميات الوظائف لدى التأمينات»', () => {
     const { placeholders } = preparedSections(FORM);
-    expect(placeholders).toContain('job.insuranceTitle');
+    expect(placeholders).toEqual(expect.arrayContaining(['job.insuranceTitle', 'job.occupationCode1', 'job.occupationCode2']));
     expect(placeholders).not.toContain('job.title');
+    expect(FORM.sections.body).toContain(
+      '<b>كـود المهنة:</b> <span class="cells c3">{{job.occupationCode1}}</span> / <span class="cells c3">{{job.occupationCode2}}</span>',
+    );
     // A newer revision: the boot rewrites the row it wrote with the new field.
     expect(FORM.revision).toBe(2);
   });

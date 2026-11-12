@@ -40,6 +40,8 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   { key: 'employee.nationality', label: { en: 'Nationality', ar: 'الجنسية' }, source: 'employee', sample: 'مصري', required: false },
   { key: 'employee.email', label: { en: 'Email', ar: 'البريد الإلكتروني' }, source: 'employee', sample: 'name@example.com', required: false },
   { key: 'employee.insuranceNumber', label: { en: 'Social insurance number', ar: 'الرقم التأميني' }, source: 'employee', sample: '123456789', required: false },
+  // A28 — the job's title at the social-insurance authority («مسميات الوظائف لدى التأمينات»), else its own.
+  { key: 'job.insuranceTitle', label: { en: 'Job title at social insurance', ar: 'المسمى الوظيفي لدى التأمينات' }, source: 'employment', sample: 'مندوب تحصيل', required: false },
   { key: 'employment.startDay', label: { en: 'Start date — day', ar: 'تاريخ المباشرة — اليوم' }, source: 'employment', sample: '15', required: false },
   { key: 'employment.startMonth', label: { en: 'Start date — month', ar: 'تاريخ المباشرة — الشهر' }, source: 'employment', sample: '11', required: false },
   { key: 'employment.startYear', label: { en: 'Start date — year', ar: 'تاريخ المباشرة — السنة' }, source: 'employment', sample: '2026', required: false },

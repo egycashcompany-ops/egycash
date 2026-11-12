@@ -275,6 +275,8 @@ const FORM_ONE: HiringPaper = {
   kind: 'form',
   jobs: 'all',
   printOrder: 5,
+  // 2: the job as the insurance authority names it («مسميات الوظائف لدى التأمينات»).
+  revision: 2,
   sections: {
     header:
       '<table class="plain cols ownhead"><tbody><tr>' +
@@ -300,7 +302,8 @@ const FORM_ONE: HiringPaper = {
         { value: '{{employee.qualification}}' },
         `<b>كـود المهنة:</b> ${boxes(3)} / ${boxes(3)}`,
         '<b>المسمـى:</b>',
-        { value: '{{job.title}}' },
+        // His job as the insurance authority names it («مسميات الوظائف لدى التأمينات»), else ours.
+        { value: '{{job.insuranceTitle}}' },
       ]),
       `<p><b>تاريخ بـــدء الاشتـــراك:</b> ${boxedDate('{{employment.startDay}}', '{{employment.startMonth}}', '{{employment.startYear}}')}</p>`,
       filledLine([

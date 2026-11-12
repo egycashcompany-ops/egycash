@@ -880,6 +880,37 @@ export const UpdateJobPapersSchema = z
   .strict();
 export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
+/**
+ * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: each of the company's job titles beside its
+ * title as the social-insurance authority knows it — «فيه مسميات وظائف … عندنا مختلفه عن مسميات
+ * الوظائف عند التامينات». «نموذج رقم (1)» prints the authority's title; a job with none set prints
+ * its own.
+ */
+export const INSURANCE_JOB_TITLE_MAX = 150;
+
+export interface InsuranceJobTitlesDto {
+  /** Every active job title, by name, with its title at the authority — '' when none is set. */
+  jobs: { jobTitleId: string; code: string; name: { ar: string; en: string }; insuranceTitle: string }[];
+}
+
+export const UpdateInsuranceJobTitlesSchema = z
+  .object({
+    /** The jobs changed, each with its title at the authority — '' takes it off. */
+    titles: z
+      .array(
+        z
+          .object({
+            jobTitleId: objectId(),
+            insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1000),
+  })
+  .strict();
+export type UpdateInsuranceJobTitles = z.infer<typeof UpdateInsuranceJobTitlesSchema>;
+
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',
 } as const;

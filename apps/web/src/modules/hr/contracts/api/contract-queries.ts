@@ -14,6 +14,7 @@ import {
   type PreviewContract,
   type RenderCandidateBulk,
   type UpdateJobPapers,
+  type UpdateInsuranceJobTitles,
   type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
@@ -200,6 +201,18 @@ export const useBulkRenderCandidates = () => {
   return useMutation({
     mutationFn: (body: RenderCandidateBulk) => api.bulkRenderCandidates(body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] }),
+  });
+};
+
+/** «مسميات الوظائف لدى التأمينات» — each job's title at the insurance authority. */
+export const useInsuranceJobTitles = () =>
+  useQuery({ queryKey: ['hr', 'contracts', 'insuranceJobTitles'], queryFn: api.getInsuranceJobTitles });
+
+export const useSaveInsuranceJobTitles = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateInsuranceJobTitles) => api.saveInsuranceJobTitles(body),
+    onSuccess: (saved) => client.setQueryData(['hr', 'contracts', 'insuranceJobTitles'], saved),
   });
 };
 

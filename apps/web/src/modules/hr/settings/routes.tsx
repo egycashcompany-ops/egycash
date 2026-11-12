@@ -11,6 +11,7 @@ import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { RecruitmentFormPage } from '../recruitment/recruitment-form/pages/RecruitmentFormPage';
+import { InsuranceJobTitlesPage } from '../contracts/pages/InsuranceJobTitlesPage';
 import { ApplicantSourcesPage } from '../recruitment/applicant-sources/pages/ApplicantSourcesPage';
 import { InterviewStagesPage } from '../recruitment/interviews/pages/InterviewStagesPage';
 import { EvaluationPhasesPage } from '../recruitment/evaluations/pages/EvaluationPhasesPage';
@@ -23,6 +24,7 @@ type TabKey = (typeof HR_SETTINGS_HUB.tabs)[number]['key'];
 /** The screen behind each tab. Keyed by the hub's own type, so a tab without a screen is an error. */
 export const SETTINGS_SCREENS: Record<TabKey, ComponentType> = {
   'recruitment-form': RecruitmentFormPage,
+  'insurance-job-titles': InsuranceJobTitlesPage,
   'applicant-sources': ApplicantSourcesPage,
   'interview-stages': InterviewStagesPage,
   'evaluation-phases': EvaluationPhasesPage,

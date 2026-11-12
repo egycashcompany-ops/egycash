@@ -14,6 +14,7 @@ import {
   type MilitaryStatus,
 } from '@ecms/contracts';
 import { branchService, departmentService, jobTitleService, organizationService } from '../../../../platform/organization';
+import { insuranceJobTitleService } from '../insurance-job-titles';
 import { cairoToday, dateOnlyIso } from '../../shared/business-date';
 import { type EmployeeDoc } from '../../employee-management/employees/employee.model';
 import { CONTRACT_VARIABLE_CATALOG, isRequiredVariable } from '../shared/variable-catalog';
@@ -109,6 +110,14 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
     // Broken/missing referents resolve to '' so a REQUIRED one surfaces as a structured
     // A16 issue (fail loud with a report) instead of a raw lookup error.
     case 'job.title': {
+      const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+      if (title === null) return '';
+      return input.language === 'ar' ? title.name.ar : title.name.en;
+    }
+    case 'job.insuranceTitle': {
+      // «نموذج رقم (1)»: the job as the social-insurance authority names it, else as the company does.
+      const own = await insuranceJobTitleService.titleOf(String(employee.employment.jobTitleId));
+      if (own !== null) return own;
       const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
       if (title === null) return '';
       return input.language === 'ar' ? title.name.ar : title.name.en;

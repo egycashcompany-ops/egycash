@@ -490,7 +490,13 @@ export const ReportBoard = ({
         reportSheet(title, t('operations.reportBoard.serial'), table()),
         ...(own === null
           ? []
-          : [reportSheet(t('operations.vaultReport.value'), t('operations.reportBoard.serial'), own)]),
+          : [
+              reportSheet(
+                t('operations.vaultReport.value'),
+                t('operations.reportBoard.serial'),
+                own,
+              ),
+            ]),
       ],
       cairoToday(),
     );
@@ -498,7 +504,13 @@ export const ReportBoard = ({
   const exportPdf = (): void => {
     const own = panel();
     const docs = [
-      reportPrintDoc({ t, locale, title: exportSpec.name, subtitle: exportSpec.subtitle, table: table() }),
+      reportPrintDoc({
+        t,
+        locale,
+        title: exportSpec.name,
+        subtitle: exportSpec.subtitle,
+        table: table(),
+      }),
       ...(own === null
         ? []
         : [

@@ -120,7 +120,12 @@ export const takesShipments = (van: Pick<DistributionVan, 'captains'>): boolean 
 export const placementOf = (
   row: Pick<DistributionRowFacts, 'id' | 'placedCrewAssignmentId' | 'delivery'>,
   draft: DistributionDraft,
-): Placement => draft.get(row.id) ?? savedPlacement(row);
+): Placement => {
+  const entry = draft.get(row.id);
+  return entry === undefined
+    ? savedPlacement(row)
+    : { crewAssignmentId: entry.crewAssignmentId, captainEmployeeId: entry.captainEmployeeId };
+};
 
 /** A proposal not yet saved — the card says so («مقترحة»). */
 export const isProposed = (row: Pick<DistributionRowFacts, 'id'>, draft: DistributionDraft): boolean =>

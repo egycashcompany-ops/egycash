@@ -9,6 +9,12 @@ import {
 } from '@ecms/contracts';
 import {
   bankRank,
+  foldReportName,
+  isReportNameFiltered,
+  reportNameMatches,
+  reportShownName,
+  reportView,
+  sumReportTotals,
   reportCurrencyLookup,
   reportLineKey,
   reportMoney,
@@ -276,5 +282,189 @@ describe('reportTableLines — «الإجمالي» is the server’s, never a s
   it('draws no total for an empty report — the empty state says so instead', () => {
     expect(reportTableLines([], totals(0))).toEqual([]);
     expect(reportTableLines(rows, undefined)).toEqual([]);
+  });
+});
+
+// ── Round 12 — «وزود ان اعمل فلتر ب اسم القائد [البنك]», and the total that follows it ──────────────
+
+describe('foldReportName / reportNameMatches — a name typed the way an Arabic typist types it', () => {
+  it('folds the hamza forms, ى/ي, ة/ه and the tashkeel, as every search box in the app', () => {
+    expect(reportNameMatches('أحمد فتحي السيد', 'احمد')).toBe(true);
+    expect(reportNameMatches('إبراهيم حسين', 'ابراهيم')).toBe(true);
+    expect(reportNameMatches('مصطفى إبراهيم', 'مصطفي')).toBe(true);
+    expect(reportNameMatches('الإسكندرية', 'الاسكندريه')).toBe(true);
+    expect(reportNameMatches('محمَّد علي', 'محمد')).toBe(true);
+  });
+
+  it('drops the tatweel and makes every run of spaces one — on the name and on what is typed', () => {
+    expect(foldReportName('محـــمود  حسن\tعبد الله')).toBe('محمود حسن عبد الله');
+    expect(reportNameMatches('محـمود حسن', 'محمود')).toBe(true);
+    expect(reportNameMatches('أحمد  فتحي', 'احمد فتحي')).toBe(true);
+    expect(reportNameMatches('أحمد فتحي', '  احمد   فتحي ')).toBe(true);
+  });
+
+  it('reads Arabic-Indic digits as Latin ones, and is blind to case', () => {
+    expect(reportNameMatches('قائد رقم 15', '١٥')).toBe(true);
+    expect(reportNameMatches('Bank of Alexandria', 'ALEX')).toBe(true);
+  });
+
+  it('matches a part of the name, anywhere in it — and nothing that is not in it', () => {
+    expect(reportNameMatches('شادي محمد أحمد', 'احمد')).toBe(true);
+    expect(reportNameMatches('الأهلي المتحد', 'المتحد')).toBe(true);
+    expect(reportNameMatches('الأهلي', 'مصر')).toBe(false);
+  });
+
+  it('narrows nothing with nothing typed — empty, blanks or only punctuation', () => {
+    for (const query of ['', '   ', '\u0640', '-', '«»']) {
+      expect(isReportNameFiltered(query)).toBe(false);
+      expect(reportNameMatches('أي اسم', query)).toBe(true);
+    }
+    expect(isReportNameFiltered('ا')).toBe(true);
+  });
+});
+
+describe('reportShownName — what the filter matches is what the row SHOWS', () => {
+  it('is the row’s name, or for the bucket the words it is drawn with — never its empty name', () => {
+    const named: ReportBoardRow = {
+      key: 'e1',
+      label: 'محمود',
+      unattributed: false,
+      totals: totals(1),
+    };
+    const bucket: ReportBoardRow = { key: 'x', label: '', unattributed: true, totals: totals(1) };
+    expect(reportShownName(named, 'غير منسوب')).toBe('محمود');
+    expect(reportShownName(bucket, 'غير منسوب')).toBe('غير منسوب');
+  });
+});
+
+describe('sumReportTotals — the rows on screen as one «الإجمالي»', () => {
+  it('adds the counts and the packages, and every currency on its own', () => {
+    const sum = sumReportTotals([
+      {
+        key: 'a',
+        label: 'أ',
+        unattributed: false,
+        totals: {
+          shipmentCount: 14,
+          bagCount: 10,
+          cartonCount: 2,
+          boxCount: 1,
+          currencies: [line('egp', 'مصري', 1_000), line('usd', 'دولار', 50)],
+        },
+      },
+      {
+        key: 'b',
+        label: 'ب',
+        unattributed: false,
+        totals: {
+          shipmentCount: 7,
+          bagCount: 32,
+          cartonCount: 4,
+          boxCount: 0,
+          currencies: [line('usd', 'دولار', 25), line('eur', 'يورو', 9)],
+        },
+      },
+    ]);
+    expect(sum).toEqual({
+      shipmentCount: 21,
+      bagCount: 42,
+      cartonCount: 6,
+      boxCount: 1,
+      currencies: [line('egp', 'مصري', 1_000), line('usd', 'دولار', 75), line('eur', 'يورو', 9)],
+    });
+  });
+
+  it('keeps a currency the server could not resolve apart by its printed name', () => {
+    const row = (amount: number): ReportBoardRow => ({
+      key: String(amount),
+      label: 'x',
+      unattributed: false,
+      totals: totals(1, [line(null, 'مارك', amount), line(null, 'فرنك', 1)]),
+    });
+    expect(sumReportTotals([row(3), row(4)]).currencies).toEqual([
+      line(null, 'مارك', 7),
+      line(null, 'فرنك', 2),
+    ]);
+  });
+
+  it('is all zeros over no rows', () => {
+    expect(sumReportTotals([])).toEqual({
+      shipmentCount: 0,
+      bagCount: 0,
+      cartonCount: 0,
+      boxCount: 0,
+      currencies: [],
+    });
+  });
+
+  it('never changes the rows it reads', () => {
+    const rows: ReportBoardRow[] = [
+      { key: 'a', label: 'أ', unattributed: false, totals: totals(1, [line('egp', 'مصري', 5)]) },
+      { key: 'b', label: 'ب', unattributed: false, totals: totals(1, [line('egp', 'مصري', 6)]) },
+    ];
+    sumReportTotals(rows);
+    expect(rows[0]?.totals.currencies).toEqual([line('egp', 'مصري', 5)]);
+  });
+});
+
+describe('reportView — the rows the name leaves, and the total that FOLLOWS the filter', () => {
+  const rows: ReportBoardRow[] = [
+    {
+      key: 'e6',
+      label: 'أحمد فتحي السيد',
+      unattributed: false,
+      totals: totals(24, [line('egp', 'مصري', 300)]),
+    },
+    {
+      key: 'e2',
+      label: 'شادي محمد أحمد',
+      unattributed: false,
+      totals: totals(38, [line('egp', 'مصري', 700)]),
+    },
+    {
+      key: 'e1',
+      label: 'محمود حسن',
+      unattributed: false,
+      totals: totals(46, [line('usd', 'دولار', 9)]),
+    },
+    { key: 'none', label: '', unattributed: true, totals: totals(3, [line('egp', 'مصري', 1)]) },
+  ];
+  // The server's own figure — deliberately NOT what the rows add up to.
+  const grand = totals(999, [line('egp', 'مصري', 123_456)]);
+
+  it('with no name typed: every row, and the SERVER’s grand total as it came (Q27)', () => {
+    const view = reportView(rows, grand, '', 'غير منسوب');
+    expect(view.filtered).toBe(false);
+    expect(view.rows).toEqual(rows);
+    expect(view.total).toBe(grand);
+    // Blanks are no name.
+    expect(reportView(rows, grand, '   ', 'غير منسوب').total).toBe(grand);
+  });
+
+  it('with a name: the rows that hold it, in their order — and THEIR sum under them', () => {
+    const view = reportView(rows, grand, 'احمد', 'غير منسوب');
+    expect(view.filtered).toBe(true);
+    expect(view.rows.map((row) => row.key)).toEqual(['e6', 'e2']);
+    expect(view.total?.shipmentCount).toBe(62);
+    expect(view.total?.currencies).toEqual([line('egp', 'مصري', 1_000)]);
+    expect(view.total).not.toBe(grand);
+  });
+
+  it('finds the bucket by the words it is drawn with', () => {
+    const view = reportView(rows, grand, 'منسوب', 'غير منسوب');
+    expect(view.rows.map((row) => row.key)).toEqual(['none']);
+    expect(view.total?.shipmentCount).toBe(3);
+  });
+
+  it('has no total when the name matches nobody — the empty state says so', () => {
+    const view = reportView(rows, grand, 'زكريا', 'غير منسوب');
+    expect(view.rows).toEqual([]);
+    expect(view.total).toBeUndefined();
+    expect(reportTableLines(view.rows, view.total)).toEqual([]);
+  });
+
+  it('has no total before the server answers, whatever is typed', () => {
+    expect(reportView([], undefined, '', 'غير منسوب').total).toBeUndefined();
+    expect(reportView(rows, undefined, 'احمد', 'غير منسوب').total).toBeUndefined();
   });
 });

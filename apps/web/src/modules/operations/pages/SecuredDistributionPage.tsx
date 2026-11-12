@@ -33,7 +33,7 @@
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -150,16 +150,15 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const [over, setOver] = useState<string | null>(null);
   const saving = useRef(false);
 
-  useEffect(() => {
-    if (data === undefined) return;
-    const read = data.date.slice(0, 10);
-    if (seeded === read) return;
-    setSeeded(read);
+  // A day's FIRST read: its proposals, made while rendering (React's «state from the previous
+  // render» pattern) rather than in an effect, so the screen never shows the day un-proposed for a
+  // frame — the cards would jump under the person's eyes. Proposed only for someone who can save
+  // them: to anyone else a proposal is a promise the screen cannot keep.
+  if (data !== undefined && seeded !== data.date.slice(0, 10)) {
+    setSeeded(data.date.slice(0, 10));
     setRefused(null);
-    // Proposed only for someone who can save them — to anyone else a proposal is a promise the
-    // screen cannot keep.
     setDraft(canEdit ? proposeByDirection(data.shipments, data.crews, EMPTY_DRAFT) : EMPTY_DRAFT);
-  }, [data, seeded, canEdit]);
+  }
 
   const changes = distributionChanges(rows, draft);
   const dirty = changes.length > 0;
@@ -510,7 +509,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
             min={minDay}
             onChange={setDay}
           />
-          <p className="min-w-0 flex-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+          <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
             {canEdit ? t('operations.distribution.dragHint') : t('operations.distribution.viewOnly')}
           </p>
           {canEdit && proposedCount > 0 && (
@@ -530,7 +529,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
           <ErrorState error={board.error} onRetry={() => void board.refetch()} />
         ) : (
           <div
-            className="grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
+            className="grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
             data-distribution-columns="true"
           >
             {/* RIGHT (first in RTL): the vans. */}
@@ -547,7 +546,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
               ) : vans.length === 0 ? (
                 <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
               ) : (
-                <div className="grid gap-3 2xl:grid-cols-2">
+                <div className="grid items-start gap-3 xl:grid-cols-2">
                   {columns.vans.map(({ van, rows: load }) => (
                     <VanCard
                       key={van.crewAssignmentId}
@@ -628,7 +627,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         onClose={guard.cancel}
         title={t('operations.distribution.leaveTitle')}
         icon={PATH.warn}
-        width="md"
+        width="lg"
         panelProps={{ 'data-distribution-leave': 'true' }}
         footer={
           <>

@@ -13,12 +13,22 @@
 // (`fleet/lib/fleet-report-print.ts`, its `totalLine` for a total with a figure under every column),
 // as every export in the app — a second copy of either is how two files of one app come to differ.
 // Everything here is pure but the two last functions, which hand the result to the browser.
-import { type Locale, type OperationsCurrencyDto, type OperationsReportTotalsDto } from '@ecms/contracts';
+import {
+  type Locale,
+  type OperationsCurrencyDto,
+  type OperationsReportTotalsDto,
+} from '@ecms/contracts';
 import { saveBlob } from '../../../shared/lib/api-client';
 import { formatAmount } from '../../../shared/lib/format';
-import { buildXlsxBook, xlsxFilename, type XlsxCell, type XlsxSheet } from '../../../shared/lib/xlsx-writer';
+import {
+  buildXlsxBook,
+  xlsxFilename,
+  type XlsxCell,
+  type XlsxSheet,
+} from '../../../shared/lib/xlsx-writer';
 import { printFleetReport, type FleetReport } from '../../fleet/lib/fleet-report-print';
 import { reportMoney, vaultValuePanel, type ReportTableLine } from './report-board';
+import { ltrIsolate } from './shipment-log';
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -128,7 +138,14 @@ export const reportExportSubtitle = (
   },
 ): string =>
   [
-    period === undefined ? null : t('operations.reportExport.period', period),
+    // Each day isolated left-to-right: inside the Arabic line «2026-11-30» otherwise reads as
+    // three numbers and prints «30-11-2026» (`ltrIsolate`, as «السجل» writes a day).
+    period === undefined
+      ? null
+      : t('operations.reportExport.period', {
+          from: ltrIsolate(period.from),
+          to: ltrIsolate(period.to),
+        }),
     filter === undefined || filter.value.trim() === ''
       ? null
       : t('operations.reportExport.filter', { label: filter.label, value: filter.value.trim() }),
@@ -140,7 +157,11 @@ export const reportExportSubtitle = (
 export const reportSheet = (
   name: string,
   serialHeader: string,
-  table: { header: readonly string[]; rows: readonly (readonly XlsxCell[])[]; total?: XlsxCell[] | null },
+  table: {
+    header: readonly string[];
+    rows: readonly (readonly XlsxCell[])[];
+    total?: XlsxCell[] | null;
+  },
 ): XlsxSheet => ({
   name,
   serialHeader,
@@ -169,7 +190,11 @@ export const reportPrintDoc = ({
   locale: Locale;
   title: string;
   subtitle: string;
-  table: { header: readonly string[]; rows: readonly (readonly XlsxCell[])[]; total?: XlsxCell[] | null };
+  table: {
+    header: readonly string[];
+    rows: readonly (readonly XlsxCell[])[];
+    total?: XlsxCell[] | null;
+  };
 }): FleetReport => ({
   title,
   department: t('operations.reportExport.department'),

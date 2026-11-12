@@ -387,6 +387,26 @@ const VAULT_REPORT_KEYS = [
   ),
 ];
 
+/**
+ * Round 12 (web A) — the reports' name filter and files («فلتر ب اسم القائد … و ان اكسيل او pdf»),
+ * «سجل الخزينة» with its live «تقرير الخزينة», and the renamed vault screens' cards.
+ */
+const ROUND12_REPORT_AND_VAULT_KEYS = [
+  'operations.reports.bankName',
+  'operations.reports.captains.noName',
+  'operations.vaultReport.noName',
+  ...['department', 'period', 'filter', 'item', 'amount', 'empty', 'popupBlocked'].map(
+    (key) => `operations.reportExport.${key}`,
+  ),
+  ...['title', 'held', 'heldAsOf', 'heldEmpty', 'empty', 'needsShipmentView'].map(
+    (key) => `operations.vaultHistory.${key}`,
+  ),
+  'operations.nav.vaultDispatch',
+  'operations.cards.vaultDispatch',
+  'operations.nav.vault',
+  'operations.cards.vault',
+];
+
 const AREA_KEYS = [
   'operations.catalogs.area.add',
   'operations.catalogs.area.edit',
@@ -406,6 +426,7 @@ const ALL_KEYS = [
   ...REPORT_KEYS,
   ...ATTENDANCE_KEYS,
   ...VAULT_REPORT_KEYS,
+  ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
 ];
 

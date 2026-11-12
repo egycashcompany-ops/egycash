@@ -101,9 +101,9 @@ export const vanLoadSheet = ({
   ];
   if (total.packages !== null) {
     totals.push(
-      { label: t('operations.reportBoard.bags'), value: count(total.packages.bags) },
-      { label: t('operations.reportBoard.cartons'), value: count(total.packages.cartons) },
-      { label: t('operations.reportBoard.boxes'), value: count(total.packages.boxes) },
+      { label: t('operations.distribution.bags'), value: count(total.packages.bags) },
+      { label: t('operations.distribution.cartons'), value: count(total.packages.cartons) },
+      { label: t('operations.distribution.boxes'), value: count(total.packages.boxes) },
     );
   }
 

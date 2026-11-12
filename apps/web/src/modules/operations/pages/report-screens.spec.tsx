@@ -10,7 +10,15 @@
 //   · the vault's «من» / «إلى» are the period it covers — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية
 //     كل اول شهر»: they go with the request, open on the current month, refuse an inverted range;
 //   · the captain report's range opens on the current month and refuses an inverted one in words;
-//   · «تقرير البنوك» and «جرد الخزينة» are left as they were.
+//   · «تقرير البنوك» is left as it was.
+//
+// Round 12 — «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان اعمل فلتر ب اسم
+// القائد [البنك] و ان اكسيل او pdf … والجدول فى الشاشتين يكون الصف بتاع الجماليات يفضل ظاهر»:
+//
+//   · one bar across the screen, the boards' — the name filter, «من», «إلى», the reset, «Excel | PDF»;
+//   · the name narrows the rows as typed, Arabic folded, and «الإجمالي» (and the vault's panel)
+//     follow it: the server's grand total with no name, the shown rows summed with one;
+//   · the table's card runs to the screen's bottom with its total pinned; the panel as tall.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -366,8 +374,13 @@ describe('«تجميع الخزينة» — the legacy vault roll-up, on the boa
       '22',
       '33',
     ]);
-    expect(BOARD).toContain('const lines = reportTableLines(rows, grandTotal);');
-    expect(BOARD).not.toMatch(/rows\.reduce\(/);
+    // The board draws the total it is handed; the page hands it the server's while no name is
+    // typed (`reportView`) — and the board itself never sums anything.
+    expect(BOARD).toContain('const lines = reportTableLines(rows, total);');
+    expect(BOARD).not.toMatch(/\.reduce\(/);
+    expect(VAULT_PAGE).toMatch(
+      /reportView\(\s*valid \? rows : \[\],\s*valid \? report\.data\?\.grandTotal : undefined,/,
+    );
   });
 
   it('keeps legacy’s «إجمالي قيمة الشحنات» beside the table, from the grand total', () => {
@@ -529,7 +542,9 @@ describe('one board for both reports, built from the boards’ own pieces', () =
     // The code, its comments left out (they quote legacy's «بحث» to say why it is gone).
     const code = BOARD.replace(/^\s*\/\/.*$/gm, '');
     expect(code).not.toMatch(/reports\.search|بحث/);
-    expect(BOARD).toContain('<FilterBar hasActiveFilters={periodActive} onClear={onResetPeriod}>');
+    expect(BOARD).toContain(
+      '<FilterBar hasActiveFilters={filtersActive} onClear={onResetFilters} trailing={exports}>',
+    );
   });
 
   it('pins «الإجمالي» to the bottom of the table’s own scroll, under a head that stays', () => {
@@ -542,12 +557,199 @@ describe('one board for both reports, built from the boards’ own pieces', () =
     expect(BOARD).toContain('stickyHead');
   });
 
-  it('leaves «تقرير البنوك» and «جرد الخزينة» as they were', () => {
+  it('leaves «تقرير البنوك» as it was', () => {
     expect(BANK_PAGE).toContain(
       "import { ReportView, type ReportRow } from '../components/ReportView';",
     );
     expect(BANK_PAGE).toContain('<ReportRangePicker range={range} onChange={setRange} />');
     expect(BANK_PAGE).not.toContain('ReportBoard');
-    expect(INVENTORY_PAGE).not.toContain('ReportBoard');
+  });
+
+  it('lends «سجل الخزينة» its table — the same «بيان الشحنات لكل بنك» over what is held now', () => {
+    expect(BOARD).toMatch(/export const ReportTable = \(/);
+    expect(INVENTORY_PAGE).toContain("import { ReportTable } from '../components/ReportBoard';");
+    expect(INVENTORY_PAGE).toContain('<ReportTable');
+  });
+});
+
+// ── Round 12 — «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان اعمل فلتر ب
+// اسم القائد [البنك] و ان اكسيل او pdf … الlist بتاعت جمالى العملات … بطول الشاشة كامله … الصف بتاع
+// الجماليات يفضل ظاهر حتى لو الجدول كبر» ───────────────────────────────────────────────────────────
+
+describe('one bar, the boards’ — the name, «من», «إلى», the reset, «Excel | PDF»', () => {
+  it('runs the screen’s width: the dates no longer sit in a card of their own', () => {
+    // Round 11's bar shrank to its two dates (`sm:[&>div]:!w-fit`) — the «ديف» the owner circled.
+    expect(BOARD).not.toContain('!w-fit');
+    expect(BOARD).toContain('DARK_FILTER_BAR,\n  BAR_LAYOUT,');
+  });
+
+  it('puts the name filter first, the two dates after it, the files at the bar’s end', () => {
+    const html = renderCaptains();
+    const bar = html.slice(html.indexOf('data-report-filters'), html.indexOf('data-report-row'));
+    const at = (needle: string): number => bar.indexOf(needle);
+    expect(at('data-report-name-filter')).toBeGreaterThan(-1);
+    expect(at('data-report-name-filter')).toBeLessThan(at('data-date-label="from"'));
+    expect(at('data-date-label="from"')).toBeLessThan(at('data-date-label="to"'));
+    expect(at('data-date-label="to"')).toBeLessThan(at('data-report-export-excel'));
+    expect(at('data-report-export-excel')).toBeLessThan(at('data-report-export-pdf'));
+    // The boards' text box, named for what it filters.
+    expect(bar).toContain(`placeholder="${ar('operations.reports.captainName')}"`);
+    expect(bar).toContain(`aria-label="${ar('operations.reports.captainName')}"`);
+  });
+
+  it('names the vault’s box «اسم البنك»', () => {
+    const html = renderVault();
+    expect(ar('operations.reports.bankName')).toBe('اسم البنك');
+    expect(html).toContain(`placeholder="${ar('operations.reports.bankName')}"`);
+  });
+
+  it('keeps a date at a date’s width from a computer up, the name taking the row’s give', () => {
+    expect(BOARD).toContain(
+      'lg:[&>div>*:has(>input[type=date])]:!flex-none lg:[&>div>*:has(>input[type=date])]:!w-44',
+    );
+  });
+});
+
+describe('the name filter — applied as typed, and «الإجمالي» FOLLOWS it', () => {
+  const captains = (query: string): string =>
+    render(
+      `/operations/reports/captains?from=${RANGE.from}&to=${RANGE.to}&name=${encodeURIComponent(query)}`,
+      <CaptainReportPage />,
+      (qc) => qc.setQueryData(listKey('operations', 'reportCaptains', RANGE), CAPTAINS),
+    );
+  const vault = (query: string): string =>
+    render(
+      `/operations/reports/vault?from=${RANGE.from}&to=${RANGE.to}&name=${encodeURIComponent(query)}`,
+      <VaultReportPage />,
+      (qc) => qc.setQueryData(listKey('operations', 'vaultReport', RANGE), VAULT),
+    );
+
+  it('narrows the captains to the names that hold it — typed without the hamza', () => {
+    const rows = bodyRows(captains('محمود')).map(cells);
+    expect(rows.map((row) => row.slice(0, 3))).toEqual([
+      ['1', 'محمود حسن عبد الله', '46'],
+      ['', 'الإجمالي', '46'],
+    ]);
+    // The box holds what was typed; the reset has something to undo.
+    expect(captains('محمود')).toContain('value="محمود"');
+    expect(captains('محمود')).toContain(`aria-label="${ar('common.filters.clear')}"`);
+  });
+
+  it('totals the rows SHOWN with a name typed — not the server’s grand total', () => {
+    const total = bodyRows(vault('الاهلي')).map(cells).at(-1);
+    // الأهلي alone: its own 14 / 48,500,000 / 1,250,000 / 770,000 / 38 / 6 / 3.
+    expect(total).toEqual([
+      '',
+      'الإجمالي',
+      '14',
+      '48,500,000',
+      '1,250,000',
+      '770,000',
+      '38',
+      '6',
+      '3',
+    ]);
+  });
+
+  it('turns the vault’s panel with the table — the same total, the shown banks’ own', () => {
+    const html = vault('الاهلي');
+    const sum = (which: string): string => {
+      const at = html.indexOf(`data-vault-value-total="${which}"`);
+      return html.slice(at, html.indexOf('</div>', html.indexOf('dir="ltr"', at)));
+    };
+    expect(sum('egp')).toContain('48,500,000');
+    // The dollar, the riyal and the euro of الأهلي — 1,250,000 + 450,000 + 320,000.
+    expect(sum('foreign')).toContain('2,020,000');
+  });
+
+  it('finds the unattributed bucket by the words it is drawn with', () => {
+    const rows = bodyRows(captains('منسوب')).map(cells);
+    expect(rows.map((row) => row.slice(0, 3))).toEqual([
+      ['1', ar('operations.reports.unattributed'), '3'],
+      ['', 'الإجمالي', '3'],
+    ]);
+  });
+
+  it('says so in words when no name matches — no total, no panel, nothing to export', () => {
+    const html = captains('زكريا');
+    expect(html).toContain(ar('operations.reports.captains.noName'));
+    expect(html).not.toContain('data-report-total="true"');
+    expect(html).toMatch(/<button type="button" data-report-export-excel="true" disabled=""/);
+    const none = vault('زكريا');
+    expect(none).toContain(ar('operations.vaultReport.noName'));
+    expect(none).not.toContain('data-vault-value=');
+  });
+
+  it('keeps the name in the URL and remembers it — never the period', () => {
+    for (const page of [CAPTAIN_PAGE, VAULT_PAGE]) {
+      expect(page).toContain("const name = sp.get('name') ?? '';");
+      expect(page).toContain("const REMEMBERED_FILTERS = ['name'] as const;");
+      expect(page).toContain('useRememberedFilters(search, REMEMBERED_FILTERS);');
+      // Typing is a view of the same report, not a place to go Back to.
+      expect(page).toMatch(/next\.set\('name', value\);\s+setSp\(next, \{ replace: true \}\);/);
+      // One reset clears the name and the period together.
+      expect(page).toMatch(
+        /next\.delete\('from'\);\s+next\.delete\('to'\);\s+next\.delete\('name'\);/,
+      );
+    }
+  });
+});
+
+describe('«Excel | PDF» — exactly what is shown', () => {
+  it('offers both while the table has lines', () => {
+    const html = renderCaptains();
+    expect(html).toMatch(/<button type="button" data-report-export-excel="true" class=/);
+    expect(html).toMatch(/<button type="button" data-report-export-pdf="true" class=/);
+  });
+
+  it('carries the lines the table draws, and the vault its panel too', () => {
+    expect(BOARD).toContain('const lines = refusal === null ? reportTableLines(rows, total) : [];');
+    expect(BOARD).toContain(
+      'reportExportTable(lines, catalog, reportExportHeader(t, keyHeader, countHeader), nameOf)',
+    );
+    expect(BOARD).toContain('vaultPanelExport(t, total, catalog)');
+    expect(VAULT_PAGE).toContain('withValuePanel: true,');
+    expect(CAPTAIN_PAGE).not.toContain('withValuePanel');
+  });
+
+  it('says on paper which period and which name the file is', () => {
+    for (const page of [CAPTAIN_PAGE, VAULT_PAGE]) {
+      expect(page).toMatch(
+        /subtitle: reportExportSubtitle\(t, \{\s+period: range,\s+filter: \{ label: t\(/,
+      );
+    }
+  });
+});
+
+describe('the height — the table to the screen’s bottom, «الإجمالي» always on it, the panel as tall', () => {
+  it('stretches the table’s card and the panel to the row’s height on a computer', () => {
+    expect(BOARD).toContain(
+      "'flex flex-col gap-4 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch'",
+    );
+    expect(BOARD).toContain('className="max-lg:max-h-[75vh] lg:min-h-0 lg:flex-1"');
+    // Round 11's `lg:max-h-full` let both cards stop at their content's height.
+    expect(BOARD).not.toContain('lg:max-h-full');
+    expect(PANEL).not.toContain('lg:max-h-full');
+    expect(PANEL).toContain("className = 'lg:w-80 lg:shrink-0 xl:w-[22rem]'");
+  });
+
+  it('scrolls the panel’s currency list inside it, under its two sums', () => {
+    expect(PANEL).toContain(
+      '<ul className="min-h-0 flex-1 overflow-y-auto" data-vault-value-list="true">',
+    );
+    const html = renderVault();
+    expect(html.indexOf('data-vault-value-total="foreign"')).toBeLessThan(
+      html.indexOf('data-vault-value-list="true"'),
+    );
+  });
+
+  it('lets only the rows scroll: the head sticks at the top and «الإجمالي» at the bottom', () => {
+    expect(BOARD).toContain(
+      "'flex min-h-0 flex-col lg:flex-1 [&>div]:min-h-0 lg:[&>div]:flex-1 [&>div]:!rounded-none [&>div]:!border-0'",
+    );
+    expect(BOARD).toContain('stickyHead');
+    expect(BOARD).toContain(
+      '[&_tr[data-report-total]_td]:sticky [&_tr[data-report-total]_td]:bottom-0',
+    );
   });
 });

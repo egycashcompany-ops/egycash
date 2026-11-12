@@ -156,85 +156,95 @@ export const VaultInventoryPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <section
-        className={HELD_BAND}
-        aria-label={t('operations.vaultHistory.held')}
-        data-vault-held="true"
+      {/* A computer: the band keeps its height and the history takes the rest, its rows scrolling
+          in its table. A phone: ONE scroll for the whole page — the band, then the history at its
+          own height — rather than the history squeezed into what the band leaves of the screen. */}
+      <div
+        className="flex min-h-0 flex-1 flex-col max-lg:block max-lg:overflow-y-auto"
+        role="region"
+        aria-label={t('operations.vaultHistory.title')}
+        data-vault-history="true"
       >
-        <ReportTable
-          title={t('operations.vaultHistory.held')}
-          titleIcon={SHIPMENT_PATH.bank}
-          titleAside={
-            held.data === undefined ? undefined : (
-              // When it was read — Latin figures, the Cairo clock, kept in their own order.
-              <span
-                data-vault-held-as-of="true"
-                className="shrink-0 whitespace-nowrap text-[11px] font-bold text-slate-500 dark:text-slate-400"
-              >
-                {t('operations.vaultHistory.heldAsOf', {
-                  at: ltrIsolate(cairoStampText(held.data.asOf)),
-                })}
-              </span>
-            )
-          }
-          keyHeader={t('operations.reports.bank')}
-          countHeader={t('operations.vaultReport.securedCount')}
-          rows={heldRows}
-          total={held.data?.grandTotal}
-          loading={held.isLoading}
-          error={held.error}
-          onRetry={() => void held.refetch()}
-          empty={t('operations.vaultHistory.heldEmpty')}
-          className="max-lg:max-h-[60vh] lg:min-h-0 lg:flex-1"
-        />
-        <VaultValuePanel
-          grandTotal={held.data?.grandTotal}
-          loading={held.isLoading}
-          className="max-lg:max-h-[60vh] lg:w-80 lg:shrink-0 xl:w-[22rem]"
-        />
-      </section>
+        <section
+          className={HELD_BAND}
+          aria-label={t('operations.vaultHistory.held')}
+          data-vault-held="true"
+        >
+          <ReportTable
+            title={t('operations.vaultHistory.held')}
+            titleIcon={SHIPMENT_PATH.bank}
+            titleAside={
+              held.data === undefined ? undefined : (
+                // When it was read — Latin figures, the Cairo clock, kept in their own order.
+                <span
+                  data-vault-held-as-of="true"
+                  className="shrink-0 whitespace-nowrap text-[11px] font-bold text-slate-500 dark:text-slate-400"
+                >
+                  {t('operations.vaultHistory.heldAsOf', {
+                    at: ltrIsolate(cairoStampText(held.data.asOf)),
+                  })}
+                </span>
+              )
+            }
+            keyHeader={t('operations.reports.bank')}
+            countHeader={t('operations.vaultReport.securedCount')}
+            rows={heldRows}
+            total={held.data?.grandTotal}
+            loading={held.isLoading}
+            error={held.error}
+            onRetry={() => void held.refetch()}
+            empty={t('operations.vaultHistory.heldEmpty')}
+            className="max-lg:max-h-[60vh] lg:min-h-0 lg:flex-1"
+          />
+          <VaultValuePanel
+            grandTotal={held.data?.grandTotal}
+            loading={held.isLoading}
+            className="max-lg:max-h-[60vh] lg:w-80 lg:shrink-0 xl:w-[22rem]"
+          />
+        </section>
 
-      {canSeeHistory ? (
-        <ShipmentsBoard
-          search={search}
-          shipments={answered ? (history.data?.shipments ?? []) : []}
-          crews={answered ? (history.data?.crews ?? []) : []}
-          loaded={answered && history.data !== undefined}
-          loading={answered && history.isLoading}
-          error={refusal === null ? history.error : null}
-          onRetry={() => void history.refetch()}
-          datePickers={[
-            {
-              param: 'from',
-              label: t('operations.history.from'),
-              showLabel: true,
-              value: range.from,
-              onChange: (value) => setBound('from', value),
-            },
-            {
-              param: 'to',
-              label: t('operations.history.to'),
-              showLabel: true,
-              value: range.to,
-              onChange: (value) => setBound('to', value),
-            },
-          ]}
-          periodActive={sp.get('from') !== null || sp.get('to') !== null}
-          periodParams={['from', 'to']}
-          // «مش هيقدر يضيف … ومش هيقدر منها يسلم او يستلم» — the history's rule, as on «سجل الشحنات».
-          canCreate={false}
-          canToggleReceived={false}
-          kind="secured"
-          stages={HISTORY_STAGES}
-          empty={t('operations.vaultHistory.empty')}
-          refusal={refusal}
-          paged
-          // The deleted محصنات of the SAME range — asked for only when the range itself may be.
-          deletedShipments={{ range, enabled: problem === null, type: 'secured' }}
-        />
-      ) : (
-        <BoardRefusal>{t('operations.vaultHistory.needsShipmentView')}</BoardRefusal>
-      )}
+        {canSeeHistory ? (
+          <ShipmentsBoard
+            search={search}
+            shipments={answered ? (history.data?.shipments ?? []) : []}
+            crews={answered ? (history.data?.crews ?? []) : []}
+            loaded={answered && history.data !== undefined}
+            loading={answered && history.isLoading}
+            error={refusal === null ? history.error : null}
+            onRetry={() => void history.refetch()}
+            datePickers={[
+              {
+                param: 'from',
+                label: t('operations.history.from'),
+                showLabel: true,
+                value: range.from,
+                onChange: (value) => setBound('from', value),
+              },
+              {
+                param: 'to',
+                label: t('operations.history.to'),
+                showLabel: true,
+                value: range.to,
+                onChange: (value) => setBound('to', value),
+              },
+            ]}
+            periodActive={sp.get('from') !== null || sp.get('to') !== null}
+            periodParams={['from', 'to']}
+            // «مش هيقدر يضيف … ومش هيقدر منها يسلم او يستلم» — the history's rule, as on «سجل الشحنات».
+            canCreate={false}
+            canToggleReceived={false}
+            kind="secured"
+            stages={HISTORY_STAGES}
+            empty={t('operations.vaultHistory.empty')}
+            refusal={refusal}
+            paged
+            // The deleted محصنات of the SAME range — asked for only when the range itself may be.
+            deletedShipments={{ range, enabled: problem === null, type: 'secured' }}
+          />
+        ) : (
+          <BoardRefusal>{t('operations.vaultHistory.needsShipmentView')}</BoardRefusal>
+        )}
+      </div>
     </PageContainer>
   );
 };

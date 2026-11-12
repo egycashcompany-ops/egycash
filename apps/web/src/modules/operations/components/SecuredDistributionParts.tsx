@@ -219,17 +219,30 @@ export const MoneyLine = ({
         />
       )}
       {packages !== undefined && packages !== null && (
+        // The kinds the vault counted, each with its count — a zero kind is left out (an Arabic
+        // zero reads as one more dot between the others).
         <span
-          data-packages="true"
+          data-packages={`${packages.bags}/${packages.cartons}/${packages.boxes}`}
           className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-600 dark:border-slate-700/70 dark:bg-[#0a1233] dark:text-slate-300"
         >
           <BoardIcon d={[...PATH.box]} className="h-3 w-3" />
-          <span className={NUM}>{formatNumber(packages.bags, locale)}</span>
-          {t('operations.reportBoard.bags')}
-          <span className={NUM}>{formatNumber(packages.cartons, locale)}</span>
-          {t('operations.reportBoard.cartons')}
-          <span className={NUM}>{formatNumber(packages.boxes, locale)}</span>
-          {t('operations.reportBoard.boxes')}
+          {(
+            [
+              ['bags', packages.bags],
+              ['cartons', packages.cartons],
+              ['boxes', packages.boxes],
+            ] as const
+          )
+            .filter(([, value], _index, all) => value > 0 || all.every(([, v]) => v === 0))
+            .map(([kind, value], index) => (
+              <span key={kind} className="inline-flex items-center gap-1">
+                {index > 0 && <span className="text-slate-300 dark:text-slate-600">|</span>}
+                <span dir="ltr" className={cn(NUM, 'font-black text-slate-900 dark:text-white')}>
+                  {formatAmount(value, locale)}
+                </span>
+                {t(`operations.distribution.${kind}`)}
+              </span>
+            ))}
         </span>
       )}
     </div>
@@ -309,14 +322,25 @@ export const MoveMenu = ({
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
 
-  // Placed under the button (over it near the bottom of the screen), kept inside the viewport.
+  // Placed under the button (over it near the bottom of the screen), kept inside the viewport — and
+  // kept there while anything under it scrolls (the column, the page) or the window is resized.
   useLayoutEffect(() => {
-    if (!open || button.current === null) return;
-    const rect = button.current.getBoundingClientRect();
-    const width = Math.min(288, window.innerWidth - 16);
-    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
-    const up = rect.bottom + 320 > window.innerHeight && rect.top > 320;
-    setPlace({ top: up ? rect.top - 4 : rect.bottom + 4, left, up });
+    if (!open) return undefined;
+    const reposition = (): void => {
+      if (button.current === null) return;
+      const rect = button.current.getBoundingClientRect();
+      const width = Math.min(288, window.innerWidth - 16);
+      const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+      const up = rect.bottom + 320 > window.innerHeight && rect.top > 320;
+      setPlace({ top: up ? rect.top - 4 : rect.bottom + 4, left, up });
+    };
+    reposition();
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -326,31 +350,27 @@ export const MoveMenu = ({
       if (menu.current?.contains(target) || button.current?.contains(target)) return;
       setOpen(false);
     };
-    // A scroll or a resize moves the button from under the menu: it closes rather than float.
-    const close = (): void => setOpen(false);
     document.addEventListener('pointerdown', away);
-    window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
-    return () => {
-      document.removeEventListener('pointerdown', away);
-      window.removeEventListener('resize', close);
-      window.removeEventListener('scroll', close, true);
-    };
+    return () => document.removeEventListener('pointerdown', away);
   }, [open]);
 
-  // The first choice takes the focus when the menu opens.
+  // The first choice takes the focus when the menu opens (once — not on every re-placing).
+  const placed = place !== null;
   useEffect(() => {
-    if (!open || place === null) return;
-    menu.current?.querySelector<HTMLButtonElement>('[role=menuitem]:not([disabled])')?.focus();
-  }, [open, place]);
+    if (!open || !placed) return;
+    menu.current
+      ?.querySelector<HTMLButtonElement>('[role=menuitem]:not([disabled])')
+      ?.focus({ preventScroll: true });
+  }, [open, placed]);
 
   const items = (): HTMLButtonElement[] =>
     Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not([disabled])') ?? []);
   const onKey = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
       setOpen(false);
-      button.current?.focus();
+      setPlace(null);
+      button.current?.focus({ preventScroll: true });
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -370,7 +390,10 @@ export const MoveMenu = ({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (open) setPlace(null);
+          setOpen((value) => !value);
+        }}
         className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:border-slate-600 dark:bg-[#111827] dark:text-slate-200 dark:hover:bg-brand-500/15 dark:hover:text-brand-100"
       >
         <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
@@ -404,7 +427,8 @@ export const MoveMenu = ({
                 title={choice.disabledReason}
                 onClick={() => {
                   setOpen(false);
-                  button.current?.focus();
+                  setPlace(null);
+                  button.current?.focus({ preventScroll: true });
                   choice.onSelect();
                 }}
                 className={cn(
@@ -647,7 +671,7 @@ export const ShipmentCard = ({
         'group relative flex min-w-0 flex-col gap-1.5 rounded-lg border bg-white px-2.5 py-2 text-start shadow-sm dark:bg-[#0f1a3a]',
         'border-slate-200 dark:border-[#2b3b6b]',
         tone === 'proposed' &&
-          'border-dashed border-amber-400 bg-amber-50/60 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
+          'border-dashed border-amber-500 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
         tone === 'moved' && 'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
         tone === 'refused' && 'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
         drag !== undefined && 'cursor-grab active:cursor-grabbing',

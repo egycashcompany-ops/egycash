@@ -18,8 +18,11 @@ import {
 } from './mail-source';
 import { atmMailIngestionService } from './mail-ingestion.service';
 import {
+  BACKOFF_MAX_MS,
+  backoffAfter,
   categoriesFiledAs,
   documentRules,
+  MAIL_POLL_BACKOFF_KEY,
   MAIL_POLL_LEASE_KEY,
   mailInstant,
   NEWEST_WINDOW_MS,
@@ -94,7 +97,7 @@ afterEach(async () => {
   resetAtmMailSource();
   registerAtmMailSourceFactory(null);
   resetAtmMailSweep();
-  await getCache().del(MAIL_POLL_LEASE_KEY);
+  await getCache().del(MAIL_POLL_LEASE_KEY, MAIL_POLL_BACKOFF_KEY);
 });
 
 describe('pollAtmMailbox — an unconfigured mailbox', () => {
@@ -418,6 +421,124 @@ describe('pollAtmMailbox — the mailbox document', () => {
   // yet), and read oldest first fifty of those would hide every new mail for good. So the document
   // is read newest first, a page at a time — and, when the newest page is full, one older page of a
   // sweep that walks the rest of the pile a run at a time.
+  describe('a failing mailbox is given time', () => {
+    // 2026-11-13: one reading a minute, and Graph answered every one with a 502 after some twenty
+    // seconds. A reading a minute only added to what the mailbox was struggling with.
+    const T0 = Date.UTC(2026, 10, 13, 10, 0, 0);
+    const MINUTE = 60_000;
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(T0);
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** A mailbox that fails while `state.failing`, counting every listing it is asked for. */
+    const flakyMailbox = () => {
+      const state = { failing: true, listings: 0 };
+      const source: AtmMailSource = {
+        providerId: 'fake-mailbox',
+        available: () => true,
+        listUnread: async () => {
+          state.listings += 1;
+          if (state.failing) throw new Error('microsoft graph 502 on /v1.0/users/x/messages');
+          return [];
+        },
+        markHandled: async () => undefined,
+      };
+      registerAtmMailSourceFactory(() => source);
+      return state;
+    };
+
+    const at = async (offsetMs: number, options?: { scheduled?: boolean }) => {
+      vi.setSystemTime(T0 + offsetMs);
+      return pollAtmMailbox(options);
+    };
+
+    it('waits longer after each failed reading in a row; «قراءة الآن» never waits; a success puts the minute back', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      const record = recorded();
+      const mailbox = flakyMailbox();
+      const scheduled = { scheduled: true };
+
+      // One failure is a hiccup: the next minute reads as usual.
+      expect((await at(0, scheduled))?.error).toContain('502');
+      expect((await at(MINUTE, scheduled))?.error).toContain('502');
+      expect(mailbox.listings).toBe(2);
+      // Two in a row: two minutes from the last one's start.
+      expect(await at(2 * MINUTE, scheduled)).toBeNull();
+      expect((await at(3 * MINUTE, scheduled))?.error).toContain('502');
+      expect(mailbox.listings).toBe(3);
+      // Three: four minutes.
+      for (const minute of [4, 5, 6]) expect(await at(minute * MINUTE, scheduled)).toBeNull();
+      expect(mailbox.listings).toBe(3);
+      // A reading that waited is not recorded: the screen keeps the last one, and its error.
+      expect(record).toHaveBeenCalledTimes(3);
+
+      // «قراءة الآن» reads whatever the wait — and the mailbox has come back.
+      mailbox.failing = false;
+      expect(await at(6 * MINUTE + 10_000)).toMatchObject({ error: null });
+      expect(mailbox.listings).toBe(4);
+      // …so the scheduled reading is back to every minute.
+      expect(await at(7 * MINUTE, scheduled)).toMatchObject({ error: null });
+      expect(mailbox.listings).toBe(5);
+    });
+
+    it('does not count a reading whose first listing the mailbox answered, whatever failed after it', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      recorded();
+      const calls = { newest: 0, older: 0 };
+      const source: AtmMailSource = {
+        providerId: 'fake-mailbox',
+        available: () => true,
+        listUnread: async () => [],
+        // The newest page answers; the older page below it fails, every time.
+        listUnreadPage: async (_limit, window) => {
+          if (window.before === null) {
+            calls.newest += 1;
+            return { messages: [], listed: 0, oldest: null };
+          }
+          calls.older += 1;
+          throw new Error('microsoft graph 502 on /v1.0/users/x/messages');
+        },
+        markHandled: async () => undefined,
+      };
+      registerAtmMailSourceFactory(() => source);
+
+      for (const minute of [0, 1, 2, 3]) {
+        expect((await at(minute * MINUTE, { scheduled: true }))?.error).toContain('502');
+      }
+      // New mail is still looked for every minute.
+      expect(calls).toEqual({ newest: 4, older: 4 });
+    });
+
+    it('waits 2, 4, 8 minutes after failures in a row, then never more than ten', () => {
+      expect([1, 2, 3, 4, 5, 9].map(backoffAfter)).toEqual([
+        0,
+        2 * MINUTE,
+        4 * MINUTE,
+        8 * MINUTE,
+        BACKOFF_MAX_MS,
+        BACKOFF_MAX_MS,
+      ]);
+      expect(BACKOFF_MAX_MS).toBe(10 * MINUTE);
+    });
+
+    it('keeps reading when the cache cannot say how long to wait', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      recorded();
+      const mailbox = flakyMailbox();
+      vi.spyOn(getCache(), 'get').mockRejectedValue(new Error('redis is down'));
+      vi.spyOn(getCache(), 'set').mockRejectedValue(new Error('redis is down'));
+      for (const minute of [0, 1, 2]) {
+        expect((await at(minute * MINUTE, { scheduled: true }))?.error).toContain('502');
+      }
+      expect(mailbox.listings).toBe(3);
+    });
+  });
+
   describe('reading the shared mailbox newest first', () => {
     /** The receipt time of the `index`-th unread mail, newest first: a minute apart, as Graph writes it. */
     const receivedAt = (index: number): string =>

@@ -144,23 +144,28 @@ const fakeMailbox = (messages: AtmMailMessage[], fail: string | null = null) => 
     secret: null as string | null,
   };
   registerAtmMailSourceFactory((connection) => {
-    // Newest first, below `before` (a page's oldest receipt time) — as Graph pages the mailbox.
-    const list = async (limit: number, before: string | null): Promise<AtmMailMessage[]> => {
+    // Newest first, within a window of receipt times — as Graph pages the mailbox.
+    const list = async (
+      limit: number,
+      since: string | null,
+      before: string | null,
+    ): Promise<AtmMailMessage[]> => {
       state.listed += 1;
       state.secret = await connection.openSecret();
       if (fail !== null) throw new Error(fail);
       const bound = before === null ? Infinity : new Date(before).getTime();
+      const from = since === null ? -Infinity : new Date(since).getTime();
       const newestFirst = [...state.unread]
-        .filter((m) => m.receivedAt.getTime() < bound)
+        .filter((m) => m.receivedAt.getTime() < bound && m.receivedAt.getTime() >= from)
         .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
       return newestFirst.slice(0, limit);
     };
     const source: AtmMailSource = {
       providerId: 'fake-mailbox',
       available: () => true,
-      listUnread: async (limit) => list(limit, null),
-      listUnreadPage: async (limit, before) => {
-        const page = await list(limit, before);
+      listUnread: async (limit) => list(limit, null, null),
+      listUnreadPage: async (limit, { since, before }) => {
+        const page = await list(limit, since, before);
         const last = page[page.length - 1];
         return {
           messages: page,

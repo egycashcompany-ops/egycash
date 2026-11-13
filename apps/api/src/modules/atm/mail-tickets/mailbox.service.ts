@@ -28,7 +28,12 @@ import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
 import { assertAtmSettingsManager } from '../shared/settings-authority';
-import { pollAtmMailbox, type AtmMailPollRun } from './mail-poll.service';
+import {
+  mailInstant,
+  NEWEST_WINDOW_MS,
+  pollAtmMailbox,
+  type AtmMailPollRun,
+} from './mail-poll.service';
 import { ATM_MAILBOX_KEY, type AtmMailboxConfigDoc } from './mailbox-config.model';
 import { atmMailboxConfigRepository } from './mailbox-config.repository';
 import { buildMailboxSource, mailboxSecretContext } from './mailbox-source';
@@ -181,7 +186,12 @@ class AtmMailboxService {
       const unreadSample =
         source.listUnreadPage === undefined
           ? (await source.listUnread(1)).length
-          : (await source.listUnreadPage(1, null)).listed;
+          : (
+              await source.listUnreadPage(1, {
+                since: mailInstant(Date.now() - NEWEST_WINDOW_MS),
+                before: null,
+              })
+            ).listed;
       return { ok: true, unreadSample, error: null };
     } catch (error) {
       return { ok: false, unreadSample: 0, error: errorText(error) };

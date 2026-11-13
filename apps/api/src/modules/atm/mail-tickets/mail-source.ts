@@ -20,6 +20,15 @@ export interface AtmMailMessage extends AtmMailIngest {
   isRead: boolean;
 }
 
+/**
+ * The receipt-time range one page of unread mail is listed from: received at or after `since`, and
+ * strictly before `before` (null: up to the newest). Both as the provider writes them.
+ */
+export interface AtmMailWindow {
+  since: string;
+  before: string | null;
+}
+
 /** One page of the unread mail (`listUnreadPage`). */
 export interface AtmMailPage {
   messages: AtmMailMessage[];
@@ -55,17 +64,18 @@ export interface AtmMailSource {
   listUnread(limit: number): Promise<AtmMailMessage[]>;
 
   /**
-   * The unread mail NEWEST first, `limit` messages received strictly before `before` (a page's
-   * `oldest`; null: from the newest) — the reading the mailbox document runs on
-   * (mail-poll.service.ts). In the ONE shared mailbox the unread pile is mostly mail left there on
-   * purpose (branches not switched on yet), and read oldest first that pile would stand between the
-   * reader and every new mail. Optional: a source without it is read with `listUnread` alone.
+   * The unread mail NEWEST first, `limit` messages received within `window` — the reading the
+   * mailbox document runs on (mail-poll.service.ts). In the ONE shared mailbox the unread pile is
+   * mostly mail left there on purpose (branches not switched on yet), and read oldest first that
+   * pile would stand between the reader and every new mail. Optional: a source without it is read
+   * with `listUnread` alone.
    *
-   * A date, not a count to skip (2026-11-13): «الـ Automation بتاع الميل واقف» — as the pile grew,
-   * a page deep in it (`$skip` in the thousands) made the mailbox count its way down to it, and the
-   * listing outran its timeout. A page that starts below a date is found directly, however deep.
+   * Always a bounded range of dates (2026-11-13: «الـ Automation بتاع الميل واقف»). Asked for the
+   * newest unread mail of every date, the mailbox looked at everything it ever received and took
+   * longer than the reader waits; asked for a few days, it looks at those days. Never a count to
+   * skip either: a page deep in the pile is found by its dates, not by counting down to it.
    */
-  listUnreadPage?(limit: number, before: string | null): Promise<AtmMailPage>;
+  listUnreadPage?(limit: number, window: AtmMailWindow): Promise<AtmMailPage>;
 
   /**
    * Mark one message handled, optionally tagging it with the branch's colour category — the

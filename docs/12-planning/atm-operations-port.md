@@ -504,6 +504,14 @@ each request was heavier than on the first days. Four changes:
   the unread list moves the edges (new mail, a mail filed or read). Past fifty unread mails in one
   second the rest are never swept, an accepted limit for a mailbox that has never received that
   many at once.
+- **Days, not every date** (after #699 was deployed). With one reading a minute again, the network
+  flow showed the request sent and NOTHING back for 20 s: the mailbox was evaluating «unread,
+  newest first, every date» (`receivedDateTime ge 1900-01-01`) over all it ever received. Every
+  page is now a range of receipt times (`AtmMailWindow { since, before }`): the newest page is the
+  last two days (`NEWEST_WINDOW_MS`); the sweep lists three days (`SWEEP_WINDOW_MS`) below where it
+  stands — below a full page's oldest, else below the window it just listed — back to thirty days
+  (`SWEEP_HORIZON_MS`), then starts over. «اختبار الاتصال» lists the newest two days. Unread mail
+  older than thirty days is not filed by the reader.
 - **A slow mailbox is waited for** (after #699 was deployed). With one reading a minute again, the
   newest listing still took over 20 s and every reading was cut off. `ATM_MAIL_GRAPH_TIMEOUT_MS`
   now defaults to 45 s; the budget counts from the moment the newest page is listed

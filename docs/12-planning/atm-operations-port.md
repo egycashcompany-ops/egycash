@@ -504,6 +504,11 @@ each request was heavier than on the first days. Four changes:
   the unread list moves the edges (new mail, a mail filed or read). Past fifty unread mails in one
   second the rest are never swept, an accepted limit for a mailbox that has never received that
   many at once.
+- **A slow mailbox is waited for** (after #699 was deployed). With one reading a minute again, the
+  newest listing still took over 20 s and every reading was cut off. `ATM_MAIL_GRAPH_TIMEOUT_MS`
+  now defaults to 45 s; the budget counts from the moment the newest page is listed
+  (`startTheClock`), so a slow listing does not eat the filing time; and the lease's TTL follows
+  the timeout: 4 × timeout + budget + 30 s (250 s at the default).
 - **«آخر قراءة» keeps up**: the mailbox card reads its document again every 20 s while open
   (`useAtmMailboxConfig` `refetchInterval`), so the line follows the worker's readings — and the
   409's «ستظهر نتيجتها في «آخر قراءة» بعد لحظات» holds. A refetch never resets a draft: the form

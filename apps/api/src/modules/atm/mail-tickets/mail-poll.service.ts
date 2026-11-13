@@ -44,6 +44,7 @@
 // has a row of its own.
 import { randomUUID } from 'node:crypto';
 import { ATM_MAIL_POLL_REASONS_MAX, AtmSettingKeys } from '@ecms/contracts';
+import { env } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
 import { getCache } from '../../../infrastructure/redis/cache';
 import { settingsService } from '../../../platform/settings';
@@ -62,10 +63,11 @@ const POLL_BATCH = 50;
 
 /**
  * How long one run may START new work — the next message, the older page — before it leaves the
- * rest to the next minute. It does not bound how long a run lasts: a request it let start runs to
- * the transport's timeout, a token fetched first to its own, so a slow mailbox can carry a run to
- * about 80 seconds, past the next minute's tick. The lease (`LEASE_TTL_SECONDS`), not this budget,
- * keeps two runs apart: the minute that finds it taken steps aside.
+ * rest to the next minute. Counted from the moment the newest page has been listed, so a slow
+ * listing does not eat the time the mail itself needs. It does not bound how long a run lasts: a
+ * request it let start runs to the transport's timeout, a token fetched first to its own, so a slow
+ * mailbox can carry a run past the next minute's tick. The lease (`LEASE_TTL_SECONDS`), not this
+ * budget, keeps two runs apart: the minute that finds it taken steps aside.
  */
 export const RUN_BUDGET_MS = 40_000;
 
@@ -74,11 +76,13 @@ export const MAIL_POLL_LEASE_KEY = 'lock:atm-mail-poll';
 
 /**
  * How long the lease outlives a reader that died holding it (a worker restarted mid-reading, as
- * every deploy does). Above any run — the token and the newest listing, the budget, a request the
- * budget let start and the older listing, each bounded by the transport's timeout, about 80
- * seconds at worst — and short enough that a restart costs the mailbox a minute or two, no more.
+ * every deploy does). Above any run: the token and the newest listing, the budget, then the one
+ * request the budget let start (the older listing or a mark-read) behind a fresh token — four
+ * requests each bounded by the transport's timeout — and a margin: 4 × 45 s + 40 s + 30 s = 250 s
+ * at the default timeout. A restart costs the mailbox that long at most.
  */
-const LEASE_TTL_SECONDS = 2 * 60;
+const LEASE_TTL_SECONDS =
+  Math.ceil((4 * env.ATM_MAIL_GRAPH_TIMEOUT_MS + RUN_BUDGET_MS) / 1000) + 30;
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -170,6 +174,14 @@ const emptyTally = (now: number): Tally => ({
 /** The run's time for taking on mail is spent: what is left is the next minute's. */
 const outOfTime = (tally: Tally): boolean => Date.now() >= tally.endsAt;
 
+/**
+ * The budget runs from when the mail is in hand: a listing that took the mailbox thirty seconds
+ * (2026-11-13) must not leave its fifty messages ten.
+ */
+const startTheClock = (tally: Tally): void => {
+  tally.endsAt = Date.now() + RUN_BUDGET_MS;
+};
+
 /** The category a filed mail is tagged with: the document's row, else the old setting. */
 type CategoryOf = (branchId: string) => string | null;
 
@@ -242,6 +254,7 @@ const readOnce = async (
   tally: Tally,
 ): Promise<void> => {
   const messages = await source.listUnread(POLL_BATCH);
+  startTheClock(tally);
   if (messages.length === 0) return;
   const categoryOf = await categoryLookup(documentCategories);
   for (const message of messages) {
@@ -283,6 +296,7 @@ const readNewestFirst = async (
   tally: Tally,
 ): Promise<void> => {
   const newest = await listPage(POLL_BATCH, null);
+  startTheClock(tally);
   if (newest.listed === 0) return;
   const categoryOf = await categoryLookup(documentCategories);
   const seen = new Set<string>();

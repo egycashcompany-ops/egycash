@@ -980,6 +980,10 @@ its entry here in the same PR.
   - **«آخر قراءة» keeps up.** The mailbox card reads its document again every 20 seconds while it
     is open, so the line shows the worker's latest reading, including the one «قراءة الآن» was
     told is running.
+  - **A slow mailbox is waited for.** With the storm gone, the mailbox still took over 20 seconds
+    to list the newest mail, and every reading was cut off before the answer came. A request to it
+    now waits up to 45 seconds (`ATM_MAIL_GRAPH_TIMEOUT_MS`), the 40 seconds for filing count from
+    the moment the mail is listed, and the reading's lease lasts long enough for both.
   - **The backlog is found by date.** The mail left unread on purpose (branches not switched on
     yet) has grown every day. The sweep through it asked the mailbox to count its way down that
     pile, page after page. It now asks for the mail received before the last page's oldest, which

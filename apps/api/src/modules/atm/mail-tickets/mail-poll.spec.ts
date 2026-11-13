@@ -666,6 +666,31 @@ describe('pollAtmMailbox — the mailbox document', () => {
         // The newest page only: the sweep waits for a quieter minute.
         expect(mailbox.pages).toEqual([{ limit: 50, before: null }]);
       });
+
+      it('counts its time from the mail in hand — a slow listing does not eat it', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        let now = Date.UTC(2026, 10, 13, 12, 0, 0);
+        vi.spyOn(Date, 'now').mockImplementation(() => now);
+        registerAtmMailSourceFactory(() => ({
+          providerId: 'fake-slow-listing',
+          available: () => true,
+          listUnread: async () => [],
+          // The mailbox takes thirty-five seconds to answer (2026-11-13: over twenty).
+          listUnreadPage: async () => {
+            now += 35_000;
+            const messages = [message('on-1'), message('off-1'), message('off-2')];
+            return { messages, listed: messages.length, oldest: receivedAt(2) };
+          },
+          markHandled: async () => {
+            now += 5_000;
+          },
+        }));
+
+        const run = await pollAtmMailbox();
+
+        // All three filed or judged: the forty seconds began when the page came back.
+        expect(run).toMatchObject({ read: 3, created: 1, unmatched: 2, error: null });
+      });
     });
   });
 });

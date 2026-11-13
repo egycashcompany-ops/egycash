@@ -274,10 +274,10 @@ class GraphMailSource implements AtmMailSource {
   }
 
   /**
-   * Newest first, within a range of receipt times — never every date, never by `$skip`. Asked for
-   * the newest unread of every date (`receivedDateTime ge 1900-01-01`), the mailbox weighed all it
-   * ever received and answered nothing for twenty seconds (2026-11-13); within a few days it looks
-   * at those days. `receivedDateTime` leads the `$filter` because Graph requires every `$orderby`
+   * Newest first, within a range of receipt times — never every date, never by `$skip`. The mailbox
+   * weighs every mail in the range: asked for the newest unread of every date, then of two days, it
+   * gave up after some twenty seconds (2026-11-13, «502 UnknownError»), so the caller keeps the
+   * range short (`mail-poll.service.ts`). `receivedDateTime` leads the `$filter` because Graph requires every `$orderby`
    * property to appear there, first and in the same order — otherwise it refuses the listing
    * (`InefficientFilter`).
    */

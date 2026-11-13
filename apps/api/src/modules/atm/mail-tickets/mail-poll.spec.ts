@@ -540,9 +540,12 @@ describe('pollAtmMailbox — the mailbox document', () => {
   });
 
   describe('reading the shared mailbox newest first', () => {
-    /** The receipt time of the `index`-th unread mail, newest first: a minute apart, as Graph writes it. */
+    /**
+     * The receipt time of the `index`-th unread mail, newest first: ten seconds apart — a busy
+     * shared mailbox, where fifteen minutes hold more than a page — as Graph writes it.
+     */
     const receivedAt = (index: number): string =>
-      new Date(Date.UTC(2026, 10, 13, 12, 0, 0) - index * 60_000).toISOString().replace('.000', '');
+      new Date(Date.UTC(2026, 10, 13, 12, 0, 0) - index * 10_000).toISOString().replace('.000', '');
 
     /** A paged mailbox, NEWEST FIRST at index 0: what is unread, and every page asked for. */
     const pagedMailbox = (unread: AtmMailMessage[]) => {
@@ -605,8 +608,8 @@ describe('pollAtmMailbox — the mailbox document', () => {
     const sweeps = (state: { pages: { before: string | null }[] }): (string | null)[] =>
       state.pages.filter((page) => page.before !== null).map((page) => page.before);
 
-    /** The reader's clock in these tests: half an hour after the newest mail. */
-    const NOW = Date.UTC(2026, 10, 13, 12, 30, 0);
+    /** The reader's clock in these tests: a minute after the newest mail. */
+    const NOW = Date.UTC(2026, 10, 13, 12, 1, 0);
     const newestSince = mailInstant(NOW - NEWEST_WINDOW_MS);
     /** The window a sweep step below `before` lists. */
     const below = (before: string): { since: string; before: string } => ({
@@ -628,7 +631,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
 
       expect(mailbox.handled).toEqual([{ id: 'on-new', category: 'Red Category' }]);
       expect(run).toMatchObject({ read: 61, created: 1, unmatched: 60, error: null });
-      // The last two days' newest page, then three days below its oldest mail — found by dates,
+      // The last fifteen minutes' newest page, then two hours below its oldest mail — found by dates,
       // never by count, never «every date».
       expect(mailbox.pages).toEqual([
         { limit: 50, since: newestSince, before: null },
@@ -636,13 +639,13 @@ describe('pollAtmMailbox — the mailbox document', () => {
       ]);
     });
 
-    it('sweeps on below the two days when they held every unread mail of theirs', async () => {
+    it('sweeps on below the fifteen minutes when they held every unread mail of theirs', async () => {
       vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
       const mailbox = pagedMailbox([message('on-1'), ...pile(3)]);
 
       await pollAtmMailbox();
 
-      // The two days held four: the older unread mail, if any, lies below them.
+      // The fifteen minutes held four: the older unread mail, if any, lies below them.
       expect(mailbox.pages).toEqual([
         { limit: 50, since: newestSince, before: null },
         { limit: 50, ...below(newestSince) },
@@ -650,7 +653,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
       expect(mailbox.handled.map((h) => h.id)).toEqual(['on-1']);
     });
 
-    it('walks back three days at a time to thirty, then starts over', async () => {
+    it('walks back two hours at a time to thirty days, then starts over', async () => {
       vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
       const mailbox = pagedMailbox([]);
       const steps = Math.ceil((SWEEP_HORIZON_MS - NEWEST_WINDOW_MS) / SWEEP_WINDOW_MS);
@@ -664,7 +667,8 @@ describe('pollAtmMailbox — the mailbox document', () => {
           SWEEP_WINDOW_MS,
         );
       }
-      // The last step stops at the horizon, and the run after it starts over below the two days.
+      // The last step stops at the horizon, and the run after it starts over below the fifteen
+      // minutes.
       const last = mailbox.pages.filter((page) => page.before !== null)[steps - 1];
       expect(last?.since).toBe(mailInstant(NOW - SWEEP_HORIZON_MS));
       expect(swept[steps]).toBe(newestSince);
@@ -681,7 +685,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
       await pollAtmMailbox();
       expect(mailbox.handled).toEqual([{ id: 'on-old', category: 'Red Category' }]);
       // Run one swept below the newest page's oldest (49), run two below its own page's (99) — a
-      // short page, so run three steps three days further down.
+      // short page, so run three steps two hours further down.
       await pollAtmMailbox();
       expect(sweeps(mailbox)).toEqual([
         receivedAt(49),

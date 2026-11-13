@@ -66,8 +66,8 @@ describe('the mailbox document’s listing', () => {
   const SINCE = '2026-11-11T09:00:00Z';
 
   it('asks for the unread mail of a range of dates, newest first, in the shape Graph accepts', async () => {
-    // 2026-11-13: asked for every date (`ge 1900-01-01`), the mailbox answered nothing for twenty
-    // seconds. A range of days is what it can answer.
+    // 2026-11-13: asked for every date (`ge 1900-01-01`), then for two days, the mailbox gave up
+    // after twenty seconds. A short range of receipt times is what it can answer.
     await source().listUnreadPage?.(50, { since: SINCE, before: null });
     const query = messagesCall().searchParams;
     expect(query.get('$filter')).toBe(`receivedDateTime ge ${SINCE} and isRead eq false`);

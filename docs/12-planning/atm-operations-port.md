@@ -511,7 +511,8 @@ each request was heavier than on the first days. Four changes:
   last two days (`NEWEST_WINDOW_MS`); the sweep lists three days (`SWEEP_WINDOW_MS`) below where it
   stands — below a full page's oldest, else below the window it just listed — back to thirty days
   (`SWEEP_HORIZON_MS`), then starts over. «اختبار الاتصال» lists the newest two days. Unread mail
-  older than thirty days is not filed by the reader.
+  older than thirty days is not filed by the reader. (Two days and three proved too much as well:
+  15 minutes and two hours since, «Minutes, not days» below.)
 - **A slow mailbox is waited for** (after #699 was deployed). With one reading a minute again, the
   newest listing still took over 20 s and every reading was cut off. `ATM_MAIL_GRAPH_TIMEOUT_MS`
   now defaults to 45 s; the budget counts from the moment the newest page is listed
@@ -531,6 +532,16 @@ each request was heavier than on the first days. Four changes:
   first listing came back clears the count even when a later step failed (the older page, a
   mark-read): new mail is still looked for every minute. «قراءة الآن» (`pollAtmMailbox()` without
   `scheduled`) never waits. A cache that fails costs the back-off, never the reading.
+- **Minutes, not days** (after #701 named the error). Every newest listing of two days came back
+  `502 UnknownError` with an empty message after 21 s (request `6e6c4cde-…`, 09:57 UTC): Graph's
+  front end giving up on the mailbox. The mailbox weighs every mail in the range, and the shared
+  mailbox is mostly mail left unread on purpose, so two days is nearly two days of everything. The
+  legacy asked for `isRead eq false and receivedDateTime ge {its last look}`, about a minute, on the
+  same `/users/{id}/messages`, and was answered for years. `NEWEST_WINDOW_MS` is now 15 minutes
+  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after the longest wait) and
+  `SWEEP_WINDOW_MS` two hours; the horizon stays thirty days. «اختبار الاتصال» lists the 15
+  minutes. A cycle of the sweep through an empty pile is now 360 steps, one a minute (six hours);
+  a full page steps below its oldest as before.
 - **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure
   is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», or
   «microsoft graph did not answer within {n} s on {path}» in place of «This operation was

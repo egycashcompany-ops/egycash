@@ -999,6 +999,13 @@ its entry here in the same PR.
     than 10, before trying again; «قراءة الآن» never waits, and the first reading the mailbox
     answers puts the minute back. A reading whose newest page came back counts as answered, even
     if a later step failed, so new mail is still looked for every minute.
+  - **Minutes, not days.** With the error finally named, every listing of two days came back
+    «502 UnknownError» after 21 seconds: Graph gave up waiting for the mailbox, which weighs every
+    mail in the range, and the shared mailbox holds mostly mail left unread on purpose. The old
+    reader asked for the minute since its last look and was answered for years. The newest page is
+    now the unread mail of the last 15 minutes, which also covers the longest wait above, and the
+    sweep walks the older unread mail two hours at a time, still back to thirty days. «اختبار
+    الاتصال» lists the last 15 minutes.
   - **The error says what Microsoft said.** «This operation was aborted» becomes «microsoft graph
     did not answer within 45 s on …», and a refusal carries Graph's own error code
     («microsoft graph 502 on … (UnknownError)»). The worker's log also keeps Graph's text and the

@@ -538,14 +538,33 @@ each request was heavier than on the first days. Four changes:
   mailbox is mostly mail left unread on purpose, so two days is nearly two days of everything. The
   legacy asked for `isRead eq false and receivedDateTime ge {its last look}`, about a minute, on the
   same `/users/{id}/messages`, and was answered for years. `NEWEST_WINDOW_MS` is now 15 minutes
-  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after the longest wait) and
+  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after any ONE wait) and
   `SWEEP_WINDOW_MS` two hours; the horizon stays thirty days. «اختبار الاتصال» lists the 15
   minutes. A cycle of the sweep through an empty pile is now 360 steps, one a minute (six hours);
   a full page steps below its oldest as before.
+- **An outage's mail is filed first** (review of #701/#702). Waits add up: after four unanswered
+  readings in a row (0 + 2 + 4 + 8 minutes) the gap since the last answered reading is longer than
+  the newest page reaches back, and the sweep, which kept its place through the failures, reached
+  the gap only after wrapping at the horizon — up to six hours (reproduced: a mail of 07:39:30
+  filed at 12:14). Every reading the mailbox answers now records its start in
+  `MAIL_POLL_ANSWERED_KEY` (Redis, 31 days); a reading that starts more than
+  `NEWEST_WINDOW_MS − 2 min` after it (`followsAGap`) resets the sweep, as soon as its newest page
+  is answered, to just below that page — so the gap is walked first, two hours a reading. A gap the
+  newest page does cover leaves the sweep where it stood, so a passing hiccup does not keep the
+  deep backlog from being reached.
+- **A window the mailbox cannot answer does not hold the sweep** (review of #701/#702). A failed
+  older page used to leave the sweep where it was, and — the newest page having answered, so no
+  back-off — the same window was asked for every minute for good. The sweep now carries its step
+  and its failures (`SweepState`): a failure halves the next step down to `SWEEP_MIN_WINDOW_MS`
+  (15 minutes), a success doubles it back to `SWEEP_WINDOW_MS`, and after `SWEEP_SKIP_AFTER` (5)
+  failures in a row at the smallest step the sweep passes over the window (logged; its mail stays
+  unread, the next cycle asks again). The run still fails with the error, so «آخر قراءة» shows it.
 - **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure
-  is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», or
+  is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})»,
   «microsoft graph did not answer within {n} s on {path}» in place of «This operation was
-  aborted». Only a code shaped like a name reaches the message the screen shows. Graph's text (cut
+  aborted», or — a connection that failed before Graph answered, which undici reports only as
+  «fetch failed» — «microsoft graph request failed on {path} ({the system code, e.g.
+  ECONNRESET})». Only a code shaped like a name reaches the message the screen shows. Graph's text (cut
   to 300 characters), `request-id`, `client-request-id`, `Retry-After` and the elapsed time are
   fields of the error, and so of the worker's log line.
 

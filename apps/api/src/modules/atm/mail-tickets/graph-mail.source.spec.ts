@@ -239,6 +239,33 @@ describe('a request Graph refuses or never answers', () => {
     expect(failure).toMatchObject({ graphCode: null, graphMessage: null, requestId: null });
   });
 
+  it('names the connection’s own code when the request fails before Graph answers', async () => {
+    // undici says only «fetch failed»; what happened is on its cause.
+    listingAnswers(() => {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      });
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES} (ECONNRESET)`);
+    expect(failure).toMatchObject({
+      status: null,
+      graphCode: 'ECONNRESET',
+      graphMessage: 'read ECONNRESET',
+      requestId: null,
+    });
+    expect(failure.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('says the request failed on its path when the failure names no code', async () => {
+    listingAnswers(() => {
+      throw new Error('socket hang up');
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES}`);
+    expect(failure.graphMessage).toBe('socket hang up');
+  });
+
   it('says how long it waited for a request never answered, instead of «This operation was aborted»', async () => {
     vi.useFakeTimers();
     listingAnswers(

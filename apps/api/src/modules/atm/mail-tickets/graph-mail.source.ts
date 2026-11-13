@@ -99,6 +99,34 @@ export class GraphRequestError extends Error {
   }
 }
 
+/** A failure that carries nothing from Graph — no status, no body, no id. */
+const NO_ANSWER: GraphFailureDetail = {
+  status: null,
+  graphCode: null,
+  graphMessage: null,
+  requestId: null,
+  retryAfter: null,
+};
+
+/**
+ * The reason a request failed before Graph answered: the system code of the error or of its
+ * `cause` (`ECONNRESET`, `UND_ERR_SOCKET`, `ENOTFOUND`), else none; and the text, cut short, for the
+ * log.
+ */
+const connectionFailureOf = (error: unknown): { code: string | null; text: string | null } => {
+  const layers = [error, error instanceof Error ? error.cause : undefined];
+  let code: string | null = null;
+  let text: string | null = null;
+  for (const layer of layers) {
+    if (layer === null || typeof layer !== 'object') continue;
+    const own = (layer as { code?: unknown }).code;
+    if (typeof own === 'string' && ERROR_CODE.test(own)) code = own;
+    if (layer instanceof Error && layer.message !== '')
+      text = layer.message.slice(0, ERROR_TEXT_MAX);
+  }
+  return { code, text };
+};
+
 const textField = (value: unknown): string | null =>
   typeof value === 'string' && value !== '' ? value : null;
 
@@ -220,8 +248,8 @@ class GraphMailSource implements AtmMailSource {
   }
 
   /**
-   * One request. Its failure is a `GraphRequestError`: status (or the wait) and path, Graph's error
-   * code, the request's ids — never the secret, never a body.
+   * One request. Its failure is a `GraphRequestError`: status — or the wait, or the connection's
+   * own code — and path, Graph's error code, the request's ids; never the secret, never a body.
    */
   private async fetchJson<T>(url: string, init: RequestInit, authorize = true): Promise<T> {
     const clientRequestId = randomUUID();
@@ -250,14 +278,19 @@ class GraphMailSource implements AtmMailSource {
       if (response.status === 204) return {} as T;
       return (await response.json()) as T;
     } catch (error) {
-      if (error instanceof GraphRequestError || !controller.signal.aborted) throw error;
-      const seconds = String(Math.round(this.config.timeoutMs / 1000));
-      throw failed(`microsoft graph did not answer within ${seconds} s on ${path}`, {
-        status: null,
-        graphCode: null,
-        graphMessage: null,
-        requestId: null,
-        retryAfter: null,
+      if (error instanceof GraphRequestError) throw error;
+      if (controller.signal.aborted) {
+        const seconds = String(Math.round(this.config.timeoutMs / 1000));
+        throw failed(`microsoft graph did not answer within ${seconds} s on ${path}`, NO_ANSWER);
+      }
+      // The connection itself failed (reset, TLS, DNS, a refused host) or the answer could not be
+      // read: undici says only «fetch failed», the reason is on its `cause`.
+      const reason = connectionFailureOf(error);
+      const named = reason.code === null ? '' : ` (${reason.code})`;
+      throw failed(`microsoft graph request failed on ${path}${named}`, {
+        ...NO_ANSWER,
+        graphCode: reason.code,
+        graphMessage: reason.text,
       });
     } finally {
       clearTimeout(timer);

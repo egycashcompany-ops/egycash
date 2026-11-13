@@ -89,16 +89,31 @@ const DAY_MS = 24 * HOUR_MS;
 
 /**
  * The newest page is the unread mail of the last fifteen minutes — a new mail is in it on the next
- * minute's reading, and after the longest a failing mailbox is made to wait (`BACKOFF_MAX_MS`).
- * What the mailbox is asked to look at is what it costs: asked for every date, then for two days,
- * it gave up after some twenty seconds every time (2026-11-13, Graph's «502 UnknownError»), the
- * shared mailbox holding mostly mail left unread on purpose. The old reader asked for the minute
- * since its last look, and was answered for years. Older unread mail is the sweep's.
+ * minute's reading, and after any one wait of a failing mailbox (`BACKOFF_MAX_MS`). Waits add up,
+ * though: after a gap longer than this (`MAIL_POLL_ANSWERED_KEY`) the mail of the gap is the
+ * sweep's, which then starts just below the newest page. What the mailbox is asked to look at is
+ * what it costs: asked for every date, then for two days, it gave up after some twenty seconds
+ * every time (2026-11-13, Graph's «502 UnknownError»), the shared mailbox holding mostly mail left
+ * unread on purpose. The old reader asked for the minute since its last look, and was answered for
+ * years. Older unread mail is the sweep's.
  */
 export const NEWEST_WINDOW_MS = 15 * MINUTE_MS;
 
 /** One step of the sweep: two hours of receipt times below where it stands — a small question too. */
 export const SWEEP_WINDOW_MS = 2 * HOUR_MS;
+
+/**
+ * The smallest step a sweep makes when the mailbox cannot answer a window: a failing step is halved
+ * (two hours, one, thirty minutes) down to this.
+ */
+export const SWEEP_MIN_WINDOW_MS = 15 * MINUTE_MS;
+
+/**
+ * Failed older pages in a row at one place after which the sweep passes over the window it was
+ * asking for — the step already at its smallest — rather than ask the mailbox for it every minute
+ * for good. Its mail stays unread; the next cycle asks again.
+ */
+export const SWEEP_SKIP_AFTER = 5;
 
 /**
  * How far back the sweep walks before it starts over: thirty days. Mail left unread longer than
@@ -176,6 +191,7 @@ const noteOutcome = async (run: AtmMailPollRun, answered: boolean): Promise<void
   try {
     if (run.error === null || answered) {
       await getCache().del(MAIL_POLL_BACKOFF_KEY);
+      await getCache().set(MAIL_POLL_ANSWERED_KEY, String(run.at.getTime()), ANSWERED_TTL_SECONDS);
       return;
     }
     const failures = ((await readBackoff())?.failures ?? 0) + 1;
@@ -206,6 +222,37 @@ const stillWaiting = async (): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * When the last reading the mailbox answered started (epoch ms) — company-wide, like the lease. The
+ * newest page reaches back `NEWEST_WINDOW_MS` from now, not from that reading: after a longer gap
+ * (waits that add up, an outage) the mail between them is the sweep's, and the sweep is sent there
+ * first (`readNewestFirst`'s catch-up).
+ */
+export const MAIL_POLL_ANSWERED_KEY = 'atm-mail-poll:answered';
+
+const ANSWERED_TTL_SECONDS = 31 * 24 * 60 * 60;
+
+/**
+ * How much shorter than the newest window a gap may be and still count as one: the last reading's
+ * listing ran a little after it started, and a mail is not always listed the second it arrives.
+ */
+const CATCH_UP_MARGIN_MS = 2 * MINUTE_MS;
+
+/** The last answered reading's start, or null — never read, expired, or a cache that fails. */
+const readLastAnswered = async (): Promise<number | null> => {
+  try {
+    const raw = await getCache().get(MAIL_POLL_ANSWERED_KEY);
+    const at = raw === null ? Number.NaN : Number(raw);
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Whether a reading starting `at` follows a gap the newest page does not reach back over. */
+const followsAGap = (at: number, lastAnswered: number | null): boolean =>
+  lastAnswered !== null && at - lastAnswered > NEWEST_WINDOW_MS - CATCH_UP_MARGIN_MS;
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -392,10 +439,18 @@ const readOnce = async (
 
 /**
  * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
- * page lies below (null: just below the newest page). Per document VERSION, so a save — a branch
- * switched on — starts it over.
+ * page lies below (null: just below the newest page), the size of its next step, and how many older
+ * pages in a row failed there. Per document VERSION, so a save — a branch switched on — starts it
+ * over.
  */
-let sweep: { key: string; before: string | null } | null = null;
+interface SweepState {
+  key: string;
+  before: string | null;
+  step: number;
+  failures: number;
+}
+
+let sweep: SweepState | null = null;
 
 /**
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
@@ -423,11 +478,16 @@ const readNewestFirst = async (
   documentCategories: ReadonlyMap<string, string>,
   sweepKey: string,
   tally: Tally,
+  afterAGap: boolean,
 ): Promise<void> => {
   const now = Date.now();
   const newestSince = mailInstant(now - NEWEST_WINDOW_MS);
   const newest = await listPage(POLL_BATCH, { since: newestSince, before: null });
   startTheClock(tally);
+  // The first reading answered after a gap longer than the newest window: the mail of the gap lies
+  // just below the newest page, so the sweep starts there instead of wherever it stood — up to a
+  // full cycle (six hours) away. Set before anything else, so a run cut short leaves it set.
+  if (afterAGap) sweep = { key: sweepKey, before: null, step: SWEEP_WINDOW_MS, failures: 0 };
   let categoryOf: CategoryOf | null = null;
   const take = async (message: AtmMailMessage): Promise<void> => {
     categoryOf ??= await categoryLookup(documentCategories);
@@ -445,15 +505,46 @@ const readNewestFirst = async (
   // Where the sweep stands: kept from the last run, else just below the newest page — below its
   // oldest when it was full, below its fifteen minutes when it held all of them.
   const floor = now - SWEEP_HORIZON_MS;
-  const kept = sweep?.key === sweepKey ? sweep.before : null;
+  const stands = sweep?.key === sweepKey ? sweep : null;
+  const step = stands?.step ?? SWEEP_WINDOW_MS;
+  const failures = stands?.failures ?? 0;
   const before =
-    kept ?? (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
+    stands?.before ??
+    (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
   if (Date.parse(before) <= floor) {
-    sweep = { key: sweepKey, before: null };
+    sweep = { key: sweepKey, before: null, step: SWEEP_WINDOW_MS, failures: 0 };
     return;
   }
-  const since = mailInstant(Math.max(floor, Date.parse(before) - SWEEP_WINDOW_MS));
-  const older = await listPage(POLL_BATCH, { since, before });
+  const since = mailInstant(Math.max(floor, Date.parse(before) - step));
+  let older: AtmMailPage;
+  try {
+    older = await listPage(POLL_BATCH, { since, before });
+  } catch (error) {
+    // A window the mailbox cannot answer must neither hold the sweep for good nor be asked for
+    // every minute at full size (the newest page answered, so no back-off slows it): the next run
+    // asks for half of it, down to `SWEEP_MIN_WINDOW_MS`, and after `SWEEP_SKIP_AFTER` failures
+    // in a row the sweep passes over it. The run still fails with the error.
+    if (step <= SWEEP_MIN_WINDOW_MS && failures + 1 >= SWEEP_SKIP_AFTER) {
+      logger.warn(
+        { since, before, failures: failures + 1 },
+        'atm mail poll: the sweep passed over a window the mailbox could not answer',
+      );
+      sweep = {
+        key: sweepKey,
+        before: Date.parse(since) <= floor ? null : since,
+        step: SWEEP_WINDOW_MS,
+        failures: 0,
+      };
+    } else {
+      sweep = {
+        key: sweepKey,
+        before,
+        step: Math.max(SWEEP_MIN_WINDOW_MS, step / 2),
+        failures: failures + 1,
+      };
+    }
+    throw error;
+  }
   for (const message of older.messages) {
     // A page cut short keeps the sweep where it was: the page is listed again next run, and what
     // this run already took on is either gone from the unread list or judged again, harmlessly.
@@ -466,7 +557,12 @@ const readNewestFirst = async (
   // A full page: the next one lies below its oldest. A short one: these days are done, the next
   // step is the two hours below them — and past the horizon, the sweep starts over.
   const next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
-  sweep = { key: sweepKey, before: Date.parse(next) <= floor ? null : next };
+  sweep = {
+    key: sweepKey,
+    before: Date.parse(next) <= floor ? null : next,
+    step: Math.min(SWEEP_WINDOW_MS, step * 2),
+    failures: 0,
+  };
 };
 
 /** Best effort: the run is the reader's work, its record a convenience for the screen. */
@@ -504,7 +600,8 @@ export const pollAtmMailbox = async (
   const lease = randomUUID();
   if (!(await cache.setIfAbsent(MAIL_POLL_LEASE_KEY, lease, LEASE_TTL_SECONDS))) return null;
   try {
-    const { run, answered } = await readAndRecord(plan, at);
+    const afterAGap = followsAGap(at.getTime(), await readLastAnswered());
+    const { run, answered } = await readAndRecord(plan, at, afterAGap);
     await noteOutcome(run, answered);
     return run;
   } finally {
@@ -519,6 +616,7 @@ export const pollAtmMailbox = async (
 const readAndRecord = async (
   plan: AtmMailPollPlan,
   at: Date,
+  afterAGap: boolean,
 ): Promise<{ run: AtmMailPollRun; answered: boolean }> => {
   if (plan.mode === 'off') return { run: idleRun(at), answered: true };
   const tally = emptyTally(Date.now());
@@ -536,7 +634,7 @@ const readAndRecord = async (
       if (listPage === undefined) await readOnce(source, gate, categories, tally);
       else {
         const sweepKey = `${String(plan.doc._id)}:${String(plan.doc.__v)}`;
-        await readNewestFirst(source, listPage, gate, categories, sweepKey, tally);
+        await readNewestFirst(source, listPage, gate, categories, sweepKey, tally, afterAGap);
       }
     }
   } catch (failure) {

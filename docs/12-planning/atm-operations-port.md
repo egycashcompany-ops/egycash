@@ -521,6 +521,22 @@ each request was heavier than on the first days. Four changes:
   (`useAtmMailboxConfig` `refetchInterval`), so the line follows the worker's readings — and the
   409's «ستظهر نتيجتها في «آخر قراءة» بعد لحظات» holds. A refetch never resets a draft: the form
   follows the server only when an editable field changes.
+- **A failing mailbox is given time** (after #700 was deployed: one reading a minute, and Graph
+  answered every listing with 502 after some twenty seconds). Readings in a row whose FIRST
+  listing the mailbox did not answer (the token, or the listing itself: `Tally.answered`, set by
+  `startTheClock`) are counted in `MAIL_POLL_BACKOFF_KEY` (Redis, company-wide like the lease,
+  expiring a day after the last failure): after two the SCHEDULED reading waits 2 minutes from the
+  last one's start, then 4, 8, and `BACKOFF_MAX_MS` (10) from then on (`backoffAfter`); a reading
+  that waits returns null and records nothing, so «آخر قراءة» keeps the last error. A reading whose
+  first listing came back clears the count even when a later step failed (the older page, a
+  mark-read): new mail is still looked for every minute. «قراءة الآن» (`pollAtmMailbox()` without
+  `scheduled`) never waits. A cache that fails costs the back-off, never the reading.
+- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure
+  is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», or
+  «microsoft graph did not answer within {n} s on {path}» in place of «This operation was
+  aborted». Only a code shaped like a name reaches the message the screen shows. Graph's text (cut
+  to 300 characters), `request-id`, `client-request-id`, `Retry-After` and the elapsed time are
+  fields of the error, and so of the worker's log line.
 
 ### 6b. Branches that work together — ATM only (2026-10-28)
 

@@ -13,6 +13,7 @@
 // Since /atm/settings (the owner, 2026-10-28: the credentials are typed on a screen, the secret
 // stored encrypted) the same transport also reads the mailbox the screen's document names — built
 // per document by `createGraphMailboxSource`, with the secret opened from its sealed ref on demand.
+import { randomUUID } from 'node:crypto';
 import { outboundFetch } from '../../../infrastructure/http/outbound';
 import { logger } from '../../../infrastructure/logging/logger';
 import { env } from '../../../infrastructure/config/env';
@@ -46,6 +47,95 @@ const text = (value: unknown): string => (typeof value === 'string' ? value : ''
  * page's `before` may take, since it is written into the query's `$filter` as it stands.
  */
 const GRAPH_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,7})?Z$/;
+
+/**
+ * Graph's own name for an error (`UnknownError`, `ErrorTimeoutExpired`, `invalid_client`) — the
+ * only part of an error body that goes into the message the screen shows, and only in this shape.
+ */
+const ERROR_CODE = /^[A-Za-z][A-Za-z0-9_.-]{0,79}$/;
+/** How much of Graph's error text the log keeps. */
+const ERROR_TEXT_MAX = 300;
+
+interface GraphFailureDetail {
+  /** The HTTP status; null when nothing came back in time. */
+  status: number | null;
+  /** Graph's error code, when it gave one in the shape above. */
+  graphCode: string | null;
+  /** Graph's error text, cut short — for the log, never the screen. */
+  graphMessage: string | null;
+  /** The id Graph gave the request (`request-id`), the one Microsoft support asks for. */
+  requestId: string | null;
+  /** The `Retry-After` Graph asked for, as it wrote it. */
+  retryAfter: string | null;
+}
+
+/**
+ * A request Graph refused or did not answer (2026-11-13: «This operation was aborted» said neither
+ * which request nor what Graph made of it). The message names the status — or the wait — and the
+ * path, plus Graph's error code; never the secret, never the body. The rest rides along as fields
+ * for the log: the ids Microsoft support can find the request by, how long it took.
+ */
+export class GraphRequestError extends Error {
+  readonly status: number | null;
+  readonly graphCode: string | null;
+  readonly graphMessage: string | null;
+  readonly requestId: string | null;
+  readonly retryAfter: string | null;
+
+  constructor(
+    message: string,
+    detail: GraphFailureDetail,
+    /** The id this transport sent (`client-request-id`), so even a request never answered has one. */
+    readonly clientRequestId: string,
+    readonly elapsedMs: number,
+  ) {
+    super(message);
+    this.name = 'GraphRequestError';
+    this.status = detail.status;
+    this.graphCode = detail.graphCode;
+    this.graphMessage = detail.graphMessage;
+    this.requestId = detail.requestId;
+    this.retryAfter = detail.retryAfter;
+  }
+}
+
+const textField = (value: unknown): string | null =>
+  typeof value === 'string' && value !== '' ? value : null;
+
+/**
+ * What an error response says about itself. Graph writes `{ error: { code, message, innerError:
+ * { 'request-id' } } }`; the token endpoint `{ error: 'invalid_client', error_description,
+ * trace_id }`. A body that is neither, or never arrives, says nothing.
+ */
+const failureOf = async (response: Response): Promise<GraphFailureDetail> => {
+  let body: unknown = null;
+  try {
+    body = JSON.parse(await response.text());
+  } catch {
+    body = null;
+  }
+  const error =
+    body !== null && typeof body === 'object' ? (body as { error?: unknown }).error : null;
+  const nested =
+    error !== null && typeof error === 'object'
+      ? (error as { code?: unknown; message?: unknown; innerError?: { 'request-id'?: unknown } })
+      : null;
+  const code = nested === null ? textField(error) : textField(nested.code);
+  const text =
+    nested === null
+      ? textField((body as { error_description?: unknown } | null)?.error_description)
+      : textField(nested.message);
+  return {
+    status: response.status,
+    graphCode: code !== null && ERROR_CODE.test(code) ? code : null,
+    graphMessage: text === null ? null : text.slice(0, ERROR_TEXT_MAX),
+    requestId:
+      textField(response.headers.get('request-id')) ??
+      textField(nested?.innerError?.['request-id']) ??
+      textField((body as { trace_id?: unknown } | null)?.trace_id),
+    retryAfter: textField(response.headers.get('retry-after')),
+  };
+};
 
 export interface GraphMailConfig {
   tenantId: string;
@@ -129,13 +219,23 @@ class GraphMailSource implements AtmMailSource {
     return token;
   }
 
-  /** One request. Never logs the body or the secret — only status and URL shape. */
+  /**
+   * One request. Its failure is a `GraphRequestError`: status (or the wait) and path, Graph's error
+   * code, the request's ids — never the secret, never a body.
+   */
   private async fetchJson<T>(url: string, init: RequestInit, authorize = true): Promise<T> {
+    const clientRequestId = randomUUID();
     const headers: Record<string, string> = {
       accept: 'application/json',
+      'client-request-id': clientRequestId,
+      'return-client-request-id': 'true',
       ...((init.headers as Record<string, string> | undefined) ?? {}),
     };
     if (authorize) headers.authorization = `Bearer ${await this.accessToken()}`;
+    const path = new URL(url).pathname;
+    const started = Date.now();
+    const failed = (message: string, detail: GraphFailureDetail): GraphRequestError =>
+      new GraphRequestError(message, detail, clientRequestId, Date.now() - started);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     try {
@@ -143,10 +243,22 @@ class GraphMailSource implements AtmMailSource {
       if (!response.ok) {
         // A 401 means the cached token went stale early; drop it so the next call re-authenticates.
         if (response.status === 401) this.token = null;
-        throw new Error(`microsoft graph ${String(response.status)} on ${new URL(url).pathname}`);
+        const detail = await failureOf(response);
+        const code = detail.graphCode === null ? '' : ` (${detail.graphCode})`;
+        throw failed(`microsoft graph ${String(response.status)} on ${path}${code}`, detail);
       }
       if (response.status === 204) return {} as T;
       return (await response.json()) as T;
+    } catch (error) {
+      if (error instanceof GraphRequestError || !controller.signal.aborted) throw error;
+      const seconds = String(Math.round(this.config.timeoutMs / 1000));
+      throw failed(`microsoft graph did not answer within ${seconds} s on ${path}`, {
+        status: null,
+        graphCode: null,
+        graphMessage: null,
+        requestId: null,
+        retryAfter: null,
+      });
     } finally {
       clearTimeout(timer);
     }

@@ -6,17 +6,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetched: { url: string; init: RequestInit | undefined }[] = [];
-let respond: (url: string) => Response;
+let respond: (url: string, init: RequestInit | undefined) => Response | Promise<Response>;
 
 vi.mock('../../../infrastructure/http/outbound', () => ({
   outboundFetch: async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     fetched.push({ url, init });
-    return respond(url);
+    return respond(url, init);
   },
 }));
 
-const { createGraphMailboxSource } = await import('./graph-mail.source');
+const { createGraphMailboxSource, GraphRequestError } = await import('./graph-mail.source');
+const { env } = await import('../../../infrastructure/config/env');
 
 const SECRET = 'syn-graph-secret-3c1d-do-not-leak';
 
@@ -57,6 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -148,10 +150,115 @@ describe('a refused token', () => {
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(
-      'microsoft graph 401 on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token',
+      'microsoft graph 401 on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token (invalid_client)',
     );
     expect((failure as Error).message).not.toContain(SECRET);
     // The secret travelled in the token request's form body, and nowhere in a URL.
     expect(fetched.every((entry) => !entry.url.includes(SECRET))).toBe(true);
+  });
+});
+
+describe('a request Graph refuses or never answers', () => {
+  const WINDOW = { since: '2026-11-11T09:00:00Z', before: null };
+  const MESSAGES = '/v1.0/users/maintenance%40bank.example/messages';
+
+  /** The token as usual; the listing answered by `listing`. */
+  const listingAnswers = (
+    listing: (init: RequestInit | undefined) => Response | Promise<Response>,
+  ): void => {
+    respond = (url, init) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : listing(init);
+  };
+
+  const failureOf = async (): Promise<InstanceType<typeof GraphRequestError>> => {
+    const failure = await source()
+      .listUnreadPage?.(50, WINDOW)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(GraphRequestError);
+    return failure as InstanceType<typeof GraphRequestError>;
+  };
+
+  it('names Graph’s own error code, and keeps the request’s ids and Graph’s text for the log', async () => {
+    // 2026-11-13: every listing came back «microsoft graph 502» and nothing else.
+    listingAnswers(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'UnknownError',
+              message: 'The backend took too long.',
+              innerError: { 'request-id': 'syn-inner-id', date: '2026-11-13T09:30:26' },
+            },
+          }),
+          { status: 502, headers: { 'request-id': 'syn-request-id' } },
+        ),
+    );
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 502 on ${MESSAGES} (UnknownError)`);
+    expect(failure).toMatchObject({
+      status: 502,
+      graphCode: 'UnknownError',
+      graphMessage: 'The backend took too long.',
+      requestId: 'syn-request-id',
+    });
+    // The id this transport sent with the listing — the one Graph is asked to echo.
+    const sent = new Headers(
+      fetched.find((entry) => entry.url.includes('/messages'))?.init?.headers,
+    );
+    expect(sent.get('return-client-request-id')).toBe('true');
+    expect(failure.clientRequestId).toBe(sent.get('client-request-id'));
+    expect(failure.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('takes the request id from the body when no header carries it, and the wait Graph asked for', async () => {
+    listingAnswers(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'ApplicationThrottled', innerError: { 'request-id': 'syn-inner-id' } },
+          }),
+          { status: 429, headers: { 'retry-after': '30' } },
+        ),
+    );
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 429 on ${MESSAGES} (ApplicationThrottled)`);
+    expect(failure).toMatchObject({ requestId: 'syn-inner-id', retryAfter: '30' });
+  });
+
+  it('keeps a code that is not a name out of the message, and survives a body that is not JSON', async () => {
+    listingAnswers(
+      () => new Response(JSON.stringify({ error: { code: 'not a code <b>' } }), { status: 503 }),
+    );
+    expect((await failureOf()).message).toBe(`microsoft graph 503 on ${MESSAGES}`);
+
+    listingAnswers(() => new Response('<html>Bad Gateway</html>', { status: 502 }));
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 502 on ${MESSAGES}`);
+    expect(failure).toMatchObject({ graphCode: null, graphMessage: null, requestId: null });
+  });
+
+  it('says how long it waited for a request never answered, instead of «This operation was aborted»', async () => {
+    vi.useFakeTimers();
+    listingAnswers(
+      (init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('This operation was aborted', 'AbortError'));
+          });
+        }),
+    );
+    const pending = source()
+      .listUnreadPage?.(50, WINDOW)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(env.ATM_MAIL_GRAPH_TIMEOUT_MS);
+    const failure = await pending;
+    expect(failure).toBeInstanceOf(GraphRequestError);
+    const seconds = String(Math.round(env.ATM_MAIL_GRAPH_TIMEOUT_MS / 1000));
+    expect((failure as Error).message).toBe(
+      `microsoft graph did not answer within ${seconds} s on ${MESSAGES}`,
+    );
+    expect(failure).toMatchObject({ status: null, elapsedMs: env.ATM_MAIL_GRAPH_TIMEOUT_MS });
   });
 });

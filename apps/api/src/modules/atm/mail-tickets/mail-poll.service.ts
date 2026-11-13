@@ -38,6 +38,13 @@
 // (`RUN_BUDGET_MS`) and leaves the rest to the next minute; and its failure is not retried
 // (`retry: false` on the task): the next minute IS the retry.
 //
+// A FAILING MAILBOX IS GIVEN TIME (2026-11-13, after the above: one reading a minute, and Graph
+// still answered every one with a 502 after some twenty seconds). A reading a minute that the
+// mailbox cannot answer only adds to what it is struggling with. After readings in a row whose
+// first listing it did not answer, the scheduled reading waits longer before the next try — 2, 4,
+// 8, then 10 minutes at most (`MAIL_POLL_BACKOFF_KEY`, `backoffAfter`); «قراءة الآن» never waits,
+// and the first reading the mailbox answers, either one, puts the minute back.
+//
 // Branches are read as ATM files them (`atm.branchLinks`): a mail is filed under its machine's
 // RESOLVED branch (mail-ingestion.service.ts), so the switched-on set and the colours are resolved
 // the same way — a linked source's row switches its target on and colours it, unless the target
@@ -111,6 +118,89 @@ export const MAIL_POLL_LEASE_KEY = 'lock:atm-mail-poll';
  */
 const LEASE_TTL_SECONDS =
   Math.ceil((4 * env.ATM_MAIL_GRAPH_TIMEOUT_MS + RUN_BUDGET_MS) / 1000) + 30;
+
+/**
+ * Readings in a row the mailbox did not answer, and when the next SCHEDULED one is due —
+ * company-wide like the lease. Gone after a reading it answers; it expires on its own a day after
+ * the last failure.
+ */
+export const MAIL_POLL_BACKOFF_KEY = 'atm-mail-poll:backoff';
+
+const BACKOFF_TTL_SECONDS = 24 * 60 * 60;
+
+/** The longest a failing mailbox waits between scheduled readings. */
+export const BACKOFF_MAX_MS = 10 * 60_000;
+
+/**
+ * How long the scheduled reading waits after `failures` unanswered readings in a row, counted from
+ * when the last one started: not at all after one (a passing hiccup), then 2, 4, 8 minutes, and
+ * `BACKOFF_MAX_MS` from then on.
+ */
+export const backoffAfter = (failures: number): number =>
+  failures <= 1 ? 0 : Math.min(BACKOFF_MAX_MS, 60_000 * 2 ** (failures - 1));
+
+/** The cron fires a few seconds either side of the minute: a wait that ends just short of it counts. */
+const TICK_SLACK_MS = 5_000;
+
+interface PollBackoff {
+  failures: number;
+  /** Epoch ms before which no scheduled reading starts. */
+  until: number;
+}
+
+const readBackoff = async (): Promise<PollBackoff | null> => {
+  const raw = await getCache().get(MAIL_POLL_BACKOFF_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PollBackoff>;
+    return typeof parsed.failures === 'number' && typeof parsed.until === 'number'
+      ? { failures: parsed.failures, until: parsed.until }
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * What a finished reading leaves for the next scheduled one. A mailbox that answered the first
+ * listing is not failing, whatever failed after it (the older page, a mark-read): new mail is still
+ * filed every minute. One that did not — the token, or the listing itself — counts. Best effort:
+ * the cache failing costs the back-off, never the reading.
+ */
+const noteOutcome = async (run: AtmMailPollRun, answered: boolean): Promise<void> => {
+  try {
+    if (run.error === null || answered) {
+      await getCache().del(MAIL_POLL_BACKOFF_KEY);
+      return;
+    }
+    const failures = ((await readBackoff())?.failures ?? 0) + 1;
+    const wait = backoffAfter(failures);
+    const until = run.at.getTime() + wait - TICK_SLACK_MS;
+    await getCache().set(
+      MAIL_POLL_BACKOFF_KEY,
+      JSON.stringify({ failures, until } satisfies PollBackoff),
+      BACKOFF_TTL_SECONDS,
+    );
+    if (wait > 0) {
+      logger.warn(
+        { failures, nextReadingAt: new Date(until + TICK_SLACK_MS).toISOString() },
+        'atm mail poll: the mailbox keeps failing — the scheduled reading waits',
+      );
+    }
+  } catch (error) {
+    logger.warn({ err: error }, 'atm mail poll: the back-off was not recorded');
+  }
+};
+
+/** Whether the scheduled reading is still waiting after failures. A cache that fails says no. */
+const stillWaiting = async (): Promise<boolean> => {
+  try {
+    const backoff = await readBackoff();
+    return backoff !== null && Date.now() < backoff.until;
+  } catch {
+    return false;
+  }
+};
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -191,12 +281,15 @@ interface Tally {
   report: AtmMailPollReport;
   unmatchedReasons: string[];
   endsAt: number;
+  /** The mailbox answered the run's first listing — whatever failed after it. */
+  answered: boolean;
 }
 
 const emptyTally = (now: number): Tally => ({
   report: { ...EMPTY },
   unmatchedReasons: [],
   endsAt: now + RUN_BUDGET_MS,
+  answered: false,
 });
 
 /** The run's time for taking on mail is spent: what is left is the next minute's. */
@@ -208,6 +301,7 @@ const outOfTime = (tally: Tally): boolean => Date.now() >= tally.endsAt;
  */
 const startTheClock = (tally: Tally): void => {
   tally.endsAt = Date.now() + RUN_BUDGET_MS;
+  tally.answered = true;
 };
 
 /** The category a filed mail is tagged with: the document's row, else the old setting. */
@@ -388,19 +482,26 @@ const recordRun = async (plan: AtmMailPollPlan, run: AtmMailPollRun): Promise<vo
  * it back into a failed run (atm.module.ts).
  *
  * Null when another reading holds the lease (`MAIL_POLL_LEASE_KEY`): nothing was read, nothing is
- * recorded, and that reading's own result is the one the screen will show.
+ * recorded, and that reading's own result is the one the screen will show. Null too for the
+ * SCHEDULED reading (`scheduled`) while a failing mailbox is given time (`MAIL_POLL_BACKOFF_KEY`):
+ * the screen keeps the last reading, and its error.
  */
-export const pollAtmMailbox = async (): Promise<AtmMailPollRun | null> => {
+export const pollAtmMailbox = async (
+  options: { scheduled?: boolean } = {},
+): Promise<AtmMailPollRun | null> => {
   const at = new Date();
   const plan = await resolveAtmMailPollPlan();
   if (plan.mode === 'off') return idleRun(at);
   if (plan.mode === 'environment' && !plan.source.available()) return idleRun(at);
+  if (options.scheduled === true && (await stillWaiting())) return null;
 
   const cache = getCache();
   const lease = randomUUID();
   if (!(await cache.setIfAbsent(MAIL_POLL_LEASE_KEY, lease, LEASE_TTL_SECONDS))) return null;
   try {
-    return await readAndRecord(plan, at);
+    const { run, answered } = await readAndRecord(plan, at);
+    await noteOutcome(run, answered);
+    return run;
   } finally {
     // Compare-and-delete: a lease that outlived its TTL and was taken by another reading stays.
     await cache.delIfValue(MAIL_POLL_LEASE_KEY, lease).catch((error: unknown) => {
@@ -409,9 +510,12 @@ export const pollAtmMailbox = async (): Promise<AtmMailPollRun | null> => {
   }
 };
 
-/** The run inside its lease. */
-const readAndRecord = async (plan: AtmMailPollPlan, at: Date): Promise<AtmMailPollRun> => {
-  if (plan.mode === 'off') return idleRun(at);
+/** The run inside its lease, and whether the mailbox answered its first listing. */
+const readAndRecord = async (
+  plan: AtmMailPollPlan,
+  at: Date,
+): Promise<{ run: AtmMailPollRun; answered: boolean }> => {
+  if (plan.mode === 'off') return { run: idleRun(at), answered: true };
   const tally = emptyTally(Date.now());
   let error: string | null = null;
   let providerId: string | null = null;
@@ -446,7 +550,7 @@ const readAndRecord = async (plan: AtmMailPollPlan, at: Date): Promise<AtmMailPo
   }
   const run: AtmMailPollRun = { at, ...tally.report, error, unmatchedReasons };
   await recordRun(plan, run);
-  return run;
+  return { run, answered: tally.answered };
 };
 
 /** Test seam — the sweep position is process-wide. */

@@ -993,6 +993,17 @@ its entry here in the same PR.
     yet) has grown every day. The sweep through it asked the mailbox to count its way down that
     pile, page after page. It now asks for the mail received before the last page's oldest, which
     the mailbox finds directly however deep the pile.
+  - **A failing mailbox is given time.** With one reading a minute, Microsoft Graph still answered
+    every listing with «502» after some twenty seconds. After readings in a row that the mailbox
+    did not answer at all, the minute's reading now waits 2, then 4, then 8 minutes, and never more
+    than 10, before trying again; «قراءة الآن» never waits, and the first reading the mailbox
+    answers puts the minute back. A reading whose newest page came back counts as answered, even
+    if a later step failed, so new mail is still looked for every minute.
+  - **The error says what Microsoft said.** «This operation was aborted» becomes «microsoft graph
+    did not answer within 45 s on …», and a refusal carries Graph's own error code
+    («microsoft graph 502 on … (UnknownError)»). The worker's log also keeps Graph's text and the
+    request's ids (`request-id`, and the `client-request-id` the reader now sends), the ones
+    Microsoft support asks for.
 - **«تعيين السيارات» on a computer: every filter is on the bar's one row again.** «فى مشكلة باقى
   الفلاتر مش ظاهرة». The bar holds «كود السيارة», one chip per counter and per mission, and the red
   reset on a single line whose sideways scrollbar is hidden. With production's twelve missions the

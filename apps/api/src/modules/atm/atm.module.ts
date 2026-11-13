@@ -534,8 +534,9 @@ export const atmModule: ModuleManifest = {
       handler: async () => {
         // A mailbox that failed as a whole (token refused, unreachable) is the run's `error` — on
         // the screen's last-run line — and still a FAILED scheduled run, as it was before. Null:
-        // another reading holds the lease (a long one, or «قراءة الآن»), and this minute is not due.
-        const run = await pollAtmMailbox();
+        // another reading holds the lease (a long one, or «قراءة الآن»), or a failing mailbox is
+        // being given time — either way this minute is not due.
+        const run = await pollAtmMailbox({ scheduled: true });
         if (run !== null && run.error !== null) throw new Error(run.error);
       },
     },

@@ -28,6 +28,11 @@ export interface AtmMailPage {
    * be done with (no id, no body), which stay unread and still take up their place in the list.
    */
   listed: number;
+  /**
+   * When the page's LAST (oldest) listed message was received, exactly as the provider wrote it —
+   * the next page starts below it (`before`). Null on an empty page.
+   */
+  oldest: string | null;
 }
 
 export interface AtmMailSource {
@@ -50,13 +55,17 @@ export interface AtmMailSource {
   listUnread(limit: number): Promise<AtmMailMessage[]>;
 
   /**
-   * The unread mail NEWEST first, `limit` messages after the first `skip` — the reading the mailbox
-   * document runs on (mail-poll.service.ts). In the ONE shared mailbox the unread pile is mostly
-   * mail left there on purpose (branches not switched on yet), and read oldest first that pile
-   * would stand between the reader and every new mail. Optional: a source without it is read with
-   * `listUnread` alone.
+   * The unread mail NEWEST first, `limit` messages received strictly before `before` (a page's
+   * `oldest`; null: from the newest) — the reading the mailbox document runs on
+   * (mail-poll.service.ts). In the ONE shared mailbox the unread pile is mostly mail left there on
+   * purpose (branches not switched on yet), and read oldest first that pile would stand between the
+   * reader and every new mail. Optional: a source without it is read with `listUnread` alone.
+   *
+   * A date, not a count to skip (2026-11-13): «الـ Automation بتاع الميل واقف» — as the pile grew,
+   * a page deep in it (`$skip` in the thousands) made the mailbox count its way down to it, and the
+   * listing outran its timeout. A page that starts below a date is found directly, however deep.
    */
-  listUnreadPage?(limit: number, skip: number): Promise<AtmMailPage>;
+  listUnreadPage?(limit: number, before: string | null): Promise<AtmMailPage>;
 
   /**
    * Mark one message handled, optionally tagging it with the branch's colour category — the

@@ -181,7 +181,7 @@ class AtmMailboxService {
       const unreadSample =
         source.listUnreadPage === undefined
           ? (await source.listUnread(1)).length
-          : (await source.listUnreadPage(1, 0)).listed;
+          : (await source.listUnreadPage(1, null)).listed;
       return { ok: true, unreadSample, error: null };
     } catch (error) {
       return { ok: false, unreadSample: 0, error: errorText(error) };
@@ -198,7 +198,14 @@ class AtmMailboxService {
     if (doc !== null && !doc.enabled) {
       throw new BusinessRuleError('mail reading is switched off — switch it on and save first');
     }
-    return toAtmMailPollRunDto(await pollAtmMailbox());
+    const run = await pollAtmMailbox();
+    if (run === null) {
+      throw new ConflictError(
+        'a reading of the mailbox is already running — its result shows on the last-run line',
+        ErrorCodes.ATM_MAIL_POLL_BUSY,
+      );
+    }
+    return toAtmMailPollRunDto(run);
   }
 
   /** Refuses rather than storing a secret in the clear (the register's `sealCombination`). */

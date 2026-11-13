@@ -235,6 +235,12 @@ export const ErrorCodes = {
    * any more — a machine may have several open of either kind. Kept reserved, never reused.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
+  /**
+   * «قراءة الآن» while a reading of the maintenance mailbox is already running (the minute's own, or
+   * another person's): one reading at a time (2026-11-13), and that one's result is what the
+   * screen's last-run line will show.
+   */
+  ATM_MAIL_POLL_BUSY: 'ATM_MAIL_POLL_BUSY',
 
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md) ─────────────────────
   /** D6: the machine code already has an OPEN custody period somewhere in the company. */

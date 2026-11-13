@@ -61,22 +61,62 @@ afterEach(() => {
 });
 
 describe('the mailbox document’s listing', () => {
-  it('asks for unread mail newest first after `skip`, in the shape Graph accepts', async () => {
-    await source().listUnreadPage?.(50, 120);
+  it('asks for unread mail newest first, every date, in the shape Graph accepts', async () => {
+    await source().listUnreadPage?.(50, null);
     const query = messagesCall().searchParams;
     expect(query.get('$filter')).toBe(
       'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false',
     );
     expect(query.get('$orderby')).toBe('receivedDateTime desc');
     expect(query.get('$top')).toBe('50');
-    expect(query.get('$skip')).toBe('120');
+    expect(query.has('$skip')).toBe(false);
   });
 
-  it('counts every message listed, the ones it cannot use included', async () => {
-    const page = await source().listUnreadPage?.(50, 0);
-    // m2 has no body: left out of the messages, and still one of the places in the list.
+  it('finds an older page by its date, never by counting down the pile with `$skip`', async () => {
+    // 2026-11-13: a `$skip` deep in a grown pile made the mailbox count its way down, past the
+    // listing's timeout. Below a date, the page is found directly.
+    await source().listUnreadPage?.(50, '2026-11-12T08:15:02Z');
+    const query = messagesCall().searchParams;
+    expect(query.get('$filter')).toBe(
+      'receivedDateTime lt 2026-11-12T08:15:02Z and isRead eq false',
+    );
+    expect(query.get('$orderby')).toBe('receivedDateTime desc');
+    expect(query.has('$skip')).toBe(false);
+  });
+
+  it('writes nothing into the query but a receipt time', async () => {
+    const failure = await source()
+      .listUnreadPage?.(50, '2026-11-12T08:15:02Z or isRead eq true')
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(fetched.some((entry) => entry.url.includes('/messages'))).toBe(false);
+  });
+
+  it('counts every message listed, the ones it cannot use included, and names the oldest', async () => {
+    respond = (url) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : json({
+            value: [
+              graphMessage('m1', 'Managed client:BM000345'),
+              { ...graphMessage('m2', ''), receivedDateTime: '2026-10-28T07:59:00Z' },
+            ],
+          });
+    const page = await source().listUnreadPage?.(50, null);
+    // m2 has no body: left out of the messages, and still one of the places in the list — and
+    // the page's oldest, where the next page starts.
     expect(page?.messages.map((m) => m.providerMessageId)).toEqual(['m1']);
     expect(page?.listed).toBe(2);
+    expect(page?.oldest).toBe('2026-10-28T07:59:00Z');
+  });
+
+  it('names no oldest on an empty page', async () => {
+    respond = (url) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : json({ value: [] });
+    const page = await source().listUnreadPage?.(50, null);
+    expect(page).toEqual({ messages: [], listed: 0, oldest: null });
   });
 });
 
@@ -99,7 +139,7 @@ describe('a refused token', () => {
         ? json({ error: 'invalid_client', error_description: 'AADSTS7000215' }, 401)
         : json({ value: [] });
     const failure = await source()
-      .listUnreadPage?.(1, 0)
+      .listUnreadPage?.(1, null)
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(

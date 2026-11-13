@@ -136,6 +136,14 @@ describe('atm module manifest (ATM Operations port)', () => {
     ]);
   });
 
+  it('polls the mailbox every minute, and leaves a failed minute to the next one', () => {
+    // 2026-11-13: retried inside its own minute, a failed reading met the next minute's in the
+    // mailbox, and five readers queued behind each other until every request timed out.
+    const poll = (atmModule.scheduledTasks ?? []).find((t) => t.key === 'atm.mailPoll');
+    expect(poll?.cron).toBe('* * * * *');
+    expect(poll?.retry).toBe(false);
+  });
+
   it('mounts the import BEFORE the register, whose prefix contains it', () => {
     const prefixes = atmModule.routes.map((r) => r.prefix);
     expect(prefixes.indexOf('/atm/register/import')).toBeLessThan(

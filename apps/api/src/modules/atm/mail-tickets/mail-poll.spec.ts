@@ -26,6 +26,7 @@ import {
   MAIL_POLL_ANSWERED_KEY,
   MAIL_POLL_BACKOFF_KEY,
   MAIL_POLL_LEASE_KEY,
+  MAIL_POLL_SWEEP_KEY,
   mailInstant,
   NEWEST_WINDOW_MS,
   pollAtmMailbox,
@@ -101,7 +102,12 @@ afterEach(async () => {
   resetAtmMailSource();
   registerAtmMailSourceFactory(null);
   resetAtmMailSweep();
-  await getCache().del(MAIL_POLL_LEASE_KEY, MAIL_POLL_BACKOFF_KEY, MAIL_POLL_ANSWERED_KEY);
+  await getCache().del(
+    MAIL_POLL_LEASE_KEY,
+    MAIL_POLL_BACKOFF_KEY,
+    MAIL_POLL_ANSWERED_KEY,
+    MAIL_POLL_SWEEP_KEY,
+  );
 });
 
 describe('pollAtmMailbox — an unconfigured mailbox', () => {
@@ -647,7 +653,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
       const olderBefores = (listings: AtmMailWindow[]): (string | null)[] =>
         listings.filter((w) => w.before !== null).map((w) => w.before);
 
-      it('goes back to where it stood even when a second gap comes while it walks the first', async () => {
+      it('walks a second gap that comes during the first, then goes on from where the first walk was, then back', async () => {
         vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
         recorded();
         const mailbox = datedMailbox([], () => false);
@@ -660,8 +666,30 @@ describe('pollAtmMailbox — the mailbox document', () => {
         for (let minute = 21; minute <= 26; minute += 1) {
           await at(8 * HOUR + minute * MINUTE, scheduled);
         }
-        // The second gap is walked from the top, then the first down to its floor — then back.
-        expect(olderBefores(mailbox.listings).slice(-1)).toEqual([stood]);
+        // The second gap is walked from the top; then the walk goes on from where the second gap
+        // found it (3:45, partway down the first), down past the first gap's floor — and back.
+        expect(olderBefores(mailbox.listings).slice(-6)).toEqual([
+          mailInstant(T0 + 8 * HOUR + 6 * MINUTE),
+          mailInstant(T0 + 3 * HOUR + 45 * MINUTE),
+          mailInstant(T0 + HOUR + 45 * MINUTE),
+          stood,
+          mailInstant(Date.parse(stood) - SWEEP_WINDOW_MS),
+          mailInstant(Date.parse(stood) - 2 * SWEEP_WINDOW_MS),
+        ]);
+      });
+
+      it('keeps its place through a restart of the worker — every deploy is one', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        const mailbox = datedMailbox([], () => false);
+        for (const minute of [0, 1, 2]) await at(minute * MINUTE, scheduled);
+        // The process goes; what it kept in memory with it. The cache stays.
+        resetAtmMailSweep();
+        await at(3 * MINUTE, scheduled);
+        // The fourth step, below the third — not the first again, just below the newest page.
+        expect(olderBefores(mailbox.listings).at(-1)).toBe(
+          mailInstant(T0 - NEWEST_WINDOW_MS - 3 * SWEEP_WINDOW_MS),
+        );
       });
 
       it('takes back the step and the failures it had where it stood, so a window it cannot answer is still passed over', async () => {

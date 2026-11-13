@@ -1011,7 +1011,11 @@ its entry here in the same PR.
     wherever it stood, could take up to six hours to come round to it. The first scheduled reading
     answered after such a gap now starts the sweep just below the newest page, so the mail of the
     gap is filed within the next readings, two hours of it a reading; then the sweep goes back to
-    where it stood. A «قراءة الآن» pressed first does not take this from the scheduled reading.
+    where it stood, and a gap that comes while another is walked is walked in turn without starting
+    the older one over. A «قراءة الآن» pressed first does not take this from the scheduled reading.
+  - **The sweep keeps its place through a deploy.** Where it stood lived in the worker's memory
+    only, so every deploy started it over and an older backlog (a branch switched on after days)
+    was reached only after hours without one. It is now kept in Redis as well.
   - **A window the mailbox cannot answer does not hold the sweep.** The sweep's older page used to
     ask for the same window every minute for good when the mailbox could not answer it. Now each
     failure halves the window (two hours, one, thirty minutes, fifteen), and on the fifth in a row

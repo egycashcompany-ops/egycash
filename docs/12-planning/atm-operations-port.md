@@ -555,8 +555,17 @@ each request was heavier than on the first days. Four changes:
   — or at the horizon, for a gap older than thirty days — the sweep goes back there, step and
   failures included, instead of walking again what it had swept; so recurring gaps neither keep
   the deep backlog out of reach nor restart the count that passes over a window the mailbox cannot
-  answer. A gap that comes while another is walked keeps the first's place and the lower floor
-  (third review). Only the
+  answer. A gap that comes while another is walked is walked from the top in turn, and the walk
+  then goes on from where that gap found it, not from the top of the older gap: the places to go
+  back to are a chain (`SweepResume.then`, at most `SWEEP_RESUME_DEPTH_MAX` = 8 kept, the oldest
+  let go past that), released one by one as the walk passes each floor (third and fourth reviews).
+- **The sweep keeps its place through a restart** (fourth review). Its state (`SweepState`) was
+  in the worker's memory only, so every deploy — four in an hour on 2026-11-13 — started it over
+  just below the newest page, and a backlog deeper than the time between two deploys was never
+  reached. It is now stored in Redis as well (`MAIL_POLL_SWEEP_KEY`, 31 days), read when a reading's
+  newest page is answered and written at every move; a cache that fails leaves the memory's. One
+  state company-wide: the worker and «قراءة الآن» walk the same sweep, one reading at a time under
+  the lease. A save still starts it over (the key carries the document's version). Only the
   scheduled reading takes part: «قراءة الآن» runs in the api with a sweep of its own, and taking
   the gap there would leave the worker's sweep where it stood (second review). A gap the newest
   page does cover leaves the sweep where it stood.

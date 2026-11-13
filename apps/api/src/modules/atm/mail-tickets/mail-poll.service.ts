@@ -456,26 +456,101 @@ const readOnce = async (
 };
 
 /**
+ * A place the sweep goes back to once a gap is walked: where it stood before the gap — with the
+ * step and the failures it had there, so a window the mailbox cannot answer is still passed over —
+ * the receipt time below which the gap is behind it, and the place it had itself left for an
+ * earlier gap (`then`): a gap that comes while another is walked sends the walk to the top again
+ * and back to where it was, not back to the start of the older gap.
+ */
+interface SweepResume {
+  before: string;
+  below: number;
+  step: number;
+  failures: number;
+  then: SweepResume | null;
+}
+
+/**
  * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
  * page lies below (null: just below the newest page), the size of its next step, how many older
- * pages in a row failed there, and — while it walks a gap first — where it stood before the gap and
- * how far down the gap goes. Per document VERSION, so a save — a branch switched on — starts it
- * over.
+ * pages in a row failed there, and — while it walks gaps first — where to go back to. Per document
+ * VERSION, so a save — a branch switched on — starts it over.
  */
 interface SweepState {
   key: string;
   before: string | null;
   step: number;
   failures: number;
-  /**
-   * While a gap is walked first: where the sweep stood before it — with the step and the failures
-   * it had there, so a window the mailbox cannot answer is still passed over — and the receipt
-   * time below which the gap is behind it.
-   */
-  resume: { before: string; below: number; step: number; failures: number } | null;
+  resume: SweepResume | null;
 }
 
+/**
+ * The sweep's state, kept in Redis as well as in memory (`MAIL_POLL_SWEEP_KEY`): a worker restart —
+ * every deploy — would otherwise start it over at the top, and a backlog deeper than the time
+ * between two deploys would never be reached. One state, company-wide like the lease: the worker
+ * and «قراءة الآن» (in the api) walk the same sweep, one reading at a time. A cache that fails
+ * leaves the memory's.
+ */
+export const MAIL_POLL_SWEEP_KEY = 'atm-mail-poll:sweep';
+
+const SWEEP_TTL_SECONDS = 31 * 24 * 60 * 60;
+
+/** How many places to go back to the sweep keeps; past that, the oldest is let go and walked to. */
+export const SWEEP_RESUME_DEPTH_MAX = 8;
+
 let sweep: SweepState | null = null;
+
+const isInstant = (value: unknown): value is string =>
+  typeof value === 'string' && !Number.isNaN(Date.parse(value));
+
+const resumeOf = (raw: unknown, depth: number): SweepResume | null => {
+  if (raw === null || typeof raw !== 'object' || depth >= SWEEP_RESUME_DEPTH_MAX) return null;
+  const r = raw as Partial<Record<keyof SweepResume, unknown>>;
+  if (!isInstant(r.before)) return null;
+  if (typeof r.below !== 'number' || typeof r.step !== 'number') return null;
+  if (typeof r.failures !== 'number') return null;
+  return {
+    before: r.before,
+    below: r.below,
+    step: r.step,
+    failures: r.failures,
+    then: resumeOf(r.then ?? null, depth + 1),
+  };
+};
+
+/** The places to go back to, the oldest past `SWEEP_RESUME_DEPTH_MAX` let go. */
+const capped = (resume: SweepResume | null): SweepResume | null => resumeOf(resume, 0);
+
+/** The stored state, read at the start of a reading; anything unreadable leaves the memory's. */
+const loadSweep = async (): Promise<void> => {
+  try {
+    const raw = await getCache().get(MAIL_POLL_SWEEP_KEY);
+    if (raw === null) return;
+    const parsed = JSON.parse(raw) as Partial<Record<keyof SweepState, unknown>>;
+    if (typeof parsed.key !== 'string') return;
+    if (parsed.before !== null && !isInstant(parsed.before)) return;
+    if (typeof parsed.step !== 'number' || typeof parsed.failures !== 'number') return;
+    sweep = {
+      key: parsed.key,
+      before: parsed.before,
+      step: parsed.step,
+      failures: parsed.failures,
+      resume: resumeOf(parsed.resume ?? null, 0),
+    };
+  } catch {
+    // Unreadable or unreachable: the memory's state stands.
+  }
+};
+
+/** Where the sweep now stands — in memory at once, in Redis best effort. */
+const storeSweep = async (next: SweepState): Promise<void> => {
+  sweep = next;
+  try {
+    await getCache().set(MAIL_POLL_SWEEP_KEY, JSON.stringify(next), SWEEP_TTL_SECONDS);
+  } catch (error) {
+    logger.warn({ err: error }, 'atm mail poll: the sweep position was not stored');
+  }
+};
 
 /**
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
@@ -509,24 +584,35 @@ const readNewestFirst = async (
   const newestSince = mailInstant(now - NEWEST_WINDOW_MS);
   const newest = await listPage(POLL_BATCH, { since: newestSince, before: null });
   startTheClock(tally);
+  // Where the sweep stands, as the last reading — here or in the other process — left it.
+  await loadSweep();
   // The first scheduled reading answered after a gap longer than the newest window: the mail of the
   // gap lies just below the newest page, so the sweep walks it first instead of reaching it after a
   // full cycle (six hours) — and once below it, goes back to where it stood, so recurring gaps do
   // not keep the deep backlog out of reach. Set before anything else, so a run cut short keeps it.
   if (gapFloor !== null) {
     const prior = sweep?.key === sweepKey ? sweep : null;
-    const resume =
-      prior?.resume ??
-      (prior === null || prior.before === null
-        ? null
-        : { before: prior.before, below: gapFloor, step: prior.step, failures: prior.failures });
-    sweep = {
+    let resume: SweepResume | null = null;
+    if (prior !== null && prior.before !== null) {
+      // Where it stood — in the backlog, or partway down an earlier gap — is where it goes back to.
+      resume = {
+        before: prior.before,
+        below: gapFloor,
+        step: prior.step,
+        failures: prior.failures,
+        then: prior.resume,
+      };
+    } else if (prior?.resume) {
+      // Already at the top of a walk: the walk now goes down to the lower of the two floors.
+      resume = { ...prior.resume, below: Math.min(prior.resume.below, gapFloor) };
+    }
+    await storeSweep({
       key: sweepKey,
       before: null,
       step: SWEEP_WINDOW_MS,
       failures: 0,
-      resume: resume === null ? null : { ...resume, below: Math.min(resume.below, gapFloor) },
-    };
+      resume: capped(resume),
+    });
   }
   let categoryOf: CategoryOf | null = null;
   const take = async (message: AtmMailMessage): Promise<void> => {
@@ -553,7 +639,13 @@ const readNewestFirst = async (
     stands?.before ??
     (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
   if (Date.parse(before) <= floor) {
-    sweep = { key: sweepKey, before: null, step: SWEEP_WINDOW_MS, failures: 0, resume: null };
+    await storeSweep({
+      key: sweepKey,
+      before: null,
+      step: SWEEP_WINDOW_MS,
+      failures: 0,
+      resume: null,
+    });
     return;
   }
   const since = mailInstant(Math.max(floor, Date.parse(before) - step));
@@ -570,28 +662,28 @@ const readNewestFirst = async (
         { since, before, failures: failures + 1 },
         'atm mail poll: the sweep passed over a window the mailbox could not answer',
       );
-      sweep = {
+      await storeSweep({
         key: sweepKey,
         before: Date.parse(since) <= floor ? null : since,
         step: SWEEP_WINDOW_MS,
         failures: 0,
         // Passed over down to the horizon: the sweep starts over, and a gap it was walking is behind it.
         resume: Date.parse(since) <= floor ? null : resume,
-      };
+      });
     } else {
-      sweep = {
+      await storeSweep({
         key: sweepKey,
         before,
         step: Math.max(SWEEP_MIN_WINDOW_MS, step / 2),
         failures: failures + 1,
         resume,
-      };
+      });
     }
     throw error;
   }
   // Answered: whatever this run gets through, the window is not failing — a run cut short below
   // keeps its place without carrying a streak of failures into the next.
-  sweep = { key: sweepKey, before, step, failures: 0, resume };
+  await storeSweep({ key: sweepKey, before, step, failures: 0, resume });
   for (const message of older.messages) {
     // A page cut short keeps the sweep where it was: the page is listed again next run, and what
     // this run already took on is either gone from the unread list or judged again, harmlessly.
@@ -607,24 +699,25 @@ const readNewestFirst = async (
   let nextStep = Math.min(SWEEP_WINDOW_MS, step * 2);
   let nextFailures = 0;
   let goingOn = resume;
-  // The gap is walked — or the walk reached the horizon, below which a gap older than thirty days
+  // A gap is walked — or the walk reached the horizon, below which a gap older than thirty days
   // cannot be walked: back to where the sweep stood before it, with the step and the failures it
-  // had there, unless that is above here.
-  if (goingOn !== null && Date.parse(next) <= Math.max(goingOn.below, floor)) {
+  // had there, unless that is above here; then the same for the gap before it, if this is below
+  // that one too.
+  while (goingOn !== null && Date.parse(next) <= Math.max(goingOn.below, floor)) {
     if (Date.parse(goingOn.before) < Date.parse(next)) {
       next = goingOn.before;
       nextStep = goingOn.step;
       nextFailures = goingOn.failures;
     }
-    goingOn = null;
+    goingOn = goingOn.then;
   }
-  sweep = {
+  await storeSweep({
     key: sweepKey,
     before: Date.parse(next) <= floor ? null : next,
     step: nextStep,
     failures: nextFailures,
     resume: goingOn,
-  };
+  });
 };
 
 /** Best effort: the run is the reader's work, its record a convenience for the screen. */
@@ -719,7 +812,10 @@ const readAndRecord = async (
   return { run, answered: tally.answered };
 };
 
-/** Test seam — the sweep position is process-wide. */
+/**
+ * Test seam — forgets the sweep's position in memory, as a restart does. Its stored copy
+ * (`MAIL_POLL_SWEEP_KEY`) is the cache's, and a test that starts the sweep over deletes it too.
+ */
 export const resetAtmMailSweep = (): void => {
   sweep = null;
 };

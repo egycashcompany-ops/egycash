@@ -1008,19 +1008,21 @@ its entry here in the same PR.
     at a time, still back to thirty days. «اختبار الاتصال» lists the last 15 minutes.
   - **An outage's mail is filed first.** Waits add up: after four unanswered readings in a row the
     gap since the last answered one is longer than the newest page reaches back, and the sweep,
-    wherever it stood, could take up to six hours to come round to it. The first reading answered
-    after such a gap now starts the sweep just below the newest page, so the mail of the gap is
-    filed within the next readings, two hours of it a reading.
+    wherever it stood, could take up to six hours to come round to it. The first scheduled reading
+    answered after such a gap now starts the sweep just below the newest page, so the mail of the
+    gap is filed within the next readings, two hours of it a reading; then the sweep goes back to
+    where it stood. A «قراءة الآن» pressed first does not take this from the scheduled reading.
   - **A window the mailbox cannot answer does not hold the sweep.** The sweep's older page used to
     ask for the same window every minute for good when the mailbox could not answer it. Now each
-    failure halves the window (two hours, one, thirty minutes, fifteen), and after five in a row the
-    sweep passes over it; its mail stays unread and the next round asks again. The newest page is
-    still read every minute meanwhile.
+    failure halves the window (two hours, one, thirty minutes, fifteen), and on the fifth in a row
+    the sweep passes over it; its mail stays unread and the next round asks again. A window the
+    mailbox answers ends the streak. The newest page is still read every minute meanwhile.
   - **The error says what Microsoft said.** «This operation was aborted» becomes «microsoft graph
     did not answer within 45 s on …», a refusal carries Graph's own error code
-    («microsoft graph 502 on … (UnknownError)»), and a connection that fails before Graph answers
-    says so with its own code («microsoft graph request failed on … (ECONNRESET)») instead of
-    «fetch failed». The worker's log also keeps Graph's text and the
+    («microsoft graph 502 on … (UnknownError)»), a request the server's outbound rules refused
+    keeps their reason («microsoft graph request refused on …: host … does not resolve»), and a
+    connection that fails before Graph answers says so with its own code («microsoft graph request
+    failed on … (ECONNRESET)») instead of «fetch failed». The worker's log also keeps Graph's text and the
     request's ids (`request-id`, and the `client-request-id` the reader now sends), the ones
     Microsoft support asks for.
 - **«تعيين السيارات» on a computer: every filter is on the bar's one row again.** «فى مشكلة باقى

@@ -630,6 +630,94 @@ describe('pollAtmMailbox — the mailbox document', () => {
         since: mailInstant(T0 + MINUTE - SWEEP_WINDOW_MS),
         before: mailInstant(T0 + MINUTE),
       });
+
+      // Below the gap, the sweep goes back to where it stood before it — five steps of two hours
+      // below the first newest page — rather than walk again what it already swept.
+      await at(17 * MINUTE, scheduled);
+      const resumed = mailbox.listings[mailbox.listings.length - 1];
+      expect(resumed?.before).toBe(
+        mailInstant(T0 - 4 * MINUTE - NEWEST_WINDOW_MS - 5 * SWEEP_WINDOW_MS),
+      );
+    });
+
+    it('leaves the gap to the worker when «قراءة الآن» is the first reading answered after it', async () => {
+      // «قراءة الآن» runs in the api, with a sweep of its own: it must not use up the gap the
+      // worker's sweep is to walk.
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      recorded();
+      fileEverything();
+      let down = false;
+      // At 0:20 — below the press's newest page (from 0:30), as it is below the worker's (from 1:00).
+      const mailbox = datedMailbox([{ id: 'on-gap', at: T0 + 20_000 }], () => down);
+      const scheduled = { scheduled: true };
+
+      for (const minute of [-4, -3, -2, -1, 0]) await at(minute * MINUTE, scheduled);
+      down = true;
+      for (const minute of [1, 2, 4, 8]) await at(minute * MINUTE, scheduled);
+      down = false;
+
+      // The press, the moment the mailbox is back: the newest fifteen minutes, nothing of the gap.
+      expect(await at(15 * MINUTE + 30_000)).toMatchObject({ error: null, created: 0 });
+      expect(mailbox.handled).toEqual([]);
+      // The worker's next reading still finds the gap, and walks it first.
+      expect(await at(16 * MINUTE, scheduled)).toMatchObject({ error: null, created: 1 });
+      expect(mailbox.handled).toEqual([{ id: 'on-gap', at: T0 + 16 * MINUTE }]);
+    });
+
+    it('grows a halved step back once the mailbox answers it', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      recorded();
+      let olderFails = true;
+      const mailbox = datedMailbox([], (w) => w.before !== null && olderFails);
+
+      await at(0, { scheduled: true });
+      olderFails = false;
+      await at(MINUTE, { scheduled: true });
+      await at(2 * MINUTE, { scheduled: true });
+
+      const sizes = mailbox.listings
+        .filter((w) => w.before !== null)
+        .map((w) => Date.parse(w.before as string) - Date.parse(w.since));
+      expect(sizes).toEqual([SWEEP_WINDOW_MS, SWEEP_WINDOW_MS / 2, SWEEP_WINDOW_MS]);
+    });
+
+    it('does not count a window the mailbox answered toward passing it over, though the run was cut short', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      recorded();
+      // The first older page lies below T0 − 15 min; two unread mails sit just under its top.
+      let olderFails = true;
+      const mailbox = datedMailbox(
+        [
+          { id: 'off-1', at: T0 - 20 * MINUTE },
+          { id: 'off-2', at: T0 - 21 * MINUTE },
+        ],
+        (w) => w.before !== null && olderFails,
+      );
+      // Taking on the first mail spends the run's time: the rest waits for the next run.
+      vi.spyOn(atmMailIngestionService, 'ingest').mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + RUN_BUDGET_MS + 1);
+        return {
+          outcome: 'unmatched',
+          ticketId: null,
+          branchId: null,
+          reason: 'branch not enabled for mail',
+        };
+      });
+
+      // Four failures: two hours, one, thirty minutes, fifteen.
+      for (const minute of [0, 1, 2, 3]) await at(minute * MINUTE, { scheduled: true });
+      // Answered — and cut short after one mail.
+      olderFails = false;
+      await at(4 * MINUTE, { scheduled: true });
+      // One more failure is the first of a new streak, not the fifth of the old one.
+      olderFails = true;
+      await at(5 * MINUTE, { scheduled: true });
+      olderFails = false;
+      await at(6 * MINUTE, { scheduled: true });
+
+      const older = mailbox.listings.filter((w) => w.before !== null);
+      // Minutes 3 to 6 all asked for the same fifteen minutes: nothing was passed over.
+      expect(new Set(older.slice(3).map((w) => `${w.since}..${String(w.before)}`)).size).toBe(1);
     });
 
     it('keeps its place through gaps the newest page does reach back over', async () => {

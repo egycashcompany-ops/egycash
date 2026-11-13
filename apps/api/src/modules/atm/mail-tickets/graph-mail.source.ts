@@ -14,7 +14,7 @@
 // stored encrypted) the same transport also reads the mailbox the screen's document names — built
 // per document by `createGraphMailboxSource`, with the secret opened from its sealed ref on demand.
 import { randomUUID } from 'node:crypto';
-import { outboundFetch } from '../../../infrastructure/http/outbound';
+import { OutboundBlockedError, outboundFetch } from '../../../infrastructure/http/outbound';
 import { logger } from '../../../infrastructure/logging/logger';
 import { env } from '../../../infrastructure/config/env';
 import { getSecretStore } from '../../../platform/secrets';
@@ -88,8 +88,10 @@ export class GraphRequestError extends Error {
     /** The id this transport sent (`client-request-id`), so even a request never answered has one. */
     readonly clientRequestId: string,
     readonly elapsedMs: number,
+    /** What failed underneath — a connection's error, its stack and its cause — for the log. */
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = 'GraphRequestError';
     this.status = detail.status;
     this.graphCode = detail.graphCode;
@@ -110,8 +112,9 @@ const NO_ANSWER: GraphFailureDetail = {
 
 /**
  * The reason a request failed before Graph answered: the system code of the error or of its
- * `cause` (`ECONNRESET`, `UND_ERR_SOCKET`, `ENOTFOUND`), else none; and the text, cut short, for the
- * log.
+ * `cause` (`ECONNRESET`, `UND_ERR_SOCKET`, `ECONNREFUSED`), else none; and the text, cut short, for
+ * the log. A host that does not resolve never gets here under the default policy: the outbound
+ * door resolves it first and refuses (`OutboundBlockedError`, below).
  */
 const connectionFailureOf = (error: unknown): { code: string | null; text: string | null } => {
   const layers = [error, error instanceof Error ? error.cause : undefined];
@@ -262,8 +265,12 @@ class GraphMailSource implements AtmMailSource {
     if (authorize) headers.authorization = `Bearer ${await this.accessToken()}`;
     const path = new URL(url).pathname;
     const started = Date.now();
-    const failed = (message: string, detail: GraphFailureDetail): GraphRequestError =>
-      new GraphRequestError(message, detail, clientRequestId, Date.now() - started);
+    const failed = (
+      message: string,
+      detail: GraphFailureDetail,
+      cause?: unknown,
+    ): GraphRequestError =>
+      new GraphRequestError(message, detail, clientRequestId, Date.now() - started, cause);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     try {
@@ -281,17 +288,31 @@ class GraphMailSource implements AtmMailSource {
       if (error instanceof GraphRequestError) throw error;
       if (controller.signal.aborted) {
         const seconds = String(Math.round(this.config.timeoutMs / 1000));
-        throw failed(`microsoft graph did not answer within ${seconds} s on ${path}`, NO_ANSWER);
+        throw failed(
+          `microsoft graph did not answer within ${seconds} s on ${path}`,
+          NO_ANSWER,
+          error,
+        );
+      }
+      // Refused by the outbound door before a socket opened — the host does not resolve, is not on
+      // the allowlist, or resolves to a private address. Its reason names only the host and the
+      // address, and is what tells them apart, so the screen keeps it.
+      if (error instanceof OutboundBlockedError) {
+        throw failed(
+          `microsoft graph request refused on ${path}: ${error.reason}`,
+          { ...NO_ANSWER, graphMessage: error.reason.slice(0, ERROR_TEXT_MAX) },
+          error,
+        );
       }
       // The connection itself failed (reset, TLS, DNS, a refused host) or the answer could not be
       // read: undici says only «fetch failed», the reason is on its `cause`.
       const reason = connectionFailureOf(error);
       const named = reason.code === null ? '' : ` (${reason.code})`;
-      throw failed(`microsoft graph request failed on ${path}${named}`, {
-        ...NO_ANSWER,
-        graphCode: reason.code,
-        graphMessage: reason.text,
-      });
+      throw failed(
+        `microsoft graph request failed on ${path}${named}`,
+        { ...NO_ANSWER, graphCode: reason.code, graphMessage: reason.text },
+        error,
+      );
     } finally {
       clearTimeout(timer);
     }

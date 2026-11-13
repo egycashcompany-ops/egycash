@@ -22,9 +22,9 @@ export interface ScheduledTaskDeclaration {
   handler: () => Promise<void>;
   /**
    * Whether a failed run is retried by the job queue (its attempts and backoff). True unless said
-   * otherwise. False for a task whose next run IS the retry — a per-minute poll: retried inside its
-   * own minute, the retries meet the next minute's run and pile onto whatever it calls
-   * (2026-11-13, the ATM mailbox). A failure is still recorded and logged; it is not rethrown.
+   * otherwise. False for a task whose next run IS the retry — a per-minute poll: its retries (four,
+   * 2 to 16 seconds apart) run on into the next minutes, meet those minutes' runs, and pile onto
+   * whatever they call (2026-11-13, the ATM mailbox). A failure is still recorded and logged; it is not rethrown.
    */
   retry?: boolean;
 }

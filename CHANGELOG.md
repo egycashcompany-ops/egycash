@@ -965,16 +965,21 @@ its entry here in the same PR.
   and «اختبار الاتصال» on /atm/settings answered «تعذّر الاتصال: This operation was aborted». From
   2026-11-13 02:00 (Cairo 04:00) almost every reading timed out after 20 seconds. The mailbox
   answers at most four requests at once for one application and queues the rest. A reading that
-  timed out was retried by the job queue four more times inside its own minute, while the next
-  minute's reading had already started. Up to five readers then met in the mailbox, each request
-  waited behind the others and timed out, and every timeout started more retries.
+  timed out was retried by the job queue four more times, 2 to 16 seconds apart, so its retries
+  ran on for about two minutes while the next minutes' readings started. Up to five readers then
+  met in the mailbox, each request waited behind the others and timed out, and every timeout
+  started more retries.
   - **One reading at a time.** A reading holds a lease across the server and the worker; the
     minute's reading and «قراءة الآن» alike. One that finds it taken steps aside, and «قراءة الآن»
     then says a reading is running and that its result appears under «آخر قراءة».
   - **The next minute is the retry.** A failed reading is recorded and logged, and no longer retried
     inside its minute (`retry: false` on the scheduled task).
-  - **A short reading.** A reading files mail for at most 40 seconds and leaves the rest to the
-    next minute, so it is over before the next one is due.
+  - **A short reading.** A reading takes on new mail for at most 40 seconds and leaves the rest to
+    the next minute. A request it already started may run to its timeout, so a slow reading can
+    outlast the minute; the next minute then finds it running and steps aside.
+  - **«آخر قراءة» keeps up.** The mailbox card reads its document again every 20 seconds while it
+    is open, so the line shows the worker's latest reading, including the one «قراءة الآن» was
+    told is running.
   - **The backlog is found by date.** The mail left unread on purpose (branches not switched on
     yet) has grown every day. The sweep through it asked the mailbox to count its way down that
     pile, page after page. It now asks for the mail received before the last page's oldest, which

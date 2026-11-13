@@ -30,10 +30,11 @@
 // ONE READING AT A TIME, AND A SHORT ONE (2026-11-13: «الـ Automation بتاع الميل واقف بقاله شوية
 // كتير» — the screen's test said «This operation was aborted»). The mailbox answers four requests
 // at once per application; past that it queues them. A run that timed out was retried by the job
-// queue four times while the next minute's run started, so five readers met in the mailbox, every
+// queue four more times, 2 to 16 seconds apart between 20-second timeouts — some two minutes of
+// retries — while the next minutes' runs started, so up to five readers met in the mailbox, every
 // request waited behind the others, timed out, and was retried again. So: a run holds a lease
 // (`MAIL_POLL_LEASE_KEY`) — the scheduled one and «قراءة الآن» alike, across the api and the worker
-// — and a run that finds it taken steps aside; it takes on mail for a bounded time
+// — and a run that finds it taken steps aside; it stops taking on new mail after a bounded time
 // (`RUN_BUDGET_MS`) and leaves the rest to the next minute; and its failure is not retried
 // (`retry: false` on the task): the next minute IS the retry.
 //
@@ -60,8 +61,11 @@ const ORG_SUBJECT = { userId: null, branchId: null };
 const POLL_BATCH = 50;
 
 /**
- * How long one run takes on mail before it leaves the rest to the next minute. Under a minute, so
- * one run is over before the next is due, whatever the mailbox's pace that day.
+ * How long one run may START new work — the next message, the older page — before it leaves the
+ * rest to the next minute. It does not bound how long a run lasts: a request it let start runs to
+ * the transport's timeout, a token fetched first to its own, so a slow mailbox can carry a run to
+ * about 80 seconds, past the next minute's tick. The lease (`LEASE_TTL_SECONDS`), not this budget,
+ * keeps two runs apart: the minute that finds it taken steps aside.
  */
 export const RUN_BUDGET_MS = 40_000;
 
@@ -264,9 +268,11 @@ let sweep: { key: string; before: string | null } | null = null;
  * over at its end — so a backlog deeper than a page (a branch switched on after weeks, a machine
  * added to the master later) is still filed, and no run lists more than two pages. The sweep finds
  * its page by DATE — the mail received before the last page's oldest — never by counting down the
- * pile (`$skip`), which grew too slow for the mailbox once the pile did (2026-11-13). Two mails
- * received in the same second across a page's edge can be passed over by one sweep; the newest
- * page and the next sweep still see them.
+ * pile (`$skip`), which grew too slow for the mailbox once the pile did (2026-11-13). A page's
+ * edge is a receipt time to the second, so the rest of a same-second group cut by an edge is passed
+ * over by that sweep; a later sweep reaches it once the unread list moves the edges (new mail, a
+ * mail filed or read), and in an unchanged pile it waits. Past fifty unread mails in one second —
+ * which the mailbox has never received — the rest are never swept: an accepted limit.
  */
 const readNewestFirst = async (
   source: AtmMailSource,

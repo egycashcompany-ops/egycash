@@ -640,6 +640,81 @@ describe('pollAtmMailbox — the mailbox document', () => {
       );
     });
 
+    describe('after the gap', () => {
+      const HOUR = 60 * MINUTE;
+      const scheduled = { scheduled: true };
+      /** The bounds each older page was asked below, in order. */
+      const olderBefores = (listings: AtmMailWindow[]): (string | null)[] =>
+        listings.filter((w) => w.before !== null).map((w) => w.before);
+
+      it('goes back to where it stood even when a second gap comes while it walks the first', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        const mailbox = datedMailbox([], () => false);
+        // Five answered minutes: the sweep stands five steps below the first newest page.
+        for (const minute of [-4, -3, -2, -1, 0]) await at(minute * MINUTE, scheduled);
+        const stood = mailInstant(T0 - 4 * MINUTE - NEWEST_WINDOW_MS - 5 * SWEEP_WINDOW_MS);
+        // Eight hours unread, two steps into walking them, then twenty minutes more.
+        await at(8 * HOUR, scheduled);
+        await at(8 * HOUR + MINUTE, scheduled);
+        for (let minute = 21; minute <= 26; minute += 1) {
+          await at(8 * HOUR + minute * MINUTE, scheduled);
+        }
+        // The second gap is walked from the top, then the first down to its floor — then back.
+        expect(olderBefores(mailbox.listings).slice(-1)).toEqual([stood]);
+      });
+
+      it('takes back the step and the failures it had where it stood, so a window it cannot answer is still passed over', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        // Just below the sweep's third step lies an instant the mailbox cannot answer for.
+        const poison = T0 - NEWEST_WINDOW_MS - 2 * SWEEP_WINDOW_MS - 5 * MINUTE;
+        const mailbox = datedMailbox(
+          [],
+          (w) =>
+            w.before !== null && Date.parse(w.since) <= poison && poison < Date.parse(w.before),
+        );
+        // Two steps down, then four failures there: two hours, one, thirty minutes, fifteen.
+        for (let minute = 0; minute < 6; minute += 1) await at(minute * MINUTE, scheduled);
+        // Twenty minutes unread: the gap is walked, and the sweep goes back to the failing window.
+        await at(25 * MINUTE, scheduled);
+        await at(26 * MINUTE, scheduled);
+        await at(27 * MINUTE, scheduled);
+
+        const older = mailbox.listings.filter((w) => w.before !== null);
+        const [back, past] = older.slice(-2);
+        // Back at fifteen minutes and the fifth failure in a row — not at two hours and the first…
+        expect(Date.parse(back?.before as string) - Date.parse(back?.since as string)).toBe(
+          SWEEP_MIN_WINDOW_MS,
+        );
+        // …so the next step lies below the window it passed over.
+        expect(Date.parse(past?.before as string)).toBeLessThanOrEqual(poison);
+      });
+
+      it('lets go of a gap older than the horizon once it reaches the horizon, and goes back after the next gap', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        const mailbox = datedMailbox([], () => false);
+        for (const minute of [-4, -3, -2, -1, 0]) await at(minute * MINUTE, scheduled);
+        // Thirty and a half days unread: deeper than the sweep ever walks.
+        const lapse = 30 * 24 * HOUR + 12 * HOUR;
+        const steps = Math.ceil(SWEEP_HORIZON_MS / SWEEP_WINDOW_MS) + 2;
+        for (let minute = 0; minute <= steps + 5; minute += 1) {
+          await at(lapse + minute * MINUTE, scheduled);
+        }
+        // Where it stands now, after a full walk and five more steps…
+        const stood = olderBefores(mailbox.listings).at(-1) as string;
+        const stoodSince = mailbox.listings.filter((w) => w.before !== null).at(-1)
+          ?.since as string;
+        // …then a twenty-minute gap: walked, and back to where it stood.
+        const after = lapse + (steps + 25) * MINUTE;
+        await at(after, scheduled);
+        await at(after + MINUTE, scheduled);
+        expect(stood).not.toBe(stoodSince);
+        expect(olderBefores(mailbox.listings).at(-1)).toBe(stoodSince);
+      });
+    });
+
     it('leaves the gap to the worker when «قراءة الآن» is the first reading answered after it', async () => {
       // «قراءة الآن» runs in the api, with a sweep of its own: it must not use up the gap the
       // worker's sweep is to walk.

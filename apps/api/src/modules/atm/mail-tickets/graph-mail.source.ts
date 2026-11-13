@@ -61,7 +61,10 @@ interface GraphFailureDetail {
   status: number | null;
   /** Graph's error code, when it gave one in the shape above. */
   graphCode: string | null;
-  /** Graph's error text, cut short — for the log, never the screen. */
+  /**
+   * Graph's error text, cut short — for the log, never the screen. For an outbound refusal: the
+   * door's reason, which the screen shows as well.
+   */
   graphMessage: string | null;
   /** The id Graph gave the request (`request-id`), the one Microsoft support asks for. */
   requestId: string | null;

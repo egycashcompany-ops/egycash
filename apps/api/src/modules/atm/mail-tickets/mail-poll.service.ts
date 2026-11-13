@@ -467,7 +467,12 @@ interface SweepState {
   before: string | null;
   step: number;
   failures: number;
-  resume: { before: string; below: number } | null;
+  /**
+   * While a gap is walked first: where the sweep stood before it — with the step and the failures
+   * it had there, so a window the mailbox cannot answer is still passed over — and the receipt
+   * time below which the gap is behind it.
+   */
+  resume: { before: string; below: number; step: number; failures: number } | null;
 }
 
 let sweep: SweepState | null = null;
@@ -512,7 +517,9 @@ const readNewestFirst = async (
     const prior = sweep?.key === sweepKey ? sweep : null;
     const resume =
       prior?.resume ??
-      (prior === null || prior.before === null ? null : { before: prior.before, below: gapFloor });
+      (prior === null || prior.before === null
+        ? null
+        : { before: prior.before, below: gapFloor, step: prior.step, failures: prior.failures });
     sweep = {
       key: sweepKey,
       before: null,
@@ -568,7 +575,8 @@ const readNewestFirst = async (
         before: Date.parse(since) <= floor ? null : since,
         step: SWEEP_WINDOW_MS,
         failures: 0,
-        resume,
+        // Passed over down to the horizon: the sweep starts over, and a gap it was walking is behind it.
+        resume: Date.parse(since) <= floor ? null : resume,
       };
     } else {
       sweep = {
@@ -596,17 +604,25 @@ const readNewestFirst = async (
   // A full page: the next one lies below its oldest. A short one: these days are done, the next
   // step is the two hours below them — and past the horizon, the sweep starts over.
   let next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
+  let nextStep = Math.min(SWEEP_WINDOW_MS, step * 2);
+  let nextFailures = 0;
   let goingOn = resume;
-  if (goingOn !== null && Date.parse(next) <= goingOn.below) {
-    // The gap is walked: back to where the sweep stood before it, unless that is above here.
-    if (Date.parse(goingOn.before) < Date.parse(next)) next = goingOn.before;
+  // The gap is walked — or the walk reached the horizon, below which a gap older than thirty days
+  // cannot be walked: back to where the sweep stood before it, with the step and the failures it
+  // had there, unless that is above here.
+  if (goingOn !== null && Date.parse(next) <= Math.max(goingOn.below, floor)) {
+    if (Date.parse(goingOn.before) < Date.parse(next)) {
+      next = goingOn.before;
+      nextStep = goingOn.step;
+      nextFailures = goingOn.failures;
+    }
     goingOn = null;
   }
   sweep = {
     key: sweepKey,
     before: Date.parse(next) <= floor ? null : next,
-    step: Math.min(SWEEP_WINDOW_MS, step * 2),
-    failures: 0,
+    step: nextStep,
+    failures: nextFailures,
     resume: goingOn,
   };
 };

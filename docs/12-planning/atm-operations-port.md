@@ -550,9 +550,13 @@ each request was heavier than on the first days. Four changes:
   `MAIL_POLL_ANSWERED_KEY` (Redis, 31 days); a scheduled reading that starts more than
   `NEWEST_WINDOW_MS − 2 min` after it (`gapFloorOf`) sends the sweep, as soon as its newest page is
   answered, to just below that page — so the gap is walked first, two hours a reading — and
-  remembers where it stood (`SweepState.resume`): once a step ends below the gap's floor (the last
-  answered reading's start − `NEWEST_WINDOW_MS`), the sweep goes back there instead of walking again
-  what it had swept, so recurring gaps do not keep the deep backlog out of reach. Only the
+  remembers where it stood (`SweepState.resume`, with the step and the failures it had there):
+  once a step ends below the gap's floor (the last answered reading's start − `NEWEST_WINDOW_MS`)
+  — or at the horizon, for a gap older than thirty days — the sweep goes back there, step and
+  failures included, instead of walking again what it had swept; so recurring gaps neither keep
+  the deep backlog out of reach nor restart the count that passes over a window the mailbox cannot
+  answer. A gap that comes while another is walked keeps the first's place and the lower floor
+  (third review). Only the
   scheduled reading takes part: «قراءة الآن» runs in the api with a sweep of its own, and taking
   the gap there would leave the worker's sweep where it stood (second review). A gap the newest
   page does cover leaves the sweep where it stood.
@@ -565,17 +569,19 @@ each request was heavier than on the first days. Four changes:
   that last, smallest window (logged; its mail stays unread, the next cycle asks again). A window
   the mailbox answers ends the streak at once, even when the run is then cut short by its budget.
   The run still fails with the error, so «آخر قراءة» shows it.
-- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure
-  is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})»,
-  «microsoft graph did not answer within {n} s on {path}» in place of «This operation was
-  aborted», «microsoft graph request refused on {path}: {reason}» when the outbound door refused
-  it before a socket opened (under the default policy that is also how a host that does not
-  resolve arrives; the reason names only the host and the address), or — a connection that failed
-  before Graph answered, which undici reports only as «fetch failed» — «microsoft graph request
-  failed on {path} ({the system code, e.g. ECONNRESET})». The underlying error is the
-  `GraphRequestError`'s `cause`, so the log keeps its stack and cause chain. Only a code shaped like a name reaches the message the screen shows. Graph's text (cut
-  to 300 characters), `request-id`, `client-request-id`, `Retry-After` and the elapsed time are
-  fields of the error, and so of the worker's log line.
+- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure is
+  a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», «microsoft
+  graph did not answer within {n} s on {path}» in place of «This operation was aborted», «microsoft
+  graph request refused on {path}: {reason}» when the outbound door refused it before a socket
+  opened (under the default policy that is also how a host that does not resolve arrives; the reason
+  names only the host and the address), or — a connection that failed before Graph answered, which
+  undici reports only as «fetch failed» — «microsoft graph request failed on {path} ({the system
+  code, e.g. ECONNRESET})». The underlying error is the `GraphRequestError`'s `cause`, so the log
+  keeps its stack and cause chain. Of Graph's answer only a code shaped like a name reaches the
+  message the screen shows; an outbound refusal also shows the door's reason (the host, the
+  resolver's error, or the private address it resolved to). Graph's text (cut to 300 characters),
+  `request-id`, `client-request-id`, `Retry-After` and the elapsed time are fields of the error, and
+  so of the worker's log line.
 
 ### 6b. Branches that work together — ATM only (2026-10-28)
 

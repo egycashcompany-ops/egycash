@@ -83,17 +83,22 @@ const POLL_BATCH = 50;
  */
 export const RUN_BUDGET_MS = 40_000;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 /**
- * The newest page is the unread mail of the last two days — a new mail is always in it, and the
- * mailbox looks at two days, not at everything it ever received (2026-11-13: asked for every date,
- * it answered nothing for twenty seconds). Older unread mail is the sweep's.
+ * The newest page is the unread mail of the last fifteen minutes — a new mail is in it on the next
+ * minute's reading, and after the longest a failing mailbox is made to wait (`BACKOFF_MAX_MS`).
+ * What the mailbox is asked to look at is what it costs: asked for every date, then for two days,
+ * it gave up after some twenty seconds every time (2026-11-13, Graph's «502 UnknownError»), the
+ * shared mailbox holding mostly mail left unread on purpose. The old reader asked for the minute
+ * since its last look, and was answered for years. Older unread mail is the sweep's.
  */
-export const NEWEST_WINDOW_MS = 2 * DAY_MS;
+export const NEWEST_WINDOW_MS = 15 * MINUTE_MS;
 
-/** One step of the sweep: three days of receipt times below where it stands. */
-export const SWEEP_WINDOW_MS = 3 * DAY_MS;
+/** One step of the sweep: two hours of receipt times below where it stands — a small question too. */
+export const SWEEP_WINDOW_MS = 2 * HOUR_MS;
 
 /**
  * How far back the sweep walks before it starts over: thirty days. Mail left unread longer than
@@ -396,16 +401,16 @@ let sweep: { key: string; before: string | null } | null = null;
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
  * on purpose — a branch not switched on yet, a machine not in the master — stays in it. Read oldest
  * first, fifty of those would stand between the reader and every new mail for good; so it reads
- * NEWEST first: the unread mail of the last two days (`NEWEST_WINDOW_MS`), fifty at most, and a
+ * NEWEST first: the unread mail of the last fifteen minutes (`NEWEST_WINDOW_MS`), fifty at most, and a
  * new mail is filed on the next run however large the pile grows.
  *
  * The pile is not abandoned either: the run also takes ONE older page, the next step of a sweep
- * that walks the older unread mail three days at a time (`SWEEP_WINDOW_MS`) — fifty of them at
+ * that walks the older unread mail two hours at a time (`SWEEP_WINDOW_MS`) — fifty of them at
  * most, below the last page's oldest — back to thirty days (`SWEEP_HORIZON_MS`), and starts over.
  * So a backlog deeper than a page (a branch switched on after weeks, a machine added to the master
- * later) is still filed, and no run lists more than two pages. Every page is a range of DATES: the
- * mailbox finds it directly, where a page of «every date» or one counted down the pile (`$skip`)
- * outgrew its patience (2026-11-13). A page's edge is a receipt time to the second, so the rest of
+ * later) is still filed, and no run lists more than two pages. Every page is a SHORT range of
+ * receipt times: the mailbox weighs every mail in the range, and a page of «every date», of two
+ * days, or one counted down the pile (`$skip`) outgrew its patience (2026-11-13). A page's edge is a receipt time to the second, so the rest of
  * a same-second group cut by an edge is passed over by that sweep; a later sweep reaches it once
  * the unread list moves the edges (new mail, a mail filed or read), and in an unchanged pile it
  * waits. Past fifty unread mails in one second — which the mailbox has never received — the rest
@@ -438,7 +443,7 @@ const readNewestFirst = async (
   if (outOfTime(tally)) return;
 
   // Where the sweep stands: kept from the last run, else just below the newest page — below its
-  // oldest when it was full, below its two days when it held all of them.
+  // oldest when it was full, below its fifteen minutes when it held all of them.
   const floor = now - SWEEP_HORIZON_MS;
   const kept = sweep?.key === sweepKey ? sweep.before : null;
   const before =
@@ -459,7 +464,7 @@ const readNewestFirst = async (
     await take(message);
   }
   // A full page: the next one lies below its oldest. A short one: these days are done, the next
-  // step is the three days below them — and past the horizon, the sweep starts over.
+  // step is the two hours below them — and past the horizon, the sweep starts over.
   const next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
   sweep = { key: sweepKey, before: Date.parse(next) <= floor ? null : next };
 };

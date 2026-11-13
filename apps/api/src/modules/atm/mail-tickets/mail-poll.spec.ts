@@ -692,6 +692,56 @@ describe('pollAtmMailbox — the mailbox document', () => {
         );
       });
 
+      /** Makes the cache fail `op` on the sweep's key, `times` times; every other call goes through. */
+      const sweepKeyFails = (op: 'get' | 'set', times: number): void => {
+        const cache = getCache();
+        const real = cache[op].bind(cache) as (...args: unknown[]) => Promise<unknown>;
+        let left = times;
+        vi.spyOn(cache, op).mockImplementation((async (...args: unknown[]) => {
+          if (args[0] === MAIL_POLL_SWEEP_KEY && left > 0) {
+            left -= 1;
+            throw new Error('redis blip');
+          }
+          return real(...args);
+        }) as never);
+      };
+
+      it('writes nothing back from a reading that could not read the stored sweep', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        datedMailbox([], () => false);
+        for (const minute of [-4, -3, -2, -1, 0]) await at(minute * MINUTE, scheduled);
+        // The worker walks an eight-hour gap and stores where to go back to.
+        await at(8 * HOUR, scheduled);
+        const walking = await getCache().get(MAIL_POLL_SWEEP_KEY);
+        expect(JSON.parse(walking as string)).toMatchObject({ resume: { then: null } });
+
+        // A press in the api — nothing of its own in memory after a deploy — whose read fails.
+        resetAtmMailSweep();
+        sweepKeyFails('get', 1);
+        expect(await at(8 * HOUR + 30_000)).toMatchObject({ error: null });
+
+        expect(await getCache().get(MAIL_POLL_SWEEP_KEY)).toBe(walking);
+      });
+
+      it('finds the gap again when its walk could not be stored', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        recorded();
+        const mailbox = datedMailbox([], () => false);
+        for (const minute of [-4, -3, -2, -1, 0]) await at(minute * MINUTE, scheduled);
+        // The gap's walk does not reach the cache…
+        sweepKeyFails('set', 99);
+        await at(8 * HOUR, scheduled);
+        vi.mocked(getCache().set).mockRestore();
+        // …so the answered time stays before the gap…
+        expect(await getCache().get(MAIL_POLL_ANSWERED_KEY)).toBe(String(T0));
+        // …and the next reading, loading the state from before it, finds the gap and walks it.
+        await at(8 * HOUR + MINUTE, scheduled);
+        expect(olderBefores(mailbox.listings).at(-1)).toBe(
+          mailInstant(T0 + 8 * HOUR + MINUTE - NEWEST_WINDOW_MS),
+        );
+      });
+
       it('takes back the step and the failures it had where it stood, so a window it cannot answer is still passed over', async () => {
         vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
         recorded();
@@ -744,8 +794,8 @@ describe('pollAtmMailbox — the mailbox document', () => {
     });
 
     it('leaves the gap to the worker when «قراءة الآن» is the first reading answered after it', async () => {
-      // «قراءة الآن» runs in the api, with a sweep of its own: it must not use up the gap the
-      // worker's sweep is to walk.
+      // A press during the worker's back-off is often the first reading answered after a gap: it
+      // must not hide the gap from the worker's next reading, which walks it.
       vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
       recorded();
       fileEverything();

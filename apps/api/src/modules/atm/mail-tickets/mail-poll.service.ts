@@ -191,11 +191,12 @@ const noteOutcome = async (
   run: AtmMailPollRun,
   answered: boolean,
   scheduled: boolean,
+  gapPending: boolean,
 ): Promise<void> => {
   try {
     if (run.error === null || answered) {
       await getCache().del(MAIL_POLL_BACKOFF_KEY);
-      if (scheduled) {
+      if (scheduled && !gapPending) {
         await getCache().set(
           MAIL_POLL_ANSWERED_KEY,
           String(run.at.getTime()),
@@ -237,9 +238,10 @@ const stillWaiting = async (): Promise<boolean> => {
  * When the last SCHEDULED reading the mailbox answered started (epoch ms). The newest page reaches
  * back `NEWEST_WINDOW_MS` from now, not from that reading: after a longer gap (waits that add up,
  * an outage) the mail between them is the sweep's, and the sweep is sent there first
- * (`readNewestFirst`'s catch-up). Only the scheduled reading writes and reads it: the sweep that
- * walks the gap is the worker's — «قراءة الآن» runs in the api, with a sweep of its own, and taking
- * the gap there would leave the worker's sweep wherever it stood.
+ * (`readNewestFirst`'s catch-up). Only the scheduled reading writes and reads it: a «قراءة الآن»
+ * pressed during the worker's back-off is often the first reading answered after a gap, and
+ * recording its time would hide the gap from the worker's next reading, which is the one that walks
+ * it.
  */
 export const MAIL_POLL_ANSWERED_KEY = 'atm-mail-poll:answered';
 
@@ -353,6 +355,8 @@ interface Tally {
   endsAt: number;
   /** The mailbox answered the run's first listing — whatever failed after it. */
   answered: boolean;
+  /** A gap was found but its walk could not be stored: it is to be found again (`noteOutcome`). */
+  gapPending: boolean;
 }
 
 const emptyTally = (now: number): Tally => ({
@@ -360,6 +364,7 @@ const emptyTally = (now: number): Tally => ({
   unmatchedReasons: [],
   endsAt: now + RUN_BUDGET_MS,
   answered: false,
+  gapPending: false,
 });
 
 /** The run's time for taking on mail is spent: what is left is the next minute's. */
@@ -521,15 +526,25 @@ const resumeOf = (raw: unknown, depth: number): SweepResume | null => {
 /** The places to go back to, the oldest past `SWEEP_RESUME_DEPTH_MAX` let go. */
 const capped = (resume: SweepResume | null): SweepResume | null => resumeOf(resume, 0);
 
-/** The stored state, read at the start of a reading; anything unreadable leaves the memory's. */
-const loadSweep = async (): Promise<void> => {
+/**
+ * The stored state, read at the start of a reading. True when this reading may write it back: it
+ * read it, found none, or found one it cannot read (which is then replaced). False when the cache
+ * did not answer: the reading goes on with the memory's state — after a deploy none, in the api an
+ * old one — and must not write that over a state it could not see (`storeSweep`).
+ */
+const loadSweep = async (): Promise<boolean> => {
+  let raw: string | null;
   try {
-    const raw = await getCache().get(MAIL_POLL_SWEEP_KEY);
-    if (raw === null) return;
+    raw = await getCache().get(MAIL_POLL_SWEEP_KEY);
+  } catch {
+    return false;
+  }
+  if (raw === null) return true;
+  try {
     const parsed = JSON.parse(raw) as Partial<Record<keyof SweepState, unknown>>;
-    if (typeof parsed.key !== 'string') return;
-    if (parsed.before !== null && !isInstant(parsed.before)) return;
-    if (typeof parsed.step !== 'number' || typeof parsed.failures !== 'number') return;
+    if (typeof parsed.key !== 'string') return true;
+    if (parsed.before !== null && !isInstant(parsed.before)) return true;
+    if (typeof parsed.step !== 'number' || typeof parsed.failures !== 'number') return true;
     sweep = {
       key: parsed.key,
       before: parsed.before,
@@ -538,17 +553,24 @@ const loadSweep = async (): Promise<void> => {
       resume: resumeOf(parsed.resume ?? null, 0),
     };
   } catch {
-    // Unreadable or unreachable: the memory's state stands.
+    // Not JSON: this reading's state replaces it.
   }
+  return true;
 };
 
-/** Where the sweep now stands — in memory at once, in Redis best effort. */
-const storeSweep = async (next: SweepState): Promise<void> => {
+/**
+ * Where the sweep now stands — in memory at once, in Redis when this reading may write it
+ * (`loadSweep`). True when it reached Redis.
+ */
+const storeSweep = async (next: SweepState, persist: boolean): Promise<boolean> => {
   sweep = next;
+  if (!persist) return false;
   try {
     await getCache().set(MAIL_POLL_SWEEP_KEY, JSON.stringify(next), SWEEP_TTL_SECONDS);
+    return true;
   } catch (error) {
     logger.warn({ err: error }, 'atm mail poll: the sweep position was not stored');
+    return false;
   }
 };
 
@@ -585,7 +607,7 @@ const readNewestFirst = async (
   const newest = await listPage(POLL_BATCH, { since: newestSince, before: null });
   startTheClock(tally);
   // Where the sweep stands, as the last reading — here or in the other process — left it.
-  await loadSweep();
+  const persist = await loadSweep();
   // The first scheduled reading answered after a gap longer than the newest window: the mail of the
   // gap lies just below the newest page, so the sweep walks it first instead of reaching it after a
   // full cycle (six hours) — and once below it, goes back to where it stood, so recurring gaps do
@@ -606,13 +628,19 @@ const readNewestFirst = async (
       // Already at the top of a walk: the walk now goes down to the lower of the two floors.
       resume = { ...prior.resume, below: Math.min(prior.resume.below, gapFloor) };
     }
-    await storeSweep({
-      key: sweepKey,
-      before: null,
-      step: SWEEP_WINDOW_MS,
-      failures: 0,
-      resume: capped(resume),
-    });
+    const stored = await storeSweep(
+      {
+        key: sweepKey,
+        before: null,
+        step: SWEEP_WINDOW_MS,
+        failures: 0,
+        resume: capped(resume),
+      },
+      persist,
+    );
+    // Not stored, the next reading would load the state from before the gap: the gap stays to be
+    // found again — the last answered time is left where it was (`noteOutcome`).
+    if (!stored) tally.gapPending = true;
   }
   let categoryOf: CategoryOf | null = null;
   const take = async (message: AtmMailMessage): Promise<void> => {
@@ -639,13 +667,16 @@ const readNewestFirst = async (
     stands?.before ??
     (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
   if (Date.parse(before) <= floor) {
-    await storeSweep({
-      key: sweepKey,
-      before: null,
-      step: SWEEP_WINDOW_MS,
-      failures: 0,
-      resume: null,
-    });
+    await storeSweep(
+      {
+        key: sweepKey,
+        before: null,
+        step: SWEEP_WINDOW_MS,
+        failures: 0,
+        resume: null,
+      },
+      persist,
+    );
     return;
   }
   const since = mailInstant(Math.max(floor, Date.parse(before) - step));
@@ -662,28 +693,34 @@ const readNewestFirst = async (
         { since, before, failures: failures + 1 },
         'atm mail poll: the sweep passed over a window the mailbox could not answer',
       );
-      await storeSweep({
-        key: sweepKey,
-        before: Date.parse(since) <= floor ? null : since,
-        step: SWEEP_WINDOW_MS,
-        failures: 0,
-        // Passed over down to the horizon: the sweep starts over, and a gap it was walking is behind it.
-        resume: Date.parse(since) <= floor ? null : resume,
-      });
+      await storeSweep(
+        {
+          key: sweepKey,
+          before: Date.parse(since) <= floor ? null : since,
+          step: SWEEP_WINDOW_MS,
+          failures: 0,
+          // Passed over down to the horizon: the sweep starts over, and a gap it was walking is behind it.
+          resume: Date.parse(since) <= floor ? null : resume,
+        },
+        persist,
+      );
     } else {
-      await storeSweep({
-        key: sweepKey,
-        before,
-        step: Math.max(SWEEP_MIN_WINDOW_MS, step / 2),
-        failures: failures + 1,
-        resume,
-      });
+      await storeSweep(
+        {
+          key: sweepKey,
+          before,
+          step: Math.max(SWEEP_MIN_WINDOW_MS, step / 2),
+          failures: failures + 1,
+          resume,
+        },
+        persist,
+      );
     }
     throw error;
   }
   // Answered: whatever this run gets through, the window is not failing — a run cut short below
   // keeps its place without carrying a streak of failures into the next.
-  await storeSweep({ key: sweepKey, before, step, failures: 0, resume });
+  await storeSweep({ key: sweepKey, before, step, failures: 0, resume }, persist);
   for (const message of older.messages) {
     // A page cut short keeps the sweep where it was: the page is listed again next run, and what
     // this run already took on is either gone from the unread list or judged again, harmlessly.
@@ -711,13 +748,16 @@ const readNewestFirst = async (
     }
     goingOn = goingOn.then;
   }
-  await storeSweep({
-    key: sweepKey,
-    before: Date.parse(next) <= floor ? null : next,
-    step: nextStep,
-    failures: nextFailures,
-    resume: goingOn,
-  });
+  await storeSweep(
+    {
+      key: sweepKey,
+      before: Date.parse(next) <= floor ? null : next,
+      step: nextStep,
+      failures: nextFailures,
+      resume: goingOn,
+    },
+    persist,
+  );
 };
 
 /** Best effort: the run is the reader's work, its record a convenience for the screen. */
@@ -757,8 +797,8 @@ export const pollAtmMailbox = async (
   try {
     const scheduled = options.scheduled === true;
     const gapFloor = scheduled ? gapFloorOf(at.getTime(), await readLastAnswered()) : null;
-    const { run, answered } = await readAndRecord(plan, at, gapFloor);
-    await noteOutcome(run, answered, scheduled);
+    const { run, answered, gapPending } = await readAndRecord(plan, at, gapFloor);
+    await noteOutcome(run, answered, scheduled, gapPending);
     return run;
   } finally {
     // Compare-and-delete: a lease that outlived its TTL and was taken by another reading stays.
@@ -773,8 +813,8 @@ const readAndRecord = async (
   plan: AtmMailPollPlan,
   at: Date,
   gapFloor: number | null,
-): Promise<{ run: AtmMailPollRun; answered: boolean }> => {
-  if (plan.mode === 'off') return { run: idleRun(at), answered: true };
+): Promise<{ run: AtmMailPollRun; answered: boolean; gapPending: boolean }> => {
+  if (plan.mode === 'off') return { run: idleRun(at), answered: true, gapPending: false };
   const tally = emptyTally(Date.now());
   let error: string | null = null;
   let providerId: string | null = null;
@@ -809,7 +849,7 @@ const readAndRecord = async (
   }
   const run: AtmMailPollRun = { at, ...tally.report, error, unmatchedReasons };
   await recordRun(plan, run);
-  return { run, answered: tally.answered };
+  return { run, answered: tally.answered, gapPending: tally.gapPending };
 };
 
 /**

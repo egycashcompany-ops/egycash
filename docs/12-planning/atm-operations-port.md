@@ -559,16 +559,21 @@ each request was heavier than on the first days. Four changes:
   then goes on from where that gap found it, not from the top of the older gap: the places to go
   back to are a chain (`SweepResume.then`, at most `SWEEP_RESUME_DEPTH_MAX` = 8 kept, the oldest
   let go past that), released one by one as the walk passes each floor (third and fourth reviews).
+  Only the scheduled reading records the answered time and takes the gap: a «قراءة الآن» pressed
+  during the worker's back-off is answered first more often than not, and recording its time would
+  hide the gap from the worker's next reading, which then walks it (second review). A gap the
+  newest page does cover leaves the sweep where it stood.
 - **The sweep keeps its place through a restart** (fourth review). Its state (`SweepState`) was
   in the worker's memory only, so every deploy — four in an hour on 2026-11-13 — started it over
   just below the newest page, and a backlog deeper than the time between two deploys was never
   reached. It is now stored in Redis as well (`MAIL_POLL_SWEEP_KEY`, 31 days), read when a reading's
-  newest page is answered and written at every move; a cache that fails leaves the memory's. One
-  state company-wide: the worker and «قراءة الآن» walk the same sweep, one reading at a time under
-  the lease. A save still starts it over (the key carries the document's version). Only the
-  scheduled reading takes part: «قراءة الآن» runs in the api with a sweep of its own, and taking
-  the gap there would leave the worker's sweep where it stood (second review). A gap the newest
-  page does cover leaves the sweep where it stood.
+  newest page is answered and written at every move. One state company-wide: the worker and
+  «قراءة الآن» walk the same sweep, one reading at a time under the lease. A save still starts it
+  over (the key carries the document's version). A reading whose read of it failed goes on with
+  the memory's state and writes nothing back — after a deploy, or in the api, that state is none or
+  an old one, and must not replace one it could not see; and a gap whose walk could not be stored
+  leaves the answered time where it was, so the next scheduled reading finds the gap again (fifth
+  review).
 - **A window the mailbox cannot answer does not hold the sweep** (review of #701/#702). A failed
   older page used to leave the sweep where it was, and — the newest page having answered, so no
   back-off — the same window was asked for every minute for good. The sweep now carries its step

@@ -18,6 +18,7 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   AtmSettingKeys,
+  ErrorCodes,
   SettingKeys,
   platformPermissions,
   type AtmMailPollRunDto,
@@ -31,7 +32,11 @@ import { atmModule, atmPermissions } from '../../src/modules/atm/atm.module';
 import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
 import { AtmMailboxConfigModel } from '../../src/modules/atm/mail-tickets/mailbox-config.model';
-import { pollAtmMailbox } from '../../src/modules/atm/mail-tickets/mail-poll.service';
+import {
+  MAIL_POLL_LEASE_KEY,
+  pollAtmMailbox,
+} from '../../src/modules/atm/mail-tickets/mail-poll.service';
+import { getCache } from '../../src/infrastructure/redis/cache';
 import { createGraphMailboxSource } from '../../src/modules/atm/mail-tickets/graph-mail.source';
 import {
   registerAtmMailSource,
@@ -139,22 +144,29 @@ const fakeMailbox = (messages: AtmMailMessage[], fail: string | null = null) => 
     secret: null as string | null,
   };
   registerAtmMailSourceFactory((connection) => {
-    const list = async (limit: number, skip: number): Promise<AtmMailMessage[]> => {
+    // Newest first, below `before` (a page's oldest receipt time) — as Graph pages the mailbox.
+    const list = async (limit: number, before: string | null): Promise<AtmMailMessage[]> => {
       state.listed += 1;
       state.secret = await connection.openSecret();
       if (fail !== null) throw new Error(fail);
-      const newestFirst = [...state.unread].sort(
-        (a, b) => b.receivedAt.getTime() - a.receivedAt.getTime(),
-      );
-      return newestFirst.slice(skip, skip + limit);
+      const bound = before === null ? Infinity : new Date(before).getTime();
+      const newestFirst = [...state.unread]
+        .filter((m) => m.receivedAt.getTime() < bound)
+        .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+      return newestFirst.slice(0, limit);
     };
     const source: AtmMailSource = {
       providerId: 'fake-mailbox',
       available: () => true,
-      listUnread: async (limit) => list(limit, 0),
-      listUnreadPage: async (limit, skip) => {
-        const page = await list(limit, skip);
-        return { messages: page, listed: page.length };
+      listUnread: async (limit) => list(limit, null),
+      listUnreadPage: async (limit, before) => {
+        const page = await list(limit, before);
+        const last = page[page.length - 1];
+        return {
+          messages: page,
+          listed: page.length,
+          oldest: last === undefined ? null : last.receivedAt.toISOString(),
+        };
       },
       markHandled: async (id, category) => {
         state.handled.push({ id, category });
@@ -559,6 +571,34 @@ describe('a pile of mail left unread hides nothing', () => {
       .lean()
       .exec();
     expect(filed.map((t) => String(t.branchId))).toEqual([mohandessinId, mohandessinId]);
+  });
+});
+
+// 2026-11-13: «الـ Automation بتاع الميل واقف بقاله شوية كتير». One reading of the mailbox at a
+// time — the minute's and «قراءة الآن» alike — or the mailbox queues them all until each times out.
+describe('one reading at a time', () => {
+  it('answers «قراءة الآن» with 409 while another reading holds the lease, and reads nothing', async () => {
+    expect((await save({ enabled: true })).status).toBe(200);
+    const mailbox = fakeMailbox([mail('busy-1', '7101')]);
+    const before = await AtmMailboxConfigModel.findOne().lean().exec();
+    expect(await getCache().setIfAbsent(MAIL_POLL_LEASE_KEY, 'another-reading', 60)).toBe(true);
+    try {
+      const res = await call('post', '/atm/mailbox/poll', adminToken, {});
+      expect(res.status).toBe(409);
+      expect((res.body as { error?: { code?: string } }).error?.code).toBe(
+        ErrorCodes.ATM_MAIL_POLL_BUSY,
+      );
+      expect(mailbox.listed).toBe(0);
+      // Nothing recorded: the reading that holds the lease records its own run.
+      const after = await AtmMailboxConfigModel.findOne().lean().exec();
+      expect(after?.lastPoll).toEqual(before?.lastPoll);
+    } finally {
+      await getCache().del(MAIL_POLL_LEASE_KEY);
+    }
+    // The lease gone, the next reading reads.
+    const res = await call('post', '/atm/mailbox/poll', adminToken, {});
+    expect(res.status).toBe(200);
+    expect(mailbox.listed).toBeGreaterThan(0);
   });
 });
 

@@ -72,6 +72,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    ATM_MAIL_POLL_BUSY:
+      'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -124,6 +126,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

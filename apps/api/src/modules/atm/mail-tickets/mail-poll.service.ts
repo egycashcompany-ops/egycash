@@ -27,12 +27,24 @@
 // A run on the document is recorded on it (`lastPoll`, the screen's last-run line) — best effort:
 // a record that fails is logged and never fails the run.
 //
+// ONE READING AT A TIME, AND A SHORT ONE (2026-11-13: «الـ Automation بتاع الميل واقف بقاله شوية
+// كتير» — the screen's test said «This operation was aborted»). The mailbox answers four requests
+// at once per application; past that it queues them. A run that timed out was retried by the job
+// queue four times while the next minute's run started, so five readers met in the mailbox, every
+// request waited behind the others, timed out, and was retried again. So: a run holds a lease
+// (`MAIL_POLL_LEASE_KEY`) — the scheduled one and «قراءة الآن» alike, across the api and the worker
+// — and a run that finds it taken steps aside; it takes on mail for a bounded time
+// (`RUN_BUDGET_MS`) and leaves the rest to the next minute; and its failure is not retried
+// (`retry: false` on the task): the next minute IS the retry.
+//
 // Branches are read as ATM files them (`atm.branchLinks`): a mail is filed under its machine's
 // RESOLVED branch (mail-ingestion.service.ts), so the switched-on set and the colours are resolved
 // the same way — a linked source's row switches its target on and colours it, unless the target
 // has a row of its own.
+import { randomUUID } from 'node:crypto';
 import { ATM_MAIL_POLL_REASONS_MAX, AtmSettingKeys } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
+import { getCache } from '../../../infrastructure/redis/cache';
 import { settingsService } from '../../../platform/settings';
 import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
 import { atmMailIngestionService, type AtmMailIngestGate } from './mail-ingestion.service';
@@ -46,6 +58,23 @@ const ORG_SUBJECT = { userId: null, branchId: null };
 
 /** How many unread messages one poll takes on. The backlog survives; the next tick continues it. */
 const POLL_BATCH = 50;
+
+/**
+ * How long one run takes on mail before it leaves the rest to the next minute. Under a minute, so
+ * one run is over before the next is due, whatever the mailbox's pace that day.
+ */
+export const RUN_BUDGET_MS = 40_000;
+
+/** The lease one reading holds — company-wide: the worker's minute and the api's «قراءة الآن». */
+export const MAIL_POLL_LEASE_KEY = 'lock:atm-mail-poll';
+
+/**
+ * How long the lease outlives a reader that died holding it (a worker restarted mid-reading, as
+ * every deploy does). Above any run — the token and the newest listing, the budget, a request the
+ * budget let start and the older listing, each bounded by the transport's timeout, about 80
+ * seconds at worst — and short enough that a restart costs the mailbox a minute or two, no more.
+ */
+const LEASE_TTL_SECONDS = 2 * 60;
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -118,13 +147,24 @@ export const documentRules = (
   };
 };
 
-/** What a run has done so far — kept when the mailbox fails part-way through. */
+/**
+ * What a run has done so far — kept when the mailbox fails part-way through — and until when it may
+ * go on taking mail (`RUN_BUDGET_MS`).
+ */
 interface Tally {
   report: AtmMailPollReport;
   unmatchedReasons: string[];
+  endsAt: number;
 }
 
-const emptyTally = (): Tally => ({ report: { ...EMPTY }, unmatchedReasons: [] });
+const emptyTally = (now: number): Tally => ({
+  report: { ...EMPTY },
+  unmatchedReasons: [],
+  endsAt: now + RUN_BUDGET_MS,
+});
+
+/** The run's time for taking on mail is spent: what is left is the next minute's. */
+const outOfTime = (tally: Tally): boolean => Date.now() >= tally.endsAt;
 
 /** The category a filed mail is tagged with: the document's row, else the old setting. */
 type CategoryOf = (branchId: string) => string | null;
@@ -200,14 +240,18 @@ const readOnce = async (
   const messages = await source.listUnread(POLL_BATCH);
   if (messages.length === 0) return;
   const categoryOf = await categoryLookup(documentCategories);
-  for (const message of messages) await takeOn(source, message, gate, categoryOf, tally);
+  for (const message of messages) {
+    if (outOfTime(tally)) return;
+    await takeOn(source, message, gate, categoryOf, tally);
+  }
 };
 
 /**
- * Where the document's backlog sweep stands (`readNewestFirst`): how far below the newest page the
- * next older page starts. Per document VERSION, so a save — a branch switched on — starts it over.
+ * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
+ * page starts below (null: just below the newest page). Per document VERSION, so a save — a branch
+ * switched on — starts it over.
  */
-let sweep: { key: string; offset: number } | null = null;
+let sweep: { key: string; before: string | null } | null = null;
 
 /**
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
@@ -218,45 +262,53 @@ let sweep: { key: string; offset: number } | null = null;
  * The pile is not abandoned either: when the newest page is full, the run also takes ONE older
  * page, the next step of a sweep that walks the rest of the unread mail a page per run and starts
  * over at its end — so a backlog deeper than a page (a branch switched on after weeks, a machine
- * added to the master later) is still filed, and no run lists more than two pages.
+ * added to the master later) is still filed, and no run lists more than two pages. The sweep finds
+ * its page by DATE — the mail received before the last page's oldest — never by counting down the
+ * pile (`$skip`), which grew too slow for the mailbox once the pile did (2026-11-13). Two mails
+ * received in the same second across a page's edge can be passed over by one sweep; the newest
+ * page and the next sweep still see them.
  */
 const readNewestFirst = async (
   source: AtmMailSource,
-  listPage: (limit: number, skip: number) => Promise<AtmMailPage>,
+  listPage: (limit: number, before: string | null) => Promise<AtmMailPage>,
   gate: AtmMailIngestGate | undefined,
   documentCategories: ReadonlyMap<string, string>,
   sweepKey: string,
   tally: Tally,
 ): Promise<void> => {
-  const newest = await listPage(POLL_BATCH, 0);
-  const offset = sweep?.key === sweepKey ? sweep.offset : 0;
+  const newest = await listPage(POLL_BATCH, null);
   if (newest.listed === 0) return;
   const categoryOf = await categoryLookup(documentCategories);
   const seen = new Set<string>();
-  let markedRead = 0;
   for (const message of newest.messages) {
+    if (outOfTime(tally)) return;
     seen.add(message.providerMessageId);
-    if (await takeOn(source, message, gate, categoryOf, tally)) markedRead += 1;
+    await takeOn(source, message, gate, categoryOf, tally);
   }
   if (newest.listed < POLL_BATCH) {
     // The whole unread list fitted on one page: nothing below it to sweep.
-    sweep = { key: sweepKey, offset: 0 };
+    sweep = { key: sweepKey, before: null };
     return;
   }
+  // The newest page took the run's time: the sweep waits, where it stood, for a quieter minute.
+  if (outOfTime(tally)) return;
 
-  // What the newest page left unread still heads the list; the sweep continues below it.
-  const older = await listPage(POLL_BATCH, newest.listed - markedRead + offset);
-  let olderMarkedRead = 0;
+  const before = (sweep?.key === sweepKey ? sweep.before : null) ?? newest.oldest;
+  if (before === null) return;
+  const older = await listPage(POLL_BATCH, before);
   for (const message of older.messages) {
+    // A page cut short keeps the sweep where it was: the page is listed again next run, and what
+    // this run already took on is either gone from the unread list or judged again, harmlessly.
+    if (outOfTime(tally)) return;
     // The list can shift between the two listings (mail arrives, someone opens one in Outlook).
     if (seen.has(message.providerMessageId)) continue;
     seen.add(message.providerMessageId);
-    if (await takeOn(source, message, gate, categoryOf, tally)) olderMarkedRead += 1;
+    await takeOn(source, message, gate, categoryOf, tally);
   }
   sweep = {
     key: sweepKey,
     // A short page is the end of the list: the next run starts the sweep over.
-    offset: older.listed < POLL_BATCH ? 0 : offset + older.listed - olderMarkedRead,
+    before: older.listed < POLL_BATCH ? null : older.oldest,
   };
 };
 
@@ -276,14 +328,33 @@ const recordRun = async (plan: AtmMailPollPlan, run: AtmMailPollRun): Promise<vo
  * newsletter in it would otherwise produce a warning every minute forever). A mailbox that fails
  * as a whole is the run's `error`, not a throw: the screen shows it, and the scheduled task turns
  * it back into a failed run (atm.module.ts).
+ *
+ * Null when another reading holds the lease (`MAIL_POLL_LEASE_KEY`): nothing was read, nothing is
+ * recorded, and that reading's own result is the one the screen will show.
  */
-export const pollAtmMailbox = async (): Promise<AtmMailPollRun> => {
+export const pollAtmMailbox = async (): Promise<AtmMailPollRun | null> => {
   const at = new Date();
   const plan = await resolveAtmMailPollPlan();
   if (plan.mode === 'off') return idleRun(at);
   if (plan.mode === 'environment' && !plan.source.available()) return idleRun(at);
 
-  const tally = emptyTally();
+  const cache = getCache();
+  const lease = randomUUID();
+  if (!(await cache.setIfAbsent(MAIL_POLL_LEASE_KEY, lease, LEASE_TTL_SECONDS))) return null;
+  try {
+    return await readAndRecord(plan, at);
+  } finally {
+    // Compare-and-delete: a lease that outlived its TTL and was taken by another reading stays.
+    await cache.delIfValue(MAIL_POLL_LEASE_KEY, lease).catch((error: unknown) => {
+      logger.warn({ err: error }, 'atm mail poll: the reading lease was not released');
+    });
+  }
+};
+
+/** The run inside its lease. */
+const readAndRecord = async (plan: AtmMailPollPlan, at: Date): Promise<AtmMailPollRun> => {
+  if (plan.mode === 'off') return idleRun(at);
+  const tally = emptyTally(Date.now());
   let error: string | null = null;
   let providerId: string | null = null;
   try {

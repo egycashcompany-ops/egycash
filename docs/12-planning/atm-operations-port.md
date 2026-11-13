@@ -471,6 +471,33 @@ filter (`receivedDateTime ge 1900-01-01 and isRead eq false`, `$orderby=received
 and «اختبار الاتصال» lists with that same query. The environment mode keeps its own listing and
 batch, unchanged.
 
+**One reading at a time, a short one, found by date (2026-11-13).** «الـ Automation بتاع الميل
+واقف بقاله شوية كتير». The worker's logs showed every minute's reading timing out after 20 seconds
+(«This operation was aborted») from 2026-11-13 02:00 UTC, about five failures a minute. Microsoft
+Graph serves at most four concurrent requests per mailbox for one application and queues the rest.
+The scheduled task inherited the job queue's defaults: five attempts with backoff, run by a worker
+that takes five jobs at once. So a reading that timed out was retried inside its own minute while
+the next minute's reading started, the readers queued behind each other in the mailbox, and every
+timeout bred more retries. The pile of mail left unread on purpose had grown to over a hundred
+newest messages a run, each listing carrying the bodies, and the sweep's `$skip` grew with it, so
+each request was heavier than on the first days. Four changes:
+
+- **A lease** (`MAIL_POLL_LEASE_KEY`, Redis `SET NX EX`, released by compare-and-delete) around
+  every reading, the worker's minute and the server's «قراءة الآن» alike. A reading that finds it
+  taken returns null: the scheduled task does nothing that minute, and «قراءة الآن» answers 409
+  `ATM_MAIL_POLL_BUSY` («تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.»).
+  Nothing is recorded for a reading that stepped aside.
+- **No retry inside the minute**: a scheduled task may declare `retry: false`, and the mailbox poll
+  does. Its failure is recorded (`lastResult: failed`) and logged, not rethrown, so the job queue
+  does not retry it: the next minute is the retry.
+- **A time budget** (`RUN_BUDGET_MS`, 40 s): a reading stops taking on mail when it is spent, and
+  the sweep stays where it stood. Under a minute, so one reading is over before the next is due.
+- **The sweep pages by date**: `listUnreadPage(limit, before)` asks for the unread mail received
+  before the last page's oldest (`receivedDateTime lt …`, `AtmMailPage.oldest`) instead of a `$skip`
+  that made the mailbox count its way down the pile. The bound is checked to be a receipt time
+  before it is written into the query. Two mails received in the same second across a page's edge
+  can be passed over by one sweep; the newest page and the next sweep still reach them.
+
 ### 6b. Branches that work together — ATM only (2026-10-28)
 
 The owner: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين —

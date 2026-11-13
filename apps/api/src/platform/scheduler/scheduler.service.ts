@@ -20,6 +20,13 @@ export interface ScheduledTaskDeclaration {
   cron: string;
   ownerService: string;
   handler: () => Promise<void>;
+  /**
+   * Whether a failed run is retried by the job queue (its attempts and backoff). True unless said
+   * otherwise. False for a task whose next run IS the retry — a per-minute poll: retried inside its
+   * own minute, the retries meet the next minute's run and pile onto whatever it calls
+   * (2026-11-13, the ATM mailbox). A failure is still recorded and logged; it is not rethrown.
+   */
+  retry?: boolean;
 }
 
 class SchedulerService {
@@ -43,7 +50,7 @@ class SchedulerService {
           { $set: { lastRunAt: new Date(), lastResult: 'failed' } },
         ).exec();
         logger.error({ err: error, task: declaration.key }, 'scheduled task failed');
-        throw error;
+        if (declaration.retry !== false) throw error;
       }
     });
   }

@@ -35,7 +35,8 @@ automatable.
 - **CMDB dependency mapping, network monitoring, remote management.**
 - **1D barcode printing** — QR only (§2.2, decision D2); no new dependency.
 - **Vehicles** — vehicles are Fleet's assets. The boundary is physical: if it is registered in
-  `fleet_vehicles`, it never appears in `it_assets` (§9.2).
+  `fleet_vehicles`, it never appears in `it_assets` (§9.2). The vehicle device checks (§2.12) read
+  Fleet's car list through IT's one Fleet import surface (§9.2); they register no vehicle.
 
 ## 1. Platform study — what exists and is reused (nothing below is rebuilt)
 
@@ -60,13 +61,14 @@ consumes it as-is. This is the section that guarantees the module adds *domain*,
 | **PDF service** | `platform/pdf` (Contracts CT-5 chromium seam) | printable QR label sheets (§4.2) |
 | **QR** | `qrcode` (api) + `qrcode.react` (web) — already dependencies (Contracts A23) | asset QR generation and on-screen rendering; **no new dependency** |
 | **Navigation catalog** | `seed-navigation.ts` additive sync (BF-1) | new `IT` category, icon `monitor` (already in the icon registry); existing installs pick it up at boot |
-| **Web kit** | shared tables/CRUD/pages kit, `UserPicker`, i18n ar/en + RTL | all pages; **every reference picker is server-side search from its first commit (ADR-019 rule 5 — binding)** |
+| **Web kit** | shared tables/CRUD/pages kit, `UserPicker`, i18n ar/en + RTL | all pages; **every reference picker is server-side search from its first commit (ADR-019 rule 5 — binding)**, except a vehicle-code picker, which lists every active car ([ADR-037](../03-decisions/ADR-037-vehicle-code-pickers-list-every-active-car.md), FR-21) |
 | **Workflow engine (ADR-011)** | *accepted as ADR, not built as a platform service* | **not used.** Recruitment built its own module engine; Fleet used code-defined lifecycles in services. Tickets follow the Fleet precedent (§4.4, D4); the gap is recorded in ADR-022 (§13) |
 
 Two hard lessons from production are carried in as design rules:
 **minimize-safety** — any collection whose rows carry a `metadata`/free-object field sets
 `minimize: false` (the recruitment-timeline outage, PR #117); **picker-safety** — no "load all +
-client filter" anywhere in the module (ADR-019 rule 5 blocks it at review).
+client filter" anywhere in the module (ADR-019 rule 5 blocks it at review), the vehicle-code
+picker excepted (ADR-037).
 
 ## 2. Entities (all collections `it_*`, module id `it`)
 
@@ -98,7 +100,7 @@ The register row. One asset = one physical (or licensed-hardware) item.
 | `status` | **derived, never hand-set**: `inStock` \| `assigned` \| `underMaintenance` \| `disposed` (§6) |
 | `serialNumber?`, `model?`, `manufacturer?` | identity card; `serialNumber` sparse-unique |
 | `externalTag?` | a pre-existing printed tag/barcode number, searchable — legacy labels keep working without printing (D2) |
-| `branchId` | data-scope anchor; changes only via **transfer** |
+| `branchId` | data-scope anchor; changes only via **transfer** (§2.5) or **«نقل إلى فرع»**, the move to another branch (below) — which for a held asset IS that transfer |
 | `location?` | free text (room/desk) within the branch |
 | `purchase?` | `{ date, cost?, vendorId?, invoiceRef? }` — recorded facts, not accounting |
 | `warranty?` | `{ vendorId?, start, end, terms? }` — embedded (D9); expiry sweep reads `warranty.end` |
@@ -107,6 +109,57 @@ The register row. One asset = one physical (or licensed-hardware) item.
 | `notes?` | |
 | `specs?` | `{ processor?, memory?, systemType?, storage?, mediaDrive?, displayAdapter?, graphicsMemory?, networkAdapters[] }` — the rows of the custody acknowledgment's specifications table (FR-18); a row left empty is left off the paper |
 | `accessories[]` | «مشتملاته» — what is handed over with the device (a charger, a bag…), one entry each |
+
+**The move to another branch («نقل إلى فرع», §17 2026-11-11):** one or more assets (at most
+`IT_ASSET_MOVE_MAX`, 100) to ONE branch, in ONE transaction — every asset moves or none does —
+recorded at once (no «in transit», nothing to confirm at the other branch) and with no paper: the
+history is the record. The target is read as an id: lower-cased once (`objectId()` admits
+upper-case hex), so a copy of an asset's own branch reads as «already there», never as a move from
+a branch to itself. Refused, in this order, before anything is written:
+
+1. a target the caller's `itAsset.assign` does not reach (`keyReachesBranch`) — **403**;
+2. a target that is not a branch, or an inactive one — **400** (`body.toBranchId`, `UNKNOWN`);
+3. an asset the caller cannot see under that grant's scope — **404** for the whole request;
+4. every asset that holds the move back, ALL of them named in ONE refusal, grouped by reason:
+   `disposed` (FR-4) · `underMaintenance` — its status, or an order open or in progress (custody's
+   guard; the status alone does not say so) · `alreadyThere` — already in that branch ·
+   `beforeCustody` — a held asset whose open interval began after the move's date (a transfer
+   cannot precede the assignment it closes). Each held asset's open interval is read against the
+   move's date here, with the other refusals, so the refusal names it; the transfer still guards
+   it, one asset at a time. **409** when every refused asset is under maintenance (custody's
+   conflict), **422** otherwise — dropping the one under maintenance would still not let the
+   request through.
+
+- **In stock** — `branchId` becomes the target's and `location` is cleared (it names a place inside
+  the branch it left, such as the head office's «مخزن IT»); one `transferred` event (§2.3) with
+  `{ fromBranchId, toBranchId }` and no employee — the shape the history and the dashboard already
+  read as a branch-only move — carrying the move's notes; `it.asset.transferred` with no employee
+  follows the commit.
+- **Held** — it moves WITH its custody («ينتقل مع عهدته»): exactly §2.5's transfer to a new branch
+  in the same hands, through the same code path. The next interval keeps the holder, the receipt
+  they signed, and the open interval's due date (`expectedReturnAt`), `conditionOnIssue` and
+  `notes` — the move gives none of its own; its notes go on the `transferred` history entry alone.
+  Its `location` is cleared as an in-stock asset's is. Only the move clears it: custody's own
+  transfer to another branch (`POST /:id/transfer`) leaves `location` as it was.
+
+Each write is conditional on the version read in the same transaction, so a concurrent edit rolls
+the whole move back. The audit rows and the events follow the commit, in the order the request
+named the assets (§10).
+
+Every asset answer carries `hasActiveMaintenance` — an order open or in progress governs it
+(derived on read, never stored: ONE query for the page's ids, as `hasActiveForAsset` counts them).
+The screen («نقل إلى فرع» on the register's selection, and on the asset's page) leaves out, with
+the reason beside it, what the server would refuse: a disposed asset, one under maintenance (its
+status or `hasActiveMaintenance`), and one already in the chosen branch; the rest is sent. Its
+branch picker lists the branches the SERVER says the caller's `itAsset.assign` reaches —
+`GET /it/assets/move-targets` (`ItMoveTargetsDto { branchIds }`, §12): every active branch for which
+`keyReachesBranch` holds, the very test the move applies — other than the one every picked asset is
+in. The screen does not work it out from `me`: the account's `branchIds` are the reach of ALL its
+grants, so they would offer a branch the move refuses with 403 — the branch a `department`-scoped
+`itAsset.assign` merely sits in (that grant never reaches a whole branch), or one only another
+grant reaches. While the list is on its way the picker waits; when none is left it says so, and
+the move cannot be sent. A held asset dated before its custody began is left to the server's
+`beforeCustody`.
 
 **QR (D2):** the QR payload is the plain `assetCode` — not a URL (URLs bind labels to a
 deployment host; codes survive redeployment and re-domaining). The web scan surface
@@ -155,7 +208,23 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
 - **Transfer** (person→person or branch→branch): **one transaction** = close current + open new
   (+ `branchId` change when across branches); writes a single `transferred` event carrying
   `{ fromEmployeeId?, toEmployeeId?, fromBranchId?, toBranchId? }`. Never expressed as
-  return+assign on the surface — the history must show intent, not mechanics.
+  return+assign on the surface — the history must show intent, not mechanics. When the holder does
+  not change, the custody is the same custody: the next interval CARRIES the open one's receipt
+  (FR-18) and, unless the transfer request gives its own, its `expectedReturnAt`,
+  `conditionOnIssue` and `notes`; a new holder's interval takes them from the request alone. The
+  asset's `location` is left as it was (only the move, below, clears it). Its audit row (and a new
+  holder's receipt row before it) is written after the commit (§10).
+- **Move to another branch** (§2.2, «نقل إلى فرع»): the move of a held asset IS the transfer to a
+  new branch in the same hands — the open interval closed, the next opened in the new branch for
+  the same holder, carrying the receipt already signed (FR-18), the due date, the condition and the
+  interval's notes, one `transferred` event, the `transfer` audit and `it.asset.transferred`. One
+  body (`transferInSession`) runs inside a transaction its caller owns: custody's `transfer` for
+  one asset, the move for many in one transaction. The move adds two things only it does: it
+  clears the asset's `location`, and its notes go on the `transferred` history entry, never on the
+  interval. The holder is not refused for having left: a same-hands move hands nobody anything
+  (FR-15). The move date may not precede the hand-over it closes, as for any transfer — the move
+  checks it for every held asset before anything is written and names each one (`beforeCustody`,
+  §2.2).
 - **Dispose**: asset must not have an open assignment; sets `disposal`, terminal status; the code
   is never reused; row is never deleted.
 - **Receipt** (FR-18): every interval opened for a person carries `receiptId` — the custody
@@ -172,7 +241,8 @@ deviceType?, manufacturer?, model?, specs?, accessories[] }],
 signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
-  holder); the lines and the signer are a snapshot of what was printed.
+  holder); the lines and the signer are a snapshot of what was recorded — what the paper printed
+  for the hand-over shows, or prints later.
 - Each line describes its device as its page prints it: `deviceType` (the asset category's
   Arabic name — the word the statement calls the item by: «شاشة», «ماوس», «لاب توب» …, and «جهاز»
   for a computer or a line with none, §17 2026-10-19), the asset's `manufacturer` and `model` (what
@@ -191,8 +261,9 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   `employeeCode` (the directory's employee code) is printed after the company («كود …»).
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
-  before a hand-over takes the next one; the hand-over records the number of the paper that was
-  signed; printing a stored receipt again keeps its number.
+  before a hand-over takes the next one; the hand-over records the number of the paper printed
+  for it, or takes the next one itself when none was printed or the printed one went stale (§17,
+  2026-11-08); printing a stored receipt again keeps its number.
 - `signedCopy` links the Files document (category `it-custody-receipts`, authorizer
   `it/custodyReceipt`); replacing it adds a file version, withdrawing it soft-deletes the file.
 
@@ -337,20 +408,60 @@ installed on one of the register's assets (§17, 2026-10-28).
 
 `{ code (CON-00001, unique ux_code), name, typeId (→ §2.4 kind consumableType), unit, branchId,
 minQty?, notes?, active, onHandQty, issuedQty, scrappedQty }` — ONE ROW PER ITEM PER BRANCH (each
-branch keeps its own stock; `ux_branch_name` on the live rows), and an item never changes store. The
-three counters are denormalized from the ledger and moved only with it (ADR-024's rule): on no write
-schema, moved by one atomic `$inc` whose filter is the guard, so `onHandQty` never goes below zero
-however many people take the last unit at once. `belowMin` (on hand at or below `minQty`) is derived
+branch keeps its own stock; `ux_branch_name` on the live rows), and an item never changes store — a
+transfer moves STOCK between two items, one in each store (below). The three counters are
+denormalized from the ledger and moved only with it (ADR-024's rule): on no write schema, moved by
+one atomic `$inc` whose filter is the guard, so `onHandQty` never goes below zero however many
+people take the last unit at once. `belowMin` (on hand at or below `minQty`) is derived
 on the answer, never stored.
 
 - **`it_consumable_movements`** — the append-only ledger: `{ consumableId, kind: received | issued |
-  scrapped | returned, qty (always positive — the kind says which way), at, branchId, byUserId,
-  employeeId?, assetId?, reason?, memoId?, notes? }`. `issued` names the employee and, when it was
+  scrapped | returned | transferredOut | transferredIn, qty (always positive — the kind says which
+  way), at, branchId, byUserId, employeeId?, assetId?, reason?, memoId?, notes?, transferId?,
+  counterpartBranchId?, counterpartConsumableId? }` — the last three null except on a transfer's
+  pair (index `ix_transfer` on `transferId`). `issued` names the employee and, when it was
   installed on one, the asset; `reason` is `new` or `replacement` («بدل تالف») on an issue and the
   written cause on a scrap. A replacement counts the damaged unit it replaces as scrap too, but takes
   only the new unit off the shelf — the broken one came back from the person and was never on hand.
   A return puts stock back and never lowers `issuedQty` (everything EVER issued). Nothing edits a
   movement; a mistake is corrected by an opposing one.
+- **Transfer to another branch** («تحويل إلى فرع», §17 2026-11-11) — one or more items of ONE store,
+  each with its quantity (at most `IT_CONSUMABLE_TRANSFER_MAX_LINES`, 50), to ONE other active
+  branch, at once and with no paper: no memo, no «in transit», nothing to confirm at the other end
+  — the ledger is the record. Refused before anything is written, in this order: a target the
+  caller's `itAsset.assign` does not reach (`keyReachesBranch`) — **403**; an item the caller
+  cannot see under that grant's scope — **404**; items of two stores, or a target that is their
+  own store (the target lower-cased once and compared as an id, so an upper-case copy of the store
+  is that store) — **422**; a target that is not a branch, or an inactive one — **400**
+  (`body.toBranchId`, `UNKNOWN`). ONE transaction and ONE `transferId` (a new id) for the whole
+  transfer: every line leaves its store and reaches the other, or none does — any line refused
+  inside it refuses the whole transfer. The audit rows (both items, and a made item's `create`) and
+  the refresh of BOTH stores follow the commit (§10). Per line:
+  - the source item's `onHandQty` goes down, guarded in the update's filter as an issue's and a
+    scrap's take is — never below what it holds: more than it holds is a **422** naming the item
+    and what it has, as an issue's and a scrap's is. A retired item may still send its stock out
+    (it empties its shelf, like a scrap); `issuedQty` and `scrappedQty` never move on a transfer;
+  - the receiving item is the target store's live item of the SAME name, compared exactly as
+    `ux_branch_name` compares it. When there is one it must count in the same unit (trimmed, case
+    aside — the refusal names both units) and be active (a retired item takes no new stock,
+    receive's rule) — each a **422**; when there is none, the transfer MAKES it: a new code from
+    the item series (§2.1, reserved inside the transaction, so a refused transfer leaves no gap),
+    the same name, type and unit, no minimum, no notes, active, counters at zero — then its
+    `onHandQty` goes up. Somebody adding that name to that store in the same moment makes the
+    transfer a **409** («try the transfer again»), nothing written;
+  - two movements: `transferredOut` in the source store (`counterpartBranchId` = the target,
+    `counterpartConsumableId` = the receiving item) and `transferredIn` in the target store (the
+    source branch and item), both with the transfer's `transferId`, date and notes. The ledger's
+    answer labels the other store's item code (`counterpartConsumableCode`) at response time.
+
+  The screen («تحويل إلى فرع» on the store's selection, or one row's) takes items of ONE store
+  only; an item with nothing on hand is listed and left out of the request, and only the items it
+  sends count toward the 50. Each quantity is a whole number from one to what the store holds, its
+  box empty until typed. Its branch picker lists the branches the SERVER says the caller's
+  `itAsset.assign` reaches — the assets' `GET /it/assets/move-targets` (§2.2, §12), since the
+  transfer rides the same grant and applies the same test (`keyReachesBranch`) — other than the
+  items' own store. While the list is on its way the picker waits; when none is left it says so,
+  and the transfer cannot be sent.
 - **`it_consumable_memos`** — «مذكرة صرف مستهلكات», ONE per issue action, listing every item it
   gave: `{ memoNumber, issuedAt, employeeId, employeeCode?, employeeName?, jobTitle?, issuedByUserId,
   issuedByName?, branchId, lines[{ consumableId, movementId, code, name, typeName?, unit, qty, reason,
@@ -363,6 +474,19 @@ on the answer, never stored.
 - The workforce reset KEEPS the items and the ledger (the ledger is the stock's explanation) and
   PURGES the memos, which name a person, as it does the other papers; a movement whose memo is gone
   offers none.
+
+### 2.12 `it_vehicle_checks` — Vehicle device check (فحص أجهزة السيارة, FR-21)
+
+A report, filed from a phone, of whether each of a car's devices works: the screen, eight cameras,
+the DVR and the Motorola radio — IT's record, not Fleet's (§17, 2026-11-08). The full design is
+[it-vehicle-checks-design.md](it-vehicle-checks-design.md).
+
+`{ vehicleId (Fleet's id), vehicleCode and branchId (the car's, when filed), checkDate (a Cairo
+day, never after today), items { screen, camera1 … camera8, dvr, radio: works | notWorking | null },
+notes?, photos [≤ 5 Files refs, category it-vehicle-check-photos], reportedByUserId, reportedByName,
+clientRequestId (unique — a repeated send returns the same report) }` — several reports per car per
+day; the car, day, answers and notes never change, and only the reporter adds photos, within 24
+hours of filing; no `employeeId` path.
 
 ## 3. Relationships
 
@@ -388,11 +512,16 @@ it_mobile_lines ──1─n it_mobile_line_events                               
 it_catalog_items(consumableType) 1─n it_consumables (one per item per branch)
    └──1─n it_consumable_movements ──n─0..1 hr employees    (issued to / returned by)
               ├──n─0..1 it_assets                           (installed on)
-              └──n─0..1 it_consumable_memos                 (one memo per issue, n items)
+              ├──n─0..1 it_consumable_memos                 (one memo per issue, n items)
+              └──n─0..1 it_consumables                      (a transfer's other store's item)
+it_vehicle_checks ──n─1 fleet_vehicles (id + code/branch snapshot, read through it/fleet-boundary.ts)
+   └── photos ──n─1 platform files                          (≤ 5 per report)
 ```
 
 Cross-module references are **by id + event subscription only** — IT never imports HR or Fleet
-services (the Fleet §9.1 discipline).
+services (the Fleet §9.1 discipline). The one exception (2026-11-08, FR-21): IT reads Fleet's car
+list through `it/fleet-boundary.ts`, read functions and nothing else — two for the form, a third
+for its dashboard (2026-11-10; §9.2).
 
 ## 4. Workflows and lifecycles
 
@@ -408,7 +537,10 @@ behind it.
 
 ### 4.3 Custody: assign / return / transfer / dispose
 Exactly §2.5. All four are named service actions (never generic PATCH), each in a transaction:
-assignment row + asset denormalization + history event + platform event + audit. Guards:
+assignment row + asset denormalization + history event + platform event + audit. Assign, return
+and dispose write their audit row inside that transaction; a transfer — and «نقل إلى فرع», the move
+to another branch that takes the same path for a held asset (§2.2) — writes its audit rows after
+the commit, so a row never outlives a transfer the database then refused (§10). Guards:
 assign requires `inStock`; return/transfer require an open assignment; dispose requires none.
 
 ### 4.4 Ticket lifecycle (code-defined state machine — D4)
@@ -469,7 +601,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   reused, never editable.
 - **FR-2** Asset `status` is derived from operations only; no endpoint sets it directly.
 - **FR-3** Every custody change is one transaction spanning assignment row, asset row, history
-  event, platform event, audit — partial custody writes must be impossible.
+  event, platform event, audit — partial custody writes must be impossible. The audit rows of a
+  transfer and of the move to another branch are the exception: written after the commit (§10);
+  hand-over, return and dispose still write theirs inside the transaction.
 - **FR-4** An asset with an open assignment cannot be disposed; a disposed asset accepts no
   further operations (terminal).
 - **FR-5** Assets are never hard-deleted once they carry any §2.3 event beyond `registered`;
@@ -488,7 +622,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-11** Catalog rows (categories, priorities, products, vendors, parts) referenced by any
   record are archived (`active: false`), never deleted.
 - **FR-12** All list endpoints paginate under `MAX_PAGE_SIZE`; every reference picker in the web
-  app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5).
+  app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5); the one
+  exception is the vehicle-code picker of FR-21, which lists every active car (ADR-037).
 - **FR-13** `hr.employee.exited` never auto-returns assets — physical custody changes only when
   a human records the return (§9.1).
 - **FR-14** A requester may cancel their **own** ticket while it is still `open`, and may add
@@ -509,16 +644,20 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-18** Every hand-over to a person is made on a custody receipt (إيصال استلام, the paper form
   EGYCASH-IT-F-14-02): one employee, one or more in-stock assets, one receipt, written in the same
   transaction as the intervals it opens (`it_custody_receipts`; every interval names it as
-  `receiptId`). The screen prints the receipt BEFORE it records the hand-over — the print is
-  composed by the server from exactly what will be recorded and writes nothing — and any change
-  after printing withholds the hand-over until it is printed again. A transfer to a new holder is
-  a hand-over and gets its own one-line receipt; a branch move in the same hands keeps the paper
-  already signed. The receipt keeps what it printed (a snapshot) and can be printed again at any
-  time; the employee's signed copy (photo or PDF) is filed against it through Files and can be
+  `receiptId`). The screen offers the print before it records the hand-over — the print is
+  composed by the server from exactly what will be recorded and writes nothing — but the asset
+  hand-over does not wait for it (§17, 2026-11-08): recorded unprinted, or after a change made the
+  printed paper stale, the receipt takes the next number and is printed later from the asset, the
+  custody register or the employee's history; a stale paper's number is never recorded. A transfer
+  to a new holder is a hand-over and gets its own one-line receipt, still printed before the
+  transfer is recorded; a branch move in the same hands keeps the paper already signed. The
+  receipt keeps what it printed (a snapshot) and can be printed again at any time; the employee's
+  signed copy (photo or PDF) is filed against it through Files and can be
   replaced or withdrawn. An interval opened before receipts can be given one while it is open
   (§17, 2026-10-04). Every printed paper carries its own number, `EGYCASH-IT-F-14-0001`, one more
-  on every print; the hand-over records the number of the paper the employee signed (a number the
-  counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
+  on every print; the hand-over records the number of the paper printed for it, or the next one
+  when none was (a number the counter never handed out, or one already on another receipt, is
+  refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
   «إقرار استلام», one page per device: the statement filled with the employee's name and job and
   the item's kind (its category; «جهاز» for a computer) with its make and model (its name when
@@ -533,18 +672,24 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   (§17, 2026-10-06).
 - **FR-19** Mobile lines are a register of their own (§2.10) under the asset grants
   (`itAsset.*`): registered with their network, number, account, plan and SIM; handed over to a
-  current employee — on a printed «إقرار استلام», print first, as for devices (FR-18) — or to a
-  car by its code and plate, with no paper; returned; suspended and reactivated. The screen
-  filters by network with the networks' logos and shows each network's figures (lines; in stock,
-  handed over, suspended; accounts; plans) under the other filters; the list goes to Excel and
-  PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
+  current employee — on a printed «إقرار استلام», print first (as devices were until §17,
+  2026-11-08) — or to a car by its code and plate, with no paper; returned; suspended and
+  reactivated. The screen filters by network with the networks' logos and shows each network's
+  figures (lines; in stock, handed over, suspended; accounts; plans) under the other filters; the
+  list goes to Excel and PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
   (§17, 2026-10-20).
 - **FR-20** Consumables are a store of their own (§2.11) under the asset grants (`itAsset.*`),
   each branch with its own stock: an item is added with its opening quantity, edited, retired
   (`active: false` — it keeps its balances and history; nothing comes in or goes out, though a
-  return or a scrap can still be recorded), and its quantities move ONLY by a movement —
-  «توريد» (in), «صرف» (out to an employee), «هالك» (out as scrap, with the cause) and «مرتجع» (back
-  in working order). An issue goes to a CURRENT employee (a leaver is refused, FR-15's rule), takes
+  return, a scrap or a transfer out can still be recorded), and its quantities move ONLY by a
+  movement — «توريد» (in), «صرف» (out to an employee), «هالك» (out as scrap, with the cause),
+  «مرتجع» (back in working order), and «تحويل إلى فرع» / «تحويل من فرع» (between two branches'
+  stores). A transfer takes one or more items of ONE store, each with how many — «لو مثلاً فى 10
+  ماوس .. فممكن أنقل 5 لفرع تاني» — to ONE other branch at once and with no paper: each reaches that
+  store's item of the same name, made there (same name, type and unit) when it has none; never more
+  than the store holds, never into an item counting in another unit or retired (§2.11, §17
+  2026-11-11). The ledger names, on each half, the other branch and the other store's item. An
+  issue goes to a CURRENT employee (a leaver is refused, FR-15's rule), takes
   one or more items of ONE branch's store, never more than it holds, says per item whether it is new
   or replaces a damaged one, may name the register's asset it was installed on (not a disposed
   one — which then counts as used, so FR-5 no longer deletes it), and writes one numbered memo the
@@ -553,6 +698,16 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   and what was scrapped, and flags an item at its minimum; the movements log answers who was given
   what, and goes to Excel and PDF as the register does. An asset's page lists the consumables
   installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
+- **FR-21** A user granted the vehicle check (`itVehicleCheck.create`, given through a role) files,
+  from a phone, a report on any ACTIVE car: the car (searched by its code), the day (today, may be
+  an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (every
+  device opens at «يعمل»; any may be left unanswered), notes, and one to five photos. The car (and
+  the pre-filled day) and at least one photo are required, and a note is required while a device is
+  «لا يعمل» — the server refuses a new report without it (§17, 2026-11-09). The reports are read on
+  IT's dashboard `/it/vehicle-checks` (`itVehicleCheck.view`, scoped by the report's branch at
+  filing): the latest report of each active car, the faults per device, the cars not checked for
+  seven days, the reports with their photos, Excel and PDF; a wrong report is soft-deleted under
+  `itVehicleCheck.delete` (§17, 2026-11-10; [design §11](it-vehicle-checks-design.md)).
 
 ## 6. States catalog
 
@@ -563,7 +718,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | Mobile line | `inStock · assigned · suspended` | — |
 | Mobile-line assignment | `open · closed` (by `returnedAt`) | closed |
 | Consumable item | `active · retired` (by `active`) | — |
-| Consumable movement | append-only: `received · issued · scrapped · returned` — a fact, not a state | — |
+| Consumable movement | append-only: `received · issued · scrapped · returned · transferredOut · transferredIn` — a fact, not a state | — |
 | Ticket | `open · inProgress · onHold · resolved · closed · cancelled` | `closed`, `cancelled` (reopen exits `closed` within the window) |
 | Maintenance order | `open · inProgress · completed · cancelled` | `completed`, `cancelled` |
 | License | derived: `active · expiringSoon · expired · perpetual` (from `expiresAt`) | — (no stored state) |
@@ -573,10 +728,10 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | Screen | View needs | Operations on it |
 |---|---|---|
 | `/it` (home/dashboards) | any `it*` view permission | — |
-| `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only) |
-| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
+| `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only), `.assign` («نقل إلى فرع», several at once — the custody grant, as the move of a held asset IS a transfer; no key was added, §17 2026-11-11 — and only to a branch that grant reaches: the picker lists no other — the server names them, `GET /it/assets/move-targets`, under the same grant — and the move answers 403 to one) |
+| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itAsset.view` | `itAsset.create`, `.edit` (edit, suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment), `.viewNationalId` — the asset grants: granting «الأصول» now covers the lines too, and no key or page was added (§17, 2026-10-20) |
-| `/it/consumables` (+ `/movements`) | `itAsset.view` | `itAsset.create` (add an item), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee, take back from one, file the memo's signed copy) — the asset grants again: no key or page was added (§17, 2026-10-28) |
+| `/it/consumables` (+ `/movements`) | `itAsset.view` | `itAsset.create` (add an item), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee, take back from one, file the memo's signed copy, transfer stock to another branch's store that grant reaches — §17, 2026-11-11) — the asset grants again: no key or page was added (§17, 2026-10-28) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
@@ -586,6 +741,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/software` | `itSoftware.view` | `itSoftware.manage` (products + installations) |
 | `/it/licenses` | `itLicense.view` | `itLicense.manage` |
 | `/it/vendors` | `itVendor.view` | `itVendor.manage` |
+| `/it/vehicle-checks` (the dashboard, in the console) | `itVehicleCheck.view` | `itVehicleCheck.view` (the dashboard, the reports, their photos — scoped by the report's branch at filing; the active cars by their current branch) · `itVehicleCheck.delete` (soft-delete a wrong report) — FR-21, §17 2026-11-10 |
+| `/it/vehicle-checks/new` (phone, outside the console frame) | `itVehicleCheck.create` | `itVehicleCheck.create` (list the active cars, file a report, add photos to one's own report within 24 hours) — NOT limited by the reporter's data scope, a design decision (the roles screen's default `own` scope would leave no car; [design §4](it-vehicle-checks-design.md)); `itVehicleCheck.view` and `.delete` belong to the dashboard (row above) — FR-21 |
 
 Data scopes on every read/write via the standard base-repository path: `branchId` on assets and
 tickets is the anchor; a branch-scoped technician sees that branch's world; `own` gives every
@@ -600,7 +757,7 @@ employee their requester view. All permissions land in the generated matrix.
 | `it.asset.registered` / `.updated` | assetCode, categoryId | registry writes |
 | `it.asset.assigned` | assetCode, employeeId, assignmentId | §4.3 |
 | `it.asset.returned` | assetCode, employeeId, condition? | §4.3 |
-| `it.asset.transferred` | assetCode, fromEmployeeId?, toEmployeeId?, fromBranchId?, toBranchId? | §4.3 |
+| `it.asset.transferred` | assetCode, fromEmployeeId?, toEmployeeId?, fromBranchId?, toBranchId? | §4.3 · the move to another branch (§2.2), once per asset — no employee for one in stock |
 | `it.asset.disposed` | assetCode, method, reason | §4.3 |
 | `it.asset.warrantyExpiring` / `.warrantyExpired` | assetCode, warrantyEnd, vendorId? | expiry sweep |
 | `it.ticket.opened` | ticketCode, categoryId, priorityId, requesterUserId, assetId? | creation |
@@ -643,8 +800,15 @@ the same way, by a second subscription (`it.flagMobileLinesHeldByExitedEmployee`
 **9.2 Fleet (boundary, no coupling):** vehicles never enter `it_assets`; `it_maintenance_*` and
 `fleet_maintenance_visits` are different domains that happen to share a word. No shared code, no
 shared collections. A tracker SIM handed to a car (FR-19) names the car by the code and plate
-written on the hand-over — text on the interval, not a Fleet id — so IT still reads nothing of
-Fleet's, and a car Fleet later renames or disposes is not updated on the line's record.
+written on the hand-over — text on the interval, not a Fleet id — and a car Fleet later renames or
+disposes is not updated on the line's record. **Amended 2026-11-08 (FR-21):** the vehicle device
+checks need Fleet's car list, so IT has ONE read-only import surface,
+`modules/it/fleet-boundary.ts` — Operations' and Gold's pattern, narrowed: read functions over
+`fleetVehicleRepository` (`listActiveVehicleCodes`, `findVehicleForCheck`, and since the dashboard,
+2026-11-10, `listActiveVehiclesForCheckBoard`, every active car with its current branch), not the
+repository itself. Through it IT lists active cars and reads a car's code and branch when a check is
+filed; it never writes a Fleet collection, and nothing else in IT imports Fleet. None of the three
+applies a data scope; IT applies `itVehicleCheck.view`'s to what they return.
 **9.3 Contracts/Procurement/Accounting (future):** vendor contracts, purchase workflows and
 asset value land in their own modules; IT already publishes the events (§8.1) and holds the ids
 they will need.
@@ -659,10 +823,28 @@ distinct audited acts, not generic updates, because disputes are settled by filt
 contract-generation precedent). Existing actions cover the rest (`create`, `update`,
 `statusChange`, `export`, `reopen`, `archive`).
 
+Moves between branches are a `transfer` (§17, 2026-11-11). Of the asset custody actions, only the
+transfer and the move write their audit rows after the commit: the audit service is not part of
+the transaction, so a row written inside it would outlive a transfer the database then refused (a
+later asset of the same move, say), and a retried transaction would write it twice. Hand-over,
+return and dispose still write theirs inside their transaction (FR-3, §4.3). Custody's transfer
+writes, after its commit, a new holder's receipt row (`create`) and then its `transfer` row.
+«نقل إلى فرع» writes one row per asset, in the order the request named them: `branchId` old→new,
+and `location` old→null when it had one — for a held asset, custody's own transfer row (the holder
+unchanged, so no receipt row). A consumables transfer, after its commit like every stock
+movement's, writes per line a `transfer` row on the item it left, a `create` row for an item the
+transfer made, and a `transfer` row on the item it reached (the counters before→after, the
+`transferId`, and the other store's branch and item) — each `transfer` row then refreshing its
+own store's screens, so BOTH stores read again.
+
 ## 11. Dashboards & reports (derived queries — no new collections)
 
 **Asset dashboard:** counts by status/category/branch · assets held by exited employees (§9.1) ·
-warranty expiring 30/60/90 · recently registered/disposed.
+warranty expiring 30/60/90 · recently registered/disposed. *Built as the `/it` home (§17,
+2026-11-03): the counts by status under a category (several) and a branch filter, by category and
+by branch, «يحتاج متابعة» (held by leavers, receipts awaiting signature, overdue returns, warranty
+ending within `it.warrantyWarnDays`), the latest movements, the lines' networks and the consumables
+at their minimum.*
 **Ticket dashboard:** open by priority/technician/category · SLA at-risk (§4.5) and breached ·
 aging buckets · resolved-this-week.
 **Maintenance dashboard:** plans due within horizon · overdue orders · parts below min · cost
@@ -672,13 +854,17 @@ license compliance (over-seats, expiring) — the §8.1 sweeps' queryable twin, 
 warn-only stance has a screen someone actually watches.
 **Asset export:** CSV via the audited row-capped export path (the applicant-export
 precedent; `itAsset.export`).
+**Vehicle devices dashboard (FR-21, built 2026-11-10):** the owner's «الـ Dashboard … هتبقي عند الـ
+IT» — the latest status of each car's devices, the faults per device, the cars not checked for seven
+days, the reports with their photos, derived on read from `it_vehicle_checks` and Fleet's active
+cars ([design §11](it-vehicle-checks-design.md)).
 
 ## 12. APIs (all under `/api/v1/it/…`, standard list/get/create/patch + named actions)
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
-| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
+| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move and the consumables' transfer both apply — in the branch options' order; what both pickers offer, §2.2, §2.11; registered before `/:id`) · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
+| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
 | `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
@@ -694,10 +880,11 @@ precedent; `itAsset.export`).
 | `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
 | `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
 | `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
-| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
-| `/it/consumable-movements` | read-only: `GET /` (kind, item, type, employee, asset, branch, from/to, search) — FR-20 |
+| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11; its picker's branches are the assets' `GET /move-targets`, the same grant) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
+| `/it/consumable-movements` | read-only: `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search) — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
-| `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
+| `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — under `itVehicleCheck.create` · `GET /dashboard` (the figures, the latest per car, the overdue cars) · `GET /` (the reports: window, branch, car, a code, faults, a device) · `GET /:id` · `GET /:id/photos/:fileId` (the bytes) — under `itVehicleCheck.view`, scoped · `DELETE /:id` (soft) — under `itVehicleCheck.delete` — FR-21 |
+| `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
 vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
@@ -1172,4 +1359,136 @@ starts only on an explicit owner GO.
   share. The custody register keeps its free-text box, first, as «بحث» (the asset's code, name or
   serial). The Excel/PDF name every chosen category and name. An old link with one category or one
   name still opens as it did.
+- **The `/it` home is a dashboard** (2026-11-03) — owner request: «عايزك تعمل فى الـ /it الرئيسية..
+  Dashboard بدل اللى موجود فيها يظهر إجمالى الأصول وإيه فى المخزن وإيه متسلم بس أقدر أفلتر بـالفئة..
+  من خلال Drop Down بـ Multiselection · وشوف إيه تانى ممكن يتعمل بس وريني Sample الأول بتاع UI»; the
+  sample was shown and approved with every suggested panel («ماشى تمام كمل»). §11's asset
+  dashboard, derived on read — no collection and no stored figure: the five status counts (total,
+  in stock, handed over, under maintenance, disposed) under a category multi-select and a branch
+  filter, each opening the register with the same filters; the status split; by category (under the
+  branch only, a click adds the category) and by branch (under the categories only, a click picks
+  the branch); «يحتاج متابعة» — assets held by people HR shows as having left (FR-13's panel, read
+  live through the directory: the leaver flag stores nothing), receipts awaiting their signed copy,
+  overdue returns, warranties ending within `it.warrantyWarnDays` — each opening its list (the
+  custody register's new `holderExited` filter, the asset list's `warrantyEndsWithinDays`); the
+  latest movements (history entries and registrations, which write none); the lines' three networks;
+  the consumables at their minimum; the help desk's two counts; and the pages, by grant. Every panel
+  rides its own grant and the reader's data scope. `GET /it/dashboard/assets` and `/activity`.
 
+- **A hand-over without a printed receipt** (2026-11-08) — owner request: «فى الـ IT تحديداً فى
+  تسليم العهدة عايزك تسمح عادى بالتسليم حتى لو مطبعش إيصال». FR-18's print-first rule is lifted for
+  the asset hand-over («تسليم عهدة») only: «تسليم» records as soon as the form is complete (it waits
+  only while a paper is being composed), and the print stays on offer beside it. Nothing changes on
+  the server, which already numbered a receipt for a caller that printed nothing: every hand-over
+  still writes its receipt, so the paper prints later from the asset, the custody register or the
+  employee's history, and it counts among the receipts awaiting a signed copy. A paper printed and
+  then made stale by an edit is not recorded — its number is dropped and the receipt takes the next
+  one. The transfer to a new holder and the mobile line's hand-over keep printing first: the owner
+  named the custody hand-over.
+
+- **Vehicle device checks** (2026-11-08) — owner request: a phone form «for specific users … to
+  inform about the car status»: the car (a dropdown with search), the day (today, changeable), the
+  screen, eight cameras, the DVR and the Motorola radio, notes and photos; then «الـ Dashboard مش
+  هتكون عند الحركة .. هتبقي عند الـ IT … والشاشة بتاعت الفورم نفسها هنخصصها عادى كدور». The sample
+  was approved with the two answers moved onto each item's row («خليهم على نفس الصف … وصغر
+  عرضهم»), then «طبق PR». §0, §2.12, §3, FR-21, §7, §11, §12; §9.2 amended: IT reads Fleet's car
+  list through two read functions in one boundary file. Full design and its review:
+  [it-vehicle-checks-design.md](it-vehicle-checks-design.md). The dashboard follows its own sample.
+
+- **The vehicle check opens at «يعمل», with a note for a fault and a photo always** (2026-11-09) —
+  owner request: «عايز هنا /it/vehicle-checks/new التلقائي إن كله يعمل ولو حاجة لا تعمل يبقى
+  يغيرها», then «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل · وكمان الصورة كدا كدا إجبارى فى كل
+  الحالات». FR-21 amended: every device opens at «يعمل» (a tap on the chosen «يعمل» still leaves a
+  device the car lacks unanswered); a report with any «لا يعمل» needs a note — on the form, and on the
+  server (`IT_VEHICLE_CHECK_NOTES_REQUIRED`, checked after a repeated request id is answered, so a
+  report filed before the rule still answers 200); and every report needs a photo on the form.
+  The server cannot hold a report to its photo, which is uploaded after the report is filed; a
+  report whose uploads all failed says so in red on its sent screen, which offers «إعادة رفع الصور»
+  while it stays open and asks once before «تقرير لسيارة أخرى» or the back arrow leaves it (a reload
+  asks too while failed photos wait). Design: §1.2, §2, §6.1,
+  §6.2 and §6.3 of [it-vehicle-checks-design.md](it-vehicle-checks-design.md).
+
+- **The vehicle checks dashboard** (2026-11-10) — owner request: «فين الـ DashBoard؟ اللى بيظهر فيه
+  التقرير والبيانات اللى الناس بتدخلها»; the sample was shown and approved («تمام نفذا الـ Dashboard
+  بتاعت الفحص»). `/it/vehicle-checks`, in the console: the six figures of a window (today, 7 or 30
+  days) under a branch filter, the faults per device, the cars not checked for seven days, the
+  latest report of each active car with its eleven devices, the reports with their photos (a report
+  view with the images, «كل تقارير هذه السيارة», a soft delete), Excel and PDF. Two grants join
+  `itVehicleCheck.create`: `.view` (scoped by the report's branch at filing; the active cars by their
+  current branch) and `.delete`. FR-21, §3, §7, §9.2, §11 and §12 amended; the Fleet boundary gains
+  one read (every active car with its branch). The realtime topic `it.vehicleCheck` now has its screen. Design:
+  [it-vehicle-checks-design.md §11](it-vehicle-checks-design.md).
+- **The branches' custody sheets** (2026-11-10) — owner request: «هبعتلك عهده الأفرع وعايزك تضيفهم مره
+  واحده كل فرع فى فرعه فى الـ IT شوف الأول لو فى مشاكل .. أو تكرار». Four sheets (بورسعيد، طنطا، الشروق،
+  أكتوبر) and, the same day, a fifth («هبعتلك أسيوط كمان»), reviewed against the register's go-live
+  files, and the owner's answers: a device the register
+  holds under another branch moves to the sheet's («انقلهم لفرع الملف»); a row with neither serial nor
+  tag, or repeating another row's serial, is left out; the two Tanta printers are «طابعتين مختلفتين»;
+  a device already registered gets only what it lacks («أكمّل الناقص بس»). The go-live file
+  `apps/api/assets/it-go-live/branch-custody-2026-11.json` holds the 244 rows — serials, tags,
+  specifications and accessories, no person — each with what the review decided: 157 to fill, 8 to
+  move, 68 new, 11 left out. Besides the five the owner's answers leave out, six wait for him to read
+  a label: two serials the October inventory found twice (the Shorouk printer CNDRP8Z666 and screen
+  B3ZY8V3 — it gave each to another device and registered the second without one, so a move could
+  move the wrong device), three screens a character or two off a register screen of the same branch
+  that the sheet does not list (October's B3SZ8V3; Assiut's BR565G3 and 1Q1L1T3 — probably those
+  screens misread) and an HP Z240 whose only label, L8T14AV, is HP's product number. The Shorouk
+  sheet's rows 2–14 (Dell OptiPlex desktops) carry its all-in-ones' processor and graphics word for
+  word — a laptop chip no OptiPlex holds — so those two values are left out for them, and row 14's
+  memory too (it repeats the two OptiPlex 7090 rows above it). A one-time boot step
+  (`go-live/branch-custody.ts`, key `go-live:it-branch-custody-2026-11:v1`, after the inventory, the
+  October all-in-ones and the specifications runs) decides each row again against the live register,
+  in ONE transaction:
+  - a new device is registered in its branch, in stock: a Dell's service tag is its serial number, as
+    the inventory registered them, and the sheet's other label (the «CN-0…» number) its printed tag
+    (`externalTag`, new here — the inventory left it empty); no history entry, as no registration has;
+  - a device the register holds gets only the specifications, accessories, printed tag, make and
+    model it lacks, with an `updated` history entry naming them; a value already typed is kept and
+    reported when the sheet differs;
+  - a device in another branch moves to the sheet's when it is in stock (a `transferred` entry with
+    the two branches, no employee), and its location — a place in the branch it left, such as the
+    head office's «مخزن IT» — is cleared; a held one keeps its branch and is reported — custody moves it;
+  - a row matching nothing, two devices, or a device another row already took is reported and left.
+  A branch or a category of its own missing refuses the run, nothing written. Audit rows and
+  `it.asset.registered` / `.updated` / `.transferred` follow the commit.
+- **Assets and consumables moved to another branch** (2026-11-11) — owner request: «هنا
+  /it/consumables وهنا /it/assets — عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني، وطبعاً المستهلكات
+  لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني وهكذا». His four answers: an asset an employee
+  holds moves too, with its custody, and the holder keeps it («ينتقل مع عهدته»); it is recorded at
+  once («فوراً») — no «in transit» step and nothing to confirm at the other branch; there is no
+  paper («لا، السجل كفاية») — the asset's history and the consumables' ledger are the record; and
+  several go in one step («كذا حاجة مرة واحدة») — several assets, or several items each with a
+  quantity, to ONE branch.
+  - **Assets** (§2.2, §2.5): «نقل إلى فرع» on the register (a selection) and on the asset's page,
+    `POST /it/assets/move-branch` — up to 100 assets, one transaction, all of them or none. One in
+    stock changes branch, its location is cleared, and its history gets a `transferred` entry naming
+    the two branches and nobody. A held one takes custody's transfer to a new branch in the same
+    hands — one body for both (`transferInSession`) — keeping its holder, the signed receipt, its
+    due date, its condition on issue and its interval's notes (the move's notes go on the history
+    entry alone), a departed holder not refused; its location is cleared too, which custody's own
+    transfer to another branch does not do. Refused: a branch the caller's `itAsset.assign` does
+    not reach (403), no such active branch (400), an asset out of scope (404), then every asset
+    that holds the move back, all named in one refusal — disposed, under maintenance (its status or
+    an order open or in progress), already in that branch, held since after the move's date (409
+    when all are under maintenance, else 422). Every asset answer gains `hasActiveMaintenance`. The
+    screen offers only the branches the SERVER says that grant reaches —
+    `GET /it/assets/move-targets`, the move's own test, never the account's reach over all its
+    grants (which offered a branch a department-scoped grant merely sits in, or one only another
+    grant reaches, and the move then refused it) — shows the assets that cannot move with the
+    reason, and leaves them out of the request.
+  - **Consumables** (§2.11, FR-20): «تحويل إلى فرع» on the store (a selection of ONE store's items,
+    or one row), `POST /it/consumables/transfer` — up to 50 items, each with its quantity, one
+    transaction and one `transferId`. Two movement kinds, `transferredOut` and `transferredIn`
+    («تحويل إلى فرع» / «تحويل من فرع» in the ledger, its kind filter and its Excel/PDF — out
+    −1, in +1), each naming the other branch and the other store's item; three fields on the movement
+    (`transferId`, `counterpartBranchId`, `counterpartConsumableId`; index `ix_transfer`). The units
+    reach the other store's item of the same name, made there — a new code, the same name, type and
+    unit — when it has none; a receiving item in another unit, or retired, refuses the transfer; a
+    retired item may still send its stock out. Never more than the store holds (422, as an issue's
+    and a scrap's take). The screen offers only the branches the server says the grant reaches —
+    the same `GET /it/assets/move-targets`.
+  - **No new grant**: both — and `GET /it/assets/move-targets`, which names where they may go —
+    ride `itAsset.assign`, the custody grant (§7). Audited as `transfer` (§10) — for the assets
+    after the commit, as custody's transfer now is too (FR-3, §4.3); `it.asset.transferred` per
+    asset (§8.1). §3, §4.3, FR-3, §6, §7, §10 and §12 amended, and
+    [ADR-021](../03-decisions/ADR-021-it-asset-custody-and-history.md) (its 2026-11-11 amendment).

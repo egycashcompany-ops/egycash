@@ -14,6 +14,7 @@ import {
   custodyRegisterLine,
   custodyRegisterReport,
   custodyRegisterSubtitle,
+  holderExitedOf,
   receiptStateOf,
   type CustodyRegisterContext,
   type CustodyRegisterFilters,
@@ -146,6 +147,7 @@ describe('the register’s columns', () => {
 
 /** Every filter the register gained, unset — what a page with none of them in force prints. */
 const unset: Omit<CustodyRegisterFilters, 'open' | 'branch' | 'holder'> = {
+  holderExited: null,
   search: null,
   categories: null,
   assetNames: null,
@@ -207,6 +209,7 @@ describe('what the printed page says it is a view of', () => {
         open: 'all',
         branch: null,
         holder: null,
+        holderExited: null,
         search: 'Lenovo',
         categories: ['كمبيوتر AIO', 'طابعات'],
         assetNames: ['لاب توب Lenovo', 'Raml, Station'],
@@ -260,6 +263,7 @@ describe('the filters the printed page names', () => {
     branchName: context.branchName,
     employeeId: '',
     holderLabel: '',
+    holderExited: null as boolean | null,
     search: '',
     categoryIds: [] as string[],
     categoryName: new Map([
@@ -365,6 +369,36 @@ describe('the filters the printed page names', () => {
 
   it('keep a branch filter whose name is not among the options', () => {
     expect(custodyRegisterFilters({ ...screen, branchId: 'b-closed' }).branch).toBe('');
+  });
+
+  // The dashboard's «أصول مع موظفين تركوا العمل», opened as a list — and printed as one that says
+  // so: a page of leavers' custody that read as the whole register would be the wrong paper.
+  it('carry «حالة المستلِم», and name it beside the holder', () => {
+    expect(custodyRegisterFilters({ ...screen, holderExited: true }).holderExited).toBe(true);
+    expect(custodyRegisterFilters(screen).holderExited).toBeNull();
+    const line = (holderExited: boolean | null): string =>
+      custodyRegisterSubtitle(t, {
+        ...unset,
+        open: 'true',
+        branch: null,
+        holder: 'محمد أحمد علي',
+        holderExited,
+        search: 'Lenovo',
+        asOf: 'اليوم',
+      });
+    expect(line(true)).toBe(
+      'المُسلَّم حاليًا · كل الفروع · المستلِم: محمد أحمد علي · حالة المستلِم: ترك العمل · البحث: Lenovo · بتاريخ اليوم',
+    );
+    expect(line(false)).toContain('حالة المستلِم: على رأس العمل');
+    expect(line(null)).not.toContain('حالة المستلِم');
+  });
+
+  it('read `holderExited` as the request does — only «true» and «false» are a filter', () => {
+    expect(holderExitedOf('true')).toBe(true);
+    expect(holderExitedOf('false')).toBe(false);
+    expect(holderExitedOf('yes')).toBeNull();
+    expect(holderExitedOf('')).toBeNull();
+    expect(holderExitedOf(null)).toBeNull();
   });
 });
 

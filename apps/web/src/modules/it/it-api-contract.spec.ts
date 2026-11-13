@@ -82,10 +82,16 @@ describe('every endpoint the IT client calls exists on the API', () => {
         'post /:id/dispose',
         'get /:id/history',
         'get /:id/assignments',
+        // «نقل إلى فرع» (2026-11-11): several assets to ONE branch, all or none — a held one with
+        // its custody. A literal path, never under '/:id'.
+        'post /move-branch',
+        // …and where it (and «تحويل إلى فرع») may go: the branches the custody grant reaches, as
+        // only the server can judge them.
+        'get /move-targets',
       ]),
     );
     // …and the client calls exactly those.
-    expect(CLIENT).toContain("`/it/assets${buildQuery(params)}`");
+    expect(CLIENT).toContain('`/it/assets${buildQuery(params)}`');
     // Narrowed by the categories chosen — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
     // الفئات» — as the `categoryId` list the names query declares.
     expect(CLIENT).toContain(
@@ -96,6 +102,8 @@ describe('every endpoint the IT client calls exists on the API', () => {
       ASSET_ROUTES.search(new RegExp(`router\\.get\\(\\s*'${path}'`));
     expect(registered('/names')).toBeGreaterThan(-1);
     expect(registered('/names')).toBeLessThan(registered('/:id'));
+    expect(registered('/move-targets')).toBeGreaterThan(-1);
+    expect(registered('/move-targets')).toBeLessThan(registered('/:id'));
     expect(CLIENT).toContain('`/it/assets/${id}`');
     expect(CLIENT).toContain('`/it/assets/by-code/${encodeURIComponent(code)}`');
     expect(CLIENT).toContain("post<ItAssetDto>('/it/assets'");
@@ -106,11 +114,13 @@ describe('every endpoint the IT client calls exists on the API', () => {
     }
     expect(CLIENT).toContain('`/it/assets/${id}/history');
     expect(CLIENT).toContain('`/it/assets/${id}/assignments');
+    expect(CLIENT).toContain("post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch'");
+    expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/assets/move-targets')");
   });
 
   it('mounts the cross-asset custody register', () => {
     expect(MANIFEST).toContain("prefix: '/it/assignments'");
-    expect(CLIENT).toContain("getPage<ItAssetAssignmentDto>(`/it/assignments");
+    expect(CLIENT).toContain('getPage<ItAssetAssignmentDto>(`/it/assignments');
   });
 
   it('catalog items: list, create, update — and no delete, because rows archive (FR-11)', () => {
@@ -153,7 +163,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
       ]),
     );
     expect(MANIFEST).toContain("prefix: '/it/tickets'");
-    expect(CLIENT).toContain("getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`)");
+    expect(CLIENT).toContain('getPage<ItTicketDto>(`/it/tickets${buildQuery(params)}`)');
     expect(CLIENT).toContain('`/it/tickets/${id}`');
     for (const action of ['assign', 'status', 'resolve', 'close', 'reopen', 'cancel', 'comments']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/tickets/\${id}/${action}`);
@@ -195,7 +205,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     // No delete: an order is a business record. It ends by completing or by cancelling.
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/maintenance-orders'");
-    expect(CLIENT).toContain("getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders");
+    expect(CLIENT).toContain('getPage<ItMaintenanceOrderDto>(`/it/maintenance-orders');
     for (const action of ['start', 'complete', 'cancel', 'parts']) {
       expect(CLIENT, `client never calls /${action}`).toContain(
         `/it/maintenance-orders/\${id}/${action}`,
@@ -217,7 +227,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     );
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/maintenance-plans'");
-    expect(CLIENT).toContain("getPage<ItMaintenancePlanDto>(`/it/maintenance-plans");
+    expect(CLIENT).toContain('getPage<ItMaintenancePlanDto>(`/it/maintenance-plans');
     expect(CLIENT).toContain("active ? 'activate' : 'deactivate'");
   });
 
@@ -228,7 +238,14 @@ describe('every endpoint the IT client calls exists on the API', () => {
   it('spare parts: receipts and movements — and NO consumption endpoint anywhere (FR-9)', () => {
     const routes = declared(PART_ROUTES);
     expect(routes).toEqual(
-      new Set(['get /', 'post /', 'get /:id', 'patch /:id', 'post /:id/receipts', 'get /:id/movements']),
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        'post /:id/receipts',
+        'get /:id/movements',
+      ]),
     );
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     for (const route of routes) {
@@ -247,7 +264,7 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(routes).toEqual(new Set(['get /', 'post /', 'get /:id', 'patch /:id']));
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/software-products'");
-    expect(CLIENT).toContain("getPage<ItSoftwareProductDto>(`/it/software-products");
+    expect(CLIENT).toContain('getPage<ItSoftwareProductDto>(`/it/software-products');
     expect(CLIENT).toContain('`/it/software-products/${id}`');
   });
 
@@ -297,7 +314,7 @@ describe('the people and technicians the IT client reads exist on the API', () =
   });
 
   it('the client calls them — and never HR’s employee endpoint', () => {
-    expect(CLIENT).toContain("getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)");
+    expect(CLIENT).toContain('getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)');
     expect(CLIENT).toContain('`/it/people/${employeeId}`');
     expect(CLIENT).toContain('`/it/technicians${buildQuery(');
     expect(CLIENT).not.toContain('/hr/employees');
@@ -496,6 +513,9 @@ describe('the consumables the IT client calls exist on the API, on the assets’
         // Stock moves only by a named movement, never by a PATCH of a quantity (ADR-024) — and
         // the issue is ONE action for one memo, however many items it carries.
         'post /issue',
+        // «تحويل إلى فرع»: one store's items, each with how many, to another branch's store — ONE
+        // action for the whole transfer, as the issue is for its memo.
+        'post /transfer',
         'post /:id/receive',
         'post /:id/scrap',
         'post /:id/return',
@@ -504,6 +524,7 @@ describe('the consumables the IT client calls exist on the API, on the assets’
     expect(CLIENT).toContain('getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`)');
     expect(CLIENT).toContain("post<ItConsumableDto>('/it/consumables'");
     expect(CLIENT).toContain("post<ItConsumableIssueResultDto>('/it/consumables/issue'");
+    expect(CLIENT).toContain("post<ItConsumableTransferResultDto>('/it/consumables/transfer'");
     expect(CLIENT).toContain('`/it/consumables/${id}`');
     for (const action of ['receive', 'scrap', 'return']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
@@ -541,6 +562,8 @@ describe('the consumables the IT client calls exist on the API, on the assets’
       [ITEMS, 'patch', '/:id', 'itAsset.edit'],
       [ITEMS, 'get', '/:id/movements', 'itAsset.view'],
       [ITEMS, 'post', '/issue', 'itAsset.assign'],
+      // No key of its own: a transfer rides the custody grant the issue and the return ride.
+      [ITEMS, 'post', '/transfer', 'itAsset.assign'],
       [ITEMS, 'post', '/:id/receive', 'itAsset.edit'],
       [ITEMS, 'post', '/:id/scrap', 'itAsset.edit'],
       [ITEMS, 'post', '/:id/return', 'itAsset.assign'],
@@ -637,6 +660,169 @@ describe('the consumables the IT client calls exist on the API, on the assets’
   });
 });
 
+// The `/it` dashboard (design §11) — «عايزك تعمل فى الـ /it الرئيسية.. Dashboard». Two reads, both on
+// the asset register's view grant and both validated against the dashboard's own query schema, so
+// the page's `categoryId` list and `branchId` are what the API reads. The router is found through
+// the manifest, as the consumables' are: the builder a prefix mounts, then its body.
+describe('the dashboard the IT home calls exists on the API, on the asset view grant', () => {
+  const routeFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) return routeFiles(full);
+      return entry.name.endsWith('.routes.ts') ? [full] : [];
+    });
+  const builder = /prefix: '\/it\/dashboard', router: (\w+)\(\)/.exec(MANIFEST)?.[1];
+  const DASHBOARD =
+    builder === undefined
+      ? ''
+      : (routeFiles(API_SRC)
+          .map((file) => readFileSync(file, 'utf8'))
+          .map((text) => new RegExp(`export const ${builder} = [\\s\\S]*?\\n};`).exec(text)?.[0])
+          .find((body) => body !== undefined) ?? '');
+  const route = (path: string): string =>
+    new RegExp(`router\\.get\\(\\s*'${path}'[\\s\\S]*?\\);`).exec(DASHBOARD)?.[0] ?? '';
+
+  it('mounts the dashboard router', () => {
+    expect(MANIFEST, 'manifest does not mount /it/dashboard').toContain("prefix: '/it/dashboard'");
+    expect(DASHBOARD, 'the dashboard router was not found').not.toBe('');
+  });
+
+  it('serves the two reads the page calls — and nothing it writes', () => {
+    expect(declared(DASHBOARD)).toEqual(new Set(['get /assets', 'get /activity']));
+    expect(CLIENT).toContain(
+      'get<ItDashboardAssetsDto>(`/it/dashboard/assets${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain(
+      'get<ItDashboardActivityDto>(`/it/dashboard/activity${buildQuery(params)}`)',
+    );
+  });
+
+  it('gates both on itAsset.view and validates both against the dashboard’s query', () => {
+    for (const path of ['/assets', '/activity']) {
+      expect(route(path), path).toContain("authorize('itAsset.view')");
+      expect(route(path), path).toContain('ItDashboardQuerySchema');
+    }
+  });
+});
+
+// FR-21 — «فحص أجهزة السيارة» (docs/12-planning/it-vehicle-checks-design.md §6.1): the phone form's
+// three calls — the car list, filing a report, one photo onto it — every one on the form's one
+// grant, so a reporter needs no Fleet or asset grant. The dashboard («تمام نفذا الـ Dashboard بتاعت
+// الفحص», 2026-11-10) reads them back on `itVehicleCheck.view` — the figures, the list, one report
+// and its photos' bytes — and deletes a wrong one on `itVehicleCheck.delete`; the reporter, who
+// holds only `create`, reads none of it.
+describe('vehicle checks: the form’s and the dashboard’s calls exist on the API, each on its grant', () => {
+  const FILE = resolve(API_SRC, 'vehicle-checks/vehicle-check.routes.ts');
+  const ROUTES = existsSync(FILE) ? readFileSync(FILE, 'utf8') : '';
+  const route = (verb: string, path: string): string =>
+    new RegExp(`router\\.${verb}\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'[\\s\\S]*?\\);`).exec(
+      ROUTES,
+    )?.[0] ?? '';
+  /** The grants one route rides — `authorize('x')` and every key of `authorizeAny('x', 'y')`. */
+  const gates = (verb: string, path: string): string[] =>
+    [...route(verb, path).matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+      [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+    );
+
+  it('mounts the router the client targets', () => {
+    expect(ROUTES, 'vehicle-checks/vehicle-check.routes.ts was not found').not.toBe('');
+    expect(MANIFEST).toContain(
+      "prefix: '/it/vehicle-checks', router: buildItVehicleChecksRouter()",
+    );
+    expect(ROUTES).toContain('export const buildItVehicleChecksRouter');
+  });
+
+  it('serves the form’s three calls and the dashboard’s five — and nothing else', () => {
+    expect(declared(ROUTES)).toEqual(
+      new Set([
+        'get /vehicles',
+        'post /',
+        'post /:id/photos',
+        'get /dashboard',
+        'get /',
+        'get /:id',
+        'get /:id/photos/:fileId',
+        'delete /:id',
+      ]),
+    );
+    // The car list, every page of it (ADR-037), at the path the API serves it on.
+    expect(CLIENT).toContain(
+      'getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`)',
+    );
+    expect(CLIENT).toContain('fetchWholeCatalog(');
+    expect(CLIENT).toContain("post<ItVehicleCheckDto>('/it/vehicle-checks', body)");
+    expect(CLIENT).toContain('upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form)');
+  });
+
+  it('gates all three on itVehicleCheck.create, and on nothing else', () => {
+    for (const [verb, path] of [
+      ['get', '/vehicles'],
+      ['post', '/'],
+      ['post', '/:id/photos'],
+    ] as const) {
+      expect(gates(verb, path), `${verb} ${path}`).toEqual(['itVehicleCheck.create']);
+    }
+    expect(MANIFEST, 'the grant is declared').toContain("'itVehicleCheck'");
+  });
+
+  it('declares the literal paths before the id matcher, so neither is read as a report id', () => {
+    // Where the router DECLARES a path — not where a comment names it.
+    const at = (path: string): number =>
+      ROUTES.search(
+        new RegExp(`router\\.(?:get|post|patch|delete)\\(\\s*'${path.replace(/[/:]/g, '\\$&')}'`),
+      );
+    for (const literal of ['/vehicles', '/dashboard']) {
+      expect(at(literal), literal).toBeGreaterThan(-1);
+      expect(at(literal), literal).toBeLessThan(at('/:id'));
+    }
+  });
+
+  it('the dashboard’s client calls are the paths the API serves', () => {
+    expect(CLIENT).toContain(
+      'get<ItVehicleCheckDashboardDto>(`/it/vehicle-checks/dashboard${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain(
+      'getPage<ItVehicleCheckDto>(`/it/vehicle-checks${buildQuery(params)}`)',
+    );
+    expect(CLIENT).toContain('get<ItVehicleCheckDto>(`/it/vehicle-checks/${id}`)');
+    // The photo's bytes through the token: an <img src> would send none.
+    expect(CLIENT).toContain('fetchBlob(`/it/vehicle-checks/${id}/photos/${fileId}`)');
+    expect(CLIENT).toContain('del<void>(`/it/vehicle-checks/${id}`)');
+  });
+
+  it('gates every read on itVehicleCheck.view, and the delete on itVehicleCheck.delete', () => {
+    for (const [verb, path] of [
+      ['get', '/dashboard'],
+      ['get', '/'],
+      ['get', '/:id'],
+      ['get', '/:id/photos/:fileId'],
+    ] as const) {
+      expect(gates(verb, path), `${verb} ${path}`).toEqual(['itVehicleCheck.view']);
+    }
+    expect(gates('delete', '/:id')).toEqual(['itVehicleCheck.delete']);
+  });
+
+  it('validates what the dashboard sends against the contract', () => {
+    expect(route('get', '/dashboard')).toContain('ItVehicleCheckDashboardQuerySchema');
+    expect(route('get', '/')).toContain('ListItVehicleChecksQuerySchema');
+    expect(route('get', '/:id/photos/:fileId')).toContain('ItVehicleCheckPhotoParamSchema');
+    expect(route('get', '/:id')).toMatch(/IdParamSchema/);
+    expect(route('delete', '/:id')).toMatch(/IdParamSchema/);
+  });
+
+  it('validates what the client sends against the contract', () => {
+    expect(route('get', '/vehicles')).toContain('PaginationQuerySchema');
+    expect(route('post', '/')).toContain('CreateItVehicleCheckSchema');
+    const photos = route('post', '/:id/photos');
+    expect(photos).toContain('ItVehicleCheckIdParamSchema');
+    expect(photos).toContain('ItVehicleCheckPhotoFieldsSchema');
+    // The multipart parts the intake reads: the file, and its `clientPhotoId` beside it.
+    expect(photos).toContain('signedCopyUpload()');
+    expect(CLIENT).toContain("form.append('clientPhotoId', photo.clientPhotoId)");
+    expect(CLIENT).toContain("form.append('file', photo.file, photo.fileName)");
+  });
+});
+
 describe('the permissions the API enforces are the ones the UI gates on', () => {
   // Matches both `authorize('x')` and every key inside `authorizeAny('x', 'y')`.
   const enforced = (routes: string): Set<string> =>
@@ -665,9 +851,18 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
   it('custody: assign/return/transfer share a grant; dispose has its own', () => {
     for (const action of ['assign', 'return', 'transfer']) {
       const route =
-        new RegExp(`router\\.post\\(\\s*'/:id/${action}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ?? '';
+        new RegExp(`router\\.post\\(\\s*'/:id/${action}'[\\s\\S]*?\\);`).exec(ASSET_ROUTES)?.[0] ??
+        '';
       expect(route, `${action} must ride itAsset.assign`).toContain("authorize('itAsset.assign')");
     }
+    // «نقل إلى فرع» moves a held asset's custody with it: the same grant, no key of its own.
+    const move = /router\.post\(\s*'\/move-branch'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(move, 'move-branch must ride itAsset.assign').toContain("authorize('itAsset.assign')");
+    // Where a move may go is judged by that same grant — the very test the move applies.
+    const targets = /router\.get\(\s*'\/move-targets'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(targets, 'move-targets must ride itAsset.assign').toContain(
+      "authorize('itAsset.assign')",
+    );
     const dispose = /router\.post\(\s*'\/:id\/dispose'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
     expect(dispose).toContain("authorize('itAsset.dispose')");
   });
@@ -758,7 +953,8 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
     const list = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(PRIORITY_ROUTES)?.[0] ?? '';
     expect(list).toContain("authorizeAny('itTicket.view', 'itSlaPolicy.manage')");
     for (const verb of ['post', 'patch']) {
-      const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRIORITY_ROUTES)?.[0] ?? '';
+      const write =
+        new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(PRIORITY_ROUTES)?.[0] ?? '';
       expect(write).toContain("authorize('itSlaPolicy.manage')");
     }
   });
@@ -1006,11 +1202,46 @@ describe('the client sends only filters the API declares', () => {
         'returnedTo',
         'overdue',
         'receipt',
+        // «حالة المستلِم» — the dashboard's «أصول مع موظفين تركوا العمل», opened as a list.
+        'holderExited',
       ]),
     );
     for (const field of sent) {
       expect(schema, `${field} is not a declared custody register filter`).toContain(`${field}:`);
     }
+  });
+
+  // The same guard over the asset list's own request — «الضمان» joined it for the dashboard.
+  it('asset register: every filter it sends, «الضمان» among them, is one the API declares', () => {
+    const schema = filters('ListItAssetsQuerySchema');
+    const page = readFileSync(resolve(HERE, 'pages/AssetsListPage.tsx'), 'utf8');
+    const request = /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*\[paramsKey\]/;
+    const sent = [...(request.exec(page)?.[1] ?? '').matchAll(/(\w+):/g)]
+      .map((match) => match[1] as string)
+      .filter((key) => !['page', 'pageSize', 'sortBy', 'sortDir'].includes(key));
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        'search',
+        'status',
+        'categoryId',
+        'branchId',
+        'warrantyEndsWithinDays',
+      ]),
+    );
+    for (const field of sent) {
+      expect(schema, `${field} is not a declared asset filter`).toContain(`${field}:`);
+    }
+  });
+
+  // The dashboard's two filters are the request its query builder writes.
+  it('dashboard: the categories and the branch, as its query schema names them', () => {
+    const schema =
+      /ItDashboardQuerySchema = z\s*\.object\(\{([\s\S]*?)\}\)/.exec(CONTRACTS)?.[1] ?? '';
+    expect(schema).toContain('categoryId: listQuery(objectId())');
+    expect(schema).toContain('branchId:');
+    const lib = readFileSync(resolve(HERE, 'lib/it-dashboard.ts'), 'utf8');
+    expect(lib).toContain('{ categoryId: writeCategoryIds(categoryIds) }');
+    expect(lib).toContain('{ branchId }');
   });
 
   // Every filter the queue's FilterBar and its three saved views send. `mine` and `breached` are

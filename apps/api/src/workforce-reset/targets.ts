@@ -145,6 +145,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_payroll_leave_snapshots: { action: 'purge', why: 'a payroll snapshot of somebody’s leave' },
   hr_employee_pay_items: { action: 'purge', why: 'somebody’s recurring pay item' },
   hr_contracts: { action: 'purge', why: 'somebody’s employment contract' },
+  hr_candidate_drafts: { action: 'purge', why: 'the papers somebody was printed and hired with' },
   hr_employee_loans: { action: 'purge', why: 'somebody’s loan' },
   hr_loan_installments: { action: 'purge', why: 'an installment of somebody’s loan' },
   hr_loan_repayments: { action: 'purge', why: 'a repayment of somebody’s loan' },
@@ -158,6 +159,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_performance_reviews: { action: 'purge', why: 'somebody’s review' },
   hr_employee_actions: { action: 'purge', why: 'a personnel action applied to somebody' },
   hr_employee_files: { action: 'purge', why: 'somebody’s electronic file' },
+  hr_employee_id_card_prints: {
+    action: 'purge',
+    why: 'a company ID card printed for somebody, and whether they took it',
+  },
   hr_cost_center_assignments: { action: 'purge', why: 'where somebody’s cost is reported' },
   hr_hiring_documents: { action: 'purge', why: 'the documents collected to hire somebody' },
   hr_job_requisition_fills: { action: 'purge', why: 'the record that somebody filled a seat' },
@@ -342,6 +347,11 @@ export const USER_SCOPED_COLLECTIONS: readonly { collection: string; path: strin
       collection: 'user_applications',
       path: 'userId',
       why: 'navigation grants of a deleted account',
+    },
+    {
+      collection: 'user_activity_days',
+      path: 'userId',
+      why: 'the minutes a deleted account worked — the active users page has nobody to show them under',
     },
   ];
 

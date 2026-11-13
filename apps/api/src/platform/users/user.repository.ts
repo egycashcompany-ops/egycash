@@ -80,6 +80,34 @@ class UserRepository extends BaseRepository<UserDoc> {
     return new Map(docs.map((doc) => [String(doc._id), doc.locale]));
   }
 
+  /**
+   * The STAFF accounts among these ids that `scope` reaches — employees and system accounts, never
+   * an external one — optionally in one branch.
+   *
+   * The active users page's population. It is the population `GET /platform/users` shows the same
+   * caller (the same scope clause, the same soft-delete rule, the same `organization.branchId`
+   * filter), narrowed to the ids the page already knows were on the system. One `$in`, whatever
+   * the number of people.
+   */
+  async staffAmong(
+    userIds: readonly string[],
+    scope: ScopeSelector,
+    branchId?: string,
+  ): Promise<UserDoc[]> {
+    const ids = [...new Set(userIds)].filter((id) => Types.ObjectId.isValid(id));
+    if (ids.length === 0) return [];
+    const filter: FilterQuery<UserDoc> = {
+      _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+      externalSubject: null,
+    };
+    if (branchId !== undefined) filter['organization.branchId'] = new Types.ObjectId(branchId);
+    return this.model
+      .find(this.baseFilter(scope, filter))
+      .select('email username employeeId externalSubject profile organization')
+      .lean<UserDoc[]>()
+      .exec();
+  }
+
   async findByEmail(email: string): Promise<UserDoc | null> {
     return this.model
       .findOne({ email: email.toLowerCase(), isDeleted: false })

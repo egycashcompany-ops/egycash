@@ -48,6 +48,24 @@ class ItAssetRepository extends BaseRepository<ItAssetDoc> {
     return this.model.distinct('name', this.baseFilter(scope, filter)).exec();
   }
 
+  /**
+   * The latest registrations a filter matches, as the caller may see them, newest first — the
+   * dashboard's «تسجيل» lines. Read from the asset itself because a registration writes no history
+   * entry (FR-5), and bounded: the panel shows a handful, never a page.
+   */
+  async newestRegistered(
+    filter: FilterQuery<ItAssetDoc>,
+    scope: ScopeSelector,
+    limit: number,
+  ): Promise<ItAssetDoc[]> {
+    return this.model
+      .find(this.baseFilter(scope, filter))
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .lean<ItAssetDoc[]>()
+      .exec();
+  }
+
   /** Uniqueness pre-check — deliberately UNscoped: a serial is unique company-wide (FR-1). */
   async findBySerial(serialNumber: string): Promise<ItAssetDoc | null> {
     return this.model.findOne({ serialNumber, isDeleted: false }).lean<ItAssetDoc>().exec();

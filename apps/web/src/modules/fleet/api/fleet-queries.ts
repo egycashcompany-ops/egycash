@@ -14,6 +14,7 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type FleetAccidentDto,
   type ApproveFleetFuelCharge,
   type CreateFleetFuelCard,
   type CreateFleetNotice,
@@ -561,6 +562,22 @@ export const useMaintenanceAlarms = (enabled = true) => {
   });
 };
 
+/**
+ * «آخر قراءة عداد» on the car card — every registry car's last reading, any status. Under the
+ * odometer subtree, so every reading write (`invalidateReadings`) refreshes it with the log. The
+ * same audiences as the alarms (`useCanReadAlarms`); fetched only once a card asks for it.
+ */
+export const useLatestReadings = (enabled = true) => {
+  const may = useCanReadAlarms();
+  return useQuery({
+    queryKey: [...fleetKeys.odometer, 'latestReadings'] as const,
+    queryFn: api.listLatestReadings,
+    // The alarms' window: a card hovered twice in a minute asks once.
+    staleTime: 30_000,
+    enabled: enabled && may,
+  });
+};
+
 export const useMaintenanceVisits = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'maintenance', params),
@@ -679,6 +696,19 @@ export const useRosterToday = (enabled: boolean) => {
   });
 };
 
+/**
+ * The day a roster save answers with, as the day's cache holds it — the board and nothing else,
+ * the rule it was derived under included: without `licenceRule` a save in refuse mode drew the
+ * licence block («منهم رخصة منتهية») again until the next refetch.
+ */
+export const rosterDayFromSave = (board: FleetRosterDayDto): FleetRosterDayDto => ({
+  date: board.date,
+  rows: board.rows,
+  availableDrivers: board.availableDrivers,
+  unavailableDrivers: board.unavailableDrivers,
+  ...(board.licenceRule === undefined ? {} : { licenceRule: board.licenceRule }),
+});
+
 // A plan save answers with the refreshed board in the same round-trip (FL-5 point 7), so the
 // day's cache is replaced directly — no refetch between save and repaint. A failed save still
 // invalidates: the usual cause of a 409 is a board gone stale under the user.
@@ -687,12 +717,7 @@ export const usePlanRoster = () => {
   return useMutation({
     mutationFn: (input: { dateKey: string; body: PlanFleetRoster }) => api.planRoster(input.body),
     onSuccess: (board, { dateKey }) => {
-      qc.setQueryData(rosterDayKey(dateKey), {
-        date: board.date,
-        rows: board.rows,
-        availableDrivers: board.availableDrivers,
-        unavailableDrivers: board.unavailableDrivers,
-      } satisfies FleetRosterDayDto);
+      qc.setQueryData(rosterDayKey(dateKey), rosterDayFromSave(board));
     },
     onError: () => void qc.invalidateQueries({ queryKey: fleetKeys.roster }),
   });
@@ -757,8 +782,9 @@ export const useAccidentSummary = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 
-// Accident mutations (FW-8). One subtree covers the list AND the dashboard's open-files KPI;
-// nothing else derives from accidents (amounts stay stored facts until §13-Q9).
+// Accident mutations (FW-8). One subtree covers the list, the car balances, the transfer logs AND
+// the dashboard's open-files KPI. The amounts are the stored facts; «إجمالي المتبقي» is derived on
+// read (collected + company − paid + in − out, §13-Q9), never stored.
 const useAccidentMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
   const qc = useQueryClient();
   return useMutation({
@@ -767,11 +793,38 @@ const useAccidentMutation = <TInput, TResult>(mutationFn: (input: TInput) => Pro
   });
 };
 
-export const useCreateAccident = () =>
-  useAccidentMutation((body: CreateFleetAccident) => api.createAccident(body));
-export const useUpdateAccident = () =>
-  useAccidentMutation(({ id, body }: { id: string; body: UpdateFleetAccident }) =>
-    api.updateAccident(id, body),
+/**
+ * Record or edit a file — the two writes a transfer from other cars rides on.
+ *
+ * Their OWN `onError`, apart from the shared hook above (close, delete and void keep it): a refused
+ * transfer (`FLEET_ACCIDENT_TRANSFER_SHORT` / `_OVER_DEFICIT`, nothing written) means the figures
+ * the form planned from are no longer the server's — another clerk took from those cars a moment
+ * ago — so the whole accidents subtree is read again, car balances included, and the form plans
+ * afresh from them. The form words those two refusals itself, with their figures (`said`); any
+ * other failure keeps the usual toast.
+ */
+const useAccidentSave = <TInput>(
+  mutationFn: (input: TInput) => Promise<FleetAccidentDto>,
+  said: SaidByScreen,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.accidents }),
+    onError: (error: unknown) => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.accidents });
+      toastUnlessSaid(said)(error);
+    },
+  });
+};
+
+/** `said`: the failures the accident form words itself — see `useAccidentSave`. */
+export const useCreateAccident = (said: SaidByScreen = () => false) =>
+  useAccidentSave((body: CreateFleetAccident) => api.createAccident(body), said);
+export const useUpdateAccident = (said: SaidByScreen = () => false) =>
+  useAccidentSave(
+    ({ id, body }: { id: string; body: UpdateFleetAccident }) => api.updateAccident(id, body),
+    said,
   );
 export const useSetAccidentStatus = () =>
   useAccidentMutation(({ id, body }: { id: string; body: SetFleetAccidentStatus }) =>

@@ -62,4 +62,16 @@ describe('legacyCodeNamesAVehicle — the registry answer the migration is given
   it('names nothing without a legacy value', () => {
     expect(legacyCodeNamesAVehicle([{ code: '61' }], null)).toBe(false);
   });
+
+  it('is exact as the code filter is — whitespace and Latin case aside', () => {
+    expect(legacyCodeNamesAVehicle([{ code: 'MG 2' }], 'mg 2')).toBe(true);
+    expect(legacyCodeNamesAVehicle([{ code: 'فورتشنر 2 ' }], 'فورتشنر 2')).toBe(true);
+    expect(legacyCodeNamesAVehicle([{ code: 'كورولا 10' }], 'كورولا 1')).toBe(false);
+  });
+
+  it('carries «كورولا 1» to the picker whole', () => {
+    expect(run('code=%D9%83%D9%88%D8%B1%D9%88%D9%84%D8%A7+1', true)).toBe(
+      'vehicleCodes=%D9%83%D9%88%D8%B1%D9%88%D9%84%D8%A7+1',
+    );
+  });
 });

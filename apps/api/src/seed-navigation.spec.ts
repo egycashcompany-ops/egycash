@@ -67,7 +67,13 @@ describe('the seeded navigation catalog', () => {
     // 139 → 137: the two batch rows (security check, driving test) left the sidebar — each phase's
     // page links to its own batches — and are RETIRED on live installations (see below).
     // 137 → 132: six HR rows became the tabs of one «الإعدادات» row (−6 +1).
-    expect(rows).toHaveLength(132);
+    // 132 → 133: «المستخدمون النشطون» joined Administration, beside System Users.
+    // 133 → 134: «فحص أجهزة السيارة» joined IT, last in its list (it-vehicle-checks-design.md).
+    // 134 → 135: «فحص أجهزة السيارات», IT's dashboard over those reports, right before the form.
+    // 135 → 136: «سجل الشحنات», Operations' day board over a range, right beneath the day board.
+    // 136 → 138: «توزيع المحصنات» beneath the secured screen and «تسليم المحصنات» beneath the vault's
+    //   receive screen (Operations, Round 12).
+    expect(rows).toHaveLength(138);
   });
 
   /**
@@ -88,7 +94,7 @@ describe('the seeded navigation catalog', () => {
   });
 
   /** Revisions only climb: a lower one would never be applied on a tile that took a higher one. */
-  it('numbers each module\'s retirements upward, from 1', () => {
+  it("numbers each module's retirements upward, from 1", () => {
     for (const category of NAVIGATION_CATALOG) {
       const revisions = (category.retired ?? []).map((entry) => entry.revision);
       expect(revisions, category.en).toEqual(revisions.map((_, i) => i + 1));
@@ -118,7 +124,9 @@ describe('the seeded navigation catalog', () => {
     const tabRoutes = HR_SETTINGS_HUB.tabs.map((tab) => `${HR_SETTINGS_HUB.route}/${tab.key}`);
     const documented = hrPages.flatMap((page) => (page.route === undefined ? [] : [page.route]));
     expect(documented).toEqual(expect.arrayContaining(tabRoutes));
-    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap((e) => e.routes)) {
+    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap(
+      (e) => e.routes,
+    )) {
       expect(documented, retired).not.toContain(retired);
     }
   });
@@ -154,6 +162,27 @@ describe('the seeded navigation catalog', () => {
     expect(rows.some((row) => row.route === '/it/consumables/movements')).toBe(false);
   });
 
+  it('offers the vehicle checks dashboard right before the phone form, on the read grant', () => {
+    // «الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT»: an IT row, keyed to reading the
+    // reports — so a reporter holding only the form sees the form and not the dashboard.
+    const itRows = rows.filter((row) => row.route.startsWith('/it'));
+    const board = itRows.find((row) => row.route === '/it/vehicle-checks');
+    expect(board).toMatchObject({
+      en: 'Vehicle device checks',
+      ar: 'فحص أجهزة السيارات',
+      icon: 'gauge',
+      permission: 'itVehicleCheck.view',
+    });
+    expect(itRows.indexOf(board as (typeof itRows)[number])).toBe(
+      itRows.findIndex((row) => row.route === '/it/vehicle-checks/new') - 1,
+    );
+    // The form keeps its row, its glyph and its own grant.
+    expect(itRows.find((row) => row.route === '/it/vehicle-checks/new')).toMatchObject({
+      icon: 'vehicle',
+      permission: 'itVehicleCheck.create',
+    });
+  });
+
   it('offers the machine map right after the machine list, behind its own key', () => {
     // docs/12-planning/atm-map-zones.md §7.3: the row sits under «كل الماكينات» and is entitled
     // to `atmMap.view` alone; the unlocated screen nests under it and has no row of its own.
@@ -181,6 +210,31 @@ describe('the seeded navigation catalog', () => {
       ['/atm/control', 'atmControl.view', 'truck'],
     ]);
     expect(rows.some((row) => row.route === '/atm/settlements/layouts/import')).toBe(false);
+  });
+
+  it('renames a row only where the name actually changes — Round 12’s two vault screens', () => {
+    // `previousName` mirrors `previousIcon`: the boot renames a live row only while it still wears
+    // the old default, so a correction naming the value it already holds would be a no-op that
+    // reads like a fix. «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة», and «جرد الخزينة» became
+    // «سجل الخزينة».
+    const renamed = rows.filter((row) => row.previousName !== undefined);
+    for (const row of renamed) {
+      expect(
+        row.previousName?.ar !== row.ar || row.previousName.en !== row.en,
+        `${row.route} must actually change`,
+      ).toBe(true);
+    }
+    const byRoute = (route: string) => rows.find((row) => row.route === route);
+    expect(byRoute('/operations/vault/dispatch')).toMatchObject({
+      ar: 'محصنات الخزينة',
+      en: 'Vault Shipments',
+      previousName: { ar: 'صرف الخزينة', en: 'Vault Dispatch' },
+    });
+    expect(byRoute('/operations/vault')).toMatchObject({
+      ar: 'سجل الخزينة',
+      en: 'Vault History',
+      previousName: { ar: 'جرد الخزينة', en: 'Vault Inventory' },
+    });
   });
 
   it('corrects a permission only where the key actually changes', () => {

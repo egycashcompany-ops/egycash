@@ -7,12 +7,14 @@ import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues } from './infrastructure/queue/jobs';
 import { closeSocketServer } from './infrastructure/realtime/socket-server';
 import { bootPlatform } from './platform/kernel/bootstrap';
+import { startAuditIndexBuild } from './platform/audit';
 import { attachNotificationSocket } from './platform/notifications';
 import { attachRealtimeSocket } from './platform/realtime';
 import { moduleManifests } from './modules';
 import { syncNavigationCatalog } from './seed-navigation';
 import { syncApplicationSections } from './seed-application-sections';
 import { syncHrOnlyAccounts } from './hr-only-access';
+import { syncHiringTemplates } from './modules/hr/contracts/hiring-templates';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
@@ -38,6 +40,7 @@ import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 import { startItMobileLinesGoLive } from './modules/it/go-live/mobile-lines';
 import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
 import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
+import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 import { buildApp } from './app';
@@ -45,6 +48,10 @@ import { buildApp } from './app';
 const main = async (): Promise<void> => {
   initSentry('api');
   await bootPlatform({ modules: moduleManifests });
+  // The two audit_logs indexes the security-signal sweep and the audit list need, which nothing
+  // else builds in production. NOT AWAITED — a build over a large collection must not stand
+  // between the boot and /health/ready; see platform/audit/audit-indexes.ts.
+  startAuditIndexBuild();
   // Upgrades add navigation catalog entries — existing installs pick them up here (BF-1).
   await syncNavigationCatalog();
   // The same default sections on an EXISTING install — additive and idempotent: it creates a
@@ -54,6 +61,9 @@ const main = async (): Promise<void> => {
   // Re-assert the HR-only confinement AFTER boot's own role grants (the Leave module re-grants
   // `employee-self-service` on every start), so it cannot drift back open between seeds.
   await syncHrOnlyAccounts();
+  // The owner's thirteen hiring papers as templates («مستندات التعيين») — written once each, never
+  // over an edit; a job's paper waiting for its job is matched again here. See the file.
+  await syncHiringTemplates();
 
   // The Fleet go-live import — 209 cars and their licence scans, once per database.
   //
@@ -118,6 +128,12 @@ const main = async (): Promise<void> => {
   // file).
   startItAioOctoberGoLive();
   startItAssetSpecsGoLive();
+  // «هبعتلك عهده الأفرع وعايزك تضيفهم مره واحده كل فرع فى فرعه فى الـ IT» — the four branches'
+  // sheets, reviewed against the register: a new device registered in its branch's stock, a
+  // registered one given only what it lacks («أكمّل الناقص بس») and, in stock elsewhere, moved
+  // to the sheet's branch («انقلهم لفرع الملف»). Once, after the inventory, the October
+  // all-in-ones and the specifications (see the file).
+  startItBranchCustodyGoLive();
   // «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — the consumables' types the owner
   // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
   // after the types it is filed under — started second, so it waits for them (see each file).

@@ -15,10 +15,12 @@ import {
   type AtmMailTicketDto,
   type AtmDailyReportDto,
   type AtmMailUnreadCountDto,
+  type AtmMaintenanceBoardDto,
   type AtmMaintenanceDto,
   type AtmOperationFacetsDto,
   type AtmRefLabelDto,
   type AtmRefLabelOptionsDto,
+  type AtmReplenishmentBoardDto,
   type AtmReplenishmentDto,
   type BulkCreateAtmMachines,
   type BulkCreateAtmMachinesResultDto,
@@ -289,14 +291,24 @@ export const listOpenReplenishments = (
   params: AtmListParams,
 ): Promise<Paginated<AtmReplenishmentDto>> =>
   getPage<AtmReplenishmentDto>(`/atm/replenishments${buildQuery(params)}`);
+/**
+ * The open board WHOLE in one request — what the screen shows (`GET /atm/replenishments/board`).
+ * `params` carries the board's `banks`/`areas` (`boardQuery`); there are no pages to ask for.
+ */
+export const replenishmentBoard = (
+  params: AtmListParams,
+  signal?: AbortSignal,
+): Promise<AtmReplenishmentBoardDto> =>
+  get<AtmReplenishmentBoardDto>(`/atm/replenishments/board${buildQuery(params)}`, { signal });
 export const replenishmentFacets = (banks: readonly string[]): Promise<AtmOperationFacetsDto> =>
   get<AtmOperationFacetsDto>(
     `/atm/replenishments/facets${banks.length === 0 ? '' : buildQuery({ banks: joinAtmNameList(banks) })}`,
   );
 export const listDoneReplenishments = (
   params: AtmListParams,
+  signal?: AbortSignal,
 ): Promise<Paginated<AtmReplenishmentDto>> =>
-  getPage<AtmReplenishmentDto>(`/atm/replenishments/done${buildQuery(params)}`);
+  getPage<AtmReplenishmentDto>(`/atm/replenishments/done${buildQuery(params)}`, { signal });
 export type ReplenishmentOpenRow = { machineCode: string; scheduleTime: string | null };
 /** The open form's lines, in batches of `ATM_OPEN_MAX_ROWS` (`openInBatches`), one date for all. */
 export const openReplenishments = (body: {
@@ -348,14 +360,21 @@ export const listOpenMaintenances = (
   params: AtmListParams,
 ): Promise<Paginated<AtmMaintenanceDto>> =>
   getPage<AtmMaintenanceDto>(`/atm/maintenances${buildQuery(params)}`);
+/** The open maintenance board whole in one request — as `replenishmentBoard`. */
+export const maintenanceBoard = (
+  params: AtmListParams,
+  signal?: AbortSignal,
+): Promise<AtmMaintenanceBoardDto> =>
+  get<AtmMaintenanceBoardDto>(`/atm/maintenances/board${buildQuery(params)}`, { signal });
 export const maintenanceFacets = (banks: readonly string[]): Promise<AtmOperationFacetsDto> =>
   get<AtmOperationFacetsDto>(
     `/atm/maintenances/facets${banks.length === 0 ? '' : buildQuery({ banks: joinAtmNameList(banks) })}`,
   );
 export const listDoneMaintenances = (
   params: AtmListParams,
+  signal?: AbortSignal,
 ): Promise<Paginated<AtmMaintenanceDto>> =>
-  getPage<AtmMaintenanceDto>(`/atm/maintenances/done${buildQuery(params)}`);
+  getPage<AtmMaintenanceDto>(`/atm/maintenances/done${buildQuery(params)}`, { signal });
 /**
  * The leader pickers' names — the ATM department's working employees (or the departments ticked on
  * /atm/settings). Read by either board: the maintenance close and both kinds' edit dialogs.
@@ -419,10 +438,14 @@ export const deleteMaintenances = async (ids: string[]): Promise<{ removed: numb
 // ── Mail tickets (legacy /mail_maintenance ± log) ───────────────────────────
 export const listPendingMailTickets = (
   params: AtmListParams,
+  signal?: AbortSignal,
 ): Promise<Paginated<AtmMailTicketDto>> =>
-  getPage<AtmMailTicketDto>(`/atm/mail-tickets${buildQuery(params)}`);
-export const listMailLog = (params: AtmListParams): Promise<Paginated<AtmMailTicketDto>> =>
-  getPage<AtmMailTicketDto>(`/atm/mail-tickets/log${buildQuery(params)}`);
+  getPage<AtmMailTicketDto>(`/atm/mail-tickets${buildQuery(params)}`, { signal });
+export const listMailLog = (
+  params: AtmListParams,
+  signal?: AbortSignal,
+): Promise<Paginated<AtmMailTicketDto>> =>
+  getPage<AtmMailTicketDto>(`/atm/mail-tickets/log${buildQuery(params)}`, { signal });
 export const mailUnreadCount = (): Promise<AtmMailUnreadCountDto> =>
   get<AtmMailUnreadCountDto>('/atm/mail-tickets/unread-count');
 /**

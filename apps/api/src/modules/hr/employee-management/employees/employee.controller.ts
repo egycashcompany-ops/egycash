@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
   type JobTitlePlacementQuery,
@@ -24,10 +25,12 @@ import {
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { userService } from '../../../../platform/users';
+import { ValidationError } from '../../../../shared/errors';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
-import { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
+import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
+import { employeeIdCardService } from './employee-id-card.service';
 
 type IdParam = { id: string };
 
@@ -80,6 +83,28 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   );
 };
 
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the code box on the register screen. */
+export const getLastExternalEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastExternalCode());
+};
+
+/** An external person — the code HR typed, their name, and where they sit. */
+export const registerEmployeeExternal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RegisterExternalEmployee>(req);
+  const doc = await employeeService.registerExternal(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.registerDirect'),
+  );
+  const placement = await resolvePlacements([doc]);
+  created(
+    res,
+    toEmployeeDto(doc, visibility(req), placement.for(doc)),
+    `/api/v1/hr/employees/${String(doc._id)}`,
+  );
+};
+
 export const listEmployees = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeesQuery>(req);
@@ -119,14 +144,7 @@ export const getEmployee = async (req: Request, res: Response): Promise<void> =>
   const { params } = validated<never, never, IdParam>(req);
   const doc = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view'));
   const placement = await resolvePlacements([doc]);
-  ok(
-    res,
-    toEmployeeDto(
-      doc,
-      visibility(req),
-      placement.for(doc),
-    ),
-  );
+  ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
 };
 
 /** Post-hire personal-data edits — plain audited updates, not personnel actions (I4). */
@@ -190,16 +208,25 @@ export const updateEmployeeOfficer = async (req: Request, res: Response): Promis
 export const getEmployeeNationalIdCard = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')));
+  ok(
+    res,
+    await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')),
+  );
 };
 
 export const listSubordinates = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   const visible = visibility(req);
-  const reports = await employeeService.subordinates(params.id, scopeSelector(ctx, 'employee.view'));
+  const reports = await employeeService.subordinates(
+    params.id,
+    scopeSelector(ctx, 'employee.view'),
+  );
   const placement = await resolvePlacements(reports);
-  ok(res, reports.map((d) => toEmployeeDto(d, visible, placement.for(d))));
+  ok(
+    res,
+    reports.map((d) => toEmployeeDto(d, visible, placement.for(d))),
+  );
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
@@ -225,6 +252,88 @@ export const getMyEmployeeProfile = async (req: Request, res: Response): Promise
   const doc = await employeeService.getMine(ctx.userId);
   const placement = await resolvePlacements([doc]);
   ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
+};
+
+/**
+ * The welcome page's card for the signed-in person: who they are, where they sit, their birthday.
+ *
+ * The same token-to-employee lookup as `/me` (and its 404 for a login with no employee behind it),
+ * but a much narrower answer: `toMyEmployeeSummaryDto` names every field it carries, so nothing
+ * else of the record — no national id, no contact, no salary — can ride along.
+ */
+export const getMyEmployeeSummary = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const doc = await employeeService.getMine(ctx.userId);
+  const placement = await resolvePlacements([doc]);
+  ok(res, toMyEmployeeSummaryDto(doc, placement.for(doc)));
+};
+
+/**
+ * A photo goes out as its BYTES, not the JSON envelope and not a signed URL: an `<img>` cannot
+ * carry the bearer token a private picture needs, so the browser fetches the bytes with it and
+ * shows an object URL. Private, and not kept by any cache — a replaced or removed photo must not
+ * outlive the change.
+ */
+const sendPhoto = (
+  res: Response,
+  photo: { buffer: Buffer; mime: string; fileName: string },
+): void => {
+  res.setHeader('Content-Type', photo.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(photo.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(photo.buffer);
+};
+
+/** An employee's photo, for someone who may see the employee — scoped like `GET /:id`. */
+export const getEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = scopeSelector(ctx, 'employee.view');
+  sendPhoto(res, await employeeService.readPhoto(ctx, params.id, scope));
+};
+
+/** The caller's own photo. The employee comes from the token, like every other `/me`. */
+export const getMyEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  sendPhoto(res, await employeeService.readMyPhoto(authContext(req)));
+};
+
+/**
+ * Set or replace the photo. Answers with the whole employee, redacted exactly as
+ * `PATCH /:id/personal` answers, so the profile updates from the response.
+ */
+export const uploadEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  // A request without the part gets a named 400 rather than a crash on `.buffer`.
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    const message = 'a photo is required, in a part named "file"';
+    throw new ValidationError([{ field: 'file', code: 'REQUIRED', message }], message);
+  }
+  const doc = await employeeService.setPhoto(
+    ctx,
+    params.id,
+    {
+      originalName: uploaded.originalname,
+      mime: uploaded.mimetype,
+      size: uploaded.size,
+      buffer: uploaded.buffer,
+    },
+    scopeSelector(ctx, 'employee.editPersonal'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
+};
+
+/** Remove the photo — idempotent: no photo answers with the employee unchanged. */
+export const removeEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const doc = await employeeService.removePhoto(
+    ctx,
+    params.id,
+    scopeSelector(ctx, 'employee.editPersonal'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 export const getEmployeeTimeline = async (req: Request, res: Response): Promise<void> => {
@@ -278,4 +387,70 @@ export const createEmployeeLogin = async (req: Request, res: Response): Promise<
     employeeCode,
   };
   created(res, payload, `/api/v1/platform/users/${String(user._id)}`);
+};
+
+/**
+ * The company ID card's data, the full national ID among it (see `employee-id-card.ts`). Scoped
+ * like a personal-data edit, which is the permission that may print the card.
+ */
+export const getEmployeeIdCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = scopeSelector(ctx, 'employee.editPersonal');
+  const doc = await employeeService.getById(params.id, scope);
+  const placement = await resolvePlacements([doc]);
+  ok(
+    res,
+    await employeeIdCardService.cardData(ctx, params.id, scope, placement.for(doc).jobTitle, doc),
+  );
+};
+
+/** One print: recorded, and the card waits for its handover. It is not counted as a card. */
+export const recordEmployeeIdCardPrint = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  created(
+    res,
+    await employeeIdCardService.recordPrint(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+    `/api/v1/hr/employees/${params.id}/id-card/prints`,
+  );
+};
+
+/** The receipt for the waiting card was printed — the handover's second step, kept on the employee. */
+export const recordEmployeeIdCardReceipt = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.recordReceipt(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** HR confirms the employee signed the receipt and took the card — the only thing that counts a card. */
+export const confirmEmployeeIdCardHandover = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.confirmHandover(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** Every card printed for the employee, newest first. */
+export const listEmployeeIdCardPrints = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await employeeIdCardService.history(params.id, scopeSelector(ctx, 'employee.view')));
 };

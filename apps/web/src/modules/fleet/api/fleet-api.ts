@@ -94,6 +94,7 @@ import {
   type FleetFixedRosterDto,
   type SaveFleetFixedRoster,
   type FleetVehicleDto,
+  type FleetVehicleLatestReadingDto,
   type FleetVehicleTypeDto,
   type FleetViolationDto,
   type FleetViolationRollupDto,
@@ -301,6 +302,13 @@ export const listMaintenanceAlarms = (): Promise<FleetMaintenanceAlarmDto[]> =>
  */
 export const listMaintenanceAlarmsForMaintenance = (): Promise<FleetMaintenanceAlarmDto[]> =>
   get<FleetMaintenanceAlarmDto[]>('/fleet/maintenance/alarms');
+/**
+ * Every registry car's last reading, ANY status — the car card's «آخر قراءة عداد». One route for
+ * both audiences the alarms serve (`fleetOdometer.view` or `fleetMaintenance.view`); the alarm
+ * list covers active cars only, so it cannot answer for a car out of service.
+ */
+export const listLatestReadings = (): Promise<FleetVehicleLatestReadingDto[]> =>
+  get<FleetVehicleLatestReadingDto[]>('/fleet/odometer/latest-readings');
 export const recordOdometer = (body: RecordFleetOdometer): Promise<FleetOdometerLogDto> =>
   post<FleetOdometerLogDto>('/fleet/odometer', body);
 export const correctOdometer = (

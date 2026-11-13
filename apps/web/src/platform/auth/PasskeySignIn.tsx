@@ -164,6 +164,10 @@ export const usePasskeySignIn = ({
      */
     const keepFresh = (): void => {
       if (disposed || modalActive.current || !detected.webauthn) return;
+      // A tab nobody is looking at renews nothing: with a ten-minute idle sign-out, sign-in pages
+      // sit open in background tabs all day, and each one renewing would be ~40 requests an hour
+      // for a page nobody can tap. Coming back to the tab (`visibilitychange`, `focus`) renews.
+      if (document.visibilityState === 'hidden') return;
       const field = autofillField();
       if (field === null) return;
       const now = Date.now();
@@ -292,7 +296,8 @@ export const shouldOfferPasskey = async (
   if (!support.platform || response.mustChangePassword) return false;
   if (passkeyOfferSuppressed(response.me.id)) return false;
   try {
-    return (await listPasskeysRequest()).length === 0;
+    const { items, enabled } = await listPasskeysRequest();
+    return enabled && items.length === 0;
   } catch {
     return false;
   }

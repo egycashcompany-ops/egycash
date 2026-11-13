@@ -46,8 +46,9 @@ const census = (rel: string): Partial<Record<Kind, number>> => {
 };
 
 const TABLE: Record<string, Partial<Record<Kind, number>>> = {
-  // Accident costs: company cost, collected, paid.
-  'modules/fleet/components/AccidentFormDialog.tsx': { money: 3 },
+  // Accident costs: company cost, collected, paid — and the amount taken from other cars, which
+  // may be typed since 2026-11-09 («هتسمح انه يدخل المبلغ»).
+  'modules/fleet/components/AccidentFormDialog.tsx': { money: 4 },
   // Catalog and vehicle-type names: Arabic and English halves; the type's service interval.
   'modules/fleet/components/CatalogDialogs.tsx': { arabic: 2, english: 2, integer: 1 },
   // The company line: unit value × count.

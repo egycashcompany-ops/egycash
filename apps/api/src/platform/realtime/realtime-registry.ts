@@ -85,6 +85,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // exactly who may fetch them — the images are personal data and the panel is the only screen
   // that refreshes on them.
   'hr.employeeNationalIdCard': { permission: 'employee.view' },
+  // The employee's personal photo, on the profile header. Same reasoning as the card above:
+  // `employee.view` is what `GET /hr/employees/:id/photo` enforces, so the room is exactly who may
+  // fetch it. The employee's own copy refreshes from the write's response, not from a room.
+  'hr.employeePhoto': { permission: 'employee.view' },
   // Compensation is the canonical sensitive case: even the fact that a pay item changed is
   // gated behind the compensation permission, not plain employee.view.
   'hr.employeePayItem': { permission: 'employee.viewCompensation' },
@@ -114,6 +118,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },
+  'hr.insuranceJobTitle': { permission: 'insuranceJobTitle.manage' },
   'hr.contractType': { permission: 'contractType.manage' },
   'hr.costCenterAssignment': { permission: 'costCenter.view' },
   'hr.attendanceDay': { permission: 'attendance.view' },
@@ -220,6 +225,13 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'it.ticket': { permission: 'itTicket.view' },
   'it.ticketPriority': { permission: 'itCatalog.manage' },
   'it.vendor': { permission: 'itVendor.view' },
+  // FR-21 — the vehicle checks dashboard («الـ Dashboard … هتبقي عند الـ IT»): a report filed, a
+  // photo added and a report deleted each refresh it for whoever may read the reports. Their audit
+  // rows announce themselves with no branch — the organization-wide room only — so the service
+  // also sends one `update` WITH the report's branch (`signalVehicleCheck`), which reaches a
+  // branch-scoped reader's room too. The form's own grant reads nothing back, so its reporters are
+  // not in the room.
+  'it.vehicleCheck': { permission: 'itVehicleCheck.view' },
 
   // ── Automation ─────────────────────────────────────────────────────────────
   'automation.workflow': { permission: 'workflow.view' },

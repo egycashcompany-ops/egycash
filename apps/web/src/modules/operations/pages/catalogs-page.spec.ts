@@ -3,9 +3,7 @@
 // than rendering an empty screen with no table at all.
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_CATALOG_KINDS, resolveCatalogKind } from './CatalogsPage';
-import { resolveBoardDate } from './DailyOperationsPage';
 import { resolveCrewDate } from './CrewBoardPage';
-import { resolveDueDate } from './SecuredDispatchPage';
 
 describe('resolveCatalogKind', () => {
   it('accepts each kind the page can actually show', () => {
@@ -33,23 +31,8 @@ describe('resolveCatalogKind', () => {
   });
 });
 
-describe('resolveBoardDate — the daily board\'s ?date= contract', () => {
-  it('accepts a plain yyyy-mm-dd day', () => {
-    expect(resolveBoardDate('2026-10-05')).toBe('2026-10-05');
-  });
-
-  it('is null when absent, so the SERVER decides what today is', () => {
-    // Near midnight a browser and the server can disagree about the date; the legacy screen had no
-    // picker at all and computed today server-side. Null preserves that.
-    expect(resolveBoardDate(null)).toBeNull();
-  });
-
-  it('is null for anything that is not a day, rather than passing it through', () => {
-    for (const bad of ['', 'today', '2026-13-99T00:00:00Z', '05-10-2026']) {
-      expect(resolveBoardDate(bad)).toBeNull();
-    }
-  });
-});
+// The daily board has no `?date=` contract any more — «اليوم التشغيلي … هو هيجيب بتاعت اليوم»: it
+// is always Cairo's today, and an old link's `date` is dropped (shipment-screens.spec).
 
 describe('resolveCrewDate — the crew board defaults to TOMORROW, server-side', () => {
   it('accepts an explicit day', () => {
@@ -66,18 +49,5 @@ describe('resolveCrewDate — the crew board defaults to TOMORROW, server-side',
     for (const bad of ['', 'tomorrow', '2026-11-03T00:00:00Z', '03-11-2026']) {
       expect(resolveCrewDate(bad)).toBeNull();
     }
-  });
-});
-
-describe('resolveDueDate — the secured due list needs a REAL date, unlike the backlog', () => {
-  it('accepts an explicit day', () => {
-    expect(resolveDueDate('2026-11-20')).toBe('2026-11-20');
-  });
-
-  it('falls back to today rather than null — the endpoint REQUIRES a date', () => {
-    // The backlog is deliberately undated; the due list is a day's work and the contract demands
-    // one, so this resolver must always produce a value.
-    expect(resolveDueDate(null)).toBe(new Date().toISOString().slice(0, 10));
-    expect(resolveDueDate('not-a-date')).toBe(new Date().toISOString().slice(0, 10));
   });
 });

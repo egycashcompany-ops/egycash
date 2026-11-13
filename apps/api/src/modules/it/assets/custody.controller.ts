@@ -7,6 +7,7 @@ import {
   type DisposeItAsset,
   type ListItAssetHistoryQuery,
   type ListItAssignmentsQuery,
+  type MoveItAssetsToBranch,
   type ReturnItAsset,
   type TransferItAsset,
 } from '@ecms/contracts';
@@ -58,6 +59,29 @@ export const transferItAsset = async (req: Request, res: Response): Promise<void
   const ctx = authContext(req);
   const { asset } = await itAssetCustodyService.transfer(params.id, body, ctx, custodyScope(req));
   ok(res, await itAssetDto(asset));
+};
+
+/**
+ * «نقل إلى فرع» — several assets to one branch, all or none. Gated on `itAsset.assign` and, unlike
+ * the single-asset actions above, SCOPED by it too: moving an asset is a write on it, so the assets
+ * a caller may move are the ones their custody grant covers, and the branch it goes to must be one
+ * that grant reaches. Answered with what moved, asset by asset.
+ */
+export const moveItAssetsToBranch = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<MoveItAssetsToBranch>(req);
+  const ctx = authContext(req);
+  ok(
+    res,
+    await itAssetCustodyService.moveToBranch(body, ctx, scopeSelector(ctx, 'itAsset.assign')),
+  );
+};
+
+/**
+ * The branches the caller may move assets — and send consumables — to: the server's own reach of
+ * `itAsset.assign`, so both dialogs offer only branches their action would accept.
+ */
+export const listItMoveTargets = async (req: Request, res: Response): Promise<void> => {
+  ok(res, await itAssetCustodyService.moveTargets(authContext(req)));
 };
 
 export const disposeItAsset = async (req: Request, res: Response): Promise<void> => {

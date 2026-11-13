@@ -57,6 +57,60 @@ export const THROTTLED_KEY_PREFIXES: readonly KeyPrefix[] = [
   FLEET_DASHBOARD_LIVE,
 ];
 
+/**
+ * The ATM boards' topics — HEAVY reads: the whole open board, the mail pages read whole. A bulk
+ * close or a long paste is a stream of these, heard by every viewer at once, so the realtime client
+ * batches them in their own debounced lane (`createDebouncedCoalescer`: one refetch per burst, each
+ * client at its own offset) instead of the 300 ms window. Exact topic names — the api's vocabulary.
+ */
+export const HEAVY_REALTIME_TOPICS: ReadonlySet<string> = new Set([
+  'atm.replenishment',
+  'atm.maintenance',
+  'atm.mailTicket',
+]);
+
+/**
+ * List kinds under a prefix that a realtime signal only MARKS STALE (`refetchType: 'none'`), never
+ * refetches: the boards' filter dropdowns (`facets` — distinct names, which another desk's single
+ * write almost never changes) and the done pages' ranges (`done` — whole walks of a day range). A
+ * mounted one keeps what it shows until it is next read — opened again, or its range or banks
+ * changed — and is read fresh then, being stale. The reader's OWN write still refreshes them at
+ * once: the mutation hooks invalidate with a refetch, outside realtime.
+ */
+const STALE_ONLY_LISTS: readonly { prefix: KeyPrefix; kinds: readonly string[] }[] = [
+  { prefix: ['atm', 'replenishments'], kinds: ['facets', 'done'] },
+  { prefix: ['atm', 'maintenances'], kinds: ['facets', 'done'] },
+];
+
+/**
+ * Is this query key one realtime only marks stale? Keys follow the factory's list shape —
+ * `[module, feature, 'list', { kind, … }]` (`shared/lib/query-keys.ts`).
+ */
+export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
+  // The Operations shipments history (`['operations', 'dayBoard', 'history', { from, to }]`) — a
+  // whole range of day boards, up to a year and five thousand shipments. It sits under the day
+  // board's key so the reader's own saves refresh it at once; another desk's single write only marks
+  // it stale, rather than re-reading the whole range for every viewer on every signal. Its deleted
+  // shipments (`[…, 'deleted', { from, to }]`, the «المحذوفة» icon's count) are the same range read
+  // over deleted rows, and follow the same rule; their dialog reads them afresh when it opens.
+  if (
+    queryKey[0] === 'operations' &&
+    queryKey[1] === 'dayBoard' &&
+    (queryKey[2] === 'history' || queryKey[2] === 'deleted')
+  ) {
+    return true;
+  }
+  const params = queryKey[3];
+  if (queryKey[2] !== 'list' || typeof params !== 'object' || params === null) return false;
+  const kind = (params as { kind?: unknown }).kind;
+  return STALE_ONLY_LISTS.some(
+    (entry) =>
+      entry.prefix.every((part, index) => queryKey[index] === part) &&
+      typeof kind === 'string' &&
+      entry.kinds.includes(kind),
+  );
+};
+
 const recruitmentPipeline: readonly KeyPrefix[] = [
   ['hr', 'applicants'],
   ['hr', 'recruitmentStageCounts'],
@@ -204,12 +258,29 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'vaultReport'],
     ['operations', 'securedDue'],
     ['operations', 'securedBacklog'],
+    // «شاشة استلام الخزينه» (Round 8) lives under the day board's key, which only the shipment
+    // topics sweep — and those need `operationsShipment.view`. A treasurer with the vault grant
+    // alone hears THIS topic (`operationsVault.view`), so a colleague's receive must turn the row
+    // green here too, as it emptied the old draft queue (`securedBacklog`) before.
+    ['operations', 'dayBoard', 'vaultQueue'],
+    // «صرف الخزينة» (Round 10) — every محصنة in the vault, under the day board's key too. A receipt
+    // puts a row on it, a cancelled receipt (`operations.custody.receiptCancelled`) or a release takes
+    // one off: all the vault's own topic, which is all a vault-only treasurer hears.
+    ['operations', 'dayBoard', 'securedDispatch'],
+    // «تسليم المحصنات» (Round 12) reads the distribution, under the day board's key: a receipt makes
+    // a shipment on a van one the vault can hand over, a hand-over takes it off. A vault-only
+    // treasurer hears only this topic (a placement Operations saves reaches them by the screen's
+    // own once-a-minute re-read).
+    ['operations', 'dayBoard', 'securedDistribution'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [
     ['operations', 'banks'],
     ['operations', 'bankBranches'],
     ['operations', 'reportBanks'],
+    // «تجميع الخزينة» prints each row's bank name as the server sent it, as the bank report does —
+    // a bank renamed on another desk would keep its old name on the roll-up until the next receipt.
+    ['operations', 'vaultReport'],
   ],
   'operations.bankBranch': [
     ['operations', 'bankBranches'],
@@ -218,7 +289,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'operations.currency': [['operations', 'currencies']],
 
   // ── HR ─────────────────────────────────────────────────────────────────────
-  'hr.employee': [['hr', 'employees'], ['employees']],
+  // The company ID card's keys ride here rather than on a topic of their own: a print, a receipt
+  // or a handover changes the employee (`idCard` sits on the document the list reads), and the
+  // card's own mutations invalidate all four of these locally — so a signal that ANOTHER HR user
+  // printed or handed over a card has to reach the same four.
+  'hr.employee': [['hr', 'employees'], ['employees'], ['hr', 'employeeIdCard']],
   'hr.employeeFile': [['hr', 'employeeFiles']],
   'hr.employeeLoan': [['hr', 'employeeLoans']],
   'hr.employeeLoanAttachment': [['hr', 'employeeLoans']],
@@ -227,6 +302,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // it for someone hired earlier, changes the Personal tab's card panel and nothing else. The
   // registry list would be refetched for no reason.
   'hr.employeeNationalIdCard': [['hr', 'employees', 'national-id-card']],
+  // A photo set or removed: the profile (its photoFileId) and every face drawn from it, which all
+  // sit under the employees keys — the person's own summary and photo included.
+  'hr.employeePhoto': [['hr', 'employees']],
   'hr.employeePayItem': [['hr', 'compensation']],
   // P-HR-TRN. Two topics, and the catalogue reaches BOTH key families: retiring a course changes
   // what the session form may offer, so a screen holding the picker open must not go on offering
@@ -279,6 +357,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],
+  'hr.insuranceJobTitle': [['hr', 'contracts', 'insuranceJobTitles']],
   'hr.contractType': [['hr', 'contracts']],
   'hr.costCenterAssignment': [
     ['hr', 'employeeCostCenters'],
@@ -456,8 +535,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'assets'],
     ['it', 'custody'],
   ],
-  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
-  'it.custodyReceipt': [['it', 'custody']],
+  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»), and on
+  // the `/it` dashboard's «إيصالات استلام بانتظار التوقيع» — only its figures, as the receipt
+  // mutations say: the paper moves no asset.
+  'it.custodyReceipt': [
+    ['it', 'custody'],
+    ['it', 'assets', 'list', { dashboard: 'assets' }],
+  ],
   // FR-19 — a line moves its register row, its network's card and its history, and its custody
   // intervals (a person's history page reads those).
   'it.mobileLine': [
@@ -474,6 +558,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'it.consumable': [['it', 'consumables']],
   // A memo's signed copy shows on the ledger's rows («موقّع» / «بانتظار التوقيع»).
   'it.consumableMemo': [['it', 'consumables']],
+  // FR-21 — a report filed on a phone, a photo added to it, or a wrong one deleted moves the vehicle
+  // checks dashboard's figures, its reports list and an open report: one subtree, as the delete's
+  // own `onSuccess` says.
+  'it.vehicleCheck': [['it', 'vehicleChecks']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

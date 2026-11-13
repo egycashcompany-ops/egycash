@@ -18,6 +18,7 @@ import {
   fleetVehicleCodeOrderKey,
   type FleetMaintenanceAlarmDto,
   type Locale,
+  sameVehicleCode,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -51,6 +52,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
 import { BoardRemaining, BoardSinceCell } from '../components/AlarmFigureCell';
+import { useVehicleHoverCard } from '../components/VehicleHoverCard';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['level', 'vehicleCodes', 'sort'] as const;
@@ -141,6 +143,30 @@ const BIG_TYPE = cn(
   '[&_thead_tr_th]:!text-slate-600 dark:[&_thead_tr_th]:!text-slate-300',
 );
 
+/**
+ * The car's code, bold and a size up, on the code's own element — which is also the car card's
+ * trigger («عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على اسم السواق»).
+ */
+const AlarmCode = ({ alarm }: { alarm: FleetMaintenanceAlarmDto }): JSX.Element => {
+  const { triggerProps, card } = useVehicleHoverCard({
+    vehicleId: alarm.vehicleId,
+    code: alarm.code,
+  });
+  return (
+    <>
+      <span
+        dir="ltr"
+        data-alarm-code="true"
+        className={cn(FIGURE, ALARMS_CODE_TYPE)}
+        {...triggerProps}
+      >
+        {alarm.code}
+      </span>
+      {card}
+    </>
+  );
+};
+
 /** Two arrows round a circle — «تحديث». */
 const REFRESH_PATH = [
   'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
@@ -186,7 +212,12 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     // the rows matching ANY of its answers, and the two run in sequence, which is the AND.
     const shown = all
       .filter((alarm) => levels.length === 0 || levels.includes(alarm.level))
-      .filter((alarm) => vehicleCodes.length === 0 || vehicleCodes.includes(alarm.code));
+      // Whitespace and Latin case aside — the comparison the server's code filter makes.
+      .filter(
+        (alarm) =>
+          vehicleCodes.length === 0 ||
+          vehicleCodes.some((code) => sameVehicleCode(code, alarm.code)),
+      );
     // The remaining distance closes every tie, which is what keeps the default order identical to
     // the triage order this board opened in before it had arrows: reddest first, then nearest due.
     return sortRows(
@@ -295,11 +326,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       align: 'center',
       sortable: true,
       header: t('fleet.odometer.columns.vehicle'),
-      render: (alarm) => (
-        <span dir="ltr" data-alarm-code="true" className={cn(FIGURE, ALARMS_CODE_TYPE)}>
-          {alarm.code}
-        </span>
-      ),
+      render: (alarm) => <AlarmCode alarm={alarm} />,
     },
     {
       key: 'level',

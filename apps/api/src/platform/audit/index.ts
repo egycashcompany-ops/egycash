@@ -7,6 +7,7 @@ export {
 } from './audit.routes';
 export { registerAuditSettings } from './audit.settings';
 export { runActivityRetention, type RetentionRunResult } from './audit.retention';
+export { startAuditIndexBuild } from './audit-indexes';
 export {
   runSecuritySignalDetection,
   flagBreakGlassUse,

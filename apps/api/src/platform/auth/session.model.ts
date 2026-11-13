@@ -42,5 +42,11 @@ sessionSchema.index({ currentTokenHash: 1 }, { unique: true, name: 'ux_currentTo
 sessionSchema.index({ usedTokenHashes: 1 }, { name: 'ix_usedTokenHashes' });
 sessionSchema.index({ userId: 1 }, { name: 'ix_userId' });
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_expiresAt' });
+// The active users page: every session renewed inside the idle window, whoever holds it. Partial,
+// because revoked sessions are most of this collection over time and that read never wants one.
+sessionSchema.index(
+  { lastUsedAt: -1 },
+  { name: 'ix_live_lastUsedAt', partialFilterExpression: { revokedAt: null } },
+);
 
 export const SessionModel = model<SessionDoc>('Session', sessionSchema, 'sessions');

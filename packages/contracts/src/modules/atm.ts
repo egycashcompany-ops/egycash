@@ -628,6 +628,48 @@ export const ListAtmOpenOperationsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListAtmOpenOperationsQuery = z.infer<typeof ListAtmOpenOperationsQuerySchema>;
 
+// ── The open board, whole, in ONE read (GET /atm/replenishments/board, /atm/maintenances/board) ─
+//
+// The screens used to read an open board by walking the paged list — page 1, then every other page
+// in parallel, each one a find and a count, walked again when the totals disagreed — and every
+// viewer did so on every realtime signal. Measured in production (2026-11) that list was the API's
+// busiest read: about 35 calls a minute at a p50 of 238 ms. The board read is ONE `find` over the
+// open rows, in the paged list's order, with no count at all unless it is cut short.
+
+/**
+ * The most open rows one board read answers. Far above a real board (the busiest day so far held
+ * a few hundred, the largest paste 700); it only keeps a runaway board from becoming an unbounded
+ * answer. A board past it is cut, and says so (`AtmOpenBoardDto.truncated`).
+ */
+export const ATM_OPEN_BOARD_MAX_ROWS = 5000;
+
+/**
+ * The board read's query: the open list's two filters — the same names, the same escaping, the
+ * same spellings folded — and nothing about pages. A `page` or `pageSize` is refused, not ignored:
+ * a caller that sends one is reading the paged list and has the wrong endpoint.
+ */
+export const AtmOpenBoardQuerySchema = z
+  .object({
+    banks: atmNameListQuery(),
+    areas: atmNameListQuery(),
+  })
+  .strict();
+export type AtmOpenBoardQuery = z.infer<typeof AtmOpenBoardQuerySchema>;
+
+/**
+ * Every open row the filters match, in the board order (area descending, then newest id first —
+ * the paged list's own order and tiebreak). `truncated` is true when more rows matched than
+ * `ATM_OPEN_BOARD_MAX_ROWS`: `items` then holds the first of them, and `totalItems` counts them
+ * all. Otherwise `totalItems` is `items.length` and nothing was counted.
+ */
+export interface AtmOpenBoardDto<T> {
+  items: T[];
+  truncated: boolean;
+  totalItems: number;
+}
+export type AtmReplenishmentBoardDto = AtmOpenBoardDto<AtmReplenishmentDto>;
+export type AtmMaintenanceBoardDto = AtmOpenBoardDto<AtmMaintenanceDto>;
+
 // ── The machine list's filters (/atm/machines «كل الماكينات») ───────────────────────────────────
 //
 // One control per column of the table — Bank, ID, ATM Name, Area — in the vehicles registry's

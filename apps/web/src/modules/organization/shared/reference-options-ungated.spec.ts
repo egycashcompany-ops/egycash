@@ -40,6 +40,7 @@ const files = sources(SRC).map((path) => ({ name: relative(SRC, path), text: rea
 /** The reference-options hooks — `/platform/<unit>/options`, which needs no permission at all. */
 const OPTION_HOOKS = [
   'useBranchOptions',
+  'useBranchNames',
   'useDepartmentOptions',
   'useDepartmentReferenceOptions',
   'useSectionOptions',

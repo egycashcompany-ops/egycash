@@ -10,7 +10,8 @@
 // way it moved.
 //
 // Every issue row carries its memo: print it again (same number) and file or view the signed copy,
-// the controls every paper of the department has. URL-synced and remembered like every IT
+// the controls every paper of the department has. A transfer between two stores is its two rows,
+// «تحويل إلى فرع» and «تحويل من فرع», each naming the other branch — the kind filter offers both. URL-synced and remembered like every IT
 // register; Excel and PDF of every movement the filters match (`lib/consumable-movement-register-
 // export.ts`).
 import { useMemo, useState } from 'react';
@@ -249,7 +250,7 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   };
   const toExcel = async (): Promise<void> => {
     const all = await allRows();
-    const context = { t, locale, typeName, userName: await userNames(all) };
+    const context = { t, locale, typeName, branchName, userName: await userNames(all) };
     saveSheet({
       name: t('it.nav.consumableMovements'),
       serialHeader: t('it.export.serial'),
@@ -260,7 +261,7 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   const toPdf = (): Promise<boolean> =>
     printItRegister(async () => {
       const all = await allRows();
-      const context = { t, locale, typeName, userName: await userNames(all) };
+      const context = { t, locale, typeName, branchName, userName: await userNames(all) };
       const subtitle = consumableMovementRegisterSubtitle(t, {
         ...consumableMovementRegisterFilters({
           locale,

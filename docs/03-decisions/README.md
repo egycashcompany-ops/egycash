@@ -27,9 +27,9 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-016](ADR-016-optional-position-requisition-linkage.md) | Job Positions & Job Requisitions are OPTIONAL for applicants (Talent Pool) | Accepted, amended 2026-08-24 (P-ORG-1 merged Job Positions away; the requisition rule stands) |
 | [ADR-017](ADR-017-platform-identity-and-access-control.md) | Platform Identity & Organizational Access Control (hierarchical scopes, employee-linked logins, branch-based employee code) | Accepted |
 | [ADR-018](ADR-018-automation-engine.md) | A provider-backed Automation Service, alongside (not replacing) the Workflow Engine | Accepted |
-| [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted |
+| [ADR-019](ADR-019-reference-pickers-search-not-load-all.md) | Reference pickers search the server; they never load the whole catalog | Accepted; rules 4–5 superseded for vehicle-code pickers by ADR-037 |
 | [ADR-020](ADR-020-shared-file-storage.md) | Shared file storage for a multi-service deployment (object store, not a local disk) | Accepted |
-| [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted |
+| [ADR-021](ADR-021-it-asset-custody-and-history.md) | IT asset custody is an append-only event chain, not a status field | Accepted, amended 2026-11-11 (a transfer — and the move to another branch — writes its audit after its commit) |
 | ADR-022 | Help-desk SLA & ticket lifecycle placement | **Reserved, unwritten** |
 | [ADR-023](ADR-023-entity-derived-file-authorization.md) | File authorization is derived from the owning entity, not from the file | Accepted |
 | [ADR-024](ADR-024-minimal-spare-parts-ledger.md) | The spare-parts ledger is a store record, not inventory accounting | Accepted |
@@ -42,7 +42,9 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-032](ADR-032-delegated-grants-per-site.md) | A manager hands out, per unit, what they hold there — reach is a set of units (whole branches, department copies) per permission key; a delegated grant is a list of keys for one account over one department in one branch, or a whole branch, and the ceiling compares units, not ranks | Accepted (amended) |
 | [ADR-033](ADR-033-outbound-http-one-door.md) | Outbound HTTP leaves through one guarded door — host allowlist, private-address refusal, redirects judged per hop, and a guard spec that forbids a bare `fetch` anywhere else | Accepted |
 | [ADR-034](ADR-034-audited-reveal-of-a-sealed-value.md) | A sealed value a person may see is revealed by an audited `POST …/reveal` under its own key that must reach the record — never a `GET`, never a DTO field, never cached; every call audited, even when nothing is stored | Accepted |
-| [ADR-035](ADR-035-passkey-sign-in.md) | Sign-in with a passkey (fingerprint / Face ID): discoverable, user-verifying, attestation none; counts as the second factor (amends R13); staff and opted-in external modules (gold customers), never applicants; RP ID from configuration; password + TOTP step-up to add one; single-use server challenges; every password-path barrier kept; reset/suspend/archive remove passkeys | Accepted |
+| [ADR-035](ADR-035-passkey-sign-in.md) | Sign-in with a passkey (fingerprint / Face ID): discoverable, user-verifying, attestation none; counts as the second factor (amends R13); staff and opted-in external modules (gold customers), never applicants; RP ID from configuration; password + TOTP step-up to add one; single-use server challenges; every password-path barrier kept; reset/suspend/archive remove passkeys | Accepted; §9 superseded by ADR-036 |
+| [ADR-036](ADR-036-passkey-switch-keeps-own-list-and-removal.md) | With passkeys switched off, the server refuses sign-in, adding and renaming; people can still see and remove their own (`GET` answers `meta.enabled`) | Accepted |
+| [ADR-037](ADR-037-vehicle-code-pickers-list-every-active-car.md) | A vehicle-code picker lists every car it may offer — the owner's «لازم تظهر كلها»; still paged on the wire (`fetchWholeCatalog`), `{ id, code }` rows outside Fleet | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),

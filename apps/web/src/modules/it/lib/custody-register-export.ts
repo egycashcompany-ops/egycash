@@ -91,6 +91,14 @@ export const receiptStateOf = (value: string): ItAssignmentReceiptState | null =
     ? (value as ItAssignmentReceiptState)
     : null;
 
+/**
+ * The screen's `holderExited` param — «حالة المستلِم»: `true` the intervals whose holder HR shows
+ * as having left (the dashboard's «أصول مع موظفين تركوا العمل», opened as a list), `false` the
+ * others. Anything else is no filter at all, rather than a refused request.
+ */
+export const holderExitedOf = (value: string | null): boolean | null =>
+  value === 'true' ? true : value === 'false' ? false : null;
+
 /** A date window as paper writes it — each bound a day in the reader's words, null when open. */
 export interface CustodyDayWindow {
   from: string | null;
@@ -102,6 +110,8 @@ export interface CustodyRegisterFilters {
   open: CustodyOpenFilter;
   branch: string | null;
   holder: string | null;
+  /** «حالة المستلِم» — left (true) or still employed (false); null when not set. */
+  holderExited: boolean | null;
   /** «بحث» — the asset's code, name or serial, as typed. */
   search: string | null;
   /** The categories chosen, by name — `''` for one set but not among the options. */
@@ -153,6 +163,7 @@ export const custodyRegisterFilters = ({
   branchName,
   employeeId,
   holderLabel,
+  holderExited,
   search,
   categoryIds,
   categoryName,
@@ -171,6 +182,7 @@ export const custodyRegisterFilters = ({
   branchName: ReadonlyMap<string, string>;
   employeeId: string;
   holderLabel: string;
+  holderExited: boolean | null;
   search: string;
   categoryIds: readonly string[];
   categoryName: ReadonlyMap<string, string>;
@@ -191,6 +203,7 @@ export const custodyRegisterFilters = ({
       : rows.find((row) => row.assignedToEmployeeId === employeeId)?.assignedToEmployeeName ||
         holderLabel ||
         employeeId,
+  holderExited,
   search: search.trim() === '' ? null : search.trim(),
   categories: categoryIds.length === 0 ? null : categoryIds.map((id) => categoryName.get(id) ?? ''),
   assetNames: assetNames.length === 0 ? null : [...assetNames],
@@ -218,9 +231,9 @@ const receiptText = (t: Translate, state: ItAssignmentReceiptState): string =>
 
 /**
  * What the printed page is a view OF, under its title: the status filter, the branch, then every
- * other filter that is set — the holder, the search, the categories and the «الصنف» picked from
- * them, the two date windows, «موعد الإعادة», the receipt — and the day it was taken: a register
- * on paper is only true as of a date. A branch set but unnamed (`''`) prints as «فرع محدد», a
+ * other filter that is set — the holder and «حالة المستلِم» beside it, the search, the categories
+ * and the «الصنف» picked from them, the two date windows, «موعد الإعادة», the receipt — and the day
+ * it was taken: a register on paper is only true as of a date. A branch set but unnamed (`''`) prints as «فرع محدد», a
  * category as «فئة محددة».
  */
 export const custodyRegisterSubtitle = (
@@ -236,6 +249,13 @@ export const custodyRegisterSubtitle = (
         : t('it.custody.filterAll'),
     namedFilter(t, filters.branch, { all: 'it.assets.allBranches', one: 'it.export.oneBranch' }),
     filters.holder === null ? null : t('it.export.holderIs', { name: filters.holder }),
+    filters.holderExited === null
+      ? null
+      : t('it.custody.export.holderStateIs', {
+          state: filters.holderExited
+            ? t('it.custody.filters.holderExited')
+            : t('it.custody.filters.holderEmployed'),
+        }),
     filters.search === null ? null : t('it.export.searchIs', { q: filters.search }),
     filters.categories === null
       ? null

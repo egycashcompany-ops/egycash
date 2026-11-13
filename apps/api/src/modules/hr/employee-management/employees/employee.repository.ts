@@ -8,7 +8,11 @@ import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { normalizeArabic } from '../../shared/arabic';
 import { EmployeeModel, type EmployeeDoc, type EmployeeEntity } from './employee.model';
-import { codeNumberExpression, codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
+import {
+  codeNumberExpression,
+  codeNumberKey,
+  employeeCodeSort,
+} from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
   status?: string | undefined;
@@ -27,9 +31,16 @@ export interface EmployeeListFilter {
   governorate?: string | undefined;
   address?: string | undefined;
   phone?: string | undefined;
+  /** The company ID card: printed at least once, or never. */
+  idCard?: 'received' | 'never' | 'awaiting' | 'receipt' | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** What a directory entry reads (`directory-seams.ts` `toDirectoryEmployee`) — and nothing more. */
+export const DIRECTORY_FIELDS =
+  'code status branchId departmentId hiredAt personal.fullNameAr personal.contact.primaryPhone ' +
+  'personal.officialAddress personal.currentAddress';
 
 class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   constructor() {
@@ -184,6 +195,26 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * The code of the EXTERNAL person registered most recently — «عرفنى تحته كدا أخر كود كام للموظفين
+   * الخارجيين دول».
+   *
+   * By when they were registered, not by the code's value, because an external code may carry
+   * letters and there is no order to "highest" across `EX7` and `EX10`. The last one issued is the
+   * question HR is actually asking: what did we give the person before this one.
+   *
+   * Any state, as `findHighestNumberedCode` is: a deleted external person's code is still spent.
+   */
+  async findLastExternalCode(): Promise<string | null> {
+    const row = await this.model
+      .findOne({ origin: 'external' })
+      .sort({ createdAt: -1, _id: -1 })
+      .select('code')
+      .lean<{ code: string }>()
+      .exec();
+    return row?.code ?? null;
+  }
+
+  /**
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
@@ -214,9 +245,16 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    */
   async jobTitlePlacements(
     branchId: string,
-  ): Promise<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }[]> {
+  ): Promise<
+    { jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }[]
+  > {
     return this.model
-      .aggregate<{ jobTitleId: unknown; departmentId: unknown; sectionId: unknown; employees: number }>([
+      .aggregate<{
+        jobTitleId: unknown;
+        departmentId: unknown;
+        sectionId: unknown;
+        employees: number;
+      }>([
         {
           $match: {
             isDeleted: false,
@@ -281,6 +319,22 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /** Batch fetch for display enrichment (AT-6 lists) — ids in, docs out, no scope (labels only). */
+  /**
+   * The same people as `findByIdsSystem`, carrying only what a directory entry is made of. A list
+   * screen asks for a page of them at a time, and the active users page for everyone on the system
+   * every 30 seconds: whole records — addresses, insurance, periods, history — would be megabytes
+   * decoded to print a code and a name.
+   */
+  async findDirectoryByIdsSystem(ids: string[]): Promise<EmployeeDoc[]> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
+      .select(DIRECTORY_FIELDS)
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   async findByIdsSystem(ids: string[]): Promise<EmployeeDoc[]> {
     const valid = ids.filter((id) => Types.ObjectId.isValid(id));
     if (valid.length === 0) return [];
@@ -316,6 +370,23 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
+   * A28 — the jobs held in each department: one row per department and job among the employees who
+   * have not exited, for «مستندات الوظائف», which shows every department with the jobs in it.
+   * `System`: it names no person and no figure, and the popup is the whole company's.
+   */
+  async jobsByDepartmentSystem(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: { departmentId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null } }>([
+        { $match: { isDeleted: false, status: { $ne: 'exited' } } },
+        { $group: { _id: { departmentId: '$employment.departmentId', jobTitleId: '$employment.jobTitleId' } } },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({ departmentId: String(row._id.departmentId), jobTitleId: String(row._id.jobTitleId) }));
   }
 
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
@@ -423,6 +494,11 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    *
    * `System` for the same reason its neighbour gives: the caller is another feature reading
    * through a seam, not a person browsing HR.
+   *
+   * Only what a directory entry is made of (`DIRECTORY_FIELDS`): the one reader is the directory
+   * seam, which maps each row through `toDirectoryEmployee`. Fleet asks this for every driver twice
+   * per fleet dashboard refresh (the roster board and the drivers registry) — whole records,
+   * insurance, periods and history included, were decoded to keep the few fields an entry carries.
    */
   async listByJobTitlesSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (jobTitleIds.length === 0) return [];
@@ -432,6 +508,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         status: { $in: [...EMPLOYED_STATUSES] },
         isDeleted: false,
       })
+      .select(DIRECTORY_FIELDS)
       .lean<EmployeeDoc[]>()
       .exec();
   }
@@ -439,7 +516,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   /**
    * Everyone holding one of these job titles, EMPLOYED OR NOT — the same seats with the people
    * who have left them. For a caller recording history against a person who may have since exited
-   * (Fleet's violations). Soft-deleted rows are not included.
+   * (Fleet's violations). Soft-deleted rows are not included. Directory fields only, as above.
    */
   async listByJobTitlesAnyStatusSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (jobTitleIds.length === 0) return [];
@@ -448,6 +525,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         'employment.jobTitleId': { $in: jobTitleIds.map((id) => new Types.ObjectId(id)) },
         isDeleted: false,
       })
+      .select(DIRECTORY_FIELDS)
       .lean<EmployeeDoc[]>()
       .exec();
   }
@@ -585,6 +663,24 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         ],
       } as FilterQuery<EmployeeDoc>);
     }
+    // A card counts once HR confirms it was received — printing alone never does (see
+    // `employee-id-card.ts`). Never received is the counter absent as well as zero.
+    if (f.idCard === 'received') clauses.push({ 'idCard.receivedCount': { $gte: 1 } });
+    if (f.idCard === 'never') clauses.push({ 'idCard.receivedCount': { $not: { $gte: 1 } } });
+    // Waiting for its handover, split by whose turn it is: HR's (print the receipt) or the
+    // employee's (sign it and take the card).
+    if (f.idCard === 'awaiting') {
+      clauses.push({
+        'idCard.awaitingHandover': true,
+        'idCard.receiptPrintedAt': { $exists: false },
+      });
+    }
+    if (f.idCard === 'receipt') {
+      clauses.push({
+        'idCard.awaitingHandover': true,
+        'idCard.receiptPrintedAt': { $exists: true },
+      });
+    }
     if (f.phone !== undefined && f.phone.trim() !== '') {
       // The PRIMARY number only — the one every screen displays. Including the secondary would
       // match rows whose shown phone does not contain the search term.
@@ -659,7 +755,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       pageSize: params.pageSize,
       sortBy: params.sortBy,
       sortDir: params.sortDir,
-      sortableFields: ['createdAt', 'code', codeNumberKey('code'), 'hiredAt'],
+      // `idCard.receivedCount` — «الأكثر استلاماً للكارنيه».
+      sortableFields: [
+        'createdAt',
+        'code',
+        codeNumberKey('code'),
+        'hiredAt',
+        'idCard.receivedCount',
+      ],
       ...employeeCodeSort('code', params.sortBy, params.sortDir ?? 'desc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });

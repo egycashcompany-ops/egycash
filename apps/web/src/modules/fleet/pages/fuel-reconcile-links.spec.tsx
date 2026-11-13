@@ -354,13 +354,16 @@ describe('«كروت في الشيت وليست في النظام»', () => {
   const newOf = (added: Record<number, string> = {}, mayAdd = true): string =>
     renderToStaticMarkup(
       <Provider store={storeOf(ALL)}>
-        <ReconcileNewCards
-          rows={NEW}
-          company="chillout"
-          added={added}
-          mayAdd={mayAdd}
-          onAdd={() => undefined}
-        />
+        {/* The car chip watches the registry for its car card. */}
+        <QueryClientProvider client={new QueryClient()}>
+          <ReconcileNewCards
+            rows={NEW}
+            company="chillout"
+            added={added}
+            mayAdd={mayAdd}
+            onAdd={() => undefined}
+          />
+        </QueryClientProvider>
       </Provider>,
     );
 
@@ -386,13 +389,15 @@ describe('«كروت في الشيت وليست في النظام»', () => {
     const blocked = (rows: FleetFuelReconcileNewCardDto[]): string =>
       renderToStaticMarkup(
         <Provider store={storeOf(ALL)}>
-          <ReconcileNewCards
-            rows={rows}
-            company="wataniya"
-            added={{}}
-            mayAdd
-            onAdd={() => undefined}
-          />
+          <QueryClientProvider client={new QueryClient()}>
+            <ReconcileNewCards
+              rows={rows}
+              company="wataniya"
+              added={{}}
+              mayAdd
+              onAdd={() => undefined}
+            />
+          </QueryClientProvider>
         </Provider>,
       );
     // A Wataniya sheet of mixed prefixes (no wrong-company stop): the stray Chill Out row.

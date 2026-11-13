@@ -68,6 +68,8 @@ export const toCurrencyDto = (doc: OperationsCurrencyDoc): OperationsCurrencyDto
   code: doc.code,
   name: doc.name,
   legacyAliases: doc.legacyAliases,
+  // `?? null`: a row written before the catalog could be ordered has no such field at all.
+  sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
@@ -95,6 +97,18 @@ export const toShipmentDto = (doc: OperationsShipmentDoc): OperationsShipmentDto
   notes: doc.notes,
   receivedById: doc.receivedById === null ? null : String(doc.receivedById),
   receivedAt: doc.receivedAt === null ? null : iso(doc.receivedAt),
+  // `== null`, not `=== null`: the board reads `.lean()`, and a row written before the receipt
+  // column has no such field at all — absent and null both mean "no photo yet".
+  receiptImage:
+    doc.receiptImage == null
+      ? null
+      : {
+          fileId: String(doc.receiptImage.fileId),
+          fileName: doc.receiptImage.fileName,
+          mime: doc.receiptImage.mime,
+          size: doc.receiptImage.size,
+          uploadedAt: iso(doc.receiptImage.uploadedAt),
+        },
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

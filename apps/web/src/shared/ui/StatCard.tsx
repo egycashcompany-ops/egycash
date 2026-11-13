@@ -2,9 +2,26 @@
 // an honest placeholder (a muted dash + caption) so a dashboard's shape is visible before any metric
 // is wired — it never fabricates numbers.
 import { type ComponentType, type SVGProps } from 'react';
+import { Link } from 'react-router-dom';
 import { cn } from '../lib/cn';
 import { Card, CardBody } from './Card';
 import { Skeleton } from './Skeleton';
+
+/**
+ * The icon tile's colour. `neutral` is every home page's tile; the others are for a row of tiles
+ * that are the PARTS of one whole — the IT dashboard's in stock / handed over / under maintenance —
+ * where each wears the colour its part wears on the bars below it. `danger` is the vehicle checks
+ * dashboard's «سيارات بها عطل» and «أجهزة لا تعمل», red as «لا يعمل» is red on every cell below.
+ */
+export type StatCardTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
+
+const ICON_TONE: Record<StatCardTone, string> = {
+  neutral: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+  brand: 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300',
+  success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  danger: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
+};
 
 export const StatCard = ({
   label,
@@ -12,6 +29,8 @@ export const StatCard = ({
   value,
   caption,
   onClick,
+  to,
+  tone = 'neutral',
   active = false,
   loading = false,
 }: {
@@ -27,6 +46,13 @@ export const StatCard = ({
    * dashboards want: a number that is not a filter should not look pressable.
    */
   onClick?: () => void;
+  /**
+   * Makes the tile a LINK — for a metric that is a count of another screen's list, which opens it
+   * («إجمالي الأصول» → the asset register under the same filters). A link rather than a button
+   * with `navigate()`, so it opens in a new tab and says where it goes.
+   */
+  to?: string;
+  tone?: StatCardTone;
   /** Draw it as the view currently applied. */
   active?: boolean;
   /**
@@ -41,12 +67,15 @@ export const StatCard = ({
     <Card
       className={cn(
         'h-full',
-        onClick !== undefined && 'transition-colors hover:border-brand-300 dark:hover:border-brand-700',
+        (onClick !== undefined || to !== undefined) &&
+          'transition-colors hover:border-brand-300 dark:hover:border-brand-700',
         active && 'border-brand-400 ring-1 ring-brand-400/40 dark:border-brand-600',
       )}
     >
       <CardBody className="flex items-center gap-4">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+        <span
+          className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-lg', ICON_TONE[tone])}
+        >
           <Icon className="h-6 w-6" />
         </span>
         <div className="min-w-0">
@@ -70,6 +99,17 @@ export const StatCard = ({
       </CardBody>
     </Card>
   );
+
+  if (to !== undefined) {
+    return (
+      <Link
+        to={to}
+        className="block h-full rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40"
+      >
+        {tile}
+      </Link>
+    );
+  }
 
   // A real <button> rather than a div with a click handler: keyboard focus, Enter/Space and the
   // pressed announcement all come free, and the shared Card keeps its own simple contract.

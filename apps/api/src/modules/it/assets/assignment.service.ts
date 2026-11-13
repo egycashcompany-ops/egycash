@@ -5,10 +5,12 @@ import { Types, type FilterQuery } from 'mongoose';
 import { type ListItAssignmentsQuery, type Paginated } from '@ecms/contracts';
 import { NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
+import { getDirectoryEmployees, type DirectoryEmployee } from '../../../platform/directory';
 import { registerSearchPattern } from '../shared/register-search';
 import { itAssetRepository } from './asset.repository';
 import { type ItAssetDoc } from './asset.model';
 import {
+  assignmentRegisterFilter,
   itAssetAssignmentRepository,
   type ItAssignmentRegisterFilter,
 } from './assignment.repository';
@@ -57,6 +59,46 @@ const receiptFilter = async (
   return { state, signedReceiptIds: await itCustodyReceiptRepository.signedIds() };
 };
 
+/**
+ * Which of these holders HR shows as having left — FR-13's «assets held by exited employees».
+ *
+ * Judged live on the directory's answer and never stored: the exit subscription records the fact
+ * for the checklist, it marks no interval, and a person's status is HR's to keep. It counts a
+ * POSITIVE answer only — an id the directory does not know is not a leaver, because nothing says
+ * they left (the hand-over's `refuseLeaver` rule).
+ */
+export const exitedHolderIds = (
+  holderIds: Iterable<string>,
+  directory: ReadonlyMap<string, Pick<DirectoryEmployee, 'status'>>,
+): Types.ObjectId[] =>
+  [...holderIds]
+    .filter((id) => Types.ObjectId.isValid(id) && directory.get(id)?.status === 'exited')
+    .map((id) => new Types.ObjectId(id));
+
+/**
+ * The leavers among the holders of the intervals a filter matches, and how many of those
+ * intervals they hold. Two reads whatever the size: the holders in one `$group`, then HR about all
+ * of them in one directory batch — and HR is asked nothing when nobody holds anything.
+ *
+ * Shared by the register's «حالة المستلِم» and the dashboard's «أصول مع موظفين تركوا العمل», so the
+ * figure on the dashboard is the number of rows the register opens with.
+ */
+export const leaverHoldings = async (
+  filter: FilterQuery<ItAssetAssignmentDoc>,
+  scope: ScopeSelector,
+): Promise<{ exitedEmployeeIds: Types.ObjectId[]; intervals: number }> => {
+  const holders = await itAssetAssignmentRepository.countByHolder(filter, scope);
+  const directory =
+    holders.size === 0
+      ? new Map<string, DirectoryEmployee>()
+      : await getDirectoryEmployees([...holders.keys()]);
+  const exitedEmployeeIds = exitedHolderIds(holders.keys(), directory);
+  return {
+    exitedEmployeeIds,
+    intervals: exitedEmployeeIds.reduce((sum, id) => sum + (holders.get(String(id)) ?? 0), 0),
+  };
+};
+
 class ItAssetAssignmentService {
   /**
    * The cross-asset custody register. Branch-scoped like everything else in the module.
@@ -66,6 +108,10 @@ class ItAssetAssignmentService {
    * the page is: the assets the categories, «الصنف» and the search match together (under the
    * caller's scope, the way the row's own asset label is read — a reader cannot find an interval by
    * an asset they cannot see), and the receipts that are signed. Never a read per row.
+   *
+   * «حالة المستلِم» comes last because it is a fact of HR's: the holders of the intervals every
+   * OTHER filter keeps are read once, and HR asked about those alone — so the directory batch is as
+   * small as the reader's question makes it.
    */
   async list(
     query: ListItAssignmentsQuery,
@@ -76,7 +122,8 @@ class ItAssetAssignmentService {
       assetFilter === null ? undefined : itAssetRepository.idsMatching(assetFilter, scope),
       receiptFilter(query.receipt),
     ]);
-    return itAssetAssignmentRepository.listFiltered({
+    const now = new Date();
+    const filters: ItAssignmentRegisterFilter = {
       open: query.open,
       assetId: query.assetId,
       assetIds,
@@ -88,7 +135,19 @@ class ItAssetAssignmentService {
       returnedTo: query.returnedTo,
       overdue: query.overdue,
       receipt,
-      now: new Date(),
+    };
+    const holderExited =
+      query.holderExited === undefined
+        ? undefined
+        : {
+            exited: query.holderExited,
+            exitedEmployeeIds: (await leaverHoldings(assignmentRegisterFilter(filters, now), scope))
+              .exitedEmployeeIds,
+          };
+    return itAssetAssignmentRepository.listFiltered({
+      ...filters,
+      holderExited,
+      now,
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,

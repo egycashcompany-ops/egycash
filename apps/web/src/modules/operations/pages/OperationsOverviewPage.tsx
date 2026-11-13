@@ -16,7 +16,10 @@ import {
   CalendarIcon,
   ChartIcon,
   ClipboardIcon,
+  FolderIcon,
   InboxIcon,
+  LinkIcon,
+  ReceiptIcon,
   ShieldIcon,
   TagIcon,
   TruckIcon,
@@ -40,6 +43,17 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     titleKey: 'operations.nav.dailyOps',
     descKey: 'operations.cards.dailyOps',
     icon: ClipboardIcon,
+    permission: 'operationsShipment.view',
+  },
+  /**
+   * NO legacy equivalent: the day board over a from–to range — «عشان اقدر امسك الhistory بتاع
+   * الشحنات». Beside the board it extends, under the board's own grant.
+   */
+  {
+    to: '/operations/shipments/history',
+    titleKey: 'operations.nav.shipmentsHistory',
+    descKey: 'operations.cards.shipmentsHistory',
+    icon: CalendarIcon,
     permission: 'operationsShipment.view',
   },
   /** Legacy `/tashghela` — tomorrow's crews, planned a day ahead. */
@@ -66,6 +80,18 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: InboxIcon,
     permission: 'operationsShipment.view',
   },
+  /**
+   * «توزيع المحصنات» (Round 12, NO legacy equivalent) — the day's محصنات onto the day's vans. On the
+   * secured screen's own grant, as its route; saving is `operationsShipment.edit`, on the server.
+   * The sidebar's icon, so the card and the row read as one screen.
+   */
+  {
+    to: '/operations/secured/distribution',
+    titleKey: 'operations.nav.securedDistribution',
+    descKey: 'operations.cards.securedDistribution',
+    icon: LinkIcon,
+    permission: 'operationsShipment.view',
+  },
   /** Legacy `/receive_mohsana` — the treasurer's receiving queue. */
   {
     to: '/operations/vault/receive',
@@ -74,7 +100,18 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ShieldIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/tash4ela_mohasana` + `/deliver_mohsana` — one list, two acts. */
+  /**
+   * «تسليم المحصنات» (Round 12, NO legacy equivalent) — the vault hands each van its load. On the
+   * vault screens' grant, as its route; the handover itself is `operationsVault.dispatch`.
+   */
+  {
+    to: '/operations/vault/handover',
+    titleKey: 'operations.nav.vaultHandover',
+    descKey: 'operations.cards.vaultHandover',
+    icon: ReceiptIcon,
+    permission: 'operationsVault.view',
+  },
+  /** «محصنات الخزينة» (Round 12, was «صرف الخزينة») — every محصنة in the vault now, view only. */
   {
     to: '/operations/vault/dispatch',
     titleKey: 'operations.nav.vaultDispatch',
@@ -82,12 +119,15 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: TruckIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/vault1` — what is in the vault right now. */
+  /**
+   * «سجل الخزينة» (Round 12, was «جرد الخزينة») — «تقرير الخزينة» now, and the secured history. A
+   * folder, as its sidebar row: no longer a second shield beside «استلام في الخزينة».
+   */
   {
     to: '/operations/vault',
     titleKey: 'operations.nav.vault',
     descKey: 'operations.cards.vault',
-    icon: ShieldIcon,
+    icon: FolderIcon,
     permission: 'operationsVault.view',
   },
   /** Legacy `/vault1_reports` — what the vault holds, rolled up by bank. */
@@ -149,9 +189,7 @@ export const OperationsOverviewPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('operations.overview.title')}
-      />
+      <PageHeader title={t('operations.overview.title')} />
       <ModuleHome
         shortcuts={shortcuts}
         kpis={[]}

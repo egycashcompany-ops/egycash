@@ -15,7 +15,11 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { ClipboardIcon } from '../../../shared/ui/icons';
 import { formatDateTime } from '../../../shared/lib/format';
 
-const TONE: Record<string, 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info'> = {
+/** Each entry's badge colour — shared with the dashboard's «آخر الحركات», so a kind reads alike. */
+export const ASSET_EVENT_TONE: Record<
+  string,
+  'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info'
+> = {
   registered: 'neutral',
   updated: 'neutral',
   assigned: 'info',
@@ -81,7 +85,7 @@ export const AssetHistoryList = ({
             className="flex gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
           >
             <span className="mt-0.5 shrink-0">
-              <Badge tone={TONE[entry.type] ?? 'neutral'}>
+              <Badge tone={ASSET_EVENT_TONE[entry.type] ?? 'neutral'}>
                 {t(`it.custody.event.${entry.type}`)}
               </Badge>
             </span>

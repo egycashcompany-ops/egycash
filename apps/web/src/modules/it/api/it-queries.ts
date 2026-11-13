@@ -4,6 +4,7 @@
 // One rule carries this file: an asset mutation invalidates the ASSETS subtree and reseeds the
 // detail cache, because the server derives `status` and allocates `assetCode` — a client that
 // kept its own copy would show a stale truth the moment either changed.
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
@@ -40,6 +41,7 @@ import {
   type CreateItVendor,
   type DisposeItAsset,
   type HandOverItAssets,
+  type MoveItAssetsToBranch,
   type AssignItMobileLine,
   type CreateItMobileLine,
   type ItMobileLineStatusAction,
@@ -50,6 +52,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
   type ReturnItAsset,
@@ -59,6 +62,7 @@ import {
   type UpdateItVendor,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { rereadAfterDelete } from '../lib/vehicle-check-dashboard';
 import * as api from './it-api';
 import { type ItListParams } from './it-api';
 
@@ -101,6 +105,13 @@ const itKeys = {
    * apart. An asset's «installed on it» card and a person's card read the same ledger.
    */
   consumables: featureKey(MODULE, 'consumables'),
+  /**
+   * The vehicle checks dashboard (FR-21): its figures, the reports list and one report — one
+   * subtree, because a delete moves all three (the report leaves the list, its car's latest falls
+   * back to the one before, the counts move), and so does a report filed or a photo added on a
+   * phone, which the realtime `it.vehicleCheck` signal names.
+   */
+  vehicleChecks: featureKey(MODULE, 'vehicleChecks'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -111,6 +122,19 @@ export const useItBranchOptions = () =>
     queryKey: listKey(MODULE, 'branchOptions'),
     queryFn: api.listBranchOptions,
     staleTime: 5 * 60_000,
+  });
+
+/**
+ * The branches «نقل إلى فرع» and «تحويل إلى فرع» may go to, as the server judges the caller's
+ * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while a dialog is OPEN: both
+ * dialogs stay mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to
+ * whoever lacks the grant. Its own subtree: no asset or item write changes a grant's reach.
+ */
+export const useItMoveTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'moveTargets'),
+    queryFn: api.moveTargets,
+    enabled,
   });
 
 /**
@@ -235,6 +259,33 @@ export const useItAssetNames = (categoryIds: readonly string[] = []) => {
   });
 };
 
+/**
+ * The `/it` dashboard's figures and its latest movements. Both are keyed INSIDE the assets subtree
+ * — every asset, custody and maintenance write already invalidates it, and so does the realtime
+ * `it.asset` signal — so a hand-over somebody makes in another tab moves the counts on this one.
+ * `enabled` mirrors `itAsset.view`: a reader without it never asks.
+ */
+const dashboardKey = (part: 'assets' | 'activity', params?: ItListParams) =>
+  listKey(MODULE, 'assets', { dashboard: part, ...params });
+
+export const useItDashboardAssets = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: dashboardKey('assets', params),
+    queryFn: () => api.getDashboardAssets(params),
+    // The previous filters' figures while the new ones load: the panels keep their shape instead
+    // of flashing to skeletons on every category ticked.
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItDashboardActivity = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: dashboardKey('activity', params),
+    queryFn: () => api.getDashboardActivity(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
 export const useItAsset = (id: string) =>
   useQuery({
     queryKey: detailKey(MODULE, 'assets', id),
@@ -344,6 +395,24 @@ export const useDisposeItAsset = () =>
     api.disposeAsset(id, body),
   );
 
+/**
+ * «نقل إلى فرع»: every asset named changes branch, and a held one's custody interval with it — so
+ * everything a custody action invalidates is invalidated: the register and its dashboard (the
+ * assets subtree, each asset's cached detail included), the intervals and the history, and the
+ * people's counts.
+ */
+export const useMoveItAssetsToBranch = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: MoveItAssetsToBranch) => api.moveAssetsToBranch(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+      void qc.invalidateQueries({ queryKey: itKeys.people });
+    },
+  });
+};
+
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 
 /** A stored receipt — what «طباعة الإيصال» prints again, and what the signed copy hangs off. */
@@ -373,13 +442,18 @@ export const useHandOverItAssets = () => {
   });
 };
 
-/** Issuing, filing or withdrawing a receipt's paper changes the register rows that show it. */
+/**
+ * Issuing, filing or withdrawing a receipt's paper changes the register rows that show it — and
+ * the dashboard's «إيصالات استلام بانتظار التوقيع», which counts the receipts with no signed copy.
+ * Only the dashboard's figures, not the whole assets subtree: the paper moves no asset.
+ */
 const useReceiptMutation = <TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: itKeys.custody });
+      void qc.invalidateQueries({ queryKey: dashboardKey('assets') });
     },
   });
 };
@@ -576,12 +650,89 @@ export const useReturnItConsumable = () =>
   );
 export const useIssueItConsumables = () =>
   useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body));
+/** «تحويل إلى فرع» — both stores' figures and the two movements of every line, in the one subtree. */
+export const useTransferItConsumables = () =>
+  useConsumableMutation((body: TransferItConsumables) => api.transferConsumables(body));
 export const useUploadConsumableMemoSignedCopy = () =>
   useConsumableMutation(({ id, file }: { id: string; file: File }) =>
     api.uploadConsumableMemoSignedCopy(id, file),
   );
 export const useDeleteConsumableMemoSignedCopy = () =>
   useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
+
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
+
+/**
+ * The phone form's cars: every active car, by code, every page (`fetchItVehicleCheckCars`). A
+ * minute fresh: the car box asks again when it opens on a list older than that, so a car activated
+ * since is on offer without reloading the page. Filing and photos are plain calls from the page —
+ * each outcome has its own answer on the form (§6.3), not the app's one error toast.
+ */
+export const useItVehicleCheckCars = () =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleCheckCars'),
+    queryFn: api.fetchItVehicleCheckCars,
+    staleTime: 60_000,
+  });
+
+/**
+ * The dashboard's figures under the period and the branch. The previous view's figures stay while
+ * the next ones load, so the tiles keep their shape instead of flashing to skeletons on every click.
+ */
+export const useItVehicleCheckDashboard = (params: ItListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleChecks', { dashboard: true, ...params }),
+    queryFn: () => api.getVehicleCheckDashboard(params),
+    placeholderData: (prev) => prev,
+  });
+
+/** «آخر التقارير» — a page of reports under every filter. */
+export const useItVehicleChecks = (params: ItListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicleChecks', params),
+    queryFn: () => api.listVehicleChecks(params),
+    placeholderData: (prev) => prev,
+  });
+
+/** One report, for the side panel. A 404 (deleted, or outside the scope) is an answer: no retry. */
+export const useItVehicleCheck = (id: string | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'vehicleChecks', id ?? ''),
+    queryFn: () => api.getVehicleCheck(id ?? ''),
+    enabled: id !== null && id !== '',
+    retry: false,
+  });
+
+/**
+ * Delete a wrong report. The dashboard and the list read the subtree it moves — all of it again but
+ * the deleted report's own read, which its still-open panel would fetch back as a 404 and the app
+ * would toast as «not found» over a delete that succeeded (`rereadAfterDelete`); the panel lets
+ * that read go once it closes (`useForgetItVehicleCheck`). A refusal is the panel's to say, once:
+ * the declared `onError` keeps the global handler's second toast away.
+ */
+export const useDeleteItVehicleCheck = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteVehicleCheck(id),
+    onSuccess: (_done: void, id: string) => {
+      void qc.invalidateQueries({
+        queryKey: itKeys.vehicleChecks,
+        predicate: (query) => rereadAfterDelete(query.queryKey, id),
+      });
+    },
+    onError: () => undefined,
+  });
+};
+
+/** Let a deleted report's own read go — called once its panel has closed (`forgetsDeletedReport`). */
+export const useForgetItVehicleCheck = () => {
+  const qc = useQueryClient();
+  return useCallback(
+    (id: string) =>
+      qc.removeQueries({ queryKey: detailKey(MODULE, 'vehicleChecks', id), exact: true }),
+    [qc],
+  );
+};
 
 // ── People: the employees IT names ──────────────────────────────────────────
 

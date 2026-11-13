@@ -16,6 +16,13 @@
 //     silently removed a bank from future pickers while historical reports kept grouping on its
 //     stale name string. `isActive` says the same thing honestly.
 //   · Identity is the row id, never the Arabic name (Q34 NORMALIZE).
+//   · THE CURRENCIES ARE DRAGGED INTO ORDER (Round 8) — «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل
+//     زى شاشة الحركة بالظبط»: Fleet's catalogs page exactly (fleet/pages/CatalogsPage.tsx) — a grip
+//     to drag a row by, the arrows beside the pen for a keyboard, the dropped order shown at once
+//     and saved (`PUT /operations/currencies/order`), put back with the reason if the save is
+//     refused. «ترتيب العملات فى الجدول لما تظهر تكون على حسب ترتيبها ف شاشة البيانات المرجعية»: every
+//     screen that lists currencies follows this order (`compareCurrencies`, lib/day-board.ts). The
+//     tab shows the WHOLE list on one page — a list cannot be dragged into order across pages.
 //
 // URL-synced tabs, exactly like the fleet catalogs screen, so an operator can bookmark a kind.
 import { useMemo, useState } from 'react';
@@ -28,18 +35,26 @@ import {
   type OperationsCurrencyDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
-import { EditIcon, PinIcon, PlusIcon } from '../../../shared/ui/icons';
+import { ChevronIcon, EditIcon, GripIcon, PinIcon, PlusIcon } from '../../../shared/ui/icons';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useAppSelector } from '../../../store';
+import { ACTION_GROUP, actionTone } from '../../fleet/components/row-actions-look';
+import { SquarePenIcon } from '../../fleet/components/row-action-icons';
 import { mapsUrl } from '../lib/maps-link';
+import { inPendingOrder, moveInOrder, stepInOrder } from '../lib/catalog-order';
 import {
   useOperationsAreas,
   useOperationsBankBranches,
   useOperationsBanks,
   useOperationsCurrencies,
+  useOrderOperationsCurrencies,
 } from '../api/operations-queries';
 import {
   AreaDialog,
@@ -59,8 +74,17 @@ export const resolveCatalogKind = (raw: string | null): OperationsCatalogKind =>
     ? (raw as OperationsCatalogKind)
     : 'banks';
 
+/**
+ * The currencies tab asks for the WHOLE catalog on one page, in the catalog's order (no `sortBy`:
+ * the server's default IS the dragged order). The same key every screen's currency lookup reads,
+ * so a drag saved here re-orders a board's money lines from the same cache entry.
+ */
+export const CURRENCY_TAB_PARAMS = { page: 1, pageSize: MAX_PAGE_SIZE } as const;
+
 export const CatalogsPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
   const kind = resolveCatalogKind(sp.get('kind'));
@@ -84,7 +108,7 @@ export const CatalogsPage = (): JSX.Element => {
   // the operator may never open.
   const banks = useOperationsBanks(params, kind === 'banks');
   const branches = useOperationsBankBranches(params, kind === 'branches');
-  const currencies = useOperationsCurrencies(params, kind === 'currencies');
+  const currencies = useOperationsCurrencies(CURRENCY_TAB_PARAMS, kind === 'currencies');
   const areas = useOperationsAreas(params, kind === 'areas');
 
   // Branch rows name their bank, so the bank list is needed on the branches tab too.
@@ -100,6 +124,34 @@ export const CatalogsPage = (): JSX.Element => {
   const [editingCurrency, setEditingCurrency] = useState<OperationsCurrencyDto | null>(null);
   const [editingArea, setEditingArea] = useState<OperationsAreaDto | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // ── The currencies' drag order — Fleet's catalogs page, step for step ─────────────────────────
+  const mayOrder = can('operationsCatalog.manage');
+  const saveOrder = useOrderOperationsCurrencies();
+  /** The order just dropped, shown at once while the save and the refetch land. */
+  const [pending, setPending] = useState<string[] | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const currencyRows = inPendingOrder(currencies.data?.items ?? [], pending);
+
+  const saveCurrencyOrder = (ids: string[] | null): void => {
+    if (ids === null) return;
+    setPending(ids);
+    saveOrder.mutate(
+      { ids },
+      {
+        onSuccess: () => toast.success(t('operations.catalogs.currency.orderSaved')),
+        // A refused save puts the rows back and SAYS so — a row that silently snaps back reads as a
+        // screen that will not let you move it.
+        onError: (failure) => toast.error(errorMessage(failure, locale)),
+        // After the refetch (the mutation's own `onSettled` returns it): the list now holds the
+        // saved order, or the one that still stands. Only THIS drop's order is let go of — a second
+        // drop made while this one was saving keeps showing until its own save lands.
+        onSettled: () => setPending((current) => (current === ids ? null : current)),
+      },
+    );
+  };
+  const currencyIds = currencyRows.map((row) => row.id);
 
   const bankName = (bankId: string): string =>
     bankOptions.data?.items.find((bank) => bank.id === bankId)?.opsName ?? '—';
@@ -206,6 +258,23 @@ export const CatalogsPage = (): JSX.Element => {
   ];
 
   const currencyColumns: Column<OperationsCurrencyDto>[] = [
+    ...(mayOrder
+      ? [
+          {
+            key: 'drag',
+            header: '',
+            render: (row: OperationsCurrencyDto) => (
+              <span
+                data-drag-handle={row.id}
+                title={t('operations.catalogs.currency.dragToOrder')}
+                className="inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <GripIcon className="h-4 w-4" />
+              </span>
+            ),
+          } satisfies Column<OperationsCurrencyDto>,
+        ]
+      : []),
     { key: 'code', header: t('operations.catalogs.currency.code'), render: (row) => row.code },
     { key: 'name', header: t('operations.catalogs.currency.name'), render: (row) => row.name },
     {
@@ -226,16 +295,48 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'actions',
       header: '',
-      render: (row) => (
-        <button
-          type="button"
-          aria-label={t('common.edit')}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-          onClick={() => setEditingCurrency(row)}
-        >
-          <EditIcon className="h-4 w-4" />
-        </button>
-      ),
+      render: (row) => {
+        const at = currencyIds.indexOf(row.id);
+        return (
+          // Fleet's row: the pen first, then the two arrows that move the row — how a keyboard
+          // moves it — in the owner's box (`row-actions-look`).
+          <div className={ACTION_GROUP} data-currency-actions={row.id}>
+            <button
+              type="button"
+              className={actionTone('edit')}
+              aria-label={t('common.edit')}
+              title={t('common.edit')}
+              onClick={() => setEditingCurrency(row)}
+            >
+              <SquarePenIcon className="h-4 w-4" />
+            </button>
+            {mayOrder && (
+              <>
+                <button
+                  type="button"
+                  className={actionTone('move')}
+                  aria-label={t('operations.catalogs.currency.moveUp')}
+                  title={t('operations.catalogs.currency.moveUp')}
+                  disabled={at <= 0}
+                  onClick={() => saveCurrencyOrder(stepInOrder(currencyIds, row.id, -1))}
+                >
+                  <ChevronIcon className="h-4 w-4 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  className={actionTone('move')}
+                  aria-label={t('operations.catalogs.currency.moveDown')}
+                  title={t('operations.catalogs.currency.moveDown')}
+                  disabled={at === currencyIds.length - 1}
+                  onClick={() => saveCurrencyOrder(stepInOrder(currencyIds, row.id, 1))}
+                >
+                  <ChevronIcon className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -279,7 +380,9 @@ export const CatalogsPage = (): JSX.Element => {
       : kind === 'branches'
         ? branches.data?.meta
         : kind === 'currencies'
-          ? currencies.data?.meta
+          ? // The whole list on one page: nothing to page through, and a pager would suggest a
+            // second page the drag could not reach.
+            undefined
           : areas.data?.meta;
 
   /** The `add` label follows the tab. One map, so a new kind cannot be forgotten here. */
@@ -343,15 +446,56 @@ export const CatalogsPage = (): JSX.Element => {
         />
       )}
       {kind === 'currencies' && (
-        <DataTable
-          columns={currencyColumns}
-          rows={currencies.data?.items ?? []}
-          rowKey={(row) => row.id}
-          loading={currencies.isLoading}
-          error={currencies.error}
-          onRetry={() => void currencies.refetch()}
-          empty={t('operations.catalogs.currency.empty')}
-        />
+        <>
+          {mayOrder && (
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400" data-currency-order-hint>
+              {t('operations.catalogs.currency.orderHint')}
+            </p>
+          )}
+          <DataTable
+            columns={currencyColumns}
+            rows={currencyRows}
+            rowKey={(row) => row.id}
+            loading={currencies.isLoading}
+            error={currencies.error}
+            onRetry={() => void currencies.refetch()}
+            empty={t('operations.catalogs.currency.empty')}
+            rowClassName={(row) =>
+              dragging === row.id
+                ? 'opacity-40'
+                : over === row.id && dragging !== null
+                  ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
+                  : undefined
+            }
+            rowProps={(row) =>
+              mayOrder
+                ? {
+                    draggable: true,
+                    onDragStart: (e) => {
+                      e.dataTransfer.setData('text/plain', row.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      setDragging(row.id);
+                    },
+                    onDragEnd: () => {
+                      setDragging(null);
+                      setOver(null);
+                    },
+                    onDragOver: (e) => {
+                      e.preventDefault();
+                      setOver(row.id);
+                    },
+                    onDrop: (e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData('text/plain');
+                      setDragging(null);
+                      setOver(null);
+                      if (id !== '') saveCurrencyOrder(moveInOrder(currencyIds, id, row.id));
+                    },
+                  }
+                : undefined
+            }
+          />
+        </>
       )}
 
       {kind === 'areas' && (

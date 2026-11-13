@@ -67,6 +67,8 @@ export interface AssetRegisterFilters {
   /** `''` when a branch is set but its name is not among the options. */
   branch: string | null;
   holder: string | null;
+  /** «الضمان» — the window as the bar words it («ينتهي خلال ٣٠ يومًا»). */
+  warranty: string | null;
 }
 
 /**
@@ -85,6 +87,7 @@ export const assetRegisterFilters = ({
   branchName,
   holderId,
   holderLabel,
+  warranty,
   rows,
 }: {
   search: string;
@@ -96,6 +99,8 @@ export const assetRegisterFilters = ({
   branchName: ReadonlyMap<string, string>;
   holderId: string;
   holderLabel: string;
+  /** The warranty window in the bar's words (`warrantyWithin`), `''` when not set. */
+  warranty: string;
   rows: readonly ItAssetDto[];
 }): AssetRegisterFilters => ({
   search: search.trim() === '' ? null : search.trim(),
@@ -109,12 +114,13 @@ export const assetRegisterFilters = ({
       : holderLabel ||
         rows.find((row) => row.holder?.employeeId === holderId)?.holder?.employeeName ||
         holderId,
+  warranty: warranty === '' ? null : warranty,
 });
 
 /**
  * What the printed page is a view OF, under its title: the status, the categories, the names, the
- * branch, the holder and the search when they are set — the filter bar's order, the names right
- * after the categories they were picked from — and the day it was taken.
+ * branch, the holder, the warranty window and the search when they are set — the filter bar's
+ * order, the names right after the categories they were picked from — and the day it was taken.
  */
 export const assetRegisterSubtitle = (
   t: Translate,
@@ -130,6 +136,7 @@ export const assetRegisterSubtitle = (
     names === null ? null : t('it.export.nameIs', { name: names }),
     namedFilter(t, filters.branch, { all: 'it.assets.allBranches', one: 'it.export.oneBranch' }),
     filters.holder === null ? null : t('it.export.holderIs', { name: filters.holder }),
+    filters.warranty === null ? null : t('it.export.warrantyIs', { within: filters.warranty }),
     filters.search === null ? null : t('it.export.searchIs', { q: filters.search }),
     t('it.export.asOf', { date: filters.asOf }),
   ]);

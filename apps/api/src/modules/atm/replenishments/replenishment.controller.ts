@@ -2,8 +2,10 @@
 import { type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
+  type AtmOpenBoardQuery,
   type AtmOperationFacetsQuery,
   type AtmOperationIds,
+  type AtmReplenishmentBoardDto,
   type BulkUpdateAtmReplenishments,
   type ListAtmDoneOperationsQuery,
   type ListAtmOpenOperationsQuery,
@@ -27,6 +29,17 @@ export const listOpenReplenishments = async (req: Request, res: Response): Promi
     await atmReplenishmentService.listOpen(query, authContext(req)),
     toAtmReplenishmentDto,
   );
+};
+
+export const replenishmentBoard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmOpenBoardQuery>(req);
+  const board = await atmReplenishmentService.board(query, authContext(req));
+  const body: AtmReplenishmentBoardDto = {
+    items: board.items.map(toAtmReplenishmentDto),
+    truncated: board.truncated,
+    totalItems: board.totalItems,
+  };
+  ok(res, body);
 };
 
 export const replenishmentFacets = async (req: Request, res: Response): Promise<void> => {

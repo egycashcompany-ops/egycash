@@ -49,6 +49,29 @@ export const CONTRACT_TEMPLATE_LANGUAGES = ['ar', 'en'] as const;
 export const ContractTemplateLanguageSchema = z.enum(CONTRACT_TEMPLATE_LANGUAGES);
 export type ContractTemplateLanguage = z.infer<typeof ContractTemplateLanguageSchema>;
 
+/**
+ * What a template prints (A27, «مستندات التعيين»): the employment CONTRACT itself — numbered,
+ * generated, frozen — or a hiring FORM printed beside it (a declaration, the data sheet, the job
+ * description card, the bank letter). A form is rendered fresh each time it is printed and is
+ * never a contract: it has no type, no number and no snapshot.
+ */
+export const CONTRACT_TEMPLATE_KINDS = ['contract', 'form'] as const;
+export const ContractTemplateKindSchema = z.enum(CONTRACT_TEMPLATE_KINDS);
+export type ContractTemplateKind = z.infer<typeof ContractTemplateKindSchema>;
+
+/**
+ * Which jobs a template is printed for (A27). `allJobs` is its own flag rather than "an empty
+ * list means everybody", so a job card whose job has not been chosen yet prints for NOBODY
+ * instead of for the whole company.
+ */
+const templatePrintFields = {
+  kind: ContractTemplateKindSchema,
+  allJobs: z.boolean(),
+  jobTitleIds: z.array(objectId()).max(300),
+  /** Where it falls in the printed set — smaller first. */
+  printOrder: z.number().int().min(0).max(999),
+};
+
 /** A version's lifecycle (A17): only `published` versions can generate contracts. */
 export const CONTRACT_TEMPLATE_STATUSES = ['draft', 'published', 'archived'] as const;
 export const ContractTemplateStatusSchema = z.enum(CONTRACT_TEMPLATE_STATUSES);
@@ -112,6 +135,10 @@ export const CreateContractTemplateSchema = z
     sections: DraftTemplateSectionsSchema,
     logoFileId: objectId().nullable().default(null),
     signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
+    kind: templatePrintFields.kind.default('contract'),
+    allJobs: templatePrintFields.allJobs.default(true),
+    jobTitleIds: templatePrintFields.jobTitleIds.default([]),
+    printOrder: templatePrintFields.printOrder.default(100),
   })
   .strict();
 export type CreateContractTemplate = z.infer<typeof CreateContractTemplateSchema>;
@@ -124,6 +151,10 @@ export const UpdateContractTemplateSchema = z
     sections: DraftTemplateSectionsSchema.optional(),
     logoFileId: objectId().nullable().optional(),
     signatures: z.array(DraftSignatureBlockSchema).max(10).optional(),
+    kind: templatePrintFields.kind.optional(),
+    allJobs: templatePrintFields.allJobs.optional(),
+    jobTitleIds: templatePrintFields.jobTitleIds.optional(),
+    printOrder: templatePrintFields.printOrder.optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -142,6 +173,7 @@ export const ListContractTemplatesQuerySchema = PaginationQuerySchema.extend({
   language: ContractTemplateLanguageSchema.optional(),
   contractTypeId: objectId().optional(),
   status: ContractTemplateStatusSchema.optional(),
+  kind: ContractTemplateKindSchema.optional(),
   /** Latest version per template key only (the templates list view). */
   latestOnly: z.coerce.boolean().optional(),
 }).strict();
@@ -162,6 +194,10 @@ export interface ContractTemplateDto {
   sections: TemplateSections;
   logoFileId: string | null;
   signatures: SignatureBlock[];
+  kind: ContractTemplateKind;
+  allJobs: boolean;
+  jobTitleIds: string[];
+  printOrder: number;
   /** Placeholder keys used by the sections — derived server-side on save. */
   placeholders: string[];
   changedBy: string | null;
@@ -408,6 +444,8 @@ export const InlinePreviewTemplateSchema = z
       })
       .strict(),
     signatures: z.array(DraftSignatureBlockSchema).max(10).default([]),
+    /** A27 — a form previews inside the company letterhead, as it prints. */
+    kind: ContractTemplateKindSchema.default('contract'),
   })
   .strict();
 export type InlinePreviewTemplate = z.infer<typeof InlinePreviewTemplateSchema>;
@@ -597,6 +635,295 @@ export const ContractApprovalDecidedPayloadV1 = ContractEventPayloadV1.extend({
 export const ContractTerminatedPayloadV1 = ContractEventPayloadV1.extend({
   reason: z.string(),
 });
+
+// ── «مستندات التعيين» — the printed hiring set (A27) ─────────────────────────
+
+/** Why the set carries no contract, when it carries none. */
+export const HIRING_PACK_CONTRACT_NOTES = [
+  'noTemplate',
+  'approvalRequired',
+  'notPermitted',
+  'missingValues',
+  'notCreated',
+] as const;
+export type HiringPackContractNote = (typeof HIRING_PACK_CONTRACT_NOTES)[number];
+
+export const HiringPackRequestSchema = z
+  .object({
+    employeeId: objectId(),
+    /**
+     * A28 — only these papers (template keys), from the employee's «طباعة العقد والمستندات» tab.
+     * Absent: the whole set, as «مستندات التعيين» prints it.
+     */
+    keys: z.array(z.string().min(1).max(100)).min(1).max(60).optional(),
+  })
+  .strict();
+export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
+
+/**
+ * A28 — what an EMPLOYEE's «طباعة العقد والمستندات» tab offers: the papers of their job (their
+ * contract — the one they hold, else the one their job's template would make — then the forms) and
+ * the contract they hold now, to print again or renew.
+ */
+export interface EmployeePapersDto {
+  papers: JobPaperDto[];
+  contract: {
+    id: string;
+    code: string;
+    status: string;
+    startDate: string;
+    endDate: string | null;
+    version: number;
+  } | null;
+}
+
+/**
+ * Everything one employee signs on joining, ready to print in one go: the contract first, then
+ * every published form for the employee's job, each starting on a fresh page.
+ */
+export interface HiringPackDto {
+  html: string;
+  /** The contract printed first — `created` when this very request made and generated it. */
+  contract: { id: string; code: string; created: boolean } | null;
+  contractNote: HiringPackContractNote | null;
+  /** The documents in the set, in print order. */
+  documents: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
+}
+
+/**
+ * A28 — «عقد جديد» for a CANDIDATE: everything one accepted candidate signs, printed from the offer
+ * before the hire, and the hire itself once it is printed. The page's state is a server record —
+ * saved as it changes, so a closed tab, a dropped connection or an expired session loses nothing.
+ */
+export const CANDIDATE_PAPER_GROUPS = ['contract', 'everyJob', 'thisJob'] as const;
+export type CandidatePaperGroup = (typeof CANDIDATE_PAPER_GROUPS)[number];
+
+/**
+ * One paper as the print pages list it. Only the person's own papers are listed — those of their
+ * department and job, as «مستندات الوظائف» set them: «النمازج المخصصه بس للاداره او الوظائف هي اللي هتكون
+ * موجوده … فيه وظائف تتفتحلها نمازج معينه و وظائف تانيه ملهاش علاقه بنمازج معينه».
+ */
+export interface JobPaperDto {
+  key: string;
+  name: { ar: string; en: string };
+  kind: ContractTemplateKind;
+  /** The contract; a form every job signs; a form for this department and job only. */
+  group: CandidatePaperGroup;
+  /**
+   * Offered to this job but left unticked until HR ticks it — the cash-in-transit specialist's
+   * weapon declaration («اخصائي نقل اموال بتبقا اوبشن … منغير علامه»). Every other paper starts ticked.
+   */
+  optional: boolean;
+}
+
+export interface CandidatePaperDto extends JobPaperDto {
+  /** The values it prints — what «تعديل» offers to change. */
+  placeholders: string[];
+  selected: boolean;
+}
+
+export interface CandidateValueDto {
+  key: string;
+  label: { ar: string; en: string };
+  value: string;
+  /** Typed in for this candidate, instead of read from the record. */
+  overridden: boolean;
+}
+
+export interface CandidateDraftDto {
+  id: string;
+  offerId: string;
+  offerCode: string | null;
+  applicantName: string;
+  jobTitle: { ar: string; en: string } | null;
+  /** The contract's term and the hiring date — from the offer, as changed here. */
+  startDate: string;
+  endDate: string | null;
+  hiringDate: string;
+  /** The contract type is fixed-term: the contract carries an end date. */
+  allowsEndDate: boolean;
+  papers: CandidatePaperDto[];
+  /** Every value the papers print, as they would print now. */
+  values: CandidateValueDto[];
+  /** The employee code kept for the candidate at the first print — and taken at the hire. */
+  employeeCode: string | null;
+  printedAt: string | null;
+  printCount: number;
+  /** Set once hired from here. */
+  employeeId: string | null;
+  updatedAt: string;
+  version: number;
+}
+
+export const UpdateCandidateDraftSchema = z
+  .object({
+    selected: z.array(z.string().min(1).max(100)).max(60).optional(),
+    overrides: overridesField().optional(),
+    startDate: isoDate().optional(),
+    endDate: isoDate().nullable().optional(),
+    hiringDate: isoDate().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateCandidateDraft = z.infer<typeof UpdateCandidateDraftSchema>;
+
+export const RenderCandidatePapersSchema = z
+  .object({
+    keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+    /** A print keeps the employee code and records the print; a preview changes nothing. */
+    print: z.boolean().default(false),
+  })
+  .strict();
+export type RenderCandidatePapers = z.infer<typeof RenderCandidatePapersSchema>;
+
+export interface RenderCandidatePapersDto {
+  html: string;
+  draft: CandidateDraftDto;
+}
+
+export const HireCandidateSchema = z.object({ version: z.number().int().min(0) }).strict();
+export type HireCandidate = z.infer<typeof HireCandidateSchema>;
+
+export interface HireCandidateDto {
+  employeeId: string;
+  employeeCode: string;
+  /** The contract recorded on the new employee, made and generated from the papers' terms. */
+  contract: { id: string; code: string } | null;
+  contractNote: HiringPackContractNote | null;
+}
+
+/**
+ * A28 — printing for MANY candidates at once from «جاهزون للتعيين»: the people ticked, each on a line
+ * of their own with the papers of their own job, chosen for that person alone («كل واحد ليه line
+ * جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو»); one document out.
+ */
+export const CANDIDATE_BULK_MAX = 50;
+
+export const CandidateBulkSchema = z
+  .object({ offerIds: z.array(objectId()).min(1).max(CANDIDATE_BULK_MAX) })
+  .strict();
+export type CandidateBulk = z.infer<typeof CandidateBulkSchema>;
+
+export interface CandidateBulkPersonDto {
+  offerId: string;
+  applicantName: string;
+  offerCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** The person's papers, in print order — what their job prints. */
+  papers: JobPaperDto[];
+  /** Why the person cannot be printed for (the offer is no longer accepted…), else null. */
+  error: string | null;
+}
+
+export const RenderCandidateBulkSchema = z
+  .object({
+    /** Each person with the papers chosen for them — of their own job's papers. */
+    people: z
+      .array(
+        z
+          .object({
+            offerId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(CANDIDATE_BULK_MAX),
+  })
+  .strict();
+export type RenderCandidateBulk = z.infer<typeof RenderCandidateBulkSchema>;
+
+export interface RenderCandidateBulkDto {
+  html: string;
+  /** Per person: printed (and how many papers), or why not. */
+  results: { offerId: string; printed: number; error: string | null }[];
+}
+
+/**
+ * A28 — «مستندات الوظائف» on «جاهزون للتعيين», by department and job — «علي حسب الاداره و الوظيفه»:
+ * every department, the jobs in it, and beside each job every paper — ticked, what a person of that
+ * job in that department prints. What is ticked here is what «عقد جديد», «طباعة لكل المحدد» and the
+ * employee's tab offer that person.
+ *
+ * A department is the company's («العمليات» in every branch is one), or a branch's own when it
+ * names none. The jobs in it are those its people hold — employees and accepted candidates — and
+ * any added to it here.
+ */
+export interface JobPapersDto {
+  /** Every published paper, in print order. */
+  papers: { key: string; name: { ar: string; en: string }; kind: ContractTemplateKind }[];
+  departments: {
+    departmentId: string;
+    name: { ar: string; en: string };
+    jobs: { jobTitleId: string; name: { ar: string; en: string }; keys: string[] }[];
+  }[];
+  /** Every active job, with the papers it prints in a department never set here — to add one to a department. */
+  jobs: { jobTitleId: string; name: { ar: string; en: string }; keys: string[] }[];
+}
+
+export const UpdateJobPapersSchema = z
+  .object({
+    /** The lines changed — a job in a department — each with every paper it now prints. */
+    lines: z
+      .array(
+        z
+          .object({
+            departmentId: objectId(),
+            jobTitleId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1000),
+  })
+  .strict();
+export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
+
+/**
+ * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: a table HR fills by hand, one row per job — the
+ * company's job title, its title at the social-insurance authority, and its occupation code
+ * («كود المهنه … كله هيتحط manual»). Once saved, «نموذج رقم (1)» prints, for a person whose job carries
+ * a row's title, that row's insurance title and occupation code («لما اجي احط المسمي الوظيفي بتاعنا
+ * هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
+ */
+export const INSURANCE_JOB_TITLE_MAX = 150;
+/** An occupation code: up to six digits, or two groups of up to three — «123/456» — as form 1 boxes it. */
+export const OCCUPATION_CODE_PATTERN = /^(\d{1,6}|\d{1,3}\/\d{1,3})?$/;
+
+export interface InsuranceJobTitleRowDto {
+  id: string;
+  /** The company's job title, as typed. */
+  jobTitle: string;
+  insuranceTitle: string;
+  occupationCode: string;
+  /** A job of the company carries this title — the row reaches form 1. */
+  matched: boolean;
+}
+
+export interface InsuranceJobTitlesDto {
+  rows: InsuranceJobTitleRowDto[];
+  /** The company's active job titles — offered while a title is typed. */
+  jobNames: string[];
+}
+
+export const UpdateInsuranceJobTitlesSchema = z
+  .object({
+    /** The whole table as it now stands: a row left out is taken off. */
+    rows: z
+      .array(
+        z
+          .object({
+            jobTitle: z.string().trim().min(1).max(INSURANCE_JOB_TITLE_MAX),
+            insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
+            occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
+          })
+          .strict(),
+      )
+      .max(1000),
+  })
+  .strict();
+export type UpdateInsuranceJobTitles = z.infer<typeof UpdateInsuranceJobTitlesSchema>;
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

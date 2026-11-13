@@ -7,6 +7,7 @@
 //   officer            ← employee.viewOfficer       (officerVisible)
 import {
   maskNationalId,
+  ymdOf,
   type EmployeeDto,
   type EmployeePlacementDto,
   type EmployeeInsuranceDto,
@@ -17,8 +18,11 @@ import {
   type EmploymentPeriodDto,
   type EmployeeProbationDto,
   type EmployeeExitDto,
+  type LocalizedString,
+  type MyEmployeeSummaryDto,
   type RehireCheckResultDto,
 } from '@ecms/contracts';
+import { toIdCardSummaryDto } from './employee-id-card.mapper';
 import {
   type EmployeeDoc,
   type EmployeePersonalData,
@@ -38,7 +42,10 @@ const statusEventDto = (e: EmployeeStatusEvent): EmployeeStatusEventDto => ({
   actionId: e.actionId == null ? null : String(e.actionId),
 });
 
-const employmentDto = (e: EmploymentDetails, compensationVisible: boolean): EmploymentDetailsDto => ({
+const employmentDto = (
+  e: EmploymentDetails,
+  compensationVisible: boolean,
+): EmploymentDetailsDto => ({
   jobTitleId: String(e.jobTitleId),
   departmentId: String(e.departmentId),
   sectionId: e.sectionId === null ? null : String(e.sectionId),
@@ -85,8 +92,12 @@ const personalDto = (p: EmployeePersonalData): EmployeePersonalDto => ({
       ? null
       : {
           status: p.military.status,
-          ...(p.military.certificateRef === null ? {} : { certificateRef: p.military.certificateRef }),
-          ...(p.military.completedAt === null ? {} : { completedAt: p.military.completedAt.toISOString() }),
+          ...(p.military.certificateRef === null
+            ? {}
+            : { certificateRef: p.military.certificateRef }),
+          ...(p.military.completedAt === null
+            ? {}
+            : { completedAt: p.military.completedAt.toISOString() }),
         },
   education:
     p.education === null
@@ -94,8 +105,12 @@ const personalDto = (p: EmployeePersonalData): EmployeePersonalDto => ({
       : {
           level: p.education.level,
           ...(p.education.institution === null ? {} : { institution: p.education.institution }),
-          ...(p.education.specialization === null ? {} : { specialization: p.education.specialization }),
-          ...(p.education.graduationYear === null ? {} : { graduationYear: p.education.graduationYear }),
+          ...(p.education.specialization === null
+            ? {}
+            : { specialization: p.education.specialization }),
+          ...(p.education.graduationYear === null
+            ? {}
+            : { graduationYear: p.education.graduationYear }),
           ...(p.education.grade === null ? {} : { grade: p.education.grade }),
         },
   experience: p.experience.map((e) => ({
@@ -177,7 +192,11 @@ export const exitDto = (doc: EmployeeDoc): EmployeeExitDto | null =>
         by: doc.exit.by === null ? null : String(doc.exit.by),
       };
 
-const periodDto = (p: { hiredAt: Date; exitedAt: Date | null; exitType: EmploymentPeriodDto['exitType'] }): EmploymentPeriodDto => ({
+const periodDto = (p: {
+  hiredAt: Date;
+  exitedAt: Date | null;
+  exitType: EmploymentPeriodDto['exitType'];
+}): EmploymentPeriodDto => ({
   hiredAt: p.hiredAt.toISOString(),
   exitedAt: iso(p.exitedAt),
   exitType: p.exitType,
@@ -220,6 +239,7 @@ export const toEmployeeDto = (
   employment: employmentDto(doc.employment, opts.compensationVisible),
   placement,
   compensationVisible: opts.compensationVisible,
+  idCard: toIdCardSummaryDto(doc),
   hiredAt: doc.hiredAt.toISOString(),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
@@ -234,4 +254,34 @@ export const toRehireCheckResultDto = (doc: EmployeeDoc): RehireCheckResultDto =
   fullNameAr: doc.personal.fullNameAr,
   status: doc.status,
   exit: exitDto(doc),
+});
+
+const unitName = (unit: EmployeePlacementDto['branch']): LocalizedString | null =>
+  unit === null ? null : { ar: unit.name.ar, en: unit.name.en };
+
+/**
+ * The signed-in person's own card for the welcome page (`GET /hr/employees/me/summary`).
+ *
+ * Built field by field and never spread from the record, so nothing reaches the page that is not
+ * named here: no national id, no contact, no salary, no address. The placement names are the ones
+ * the profile shows, resolved by the same `resolvePlacements`.
+ *
+ * `birthDate` is a date-only value — derived from the national id and stored as UTC midnight of
+ * that day — so its calendar day is its UTC date part, which is what `ymdOf` reads. `hasPhoto` is
+ * loose on purpose: a record written before the field existed carries no `photoFileId` at all.
+ */
+export const toMyEmployeeSummaryDto = (
+  doc: EmployeeDoc,
+  placement: EmployeePlacementDto,
+): MyEmployeeSummaryDto => ({
+  employeeId: String(doc._id),
+  code: doc.code,
+  fullNameAr: doc.personal.fullNameAr,
+  fullNameEn: doc.personal.fullNameEn ?? null,
+  birthDate: doc.personal.birthDate == null ? null : ymdOf(doc.personal.birthDate),
+  hasPhoto: doc.personal.photoFileId != null,
+  photoFileId: doc.personal.photoFileId == null ? null : String(doc.personal.photoFileId),
+  jobTitle: unitName(placement.jobTitle),
+  department: unitName(placement.department),
+  branch: unitName(placement.branch),
 });

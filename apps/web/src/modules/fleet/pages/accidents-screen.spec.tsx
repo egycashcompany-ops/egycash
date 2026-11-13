@@ -1,13 +1,17 @@
-// What the accidents screen SHOWS — asserted as markup facts, from real renders.
+// What the accidents board SHOWS — asserted as markup facts, from real renders. Rewritten on purpose
+// for the owner-approved board (2026-11-09, «شكل تعديل الشاشه بتاعت الحوادث تمام»): the Fleet
+// boards' toolbar, dark filter bar and table, the totals behind «الإحصائيات», the transfer line
+// under «إجمالي المتبقي», and the car card on the code.
 //
 // This suite has no DOM, so nothing can be clicked and no effect runs. What it can prove is the
 // part that has bitten before: that the row's colour is read from the persisted status and from
-// nothing the screen remembers, that the figures above the table are the SERVER's and not a sum of
-// the page, and that the params the page asks for carry every filter in the URL — because a page
-// that quietly dropped one would still render, just wrongly.
+// nothing the screen remembers, that the figures are the SERVER's and not a sum of the page, and
+// that the params the page asks for carry every filter in the URL — because a page that quietly
+// dropped one would still render, just wrongly.
 //
 // What the server enforces — how the filters combine, what a code resolves to — is proven in
-// `apps/api/src/modules/fleet/accidents/accident-filters.spec.ts`. Nothing here can enforce it.
+// `apps/api/src/modules/fleet/accidents/accident-filters.spec.ts`. The form is
+// `accidents-form.spec.tsx`.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,20 +32,17 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
-import { AccidentsPage } from './AccidentsPage';
+import { AccidentFigures, AccidentsPage } from './AccidentsPage';
 import { translate } from '../../../platform/localization/i18n';
 
-/**
- * The settled-row TINT, as the row writes it — not the bare shade.
- *
- * `bg-emerald-50` on its own is a substring of any emerald hover on the page (the Excel button in
- * the header carries one), so a screen-wide search for it answers «green» for a control that is
- * not a row. The rule here is about ROWS: a closed file is tinted, an open one is not, and a
- * failed fetch tints nothing. Pinning the pair the row actually sets says that and nothing else.
- */
-const GREEN = 'bg-emerald-50 hover:bg-emerald-100/70';
-/** Arabic renders MONEY in Latin digits (`moneyLocale`), to two places; counts stay Arabic-Indic. */
-const MONEY_TOTALS = ['22,005.00', '87,835.00', '174,710.00', '240,540.00'];
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+/** Comments name the bug they replaced, so a rule about the code reads the code alone. */
+const PAGE_CODE = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+const ar = (key: string): string => translate('ar', key);
+
+/** The closed file's tint, restated on the row's `data-closed` over the boards' own hover. */
+const CLOSED_TINT = 'bg-emerald-50/70';
 
 const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   id: 'a-1',
@@ -76,7 +77,7 @@ const vehicle = (id: string, code: string): FleetVehicleDto =>
   }) as FleetVehicleDto;
 
 const totals = (over: Partial<FleetAccidentTotalsDto> = {}): FleetAccidentTotalsDto => ({
-  count: 180,
+  count: 1180,
   amountCollected: 87_835,
   companyCost: 174_710,
   paidAmount: 240_540,
@@ -112,12 +113,6 @@ const paged = <T,>(items: T[], page = 1, pageSize = 25, totalItems = items.lengt
 
 /** The params the page is expected to build for a given URL — the list key it will read. */
 const listParams = (over: Record<string, unknown> = {}) => ({
-  code: undefined,
-  vehicleId: undefined,
-  culprit: undefined,
-  status: undefined,
-  from: undefined,
-  to: undefined,
   page: 1,
   pageSize: 25,
   sortBy: 'occurredAt',
@@ -127,20 +122,28 @@ const listParams = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const summaryParams = (over: Record<string, unknown> = {}) => ({
-  summary: true,
-  code: undefined,
-  vehicleId: undefined,
-  culprit: undefined,
-  status: undefined,
-  from: undefined,
-  to: undefined,
-  ...over,
-});
+const summaryParams = (over: Record<string, unknown> = {}) => ({ summary: true, ...over });
+
+const VIEW_ALL = [
+  'fleetAccident.view',
+  'fleetAccident.close',
+  'fleetAccident.edit',
+  'fleetVehicle.view',
+];
+
+const makeStore = (locale: Locale, permissions: string[]) =>
+  configureStore({
+    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+    preloadedState: {
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
+      auth: { me: me(permissions), status: 'signedIn' as const },
+      ui: { theme: 'light' as const, sidebarOpen: false },
+    },
+  });
 
 const render = ({
   locale = 'ar',
-  permissions = ['fleetAccident.view', 'fleetAccident.close', 'fleetAccident.edit'],
+  permissions = VIEW_ALL,
   path = '/fleet/accidents',
   seed = () => undefined,
 }: {
@@ -149,26 +152,18 @@ const render = ({
   path?: string;
   seed?: (qc: QueryClient) => void;
 } = {}): string => {
-  const store = configureStore({
-    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
-    preloadedState: {
-      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
-      auth: { me: me(permissions), status: 'signedIn' as const },
-      ui: { theme: 'light' as const, sidebarOpen: false },
-    },
-  });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-  // The registry both the code column and the dropdown read — one key serves both.
-  // The page reads the WHOLE registry (`useAllVehicles`) — every page, not the first 100.
+  // The page reads the WHOLE registry (`useAllVehicles`) — every page, not the first 100 — and
+  // only for a reader who may read it.
   qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
     items: [vehicle('v-1', '150'), vehicle('v-2', '151')],
     meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
   });
   seed(qc);
   return renderToStaticMarkup(
-    <Provider store={store}>
+    <Provider store={makeStore(locale, permissions)}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
@@ -181,49 +176,112 @@ const render = ({
 };
 
 /** Seed one page of accidents plus its totals, under the keys the page will actually read. */
-const withRows = (
-  rows: FleetAccidentDto[],
-  {
-    list = {},
-    summary = {},
-    figures = totals(),
-    meta,
-  }: {
-    list?: Record<string, unknown>;
-    summary?: Record<string, unknown>;
-    figures?: FleetAccidentTotalsDto;
-    meta?: { page: number; pageSize: number; totalItems: number };
-  } = {},
-) => {
-  return (qc: QueryClient): void => {
+const withRows =
+  (
+    rows: FleetAccidentDto[],
+    {
+      list = {},
+      summary = {},
+      figures = totals(),
+      meta,
+    }: {
+      list?: Record<string, unknown>;
+      summary?: Record<string, unknown>;
+      figures?: FleetAccidentTotalsDto;
+      meta?: { page: number; pageSize: number; totalItems: number };
+    } = {},
+  ) =>
+  (qc: QueryClient): void => {
     qc.setQueryData(
       listKey('fleet', 'accidents', listParams(list)),
       meta === undefined ? paged(rows) : paged(rows, meta.page, meta.pageSize, meta.totalItems),
     );
     qc.setQueryData(listKey('fleet', 'accidents', summaryParams(summary)), figures);
   };
-};
 
 /** The markup of one table row, found by a value it contains. */
 const rowWith = (html: string, needle: string): string => {
-  const rows = html.split('<tr');
-  const found = rows.find((row) => row.includes(needle));
+  const found = html.split('<tr').find((row) => row.includes(needle));
   if (found === undefined) throw new Error(`no row containing ${needle}`);
   return found;
 };
+/** The `<td>` cells of a row, in order. */
+const cellsOf = (row: string): string[] =>
+  row
+    .split('<td')
+    .slice(1)
+    .map((cell) => `<td${cell.slice(0, cell.indexOf('</td>'))}`);
+/** What a piece of markup PRINTS — its text, not its markup. */
+const text = (markup: string): string => markup.replace(/<[^>]*>/gu, '');
+const headersOf = (html: string): string[] => {
+  const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+  return head
+    .split(/<th(?=[\s>])/u)
+    .slice(1)
+    .map((th) => text(`<th${th.slice(0, th.indexOf('</th>'))}`).trim());
+};
+const toolbarOf = (html: string): string =>
+  html.slice(html.indexOf('data-accidents-toolbar'), html.indexOf('data-accidents-filters'));
+const barOf = (html: string): string =>
+  html.slice(html.indexOf('data-accidents-filters'), html.indexOf('data-accidents-table'));
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+describe('the board opens on its toolbar — «زى باقى شاشات الحركة»', () => {
+  it('has no page title: «N نتيجة», «الإحصائيات», the Excel pill and «تسجيل حادث»', () => {
+    const html = render({
+      permissions: [...VIEW_ALL, 'fleetAccident.create'],
+      seed: withRows([accident()], { meta: { page: 1, pageSize: 25, totalItems: 1204 } }),
+    });
+    expect(html).not.toContain('<h1');
+    const toolbar = toolbarOf(html);
+    // Latin digits, grouped — every figure on the board; `formatNumber` would print «١٬٢٠٤».
+    expect(text(toolbar)).toContain('1,204 نتيجة');
+    expect(toolbar).toContain('data-accident-stats-toggle="true"');
+    expect(toolbar).toContain(ar('fleet.vehicles.board.breakdown'));
+    expect(toolbar).toContain('data-export="accidents"');
+    expect(toolbar).toContain(ar('fleet.fuelCards.board.excel'));
+    expect(toolbar).toContain('data-accident-new="true"');
+    expect(toolbar).toContain(ar('fleet.accidents.record'));
+    // The purple gradient of «تسجيل حادث», as on maintenance and receipts.
+    expect(toolbar).toContain('bg-gradient-to-r from-brand-700 to-brand-500');
+  });
 
-describe('the columns the reader asked for, in order', () => {
-  it('runs الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → السجل → ملاحظات', () => {
+  it('offers «تسجيل حادث» only to a reader who may record one', () => {
+    expect(render({ seed: withRows([accident()]) })).not.toContain('data-accident-new');
+  });
+
+  it('keeps «الإحصائيات» CLOSED on the way in', () => {
     const html = render({ seed: withRows([accident()]) });
-    const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) =>
-      (m[1] ?? '').trim(),
+    expect(toolbarOf(html)).toContain('aria-expanded="false"');
+    expect(html, 'no figures until it is opened').not.toContain('data-accident-figures');
+    expect(PAGE_CODE).toContain('useState(false)');
+    expect(PAGE_CODE).toContain(
+      'statsOpen && summary.data !== undefined && <AccidentFigures totals={summary.data} />',
     );
-    expect(headers).toEqual([
-      // «شيل التسلسل» — the serial column is gone and the grid opens on the code.
-      'الكود',
+  });
+
+  it('offers no Excel when the list failed — the file behind it would be empty or short', () => {
+    const failed = render({
+      seed: (qc) => {
+        // The list as TanStack holds it after a failed fetch: no data, an error, nothing running —
+        // and not retried just because the page drew again.
+        qc.setQueryDefaults(listKey('fleet', 'accidents', listParams()), { retryOnMount: false });
+        qc.getQueryCache()
+          .build(qc, { queryKey: listKey('fleet', 'accidents', listParams()) })
+          .setState({ status: 'error', error: new Error('down'), fetchStatus: 'idle' });
+      },
+    });
+    expect(failed).not.toContain('data-export="accidents"');
+    expect(failed, 'and no rows').not.toContain('data-transfer-log-open');
+    expect(render({ seed: withRows([accident()]) })).toContain('data-export="accidents"');
+  });
+});
+
+describe('the columns the reader asked for, in the boards’ order', () => {
+  it('runs التاريخ → كود السيارة → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → السجل → ملاحظات', () => {
+    const html = render({ seed: withRows([accident()]) });
+    expect(headersOf(html)).toEqual([
       'تاريخ الحادث',
+      'كود السيارة',
       'المتسبب',
       'بيان الحادث',
       'المبلغ المحصَّل',
@@ -237,21 +295,21 @@ describe('the columns the reader asked for, in order', () => {
     ]);
   });
 
-  it('shows NO status column — the state is the colour, the action and a word for screen readers', () => {
-    const html = render({ seed: withRows([accident({ status: 'closed' })]) });
-    expect(html).not.toContain('<th'.concat('>الحالة'));
-    const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) =>
-      (m[1] ?? '').trim(),
-    );
-    expect(headers).not.toContain('الحالة');
-    // …but the word is still THERE, for a reader the tint does not reach.
-    expect(rowWith(html, 'فنوس شمال')).toContain('sr-only');
-    expect(rowWith(html, 'فنوس شمال')).toContain('مغلق');
+  it('writes the date year first, in Latin digits', () => {
+    const cells = cellsOf(rowWith(render({ seed: withRows([accident()]) }), 'فنوس شمال'));
+    expect(text(cells[0] ?? '')).toBe('2026/03/09');
   });
 
-  it('numbers no rows at all — the serial column and its page offset went together', () => {
-    // The removed column counted from the start of the LIST, so page 3 of 25 opened at 51. That
-    // is the number a leftover would still print, and the offset that would still be computed.
+  it('shows NO status column — the state is the colour, the action and a word for screen readers', () => {
+    const html = render({ seed: withRows([accident({ status: 'closed' })]) });
+    expect(headersOf(html)).not.toContain('الحالة');
+    const code = cellsOf(rowWith(html, 'فنوس شمال'))[1] ?? '';
+    expect(code, 'the code cell').toContain('150');
+    expect(code, 'carries the state for a reader the colour misses').toContain('sr-only');
+    expect(code).toContain('مغلق');
+  });
+
+  it('numbers no rows — the serial column and its page offset went together', () => {
     const html = render({
       path: '/fleet/accidents?page=3',
       seed: withRows([accident(), accident({ id: 'a-2', statement: 'فنوس خلفى' })], {
@@ -260,24 +318,44 @@ describe('the columns the reader asked for, in order', () => {
       }),
     });
     expect(rowWith(html, 'فنوس شمال')).not.toContain('>51<');
-    expect(rowWith(html, 'فنوس خلفى')).not.toContain('>52<');
-    const source = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
-    expect(source).not.toContain('serialOffset');
-    expect(source).not.toContain('fleet.accidents.columns.serial');
+    expect(PAGE_CODE).not.toContain('serialOffset');
+    expect(PAGE_CODE).not.toContain('fleet.accidents.columns.serial');
   });
 
-  it('keeps the screen-reader word for the row state, now on the FIRST cell', () => {
-    // With the status column gone the open/closed fact is carried by the tint, by the direction
-    // of the action button, and by this word. It rode on the serial cell; the serial cell is
-    // gone, and the word had to move rather than go with it.
-    const html = render({ seed: withRows([accident({ status: 'closed' })]) });
-    const row = rowWith(html, 'فنوس شمال');
-    const firstCell = row.slice(row.indexOf('<td'), row.indexOf('</td>'));
-    expect(firstCell, 'the first cell is the code').toContain('150');
-    expect(firstCell, 'and it carries the state for a reader the colour misses').toContain(
-      'sr-only',
-    );
-    expect(firstCell).toContain('مغلق');
+  it('keeps the culprit’s driver card — «زى اما اقف على اسم السواق»', () => {
+    expect(PAGE_CODE).toContain('<CulpritCell accident={r} />');
+    expect(PAGE_CODE).toContain('<DriverHoverText');
+  });
+});
+
+describe('the car card on the code — «عاوز لما اماوس يقف على كود عربيه يجيب بيانات»', () => {
+  it('hangs on the code of a registry car, for a reader who may read the registry', () => {
+    const code = cellsOf(rowWith(render({ seed: withRows([accident()]) }), 'فنوس شمال'))[1] ?? '';
+    expect(code).toContain('data-vehicle-hover="true"');
+  });
+
+  it('gives a file kept from the old book with no registry car no card', () => {
+    const html = render({
+      seed: withRows([accident({ vehicleId: null, vehicleCode: 'OLD-1' })]),
+    });
+    const code = cellsOf(rowWith(html, 'فنوس شمال'))[1] ?? '';
+    expect(text(code)).toContain('OLD-1');
+    expect(code).not.toContain('data-vehicle-hover');
+  });
+
+  it('is not offered without fleetVehicle.view — and the whole registry is not read for them', () => {
+    const html = render({
+      permissions: ['fleetAccident.view'],
+      seed: withRows([accident({ vehicleCode: '150' })]),
+    });
+    const code = cellsOf(rowWith(html, 'فنوس شمال'))[1] ?? '';
+    expect(text(code)).toContain('150');
+    expect(code).not.toContain('data-vehicle-hover');
+    expect(PAGE_CODE).toContain("useAllVehicles({ anyStatus: true }, can('fleetVehicle.view'))");
+  });
+
+  it('uses the shared card, keyed by the row’s car id', () => {
+    expect(PAGE_CODE).toMatch(/<VehicleHoverCode\s+vehicleId=\{r\.vehicleId\}/u);
   });
 });
 
@@ -286,355 +364,35 @@ describe('إجمالي المتبقي — derived on the row', () => {
     const html = render({
       seed: withRows([accident({ amountCollected: 400, companyCost: 500, paidAmount: 200 })]),
     });
-    // Money renders in Latin digits even in Arabic (`moneyLocale`), to two places.
+    // Money renders in Latin digits even in Arabic, to two places.
     expect(rowWith(html, 'فنوس شمال')).toContain('700.00');
   });
 
-  it('prints a wash as 0 and NEVER as -0', () => {
-    // The float route to it too: 0.1 + 0.2 − 0.3 is not zero in binary, and two decimals of that
-    // residue reads "-0.00" — a debt of nothing, with a minus sign in front of it.
+  it('prints a wash as 0 and NEVER as a negative zero', () => {
     for (const row of [
       accident({ amountCollected: 0, companyCost: 0, paidAmount: 0 }),
       accident({ amountCollected: 0.1, companyCost: 0.2, paidAmount: 0.3 }),
       accident({ amountCollected: 1500, companyCost: 0, paidAmount: 1500 }),
     ]) {
-      const cells = rowWith(render({ seed: withRows([row]) }), 'فنوس شمال');
-      // What the row PRINTS — its text, not its markup: the actions' box is `gap-0.5 py-0.5`.
-      const printed = cells.replace(/<[^>]*>/gu, ' ');
-      expect(printed, JSON.stringify(row)).not.toContain('-0');
-      expect(printed, 'and the wash is actually printed').toContain('0.00');
+      const cells = cellsOf(rowWith(render({ seed: withRows([row]) }), 'فنوس شمال'));
+      const remaining = text(cells[7] ?? '');
+      expect(remaining, JSON.stringify(row)).toContain('0.00');
+      expect(remaining).not.toMatch(/[-−]0/u);
     }
   });
 
-  it('shows a real overpayment as negative — it does not clamp at zero', () => {
+  it('shows an overpayment as a red «−150.00», the minus in front of the figure', () => {
     const html = render({
       seed: withRows([accident({ amountCollected: 100, companyCost: 0, paidAmount: 250 })]),
     });
-    expect(rowWith(html, 'فنوس شمال')).toContain('-150.00');
-  });
-});
-
-describe('the figures above the table are the SERVER’s', () => {
-  it('shows the totals the server sent, not the sum of the rows on screen', () => {
-    // One row worth 1,500 on a page of a 180-file search. A strip that summed what it could see
-    // would print 1,500; the point of the strip is that it prints the whole search.
-    const html = render({ seed: withRows([accident()], { figures: totals() }) });
-    expect(html, 'the count is Arabic-Indic — it is not money').toContain('١٨٠');
-    for (const figure of MONEY_TOTALS) expect(html).toContain(figure);
+    const remaining = cellsOf(rowWith(html, 'فنوس شمال'))[7] ?? '';
+    expect(remaining).toContain('data-negative="true"');
+    expect(remaining).toContain('dir="ltr"');
+    expect(text(remaining)).toContain('−150.00');
+    expect(remaining).toContain('text-red-600');
   });
 
-  it('is UNCHANGED by paging — page 3 of the same search shows the same five figures', () => {
-    // The summary is keyed on the filters alone, so turning the page cannot reach it. Seeded
-    // ONLY under the page-free key: if the page asked for a paged summary it would find nothing.
-    const one = render({ seed: withRows([accident()], { figures: totals() }) });
-    const three = render({
-      path: '/fleet/accidents?page=3&size=10',
-      seed: withRows([accident({ id: 'a-9', statement: 'فنوس خلفى' })], {
-        list: { page: 3, pageSize: 10 },
-        meta: { page: 3, pageSize: 10, totalItems: 180 },
-        figures: totals(),
-      }),
-    });
-    for (const figure of ['١٨٠', ...MONEY_TOTALS]) {
-      expect(one, `page 1 shows ${figure}`).toContain(figure);
-      expect(three, `page 3 shows the same ${figure}`).toContain(figure);
-    }
-  });
-
-  it('holds the space while the sums are in flight instead of printing zeros', () => {
-    // Seed the rows but NOT the totals: a strip that defaulted to 0 would state, briefly and
-    // confidently, that the search is worth nothing.
-    const html = render({
-      seed: (qc) =>
-        qc.setQueryData(listKey('fleet', 'accidents', listParams()), paged([accident()])),
-    });
-    expect(html).not.toContain('22,005.00');
-    expect(html, 'a skeleton, not a number').toContain('animate-pulse');
-  });
-});
-
-describe('the green row is the DATABASE’s status', () => {
-  it('tints a closed file and leaves an open one alone', () => {
-    const html = render({
-      seed: withRows([
-        accident({ id: 'a-open', statement: 'مفتوح هنا' }),
-        accident({ id: 'a-closed', status: 'closed', statement: 'مغلق هنا' }),
-      ]),
-    });
-    expect(rowWith(html, 'مغلق هنا')).toContain(GREEN);
-    expect(rowWith(html, 'مفتوح هنا')).not.toContain(GREEN);
-  });
-
-  it('survives a RELOAD — a brand new client, and the colour is still there', () => {
-    // The scenario that would break a screen holding the state in `useState`: everything the
-    // browser remembered is gone, and only what the server said is left.
-    const first = render({ seed: withRows([accident({ status: 'closed' })]) });
-    const afterReload = render({ seed: withRows([accident({ status: 'closed' })]) });
-    expect(first).toContain(GREEN);
-    expect(afterReload, 'the tint is re-derived, not remembered').toContain(GREEN);
-  });
-
-  it('offers the ONE flip the current state allows', () => {
-    const html = render({
-      seed: withRows([
-        accident({ id: 'a-open', statement: 'مفتوح هنا' }),
-        accident({ id: 'a-closed', status: 'closed', statement: 'مغلق هنا' }),
-      ]),
-    });
-    expect(rowWith(html, 'مفتوح هنا')).toContain('غلق الملف');
-    expect(rowWith(html, 'مفتوح هنا')).not.toContain('إعادة فتح الملف');
-    expect(rowWith(html, 'مغلق هنا')).toContain('إعادة فتح الملف');
-    expect(rowWith(html, 'مغلق هنا')).not.toContain('غلق الملف');
-  });
-
-  it('offers no flip at all without the grant — and the row is still readable', () => {
-    const html = render({
-      permissions: ['fleetAccident.view'],
-      seed: withRows([accident({ status: 'closed' })]),
-    });
-    expect(html).not.toContain('إعادة فتح الملف');
-    expect(html, 'the state is still announced').toContain('مغلق');
-  });
-});
-
-describe('the screen is laid out to be read, not scanned', () => {
-  // The pixels are proven in a browser; what these hold is the WIRING that produces them, so a
-  // later edit cannot quietly drop a prop and leave the screen looking like it did before.
-  it('names each total ABOVE its figure, and centres both', () => {
-    const html = render({ seed: withRows([accident()]) });
-    const strip = html.slice(html.indexOf('grid-cols-5'));
-    const label = strip.indexOf('اجمالي المبلغ المحصل');
-    const value = strip.indexOf('22,005.00');
-    expect(label, 'the label is in the markup').toBeGreaterThan(-1);
-    expect(value, 'and so is the figure').toBeGreaterThan(-1);
-    expect(label, 'the label comes first').toBeLessThan(value);
-    expect(strip, 'and the tile centres its contents').toContain('items-center');
-    expect(strip).toContain('text-center');
-  });
-
-  it('gives the totals a figure larger than the word beside it', () => {
-    const strip = render({ seed: withRows([accident()]) }).slice(
-      render({ seed: withRows([accident()]) }).indexOf('grid-cols-5'),
-    );
-    expect(strip, 'the figure').toContain('text-2xl');
-    expect(strip, 'the label, one step down').toContain('text-sm');
-  });
-
-  it('runs the table one step up the type scale', () => {
-    const html = render({ seed: withRows([accident()]) });
-    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-    const bodyRow = rowWith(html, 'فنوس شمال');
-    expect(head, 'headers are no longer text-xs').not.toContain('text-xs');
-    expect(head).toContain('text-sm');
-    expect(bodyRow, 'and the cells are no longer text-sm').toContain('text-base');
-  });
-
-  it('sizes the filter controls to match, and keeps them on ONE row on desktop', () => {
-    const html = render();
-    // The threshold is this bar's own, measured, and it moves with the bar: the note search is
-    // one control more than the 1440 was measured at.
-    expect(html).toContain('min-[1536px]:flex-nowrap');
-    expect(html).not.toContain('min-[1440px]:flex-nowrap');
-    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
-    const controls = [...bar.matchAll(/<(?:input|select)[^>]*class="([^"]*)"/g)].map(
-      (m) => m[1] ?? '',
-    );
-    // Four. The code box and the vehicle dropdown collapsed into ONE vehicle-code picker, and
-    // the culprit's free-text box became the drivers picker — both are buttons rather than
-    // inputs, and are counted separately below. The note search is the fourth.
-    expect(controls.length, 'from, to, notes, status').toBe(4);
-    for (const cls of controls) expect(cls, cls).toContain('text-base');
-  });
-
-  it('puts «من» and «إلى» BESIDE their boxes, not above them', () => {
-    // A stacked label is what made the bar two rows tall and pushed the seventh control off it.
-    const html = render();
-    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
-    const group = bar.slice(bar.indexOf('accidents-from') - 400, bar.indexOf('accidents-from'));
-    expect(group, 'the label and the box share a row').toContain('flex shrink-0 items-center');
-    expect(bar).toContain('for="accidents-from"');
-    expect(bar).toContain('for="accidents-to"');
-  });
-});
-
-describe('a failed fetch states the failure instead of inventing a screen', () => {
-  it('shows no rows, no green, and no figures when the list fails', () => {
-    const html = render({
-      seed: (qc) => {
-        qc.setQueryData(listKey('fleet', 'accidents', listParams()), undefined);
-        qc.setQueryDefaults(listKey('fleet', 'accidents', listParams()), {
-          queryFn: () => Promise.reject(new Error('down')),
-        });
-      },
-    });
-    expect(html).not.toContain(GREEN);
-    expect(html).not.toContain('22,005.00');
-    expect(html, 'a zero would be a claim about data nobody has').not.toContain('0.00');
-  });
-});
-
-describe('the filter bar', () => {
-  it('carries its controls on one row, in the order asked for', () => {
-    const html = render();
-    // The single-row threshold is this bar's own — see the `singleRowFrom` case below.
-    expect(html).toContain('flex-nowrap');
-    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
-    // Matched on things unique to each control rather than on its visible word, which can occur
-    // elsewhere in the markup: the two pickers' accessible names, the two date ids, and the "all
-    // statuses" option.
-    // One vehicle control where there were two — see «one vehicle control» below. The culprit is
-    // the DRIVERS picker, named by the question it asks, where a free-text «اسم المتسبب» box used
-    // to be: a fine is filed against somebody in the registry, and a typed name matched nobody.
-    const order = [
-      'كود السيارة',
-      'اسم السائق أو كود الموظف',
-      'accidents-from',
-      'accidents-to',
-      'بحث في الملاحظات',
-      'كل الحالات',
-    ];
-    let at = -1;
-    for (const label of order) {
-      const next = bar.indexOf(label, at + 1);
-      expect(next, `${label} appears after the one before it`).toBeGreaterThan(at);
-      at = next;
-    }
-  });
-
-  it('offers Reset once ANY filter is on — including the vehicle codes alone', () => {
-    for (const path of [
-      '/fleet/accidents?vehicleCodes=FLT210',
-      '/fleet/accidents?vehicleCodes=FLT210,FLT211',
-      '/fleet/accidents?culpritBy=64b1f1f1f1f1f1f1f1f1f1f1',
-      '/fleet/accidents?status=open',
-      '/fleet/accidents?from=2026-01-01',
-      '/fleet/accidents?to=2026-12-31',
-      '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
-    ]) {
-      expect(render({ path }), path).toContain('مسح عوامل التصفية');
-    }
-  });
-
-  it('does not offer Reset when nothing is filtered', () => {
-    expect(render()).not.toContain('مسح عوامل التصفية');
-  });
-
-  it('sends ONE vehicle question to the server — the codes, ORed', () => {
-    // There used to be two controls on this axis: a substring code box AND a single-car dropdown,
-    // which the server intersected. Picking 215 while typing 216 produced an empty page the filter
-    // bar itself had offered. Seeded ONLY under the unified key, so a page still sending either of
-    // the old two — or filtering in the browser — would look for a different key and render
-    // nothing.
-    const html = render({
-      path: '/fleet/accidents?vehicleCodes=FLT210,FLT211',
-      seed: withRows([accident({ statement: 'كلاهما مطبق' })], {
-        list: { vehicleCodes: ['FLT210', 'FLT211'] },
-        summary: { vehicleCodes: ['FLT210', 'FLT211'] },
-      }),
-    });
-    expect(html).toContain('كلاهما مطبق');
-  });
-
-  it('sends the NOTE search to the server — «عاوز اقدر ابحث فى الملاحظات»', () => {
-    // Over the whole filtered set, not the page in hand: the note that would find a file is
-    // usually on a page nobody is looking at, so a browser-side `rows.filter` would answer «لا
-    // يوجد» about a file that exists. Seeded ONLY under the `notes` key, so a page that filtered
-    // in the browser — or sent a different parameter — would look for another key and render
-    // nothing. The totals carry it too, or the sums would describe a wider set than the table.
-    const html = render({
-      path: '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
-      seed: withRows([accident({ statement: 'اتفلتر بالملاحظة' })], {
-        list: { notes: 'ورشة' },
-        summary: { notes: 'ورشة' },
-      }),
-    });
-    expect(html).toContain('اتفلتر بالملاحظة');
-  });
-
-  it('sends the culprit — as an EMPLOYEE, not a typed name — and the date range to the server', () => {
-    // The culprit filter used to send `culprit`, a substring of a name somebody typed. A fine is
-    // filed against a person the registry holds, so the question the picker asks is «which
-    // employee?» and the answer travels as an id. Seeded ONLY under the id key, so a page still
-    // sending the old free-text one would look for a different key and render nothing.
-    const CULPRIT = '64b1f1f1f1f1f1f1f1f1f1f1';
-    const html = render({
-      path: `/fleet/accidents?culpritBy=${CULPRIT}&from=2026-01-01&to=2026-12-31`,
-      seed: withRows([accident({ statement: 'فُلتر على الخادم' })], {
-        list: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
-        summary: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
-      }),
-    });
-    expect(html).toContain('فُلتر على الخادم');
-  });
-});
-
-// ── the culprit's NAME, which is what made the form unsubmittable ───────────
-//
-// «المتسبب» became a single control — the drivers picker — which is also responsible for writing
-// the culprit NAME the contract requires (`culprit: z.string().trim().min(1)`) and Save refuses
-// to go without. The name was read out of `drivers`, a map keyed on the employee id ALREADY in
-// state; inside the picker's `onChange` the chosen id is by construction NOT that id, and on a
-// create there has never been one, so the lookup always missed and the name was written as ''.
-// Save then sat disabled with nothing on screen saying why: NO ACCIDENT COULD BE RECORDED, and
-// changing the driver on an existing one wiped the name it had.
-//
-// This has no DOM, so the pick itself is exercised in Chromium. What is pinned here is the shape
-// that makes the pick survivable: the name is REQUESTED and filled in when the directory answers,
-// never read from a map that cannot hold it yet.
-describe('the culprit’s name outlives the moment it was picked', () => {
-  const SOURCE = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
-  // Comments name the bug they replaced, so a rule about the code reads the code alone.
-  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-
-  it('never writes an empty name just because the record has not arrived', () => {
-    // The exact line that killed the form. `?? ''` on a map that cannot contain the new id is the
-    // whole defect, and it looks entirely reasonable in a diff.
-    expect(CODE, 'no unconditional blanking on pick').not.toContain("(drivers.get(picked) ?? '')");
-  });
-
-  it('records the pick as a REQUEST and fills the name in when the directory answers', () => {
-    expect(CODE, 'the pending lookup is state, not a hope').toContain('setAwaitingNameFor');
-    expect(CODE, 'and an effect completes it').toMatch(
-      /useEffect\(\(\) => \{[\s\S]{0,200}awaitingNameFor[\s\S]{0,200}setCulprit\(resolvedName\)/,
-    );
-  });
-
-  it('clearing the drivers still clears the name — an empty picker is an empty culprit', () => {
-    expect(CODE).toMatch(/if \(next\.length === 0\) \{[\s\S]{0,120}setCulprit\(''\)/);
-  });
-
-  it('says why Save waits while the name is on its way', () => {
-    // The state that used to be permanent and silent is now temporary and announced.
-    expect(SOURCE).toContain('fleet.accidents.culpritNameLoading');
-    // Both language blocks carry it — a key present in one only renders the raw key to half the
-    // users, which has shipped from this file before.
-    const i18n = readFileSync(join(HERE, '../../../platform/localization/i18n.ts'), 'utf8');
-    expect(
-      i18n.match(/'fleet\.accidents\.culpritNameLoading':/g)?.length,
-      'in the ar block and the en block',
-    ).toBe(2);
-  });
-
-  it('leaves an already-filed name alone — it is the historical fact, not today’s spelling', () => {
-    // Re-syncing every open to the employee's CURRENT name would rewrite who caused an accident
-    // whenever somebody's record was corrected. Only a fresh pick may overwrite it.
-    expect(CODE, 'the open-effect takes the stored name').toContain(
-      "setCulprit(accident?.culprit ?? '')",
-    );
-    expect(CODE, 'and starts with nothing pending').toMatch(
-      /setCulprit\(accident\?\.culprit \?\? ''\)[\s\S]{0,400}setAwaitingNameFor\(''\)/,
-    );
-  });
-});
-
-// ── «اختار عربيه و جمبها مبلغ» — moving remaining between cars ───────────────
-describe('transfers between cars', () => {
-  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
-  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
-  const LOG = readFileSync(join(HERE, '../components/AccidentTransferLogDialog.tsx'), 'utf8');
-  const ar = (key: string): string => translate('ar', key);
-
-  it('counts what a file took and gave in its «إجمالي المتبقي»', () => {
+  it('counts what the file took and gave, and says so under the figure', () => {
     // 400 + 500 − 200, plus 1,500 taken from another car, less 300 another file took from it.
     const html = render({
       seed: withRows([
@@ -647,8 +405,234 @@ describe('transfers between cars', () => {
         }),
       ]),
     });
-    expect(rowWith(html, 'فنوس شمال')).toContain('1,900.00');
+    const remaining = cellsOf(rowWith(html, 'فنوس شمال'))[7] ?? '';
+    expect(text(remaining)).toContain('1,900.00');
+    expect(remaining).toContain('data-transfer-line="in"');
+    expect(remaining).toContain('data-transfer-line="out"');
+    expect(text(remaining)).toContain(`${ar('fleet.accidents.transferLine.in')}+1,500.00`);
+    expect(text(remaining)).toContain(`${ar('fleet.accidents.transferLine.out')}−300.00`);
+    expect(ar('fleet.accidents.transferLine.in')).toBe('تحويل وارد');
+    expect(ar('fleet.accidents.transferLine.out')).toBe('تحويل صادر');
   });
+
+  it('prints no transfer line on a file that moved nothing', () => {
+    const html = render({ seed: withRows([accident()]) });
+    expect(rowWith(html, 'فنوس شمال')).not.toContain('data-transfer-line');
+  });
+});
+
+describe('the figures behind «الإحصائيات» are the SERVER’s', () => {
+  const figures = (over: Partial<FleetAccidentTotalsDto> = {}): string =>
+    renderToStaticMarkup(
+      <Provider store={makeStore('ar', VIEW_ALL)}>
+        <AccidentFigures totals={totals(over)} />
+      </Provider>,
+    );
+
+  it('shows the five sums the server sent, the count in Latin digits', () => {
+    const html = figures();
+    for (const value of ['1,180', '87,835.00', '174,710.00', '240,540.00', '22,005.00']) {
+      expect(html).toContain(value);
+    }
+    for (const key of ['count', 'amountCollected', 'companyCost', 'paidAmount', 'remaining']) {
+      expect(html).toContain(ar(`fleet.accidents.totals.${key}`));
+    }
+  });
+
+  it('names them in formal spelling — the hamza, and the column’s own shadda', () => {
+    expect(ar('fleet.accidents.totals.amountCollected')).toBe('إجمالي المبلغ المحصَّل');
+    expect(ar('fleet.accidents.totals.companyCost')).toBe('إجمالي حساب الشركة');
+    expect(ar('fleet.accidents.totals.remaining')).toBe('إجمالي المتبقي');
+  });
+
+  it('writes a negative remaining «−11,287.50» in red, isolated left to right', () => {
+    const html = figures({ remaining: -11_287.5 });
+    const tile = html.slice(html.indexOf('data-accident-figure="remaining"'));
+    expect(tile).toContain('⁦−11,287.50⁩');
+    expect(tile, 'the red wins over the chip’s own colour').toContain('!text-red-600');
+    expect(tile).not.toContain('11,287.50−');
+  });
+
+  it('asks for them by the filters alone — paging cannot reach them', () => {
+    expect(PAGE_CODE).toContain('const summary = useAccidentSummary(filters);');
+  });
+});
+
+describe('the green row is the DATABASE’s status', () => {
+  it('tints a closed file and leaves an open one alone — on the row’s data-closed too', () => {
+    const html = render({
+      seed: withRows([
+        accident({ id: 'a-open', statement: 'مفتوح هنا' }),
+        accident({ id: 'a-closed', status: 'closed', statement: 'مغلق هنا' }),
+      ]),
+    });
+    expect(rowWith(html, 'مغلق هنا')).toContain(CLOSED_TINT);
+    expect(rowWith(html, 'مغلق هنا')).toContain('data-closed="true"');
+    expect(rowWith(html, 'مفتوح هنا')).not.toContain(CLOSED_TINT);
+    expect(rowWith(html, 'مفتوح هنا')).toContain('data-closed="false"');
+    // The boards' table paints its own hover; the tint is restated over it (`CLOSED_ROW`).
+    expect(html).toContain('[&amp;_tbody_tr[data-closed=true]]:!bg-emerald-50');
+  });
+
+  it('survives a RELOAD — a brand new client, and the colour is still there', () => {
+    const first = render({ seed: withRows([accident({ status: 'closed' })]) });
+    const afterReload = render({ seed: withRows([accident({ status: 'closed' })]) });
+    expect(first).toContain(CLOSED_TINT);
+    expect(afterReload, 'the tint is re-derived, not remembered').toContain(CLOSED_TINT);
+  });
+
+  it('offers the ONE flip the current state allows', () => {
+    const html = render({
+      seed: withRows([
+        accident({ id: 'a-open', statement: 'مفتوح هنا' }),
+        accident({ id: 'a-closed', status: 'closed', statement: 'مغلق هنا' }),
+      ]),
+    });
+    expect(rowWith(html, 'مفتوح هنا')).toContain('غلق الملف');
+    expect(rowWith(html, 'مفتوح هنا')).not.toContain('إعادة فتح الملف');
+    expect(rowWith(html, 'مغلق هنا')).toContain('إعادة فتح الملف');
+  });
+
+  it('offers no flip at all without the grant — and the row is still readable', () => {
+    const html = render({
+      permissions: ['fleetAccident.view'],
+      seed: withRows([accident({ status: 'closed' })]),
+    });
+    expect(html).not.toContain('إعادة فتح الملف');
+    expect(html, 'the state is still announced').toContain('مغلق');
+  });
+});
+
+describe('the boards’ table — bold like Receipts', () => {
+  it('wears DARK_TABLE with Cairo words and the figures in Azeret Mono', () => {
+    const html = render({ seed: withRows([accident()]) });
+    const frame = html.slice(html.indexOf('data-accidents-table') - 2000);
+    expect(frame).toContain('[&amp;_td]:[font-family:&#x27;Cairo&#x27;');
+    expect(rowWith(html, 'فنوس شمال')).toContain('Azeret_Mono');
+    // «سيب شكل الخط كدا» — the bold board, not the maintenance register's plain type.
+    expect(PAGE_CODE).not.toContain('PLAIN_CELLS');
+    expect(PAGE_CODE).not.toContain('ALARMS_TYPE');
+  });
+
+  it('centres every value under a centred header', () => {
+    const columns = PAGE_CODE.slice(
+      PAGE_CODE.indexOf('const columns'),
+      PAGE_CODE.indexOf('const dateBound'),
+    );
+    expect(columns.match(/align: 'center'/gu)?.length).toBe(11);
+  });
+});
+
+describe('the dark filter bar', () => {
+  it('runs من → إلى → كود السيارة → المتسبب → الملاحظات → الحالة, an icon on every filter', () => {
+    const bar = barOf(render());
+    const order = [
+      'data-date-caption="from"',
+      'data-date-caption="to"',
+      'كود السيارة',
+      ar('fleet.accidents.fields.culprit'),
+      'بحث في الملاحظات',
+      ar('fleet.vehicles.columns.status'),
+    ];
+    let at = -1;
+    for (const label of order) {
+      const next = bar.indexOf(label, at + 1);
+      expect(next, `${label} appears after the one before it`).toBeGreaterThan(at);
+      at = next;
+    }
+    expect(PAGE_CODE).toContain('DARK_FILTER_BAR');
+  });
+
+  it('writes «من» and «إلى» inside the empty date boxes, through our calendar', () => {
+    const bar = barOf(render());
+    expect(bar).toContain(`data-date-caption="from"`);
+    expect(bar).toContain(`>${ar('fleet.odometer.from')}<`);
+    expect(bar).toContain(`>${ar('fleet.odometer.to')}<`);
+    expect(PAGE_CODE).toContain('datePicker={{ label: t(labelKey) }}');
+  });
+
+  it('offers Reset once ANY filter is on — and not when nothing is', () => {
+    for (const path of [
+      '/fleet/accidents?vehicleCodes=FLT210',
+      '/fleet/accidents?culpritBy=64b1f1f1f1f1f1f1f1f1f1f1',
+      '/fleet/accidents?status=open',
+      '/fleet/accidents?from=2026-01-01',
+      '/fleet/accidents?to=2026-12-31',
+      '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
+    ]) {
+      expect(render({ path }), path).toContain('مسح عوامل التصفية');
+    }
+    expect(render()).not.toContain('مسح عوامل التصفية');
+  });
+
+  it('keeps «مفتوح» / «مغلق» ONE answer', () => {
+    expect(PAGE_CODE).toContain(
+      'onChange={(next) => patch({ status: pickOne(one(status), next) })}',
+    );
+  });
+
+  it('sends ONE vehicle question to the server — the codes, ORed', () => {
+    const html = render({
+      path: '/fleet/accidents?vehicleCodes=FLT210,FLT211',
+      seed: withRows([accident({ statement: 'كلاهما مطبق' })], {
+        list: { vehicleCodes: ['FLT210', 'FLT211'] },
+        summary: { vehicleCodes: ['FLT210', 'FLT211'] },
+      }),
+    });
+    expect(html).toContain('كلاهما مطبق');
+  });
+
+  it('keeps a picked «كورولا 1» ONE car — through the URL the filter writes, and a reload', () => {
+    const picked = ['كورولا 1', 'MG 2'];
+    const address = new URLSearchParams({ vehicleCodes: picked.join(',') }).toString();
+    const html = render({
+      path: `/fleet/accidents?${address}`,
+      seed: withRows([accident({ statement: 'كورولا واحدة بس' })], {
+        list: { vehicleCodes: picked },
+        summary: { vehicleCodes: picked },
+      }),
+    });
+    expect(html).toContain('كورولا واحدة بس');
+    expect(html).toContain('كورولا 1');
+  });
+
+  it('sends the NOTE search to the server — «عاوز اقدر ابحث فى الملاحظات»', () => {
+    const html = render({
+      path: '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
+      seed: withRows([accident({ statement: 'اتفلتر بالملاحظة' })], {
+        list: { notes: 'ورشة' },
+        summary: { notes: 'ورشة' },
+      }),
+    });
+    expect(html).toContain('اتفلتر بالملاحظة');
+  });
+
+  it('sends the culprit — as an EMPLOYEE, not a typed name — and the date range', () => {
+    const CULPRIT = '64b1f1f1f1f1f1f1f1f1f1f1';
+    const html = render({
+      path: `/fleet/accidents?culpritBy=${CULPRIT}&from=2026-01-01&to=2026-12-31`,
+      seed: withRows([accident({ statement: 'فُلتر على الخادم' })], {
+        list: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
+        summary: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
+      }),
+    });
+    expect(html).toContain('فُلتر على الخادم');
+  });
+
+  it('sends the status as the one value picked', () => {
+    const html = render({
+      path: '/fleet/accidents?status=closed',
+      seed: withRows([accident({ status: 'closed', statement: 'المغلق فقط' })], {
+        list: { status: 'closed' },
+        summary: { status: 'closed' },
+      }),
+    });
+    expect(html).toContain('المغلق فقط');
+  });
+});
+
+describe('transfers between cars, on the board', () => {
+  const LOG = readFileSync(join(HERE, '../components/AccidentTransferLogDialog.tsx'), 'utf8');
 
   it('puts the log button in every row, in the column before «ملاحظات»', () => {
     const html = render({ seed: withRows([accident(), accident({ id: 'a-2' })]) });
@@ -664,137 +648,6 @@ describe('transfers between cars', () => {
     expect(html).not.toContain('data-transfer-log-open=');
   });
 
-  it('names the two directions as the owner asked', () => {
-    expect(ar('fleet.accidents.log.paidFrom')).toBe('تم الدفع من');
-    expect(ar('fleet.accidents.log.paidTo')).toBe('تم الدفع لـ');
-    expect(LOG).toContain(
-      "entry.direction === 'in' ? 'fleet.accidents.log.paidFrom' : 'fleet.accidents.log.paidTo'",
-    );
-  });
-
-  it('says the money returns to the car it CAME FROM, whichever side the log is read from', () => {
-    expect(LOG).toContain(
-      "code: (removing.direction === 'in' ? removing.otherVehicleCode : code) ?? '—'",
-    );
-  });
-
-  it('lets only a reader who may edit remove a transfer', () => {
-    expect(PAGE).toContain("mayRemove={can('fleetAccident.edit')}");
-    const at = LOG.indexOf('data-transfer-remove=');
-    expect(at).toBeGreaterThan(-1);
-    expect(LOG.slice(LOG.lastIndexOf('{mayRemove && (', at), at)).toContain('{mayRemove && (');
-  });
-
-  it('offers only cars with something left, several at once, and works the amount out itself', () => {
-    expect(FORM, 'the server’s list of cars with remaining > 0').toContain(
-      'useAccidentCarBalances(open)',
-    );
-    expect(FORM, 'never this accident’s own car').toContain('car.vehicleId !== vehicleId');
-    expect(FORM, 'several cars').toContain('<MultiSelect');
-    expect(FORM, 'drawn in the order picked, until this accident is zero').toContain(
-      'coverDeficit(',
-    );
-    expect(FORM, 'the amount is never typed').not.toContain('setTransferAmount');
-    expect(FORM).toContain("t('fleet.accidents.transfer.columns.take')");
-    expect(FORM).toContain("t('fleet.accidents.transfer.noDeficit')");
-    // A picked car with a problem refuses «حفظ», and marks the field it was picked in.
-    expect(FORM).toContain('ok: !transferring || transfer !== undefined');
-    expect(FORM).toContain("missing={required.isMissing('transfer')}");
-  });
-
-  it('leaves the file being moved off a source car out of what that car can give', () => {
-    // The server drops the receiving file from the source car's files; the figure shown must too.
-    expect(FORM).toContain('accident.vehicleId === carId ? fleetAccidentRemaining(accident) : 0');
-    expect(FORM).toContain('paidAmount: leavingFrom(id)');
-  });
-
-  it('takes exactly what covers this accident’s negative remaining', () => {
-    expect(FORM).toContain('const taking = plan.amount;');
-    expect(FORM).toContain('    targetBefore,\n  );');
-  });
-
-  it('opens wide and tall', () => {
-    expect(FORM).toMatch(/<Dialog[^>]*size="xl"\s+tall/u);
-  });
-
-  it('says so when the car’s figures or the log could not be loaded', () => {
-    expect(FORM).toContain("t('fleet.accidents.transfer.loadFailed')");
-    expect(LOG).toContain("t('fleet.accidents.log.loadFailed')");
-    expect(ar('fleet.accidents.log.loadFailed')).not.toBe('fleet.accidents.log.loadFailed');
-  });
-
-  it('sends the transfer with the file — on a new one and on an edit', () => {
-    expect(FORM).toContain('...(transfer === undefined ? {} : { transfer }),');
-    expect(FORM).toContain('if (transfer !== undefined) body.transfer = transfer;');
-  });
-});
-
-// ── «يجيلوا مسدج انه فى كذا وكذا وكذا المفروض يدخلهم» ─────────────────────────────
-//
-// Save used to sit disabled until every required value was in, and a disabled button swallows the
-// click and says nothing. It stays pressable now: pressing it with something missing sends
-// nothing, lists what is missing at the top of the form and turns those boxes red. This suite
-// cannot click, so what is pinned is that every rule the old gate held is still a rule, each on
-// the field it belongs to.
-describe('Save names what is missing instead of sitting disabled', () => {
-  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
-  const RULES = FORM.slice(FORM.indexOf('useRequiredFields('), FORM.indexOf('const submit'));
-
-  it('keeps Save pressable and sends it through the guard', () => {
-    expect(FORM, 'the old gate is gone').not.toContain('disabled={!complete}');
-    expect(FORM).toContain('<Button loading={pending} onClick={required.guard(submit)}>');
-    expect(FORM, 'the banner opens the form').toMatch(
-      /<div className="space-y-4">\s*<MissingFieldsBanner\s+missing=\{required\.missing\}\s+attempt=\{required\.attempt\}\s*\/>/u,
-    );
-  });
-
-  it('still refuses every value the old gate refused, each on its own field', () => {
-    expect(RULES).toContain("ok: vehicleId !== ''");
-    expect(RULES).toContain("ok: occurredAt !== ''");
-    expect(RULES).toContain("ok: culprit.trim() !== ''");
-    expect(RULES).toContain("ok: statement.trim() !== ''");
-    // An amount is a real, non-negative figure — an empty box is not zero.
-    expect(FORM).toContain("isAmount = (v: string): boolean => v !== '' &&");
-    expect(FORM).toContain("v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;");
-    for (const key of [
-      'vehicle',
-      'occurredAt',
-      'culprit',
-      'statement',
-      'companyCost',
-      'amountCollected',
-      'paidAmount',
-      'transfer',
-    ]) {
-      expect(RULES, `${key} is a rule`).toContain(`key: '${key}'`);
-      expect(FORM, `${key} turns red when it is missing`).toContain(
-        `missing={required.isMissing('${key}')}`,
-      );
-    }
-    for (const amount of ['companyCost', 'amountCollected', 'paidAmount']) {
-      expect(RULES, `${amount} must be a figure ≥ 0`).toContain(`ok: isAmount(${amount})`);
-    }
-  });
-
-  it('starts clean every time the form is opened', () => {
-    expect(RULES).toMatch(/\],\s*open,\s*\);/u);
-  });
-});
-
-// ── several drivers, and a log that has something in it ───────────────────────
-describe('several drivers and a yellow log', () => {
-  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
-  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
-
-  it('lets the clerk pick more than one driver, and files all of them', () => {
-    expect(FORM).toMatch(/<RegistryDriverPicker\s+value=\{culpritEmployeeIds\}\s+multiple/);
-    expect(FORM, 'the new file carries the list').toContain('        culpritEmployeeIds,\n');
-    expect(FORM, 'an edit sends the list when it changed').toContain(
-      'body.culpritEmployeeIds = culpritEmployeeIds;',
-    );
-    expect(FORM, 'the name line holds every name').toContain("names.join('، ')");
-  });
-
   it('turns the log button yellow once the car has at least one transfer', () => {
     const html = render({
       seed: withRows([accident({ carHasTransfers: true }), accident({ id: 'a-2' })]),
@@ -803,20 +656,34 @@ describe('several drivers and a yellow log', () => {
       html.lastIndexOf('<button', html.indexOf('data-transfer-log-open="a-1"')),
     );
     expect(yellow.slice(0, yellow.indexOf('>'))).toContain('bg-amber-100');
-    expect(html).toContain('data-has-transfers="true"');
     const plain = html.slice(
       html.lastIndexOf('<button', html.indexOf('data-transfer-log-open="a-2"')),
     );
     expect(plain.slice(0, plain.indexOf('>'))).not.toContain('bg-amber-100');
-    expect(PAGE).toContain('r.carHasTransfers');
+  });
+
+  it('names the two directions as the owner asked', () => {
+    expect(ar('fleet.accidents.log.paidFrom')).toBe('تم الدفع من');
+    expect(ar('fleet.accidents.log.paidTo')).toBe('تم الدفع لـ');
+    expect(LOG).toContain(
+      "entry.direction === 'in' ? 'fleet.accidents.log.paidFrom' : 'fleet.accidents.log.paidTo'",
+    );
+  });
+
+  it('lets only a reader who may edit remove a transfer', () => {
+    expect(PAGE).toContain("mayRemove={can('fleetAccident.edit')}");
   });
 });
 
-describe('the Excel carries the log — «الحوادث ضيف السجل فى الاكسيل»', () => {
-  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
-  it('has a «السجل» column before «ملاحظات», filled from each car’s own log', () => {
-    const at = PAGE.indexOf('const exportSheet');
-    const body = PAGE.slice(at, at + 4000);
+describe('the Excel — «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس»', () => {
+  const body = PAGE.slice(PAGE.indexOf('const exportSheet'), PAGE.indexOf('const runExport'));
+
+  it('walks the whole filtered set, not the page', () => {
+    expect(body).toContain('filtersOnly(params)');
+    expect(body).toContain('fetchFilteredRows(');
+  });
+
+  it('carries the log — «الحوادث ضيف السجل فى الاكسيل» — before «ملاحظات»', () => {
     expect(body.indexOf("t('fleet.accidents.log.column')")).toBeLessThan(
       body.indexOf("t('fleet.accidents.fields.notes')"),
     );
@@ -824,49 +691,16 @@ describe('the Excel carries the log — «الحوادث ضيف السجل فى 
     expect(body).toContain('logCell(r.vehicleId)');
     expect(body, 'only cars that have a transfer are asked').toContain('r.carHasTransfers');
   });
-});
 
-describe('«كود السيارة» on the accident form — typed, and every car', () => {
-  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
-  const BOX = readFileSync(join(HERE, '../components/VehicleCodeCombobox.tsx'), 'utf8');
-  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
-  const ar = (key: string): string => translate('ar', key);
-
-  it('is a box the clerk can type the code into, offering the whole registry', () => {
-    expect(FORM).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
-    expect(FORM, 'the single-page dropdown is gone').not.toContain('<VehicleSelect');
+  it('heads the car «كود السيارة» as the screen does, and the remaining by the contract', () => {
+    expect(body).toContain("t('fleet.odometer.columns.vehicle')");
+    expect(body).toContain('fleetAccidentRemaining(r)');
+    expect(body).toContain('moneyColumns: [5, 6, 7, 8]');
   });
 
-  it('loads every page of the registry and narrows it by code as the clerk types', () => {
-    // Every car-code box in Fleet does this now — the accident form was the first.
-    expect(BOX).toContain('useAllVehicles({ anyStatus })');
-    expect(BOX).toContain('rankVehicleCodes([...byCode.keys()], query)');
-    expect(BOX, 'a list long enough to scroll').toMatch(/^\s*tallList\s*$/mu);
-    expect(BOX, 'no shortlist mode is left').not.toContain('wholeRegistry');
-  });
-
-  it('resolves every row’s code from the whole registry, not its first hundred', () => {
-    expect(PAGE).toContain('useAllVehicles({ anyStatus: true })');
-    expect(PAGE).not.toContain('useVehicles(');
-  });
-
-  it('commits what was typed, never the car already chosen', () => {
-    // Remote mode pinned the chosen car above the search's answer, on the highlighted first row —
-    // so typing «215» and pressing Enter re-committed the car the file was already on.
-    const COMBOBOX = readFileSync(join(HERE, '../../../shared/ui/Combobox.tsx'), 'utf8');
-    expect(COMBOBOX).toContain("!(remote && query.trim() !== '')");
-    // A click on a box that already has focus — right after a pick — reopens the whole list.
-    expect(COMBOBOX).toMatch(/onClick=\{\(\) => \{\s*if \(!open\) openFresh\(\);/u);
-  });
-
-  it('shows the code of a car the current list does not carry — asked for by its id', () => {
-    expect(BOX).toContain(
-      "useVehicle(value !== '' && known === '' && picked.id !== value ? value : '')",
+  it('says so when the sheet could not be made', () => {
+    expect(PAGE_CODE).toMatch(
+      /catch \(failure\) \{\s*toast\.error\(errorMessage\(failure, locale\)\);/u,
     );
-  });
-
-  it('says how the box works, in both languages', () => {
-    expect(ar('fleet.accidents.vehiclePlaceholder')).toBe('اكتب الكود أو اختر…');
-    expect(ar('fleet.accidents.vehicleHint')).toBe('اكتب الكود أو اختر من القائمة — كل السيارات');
   });
 });

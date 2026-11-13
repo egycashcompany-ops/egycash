@@ -20,6 +20,7 @@ import { lazy, Suspense, useState } from 'react';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { EmploymentView } from '../components/EmploymentView';
 import { EmployeeAccountCard } from '../components/EmployeeAccountCard';
+import { EmployeePhoto } from '../components/EmployeePhoto';
 import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
 import { EmployeeCostCenterCard } from '../components/EmployeeCostCenterCard';
@@ -33,7 +34,7 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'permissions', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'papers', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'idCard', 'timeline', 'permissions', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
@@ -48,9 +49,16 @@ type Tab = (typeof TABS)[number];
 // Permissions (ADR-032) is the manager's tab: it appears for whoever holds `delegation.manage`,
 // which is how «مدير الحركة» reaches his people's screens from their profiles. The panel itself says
 // when the person has no login yet; hiding the tab would say nothing.
-const visibleTabs = (compensationVisible: boolean, exited: boolean, delegates: boolean): readonly Tab[] =>
+const visibleTabs = (
+  compensationVisible: boolean,
+  exited: boolean,
+  delegates: boolean,
+  prints: boolean,
+): readonly Tab[] =>
   TABS.filter((k) => {
     if (k === 'permissions') return delegates;
+    // A28 — «طباعة العقد والمستندات»: for whoever may print contracts.
+    if (k === 'papers') return prints;
     if (k === 'settlement') return compensationVisible && exited;
     if (k === 'payItems' || k === 'adjustments' || k === 'loans' || k === 'payslips')
       return compensationVisible;
@@ -65,6 +73,8 @@ const EmployeeAttendanceTab = lazy(
   () => import('../../../attendance/components/EmployeeAttendanceTab'),
 );
 const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
+// A28 — «طباعة العقد والمستندات»: print the employee's papers again, or renew the contract.
+const EmployeePapersTab = lazy(() => import('../../../contracts/components/EmployeePapersTab'));
 // P-HR-TRN T5 — beside Attendance, because both answer «what has this person actually done» rather
 // than «who are they» or «what are they paid».
 const EmployeeTrainingTab = lazy(() => import('../../../training/components/EmployeeTrainingTab'));
@@ -77,6 +87,7 @@ const EmployeeAdjustmentsTab = lazy(
 const EmployeeLoansTab = lazy(
   () => import('../../../employee-loans/components/EmployeeLoansTab'),
 );
+const EmployeeIdCardTab = lazy(() => import('../id-card/EmployeeIdCardTab'));
 const EmployeeSettlementTab = lazy(
   () => import('../../../settlement/components/EmployeeSettlementTab'),
 );
@@ -315,6 +326,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={e.personal.fullNameAr}
+        leading={<EmployeePhoto employee={e} />}
         breadcrumbs={[
           { label: t('employees.module.title'), to: '/employees' },
           { label: e.code },
@@ -337,7 +349,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
       )}
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800" role="tablist">
-        {visibleTabs(e.compensationVisible, e.exit !== null, can('delegation.manage')).map((k) => (
+        {visibleTabs(e.compensationVisible, e.exit !== null, can('delegation.manage'), can('contract.print')).map((k) => (
           <button
             key={k}
             role="tab"
@@ -398,6 +410,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'contracts' && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeContractsTab employee={e} />
+        </Suspense>
+      )}
+      {tab === 'papers' && can('contract.print') && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeePapersTab employee={e} />
         </Suspense>
       )}
       {tab === 'payItems' && e.compensationVisible && (
@@ -462,6 +479,11 @@ export const EmployeeProfilePage = (): JSX.Element => {
           </Suspense>
         ))}
       {tab === 'documents' && <DocumentsTab e={e} />}
+      {tab === 'idCard' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeIdCardTab employee={e} />
+        </Suspense>
+      )}
       {tab === 'timeline' && <TimelineTab e={e} />}
       {tab === 'account' && (
         <EmployeeAccountCard employee={e} />

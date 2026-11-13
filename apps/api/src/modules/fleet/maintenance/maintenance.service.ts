@@ -19,7 +19,7 @@ import {
   type UpdateFleetMaintenance,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { ConflictError, ValidationError } from '../../../shared/errors';
+import { ConflictError, StaleDocumentError, ValidationError } from '../../../shared/errors';
 import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -51,6 +51,8 @@ export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
   codes: ReadonlyMap<string, string>;
   /** The car's «التشغيل» for the same cars — «ضيف عمود فى الجدول ب نوع التشغيل». */
   operations: ReadonlyMap<string, string | null>;
+  /** The car's «الفرع» for the same cars — the branch it is assigned to, not the workshop's. */
+  branches: ReadonlyMap<string, string | null>;
 };
 
 /**
@@ -63,6 +65,8 @@ export interface MaintenanceVisitWithJoins {
   vehicleCode: string | null;
   /** The car's «التشغيل» — a fact about the CAR, read with its code. */
   operationId: string | null;
+  /** The car's «الفرع» (`vehicle.branchId`) — likewise the CAR's, read with its code. */
+  branchId: string | null;
 }
 
 /**
@@ -222,19 +226,26 @@ class FleetMaintenanceService {
   }
 
   /**
-   * The one read-side fact a visit does not carry itself: the registry's code for its vehicle.
-   * Both drivers are stored on the document now, so nothing else needs resolving.
+   * The read-side facts a visit does not carry itself — all about its CAR, read off the registry:
+   * the code, «التشغيل» and «الفرع». Both drivers are stored on the document now, so nothing else
+   * needs resolving.
    */
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
     const vehicleId = vehicleIdOf(doc);
     // A visit kept from the old book for a car the registry never had names its car itself.
-    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null };
-    const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
-    const operations = await fleetVehicleRepository.operationIdsByIds([vehicleId]);
+    if (vehicleId === null) {
+      return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null, branchId: null };
+    }
+    const [codes, operations, branches] = await Promise.all([
+      fleetVehicleRepository.codesByIds([vehicleId]),
+      fleetVehicleRepository.operationIdsByIds([vehicleId]),
+      fleetVehicleRepository.branchIdsByIds([vehicleId]),
+    ]);
     return {
       doc,
       vehicleCode: codes.get(vehicleId) ?? null,
       operationId: operations.get(vehicleId) ?? null,
+      branchId: branches.get(vehicleId) ?? null,
     };
   }
 
@@ -423,6 +434,28 @@ class FleetMaintenanceService {
     if (input.driverInEmployeeId !== undefined) {
       await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
     }
+    // «سائق الخروج» — only on a CLOSED visit. An open one has not left yet; check-out sets it.
+    if (input.driverOutEmployeeId !== undefined && before.outDate === null) {
+      // A copy older than the stored visit saw it closed: it was reopened since. That is a stale
+      // copy to reload (409, as on every edit), not a field the editor filled in wrong.
+      if (input.version !== before.__v) throw new StaleDocumentError();
+      throw new ValidationError([
+        {
+          field: 'body.driverOutEmployeeId',
+          code: 'INVALID',
+          message: 'the exit driver of an open visit is set by check-out',
+        },
+      ]);
+    }
+    // Asked of HR only when this edit CHANGES it, so resaving a visit whose driver has since left
+    // the directory is not refused for a driver nobody touched. Lowercased: an id is hex, and the
+    // stored one always reads back lowercase.
+    if (
+      input.driverOutEmployeeId !== undefined &&
+      input.driverOutEmployeeId.toLowerCase() !== String(before.driverOutEmployeeId ?? '')
+    ) {
+      await this.assertDriver(input.driverOutEmployeeId, 'body.driverOutEmployeeId');
+    }
     // FR-4's `outDate ≥ inDate`, against the END STATE of the edit.
     //
     // Check-out enforces it once, at the moment it sets `outDate` — and `outDate` is deliberately
@@ -505,6 +538,10 @@ class FleetMaintenanceService {
     if (input.driverInEmployeeId !== undefined) {
       set.driverInEmployeeId = new Types.ObjectId(input.driverInEmployeeId);
     }
+    // `driverOutName` (the old book's spelling) is left as it is; the employee id wins on display.
+    if (input.driverOutEmployeeId !== undefined) {
+      set.driverOutEmployeeId = new Types.ObjectId(input.driverOutEmployeeId);
+    }
     if (input.takenInByEmployeeId !== undefined) {
       set.takenInByEmployeeId =
         input.takenInByEmployeeId == null ? null : new Types.ObjectId(input.takenInByEmployeeId);
@@ -544,15 +581,11 @@ class FleetMaintenanceService {
    */
   private async vehicleScope(query: MaintenanceFilterQuery): Promise<string[] | undefined> {
     const [byCode, bySet] = await Promise.all([
+      // The live cars carrying these codes — whitespace and Latin case aside, so «كورولا 1» is a
+      // stored «كورولا 1 » (`anyVehicleCode`).
       query.vehicleCodes === undefined
         ? undefined
-        : fleetVehicleRepository
-            .list({
-              filter: { code: { $in: [...query.vehicleCodes] } },
-              page: 1,
-              pageSize: query.vehicleCodes.length,
-            })
-            .then((page) => page.items.map((vehicle) => String(vehicle._id))),
+        : fleetVehicleRepository.liveIdsByCodes(query.vehicleCodes),
       // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's operation is the registry's fact too, so it
       // narrows to vehicle ids here exactly as a code does. Both asked means BOTH hold: the cars
       // among those codes that run under one of those operations.
@@ -762,8 +795,16 @@ class FleetMaintenanceService {
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
     const sorts = parseFleetSort(query.sort);
+    // The filter and the alarm columns need nothing of each other, so neither waits for the other.
+    const [filter, sortDerived] = await Promise.all([
+      this.filterFor(query),
+      // «منذ الخدمة» and «المتبقي» are figures about the CAR, not about the visit — computed for
+      // the fleet and handed to the query as something it can order by, and only when the reader
+      // has asked for one. See the odometer register, which does the same with the same helper.
+      alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+    ]);
     const page = await fleetMaintenanceRepository.listVisits({
-      filter: await this.filterFor(query),
+      filter,
       // Already folded into the filter above; `listVisits` must not fold it twice.
       driverEmployeeIds: undefined,
       page: query.page,
@@ -773,15 +814,16 @@ class FleetMaintenanceService {
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
       sorts,
-      // «منذ الخدمة» and «المتبقي» are figures about the CAR, not about the visit — computed for
-      // the fleet and handed to the query as something it can order by, and only when the reader
-      // has asked for one. See the odometer register, which does the same with the same helper.
-      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+      sortDerived,
     });
+    // The page's cars, asked their codes, their operations and their branches at once.
     const onPage = vehicleIdsOf(page.items);
-    const codes = await fleetVehicleRepository.codesByIds(onPage);
-    const operations = await fleetVehicleRepository.operationIdsByIds(onPage);
-    return { ...page, codes, operations };
+    const [codes, operations, branches] = await Promise.all([
+      fleetVehicleRepository.codesByIds(onPage),
+      fleetVehicleRepository.operationIdsByIds(onPage),
+      fleetVehicleRepository.branchIdsByIds(onPage),
+    ]);
+    return { ...page, codes, operations, branches };
   }
 }
 

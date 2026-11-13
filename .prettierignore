@@ -5,3 +5,4 @@ package-lock.json
 docs/06-security/permission-matrix.generated.md
 docs
 README.md
+.claude/vendor/

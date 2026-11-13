@@ -9,6 +9,7 @@ export * from './platform/auth.js';
 export * from './platform/portal-challenge.js';
 export * from './platform/password-policy.js';
 export * from './platform/users.js';
+export * from './platform/presence.js';
 export * from './platform/directory.js';
 export * from './platform/rbac.js';
 export * from './platform/approvals.js';

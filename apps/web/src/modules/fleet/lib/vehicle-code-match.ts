@@ -14,10 +14,14 @@
 //   • `foldIncludes` — the application's shared matcher, so a code matches here exactly as it
 //     matches in every other list, Arabic digits and all.
 //
+// A code holding a space («كورولا 1», «MG 2») is one car on both sides: the parser reads the typed
+// «كورولا 1» as that one code, and the code it is held against is read with its whitespace as one
+// space (`normalizeVehicleCode`), so a registry «فورتشنر 2 » answers «فورتشنر 2».
+//
 // The plate is deliberately not consulted. Both boards used to accept it, which meant a dispatcher
 // typing a plate got a row whose only visible identifier — the code in the cell — was not what
 // they typed, and no way to tell why that row was the answer.
-import { splitVehicleCodeList } from '@ecms/contracts';
+import { normalizeVehicleCode, splitVehicleCodeList } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
 
 /**
@@ -29,5 +33,7 @@ import { foldIncludes } from '../../../shared/lib/fold';
  */
 export const matchesVehicleCode = (code: string, term: string): boolean => {
   const wanted = splitVehicleCodeList(term);
-  return wanted.length === 0 || wanted.some((one) => foldIncludes(code, one));
+  if (wanted.length === 0) return true;
+  const held = normalizeVehicleCode(code);
+  return wanted.some((one) => foldIncludes(held, one));
 };

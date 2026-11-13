@@ -36,6 +36,7 @@ import {
   renamePasskeyRequest,
 } from '../auth/api';
 import { passkeyFailure } from '../auth/passkey-failure';
+import { canAddPasskey, passkeyCardState, removeConfirmKey } from './passkey-card-state';
 import {
   addPasskey,
   cancelPasskeyPrompt,
@@ -225,10 +226,12 @@ const RenamePasskeyDialog = ({
 
 const RemovePasskeyDialog = ({
   passkey,
+  switchedOff,
   onClose,
   onRemoved,
 }: {
   passkey: PasskeyDto | null;
+  switchedOff: boolean;
   onClose: () => void;
   onRemoved: () => void;
 }): JSX.Element => {
@@ -256,7 +259,7 @@ const RemovePasskeyDialog = ({
       open={passkey !== null}
       onClose={onClose}
       title={t('account.security.passkeyRemoveTitle')}
-      description={t('account.security.passkeyRemoveBody', { name: passkey?.name ?? '' })}
+      description={t(removeConfirmKey(switchedOff), { name: passkey?.name ?? '' })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>
@@ -281,11 +284,11 @@ export const PasskeysCard = (): JSX.Element | null => {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState<PasskeyDto | null>(null);
   const [removing, setRemoving] = useState<PasskeyDto | null>(null);
-  const {
-    data: passkeys = [],
-    error,
-    refetch,
-  } = useQuery({ queryKey: PASSKEYS_QUERY_KEY, queryFn: listPasskeysRequest, retry: false });
+  const { data, error, refetch } = useQuery({
+    queryKey: PASSKEYS_QUERY_KEY,
+    queryFn: listPasskeysRequest,
+    retry: false,
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -297,17 +300,15 @@ export const PasskeysCard = (): JSX.Element | null => {
     };
   }, []);
 
-  const code = error instanceof ApiError ? error.code : null;
-  // An account that may not hold passkeys (none reach this page today) sees no card at all.
-  if (code === 'AUTH_PASSKEY_NOT_ALLOWED') return null;
-  const switchedOff = code === 'AUTH_PASSKEYS_DISABLED';
+  const { hidden, switchedOff, passkeys } = passkeyCardState(data, error);
+  if (hidden) return null;
 
   return (
     <Card>
       <CardHeader
         title={t('account.security.passkeys')}
         actions={
-          !switchedOff && support?.webauthn === true ? (
+          canAddPasskey(switchedOff, support) ? (
             <Button
               size="sm"
               leftIcon={<FingerprintIcon className="h-4 w-4" />}
@@ -321,10 +322,11 @@ export const PasskeysCard = (): JSX.Element | null => {
       <CardBody className="space-y-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {switchedOff ? t('account.security.passkeysOff') : t('account.security.passkeysHint')}
+          {switchedOff && passkeys.length > 0 && ` ${t('account.security.passkeysOffRemove')}`}
         </p>
-        {!switchedOff && (
+        {(!switchedOff || passkeys.length > 0) && (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {passkeys.length === 0 && (
+            {!switchedOff && passkeys.length === 0 && (
               <li className="py-3 text-sm text-slate-400">{t('account.security.passkeysEmpty')}</li>
             )}
             {passkeys.map((passkey) => (
@@ -354,15 +356,17 @@ export const PasskeysCard = (): JSX.Element | null => {
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t('account.security.passkeyRename')}
-                    title={t('account.security.passkeyRename')}
-                    onClick={() => setRenaming(passkey)}
-                  >
-                    <EditIcon className="h-4 w-4" />
-                  </Button>
+                  {!switchedOff && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label={t('account.security.passkeyRename')}
+                      title={t('account.security.passkeyRename')}
+                      onClick={() => setRenaming(passkey)}
+                    >
+                      <EditIcon className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost-danger"
@@ -400,6 +404,7 @@ export const PasskeysCard = (): JSX.Element | null => {
       />
       <RemovePasskeyDialog
         passkey={removing}
+        switchedOff={switchedOff}
         onClose={() => setRemoving(null)}
         onRemoved={() => {
           setRemoving(null);

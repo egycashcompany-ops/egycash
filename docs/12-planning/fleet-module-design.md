@@ -154,7 +154,7 @@ free rewrite.
 | `odometerAtService` | int | legacy `counter`; the counter on the way IN |
 | `exitOdometer` | int, nullable, `≥ odometerAtService` | the counter on the way OUT, required at check-out. The alarm baseline of a closed visit (§4.4). `null` while the visit is open, and on visits closed before this was collected |
 | `driverInEmployeeId` | ref, nullable | the DRIVER who brought the vehicle in, chosen explicitly and REQUIRED at check-in. Stored, not read from the roster — a plan is not a record of who arrived. `null` only on visits predating the field |
-| `driverOutEmployeeId` | ref, nullable | the DRIVER who took it away, REQUIRED at check-out. `null` while open, cleared by reopen, and `null` on visits predating the field |
+| `driverOutEmployeeId` | ref, nullable | the DRIVER who took it away, REQUIRED at check-out. Correctable afterwards by the visit's edit (`PATCH /fleet/maintenance/:id`) on a CLOSED visit only — a correction, never a clear (§4.2). `null` while open, cleared by reopen, and `null` on visits predating the field |
 | `takenInByEmployeeId` / `takenOutByEmployeeId` | refs, nullable | CUSTODY — who PERFORMED the check-in/check-out (legacy driver/driver2), resolved from the authenticated user. A different fact from the two drivers above; see §4.2 |
 | `notes` | string, nullable | |
 
@@ -218,12 +218,23 @@ the day) have no question to answer here, so this board has no unavailable half 
 | `occurredAt` | date | |
 | `culprit` | string | driver name / third party / تحقيق pending — free text (legacy semantics; §13-Q9 may type it) |
 | `statement` | string | البيان |
-| `companyCost` | money (typed decimal) | legacy `company_account` — exact semantics §13-Q9 |
-| `amountCollected` | money | |
-| `paidAmount` | money | legacy client-computed `paid` — server-derived once Q9 defines the formula |
+| `companyCost` | money (typed decimal) | legacy `company_account`; entered as typed, ADDS to «المتبقي» (§13-Q9) |
+| `amountCollected` | money | entered as typed, ADDS to «المتبقي» |
+| `paidAmount` | money | legacy client-computed `paid`; entered as typed, SUBTRACTS from «المتبقي». Not derived: the remaining is the derived figure (§13-Q9) |
+| `transfersIn` | array of embedded transfers, default `[]` | every amount this file TOOK from another car's remaining (§4.6), live and voided: `fromVehicleId`, `fromVehicleCode` as it was then, `amount`, `lines` (what came off which of that car's files), `at`, `by`/`byName`, `voidedAt`/`voidedBy`/`voidReason` (`removed` \| `fileDeleted`). Never deleted |
+| `transferredIn` | money, default 0 | Σ of the LIVE `transfersIn` amounts, written in the same write as them (for sort and sums) |
+| `transferredOut` | money, default 0 | Σ of the live transfer lines drawn FROM this file, written in the same transaction as them |
 | `status` | enum `open \| closed` | replaces the stored **color** |
 | `notes` | string, nullable | |
 | attachments | via platform Files | police report, photos — additive over legacy |
+
+**«إجمالي المتبقي» is derived, never stored** (§13-Q9):
+`remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut`, rounded
+to the piastre, with a zero always positive (`fleetAccidentRemaining` in the contract — the row, the
+totals strip and the server's sums all read it). A file no transfer has touched carries 0 in both
+transfer figures, so its remaining is the three facts alone. There is no column for it and no
+migration behind it. A CAR's «إجمالي المتبقي» is the same formula over the sums of all its live
+files, open and closed — NET, so a file paid beyond what it owed lowers the car's figure.
 
 ### 2.9 `fleet_violations` — Violation (one collection, two shapes, discriminated)
 
@@ -318,6 +329,18 @@ who actually brought the car in or drove it away. Reopening a visit clears the e
 with the rest of the exit. Visits written before these fields existed carry `null` for both and
 are never back-filled by guessing — the roster is not evidence of what happened.
 
+**Both drivers are correctable by the edit.** `PATCH /fleet/maintenance/:id` (`fleetMaintenance.edit`,
+version-aware, audited as an `update`) takes `driverInEmployeeId` and — «عاوز اقدر اعدل السواق
+التانى اللى هو سائق الخروج» — `driverOutEmployeeId`, so a wrong exit driver is fixed without
+reopening the visit (which would also clear the exit date, the exit reading and the custody). The
+exit driver is taken on a CLOSED visit only: an open visit has no exit yet, check-out sets it, and
+the edit refuses it with a 400 on `body.driverOutEmployeeId` (a copy read before someone reopened
+the visit gets the usual 409 instead, to reload). Each is a correction, never a clear
+(`null` is refused). The exit driver is checked against the HR directory only when the edit
+changes it, so resending the stored driver after they left the directory is not refused. On an old
+visit that has only the old book's spelling (`driverOutName`), choosing an employee records it and
+the employee is shown from then on; the spelling itself is left as it was.
+
 **Driver is not custody.** `takenInByEmployeeId` / `takenOutByEmployeeId` answer "who PERFORMED
 the check-in / check-out", and are resolved from the authenticated user through the platform
 directory seam (`getSelfDirectoryEmployee`) rather than typed in; a login with no employee behind
@@ -381,6 +404,90 @@ availability verdict — see §2.7b for why each is absent.
 
 `open` → `closed` (and back — legacy toggles freely; kept, both audited). Create requires the §7
 fields; amounts are typed money; attachments via Files.
+
+#### Transfers between cars (أخذ مبلغ من متبقي سيارة أخرى)
+
+«اختار عربيه و جمبها مبلغ ... ينقص من متبقى العربيه و يمنعنى اخد اكتر من المبلغ اللى موجود على
+العربيه». A file, on create or on edit, may take an amount out of OTHER cars' remaining
+(`transfer: { fromVehicleIds, amount }` on the body). On an edit it ADDS one more transfer; the
+ones already on the file stay.
+
+**How a transfer is kept.** A transfer names a car, but a car's remaining exists only as the sum
+over its files, so the amount comes off particular files: the car's live files, oldest first (the
+day of the accident, then when it was recorded, then its id; an old-book file with no date comes
+first). Those lines are kept on the transfer, so the row, a filtered total and the car's figure
+agree. There is one transfer per giving car, stored on the RECEIVING file (§2.8 `transfersIn`), so
+the file and what it took are one document and one version; the giving files' `transferredOut`
+move in the same transaction. Removing a transfer from the car's log («السجل») voids it
+(`removed`), which puts the amount back where it came from; deleting a file on either side voids
+its transfers (`fileDeleted`). Nothing is hard-deleted.
+
+**The cars offered.** `GET /fleet/accidents/car-balances` lists every LIVE registry car whose net
+«إجمالي المتبقي» (§2.8) is above zero — «يجب كود السيارة المأخوذ منها السيارات اللى المبلغ
+المتبقى بالموجب بس». Soft-deleted cars are dropped before codes are matched, and a file kept from
+the old book under a code counts for the live car carrying that code now, never a deleted one that
+once carried it, matched by the save's own rule (spaces read as one, Latin case ignored, as
+`sameVehicleCode`): the registry's «فورتشنر 2 » is the book's «فورتشنر 2». So every car offered can
+be saved, and its figure is the one a take from it is capped by when nothing else moved it since.
+
+**The screen's plan** — owner-approved 2026-11-09: «انا عاوز يجيب العربيات اللى ممكن يخليها ب0
+فى الاول ويكتب جنب العربية انه هو الاختارها او الاختيار كان تلقائى … ممكن اختار فى الاول عربيتين
+وبعد كدا اكتب المبلغ ميبقاش جايب ف يكمل هو. ولو اختار كل العربيات اللى فيها فلوس ولسه العربيه عليها
+فلوس عادى اسمح انه يكمل ويخصم اللى اختاره … هتسمح انه يدخل المبلغ او انت تلقائى اعرف المبلغ اللى
+بالسالب كام وشيله». This **partly reverses the owner's 2026-10-01 rule «مش انا اللى هكتب المبلغ
+الماخوذ»**, under which the amount was never typed and the picked cars covered the accident's whole
+negative. One pure function, `planTransfer` (`apps/web/src/modules/fleet/lib/accident-transfer-plan.ts`,
+which replaced `coverDeficit` and keeps `planTakes`), draws every figure the form shows:
+
+1. **Target.** The typed amount, if typed. With the box EMPTY and at least one car ticked, the
+   accident's whole negative. Nothing ticked and nothing typed: no transfer — the section is
+   optional. A typed 0 is refused («اكتب مبلغاً أكبر من صفر، أو اتركه فارغاً»): empty means the
+   whole negative, 0 means nothing.
+2. **Never above the negative.** A typed amount above the accident's negative is refused under the
+   field («لا يمكن أخذ أكثر من سالب هذا الحادث (x ج.م.)»). An accident that is not negative has
+   nothing to cover («لا يوجد سالب على هذا الحادث لتغطيته من سيارة أخرى»).
+3. **His picks first**, in his pick order, each down to 0 before the next — «لازم يوصل ل 0 فى
+   العربيه اللى بينقص منها عشان يبدا ينقاص من العربيه التانيه». A pick that is not needed stays
+   listed at 0.00, greyed, «لم يُحتج إليها».
+4. **The system completes** from the other cars with a positive balance — never his picks, never a
+   car he unticked, never the accident's own car — SMALLEST balance first (a tie goes to the lower
+   code, compared as numbers), each taken whole to 0; the last gives only the rest.
+5. **All the cars short is allowed.** Everything available is taken and an amber note says what
+   stays on the accident: «يُؤخذ كل المتاح في السيارات (x)، ويبقى على هذا الحادث −y», or «…في
+   السيارات المحددة…» when the shortfall is because he unticked cars that still hold money. With
+   no car left that has anything to give, the plan is refused, so a save never sends an empty
+   transfer.
+6. **Who chose each car.** Rows are tagged «اختيار يدوي» (pointer icon) or «اختيار تلقائي»
+   (lightning), in the plan table AND on the ticked options of the open list. A car he unticked
+   stays out: the system never adds it back. «مسح الكل» / ✕ is a full reset, the amount included.
+7. **«تغطية السالب كله تلقائياً · x ج.م.»** («لا سيب الزرار») is shown only while the accident is
+   negative and nothing is ticked or typed; it fills the amount with the whole negative.
+8. **Twenty cars.** At most 20 cars give in one save — the contract's `fromVehicleIds.max(20)`
+   («تمام»). If stopping there leaves a shortfall, the amber note says so; saving stays allowed.
+
+The body carries only the rows that take more than zero, in row order, with `amount` = Σ of their
+takes; the schema also refuses a car listed twice and the accident's own car.
+
+**The server checks it again** inside the transaction that writes it, in whole piastres. On any
+refusal nothing is written (422). In this order:
+
+- a file with no registry car cannot receive, and a car cannot take from itself
+  (`BUSINESS_RULE_VIOLATION`, unchanged);
+- **the receiving cap** (owner-approved 2026-11-09): the amount may not exceed the receiving file's
+  negative, `max(0, −remaining)` before the take. On create it is read from the figures sent (no
+  transfers yet); on an edit, from the edit's figures over the stored ones plus the stored
+  `transferredIn` / `transferredOut`. A take brings the file up to zero and never past it, so two
+  clerks adding to one file at once cannot push it above zero together.
+  `FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`, details `{deficit, amount}`; `deficit` is `0.00` on a file
+  at zero or above;
+- **what the cars hold**: the giving cars are locked and read inside the transaction and drawn in
+  the order sent, each to zero before the next. Together short of the amount — another clerk took
+  from them a moment ago — is `FLEET_ACCIDENT_TRANSFER_SHORT`, details `{available, amount}`.
+
+Each detail's message is a plain two-place decimal (`'1200.50'`). A refused create or edit makes the
+screen read the accidents again, car balances included, so the form plans afresh from the server's
+figures; it words both refusals with their figures, and both codes have Arabic and English entries in
+the app's error table.
 
 ### 4.7 Violations
 
@@ -495,7 +602,7 @@ mission did.
 | H7 | Vehicle violation types hardcoded in a datalist (الانتظار في الممنوع، تعمد تعطيل المرور، عدم اتباع تعليمات المرور، رسوم قضائية، رسوم خدمة) | `car_violations.ejs` | seeded `violationType` catalog |
 | H8 | Bulk violation date synthesized as (year, *current* month, day+1) — only the year is real | `POST /car_violations/cars` | explicit `year` field |
 | H9 | Grievance figure `updateMany`-stamped onto every row of the (car, year) | `POST /car_violations/edit/totalBeforeGrievance` | one grievance row per (vehicle, year) |
-| H10 | Accident `paid` computed client-side, saved "exactly as sent"; commas stripped pre-submit | `fleet_accident.ejs` + edit route comment | typed money, server-derived once Q9 defines the formula |
+| H10 | Accident `paid` computed client-side, saved "exactly as sent"; commas stripped pre-submit | `fleet_accident.ejs` + edit route comment | typed money, entered as a fact; what is derived is the file's «المتبقي» (§2.8, §13-Q9 answered) |
 | H11 | Accident list sorted open-first, then vehicle, then date desc | `GET /fleet_accident` | default sort kept |
 | H12 | Per-user roster department filter persisted in its own collection (`fleet_filter`); other pages use `localStorage` | routes + views | client-side URL/local state; no collection |
 | H13 | Commented-out fuel (التفويل) table | `one_car.ejs:703` | out of scope; §13-Q11 |
@@ -584,7 +691,7 @@ Answers refine defaults/labels; none reopen structure.
 | Q6 | Disposal reasons (sold/scrapped/…)? Branch transfer: does the code change? | `disposed` + free reason; code immutable pending answer |
 | Q7 | ~~`licens` example values~~ **ANSWERED (owner, rev 1.18): as DATA.** The vocabulary is a `licenseClass` catalog the admin owns, so no code change is needed when the authority renames a class | `licenseClassId` → catalog ref; legacy strings migrated, none deleted |
 | Q8 | Odometer corrections: who, and with approval? | `fleetOdometer.correct` permission, audited, no approval chain yet |
-| Q9 | Exact semantics of accident `companyCost`/`amountCollected`/`paid` formula | stored typed, no derived math until defined |
+| Q9 | ~~Exact semantics of accident `companyCost`/`amountCollected`/`paid` formula~~ **ANSWERED (rev 1.23):** the three amounts stay entered facts, and the file's «إجمالي المتبقي» is derived from them and from the transfers: `remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut` (§2.8, §4.6) | derived on read and stored nowhere (`fleetAccidentRemaining`, rounded to the piastre); a car's figure is the same formula over all its live files |
 | Q10 | driver2 = codriver/guard or mid-day handover? | second slot, no handover semantics |
 | Q11 | ~~Fuel (التفويل)~~ **ANSWERED:** deferred to a later phase | out of scope v1 |
 | Q12 | Reference numbers for accidents/violations (sequences)? | none in v1 |
@@ -623,3 +730,5 @@ The ten questions from revision 0.1 are carried into §13 (renumbered) — none 
 | 2026-08-23 | 1.20 — **Workshop drivers recorded on the visit** (owner request; no new entity, no new permission). §2.6 gains `driverInEmployeeId` and `driverOutEmployeeId`: the driver is now chosen explicitly and **required** at check-in and again at check-out, and STORED — the duty roster is a plan that can be re-planned, which is a different claim from who actually brought the car in or drove it away, so the maintenance list stopped joining the roster for it. Both are breaking additions to `POST /fleet/maintenance` and `POST /fleet/maintenance/:id/check-out`. Reopen clears the exit driver with the rest of the exit; the driver filter matches EITHER end; visits predating the fields read `null` and are never back-filled by guessing. The custody pair stays exactly what it was — who PERFORMED the check-in and check-out, resolved from the login — and is documented as distinct from the drivers (§4.2), which is the confusion this slice removes. The maintenance grid is the eleven columns of §12 and nothing else: «اسم السائق» carries the two drivers stacked, entry above exit, and neither custody nor the exit reading appears in it. The exit reading keeps its role unchanged as the closed-visit alarm baseline (§4.4). Filters: one input per date and no counter filter. |
 | 2026-08-24 | 1.21 — **Fixed crew (الطقم الثابت)** (owner request; new screen + new collection, **no new permission and no change to the daily roster**). §2.7b adds `fleet_fixed_crews`, one row per vehicle under a unique index, holding the same two driver slots §2.7 uses and nothing else — no date, no mission, no notes. It is a separate row rather than a dateless §2.7 row because that collection's identity IS the pair (vehicle, date): a sentinel date would be read as a real day by both `findForDate` (the roster board) and `findForVehicleOnDate` (the workshop check-in). §4.5b adds `/fleet/fixed-roster` behind the existing `fleetRoster.view`/`.plan` grants, following the `/fleet/maintenance-alarms` precedent of a routed sibling screen with no PageDef of its own. The board is vehicle cards with two labelled drop zones and one undivided pool of every active driver profile; assignment is native HTML5 drag-and-drop (no library added), and a drop always releases the driver from wherever they were, so the same person can never hold both slots of a car nor two crews. Saving is explicit — a drag edits a draft, the screen shows «لديك تغييرات غير محفوظة», and only «حفظ» writes the CHANGED rows, so a move sends both sides and the service checks exclusivity against the end state exactly as FR-7 does, refusing with the row to release named. Availability is deliberately NOT consulted: the seam's two dateless checks (a fleet driver profile, active) are kept because they are what fills the pool, and its three date-dependent verdicts have no question to answer on a board with no date — which is why this screen has no unavailable section. FR-5 likewise does not apply (its rule is an open visit *covering this date*); the workshop badge is shown as context only. The daily roster keeps its date picker, its availability split and every rule it had. |
 | 2026-08-26 | 1.22 — **Fixed crew gains «نوع المهمة» and «ملاحظات», and the mission catalog is corrected** (owner request; no new entity, no new permission, no change to the daily roster or to maintenance). §2.7b's table now records the two fields §1.21 said the row would not carry: `notes`, and `missionTypeId` — a reference to the **`missionType`** catalog (أنواع المهمات), the same vocabulary §2.7's own mission column reads, validated on save by `findActiveOfKind(id, 'missionType')` exactly as the daily plan validates its own. Both are nullable and neither is part of identity. **The correction:** the field shipped pointing at `workType` (أنواع الأعمال) — the workshop's vocabulary, which carries `countsForAlarm` and names maintenance jobs — so a column labelled «نوع المهمة» offered «صيانة» as a car's standing mission. The two catalogs are different nouns, not two spellings of one, and no authoritative correspondence between them exists anywhere in the system. So the values written under the old name are **retired, not remapped**: `npm run fleet:fix-crew-mission` reads by default (reporting every distinct legacy id, what the catalog says it actually is, and the mission vocabulary a reader will choose from), and `$unset`s the field only under an explicit `--commit`. Nothing is translated into a mission type, because inventing a mapping would assert onto a vehicle a standing mission no human chose; a cleared field reads as "no mission type", which is what is true. The audit trail is deliberately untouched — entries recorded under the old key are what was true at the time, and rewriting them to match a later decision is the one thing an audit log must not do. `fleet_maintenance_visits.workTypeId` is a different field on a different collection and is correct; the retirement is filtered by collection, and an integration test proves every maintenance work type survives it. |
+| 2026-11-09 | 1.23 — **Accidents v2, the car card, and «الفرع» on the workshop register** (owner request, approved «موافق طبق PR ولما CI يخضر أدمج»; no new entity, no new permission, no migration, no data changed). **Accidents.** §2.8 now records the transfer fields the collection already carried (`transfersIn`, `transferredIn`, `transferredOut`) and the derived «إجمالي المتبقي»; §13-Q9 is marked answered with `remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut`, derived on read and stored nowhere (H10's fate follows). §4.6 gains «Transfers between cars»: the owner-approved plan (`planTransfer`, replacing `coverDeficit`) — the amount typed, or left empty for the whole negative; his picks first in his order, then the system's from the smallest balance, each to zero, every row tagged «اختيار يدوي» / «اختيار تلقائي»; «تغطية السالب كله تلقائياً» kept («لا سيب الزرار»); all the cars short allowed with an amber note; a stop at 20 giving cars. It **partly reverses the 2026-10-01 rule «مش انا اللى هكتب المبلغ الماخوذ»**, under which the amount was never typed. The server now caps a take at the receiving file's negative (`FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`), and the short refusal moved from an English `BUSINESS_RULE_VIOLATION` to `FLEET_ACCIDENT_TRANSFER_SHORT`, both 422 with their figures in `details`; `GET /fleet/accidents/car-balances` drops soft-deleted cars before matching codes and matches an old-book code by the save's rule (spaces as one, Latin case ignored), so the list never offers a car, or a figure, the save refuses. The board and the form take the approved samples' look («شكل تعديل الشاشه بتاعت الحوادث تمام»), and the board reads the whole car list only under `fleetVehicle.view`. **The car card.** «عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على اسم السواق نفس الموضوع كدا»: on every Fleet register table and board chip that shows a car code, never inside a picker, a filter or a form dialog. It shows the code, the type, the status (or «في الورشة»), «اللوحة», the car's «الفرع», «نوع التشغيل», «السائقون اليوم», «انتهاء الترخيص» and «آخر قراءة عداد» («تمام وزود اخر عداد»). Only readers with `fleetVehicle.view` get it; the drivers' line also needs `fleetRoster.view` and `fleetDriver.view`, the reading's line `fleetMaintenance.view` or `fleetOdometer.view`, and a line its reader cannot see is left out. Nothing is fetched until a card first opens, and then only lists the pages already share, plus one small new read for the reading: `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`) gives every registry car's last reading whatever its status, the alarms' own figure, because the alarms list covers active cars only and a car out of service would have read «—». A row with no registry car gets no card. One card is open at a time across driver and car cards: the driver card's hover layer became a shared piece that places the card by the page's direction. The platform's org-unit `/options` takes `?includeInactive=true` so a closed branch can still be named; the pickers keep the active list. **«الفرع» on the workshop register.** «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه»: the CAR's branch (`vehicle.branchId`), joined on read like the car's operation and never stored on the visit, so §2.6 is unchanged. `FleetMaintenanceVisitDto` gains a required `branchId: string | null` (null for an old-book visit with no registry car or a car with no branch; a soft-deleted car keeps its branch), on the list rows and on the check-in, check-out, reopen and update answers. The column sits right after «نوع التشغيل», named from a list that includes inactive branches, and the Excel export carries it in the same place. |
+| 2026-11-10 | 1.24 — **«سائق الخروج» correctable in the visit's edit** (owner request «دلوقتى عاوز ف الصيانة عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج»; no new entity, no new endpoint, no new permission, no new event, no migration, no data changed). `PATCH /fleet/maintenance/:id` gains an optional `driverOutEmployeeId`: on a CLOSED visit only (an open visit answers 400 on `body.driverOutEmployeeId`, code `INVALID`; check-out sets it; a copy read before the visit was reopened answers 409 `STALE_DOCUMENT` instead), a correction and never a clear (`null` refused), checked against the HR directory only when it differs from the stored driver, behind the same `fleetMaintenance.edit`, version check and `update` audit as the rest of the edit (§2.6, §4.2). Before, a wrong exit driver could only be fixed by reopening the visit, which also clears the exit date, the exit reading and the custody, and checking it out again. The edit dialog shows «سائق الخروج» right after «سائق الدخول» on a closed visit, prefilled with the stored driver, and sends it only when the edit changed it. On an old visit with only the book's spelling, the chosen employee is recorded and shown; `driverOutName` is left as it was. Reopen still clears the exit driver, check-out still requires it, and `outDate` stays non-editable. |

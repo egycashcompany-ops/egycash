@@ -43,6 +43,7 @@ const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisit
   vehicleId: 'v1',
   vehicleCode: '150',
   operationId: null,
+  branchId: null,
   driverInEmployeeId: null,
   driverOutEmployeeId: null,
   driverInName: null,

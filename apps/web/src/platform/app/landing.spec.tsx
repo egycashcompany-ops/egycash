@@ -1,17 +1,14 @@
-// `/` lands a person on the first page of THEIR menu.
+// `/` is the welcome page — a place of its own, no longer a hop to the first screen.
 //
-// «لو انا عامل لحد ان يشوف الحركه مثلا او العمليات او ما بيخش بيجيب الشاشه بتاعت الاتش ار بس
-// مفيهاش معلومات… انا عاوز يجيب اول شاشه فى اللى مسموح ليه فقط».
+// «عايز بقى أى حساب يدخل تظهرله Welcome Page بتقوله أهلاً … وتظهرله الـ Recent Pages اللى كان
+// فيها». What the page says is pinned in `home/welcome.spec.tsx`; this file pins what surrounds
+// it, which a refactor could quietly undo: that `/` is routed to it inside the shell, that it
+// never redirects away, that an account holding nothing is told so, and that a new session never
+// reads the PREVIOUS person's cached menu.
 //
-// The rule itself — which page is "first" — is `landingRoute`, proven case by case in
-// `nav-model.spec.ts`. This file proves what surrounds it, which a refactor could quietly undo:
-// what the landing page shows in each of its states, that `/` is routed to it at all instead of
-// falling through to a module again, and that a new session never chooses its first screen from
-// the PREVIOUS person's cached menu.
-//
-// This suite has no DOM: `<Navigate>` moves in an effect, and effects do not run in a static
-// render, so a page that is on its way somewhere renders nothing — which is itself the assertion
-// that it shows no screen of its own on the way.
+// The older complaint still holds and is still pinned: «لو انا عامل لحد ان يشوف الحركه مثلا او
+// العمليات او ما بيخش بيجيب الشاشه بتاعت الاتش ار بس مفيهاش معلومات». Nobody lands on an HR page
+// now; and a person with no history yet is offered the first pages of THEIR menu, work first.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +24,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../localization/i18n';
 import { LandingPage } from './pages/LandingPage';
+import { NavPrefsProvider } from '../navigation/NavPrefs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', '..');
@@ -63,9 +61,11 @@ const render = (menu: MyApplicationCategoryDto[] | undefined, locale: Locale = '
     <Provider store={store}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={['/']}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-          </Routes>
+          <NavPrefsProvider>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+            </Routes>
+          </NavPrefsProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </Provider>,
@@ -73,10 +73,18 @@ const render = (menu: MyApplicationCategoryDto[] | undefined, locale: Locale = '
 };
 
 describe('the landing page', () => {
-  it('shows no screen of its own when the person has somewhere to go — it only moves on', () => {
-    // Above all, not an HR page: the fleet-only person of the complaint gets nothing here but
-    // the redirect to `/fleet`, whose target `landingRoute` pins.
-    expect(render(fleetOnly)).toBe('');
+  it('is the welcome page, and never moves on by itself', () => {
+    const html = render(fleetOnly);
+    expect(html).toContain('data-welcome="true"');
+    const page = code('platform/app/pages/LandingPage.tsx');
+    expect(page).toMatch(/<WelcomePage \/>/);
+    expect(page).not.toMatch(/Navigate/);
+  });
+
+  it('offers a person with no history yet the first page of THEIR menu — never an HR page', () => {
+    const html = render(fleetOnly);
+    expect(html).toContain('data-starting-pages="true"');
+    expect(html).toContain('href="/fleet"');
   });
 
   it('says plainly, in both languages, when nothing has been granted yet', () => {
@@ -87,16 +95,9 @@ describe('the landing page', () => {
     }
   });
 
-  it('waits for the menu instead of guessing — no page is chosen before it arrives', () => {
+  it('does not claim nothing is granted while the menu is still on its way', () => {
     const html = render(undefined);
-    expect(html).toContain(translate('en', 'common.loading'));
     expect(html).not.toContain(translate('en', 'platform.landing.nothingGrantedTitle'));
-  });
-
-  it('takes the page from the rule, and replaces itself so Back never returns to it', () => {
-    const page = code('platform/app/pages/LandingPage.tsx');
-    expect(page).toMatch(/landingRoute\(applications\.data\)/);
-    expect(page).toMatch(/<Navigate to=\{route\} replace \/>/);
   });
 });
 

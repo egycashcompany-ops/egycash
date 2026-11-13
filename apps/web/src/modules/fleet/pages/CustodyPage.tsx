@@ -110,6 +110,7 @@ import {
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
+import { VehicleHoverCode, useVehicleHoverCard } from '../components/VehicleHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -228,6 +229,35 @@ const LOG_CODE_CHIP =
   'rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-slate-900 dark:border-transparent dark:bg-transparent dark:px-0 dark:text-white';
 const AMOUNT_INK = 'text-slate-900 dark:text-white';
 
+/**
+ * A movement's car code as the alarms board writes it — bold, a size over the row — in the
+ * dashboard log's chip (`LOG_CODE_CHIP`); none, a dash. The chip is the car card's trigger — the
+ * car the movement is on; one kept from the old book (`vehicleId` null) has none.
+ */
+const MovementCode = ({
+  vehicleId,
+  code,
+}: {
+  vehicleId: string | null;
+  code: string | null;
+}): JSX.Element => {
+  const { triggerProps, card } = useVehicleHoverCard({ vehicleId, code });
+  if (code === null) return DASH;
+  return (
+    <>
+      <span
+        dir="ltr"
+        data-custody-movement-code="true"
+        className={cn(LOG_CODE_CHIP, 'font-bold', FIGURE, ALARMS_CODE_TYPE)}
+        {...triggerProps}
+      >
+        {code}
+      </span>
+      {card}
+    </>
+  );
+};
+
 /** What a per-car column is worth to its arrow: the code in the fleet's order, a sum as a number. */
 const carSortValue = (row: FleetCustodyVehicleRowDto, key: string): SortValue => {
   if (key === 'vehicleCode') return fleetVehicleCodeOrderKey(row.vehicleCode);
@@ -325,22 +355,6 @@ export const CustodyPage = (): JSX.Element => {
       </span>
     );
   };
-  /**
-   * A movement's car code as the alarms board writes it — bold, a size over the row — in the
-   * dashboard log's chip (`LOG_CODE_CHIP`); none, a dash.
-   */
-  const codeCell = (code: string | null): JSX.Element =>
-    code === null ? (
-      DASH
-    ) : (
-      <span
-        dir="ltr"
-        data-custody-movement-code="true"
-        className={cn(LOG_CODE_CHIP, 'font-bold', FIGURE, ALARMS_CODE_TYPE)}
-      >
-        {code}
-      </span>
-    );
 
   // «ملخص لكل سيارة» — the server's lines in the reader's order, the grand total ALWAYS last. With
   // no movement at all there is no line, and the table says so rather than adding up nothing.
@@ -391,7 +405,8 @@ export const CustodyPage = (): JSX.Element => {
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
       // «الإجمالي» on the last row is a word, not a code — and the whole fund's, so it has no log.
-      // A car's code in its blue chip, with its «السجل» beside it.
+      // A car's code in its blue chip, with its «السجل» beside it. The chip carries the car card,
+      // by hover only — the row's tab stop is its «السجل».
       render: (row) =>
         row.vehicleId === GRAND_TOTAL ? (
           <span className={GRAND_WORD}>{row.vehicleCode}</span>
@@ -400,9 +415,13 @@ export const CustodyPage = (): JSX.Element => {
             {row.vehicleCode === null ? (
               NONE
             ) : (
-              <span dir="ltr" className={cn(CAR_CHIP, FIGURE, ALARMS_CODE_TYPE)}>
-                {row.vehicleCode}
-              </span>
+              <VehicleHoverCode
+                vehicleId={row.vehicleId}
+                code={row.vehicleCode}
+                focusable={false}
+                dir="ltr"
+                className={cn(CAR_CHIP, FIGURE, ALARMS_CODE_TYPE)}
+              />
             )}
             <CustodyCarLogButton
               car={row}
@@ -451,7 +470,7 @@ export const CustodyPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
-      render: (row) => codeCell(row.vehicleCode),
+      render: (row) => <MovementCode vehicleId={row.vehicleId} code={row.vehicleCode} />,
     },
     {
       key: 'source',

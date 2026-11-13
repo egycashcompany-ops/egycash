@@ -56,6 +56,7 @@ import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DriverName, useEmployeeRecords } from './EmployeeName';
 import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
 import { DateBox } from './DateBox';
+import { VehicleHoverCode } from './VehicleHoverCard';
 import {
   amountComplete,
   cardLabel,
@@ -430,10 +431,17 @@ export const DriverViolationsPanel = ({
       align: 'center',
       className: 'w-px whitespace-nowrap',
       headerClassName: 'w-px',
+      // The code carries the car card — the car the fine is on; a fine from the old book
+      // (`vehicleId` null) has none.
       render: (row) => (
-        <span className="font-figures text-xs" dir="ltr">
+        <VehicleHoverCode
+          vehicleId={row.vehicleId}
+          code={row.vehicleCode}
+          className="font-figures text-xs"
+          dir="ltr"
+        >
           {row.vehicleCode ?? (row.vehicleId === null ? '—' : (codeOf.get(row.vehicleId) ?? '—'))}
-        </span>
+        </VehicleHoverCode>
       ),
     },
     {

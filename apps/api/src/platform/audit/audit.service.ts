@@ -1,6 +1,6 @@
 // The system's memory (ADR-012). Writes are fire-and-forget through the queue with
 // an in-request fallback — audit must never fail a business operation, but loss is alarmed.
-import { Types } from 'mongoose';
+import { Types, type Model } from 'mongoose';
 import {
   type AuditAction,
   type AuditChange,
@@ -18,7 +18,7 @@ import {
   getRequestId,
   type ActorIdentity,
 } from '../../infrastructure/http/request-context';
-import { enqueue, registerJobHandler } from '../../infrastructure/queue/jobs';
+import { enqueue, enqueueMany, registerJobHandler } from '../../infrastructure/queue/jobs';
 import { captureError } from '../../infrastructure/observability/sentry';
 import { publishActivity, publishAuditedChange } from '../realtime';
 import {
@@ -157,38 +157,118 @@ const writeActivityRow = async (payload: ActivityWritePayload): Promise<void> =>
   ]);
 };
 
+/** The row `record` queues for one entry: the actor and the request, as the request knows them. */
+const toAuditPayload = (entry: AuditEntry, at: string): AuditWritePayload => {
+  const actor = entry.actor ?? getContext()?.actor ?? { userId: null, ip: null, userAgent: null };
+  return {
+    ...entry,
+    actor: { userId: actor.userId, ip: actor.ip, userAgent: actor.userAgent },
+    actorIdentity: identityFromContext(actor.userId),
+    requestId: getRequestId() ?? null,
+    at,
+  };
+};
+
+/**
+ * The realtime signal rides the audit chokepoint (ADR-029): every audited mutation, in every
+ * module, announces itself here — no service needs to remember a second call. Best-effort by
+ * contract (the publisher never throws), and BEFORE the queue write on purpose: the signal carries
+ * no data, so a client that refetches slightly before the row lands still reads the business change
+ * itself, which committed before `record()` was called. The wrap is defense in depth: a publisher
+ * bug must cost a signal, never the row — audit is the system's memory.
+ */
+const announce = (payload: AuditWritePayload): void => {
+  try {
+    publishAuditedChange({ entityRef: payload.entityRef, action: payload.action, at: payload.at });
+  } catch {
+    /* the refetch path still delivers the change */
+  }
+};
+
+/** The in-request fallback when the queue cannot take the row: write it here, or alarm its loss. */
+const writeOrAlarm = async (payload: AuditWritePayload, queueError: unknown): Promise<void> => {
+  try {
+    await writeAuditRow(payload);
+  } catch (writeError) {
+    logger.error({ err: writeError, entry: payload.entityRef }, 'AUDIT LOSS — write failed');
+    captureError(writeError, { audit: true, queueError: String(queueError) });
+  }
+};
+
+/**
+ * Pure: one instant per row of a batch, from `start`, a millisecond apart in batch order — distinct,
+ * so a list sorted on `at` alone has one order for them, and in the order the rows were given.
+ */
+export const batchInstants = (start: Date, count: number): string[] =>
+  Array.from({ length: count }, (_, index) => new Date(start.getTime() + index).toISOString());
+
+/**
+ * The total for a list page. An unfiltered list counts the whole collection, and `countDocuments({})`
+ * does that by reading every document — on audit_logs, the largest collection, at every load of
+ * the audit page. With no filter the collection's own count (`estimatedDocumentCount`) is the same
+ * number, read from its metadata: exact on a replica set, deletes included, outside the moments
+ * after an unclean shutdown.
+ */
+const countFor = <T>(model: Model<T>, filter: Record<string, unknown>): Promise<number> =>
+  Object.keys(filter).length === 0
+    ? model.estimatedDocumentCount().exec()
+    : model.countDocuments(filter).exec();
+
 class AuditService {
   /** Never throws — a failed audit write is alarmed, not propagated. */
   async record(entry: AuditEntry): Promise<void> {
-    const context = getContext();
-    const actor = entry.actor ?? context?.actor ?? { userId: null, ip: null, userAgent: null };
-    const payload: AuditWritePayload = {
-      ...entry,
-      actor: { userId: actor.userId, ip: actor.ip, userAgent: actor.userAgent },
-      actorIdentity: identityFromContext(actor.userId),
-      requestId: getRequestId() ?? null,
-      at: new Date().toISOString(),
-    };
-    // The realtime signal rides the audit chokepoint (ADR-029): every audited mutation, in every
-    // module, announces itself here — no service needs to remember a second call. Best-effort by
-    // contract (the publisher never throws), and BEFORE the queue write on purpose: the signal
-    // carries no data, so a client that refetches slightly before the row lands still reads the
-    // business change itself, which committed before `record()` was called. The wrap is defense
-    // in depth: a publisher bug must cost a signal, never the row — audit is the system's memory.
-    try {
-      publishAuditedChange({ entityRef: entry.entityRef, action: entry.action, at: payload.at });
-    } catch {
-      /* the refetch path still delivers the change */
-    }
+    const payload = toAuditPayload(entry, new Date().toISOString());
+    announce(payload);
     try {
       await enqueue('audit', AUDIT_WRITE_JOB, payload);
     } catch (queueError) {
-      try {
-        await writeAuditRow(payload);
-      } catch (writeError) {
-        logger.error({ err: writeError, entry: payload.entityRef }, 'AUDIT LOSS — write failed');
-        captureError(writeError, { audit: true, queueError: String(queueError) });
-      }
+      await writeOrAlarm(payload, queueError);
+    }
+  }
+
+  /**
+   * A batch write's trail — one entry per row, written exactly as `record` writes each of them,
+   * with the same fallback and the same never-throws promise.
+   *
+   * What it saves is the round trips. `record` in a loop paid one queue add per row, in series —
+   * a fifty-line open waited for fifty Redis round trips after its rows were already written. Here
+   * the rows go in ONE `addBulk` (`enqueueMany`).
+   *
+   * Each row keeps its OWN instant, a millisecond apart in batch order (`batchInstants`): the audit
+   * and activity lists sort on `at` alone and page with skip/limit, and rows tied on their sort key
+   * come back in no fixed order — a two-hundred-line batch on one instant could show a row on two
+   * pages and none on another. A loop of `record` gave each row its own instant too.
+   *
+   * And ONE realtime signal per entity type and action, not one per row. The signal is not data:
+   * every viewer refetches the TOPIC (`module.entity`) — the id it carries is never read — so fifty
+   * identical signals told each room what the first did, fifty frames over. The audit screen's
+   * stream gets that one signal too, and refetches the page those fifty rows land on.
+   *
+   * If the queue refuses the batch, every row is written here, as `record` writes its one. `addBulk`
+   * is not all-or-nothing (`enqueueMany`), so a failure part-way may mean a few rows land twice: a
+   * duplicate on the trail is the lesser harm to a hole in it.
+   */
+  async recordMany(entries: readonly AuditEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    const instants = batchInstants(new Date(), entries.length);
+    const payloads = entries.map((entry, index) =>
+      toAuditPayload(entry, instants[index] as string),
+    );
+    const announced = new Set<string>();
+    for (const payload of payloads) {
+      const { moduleId, entityType } = payload.entityRef;
+      const key = `${moduleId}.${entityType}:${payload.action}`;
+      if (announced.has(key)) continue;
+      announced.add(key);
+      announce(payload);
+    }
+    try {
+      await enqueueMany(
+        'audit',
+        payloads.map((payload) => ({ name: AUDIT_WRITE_JOB, data: payload })),
+      );
+    } catch (queueError) {
+      for (const payload of payloads) await writeOrAlarm(payload, queueError);
     }
   }
 
@@ -225,7 +305,7 @@ class AuditService {
         .limit(query.pageSize)
         .lean<AuditLogDoc[]>()
         .exec(),
-      AuditLogModel.countDocuments(filter).exec(),
+      countFor(AuditLogModel, filter),
     ]);
     return {
       items,
@@ -249,7 +329,7 @@ class AuditService {
         .limit(query.pageSize)
         .lean<ActivityLogDoc[]>()
         .exec(),
-      ActivityLogModel.countDocuments(filter).exec(),
+      countFor(ActivityLogModel, filter),
     ]);
     return {
       items,
@@ -260,6 +340,38 @@ class AuditService {
         totalPages: Math.max(1, Math.ceil(totalItems / query.pageSize)),
       },
     };
+  }
+
+  /**
+   * The trail of SEVERAL entities of one module, in ONE read — for a screen that tells a business
+   * object's story across the entities that record it (an Operations shipment, its legs, its vault
+   * custody), where `listAuditLogs` would take a read per entity.
+   *
+   * Every `$or` branch is an (entityType, entityId ∈ …) equality, which `ix_entityRef_at` serves on
+   * its own. The NEWEST `limit` rows are kept and handed back oldest first; `truncated` says older
+   * ones exist. Rows go out as `toAuditDto` maps them — masked, with the actor as recorded then.
+   */
+  async trailOf(
+    moduleId: string,
+    subjects: readonly { entityType: string; entityIds: readonly string[] }[],
+    limit: number,
+  ): Promise<{ rows: AuditLogDto[]; truncated: boolean }> {
+    const branches = subjects
+      .filter((subject) => subject.entityIds.length > 0)
+      .map((subject) => ({
+        'entityRef.entityType': subject.entityType,
+        'entityRef.entityId': { $in: [...new Set(subject.entityIds)] },
+      }));
+    if (branches.length === 0 || limit < 1) return { rows: [], truncated: false };
+    const found = await AuditLogModel.find({ 'entityRef.moduleId': moduleId, $or: branches })
+      // `_id` breaks a tie on `at`: two rows of one request can share a millisecond.
+      .sort({ at: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean<AuditLogDoc[]>()
+      .exec();
+    const truncated = found.length > limit;
+    const kept = (truncated ? found.slice(0, limit) : found).reverse();
+    return { rows: kept.map((doc) => this.toAuditDto(doc)), truncated };
   }
 
   toAuditDto(doc: AuditLogDoc): AuditLogDto {

@@ -10,12 +10,13 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   correctOdometer,
   deleteOdometer,
   expectedOdometerReading,
+  listLatestReadings,
   listOdometerLogs,
   odometerBracket,
   odometerSummary,
@@ -68,6 +69,16 @@ export const buildFleetOdometerRouter = (): Router => {
     authenticate,
     authorize('fleetOdometer.view'),
     asyncHandler(listMaintenanceAlarms),
+  );
+  // «تمام وزود اخر عداد» — every registry car's last reading, ANY status, for the car card's
+  // «آخر قراءة عداد». The alarms above cover active cars only, so a car out of service after an
+  // accident would read «—» from them. Either audience the alarms serve may read it: the odometer
+  // log's (`fleetOdometer.view`) and the workshop's (`fleetMaintenance.view`).
+  router.get(
+    '/latest-readings',
+    authenticate,
+    authorizeAny('fleetOdometer.view', 'fleetMaintenance.view'),
+    asyncHandler(listLatestReadings),
   );
   router.post(
     '/',

@@ -483,31 +483,102 @@ const identifierFilter = () => z.string().trim().min(1).max(60).optional();
 // (`z.string().max(20)`), so `A-15` and `FLT-210` are legal codes and `215-216-217` is three cars
 // written together. Nothing about the characters tells them apart.
 //
-// So the separator is not the dash — it is the SPACE around it. `215 - 216 - 217` is three, because
-// a code cannot contain a space; `215-216` is one code, because it might genuinely be one. That
-// keeps every real hyphenated code intact, costs the reader one space when they mean a list, and
-// has no second interpretation to be surprised by: the same text always parses the same way, here,
-// on the URL, and on the server.
+// So the separator is not the dash — it is the SPACE around it. `215 - 216 - 217` is three; `215-216`
+// is one code, because it might genuinely be one. That keeps every real hyphenated code intact,
+// costs the reader one space when they mean a list, and has no second interpretation to be
+// surprised by: the same text always parses the same way, here, on the URL, and on the server.
+//
+// THE SPACE, and the cars that have one. This used to say "a code cannot contain a space", and the
+// registry says otherwise: «MG 1», «MG 2», «بيجو 5008», «تويوتا 1», «فورتشنر 2», «كوستر 1»,
+// «كورولا 1» — a model's name and the number that tells two of them apart. Splitting on every space
+// read «كورولا 1» as two cars nobody has, «كورولا» and «1», whether it was typed, picked from the
+// list, or carried on a link — «مش بيجيب العربيه و بيسرش اكن الاسم بتاع العربيه حاجه والرقم اللى
+// جمبها حاجه تانيه». So:
+//
+//   • commas, semicolons, newlines and a spaced dash ALWAYS separate;
+//   • plain whitespace separates too, EXCEPT that a word followed by a number is one code: a token
+//     with anything in it besides digits and dashes, then whitespace, then a token of digits only,
+//     is that car — written back with a single space. `كورولا 1` and `MG 2` are one code each;
+//     `150 151` is still two cars, and `كورولا 1 150` is «كورولا 1» and 150 (one number per word).
+//
+// Still deterministic, still nothing to look up: the shape of the text decides, never the registry,
+// so the same words mean the same filter on every screen and every reload. Arabic-Indic digits
+// count as digits («كورولا ١»), since a box may be typed on an Arabic keyboard before anything
+// folds them.
 //
 // The alternative — asking the registry whether the whole run happens to be a code — reads better
 // in the easy cases and worse in the hard one: the same string would split or not depending on what
 // the search had answered a moment earlier, so a reader who typed the same thing twice could get
 // two different filters.
 
-/** Separators no vehicle code contains: commas, semicolons, newlines, whitespace, a spaced dash. */
-const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+|\s+/;
+/**
+ * Separators no vehicle code contains: commas, semicolons, newlines, a spaced dash.
+ *
+ * Only ever run over text whose runs of other whitespace are already ONE space
+ * (`ONE_SPACE_RUNS`): `\s*` and `\s+` then never face a long run with no separator in it, which
+ * they would re-scan from every position of it — quadratic on text the server parses from a query
+ * string before any length limit applies.
+ */
+const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+/;
+/** A run of whitespace that is not a line break — written as one space before splitting. */
+const ONE_SPACE_RUNS = /[^\S\r\n]+/g;
+/** A number — the part of «كورولا 1» that tells two of a model apart. Arabic-Indic digits too. */
+const DIGITS_ONLY = /^[0-9\u0660-\u0669\u06F0-\u06F9]+$/;
+/** A WORD: anything besides digits and dashes, so `215-216` is not one and `A-15` is. */
+const HAS_WORD = /[^0-9\u0660-\u0669\u06F0-\u06F9-]/;
+
+/**
+ * One code as the registry means it: no whitespace at either end, and one space wherever there was
+ * a run of it. `«فورتشنر 2 »` and `«فورتشنر  2»` are both «فورتشنر 2».
+ */
+export const normalizeVehicleCode = (code: string): string => code.trim().replace(/\s+/g, ' ');
+
+/**
+ * Do these two spellings name the same car? Whitespace as `normalizeVehicleCode` reads it, and the
+ * case of a Latin letter ignored (`mg 2` is «MG 2») — the comparison the server's match makes.
+ */
+export const sameVehicleCode = (a: string, b: string): boolean =>
+  normalizeVehicleCode(a).toLowerCase() === normalizeVehicleCode(b).toLowerCase();
+
+/**
+ * Is this token a WORD that a following number joins — see the rule above. Exported for the box
+ * being typed into, which holds such a word back until it knows whether a number follows.
+ */
+export const vehicleCodeTakesNumber = (token: string): boolean =>
+  token.trim() !== '' && !/\s/.test(token.trim()) && HAS_WORD.test(token.trim());
+
+/** The codes in one stretch of text between hard separators: whitespace splits, word + number joins. */
+const codesBetweenSeparators = (segment: string): string[] => {
+  const tokens = segment.split(/\s+/).filter((token) => token !== '');
+  const out: string[] = [];
+  for (let at = 0; at < tokens.length; at += 1) {
+    const token = tokens[at] as string;
+    const next = tokens[at + 1];
+    if (next !== undefined && HAS_WORD.test(token) && DIGITS_ONLY.test(next)) {
+      out.push(`${token} ${next}`);
+      at += 1;
+    } else {
+      out.push(token);
+    }
+  }
+  return out;
+};
 
 /**
  * The vehicle codes a piece of text names — deduplicated, in the order first written.
  *
  * Used for what a person types into the filter box AND for what arrives on the URL, deliberately:
  * one function means `?vehicleCodes=A-15` reloads as the code the reader picked, rather than as two
- * codes nobody has.
+ * codes nobody has — and `?vehicleCodes=كورولا 1` as «كورولا 1».
  */
 export const splitVehicleCodeList = (raw: string | readonly string[]): string[] => {
+  // An array is already one code per entry (a repeated query parameter): only tidied, not re-read.
   const parts = Array.isArray(raw)
-    ? (raw as readonly string[])
-    : String(raw).split(CODE_SEPARATORS);
+    ? (raw as readonly string[]).map(normalizeVehicleCode)
+    : String(raw)
+        .replace(ONE_SPACE_RUNS, ' ')
+        .split(CODE_SEPARATORS)
+        .flatMap(codesBetweenSeparators);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {
@@ -1346,6 +1417,23 @@ export interface FleetMaintenanceAlarmDto {
   newestReading: FleetAlarmChainPointDto | null;
 }
 
+/**
+ * One car's last odometer reading — the car card's «آخر قراءة عداد» («تمام وزود اخر عداد»).
+ *
+ * `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`): one
+ * row for EVERY registry car (not soft-deleted, ANY status) that has a reading on file. The alarm
+ * projection covers active cars only, so a car taken out of service after an accident would have
+ * read «—» there although its log has readings. The figure is the alarm's own (`latestReadings`):
+ * `latestReading`/`latestReadingAt` here equal the alarm row's for an active car.
+ */
+export interface FleetVehicleLatestReadingDto {
+  vehicleId: string;
+  /** How far the car's top reading got — `FleetMaintenanceAlarmDto.latestReading`. */
+  latestReading: number;
+  /** The day of `latestReading`, as the alarm row carries it. */
+  latestReadingAt: string;
+}
+
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
 
 export interface FleetMaintenanceVisitDto {
@@ -1369,6 +1457,16 @@ export interface FleetMaintenanceVisitDto {
    * from the old book for a car the registry never had.
    */
   operationId: string | null;
+  /**
+   * The CAR's «الفرع» (`vehicle.branchId`) — «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى
+   * فيه الصيانه».
+   *
+   * Read off the registry for the row like `operationId`, so it names the branch the car is
+   * assigned to TODAY — never the branch whose workshop it went to, and the same branch the
+   * `branchIds` filter matches. A soft-deleted car keeps its branch. `null` when the car has none
+   * on file, and on a visit kept from the old book for a car the registry never had.
+   */
+  branchId: string | null;
   /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
   driverInName: string | null;
   driverOutName: string | null;
@@ -1513,10 +1611,19 @@ export const UpdateFleetMaintenanceSchema = z
     exitOdometer: z.number().int().min(0).nullish().optional(),
     /**
      * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
-     * no correction path turns one mistyped driver into a permanent one; the check-OUT driver is
-     * deliberately not here, because changing it belongs to reopening and closing the visit again.
+     * no correction path turns one mistyped driver into a permanent one.
      */
     driverInEmployeeId: objectId().optional(),
+    /**
+     * «سائق الخروج», correctable too — «عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج». Before,
+     * fixing it meant reopening the visit, which also wipes the exit date, the exit counter and
+     * the custody, and checking it out again.
+     *
+     * Only on a CLOSED visit: an open one has no exit yet, and check-out sets it (400 on an open
+     * visit). A correction, never a clear, as for the entry driver: `null` is refused. The server
+     * checks the employee only when the value differs from the one stored.
+     */
+    driverOutEmployeeId: objectId().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),
@@ -1968,18 +2075,28 @@ export interface FleetAccidentDto {
 }
 
 /**
- * «اختار عربيه و جمبها مبلغ» — take `amount` out of another car's remaining and add it to the file
+ * «اختار عربيه و جمبها مبلغ» — take `amount` out of other cars' remaining and add it to the file
  * being recorded or edited.
  *
- * The amount is capped by what that car has left over ALL its files (the server checks, inside
- * the same transaction as the write) and is drawn from those files oldest first.
+ * Two caps, both checked by the server inside the same transaction as the write, nothing written
+ * when either refuses:
+ * - the RECEIVING file's negative (owner-approved 2026-11-09): a take brings the file up to zero
+ *   and never past it — `FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`, details `{deficit, amount}`;
+ * - what the cars sent have left, together, over ALL their files —
+ *   `FLEET_ACCIDENT_TRANSFER_SHORT`, details `{available, amount}`. The screen plans within what it
+ *   was shown, so this answers a race: another clerk took from one of those cars a moment ago.
+ * Within a car the amount is drawn from its files oldest first.
+ *
+ * The screen's plan (`planTransfer`) decides which cars and how much each gives; the body carries
+ * only the cars that give something, in the plan's row order, with `amount` = Σ of their takes.
  */
 export const FleetAccidentTransferInputSchema = z
   .object({
     /**
-     * The cars to take from, IN THE ORDER PICKED: the first gives all it has left before the
-     * second gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
-     * العربيه التانيه».
+     * The cars to take from, IN THIS ORDER: the first gives all it has left before the second
+     * gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من العربيه
+     * التانيه». The screen sends its plan's rows (his picks first, then the ones it completed with)
+     * and never more than twenty.
      */
     fromVehicleIds: z
       .array(objectId())
@@ -2154,13 +2271,21 @@ export interface FleetAccidentTotalsDto {
 }
 
 /**
- * GET /fleet/accidents/car-balances — every car with MORE THAN ZERO remaining over its files, the
- * list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing to give.
+ * GET /fleet/accidents/car-balances — every registry car with MORE THAN ZERO remaining over its
+ * files, the list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing
+ * to give.
+ *
+ * Only cars a save can take from: a soft-deleted car is left out (the save refuses it, 404), and a
+ * file kept from the old book under a code counts for the LIVE car carrying that code, never a
+ * deleted one that once carried it. Sorted by the fleet's code order.
  */
 export interface FleetAccidentCarBalanceDto {
   vehicleId: string;
   vehicleCode: string;
-  /** Always > 0 — the same figure a transfer from this car is capped by. */
+  /**
+   * Always > 0 — the car's NET «إجمالي المتبقي» over its live files, the same figure a transfer
+   * from this car is capped by when nothing else moved it since this list was read.
+   */
   remaining: number;
 }
 

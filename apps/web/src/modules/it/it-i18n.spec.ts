@@ -19,6 +19,7 @@ import {
   IT_CATALOG_KINDS,
   IT_CONSUMABLE_ISSUE_REASONS,
   IT_CONSUMABLE_MOVEMENT_KINDS,
+  IT_DASHBOARD_ACTIVITY_KINDS,
   IT_LICENSE_STATES,
   IT_MAINTENANCE_KINDS,
   IT_MAINTENANCE_ORDER_STATUSES,
@@ -29,9 +30,14 @@ import {
   IT_MOBILE_SIM_KINDS,
   IT_TICKET_EVENT_TYPES,
   IT_TICKET_STATUSES,
+  IT_VEHICLE_CHECK_ANSWERS,
+  IT_VEHICLE_CHECK_ITEMS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
+import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
+import { ASSET_MOVE_REFUSALS } from './lib/asset-branch-move';
+import { VEHICLE_CHECK_PERIODS } from './lib/vehicle-check-dashboard';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +103,63 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     name: 'consumable issue reason',
     prefix: 'it.consumables.reason',
     values: IT_CONSUMABLE_ISSUE_REASONS,
+  },
+  // The `/it` dashboard. «آخر الحركات» badges each movement by its kind through the history's own
+  // TEMPLATE key, and «الضمان» counts its days in Arabic's five forms through another — neither of
+  // which the source scan below can see.
+  {
+    name: 'dashboard movement kind',
+    prefix: 'it.custody.event',
+    values: IT_DASHBOARD_ACTIVITY_KINDS,
+  },
+  {
+    name: 'warranty window',
+    prefix: 'it.assets.warranty.endsWithin',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // FR-21 — the vehicle checks dashboard names each device, each answer, the period and its short
+  // column heads through TEMPLATE keys, and counts days, faults, reporters, cars and photos in
+  // Arabic's five forms through more — none of which the source scan below can see.
+  { name: 'vehicle check device', prefix: 'it.vehicleCheck.item', values: IT_VEHICLE_CHECK_ITEMS },
+  {
+    name: 'vehicle check answer',
+    prefix: 'it.vehicleCheck.answer',
+    values: IT_VEHICLE_CHECK_ANSWERS,
+  },
+  {
+    name: 'vehicle check column head',
+    prefix: 'it.vehicleChecks.short',
+    values: IT_VEHICLE_CHECK_ITEMS.filter((item) => !item.startsWith('camera')),
+  },
+  {
+    name: 'vehicle check period',
+    prefix: 'it.vehicleChecks.period',
+    values: VEHICLE_CHECK_PERIODS,
+  },
+  ...(['days', 'faults', 'reporters', 'activeCars'] as const).map((noun) => ({
+    name: `vehicle checks ${noun} count`,
+    prefix: `it.vehicleChecks.${noun}`,
+    values: CUSTODY_COUNT_FORMS,
+  })),
+  {
+    name: 'vehicle check photo count',
+    prefix: 'it.vehicleCheck.sent.photoCount',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // «نقل إلى فرع» / «تحويل إلى فرع» (2026-11-11): why an asset stays, and the toasts that count
+  // what moved — and what the other store did not have — in Arabic's five forms, all through
+  // TEMPLATE keys the source scan below cannot see.
+  { name: 'asset move refusal', prefix: 'it.assets.move.refused', values: ASSET_MOVE_REFUSALS },
+  { name: 'assets moved count', prefix: 'it.assets.move.moved', values: CUSTODY_COUNT_FORMS },
+  {
+    name: 'consumables transferred count',
+    prefix: 'it.consumables.transfer.done',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  {
+    name: 'consumables made in the other store count',
+    prefix: 'it.consumables.transfer.created',
+    values: CUSTODY_COUNT_FORMS,
   },
 ];
 

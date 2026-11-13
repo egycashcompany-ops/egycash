@@ -7,6 +7,7 @@ import {
   type FleetFuelCardCompany,
   type FleetFuelCardDto,
   type Locale,
+  sameVehicleCode,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -46,9 +47,9 @@ import {
   NoCardsBody,
   PATH,
   StockSection,
-  VehicleFuelGroup,
   expiryState,
 } from '../components/FuelCardBoard';
+import { FuelCarGroup } from '../components/FuelCarGroup';
 import { groupCardNumber } from '../lib/fuel-card-number';
 import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
@@ -137,7 +138,8 @@ export const FuelCardsPage = (): JSX.Element => {
         const chosen =
           vehicleCodes.length === 0
             ? vehicle.status === 'active'
-            : vehicleCodes.includes(vehicle.code);
+            : // Whitespace and Latin case aside: «فورتشنر 2» is the stored «فورتشنر 2 ».
+              vehicleCodes.some((code) => sameVehicleCode(code, vehicle.code));
         if (chosen) byCar.set(vehicle.id, { vehicleId: vehicle.id, code: vehicle.code, cards: {} });
       }
     }
@@ -587,7 +589,7 @@ export const FuelCardsPage = (): JSX.Element => {
               const mayAdd = can('fleetFuelCard.create');
               const mayLink = can('fleetFuelCard.edit');
               return (
-                <VehicleFuelGroup
+                <FuelCarGroup
                   key={group.vehicleId}
                   vehicleId={group.vehicleId}
                   code={group.code}
@@ -642,7 +644,7 @@ export const FuelCardsPage = (): JSX.Element => {
                       );
                     })
                   )}
-                </VehicleFuelGroup>
+                </FuelCarGroup>
               );
             })}
             {noCarCards.length > 0 && (

@@ -6,13 +6,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { type Editor } from '@tiptap/react';
-import { type ContractTemplateLanguage, type Locale, type SignatureBlock } from '@ecms/contracts';
+import {
+  type ContractTemplateKind,
+  type ContractTemplateLanguage,
+  type Locale,
+  type SignatureBlock,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import {
   Button,
   Card,
+  Checkbox,
   CardBody,
   CardHeader,
   Dialog,
@@ -35,6 +41,7 @@ import {
 import { RichTextSection } from '../components/RichTextSection';
 import { VariableBrowser } from '../components/VariableBrowser';
 import { TemplateStatusBadge } from '../components/ContractStatusBadge';
+import { useJobTitleReferenceOptions } from '../../../organization/shared/references';
 
 const slug = (value: string): string =>
   value
@@ -67,6 +74,12 @@ export const TemplateEditorPage = (): JSX.Element => {
   const [nameEn, setNameEn] = useState('');
   const [language, setLanguage] = useState<ContractTemplateLanguage>('ar');
   const [contractTypeId, setContractTypeId] = useState('');
+  // A27 — a contract or a hiring form, which jobs print it, and where it falls in the set.
+  const [kind, setKind] = useState<ContractTemplateKind>('contract');
+  const [allJobs, setAllJobs] = useState(true);
+  const [jobTitleIds, setJobTitleIds] = useState<string[]>([]);
+  const [printOrder, setPrintOrder] = useState('100');
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
   const [header, setHeader] = useState('');
   const [body, setBody] = useState('');
   const [footer, setFooter] = useState('');
@@ -87,6 +100,10 @@ export const TemplateEditorPage = (): JSX.Element => {
     setNameEn(existing.name.en);
     setLanguage(existing.language);
     setContractTypeId(existing.contractTypeId ?? '');
+    setKind(existing.kind);
+    setAllJobs(existing.allJobs);
+    setJobTitleIds(existing.jobTitleIds);
+    setPrintOrder(String(existing.printOrder));
     setHeader(existing.sections.header);
     setBody(existing.sections.body);
     setFooter(existing.sections.footer);
@@ -101,6 +118,18 @@ export const TemplateEditorPage = (): JSX.Element => {
     setDirty(true);
   };
 
+  const printFields = (): {
+    kind: ContractTemplateKind;
+    allJobs: boolean;
+    jobTitleIds: string[];
+    printOrder: number;
+  } => ({
+    kind,
+    allJobs,
+    jobTitleIds: allJobs ? [] : jobTitleIds,
+    printOrder: Math.min(999, Math.max(0, Math.round(Number(printOrder) || 0))),
+  });
+
   // Saving a DRAFT is never completeness-gated — a draft is expected to be
   // incomplete while it is being authored. Publish is the only gated action.
   const save = async (): Promise<{ id: string; version: number } | null> => {
@@ -109,10 +138,11 @@ export const TemplateEditorPage = (): JSX.Element => {
         const created = await create.mutateAsync({
           name: { ar: nameAr, en: nameEn },
           language,
-          contractTypeId: contractTypeId === '' ? null : contractTypeId,
+          contractTypeId: kind === 'form' || contractTypeId === '' ? null : contractTypeId,
           sections: { header, body, footer },
           logoFileId: null,
           signatures,
+          ...printFields(),
         });
         toast.success(t('contracts.templates.saved'));
         navigate(`/contracts/templates/${created.id}`, { replace: true });
@@ -122,9 +152,10 @@ export const TemplateEditorPage = (): JSX.Element => {
         id,
         body: {
           name: { ar: nameAr, en: nameEn },
-          contractTypeId: contractTypeId === '' ? null : contractTypeId,
+          contractTypeId: kind === 'form' || contractTypeId === '' ? null : contractTypeId,
           sections: { header, body, footer },
           signatures,
+          ...printFields(),
           version: existing?.version ?? 0,
         },
       });
@@ -147,7 +178,7 @@ export const TemplateEditorPage = (): JSX.Element => {
   const doPreview = async (): Promise<void> => {
     try {
       const result = await previewContract({
-        inlineTemplate: { language, sections: { header, body, footer }, signatures },
+        inlineTemplate: { language, sections: { header, body, footer }, signatures, kind },
         overrides: [],
       });
       setPreview(result);
@@ -163,7 +194,8 @@ export const TemplateEditorPage = (): JSX.Element => {
     const missing: string[] = [];
     if (nameAr.trim() === '') missing.push(t('contracts.templates.nameAr'));
     if (nameEn.trim() === '') missing.push(t('contracts.templates.nameEn'));
-    if (contractTypeId === '') missing.push(t('contracts.columns.type'));
+    if (kind === 'contract' && contractTypeId === '') missing.push(t('contracts.columns.type'));
+    if (!allJobs && jobTitleIds.length === 0) missing.push(t('contracts.templates.jobs'));
     if (isBlankHtml(body)) missing.push(t('contracts.templates.sectionBody'));
     if (signatures.some((block) => block.label.trim() === '')) missing.push(t('contracts.templates.signatureLabels'));
     if (missing.length > 0) {
@@ -255,17 +287,75 @@ export const TemplateEditorPage = (): JSX.Element => {
                     <option value="en">{t('contracts.language.en')}</option>
                   </Select>
                 </Field>
-                <Field label={t('contracts.columns.type')} required>
+                {/* A27 — a contract, or a hiring form printed beside it in «مستندات التعيين». */}
+                <Field label={t('contracts.templates.kind')} hint={t('contracts.templates.kindHint')}>
                   <Select
-                    value={contractTypeId}
-                    onChange={(e) => mark(setContractTypeId)(e.target.value)}
+                    value={kind}
+                    onChange={(e) => mark(setKind)(e.target.value as ContractTemplateKind)}
                     disabled={readOnly}
+                    data-template-kind="true"
                   >
-                    <option value="">—</option>
-                    {(types ?? []).filter((x) => x.status === 'active').map((x) => (
-                      <option key={x.id} value={x.id}>{localized(x.name, locale)}</option>
-                    ))}
+                    <option value="contract">{t('contracts.templates.kinds.contract')}</option>
+                    <option value="form">{t('contracts.templates.kinds.form')}</option>
                   </Select>
+                </Field>
+                {kind === 'contract' && (
+                  <Field label={t('contracts.columns.type')} required>
+                    <Select
+                      value={contractTypeId}
+                      onChange={(e) => mark(setContractTypeId)(e.target.value)}
+                      disabled={readOnly}
+                    >
+                      <option value="">—</option>
+                      {(types ?? []).filter((x) => x.status === 'active').map((x) => (
+                        <option key={x.id} value={x.id}>{localized(x.name, locale)}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
+                <Field label={t('contracts.templates.printOrder')} hint={t('contracts.templates.printOrderHint')}>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={999}
+                    dir="ltr"
+                    value={printOrder}
+                    onChange={(e) => mark(setPrintOrder)(e.target.value)}
+                    disabled={readOnly}
+                  />
+                </Field>
+                <Field
+                  label={t('contracts.templates.jobs')}
+                  hint={t('contracts.templates.jobsHint')}
+                  className="sm:col-span-2"
+                >
+                  <div className="space-y-2" data-template-jobs="true">
+                    <Checkbox
+                      label={t('contracts.templates.allJobs')}
+                      checked={allJobs}
+                      disabled={readOnly}
+                      onChange={(e) => mark(setAllJobs)(e.target.checked)}
+                    />
+                    {!allJobs && (
+                      <div className="grid max-h-56 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2 dark:border-slate-700">
+                        {jobTitles.map((jt) => (
+                          <Checkbox
+                            key={jt.id}
+                            label={localized(jt.name, locale)}
+                            checked={jobTitleIds.includes(jt.id)}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              mark(setJobTitleIds)(
+                                e.target.checked
+                                  ? [...jobTitleIds, jt.id]
+                                  : jobTitleIds.filter((x) => x !== jt.id),
+                              )
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </Field>
               </div>
             </CardBody>

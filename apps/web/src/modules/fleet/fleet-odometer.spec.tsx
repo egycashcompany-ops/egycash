@@ -1030,8 +1030,10 @@ describe('the filter bar', () => {
     // belongs here is that the control feeds it the registry, the typed fragment and the selection.
     const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
     expect(source).toContain(
-      'registryVehicleCodeOptions(vehicles.data?.items ?? [], search, value)',
+      'registryVehicleCodeOptions(vehicles.data?.items ?? [], search, held)',
     );
+    // The selection as the list offers it — a carried «فورتشنر 2 » is the offered «فورتشنر 2».
+    expect(source).toContain('heldVehicleCodes(value, offered)');
   });
 
   it('renders that one control rather than assembling its own', () => {

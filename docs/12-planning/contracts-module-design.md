@@ -488,6 +488,240 @@ The Contracts domain calls only `platform/pdf` (`pdfDriverEnabled()`,
 renderer is an infrastructure swap — no business-logic change. This is a standing
 architectural invariant, not an implementation detail.
 
+## 11. Revision 4 — «مستندات التعيين»: the printed hiring set (A27)
+
+The owner: «لما بدوس على إنشاء وتوليد مستندات … عاوز يجبلي كل الحاجه اللي هتتطبع للشخص دا علي حسب
+وظيفتو … سواق كانت من العقد او نمازج التعيين الخاصة بيه». A new hire signs a contract and a handful
+of company forms (declarations, the data sheet, the job description card, the bank letter), and
+which forms depends on the job.
+
+### A27 — Templates print as contracts or forms, for chosen jobs, as one set
+
+- **Kind.** A template is a `contract` (everything above applies) or a `form`. A form is printed,
+  never contracted: it has no contract type, no number, no snapshot and no approval. It cannot be
+  the template of a contract (refused at create, update, amend and renew). A pre-A27 row reads as
+  a contract for every job.
+- **Jobs.** `allJobs`, or the `jobTitleIds` it prints for. A template for no job prints for nobody,
+  never for everybody; publishing one is refused.
+- **Print order.** Smaller first, within the set.
+- **The set.** `POST /hr/contracts/hiring-pack {employeeId}` (`contract.print`) returns ONE A4
+  document: the employee's contract, then every published form for the employee's job.
+  - The contract printed is the employee's current one (`active`/`signed`), re-rendered from its
+    PINNED template version and FROZEN variables — the snapshot's content (A2/A3/A21).
+  - With none, the set finishes an in-progress one or makes one, through the ordinary create and
+    generate: from the published contract template of the employee's job, starting on the
+    employment's start date, for one year (to the day before the anniversary) when the type is
+    fixed-term. Numbering, approval and A16 all apply. Making one needs `contract.create` and
+    `contract.generate`.
+  - Whatever keeps the contract out (`noTemplate`, `approvalRequired`, `notPermitted`,
+    `missingValues`, `notCreated`) is returned beside the set; the forms print regardless.
+  - The set is audited on the employee (`export`, format `hiringPack`).
+- **Forms fail nothing.** A value the record lacks prints as a dotted line, to fill in by hand.
+- **Layout.** A form wears the company letterhead (the company name and «إدارة الموارد البشرية»,
+  the shared EGYCASH logo) inside a page frame, closed on every page it runs over; the contract keeps
+  A24's branding. Each document of the set starts on a fresh page. The frame is the border of the
+  named page `form` that every form is laid out on (`@page form`); the contract stays on the default
+  page, unframed. (A table repeating its header and footer rows left a page open at the bottom when
+  the text ran close to the foot of the page.)
+- **Variables.** New catalog keys for the forms: mobile, birth date, marital and military status,
+  qualification, graduation year and institution, hiring date, weapon-licence expiry, start date and
+  its day, today's day, and the salary split (`salary.gross`, `salary.fixed` 70%,
+  `salary.attendanceBonus` 30%, `salary.grossInWords`) — the same split the register screen shows,
+  from one shared implementation. **Dates in an Arabic template render day/month/year**
+  (`15/11/2026`), as the company's papers write them; English stays ISO. Contracts generated before
+  keep their frozen values.
+- **Screens.** «طباعة المستندات» heads the employee's «مستندات التعيين»; «تعيين» lands there (the set
+  opened if missing, `POST /hr/hiring-documents/open`); a generated contract offers it too. The
+  contract wizard offers the employee's job's contract template first and never a form.
+
+### A27, stage 2 — the owner's papers, written on boot
+
+- **What.** His contract (fixed-term, one year), the data sheet, the work-receipt and relatives
+  declarations and the bank letter (every job), the weapon declaration (every job, ticked for crew
+  leaders only — A28), and seven job
+  description cards — `hiring-templates/hiring-papers.ts`, his words as he prints them (listed in
+  `VERBATIM_PAPERS`). Where his paper leaves a line for the employee's facts it is a placeholder;
+  lines filled by hand stay dotted. His sample bank letter's employee is not in it.
+- **Which jobs.** By name, folded (`أخصائى عد و فرز` = `اخصائي عد وفرز`): a job named as the paper
+  says, or that name followed by more words (`أمين خزينة أول`). The ATM crew leader's card goes to
+  `قائد طاقم صراف آلي…` and to plain `قائد طاقم`. (The weapon declaration went to every `قائد طاقم…`
+  and `أخصائي نقل أموال…`; A28 gives it to every job — the boot widens the row as it wrote it.)
+- **How.** `syncHiringTemplates()` on every API boot, after the navigation sync. A paper is known by
+  its template key (`egycash.hiring.*`) and written once: published when it is for every job or has a
+  job, else a draft. A draft nobody has touched is matched again on each boot and published once a
+  job carries its name; a published paper nobody has touched gains, on the next boot, a job carrying
+  its name created since (stage 3 — none is ever taken away). Any edit, publish, archive or delete by
+  a person is final. The contract gets
+  the company's own «محدد المدة» type when there is one, else one is made. A failing paper is logged
+  and never stops the boot.
+
+### A27, stage 2b — his papers as he prints them: blank, his layout, his words
+
+- **Blank.** «نموزج 1 و العقد و خطاب البنك هما الوحيدين اللي هيتملو … و الباقي لازم يكون فاضي
+  الموظف هو اللي يكتب بياناته فيه و يمضي». Every form but the bank letter carries no placeholder:
+  the data sheet, the work-receipt, relatives and weapon declarations and the seven cards print as
+  his blank paper, a dotted line where the employee writes. On «عقد جديد» their «تعديل» shows the
+  paper and says it prints blank.
+- **As the original.** «رجعهم كلهم زي الاصل»: his type sizes and line spacing, his shaded heading
+  boxes, label-and-dotted-line rows without borders, his signature lines as words only, each card in
+  his own shape (four columns, or label and value in one cell, with that card's spelling), his
+  document-control line at the foot of the page (`EGYCASH-HR-F-10-03/04/05 · Issue / Rev. no.: 1/0
+  · Issue date: 1/5/2022`) where his paper has one — and his spelling, the slips the first copy
+  corrected put back.
+- **How.** The sanitizer allows a fixed set of layout classes (`PAPER_CLASSES`: `plain`, `cols`,
+  `dots`, `band`, `foot`, `rule`, `t10`–`t16`, `l15`/`l2`/`l3`), styled in the form stylesheet; any
+  other class is dropped (A11). The template editor keeps them on save. A form's footer section sits
+  at the foot of its page.
+- **His contract too.** Bold 14pt at near-single spacing (his Normal style), his basmala
+  calligraphy (a picture in his file, shown by the `basmala` class — the words stay, unseen), the
+  title at 20pt, clauses under starred bullets, his salary lines (no table), his spelling. His
+  document-control line prints at the foot of EVERY page and the page number at the top from the
+  second page («- 2 -»), as the page's own margin boxes (`@page @bottom-center/@top-center`). A
+  printed set numbers only when it holds one contract (page numbers run through the document);
+  forms' pages carry neither. On screen the line shows under the text.
+- **Reaching a database written before.** Each paper has a `revision`; the row carries the
+  `paperRevision` it was written at. The boot rewrites a row it wrote, and nobody has touched since,
+  to a newer revision (its sections, placeholders and signatures). A row somebody edited keeps their
+  edit.
+
+### A27, stage 2c — «نموذج رقم (1)», the social-insurance registration
+
+- **What.** «دا هنزودوا مع النمازج»: the authority's form (طلب اشتراك مؤمن عليه, two pages: the
+  form, then the instructions and the declarations overleaf) is the fourteenth paper — every job,
+  printed right after the contract (`egycash.hiring.insurance-form-1`, print order 5). His copy is a
+  Legal-size scan; it prints on A4, tighter, in the same order.
+- **Filled.** With the contract and the bank letter, the one form filled from the record: the
+  category (عاملين لدى الغير, ticked), the company's name (twice), the employee's insurance number,
+  national ID, name, nationality, qualification and job, the start date in its day / month / year
+  boxes, the address, phone and email, the date it is written, and his name in the declaration
+  overleaf. **The basic wage is 2720 pounds** («عاوزين نخلي رقم 2720 دا يبقا الاجر الاساسي في نموزج
+  1»), written in its boxes. What the record does not hold — the establishment number, the codes, the
+  other wages, the signatures — stays for the hand. New variables: `employee.nationality`,
+  `employee.email`, `employee.insuranceNumber`, `employment.startDay/Month/Year`.
+- **As drawn.** Digit boxes (`<span class="cells cN">`, one box per character, left to right — the
+  renderer fills the N boxes from what the span holds), small boxed tables for the wages and codes,
+  the section names in rounded boxes on a line, the authority's emblem (`nosi`, cropped from his
+  copy). The form brings its own head (`ownhead`): no company letterhead, and it prints on the bare
+  page without the forms' frame.
+
+### A27, stage 3 — the papers COLLECTED are the employee's job's too
+
+- **What.** A hiring document type (the signed papers uploaded to «مستندات التعيين») is collected
+  for every job (`allJobs`, the default and what every type written before reads as), or only for
+  `jobTitleIds`. A type for chosen jobs with none chosen is refused (400): it would be collected from
+  nobody.
+- **The checklist.** Each set shows and requires only the active types its employee's job collects
+  (`HiringDocumentsDto.typeKeys`; `missingRequired` and the completion gate follow it). An employee
+  who cannot be read is treated as an unknown job: every-job types only. A document already uploaded
+  under a type outside the list still shows.
+- **The weapon declaration.** «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن»: REQUIRED of
+  crew leaders (`weaponDeclaration`), OPTIONAL for cash-in-transit specialists
+  (`citWeaponDeclaration`, never holding a set's completion back), asked of no other job. Two rows
+  of the one paper, both «إقرار حيازة سلاح» — a job is never both. Matched by name as the printed
+  paper is (`hr/shared/job-match.ts`: `CREW_LEADERS`, `CIT_SPECIALISTS`). The
+  boot seed writes each once a job carrying its name exists, for those jobs; while no person has
+  edited it, a job of that name created since is added on the next boot. A person's edit is final.
+- **Printed, unticked but for crew leaders** (A28: «حيازه السلاح هتبقا لكلو بس مطفيه وللقائد هتبقا
+  معموله mark»). The printed «إقرار حيازة سلاح» is offered to EVERY job. On every print page («عقد
+  جديد», «طباعة لكل المحدد», the employee's tab) it starts TICKED for a crew leader and UNTICKED for
+  everyone else: `HiringPaper.tickedFor`, read through `optionalForJob(key, jobName)` into the
+  papers' `optional` flag (a job whose name is unknown is offered it unticked). The signed copy
+  collected stays as above: required of crew leaders, optional for the specialist.
+
+## 12. Revision 5 — «عقد جديد» for a candidate: print, then hire (A28)
+
+The owner: «هنستبدل زرار التعيين بزرار اسمو طباعه العقد و المستندات … جوه حتت عقد الجديد … toggle
+buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار … واحد للطباعه … و زرار جمبو علطول اللي هو التعيين …
+الزرار ميبقاش active الا لما يطبع اول». And: «لو كنت بعمل عقد … و تلعط او جاهز قفل او سستم تايم اوت
+يتعملو ريكورد».
+
+- **Where.** «جاهزون للتعيين» no longer hires: its button is «طباعة العقد والمستندات», which opens
+  `/contracts/new?offerId=…` — «عقد جديد» in the candidate's mode (`contract.print`).
+- **The candidate is not an employee yet.** The papers print from the employee the accepted offer
+  WOULD make (`employeeService.candidateFromOffer`): the offer's terms and the applicant's personal
+  data, built exactly as the hire builds the record. Nothing is written by a preview.
+- **The page.** The job's papers are ONE row beside the title — its contract (the first by print
+  order), the forms every job signs, the forms of this job — each a tile to tick for printing (the
+  owner's own tile pattern), with «تعديل» and «طباعة» under it («عاوز المستندات كلها تظهر ك line
+  واحد … جمب كلمه عقد جديد»). Below: the form — the contract's term (start; end one year on when
+  the type is fixed-term) and the hiring date, then the paper opened by its «تعديل» — and beside it
+  that paper as it prints (the contract until another is opened). At the foot, «طباعة المحدد» and
+  «تعيين».
+- **«تعديل»** opens the paper's values in the form, each typed in for the candidate (A16
+  overrides) and saved as its box is left. A value is kept on the record and used by every paper
+  that prints it; no template changes. The employee code is shown, never typed — the server drops
+  an override of it — because the hire gives exactly the code kept at the first print.
+- **The record** (`hr_candidate_drafts`, one per offer) holds the papers ticked, the typed-in
+  values, the term, the employee number kept, and the prints. Every change is saved as it is made,
+  in sequence with the version each save returns; a stale save is refused (409) and the page reloads
+  from the record.
+- **The first print** takes the next employee number from the sequence and keeps it for the
+  candidate, so the bank letter carries the code the hire gives. A candidate never hired leaves that
+  number unused. Every print is counted and audited on the offer (`export`, `candidatePapers`).
+- **The hire** (`employee.create`) is refused until something was printed. It creates the employee
+  with the kept number, then the contract — through the A27 path, from the job's contract template
+  with the printed term and the typed-in values the contract prints. What stops the contract is
+  returned as a note; the hire stands. The page then lands on the employee's «مستندات التعيين».
+- **Many at once** («لو معايا 20 شخص و عاوز اطبعلهم كلهم فنفس الوقت»). «جاهزون للتعيين» ticks
+  people (one by one, or all on the page) and offers «طباعة لكل المحدد». Its popup gives EACH PERSON A
+  LINE OF THEIR OWN — «كل واحد ليه line جواه النمازج و العقود الخاصه بيه علي حسب وظيفتو، مش كله مع
+  بعض فنفس الاختيارات»: their name, job and how many papers are ticked, then the tiles of their own
+  job's papers, ticked for that person alone (all / none per line, and for everyone at once). Each
+  line starts with every paper of the job ticked but one the job is only offered (`optional`).
+  «تأكيد الطباعة» prints ONE document, person after person, each with what was ticked on their line.
+  Each print is recorded as on the person's own page (the code kept, so «تعيين» opens there). A
+  person who cannot be printed for is reported, not dropped; the others print. At most 50 at a time.
+- **Only the person's papers, by department and job** («النمازج المخصصه بس للاداره او الوظائف هي
+  اللي هتكون موجوده … فيه وظائف تتفتحلها نمازج معينه و وظائف تانيه ملهاش علاقه بنمازج معينه … علي
+  حسب الاداره و الوظيفه»). «عقد جديد», each line of «طباعة لكل المحدد», the employee's tab, the
+  printed set and the hire's contract offer a person THEIR papers only, in print order (contracts
+  first): what the templates give their job — ticked, but one only offered —, as «مستندات الوظائف»
+  changed it for their job in their department. A paper not theirs is never offered nor printed
+  for them. One contract: the first ticked by print order. `job-papers/job-papers.rules.ts`.
+- **«مستندات الوظائف»** («اعرض الادارات كدا و الوظائف اللي جوه الادارات»). A button at the top of
+  «جاهزون للتعيين» (`contractTemplate.manage`) opens every department, closed, with how many jobs are
+  in it; opened, a line «كل وظائف الإدارة» that ticks or unticks a paper for all its jobs at once,
+  then each job on a line of its own beside every paper — ticked, what a person of that job in that
+  department prints. A job nobody holds there yet is added from the department's foot; «حفظ» saves
+  the changed lines (audited on the job title, `hiringPapers.<department>`). A job prints one
+  contract: ticking a contract unticks the line's other.
+  - **A department** is the company's: a branch's department row is keyed by the catalog entry it
+    declares (ADR-031), so «العمليات» in every branch is one; a row that declares none is its own.
+  - **The jobs in it** are those its people hold — employees who have not exited and candidates
+    accepted and not hired yet (the terms they accepted) — and any saved for it here. Job titles
+    carry no department of their own.
+  - **A line is kept** as what was ADDED to, and TAKEN OFF, what the templates tick for the job
+    (`hr_job_papers`, one row per department and job), so a paper published later for every job
+    still reaches it, and a line never saved follows its templates. A paper only offered (the
+    weapon declaration) stays offered, unticked, unless the line ticks it. A row with no department
+    is a job-wide line, as the first release of the popup saved them; a department's own line is
+    read first.
+- **«مسميات الوظائف لدى التأمينات»** («فيه مسميات وظائف … عندنا مختلفه عن مسميات الوظائف عند
+  التامينات»; «انا عاوز انا اللي احط المسميات الوظيفه بتاعتنا و المسميات الوظيفيه بتاعت التامينات و
+  هنزود column … كود المهنه و كله هيتحط manual»). A tab of «الإعدادات» beside «نموذج التقديم»
+  (`insuranceJobTitle.manage`, its own page): a table HR types by hand — our job title (the company's
+  titles offered while typing, a note when none carries it), its title at the social-insurance
+  authority, its occupation code (up to six digits, or «123/456»). «حفظ» keeps the table as it stands:
+  a row left out is taken off (`hr_insurance_job_titles`, one row per title, keyed by the title folded
+  as job names are matched; each change audited, `hr.insuranceJobTitle`). A title listed twice, a code
+  form 1 cannot box and a row with no title are refused. «نموذج رقم (1)» prints, for a person whose job
+  carries a row's title, `job.insuranceTitle` (the row's title at the authority, else the job's own)
+  in «المسمى» and `job.occupationCode1`/`2` in «كود المهنة»'s two groups of boxes (revision 2, so the
+  boot rewrites the row it wrote). The contract keeps the company's own name for the job.
+  `GET`/`PATCH /hr/contracts/insurance-job-titles {rows: [{jobTitle, insuranceTitle, occupationCode}]}`.
+- **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
+  اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
+  the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
+  the contract's own renewal (`contract.renew`), opened from the day after it ends for one year — and
+  their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
+  chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
+  the contract held, or makes one as «مستندات التعيين» does.
+- **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
+  `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
+  `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
+  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {lines: [{departmentId, jobTitleId, keys}]}`.
+
 ## Review trail
 
 **Revision 3 (2026-07-27) — FREEZE CONFIRMED BY THE APPROVER:** Q1–Q3 restated and

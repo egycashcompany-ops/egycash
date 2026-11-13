@@ -103,7 +103,11 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
-  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  /**
+   * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
+   * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
+   * carries no bank rule: it may belong to any bank, the main bank being the billed one.
+   */
   OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
   /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
   OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
@@ -130,6 +134,88 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+  /**
+   * 422 — the shipments history range holds more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments. Refused, never cut short: totals over a silently truncated list would be wrong
+   * figures. Details carry `count` and `max` (field = the name, message = the number).
+   */
+  OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE: 'OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE',
+  /**
+   * 422 — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a NEW shipment dated before today on the
+   * Cairo calendar (its collection date, or a secured one's delivery date), or a delivery date set
+   * for the first time on an edit before today. One detail: `field` = the date refused,
+   * `code` = 'MIN_DATE', `message` = the earliest day allowed ('YYYY-MM-DD').
+   */
+  OPERATIONS_SHIPMENT_DATE_IN_PAST: 'OPERATIONS_SHIPMENT_DATE_IN_PAST',
+  /**
+   * 422 — «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»: an edit moving the collection date (or
+   * the delivery date) EARLIER than the day the shipment is on. Later, or unchanged, is accepted.
+   * Same detail shape as `OPERATIONS_SHIPMENT_DATE_IN_PAST`; `message` = the shipment's current day.
+   */
+  OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: 'OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL',
+  /**
+   * 422 — a secured shipment's delivery date before its collection date («تاريخ التسليم تانى يوم
+   * الاستلام افتراضى وممكن يغير» — it may move, never to before the collection day; the same day
+   * is accepted). Checked on create and on an edit that changes either date. Same detail shape as
+   * `OPERATIONS_SHIPMENT_DATE_IN_PAST`, `field` = 'deliveryDate', `message` = the collection day.
+   */
+  OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION: 'OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION',
+  /** 409 — a restore asked for a shipment that is not deleted. */
+  OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
+
+  // ── The secured pickup ✓, the vault lock and the cancelled receipt (Round 10) ────────────────
+  /**
+   * 409 — the shipment is LOCKED: a secured shipment the vault has received (status `inVault`,
+   * `dispatched` or `completed`) — «ميقدر حد من القادة او العمليات او الخزنه يعدل عليها». Refuses
+   * the edit, the delete, the receipt photo, the pickup crew, and the desk's pickup ✓ / its undo.
+   * The way back is the cancelled receipt (`operationsVault.cancelReceipt`).
+   */
+  OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
+  /**
+   * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
+   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
+   * desk's undo has no pickup ✓ to take back.
+   */
+  OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
+  /**
+   * 409 — the desk's pickup ✓ on a secured shipment whose pickup is already recorded — by its
+   * captain in the app or by the desk itself. The desk never stamps over the captain's ✓ (it may
+   * take it back, then confirm as Operations).
+   */
+  OPERATIONS_SECURED_ALREADY_PICKED_UP: 'OPERATIONS_SECURED_ALREADY_PICKED_UP',
+  /**
+   * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
+   * already dispatched or completed.
+   */
+  OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
+  // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
+  /**
+   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
+   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
+   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
+  /**
+   * 409 — a distribution change named a secured shipment that is already `dispatched` or `completed`:
+   * it has left the vault, and its van is history. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED: 'OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED',
+  /**
+   * 422 — a distribution change named a shipment that is not this day's: neither due on the day
+   * (draft or in the vault) nor OVERDUE in the vault (delivery date before TODAY, Cairo). A draft due
+   * another day, one with no delivery date, or one in the vault due on its own day between today and
+   * the day asked for. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
+  /**
+   * 409 — a distribution change would move or clear a delivery leg its captain has already started
+   * in the app (`executionStatus` past `pending`). Also the shipment edit's (`PATCH
+   * /operations/shipments/:id`) when it would move a secured shipment's delivery date off the day of
+   * such a leg, or clear it — the edit would take the stop off his van just the same; nothing is
+   * written. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
@@ -333,6 +419,51 @@ export const ErrorCodes = {
    * the file's header only. Nothing was written. `{ field: 'thumb', code: … }`.
    */
   FLEET_FUEL_CARD_THUMB_INVALID: 'FLEET_FUEL_CARD_THUMB_INVALID',
+
+  // ── Fleet accident transfers («أخذ مبلغ من متبقي سيارة أخرى») ───────────────────────────────
+  /**
+   * 422 — the cars picked have less left, together, than the amount sent. Read inside the save's
+   * own transaction, so it is what another clerk's take left a moment ago — the screen plans
+   * within what it was shown and never sends more. Nothing was written. Two details, each figure
+   * in pounds as a plain decimal string (`'1200.50'`):
+   * `{ field: 'available', code: 'AVAILABLE', message }` — what the picked cars have together, and
+   * `{ field: 'amount', code: 'AMOUNT', message }` — the amount sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_SHORT: 'FLEET_ACCIDENT_TRANSFER_SHORT',
+  /**
+   * 422 — the amount is more than the receiving file's negative: a take brings a file up to zero
+   * and never past it. The negative is the file's «المتبقي» as this save leaves its facts (a new
+   * file's figures as sent; an edit's figures over the stored file, read in the transaction),
+   * before the take; a file at zero or above has none. Nothing was written. Two details, in pounds
+   * as plain decimal strings: `{ field: 'deficit', code: 'DEFICIT', message }` — the negative
+   * (`'0.00'` when there is none), and `{ field: 'amount', code: 'AMOUNT', message }` — the amount
+   * sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT',
+
+  // ── IT vehicle device checks (docs/12-planning/it-vehicle-checks-design.md) ───────────────────
+  /**
+   * 422 — the car exists but its Fleet status is not `active` (out of service, disposed): a report
+   * is filed only on an active car. Nothing was written. A missing or deleted car is 404 instead.
+   */
+  IT_VEHICLE_NOT_ACTIVE: 'IT_VEHICLE_NOT_ACTIVE',
+  /**
+   * 409 — another user already filed a report with this `clientRequestId`. Nothing was written; the
+   * form makes a new id. The same reporter repeating it gets 200 with the report that exists.
+   */
+  IT_VEHICLE_CHECK_REQUEST_REUSED: 'IT_VEHICLE_CHECK_REQUEST_REUSED',
+  /** 422 — the report already holds `IT_VEHICLE_CHECK_MAX_PHOTOS` photos; no file was stored. */
+  IT_VEHICLE_CHECK_PHOTO_LIMIT: 'IT_VEHICLE_CHECK_PHOTO_LIMIT',
+  /**
+   * 422 — the report was filed more than `IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS` hours ago, so no
+   * photo is added to it any more; no file was stored.
+   */
+  IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED: 'IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED',
+  /**
+   * 422 — a device is «لا يعمل» and the report carries no note (`vehicleCheckNeedsNotes`). Nothing
+   * was written. A repeat of a report already filed is answered before this rule.
+   */
+  IT_VEHICLE_CHECK_NOTES_REQUIRED: 'IT_VEHICLE_CHECK_NOTES_REQUIRED',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

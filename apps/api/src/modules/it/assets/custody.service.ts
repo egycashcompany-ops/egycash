@@ -1,6 +1,7 @@
-// Custody: assign · return · transfer · dispose (design §2.5, §4.3, ADR-021).
+// Custody: assign · return · transfer · dispose (design §2.5, §4.3, ADR-021) — and «نقل إلى فرع»,
+// the move of several assets to another branch, a held one moving with its custody.
 //
-// Four NAMED actions, never a generic PATCH, because each is a distinct business act with its own
+// NAMED actions, never a generic PATCH, because each is a distinct business act with its own
 // guard, event, audit action and history entry. Each runs in ONE transaction (FR-3) that writes:
 //
 //     assignment row  +  asset denormalization  +  history event  +  platform event  +  audit
@@ -11,7 +12,9 @@
 // error message; the index is what actually holds under two concurrent assigns.
 //
 // The platform event is emitted AFTER the transaction commits. Subscribers react to facts, and a
-// fact that later rolled back is not one — the outbox exists for delivery, not for undo.
+// fact that later rolled back is not one — the outbox exists for delivery, not for undo. The
+// transfer and the move write their audit rows after the commit too (`transferInSession` says
+// why); hand-over, return and dispose still write theirs inside the transaction.
 import { Types } from 'mongoose';
 import {
   ItEvents,
@@ -19,15 +22,26 @@ import {
   type DisposeItAsset,
   type HandOverItAssets,
   type ItAssetEventType,
+  type ItAssetTransferredPayload,
+  type ItAssetsBranchMoveResultDto,
+  type ItMoveTargetsDto,
   type ListItAssetHistoryQuery,
+  type MoveItAssetsToBranch,
   type Paginated,
   type ReturnItAsset,
   type TransferItAsset,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
-import { type AuthContext, type ScopeSelector } from '../../../shared/types';
-import { auditService } from '../../../platform/audit';
+import {
+  BusinessRuleError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../../shared/errors';
+import { keyReachesBranch, type AuthContext, type ScopeSelector } from '../../../shared/types';
+import { auditService, type AuditEntry } from '../../../platform/audit';
 import { type DirectoryEmployee } from '../../../platform/directory';
+import { branchRepository } from '../../../platform/organization';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { logger } from '../../../infrastructure/logging/logger';
@@ -43,6 +57,13 @@ import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receip
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
 import { claimReceiptNumber, receiptNumberFor } from './receipt-number';
 import { readDeviceTypesOf, receiptDeviceFields } from './receipt-device';
+import {
+  assetMoveRefusal,
+  assetMoveRefusalError,
+  assetsBranchMoveResult,
+  moveTargetBranchIds,
+  type AssetMoveRefusal,
+} from './asset-move';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -90,20 +111,27 @@ export const refuseUnlessInStock = async (
   );
 };
 
+/** The audit row for a receipt (FR-18): who signed for which assets. */
+export const receiptIssuedAudit = (
+  receiptId: Types.ObjectId,
+  employeeId: string,
+  assetCodes: readonly string[],
+): AuditEntry => ({
+  entityRef: { moduleId: 'it', entityType: 'custodyReceipt', entityId: String(receiptId) },
+  action: 'create',
+  changes: [change('employeeId', null, employeeId), change('assets', null, [...assetCodes])],
+});
+
 /**
- * The audit row for a receipt (FR-18): who signed for which assets. Written inside the transaction
- * that writes the receipt, like every custody audit — a receipt that rolled back leaves no trace.
+ * The audit row for a receipt (FR-18), written by the hand-over that wrote the receipt. A transfer
+ * to a new holder writes its receipt's row after its commit instead (`transferInSession`).
  */
 export const auditReceiptIssued = async (
   receiptId: Types.ObjectId,
   employeeId: string,
   assetCodes: readonly string[],
 ): Promise<void> => {
-  await auditService.record({
-    entityRef: { moduleId: 'it', entityType: 'custodyReceipt', entityId: String(receiptId) },
-    action: 'create',
-    changes: [change('employeeId', null, employeeId), change('assets', null, [...assetCodes])],
-  });
+  await auditService.record(receiptIssuedAudit(receiptId, employeeId, assetCodes));
 };
 
 /** The receipt's snapshot of who signed it — taken from the holder read before the transaction. */
@@ -122,6 +150,52 @@ interface HistoryInput {
   at: Date;
   metadata: Record<string, unknown>;
   notes: string | null;
+}
+
+/** What a transfer reads before its transaction — and keeps across a retry of it. */
+interface TransferPreparation {
+  /** The holder the transfer names, as HR answers for them; null when it names nobody. */
+  named: ReceiptHolder | null;
+  /** What the new holder's paper calls the device; empty when no paper is printed. */
+  deviceTypes: ReadonlyMap<string, string>;
+  /** The new holder's paper number, once taken — kept so a retried transaction takes no second. */
+  formNumber: number | null;
+}
+
+/** One transfer, as the transaction runs it. */
+interface TransferStep {
+  assetId: string;
+  input: TransferItAsset;
+  /** When it happened — fixed before the transaction, so a retry records the same instant. */
+  at: Date;
+  prepared: TransferPreparation;
+  /**
+   * «نقل إلى فرع» — the move's own part of it: the place the asset had inside the branch it leaves
+   * is cleared, and the move's notes go on the `transferred` entry alone. They never become the
+   * interval's: the holder's custody is the one they already signed for, notes and all.
+   */
+  move?: { notes: string | null };
+}
+
+/** What a transfer wrote — and what its caller writes once the transaction has committed. */
+interface TransferOutcome {
+  asset: ItAssetDoc;
+  assignment: ItAssetAssignmentDoc;
+  fromBranchId: string;
+  /** Who holds it after the transfer. */
+  holderEmployeeId: string;
+  /** In order: the new holder's receipt (when there is one), then the transfer. */
+  audits: AuditEntry[];
+  event: ItAssetTransferredPayload;
+}
+
+/** One asset of a move to another branch, as the commit leaves it to be audited and announced. */
+interface MoveOutcome {
+  assetCode: string;
+  fromBranchId: string;
+  holderEmployeeId: string | null;
+  audits: AuditEntry[];
+  event: ItAssetTransferredPayload;
 }
 
 class ItAssetCustodyService {
@@ -458,6 +532,209 @@ class ItAssetCustodyService {
   }
 
   /**
+   * What a transfer reads BEFORE its transaction, once: HR's answer about the holder it names (read
+   * outside, like assign's, and judged inside — whether that holder is NEW is only known once the
+   * open interval has been read; the same read names them on the receipt a hand-over to them
+   * prints, FR-18) and what that paper calls the device. A transfer naming nobody new — the move to
+   * another branch in the same hands — asks HR nothing.
+   */
+  private async prepareTransfer(
+    assetId: string,
+    input: TransferItAsset,
+  ): Promise<TransferPreparation> {
+    const named =
+      input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
+    const deviceTypes =
+      named === null ? new Map<string, string>() : await readDeviceTypesOf([assetId]);
+    if (named !== null) await itCustodyReceiptRepository.ensureCollection();
+    return { named, deviceTypes, formNumber: null };
+  }
+
+  /**
+   * The transfer's body, inside a transaction the CALLER owns — custody's own `transfer` (one
+   * asset, its own transaction) and «نقل إلى فرع» (`moveToBranch`: many assets, one transaction,
+   * all of them or none) write a held asset's transfer through this one path, so the move of a held
+   * asset IS the custody transfer to a new branch in the same hands, not a copy of it.
+   *
+   * It writes and audits nothing outside the session: the audit rows and the platform event come
+   * back in the outcome, for the caller to write once the transaction has committed — the audit
+   * service is not part of the transaction, so a row written inside it would outlive a transfer the
+   * database then refused (a later asset of the same move, say), and a retried transaction would
+   * write it twice.
+   */
+  private async transferInSession(
+    step: TransferStep,
+    ctx: AuthContext,
+    scope: ScopeSelector,
+    session: Parameters<Parameters<typeof unitOfWork>[0]>[0],
+  ): Promise<TransferOutcome> {
+    const { assetId, input, at, prepared } = step;
+    const named = prepared.named;
+    const asset = await this.loadForTransition(assetId, scope, session);
+    await this.assertNoActiveMaintenance(asset, 'transfer', session);
+    const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
+    if (open === null) {
+      throw new ConflictError(
+        `asset ${asset.assetCode} is not currently assigned; assign it rather than transferring it`,
+      );
+    }
+    if (at.getTime() < open.assignedAt.getTime()) {
+      throw new BusinessRuleError('the transfer cannot precede the assignment it closes');
+    }
+
+    const toEmployeeId = input.toEmployeeId ?? String(open.assignedToEmployeeId);
+    // Compared — and stored — as an id is spelled: `objectId()` admits upper-case hex, and an
+    // upper-case copy of the asset's own branch is that branch, not a move to another.
+    const toBranchId = (input.toBranchId ?? String(asset.branchId)).toLowerCase();
+    const sameHolder = toEmployeeId === String(open.assignedToEmployeeId);
+    const sameBranch = toBranchId === String(asset.branchId);
+    if (sameHolder && sameBranch) {
+      throw new BusinessRuleError(
+        'a transfer must change the holder, the branch, or both — this changes neither',
+      );
+    }
+    // Only a transfer that HANDS the asset to somebody new is a hand-over. Moving it across
+    // branches in the same hands gives nobody anything, even when those hands have since left:
+    // the return is still owed, and refusing the move would not bring it any closer.
+    if (!sameHolder) refuseLeaver(named?.employee ?? null);
+    // A new holder signs a new receipt (FR-18); the same holder moving branch is still bound by
+    // the paper they already signed, so the next interval carries it over.
+    const receiptId = sameHolder ? (open.receiptId ?? null) : new Types.ObjectId();
+    // …and the custody they signed for is the same custody: the next interval CARRIES its due
+    // date, the condition it was handed over in and its notes, unless the transfer gives its own —
+    // a same-hands move must not quietly forget when the asset is due back. A NEW holder's interval
+    // is theirs, from the request alone. The move to another branch never gives any (`step.move`).
+    const carried = sameHolder ? open : null;
+    const audits: AuditEntry[] = [];
+
+    // Close the current interval. `returnedAt` is what makes it closed, so the partial unique
+    // index releases immediately and the new interval can be inserted in the same transaction.
+    await itAssetAssignmentRepository.updateById(
+      String(open._id),
+      {
+        returnedAt: at,
+        returnedToUserId: new Types.ObjectId(ctx.userId),
+        conditionOnReturn: input.conditionOnReturn ?? null,
+      },
+      { by: ctx.userId, version: open.__v, session },
+    );
+
+    const next = await itAssetAssignmentRepository.create(
+      {
+        assetId: new Types.ObjectId(assetId),
+        assignedToEmployeeId: new Types.ObjectId(toEmployeeId),
+        assignedByUserId: new Types.ObjectId(ctx.userId),
+        assignedAt: at,
+        conditionOnIssue: input.conditionOnIssue ?? carried?.conditionOnIssue ?? null,
+        expectedReturnAt: input.expectedReturnAt ?? carried?.expectedReturnAt ?? null,
+        returnedAt: null,
+        returnedToUserId: null,
+        conditionOnReturn: null,
+        notes: input.notes ?? carried?.notes ?? null,
+        branchId: new Types.ObjectId(toBranchId),
+        receiptId,
+      },
+      { by: ctx.userId, session },
+    );
+
+    if (!sameHolder && receiptId !== null && named !== null) {
+      // Taken only once the transfer is known to hand the asset to somebody new, and kept on the
+      // preparation across a retry of the transaction, so a retry never takes a second number.
+      prepared.formNumber ??= await receiptNumberFor(input.formNumber);
+      await claimReceiptNumber(prepared.formNumber, session);
+      await itCustodyReceiptRepository.create(
+        {
+          _id: receiptId,
+          formNumber: prepared.formNumber,
+          employeeId: new Types.ObjectId(toEmployeeId),
+          ...signer(named),
+          issuedAt: at,
+          issuedByUserId: new Types.ObjectId(ctx.userId),
+          branchId: new Types.ObjectId(toBranchId),
+          lines: [
+            {
+              assetId: asset._id,
+              assignmentId: next._id,
+              assetCode: asset.assetCode,
+              name: asset.name,
+              serialNumber: asset.serialNumber,
+              conditionOnIssue: input.conditionOnIssue ?? null,
+              notes: input.notes ?? null,
+              ...receiptDeviceFields(asset, prepared.deviceTypes),
+            },
+          ],
+          signedCopy: null,
+        },
+        { by: ctx.userId, session },
+      );
+      audits.push(receiptIssuedAudit(receiptId, toEmployeeId, [asset.assetCode]));
+    }
+
+    // The move to another branch also leaves behind the place the asset had inside the branch it
+    // left — the head office's «مخزن IT» is no place in Tanta (the go-live's branch step's rule).
+    const clearsLocation = step.move !== undefined && !sameBranch;
+    const location = asset.location ?? null;
+    // `branchId` is the asset's data-scope anchor and the design says it changes ONLY by a
+    // transfer — this one, or the move of an asset in stock (`moveToBranch`).
+    const updated = await itAssetRepository.updateById(
+      assetId,
+      {
+        status: 'assigned',
+        currentAssignmentId: next._id,
+        branchId: new Types.ObjectId(toBranchId),
+        ...(clearsLocation ? { location: null } : {}),
+      },
+      { by: ctx.userId, version: asset.__v, session, scope },
+    );
+
+    await this.writeHistory(
+      {
+        assetId,
+        type: 'transferred',
+        at,
+        metadata: {
+          fromEmployeeId: String(open.assignedToEmployeeId),
+          toEmployeeId,
+          fromBranchId: String(asset.branchId),
+          toBranchId,
+          assignmentId: String(next._id),
+          ...(receiptId === null ? {} : { receiptId: String(receiptId) }),
+        },
+        // The move's notes are the move's: here, and not on the interval it opens.
+        notes: step.move === undefined ? (input.notes ?? null) : step.move.notes,
+      },
+      ctx,
+      session,
+    );
+
+    audits.push({
+      entityRef: entityRef(assetId),
+      action: 'transfer',
+      changes: [
+        change('holder', String(open.assignedToEmployeeId), toEmployeeId),
+        change('branchId', String(asset.branchId), toBranchId),
+        ...(clearsLocation && location !== null ? [change('location', location, null)] : []),
+      ],
+    });
+
+    return {
+      asset: updated,
+      assignment: next,
+      fromBranchId: String(asset.branchId),
+      holderEmployeeId: toEmployeeId,
+      audits,
+      event: {
+        assetId,
+        assetCode: asset.assetCode,
+        fromEmployeeId: String(open.assignedToEmployeeId),
+        toEmployeeId,
+        fromBranchId: String(asset.branchId),
+        toBranchId,
+      },
+    };
+  }
+
+  /**
    * Transfer: ONE fact, not two (design §2.5).
    *
    * Person→person, branch→branch, or both. It closes the current interval and opens the next
@@ -472,166 +749,195 @@ class ItAssetCustodyService {
     scope: ScopeSelector,
   ): Promise<{ asset: ItAssetDoc; assignment: ItAssetAssignmentDoc }> {
     const at = input.at ?? new Date();
-    // Read outside the transaction, like assign's, and judged inside it: whether this names a NEW
-    // holder is only known once the open interval has been read. The same read names the new
-    // holder on the receipt a hand-over to them prints (FR-18).
-    const named =
-      input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
-    const deviceTypes =
-      named === null ? new Map<string, string>() : await readDeviceTypesOf([assetId]);
-    if (named !== null) await itCustodyReceiptRepository.ensureCollection();
-    // Taken only once the transfer is known to hand the asset to somebody new, and kept across a
-    // retry of the transaction so a retry never takes a second number.
-    let formNumber: number | null = null;
-    const result = await unitOfWork(async (session) => {
-      const asset = await this.loadForTransition(assetId, scope, session);
-      await this.assertNoActiveMaintenance(asset, 'transfer', session);
-      const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
-      if (open === null) {
-        throw new ConflictError(
-          `asset ${asset.assetCode} is not currently assigned; assign it rather than transferring it`,
-        );
-      }
-      if (at.getTime() < open.assignedAt.getTime()) {
-        throw new BusinessRuleError('the transfer cannot precede the assignment it closes');
-      }
+    const prepared = await this.prepareTransfer(assetId, input);
+    const result = await unitOfWork((session) =>
+      this.transferInSession({ assetId, input, at, prepared }, ctx, scope, session),
+    );
 
-      const toEmployeeId = input.toEmployeeId ?? String(open.assignedToEmployeeId);
-      const toBranchId = input.toBranchId ?? String(asset.branchId);
-      const sameHolder = toEmployeeId === String(open.assignedToEmployeeId);
-      const sameBranch = toBranchId === String(asset.branchId);
-      if (sameHolder && sameBranch) {
-        throw new BusinessRuleError(
-          'a transfer must change the holder, the branch, or both — this changes neither',
-        );
-      }
-      // Only a transfer that HANDS the asset to somebody new is a hand-over. Moving it across
-      // branches in the same hands gives nobody anything, even when those hands have since left:
-      // the return is still owed, and refusing the move would not bring it any closer.
-      if (!sameHolder) refuseLeaver(named?.employee ?? null);
-      // A new holder signs a new receipt (FR-18); the same holder moving branch is still bound by
-      // the paper they already signed, so the next interval carries it over.
-      const receiptId = sameHolder ? (open.receiptId ?? null) : new Types.ObjectId();
-
-      // Close the current interval. `returnedAt` is what makes it closed, so the partial unique
-      // index releases immediately and the new interval can be inserted in the same transaction.
-      await itAssetAssignmentRepository.updateById(
-        String(open._id),
-        {
-          returnedAt: at,
-          returnedToUserId: new Types.ObjectId(ctx.userId),
-          conditionOnReturn: input.conditionOnReturn ?? null,
-        },
-        { by: ctx.userId, version: open.__v, session },
-      );
-
-      const next = await itAssetAssignmentRepository.create(
-        {
-          assetId: new Types.ObjectId(assetId),
-          assignedToEmployeeId: new Types.ObjectId(toEmployeeId),
-          assignedByUserId: new Types.ObjectId(ctx.userId),
-          assignedAt: at,
-          conditionOnIssue: input.conditionOnIssue ?? null,
-          expectedReturnAt: input.expectedReturnAt ?? null,
-          returnedAt: null,
-          returnedToUserId: null,
-          conditionOnReturn: null,
-          notes: input.notes ?? null,
-          branchId: new Types.ObjectId(toBranchId),
-          receiptId,
-        },
-        { by: ctx.userId, session },
-      );
-
-      if (!sameHolder && receiptId !== null && named !== null) {
-        formNumber ??= await receiptNumberFor(input.formNumber);
-        await claimReceiptNumber(formNumber, session);
-        await itCustodyReceiptRepository.create(
-          {
-            _id: receiptId,
-            formNumber,
-            employeeId: new Types.ObjectId(toEmployeeId),
-            ...signer(named),
-            issuedAt: at,
-            issuedByUserId: new Types.ObjectId(ctx.userId),
-            branchId: new Types.ObjectId(toBranchId),
-            lines: [
-              {
-                assetId: asset._id,
-                assignmentId: next._id,
-                assetCode: asset.assetCode,
-                name: asset.name,
-                serialNumber: asset.serialNumber,
-                conditionOnIssue: input.conditionOnIssue ?? null,
-                notes: input.notes ?? null,
-                ...receiptDeviceFields(asset, deviceTypes),
-              },
-            ],
-            signedCopy: null,
-          },
-          { by: ctx.userId, session },
-        );
-        await auditReceiptIssued(receiptId, toEmployeeId, [asset.assetCode]);
-      }
-
-      // `branchId` is the asset's data-scope anchor and the design says it changes ONLY here.
-      const updated = await itAssetRepository.updateById(
-        assetId,
-        {
-          status: 'assigned',
-          currentAssignmentId: next._id,
-          branchId: new Types.ObjectId(toBranchId),
-        },
-        { by: ctx.userId, version: asset.__v, session, scope },
-      );
-
-      await this.writeHistory(
-        {
-          assetId,
-          type: 'transferred',
-          at,
-          metadata: {
-            fromEmployeeId: String(open.assignedToEmployeeId),
-            toEmployeeId,
-            fromBranchId: String(asset.branchId),
-            toBranchId,
-            assignmentId: String(next._id),
-            ...(receiptId === null ? {} : { receiptId: String(receiptId) }),
-          },
-          notes: input.notes ?? null,
-        },
-        ctx,
-        session,
-      );
-
-      await auditService.record({
-        entityRef: entityRef(assetId),
-        action: 'transfer',
-        changes: [
-          change('holder', String(open.assignedToEmployeeId), toEmployeeId),
-          change('branchId', String(asset.branchId), toBranchId),
-        ],
-      });
-
-      return {
-        asset: updated,
-        assignment: next,
-        fromEmployeeId: String(open.assignedToEmployeeId),
-        toEmployeeId,
-        fromBranchId: String(asset.branchId),
-        toBranchId,
-      };
-    });
-
-    await emit(ItEvents.AssetTransferred, {
-      assetId,
-      assetCode: result.asset.assetCode,
-      fromEmployeeId: result.fromEmployeeId,
-      toEmployeeId: result.toEmployeeId,
-      fromBranchId: result.fromBranchId,
-      toBranchId: result.toBranchId,
-    });
+    // After the commit: the receipt's row (a new holder's), then the transfer's, then the event.
+    for (const entry of result.audits) await auditService.record(entry);
+    await emit(ItEvents.AssetTransferred, result.event);
     return { asset: result.asset, assignment: result.assignment };
+  }
+
+  /**
+   * Where «نقل إلى فرع» — and the consumables' «تحويل إلى فرع», which rides the same grant — may go
+   * for this caller: every active branch of the organisation their `itAsset.assign` reaches as a
+   * whole (`moveTargetBranchIds`). The same branch list and the same test `moveToBranch` and the
+   * transfer apply to the branch they are given, so a picker built from it offers nothing either
+   * would refuse. In the branch options' order (by code).
+   */
+  async moveTargets(ctx: AuthContext): Promise<ItMoveTargetsDto> {
+    const branches = await branchRepository.listAll();
+    return {
+      branchIds: moveTargetBranchIds(
+        ctx,
+        branches.map((branch) => ({ id: String(branch._id), status: branch.status })),
+      ),
+    };
+  }
+
+  /**
+   * «نقل إلى فرع» — «عايز إمكانية نقل أصل … إلى فرع تاني»: every asset named, to ONE branch, at once
+   * («فوراً» — no «in transit», nothing to confirm at the other end) and with no paper («لا، السجل
+   * كفاية» — the history is the record), in ONE transaction: all of them move, or none does.
+   *
+   *   · in stock → its branch is the target's, and its `location` is cleared — a location names a
+   *     place inside the branch it left; one `transferred` entry naming the two branches and nobody;
+   *   · held → «ينتقل مع عهدته»: exactly the custody transfer to a new branch in the same hands
+   *     (`transferInSession`) — the open interval closed, the next opened in the new branch for the
+   *     same holder on the receipt they already signed, its due date, condition and notes carried
+   *     over — its location cleared the same way, and the move's notes on its history entry alone.
+   *     The holder is not refused for having left: a same-hands move hands nobody anything.
+   *
+   * Every asset is read under the caller's `itAsset.assign` scope — one they cannot see is a 404
+   * for the whole request — and the target must be a live branch their `itAsset.assign` reaches.
+   * Refused, naming every asset that holds the move back (`assetMoveRefusalError`): a disposed
+   * asset, one under maintenance (its status, or an open order), one already there, a held one
+   * whose custody began after the move's date. Each write is conditional on the version read in the
+   * same transaction, so a concurrent edit rolls the whole move back. The audit rows and the events
+   * follow the commit, in the order the request named the assets.
+   */
+  async moveToBranch(
+    input: MoveItAssetsToBranch,
+    ctx: AuthContext,
+    scope: ScopeSelector,
+  ): Promise<ItAssetsBranchMoveResultDto> {
+    // An id as the database spells it, once, and only this from here on: `objectId()` admits
+    // upper-case hex, and an upper-case copy of an asset's own branch must read as «already there»
+    // — not slip past it and write a move from a branch to itself.
+    const toBranchId = input.toBranchId.toLowerCase();
+    if (!keyReachesBranch(ctx, 'itAsset.assign', toBranchId)) {
+      throw new ForbiddenError('itAsset.assign does not reach this branch');
+    }
+    const branch = await branchRepository.findById(toBranchId);
+    if (branch === null || branch.status !== 'active') {
+      throw new ValidationError([
+        { field: 'body.toBranchId', code: 'UNKNOWN', message: 'branch not found or inactive' },
+      ]);
+    }
+    const at = input.at ?? new Date();
+    const notes = input.notes ?? null;
+    // Nobody new is named, so a held asset's transfer asks HR nothing and prints no paper: one
+    // preparation does for every asset of the move.
+    const prepared: TransferPreparation = { named: null, deviceTypes: new Map(), formNumber: null };
+
+    const done = await unitOfWork(async (session) => {
+      // 1. Every asset, under the caller's scope and in this transaction — any one missing is the
+      //    request's 404 — and every refusal at once, before anything is written.
+      const assets: ItAssetDoc[] = [];
+      for (const assetId of input.assetIds) {
+        assets.push(await itAssetRepository.getByIdForUpdate(assetId, scope, session));
+      }
+      const refused: { assetCode: string; reason: AssetMoveRefusal }[] = [];
+      for (const asset of assets) {
+        const assetId = String(asset._id);
+        // A held asset's open interval, read here so a move dated before it began is refused with
+        // the others, naming the asset — `transferInSession` still guards it, one asset at a time.
+        const open =
+          asset.status === 'assigned'
+            ? await itAssetAssignmentRepository.findOpenForAsset(assetId, session)
+            : null;
+        const reason = assetMoveRefusal(
+          {
+            status: asset.status,
+            branchId: String(asset.branchId),
+            activeMaintenance:
+              asset.status !== 'disposed' &&
+              (await itMaintenanceOrderRepository.hasActiveForAsset(assetId, session)),
+            heldSince: open?.assignedAt ?? null,
+          },
+          toBranchId,
+          at,
+        );
+        if (reason !== null) refused.push({ assetCode: asset.assetCode, reason });
+      }
+      const refusal = assetMoveRefusalError(refused);
+      if (refusal !== null) throw refusal;
+
+      // 2. Each asset as its state says, in request order.
+      const outcomes: MoveOutcome[] = [];
+      for (const asset of assets) {
+        const assetId = String(asset._id);
+        if (asset.status === 'assigned') {
+          const outcome = await this.transferInSession(
+            // The branch alone: the move names no custody fact, so the holder's stay as they are.
+            { assetId, input: { toBranchId }, at, prepared, move: { notes } },
+            ctx,
+            scope,
+            session,
+          );
+          outcomes.push({
+            assetCode: asset.assetCode,
+            fromBranchId: outcome.fromBranchId,
+            holderEmployeeId: outcome.holderEmployeeId,
+            audits: outcome.audits,
+            event: outcome.event,
+          });
+          continue;
+        }
+
+        const fromBranchId = String(asset.branchId);
+        const location = asset.location ?? null;
+        await itAssetRepository.updateById(
+          assetId,
+          { branchId: new Types.ObjectId(toBranchId), location: null },
+          { by: ctx.userId, version: asset.__v, session, scope },
+        );
+        // A branch-only transfer: no employee keys — the history list and the dashboard already
+        // read such an entry as the two branches and nobody (the go-live's branch step writes it).
+        await this.writeHistory(
+          {
+            assetId,
+            type: 'transferred',
+            at,
+            metadata: { fromBranchId, toBranchId },
+            notes,
+          },
+          ctx,
+          session,
+        );
+        outcomes.push({
+          assetCode: asset.assetCode,
+          fromBranchId,
+          holderEmployeeId: null,
+          audits: [
+            {
+              entityRef: entityRef(assetId),
+              action: 'transfer',
+              changes: [
+                change('branchId', fromBranchId, toBranchId),
+                ...(location === null ? [] : [change('location', location, null)]),
+              ],
+            },
+          ],
+          event: {
+            assetId,
+            assetCode: asset.assetCode,
+            fromEmployeeId: null,
+            toEmployeeId: null,
+            fromBranchId,
+            toBranchId,
+          },
+        });
+      }
+      return outcomes;
+    });
+
+    // After the commit, in request order: the trail (and through it the refresh of anybody looking
+    // at the register), then the platform's events.
+    await auditService.recordMany(done.flatMap((outcome) => outcome.audits));
+    for (const outcome of done) await emit(ItEvents.AssetTransferred, outcome.event);
+    return assetsBranchMoveResult(
+      toBranchId,
+      done.map((outcome) => ({
+        assetId: outcome.event.assetId,
+        assetCode: outcome.assetCode,
+        fromBranchId: outcome.fromBranchId,
+        toBranchId,
+        holderEmployeeId: outcome.holderEmployeeId,
+      })),
+    );
   }
 
   /**

@@ -11,6 +11,7 @@ import {
 } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 import { memoisedVehicleIds } from './vehicle-filter-memo';
+import { anyVehicleCode } from './vehicle-code-match';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
 
 /**
@@ -230,6 +231,21 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * `codesByIds` for the LIVE cars only (not soft-deleted, any status) — for a list that offers
+   * cars to act on, where a deleted car would be offered and then refused (its `getById` is 404).
+   * History keeps reading `codesByIds`, which a deleted car still answers.
+   */
+  async liveCodesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .select({ code: 1 })
+      .lean<{ _id: Types.ObjectId; code: string }[]>()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.code]));
+  }
+
+  /**
    * «ضيف عمود فى الجدول ب نوع التشغيل» — the car's «التشغيل», for the visits on one page.
    *
    * The same one-lookup-per-page shape as `codesByIds`: a workshop visit does not carry its car's
@@ -249,6 +265,24 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         String(row._id),
         row.operationId == null ? null : String(row.operationId),
       ]),
+    );
+  }
+
+  /**
+   * «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه» — the car's «الفرع», for the
+   * visits on one page: the same one-lookup shape as `operationIdsByIds`, deleted cars included (a
+   * scrapped car's visits are still history, and its branch is still the one `idsInBranches`
+   * files them under). A car with no branch on file maps to `null`.
+   */
+  async branchIdsByIds(ids: readonly string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ branchId: 1 })
+      .lean<{ _id: Types.ObjectId; branchId?: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [String(row._id), row.branchId == null ? null : String(row.branchId)]),
     );
   }
 
@@ -436,6 +470,25 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * Every ACTIVE live car the maintenance alarm projects (FR-3) — its id, code and make, nothing
+   * else — in ONE read.
+   *
+   * It used to page through `list()` a hundred cars at a time: one round trip per page, each with a
+   * `countDocuments` beside it that nobody read, and every field of every car carried across to use
+   * three. Unpaged on purpose — the projection is the whole active fleet by definition, a few hundred
+   * rows of three fields. In `list()`'s own default order (newest first, `_id` closing a tie), so the
+   * projection's rows come back in the order they always have.
+   */
+  async activeForAlarm(): Promise<{ _id: Types.ObjectId; code: string; typeId: Types.ObjectId }[]> {
+    return this.model
+      .find(this.baseFilter(undefined, { status: 'active' }))
+      .select({ code: 1, typeId: 1 })
+      .sort({ createdAt: -1, _id: -1 })
+      .lean<{ _id: Types.ObjectId; code: string; typeId: Types.ObjectId }[]>()
+      .exec();
+  }
+
+  /**
    * The ids of every vehicle whose CODE contains `term`, case-insensitively.
    *
    * The screens that file paperwork against a car — accidents, maintenance — store the car by id
@@ -514,7 +567,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
 
   private async readIdsByCodes(codes: readonly string[]): Promise<string[]> {
     const rows = await this.model
-      .find({ code: { $in: [...codes] } })
+      // «كورولا 1» is the stored «كورولا 1 » and «mg 2» the stored «MG 2» — `vehicle-code-match.ts`.
+      .find({ code: anyVehicleCode(codes) })
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => String(row._id));
+  }
+
+  /**
+   * The ids of the LIVE cars (not soft-deleted) carrying these codes — the odometer and
+   * maintenance registers' code filter, which has always left a deleted car out. Unpaginated: a
+   * page sized to the number of codes would cut a code that two stored spellings answer.
+   */
+  async liveIdsByCodes(codes: readonly string[]): Promise<string[]> {
+    if (codes.length === 0) return [];
+    const rows = await this.model
+      .find({ isDeleted: false, code: anyVehicleCode(codes) })
       .select({ _id: 1 })
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
@@ -629,9 +698,10 @@ export const vehicleListFilter = (
     clauses.push({ [field]: { $in: values.map((id) => new Types.ObjectId(id)) } });
   }
   // The vehicle-code picker: the cars named EXACTLY, ORed. Exact where `search` is substring,
-  // because a checkbox can only mean the code it ticks. A code no car carries leaves an empty
-  // `$in`, which matches nothing — the honest answer to a pick the registry does not have.
-  if (query.vehicleCodes !== undefined) clauses.push({ code: { $in: [...query.vehicleCodes] } });
+  // because a checkbox can only mean the code it ticks — exact up to whitespace and Latin case
+  // (`anyVehicleCode`), so a picked «فورتشنر 2» is the stored «فورتشنر 2 ». A code no car carries
+  // matches nothing — the honest answer to a pick the registry does not have.
+  if (query.vehicleCodes !== undefined) clauses.push({ code: anyVehicleCode(query.vehicleCodes) });
   // Per-identifier narrowing, ANDed with everything else — see `vehicleIdentifierFilter`.
   for (const [value, field] of [
     [query.code, 'code'],

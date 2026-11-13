@@ -62,7 +62,7 @@ export const registerAuthSettings = (): void => {
   declareSetting({
     key: SettingKeys.PasskeysEnabled,
     description:
-      'Allow sign-in with a passkey (fingerprint / Face ID) — ADR-035. Off refuses every passkey route.',
+      'Allow sign-in with a passkey (fingerprint / Face ID) — ADR-035, ADR-036. Off refuses signing in, adding and renaming; people can still list and remove their own.',
     schema: z.boolean(),
     defaultValue: true,
     allowedScopes: ['organization'],

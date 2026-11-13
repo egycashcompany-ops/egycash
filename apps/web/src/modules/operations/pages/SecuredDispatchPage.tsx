@@ -1,247 +1,235 @@
-// Secured delivery: assign and dispatch (B4) — the legacy `/tash4ela_mohasana` and
-// `/deliver_mohsana` screens, which read the SAME list and differ only in what they do to it.
+// «محصنات الخزينة» (Round 12 — was «صرف الخزينة»): every محصنة in the vault right now, to LOOK at.
+// The legacy `/tash4ela_mohasana` and `/deliver_mohsana` screens read this list to crew and release
+// it; the owner moved both acts off it: «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة وتكون وظيفتها
+// انها بتعرض اللى موجود دلوقتى فى الخزنة». Crewing is now «توزيع المحصنات» (the day's vans, a محصنة
+// dragged onto one — `SecuredDistributionPage.tsx`) and the release «تسليم المحصنات» (each van's load
+// handed over — `VaultHandoverPage.tsx`): «المحصنة اللى يومها هتخرج هتظهر تلقائى فى شاشة توزيع
+// المحصنات … ولما يحفظ نفس الشاشة هنعمل زيها للخزنة هيكون فوق كل عربيه تسليم وطباعه». So this screen
+// is VIEW ONLY — no crew, no release, no ticks, and no cancelled receipt either (that stays on the
+// secured screen, where every open محصنة — those in the vault among them — is listed). The route
+// stays `/operations/vault/dispatch` (a bookmark keeps working), and so do both endpoints.
 //
-// WHAT THE TWO LEGACY SCREENS WERE (discovery §7.1, §7.3, §7.4):
-//   · `/tash4ela_mohasana` (:4380-4499) — assign a captain and vehicle to each due shipment. It
-//     wrote exactly `leader2` + `car_num2` and NOTHING else: assignment never changed status.
-//   · `/deliver_mohsana` (:1624-1750) — release the load. It set `car_status: 1` on the crew row
-//     and `status: 3` on each shipment, with NO transaction and NO check that the shipment was
-//     actually in the vault. A partial failure left mixed state (quirk Q18).
+// WHAT IT SHOWS — Round 10's list, unchanged («كله يبقى موجود فى تاريخ يتفلتر»):
 //
-// Both filters were `$nin:[0,1,3]` — effectively "in the vault" — plus the delivery date
-// (:1690/:4450). That `$nin` also matched documents MISSING the field entirely, a real quirk
-// (Q9), normalized here to an explicit held-and-due query on the server.
+//   · THE LIST is the server's (`GET /operations/secured/dispatch-board`): every محصنة the vault
+//     holds, whatever its delivery day. Delivery day ascending, so the LATE ones lead; the board
+//     keeps that order (it never re-sorts);
+//   · THE DAY is a filter, not the screen: ONE optional delivery-day picker at the date column's
+//     place in the bar. Empty is every shipment in the vault — the screen opens on that; a day
+//     narrows it to that day's deliveries (`?date=`, left out of the request when empty — the server
+//     refuses an empty `date=`);
+//   · THE LOOK is the secured screen's (`components/ShipmentsBoard.tsx`, `kind="secured"`): the
+//     figures over the rows shown with their «عملات أخرى», the one-row dark filter bar, the dark
+//     table with «تاريخ الاستلام» beside «تاريخ التسليم», the stage badges («بالخزينة», green, as on
+//     every board), the van and captain hover cards, «السجل», the receipt image, paging;
+//   · LATE / DUE TODAY are marked under «تاريخ التسليم» — «متأخرة» in red, «تسليمها اليوم» in amber
+//     — and counted in the toolbar, over the rows shown, as the figures are. A mark, not a row
+//     colour: the row's colour is the stage's on every board («بالخزينة» green), and a second
+//     meaning for a colour would make the boards disagree. Judged on the SERVER's day
+//     (`dispatchDue`), the one it sorted by;
+//   · under each «بالخزينة», since when («منذ …»): how long it has waited in the vault.
 //
-// One screen, because they are one workflow over one list: assign each shipment its crew, then
-// release what a vehicle is carrying. Dispatch is now ONE transaction (Q18 NORMALIZE) and refuses
-// a shipment that never reached the vault.
-import { useMemo, useState } from 'react';
+// And what it does not: no «إضافة», no edit, no delete, no receipt-photo change — every row here is
+// LOCKED (the vault has received it), and the screen offers none of them (`canEditRows={false}`).
+// The one thing a reader may still open on a row is «السجل», its story — a view, like the screen.
+//
+// WHO READS IT. The screen and its list are the vault's grant (`operationsVault.view`). A treasurer
+// holding only the vault's grants hears the vault custody topic — receipts, cancelled receipts,
+// releases — but not the crew Operations assigns on «توزيع المحصنات» (a shipment topic), which the
+// rows' van and captain show: the list re-reads itself every minute for such a reader, as the
+// receive queue does.
+import { type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type OperationsShipmentDto } from '@ecms/contracts';
+import {
+  OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
+  type OperationsSecuredDispatchRowDto,
+  type OperationsSecuredStage,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Button } from '../../../shared/ui/Button';
-import { Card, CardBody } from '../../../shared/ui/Card';
-import { Input, Select } from '../../../shared/ui/form';
-import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatAmount } from '../../../shared/lib/format';
+import { PageContainer } from '../../../platform/layout/PageContainer';
+import { cn } from '../../../shared/lib/cn';
+import { formatNumber } from '../../../shared/lib/format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAppSelector } from '../../../store';
+import { NUM } from '../../fleet/components/FuelCardBoard';
+import { useOperationsSecuredDispatchBoard } from '../api/operations-queries';
+import { ShipmentsBoard } from '../components/ShipmentsBoard';
 import {
-  useAssignSecuredDelivery,
-  useDispatchSecured,
-  useOperationsBanks,
-  useOperationsCrewBoard,
-  useOperationsCrewDirectory,
-  useOperationsCurrencies,
-  useSecuredDue,
-} from '../api/operations-queries';
-import { totalsByCurrency } from '../lib/day-board';
-import { dispatchCrewOptions, findDispatchOption } from '../lib/dispatch-crew';
-import { ShipmentStatusBadge } from '../components/ShipmentBadges';
+  dispatchDue,
+  dispatchDueCounts,
+  readDispatchDate,
+  type DispatchDue,
+} from '../lib/secured-dispatch';
+import { isHistoryTooLarge } from '../lib/shipment-history';
+import { cairoStamp, ltrIsolate } from '../lib/shipment-log';
 
-/** The due list is keyed on a REQUIRED delivery date — unlike the backlog, this is a day's work. */
-export const resolveDueDate = (raw: string | null): string =>
-  raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().slice(0, 10);
+/**
+ * Remembered across visits: the filters the secured board reads (`boardFilterParams('secured')` —
+ * day-board-filters.spec holds the two together), and NOT the delivery day. The screen IS the
+ * vault's whole contents; a day looked at once is not where the next visit starts.
+ */
+const REMEMBERED_FILTERS = [
+  'vehicle',
+  'bank',
+  'origin',
+  'destination',
+  'area',
+  'captain',
+  'stage',
+  'notes',
+] as const;
+
+/**
+ * The stages «الحالة» offers — the one a row here can be in: every row is IN the vault (the server
+ * lists status `inVault` only). Offering one it can never hold would only ever empty the table.
+ */
+const DISPATCH_STAGES: readonly OperationsSecuredStage[] = ['inVault'];
+
+/** The mark under «تاريخ التسليم» — a small pill in the row, red when late, amber when due today. */
+const DUE_MARK =
+  'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-px text-[10px] font-black ring-1 ring-inset';
+const DUE_TONE: Record<DispatchDue, string> = {
+  overdue:
+    'bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-400/40',
+  today:
+    'bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-300/40',
+};
+const DUE_KEY: Record<DispatchDue, string> = {
+  overdue: 'operations.secured.dispatch.overdue',
+  today: 'operations.secured.dispatch.dueToday',
+};
+/** The toolbar's count of each mark: its swatch, its words, how many of the rows shown wear it. */
+const DUE_SWATCH: Record<DispatchDue, string> = {
+  overdue: 'bg-rose-400 dark:bg-rose-400',
+  today: 'bg-amber-400 dark:bg-amber-300',
+};
+/** In the toolbar's own shape — «الإحصائيات»'s height, corners and type, the figures' face. */
+const LEGEND_CHIP =
+  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-bold text-slate-600 sm:px-3 sm:py-2 sm:text-xs dark:border-slate-800 dark:bg-[#111827] dark:text-slate-300';
 
 export const SecuredDispatchPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((s) => s.locale.locale);
-  const [sp, setSp] = useSearchParams();
-  const date = resolveDueDate(sp.get('date'));
+  const search = useSearchParams();
+  const [sp, setSp] = search;
 
-  const due = useSecuredDue(date);
-  const board = useOperationsCrewBoard(date);
-  const directory = useOperationsCrewDirectory(date);
-  const banks = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE });
-  const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
-  const assign = useAssignSecuredDelivery();
-  const dispatch = useDispatchSecured();
-
-  const canAssign = can('operationsShipment.edit');
-  const canDispatch = can('operationsVault.dispatch');
-
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  /** One (crew row, captain) pair — a crew may now hold two captains and a leg holds one. */
-  const [crewKey, setCrewKey] = useState('');
-
-  // Only vehicles that HAVE a captain can carry a secured load — the delivery leg needs a captain.
-  const crews = useMemo(() => dispatchCrewOptions(board.data?.rows ?? []), [board.data]);
-  const chosen = findDispatchOption(crews, crewKey);
-  const captainOf = (employeeId: string | null | undefined): string =>
-    directory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? '—';
-
-  const shipments = due.data ?? [];
-
-  const assignOne = async (shipment: OperationsShipmentDto): Promise<void> => {
-    if (chosen === undefined) {
-      toast.error(t('operations.secured.dispatch.pickCrew'));
-      return;
-    }
-    try {
-      await assign.mutateAsync({
-        id: shipment.id,
-        body: {
-          // The crew ROW is the legacy tashghela row; the captain comes from it, never typed.
-          // `crew.id` and NOT `fleetDutyAssignmentId`: the latter belongs to Fleet's duty
-          // collection, and sending it made the server look for a crew row that cannot exist.
-          crewAssignmentId: chosen.crewAssignmentId,
-          captainEmployeeId: chosen.captainEmployeeId,
-          version: shipment.version,
-        },
-      });
-      toast.success(t('operations.secured.dispatch.assigned'));
-    } catch {
-      toast.error(t('operations.secured.dispatch.assignFailed'));
-    }
+  // The delivery day, when one is asked for — none is every day the vault holds.
+  const date = readDispatchDate(sp.get('date'));
+  const setDate = (value: string): void => {
+    const next = new URLSearchParams(sp);
+    // Emptied, the screen goes back to every shipment in the vault.
+    if (value === '') next.delete('date');
+    else next.set('date', value);
+    setSp(next);
   };
 
-  const release = async (): Promise<void> => {
-    if (selected.size === 0 || chosen === undefined) return;
-    if (!window.confirm(t('operations.secured.dispatch.confirm', { count: selected.size }))) return;
-    try {
-      // The release is addressed to the crew ROW — the whole vehicle leaves the vault, whichever
-      // of its captains the legs were assigned to.
-      await dispatch.mutateAsync({
-        crewAssignmentId: chosen.crewAssignmentId,
-        shipmentIds: [...selected],
-      });
-      toast.success(t('operations.secured.dispatch.done', { count: selected.size }));
-      setSelected(new Set());
-    } catch {
-      // The domain refuses a shipment that never reached the vault — the check legacy lacked.
-      toast.error(t('operations.secured.dispatch.failed'));
-    }
+  // A reader without the shipment grant hears no crew assigned: the list re-reads itself for them.
+  const board = useOperationsSecuredDispatchBoard(date, true, !can('operationsShipment.view'));
+
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+
+  // More shipments in the vault than one screen may show is REFUSED by the server, never cut
+  // short — said in the table's place, with what narrows it (a delivery day). A refused refetch
+  // keeps its last answer beside the error: neither its rows, its figures nor its counts are shown.
+  const tooLarge = isHistoryTooLarge(board.error);
+  const refusal = tooLarge
+    ? t('operations.secured.dispatch.tooLarge', {
+        max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
+      })
+    : null;
+  const loaded = !tooLarge && board.data !== undefined;
+  // The server's day — the one it judged «late» by and sorted on (`dispatchDue`).
+  const today = board.data?.today.slice(0, 10) ?? null;
+
+  /** «متأخرة» / «تسليمها اليوم» under the row's delivery day. */
+  const deliveryNote = (row: OperationsSecuredDispatchRowDto): ReactNode => {
+    const due = today === null ? null : dispatchDue(row, today);
+    return due === null ? null : (
+      <span data-dispatch-due={due} className={cn(DUE_MARK, DUE_TONE[due])}>
+        {t(DUE_KEY[due])}
+      </span>
+    );
   };
 
-  const columns: Column<OperationsShipmentDto>[] = [
-    {
-      key: 'select',
-      header: '',
-      render: (row) => (
-        <input
-          type="checkbox"
-          className="h-4 w-4"
-          aria-label={`${t('operations.secured.dispatch.select')} ${row.id}`}
-          checked={selected.has(row.id)}
-          disabled={!canDispatch}
-          onChange={(e) =>
-            setSelected((prev) => {
-              const next = new Set(prev);
-              if (e.target.checked) next.add(row.id);
-              else next.delete(row.id);
-              return next;
-            })
-          }
-        />
-      ),
-    },
-    {
-      key: 'bank',
-      header: t('operations.shipment.mainBank'),
-      render: (row) => banks.data?.items.find((b) => b.id === row.mainBankId)?.opsName ?? '—',
-    },
-    {
-      key: 'amount',
-      header: t('operations.shipment.amount'),
-      render: (row) => (
-        <div className="space-y-0.5">
-          {totalsByCurrency(row).map((total) => (
-            <div key={total.currencyId} className="whitespace-nowrap tabular-nums">
-              {formatAmount(total.amount, locale)}{' '}
-              {currencies.data?.items.find((c) => c.id === total.currencyId)?.name ?? ''}
-            </div>
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: 'status',
-      header: t('operations.common.status'),
-      render: (row) => <ShipmentStatusBadge status={row.status} />,
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (row) =>
-        canAssign ? (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={chosen === undefined || assign.isPending}
-            onClick={() => void assignOne(row)}
-          >
-            {t('operations.secured.dispatch.assign')}
-          </Button>
-        ) : null,
-    },
-  ];
+  /**
+   * Since when it has been in the vault, under «بالخزينة» — «منذ 2026-11-08», the Cairo day: how long
+   * it has waited is what the screen is read for, not the minute it came in.
+   */
+  const statusNote = (row: OperationsSecuredDispatchRowDto): ReactNode =>
+    row.vaultReceivedAt === null ? null : (
+      <span
+        data-dispatch-received={row.id}
+        className="block whitespace-nowrap text-[11px] text-slate-500 dark:text-slate-400"
+      >
+        {t('operations.secured.dispatch.inVaultSince', {
+          at: ltrIsolate(cairoStamp(row.vaultReceivedAt).day),
+        })}
+      </span>
+    );
+
+  // How many of the rows shown are late, and how many go out today — once there are rows to count;
+  // never beside a refusal. The screen's only toolbar controls: there is nothing to DO here.
+  const toolbar = (shown: readonly OperationsSecuredDispatchRowDto[]): ReactNode => {
+    const counts = today === null ? null : dispatchDueCounts(shown, today);
+    return loaded && counts !== null
+      ? (['overdue', 'today'] as const).map((due) => (
+          <span key={due} data-dispatch-legend={due} className={LEGEND_CHIP}>
+            <span
+              aria-hidden
+              className={cn('h-2.5 w-2.5 shrink-0 rounded-full', DUE_SWATCH[due])}
+            />
+            {t(DUE_KEY[due])}
+            <span className={cn('font-black text-slate-900 dark:text-white', NUM)}>
+              {formatNumber(counts[due], locale)}
+            </span>
+          </span>
+        ))
+      : null;
+  };
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('operations.secured.dispatch.title')}
-        actions={
-          canDispatch ? (
-            <Button
-              disabled={selected.size === 0 || chosen === undefined || dispatch.isPending}
-              onClick={() => void release()}
-            >
-              {t('operations.secured.dispatch.release', { count: selected.size })}
-            </Button>
-          ) : undefined
-        }
-      />
-
-      <Card className="mb-4">
-        <CardBody className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">
-              {t('operations.shipment.deliveryDate')}
-            </span>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                const next = new URLSearchParams(sp);
-                next.set('date', e.target.value);
-                setSp(next);
-              }}
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-slate-500">
-              {t('operations.secured.dispatch.vehicle')}
-            </span>
-            <Select value={crewKey} onChange={(e) => setCrewKey(e.target.value)}>
-              <option value="">{t('common.select')}</option>
-              {/* A two-captain vehicle appears TWICE, once per captain — the operator names who is
-                  answerable for the leg rather than the screen guessing. */}
-              {crews.map((crew) => (
-                <option key={crew.key} value={crew.key}>
-                  {crew.vehicleCode} — {captainOf(crew.captainEmployeeId)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          {crews.length === 0 && !board.isLoading && (
-            <p className="text-sm text-amber-700 dark:text-amber-400">
-              {t('operations.secured.dispatch.noCrew')}
-            </p>
-          )}
-        </CardBody>
-      </Card>
-
-      <DataTable
-        columns={columns}
-        rows={shipments}
-        rowKey={(row) => row.id}
-        loading={due.isLoading}
-        error={due.error}
-        onRetry={() => void due.refetch()}
-        empty={t('operations.secured.dispatch.empty')}
+    <PageContainer fullHeight>
+      <ShipmentsBoard
+        search={search}
+        shipments={tooLarge ? [] : (board.data?.shipments ?? [])}
+        crews={tooLarge ? [] : (board.data?.crews ?? [])}
+        loaded={loaded}
+        loading={board.isLoading}
+        error={tooLarge ? null : board.error}
+        onRetry={() => void board.refetch()}
+        // «كله يبقى موجود فى تاريخ يتفلتر»: ONE optional day, empty for every day in the vault.
+        datePickers={[
+          {
+            param: 'date',
+            label: t('operations.shipment.deliveryDate'),
+            // Empty is every day: the box says its name until a day is chosen.
+            optional: true,
+            value: date ?? '',
+            onChange: setDate,
+          },
+        ]}
+        periodActive={sp.get('date') !== null}
+        periodParams={['date']}
+        // «وظيفتها انها بتعرض اللى موجود دلوقتى فى الخزنة» — to look at: nothing is booked, delivered,
+        // edited, crewed or released from here (`rowAction` and `selection` are not handed in, and
+        // neither is the board's cancelled receipt).
+        canCreate={false}
+        canToggleReceived={false}
+        canEditRows={false}
+        kind="secured"
+        stages={DISPATCH_STAGES}
+        statusNote={statusNote}
+        deliveryNote={deliveryNote}
+        toolbarExtras={toolbar}
+        empty={t(
+          date === null
+            ? 'operations.secured.dispatch.emptyAll'
+            : 'operations.secured.dispatch.empty',
+        )}
+        refusal={refusal}
+        paged
       />
     </PageContainer>
   );

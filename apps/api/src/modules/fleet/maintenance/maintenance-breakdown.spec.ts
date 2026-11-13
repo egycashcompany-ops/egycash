@@ -82,11 +82,12 @@ beforeEach(() => {
     };
     return chain;
   }) as unknown as typeof FleetMaintenanceVisitModel.find);
-  // The registry: codes resolve through `list` (the screen's own way), the set through its resolvers.
-  vi.spyOn(fleetVehicleRepository, 'list').mockImplementation((async () => ({
-    items: [{ _id: CAR1 }, { _id: CAR2 }],
-    meta: { page: 1, pageSize: 2, totalItems: 2, totalPages: 1 },
-  })) as unknown as typeof fleetVehicleRepository.list);
+  // The registry: codes resolve through `liveIdsByCodes` (the screen's own way — the live cars,
+  // whitespace and Latin case aside), the set through its resolvers.
+  vi.spyOn(fleetVehicleRepository, 'liveIdsByCodes').mockResolvedValue([
+    String(CAR1),
+    String(CAR2),
+  ]);
   vi.spyOn(fleetVehicleRepository, 'idsWithTypes').mockResolvedValue([
     String(CAR1),
     String(CAR_GONE),

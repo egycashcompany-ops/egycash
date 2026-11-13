@@ -37,6 +37,7 @@ import { buildApplicationSectionsRouter } from './platform/application-sections'
 import { buildDepartmentApplicationsRouter } from './platform/department-applications';
 import { buildUserApplicationsRouter } from './platform/user-applications';
 import { buildMeRouter } from './platform/me';
+import { buildPresenceRouter } from './platform/presence';
 import { buildFeatureFlagsRouter, buildSettingsRouter } from './platform/settings';
 import {
   buildActivityLogsRouter,
@@ -166,6 +167,10 @@ export const buildApp = (): Express => {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
           'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
           'frame-src': ["'self'", 'blob:'],
+          // The HR photo's face finder runs as WebAssembly in the page (MediaPipe, served from this
+          // origin): compiling it needs 'wasm-unsafe-eval'. It allows WebAssembly only — JavaScript
+          // eval stays refused — and no script host is added.
+          'script-src': ["'self'", "'wasm-unsafe-eval'"],
         },
       },
     }),
@@ -211,6 +216,8 @@ export const buildApp = (): Express => {
   api.use('/platform/users', buildUsersRouter());
   api.use('/platform/users/:userId/applications', buildUserApplicationsRouter());
   api.use('/platform/me', buildMeRouter());
+  // Who is on the system now — the heartbeat every staff page sends, and the page that reads it.
+  api.use('/platform/presence', buildPresenceRouter());
   api.use('/platform/roles', buildRolesRouter());
   api.use('/platform/role-assignments', buildRoleAssignmentsRouter());
   api.use('/platform/permissions', buildPermissionsRouter());

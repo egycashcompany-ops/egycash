@@ -3,7 +3,10 @@
 //
 //   · a replenishment/maintenance write stales its own list, its done list AND its facets — the
 //     filter dropdowns are distinct values over the open rows, so opening or closing changes them;
-//     the open board is read WHOLE (every page, one cache entry), so the refresh re-reads it all;
+//     the open board is read WHOLE in one request (`GET …/board`), so the refresh re-reads it all.
+//     That is the actor's own write, refetched at once; ANOTHER desk's write reaches the board
+//     through realtime, debounced, and only marks the facets and the done lists stale
+//     (`platform/realtime/invalidator.ts`);
 //   · a mail DECISION stales maintenances too — accepting creates a maintenance row, and restoring
 //     an accepted mail removes it — and the unread badge, which is a count of pending tickets;
 //   · a machine-master write stales machines and the label lists it references — and, since a
@@ -382,24 +385,22 @@ export const atmBoardKeys = {
 
 /**
  * EVERY open operation the filters match — the board has no pager, and a busy day has more than
- * one page of them. Walked page by page into one cache entry (`lib/whole-board.ts`), so a refresh
- * (a write's own invalidation, or its realtime signal) re-reads the whole board. Exported as
+ * one page of them. ONE request (`GET /atm/{kind}/board`, 2026-11): the page walk it replaces
+ * (`lib/whole-board.ts`) cost a find and a count per page on the server, and was the API's busiest
+ * read. A refresh (a write's own invalidation, or its realtime signal) re-reads the whole board;
+ * TanStack's signal rides the request, so a superseded refresh stops on the wire. Exported as
  * options so the cache-layer spec runs the very query function the boards run.
  */
 export const atmOpenBoardQueries = {
   replenishments: (filters: AtmBoardFilters) => ({
     queryKey: atmBoardKeys.open('replenishments', filters),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) =>
-        api.listOpenReplenishments({ ...boardQuery(filters), page, pageSize }),
-      ),
+    queryFn: ({ signal }: { signal?: AbortSignal }) =>
+      api.replenishmentBoard(boardQuery(filters), signal),
   }),
   maintenances: (filters: AtmBoardFilters) => ({
     queryKey: atmBoardKeys.open('maintenances', filters),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) =>
-        api.listOpenMaintenances({ ...boardQuery(filters), page, pageSize }),
-      ),
+    queryFn: ({ signal }: { signal?: AbortSignal }) =>
+      api.maintenanceBoard(boardQuery(filters), signal),
   }),
 };
 
@@ -437,15 +438,20 @@ export const useAtmReplenishmentFacets = (banks: readonly string[]) =>
   useQuery(atmBoardFacetsQueries.replenishments(banks));
 
 /**
- * Every replenishment closed in a day range — WHOLE, like the boards (`lib/whole-board.ts`). The
- * page has no pager and asked for one page of a hundred, so on a busy range the rest were simply
- * not there; its sort and its Excel/PDF (2026-10-27) are about every closed row of the range.
+ * Every replenishment closed in a day range — WHOLE (`lib/whole-board.ts`). The page has no pager
+ * and asked for one page of a hundred, so on a busy range the rest were simply not there; its sort
+ * and its Excel/PDF (2026-10-27) are about every closed row of the range. The walk carries
+ * TanStack's signal, so a range left behind stops asking for pages.
  */
 export const useDoneAtmReplenishments = (range: { from: string; to: string }) =>
   useQuery({
     queryKey: listKey(MODULE, 'replenishments', { kind: 'done', whole: true, ...range }),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) => api.listDoneReplenishments({ ...range, page, pageSize })),
+    queryFn: ({ signal }) =>
+      fetchWholeBoard(
+        (page, pageSize, pageSignal) =>
+          api.listDoneReplenishments({ ...range, page, pageSize }, pageSignal),
+        signal,
+      ),
   });
 
 const invalidateReplenishments = (client: ReturnType<typeof useQueryClient>) =>
@@ -527,8 +533,12 @@ export const useAtmMaintenanceFacets = (banks: readonly string[]) =>
 export const useDoneAtmMaintenances = (range: { from: string; to: string }) =>
   useQuery({
     queryKey: listKey(MODULE, 'maintenances', { kind: 'done', whole: true, ...range }),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) => api.listDoneMaintenances({ ...range, page, pageSize })),
+    queryFn: ({ signal }) =>
+      fetchWholeBoard(
+        (page, pageSize, pageSignal) =>
+          api.listDoneMaintenances({ ...range, page, pageSize }, pageSignal),
+        signal,
+      ),
   });
 
 /** The leader list's entry — exported so the dialogs' specs fill exactly what they read. */
@@ -633,16 +643,22 @@ export const atmMailKeys = {
 export const usePendingAtmMailTickets = () =>
   useQuery({
     queryKey: atmMailKeys.pending(),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) => api.listPendingMailTickets({ page, pageSize })),
+    queryFn: ({ signal }) =>
+      fetchWholeBoard(
+        (page, pageSize, pageSignal) => api.listPendingMailTickets({ page, pageSize }, pageSignal),
+        signal,
+      ),
   });
 
 /** Every mail of a received-day range — whole, as the done pages read theirs, for the same filter. */
 export const useAtmMailLog = (range: { from: string; to: string }) =>
   useQuery({
     queryKey: atmMailKeys.log(range),
-    queryFn: () =>
-      fetchWholeBoard((page, pageSize) => api.listMailLog({ ...range, page, pageSize })),
+    queryFn: ({ signal }) =>
+      fetchWholeBoard(
+        (page, pageSize, pageSignal) => api.listMailLog({ ...range, page, pageSize }, pageSignal),
+        signal,
+      ),
   });
 
 /** The nav badge — refreshed on an interval, the port of every page's server-rendered count. */

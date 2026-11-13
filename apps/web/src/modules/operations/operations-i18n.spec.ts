@@ -10,6 +10,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
+  OPERATIONS_SECURED_PICKED_UP_BY,
+  OPERATIONS_SECURED_STAGES,
+  OPERATIONS_SHIPMENT_LEGS,
+  OPERATIONS_SHIPMENT_LOG_FIELDS,
+  OPERATIONS_SHIPMENT_LOG_KINDS,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
   type Locale,
@@ -62,6 +67,12 @@ const CATALOG_KEYS = [
   'operations.catalogs.currency.name',
   'operations.catalogs.currency.aliases',
   'operations.catalogs.currency.aliasesHint',
+  // Round 8 — the currencies dragged into order, as Fleet's catalogs are.
+  'operations.catalogs.currency.dragToOrder',
+  'operations.catalogs.currency.moveUp',
+  'operations.catalogs.currency.moveDown',
+  'operations.catalogs.currency.orderSaved',
+  'operations.catalogs.currency.orderHint',
 ];
 
 /** B2 — the daily board and the shipment form. */
@@ -70,7 +81,6 @@ const BOARD_KEYS = [
   'operations.cards.dailyOps',
   'operations.dailyOps.title',
   'operations.dailyOps.subtitle',
-  'operations.dailyOps.date',
   'operations.dailyOps.received',
   'operations.dailyOps.receivedYes',
   'operations.dailyOps.receivedNo',
@@ -103,7 +113,94 @@ const BOARD_KEYS = [
   'operations.shipment.deliveryDate',
   'operations.shipment.deliveryDateHint',
   'operations.shipment.notes',
-  'operations.shipment.serialTracked',
+  // («تتبّع أرقام الأوراق النقدية» left the form — «ومحتاج اشيل دا»; the log still names the field
+  // for old entries, `operations.shipment.log.field.serialTracked`, listed with the log below.)
+  'operations.board.title',
+  'operations.board.stats',
+  'operations.board.statsHide',
+  'operations.board.no',
+  'operations.board.vehicle',
+  'operations.board.bank',
+  'operations.board.captain',
+  'operations.board.date',
+  'operations.board.actions',
+  'operations.board.figures.count',
+  'operations.board.figures.countUnit',
+  'operations.catalogs.branch.duplicate',
+  'operations.catalogs.branch.sections.details',
+  'operations.catalogs.branch.sections.areas',
+  'operations.catalogs.branch.sections.location',
+  'operations.board.figures.otherCurrencies',
+  'operations.board.figures.otherCurrenciesHint',
+  'operations.board.figures.otherCurrenciesTitle',
+  'operations.board.figures.otherCurrenciesEmpty',
+  'operations.board.card.crewTitle',
+  'operations.board.card.drivers',
+  'operations.board.status.delivered',
+  'operations.board.status.notDelivered',
+  'operations.board.status.byCaptain',
+  'operations.board.status.byDesk',
+  'operations.board.receiptImage',
+  'operations.board.vehicleCode',
+  'operations.board.figures.otherCurrenciesSubtitle',
+  'operations.board.figures.otherCurrenciesTotal',
+  ...['one', 'two', 'few', 'many', 'other'].flatMap((form) => [
+    `operations.board.figures.currencyCount.${form}`,
+    `operations.board.figures.inShipments.${form}`,
+  ]),
+  'operations.board.figures.share',
+  // «سجل الشحنات» — the day board over a from–to range.
+  'operations.nav.shipmentsHistory',
+  'operations.cards.shipmentsHistory',
+  ...['from', 'to', 'empty', 'rangeOrder', 'rangeTooLong', 'tooLarge'].map(
+    (key) => `operations.history.${key}`,
+  ),
+  ...[
+    'title', 'upload', 'view', 'replace', 'delete', 'uploaded', 'deleted', 'deleteTitle',
+    'deleteBody', 'loadFailed',
+  ].map((key) => `operations.shipment.receiptImage.${key}`),
+  ...[
+    'subtitle', 'mainBank', 'mainBankHint', 'pickBank', 'pickBankFirst', 'pickBranch', 'sideBank',
+    'branch', 'addBranch', 'date', 'amount', 'areaHint', 'areaEmpty', 'sections.shipment', 'sections.route',
+    'sections.money', 'sections.crew', 'captain', 'vehicle', 'crewHint', 'crewHeld',
+    'crewNotOnEdit', 'crewElsewhere', 'crewNoAccess',
+  ].map((key) => `operations.shipment.form.${key}`),
+  ...[
+    'branchBank', 'unknownBranch', 'unknownBank', 'unknownCurrency', 'crewDay', 'crewCaptain', 'stale',
+    // The collection date's floor — a new shipment not before today, an edit not before its day.
+    'dateInPast', 'dateBeforeOriginal',
+    // A محصنة's delivery never before its collection («تاريخ التسليم تانى يوم الاستلام»).
+    'deliveryBeforeCollection',
+    // Round 10 — the vault received it after the form was opened («ميقدر حد … يعدل عليها»).
+    'locked',
+    // Round 12 — the delivery date edit refused: its captain has started that delivery in the app.
+    'legStarted',
+  ].map((key) => `operations.shipment.errors.${key}`),
+  // A محصنة's stage — its «الحالة» on the secured screen, the day board and the history — with
+  // the sentence each says on hover; and the secured screen's «تاريخ الاستلام» beside «تاريخ التسليم».
+  ...OPERATIONS_SECURED_STAGES.flatMap((stage) => [
+    `operations.board.stage.${stage}`,
+    `operations.board.stageHint.${stage}`,
+  ]),
+  'operations.board.collectedOn',
+  // Round 10 — the lock on a row the vault has received, and a page's ticks on the rows.
+  'operations.board.locked',
+  'operations.board.select',
+  // «هيكون فى سجل بالاكشنز اللى حصلت على الشحنة» — the action log, on both screens: its frame,
+  // a sentence for every kind, a label for every field and a name for every leg the contract lists.
+  ...[
+    'open', 'title', 'route', 'actorUnknown', 'empty', 'loadFailed', 'truncated', 'becomes', 'yes', 'no',
+  ].map((key) => `operations.shipment.log.${key}`),
+  ...OPERATIONS_SHIPMENT_LOG_KINDS.map((kind) => `operations.shipment.log.kind.${kind}`),
+  ...OPERATIONS_SHIPMENT_LOG_FIELDS.map((field) => `operations.shipment.log.field.${field}`),
+  ...OPERATIONS_SHIPMENT_LEGS.map((leg) => `operations.shipment.log.leg.${leg}`),
+  // Round 10 — who confirmed a pickup, as the log says it («القائد» / «العمليات»).
+  ...OPERATIONS_SECURED_PICKED_UP_BY.map((by) => `operations.shipment.log.pickedUpBy.${by}`),
+  // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the history's deleted shipments.
+  ...[
+    'open', 'openCount', 'unavailable', 'title', 'subtitle', 'empty', 'loadFailed', 'deletedBy',
+    'deletedAt', 'log', 'restore', 'confirmRestore', 'restored',
+  ].map((key) => `operations.shipment.deletedList.${key}`),
 ];
 
 /** B3 — the crew board and the roster. */
@@ -167,6 +264,7 @@ const SECURED_KEYS = [
   'operations.secured.backlog.subtitle',
   'operations.secured.backlog.add',
   'operations.secured.backlog.empty',
+  'operations.secured.backlog.tooLarge',
   'operations.secured.receive.title',
   'operations.secured.receive.subtitle',
   'operations.secured.receive.action',
@@ -184,20 +282,19 @@ const SECURED_KEYS = [
   'operations.secured.receive.sameTreasurer',
   'operations.secured.receive.done',
   'operations.secured.receive.failed',
-  'operations.secured.dispatch.title',
-  'operations.secured.dispatch.subtitle',
-  'operations.secured.dispatch.vehicle',
+  'operations.secured.receive.noRoster',
   'operations.secured.dispatch.noCrew',
-  'operations.secured.dispatch.pickCrew',
-  'operations.secured.dispatch.assign',
   'operations.secured.dispatch.assigned',
-  'operations.secured.dispatch.assignFailed',
-  'operations.secured.dispatch.select',
   'operations.secured.dispatch.release',
-  'operations.secured.dispatch.confirm',
   'operations.secured.dispatch.done',
-  'operations.secured.dispatch.failed',
   'operations.secured.dispatch.empty',
+  // Round 10 — «صرف الخزينة» on the boards' board: every محصنة in the vault, a delivery day as an
+  // optional filter, late / due today marked, the crew of the row's own day, a release per vehicle.
+  ...[
+    'emptyAll', 'tooLarge', 'overdue', 'dueToday', 'inVaultSince', 'assignAction', 'reassignAction', 'assignDay',
+    'assignHeld', 'assignNoAccess', 'back', 'action', 'body', 'loadCount', 'vehicleLoad',
+    'loadFailed', 'releaseSelected', 'selectRow',
+  ].map((key) => `operations.secured.dispatch.${key}`),
   'operations.vault.title',
   'operations.vault.subtitle',
   'operations.vault.packages',
@@ -205,6 +302,27 @@ const SECURED_KEYS = [
   'operations.vault.receivedBy',
   'operations.vault.receivedAt',
   'operations.vault.empty',
+  // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
+  'operations.vault.queue.all',
+  'operations.vault.queue.allHint',
+  // Round 10 — ONE yellow chip for the captain's pickup and the desk's («مع القائد أو العمليات»).
+  'operations.vault.queue.pickedUp',
+  'operations.vault.queue.receivedToday',
+  'operations.vault.queue.awaiting',
+  'operations.vault.queue.pickedUpAt',
+  'operations.vault.queue.receivedAt',
+  'operations.vault.queue.receive',
+  // Round 10 — the desk's pickup under a yellow row, and why a white row has no ✓.
+  'operations.vault.queue.operationsPickedUpAt',
+  'operations.vault.queue.viewOnly',
+  // Round 10 — the desk's pickup ✓ on the secured screen and its undo («لو القائد عمل صح ممكن
+  // العمليات تشيلها»), and the special grant's «إلغاء استلام الخزينة».
+  ...['toggle', 'confirm', 'undo', 'undoCaptain', 'confirmUndoCaptain'].map(
+    (key) => `operations.secured.pickup.${key}`,
+  ),
+  ...[
+    'action', 'body', 'receiptNumber', 'reason', 'reasonHint', 'reasonShort', 'save', 'back', 'done',
+  ].map((key) => `operations.secured.cancelReceipt.${key}`),
 ];
 
 const REPORT_KEYS = [
@@ -213,7 +331,6 @@ const REPORT_KEYS = [
   'operations.nav.bankReport',
   'operations.cards.bankReport',
   'operations.reports.captains.title',
-  'operations.reports.captains.subtitle',
   'operations.reports.banks.title',
   'operations.reports.banks.subtitle',
   'operations.reports.captain',
@@ -253,9 +370,55 @@ const VAULT_REPORT_KEYS = [
   'operations.nav.vaultReport',
   'operations.cards.vaultReport',
   'operations.vaultReport.title',
-  'operations.vaultReport.subtitle',
-  'operations.vaultReport.foreign',
-  'operations.vaultReport.noForeign',
+  // Round 11 — the roll-up's period («يجيب اللى اتسلم واللى متسلمش»): an empty one says no محصنة
+  // ENTERED the vault in it, not that the vault is empty. (`subtitle`, «بلا فترة زمنية عن قصد», went
+  // when the owner gave the dates a meaning.)
+  'operations.vaultReport.empty',
+  // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
+  // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
+  // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)
+  'operations.vaultReport.table',
+  'operations.vaultReport.securedCount',
+  'operations.vaultReport.value',
+  'operations.vaultReport.totalPound',
+  'operations.vaultReport.totalForeign',
+  'operations.reports.captains.table',
+  'operations.reports.captainName',
+  ...['serial', 'pound', 'dollar', 'bags', 'cartons', 'boxes', 'total', 'othersOf'].map(
+    (key) => `operations.reportBoard.${key}`,
+  ),
+];
+
+/**
+ * Round 12 (web A) — the reports' name filter and files («فلتر ب اسم القائد … و ان اكسيل او pdf»),
+ * «سجل الخزينة» with its live «تقرير الخزينة», and the renamed vault screens' cards.
+ */
+const ROUND12_REPORT_AND_VAULT_KEYS = [
+  'operations.reports.bankName',
+  'operations.reports.captains.noName',
+  'operations.vaultReport.noName',
+  ...['department', 'period', 'filter', 'item', 'amount', 'empty', 'popupBlocked'].map(
+    (key) => `operations.reportExport.${key}`,
+  ),
+  ...['title', 'held', 'heldAsOf', 'heldEmpty', 'empty', 'needsShipmentView'].map(
+    (key) => `operations.vaultHistory.${key}`,
+  ),
+  // «تقرير الخزينة» opens over the screen from the history's toolbar («يفتح ززى موديل زى لوحة
+  // التحكم اللى عملنها فى العهدة»): the button, its figure tiles' name, and the two package tiles the
+  // table's heads («كرتونة», «صندوق») do not name as a count.
+  'operations.vaultHistory.open',
+  'operations.vaultHistory.figures',
+  'operations.vaultHistory.tiles.cartons',
+  'operations.vaultHistory.tiles.boxes',
+  'operations.nav.vaultDispatch',
+  'operations.cards.vaultDispatch',
+  'operations.nav.vault',
+  'operations.cards.vault',
+  // The module home's cards for «توزيع المحصنات» and «تسليم المحصنات».
+  'operations.nav.securedDistribution',
+  'operations.cards.securedDistribution',
+  'operations.nav.vaultHandover',
+  'operations.cards.vaultHandover',
 ];
 
 const AREA_KEYS = [
@@ -268,6 +431,26 @@ const AREA_KEYS = [
   'operations.catalogs.area.governorateHint',
 ];
 
+/** Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات». */
+const DISTRIBUTION_KEYS = [
+  ...[
+    'allPlaced', 'auto', 'autoDone', 'autoHint', 'autoNone', 'bags', 'boxes', 'captains', 'cartons',
+    'day', 'discard', 'dragHint', 'dropBack', 'dropHere', 'empty', 'emptyVan', 'leaveBody',
+    'leaveConfirm', 'leaveStay', 'leaveTitle', 'loadCount', 'moveTo', 'moved', 'movedHint', 'noArea',
+    'noCaptain', 'noDirection', 'noVans', 'overdue', 'overdueHint', 'proposed', 'proposedCount',
+    'proposedHint', 'refused', 'refusedMark', 'remove', 'reschedules', 'save', 'saved',
+    'savedRescheduled', 'shipments', 'started', 'startedHint', 'switchCaptain', 'tooLarge',
+    'unplaced', 'vanLabel', 'vans', 'viewOnly', 'withCaptain',
+  ].map((key) => `operations.distribution.${key}`),
+  ...[
+    'back', 'confirm', 'confirmBody', 'confirmTitle', 'done', 'failed', 'handover', 'heldNote',
+    'hint', 'notInVault', 'notInVaultHint', 'notToday', 'nothing', 'planDay', 'popupBlocked',
+    'print', 'ready',
+    'sheet.captains', 'sheet.count', 'sheet.day', 'sheet.department', 'sheet.empty',
+    'sheet.packages', 'sheet.title', 'unplacedHint',
+  ].map((key) => `operations.handover.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -277,7 +460,9 @@ const ALL_KEYS = [
   ...REPORT_KEYS,
   ...ATTENDANCE_KEYS,
   ...VAULT_REPORT_KEYS,
+  ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
+  ...DISTRIBUTION_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {

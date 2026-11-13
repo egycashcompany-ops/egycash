@@ -52,10 +52,17 @@ export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView 
   boxCount: doc.boxCount,
   receivedByPrimaryId: String(doc.receivedByPrimaryId),
   receivedBySecondaryId: String(doc.receivedBySecondaryId),
+  // `?? null`: a row written before Round 10 carries no cancellation fields at all.
+  cancelledAt: doc.cancelledAt ?? null,
 });
 
 class OperationsVaultCustodyService implements VaultCustodyProvider {
-  async receive(input: VaultReceiptInput, by: string): Promise<VaultCustodyView> {
+  async receive(
+    input: VaultReceiptInput,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
     // Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced.
     if (input.receivedByPrimaryId === input.receivedBySecondaryId) {
       throw new BusinessRuleError(
@@ -63,7 +70,10 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
       );
     }
-    const existing = await operationsVaultCustodyRepository.findByShipment(input.shipmentId);
+    const existing = await operationsVaultCustodyRepository.findByShipment(
+      input.shipmentId,
+      typedSession,
+    );
     if (existing !== null) {
       // Legacy re-stamped status 2 and the receive timestamp on EVERY save from the receive
       // screen (Q29, contad_app.js:1194-1240). NORMALIZE: custody is taken once.
@@ -86,19 +96,28 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         releasedById: null,
         releasedAt: null,
       },
-      { by },
+      { by, session: typedSession },
     );
+    return toCustodyView(doc);
+  }
+
+  /**
+   * Audit + event for a receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape (Round 10 moved them out of `receive`, which now joins the caller's
+   * transaction). Re-reads the row: the audit snapshot carries the seals the view leaves out.
+   */
+  async announceReceived(view: VaultCustodyView): Promise<void> {
+    const doc = await operationsVaultCustodyRepository.getById(view.id);
     await auditService.record({
-      entityRef: entityRef(String(doc._id)),
+      entityRef: entityRef(view.id),
       action: 'create',
       changes: diffChanges({}, snapshot(doc)),
     });
     await emit(OperationsEvents.VaultReceived, {
-      custodyId: String(doc._id),
-      shipmentId: String(doc.shipmentId),
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
       state: doc.state,
     });
-    return toCustodyView(doc);
   }
 
   async release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView> {
@@ -140,6 +159,73 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     });
   }
 
+  /**
+   * Void the HELD custody of a shipment — Round 10's cancelled receipt. ONE write, version-guarded:
+   * the cancellation stamp (when, who, why) and the soft-delete together, so there is no moment in
+   * which the row is cancelled but still read as held, or hidden without saying why.
+   *
+   * Soft-deleted rather than given a new `state`: every live read already asks `isDeleted: false`
+   * (the inventory, the roll-up, today's receipts, the reports' package counts), and `ux_shipment`
+   * is partial on it — so a cancelled receipt leaves all of them, and frees the shipment for a fresh
+   * receipt, without changing an index or teaching every reader a third state. Nothing is erased:
+   * the receipt number, counts, seals and treasurers stay on the row, and `history` reads it back.
+   */
+  async cancelReceipt(
+    shipmentId: string,
+    reason: string,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
+    const current = await operationsVaultCustodyRepository.findByShipment(shipmentId, typedSession);
+    if (current?.state !== 'held') {
+      throw new BusinessRuleError(
+        current === null
+          ? 'this shipment is not in the vault'
+          : 'this shipment has already left the vault',
+        'OPERATIONS_CUSTODY_NOT_HELD',
+      );
+    }
+    const now = new Date();
+    const actor = new Types.ObjectId(by);
+    const updated = await operationsVaultCustodyRepository.updateById(
+      String(current._id),
+      {
+        cancelledAt: now,
+        cancelledById: actor,
+        cancelReason: reason,
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy: actor,
+      },
+      { by, version: current.__v, session: typedSession },
+    );
+    return toCustodyView(updated);
+  }
+
+  /**
+   * Audit + event for a cancelled receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape. Audited as the custody's `delete`, carrying the reason: the shipment's
+   * action log reads it as `receiptCancelled` and folds it into the shipment's own entry.
+   */
+  async announceReceiptCancelled(view: VaultCustodyView, reason: string): Promise<void> {
+    await auditService.record({
+      entityRef: entityRef(view.id),
+      action: 'delete',
+      changes: [{ field: 'cancelReason', old: null, new: reason }],
+    });
+    await emit(OperationsEvents.VaultReceiptCancelled, {
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
+      reason,
+    });
+  }
+
+  async history(shipmentId: string): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findHistoryByShipment(shipmentId);
+    return docs.map(toCustodyView);
+  }
+
   async find(shipmentId: string): Promise<VaultCustodyView | null> {
     const doc = await operationsVaultCustodyRepository.findByShipment(shipmentId);
     return doc === null ? null : toCustodyView(doc);
@@ -167,8 +253,8 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     return { items: found.items.map(toCustodyView), total: found.meta.totalItems };
   }
 
-  async allHeld(): Promise<VaultCustodyView[]> {
-    const docs = await operationsVaultCustodyRepository.findAllHeld();
+  async receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findReceivedBetween(from, toExclusive);
     return docs.map(toCustodyView);
   }
 

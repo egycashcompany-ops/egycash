@@ -21,6 +21,7 @@ import { Stroke } from './FuelCardDialog';
 import { CAIRO } from './custody-dashboard-parts';
 import { PILL_BUTTON, PILL_FRAME } from './custody-board-looks';
 import { HeldMemoChip } from './custody-hold-parts';
+import { VehicleHoverCode } from './VehicleHoverCard';
 
 // ── Looks ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -344,18 +345,40 @@ export const Day = ({ day }: { day: string }): JSX.Element => (
   </span>
 );
 
-/** The car's code — the movements log's slate chip, in the form's surfaces. */
-export const CodeChip = ({ code }: { code: string }): JSX.Element => (
-  <span
-    dir="ltr"
-    className={cn(
-      'inline-flex min-w-[2.25rem] items-center justify-center whitespace-nowrap rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[13px] text-slate-900 sm:text-[15px] dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-white',
-      /^\d+$/u.test(code) ? NUM : '',
-    )}
-  >
-    {code}
-  </span>
-);
+/**
+ * The car's code — the movements log's slate chip, in the form's surfaces.
+ *
+ * On a board it carries the car card («عاوز لما اماوس يقف على كود عربيه يجيب بيانات»): the car
+ * by `vehicleId` where the row has one, else by its code. `card={false}` where the chip sits in a
+ * pick list or a dialog — the card is never drawn inside a picker, a filter or a form dialog.
+ */
+export const CodeChip = ({
+  code,
+  vehicleId,
+  card = true,
+}: {
+  code: string;
+  /** The row's car, when it carries one; without it the car is looked up by `code`. */
+  vehicleId?: string | null;
+  card?: boolean;
+}): JSX.Element => {
+  const className = cn(
+    'inline-flex min-w-[2.25rem] items-center justify-center whitespace-nowrap rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[13px] text-slate-900 sm:text-[15px] dark:border-[#2b3b6b] dark:bg-[#121c3f] dark:text-white',
+    /^\d+$/u.test(code) ? NUM : '',
+  );
+  return card ? (
+    <VehicleHoverCode
+      {...(vehicleId === undefined ? {} : { vehicleId })}
+      code={code}
+      dir="ltr"
+      className={className}
+    />
+  ) : (
+    <span dir="ltr" className={className}>
+      {code}
+    </span>
+  );
+};
 
 /** The custody kind's pale pill with its dot — `CustodyKindBadge` a size down, for forms. */
 export const KindPill = ({

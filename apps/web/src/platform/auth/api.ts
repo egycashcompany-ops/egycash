@@ -5,12 +5,14 @@ import {
   type PasskeyAuthenticationOptionsDto,
   type PasskeyCreationOptionsDto,
   type PasskeyDto,
+  type PasskeyListMetaDto,
   type SessionDto,
   type UpdateMyPreferences,
 } from '@ecms/contracts';
 import {
   api,
   del,
+  getWithMeta,
   patch,
   post,
   refreshAtBootstrap,
@@ -96,7 +98,18 @@ export const passkeyAuthenticationVerifyRequest = async (response: unknown): Pro
   return result;
 };
 
-export const listPasskeysRequest = (): Promise<PasskeyDto[]> => api('/auth/passkeys');
+/** The person's passkeys and whether passkeys are switched on. The list answers either way. */
+export interface PasskeyList {
+  items: PasskeyDto[];
+  enabled: boolean;
+}
+
+export const listPasskeysRequest = async (): Promise<PasskeyList> => {
+  const { data, meta } = await getWithMeta<PasskeyDto[], PasskeyListMetaDto>('/auth/passkeys');
+  // An API from before the list carried `meta` refused the list outright while switched off, so
+  // an answer without it means passkeys are on.
+  return { items: data, enabled: meta?.enabled ?? true };
+};
 
 /** Prove it is still you (password, and the TOTP code when enabled) → a registration challenge. */
 export const passkeyRegistrationOptionsRequest = (proof: {

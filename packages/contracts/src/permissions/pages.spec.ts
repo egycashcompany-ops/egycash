@@ -139,11 +139,23 @@ describe('the platform registry as it actually stands', () => {
   });
 
   // ADR-032 added the delegation page and its one key. ADR-017's 2026-11-03 amendment added
-  // `branch.changeCode` («عايزك تسمحلى أغير كود الفرع»), on the branches page.
-  it('declares 17 pages for 68 permissions', () => {
-    expect(platformPages).toHaveLength(17);
-    expect(platformPermissions).toHaveLength(68);
+  // `branch.changeCode` («عايزك تسمحلى أغير كود الفرع»), on the branches page. The active users
+  // page («المستخدمين النشطين») added one page and its one key, `activeUser.view`.
+  it('declares 18 pages for 69 permissions', () => {
+    expect(platformPages).toHaveLength(18);
+    expect(platformPermissions).toHaveLength(69);
     expect(platformPermissions.find((p) => p.key === 'branch.changeCode')?.pageId).toBe('platform.branches');
+  });
+
+  // Its own key and its own page, read-only and not break-glass: it shows who is working and
+  // changes nothing, so it carries none of the mandatory-2FA weight `user.manageSessions` does.
+  it('places `activeUser.view` alone on the active users page', () => {
+    const onPage = platformPermissions.filter((p) => p.pageId === 'platform.active-users');
+    expect(onPage.map((p) => p.key)).toEqual(['activeUser.view']);
+    expect(onPage[0]?.breakGlass).toBeUndefined();
+    expect(platformPages.find((p) => p.id === 'platform.active-users')?.route).toBe(
+      '/system/active-users',
+    );
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a

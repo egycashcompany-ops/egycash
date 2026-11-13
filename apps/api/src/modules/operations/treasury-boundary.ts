@@ -59,11 +59,23 @@ export interface VaultCustodyView {
   boxCount: number;
   receivedByPrimaryId: string;
   receivedBySecondaryId: string;
+  /**
+   * Round 10 — when the receipt was CANCELLED, or null. Only `history` ever hands back a cancelled
+   * custody: every other read is about what the treasury holds or took, and a cancelled receipt is
+   * neither.
+   */
+  cancelledAt: Date | null;
 }
 
 export interface VaultCustodyProvider {
-  /** Take a shipment into custody. Rejects a shipment already held. */
-  receive(input: VaultReceiptInput, by: string): Promise<VaultCustodyView>;
+  /**
+   * Take a shipment into custody. Rejects a shipment already held. Joins the caller's transaction
+   * when given a session (Round 10: the vault's ✓ and the shipment's move to `inVault` are ONE
+   * write, so a receive refused half-way — a stale version, a pickup ✓ taken back a moment before
+   * — can no longer leave a held custody on a shipment still in draft); the caller announces it
+   * (audit + event) after the commit, the `release` / `cancelReceipt` shape.
+   */
+  receive(input: VaultReceiptInput, by: string, session?: unknown): Promise<VaultCustodyView>;
   /** Hand a shipment back out for delivery. Rejects anything not currently held. */
   release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView>;
   /** Current custody for a shipment, or null when the treasury never held it. */
@@ -76,10 +88,31 @@ export interface VaultCustodyProvider {
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
   /**
-   * The same set, UNPAGED, for the vault roll-up. A roll-up over one page is not a roll-up, and
-   * what a treasury physically holds is bounded in a way its history is not.
+   * Every custody the treasury TOOK in the half-open window [from, toExclusive) — held or since
+   * released — newest received first. A CANCELLED receipt is not one: the treasury took nothing
+   * it kept, and the shipment's fresh receipt, if any, is its own row on its own day. Two readers:
+   * the vault's receive queue asks for one Cairo day (the shipments received today, green beside
+   * the ones still to receive), and the vault roll-up for its period («يجيب اللى اتسلم واللى متسلمش»).
    */
-  allHeld(): Promise<VaultCustodyView[]>;
+  receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]>;
+  /**
+   * Round 10 — CANCEL the receipt of a shipment the treasury holds: «صلاحية خاصة تقدر تلغى استلام
+   * الخزينة». The custody is VOIDED, never erased — it keeps what was stamped and records when, who
+   * and why — and from then on no live read sees it, so the shipment can be received afresh.
+   * Rejects anything not currently held. Joins the caller's transaction when given a session; the
+   * caller announces it (audit + event) after the commit.
+   */
+  cancelReceipt(
+    shipmentId: string,
+    reason: string,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView>;
+  /**
+   * Every custody the treasury ever took for one shipment, a cancelled receipt included, oldest
+   * first — the shipment's action log tells the whole story, including a receipt that was undone.
+   */
+  history(shipmentId: string): Promise<VaultCustodyView[]>;
 }
 
 let provider: VaultCustodyProvider | null = null;

@@ -6,6 +6,7 @@ import { disconnectMongo } from './infrastructure/database/mongo';
 import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues, startWorkers } from './infrastructure/queue/jobs';
 import { bootPlatform } from './platform/kernel/bootstrap';
+import { startAuditIndexBuild } from './platform/audit';
 import { schedulerService } from './platform/scheduler';
 import { moduleManifests } from './modules';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
@@ -33,12 +34,17 @@ import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 import { startItMobileLinesGoLive } from './modules/it/go-live/mobile-lines';
 import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
 import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
+import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
   await bootPlatform({ modules: moduleManifests });
+  // The worker runs the hourly security-signal sweep these audit_logs indexes exist for, so it
+  // builds them too: on a deployment whose api comes up second, or not at all, the sweep still
+  // gets them. Idempotent, and safe beside the api's own call (platform/audit/audit-indexes.ts).
+  startAuditIndexBuild();
 
   // The Fleet go-live import — see `server.ts` for why it is started by the long-running processes
   // and not by the module seed. Both start it and the lease elects one; the worker is here so the
@@ -91,6 +97,12 @@ const main = async (): Promise<void> => {
   // file).
   startItAioOctoberGoLive();
   startItAssetSpecsGoLive();
+  // «هبعتلك عهده الأفرع وعايزك تضيفهم مره واحده كل فرع فى فرعه فى الـ IT» — the four branches'
+  // sheets, reviewed against the register: a new device registered in its branch's stock, a
+  // registered one given only what it lacks («أكمّل الناقص بس») and, in stock elsewhere, moved
+  // to the sheet's branch («انقلهم لفرع الملف»). Once, after the inventory, the October
+  // all-in-ones and the specifications (see the file).
+  startItBranchCustodyGoLive();
   // «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — the consumables' types the owner
   // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
   // after the types it is filed under — started second, so it waits for them (see each file).

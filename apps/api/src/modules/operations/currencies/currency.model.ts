@@ -10,6 +10,12 @@ export interface OperationsCurrencyDoc extends BaseDocFields {
   code: string;
   name: string;
   legacyAliases: string[];
+  /**
+   * The catalog's dragged order, 0 first — «اعملى فى شاشة البيانات المرجعية ان اقدر اعدل زى شاشة
+   * الحركة بالظبط» (Fleet's catalog `sortOrder`). Null until somebody arranges the list. Optional
+   * because rows written before the field carry none; `.lean()` reads absent as undefined.
+   */
+  sortOrder?: number | null;
   isActive: boolean;
 }
 
@@ -18,6 +24,7 @@ const currencySchema = new Schema<OperationsCurrencyDoc>(
     code: { type: String, required: true },
     name: { type: String, required: true },
     legacyAliases: { type: [String], required: true, default: [] },
+    sortOrder: { type: Number, default: null },
     isActive: { type: Boolean, required: true, default: true },
     ...baseFields,
   },

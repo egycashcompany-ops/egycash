@@ -191,6 +191,7 @@ describe('every Fleet date box opens through our calendar', () => {
       for (const file of files) expect(seen, `${tag} in ${file}`).toContain(`${FLEET}/${file}.tsx`);
     };
     expectAll('FilterWithIcon', [
+      'pages/AccidentsPage',
       'pages/AttendancePage',
       'pages/CustodyPage',
       'pages/DealershipPage',
@@ -202,6 +203,7 @@ describe('every Fleet date box opens through our calendar', () => {
       'pages/ReceiptsPage',
     ]);
     expectAll('DesignField', [
+      'components/AccidentFormDialog',
       'components/CorrectOdometerDialog',
       'components/FuelCardDialog',
       'components/MaintenanceDialogs',
@@ -212,14 +214,14 @@ describe('every Fleet date box opens through our calendar', () => {
       'pages/LicenseExpenseEditorPage',
     ]);
     expectAll('DateBox', [
-      'components/AccidentFormDialog',
       'components/DriverFormDialog',
       'components/DriverViolationsPanel',
       'components/ViolationDialogs',
-      'pages/AccidentsPage',
       'pages/NoticeEditorPage',
       'pages/NoticeSetupPage',
-      'pages/RosterPage',
+      // «تعيين السيارات»: the computer's and the touch boards' day steppers, each its own file.
+      'components/roster/roster-desk-parts',
+      'components/roster/roster-touch-parts',
     ]);
     // The «of what month» lists wear the calendar too, but are lists, not date boxes.
     expect(

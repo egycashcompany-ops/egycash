@@ -28,6 +28,7 @@ import { itAssetEventRepository } from './asset-event.repository';
 import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { itConsumableMovementRepository } from '../consumables/consumable-movement.repository';
 import { nextAssetCode } from './asset-sequence';
+import { warrantyEndingWithin } from './warranty-window';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
 import {
   type ItAssetDoc,
@@ -188,6 +189,12 @@ class ItAssetService {
       const open = await itAssetAssignmentRepository.listOpenForEmployee(query.holderEmployeeId);
       filter.currentAssignmentId = { $in: open.map((assignment) => assignment._id) };
     }
+    if (query.warrantyEndsWithinDays !== undefined) {
+      // The dashboard's warranty row opened as a list. Its own `$and` clause: the window carries a
+      // status condition of its own (not disposed), which must narrow the status filter above
+      // rather than overwrite it.
+      filter.$and = [warrantyEndingWithin(query.warrantyEndsWithinDays, new Date())];
+    }
     if (query.search !== undefined && query.search !== '') {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [
@@ -231,15 +238,22 @@ class ItAssetService {
    * the assets point at, read by id in one go, then their employees through the directory in one
    * batch. Two reads per response, never two per row — the mobile lines' `holderLabels`. Read by id
    * without scope: the assets were already read under the caller's, and an interval is theirs.
+   *
+   * Beside them, ONE read for the page's ids says which assets an order open or in progress holds
+   * (`hasActiveMaintenance`) — the screen leaves those out of a move before it is refused.
    */
   async holderLabels(assets: readonly ItAssetDoc[]): Promise<ItAssetHolderLabels> {
-    const intervals = (
-      await itAssetAssignmentRepository.findByIdsSystem(
+    const [found, activeMaintenance] = await Promise.all([
+      itAssetAssignmentRepository.findByIdsSystem(
         assets.flatMap((asset) =>
           asset.currentAssignmentId == null ? [] : [String(asset.currentAssignmentId)],
         ),
-      )
-    ).filter((interval) => interval.returnedAt === null && !interval.isDeleted);
+      ),
+      itMaintenanceOrderRepository.activeAssetIds(assets.map((asset) => String(asset._id))),
+    ]);
+    const intervals = found.filter(
+      (interval) => interval.returnedAt === null && !interval.isDeleted,
+    );
     const employeeIds = [
       ...new Set(intervals.map((interval) => String(interval.assignedToEmployeeId))),
     ];
@@ -256,6 +270,7 @@ class ItAssetService {
           { code: employee.code, fullNameAr: employee.fullNameAr },
         ]),
       ),
+      activeMaintenance,
     };
   }
 

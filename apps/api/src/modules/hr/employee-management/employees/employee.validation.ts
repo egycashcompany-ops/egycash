@@ -9,6 +9,7 @@ export {
   JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
+  RegisterExternalEmployeeSchema,
   RehireCheckQuerySchema,
   UpdateEmployeeInsuranceSchema,
   UpdateEmployeeOfficerSchema,

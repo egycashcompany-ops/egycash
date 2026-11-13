@@ -15,9 +15,18 @@ export const getBankReport = async (req: Request, res: Response): Promise<void> 
 };
 
 /**
- * The legacy `/vault1_reports`. It takes NO query at all — the legacy screen's date picker never
- * filtered anything (Q32), and an inventory roll-up is a question about now.
+ * The legacy `/vault1_reports` — over the reports' period, which here means the days the vault
+ * RECEIVED the shipments (the owner's decision, report.service.ts).
  */
-export const getVaultReport = async (_req: Request, res: Response): Promise<void> => {
-  ok(res, await operationsReportService.vaultReport());
+export const getVaultReport = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, OperationsReportQuery>(req);
+  ok(res, await operationsReportService.vaultReport(query));
+};
+
+/**
+ * «تقرير الخزينة» (Round 12) — what the vault holds NOW, per bank: live, no period (the query takes
+ * no key at all).
+ */
+export const getVaultHeldReport = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await operationsReportService.vaultHeldReport());
 };

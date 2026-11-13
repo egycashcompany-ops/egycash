@@ -46,7 +46,11 @@ import {
   recordHireAgainstRequisition,
 } from './recruitment/job-requisitions';
 import { setRequisitionValidator } from './recruitment/applicants';
-import { buildEmployeesRouter, employeeService } from './employee-management/employees';
+import {
+  buildEmployeesRouter,
+  employeeService,
+  hrEmployeePhotoFileAuthorizers,
+} from './employee-management/employees';
 import {
   buildEmployeeActionsRouter,
   hrFileEntityAuthorizers,
@@ -1166,6 +1170,22 @@ const contractTemplatePermissions = declarePermissions(
   'hr.contract-templates',
 );
 
+// A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority, what «نموذج رقم (1)»
+// prints. A tab of «الإعدادات», beside «نموذج التقديم».
+const insuranceJobTitlePermissions = declarePermissions(
+  'hr',
+  'insuranceJobTitle',
+  { en: 'job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage the job titles at social insurance', ar: 'إدارة مسميات الوظائف لدى التأمينات' },
+    },
+  ],
+  'hr.insurance-job-titles',
+);
+
 const contractTypePermissions = declarePermissions(
   'hr',
   'contractType',
@@ -1179,6 +1199,7 @@ export const hrPermissions: PermissionDef[] = [
   ...contractPermissions,
   ...contractTemplatePermissions,
   ...contractTypePermissions,
+  ...insuranceJobTitlePermissions,
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
@@ -1265,6 +1286,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Application form', ar: 'نموذج التقديم' },
     route: '/hr-settings/recruitment-form',
     sortOrder: 30,
+  },
+  {
+    id: 'hr.insurance-job-titles',
+    moduleId: 'hr',
+    name: { en: 'Job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+    route: '/hr-settings/insurance-job-titles',
+    sortOrder: 35,
   },
   {
     id: 'hr.screening',
@@ -1637,6 +1665,7 @@ export const hrModule: ModuleManifest = {
     'hr_contract_templates',
     'hr_contract_types',
     'hr_contract_branding',
+    'hr_candidate_drafts',
     'hr_shifts',
     'hr_shift_assignments',
     'hr_attendance_punches',
@@ -1662,6 +1691,9 @@ export const hrModule: ModuleManifest = {
   // file already filed against an employee changes behaviour.
   fileEntityAuthorizers: [
     ...hrFileEntityAuthorizers,
+    // The employee's personal photo: seeing it is seeing the employee — or being them; changing it
+    // is a personal-data edit. Its own entity type, so no file already filed changes behaviour.
+    ...hrEmployeePhotoFileAuthorizers,
     ...hrAdjustmentFileAuthorizers,
     ...hrEmployeeLoanFileAuthorizers,
     // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against

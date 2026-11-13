@@ -5,9 +5,16 @@
 // described dual control and its code wrote `treasurer_receive: ""` on every path, so only one
 // person was ever recorded. The server now requires two DIFFERENT people; this form asks for them
 // and says why, rather than letting the operator discover it as a 422.
+//
+// THE TREASURERS' NAMES are the operations roster (`GET /operations/crew-board/directory`), read on
+// `operationsCrew.view`. The receive queue itself needs only the vault's grants, so a treasurer
+// may open this form without that one: the roster is then NOT asked for — a request that could
+// only be refused, and audited as a refusal — and the form says why it cannot be completed
+// instead of offering two empty lists.
 import { useEffect, useState, type FormEvent } from 'react';
 import { type OperationsShipmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
@@ -30,9 +37,12 @@ export const ReceiveIntoVaultDialog = ({
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const receive = useReceiveIntoVault();
-  // The treasurers are picked from the operations roster — the same people the board knows.
-  const directory = useOperationsCrewDirectory(null, shipment !== null);
+  // The treasurers are picked from the operations roster — the same people the board knows — and
+  // only by a reader who may read it.
+  const mayReadRoster = can('operationsCrew.view');
+  const directory = useOperationsCrewDirectory(null, shipment !== null && mayReadRoster);
 
   const [receiptNumber, setReceiptNumber] = useState('');
   const [bagCount, setBagCount] = useState('0');
@@ -104,7 +114,12 @@ export const ReceiveIntoVaultDialog = ({
 
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label={t('operations.secured.receive.bags')}>
-            <Input type="number" min={0} value={bagCount} onChange={(e) => setBagCount(e.target.value)} />
+            <Input
+              type="number"
+              min={0}
+              value={bagCount}
+              onChange={(e) => setBagCount(e.target.value)}
+            />
           </Field>
           <Field label={t('operations.secured.receive.cartons')}>
             <Input
@@ -115,7 +130,12 @@ export const ReceiveIntoVaultDialog = ({
             />
           </Field>
           <Field label={t('operations.secured.receive.boxes')}>
-            <Input type="number" min={0} value={boxCount} onChange={(e) => setBoxCount(e.target.value)} />
+            <Input
+              type="number"
+              min={0}
+              value={boxCount}
+              onChange={(e) => setBoxCount(e.target.value)}
+            />
           </Field>
         </div>
 
@@ -128,6 +148,16 @@ export const ReceiveIntoVaultDialog = ({
         <Field label={t('operations.secured.receive.boxSeals')}>
           <Input value={boxSeals} onChange={(e) => setBoxSeals(e.target.value)} />
         </Field>
+
+        {!mayReadRoster && (
+          <p
+            role="alert"
+            data-receive-no-roster="true"
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+          >
+            {t('operations.secured.receive.noRoster')}
+          </p>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
@@ -160,7 +190,7 @@ export const ReceiveIntoVaultDialog = ({
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button type="submit" disabled={receive.isPending}>
+          <Button type="submit" disabled={receive.isPending || !mayReadRoster}>
             {t('operations.secured.receive.action')}
           </Button>
         </div>

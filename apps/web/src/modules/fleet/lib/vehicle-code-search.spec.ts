@@ -113,13 +113,17 @@ describe('the roster boards filter on the code', () => {
     expect(shown('  ')).toHaveLength(4);
   });
 
-  it('matches a code that appears as a WORD inside a plate — by the code, as the bar does', () => {
-    // `ط ط 150` is three tokens to the canonical parser — deduplicated to two — and one of them is
-    // a real code, so car 150 is shown. It is matched on its OWN code; car 007's plate field is
-    // never read, which is the guarantee. The odometer's filter bar answers the same text
-    // identically: it ticks «ط» and asks the registry `code=150`. Reproduced rather than
-    // special-cased, because the alternative is a second parser and one vocabulary is the point.
-    expect(shown('ط ط 150')).toEqual(['150']);
-    expect(readTypedVehicleCodes('ط ط 150')).toEqual({ chosen: ['ط'], typing: '150' });
+  it('reads a plate as the canonical parser reads any text — and never reads the plate', () => {
+    // `ط ط 150` is «ط» and «ط 150» to the canonical parser: a word followed by a number is ONE
+    // code, because the registry has such codes («كورولا 1», «MG 2»). No car's code contains
+    // either, so nothing is shown — and car 007, whose plate this is, is not shown either: its
+    // plate field is never read, which is the guarantee. The odometer's filter bar answers the
+    // same text identically: it ticks «ط» and asks the registry `code=ط 150`. Reproduced rather
+    // than special-cased, because the alternative is a second parser and one vocabulary is the
+    // point.
+    expect(shown('ط ط 150')).toEqual([]);
+    expect(readTypedVehicleCodes('ط ط 150')).toEqual({ chosen: ['ط'], typing: 'ط 150' });
+    // The code itself, set apart from the letters, is still the car.
+    expect(shown('ط ط - 150')).toEqual(['150']);
   });
 });

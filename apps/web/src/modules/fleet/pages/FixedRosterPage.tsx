@@ -63,6 +63,7 @@ import { readList, toggleValue, writeList } from '../../../shared/lib/list-param
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
+import { useVehicleHoverCard } from '../components/VehicleHoverCard';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
@@ -467,6 +468,34 @@ const CrewSlotCell = ({
  * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
+/**
+ * The car's code in the car's own colour (see the «السيارة» column) — and the car card's trigger,
+ * by hover only, as the board's driver chips carry theirs: a board of drag-and-drop slots keeps its
+ * Tab order for the slots and the row's buttons.
+ */
+const CrewCarCode = ({ row }: { row: FleetFixedCrewRowDto }): JSX.Element => {
+  const { triggerProps, card } = useVehicleHoverCard(
+    { vehicleId: row.vehicleId, code: row.code },
+    { focusable: false },
+  );
+  return (
+    <>
+      <span
+        data-vehicle-colour={row.vehicleId}
+        className={cn(
+          'inline-block rounded-md px-2 py-0.5 font-figures text-xs',
+          vehicleColour(row.vehicleId),
+        )}
+        dir="ltr"
+        {...triggerProps}
+      >
+        {row.code}
+      </span>
+      {card}
+    </>
+  );
+};
+
 const DEFAULT_SORT = 'code:asc';
 
 export const FixedRosterPage = (): JSX.Element => {
@@ -906,18 +935,7 @@ export const FixedRosterPage = (): JSX.Element => {
       // colour is hashed from the vehicle's id, so it is the same on every render and survives
       // filtering, sorting and the arrival of new vehicles — it says WHICH car, never how the
       // car is doing.
-      render: (row) => (
-        <span
-          data-vehicle-colour={row.vehicleId}
-          className={cn(
-            'inline-block rounded-md px-2 py-0.5 font-figures text-xs',
-            vehicleColour(row.vehicleId),
-          )}
-          dir="ltr"
-        >
-          {row.code}
-        </span>
-      ),
+      render: (row) => <CrewCarCode row={row} />,
     },
     {
       key: 'state',

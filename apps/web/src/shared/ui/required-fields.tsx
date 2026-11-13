@@ -79,6 +79,7 @@ export const MissingFieldsBanner = ({
   missing,
   attempt = 0,
   className,
+  lead,
 }: {
   missing: readonly RequiredField[];
   /**
@@ -89,6 +90,11 @@ export const MissingFieldsBanner = ({
   attempt?: number;
   /** Where it sits in the form's own layout — a grid form gives it the whole row. */
   className?: string;
+  /**
+   * The banner's opening words, when the form's action is not «حفظ» — IT's vehicle check is sent,
+   * so its banner opens «لم يتم إرسال التقرير.». «لم يتم الحفظ.» unless given.
+   */
+  lead?: string;
 }): JSX.Element | null => {
   const t = useT();
   const own = useRef<HTMLDivElement | null>(null);
@@ -109,7 +115,7 @@ export const MissingFieldsBanner = ({
         className,
       )}
     >
-      ⚠ <strong>{t('common.validation.notSaved')}</strong>{' '}
+      ⚠ <strong>{lead ?? t('common.validation.notSaved')}</strong>{' '}
       {t('common.validation.enterRequired', { fields })}
     </div>
   );

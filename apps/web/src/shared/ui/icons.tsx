@@ -585,3 +585,26 @@ export const GoldIcon = (p: IconProps): JSX.Element => (
     <path d="M19 2v3M17.5 3.5h3" />
   </Base>
 );
+
+/** A cake with a candle — a birthday. */
+export const CakeIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8" />
+    <path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1" />
+    <path d="M2 21h20" />
+    <path d="M7 8v3" />
+    <path d="M12 8v3" />
+    <path d="M17 8v3" />
+    <path d="M7 4h.01" />
+    <path d="M12 4h.01" />
+    <path d="M17 4h.01" />
+  </Base>
+);
+
+/** A camera — take or change a photo. */
+export const CameraIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+    <circle cx="12" cy="13" r="3" />
+  </Base>
+);

@@ -4,6 +4,7 @@ import { BaseRepository, type ListParams } from '../../../shared/base/base.repos
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
 import { FleetVehicleModel } from '../vehicles/vehicle.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { anyVehicleCode } from '../vehicles/vehicle-code-match';
 import { driverNameSorts } from '../fleet-sort-keys';
 import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 import { KM_ROW_KIND_EXPR, type KmRow } from './km-rules';
@@ -79,6 +80,9 @@ const ON_THE_CHAIN = { outReading: { $ne: null } } as const;
  * «One of these cars»: by registry id, or — for a row kept from the old book on a car the
  * registry never had — by the code the book wrote. Shared by every register that keeps such rows.
  * An empty id list with no codes still narrows to NOTHING, as the callers' comments promise.
+ *
+ * The book's code is matched as the registry's is (`anyVehicleCode`): «كورولا 1» finds a row the
+ * book wrote «كورولا 1 » or «كورولا  1», and «mg 2» one it wrote «MG 2».
  */
 export const byVehicleOrBookCode = <T>(
   vehicleIds: readonly string[],
@@ -86,7 +90,7 @@ export const byVehicleOrBookCode = <T>(
 ): FilterQuery<T> => {
   const ids = { vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) } };
   if (vehicleCodes === undefined || vehicleCodes.length === 0) return ids as FilterQuery<T>;
-  return { $or: [ids, { vehicleCode: { $in: [...vehicleCodes] } }] } as FilterQuery<T>;
+  return { $or: [ids, { vehicleCode: anyVehicleCode(vehicleCodes) }] } as FilterQuery<T>;
 };
 
 class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {

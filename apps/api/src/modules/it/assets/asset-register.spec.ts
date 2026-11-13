@@ -11,7 +11,7 @@
 // whole), beside the other filters; and the names offered are the reader's scope's — narrowed to the
 // chosen categories — in Arabic order, bounded.
 import { Types } from 'mongoose';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ListItAssetNamesQuerySchema,
   ListItAssetsQuerySchema,
@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   distinctNames: vi.fn(),
   findIntervals: vi.fn(),
   getDirectoryEmployees: vi.fn(),
+  activeAssetIds: vi.fn(),
 }));
 
 vi.mock('../../../platform/directory', () => ({
@@ -38,6 +39,9 @@ vi.mock('./asset.repository', () => ({
 }));
 vi.mock('./assignment.repository', () => ({
   itAssetAssignmentRepository: { findByIdsSystem: mocks.findIntervals },
+}));
+vi.mock('../maintenance/order.repository', () => ({
+  itMaintenanceOrderRepository: { activeAssetIds: mocks.activeAssetIds },
 }));
 
 const { itAssetService, ASSET_NAMES_CAP } = await import('./asset.service');
@@ -109,9 +113,11 @@ const heldBy = (employee: Types.ObjectId) => {
 const labels = (
   intervals: readonly ItAssetAssignmentDoc[],
   employees: readonly [string, { code: string; fullNameAr: string }][] = [],
+  activeMaintenance: readonly string[] = [],
 ): ItAssetHolderLabels => ({
   intervals: new Map(intervals.map((row) => [String(row._id), row])),
   employees: new Map(employees),
+  activeMaintenance: new Set(activeMaintenance),
 });
 
 const person = (id: Types.ObjectId, code: string, fullNameAr: string): DirectoryEmployee => ({
@@ -131,6 +137,7 @@ const MOHAMED = { code: '0100052', fullNameAr: 'محمد أحمد علي' };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.activeAssetIds.mockResolvedValue(new Set());
 });
 
 describe('the holder an asset row names', () => {
@@ -238,6 +245,40 @@ describe('resolving the holders of a response', () => {
   });
 });
 
+// The move to another branch — and custody — refuse an asset an order open or in progress holds,
+// and its status alone does not say so: the row says it, so the screen can leave it out first.
+describe('an asset a maintenance order holds', () => {
+  it('is said so on its row — and only on its own', () => {
+    const repairing = asset();
+    const fine = asset();
+    const facts = labels([], [], [String(repairing._id)]);
+    expect(toItAssetDto(repairing, facts).hasActiveMaintenance).toBe(true);
+    expect(toItAssetDto(fine, facts).hasActiveMaintenance).toBe(false);
+    // An `open` order leaves the asset in stock: the status is no substitute.
+    expect(toItAssetDto(repairing, facts).status).toBe('inStock');
+  });
+
+  it('is read for a whole page in ONE query of the page’s ids, never one per row', async () => {
+    const repairing = asset();
+    const held = heldBy(EMPLOYEE);
+    const fine = asset();
+    const page = [repairing, held.doc, fine];
+    mocks.findIntervals.mockResolvedValue([held.open]);
+    mocks.getDirectoryEmployees.mockResolvedValue(new Map());
+    mocks.activeAssetIds.mockResolvedValue(new Set([String(repairing._id)]));
+
+    const holders = await itAssetService.holderLabels(page);
+
+    expect(mocks.activeAssetIds).toHaveBeenCalledTimes(1);
+    expect(mocks.activeAssetIds).toHaveBeenCalledWith(page.map((doc) => String(doc._id)));
+    expect(page.map((doc) => toItAssetDto(doc, holders).hasActiveMaintenance)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+});
+
 describe('the category and name filters', () => {
   const scope = { scope: 'organization' } as never;
   const BRANCH = String(new Types.ObjectId());
@@ -317,6 +358,70 @@ describe('the category and name filters', () => {
     expect(filterSent()).toEqual({ status: 'assigned' });
     await itAssetService.list(fromWire({ status: 'assigned', categoryId: '', name: '' }), scope);
     expect(filterSent()).toEqual({ status: 'assigned' });
+  });
+});
+
+// «الضمان» — the dashboard's «ضمان ينتهي خلال ٣٠ يومًا» opened as the list. The window is the one
+// the dashboard counts with (`warranty-window.ts`), so the row and the list it opens agree.
+describe('the warranty filter', () => {
+  const scope = { scope: 'organization' } as never;
+  const BRANCH = String(new Types.ObjectId());
+  const NOW = new Date('2026-11-03T08:00:00.000Z');
+  const filterSent = (): Record<string, unknown> =>
+    (mocks.list.mock.lastCall?.[0] as { filter: Record<string, unknown> }).filter;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    mocks.list.mockResolvedValue({
+      items: [],
+      meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps the assets whose warranty ends within the days asked, from now — none already ended, none disposed', async () => {
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: '30' }),
+      scope,
+    );
+    expect(filterSent()).toEqual({
+      $and: [
+        {
+          status: { $ne: 'disposed' },
+          'warranty.end': { $gt: NOW, $lte: new Date('2026-12-03T08:00:00.000Z') },
+        },
+      ],
+    });
+  });
+
+  it('narrows the other filters rather than overwriting them — the status among them', async () => {
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({
+        warrantyEndsWithinDays: '90',
+        status: 'assigned',
+        branchId: BRANCH,
+      }),
+      scope,
+    );
+    const filter = filterSent();
+    expect(filter.status).toBe('assigned');
+    expect(filter.branchId).toEqual(new Types.ObjectId(BRANCH));
+    expect(filter.$and).toEqual([
+      {
+        status: { $ne: 'disposed' },
+        'warranty.end': { $gt: NOW, $lte: new Date('2027-02-01T08:00:00.000Z') },
+      },
+    ]);
+  });
+
+  it('asks nothing of the warranty when it is not set, and takes one to 365 days only', async () => {
+    await itAssetService.list(ListItAssetsQuerySchema.parse({}), scope);
+    expect(filterSent()).toEqual({});
+    for (const days of ['0', '366', '1.5', 'soon']) {
+      expect(() => ListItAssetsQuerySchema.parse({ warrantyEndsWithinDays: days })).toThrow();
+    }
   });
 });
 

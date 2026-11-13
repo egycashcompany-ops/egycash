@@ -46,6 +46,7 @@ import {
   useRegisterEmployeeDirect,
   useRehireCheck,
 } from '../api/employee-queries';
+import { ExternalEmployeeDialog } from '../components/ExternalEmployeeDialog';
 import { SalaryCard } from '../components/SalaryCard';
 import { branchOfCode, orderTitlesForBranch, placementForTitle } from '../lib/register-code';
 
@@ -60,6 +61,8 @@ export const DirectRegisterPage = (): JSX.Element => {
   const register = useRegisterEmployeeDirect();
 
   // Identity + contact.
+  // «موظف خارجى» — a person the company did not hire, registered in four boxes of their own.
+  const [externalOpen, setExternalOpen] = useState(false);
   const [credentials, setCredentials] = useState<{
     id: string;
     username: string;
@@ -223,6 +226,17 @@ export const DirectRegisterPage = (): JSX.Element => {
           { label: t('employees.module.title'), to: '/employees' },
           { label: t('employees.register.title') },
         ]}
+        actions={
+          <Button size="sm" variant="secondary" onClick={() => setExternalOpen(true)}>
+            {t('employees.external.title')}
+          </Button>
+        }
+      />
+
+      <ExternalEmployeeDialog
+        open={externalOpen}
+        onClose={() => setExternalOpen(false)}
+        onRegistered={(employee) => navigate(`/employees/${employee.id}`)}
       />
 
       <div className="space-y-4">

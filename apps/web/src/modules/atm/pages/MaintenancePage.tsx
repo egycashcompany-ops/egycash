@@ -52,6 +52,7 @@ import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { CloseMaintenanceDialog, EditMaintenanceDialog } from '../components/MaintenanceDialogs';
 import { BoardDayToggle } from '../components/BoardDayToggle';
 import { BoardResetButton } from '../components/BoardResetButton';
+import { OpenBoardCutShort } from '../components/OpenBoardCutShort';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBoardFilters } from '../lib/useBoardFilters';
@@ -271,6 +272,9 @@ export const MaintenancePage = (): JSX.Element => {
             </div>
           )}
         </div>
+
+        {/* The board's one read was cut at its cap — the table is not the whole board, and says so. */}
+        <OpenBoardCutShort board={list.data} />
 
         {/* Unselectable as a whole; the copy columns take a selection back (`lib/board-copy.ts`). An
           earlier day's rows keep the legacy grey of the «other days» group. */}

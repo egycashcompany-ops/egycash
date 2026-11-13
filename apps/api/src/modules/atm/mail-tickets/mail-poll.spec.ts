@@ -21,9 +21,13 @@ import {
   categoriesFiledAs,
   documentRules,
   MAIL_POLL_LEASE_KEY,
+  mailInstant,
+  NEWEST_WINDOW_MS,
   pollAtmMailbox,
   resetAtmMailSweep,
   RUN_BUDGET_MS,
+  SWEEP_HORIZON_MS,
+  SWEEP_WINDOW_MS,
 } from './mail-poll.service';
 import { type AtmMailboxConfigDoc } from './mailbox-config.model';
 import { atmMailboxConfigRepository } from './mailbox-config.repository';
@@ -423,7 +427,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
     const pagedMailbox = (unread: AtmMailMessage[]) => {
       const state = {
         unread: unread.map((m, index) => ({ ...m, receivedAt: new Date(receivedAt(index)) })),
-        pages: [] as { limit: number; before: string | null }[],
+        pages: [] as { limit: number; since: string; before: string | null }[],
         handled: [] as { id: string; category: string | null }[],
       };
       registerAtmMailSourceFactory(() => ({
@@ -432,11 +436,12 @@ describe('pollAtmMailbox — the mailbox document', () => {
         listUnread: async () => {
           throw new Error('the document is read newest first, page by page');
         },
-        listUnreadPage: async (limit, before) => {
-          state.pages.push({ limit, before });
+        listUnreadPage: async (limit, { since, before }) => {
+          state.pages.push({ limit, since, before });
           const bound = before === null ? Infinity : new Date(before).getTime();
+          const from = new Date(since).getTime();
           const messages = state.unread
-            .filter((m) => m.receivedAt.getTime() < bound)
+            .filter((m) => m.receivedAt.getTime() < bound && m.receivedAt.getTime() >= from)
             .slice(0, limit);
           const last = messages[messages.length - 1];
           return {
@@ -479,9 +484,19 @@ describe('pollAtmMailbox — the mailbox document', () => {
     const sweeps = (state: { pages: { before: string | null }[] }): (string | null)[] =>
       state.pages.filter((page) => page.before !== null).map((page) => page.before);
 
+    /** The reader's clock in these tests: half an hour after the newest mail. */
+    const NOW = Date.UTC(2026, 10, 13, 12, 30, 0);
+    const newestSince = mailInstant(NOW - NEWEST_WINDOW_MS);
+    /** The window a sweep step below `before` lists. */
+    const below = (before: string): { since: string; before: string } => ({
+      since: mailInstant(Date.parse(before) - SWEEP_WINDOW_MS),
+      before,
+    });
+
     beforeEach(() => {
       ingestByMessage();
       recorded();
+      vi.spyOn(Date, 'now').mockReturnValue(NOW);
     });
 
     it('files a new mail however much mail it left unread sits in the mailbox', async () => {
@@ -492,21 +507,46 @@ describe('pollAtmMailbox — the mailbox document', () => {
 
       expect(mailbox.handled).toEqual([{ id: 'on-new', category: 'Red Category' }]);
       expect(run).toMatchObject({ read: 61, created: 1, unmatched: 60, error: null });
-      // The newest page, then the rest below its oldest mail — found by date, never by count.
+      // The last two days' newest page, then three days below its oldest mail — found by dates,
+      // never by count, never «every date».
       expect(mailbox.pages).toEqual([
-        { limit: 50, before: null },
-        { limit: 50, before: receivedAt(49) },
+        { limit: 50, since: newestSince, before: null },
+        { limit: 50, ...below(receivedAt(49)) },
       ]);
     });
 
-    it('lists one page when the whole unread list fits on it', async () => {
+    it('sweeps on below the two days when they held every unread mail of theirs', async () => {
       vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
       const mailbox = pagedMailbox([message('on-1'), ...pile(3)]);
 
       await pollAtmMailbox();
 
-      expect(mailbox.pages).toEqual([{ limit: 50, before: null }]);
+      // The two days held four: the older unread mail, if any, lies below them.
+      expect(mailbox.pages).toEqual([
+        { limit: 50, since: newestSince, before: null },
+        { limit: 50, ...below(newestSince) },
+      ]);
       expect(mailbox.handled.map((h) => h.id)).toEqual(['on-1']);
+    });
+
+    it('walks back three days at a time to thirty, then starts over', async () => {
+      vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+      const mailbox = pagedMailbox([]);
+      const steps = Math.ceil((SWEEP_HORIZON_MS - NEWEST_WINDOW_MS) / SWEEP_WINDOW_MS);
+
+      for (let run = 0; run < steps + 1; run += 1) await pollAtmMailbox();
+
+      const swept = sweeps(mailbox);
+      expect(swept[0]).toBe(newestSince);
+      for (let step = 1; step < steps; step += 1) {
+        expect(Date.parse(swept[step - 1] as string) - Date.parse(swept[step] as string)).toBe(
+          SWEEP_WINDOW_MS,
+        );
+      }
+      // The last step stops at the horizon, and the run after it starts over below the two days.
+      const last = mailbox.pages.filter((page) => page.before !== null)[steps - 1];
+      expect(last?.since).toBe(mailInstant(NOW - SWEEP_HORIZON_MS));
+      expect(swept[steps]).toBe(newestSince);
     });
 
     it('sweeps the older pile a page per run, so a deeper backlog is filed too', async () => {
@@ -519,10 +559,14 @@ describe('pollAtmMailbox — the mailbox document', () => {
       expect(mailbox.handled).toEqual([]);
       await pollAtmMailbox();
       expect(mailbox.handled).toEqual([{ id: 'on-old', category: 'Red Category' }]);
-      // Run one swept below the newest page's oldest (49), run two below its own page's (99) — the
-      // end of the pile, so run three starts over just below the newest page.
+      // Run one swept below the newest page's oldest (49), run two below its own page's (99) — a
+      // short page, so run three steps three days further down.
       await pollAtmMailbox();
-      expect(sweeps(mailbox)).toEqual([receivedAt(49), receivedAt(99), receivedAt(49)]);
+      expect(sweeps(mailbox)).toEqual([
+        receivedAt(49),
+        receivedAt(99),
+        below(receivedAt(99)).since,
+      ]);
     });
 
     it('starts the sweep over after a save — a branch just switched on is first', async () => {
@@ -544,7 +588,7 @@ describe('pollAtmMailbox — the mailbox document', () => {
         providerId: 'fake-paged',
         available: () => true,
         listUnread: async () => [],
-        listUnreadPage: async (_limit, before) => {
+        listUnreadPage: async (_limit, { before }) => {
           if (before !== null) throw new Error('microsoft graph 503 on /users/x/messages');
           const messages = [message('on-new'), ...pile(49)];
           return { messages, listed: messages.length, oldest: receivedAt(49) };
@@ -664,7 +708,38 @@ describe('pollAtmMailbox — the mailbox document', () => {
         expect(RUN_BUDGET_MS).toBe(40_000);
         expect(run).toMatchObject({ read: 3, unmatched: 3, error: null });
         // The newest page only: the sweep waits for a quieter minute.
-        expect(mailbox.pages).toEqual([{ limit: 50, before: null }]);
+        expect(mailbox.pages).toEqual([
+          {
+            limit: 50,
+            since: mailInstant(Date.UTC(2026, 10, 13, 12, 0, 0) - NEWEST_WINDOW_MS),
+            before: null,
+          },
+        ]);
+      });
+
+      it('counts its time from the mail in hand — a slow listing does not eat it', async () => {
+        vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(mailboxDoc());
+        let now = Date.UTC(2026, 10, 13, 12, 0, 0);
+        vi.spyOn(Date, 'now').mockImplementation(() => now);
+        registerAtmMailSourceFactory(() => ({
+          providerId: 'fake-slow-listing',
+          available: () => true,
+          listUnread: async () => [],
+          // The mailbox takes thirty-five seconds to answer (2026-11-13: over twenty).
+          listUnreadPage: async () => {
+            now += 35_000;
+            const messages = [message('on-1'), message('off-1'), message('off-2')];
+            return { messages, listed: messages.length, oldest: receivedAt(2) };
+          },
+          markHandled: async () => {
+            now += 5_000;
+          },
+        }));
+
+        const run = await pollAtmMailbox();
+
+        // All three filed or judged: the forty seconds began when the page came back.
+        expect(run).toMatchObject({ read: 3, created: 1, unmatched: 2, error: null });
       });
     });
   });

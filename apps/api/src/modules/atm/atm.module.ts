@@ -527,9 +527,9 @@ export const atmModule: ModuleManifest = {
       description: "Read the maintenance mailbox and file each mail under its machine's branch",
       cron: '* * * * *',
       ownerService: 'atm',
-      // The next minute is the retry (2026-11-13): retried inside its own minute, a failed reading
-      // met the next one in the mailbox, and five readers queued behind each other until every
-      // request timed out.
+      // The next minute is the retry (2026-11-13): retried four more times over the next two
+      // minutes, a failed reading met the next ones in the mailbox, and up to five readers queued
+      // behind each other until every request timed out.
       retry: false,
       handler: async () => {
         // A mailbox that failed as a whole (token refused, unreachable) is the run's `error` — on

@@ -30,10 +30,11 @@
 // ONE READING AT A TIME, AND A SHORT ONE (2026-11-13: «الـ Automation بتاع الميل واقف بقاله شوية
 // كتير» — the screen's test said «This operation was aborted»). The mailbox answers four requests
 // at once per application; past that it queues them. A run that timed out was retried by the job
-// queue four times while the next minute's run started, so five readers met in the mailbox, every
+// queue four more times, 2 to 16 seconds apart between 20-second timeouts — some two minutes of
+// retries — while the next minutes' runs started, so up to five readers met in the mailbox, every
 // request waited behind the others, timed out, and was retried again. So: a run holds a lease
 // (`MAIL_POLL_LEASE_KEY`) — the scheduled one and «قراءة الآن» alike, across the api and the worker
-// — and a run that finds it taken steps aside; it takes on mail for a bounded time
+// — and a run that finds it taken steps aside; it stops taking on new mail after a bounded time
 // (`RUN_BUDGET_MS`) and leaves the rest to the next minute; and its failure is not retried
 // (`retry: false` on the task): the next minute IS the retry.
 //
@@ -43,12 +44,18 @@
 // has a row of its own.
 import { randomUUID } from 'node:crypto';
 import { ATM_MAIL_POLL_REASONS_MAX, AtmSettingKeys } from '@ecms/contracts';
+import { env } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
 import { getCache } from '../../../infrastructure/redis/cache';
 import { settingsService } from '../../../platform/settings';
 import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
 import { atmMailIngestionService, type AtmMailIngestGate } from './mail-ingestion.service';
-import { type AtmMailMessage, type AtmMailPage, type AtmMailSource } from './mail-source';
+import {
+  type AtmMailMessage,
+  type AtmMailPage,
+  type AtmMailSource,
+  type AtmMailWindow,
+} from './mail-source';
 import { type AtmMailPollRunRecord, type AtmMailboxConfigDoc } from './mailbox-config.model';
 import { atmMailboxConfigRepository } from './mailbox-config.repository';
 import { mailboxSourceFor, resolveAtmMailPollPlan, type AtmMailPollPlan } from './mailbox-source';
@@ -60,21 +67,50 @@ const ORG_SUBJECT = { userId: null, branchId: null };
 const POLL_BATCH = 50;
 
 /**
- * How long one run takes on mail before it leaves the rest to the next minute. Under a minute, so
- * one run is over before the next is due, whatever the mailbox's pace that day.
+ * How long one run may START new work — the next message, the older page — before it leaves the
+ * rest to the next minute. Counted from the moment the newest page has been listed, so a slow
+ * listing does not eat the time the mail itself needs. It does not bound how long a run lasts: a
+ * request it let start runs to the transport's timeout, a token fetched first to its own, so a slow
+ * mailbox can carry a run past the next minute's tick. The lease (`LEASE_TTL_SECONDS`), not this
+ * budget, keeps two runs apart: the minute that finds it taken steps aside.
  */
 export const RUN_BUDGET_MS = 40_000;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The newest page is the unread mail of the last two days — a new mail is always in it, and the
+ * mailbox looks at two days, not at everything it ever received (2026-11-13: asked for every date,
+ * it answered nothing for twenty seconds). Older unread mail is the sweep's.
+ */
+export const NEWEST_WINDOW_MS = 2 * DAY_MS;
+
+/** One step of the sweep: three days of receipt times below where it stands. */
+export const SWEEP_WINDOW_MS = 3 * DAY_MS;
+
+/**
+ * How far back the sweep walks before it starts over: thirty days. Mail left unread longer than
+ * that — a branch switched on after more than a month — is not filed by the reader; the human
+ * opening the mailbox still sees it unread.
+ */
+export const SWEEP_HORIZON_MS = 30 * DAY_MS;
+
+/** A receipt time as the mailbox writes one: to the second, in UTC. */
+export const mailInstant = (ms: number): string =>
+  new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 /** The lease one reading holds — company-wide: the worker's minute and the api's «قراءة الآن». */
 export const MAIL_POLL_LEASE_KEY = 'lock:atm-mail-poll';
 
 /**
  * How long the lease outlives a reader that died holding it (a worker restarted mid-reading, as
- * every deploy does). Above any run — the token and the newest listing, the budget, a request the
- * budget let start and the older listing, each bounded by the transport's timeout, about 80
- * seconds at worst — and short enough that a restart costs the mailbox a minute or two, no more.
+ * every deploy does). Above any run: the token and the newest listing, the budget, then the one
+ * request the budget let start (the older listing or a mark-read) behind a fresh token — four
+ * requests each bounded by the transport's timeout — and a margin: 4 × 45 s + 40 s + 30 s = 250 s
+ * at the default timeout. A restart costs the mailbox that long at most.
  */
-const LEASE_TTL_SECONDS = 2 * 60;
+const LEASE_TTL_SECONDS =
+  Math.ceil((4 * env.ATM_MAIL_GRAPH_TIMEOUT_MS + RUN_BUDGET_MS) / 1000) + 30;
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -166,6 +202,14 @@ const emptyTally = (now: number): Tally => ({
 /** The run's time for taking on mail is spent: what is left is the next minute's. */
 const outOfTime = (tally: Tally): boolean => Date.now() >= tally.endsAt;
 
+/**
+ * The budget runs from when the mail is in hand: a listing that took the mailbox thirty seconds
+ * (2026-11-13) must not leave its fifty messages ten.
+ */
+const startTheClock = (tally: Tally): void => {
+  tally.endsAt = Date.now() + RUN_BUDGET_MS;
+};
+
 /** The category a filed mail is tagged with: the document's row, else the old setting. */
 type CategoryOf = (branchId: string) => string | null;
 
@@ -238,6 +282,7 @@ const readOnce = async (
   tally: Tally,
 ): Promise<void> => {
   const messages = await source.listUnread(POLL_BATCH);
+  startTheClock(tally);
   if (messages.length === 0) return;
   const categoryOf = await categoryLookup(documentCategories);
   for (const message of messages) {
@@ -248,7 +293,7 @@ const readOnce = async (
 
 /**
  * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
- * page starts below (null: just below the newest page). Per document VERSION, so a save — a branch
+ * page lies below (null: just below the newest page). Per document VERSION, so a save — a branch
  * switched on — starts it over.
  */
 let sweep: { key: string; before: string | null } | null = null;
@@ -257,45 +302,59 @@ let sweep: { key: string; before: string | null } | null = null;
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
  * on purpose — a branch not switched on yet, a machine not in the master — stays in it. Read oldest
  * first, fifty of those would stand between the reader and every new mail for good; so it reads
- * NEWEST first, and a new mail is filed on the next run however large that pile grows.
+ * NEWEST first: the unread mail of the last two days (`NEWEST_WINDOW_MS`), fifty at most, and a
+ * new mail is filed on the next run however large the pile grows.
  *
- * The pile is not abandoned either: when the newest page is full, the run also takes ONE older
- * page, the next step of a sweep that walks the rest of the unread mail a page per run and starts
- * over at its end — so a backlog deeper than a page (a branch switched on after weeks, a machine
- * added to the master later) is still filed, and no run lists more than two pages. The sweep finds
- * its page by DATE — the mail received before the last page's oldest — never by counting down the
- * pile (`$skip`), which grew too slow for the mailbox once the pile did (2026-11-13). Two mails
- * received in the same second across a page's edge can be passed over by one sweep; the newest
- * page and the next sweep still see them.
+ * The pile is not abandoned either: the run also takes ONE older page, the next step of a sweep
+ * that walks the older unread mail three days at a time (`SWEEP_WINDOW_MS`) — fifty of them at
+ * most, below the last page's oldest — back to thirty days (`SWEEP_HORIZON_MS`), and starts over.
+ * So a backlog deeper than a page (a branch switched on after weeks, a machine added to the master
+ * later) is still filed, and no run lists more than two pages. Every page is a range of DATES: the
+ * mailbox finds it directly, where a page of «every date» or one counted down the pile (`$skip`)
+ * outgrew its patience (2026-11-13). A page's edge is a receipt time to the second, so the rest of
+ * a same-second group cut by an edge is passed over by that sweep; a later sweep reaches it once
+ * the unread list moves the edges (new mail, a mail filed or read), and in an unchanged pile it
+ * waits. Past fifty unread mails in one second — which the mailbox has never received — the rest
+ * are never swept: an accepted limit.
  */
 const readNewestFirst = async (
   source: AtmMailSource,
-  listPage: (limit: number, before: string | null) => Promise<AtmMailPage>,
+  listPage: (limit: number, window: AtmMailWindow) => Promise<AtmMailPage>,
   gate: AtmMailIngestGate | undefined,
   documentCategories: ReadonlyMap<string, string>,
   sweepKey: string,
   tally: Tally,
 ): Promise<void> => {
-  const newest = await listPage(POLL_BATCH, null);
-  if (newest.listed === 0) return;
-  const categoryOf = await categoryLookup(documentCategories);
+  const now = Date.now();
+  const newestSince = mailInstant(now - NEWEST_WINDOW_MS);
+  const newest = await listPage(POLL_BATCH, { since: newestSince, before: null });
+  startTheClock(tally);
+  let categoryOf: CategoryOf | null = null;
+  const take = async (message: AtmMailMessage): Promise<void> => {
+    categoryOf ??= await categoryLookup(documentCategories);
+    await takeOn(source, message, gate, categoryOf, tally);
+  };
   const seen = new Set<string>();
   for (const message of newest.messages) {
     if (outOfTime(tally)) return;
     seen.add(message.providerMessageId);
-    await takeOn(source, message, gate, categoryOf, tally);
-  }
-  if (newest.listed < POLL_BATCH) {
-    // The whole unread list fitted on one page: nothing below it to sweep.
-    sweep = { key: sweepKey, before: null };
-    return;
+    await take(message);
   }
   // The newest page took the run's time: the sweep waits, where it stood, for a quieter minute.
   if (outOfTime(tally)) return;
 
-  const before = (sweep?.key === sweepKey ? sweep.before : null) ?? newest.oldest;
-  if (before === null) return;
-  const older = await listPage(POLL_BATCH, before);
+  // Where the sweep stands: kept from the last run, else just below the newest page — below its
+  // oldest when it was full, below its two days when it held all of them.
+  const floor = now - SWEEP_HORIZON_MS;
+  const kept = sweep?.key === sweepKey ? sweep.before : null;
+  const before =
+    kept ?? (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
+  if (Date.parse(before) <= floor) {
+    sweep = { key: sweepKey, before: null };
+    return;
+  }
+  const since = mailInstant(Math.max(floor, Date.parse(before) - SWEEP_WINDOW_MS));
+  const older = await listPage(POLL_BATCH, { since, before });
   for (const message of older.messages) {
     // A page cut short keeps the sweep where it was: the page is listed again next run, and what
     // this run already took on is either gone from the unread list or judged again, harmlessly.
@@ -303,13 +362,12 @@ const readNewestFirst = async (
     // The list can shift between the two listings (mail arrives, someone opens one in Outlook).
     if (seen.has(message.providerMessageId)) continue;
     seen.add(message.providerMessageId);
-    await takeOn(source, message, gate, categoryOf, tally);
+    await take(message);
   }
-  sweep = {
-    key: sweepKey,
-    // A short page is the end of the list: the next run starts the sweep over.
-    before: older.listed < POLL_BATCH ? null : older.oldest,
-  };
+  // A full page: the next one lies below its oldest. A short one: these days are done, the next
+  // step is the three days below them — and past the horizon, the sweep starts over.
+  const next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
+  sweep = { key: sweepKey, before: Date.parse(next) <= floor ? null : next };
 };
 
 /** Best effort: the run is the reader's work, its record a convenience for the screen. */

@@ -23,6 +23,7 @@ import {
   type AtmMailMessage,
   type AtmMailPage,
   type AtmMailSource,
+  type AtmMailWindow,
   type AtmMailSourceFactory,
 } from './mail-source';
 
@@ -161,23 +162,26 @@ class GraphMailSource implements AtmMailSource {
   }
 
   /**
-   * Newest first, below `before` — a page found by its date, never by `$skip`: a deep `$skip` makes
-   * the mailbox count its way down the whole unread pile, and that is what timed out once the pile
-   * grew (2026-11-13). `receivedDateTime` leads the `$filter` because Graph requires every
-   * `$orderby` property to appear there, first and in the same order — otherwise it refuses the
-   * listing (`InefficientFilter`). From the newest, the bound is every date.
+   * Newest first, within a range of receipt times — never every date, never by `$skip`. Asked for
+   * the newest unread of every date (`receivedDateTime ge 1900-01-01`), the mailbox weighed all it
+   * ever received and answered nothing for twenty seconds (2026-11-13); within a few days it looks
+   * at those days. `receivedDateTime` leads the `$filter` because Graph requires every `$orderby`
+   * property to appear there, first and in the same order — otherwise it refuses the listing
+   * (`InefficientFilter`).
    */
-  async listUnreadPage(limit: number, before: string | null): Promise<AtmMailPage> {
-    if (before !== null && !GRAPH_INSTANT.test(before)) {
-      throw new Error('microsoft graph listing: the page bound is not a receipt time');
+  async listUnreadPage(limit: number, window: AtmMailWindow): Promise<AtmMailPage> {
+    for (const bound of [window.since, window.before]) {
+      if (bound !== null && !GRAPH_INSTANT.test(bound)) {
+        throw new Error('microsoft graph listing: the page bound is not a receipt time');
+      }
     }
-    const bound =
-      before === null
-        ? 'receivedDateTime ge 1900-01-01T00:00:00Z'
-        : `receivedDateTime lt ${before}`;
+    const range =
+      window.before === null
+        ? `receivedDateTime ge ${window.since}`
+        : `receivedDateTime ge ${window.since} and receivedDateTime lt ${window.before}`;
     const path =
       `${GRAPH_ROOT}/users/${encodeURIComponent(this.config.userEmail)}/messages` +
-      `?$filter=${encodeURIComponent(`${bound} and isRead eq false`)}` +
+      `?$filter=${encodeURIComponent(`${range} and isRead eq false`)}` +
       `&$orderby=receivedDateTime%20desc&$top=${String(limit)}` +
       `&$select=id,subject,from,body,receivedDateTime,isRead`;
     const payload = await this.fetchJson<{ value?: GraphMessage[] }>(path, { method: 'GET' });

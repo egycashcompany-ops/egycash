@@ -476,9 +476,10 @@ batch, unchanged.
 («This operation was aborted») from 2026-11-13 02:00 UTC, about five failures a minute. Microsoft
 Graph serves at most four concurrent requests per mailbox for one application and queues the rest.
 The scheduled task inherited the job queue's defaults: five attempts with backoff, run by a worker
-that takes five jobs at once. So a reading that timed out was retried inside its own minute while
-the next minute's reading started, the readers queued behind each other in the mailbox, and every
-timeout bred more retries. The pile of mail left unread on purpose had grown to over a hundred
+that takes five jobs at once. So a reading that timed out was retried four more times, 2 to 16
+seconds apart between 20-second timeouts — some two minutes of retries — while the next minutes'
+readings started, the readers queued behind each other in the mailbox, and every timeout bred more
+retries. The pile of mail left unread on purpose had grown to over a hundred
 newest messages a run, each listing carrying the bodies, and the sweep's `$skip` grew with it, so
 each request was heavier than on the first days. Four changes:
 
@@ -490,13 +491,36 @@ each request was heavier than on the first days. Four changes:
 - **No retry inside the minute**: a scheduled task may declare `retry: false`, and the mailbox poll
   does. Its failure is recorded (`lastResult: failed`) and logged, not rethrown, so the job queue
   does not retry it: the next minute is the retry.
-- **A time budget** (`RUN_BUDGET_MS`, 40 s): a reading stops taking on mail when it is spent, and
-  the sweep stays where it stood. Under a minute, so one reading is over before the next is due.
+- **A time budget** (`RUN_BUDGET_MS`, 40 s): a reading stops taking on new mail when it is spent,
+  and the sweep stays where it stood. It bounds when a reading stops starting work, not when it
+  ends: a request already started runs to its timeout (a token fetched first, to its own), so a
+  slow reading can last about 80 s, past the next tick. The lease keeps them apart: that tick steps
+  aside. The lease's TTL (2 min) stays above that worst case.
 - **The sweep pages by date**: `listUnreadPage(limit, before)` asks for the unread mail received
   before the last page's oldest (`receivedDateTime lt …`, `AtmMailPage.oldest`) instead of a `$skip`
   that made the mailbox count its way down the pile. The bound is checked to be a receipt time
-  before it is written into the query. Two mails received in the same second across a page's edge
-  can be passed over by one sweep; the newest page and the next sweep still reach them.
+  before it is written into the query. A page's edge is a receipt time to the second: the rest of a
+  same-second group cut by an edge is passed over by that sweep, and reached by a later one once
+  the unread list moves the edges (new mail, a mail filed or read). Past fifty unread mails in one
+  second the rest are never swept, an accepted limit for a mailbox that has never received that
+  many at once.
+- **Days, not every date** (after #699 was deployed). With one reading a minute again, the network
+  flow showed the request sent and NOTHING back for 20 s: the mailbox was evaluating «unread,
+  newest first, every date» (`receivedDateTime ge 1900-01-01`) over all it ever received. Every
+  page is now a range of receipt times (`AtmMailWindow { since, before }`): the newest page is the
+  last two days (`NEWEST_WINDOW_MS`); the sweep lists three days (`SWEEP_WINDOW_MS`) below where it
+  stands — below a full page's oldest, else below the window it just listed — back to thirty days
+  (`SWEEP_HORIZON_MS`), then starts over. «اختبار الاتصال» lists the newest two days. Unread mail
+  older than thirty days is not filed by the reader.
+- **A slow mailbox is waited for** (after #699 was deployed). With one reading a minute again, the
+  newest listing still took over 20 s and every reading was cut off. `ATM_MAIL_GRAPH_TIMEOUT_MS`
+  now defaults to 45 s; the budget counts from the moment the newest page is listed
+  (`startTheClock`), so a slow listing does not eat the filing time; and the lease's TTL follows
+  the timeout: 4 × timeout + budget + 30 s (250 s at the default).
+- **«آخر قراءة» keeps up**: the mailbox card reads its document again every 20 s while open
+  (`useAtmMailboxConfig` `refetchInterval`), so the line follows the worker's readings — and the
+  409's «ستظهر نتيجتها في «آخر قراءة» بعد لحظات» holds. A refetch never resets a draft: the form
+  follows the server only when an editable field changes.
 
 ### 6b. Branches that work together — ATM only (2026-10-28)
 

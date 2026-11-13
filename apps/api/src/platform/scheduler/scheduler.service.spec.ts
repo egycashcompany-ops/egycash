@@ -1,7 +1,8 @@
 // What becomes of a scheduled task that fails: recorded and logged, and handed back to the job queue
 // to retry — unless the task says its next run IS the retry (`retry: false`). 2026-11-13: the ATM
-// mailbox poll, a per-minute task, was retried four times inside its own minute; the retries met the
-// next minute's run in the mailbox and every request queued behind the others until it timed out.
+// mailbox poll, a per-minute task, was retried four more times over the next two minutes; the
+// retries met those minutes' runs in the mailbox and every request queued behind the others until
+// it timed out.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({

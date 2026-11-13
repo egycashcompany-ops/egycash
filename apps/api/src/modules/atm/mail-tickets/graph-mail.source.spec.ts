@@ -61,34 +61,39 @@ afterEach(() => {
 });
 
 describe('the mailbox document’s listing', () => {
-  it('asks for unread mail newest first, every date, in the shape Graph accepts', async () => {
-    await source().listUnreadPage?.(50, null);
+  const SINCE = '2026-11-11T09:00:00Z';
+
+  it('asks for the unread mail of a range of dates, newest first, in the shape Graph accepts', async () => {
+    // 2026-11-13: asked for every date (`ge 1900-01-01`), the mailbox answered nothing for twenty
+    // seconds. A range of days is what it can answer.
+    await source().listUnreadPage?.(50, { since: SINCE, before: null });
     const query = messagesCall().searchParams;
-    expect(query.get('$filter')).toBe(
-      'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false',
-    );
+    expect(query.get('$filter')).toBe(`receivedDateTime ge ${SINCE} and isRead eq false`);
     expect(query.get('$orderby')).toBe('receivedDateTime desc');
     expect(query.get('$top')).toBe('50');
     expect(query.has('$skip')).toBe(false);
   });
 
-  it('finds an older page by its date, never by counting down the pile with `$skip`', async () => {
-    // 2026-11-13: a `$skip` deep in a grown pile made the mailbox count its way down, past the
-    // listing's timeout. Below a date, the page is found directly.
-    await source().listUnreadPage?.(50, '2026-11-12T08:15:02Z');
+  it('finds an older page by its dates, never by counting down the pile with `$skip`', async () => {
+    await source().listUnreadPage?.(50, { since: SINCE, before: '2026-11-12T08:15:02Z' });
     const query = messagesCall().searchParams;
     expect(query.get('$filter')).toBe(
-      'receivedDateTime lt 2026-11-12T08:15:02Z and isRead eq false',
+      `receivedDateTime ge ${SINCE} and receivedDateTime lt 2026-11-12T08:15:02Z and isRead eq false`,
     );
     expect(query.get('$orderby')).toBe('receivedDateTime desc');
     expect(query.has('$skip')).toBe(false);
   });
 
-  it('writes nothing into the query but a receipt time', async () => {
-    const failure = await source()
-      .listUnreadPage?.(50, '2026-11-12T08:15:02Z or isRead eq true')
-      .catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(Error);
+  it('writes nothing into the query but receipt times', async () => {
+    for (const window of [
+      { since: SINCE, before: '2026-11-12T08:15:02Z or isRead eq true' },
+      { since: '1900-01-01 or isRead eq true', before: null },
+    ]) {
+      const failure = await source()
+        .listUnreadPage?.(50, window)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+    }
     expect(fetched.some((entry) => entry.url.includes('/messages'))).toBe(false);
   });
 
@@ -102,7 +107,7 @@ describe('the mailbox document’s listing', () => {
               { ...graphMessage('m2', ''), receivedDateTime: '2026-10-28T07:59:00Z' },
             ],
           });
-    const page = await source().listUnreadPage?.(50, null);
+    const page = await source().listUnreadPage?.(50, { since: SINCE, before: null });
     // m2 has no body: left out of the messages, and still one of the places in the list — and
     // the page's oldest, where the next page starts.
     expect(page?.messages.map((m) => m.providerMessageId)).toEqual(['m1']);
@@ -115,7 +120,7 @@ describe('the mailbox document’s listing', () => {
       url.includes('/oauth2/v2.0/token')
         ? json({ access_token: 'syn-token', expires_in: 3600 })
         : json({ value: [] });
-    const page = await source().listUnreadPage?.(50, null);
+    const page = await source().listUnreadPage?.(50, { since: SINCE, before: null });
     expect(page).toEqual({ messages: [], listed: 0, oldest: null });
   });
 });
@@ -139,7 +144,7 @@ describe('a refused token', () => {
         ? json({ error: 'invalid_client', error_description: 'AADSTS7000215' }, 401)
         : json({ value: [] });
     const failure = await source()
-      .listUnreadPage?.(1, null)
+      .listUnreadPage?.(1, { since: '2026-11-11T09:00:00Z', before: null })
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(

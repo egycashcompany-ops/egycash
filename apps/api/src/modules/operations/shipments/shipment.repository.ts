@@ -76,12 +76,31 @@ const openSecuredFilter: FilterQuery<OperationsShipmentDoc> = {
   status: { $in: OPEN_SECURED_STATUSES },
 };
 
-/** The secured shipments the vault has not received yet — status draft, not deleted. */
-const securedDraftFilter: FilterQuery<OperationsShipmentDoc> = {
+/**
+ * The secured shipments the vault has not received yet — status draft, not deleted — or, with
+ * `collectedBy` (a UTC midnight: the Cairo day "today" stored the date-only way), the receive
+ * queue's DEFAULT set (Round 13): the drafts whose collection day has come (on or before it), the
+ * ones with a pickup recorded whatever their day (yellow — somebody has it in hand), and the
+ * pre-Round-10 rows with no record at all (the service decides those by their pickup leg).
+ *
+ * `{ pickup: { $ne: null } }` is "a record is written": Mongo reads a missing field as null, so the
+ * rows without the field are the third branch's alone. Every branch rides `ix_type_status_created`'s
+ * `{shipmentType, status}` prefix, as the whole set did.
+ */
+const securedDraftFilter = (collectedBy?: Date): FilterQuery<OperationsShipmentDoc> => ({
   isDeleted: false,
   shipmentType: 'secured',
   status: 'draft',
-};
+  ...(collectedBy === undefined
+    ? {}
+    : {
+        $or: [
+          { collectionDate: { $lte: collectedBy } },
+          { pickup: { $ne: null } },
+          { pickup: { $exists: false } },
+        ],
+      }),
+});
 
 /**
  * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, or only those whose delivery date
@@ -207,20 +226,20 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   }
 
   /**
-   * Every secured shipment the vault has not received yet (status `draft`), newest created first —
-   * the vault's receive queue reads these and keeps the ones its stage asks for.
+   * The secured shipments the vault has not received yet (status `draft`), newest created first —
+   * every one, or with `collectedBy` the receive queue's default set (`securedDraftFilter`).
    */
-  async securedDrafts(): Promise<OperationsShipmentDoc[]> {
+  async securedDrafts(collectedBy?: Date): Promise<OperationsShipmentDoc[]> {
     return this.model
-      .find(securedDraftFilter)
+      .find(securedDraftFilter(collectedBy))
       .sort({ createdAt: -1 })
       .lean<OperationsShipmentDoc[]>()
       .exec();
   }
 
-  /** How many rows `securedDrafts` would return — counted before anything is loaded. */
-  async countSecuredDrafts(): Promise<number> {
-    return this.model.countDocuments(securedDraftFilter).exec();
+  /** How many rows `securedDrafts(collectedBy)` would return — counted before anything is loaded. */
+  async countSecuredDrafts(collectedBy?: Date): Promise<number> {
+    return this.model.countDocuments(securedDraftFilter(collectedBy)).exec();
   }
 
   /**

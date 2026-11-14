@@ -7,8 +7,10 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
+import mongoose from 'mongoose';
 import {
   ErrorCodes,
+  OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
@@ -26,6 +28,7 @@ import {
   type OperationsDayDto,
   type OperationsCaptainRouteDto,
   type OperationsMobileDayDto,
+  type OperationsExecutionResultDto,
   type OperationsShipmentAssignmentDto,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
@@ -43,7 +46,6 @@ import {
   type OperationsVaultQueueDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
-  type OperationsVaultReportDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -251,10 +253,11 @@ const mkShipment = async (
 };
 
 /**
- * The Operations desk's pickup ✓ on a secured shipment — «تم الاستلام من العمليات» (Round 10). Since
- * Round 10 the vault receives only what somebody picked up, so every suite that walks a محصنة into
- * the vault presses this first. Returns the shipment as the ✓ left it — its NEW version is the one
- * the receive must send.
+ * The Operations desk's pickup ✓ on a secured shipment — «تم الاستلام من العمليات» (Round 10). The
+ * suites that walk a محصنة into the vault the usual way press this first, so their rows say who
+ * brought it in (Round 10 required it; since Round 13 the vault may receive without it, and the
+ * Round 13 suite does). Returns the shipment as the ✓ left it — its NEW version is the one the
+ * receive must send.
  */
 const deskPickUp = async (shipmentId: string): Promise<OperationsShipmentDto> => {
   const current = await request(app)
@@ -266,6 +269,53 @@ const deskPickUp = async (shipmentId: string): Promise<OperationsShipmentDto> =>
     .send({ version: data<OperationsShipmentDto>(current).version });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return data<OperationsShipmentDto>(res);
+};
+
+/** The sign-ins `dispatchOn` made, one per person and day, kept so the sign-in limit never bites. */
+const tokensOnDay = new Map<string, string>();
+
+/**
+ * The vault's release — `POST /operations/secured/dispatch` — sent ON THE VAN'S OWN DAY.
+ *
+ * The server releases a van of TODAY only (`OPERATIONS_DISPATCH_NOT_TODAY`), and every van in this
+ * file is planned on a day still to come (the roster plans no past day — see `shift`). So a case
+ * that sends a van out does it the way the vault does: on that day. The clock is set to 10:00 that
+ * morning in Cairo for this one call and put back after it, whatever the call answered.
+ *
+ * Two things do not survive the jump, and are handled here rather than in every case:
+ *   · the suite's tokens expire long before that day, so the call carries a token signed at that
+ *     hour (one per person and day, kept for the next call on the same day);
+ *   · Mongoose judges the connection by how long ago its last heartbeat was, read on the same moved
+ *     clock, and would call a healthy connection dead and hold every query. The stamp is cleared
+ *     going in and coming out; the next heartbeat writes it again.
+ */
+const dispatchOn = async (
+  day: string,
+  body: { crewAssignmentId: string | undefined; shipmentIds: string[] },
+  email = 'ops-admin@ecms.local',
+): Promise<request.Response> => {
+  const connection = mongoose.connection as unknown as { _lastHeartbeatAt: number | null };
+  vi.useFakeTimers({
+    toFake: ['Date'],
+    now: new Date(cairoDayStart(day).getTime() + 10 * 3_600_000),
+    shouldAdvanceTime: true,
+  });
+  connection._lastHeartbeatAt = null;
+  try {
+    const key = `${email} ${day}`;
+    let token = tokensOnDay.get(key);
+    if (token === undefined) {
+      token = await login(email);
+      tokensOnDay.set(key, token);
+    }
+    return await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  } finally {
+    vi.useRealTimers();
+    connection._lastHeartbeatAt = null;
+  }
 };
 
 beforeAll(async () => {
@@ -1948,10 +1998,10 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: crewRow, captainEmployeeId: captainId, version: 0 });
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [shipment.id] });
+    const dispatched = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [shipment.id],
+    });
     expect(dispatched.status).toBe(200);
     expect(data<{ dispatched: number }>(dispatched).dispatched).toBe(1);
     await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.VaultReleased));
@@ -1984,18 +2034,18 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     await receive(unassigned);
     const crewRow = await findCrewAssignmentId();
 
-    const noLeg = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [unassigned.id] });
+    const noLeg = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [unassigned.id],
+    });
     expect(noLeg.status).toBe(422);
     expect(errorCode(noLeg)).toBe(ErrorCodes.OPERATIONS_DELIVERY_LEG_REQUIRED);
 
     const draft = await mkSecured();
-    const notHeld = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [draft.id] });
+    const notHeld = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [draft.id],
+    });
     expect(notHeld.status).toBe(422);
     expect(errorCode(notHeld)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
   });
@@ -2113,10 +2163,10 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: fromBoard, captainEmployeeId: captainId, version: 0 });
 
-      const res = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: fromBoard, shipmentIds: [shipment.id] });
+      const res = await dispatchOn(DELIVERY_DATE, {
+        crewAssignmentId: fromBoard,
+        shipmentIds: [shipment.id],
+      });
       expect(res.status).toBe(200);
     });
 
@@ -3508,10 +3558,10 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [secured.id], crewAssignmentId: boardCrewId });
+    const dispatched = await dispatchOn(BOARD_DATE, {
+      shipmentIds: [secured.id],
+      crewAssignmentId: boardCrewId,
+    });
     expect(dispatched.status).toBe(200);
   });
 
@@ -3785,10 +3835,10 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [twoLegs.id], crewAssignmentId: boardCrewId });
+    const dispatched = await dispatchOn(BOARD_DATE, {
+      shipmentIds: [twoLegs.id],
+      crewAssignmentId: boardCrewId,
+    });
     expect(dispatched.status).toBe(200);
 
     // The fixture really has two legs on two different crews — otherwise the board could pass
@@ -5120,9 +5170,14 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
   });
 });
 
-describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', () => {
+describe('operations reports — legacy /ops_report (B5)', () => {
   // The reports are where three legacy DEFECTS lived, and each of them changed a number a user
   // has read before. These tests exist to pin the corrected numbers, not just the shapes.
+  //
+  // Round 14: the legacy /ops_bank_report port left with its screen — «تقرير البنوك» is the vault
+  // roll-up now («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»), pinned in the B6 suite
+  // below — so the corrected numbers are pinned on the captain report, which keeps the
+  // completed-shipment set, and the Q26 case checks the bank report's packages as well.
   // Anchored, not written down. A roster cannot be planned for a day already past, so the fixed
   // day this suite used to seed expired the moment the calendar walked past it, and took the
   // whole suite's `beforeAll` with it. The day is the 10th of a month far enough ahead to stay
@@ -5164,9 +5219,10 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       )
       .set('Authorization', `Bearer ${token}`);
 
-  const bankReport = (range = REPORT_MONTH, token = adminToken): request.Test =>
+  /** «تقرير البنوك» over the CURRENT month — what the vault received, and every receipt here is now. */
+  const bankReport = (token = adminToken): request.Test =>
     request(app)
-      .get(`/api/v1/operations/reports/banks?from=${range.from}&to=${range.to}`)
+      .get('/api/v1/operations/reports/banks')
       .set('Authorization', `Bearer ${token}`);
 
   /** Create a daily shipment collected inside the report month, then complete it. */
@@ -5301,10 +5357,10 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       });
     expect(legAssigned.status).toBe(200);
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: reportCrewId, shipmentIds: [secured.id] });
+    const dispatched = await dispatchOn(REPORT_DAY, {
+      crewAssignmentId: reportCrewId,
+      shipmentIds: [secured.id],
+    });
     expect(dispatched.status).toBe(200);
 
     const fresh = data<OperationsShipmentDto>(
@@ -5319,10 +5375,11 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       .send({ version: fresh.version });
     expect(done.status).toBe(200);
 
-    const res = await bankReport();
+    // The captain report: completed in the month, on the delivery leg's captain.
+    const res = await captainReport();
     expect(res.status).toBe(200);
-    const report = data<OperationsBankReportDto>(res);
-    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    const report = data<OperationsCaptainReportDto>(res);
+    const row = report.rows.find((r) => r.captainEmployeeId === reportCaptain);
     expect(row).toBeDefined();
     // Counted ONCE, not once per currency line. The legacy figure would have been 30/12/6.
     expect(row?.totals.bagCount).toBe(10);
@@ -5332,6 +5389,17 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     expect(row?.totals.currencies.map((c) => c.amount).sort((a, b) => a - b)).toEqual([
       100, 200, 300,
     ]);
+
+    // «تقرير البنوك» — received into the vault this month, so it is in the bank report too, and
+    // its packages are counted once there as well (this bank carries nothing else).
+    const banks = data<OperationsBankReportDto>(await bankReport());
+    const bankRow = banks.rows.find((r) => r.bankId === reportBank.id);
+    expect(bankRow?.totals).toMatchObject({
+      shipmentCount: 1,
+      bagCount: 10,
+      cartonCount: 4,
+      boxCount: 2,
+    });
   });
 
   it('3. Q28 — a zero-currency shipment cannot even be CREATED, which is the stronger fix', async () => {
@@ -5347,22 +5415,29 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     // The roll-up still handles the case, because MIGRATED legacy rows can carry it. That path is
     // covered where it can be exercised directly — report-aggregation.spec.ts, "counts a shipment
     // with no currency lines at all" — rather than faked through an endpoint that refuses it.
-    const report = data<OperationsBankReportDto>(await bankReport());
-    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    const report = data<OperationsCaptainReportDto>(await captainReport());
+    const row = report.rows.find((r) => r.captainEmployeeId === reportCaptain);
     expect(row).toBeDefined();
     expect(row?.totals.shipmentCount).toBeGreaterThanOrEqual(1);
   });
 
   it('4. Q27 — the grand total is a separate field, so summing the rows cannot double-count', async () => {
-    const report = data<OperationsBankReportDto>(await bankReport());
-    const summed = report.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0);
-    // The legacy report appended the total INTO the results array; here `rows` holds only real
-    // rows, and their sum equals the separate grand total exactly.
-    expect(report.grandTotal.shipmentCount).toBe(summed);
-    // And `rows` carries no synthetic total row: legacy appended one keyed `'الإجمالي العام'`
-    // into the same array (:5117/:5399), which is exactly what made summing the rows wrong.
-    expect(report.rows.map((r) => r.bankName)).not.toContain('الإجمالي العام');
-    expect(report.rows.every((r) => r.totals.shipmentCount >= 1)).toBe(true);
+    for (const report of [
+      data<OperationsCaptainReportDto>(await captainReport()),
+      data<OperationsBankReportDto>(await bankReport()),
+    ]) {
+      const rows: { label: string; count: number }[] = report.rows.map((r) => ({
+        label: 'captainName' in r ? r.captainName : r.bankName,
+        count: r.totals.shipmentCount,
+      }));
+      // The legacy report appended the total INTO the results array; here `rows` holds only real
+      // rows, and their sum equals the separate grand total exactly.
+      expect(report.grandTotal.shipmentCount).toBe(rows.reduce((acc, r) => acc + r.count, 0));
+      // And `rows` carries no synthetic total row: legacy appended one keyed `'الإجمالي العام'`
+      // into the same array (:5117/:5399), which is exactly what made summing the rows wrong.
+      expect(rows.map((r) => r.label)).not.toContain('الإجمالي العام');
+      expect(rows.every((r) => r.count >= 1)).toBe(true);
+    }
   });
 
   it('5. attributes a shipment to the captain of the leg its TYPE reports on', async () => {
@@ -5422,7 +5497,8 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   it('8. rides operationsShipment.view — a report is a read of shipments you can already see', async () => {
     const res = await captainReport(REPORT_MONTH, viewerToken);
     expect(res.status).toBe(200);
-    const banks = await bankReport(REPORT_MONTH, viewerToken);
+    // «تقرير البنوك» is still the shipments' readers' report too — one of its two grants.
+    const banks = await bankReport(viewerToken);
     expect(banks.status).toBe(200);
   });
 
@@ -5524,7 +5600,11 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
   });
 });
 
-describe('vault roll-up and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+describe('«تقرير البنوك» (the vault roll-up) and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+  // ROUND 14 — the roll-up that shipped as «تجميع الخزينة» IS «تقرير البنوك» now, at
+  // `GET /operations/reports/banks` («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»); the
+  // `/reports/vault` path is gone. Its content is unchanged, so every case below still holds.
+  //
   // THE ROLL-UP'S PERIOD IS THE OWNER'S: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
   // Every shipment the vault RECEIVED in the period, on the receipt's Cairo day, whether it has gone
   // out since or not; the current month by default. Every receipt in this file is stamped "now", so
@@ -5536,18 +5616,28 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
   const vaultReport = (query = '', token = adminToken): request.Test =>
     request(app)
-      .get(`/api/v1/operations/reports/vault${query}`)
+      .get(`/api/v1/operations/reports/banks${query}`)
       .set('Authorization', `Bearer ${token}`);
+  /** An account holding exactly these keys — the report's two readers, and somebody neither. */
+  const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R14 ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return login(email);
+  };
 
   /** The vault bank's row of a roll-up, or undefined when the period holds none of its shipments. */
   const vaultBankRow = async (
     query = '',
-  ): Promise<OperationsVaultReportDto['rows'][number] | undefined> => {
+  ): Promise<OperationsBankReportDto['rows'][number] | undefined> => {
     const res = await vaultReport(query);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    return data<OperationsVaultReportDto>(res).rows.find((r) => r.bankId === vaultBank.id);
+    return data<OperationsBankReportDto>(res).rows.find((r) => r.bankId === vaultBank.id);
   };
-  const countOf = (row: OperationsVaultReportDto['rows'][number] | undefined): number =>
+  const countOf = (row: OperationsBankReportDto['rows'][number] | undefined): number =>
     row?.totals.shipmentCount ?? 0;
 
   /** A Cairo calendar month as the screens send it: two inclusive days. */
@@ -5686,7 +5776,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
     const res = await vaultReport();
     expect(res.status).toBe(200);
-    const report = data<OperationsVaultReportDto>(res);
+    const report = data<OperationsBankReportDto>(res);
     const row = report.rows.find((r) => r.bankId === vaultBank.id);
     expect(row).toBeDefined();
     expect(row?.totals.shipmentCount).toBe(1);
@@ -5698,12 +5788,12 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
   it('2. sends the period it rolled up — the current Cairo month by default, «البداية كل اول شهر»', async () => {
     const month = cairoMonth(0);
-    const report = data<OperationsVaultReportDto>(await vaultReport());
+    const report = data<OperationsBankReportDto>(await vaultReport());
     // The days, sent the way the captain and bank reports send theirs: UTC midnight of each.
     expect(report.from).toBe(`${month.from}T00:00:00.000Z`);
     expect(report.to).toBe(`${month.to}T00:00:00.000Z`);
     // The same days asked for by name are the same answer.
-    expect(data<OperationsVaultReportDto>(await vaultReport(period(month)))).toEqual(report);
+    expect(data<OperationsBankReportDto>(await vaultReport(period(month)))).toEqual(report);
 
     // The grand total carries every currency, the pound with the rest. Which one is «المصري» is the
     // screen's to decide, with the boards' classifier — the server used to guess it by `EGP`, which
@@ -5745,12 +5835,8 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
       ).status,
     ).toBe(200);
     expect(
-      (
-        await request(app)
-          .post('/api/v1/operations/secured/dispatch')
-          .set('Authorization', `Bearer ${adminToken}`)
-          .send({ crewAssignmentId: crewRow, shipmentIds: [secured.id] })
-      ).status,
+      (await dispatchOn(VAULT_DATE, { crewAssignmentId: crewRow, shipmentIds: [secured.id] }))
+        .status,
     ).toBe(200);
     // Out of the vault, on its way: still received in the period, so still in the roll-up — a
     // month's roll-up of what came in does not shrink each time a van leaves.
@@ -5859,7 +5945,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     const inverted = { from: month.to, to: month.from };
     const res = await vaultReport(period(inverted));
     expect(res.status).toBe(200);
-    const report = data<OperationsVaultReportDto>(res);
+    const report = data<OperationsBankReportDto>(res);
     expect(report.rows).toEqual([]);
     expect(report.grandTotal.shipmentCount).toBe(0);
     expect(report.from.slice(0, 10)).toBe(inverted.from);
@@ -5876,16 +5962,35 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     const halfTyped = await vaultReport(`?from=0002-11-05&to=${month.to}`);
     expect(halfTyped.status, JSON.stringify(halfTyped.body)).toBe(200);
     expect(
-      countOf(data<OperationsVaultReportDto>(halfTyped).rows.find((r) => r.bankId === vaultBank.id)),
+      countOf(data<OperationsBankReportDto>(halfTyped).rows.find((r) => r.bankId === vaultBank.id)),
     ).toBeGreaterThanOrEqual(countOf(await vaultBankRow(period(month))));
     expect((await vaultReport(`?from=${month.from}&to=9999-12-31`)).status).toBe(200);
   });
 
-  it('5d. rides operationsVault.view, not the shipment grant', async () => {
-    const res = await vaultReport('', viewerToken); // viewer holds operationsShipment.view only
-    expect(res.status).toBe(403);
-    expect((await vaultReport(period(cairoMonth(0)), viewerToken)).status).toBe(403);
-    expect((await request(app).get('/api/v1/operations/reports/vault')).status).toBe(401);
+  it('5d. rides EITHER grant — the shipments’ readers and the vault’s — and is the only path', async () => {
+    // Round 14: «تقرير البنوك» rode `operationsShipment.view` and «تجميع الخزينة» rode
+    // `operationsVault.view`; the one screen left serves both readers.
+    const viewer = await vaultReport('', viewerToken); // viewer holds operationsShipment.view only
+    expect(viewer.status).toBe(200);
+    const vaultOnly = await tokenWith('ops-r14-vault@ecms.local', ['operationsVault.view']);
+    const theirs = await vaultReport(period(cairoMonth(0)), vaultOnly);
+    expect(theirs.status).toBe(200);
+    // The same answer whichever grant asked.
+    expect(data<OperationsBankReportDto>(theirs)).toEqual(
+      data<OperationsBankReportDto>(await vaultReport(period(cairoMonth(0)), viewerToken)),
+    );
+    // Neither grant → refused; nobody → 401.
+    const crewOnly = await tokenWith('ops-r14-crew@ecms.local', ['operationsCrew.view']);
+    expect((await vaultReport('', crewOnly)).status).toBe(403);
+    expect((await request(app).get('/api/v1/operations/reports/banks')).status).toBe(401);
+    // The old address is gone, not a second door onto the same report.
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/operations/reports/vault')
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(404);
   });
 
   it('6. creates an operational area — the legacy /data_edit city, without its id generator', async () => {
@@ -6513,10 +6618,10 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
-    const out = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: outCrewId, shipmentIds: [shipmentId] });
+    const out = await dispatchOn(SEC_OUT, {
+      crewAssignmentId: outCrewId,
+      shipmentIds: [shipmentId],
+    });
     expect(out.status, JSON.stringify(out.body)).toBe(200);
   };
   const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
@@ -6799,11 +6904,20 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
             }),
           ]);
           expect(load).not.toHaveBeenCalled();
-          // The vault's queue counts its candidates the same way — every draft is one.
+          // The vault's queue counts its candidates the same way — under «الكل» every draft is one.
           const queue = await vaultQueue('?all=true');
           expect(queue.status).toBe(422);
           expect(errorCode(queue)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE);
           expect(drafts).not.toHaveBeenCalled();
+          // Round 13: by default it counts and reads only what it can show — the drafts collected
+          // by today, the yellow ones and today's receipts. These white rows are booked far ahead,
+          // so the default queue is not refused for them, and the database cuts them out.
+          const byDefault = await vaultQueue();
+          expect(byDefault.status, JSON.stringify(byDefault.body)).toBe(200);
+          expect(
+            data<OperationsVaultQueueDto>(byDefault).shipments.some((s) => s.notes === MARK),
+          ).toBe(false);
+          expect(drafts).toHaveBeenCalledWith(new Date(`${cairoYmd(new Date())}T00:00:00.000Z`));
         } finally {
           load.mockRestore();
           drafts.mockRestore();
@@ -6816,25 +6930,67 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
   });
 
   describe('the vault receive queue — GET /operations/secured/vault-queue', () => {
-    it('lists the yellow ones and today\'s green ones by default — never the white ones', async () => {
+    // Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم
+    // والخزنه تستلم عادي»: by default the vault sees what it can receive NOW — every draft whose
+    // collection day has come (white or yellow), the yellow ones of any day, and today's receipts.
+    it('lists what the vault can receive now by default — drafts collected by today (white too), the yellow of any day, today\'s green', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const today = cairoYmd(new Date());
+      // White, collected TODAY — nobody pressed ✓, and its day has come.
+      const whiteToday = data<OperationsShipmentDto>(
+        await mkShipment({ shipmentType: 'secured', collectionDate: today, deliveryDate: SEC_OUT }),
+      ).id;
+      // White, collected YESTERDAY — booked then, moved back in the collection: a day can only be
+      // booked from today on, and a past day's draft is exactly what the vault must not lose.
+      const whiteYesterday = data<OperationsShipmentDto>(
+        await mkShipment({ shipmentType: 'secured', collectionDate: today, deliveryDate: SEC_OUT }),
+      ).id;
+      await OperationsShipmentModel.updateOne(
+        { _id: whiteYesterday },
+        { $set: { collectionDate: new Date(`${addDaysYmd(today, -1)}T00:00:00.000Z`) } },
+      ).exec();
+      // White, booked for TOMORROW — not yet.
+      const whiteTomorrow = data<OperationsShipmentDto>(
+        await mkShipment({
+          shipmentType: 'secured',
+          collectionDate: addDaysYmd(today, 1),
+          deliveryDate: SEC_OUT,
+        }),
+      ).id;
+
       const res = await vaultQueue();
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       const view = data<OperationsVaultQueueDto>(res);
       expect(view.all).toBe(false);
-      expect(view.date).toBe(`${cairoYmd(new Date())}T00:00:00.000Z`);
+      expect(view.date).toBe(`${today}T00:00:00.000Z`);
       const row = (id: string) => view.shipments.find((s) => s.id === id);
 
-      // With the captain, on its way: yellow, nothing received yet.
+      // White, its day come: listed, receivable, nobody's ✓ on it.
+      for (const id of [whiteToday, whiteYesterday]) {
+        expect(row(id), id).toMatchObject({
+          status: 'draft',
+          securedStage: 'awaitingPickup',
+          pickedUpBy: null,
+          pickedUpAt: null,
+          vaultReceivedAt: null,
+        });
+      }
+      // With the captain, on its way — booked far ahead, listed all the same: somebody has it.
       expect(row(withCaptain)).toMatchObject({ securedStage: 'withCaptain', vaultReceivedAt: null });
+      expect(row(withCaptain)?.collectionDate.slice(0, 10)).toBe(SEC_PICKUP);
       // Received today: green, with when — and still listed once it has gone out since.
       for (const id of [inVault, dispatched, completed]) {
         const received = row(id)?.vaultReceivedAt ?? null;
         expect(received, id).not.toBeNull();
-        expect(cairoYmd(new Date(received ?? ''))).toBe(cairoYmd(new Date()));
+        expect(cairoYmd(new Date(received ?? ''))).toBe(today);
       }
       expect(row(inVault)?.securedStage).toBe('inVault');
       expect(row(dispatched)?.securedStage).toBe('dispatched');
-      // Not collected by its captain yet; and a receipt of another day.
+      // White and booked ahead (tomorrow, or the fixtures' far day): «الكل» only. And a receipt of
+      // another day is «صرف الخزينة»'s, never this screen's.
+      expect(row(whiteTomorrow)).toBeUndefined();
       expect(row(awaiting)).toBeUndefined();
       expect(row(receivedYesterday)).toBeUndefined();
 
@@ -6846,14 +7002,28 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       for (const s of view.shipments) {
         expect(s.shipmentType).toBe('secured');
         // Yellow is the captain's ✓ or (Round 10) the desk's — other suites leave desk-picked drafts.
-        expect(['withCaptain', 'withOperations', 'inVault', 'dispatched', 'completed']).toContain(
-          s.securedStage,
+        expect(OPERATIONS_SECURED_STAGES).toContain(s.securedStage);
+        if (s.status === 'draft' && s.pickedUpBy === null) {
+          // A white row by default is one whose collection day has come.
+          expect(s.collectionDate.slice(0, 10) <= today, s.id).toBe(true);
+        }
+        // Past draft, every row is a receipt of today — it carries when.
+        expect(s.status === 'draft' ? s.vaultReceivedAt === null : s.vaultReceivedAt !== null).toBe(
+          true,
         );
       }
       expect(view.crews.map((c) => c.crewAssignmentId)).toContain(pickupCrewId);
+
+      // «الكل» adds the white ones booked ahead.
+      const everything = data<OperationsVaultQueueDto>(await vaultQueue('?all=true')).shipments.map(
+        (s) => s.id,
+      );
+      expect(everything).toEqual(
+        expect.arrayContaining([whiteToday, whiteYesterday, whiteTomorrow, awaiting, withCaptain]),
+      );
     });
 
-    it('with all=true also lists every one not collected yet — for viewing (Round 10: no vault ✓ on a white row)', async () => {
+    it('with all=true also lists the white ones booked for a later day — receivable too since Round 13', async () => {
       const res = await vaultQueue('?all=true');
       expect(res.status).toBe(200);
       const view = data<OperationsVaultQueueDto>(res);
@@ -6999,7 +7169,8 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
 // العمليات تم الاستلام من العمليات … مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح ،الشاشه
 // بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او العمليات او الخزنه يعدل عليها والمحصنة دى بتروح
 // تلقائى ل صرف الخزنة». The pickup is ONE record on the shipment (the captain's ✓ in the app or the
-// desk's), the vault receives only a picked-up shipment, a received one is locked, a special grant
+// desk's), the vault receives only a picked-up shipment (lifted in Round 13 — «والخزنه تستلم عادي»:
+// sections B and F now pin a receipt nobody handed over), a received one is locked, a special grant
 // cancels the receipt, and «صرف الخزينة» lists everything in the vault in the board look.
 describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and «صرف الخزينة»', () => {
   const R10_PICKUP = shift(370);
@@ -7212,7 +7383,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         pickedUpBy: null,
         pickedUpAt: null,
       });
-      // Not on the vault's screen by default — under «الكل» only.
+      // White and booked for a later day: not on the vault's screen by default — under «الكل» only.
       expect(await queueIds()).not.toContain(shipment.id);
       expect(await queueIds(true)).toContain(shipment.id);
 
@@ -7346,9 +7517,19 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         pickedUpBy: null,
       });
       expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pickedUp');
-      const white = await receive(shipment.id);
-      expect(white.status).toBe(409);
-      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
+      // White again — and since Round 13 still the vault's to receive (section F receives such
+      // rows): «الكل» lists it as a white, receivable draft with nobody's ✓ on it.
+      const allQueue = data<OperationsVaultQueueDto>(
+        await request(app)
+          .get('/api/v1/operations/secured/vault-queue?all=true')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(allQueue).toMatchObject({
+        status: 'draft',
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        vaultReceivedAt: null,
+      });
 
       // Then the desk confirms it — as Operations.
       expect((await confirm(shipment.id, deskToken)).status).toBe(200);
@@ -7421,7 +7602,38 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         securedStage: 'awaitingPickup',
         pickedUpBy: null,
       });
-      expect((await receive(legacy.id)).status).toBe(409);
+      // Round 13: white, and the vault takes it all the same — with nobody's ✓ written, though
+      // its captain's leg says picked up (the explicit null is the record, the leg is not read).
+      expect((await receive(legacy.id)).status).toBe(200);
+      expect(await securedRow(legacy.id)).toMatchObject({
+        status: 'inVault',
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+
+      // A legacy row nobody collected, received directly, has its "nobody" WRITTEN DOWN by that
+      // receipt — so its captain finishing his leg afterwards can never turn the vault's direct
+      // receipt into «تم الاستلام من القائد» after the fact.
+      const direct = await book();
+      await OperationsShipmentModel.updateOne({ _id: direct.id }, { $unset: { pickup: 1 } }).exec();
+      expect(await OperationsShipmentModel.findById(direct.id).lean().exec()).not.toHaveProperty(
+        'pickup',
+      );
+      expect((await receive(direct.id)).status).toBe(200);
+      expect(await OperationsShipmentModel.findById(direct.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      await OperationsShipmentAssignmentModel.updateOne(
+        { shipmentId: direct.id, leg: 'pickup' },
+        { $set: { executionStatus: 'pickedUp', startedAt: LEG_AT, pickedUpAt: LEG_AT } },
+      ).exec();
+      expect(await securedRow(direct.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
 
       // And a legacy row whose leg was NOT picked up is white, and the captain's app records it:
       // the app's conditional write (`pickup: null`) matches a record never written as well.
@@ -7438,23 +7650,74 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
     });
   });
 
-  describe('the vault receives only a picked-up shipment (B)', () => {
-    it('refuses a white row with 409 OPERATIONS_SECURED_NOT_PICKED_UP — and takes no custody', async () => {
+  // Round 13 lifted Round 10's rule («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»):
+  // «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم
+  // عادي». The vault receives any draft; the pickup record says who handed it over, if anybody did.
+  describe('the vault receives any draft — white or yellow (B, Round 13)', () => {
+    it('receives a WHITE row — custody taken, in the vault, its pickup record still empty', async () => {
       const { OperationsVaultCustodyModel } = await import(
         '../../src/modules/operations/vault/vault-custody.model'
       );
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
       const shipment = await book();
-      const white = await receive(shipment.id, vaultToken);
-      expect(white.status).toBe(409);
-      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
-      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(0);
-      expect((await read(shipment.id)).status).toBe('draft');
+      expect((await securedRow(shipment.id))?.securedStage).toBe('awaitingPickup');
 
-      // Picked up by the desk — now the vault takes it.
+      const white = await receive(shipment.id, vaultToken);
+      expect(white.status, JSON.stringify(white.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(white)).toMatchObject({
+        status: 'inVault',
+        receiptNumber: `R10-${shipment.id.slice(-6)}`,
+      });
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(1);
+      // The vault did NOT write itself in as the collector — nobody's ✓, for good.
+      expect(await OperationsShipmentModel.findById(shipment.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      // Its captain's leg is untouched by the vault.
+      expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pending');
+
+      // «السجل»: the receipt, and no pickup at all.
+      const kinds = (await logOf(shipment.id)).entries.map((e) => e.kind);
+      expect(kinds).toContain('vaultReceived');
+      expect(
+        kinds.filter((k) => ['pickupConfirmed', 'pickupUndone', 'executionPickedUp'].includes(k)),
+      ).toEqual([]);
+      // No pickup was announced for it.
+      expect(
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupConfirmed &&
+            (e.payload as { shipmentId: string }).shipmentId === shipment.id,
+        ),
+      ).toBe(false);
+      // A second receipt is still refused — received is received.
+      const twice = await receive(shipment.id, vaultToken);
+      expect(twice.status).toBe(422);
+      expect(errorCode(twice)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
+    });
+
+    it('receives a YELLOW row as before — and it keeps who brought it', async () => {
+      const shipment = await book();
       expect((await confirm(shipment.id)).status).toBe(200);
       const green = await receive(shipment.id, vaultToken);
       expect(green.status, JSON.stringify(green.body)).toBe(200);
       expect(data<OperationsShipmentDto>(green).status).toBe('inVault');
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: 'operations',
+      });
+      const kinds = (await logOf(shipment.id)).entries
+        .filter((e) => ['pickupConfirmed', 'vaultReceived'].includes(e.kind))
+        .map((e) => e.kind);
+      expect(kinds).toEqual(['pickupConfirmed', 'vaultReceived']);
     });
 
     // The custody and the shipment's move are ONE write since Round 10.
@@ -7644,10 +7907,10 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
-      const out = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: outCrewId, shipmentIds: [shipment.id] });
+      const out = await dispatchOn(R10_OUT, {
+        crewAssignmentId: outCrewId,
+        shipmentIds: [shipment.id],
+      });
       expect(out.status, JSON.stringify(out.body)).toBe(200);
       expectLocked(await edit(shipment.id, 'خرجت'), 'edit a dispatched one');
       const done = await request(app)
@@ -7730,12 +7993,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(
-        (
-          await request(app)
-            .post('/api/v1/operations/secured/dispatch')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({ crewAssignmentId: outCrewId, shipmentIds: [gone.id] })
-        ).status,
+        (await dispatchOn(R10_OUT, { crewAssignmentId: outCrewId, shipmentIds: [gone.id] })).status,
       ).toBe(200);
       const left = await cancel(gone.id, {}, cancelToken);
       expect(left.status).toBe(409);
@@ -7894,12 +8152,8 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(
-        (
-          await request(app)
-            .post('/api/v1/operations/secured/dispatch')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({ crewAssignmentId: outCrewId, shipmentIds: [alreadyOut] })
-        ).status,
+        (await dispatchOn(R10_OUT, { crewAssignmentId: outCrewId, shipmentIds: [alreadyOut] }))
+          .status,
       ).toBe(200);
     });
 
@@ -7994,10 +8248,10 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
       expect((await boardOf()).shipments.find((s) => s.id === dueOther)?.deliveryLegVersion).toBe(1);
 
-      const out = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: row?.crew?.crewAssignmentId, shipmentIds: [dueOther] });
+      const out = await dispatchOn(R10_OTHER_OUT, {
+        crewAssignmentId: row?.crew?.crewAssignmentId,
+        shipmentIds: [dueOther],
+      });
       expect(out.status, JSON.stringify(out.body)).toBe(200);
       expect((await boardOf()).shipments.map((s) => s.id)).not.toContain(dueOther);
     });
@@ -8060,6 +8314,218 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       }
       expect((await dispatchBoard()).status).toBe(200);
     }, 60_000);
+  });
+
+  // ── Round 13 ──────────────────────────────────────────────────────────────────────────────────
+  //
+  // «انا عايز الجدول بتاع استلام الخزينه يكون مكان الحاله عمودين … واستلام الخزينه ممكن تستلم يكون
+  // القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي». The vault receives a draft
+  // nobody recorded collecting; the receipt writes no pickup, so the two columns tell who did what.
+  describe('a receipt nobody handed over — every screen, the lock, the cancel, the captain’s route (F, Round 13)', () => {
+    // The captain-with-the-app's own days for this block — one route each, so neither waits on the
+    // other, and both before the delivery day (nothing goes out before it is in).
+    const R13_ROUTE_DAY = shift(368);
+    const R13_BEGUN_DAY = shift(369);
+    let routeCrewId = '';
+    let begunCrewId = '';
+
+    const dayOf = async (date: string): Promise<OperationsMobileDayDto> => {
+      const res = await request(app)
+        .get(`/api/v1/operations/mobile/my-day?date=${date}`)
+        .set('Authorization', `Bearer ${appCaptainToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsMobileDayDto>(res);
+    };
+    const stopOf = async (shipmentId: string): Promise<string> =>
+      String((await pickupLegOf(shipmentId))._id);
+    const pickupAnnounced = (shipmentId: string): boolean =>
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.ShipmentPickupConfirmed &&
+          (e.payload as { shipmentId: string }).shipmentId === shipmentId,
+      );
+
+    beforeAll(async () => {
+      routeCrewId = await crewFor(R13_ROUTE_DAY, appCaptainId);
+      begunCrewId = await crewFor(R13_BEGUN_DAY, appCaptainId);
+    });
+
+    it('reads `inVault` on every screen — with «لم يتم الاستلام» (nobody’s ✓) beside it', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id, vaultToken)).status).toBe(200);
+      const expected = { status: 'inVault', securedStage: 'inVault', pickedUpBy: null, pickedUpAt: null };
+
+      expect(await securedRow(shipment.id)).toMatchObject(expected);
+      const dayRow = data<OperationsDayBoardDto>(
+        await request(app)
+          .get(`/api/v1/operations/shipments/day-board?date=${R10_OUT}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(dayRow).toMatchObject(expected);
+
+      // The vault's queue: today's receipt, green, its receipt time — and nobody in the pickup column.
+      const queued = data<OperationsVaultQueueDto>(
+        await request(app)
+          .get('/api/v1/operations/secured/vault-queue')
+          .set('Authorization', `Bearer ${vaultToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(queued).toMatchObject(expected);
+      expect(cairoYmd(new Date(queued?.vaultReceivedAt ?? ''))).toBe(cairoYmd(new Date()));
+
+      // «محصنات الخزينة» holds it like any other receipt.
+      const held = data<OperationsSecuredDispatchBoardDto>(await dispatchBoard()).shipments.find(
+        (s) => s.id === shipment.id,
+      );
+      expect(held).toMatchObject(expected);
+      expect(held?.vaultReceivedAt).toBe(queued?.vaultReceivedAt);
+    });
+
+    it('locks the desk’s ✓ and its undo after it — the lock, never «nothing to undo»', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id)).status).toBe(200);
+      for (const res of [await confirm(shipment.id, deskToken), await undo(shipment.id, deskToken)]) {
+        expect(res.status).toBe(409);
+        expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+      }
+      expect((await securedRow(shipment.id))?.pickedUpBy).toBeNull();
+    });
+
+    it('a cancelled direct receipt takes it back to WHITE — the cancel invents no pickup', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id)).status).toBe(200);
+      const res = await cancel(shipment.id, {}, cancelToken);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(res)).toMatchObject({ status: 'draft', receiptNumber: null });
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      // Back among the drafts — booked for a later day, so under «الكل» — and open again: the
+      // desk's ✓ may be pressed now, and the vault may receive it afresh.
+      expect(await queueIds()).not.toContain(shipment.id);
+      expect(await queueIds(true)).toContain(shipment.id);
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+      expect((await securedRow(shipment.id))?.securedStage).toBe('withOperations');
+      expect((await receive(shipment.id)).status).toBe(200);
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: 'operations',
+      });
+    });
+
+    // Decision: a pickup leg the captain never STARTED is settled once the vault holds the
+    // shipment — nothing is left for him at the bank — and stops blocking his later stops. His leg
+    // is never rewritten: it still says `pending`.
+    it('the captain’s untouched pickup leaves his way once the vault has it — his next stop becomes current', async () => {
+      const first = await book(R10_OUT, R13_ROUTE_DAY, routeCrewId, appCaptainId);
+      const second = await book(R10_OUT, R13_ROUTE_DAY, routeCrewId, appCaptainId);
+      const [firstStop, secondStop] = [await stopOf(first.id), await stopOf(second.id)];
+
+      const before = await dayOf(R13_ROUTE_DAY);
+      expect(before.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'current'],
+        [secondStop, 'locked'],
+      ]);
+      const early = await act(secondStop, 'start');
+      expect(early.status).toBe(422);
+      expect(errorCode(early)).toBe(ErrorCodes.OPERATIONS_EXECUTION_OUT_OF_SEQUENCE);
+
+      // The vault receives the first one directly — nobody pressed ✓.
+      expect((await receive(first.id, vaultToken)).status).toBe(200);
+
+      const after = await dayOf(R13_ROUTE_DAY);
+      expect(after.currentAssignmentId).toBe(secondStop);
+      expect(after.stops.find((s) => s.assignmentId === firstStop)).toMatchObject({
+        progress: 'completed',
+        status: 'inVault',
+        executionStatus: 'pending',
+        startedAt: null,
+        pickedUpAt: null,
+      });
+      expect(after.stops.find((s) => s.assignmentId === secondStop)?.progress).toBe('current');
+
+      // Nothing to do on the first any more — and it is not rewritten for being skipped.
+      const settled = await act(firstStop, 'start');
+      expect(settled.status).toBe(422);
+      expect(errorCode(settled)).toBe(ErrorCodes.OPERATIONS_EXECUTION_ALREADY_SETTLED);
+      expect(await pickupLegOf(first.id)).toMatchObject({ executionStatus: 'pending' });
+      // The next stop is his to start now.
+      const started = await act(secondStop, 'start');
+      expect(started.status, JSON.stringify(started.body)).toBe(200);
+      expect(data<OperationsExecutionResultDto>(started)).toMatchObject({
+        executionStatus: 'active',
+        currentAssignmentId: secondStop,
+      });
+      expect((await securedRow(first.id))?.pickedUpBy).toBeNull();
+
+      // A CANCELLED receipt says the vault does not have it after all: the shipment is collectable
+      // again, so his untouched pickup is his to do again (derived, like everything on his route) —
+      // and the stop he is on stays his to finish, the lock being on `start` alone.
+      expect((await cancel(first.id, {}, cancelToken)).status).toBe(200);
+      const reopened = await dayOf(R13_ROUTE_DAY);
+      expect(reopened.currentAssignmentId).toBe(firstStop);
+      expect(reopened.stops.find((s) => s.assignmentId === firstStop)).toMatchObject({
+        progress: 'current',
+        status: 'draft',
+        executionStatus: 'pending',
+      });
+      expect((await act(secondStop, 'pickup')).status).toBe(200);
+    });
+
+    // …and a pickup leg he HAD started stays his to finish: his ✓ is still allowed, as his own
+    // execution record — the shipment's pickup record and status are not touched by it.
+    it('a pickup leg he had started stays his to finish — his ✓ records his leg only', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const first = await book(R10_OUT, R13_BEGUN_DAY, begunCrewId, appCaptainId);
+      const second = await book(R10_OUT, R13_BEGUN_DAY, begunCrewId, appCaptainId);
+      const [firstStop, secondStop] = [await stopOf(first.id), await stopOf(second.id)];
+      expect((await act(firstStop, 'start')).status).toBe(200);
+
+      // On his way to the bank — and the vault receives it directly meanwhile.
+      expect((await receive(first.id, vaultToken)).status).toBe(200);
+      const received = await read(first.id);
+      const midway = await dayOf(R13_BEGUN_DAY);
+      expect(midway.currentAssignmentId).toBe(firstStop);
+      expect(midway.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'current'],
+        [secondStop, 'locked'],
+      ]);
+
+      const picked = await act(firstStop, 'pickup');
+      expect(picked.status, JSON.stringify(picked.body)).toBe(200);
+      expect((await pickupLegOf(first.id)).executionStatus).toBe('pickedUp');
+      // The shipment did not move: still in the vault, nobody's ✓ in its pickup column, its version
+      // the receipt's, no pickup announced.
+      expect(await read(first.id)).toMatchObject({ status: 'inVault', version: received.version });
+      expect(await OperationsShipmentModel.findById(first.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      expect(await securedRow(first.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      expect(pickupAnnounced(first.id)).toBe(false);
+      // «السجل» tells his act as his leg's, and no pickup of the shipment's.
+      const kinds = (await logOf(first.id)).entries.map((e) => e.kind);
+      expect(kinds).toEqual(expect.arrayContaining(['executionPickedUp', 'vaultReceived']));
+      expect(kinds).not.toContain('pickupConfirmed');
+
+      // He finishes it, and his next stop is current.
+      expect((await act(firstStop, 'deliver')).status).toBe(200);
+      const done = await act(firstStop, 'complete');
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      expect(data<OperationsExecutionResultDto>(done).currentAssignmentId).toBe(secondStop);
+      const finished = await dayOf(R13_BEGUN_DAY);
+      expect(finished.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'completed'],
+        [secondStop, 'current'],
+      ]);
+    });
   });
 });
 

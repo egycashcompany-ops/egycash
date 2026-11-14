@@ -1,8 +1,9 @@
-// The reports on the boards' look — «تجميع الخزينة» (`pages/VaultReportPage.tsx`) and «تقرير القادة»
-// (`pages/CaptainReportPage.tsx`). «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك وتقرير
-// القادة الشاشة هتكون الشاشة التانية»: the legacy screens' STRUCTURE — «من» / «إلى» over a table with
-// a title strip, م | the key | the count | المصري | الدولار | اجمالي العملات | الحقائب | كرتونه |
-// صندوق, and «الإجمالي» under the rows — worn in the look the owner approved on every Operations
+// The reports on the boards' look — «تقرير البنوك» (`pages/BankReportPage.tsx`, the vault roll-up
+// that shipped as «تجميع الخزينة» until Round 14) and «تقرير القادة» (`pages/CaptainReportPage.tsx`).
+// «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك وتقرير القادة الشاشة هتكون الشاشة
+// التانية»: the legacy screens' STRUCTURE — «من» / «إلى» over a table with a title strip, م | the
+// key | the count | المصري | الدولار | اجمالي العملات | الحقائب | كرتونه | صندوق, and «الإجمالي»
+// under the rows — worn in the look the owner approved on every Operations
 // board this month (`ShipmentsBoard.tsx`): the dark one-row filter card with the history's date
 // boxes, the dark rounded table with its dark head, the figures' face, the «عملات أخرى» breakdown.
 //
@@ -30,10 +31,11 @@
 //     cards stack and the page scrolls; the table's card stops at three quarters of the screen so
 //     its total stays in sight there too.
 //
-// THREE THINGS THIS WILL NOT DO, each a legacy defect the server already fixed (as `ReportView`
-// before it): it never adds the WHOLE report up — with no name typed, «الإجمالي» is the server's
-// `grandTotal` (Q27); it never multiplies packages by currencies (Q26); and it never hides a row
-// whose money is zero (Q28). What it does to the answer is a VIEW of it (`lib/report-board.ts`):
+// THREE THINGS THIS WILL NOT DO, each a legacy defect the server already fixed (as the old
+// `ReportView` before it): it never adds the WHOLE report up — with no name typed, «الإجمالي» is
+// the server's `grandTotal` (Q27); it never multiplies packages by currencies (Q26); and it never
+// hides a row whose money is zero (Q28). What it does to the answer is a VIEW of it
+// (`lib/report-board.ts`):
 // the money split the boards' way, the currencies in the reference list's order, the unattributed
 // row last, the name filter.
 //
@@ -72,10 +74,12 @@ import {
   printReportDocs,
   reportExportHeader,
   reportExportTable,
-  reportPrintDoc,
-  reportSheet,
+  reportFileDocs,
+  reportFileSheets,
   saveReportWorkbook,
   vaultPanelExport,
+  type ReportExtraSection,
+  type ReportFiles,
 } from '../lib/report-export';
 import { cairoToday } from '../lib/shipment-history';
 import { FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
@@ -415,13 +419,19 @@ export interface ReportExportSpec {
   subtitle: string;
   /** The vault's: carry «إجمالي قيمة الشحنات» too — a second sheet, a second printed page. */
   withValuePanel?: boolean;
+  /**
+   * Further tables after those — a sheet and a printed page each (`ReportExtraSection`): «لوحة
+   * تحكم»'s alerts, «جدول التسليم» and «مدة البقاء في الخزينة». None on a report.
+   */
+  extraSections?: readonly ReportExtraSection[];
 }
 
 /**
  * «Excel | PDF» over a report's table — the reports' bar end, and «تقرير الخزينة»'s header on
  * «سجل الخزينة» (`VaultHeldReportDialog.tsx`), so the live report's files are the period report's
  * files over another answer: the lines the table draws, «الإجمالي» under them, and — on the vault —
- * «إجمالي قيمة الشحنات» as a second sheet and a second printed page.
+ * «إجمالي قيمة الشحنات» as a second sheet and a second printed page. «لوحة تحكم» on «محصنات الخزينة»
+ * adds its own sections after those (`extraSections`); no report has any.
  */
 export const ReportExportPair = ({
   title,
@@ -457,48 +467,30 @@ export const ReportExportPair = ({
       ? vaultPanelExport(t, total, catalog)
       : null;
 
-  const exportExcel = (): void => {
+  // Both files hold the same things in the same order (`reportFileSheets` / `reportFileDocs`): the
+  // table, the vault's panel, then the screen's further sections, if it has any.
+  const files = (): ReportFiles => {
     const own = panel();
+    return {
+      tableName: title,
+      name: exportSpec.name,
+      subtitle: exportSpec.subtitle,
+      table: table(),
+      panel: own === null ? null : { name: t('operations.vaultReport.value'), list: own },
+      extras: exportSpec.extraSections ?? [],
+    };
+  };
+  const exportExcel = (): void => {
     saveReportWorkbook(
       exportSpec.name,
-      [
-        reportSheet(title, t('operations.reportBoard.serial'), table()),
-        ...(own === null
-          ? []
-          : [
-              reportSheet(
-                t('operations.vaultReport.value'),
-                t('operations.reportBoard.serial'),
-                own,
-              ),
-            ]),
-      ],
+      reportFileSheets(t('operations.reportBoard.serial'), files()),
       cairoToday(),
     );
   };
   const exportPdf = (): void => {
-    const own = panel();
-    const docs = [
-      reportPrintDoc({
-        t,
-        locale,
-        title: exportSpec.name,
-        subtitle: exportSpec.subtitle,
-        table: table(),
-      }),
-      ...(own === null
-        ? []
-        : [
-            reportPrintDoc({
-              t,
-              locale,
-              title: t('operations.vaultReport.value'),
-              subtitle: exportSpec.subtitle,
-              table: own,
-            }),
-          ]),
-    ];
-    if (!printReportDocs(docs)) toast.error(t('operations.reportExport.popupBlocked'));
+    if (!printReportDocs(reportFileDocs(t, locale, files()))) {
+      toast.error(t('operations.reportExport.popupBlocked'));
+    }
   };
 
   return (

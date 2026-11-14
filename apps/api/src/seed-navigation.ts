@@ -635,7 +635,13 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     //
     // Every `permission` below is the SAME key the client route guard checks in
     // apps/web/src/modules/operations/routes.tsx. Nothing new is declared: these are the OP-1..OP-7
-    // grants the module already registered.
+    // grants the module already registered — and, for «إدارات العمليات», the platform's
+    // `setting.edit`, which is what writes the one setting that screen edits.
+    retired: [
+      // Round 14 — «تجميع الخزينة كشاشه مفيش حاجه اسمها تجميع خزينه، شيلها خالص». Its content is
+      // «تقرير البنوك» now, and its address redirects there; the live row goes inactive, once.
+      { revision: 1, routes: ['/operations/reports/vault'] },
+    ],
     apps: [
       {
         en: 'Operations Home',
@@ -684,6 +690,21 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         route: '/operations/requirements',
         icon: 'badge',
         permission: 'operationsCrew.view',
+      },
+      {
+        // Round 14 — «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز الطاقم», and asked where:
+        // «شاشة لوحدها في القائمة». Which departments ARE the crew, chosen on a screen of its own,
+        // right beneath the roster that follows from it.
+        //
+        // On `setting.edit`, NOT an Operations key: the screen edits one organization setting
+        // (`operations.crewDepartmentIds`) and the platform's settings endpoint writes it only for
+        // that grant — so a planner without it would see a row that opens onto a card he cannot
+        // save, and a settings administrator is exactly who it is for.
+        en: 'Operations Departments',
+        ar: 'إدارات العمليات',
+        route: '/operations/crew-departments',
+        icon: 'sitemap',
+        permission: 'setting.edit',
       },
       {
         en: 'Crew Attendance',
@@ -757,13 +778,6 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsVault.view',
       },
       {
-        en: 'Vault Roll-up',
-        ar: 'تجميع الخزينة',
-        route: '/operations/reports/vault',
-        icon: 'chart',
-        permission: 'operationsVault.view',
-      },
-      {
         en: 'Captain Report',
         ar: 'تقرير القادة',
         route: '/operations/reports/captains',
@@ -771,6 +785,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // Round 14 — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»: the vault roll-up that
+        // shipped as «تجميع الخزينة» (retired above) is this screen now. The stored key stays the
+        // shipments' read; the vault's readers, who had «تجميع الخزينة», see the row too, through
+        // `SHARED_NAVIGATION_ROWS` in the contracts (`OPERATIONS_BANK_REPORT_KEYS`).
         en: 'Bank Report',
         ar: 'تقرير البنوك',
         route: '/operations/reports/banks',

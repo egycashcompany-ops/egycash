@@ -200,7 +200,8 @@ its entry here in the same PR.
       before this change with no record reads its pickup leg, so a leg already picked up is the
       captain's. API: `POST` / `DELETE /operations/secured/:id/pickup` (`operationsShipment.complete`).
     - The vault's ✓ needs a pickup first (409 `OPERATIONS_SECURED_NOT_PICKED_UP`); the white rows
-      stay under «الكل» to be read only. Receiving is one transaction with the custody.
+      stay under «الكل» to be read only — lifted later in this release (below). Receiving is one
+      transaction with the custody.
     - Once received, a secured shipment is locked: no edit, delete, pickup change, pickup crew or
       receipt photo change (409 `OPERATIONS_SECURED_LOCKED`; the Files routes answer 403 for its
       photo). The flow goes on: delivery crew, dispatch, the captains' app, completion, restore.
@@ -219,23 +220,25 @@ its entry here in the same PR.
     وتقرير القادة الشاشة هتكون الشاشة التانية». «من» / «إلى» on the dark filter card, applied as
     they are chosen (an inverted range is refused on the screen), over the dark table: م | the key |
     the count | المصري | الدولار | عملات أخرى | الحقائب | كرتونة | صندوق, «الإجمالي» under the rows.
-    - «تجميع الخزينة» (`/operations/reports/vault`), one row per bank with «عدد المحصنات», and beside
-      it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات الأجنبية» (the dollar included),
-      then every active currency of the reference list but the pound, in its order, zeros dimmed.
+    - «تقرير البنوك» (`/operations/reports/banks`; it shipped as «تجميع الخزينة» at
+      `/operations/reports/vault` until this release renamed it — below), one row per bank with
+      «عدد المحصنات», and beside it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات
+      الأجنبية» (the dollar included), then every active currency of the reference list but the
+      pound, in its order, zeros dimmed.
       Its period: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» — every محصنة the vault
       received from «من» to «إلى» (the receipt's Cairo day), still held, gone out or delivered; by
       default the 1st of the month to its last day. A cancelled receipt does not count; a shipment
       received again counts once, on its new receipt's day; deleted shipments are left out. API:
-      `GET /operations/reports/vault?from=&to=` (`operationsVault.view`, the captain report's
-      parameters; a day left out falls back on its own to the first or last day of Cairo's current
-      month) answers `from` and `to`; `baseCurrencyCode` and `foreignCurrencies` are gone — they
-      told the pound by the code `EGP`, which the live catalog does not use.
+      `GET /operations/reports/banks?from=&to=` (`operationsShipment.view` or
+      `operationsVault.view`, the captain report's parameters; a day left out falls back on its
+      own to the first or last day of Cairo's current month) answers `from` and `to`;
+      `baseCurrencyCode` and `foreignCurrencies` are gone — they told the pound by the code `EGP`,
+      which the live catalog does not use.
     - «تقرير القادة» (`/operations/reports/captains`), the same columns per captain under «عدد
       الشحنات»: the period's completed shipments (daily by collection day, secured by delivery
       day), the 1st of the month to its last day by default, the unassigned row last.
-    - All three report screens — these two and «تقرير البنوك» — open on CAIRO's current month: at
-      00:30 on the 1st they already show the new month, where they showed the one just ended until
-      UTC's midnight.
+    - Both report screens open on CAIRO's current month: at 00:30 on the 1st they already show the
+      new month, where they showed the one just ended until UTC's midnight.
     - «عملات أخرى» is the boards' rule in both: every currency neither the pound nor the dollar,
       told by code, name or legacy spelling, never by `EGP`; its click opens the boards' breakdown.
   - The vault's screens, renamed and re-cut: «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة وتكون
@@ -299,10 +302,16 @@ its entry here in the same PR.
       keeps the van. The pickup leg is not touched by an edit.
     - «تسليم» is the existing dispatch per van: the van's shipments in the vault leave it at once; one
       on the van the vault has not received yet stays behind.
+    - …and only on the van's own day, on the server too: `POST /operations/secured/dispatch` refuses
+      a crew row whose operating day is not today on the Cairo calendar (422
+      `OPERATIONS_DISPATCH_NOT_TODAY`, detail `crewAssignmentId` / `TODAY_ONLY` / today), before any
+      shipment is read, so nothing is written. The screen already offered «تسليم» on today's vans
+      only; a page left open from another day, or a direct call, can no longer release tomorrow's
+      van today, nor a past day's van that has left.
   - The screens of Round 12: «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان
     اعمل فلتر ب اسم القائد [اسم البنك] و ان اكسيل او pdf», «الlist بتاعت جمالى العملات … عاوز حجمها
     يكون بطول الشاشة كامله», «الصف بتاع الجماليات يفضل ظاهر حتى لو الجدول كبر يحصل اسكرول جوا الجدول».
-    - «تقرير القادة» and «تجميع الخزينة»: the date card is gone; «من» / «إلى» sit in the boards' one
+    - «تقرير القادة» and «تقرير البنوك»: the date card is gone; «من» / «إلى» sit in the boards' one
       dark filter bar beside a name filter («اسم القائد» / «اسم البنك» — applied as typed, Arabic
       letter forms folded, remembered across visits; the period is not), the reset and «Excel |
       PDF». With a name typed, «الإجمالي» and the vault's panel are the shown rows' sum; with none,
@@ -337,6 +346,112 @@ its entry here in the same PR.
       (`operationsVault.dispatch`) confirms, then hands over the van's محصنات in the vault; those
       not received yet are listed and stay. «طباعة» prints the van's load sheet on the company form
       — provisional until the owner says what the paper carries («اللى هيطبع هقولك عليه بعدين»).
+  - The vault receives without a pickup, and its screen says who did what in two columns: «انا عايز
+    الجدول بتاع استلام الخزينه يكون مكان الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل
+    استلام من القائد او من العمليات، والعمود التاني بتاع الحاله برضو يبين استلام من الخزينه. واستلام
+    الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي».
+    - Round 10's rule is lifted: the vault's ✓ no longer needs the captain's or the desk's ✓ first.
+      `POST /operations/secured/:id/receive` takes any draft, white or yellow
+      (`OPERATIONS_SECURED_RECEIVABLE_STAGES` now holds `awaitingPickup` too; the new
+      `OPERATIONS_SECURED_PICKED_UP_STAGES` names the two yellow ones). The receipt writes no pickup:
+      a shipment received with nobody's ✓ is `inVault` with no `pickedUpBy`, for good, and «السجل»
+      shows the receipt and no pickup. `OPERATIONS_SECURED_NOT_PICKED_UP` now answers only the desk's
+      removal of a ✓ that is not there. The lock, the cancelled receipt (back to white when nobody
+      had picked it up), distribution and handover are unchanged.
+    - «استلام الخزينة» lists by default what the vault can receive now: every محصنة whose collection
+      day is today or earlier, white or yellow, every yellow one whatever its day, and today's
+      receipts; «الكل» adds the white ones booked for a later day.
+    - The screen's «الحالة» becomes «حالة الاستلام» (من القائد / من العمليات with the time, or «لم
+      يتم الاستلام») and «حالة الخزينة» («بالخزينة» with the time, not yet received, or out since);
+      the vault's ✓ is on every row not yet received, and the «للعرض فقط» line is gone. Each column
+      has its own filter where the stage filter was (the bar stays one row); the legend counts
+      «لم يتم الاستلام», «مع القائد أو العمليات» and «بالخزينة اليوم» from the start. The other
+      boards keep their one «الحالة». «إلغاء استلام الخزينة» on a receipt nobody handed over says
+      the row goes back white, not yellow.
+    - The captain's route: a pickup he never started on a محصنة the vault has received is done with
+      — it no longer holds back his next stop, and his record of it stays as it was (not started). One
+      he had started stays his to finish; his ✓ then records his own step only. A cancelled receipt
+      gives an untouched pickup back to him.
+  - «إدارات العمليات», one choice per company department (a screen of its own since — below):
+    «القائمة دي كانت معمولة لما كان في مشكلة في الإدارات، وأنت عامل تكرار إدارات … على حسب الفروع.
+    فإحنا عايزين نعدل الموضوع ده، وعايزين نحسن اليو اي بتاعها، وعاوز أخليها تبقى الديفولت بتاعها إن
+    هي مخفية، ولما أدوس كليك على السهم يعرضها لي».
+    - The card offers each department ONCE — «نقل الأموال», not «نقل الاموال» seven times with seven
+      unit codes — with the number of branches that have it and their names (on the tile, and in
+      full on hover). Branch copies are grouped by their catalog entry; a copy never linked groups
+      by its name with Arabic spellings folded («الاموال» = «الأموال»), and joins the catalog entry
+      of that name when there is exactly one (`orgUnitGroupKeys`, `@ecms/contracts`).
+    - A chosen department is crew in EVERY branch that has it, a branch that adds it later
+      included: the roster (`GET /operations/crew-board/directory` — the crew page, the crew board,
+      the standing crew and the shipment captains) widens each saved id to every active unit of
+      its department. The setting is still `operations.crewDepartmentIds` and still holds
+      department ids, so nothing is migrated: every saved id stays in the roster as it was, and a
+      roster saved before only widens to the same department in the other branches. Its cap rises
+      from 50 to 200 ids, because «حفظ» writes every active branch copy of each chosen department.
+    - The search (by department or by branch), the tiles — what is saved first, then the rest, each
+      alphabetical — and «تراجع» / «حفظ», both waiting for a change, with «تغييرات غير محفوظة» while
+      ticks are pending. A saved department whose every copy has been deactivated is shown «غير
+      نشطة», and an id nothing answers to «غير موجودة»; both stay ticked until unticked, and the
+      empty-choice warning stays. (The card that sat closed on «كشف الأطقم» moved to its own screen,
+      open — next.)
+  - «تقرير البنوك» is what «تجميع الخزينة» was, and «تجميع الخزينة» is gone: «انا كنت قلت لك اعمل لي
+    شاشه تقرير بنوك … انت فعلا عملتها بس حطيتها في شاشه تجميع خزينه. فبعد اذنك خلي المحتوى بتاع
+    تجميع خزينه ده يبقى اسمه تقرير بنوك، وتجميع خزينه كشاشه مفيش حاجه اسمها تجميع خزينه، شيلها
+    خالص». Asked which shipments it counts, the owner kept the roll-up's: secured only, every one
+    received into the vault in the period, delivered since or not.
+    - `/operations/reports/banks` shows the roll-up's screen exactly — «بيان الشحنات لكل بنك», «عدد
+      المحصنات», «إجمالي قيمة الشحنات», «من» / «إلى» on Cairo's month, «اسم البنك», Excel and PDF named
+      «تقرير البنوك». The old completed-shipments-per-bank screen (legacy `/ops_bank_report`) and its
+      `ReportView` / `ReportRangePicker` are gone.
+    - One endpoint: `GET /operations/reports/banks?from=&to=` answers what
+      `GET /operations/reports/vault` did (`OperationsBankReportDto` is the roll-up's shape;
+      `OperationsVaultReportDto` is gone), and `/reports/vault` answers 404. «تقرير الخزينة»
+      (`/reports/vault/held`) is unchanged.
+    - Its readers are both screens' readers: `operationsShipment.view` OR `operationsVault.view` —
+      the endpoint (`authorizeAny`), the route guard, the module home's card and the sidebar row
+      read one list (`OPERATIONS_BANK_REPORT_KEYS`). The sidebar row keeps its key; a vault-only
+      reader sees it through `SHARED_NAVIGATION_ROWS` — "any of these keys" for one screen without
+      tabs, beside the hubs (`navigationRowKeys`, `@ecms/contracts`).
+    - «تجميع الخزينة» leaves the app: its sidebar row is retired — inactive on a live installation,
+      once, at Operations' first retirement — its module-home card and words are gone, and
+      `/operations/reports/vault` forwards to `/operations/reports/banks` with its query string.
+  - «إدارات العمليات» on a screen of its own: «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز
+    الطاقم», and asked where, «شاشة لوحدها في القائمة».
+    - `/operations/crew-departments`, the sidebar row right beneath «كشف الأطقم», on `setting.edit` —
+      the grant that writes the one setting it edits, which the card always required. The card is
+      the page, open, in its round look, under the page title with how many people the saved choice
+      makes (read only for a reader who may read the roster).
+    - «كشف الأطقم» no longer carries the card. Its «not configured» notice, and the crew pools'
+      «حدِّد الإدارة», link to the new screen for a reader who may open it, and say who chooses the
+      departments to everybody else.
+    - The Operations sidebar is still eighteen rows (one retired, one added).
+  - «لوحة تحكم» on «محصنات الخزينة»: «دلوقتي محصنات الخزينة أنا عايز يكون فيها لوحة تحكم اللي هي
+    داشبورد جنب الإحصائيات».
+    - A button right beside «إخفاء الإحصائيات», in its look — as on Fleet's custody board and on
+      «سجل الخزينة» — opens the dashboard over the whole screen, in the very window «تقرير الخزينة»
+      opens in. That window and its seven tiles are now one component for the two
+      (`ReportModal.tsx`): the portal, Escape for the top dialog only (the «عملات أخرى» breakdown
+      over it closes alone), Tab kept inside, the focus handed back, the page held still, dark and
+      light, a full-screen sheet on a phone.
+    - It reads the board's own rows as they are shown (every filter, before the pages), worked out
+      in the browser, so it cannot disagree with the table under it; the bags, cartons and boxes
+      come from the vault's custody list. A line at the top names the filters in force — «كل
+      المحصنات بالخزينة — بلا فلتر» when there are none — with «إعادة ضبط الفلاتر» (the window stays
+      up, dimmed over its last rows, while the board reads its list again). Offered once the rows
+      are in, never beside a refusal; a refusal while it is up closes it.
+    - The figures of «تقرير الخزينة»; five alerts with their count and pound — «متأخرة», «تسليمها
+      اليوم», «تسليمها غدًا», «بدون يوم تسليم», «لم تُوزَّع على سيارة» (late or due today and on none
+      of today's vans) — of which today's and tomorrow's set the board's «تاريخ التسليم» and close
+      the window; «جدول التسليم» (late, today, the next seven days, later) and «مدة البقاء في
+      الخزينة» (today, 1–2, 3–6, 7+ days, on the Cairo calendar); «بيان الشحنات لكل بنك» with
+      «الإجمالي» pinned and «إجمالي قيمة الشحنات» beside it; Excel and PDF of the two. Every section
+      is drawn at zero when nothing is shown.
+  - Polish: «استلام الخزينة»'s two status badges read on one line at 1440 (its board's names wrap
+    from a lower floor, its notes cut sooner, its cells' sides 7px); a counted محصنة takes its Arabic
+    form on the distribution, handover and dashboard screens («محصنة واحدة · محصنتان · 4 محصنات · 11
+    محصنة»); the dashboard's Excel and PDF add «تنبيهات التسليم», «جدول التسليم» and «مدة البقاء في
+    الخزينة» after the bank table and its panel (the reports' files are unchanged); and the handover's
+    today-only refusal reads «التسليم يتم يوم خروج السيارة فقط».
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

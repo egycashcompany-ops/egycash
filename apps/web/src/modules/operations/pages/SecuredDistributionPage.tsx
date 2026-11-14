@@ -49,6 +49,7 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage, hasError } from '../../../shared/lib/errors';
 import { formatNumber } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -207,7 +208,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
     setDraft(next);
     if (added === 0) toast.info(t('operations.distribution.autoNone'));
     else
-      toast.success(t('operations.distribution.autoDone', { count: formatNumber(added, locale) }));
+      toast.success(
+        t(pluralKey('operations.distribution.autoDone', locale, added), {
+          count: formatNumber(added, locale),
+        }),
+      );
   };
 
   const onSave = async (): Promise<void> => {
@@ -222,11 +227,13 @@ export const SecuredDistributionPage = (): JSX.Element => {
       setRefused(null);
       toast.success(
         result.rescheduled > 0
-          ? t('operations.distribution.savedRescheduled', {
+          ? t(pluralKey('operations.distribution.savedRescheduled', locale, result.changed), {
               count: formatNumber(result.changed, locale),
               rescheduled: formatNumber(result.rescheduled, locale),
             })
-          : t('operations.distribution.saved', { count: formatNumber(result.changed, locale) }),
+          : t(pluralKey('operations.distribution.saved', locale, result.changed), {
+              count: formatNumber(result.changed, locale),
+            }),
       );
     } catch (error) {
       const reason = errorMessage(error, locale);

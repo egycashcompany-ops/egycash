@@ -82,10 +82,14 @@ const operationsKeys = {
   // B6. The area list is reference data like the other three catalogs; the vault ROLL-UP is a
   // view of the vault's receipts, so it stales with every secured act as the inventory does — a
   // receipt adds a shipment to this month's roll-up, a cancelled receipt takes it off again.
+  //
+  // Round 14: that roll-up IS «تقرير البنوك» now (`useBankReport`), and it keeps this subtree on
+  // purpose — the name is the family of reads over the vault's custody («تقرير الخزينة» sits in it
+  // too), which is what every vault act and the vault's realtime topic sweep. The completed-per-bank
+  // report's own subtree went with that report.
   areas: featureKey(MODULE, 'areas'),
   vaultReport: featureKey(MODULE, 'vaultReport'),
   reportCaptains: featureKey(MODULE, 'reportCaptains'),
-  reportBanks: featureKey(MODULE, 'reportBanks'),
   crewAttendance: featureKey(MODULE, 'crewAttendance'),
 };
 
@@ -938,13 +942,6 @@ export const useCaptainReport = (range: { from: string; to: string }, enabled = 
     enabled: enabled && range.from !== '' && range.to !== '',
   });
 
-export const useBankReport = (range: { from: string; to: string }, enabled = true) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'reportBanks', range),
-    queryFn: () => api.getBankReport(range),
-    enabled: enabled && range.from !== '' && range.to !== '',
-  });
-
 export const useCrewAttendance = (date: string, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'crewAttendance', { date }),
@@ -987,19 +984,20 @@ export const useUpdateOperationsArea = () => {
 };
 
 /**
- * The vault roll-up over a period — every محصنة received into the vault in it, delivered since or
- * not («يجيب اللى اتسلم واللى متسلمش»). Keyed by its range, as the captain and bank reports are, so
- * switching months is a cache hit on the way back; unlike theirs, it is in the secured fan-out
- * above, because a receipt today changes this month's figures.
+ * «تقرير البنوك» (Round 14 — the vault roll-up that shipped as «تجميع الخزينة») over a period: every
+ * محصنة received into the vault in it, delivered since or not («يجيب اللى اتسلم واللى متسلمش»).
+ * Keyed by its range, as the captain report is, so switching months is a cache hit on the way back;
+ * unlike his, it is in the secured fan-out above (under the vault roll-up's subtree), because a
+ * receipt today changes this month's figures.
  */
-export const useVaultReport = (range: { from: string; to: string }, enabled = true) =>
+export const useBankReport = (range: { from: string; to: string }, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vaultReport', range),
-    queryFn: () => api.getVaultReport(range),
+    queryFn: () => api.getBankReport(range),
     enabled: enabled && range.from !== '' && range.to !== '',
   });
 
-/** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside its periods' entries. */
+/** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside the bank report's. */
 const vaultHeldReportKey = (): readonly unknown[] => listKey(MODULE, 'vaultReport', { held: true });
 
 /**

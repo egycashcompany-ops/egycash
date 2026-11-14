@@ -144,9 +144,11 @@ export const MANAGED_ELSEWHERE: Readonly<Record<string, ManagedElsewhere>> = {
     route: '/it/helpdesk-settings',
     screen: 'it.nav.helpDeskSettings',
   },
+  // Round 14 — «إدارات العمليات» left «كشف الأطقم» for a screen of its own («شاشة لوحدها في
+  // القائمة»), so the row links there; the roster no longer carries the picker.
   'operations.crewDepartmentIds': {
-    route: '/operations/requirements',
-    screen: 'operations.crew.requirements.title',
+    route: '/operations/crew-departments',
+    screen: 'operations.crew.departments.title',
   },
 };
 

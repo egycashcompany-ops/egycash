@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HR_SETTINGS_HUB,
   NAVIGATION_HUBS,
+  SHARED_NAVIGATION_ROWS,
   hubPermissions,
   platformPermissions,
 } from '@ecms/contracts';
@@ -73,6 +74,8 @@ describe('the seeded navigation catalog', () => {
     // 135 → 136: «سجل الشحنات», Operations' day board over a range, right beneath the day board.
     // 136 → 138: «توزيع المحصنات» beneath the secured screen and «تسليم المحصنات» beneath the vault's
     //   receive screen (Operations, Round 12).
+    // 138 → 138: «تجميع الخزينة» left Operations — its content is «تقرير البنوك» now, and the row is
+    //   RETIRED on live installations — and «إدارات العمليات» joined it beneath the roster (−1 +1).
     expect(rows).toHaveLength(138);
   });
 
@@ -128,6 +131,19 @@ describe('the seeded navigation catalog', () => {
       (e) => e.routes,
     )) {
       expect(documented, retired).not.toContain(retired);
+    }
+  });
+
+  /**
+   * A shared row (Round 14, «تقرير البنوك») is one the catalog SEEDS, keyed on one of its own keys,
+   * and every key it lists is declared — otherwise "any of" would quietly be "none of" for somebody.
+   */
+  it('seeds every shared row, on one of its keys, each key declared', () => {
+    for (const shared of SHARED_NAVIGATION_ROWS) {
+      const row = rows.find((r) => r.route === shared.route);
+      expect(row, shared.route).toBeDefined();
+      expect(shared.permissions, shared.route).toContain(row?.permission);
+      for (const key of shared.permissions) expect(registry.has(key), key).toBe(true);
     }
   });
 

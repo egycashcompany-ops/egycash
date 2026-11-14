@@ -20,6 +20,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
+import { PLURAL_FORMS, pluralKey } from '../../shared/lib/plural';
 import { OPERATIONS_CATALOG_KINDS } from './pages/CatalogsPage';
 import { CREW_SLOTS } from './lib/crew-board';
 import { REQUIREMENT_FLAGS } from './lib/requirements';
@@ -246,8 +247,21 @@ const CREW_KEYS = [
   'operations.crew.departments.unknownDepartment',
   'operations.crew.departments.stale',
   'operations.crew.departments.emptyWarning',
+  // Round 15 — one choice per company department (Round 14 put it on a screen of its own, open, so
+  // the closed card's «لم تُحدَّد أي إدارة بعد» and «+N أخرى» went with the fold).
+  'operations.crew.departments.people',
+  'operations.crew.departments.unsaved',
+  'operations.crew.departments.search',
+  'operations.crew.departments.noMatch',
+  'operations.crew.departments.branches',
+  'operations.crew.departments.unnamedBranch',
+  'operations.crew.departments.inactive',
+  'operations.crew.departments.chosenCount',
+  'operations.crew.departments.discard',
   'operations.crew.rosterFallback',
   'operations.crew.rosterFallbackLink',
+  // Round 14 — what the notices say instead of the link, to a reader who cannot open the screen.
+  'operations.crew.departmentsElsewhere',
 ];
 
 /** B4 — the four secured screens. */
@@ -309,12 +323,15 @@ const SECURED_KEYS = [
   'operations.vault.queue.pickedUp',
   'operations.vault.queue.receivedToday',
   'operations.vault.queue.awaiting',
-  'operations.vault.queue.pickedUpAt',
   'operations.vault.queue.receivedAt',
   'operations.vault.queue.receive',
-  // Round 10 — the desk's pickup under a yellow row, and why a white row has no ✓.
-  'operations.vault.queue.operationsPickedUpAt',
-  'operations.vault.queue.viewOnly',
+  // Round 13 — «مكان الحاله عمودين»: «حالة الاستلام» and «حالة الخزينة», their filters' answers,
+  // and each badge's sentence (the others are the stage badge's own words).
+  'operations.vault.queue.pickupColumn',
+  'operations.vault.queue.vaultColumn',
+  ...['captain', 'operations', 'none'].map((by) => `operations.vault.queue.pickupHint.${by}`),
+  'operations.vault.queue.hold.waiting',
+  'operations.vault.queue.holdHint.waiting',
   // Round 10 — the desk's pickup ✓ on the secured screen and its undo («لو القائد عمل صح ممكن
   // العمليات تشيلها»), and the special grant's «إلغاء استلام الخزينة».
   ...['toggle', 'confirm', 'undo', 'undoCaptain', 'confirmUndoCaptain'].map(
@@ -322,6 +339,8 @@ const SECURED_KEYS = [
   ),
   ...[
     'action', 'body', 'receiptNumber', 'reason', 'reasonHint', 'reasonShort', 'save', 'back', 'done',
+    // Round 13 — the cancel of a receipt nobody handed over says white, not yellow.
+    'bodyNoPickup', 'doneNoPickup',
   ].map((key) => `operations.secured.cancelReceipt.${key}`),
 ];
 
@@ -332,17 +351,17 @@ const REPORT_KEYS = [
   'operations.cards.bankReport',
   'operations.reports.captains.title',
   'operations.reports.banks.title',
-  'operations.reports.banks.subtitle',
+  // Round 14 — «تقرير البنوك» is the vault roll-up («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير
+  // بنوك»): an empty period says no محصنة ENTERED the vault in it, a name nothing matches says so.
+  // (The old screen's `subtitle` and `ReportView`'s packages / amounts / grand total went with it.)
+  'operations.reports.banks.empty',
+  'operations.reports.banks.noName',
   'operations.reports.captain',
   'operations.reports.bank',
   'operations.reports.from',
   'operations.reports.to',
   'operations.reports.invalidRange',
   'operations.reports.shipmentCount',
-  'operations.reports.packages',
-  'operations.reports.amounts',
-  'operations.reports.grandTotal',
-  'operations.reports.noCurrency',
   'operations.reports.unattributed',
   'operations.reports.empty',
 ];
@@ -367,14 +386,11 @@ const ATTENDANCE_KEYS = [
 ];
 
 const VAULT_REPORT_KEYS = [
-  'operations.nav.vaultReport',
-  'operations.cards.vaultReport',
-  'operations.vaultReport.title',
-  // Round 11 — the roll-up's period («يجيب اللى اتسلم واللى متسلمش»): an empty one says no محصنة
-  // ENTERED the vault in it, not that the vault is empty. (`subtitle`, «بلا فترة زمنية عن قصد», went
-  // when the owner gave the dates a meaning.)
-  'operations.vaultReport.empty',
-  // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
+  // Round 14 — «تجميع الخزينة»'s own name, card and empty text left with it; the bank report says
+  // its period's emptiness now (REPORT_KEYS above).
+  //
+  // Round 11 — the roll-up (now «تقرير البنوك») and «تقرير القادة» on the boards' look
+  // (`components/ReportBoard.tsx`):
   // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
   // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)
   'operations.vaultReport.table',
@@ -396,7 +412,6 @@ const VAULT_REPORT_KEYS = [
 const ROUND12_REPORT_AND_VAULT_KEYS = [
   'operations.reports.bankName',
   'operations.reports.captains.noName',
-  'operations.vaultReport.noName',
   ...['department', 'period', 'filter', 'item', 'amount', 'empty', 'popupBlocked'].map(
     (key) => `operations.reportExport.${key}`,
   ),
@@ -434,21 +449,51 @@ const AREA_KEYS = [
 /** Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات». */
 const DISTRIBUTION_KEYS = [
   ...[
-    'allPlaced', 'auto', 'autoDone', 'autoHint', 'autoNone', 'bags', 'boxes', 'captains', 'cartons',
+    'allPlaced', 'auto', 'autoHint', 'autoNone', 'bags', 'boxes', 'captains', 'cartons',
     'day', 'discard', 'dragHint', 'dropBack', 'dropHere', 'empty', 'emptyVan', 'leaveBody',
-    'leaveConfirm', 'leaveStay', 'leaveTitle', 'loadCount', 'moveTo', 'moved', 'movedHint', 'noArea',
+    'leaveConfirm', 'leaveStay', 'leaveTitle', 'moveTo', 'moved', 'movedHint', 'noArea',
     'noCaptain', 'noDirection', 'noVans', 'overdue', 'overdueHint', 'proposed', 'proposedCount',
-    'proposedHint', 'refused', 'refusedMark', 'remove', 'reschedules', 'save', 'saved',
-    'savedRescheduled', 'shipments', 'started', 'startedHint', 'switchCaptain', 'tooLarge',
+    'proposedHint', 'refused', 'refusedMark', 'remove', 'reschedules', 'save',
+    'shipments', 'started', 'startedHint', 'switchCaptain', 'tooLarge',
     'unplaced', 'vanLabel', 'vans', 'viewOnly', 'withCaptain',
   ].map((key) => `operations.distribution.${key}`),
+  // Round 17 — the counts, in each of Arabic's five forms (`pluralKey`).
+  ...['autoDone', 'loadCount', 'saved', 'savedRescheduled'].flatMap((key) =>
+    PLURAL_FORMS.map((form) => `operations.distribution.${key}.${form}`),
+  ),
+  ...['confirm', 'done', 'heldNote'].flatMap((key) =>
+    PLURAL_FORMS.map((form) => `operations.handover.${key}.${form}`),
+  ),
   ...[
-    'back', 'confirm', 'confirmBody', 'confirmTitle', 'done', 'failed', 'handover', 'heldNote',
+    'back', 'confirmBody', 'confirmTitle', 'failed', 'handover',
     'hint', 'notInVault', 'notInVaultHint', 'notToday', 'nothing', 'planDay', 'popupBlocked',
     'print', 'ready',
     'sheet.captains', 'sheet.count', 'sheet.day', 'sheet.department', 'sheet.empty',
     'sheet.packages', 'sheet.title', 'unplacedHint',
   ].map((key) => `operations.handover.${key}`),
+];
+
+/**
+ * Round 16 — «لوحة تحكم» on «محصنات الخزينة» («أنا عايز يكون فيها لوحة تحكم اللي هي داشبورد جنب
+ * الإحصائيات»): its button, title, filter line, alerts, «جدول التسليم» and «مدة البقاء في الخزينة».
+ */
+const DISPATCH_DASHBOARD_KEYS = [
+  ...[
+    'open', 'title', 'today', 'figures', 'banksEmpty',
+    'filters.label', 'filters.none', 'filters.reset',
+    'alerts.title', 'alerts.overdue', 'alerts.today', 'alerts.tomorrow', 'alerts.undated',
+    'alerts.unplaced', 'alerts.overdueHint', 'alerts.todayHint', 'alerts.tomorrowHint',
+    'alerts.undatedHint', 'alerts.unplacedHint', 'alerts.show',
+    'schedule.title', 'schedule.note', 'schedule.overdue', 'schedule.today', 'schedule.later',
+    'schedule.undated',
+    'aging.title', 'aging.note', 'aging.today', 'aging.days1to2', 'aging.days3to6',
+    'aging.days7plus', 'aging.unknown',
+    // Round 17 — the heads of the files' further sheets and pages.
+    'export.alert', 'export.when', 'export.span', 'export.agingUnknown',
+  ].map((key) => `operations.secured.dashboard.${key}`),
+  ...['unit', 'schedule.bar'].flatMap((key) =>
+    PLURAL_FORMS.map((form) => `operations.secured.dashboard.${key}.${form}`),
+  ),
 ];
 
 const ALL_KEYS = [
@@ -463,6 +508,7 @@ const ALL_KEYS = [
   ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
   ...DISTRIBUTION_KEYS,
+  ...DISPATCH_DASHBOARD_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {
@@ -531,5 +577,79 @@ describe('operations i18n catalogs (B1–B6)', () => {
     for (const key of ALL_KEYS) {
       expect(translate('en', key)).not.toBe(translate('ar', key));
     }
+  });
+});
+
+// Round 17 — «4 محصنة» read wrong: a counted محصنة takes Arabic's own form for its count, as the
+// day board's «في 4 شحنات» already does (`pluralForm`). Each counted key has the five forms; the
+// screens ask for them through `pluralKey`, and none of the old one-form keys is left to ask for.
+describe('a counted محصنة reads in its Arabic form', () => {
+  const ar = (key: string, n: number, params: Record<string, string> = {}): string =>
+    translate('ar', pluralKey(key, 'ar', n), { count: String(n), ...params });
+
+  it('one, two, three to ten, eleven and on, a hundred', () => {
+    const load = 'operations.distribution.loadCount';
+    expect([1, 2, 4, 10, 11, 100].map((n) => ar(load, n))).toEqual([
+      'محصنة واحدة',
+      'محصنتان',
+      '4 محصنات',
+      '10 محصنات',
+      '11 محصنة',
+      '100 محصنة',
+    ]);
+    // The unit beside a figure drawn on its own (the dashboard's alerts and buckets).
+    const unit = 'operations.secured.dashboard.unit';
+    expect([0, 1, 2, 4, 11].map((n) => ar(unit, n))).toEqual([
+      'محصنات',
+      'محصنة',
+      'محصنتان',
+      'محصنات',
+      'محصنة',
+    ]);
+  });
+
+  it('agrees in the sentence around it — the dual’s verb and pronoun, the genitive after «تسليم»', () => {
+    expect(ar('operations.handover.done', 2, { code: '101' })).toBe(
+      'سُلّمت محصنتان للسيارة 101 وغادرتا الخزينة.',
+    );
+    expect(ar('operations.handover.done', 4, { code: '101' })).toBe(
+      'سُلّمت 4 محصنات للسيارة 101 وغادرت الخزينة.',
+    );
+    expect(ar('operations.handover.confirm', 2)).toBe('تسليم محصنتين');
+    expect(ar('operations.handover.confirm', 1)).toBe('تسليم محصنة واحدة');
+    expect(ar('operations.handover.heldNote', 2)).toContain('لم تستلمهما الخزينة');
+    expect(ar('operations.distribution.autoDone', 2)).toContain('راجعهما');
+    expect(ar('operations.distribution.savedRescheduled', 2, { rescheduled: '1' })).toBe(
+      'حُفظ التوزيع: محصنتان، منهما 1 متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+    );
+    expect(ar('operations.distribution.saved', 3)).toBe('حُفظ التوزيع: 3 محصنات.');
+    expect(
+      ar('operations.secured.dashboard.schedule.bar', 4, { label: 'اليوم', egp: '1,000' }),
+    ).toBe('اليوم: 4 محصنات — 1,000 مصري');
+  });
+
+  it('leaves no one-form key behind for a screen to ask for', () => {
+    for (const key of [
+      'operations.distribution.loadCount',
+      'operations.distribution.autoDone',
+      'operations.distribution.saved',
+      'operations.distribution.savedRescheduled',
+      'operations.handover.done',
+      'operations.handover.heldNote',
+      'operations.handover.confirm',
+      'operations.secured.dashboard.unit',
+      'operations.secured.dashboard.schedule.bar',
+    ]) {
+      for (const locale of LOCALES) expect(translate(locale, key)).toBe(key);
+    }
+  });
+
+  it('English says one and many', () => {
+    expect(translate('en', pluralKey('operations.distribution.saved', 'en', 1))).toBe(
+      'Distribution saved: 1 shipment.',
+    );
+    expect(
+      translate('en', pluralKey('operations.distribution.saved', 'en', 3), { count: '3' }),
+    ).toBe('Distribution saved: 3 shipments.');
   });
 });

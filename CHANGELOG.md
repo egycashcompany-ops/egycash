@@ -222,16 +222,18 @@ its entry here in the same PR.
     the count | المصري | الدولار | عملات أخرى | الحقائب | كرتونة | صندوق, «الإجمالي» under the rows.
     - «تقرير البنوك» (`/operations/reports/banks`; it shipped as «تجميع الخزينة» at
       `/operations/reports/vault` until this release renamed it — below), one row per bank with
-      «عدد المحصنات», and beside it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات الأجنبية» (the dollar included),
-      then every active currency of the reference list but the pound, in its order, zeros dimmed.
+      «عدد المحصنات», and beside it «إجمالي قيمة الشحنات»: «إجمالي المصري», «إجمالي العملات
+      الأجنبية» (the dollar included), then every active currency of the reference list but the
+      pound, in its order, zeros dimmed.
       Its period: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» — every محصنة the vault
       received from «من» to «إلى» (the receipt's Cairo day), still held, gone out or delivered; by
       default the 1st of the month to its last day. A cancelled receipt does not count; a shipment
       received again counts once, on its new receipt's day; deleted shipments are left out. API:
       `GET /operations/reports/banks?from=&to=` (`operationsShipment.view` or
-      `operationsVault.view`, the captain report's parameters; a day left out falls back on its own to the first or last day of Cairo's current
-      month) answers `from` and `to`; `baseCurrencyCode` and `foreignCurrencies` are gone — they
-      told the pound by the code `EGP`, which the live catalog does not use.
+      `operationsVault.view`, the captain report's parameters; a day left out falls back on its
+      own to the first or last day of Cairo's current month) answers `from` and `to`;
+      `baseCurrencyCode` and `foreignCurrencies` are gone — they told the pound by the code `EGP`,
+      which the live catalog does not use.
     - «تقرير القادة» (`/operations/reports/captains`), the same columns per captain under «عدد
       الشحنات»: the period's completed shipments (daily by collection day, secured by delivery
       day), the 1st of the month to its last day by default, the unassigned row last.

@@ -6,9 +6,10 @@
 //                                            the captain's own ✓ is written by execution.service
 //                         undoPickup()       …taken back — the captain's or the desk's — until the
 //                                            vault receives (Round 10)
-//   «استلام الخزينة»     → vaultQueue()       what the vault receives: the yellow and today's green (Round 8)
-//   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — only once
-//                                            somebody picked it up (Round 10)
+//   «استلام الخزينة»     → vaultQueue()       what the vault receives: every draft collected by today,
+//                                            the yellow, and today's green (Rounds 8, 13)
+//   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — whether or not
+//                                            somebody recorded the pickup (Round 13 lifted Round 10's rule)
 //   cancel the receipt  → cancelReceipt()    inVault → draft, custody voided — the special grant (Round 10)
 //   «صرف الخزينة»        → dispatchBoard()    every shipment in the vault, optional delivery day (Round 10)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
@@ -91,7 +92,8 @@ const assignmentSnapshot = (doc: OperationsShipmentAssignmentDoc) => ({
 
 /**
  * The vault's receive queue before mapping: board rows, and — for the ones the vault already took
- * in today — when it did. `day` is the Cairo day "today" was read for (UTC midnight).
+ * in today — when it did. `day` is the Cairo day "today" was read for (UTC midnight): what
+ * "received today" and "collected by today" were both judged by.
  */
 export interface VaultQueueView extends DayBoardView {
   day: Date;
@@ -186,28 +188,40 @@ class OperationsSecuredService {
 
   /**
    * THE VAULT'S RECEIVE QUEUE — «هيظهر للخزنة فى شاشة استلام الخزينه نفس المحصنة … وهتكون باللون
-   * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر»:
+   * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات».
    *
-   *   · the secured shipments SOMEBODY PICKED UP — still `draft`, their pickup confirmed by the
-   *     captain in the mobile app (`withCaptain`, yellow) or, since Round 10, by the Operations desk
-   *     (`withOperations`, yellow too): on their way to the vault;
+   * Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم
+   * والخزنه تستلم عادي»: the vault may receive a محصنة whether or not anybody recorded collecting it,
+   * so by default the queue is what the vault can receive NOW:
+   *
+   *   · every secured `draft` whose COLLECTION day has come — today or earlier on the Cairo
+   *     calendar — white (`awaitingPickup`: nobody recorded the pickup) or yellow;
+   *   · every YELLOW `draft` whatever its collection day — the captain (`withCaptain`) or the desk
+   *     (`withOperations`) says it is in hand, so it is on its way to the vault now. A ✓ pressed
+   *     ahead of the booked day is rare, but hiding a shipment somebody holds behind «الكل» would
+   *     undo Round 8's one promise — the yellow rows are the vault's work;
    *   · the ones the vault RECEIVED TODAY on the Cairo calendar (the custody's `receivedAt`; green),
-   *     whatever has happened to them since — today's receipts stay on today's screen;
-   *   · with `all`, every `draft` one besides (`awaitingPickup`, white) — FOR VIEWING since Round 10:
-   *     the vault cannot receive it until the captain or the desk has pressed ✓ (a captain without
-   *     the app now has the desk's ✓ for that, «او العمليات»).
+   *     whatever has happened to them since — today's receipts stay on today's screen.
    *
-   * The stage is read off the pickup records BEFORE the rows are enriched, so the van cards beside the
-   * rows are only the vans of the rows shown. Counted before the shipments are read: the open drafts
-   * plus today's receipts, against the history's cap. Newest created first.
+   * With `all`, every other `draft` besides: the white ones booked for a LATER collection day.
+   *
+   * The day's cut is the database's (`securedDrafts(today)`), so a desk that books a month ahead
+   * does not load that month to show today. Only a pre-Round-10 row (no pickup record at all) is
+   * read whatever its day and decided here, by its pickup leg — the very rule its stage follows.
+   *
+   * Counted before the shipments are read — the drafts the read will load plus today's receipts —
+   * against the history's cap. Newest created first.
    */
   async vaultQueue(all: boolean, now: Date = new Date()): Promise<VaultQueueView> {
     const today = cairoYmd(now);
+    const day = cairoCalendarDate(now);
+    const collectedBy = all ? undefined : day;
     const received = await vaultCustody().receivedBetween(
       cairoDayStart(today),
       cairoDayStart(addDaysYmd(today, 1)),
     );
-    const count = (await operationsShipmentRepository.countSecuredDrafts()) + received.length;
+    const count =
+      (await operationsShipmentRepository.countSecuredDrafts(collectedBy)) + received.length;
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
       throw historyTooLarge(
         count,
@@ -215,19 +229,22 @@ class OperationsSecuredService {
       );
     }
 
-    const drafts = await operationsShipmentRepository.securedDrafts();
+    const drafts = await operationsShipmentRepository.securedDrafts(collectedBy);
     let waiting = drafts;
-    if (!all) {
-      // Yellow either way — the captain's ✓ or the desk's, both on the shipment's pickup record.
-      // The legs are read only for the rows whose record was never written (pre-Round-10 rows).
-      const unrecorded = drafts.filter((d) => d.pickup === undefined).map((d) => String(d._id));
+    if (collectedBy !== undefined) {
+      // The database kept every draft collected by today, every one with a pickup recorded, and —
+      // whatever its day — every row with NO record at all (pre-Round-10). Of those last, a row
+      // booked for a later day stays only when its pickup leg says the captain has it (yellow).
+      const ahead = (d: OperationsShipmentDoc): boolean =>
+        d.pickup === undefined && d.collectionDate.getTime() > collectedBy.getTime();
+      const unrecorded = drafts.filter(ahead).map((d) => String(d._id));
       const pickupLegs = new Map(
         (await operationsShipmentAssignmentRepository.findByShipments(unrecorded))
           .filter((leg) => leg.leg === 'pickup')
           .map((leg) => [String(leg.shipmentId), leg] as const),
       );
       waiting = drafts.filter(
-        (d) => securedPickupOf(d.pickup, pickupLegs.get(String(d._id))) !== null,
+        (d) => !ahead(d) || securedPickupOf(d.pickup, pickupLegs.get(String(d._id))) !== null,
       );
     }
     // A receipt's shipment that was deleted since is not offered: `findByIds` reads live rows only.
@@ -243,7 +260,7 @@ class OperationsSecuredService {
     );
     return {
       ...(await operationsShipmentService.boardView(docs)),
-      day: cairoCalendarDate(now),
+      day,
       receivedAt: new Map(received.map((r) => [r.shipmentId, r.receivedAt])),
     };
   }
@@ -368,6 +385,9 @@ class OperationsSecuredService {
    * is cleared to an explicit null — never removed — so the row turns white even though the
    * captain's leg still says picked up (his leg is his execution record and is not rewritten), and
    * the desk may then ✓ it again as Operations.
+   *
+   * `OPERATIONS_SECURED_NOT_PICKED_UP` is this method's alone since Round 13 — an undo with nothing
+   * to undo. The vault's ✓ no longer asks for a pickup.
    */
   async undoPickup(
     shipmentId: string,
@@ -401,7 +421,19 @@ class OperationsSecuredService {
     return updated;
   }
 
-  /** The `/receive_mohsana` save: custody taken, shipment draft → inVault (legacy status 2). */
+  /**
+   * The `/receive_mohsana` save: custody taken, shipment draft → inVault (legacy status 2).
+   *
+   * From ANY draft since Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان
+   * العمليات معملتش التسليم والخزنه تستلم عادي». Round 10 refused a shipment nobody had picked up
+   * («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»); the owner lifted that.
+   *
+   * The vault's ✓ does NOT write the pickup record. The vault's screen now tells two facts in two
+   * columns — who collected it from the bank, and whether the vault has it — and a receipt nobody
+   * handed over must keep saying «لم يتم الاستلام» in the first one for good. Stamping the vault as
+   * the collector would make the two columns say one thing twice, and lose the only trace that the
+   * captain and the desk never pressed ✓.
+   */
   async receiveIntoVault(
     shipmentId: string,
     input: ReceiveIntoVault,
@@ -415,14 +447,15 @@ class OperationsSecuredService {
         'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
       );
     }
-    // Round 10 — «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault receives what
-    // somebody has collected — the captain in the app, or the desk. A white row is for viewing.
-    if ((await securedPickup(before)) === null) {
-      throw new ConflictError(
-        'nobody has picked this shipment up yet — the captain (in the app) or the Operations desk confirms the pickup before the vault receives it',
-        ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP,
-      );
-    }
+    // A row from before Round 10 has no pickup record at all, and its stage reads its pickup LEG
+    // (`securedPickupOf`). Received while nobody had collected it, its "nobody" is written down as
+    // an explicit null in the same write — otherwise the captain finishing that leg later (still
+    // his to finish) would turn a direct receipt into «تم الاستلام من القائد» after the fact. A row
+    // whose leg already says he has it is left as it reads; every newer row already holds its record.
+    const freezeNobody =
+      before.pickup === undefined && (await securedPickup(before)) === null
+        ? { pickup: null }
+        : {};
 
     // The version is checked up front for the plain answer, and again by the shipment write.
     if (before.__v !== input.version) throw new StaleDocumentError();
@@ -455,6 +488,7 @@ class OperationsSecuredService {
         {
           status: 'inVault',
           receiptNumber: input.receiptNumber,
+          ...freezeNobody,
           ...(input.serialTracked === undefined ? {} : { serialTracked: input.serialTracked }),
         },
         { by, version: input.version, session },
@@ -484,9 +518,11 @@ class OperationsSecuredService {
    * Only from `inVault`: a shipment that has left the vault is past cancelling. In ONE transaction
    * (the dispatch precedent): the treasury VOIDS the custody (kept, stamped with why — never
    * erased) and the shipment returns to `draft` with its receipt number cleared and its pickup left
-   * exactly as it was — so the row is yellow again, editable again, and the vault can receive it
-   * afresh. This is the one move back down the secured ladder; it is not in shipment-status.ts,
-   * because no ordinary act may take it.
+   * exactly as it was — so the row is yellow again when somebody had collected it, WHITE again when
+   * the vault had received it directly (Round 13: nobody recorded a pickup, and the cancel does not
+   * invent one), editable again either way, and the vault can receive it afresh. This is the one
+   * move back down the secured ladder; it is not in shipment-status.ts, because no ordinary act may
+   * take it.
    *
    * A delivery crew assigned while it sat in the vault is LEFT as it is: the leg is the plan for
    * its delivery day, still true once the vault takes it in again, and `dispatch` refuses anything

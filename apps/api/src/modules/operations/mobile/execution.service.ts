@@ -22,7 +22,8 @@
 //      means the shipment is business-complete;
 //   3. the business ladder has legacy reopen semantics (quirk Q30) that execution must not disturb.
 // The one place the two meet is `isStopSettled`, and it is a READ: a shipment the back office has
-// already completed leaves the captain nothing to do, so it stops blocking his route.
+// already completed leaves the captain nothing to do, so it stops blocking his route — and so, since
+// Round 13, does a secured shipment the vault received before he started its pickup leg.
 import {
   OperationsEvents,
   type OperationsExecutionBody,
@@ -141,7 +142,7 @@ class OperationsExecutionService {
       if (shipment === null) throw new NotFoundError('shipment not found');
 
       const current = statusOf(row);
-      if (isStopSettled(current, shipment.status)) {
+      if (isStopSettled({ leg: row.leg, executionStatus: current }, shipment)) {
         throw new BusinessRuleError(
           'this stop is already settled — there is nothing left to execute',
           ErrorCodes.OPERATIONS_EXECUTION_ALREADY_SETTLED,
@@ -180,6 +181,12 @@ class OperationsExecutionService {
       // draft, with no pickup recorded — so the desk's ✓ is never overwritten («لو العمليات عملت صح
       // القائد مينفعش يشيلها»), and nothing happens once the vault has it. The leg stays his
       // execution record; the shipment's record is what its stage reads, and what the desk may undo.
+      //
+      // Round 13 leans on that last clause: the vault may now receive a محصنة nobody recorded
+      // collecting («والخزنه تستلم عادي»). A captain who had already STARTED his pickup leg may still
+      // press ✓ afterwards — he must be able to finish a stop he began — but it records his leg
+      // only: the shipment is past draft, so its pickup record keeps saying «لم يتم الاستلام», which
+      // is what the vault's screen must show for a receipt nobody handed over.
       const recorded =
         action === 'confirmPickup' && moved.leg === 'pickup' && shipment.shipmentType === 'secured'
           ? await operationsShipmentRepository.recordCaptainPickup(
@@ -267,7 +274,9 @@ class OperationsExecutionService {
       if (String(prior._id) === String(row._id)) return; // reached this stop — everything before it passed
       const shipment = await operationsShipmentRepository.findById(String(prior.shipmentId));
       const settled =
-        shipment === null ? true : isStopSettled(statusOf(prior), shipment.status);
+        shipment === null
+          ? true
+          : isStopSettled({ leg: prior.leg, executionStatus: statusOf(prior) }, shipment);
       if (!settled) {
         throw new BusinessRuleError(
           `stop ${String(prior.sequence)} (${prior.leg}) is not finished — finish it before starting this one`,
@@ -286,7 +295,9 @@ class OperationsExecutionService {
     for (const stop of route) {
       const shipment = await operationsShipmentRepository.findById(String(stop.shipmentId));
       if (shipment === null) continue;
-      if (!isStopSettled(statusOf(stop), shipment.status)) return String(stop._id);
+      if (!isStopSettled({ leg: stop.leg, executionStatus: statusOf(stop) }, shipment)) {
+        return String(stop._id);
+      }
     }
     return null;
   }

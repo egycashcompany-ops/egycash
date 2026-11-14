@@ -49,7 +49,11 @@ export const getSecuredBoard = async (req: Request, res: Response): Promise<void
   ok<OperationsSecuredBoardDto>(res, boardForReader(req, view));
 };
 
-/** The vault's receive queue — the yellow rows, today's green ones, and with `all` the white ones. */
+/**
+ * The vault's receive queue — what it can receive now (every draft collected by today, white or
+ * yellow, and the yellow ones of any day) and today's green ones; with `all`, the white ones booked
+ * for a later day too (Round 13).
+ */
 export const getVaultQueue = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsVaultQueueQuery>(req);
   const all = query.all ?? false;

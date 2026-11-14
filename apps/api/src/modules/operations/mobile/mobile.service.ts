@@ -150,10 +150,12 @@ class OperationsMobileService {
       // status, through the one predicate the execution lock also uses. The field keeps exactly the
       // meaning OP-6 gave it and gains precision, as that contract said it would — and because both
       // sides share `isStopSettled`, what this shows as `current` is precisely what the server will
-      // let the captain start.
+      // let the captain start. Round 13 adds the vault: a secured pickup leg he never started, on a
+      // shipment the vault already received, reads `completed` too — nothing is left for him at the
+      // bank — while his `executionStatus` below still says `pending`, never rewritten.
       const executionStatus = row.executionStatus ?? 'pending';
       let progress: OperationsStopProgress;
-      if (isStopSettled(executionStatus, shipment.status)) {
+      if (isStopSettled({ leg: row.leg, executionStatus }, shipment)) {
         progress = 'completed';
       } else if (currentAssignmentId === null) {
         progress = 'current';

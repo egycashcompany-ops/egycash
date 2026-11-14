@@ -302,6 +302,12 @@ its entry here in the same PR.
       keeps the van. The pickup leg is not touched by an edit.
     - «تسليم» is the existing dispatch per van: the van's shipments in the vault leave it at once; one
       on the van the vault has not received yet stays behind.
+    - …and only on the van's own day, on the server too: `POST /operations/secured/dispatch` refuses
+      a crew row whose operating day is not today on the Cairo calendar (422
+      `OPERATIONS_DISPATCH_NOT_TODAY`, detail `crewAssignmentId` / `TODAY_ONLY` / today), before any
+      shipment is read, so nothing is written. The screen already offered «تسليم» on today's vans
+      only; a page left open from another day, or a direct call, can no longer release tomorrow's
+      van today, nor a past day's van that has left.
   - The screens of Round 12: «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان
     اعمل فلتر ب اسم القائد [اسم البنك] و ان اكسيل او pdf», «الlist بتاعت جمالى العملات … عاوز حجمها
     يكون بطول الشاشة كامله», «الصف بتاع الجماليات يفضل ظاهر حتى لو الجدول كبر يحصل اسكرول جوا الجدول».
@@ -440,6 +446,12 @@ its entry here in the same PR.
       الخزينة» (today, 1–2, 3–6, 7+ days, on the Cairo calendar); «بيان الشحنات لكل بنك» with
       «الإجمالي» pinned and «إجمالي قيمة الشحنات» beside it; Excel and PDF of the two. Every section
       is drawn at zero when nothing is shown.
+  - Polish: «استلام الخزينة»'s two status badges read on one line at 1440 (its board's names wrap
+    from a lower floor, its notes cut sooner, its cells' sides 7px); a counted محصنة takes its Arabic
+    form on the distribution, handover and dashboard screens («محصنة واحدة · محصنتان · 4 محصنات · 11
+    محصنة»); the dashboard's Excel and PDF add «تنبيهات التسليم», «جدول التسليم» and «مدة البقاء في
+    الخزينة» after the bank table and its panel (the reports' files are unchanged); and the handover's
+    today-only refusal reads «التسليم يتم يوم خروج السيارة فقط».
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

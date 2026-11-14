@@ -72,6 +72,11 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    // «تسليم المحصنات» (Round 17): the server refuses a handover of any van but today's. The screen
+    // offers «تسليم» on today's vans only, so this reaches a page left open from another day — or
+    // past midnight — and says the same rule the screen does.
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'A van is handed over only on the day it goes out — this van is not one of today’s.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -126,6 +131,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

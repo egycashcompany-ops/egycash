@@ -33,13 +33,15 @@
 //   e. «بيان الشحنات لكل بنك» — the very `ReportTable` of «تقرير الخزينة», «الإجمالي» pinned, and
 //      «إجمالي قيمة الشحنات» beside it, over the rows shown;
 //   f. Excel and PDF of that table and its panel — the reports' own files (`ReportExportPair`) — in
-//      the header, where «تقرير الخزينة» has them.
+//      the header, where «تقرير الخزينة» has them; since Round 17 with b–d after them, a sheet and a
+//      printed page each (`dashboardExportSections`).
 import { useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { MAX_PAGE_SIZE, type Locale, type OperationsSecuredDispatchRowDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { formatAmount } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { useAppSelector } from '../../../store';
 import { CARD, CardHead, NOTE } from '../../fleet/components/custody-dashboard-parts';
 import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
@@ -54,8 +56,10 @@ import {
   AGING_BUCKETS,
   DASHBOARD_ALERTS,
   dashboardAlertDay,
+  dashboardExportSections,
   dashboardFilterChips,
   scheduleHeights,
+  scheduleWeekday,
   securedDispatchDashboard,
   type AgingBucket,
   type DashboardAlert,
@@ -101,13 +105,6 @@ interface DashboardProps extends SecuredDispatchDashboardActions {
 
 /** «2026-11-14» → «11-14»: the year is this week's, and the column is narrow. */
 const monthDay = (day: string): string => day.slice(5);
-
-/** The day's name — «السبت» — read on the UTC calendar the delivery day is stored on. */
-const weekdayOf = (day: string, locale: Locale): string =>
-  new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
-    weekday: 'short',
-    timeZone: 'UTC',
-  }).format(new Date(`${day}T00:00:00.000Z`));
 
 // ── The header's end: the day the dashboard is judged on ─────────────────────────────────────
 
@@ -304,8 +301,9 @@ const AlertBody = ({
         >
           {formatAmount(figure.count, locale)}
         </span>
+        {/* «محصنة», «محصنتان», «محصنات» — the form the figure beside it takes (`pluralKey`). */}
         <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-          {t('operations.secured.dashboard.unit')}
+          {t(pluralKey('operations.secured.dashboard.unit', locale, figure.count))}
         </span>
       </span>
       <span className="flex flex-wrap items-baseline gap-x-1 text-xs">
@@ -439,7 +437,7 @@ const useBucketLabel = (): ((bucket: ScheduleBucket) => { name: string; day: str
       name:
         bucket.kind === 'today'
           ? t('operations.secured.dashboard.schedule.today')
-          : weekdayOf(day, locale),
+          : scheduleWeekday(day, locale),
       day: monthDay(day),
     };
   };
@@ -490,11 +488,14 @@ const DeliverySchedule = ({
         {buckets.map((bucket, index) => {
           const label = labelOf(bucket);
           const full = label.day === null ? label.name : `${label.name} ${label.day}`;
-          const words = t('operations.secured.dashboard.schedule.bar', {
-            label: full,
-            count: formatAmount(bucket.count, locale),
-            egp: formatAmount(bucket.egp, locale),
-          });
+          const words = t(
+            pluralKey('operations.secured.dashboard.schedule.bar', locale, bucket.count),
+            {
+              label: full,
+              count: formatAmount(bucket.count, locale),
+              egp: formatAmount(bucket.egp, locale),
+            },
+          );
           const share = heights[index] ?? 0;
           return (
             <li
@@ -632,7 +633,7 @@ const VaultAging = ({
                       {formatAmount(figure.count, locale)}
                     </span>
                     <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                      {t('operations.secured.dashboard.unit')}
+                      {t(pluralKey('operations.secured.dashboard.unit', locale, figure.count))}
                     </span>
                   </span>
                   <span aria-hidden className="text-slate-300 dark:text-slate-600">
@@ -694,6 +695,7 @@ const DispatchDashboardModal = ({
   ...live
 }: DashboardProps): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const titleId = useId();
   // While the board re-reads its list (`pending`), the window stays up over the last rows it read,
   // dimmed — the frame's `dimmed`, as «تقرير الخزينة» holds its last answer — and the filters line
@@ -755,6 +757,9 @@ const DispatchDashboardModal = ({
                     day: ltrIsolate(today),
                   })}`,
                   withValuePanel: true,
+                  // Round 17 — and the window's other sections after them: «تنبيهات التسليم»,
+                  // «جدول التسليم» and «مدة البقاء في الخزينة», a sheet and a printed page each.
+                  extraSections: dashboardExportSections(t, locale, dash, today),
                 }}
               />
             </div>

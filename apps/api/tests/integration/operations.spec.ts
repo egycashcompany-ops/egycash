@@ -7,6 +7,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
+import mongoose from 'mongoose';
 import {
   ErrorCodes,
   OPERATIONS_SECURED_STAGES,
@@ -268,6 +269,53 @@ const deskPickUp = async (shipmentId: string): Promise<OperationsShipmentDto> =>
     .send({ version: data<OperationsShipmentDto>(current).version });
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return data<OperationsShipmentDto>(res);
+};
+
+/** The sign-ins `dispatchOn` made, one per person and day, kept so the sign-in limit never bites. */
+const tokensOnDay = new Map<string, string>();
+
+/**
+ * The vault's release — `POST /operations/secured/dispatch` — sent ON THE VAN'S OWN DAY.
+ *
+ * The server releases a van of TODAY only (`OPERATIONS_DISPATCH_NOT_TODAY`), and every van in this
+ * file is planned on a day still to come (the roster plans no past day — see `shift`). So a case
+ * that sends a van out does it the way the vault does: on that day. The clock is set to 10:00 that
+ * morning in Cairo for this one call and put back after it, whatever the call answered.
+ *
+ * Two things do not survive the jump, and are handled here rather than in every case:
+ *   · the suite's tokens expire long before that day, so the call carries a token signed at that
+ *     hour (one per person and day, kept for the next call on the same day);
+ *   · Mongoose judges the connection by how long ago its last heartbeat was, read on the same moved
+ *     clock, and would call a healthy connection dead and hold every query. The stamp is cleared
+ *     going in and coming out; the next heartbeat writes it again.
+ */
+const dispatchOn = async (
+  day: string,
+  body: { crewAssignmentId: string | undefined; shipmentIds: string[] },
+  email = 'ops-admin@ecms.local',
+): Promise<request.Response> => {
+  const connection = mongoose.connection as unknown as { _lastHeartbeatAt: number | null };
+  vi.useFakeTimers({
+    toFake: ['Date'],
+    now: new Date(cairoDayStart(day).getTime() + 10 * 3_600_000),
+    shouldAdvanceTime: true,
+  });
+  connection._lastHeartbeatAt = null;
+  try {
+    const key = `${email} ${day}`;
+    let token = tokensOnDay.get(key);
+    if (token === undefined) {
+      token = await login(email);
+      tokensOnDay.set(key, token);
+    }
+    return await request(app)
+      .post('/api/v1/operations/secured/dispatch')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  } finally {
+    vi.useRealTimers();
+    connection._lastHeartbeatAt = null;
+  }
 };
 
 beforeAll(async () => {
@@ -1950,10 +1998,10 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: crewRow, captainEmployeeId: captainId, version: 0 });
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [shipment.id] });
+    const dispatched = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [shipment.id],
+    });
     expect(dispatched.status).toBe(200);
     expect(data<{ dispatched: number }>(dispatched).dispatched).toBe(1);
     await waitFor(() => seenEvents.some((e) => e.name === OperationsEvents.VaultReleased));
@@ -1986,18 +2034,18 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     await receive(unassigned);
     const crewRow = await findCrewAssignmentId();
 
-    const noLeg = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [unassigned.id] });
+    const noLeg = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [unassigned.id],
+    });
     expect(noLeg.status).toBe(422);
     expect(errorCode(noLeg)).toBe(ErrorCodes.OPERATIONS_DELIVERY_LEG_REQUIRED);
 
     const draft = await mkSecured();
-    const notHeld = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: crewRow, shipmentIds: [draft.id] });
+    const notHeld = await dispatchOn(DELIVERY_DATE, {
+      crewAssignmentId: crewRow,
+      shipmentIds: [draft.id],
+    });
     expect(notHeld.status).toBe(422);
     expect(errorCode(notHeld)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
   });
@@ -2115,10 +2163,10 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: fromBoard, captainEmployeeId: captainId, version: 0 });
 
-      const res = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: fromBoard, shipmentIds: [shipment.id] });
+      const res = await dispatchOn(DELIVERY_DATE, {
+        crewAssignmentId: fromBoard,
+        shipmentIds: [shipment.id],
+      });
       expect(res.status).toBe(200);
     });
 
@@ -3510,10 +3558,10 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [secured.id], crewAssignmentId: boardCrewId });
+    const dispatched = await dispatchOn(BOARD_DATE, {
+      shipmentIds: [secured.id],
+      crewAssignmentId: boardCrewId,
+    });
     expect(dispatched.status).toBe(200);
   });
 
@@ -3787,10 +3835,10 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: boardCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status).toBe(200);
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ shipmentIds: [twoLegs.id], crewAssignmentId: boardCrewId });
+    const dispatched = await dispatchOn(BOARD_DATE, {
+      shipmentIds: [twoLegs.id],
+      crewAssignmentId: boardCrewId,
+    });
     expect(dispatched.status).toBe(200);
 
     // The fixture really has two legs on two different crews — otherwise the board could pass
@@ -5309,10 +5357,10 @@ describe('operations reports — legacy /ops_report (B5)', () => {
       });
     expect(legAssigned.status).toBe(200);
 
-    const dispatched = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: reportCrewId, shipmentIds: [secured.id] });
+    const dispatched = await dispatchOn(REPORT_DAY, {
+      crewAssignmentId: reportCrewId,
+      shipmentIds: [secured.id],
+    });
     expect(dispatched.status).toBe(200);
 
     const fresh = data<OperationsShipmentDto>(
@@ -5787,12 +5835,8 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
       ).status,
     ).toBe(200);
     expect(
-      (
-        await request(app)
-          .post('/api/v1/operations/secured/dispatch')
-          .set('Authorization', `Bearer ${adminToken}`)
-          .send({ crewAssignmentId: crewRow, shipmentIds: [secured.id] })
-      ).status,
+      (await dispatchOn(VAULT_DATE, { crewAssignmentId: crewRow, shipmentIds: [secured.id] }))
+        .status,
     ).toBe(200);
     // Out of the vault, on its way: still received in the period, so still in the roll-up — a
     // month's roll-up of what came in does not shrink each time a van leaves.
@@ -6574,10 +6618,10 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
     expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
-    const out = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: outCrewId, shipmentIds: [shipmentId] });
+    const out = await dispatchOn(SEC_OUT, {
+      crewAssignmentId: outCrewId,
+      shipmentIds: [shipmentId],
+    });
     expect(out.status, JSON.stringify(out.body)).toBe(200);
   };
   const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
@@ -7863,10 +7907,10 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
-      const out = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: outCrewId, shipmentIds: [shipment.id] });
+      const out = await dispatchOn(R10_OUT, {
+        crewAssignmentId: outCrewId,
+        shipmentIds: [shipment.id],
+      });
       expect(out.status, JSON.stringify(out.body)).toBe(200);
       expectLocked(await edit(shipment.id, 'خرجت'), 'edit a dispatched one');
       const done = await request(app)
@@ -7949,12 +7993,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(
-        (
-          await request(app)
-            .post('/api/v1/operations/secured/dispatch')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({ crewAssignmentId: outCrewId, shipmentIds: [gone.id] })
-        ).status,
+        (await dispatchOn(R10_OUT, { crewAssignmentId: outCrewId, shipmentIds: [gone.id] })).status,
       ).toBe(200);
       const left = await cancel(gone.id, {}, cancelToken);
       expect(left.status).toBe(409);
@@ -8113,12 +8152,8 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
       expect(
-        (
-          await request(app)
-            .post('/api/v1/operations/secured/dispatch')
-            .set('Authorization', `Bearer ${adminToken}`)
-            .send({ crewAssignmentId: outCrewId, shipmentIds: [alreadyOut] })
-        ).status,
+        (await dispatchOn(R10_OUT, { crewAssignmentId: outCrewId, shipmentIds: [alreadyOut] }))
+          .status,
       ).toBe(200);
     });
 
@@ -8213,10 +8248,10 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
       expect((await boardOf()).shipments.find((s) => s.id === dueOther)?.deliveryLegVersion).toBe(1);
 
-      const out = await request(app)
-        .post('/api/v1/operations/secured/dispatch')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ crewAssignmentId: row?.crew?.crewAssignmentId, shipmentIds: [dueOther] });
+      const out = await dispatchOn(R10_OTHER_OUT, {
+        crewAssignmentId: row?.crew?.crewAssignmentId,
+        shipmentIds: [dueOther],
+      });
       expect(out.status, JSON.stringify(out.body)).toBe(200);
       expect((await boardOf()).shipments.map((s) => s.id)).not.toContain(dueOther);
     });

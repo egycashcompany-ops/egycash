@@ -44,6 +44,7 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage, hasError } from '../../../shared/lib/errors';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -178,7 +179,7 @@ export const VaultHandoverPage = (): JSX.Element => {
     try {
       await dispatch.mutateAsync(body);
       toast.success(
-        t('operations.handover.done', {
+        t(pluralKey('operations.handover.done', locale, body.shipmentIds.length), {
           count: formatNumber(body.shipmentIds.length, locale),
           code: van.vehicleCode ?? '…',
         }),
@@ -396,7 +397,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                                 d={[...SHIPMENT_PATH.info]}
                                 className="mt-0.5 h-3.5 w-3.5 shrink-0"
                               />
-                              {t('operations.handover.heldNote', {
+                              {t(pluralKey('operations.handover.heldNote', locale, held.length), {
                                 count: formatNumber(held.length, locale),
                               })}
                             </p>
@@ -465,7 +466,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                 onClick={() => void handOver(confirmVan)}
                 busy={dispatch.isPending}
                 disabled={confirmLoad.length === 0 || !handoverToday}
-                label={t('operations.handover.confirm', {
+                label={t(pluralKey('operations.handover.confirm', locale, confirmLoad.length), {
                   count: formatNumber(confirmLoad.length, locale),
                 })}
                 data-handover-confirm-save="true"
@@ -515,7 +516,7 @@ export const VaultHandoverPage = (): JSX.Element => {
               className="space-y-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
             >
               <p>
-                {t('operations.handover.heldNote', {
+                {t(pluralKey('operations.handover.heldNote', locale, confirmHeld.length), {
                   count: formatNumber(confirmHeld.length, locale),
                 })}
               </p>

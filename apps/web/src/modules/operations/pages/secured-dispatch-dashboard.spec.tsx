@@ -574,6 +574,16 @@ describe('the sections — in the owner’s order, every one drawn', () => {
     expect(egp('today')).toBe('1,500,000');
     // The late one, and today's on no van — not the one on today's van.
     expect(count('unplaced')).toBe('2');
+    // Round 17 — each count with its own form: one late is «محصنة», two today are «محصنتان».
+    const unit = (alert: string): string | undefined =>
+      new RegExp(
+        `data-dispatch-alert-count="${alert}"[^>]*>[^<]*</span>(?:<!-- -->)?<span[^>]*>([^<]*)<`,
+      ).exec(html)?.[1];
+    expect([unit('overdue'), unit('today'), unit('tomorrow')]).toEqual([
+      'محصنة',
+      'محصنتان',
+      'محصنات',
+    ]);
     for (const word of [
       'متأخرة',
       'تسليمها اليوم',
@@ -622,13 +632,16 @@ describe('the sections — in the owner’s order, every one drawn', () => {
       'day:2026-11-21=0',
       'later=1',
     ]);
+    // Two due today: «محصنتان», the count's own Arabic form (Round 17), never «2 محصنة».
     expect(html).toContain(
-      `aria-label="${ar('operations.secured.dashboard.schedule.bar', {
+      `aria-label="${ar('operations.secured.dashboard.schedule.bar.two', {
         label: 'اليوم 11-14',
         count: '2',
         egp: '1,500,000',
       })}"`,
     );
+    expect(html).toContain('aria-label="اليوم 11-14: محصنتان — 1,500,000 مصري"');
+    expect(html).not.toContain(': 2 محصنة');
     // The row with no delivery day has no column, and is said under them.
     expect(html).toContain('data-dispatch-schedule-undated="1"');
     // One hue — the brand's — for one measure.
@@ -645,6 +658,17 @@ describe('the sections — in the owner’s order, every one drawn', () => {
       '4',
       '0',
       '0',
+    ]);
+    // Round 17 — the word after each figure is the figure's own Arabic form: «1 محصنة», «4
+    // محصنات», «0 محصنات».
+    const unit = (bucket: string): string | undefined =>
+      new RegExp(`data-dispatch-aging-count="${bucket}"[^>]*>[^<]*</span><span[^>]*>([^<]*)<`).exec(
+        html,
+      )?.[1];
+    expect([unit('today'), unit('days1to2'), unit('days3to6')]).toEqual([
+      'محصنة',
+      'محصنات',
+      'محصنات',
     ]);
   });
 
@@ -667,6 +691,18 @@ describe('the sections — in the owner’s order, every one drawn', () => {
     expect(buttonWith(html, 'data-report-export-excel="true"')).not.toContain('disabled=""');
     expect(buttonWith(html, 'data-report-export-pdf="true"')).not.toContain('disabled=""');
     expect(DASH).toContain('withValuePanel: true,');
+  });
+
+  // Round 17 — the files carry the window's other sections too, after the table and its panel:
+  // the alerts, «جدول التسليم» and «مدة البقاء في الخزينة», read off the same dashboard
+  // (lib/secured-dispatch-dashboard.spec.ts pins their lines).
+  it('carries «تنبيهات التسليم», «جدول التسليم» and «مدة البقاء في الخزينة» into both files', () => {
+    expect(DASH).toContain('extraSections: dashboardExportSections(t, locale, dash, today),');
+    // The reports hand none: their files are what they always were.
+    for (const page of ['./BankReportPage.tsx', './CaptainReportPage.tsx']) {
+      expect(read(page)).not.toContain('extraSections');
+    }
+    expect(HELD).not.toContain('extraSections');
   });
 
   it('keeps every frame at zero when no row is shown — «على الاقل الاشكال موجودة»', () => {

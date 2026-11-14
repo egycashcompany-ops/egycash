@@ -24,6 +24,7 @@ import {
   cairoYmd,
   daysBetweenYmd,
   isYmd,
+  type Locale,
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsReportTotalsDto,
@@ -31,6 +32,7 @@ import {
 } from '@ecms/contracts';
 import { type DayBoardFilters } from './day-board';
 import { bankRank, reportMoney, reportRowsInOrder, type ReportBoardRow } from './report-board';
+import type { ReportExtraSection, Translate } from './report-export';
 import { deliveryDayOf, dispatchDue } from './secured-dispatch';
 import { heldReportTiles, type HeldReportTiles } from './vault-held-report';
 
@@ -233,6 +235,8 @@ export interface SecuredDispatchDashboard {
   aging: Record<AgingBucket, DashboardFigure>;
   /** Rows with no receipt time to age them by — said under the buckets, never guessed at. */
   agingUnknown: number;
+  /** Their pound — the files' «مدة البقاء في الخزينة» lists them as a line of its own. */
+  agingUnknownEgp: number;
   bankRows: ReportBoardRow[];
 }
 
@@ -281,7 +285,7 @@ export const securedDispatchDashboard = ({
     days3to6: [],
     days7plus: [],
   };
-  let agingUnknown = 0;
+  const agingUnknownRows: DashboardRow[] = [];
 
   for (const row of rows) {
     const day = deliveryDayOf(row);
@@ -299,11 +303,12 @@ export const securedDispatchDashboard = ({
     }
     if (isUnplacedToday(row, today)) alertRows.unplaced.push(row);
     const age = agingBucketOf(row, today);
-    if (age === null) agingUnknown += 1;
+    if (age === null) agingUnknownRows.push(row);
     else agingRows[age].push(row);
   }
 
   const figure = (own: readonly DashboardRow[]): DashboardFigure => dashboardFigure(own, catalog);
+  const unknown = figure(agingUnknownRows);
   return {
     grandTotal,
     tiles: heldReportTiles(grandTotal, catalog),
@@ -330,7 +335,8 @@ export const securedDispatchDashboard = ({
       days3to6: figure(agingRows.days3to6),
       days7plus: figure(agingRows.days7plus),
     },
-    agingUnknown,
+    agingUnknown: unknown.count,
+    agingUnknownEgp: unknown.egp,
     bankRows: dashboardBankRows(rows, banks, catalog, packaging),
   };
 };
@@ -342,6 +348,109 @@ export const securedDispatchDashboard = ({
 export const scheduleHeights = (buckets: readonly Pick<ScheduleBucket, 'count'>[]): number[] => {
   const tallest = Math.max(0, ...buckets.map((bucket) => bucket.count));
   return buckets.map((bucket) => (tallest === 0 ? 0 : bucket.count / tallest));
+};
+
+/** «السبت» — a delivery day's name, read on the UTC calendar the delivery day is stored on. */
+export const scheduleWeekday = (day: string, locale: Locale): string =>
+  new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+    weekday: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(`${day}T00:00:00.000Z`));
+
+// ── The files: the sections beside the bank table ─────────────────────────────────────────────
+
+/**
+ * Round 17 — «لوحة تحكم»'s Excel and PDF carry what the window shows, not only «بيان الشحنات لكل
+ * بنك» and its panel: «تنبيهات التسليم», «جدول التسليم» and «مدة البقاء في الخزينة», in the order the
+ * window reads them, each a sheet and a printed page after the bank table's two
+ * (`ReportExtraSection`). Every figure is the window's own, from the same `SecuredDispatchDashboard`.
+ *
+ *   · the alerts — each one's count and pound, with the delivery day it stands for where it is one
+ *     («تسليمها اليوم», «تسليمها غدًا»). No «الإجمالي»: the alerts overlap («لم تُوزَّع على سيارة» is
+ *     drawn from the late ones and today's), so a sum would count a محصنة twice;
+ *   · the schedule — each column of the chart as a line, its delivery day beside its name, then
+ *     «بدون يوم تسليم» (said under the chart on screen), so «الإجمالي» is every محصنة shown;
+ *   · the wait — the four buckets, then «بلا وقت استلام» when a row has no receipt time, so
+ *     «الإجمالي» is every محصنة shown here too.
+ *
+ * A day sits in a cell of its own, never inside the Arabic words: there it stays «2026-11-15», where
+ * after an Arabic word it would print reversed.
+ */
+export const dashboardExportSections = (
+  t: Translate,
+  locale: Locale,
+  dash: Pick<
+    SecuredDispatchDashboard,
+    'alerts' | 'schedule' | 'undated' | 'aging' | 'agingUnknown' | 'agingUnknownEgp'
+  >,
+  today: string,
+): ReportExtraSection[] => {
+  const count = t('operations.vaultReport.securedCount');
+  const pound = t('operations.reportBoard.pound');
+  const day = t('operations.shipment.deliveryDate');
+  /** «الإجمالي» of lines that share nothing: their counts and their pounds, summed. */
+  const sums = (figures: readonly DashboardFigure[]): [number, number] => [
+    figures.reduce((sum, figure) => sum + figure.count, 0),
+    figures.reduce((sum, figure) => sum + figure.egp, 0),
+  ];
+
+  // The schedule's lines: the chart's columns, then the محصنات it has no column for.
+  const scheduleName = (bucket: ScheduleBucket): string => {
+    if (bucket.kind === 'overdue') return t('operations.secured.dashboard.schedule.overdue');
+    if (bucket.kind === 'later') return t('operations.secured.dashboard.schedule.later');
+    if (bucket.kind === 'today') return t('operations.secured.dashboard.schedule.today');
+    return bucket.day === null ? '' : scheduleWeekday(bucket.day, locale);
+  };
+  const schedule: { name: string; day: string; figure: DashboardFigure }[] = [
+    ...dash.schedule.map((bucket) => ({
+      name: scheduleName(bucket),
+      day: bucket.day ?? '',
+      figure: bucket,
+    })),
+    { name: t('operations.secured.dashboard.alerts.undated'), day: '', figure: dash.undated },
+  ];
+
+  // The wait's lines: the four buckets, then the rows with no receipt time, when there are any.
+  const aging: { name: string; figure: DashboardFigure }[] = [
+    ...AGING_BUCKETS.map((bucket) => ({
+      name: t(`operations.secured.dashboard.aging.${bucket}`),
+      figure: dash.aging[bucket],
+    })),
+    ...(dash.agingUnknown > 0
+      ? [
+          {
+            name: t('operations.secured.dashboard.export.agingUnknown'),
+            figure: { count: dash.agingUnknown, egp: dash.agingUnknownEgp },
+          },
+        ]
+      : []),
+  ];
+
+  return [
+    {
+      name: t('operations.secured.dashboard.alerts.title'),
+      header: [t('operations.secured.dashboard.export.alert'), day, count, pound],
+      rows: DASHBOARD_ALERTS.map((alert) => [
+        t(`operations.secured.dashboard.alerts.${alert}`),
+        dashboardAlertDay(alert, today) ?? '',
+        dash.alerts[alert].count,
+        dash.alerts[alert].egp,
+      ]),
+      total: null,
+    },
+    {
+      name: t('operations.secured.dashboard.schedule.title'),
+      header: [t('operations.secured.dashboard.export.when'), day, count, pound],
+      rows: schedule.map((line) => [line.name, line.day, line.figure.count, line.figure.egp]),
+      total: [t('operations.reportBoard.total'), '', ...sums(schedule.map((line) => line.figure))],
+    },
+    {
+      name: t('operations.secured.dashboard.aging.title'),
+      header: [t('operations.secured.dashboard.export.span'), count, pound],
+      rows: aging.map((line) => [line.name, line.figure.count, line.figure.egp]),
+      total: [t('operations.reportBoard.total'), ...sums(aging.map((line) => line.figure))],
+    },
+  ];
 };
 
 // ── The line at the top: the filters in force ─────────────────────────────────────────────────

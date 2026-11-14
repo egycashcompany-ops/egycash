@@ -310,6 +310,26 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
     );
   });
 
+  // Round 17 — the two badges read on one line, and the vault's board alone makes the room for
+  // them: its names wrap from a lower floor (the bank too), its notes are cut sooner, and its
+  // cells' sides come in below 1750px. Every other board keeps its widths.
+  it('makes the room for one-line badges on the vault’s board alone', () => {
+    expect(BOARD).toContain('<div className={cn(SHIPMENTS_TABLE, splitStatus && VAULT_TABLE)}>');
+    expect(BOARD).toContain("'[--board-name-floor:4rem] [--board-notes-cut:4rem]',");
+    expect(BOARD).toContain(
+      "'max-[1749px]:[&_tbody_td]:!px-[7px] max-[1749px]:[&_thead_th]:!px-[7px]',",
+    );
+    // Where nothing says otherwise, the floor and the cut are what they were.
+    expect(BOARD).toContain(
+      "'block min-w-[var(--board-name-floor,5rem)] max-w-[9rem] whitespace-normal leading-tight'",
+    );
+    expect(BOARD).toContain('max-w-[var(--board-notes-cut,5rem)] truncate');
+    // The bank wraps as a name on the vault's board, and keeps its one line on the others.
+    expect(BOARD).toMatch(
+      /splitStatus \? \(\s*<span className=\{WRAP\}>\{bankNameOf\(row\.mainBankId\)\}<\/span>\s*\) : \(\s*bankNameOf\(row\.mainBankId\)\s*\)/,
+    );
+  });
+
   it('«والحالة …» — the status is the محصنة’s stage, and so is the filter', () => {
     // `shownStage` (secured-stage.spec) is the stage, or null where the cell says who delivered —
     // a daily row, and a محصنة on the road its delivery captain has delivered.

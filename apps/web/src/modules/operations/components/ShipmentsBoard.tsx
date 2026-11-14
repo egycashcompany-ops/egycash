@@ -212,6 +212,28 @@ const SHIPMENTS_TABLE = cn(
 );
 
 /**
+ * Round 17 — the vault's board, on top of that: its two status badges read on ONE line
+ * (`FACE_FIT.queue` in `ShipmentBadges.tsx`), «تم الاستلام من العمليات» some 65px wider than when it
+ * wrapped and «لم تُستلم بعد» some 20px. That room comes from the columns with room to give, so the
+ * actions stay on a 1440 laptop beside the menu even with a note on a row:
+ *
+ *   · the names — bank, from, to, captain — wrap from a 4rem floor rather than 5rem (`WRAP` reads
+ *     its floor from `--board-name-floor`). The bank wraps here too: «الاستثمار العربي» on one line
+ *     was a column wider than any branch;
+ *   · a note is cut at 4rem rather than 5rem (`--board-notes-cut`), its whole text still on hover;
+ *   · below 1750px the cells' sides are 7px rather than the Fleet table's 9px. `tbody td` /
+ *     `thead th` outrank the Fleet table's own `td` / `th`, and the icon boxes' and the status
+ *     columns' `td:has(…)` above outrank these, so those keep their 4px.
+ *
+ * Measured on the round's stubbed queue: the table needs 1305px with a note on a row, the scroller
+ * beside the rail at 1440 has 1318; at 1366 the scroller scrolls sideways a little, as before.
+ */
+const VAULT_TABLE = cn(
+  '[--board-name-floor:4rem] [--board-notes-cut:4rem]',
+  'max-[1749px]:[&_tbody_td]:!px-[7px] max-[1749px]:[&_thead_th]:!px-[7px]',
+);
+
+/**
  * THE FILTER BAR'S ROWS — «الفلاتر هتكون كلها على صف واحد», on both screens («على نفس الصف»):
  *
  *   · a phone — two even columns, rather than boxes of four widths wrapping raggedly;
@@ -251,9 +273,11 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 const DASH = <span className="text-slate-400">—</span>;
 /**
  * A name that may wrap onto a second line rather than widen its column — the table's cells are
- * `nowrap`, and fourteen columns of unbroken names do not fit a laptop beside the menu.
+ * `nowrap`, and fourteen columns of unbroken names do not fit a laptop beside the menu. Its floor
+ * is 5rem, or what the table says (`--board-name-floor` — the vault's board, `VAULT_TABLE`).
  */
-const WRAP = 'block min-w-[5rem] max-w-[9rem] whitespace-normal leading-tight';
+const WRAP =
+  'block min-w-[var(--board-name-floor,5rem)] max-w-[9rem] whitespace-normal leading-tight';
 
 /**
  * A date picker in the bar, at the «التاريخ» column's place: the history's «من» and «إلى» (the day
@@ -773,7 +797,13 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
     {
       key: 'bank',
       header: t('operations.board.bank'),
-      render: (row) => bankNameOf(row.mainBankId),
+      // The vault's board wraps it as a name (`VAULT_TABLE`); every other board keeps one line.
+      render: (row) =>
+        splitStatus ? (
+          <span className={WRAP}>{bankNameOf(row.mainBankId)}</span>
+        ) : (
+          bankNameOf(row.mainBankId)
+        ),
     },
     {
       key: 'origin',
@@ -944,12 +974,13 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
     {
       key: 'notes',
       header: t('operations.shipment.notes'),
-      // Cut short with its whole text on hover; 5rem rather than 5.5 since «السجل» joined the actions.
+      // Cut short with its whole text on hover; 5rem rather than 5.5 since «السجل» joined the actions
+      // (4rem on the vault's board, `VAULT_TABLE`).
       render: (row) =>
         row.notes === null ? (
           DASH
         ) : (
-          <span className="block max-w-[5rem] truncate" title={row.notes}>
+          <span className="block max-w-[var(--board-notes-cut,5rem)] truncate" title={row.notes}>
             {row.notes}
           </span>
         ),
@@ -1491,7 +1522,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
           <BoardRefusal>{refusal}</BoardRefusal>
         ) : (
           <>
-            <div className={SHIPMENTS_TABLE}>
+            <div className={cn(SHIPMENTS_TABLE, splitStatus && VAULT_TABLE)}>
               <DataTable
                 columns={columns}
                 rows={shown?.rows ?? rows}

@@ -732,6 +732,12 @@ describe('«Excel | PDF» — exactly what is shown', () => {
     expect(BOARD).toContain('vaultPanelExport(t, total, catalog)');
     expect(BANK_PAGE).toContain('withValuePanel: true,');
     expect(CAPTAIN_PAGE).not.toContain('withValuePanel');
+    // Both files are assembled in one order (lib/report-export.spec pins it): the table, the
+    // panel, then a screen's further sections — which no report hands (Round 17).
+    expect(BOARD).toContain("reportFileSheets(t('operations.reportBoard.serial'), files())");
+    expect(BOARD).toContain('printReportDocs(reportFileDocs(t, locale, files()))');
+    expect(BOARD).toContain('extras: exportSpec.extraSections ?? [],');
+    for (const page of [BANK_PAGE, CAPTAIN_PAGE]) expect(page).not.toContain('extraSections');
   });
 
   it('says on paper which period and which name the file is', () => {

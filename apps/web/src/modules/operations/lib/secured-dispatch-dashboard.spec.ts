@@ -4,6 +4,7 @@
 // «بيان الشحنات لكل بنك» in the banks' order, and the line of filters at the top.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type OperationsCurrencyDto } from '@ecms/contracts';
+import { translate } from '../../../platform/localization/i18n';
 import { EMPTY_DAY_BOARD_FILTERS } from './day-board';
 import {
   AGING_BUCKETS,
@@ -11,10 +12,12 @@ import {
   agingBucketOf,
   dashboardAlertDay,
   dashboardBankRows,
+  dashboardExportSections,
   dashboardFilterChips,
   dashboardTotals,
   isUnplacedToday,
   scheduleHeights,
+  scheduleWeekday,
   securedDispatchDashboard,
   type DashboardPackages,
   type DashboardRow,
@@ -370,6 +373,8 @@ describe('«مدة البقاء في الخزينة» — the Cairo day it was r
       banks: BANKS,
     });
     expect(dash.agingUnknown).toBe(1);
+    // Round 17 — and its pound, for the files' line of its own.
+    expect(dash.agingUnknownEgp).toBe(1_000_000);
     expect(dash.aging.days7plus).toEqual({ count: 2, egp: 2_000_000 });
     expect(dash.aging.today.count).toBe(0);
   });
@@ -439,5 +444,102 @@ describe('the line at the top — the filters in force, in the bar’s order', (
       { param: 'stage', value: 'inVault' },
       { param: 'notes', value: 'صباحي' },
     ]);
+  });
+});
+
+// Round 17 — «لوحة تحكم»'s Excel and PDF carry the window's other sections after the bank table and
+// its panel: the alerts, «جدول التسليم» and «مدة البقاء في الخزينة», each a sheet and a printed page.
+describe('the files’ further sections — what the window shows, line for line', () => {
+  const t = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+  const rows = [
+    row('late', { due: '2026-11-12', lines: [{ currencyId: 'egp', amount: 3_000_000 }] }),
+    row('today-a', { crew: CREW }),
+    row('today-b', { lines: [{ currencyId: 'usd', amount: 10_000 }] }),
+    row('tomorrow', { due: '2026-11-15', vaultReceivedAt: '2026-11-12T08:00:00.000Z' }),
+    row('far', { due: '2026-11-30', vaultReceivedAt: '2026-11-01T08:00:00.000Z' }),
+    row('undated', { due: null, vaultReceivedAt: null }),
+  ];
+  const dash = securedDispatchDashboard({ rows, today: TODAY, catalog: CATALOG, banks: BANKS });
+  const [alerts, schedule, aging] = dashboardExportSections(t, 'ar', dash, TODAY);
+
+  it('names the three as the window does, in the order it reads them', () => {
+    expect([alerts?.name, schedule?.name, aging?.name]).toEqual([
+      'تنبيهات التسليم',
+      'جدول التسليم',
+      'مدة البقاء في الخزينة',
+    ]);
+  });
+
+  it('the alerts: each count and pound, the day where it is one — and no total, they overlap', () => {
+    expect(alerts?.header).toEqual(['التنبيه', 'تاريخ التسليم', 'عدد المحصنات', 'المصري']);
+    expect(alerts?.rows).toEqual([
+      ['متأخرة', '', 1, 3_000_000],
+      ['تسليمها اليوم', TODAY, 2, 1_000_000],
+      ['تسليمها غدًا', '2026-11-15', 1, 1_000_000],
+      ['بدون يوم تسليم', '', 1, 1_000_000],
+      // The late one, and today's on no van.
+      ['لم تُوزَّع على سيارة', '', 2, 3_000_000],
+    ]);
+    expect(alerts?.total).toBeNull();
+  });
+
+  it('the schedule: every column of the chart, the day beside its name, then the undated', () => {
+    expect(schedule?.header).toEqual(['الموعد', 'تاريخ التسليم', 'عدد المحصنات', 'المصري']);
+    const lines = schedule?.rows ?? [];
+    expect(lines).toHaveLength(dash.schedule.length + 1);
+    expect(lines[0]).toEqual(['متأخرة', '', 1, 3_000_000]);
+    expect(lines[1]).toEqual(['اليوم', TODAY, 2, 1_000_000]);
+    expect(lines[2]).toEqual([scheduleWeekday('2026-11-15', 'ar'), '2026-11-15', 1, 1_000_000]);
+    expect(lines.at(-2)).toEqual(['لاحقًا', '', 1, 1_000_000]);
+    expect(lines.at(-1)).toEqual(['بدون يوم تسليم', '', 1, 1_000_000]);
+    // «الإجمالي» is every محصنة shown — the «عدد المحصنات» and «المصري» tiles.
+    expect(schedule?.total).toEqual(['الإجمالي', '', 6, 7_000_000]);
+    expect(dash.tiles.count).toBe(6);
+    expect(dash.tiles.money.egp).toBe(7_000_000);
+  });
+
+  it('the wait: the four buckets, then the rows with no receipt time — every محصنة in the total', () => {
+    expect(aging?.header).toEqual(['المدة', 'عدد المحصنات', 'المصري']);
+    expect(aging?.rows).toEqual([
+      ['استُلمت اليوم', 3, 4_000_000],
+      ['من يوم إلى يومين', 1, 1_000_000],
+      ['من 3 إلى 6 أيام', 0, 0],
+      ['7 أيام فأكثر', 1, 1_000_000],
+      ['بلا وقت استلام', 1, 1_000_000],
+    ]);
+    expect(aging?.total).toEqual(['الإجمالي', 6, 7_000_000]);
+    // With every receipt time known, no such line.
+    const known = securedDispatchDashboard({
+      rows: rows.filter((r) => r.vaultReceivedAt !== null),
+      today: TODAY,
+      catalog: CATALOG,
+      banks: BANKS,
+    });
+    const [, , wait] = dashboardExportSections(t, 'ar', known, TODAY);
+    expect(wait?.rows.map((line) => line[0])).not.toContain('بلا وقت استلام');
+    expect(wait?.rows).toHaveLength(4);
+  });
+
+  it('keeps a day in a cell of its own, never inside the Arabic words', () => {
+    for (const section of [alerts, schedule, aging]) {
+      for (const line of section?.rows ?? []) {
+        expect(String(line[0])).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+      }
+    }
+  });
+
+  it('is drawn even with nothing shown — every line at zero', () => {
+    const empty = securedDispatchDashboard({
+      rows: [],
+      today: TODAY,
+      catalog: CATALOG,
+      banks: BANKS,
+    });
+    const [a, s, w] = dashboardExportSections(t, 'ar', empty, TODAY);
+    expect(a?.rows).toHaveLength(5);
+    expect(s?.total).toEqual(['الإجمالي', '', 0, 0]);
+    expect(w?.rows).toHaveLength(4);
+    expect(w?.total).toEqual(['الإجمالي', 0, 0]);
   });
 });

@@ -20,9 +20,13 @@ import {
   reportExportHeader,
   reportExportSubtitle,
   reportExportTable,
+  reportFileDocs,
+  reportFileSheets,
   reportPrintDoc,
   reportSheet,
   vaultPanelExport,
+  type ReportExtraSection,
+  type ReportFiles,
 } from './report-export';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -269,5 +273,82 @@ describe('the workbook sheet and the printed form', () => {
     expect(last).toContain('<td class="ser"></td><td>الإجمالي</td><td>99</td><td>123,456,000</td>');
     // Once — never a row of the body as well.
     expect(body.match(/الإجمالي/g)).toHaveLength(1);
+  });
+});
+
+// Round 17 — a screen's files may carry further sections after the table and the vault's panel
+// («لوحة تحكم» on «محصنات الخزينة»). A report hands none, and its files are, sheet for sheet and page
+// for page, the ones it always wrote: these pin that, and the order the further ones join in.
+describe('the files in order — the table, the vault’s panel, then any further section', () => {
+  const view = reportView(ROWS, GRAND, '', t('operations.reports.unattributed'));
+  const table = reportExportTable(reportTableLines(view.rows, view.total), CATALOG, HEADER, nameOf);
+  const panel = vaultPanelExport(t, GRAND, CATALOG);
+  const files = (over: Partial<ReportFiles> = {}): ReportFiles => ({
+    tableName: 'بيان الشحنات لكل بنك',
+    name: 'تقرير البنوك',
+    subtitle: 'الفترة',
+    table,
+    panel: { name: 'إجمالي قيمة الشحنات', list: panel },
+    extras: [],
+    ...over,
+  });
+  const extra = (name: string, total: ReportExtraSection['total']): ReportExtraSection => ({
+    name,
+    header: ['البيان', 'عدد المحصنات'],
+    rows: [['متأخرة', 2]],
+    total,
+  });
+
+  it('writes a report’s two sheets exactly as before — the table, then the panel', () => {
+    expect(reportFileSheets('م', files())).toEqual([
+      reportSheet('بيان الشحنات لكل بنك', 'م', table),
+      reportSheet('إجمالي قيمة الشحنات', 'م', panel),
+    ]);
+    // «تقرير القادة» has no panel: one sheet.
+    expect(reportFileSheets('م', files({ panel: null }))).toEqual([
+      reportSheet('بيان الشحنات لكل بنك', 'م', table),
+    ]);
+  });
+
+  it('prints a report’s pages exactly as before — the table, then the panel, one subtitle', () => {
+    expect(reportFileDocs(t, 'ar', files())).toEqual([
+      reportPrintDoc({ t, locale: 'ar', title: 'تقرير البنوك', subtitle: 'الفترة', table }),
+      reportPrintDoc({
+        t,
+        locale: 'ar',
+        title: 'إجمالي قيمة الشحنات',
+        subtitle: 'الفترة',
+        table: panel,
+      }),
+    ]);
+    expect(reportFileDocs(t, 'ar', files({ panel: null }))).toHaveLength(1);
+  });
+
+  it('adds each further section after them, a sheet and a page each, in the order given', () => {
+    const extras = [extra('تنبيهات التسليم', null), extra('جدول التسليم', ['الإجمالي', 2])];
+    const sheets = reportFileSheets('م', files({ extras }));
+    expect(sheets.map((sheet) => sheet.name)).toEqual([
+      'بيان الشحنات لكل بنك',
+      'إجمالي قيمة الشحنات',
+      'تنبيهات التسليم',
+      'جدول التسليم',
+    ]);
+    // A section with no «الإجمالي» writes no bottom line; one with it, its own.
+    expect(sheets[2]).not.toHaveProperty('totals');
+    expect(sheets[3]?.totals).toEqual(['الإجمالي', 2]);
+    expect(sheets[3]?.serialHeader).toBe('م');
+
+    const docs = reportFileDocs(t, 'ar', files({ extras }));
+    expect(docs.map((doc) => doc.title)).toEqual([
+      'تقرير البنوك',
+      'إجمالي قيمة الشحنات',
+      'تنبيهات التسليم',
+      'جدول التسليم',
+    ]);
+    // Every page says what the files are over, and prints its figures as the screen does.
+    expect(docs.every((doc) => doc.subtitle === 'الفترة')).toBe(true);
+    expect(docs[3]?.rows).toEqual([['متأخرة', '2']]);
+    expect(docs[3]?.totalLine).toEqual(['الإجمالي', '2']);
+    expect(docs[2]?.totalLine).toBeUndefined();
   });
 });

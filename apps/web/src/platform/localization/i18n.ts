@@ -10715,7 +10715,11 @@ const en: Record<string, string> = {
     'Delivery day moved to the distribution day — overdue in the vault (a flow action, allowed after the vault receipt)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».
   'operations.distribution.vanLabel': 'Van {{code}}',
-  'operations.distribution.loadCount': '{{count}} secured',
+  'operations.distribution.loadCount.one': '1 secured',
+  'operations.distribution.loadCount.two': '2 secured',
+  'operations.distribution.loadCount.few': '{{count}} secured',
+  'operations.distribution.loadCount.many': '{{count}} secured',
+  'operations.distribution.loadCount.other': '{{count}} secured',
   'operations.distribution.noDirection': 'No direction',
   'operations.distribution.captains': 'Captains',
   'operations.distribution.noCaptain': 'No captain — takes no shipments',
@@ -10738,9 +10742,28 @@ const en: Record<string, string> = {
   'operations.distribution.remove': 'Take off the van',
   'operations.distribution.autoNone':
     'No shipment off a van has an area that the direction of exactly one van names.',
-  'operations.distribution.autoDone': '{{count}} proposed by direction — review them, then save.',
-  'operations.distribution.saved': 'Distribution saved: {{count}} shipments.',
-  'operations.distribution.savedRescheduled':
+  'operations.distribution.autoDone.one': '1 proposed by direction — review it, then save.',
+  'operations.distribution.autoDone.two': '2 proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.few':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.many':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.other':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.saved.one': 'Distribution saved: 1 shipment.',
+  'operations.distribution.saved.two': 'Distribution saved: 2 shipments.',
+  'operations.distribution.saved.few': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.saved.many': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.saved.other': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.savedRescheduled.one':
+    'Distribution saved: 1 shipment, overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.two':
+    'Distribution saved: 2 shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.few':
+    'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.many':
+    'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.other':
     'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
   'operations.distribution.refused': 'The distribution was not saved: {{reason}}',
   'operations.distribution.vans': 'Vans',
@@ -10775,7 +10798,15 @@ const en: Record<string, string> = {
   'operations.distribution.boxes': 'Boxes',
   'operations.handover.popupBlocked':
     'The browser blocked the print window — allow pop-ups for this site.',
-  'operations.handover.done': '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.one': '1 shipment handed over to van {{code}} — it has left the vault.',
+  'operations.handover.done.two':
+    '2 shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.few':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.many':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.other':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
   'operations.handover.failed': 'Van {{code}} could not be handed over: {{reason}}',
   'operations.handover.notInVault': 'Not in the vault yet',
   'operations.handover.notInVaultHint':
@@ -10789,11 +10820,23 @@ const en: Record<string, string> = {
     'The plan for {{day}} — to view and print. Handover happens only on the day the van goes out.',
   'operations.handover.handover': 'Hand over ({{count}})',
   'operations.handover.print': 'Print',
-  'operations.handover.heldNote':
+  'operations.handover.heldNote.one':
+    '1 on this van not received by the vault yet — it is not handed over now.',
+  'operations.handover.heldNote.two':
+    '2 on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.few':
+    '{{count}} on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.many':
+    '{{count}} on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.other':
     '{{count}} on this van not received by the vault yet — they are not handed over now.',
   'operations.handover.unplacedHint': 'For information — Secured distribution places them on vans',
   'operations.handover.confirmTitle': 'Hand over van {{code}}’s load',
-  'operations.handover.confirm': 'Hand over {{count}}',
+  'operations.handover.confirm.one': 'Hand over 1',
+  'operations.handover.confirm.two': 'Hand over 2',
+  'operations.handover.confirm.few': 'Hand over {{count}}',
+  'operations.handover.confirm.many': 'Hand over {{count}}',
+  'operations.handover.confirm.other': 'Hand over {{count}}',
   'operations.handover.back': 'Back',
   'operations.handover.confirmBody':
     'These {{count}} secured shipments leave the vault now — today, {{day}} — with van {{code}}’s crew, and are no longer held in the vault.',
@@ -11031,7 +11074,11 @@ const en: Record<string, string> = {
   'operations.secured.dashboard.title': 'Vault secured shipments — dashboard',
   'operations.secured.dashboard.today': 'Today {{day}}',
   'operations.secured.dashboard.figures': 'The secured shipments shown, in figures',
-  'operations.secured.dashboard.unit': 'shipments',
+  'operations.secured.dashboard.unit.one': 'shipment',
+  'operations.secured.dashboard.unit.two': 'shipments',
+  'operations.secured.dashboard.unit.few': 'shipments',
+  'operations.secured.dashboard.unit.many': 'shipments',
+  'operations.secured.dashboard.unit.other': 'shipments',
   'operations.secured.dashboard.filters.label': 'The board’s filters',
   'operations.secured.dashboard.filters.none': 'Every secured shipment in the vault — no filter',
   'operations.secured.dashboard.filters.reset': 'Reset filters',
@@ -11056,7 +11103,11 @@ const en: Record<string, string> = {
   'operations.secured.dashboard.schedule.overdue': 'Overdue',
   'operations.secured.dashboard.schedule.today': 'Today',
   'operations.secured.dashboard.schedule.later': 'Later',
-  'operations.secured.dashboard.schedule.bar': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.one': '{{label}}: 1 secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.two': '{{label}}: 2 secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.few': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.many': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.other': '{{label}}: {{count}} secured — EGP {{egp}}',
   'operations.secured.dashboard.schedule.undated': 'With no delivery day: {{count}}',
   'operations.secured.dashboard.aging.title': 'Time in the vault',
   'operations.secured.dashboard.aging.note': 'Days since the vault received it',
@@ -11065,6 +11116,11 @@ const en: Record<string, string> = {
   'operations.secured.dashboard.aging.days3to6': '3–6 days',
   'operations.secured.dashboard.aging.days7plus': '7 days or more',
   'operations.secured.dashboard.aging.unknown': 'With no receipt time: {{count}}',
+  // Round 17 — the dashboard's files: the heads of its further sheets and printed pages.
+  'operations.secured.dashboard.export.alert': 'Alert',
+  'operations.secured.dashboard.export.when': 'When due',
+  'operations.secured.dashboard.export.span': 'Time in the vault',
+  'operations.secured.dashboard.export.agingUnknown': 'No receipt time',
   'operations.secured.dashboard.banksEmpty': 'No secured shipment matches the board’s filters',
   // Round 10 — the desk's pickup ✓ on the secured screen, and its undo.
   'operations.secured.pickup.toggle': 'Confirm the pickup from the bank',
@@ -24106,7 +24162,11 @@ const ar: Record<string, string> = {
     'نُقل يوم التسليم إلى يوم التوزيع لتأخرها في الخزينة (إجراء تشغيلي مستثنى من قفل الخزينة)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».
   'operations.distribution.vanLabel': 'السيارة {{code}}',
-  'operations.distribution.loadCount': '{{count}} محصنة',
+  'operations.distribution.loadCount.one': 'محصنة واحدة',
+  'operations.distribution.loadCount.two': 'محصنتان',
+  'operations.distribution.loadCount.few': '{{count}} محصنات',
+  'operations.distribution.loadCount.many': '{{count}} محصنة',
+  'operations.distribution.loadCount.other': '{{count}} محصنة',
   'operations.distribution.noDirection': 'بلا اتجاه',
   'operations.distribution.captains': 'القادة',
   'operations.distribution.noCaptain': 'بلا قائد — لا تأخذ محصنات',
@@ -24127,9 +24187,26 @@ const ar: Record<string, string> = {
   'operations.distribution.moveTo': 'نقل إلى…',
   'operations.distribution.remove': 'إزالة من السيارة',
   'operations.distribution.autoNone': 'لا توجد محصنة بلا سيارة يطابق منطقتها اتجاه سيارة واحدة فقط.',
-  'operations.distribution.autoDone': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
-  'operations.distribution.saved': 'حُفظ التوزيع: {{count}} محصنة.',
-  'operations.distribution.savedRescheduled':
+  'operations.distribution.autoDone.one': 'اقتُرحت محصنة واحدة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.two': 'اقتُرحت محصنتان حسب الاتجاه — راجعهما ثم احفظ.',
+  'operations.distribution.autoDone.few': 'اقتُرحت {{count}} محصنات حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.many': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.other': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.saved.one': 'حُفظ التوزيع: محصنة واحدة.',
+  'operations.distribution.saved.two': 'حُفظ التوزيع: محصنتان.',
+  'operations.distribution.saved.few': 'حُفظ التوزيع: {{count}} محصنات.',
+  'operations.distribution.saved.many': 'حُفظ التوزيع: {{count}} محصنة.',
+  'operations.distribution.saved.other': 'حُفظ التوزيع: {{count}} محصنة.',
+  'operations.distribution.savedRescheduled.one':
+    'حُفظ التوزيع: محصنة واحدة متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  // Two take the dual pronoun «منهما», as «راجعهما» and «وغادرتا» do; «منها» is for three or more.
+  'operations.distribution.savedRescheduled.two':
+    'حُفظ التوزيع: محصنتان، منهما {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.few':
+    'حُفظ التوزيع: {{count}} محصنات، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.many':
+    'حُفظ التوزيع: {{count}} محصنة، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.other':
     'حُفظ التوزيع: {{count}} محصنة، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
   'operations.distribution.refused': 'لم يُحفظ التوزيع: {{reason}}',
   'operations.distribution.vans': 'السيارات',
@@ -24163,7 +24240,11 @@ const ar: Record<string, string> = {
   'operations.distribution.boxes': 'صناديق',
   'operations.handover.popupBlocked':
     'منع المتصفح فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
-  'operations.handover.done': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.one': 'سُلّمت محصنة واحدة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.two': 'سُلّمت محصنتان للسيارة {{code}} وغادرتا الخزينة.',
+  'operations.handover.done.few': 'سُلّمت {{count}} محصنات للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.many': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.other': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
   'operations.handover.failed': 'تعذّر تسليم السيارة {{code}}: {{reason}}',
   'operations.handover.notInVault': 'ليست بالخزينة بعد',
   'operations.handover.notInVaultHint': 'لم تستلمها الخزينة بعد، فلا تُسلَّم مع السيارة الآن',
@@ -24176,11 +24257,24 @@ const ar: Record<string, string> = {
     'خطة يوم {{day}} — للاطلاع والطباعة. التسليم يتم يوم خروج السيارة فقط.',
   'operations.handover.handover': 'تسليم ({{count}})',
   'operations.handover.print': 'طباعة',
-  'operations.handover.heldNote':
+  'operations.handover.heldNote.one':
+    'محصنة واحدة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.two':
+    'محصنتان على هذه السيارة لم تستلمهما الخزينة بعد، فلا تُسلَّمان الآن.',
+  'operations.handover.heldNote.few':
+    '{{count}} محصنات على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.many':
+    '{{count}} محصنة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.other':
     '{{count}} محصنة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
   'operations.handover.unplacedHint': 'للعلم فقط — يضعها توزيع المحصنات على السيارات',
   'operations.handover.confirmTitle': 'تسليم محصنات السيارة {{code}}',
-  'operations.handover.confirm': 'تسليم {{count}} محصنة',
+  // After «تسليم» the noun is in the genitive: «تسليم محصنتين», not «محصنتان».
+  'operations.handover.confirm.one': 'تسليم محصنة واحدة',
+  'operations.handover.confirm.two': 'تسليم محصنتين',
+  'operations.handover.confirm.few': 'تسليم {{count}} محصنات',
+  'operations.handover.confirm.many': 'تسليم {{count}} محصنة',
+  'operations.handover.confirm.other': 'تسليم {{count}} محصنة',
   'operations.handover.back': 'رجوع',
   'operations.handover.confirmBody':
     'ستغادر هذه المحصنات ({{count}}) الخزينة الآن، اليوم {{day}}، مع طاقم السيارة {{code}}، ولن تبقى بالخزينة.',
@@ -24410,7 +24504,11 @@ const ar: Record<string, string> = {
   'operations.secured.dashboard.title': 'لوحة تحكم محصنات الخزينة',
   'operations.secured.dashboard.today': 'اليوم {{day}}',
   'operations.secured.dashboard.figures': 'أرقام المحصنات المعروضة',
-  'operations.secured.dashboard.unit': 'محصنة',
+  'operations.secured.dashboard.unit.one': 'محصنة',
+  'operations.secured.dashboard.unit.two': 'محصنتان',
+  'operations.secured.dashboard.unit.few': 'محصنات',
+  'operations.secured.dashboard.unit.many': 'محصنة',
+  'operations.secured.dashboard.unit.other': 'محصنة',
   'operations.secured.dashboard.filters.label': 'فلاتر الشاشة',
   'operations.secured.dashboard.filters.none': 'كل المحصنات بالخزينة — بلا فلتر',
   'operations.secured.dashboard.filters.reset': 'إعادة ضبط الفلاتر',
@@ -24433,7 +24531,11 @@ const ar: Record<string, string> = {
   'operations.secured.dashboard.schedule.overdue': 'متأخرة',
   'operations.secured.dashboard.schedule.today': 'اليوم',
   'operations.secured.dashboard.schedule.later': 'لاحقًا',
-  'operations.secured.dashboard.schedule.bar': '{{label}}: {{count}} محصنة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.one': '{{label}}: محصنة واحدة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.two': '{{label}}: محصنتان — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.few': '{{label}}: {{count}} محصنات — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.many': '{{label}}: {{count}} محصنة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.other': '{{label}}: {{count}} محصنة — {{egp}} مصري',
   'operations.secured.dashboard.schedule.undated': 'بدون يوم تسليم: {{count}}',
   'operations.secured.dashboard.aging.title': 'مدة البقاء في الخزينة',
   'operations.secured.dashboard.aging.note': 'الأيام منذ استلام الخزينة لها',
@@ -24442,6 +24544,10 @@ const ar: Record<string, string> = {
   'operations.secured.dashboard.aging.days3to6': 'من 3 إلى 6 أيام',
   'operations.secured.dashboard.aging.days7plus': '7 أيام فأكثر',
   'operations.secured.dashboard.aging.unknown': 'بلا وقت استلام: {{count}}',
+  'operations.secured.dashboard.export.alert': 'التنبيه',
+  'operations.secured.dashboard.export.when': 'الموعد',
+  'operations.secured.dashboard.export.span': 'المدة',
+  'operations.secured.dashboard.export.agingUnknown': 'بلا وقت استلام',
   'operations.secured.dashboard.banksEmpty': 'لا توجد محصنات مطابقة لفلاتر الشاشة',
   // الجولة 10 — تأكيد العمليات للاستلام من البنك في شاشة المحصنات، والتراجع عنه.
   'operations.secured.pickup.toggle': 'تأكيد الاستلام من البنك',

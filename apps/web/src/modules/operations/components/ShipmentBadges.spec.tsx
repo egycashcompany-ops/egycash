@@ -275,3 +275,43 @@ describe('VaultHoldStatus — «حالة الخزينة»', () => {
     expect(withLocale('ar', hold('draft'))).not.toContain('<time');
   });
 });
+
+// Round 17 — wrapped, «تم الاستلام من العمليات» stacked over itself and «لم تُستلم بعد» left «بعد»
+// alone on a second line at 1440. The vault queue's two columns keep each badge's words on ONE
+// line (the board makes the room in its other columns — shipment-screens.spec pins that); every
+// other board's stage badge still wraps from its floor, as it did.
+describe('the vault queue’s badges read on one line', () => {
+  const words = (html: string): string | undefined =>
+    /<span class="([^"]*)">[^<]+<\/span><span class="sr-only">/.exec(html)?.[1];
+
+  it('keeps «حالة الاستلام» and «حالة الخزينة» each on one line, the time under it', () => {
+    const AT = '2026-11-11T07:30:00.000Z';
+    for (const by of ['captain', 'operations', null] as const) {
+      const html = withLocale(
+        'ar',
+        <VaultPickupStatus row={{ pickedUpBy: by, pickedUpAt: by === null ? null : AT }} />,
+      );
+      expect(words(html), String(by)).toBe('whitespace-nowrap');
+    }
+    for (const status of ['draft', 'inVault', 'dispatched', 'completed'] as const) {
+      const html = withLocale(
+        'ar',
+        <VaultHoldStatus row={{ status, vaultReceivedAt: status === 'draft' ? null : AT }} />,
+      );
+      expect(words(html), status).toBe('whitespace-nowrap');
+      // The time is a line of its own, under the badge — not beside it.
+      if (status !== 'draft') expect(html).toMatch(/<\/span><time [^>]*class="block /);
+    }
+    expect(
+      withLocale('ar', <VaultPickupStatus row={{ pickedUpBy: 'operations', pickedUpAt: AT }} />),
+    ).toContain('<span class="whitespace-nowrap">تم الاستلام من العمليات</span>');
+    expect(
+      withLocale('ar', <VaultHoldStatus row={{ status: 'draft', vaultReceivedAt: null }} />),
+    ).toContain('<span class="whitespace-nowrap">لم تُستلم بعد</span>');
+  });
+
+  it('leaves every other board’s stage badge wrapping from its floor', () => {
+    const html = withLocale('ar', <SecuredStageBadge stage="withOperations" />);
+    expect(words(html)).toBe('min-w-[4.75rem] whitespace-normal');
+  });
+});

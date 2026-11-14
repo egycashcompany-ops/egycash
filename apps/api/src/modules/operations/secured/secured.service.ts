@@ -13,7 +13,8 @@
 //   cancel the receipt  → cancelReceipt()    inVault → draft, custody voided — the special grant (Round 10)
 //   «صرف الخزينة»        → dispatchBoard()    every shipment in the vault, optional delivery day (Round 10)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
-//   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737)
+//   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737) — on a
+//                                            van of TODAY only (Round 17)
 //   /main_ops receive   → completion lives on the shipment service (:564), unchanged by this slice
 //
 // Round 10's lock («الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها») is enforced where
@@ -34,6 +35,7 @@ import {
   cairoCalendarDate,
   cairoDayStart,
   cairoYmd,
+  ymdOf,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
   type DispatchSecuredShipments,
@@ -43,6 +45,7 @@ import {
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -56,7 +59,9 @@ import { vaultCustody } from '../treasury-boundary';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { nextSequence } from '../assignments/leg-sequence';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
+import { operationsDayRepository } from '../days/day.repository';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { canTransitionShipment } from '../shipments/shipment-status';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -123,6 +128,27 @@ const assertSecured = (shipment: OperationsShipmentDoc): void => {
       'OPERATIONS_NOT_A_SECURED_SHIPMENT',
     );
   }
+};
+
+/**
+ * 422 `OPERATIONS_DISPATCH_NOT_TODAY` unless the van — the crew row — is on TODAY's operating day,
+ * Cairo calendar. «تسليم» hands a van over on its own day: «تسليم المحصنات» offers it on today's vans
+ * only, and this is the same rule where the release is written, because a screen cannot hold it
+ * alone — a page left open from yesterday, or a call made by hand, would otherwise send tomorrow's
+ * van out today, or reopen a past day's van that has already left. A crew row whose day cannot be
+ * found is refused the same way: nobody can say it is today's.
+ */
+const assertTodaysVan = async (crew: OperationsCrewAssignmentDoc, now: Date): Promise<void> => {
+  const today = cairoYmd(now);
+  const day = await operationsDayRepository.findById(String(crew.operationsDayId));
+  const vanDay = day === null ? null : ymdOf(day.date);
+  if (vanDay === today) return;
+  throw new AppError(
+    ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY,
+    422,
+    `the van's day (${vanDay ?? 'unknown'}) is not today (${today}) — a van is handed over on its own day`,
+    { details: [{ field: 'crewAssignmentId', code: 'TODAY_ONLY', message: today }] },
+  );
 };
 
 /**
@@ -696,10 +722,18 @@ class OperationsSecuredService {
    * NORMALIZE (Q30-adjacent, documented): a shipment may only be dispatched on the crew assignment
    * it was ASSIGNED to. Legacy checked nothing here, which is what let a mohsana reach the
    * terminal state with an empty `leader2` and land in the captain report under a blank captain.
+   *
+   * And only on the van's own day (Round 17, `assertTodaysVan`): checked first, before any
+   * shipment is read, so a van of another day is refused as a whole and nothing is written.
    */
-  async dispatch(input: DispatchSecuredShipments, by: string): Promise<{ dispatched: number }> {
+  async dispatch(
+    input: DispatchSecuredShipments,
+    by: string,
+    now: Date = new Date(),
+  ): Promise<{ dispatched: number }> {
     const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
+    await assertTodaysVan(crew, now);
 
     const prepared: {
       shipment: OperationsShipmentDoc;

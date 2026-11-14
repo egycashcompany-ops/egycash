@@ -140,18 +140,18 @@ const STAGE_GLYPH: Record<OperationsSecuredStage, JSX.Element> = {
 };
 
 /**
- * How narrow a badge's words may wrap. The stage badge's floor (`wide`) is the daily badge's «لم
- * يتم التسليم». The vault queue's two columns share about ONE column's width between them, so their
- * floors are lower and the badge's sides come in: «حالة الاستلام» (`pickup`) as wide as «من
- * العمليات», so «تم الاستلام» sits over it in exactly two lines; «حالة الخزينة» (`hold`) narrower
- * still — its column is as wide as its «استُلمت 09:40» anyway, and its longer words take two lines
- * («لم تُستلم» over «بعد», «خرجت» over «للتسليم»). That is what keeps the actions on a 1440 laptop
- * beside the menu. Written out because Tailwind reads class names from the source text.
+ * How a badge's words sit. The stage badge (`wide`, every board but the vault's) may wrap, from a
+ * floor as wide as the daily badge's «لم يتم التسليم» — see `StageFace`.
+ *
+ * The vault queue's two columns (`queue`) keep their words on ONE line (Round 17): wrapped, «تم
+ * الاستلام من العمليات» stacked over itself and «لم تُستلم بعد» left «بعد» alone on a second line,
+ * which the reviewers read as two statuses. The vault's board makes the room in its other columns
+ * instead (`VAULT_TABLE` in `ShipmentsBoard.tsx`), and the badge's sides come in a little, as its
+ * cell's do. Written out because Tailwind reads class names from the source text.
  */
 const FACE_FIT = {
-  wide: { label: 'min-w-[4.75rem]', badge: '' },
-  pickup: { label: 'min-w-[4.25rem]', badge: '!px-1.5' },
-  hold: { label: 'min-w-[3rem]', badge: '!px-1.5' },
+  wide: { label: 'min-w-[4.75rem] whitespace-normal', badge: '' },
+  queue: { label: 'whitespace-nowrap', badge: '!px-1.5' },
 } as const;
 
 /** The muted face of an absence («لم يتم الاستلام»): no fill, a thin ring, quieter words. */
@@ -177,12 +177,13 @@ const StageFace = ({
 }): JSX.Element => (
   // «تم الاستلام من القائد» and «تم الاستلام من العمليات» are the longest statuses a board prints:
   // on one line they widened «الحالة» by some 60px, enough to push the actions past the edge of a
-  // 1440 laptop beside the menu. So the label may wrap — but from a floor as wide as the daily
-  // badge's «لم يتم التسليم», or the table, which squeezes a wrapping cell to its longest word,
-  // stacks it a word a line. The short labels keep their one line; the long ones take exactly two.
+  // 1440 laptop beside the menu. So on the boards with one «الحالة» the label may wrap — but from a
+  // floor as wide as the daily badge's «لم يتم التسليم», or the table, which squeezes a wrapping
+  // cell to its longest word, stacks it a word a line. The vault's two columns keep one line
+  // (`FACE_FIT.queue`).
   <Badge tone={STAGE_TONE[look]} size="sm" className={cn(FACE_FIT[fit].badge, muted && MUTED_FACE)}>
     {STAGE_GLYPH[look]}
-    <span className={cn(FACE_FIT[fit].label, 'whitespace-normal')}>{label}</span>
+    <span className={FACE_FIT[fit].label}>{label}</span>
     <span className="sr-only"> — {hint}</span>
   </Badge>
 );
@@ -284,7 +285,7 @@ export const VaultPickupStatus = ({
         label={t(VAULT_PICKUP_LABEL[by])}
         hint={hint}
         muted={by === 'none'}
-        fit="pickup"
+        fit="queue"
       />
       {at !== null && (
         <QueueStamp iso={at} wrap>
@@ -306,7 +307,7 @@ export const VaultHoldStatus = ({
   const hint = t(HOLD_HINT[hold]);
   return (
     <span data-vault-hold={hold} title={hint} className="inline-flex flex-col items-start gap-0.5">
-      <StageFace look={HOLD_LOOK[hold]} label={t(VAULT_HOLD_LABEL[hold])} hint={hint} fit="hold" />
+      <StageFace look={HOLD_LOOK[hold]} label={t(VAULT_HOLD_LABEL[hold])} hint={hint} fit="queue" />
       {at !== null && (
         <QueueStamp iso={at}>
           {t('operations.vault.queue.receivedAt', {

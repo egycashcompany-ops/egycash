@@ -2083,6 +2083,9 @@ export type AssignSecuredDeliveryLeg = z.infer<typeof AssignSecuredDeliveryLegSc
  * Release from the vault and dispatch — the legacy /deliver_mohsana/data call, which posts a
  * tashghela row id (`car_id`) plus the shipment ids it is carrying (deliver_mohsana.ejs:1258).
  * The crew assignment IS that tashghela row.
+ *
+ * Today's vans only: a crew row of any other operating day (Cairo calendar) is refused with 422
+ * `OPERATIONS_DISPATCH_NOT_TODAY` before any shipment is looked at — a van leaves on its own day.
  */
 export const DispatchSecuredShipmentsSchema = z
   .object({

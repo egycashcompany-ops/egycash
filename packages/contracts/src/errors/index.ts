@@ -216,6 +216,15 @@ export const ErrorCodes = {
    * written. Detail: `field` 'shipmentId', `message` its id.
    */
   OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
+  /**
+   * 422 — a dispatch (`POST /operations/secured/dispatch`, the vault's «تسليم») named a van — a crew
+   * row — whose operating day is not TODAY on the Cairo calendar. A van is handed over on its own
+   * day: «تسليم المحصنات» offers «تسليم» on today's vans only, and the server holds the same line, so
+   * a page left open from another day, or a call made by hand, cannot release tomorrow's van today
+   * (nor a past day's, which has left). Checked before any shipment; nothing is written. One
+   * detail: `field` 'crewAssignmentId', `code` 'TODAY_ONLY', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISPATCH_NOT_TODAY: 'OPERATIONS_DISPATCH_NOT_TODAY',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */

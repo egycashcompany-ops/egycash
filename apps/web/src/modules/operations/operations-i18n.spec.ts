@@ -246,6 +246,18 @@ const CREW_KEYS = [
   'operations.crew.departments.unknownDepartment',
   'operations.crew.departments.stale',
   'operations.crew.departments.emptyWarning',
+  // Round 15 — one choice per company department, in a card that starts closed.
+  'operations.crew.departments.summaryNone',
+  'operations.crew.departments.people',
+  'operations.crew.departments.more',
+  'operations.crew.departments.unsaved',
+  'operations.crew.departments.search',
+  'operations.crew.departments.noMatch',
+  'operations.crew.departments.branches',
+  'operations.crew.departments.unnamedBranch',
+  'operations.crew.departments.inactive',
+  'operations.crew.departments.chosenCount',
+  'operations.crew.departments.discard',
   'operations.crew.rosterFallback',
   'operations.crew.rosterFallbackLink',
 ];

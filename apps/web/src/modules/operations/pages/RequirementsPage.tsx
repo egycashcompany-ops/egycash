@@ -111,8 +111,14 @@ export const RequirementsPage = (): JSX.Element => {
       />
 
       {/* Who the crew IS, above what the crew CARRIES — the roster below is a consequence of it,
-          and an operator who cannot see the cause reads an incomplete list as a complete one. */}
-      <CrewDepartmentsCard />
+          and an operator who cannot see the cause reads an incomplete list as a complete one.
+          The count is the roster this page already read, so the closed card can say how many
+          people the chosen departments make without asking the server again. */}
+      <CrewDepartmentsCard
+        crewCount={
+          directory.data?.rosterIsDerived === true ? directory.data.members.length : null
+        }
+      />
 
       <Card className="mb-4">
         <CardBody>

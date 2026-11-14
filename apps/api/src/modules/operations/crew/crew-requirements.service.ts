@@ -33,6 +33,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
 import { operationsCrewRequirementsRepository } from './crew-requirements.repository';
+import { resolveCrewDepartmentIds } from './crew-departments';
 import { type OperationsCrewRequirementsDoc } from './crew-requirements.model';
 
 /**
@@ -175,14 +176,17 @@ class OperationsCrewRequirementsService {
     // The requirements row is no longer MEMBERSHIP. It is what Operations knows ABOUT a member —
     // the flags — created the first time somebody sets one. A member with no row yet is a real
     // member with nothing recorded, which is why `requirements` is nullable in the DTO.
-    const departmentIds = await settingsService.resolve<string[]>(
+    const configuredIds = await settingsService.resolve<string[]>(
       OperationsSettingKeys.CrewDepartmentIds,
       ORG_SUBJECT,
     );
+    // A saved id is a COMPANY department, not one branch's copy of it: «نقل الأموال» ticked once is
+    // «نقل الأموال» in every branch that has it, a branch opened later included (crew-departments.ts).
+    const departmentIds = await resolveCrewDepartmentIds(configuredIds);
     const byEmployee = new Map(rows.map((row) => [String(row.employeeId), row]));
 
     const roster =
-      departmentIds.length > 0
+      configuredIds.length > 0
         ? await listDirectoryEmployeesByDepartment(departmentIds)
         : // UNCONFIGURED: fall back to whoever already holds a row — the behaviour before this
           // setting existed. Adding by hand is gone, so an empty roster would be unfillable.
@@ -224,7 +228,7 @@ class OperationsCrewRequirementsService {
         a.code.localeCompare(b.code),
     );
 
-    return { date: day.toISOString(), members, rosterIsDerived: departmentIds.length > 0 };
+    return { date: day.toISOString(), members, rosterIsDerived: configuredIds.length > 0 };
   }
 
   /**

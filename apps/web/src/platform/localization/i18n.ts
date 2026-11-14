@@ -10341,7 +10341,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
     'The record ids of Fleet «Operations» catalog items, separated by commas. Active vehicles whose Operation is one of them are offered for the standing crew; when the list is empty, every active vehicle is offered.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
-    'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
+    'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. Each department counts in every branch that has it. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -10933,7 +10933,7 @@ const en: Record<string, string> = {
   'operations.crew.requirements.empty': 'Nobody on the roster yet',
   'operations.crew.departments.title': 'Operations departments',
   'operations.crew.departments.hint':
-    'The employees of these departments ARE the operations crew — the roster below, the crew board, the standing crew and the shipment captains all draw from them. Someone hired into a chosen department appears without anyone adding them.',
+    'The employees of these departments ARE the operations crew — the roster below, the crew board, the standing crew and the shipment captains all draw from them. Each department is chosen once and counts in every branch that has it, including a branch that adds it later; someone hired into a chosen department appears without anyone adding them.',
   'operations.crew.departments.saved': 'Operations departments saved',
   'operations.crew.departments.none': 'No active departments to choose from',
   'operations.crew.departments.optionsFailed':
@@ -10942,6 +10942,17 @@ const en: Record<string, string> = {
   'operations.crew.departments.stale': 'Not found',
   'operations.crew.departments.emptyWarning':
     'With no department chosen, the roster falls back to whoever already has flags recorded — new hires will not appear.',
+  'operations.crew.departments.summaryNone': 'No department chosen yet',
+  'operations.crew.departments.people': 'Crew: {{count}}',
+  'operations.crew.departments.more': '+{{count}} more',
+  'operations.crew.departments.unsaved': 'Unsaved changes',
+  'operations.crew.departments.search': 'Search by department or branch',
+  'operations.crew.departments.noMatch': 'No department matches the search',
+  'operations.crew.departments.branches': 'Branches: {{count}}',
+  'operations.crew.departments.unnamedBranch': 'Unnamed branch',
+  'operations.crew.departments.inactive': 'Inactive',
+  'operations.crew.departments.chosenCount': 'Departments chosen: {{count}}',
+  'operations.crew.departments.discard': 'Discard changes',
   'operations.crew.rosterFallback':
     'No operations department is configured, so this pool is only the people who already have flags recorded — anyone hired since is missing.',
   'operations.crew.rosterFallbackLink': 'Choose the department',
@@ -23695,7 +23706,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
     'معرّفات سجلات عناصر قائمة «التشغيل» في الحركة، مفصولة بفواصل. تُعرض للطاقم الثابت المركبات النشطة التي يكون «التشغيل» الخاص بها أحد هذه العناصر، وإن كانت القائمة فارغة تُعرض كل المركبات النشطة.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
-    'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
+    'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وتُحتسب كل إدارة في كل فرع توجد فيه. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',
@@ -24259,7 +24270,7 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.empty': 'لا يوجد أحد في الكشف بعد',
   'operations.crew.departments.title': 'إدارات العمليات',
   'operations.crew.departments.hint':
-    'موظفو هذه الإدارات هم طاقم العمليات — الكشف بالأسفل ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
+    'موظفو هذه الإدارات هم طاقم العمليات — الكشف بالأسفل ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. تُختار كل إدارة مرة واحدة فتُحتسب في كل فرع توجد فيه، بما في ذلك الفرع الذي يضيفها لاحقًا، ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
   'operations.crew.departments.saved': 'تم حفظ إدارات العمليات',
   'operations.crew.departments.none': 'لا توجد إدارات نشطة للاختيار منها',
   'operations.crew.departments.optionsFailed':
@@ -24268,6 +24279,17 @@ const ar: Record<string, string> = {
   'operations.crew.departments.stale': 'غير موجودة',
   'operations.crew.departments.emptyWarning':
     'بدون اختيار أي إدارة يعود الكشف إلى مَن لديهم بيانات متطلبات بالفعل فقط — والموظفون الجدد لن يظهروا.',
+  'operations.crew.departments.summaryNone': 'لم تُحدَّد أي إدارة بعد',
+  'operations.crew.departments.people': 'أفراد الطاقم: {{count}}',
+  'operations.crew.departments.more': '+{{count}} أخرى',
+  'operations.crew.departments.unsaved': 'تغييرات غير محفوظة',
+  'operations.crew.departments.search': 'ابحث باسم الإدارة أو الفرع',
+  'operations.crew.departments.noMatch': 'لا توجد إدارة تطابق البحث',
+  'operations.crew.departments.branches': 'عدد الفروع: {{count}}',
+  'operations.crew.departments.unnamedBranch': 'فرع بلا اسم',
+  'operations.crew.departments.inactive': 'غير نشطة',
+  'operations.crew.departments.chosenCount': 'الإدارات المختارة: {{count}}',
+  'operations.crew.departments.discard': 'تراجع',
   'operations.crew.rosterFallback':
     'لم تُحدَّد إدارة العمليات، لذا هذه القائمة هي مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر.',
   'operations.crew.rosterFallbackLink': 'حدِّد الإدارة',

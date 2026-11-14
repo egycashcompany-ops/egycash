@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   ErrorCodes,
+  OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
   OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
   OperationsEvents,
@@ -26,6 +27,7 @@ import {
   type OperationsDayDto,
   type OperationsCaptainRouteDto,
   type OperationsMobileDayDto,
+  type OperationsExecutionResultDto,
   type OperationsShipmentAssignmentDto,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
@@ -251,10 +253,11 @@ const mkShipment = async (
 };
 
 /**
- * The Operations desk's pickup ✓ on a secured shipment — «تم الاستلام من العمليات» (Round 10). Since
- * Round 10 the vault receives only what somebody picked up, so every suite that walks a محصنة into
- * the vault presses this first. Returns the shipment as the ✓ left it — its NEW version is the one
- * the receive must send.
+ * The Operations desk's pickup ✓ on a secured shipment — «تم الاستلام من العمليات» (Round 10). The
+ * suites that walk a محصنة into the vault the usual way press this first, so their rows say who
+ * brought it in (Round 10 required it; since Round 13 the vault may receive without it, and the
+ * Round 13 suite does). Returns the shipment as the ✓ left it — its NEW version is the one the
+ * receive must send.
  */
 const deskPickUp = async (shipmentId: string): Promise<OperationsShipmentDto> => {
   const current = await request(app)
@@ -6799,11 +6802,20 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
             }),
           ]);
           expect(load).not.toHaveBeenCalled();
-          // The vault's queue counts its candidates the same way — every draft is one.
+          // The vault's queue counts its candidates the same way — under «الكل» every draft is one.
           const queue = await vaultQueue('?all=true');
           expect(queue.status).toBe(422);
           expect(errorCode(queue)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE);
           expect(drafts).not.toHaveBeenCalled();
+          // Round 13: by default it counts and reads only what it can show — the drafts collected
+          // by today, the yellow ones and today's receipts. These white rows are booked far ahead,
+          // so the default queue is not refused for them, and the database cuts them out.
+          const byDefault = await vaultQueue();
+          expect(byDefault.status, JSON.stringify(byDefault.body)).toBe(200);
+          expect(
+            data<OperationsVaultQueueDto>(byDefault).shipments.some((s) => s.notes === MARK),
+          ).toBe(false);
+          expect(drafts).toHaveBeenCalledWith(new Date(`${cairoYmd(new Date())}T00:00:00.000Z`));
         } finally {
           load.mockRestore();
           drafts.mockRestore();
@@ -6816,25 +6828,67 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
   });
 
   describe('the vault receive queue — GET /operations/secured/vault-queue', () => {
-    it('lists the yellow ones and today\'s green ones by default — never the white ones', async () => {
+    // Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم
+    // والخزنه تستلم عادي»: by default the vault sees what it can receive NOW — every draft whose
+    // collection day has come (white or yellow), the yellow ones of any day, and today's receipts.
+    it('lists what the vault can receive now by default — drafts collected by today (white too), the yellow of any day, today\'s green', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const today = cairoYmd(new Date());
+      // White, collected TODAY — nobody pressed ✓, and its day has come.
+      const whiteToday = data<OperationsShipmentDto>(
+        await mkShipment({ shipmentType: 'secured', collectionDate: today, deliveryDate: SEC_OUT }),
+      ).id;
+      // White, collected YESTERDAY — booked then, moved back in the collection: a day can only be
+      // booked from today on, and a past day's draft is exactly what the vault must not lose.
+      const whiteYesterday = data<OperationsShipmentDto>(
+        await mkShipment({ shipmentType: 'secured', collectionDate: today, deliveryDate: SEC_OUT }),
+      ).id;
+      await OperationsShipmentModel.updateOne(
+        { _id: whiteYesterday },
+        { $set: { collectionDate: new Date(`${addDaysYmd(today, -1)}T00:00:00.000Z`) } },
+      ).exec();
+      // White, booked for TOMORROW — not yet.
+      const whiteTomorrow = data<OperationsShipmentDto>(
+        await mkShipment({
+          shipmentType: 'secured',
+          collectionDate: addDaysYmd(today, 1),
+          deliveryDate: SEC_OUT,
+        }),
+      ).id;
+
       const res = await vaultQueue();
       expect(res.status, JSON.stringify(res.body)).toBe(200);
       const view = data<OperationsVaultQueueDto>(res);
       expect(view.all).toBe(false);
-      expect(view.date).toBe(`${cairoYmd(new Date())}T00:00:00.000Z`);
+      expect(view.date).toBe(`${today}T00:00:00.000Z`);
       const row = (id: string) => view.shipments.find((s) => s.id === id);
 
-      // With the captain, on its way: yellow, nothing received yet.
+      // White, its day come: listed, receivable, nobody's ✓ on it.
+      for (const id of [whiteToday, whiteYesterday]) {
+        expect(row(id), id).toMatchObject({
+          status: 'draft',
+          securedStage: 'awaitingPickup',
+          pickedUpBy: null,
+          pickedUpAt: null,
+          vaultReceivedAt: null,
+        });
+      }
+      // With the captain, on its way — booked far ahead, listed all the same: somebody has it.
       expect(row(withCaptain)).toMatchObject({ securedStage: 'withCaptain', vaultReceivedAt: null });
+      expect(row(withCaptain)?.collectionDate.slice(0, 10)).toBe(SEC_PICKUP);
       // Received today: green, with when — and still listed once it has gone out since.
       for (const id of [inVault, dispatched, completed]) {
         const received = row(id)?.vaultReceivedAt ?? null;
         expect(received, id).not.toBeNull();
-        expect(cairoYmd(new Date(received ?? ''))).toBe(cairoYmd(new Date()));
+        expect(cairoYmd(new Date(received ?? ''))).toBe(today);
       }
       expect(row(inVault)?.securedStage).toBe('inVault');
       expect(row(dispatched)?.securedStage).toBe('dispatched');
-      // Not collected by its captain yet; and a receipt of another day.
+      // White and booked ahead (tomorrow, or the fixtures' far day): «الكل» only. And a receipt of
+      // another day is «صرف الخزينة»'s, never this screen's.
+      expect(row(whiteTomorrow)).toBeUndefined();
       expect(row(awaiting)).toBeUndefined();
       expect(row(receivedYesterday)).toBeUndefined();
 
@@ -6846,14 +6900,28 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       for (const s of view.shipments) {
         expect(s.shipmentType).toBe('secured');
         // Yellow is the captain's ✓ or (Round 10) the desk's — other suites leave desk-picked drafts.
-        expect(['withCaptain', 'withOperations', 'inVault', 'dispatched', 'completed']).toContain(
-          s.securedStage,
+        expect(OPERATIONS_SECURED_STAGES).toContain(s.securedStage);
+        if (s.status === 'draft' && s.pickedUpBy === null) {
+          // A white row by default is one whose collection day has come.
+          expect(s.collectionDate.slice(0, 10) <= today, s.id).toBe(true);
+        }
+        // Past draft, every row is a receipt of today — it carries when.
+        expect(s.status === 'draft' ? s.vaultReceivedAt === null : s.vaultReceivedAt !== null).toBe(
+          true,
         );
       }
       expect(view.crews.map((c) => c.crewAssignmentId)).toContain(pickupCrewId);
+
+      // «الكل» adds the white ones booked ahead.
+      const everything = data<OperationsVaultQueueDto>(await vaultQueue('?all=true')).shipments.map(
+        (s) => s.id,
+      );
+      expect(everything).toEqual(
+        expect.arrayContaining([whiteToday, whiteYesterday, whiteTomorrow, awaiting, withCaptain]),
+      );
     });
 
-    it('with all=true also lists every one not collected yet — for viewing (Round 10: no vault ✓ on a white row)', async () => {
+    it('with all=true also lists the white ones booked for a later day — receivable too since Round 13', async () => {
       const res = await vaultQueue('?all=true');
       expect(res.status).toBe(200);
       const view = data<OperationsVaultQueueDto>(res);
@@ -7212,7 +7280,7 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         pickedUpBy: null,
         pickedUpAt: null,
       });
-      // Not on the vault's screen by default — under «الكل» only.
+      // White and booked for a later day: not on the vault's screen by default — under «الكل» only.
       expect(await queueIds()).not.toContain(shipment.id);
       expect(await queueIds(true)).toContain(shipment.id);
 
@@ -7346,9 +7414,19 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         pickedUpBy: null,
       });
       expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pickedUp');
-      const white = await receive(shipment.id);
-      expect(white.status).toBe(409);
-      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
+      // White again — and since Round 13 still the vault's to receive (section F receives such
+      // rows): «الكل» lists it as a white, receivable draft with nobody's ✓ on it.
+      const allQueue = data<OperationsVaultQueueDto>(
+        await request(app)
+          .get('/api/v1/operations/secured/vault-queue?all=true')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(allQueue).toMatchObject({
+        status: 'draft',
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        vaultReceivedAt: null,
+      });
 
       // Then the desk confirms it — as Operations.
       expect((await confirm(shipment.id, deskToken)).status).toBe(200);
@@ -7421,7 +7499,38 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         securedStage: 'awaitingPickup',
         pickedUpBy: null,
       });
-      expect((await receive(legacy.id)).status).toBe(409);
+      // Round 13: white, and the vault takes it all the same — with nobody's ✓ written, though
+      // its captain's leg says picked up (the explicit null is the record, the leg is not read).
+      expect((await receive(legacy.id)).status).toBe(200);
+      expect(await securedRow(legacy.id)).toMatchObject({
+        status: 'inVault',
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+
+      // A legacy row nobody collected, received directly, has its "nobody" WRITTEN DOWN by that
+      // receipt — so its captain finishing his leg afterwards can never turn the vault's direct
+      // receipt into «تم الاستلام من القائد» after the fact.
+      const direct = await book();
+      await OperationsShipmentModel.updateOne({ _id: direct.id }, { $unset: { pickup: 1 } }).exec();
+      expect(await OperationsShipmentModel.findById(direct.id).lean().exec()).not.toHaveProperty(
+        'pickup',
+      );
+      expect((await receive(direct.id)).status).toBe(200);
+      expect(await OperationsShipmentModel.findById(direct.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      await OperationsShipmentAssignmentModel.updateOne(
+        { shipmentId: direct.id, leg: 'pickup' },
+        { $set: { executionStatus: 'pickedUp', startedAt: LEG_AT, pickedUpAt: LEG_AT } },
+      ).exec();
+      expect(await securedRow(direct.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
 
       // And a legacy row whose leg was NOT picked up is white, and the captain's app records it:
       // the app's conditional write (`pickup: null`) matches a record never written as well.
@@ -7438,23 +7547,74 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
     });
   });
 
-  describe('the vault receives only a picked-up shipment (B)', () => {
-    it('refuses a white row with 409 OPERATIONS_SECURED_NOT_PICKED_UP — and takes no custody', async () => {
+  // Round 13 lifted Round 10's rule («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»):
+  // «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم
+  // عادي». The vault receives any draft; the pickup record says who handed it over, if anybody did.
+  describe('the vault receives any draft — white or yellow (B, Round 13)', () => {
+    it('receives a WHITE row — custody taken, in the vault, its pickup record still empty', async () => {
       const { OperationsVaultCustodyModel } = await import(
         '../../src/modules/operations/vault/vault-custody.model'
       );
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
       const shipment = await book();
-      const white = await receive(shipment.id, vaultToken);
-      expect(white.status).toBe(409);
-      expect(errorCode(white)).toBe(ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP);
-      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(0);
-      expect((await read(shipment.id)).status).toBe('draft');
+      expect((await securedRow(shipment.id))?.securedStage).toBe('awaitingPickup');
 
-      // Picked up by the desk — now the vault takes it.
+      const white = await receive(shipment.id, vaultToken);
+      expect(white.status, JSON.stringify(white.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(white)).toMatchObject({
+        status: 'inVault',
+        receiptNumber: `R10-${shipment.id.slice(-6)}`,
+      });
+      expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: shipment.id })).toBe(1);
+      // The vault did NOT write itself in as the collector — nobody's ✓, for good.
+      expect(await OperationsShipmentModel.findById(shipment.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      // Its captain's leg is untouched by the vault.
+      expect((await pickupLegOf(shipment.id)).executionStatus).toBe('pending');
+
+      // «السجل»: the receipt, and no pickup at all.
+      const kinds = (await logOf(shipment.id)).entries.map((e) => e.kind);
+      expect(kinds).toContain('vaultReceived');
+      expect(
+        kinds.filter((k) => ['pickupConfirmed', 'pickupUndone', 'executionPickedUp'].includes(k)),
+      ).toEqual([]);
+      // No pickup was announced for it.
+      expect(
+        seenEvents.some(
+          (e) =>
+            e.name === OperationsEvents.ShipmentPickupConfirmed &&
+            (e.payload as { shipmentId: string }).shipmentId === shipment.id,
+        ),
+      ).toBe(false);
+      // A second receipt is still refused — received is received.
+      const twice = await receive(shipment.id, vaultToken);
+      expect(twice.status).toBe(422);
+      expect(errorCode(twice)).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
+    });
+
+    it('receives a YELLOW row as before — and it keeps who brought it', async () => {
+      const shipment = await book();
       expect((await confirm(shipment.id)).status).toBe(200);
       const green = await receive(shipment.id, vaultToken);
       expect(green.status, JSON.stringify(green.body)).toBe(200);
       expect(data<OperationsShipmentDto>(green).status).toBe('inVault');
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: 'operations',
+      });
+      const kinds = (await logOf(shipment.id)).entries
+        .filter((e) => ['pickupConfirmed', 'vaultReceived'].includes(e.kind))
+        .map((e) => e.kind);
+      expect(kinds).toEqual(['pickupConfirmed', 'vaultReceived']);
     });
 
     // The custody and the shipment's move are ONE write since Round 10.
@@ -8060,6 +8220,218 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       }
       expect((await dispatchBoard()).status).toBe(200);
     }, 60_000);
+  });
+
+  // ── Round 13 ──────────────────────────────────────────────────────────────────────────────────
+  //
+  // «انا عايز الجدول بتاع استلام الخزينه يكون مكان الحاله عمودين … واستلام الخزينه ممكن تستلم يكون
+  // القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي». The vault receives a draft
+  // nobody recorded collecting; the receipt writes no pickup, so the two columns tell who did what.
+  describe('a receipt nobody handed over — every screen, the lock, the cancel, the captain’s route (F, Round 13)', () => {
+    // The captain-with-the-app's own days for this block — one route each, so neither waits on the
+    // other, and both before the delivery day (nothing goes out before it is in).
+    const R13_ROUTE_DAY = shift(368);
+    const R13_BEGUN_DAY = shift(369);
+    let routeCrewId = '';
+    let begunCrewId = '';
+
+    const dayOf = async (date: string): Promise<OperationsMobileDayDto> => {
+      const res = await request(app)
+        .get(`/api/v1/operations/mobile/my-day?date=${date}`)
+        .set('Authorization', `Bearer ${appCaptainToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsMobileDayDto>(res);
+    };
+    const stopOf = async (shipmentId: string): Promise<string> =>
+      String((await pickupLegOf(shipmentId))._id);
+    const pickupAnnounced = (shipmentId: string): boolean =>
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.ShipmentPickupConfirmed &&
+          (e.payload as { shipmentId: string }).shipmentId === shipmentId,
+      );
+
+    beforeAll(async () => {
+      routeCrewId = await crewFor(R13_ROUTE_DAY, appCaptainId);
+      begunCrewId = await crewFor(R13_BEGUN_DAY, appCaptainId);
+    });
+
+    it('reads `inVault` on every screen — with «لم يتم الاستلام» (nobody’s ✓) beside it', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id, vaultToken)).status).toBe(200);
+      const expected = { status: 'inVault', securedStage: 'inVault', pickedUpBy: null, pickedUpAt: null };
+
+      expect(await securedRow(shipment.id)).toMatchObject(expected);
+      const dayRow = data<OperationsDayBoardDto>(
+        await request(app)
+          .get(`/api/v1/operations/shipments/day-board?date=${R10_OUT}`)
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(dayRow).toMatchObject(expected);
+
+      // The vault's queue: today's receipt, green, its receipt time — and nobody in the pickup column.
+      const queued = data<OperationsVaultQueueDto>(
+        await request(app)
+          .get('/api/v1/operations/secured/vault-queue')
+          .set('Authorization', `Bearer ${vaultToken}`),
+      ).shipments.find((s) => s.id === shipment.id);
+      expect(queued).toMatchObject(expected);
+      expect(cairoYmd(new Date(queued?.vaultReceivedAt ?? ''))).toBe(cairoYmd(new Date()));
+
+      // «محصنات الخزينة» holds it like any other receipt.
+      const held = data<OperationsSecuredDispatchBoardDto>(await dispatchBoard()).shipments.find(
+        (s) => s.id === shipment.id,
+      );
+      expect(held).toMatchObject(expected);
+      expect(held?.vaultReceivedAt).toBe(queued?.vaultReceivedAt);
+    });
+
+    it('locks the desk’s ✓ and its undo after it — the lock, never «nothing to undo»', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id)).status).toBe(200);
+      for (const res of [await confirm(shipment.id, deskToken), await undo(shipment.id, deskToken)]) {
+        expect(res.status).toBe(409);
+        expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+      }
+      expect((await securedRow(shipment.id))?.pickedUpBy).toBeNull();
+    });
+
+    it('a cancelled direct receipt takes it back to WHITE — the cancel invents no pickup', async () => {
+      const shipment = await book();
+      expect((await receive(shipment.id)).status).toBe(200);
+      const res = await cancel(shipment.id, {}, cancelToken);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(data<OperationsShipmentDto>(res)).toMatchObject({ status: 'draft', receiptNumber: null });
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'awaitingPickup',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      // Back among the drafts — booked for a later day, so under «الكل» — and open again: the
+      // desk's ✓ may be pressed now, and the vault may receive it afresh.
+      expect(await queueIds()).not.toContain(shipment.id);
+      expect(await queueIds(true)).toContain(shipment.id);
+      expect((await confirm(shipment.id, deskToken)).status).toBe(200);
+      expect((await securedRow(shipment.id))?.securedStage).toBe('withOperations');
+      expect((await receive(shipment.id)).status).toBe(200);
+      expect(await securedRow(shipment.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: 'operations',
+      });
+    });
+
+    // Decision: a pickup leg the captain never STARTED is settled once the vault holds the
+    // shipment — nothing is left for him at the bank — and stops blocking his later stops. His leg
+    // is never rewritten: it still says `pending`.
+    it('the captain’s untouched pickup leaves his way once the vault has it — his next stop becomes current', async () => {
+      const first = await book(R10_OUT, R13_ROUTE_DAY, routeCrewId, appCaptainId);
+      const second = await book(R10_OUT, R13_ROUTE_DAY, routeCrewId, appCaptainId);
+      const [firstStop, secondStop] = [await stopOf(first.id), await stopOf(second.id)];
+
+      const before = await dayOf(R13_ROUTE_DAY);
+      expect(before.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'current'],
+        [secondStop, 'locked'],
+      ]);
+      const early = await act(secondStop, 'start');
+      expect(early.status).toBe(422);
+      expect(errorCode(early)).toBe(ErrorCodes.OPERATIONS_EXECUTION_OUT_OF_SEQUENCE);
+
+      // The vault receives the first one directly — nobody pressed ✓.
+      expect((await receive(first.id, vaultToken)).status).toBe(200);
+
+      const after = await dayOf(R13_ROUTE_DAY);
+      expect(after.currentAssignmentId).toBe(secondStop);
+      expect(after.stops.find((s) => s.assignmentId === firstStop)).toMatchObject({
+        progress: 'completed',
+        status: 'inVault',
+        executionStatus: 'pending',
+        startedAt: null,
+        pickedUpAt: null,
+      });
+      expect(after.stops.find((s) => s.assignmentId === secondStop)?.progress).toBe('current');
+
+      // Nothing to do on the first any more — and it is not rewritten for being skipped.
+      const settled = await act(firstStop, 'start');
+      expect(settled.status).toBe(422);
+      expect(errorCode(settled)).toBe(ErrorCodes.OPERATIONS_EXECUTION_ALREADY_SETTLED);
+      expect(await pickupLegOf(first.id)).toMatchObject({ executionStatus: 'pending' });
+      // The next stop is his to start now.
+      const started = await act(secondStop, 'start');
+      expect(started.status, JSON.stringify(started.body)).toBe(200);
+      expect(data<OperationsExecutionResultDto>(started)).toMatchObject({
+        executionStatus: 'active',
+        currentAssignmentId: secondStop,
+      });
+      expect((await securedRow(first.id))?.pickedUpBy).toBeNull();
+
+      // A CANCELLED receipt says the vault does not have it after all: the shipment is collectable
+      // again, so his untouched pickup is his to do again (derived, like everything on his route) —
+      // and the stop he is on stays his to finish, the lock being on `start` alone.
+      expect((await cancel(first.id, {}, cancelToken)).status).toBe(200);
+      const reopened = await dayOf(R13_ROUTE_DAY);
+      expect(reopened.currentAssignmentId).toBe(firstStop);
+      expect(reopened.stops.find((s) => s.assignmentId === firstStop)).toMatchObject({
+        progress: 'current',
+        status: 'draft',
+        executionStatus: 'pending',
+      });
+      expect((await act(secondStop, 'pickup')).status).toBe(200);
+    });
+
+    // …and a pickup leg he HAD started stays his to finish: his ✓ is still allowed, as his own
+    // execution record — the shipment's pickup record and status are not touched by it.
+    it('a pickup leg he had started stays his to finish — his ✓ records his leg only', async () => {
+      const { OperationsShipmentModel } = await import(
+        '../../src/modules/operations/shipments/shipment.model'
+      );
+      const first = await book(R10_OUT, R13_BEGUN_DAY, begunCrewId, appCaptainId);
+      const second = await book(R10_OUT, R13_BEGUN_DAY, begunCrewId, appCaptainId);
+      const [firstStop, secondStop] = [await stopOf(first.id), await stopOf(second.id)];
+      expect((await act(firstStop, 'start')).status).toBe(200);
+
+      // On his way to the bank — and the vault receives it directly meanwhile.
+      expect((await receive(first.id, vaultToken)).status).toBe(200);
+      const received = await read(first.id);
+      const midway = await dayOf(R13_BEGUN_DAY);
+      expect(midway.currentAssignmentId).toBe(firstStop);
+      expect(midway.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'current'],
+        [secondStop, 'locked'],
+      ]);
+
+      const picked = await act(firstStop, 'pickup');
+      expect(picked.status, JSON.stringify(picked.body)).toBe(200);
+      expect((await pickupLegOf(first.id)).executionStatus).toBe('pickedUp');
+      // The shipment did not move: still in the vault, nobody's ✓ in its pickup column, its version
+      // the receipt's, no pickup announced.
+      expect(await read(first.id)).toMatchObject({ status: 'inVault', version: received.version });
+      expect(await OperationsShipmentModel.findById(first.id).lean().exec()).toHaveProperty(
+        'pickup',
+        null,
+      );
+      expect(await securedRow(first.id)).toMatchObject({
+        securedStage: 'inVault',
+        pickedUpBy: null,
+        pickedUpAt: null,
+      });
+      expect(pickupAnnounced(first.id)).toBe(false);
+      // «السجل» tells his act as his leg's, and no pickup of the shipment's.
+      const kinds = (await logOf(first.id)).entries.map((e) => e.kind);
+      expect(kinds).toEqual(expect.arrayContaining(['executionPickedUp', 'vaultReceived']));
+      expect(kinds).not.toContain('pickupConfirmed');
+
+      // He finishes it, and his next stop is current.
+      expect((await act(firstStop, 'deliver')).status).toBe(200);
+      const done = await act(firstStop, 'complete');
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      expect(data<OperationsExecutionResultDto>(done).currentAssignmentId).toBe(secondStop);
+      const finished = await dayOf(R13_BEGUN_DAY);
+      expect(finished.stops.map((s) => [s.assignmentId, s.progress])).toEqual([
+        [firstStop, 'completed'],
+        [secondStop, 'current'],
+      ]);
+    });
   });
 });
 

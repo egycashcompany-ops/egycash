@@ -12,7 +12,7 @@
 // الاستلام من القائد و لو العمليات تم الاستلام من العمليات وهتبقى صفر بس وهتكون ظاهره ل شاشة استلام
 // الخزينة بس مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح».
 import {
-  OPERATIONS_SECURED_RECEIVABLE_STAGES,
+  OPERATIONS_SECURED_PICKED_UP_STAGES,
   OPERATIONS_SECURED_STAGES,
   type OperationsSecuredStage,
   type OperationsVaultQueueShipmentDto,
@@ -45,7 +45,7 @@ export const vaultQueueState = (
 ): VaultQueueState =>
   row.status !== 'draft'
     ? 'received'
-    : row.securedStage !== null && OPERATIONS_SECURED_RECEIVABLE_STAGES.includes(row.securedStage)
+    : row.securedStage !== null && OPERATIONS_SECURED_PICKED_UP_STAGES.includes(row.securedStage)
       ? 'pickedUp'
       : 'awaiting';
 

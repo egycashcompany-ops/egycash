@@ -22,6 +22,10 @@ const listBranchNames = (): Promise<OrgUnitOptionDto[]> =>
 const listDepartmentOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/departments/options');
 
+// The same endpoint with the INACTIVE departments as well — for naming, never for a picker.
+const listDepartmentNames = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/departments/options?includeInactive=true');
+
 // Sections and Job Titles, on the same terms as the two above. Each option carries `parentId`
 // (a Section's Department; null for a Job Title, which is a flat catalog), so a screen that
 // cascades one picker off another filters these lists in the browser instead of issuing a
@@ -69,6 +73,21 @@ export const useDepartmentReferenceOptions = (enabled = true) =>
   useQuery({
     queryKey: [ORG_MODULE, 'departments', 'reference-options'],
     queryFn: listDepartmentOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+/**
+ * EVERY department, the inactive ones too — for NAMING one a setting already points at, never for
+ * a picker. The Operations crew card reads it so a saved department whose branch copy has been
+ * deactivated still shows under its department instead of as an unknown id. Ungated like every
+ * options read, and keyed beneath the active list's so a department write refreshes both.
+ */
+export const useDepartmentNames = (enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'departments', 'reference-options', 'withInactive'],
+    queryFn: listDepartmentNames,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

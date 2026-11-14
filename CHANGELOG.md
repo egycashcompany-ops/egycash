@@ -200,7 +200,8 @@ its entry here in the same PR.
       before this change with no record reads its pickup leg, so a leg already picked up is the
       captain's. API: `POST` / `DELETE /operations/secured/:id/pickup` (`operationsShipment.complete`).
     - The vault's ✓ needs a pickup first (409 `OPERATIONS_SECURED_NOT_PICKED_UP`); the white rows
-      stay under «الكل» to be read only. Receiving is one transaction with the custody.
+      stay under «الكل» to be read only — lifted later in this release (below). Receiving is one
+      transaction with the custody.
     - Once received, a secured shipment is locked: no edit, delete, pickup change, pickup crew or
       receipt photo change (409 `OPERATIONS_SECURED_LOCKED`; the Files routes answer 403 for its
       photo). The flow goes on: delivery crew, dispatch, the captains' app, completion, restore.
@@ -337,6 +338,51 @@ its entry here in the same PR.
       (`operationsVault.dispatch`) confirms, then hands over the van's محصنات in the vault; those
       not received yet are listed and stay. «طباعة» prints the van's load sheet on the company form
       — provisional until the owner says what the paper carries («اللى هيطبع هقولك عليه بعدين»).
+  - The vault receives without a pickup, and its screen says who did what in two columns: «انا عايز
+    الجدول بتاع استلام الخزينه يكون مكان الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل
+    استلام من القائد او من العمليات، والعمود التاني بتاع الحاله برضو يبين استلام من الخزينه. واستلام
+    الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي».
+    - Round 10's rule is lifted: the vault's ✓ no longer needs the captain's or the desk's ✓ first.
+      `POST /operations/secured/:id/receive` takes any draft, white or yellow
+      (`OPERATIONS_SECURED_RECEIVABLE_STAGES` now holds `awaitingPickup` too; the new
+      `OPERATIONS_SECURED_PICKED_UP_STAGES` names the two yellow ones). The receipt writes no pickup:
+      a shipment received with nobody's ✓ is `inVault` with no `pickedUpBy`, for good, and «السجل»
+      shows the receipt and no pickup. `OPERATIONS_SECURED_NOT_PICKED_UP` now answers only the desk's
+      removal of a ✓ that is not there. The lock, the cancelled receipt (back to white when nobody
+      had picked it up), distribution and handover are unchanged.
+    - «استلام الخزينة» lists by default what the vault can receive now: every محصنة whose collection
+      day is today or earlier, white or yellow, every yellow one whatever its day, and today's
+      receipts; «الكل» adds the white ones booked for a later day.
+    - The screen's «الحالة» becomes «حالة الاستلام» (من القائد / من العمليات with the time, or «لم
+      يتم الاستلام») and «حالة الخزينة» («بالخزينة» with the time, not yet received, or out since);
+      the vault's ✓ is on every row not yet received.
+    - The captain's route: a pickup he never started on a محصنة the vault has received is done with
+      — it no longer holds back his next stop, and his record of it stays as it was (not started). One
+      he had started stays his to finish; his ✓ then records his own step only. A cancelled receipt
+      gives an untouched pickup back to him.
+  - «إدارات العمليات» on the crew page, one choice per company department, closed until opened:
+    «القائمة دي كانت معمولة لما كان في مشكلة في الإدارات، وأنت عامل تكرار إدارات … على حسب الفروع.
+    فإحنا عايزين نعدل الموضوع ده، وعايزين نحسن اليو اي بتاعها، وعاوز أخليها تبقى الديفولت بتاعها إن
+    هي مخفية، ولما أدوس كليك على السهم يعرضها لي».
+    - The card offers each department ONCE — «نقل الأموال», not «نقل الاموال» seven times with seven
+      unit codes — with the number of branches that have it and their names (on the tile, and in
+      full on hover). Branch copies are grouped by their catalog entry; a copy never linked groups
+      by its name with Arabic spellings folded («الاموال» = «الأموال»), and joins the catalog entry
+      of that name when there is exactly one (`orgUnitGroupKeys`, `@ecms/contracts`).
+    - A chosen department is crew in EVERY branch that has it, a branch that adds it later
+      included: the roster (`GET /operations/crew-board/directory` — the crew page, the crew board,
+      the standing crew and the shipment captains) widens each saved id to every active unit of
+      its department. The setting is still `operations.crewDepartmentIds` and still holds
+      department ids, so nothing is migrated: every saved id stays in the roster as it was, and a
+      roster saved before only widens to the same department in the other branches. Its cap rises
+      from 50 to 200 ids, because «حفظ» writes every active branch copy of each chosen department.
+    - Closed by default, every visit. The closed card says what is saved — the departments as
+      chips, how many people that makes, and «تغييرات غير محفوظة» when ticks are pending; the arrow
+      (a real button, `aria-expanded`) opens the search (by department or by branch), the tiles —
+      what is saved first, then the rest, each alphabetical — and «تراجع» / «حفظ», both waiting for
+      a change. A saved department whose every copy has been deactivated is shown «غير نشطة», and
+      an id nothing answers to «غير موجودة»; both stay ticked until unticked, and the empty-choice
+      warning stays.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

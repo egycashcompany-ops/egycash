@@ -54,6 +54,13 @@ export interface DayBoardFilters {
    * of «التسليم», whose two answers cannot tell its stages apart.
    */
   stage: OperationsSecuredStage | '';
+  /**
+   * Round 13 — the vault queue's «حالة الاستلام» (`vaultPickupOf`): who confirmed collecting the
+   * محصنة from the bank, or nobody. The vault's board offers it, with `vault`, in the stage's place.
+   */
+  pickup: VaultPickupColumn | '';
+  /** Round 13 — the vault queue's «حالة الخزينة» (`vaultHoldOf`): received yet, and where it is now. */
+  vault: VaultHoldColumn | '';
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
@@ -66,8 +73,39 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   type: '',
   received: '',
   stage: '',
+  pickup: '',
+  vault: '',
   notes: '',
 };
+
+/**
+ * THE VAULT QUEUE'S TWO STATUS COLUMNS (Round 13). «انا عايز الجدول بتاع استلام الخزينه يكون مكان
+ * الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من العمليات، والعمود
+ * التاني بتاع الحاله برضو يبين استلام من الخزينه»: two facts, read from two fields, never from the one
+ * stage — because since the vault may receive a محصنة nobody handed over («والخزنه تستلم عادي»), a
+ * row can be in the vault AND never collected, and one stage cannot say both.
+ *
+ * «حالة الاستلام» — who confirmed collecting it from the bank: the shipment's ONE pickup record
+ * (`pickedUpBy`), the captain's ✓ in the app or the desk's on the secured screen; `none` while
+ * nobody has — and for good on a receipt nobody handed over (the vault never writes that record).
+ */
+export const VAULT_PICKUP_COLUMN = ['none', 'captain', 'operations'] as const;
+export type VaultPickupColumn = (typeof VAULT_PICKUP_COLUMN)[number];
+
+export const vaultPickupOf = (
+  row: Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>,
+): VaultPickupColumn => row.pickedUpBy ?? 'none';
+
+/**
+ * «حالة الخزينة» — the vault's side, from the shipment's STATUS: `waiting` while it is a draft
+ * (receivable now — «لم تُستلم بعد»), then `inVault` («بالخزينة»), and for a receipt of today that
+ * has left the vault since, `dispatched` («خرجت للتسليم») or `completed` («تم التسليم»).
+ */
+export const VAULT_HOLD_COLUMN = ['waiting', 'inVault', 'dispatched', 'completed'] as const;
+export type VaultHoldColumn = (typeof VAULT_HOLD_COLUMN)[number];
+
+export const vaultHoldOf = (row: { status: OperationsShipmentStatus }): VaultHoldColumn =>
+  row.status === 'draft' ? 'waiting' : row.status;
 
 /** The URL params the board's filters live in — one per filter, by the filter's own name. */
 export const DAY_BOARD_FILTER_PARAMS = Object.keys(
@@ -81,14 +119,18 @@ export const DAY_BOARD_FILTER_PARAMS = Object.keys(
  *     telling them apart, and «التسليم» (`received`) as the status filter;
  *   · `secured` — the secured screen, where every row is a محصنة: no «النوع» (it would say «محصنة»
  *     on every row, and its filter could only empty the table), and the محصنة's stage (`stage`)
- *     as the status filter.
+ *     as the status filter;
+ *   · `vault` (Round 13) — the vault's receive queue: the secured board, with its «الحالة» split
+ *     into «حالة الاستلام» and «حالة الخزينة» («مكان الحاله عمودين»), each filtered by its own box
+ *     (`pickup`, `vault`) where the stage box stands on the secured screen.
  */
-export type BoardKind = 'shipments' | 'secured';
+export type BoardKind = 'shipments' | 'secured' | 'vault';
 
 /** The filter params a board offers no box for. */
 const UNOFFERED: Record<BoardKind, readonly (keyof DayBoardFilters)[]> = {
-  shipments: ['stage'],
-  secured: ['type', 'received'],
+  shipments: ['stage', 'pickup', 'vault'],
+  secured: ['type', 'received', 'pickup', 'vault'],
+  vault: ['type', 'received', 'stage'],
 };
 
 /**
@@ -127,6 +169,8 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
   const type = params.get('type') ?? '';
   const received = params.get('received') ?? '';
   const stage = params.get('stage') ?? '';
+  const pickup = params.get('pickup') ?? '';
+  const vault = params.get('vault') ?? '';
   return {
     vehicle: params.get('vehicle') ?? '',
     bank: params.get('bank') ?? '',
@@ -138,6 +182,12 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
     received: received === 'yes' || received === 'no' ? received : '',
     stage: (OPERATIONS_SECURED_STAGES as readonly string[]).includes(stage)
       ? (stage as OperationsSecuredStage)
+      : '',
+    pickup: (VAULT_PICKUP_COLUMN as readonly string[]).includes(pickup)
+      ? (pickup as VaultPickupColumn)
+      : '',
+    vault: (VAULT_HOLD_COLUMN as readonly string[]).includes(vault)
+      ? (vault as VaultHoldColumn)
       : '',
     notes: params.get('notes') ?? '',
   };
@@ -261,7 +311,12 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       // there too, so it is found under «تم التسليم» here — and a محصنة only once it is delivered
       // (by the desk, or by its delivery captain from the app).
       (filters.received === '' || (filters.received === 'yes') === saysDelivered(shipment)) &&
-      (filters.stage === '' || readStage(shipment) === filters.stage),
+      (filters.stage === '' || readStage(shipment) === filters.stage) &&
+      // Round 13 — the vault queue's two columns, each on what its own cell says.
+      (filters.pickup === '' ||
+        vaultPickupOf(shipment as Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>) ===
+          filters.pickup) &&
+      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault),
   );
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;

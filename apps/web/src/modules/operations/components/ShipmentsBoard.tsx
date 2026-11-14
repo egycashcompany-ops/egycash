@@ -51,6 +51,15 @@
 // «خرجت للتسليم» blue, «تم التسليم» green — on the secured screen, and on the day board and the
 // history alike, where a محصنة due for delivery is listed whatever its stage.
 //
+// ROUND 13 — TWO STATUS COLUMNS ON THE VAULT'S SCREEN, AND ONLY THERE. «انا عايز الجدول بتاع استلام
+// الخزينه يكون مكان الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من
+// العمليات، والعمود التاني بتاع الحاله برضو يبين استلام من الخزينه». Since the vault may receive a
+// محصنة nobody handed over («والخزنه تستلم عادي»), a row can be in the vault and never collected — one
+// stage cannot say both. So the vault's board (`kind="vault"`) draws, in «الحالة»'s place, «حالة
+// الاستلام» (who collected it, and when — or «لم يتم الاستلام») and «حالة الخزينة» (received yet,
+// and where it is since), each filtered by its own box where the stage box stands on the secured
+// screen. Every other board keeps its one «الحالة» column and its one status filter.
+//
 // WHAT THE PAGES OWN, AND WHAT THIS OWNS. A page owns its period — which rows the server is asked
 // for (today, or from–to), the history's two date pickers and what a reset does to them — and
 // what may be DONE from it (`canCreate`, `canToggleReceived`, what «إضافة شحنة» creates), and hands
@@ -104,6 +113,8 @@ import {
 } from '../api/operations-queries';
 import {
   DAY_BOARD_FILTER_PARAMS,
+  VAULT_HOLD_COLUMN,
+  VAULT_PICKUP_COLUMN,
   branchCell,
   branchCellText,
   filterDayBoard,
@@ -135,7 +146,15 @@ import {
   type HistoryRange,
 } from '../lib/shipment-history';
 import { shipmentCaption } from '../lib/shipment-log';
-import { DeliveryStatusBadge, SecuredStageBadge, ShipmentTypeBadge } from './ShipmentBadges';
+import {
+  DeliveryStatusBadge,
+  SecuredStageBadge,
+  ShipmentTypeBadge,
+  VAULT_HOLD_LABEL,
+  VAULT_PICKUP_LABEL,
+  VaultHoldStatus,
+  VaultPickupStatus,
+} from './ShipmentBadges';
 import { BoardFigurePill, FIGURE_TONE, OtherCurrenciesDialog } from './BoardFigures';
 import { CancelVaultReceiptDialog, type CancelReceiptTarget } from './CancelVaultReceiptDialog';
 import {
@@ -150,6 +169,9 @@ import { SHIPMENT_PATH } from './shipment-icons';
 
 /** Every filter is `density="tight"`, as on the Fleet boards. */
 const TIGHT = 'tight' as const;
+
+/** Round 13 — the vault's board's two status columns, drawn in «الحالة»'s place (`splitStatus`). */
+const SPLIT_STATUS_COLUMNS: readonly string[] = ['pickupStatus', 'vaultStatus'];
 
 /**
  * The Fleet boards' toolbar buttons (ReceiptsPage). Exported for a page's own toolbar controls
@@ -183,6 +205,10 @@ const SHIPMENTS_TABLE = cn(
   // lines between them), and the notes' cut-off moves in by 8px: that buys the width back without
   // shrinking an icon or a name.
   '[&_td:has([data-row-actions])]:!px-1 [&_td:has([data-image-actions])]:!px-1',
+  // Round 13 — the vault's board says «الحالة» in TWO columns where the others have one: their two
+  // cells give up most of their side padding too (their badges draw their own frame), which with
+  // their narrower badges keeps the actions on a 1440 laptop beside the menu.
+  '[&_td:has([data-vault-pickup])]:!px-1 [&_td:has([data-vault-hold])]:!px-1',
 );
 
 /**
@@ -433,6 +459,10 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
    *     together;
    *   · no «النوع», column or filter — it would say «محصنة» on every row, and its 68px are what
    *     the extra date column needs to keep the actions on a 1440 laptop's screen.
+   * `vault` (Round 13) — the vault's receive queue: the secured board, with «الحالة» split into
+   * «حالة الاستلام» and «حالة الخزينة» («مكان الحاله عمودين»), each with its own filter in the stage
+   * box's place. Its rows are vault-queue rows (`OperationsVaultQueueShipmentDto` — the second
+   * column reads their `vaultReceivedAt`).
    */
   kind?: BoardKind;
   empty: string;
@@ -529,7 +559,10 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // A filter this board offers no box for reads as empty: a param with no box on screen never
   // narrows the table.
   const filters = offeredFilters(readDayBoardFilters(sp), kind, stages);
-  const secured = kind === 'secured';
+  // The secured board's columns — the secured screen's and the vault's (`kind`).
+  const secured = kind !== 'shipments';
+  // Round 13 — «مكان الحاله عمودين»: the vault's board alone says its status in two columns.
+  const splitStatus = kind === 'vault';
   const setFilter = (patch: Partial<DayBoardFilters>): void => {
     const params = new URLSearchParams(sp);
     for (const [name, value] of Object.entries({ ...filters, ...patch })) {
@@ -881,7 +914,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
           ) : (
             <DeliveryStatusBadge delivery={boardDelivery(row)} />
           );
-        // The page's line under it, where it has one (the vault queue's "when").
+        // The page's line under it, where it has one («محصنات الخزينة»'s "since when").
         const note = statusNote?.(row);
         return note === undefined || note === null ? (
           badge
@@ -892,6 +925,20 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
           </div>
         );
       },
+    },
+    // Round 13 — the vault's board says «الحالة» in two columns, in its place (`splitStatus`):
+    // «العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من العمليات» …
+    {
+      key: 'pickupStatus',
+      header: t('operations.vault.queue.pickupColumn'),
+      render: (row) => <VaultPickupStatus row={row} />,
+    },
+    // … «والعمود التاني بتاع الحاله برضو يبين استلام من الخزينه» — read from the row's status and,
+    // on a vault-queue row, when the vault received it.
+    {
+      key: 'vaultStatus',
+      header: t('operations.vault.queue.vaultColumn'),
+      render: (row) => <VaultHoldStatus row={row} />,
     },
     {
       key: 'notes',
@@ -1042,10 +1089,13 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // both are declared in their places in the list above, so the columns read in one order on
   // every screen.
   // The ticks' column is the page's that hands in a `selection` («صرف الخزينة»), and no other's.
+  // The two status columns are the vault's board's, in «الحالة»'s place; every other board keeps
+  // the one.
   const boardColumns = everyColumn.filter(
     (column) =>
       column.key !== (secured ? 'type' : 'deliveryDate') &&
-      (column.key !== 'select' || selection !== undefined),
+      (column.key !== 'select' || selection !== undefined) &&
+      (splitStatus ? column.key !== 'status' : !SPLIT_STATUS_COLUMNS.includes(column.key)),
   );
   // A screen that offers this reader nothing to do on a row (the vault queue, read by a treasurer
   // who may neither receive nor read the log) draws no actions column — not a column of empty boxes.
@@ -1057,6 +1107,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const typeValue = filters.type === '' ? [] : [filters.type];
   const receivedValue = filters.received === '' ? [] : [filters.received];
   const stageValue = filters.stage === '' ? [] : [filters.stage];
+  const pickupValue = filters.pickup === '' ? [] : [filters.pickup];
+  const vaultValue = filters.vault === '' ? [] : [filters.vault];
 
   return (
     <>
@@ -1325,8 +1377,57 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
             )}
             {/* «الحالة» — on a secured board the محصنة's stages, in their order («the status
               filter must offer the stages on this screen» — the page's `stages`); elsewhere
-              «التسليم», delivered or not. One box either way, at the status column's place. */}
-            {secured ? (
+              «التسليم», delivered or not. One box either way, at the status column's place — and
+              on the vault's board (Round 13) one box per status column, each named and answered
+              as its column: «حالة الاستلام» by who collected it, «حالة الخزينة» by the vault's
+              side. A row's two facts are two questions, so neither box hides an answer of the
+              other's (a receipt nobody handed over is found under «لم يتم الاستلام» AND
+              «بالخزينة»). */}
+            {splitStatus ? (
+              <>
+                <FilterWithIcon icon={SHIPMENT_PATH.bank} tone="text-amber-600 dark:text-amber-300">
+                  <MultiSelect
+                    clearable
+                    fullWidth
+                    density={TIGHT}
+                    showSelectedValues
+                    label={t('operations.vault.queue.pickupColumn')}
+                    options={VAULT_PICKUP_COLUMN.map((by) => ({
+                      value: by,
+                      label: t(VAULT_PICKUP_LABEL[by]),
+                    }))}
+                    value={pickupValue}
+                    onChange={(next) =>
+                      setFilter({
+                        pickup: (pickOne(pickupValue, next) ?? '') as DayBoardFilters['pickup'],
+                      })
+                    }
+                  />
+                </FilterWithIcon>
+                <FilterWithIcon
+                  icon={FILTER_ICON.status}
+                  tone="text-emerald-600 dark:text-emerald-400"
+                >
+                  <MultiSelect
+                    clearable
+                    fullWidth
+                    density={TIGHT}
+                    showSelectedValues
+                    label={t('operations.vault.queue.vaultColumn')}
+                    options={VAULT_HOLD_COLUMN.map((hold) => ({
+                      value: hold,
+                      label: t(VAULT_HOLD_LABEL[hold]),
+                    }))}
+                    value={vaultValue}
+                    onChange={(next) =>
+                      setFilter({
+                        vault: (pickOne(vaultValue, next) ?? '') as DayBoardFilters['vault'],
+                      })
+                    }
+                  />
+                </FilterWithIcon>
+              </>
+            ) : secured ? (
               <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
                 <MultiSelect
                   clearable

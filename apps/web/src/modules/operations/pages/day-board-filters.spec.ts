@@ -61,7 +61,10 @@ const FILTERS = [
   // The history's period — «من» and «إلى» — at the date column's place (the day board has none).
   'picker.label',
   'operations.shipment.type',
-  // «الحالة» at the status column's place: the secured screen's stage box, or «التسليم».
+  // «الحالة» at the status column's place: on the vault's board (Round 13) one box per status
+  // column — «حالة الاستلام», then «حالة الخزينة» — else the secured screen's stage box, or «التسليم».
+  'operations.vault.queue.pickupColumn',
+  'operations.vault.queue.vaultColumn',
   'operations.common.status',
   'operations.dailyOps.received',
   'operations.shipment.notes',
@@ -183,6 +186,9 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
       'deliveryDate',
       'type',
       'status',
+      // Round 13 — the vault's board's two, in «الحالة»'s place (the board keeps one or the other).
+      'pickupStatus',
+      'vaultStatus',
       'notes',
       'receiptImage',
       'actions',
@@ -272,11 +278,11 @@ describe('every screen remembers the filters its board reads, and only those', (
     // next visit; one a page remembers but the board does not read is a dead entry.
     expect(remembered(DAY_PAGE)).toEqual([...boardFilterParams('shipments')]);
     expect(remembered(HISTORY_PAGE)).toEqual([...boardFilterParams('shipments')]);
-    // The secured screen filters by stage in «التسليم»'s place, and has no «النوع» — and so does
-    // the vault's receive queue, drawn as the secured board.
+    // The secured screen filters by stage in «التسليم»'s place, and has no «النوع»; the vault's
+    // receive queue (Round 13, the vault's board) by its two status columns in the stage's place.
     expect(remembered(SECURED_PAGE)).toEqual([...boardFilterParams('secured')]);
-    expect(VAULT_PAGE).toContain('kind="secured"');
-    expect(remembered(VAULT_PAGE)).toEqual([...boardFilterParams('secured')]);
+    expect(VAULT_PAGE).toContain('kind="vault"');
+    expect(remembered(VAULT_PAGE)).toEqual([...boardFilterParams('vault')]);
   });
 
   it('reads only the filters the screen offers — a param with no box never narrows it', () => {
@@ -294,8 +300,24 @@ describe('every screen remembers the filters its board reads, and only those', (
       /\{!secured && \(\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.shipment\.type'\)\}/,
     );
     expect(BAR).toMatch(
-      /\{secured \? \(\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.common\.status'\)\}/,
+      /: secured \? \(\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.common\.status'\)\}/,
     );
+  });
+
+  // Round 13 — «مكان الحاله عمودين»: the vault's board only, a box per status column in the stage
+  // box's place, each named as its column and offering what its cell can say. Nine boxes — the day
+  // board's count — so the bar keeps its one row.
+  it('draws the vault’s two status boxes in the stage box’s place, and on no other board', () => {
+    expect(BOARD).toContain("const splitStatus = kind === 'vault';");
+    expect(BAR).toMatch(
+      /\{splitStatus \? \(\s*<>\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.pickupColumn'\)\}[\s\S]*?options=\{VAULT_PICKUP_COLUMN\.map[\s\S]*?<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.vaultColumn'\)\}[\s\S]*?options=\{VAULT_HOLD_COLUMN\.map[\s\S]*?<\/>\s*\) : secured \? \(/,
+    );
+    expect(BAR).toContain('setFilter({\n                        pickup:');
+    expect(BAR).toContain('setFilter({\n                        vault:');
+    // One row, as the day board's nine.
+    expect(boardFilterParams('vault')).toHaveLength(boardFilterParams('shipments').length);
+    for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE])
+      expect(page).not.toContain('kind="vault"');
   });
 });
 

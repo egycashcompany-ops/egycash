@@ -355,7 +355,10 @@ its entry here in the same PR.
       receipts; «الكل» adds the white ones booked for a later day.
     - The screen's «الحالة» becomes «حالة الاستلام» (من القائد / من العمليات with the time, or «لم
       يتم الاستلام») and «حالة الخزينة» («بالخزينة» with the time, not yet received, or out since);
-      the vault's ✓ is on every row not yet received.
+      the vault's ✓ is on every row not yet received, and the «للعرض فقط» line is gone. Each column
+      has its own filter where the stage filter was (the bar stays one row); the legend counts
+      «لم يتم الاستلام», «مع القائد أو العمليات» and «بالخزينة اليوم» from the start. The other
+      boards keep their one «الحالة».
     - The captain's route: a pickup he never started on a محصنة the vault has received is done with
       — it no longer holds back his next stop, and his record of it stays as it was (not started). One
       he had started stays his to finish; his ✓ then records his own step only. A cancelled receipt

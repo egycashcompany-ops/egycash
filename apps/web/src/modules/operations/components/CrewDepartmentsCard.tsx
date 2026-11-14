@@ -128,6 +128,12 @@ export const CrewDepartmentsCard = ({
 
   const loading =
     options.isLoading || allDepartments.isLoading || branches.isLoading || settings.isLoading;
+  // Either read failing leaves the card unable to say what is chosen. The setting unread is not
+  // "nothing chosen" (and a save from there would overwrite what is saved without anyone seeing
+  // it), and the departments unread would turn every saved one into «إدارة لم تعد نشطة» on the
+  // closed card. So the card says it could not load, and offers nothing to save. A failed REFETCH
+  // keeps what was read before, which is still the truth as far as anyone knows — not a failure.
+  const failed = options.isLoadingError || settings.isLoadingError;
   const byKey = new Map(choices.map((choice) => [choice.key, choice]));
 
   const submit = (): void => {
@@ -151,6 +157,7 @@ export const CrewDepartmentsCard = ({
           onToggle={() => setOpen((was) => !was)}
           crewCount={crewCount}
           loading={loading}
+          failed={failed}
           saved={savedKeys.flatMap((key) => byKey.get(key) ?? [])}
           dirty={!sameChoices(draft, savedKeys)}
         />
@@ -158,7 +165,7 @@ export const CrewDepartmentsCard = ({
           <CrewDepartmentsPanel
             headerId={headerId}
             panelId={panelId}
-            state={options.isError ? 'failed' : loading ? 'loading' : 'ready'}
+            state={failed ? 'failed' : loading ? 'loading' : 'ready'}
             choices={choices}
             draft={draft}
             savedKeys={savedKeys}
@@ -191,6 +198,7 @@ export const CrewDepartmentsHeader = ({
   onToggle,
   crewCount,
   loading,
+  failed,
   saved,
   dirty,
 }: {
@@ -200,6 +208,8 @@ export const CrewDepartmentsHeader = ({
   onToggle: () => void;
   crewCount: number | null;
   loading: boolean;
+  /** The setting or the departments could not be read: nothing can be said about what is chosen. */
+  failed: boolean;
   /** The saved departments, in the order the panel lists them. */
   saved: readonly CrewDepartmentChoice[];
   /** Ticks not yet saved — said on the closed card too, so they are not forgotten behind it. */
@@ -243,7 +253,14 @@ export const CrewDepartmentsHeader = ({
             className="mt-1.5 flex flex-wrap items-center gap-1.5"
             data-crew-departments-summary="true"
           >
-            {loading ? (
+            {failed ? (
+              <span
+                className="text-xs text-amber-700 dark:text-amber-400"
+                data-crew-departments-failed="true"
+              >
+                {t('common.error.title')}
+              </span>
+            ) : loading ? (
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {t('common.loading')}
               </span>

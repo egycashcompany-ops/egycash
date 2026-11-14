@@ -268,7 +268,8 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
 
   it('«هنزود التاريخ التسليم يظهر فى الجدول» — a delivery-date column, and the date named for what it is', () => {
     expect(SECURED_PAGE).toContain('kind="secured"');
-    expect(BOARD).toContain("const secured = kind === 'secured';");
+    // The secured board's columns are the secured screen's and the vault's (Round 13, `vault`).
+    expect(BOARD).toContain("const secured = kind !== 'shipments';");
     expect(BOARD).toContain(
       "header: t(secured ? 'operations.board.collectedOn' : 'operations.board.date'),",
     );
@@ -283,16 +284,42 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
     expect(HISTORY_PAGE).not.toContain('kind=');
   });
 
+  // Round 13 — «مكان الحاله عمودين» on the vault's screen ONLY: the board draws «حالة الاستلام» and
+  // «حالة الخزينة» in «الحالة»'s place where it is the vault's board, and the one «الحالة» everywhere
+  // else — the three Operations boards are not the vault's board.
+  it('keeps one «الحالة» on every board but the vault’s, which has two in its place', () => {
+    expect(BOARD).toContain(
+      "const SPLIT_STATUS_COLUMNS: readonly string[] = ['pickupStatus', 'vaultStatus'];",
+    );
+    expect(BOARD).toContain(
+      "(splitStatus ? column.key !== 'status' : !SPLIT_STATUS_COLUMNS.includes(column.key)),",
+    );
+    expect(BOARD).toMatch(
+      /key: 'pickupStatus',\s*header: t\('operations\.vault\.queue\.pickupColumn'\),\s*render: \(row\) => <VaultPickupStatus row=\{row\} \/>,/,
+    );
+    expect(BOARD).toMatch(
+      /key: 'vaultStatus',\s*header: t\('operations\.vault\.queue\.vaultColumn'\),\s*render: \(row\) => <VaultHoldStatus row=\{row\} \/>,/,
+    );
+    for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE]) {
+      expect(page).not.toContain('kind="vault"');
+    }
+    // Their cells give up most of their side padding, as the icon boxes' do — what keeps the
+    // actions on a 1440 laptop with one column more than the secured screen has.
+    expect(BOARD).toContain(
+      "'[&_td:has([data-vault-pickup])]:!px-1 [&_td:has([data-vault-hold])]:!px-1',",
+    );
+  });
+
   it('«والحالة …» — the status is the محصنة’s stage, and so is the filter', () => {
     // `shownStage` (secured-stage.spec) is the stage, or null where the cell says who delivered —
     // a daily row, and a محصنة on the road its delivery captain has delivered.
     expect(BOARD).toMatch(
       /const stage = shownStage\(row\);\s*const badge =\s*stage !== null \? \(\s*<SecuredStageBadge stage=\{stage\} \/>\s*\) : \(\s*<DeliveryStatusBadge delivery=\{boardDelivery\(row\)\} \/>/,
     );
-    // A page may add a line under the badge (the vault queue's "when"); the badge is the same.
+    // A page may add a line under the badge («محصنات الخزينة»'s "since"); the badge is the same.
     expect(BOARD).toContain('const note = statusNote?.(row);');
     // The stage box is the secured board's status filter (day-board-filters.spec pins the bar).
-    expect(BOARD).toMatch(/\{secured \? \(\s*<FilterWithIcon/);
+    expect(BOARD).toMatch(/: secured \? \(\s*<FilterWithIcon/);
   });
 
   // «لما القائد هيستلم … هيبقى الصف باللون الاصفر … ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة
@@ -444,7 +471,7 @@ describe('«بس صلاحية خاصة تقدر تلغى استلام الخزي
 
 describe('«صرف الخزينة» on this board — what a page that hosts the release can hand it', () => {
   it('draws the ticks’ column only for a page that hands in a selection, first in the row', () => {
-    expect(BOARD).toContain("(column.key !== 'select' || selection !== undefined),");
+    expect(BOARD).toContain("(column.key !== 'select' || selection !== undefined) &&");
     expect(BOARD).toMatch(/^\s+selection\?: BoardSelection<T>;$/m);
     for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE])
       expect(page).not.toContain('selection=');

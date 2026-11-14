@@ -921,8 +921,10 @@ describe('the van filter — «ضيف كود العربيه ف الفلاتر»'
 describe('the filters in the URL — «ارتب الفلاتر على حسب عواميد الجدول»', () => {
   it('names them in the table’s column order', () => {
     // السيارة | اسم البنك | من فرع | إلى فرع | المنطقة | قائد الطاقم | (التاريخ) | النوع | الحالة |
-    // ملاحظات — the day is the page's, not a filter. «الحالة» is two params, one per board: the
-    // delivery (the day board and the history) and the محصنة's stage (the secured screen).
+    // ملاحظات — the day is the page's, not a filter. «الحالة» is a param per board: the delivery
+    // (the day board and the history), the محصنة's stage (the secured screen) — and, on the vault's
+    // board since Round 13, one per status column: «حالة الاستلام» (`pickup`) and «حالة الخزينة»
+    // (`vault`), in that order as the columns are.
     expect([...DAY_BOARD_FILTER_PARAMS]).toEqual([
       'vehicle',
       'bank',
@@ -933,13 +935,15 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       'type',
       'received',
       'stage',
+      'pickup',
+      'vault',
       'notes',
     ]);
   });
 
   it('reads every filter from its param', () => {
     const params = new URLSearchParams(
-      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&notes=e&date=2026-11-01',
+      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&pickup=captain&vault=waiting&notes=e&date=2026-11-01',
     );
     expect(readDayBoardFilters(params)).toEqual({
       vehicle: '150',
@@ -951,37 +955,80 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       type: 'secured',
       received: 'no',
       stage: 'inVault',
+      pickup: 'captain',
+      vault: 'waiting',
       notes: 'e',
     });
     expect(readDayBoardFilters(new URLSearchParams())).toEqual(EMPTY_DAY_BOARD_FILTERS);
   });
 
   it('reads a hand-edited select value as no filter, not as one nothing matches', () => {
-    const filters = readDayBoardFilters(new URLSearchParams('type=all&received=maybe&stage=lost'));
+    const filters = readDayBoardFilters(
+      new URLSearchParams('type=all&received=maybe&stage=lost&pickup=vault&vault=draft'),
+    );
     expect(filters.type).toBe('');
     expect(filters.received).toBe('');
     expect(filters.stage).toBe('');
+    // The vault's two boxes answer in their own words — a shipment status or a stage is not one.
+    expect(filters.pickup).toBe('');
+    expect(filters.vault).toBe('');
   });
 
   // A param with no box on screen must not narrow the table: the day board offers «التسليم» and
   // not the stage; the secured screen the stage, and neither «التسليم» nor «النوع» (every row on
-  // it is a محصنة).
+  // it is a محصنة); the vault's board (Round 13) its two status columns' boxes in the stage's place.
+  // The vault's two boxes are no other board's — those boards are as they were.
   it('reads only the filters a board offers, and a page remembers exactly those', () => {
     const all = {
       ...EMPTY_DAY_BOARD_FILTERS,
       type: 'daily' as const,
       received: 'yes' as const,
       stage: 'inVault' as const,
+      pickup: 'none' as const,
+      vault: 'inVault' as const,
       bank: 'أهل',
     };
-    expect(offeredFilters(all, 'shipments')).toEqual({ ...all, stage: '' });
-    expect(offeredFilters(all, 'secured')).toEqual({ ...all, type: '', received: '' });
-    expect(boardFilterParams('shipments')).toEqual(
-      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'stage'),
-    );
-    expect(boardFilterParams('secured')).toEqual(
-      DAY_BOARD_FILTER_PARAMS.filter((name) => name !== 'type' && name !== 'received'),
-    );
+    expect(offeredFilters(all, 'shipments')).toEqual({ ...all, stage: '', pickup: '', vault: '' });
+    expect(offeredFilters(all, 'secured')).toEqual({
+      ...all,
+      type: '',
+      received: '',
+      pickup: '',
+      vault: '',
+    });
+    expect(offeredFilters(all, 'vault')).toEqual({ ...all, type: '', received: '', stage: '' });
+    expect(boardFilterParams('shipments')).toEqual([
+      'vehicle',
+      'bank',
+      'origin',
+      'destination',
+      'area',
+      'captain',
+      'type',
+      'received',
+      'notes',
+    ]);
+    expect(boardFilterParams('secured')).toEqual([
+      'vehicle',
+      'bank',
+      'origin',
+      'destination',
+      'area',
+      'captain',
+      'stage',
+      'notes',
+    ]);
+    expect(boardFilterParams('vault')).toEqual([
+      'vehicle',
+      'bank',
+      'origin',
+      'destination',
+      'area',
+      'captain',
+      'pickup',
+      'vault',
+      'notes',
+    ]);
   });
 
   // The vault queue offers «لم يتم التسليم» only with «الكل»: a stage its box does not offer is
@@ -1107,5 +1154,61 @@ describe('the status filters over secured rows', () => {
 
   it('a stage narrows the board as any filter does', () => {
     expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, stage: 'dispatched' })).toBe(true);
+  });
+
+  // Round 13 — «مكان الحاله عمودين»: the vault's board asks each of its two status columns its own
+  // question, on what that column's cell says. A receipt nobody handed over — in the vault with
+  // nobody's ✓ — answers both: «لم يتم الاستلام» AND «بالخزينة».
+  describe('the vault board’s two status filters', () => {
+    const DIRECT = row(
+      's-direct',
+      { shipmentType: 'secured', status: 'inVault' },
+      { securedStage: 'inVault', pickedUpBy: null },
+    );
+    const VAULT_ROWS = [
+      ...ROWS.filter((r) => r.shipmentType === 'secured'),
+      DIRECT,
+      // Received after the captain's ✓ and sent out since: his pickup still says it was his.
+      row(
+        's-captain-out',
+        { shipmentType: 'secured', status: 'dispatched' },
+        { securedStage: 'dispatched', pickedUpBy: 'captain', pickedUpAt: at },
+      ),
+    ];
+    const vaultIds = (over: Partial<typeof EMPTY_DAY_BOARD_FILTERS>): string[] =>
+      filterDayBoard(VAULT_ROWS, { ...EMPTY_DAY_BOARD_FILTERS, ...over }, bankNameOf, () => '').map(
+        (r) => r.id,
+      );
+
+    it('«حالة الاستلام» finds by who collected it — the record, whatever the vault did since', () => {
+      expect(vaultIds({ pickup: 'captain' })).toEqual(['s-captain', 's-captain-out']);
+      expect(vaultIds({ pickup: 'operations' })).toEqual(['s-operations']);
+      expect(vaultIds({ pickup: 'none' })).toContain('s-direct');
+      expect(vaultIds({ pickup: 'none' })).toContain('s-awaiting');
+      expect(vaultIds({ pickup: 'none' })).not.toContain('s-captain');
+    });
+
+    it('«حالة الخزينة» finds by the vault’s side — every draft is «لم تُستلم بعد», white or yellow', () => {
+      expect(vaultIds({ vault: 'waiting' })).toEqual(['s-awaiting', 's-captain', 's-operations']);
+      expect(vaultIds({ vault: 'inVault' })).toEqual(['s-vault', 's-direct']);
+      expect(vaultIds({ vault: 'dispatched' })).toEqual([
+        's-road',
+        's-road-captain',
+        's-captain-out',
+      ]);
+      expect(vaultIds({ vault: 'completed' })).toEqual(['s-done']);
+    });
+
+    it('asks both questions together — the receipts nobody handed over', () => {
+      expect(vaultIds({ pickup: 'none', vault: 'inVault' })).toEqual(['s-vault', 's-direct']);
+      expect(vaultIds({ pickup: 'captain', vault: 'waiting' })).toEqual(['s-captain']);
+    });
+
+    it('narrows the board as any filter does, and the reset clears them', () => {
+      expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, pickup: 'none' })).toBe(true);
+      expect(hasActiveFilter({ ...EMPTY_DAY_BOARD_FILTERS, vault: 'waiting' })).toBe(true);
+      expect(DAY_BOARD_FILTER_PARAMS).toContain('pickup');
+      expect(DAY_BOARD_FILTER_PARAMS).toContain('vault');
+    });
   });
 });

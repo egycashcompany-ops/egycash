@@ -10,6 +10,7 @@
 //
 //   · one branch copy saved → the same department's people in the other branches are crew, a copy
 //     linked to the catalog and a never-linked copy of the same name alike;
+//   · a department no branch linked to the catalog is one department by its name, in every branch;
 //   · a branch that adds the department AFTER the save is crew without anybody saving again;
 //   · a department that was not chosen stays out;
 //   · a saved id nothing answers to any more is harmless, and one of a deactivated copy still
@@ -271,6 +272,18 @@ describe('a department chosen once is that department in every branch', () => {
       expect.arrayContaining([people.cashMohandessin, people.cashTanta, people.cashAlex]),
     );
     expect(ids).not.toContain(people.ops);
+  });
+
+  // «العمليات» in the owner's screenshot (DEP-0001, DEP-0011, …) is one department no branch ever
+  // linked to the catalog — so its copies are one department by NAME, and the roster must agree.
+  it('a department never linked to the catalog is the same department in every branch', async () => {
+    const opsTanta = await mkDepartment('DEP-0011', tanta, { ar: 'العمليات', en: 'Operations' });
+    const opsTantaPerson = await mkEmployee('ياسر رضا عبد الحميد', opsTanta);
+    await saveCrewDepartments([opsMohandessin.id]);
+    const { ids } = await roster();
+    expect(ids).toEqual(expect.arrayContaining([people.ops, opsTantaPerson]));
+    expect(ids).not.toContain(people.cashMohandessin);
+    expect(ids).not.toContain(people.hr);
   });
 
   it('a branch that adds the department after the save is crew without saving again', async () => {

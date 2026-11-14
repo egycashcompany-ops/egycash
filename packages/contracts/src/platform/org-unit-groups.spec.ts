@@ -30,7 +30,7 @@ describe('foldOrgUnitName', () => {
   it('drops the marks a reader does not see', () => {
     expect(foldOrgUnitName('العَمَلِيّات')).toBe(foldOrgUnitName('العمليات'));
     expect(foldOrgUnitName('العمـــليات')).toBe(foldOrgUnitName('العمليات'));
-    expect(foldOrgUnitName('‏العمليات‎')).toBe(foldOrgUnitName('العمليات'));
+    expect(foldOrgUnitName('\u200Fالعمليات\u200E')).toBe(foldOrgUnitName('العمليات'));
   });
 
   it('keeps two departments that only share words apart', () => {

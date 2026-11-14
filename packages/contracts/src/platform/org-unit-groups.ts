@@ -33,9 +33,9 @@ export interface OrgUnitGroupSource {
  */
 export const foldOrgUnitName = (value: string): string =>
   value
-    .replace(/[​-‏‪-‮⁦-⁩﻿]/gu, '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu, '')
     .toLowerCase()
-    .replace(/[ؐ-ًؚ-ٰٟۖ-ۭـ]/gu, '')
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/gu, '')
     .replace(/[أإآٱ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
     .replace(/ة/gu, 'ه')

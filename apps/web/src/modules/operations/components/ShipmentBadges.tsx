@@ -8,10 +8,15 @@ import {
   type OperationsSecuredStage,
   type OperationsShipmentStatus,
   type OperationsShipmentType,
+  type OperationsVaultQueueShipmentDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge, StatusBadge, type Tone } from '../../../shared/ui/Badge';
 import { cn } from '../../../shared/lib/cn';
+import { type VaultHoldColumn, type VaultPickupColumn } from '../lib/day-board';
+import { cairoToday } from '../lib/shipment-history';
+import { ltrIsolate } from '../lib/shipment-log';
+import { queueStampText, vaultHoldCell, vaultPickupCell } from '../lib/vault-queue';
 import {
   BuildingIcon,
   CheckIcon,
@@ -134,24 +139,181 @@ const STAGE_GLYPH: Record<OperationsSecuredStage, JSX.Element> = {
   completed: <CheckIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />,
 };
 
+/**
+ * How narrow a badge's words may wrap. The stage badge's floor (`wide`) is the daily badge's «لم
+ * يتم التسليم». The vault queue's two columns share about ONE column's width between them, so their
+ * floors are lower and the badge's sides come in: «حالة الاستلام» (`pickup`) as wide as «من
+ * العمليات», so «تم الاستلام» sits over it in exactly two lines; «حالة الخزينة» (`hold`) narrower
+ * still — its column is as wide as its «استُلمت 09:40» anyway, and its longer words take two lines
+ * («لم تُستلم» over «بعد», «خرجت» over «للتسليم»). That is what keeps the actions on a 1440 laptop
+ * beside the menu. Written out because Tailwind reads class names from the source text.
+ */
+const FACE_FIT = {
+  wide: { label: 'min-w-[4.75rem]', badge: '' },
+  pickup: { label: 'min-w-[4.25rem]', badge: '!px-1.5' },
+  hold: { label: 'min-w-[3rem]', badge: '!px-1.5' },
+} as const;
+
+/** The muted face of an absence («لم يتم الاستلام»): no fill, a thin ring, quieter words. */
+const MUTED_FACE =
+  '!bg-transparent !text-slate-500 ring-1 ring-inset ring-slate-300 dark:!bg-transparent dark:!text-slate-400 dark:ring-slate-600';
+
+/**
+ * A stage's badge face — its tone, its glyph, its words and, for a screen reader, its sentence.
+ * Shared by the stage badge and the vault queue's two columns, which speak in the same badges.
+ */
+const StageFace = ({
+  look,
+  label,
+  hint,
+  muted = false,
+  fit = 'wide',
+}: {
+  look: OperationsSecuredStage;
+  label: string;
+  hint: string;
+  muted?: boolean;
+  fit?: keyof typeof FACE_FIT;
+}): JSX.Element => (
+  // «تم الاستلام من القائد» and «تم الاستلام من العمليات» are the longest statuses a board prints:
+  // on one line they widened «الحالة» by some 60px, enough to push the actions past the edge of a
+  // 1440 laptop beside the menu. So the label may wrap — but from a floor as wide as the daily
+  // badge's «لم يتم التسليم», or the table, which squeezes a wrapping cell to its longest word,
+  // stacks it a word a line. The short labels keep their one line; the long ones take exactly two.
+  <Badge tone={STAGE_TONE[look]} size="sm" className={cn(FACE_FIT[fit].badge, muted && MUTED_FACE)}>
+    {STAGE_GLYPH[look]}
+    <span className={cn(FACE_FIT[fit].label, 'whitespace-normal')}>{label}</span>
+    <span className="sr-only"> — {hint}</span>
+  </Badge>
+);
+
 export const SecuredStageBadge = ({ stage }: { stage: OperationsSecuredStage }): JSX.Element => {
   const t = useT();
   const hint = t(`operations.board.stageHint.${stage}`);
   return (
     <span data-secured-stage={stage} title={hint}>
-      {/* «تم الاستلام من القائد» and «تم الاستلام من العمليات» are the longest statuses a board
-          prints: on one line they widened «الحالة» by some 60px, enough to push the actions past
-          the edge of a 1440 laptop beside the menu. So the label may wrap — but from a floor as
-          wide as the daily badge's «لم يتم التسليم», or the table, which squeezes a wrapping cell
-          to its longest word, stacks it a word a line. The short labels keep their one line; the
-          long ones take exactly two. */}
-      <Badge tone={STAGE_TONE[stage]} size="sm">
-        {STAGE_GLYPH[stage]}
-        <span className="min-w-[4.75rem] whitespace-normal">
-          {t(`operations.board.stage.${stage}`)}
-        </span>
-        <span className="sr-only"> — {hint}</span>
-      </Badge>
+      <StageFace look={stage} label={t(`operations.board.stage.${stage}`)} hint={hint} />
+    </span>
+  );
+};
+
+/**
+ * ROUND 13 — THE VAULT QUEUE'S TWO STATUS COLUMNS. «انا عايز الجدول بتاع استلام الخزينه يكون مكان
+ * الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من العمليات، والعمود
+ * التاني بتاع الحاله برضو يبين استلام من الخزينه» — each in the stage badge's own face (the same
+ * tones and glyphs as every board: yellow with a van or the Operations office for a pickup, the
+ * vault's green lock, the blue arrow out, the desk's tick), with WHEN under it:
+ *
+ *   · «حالة الاستلام» — «تم الاستلام من القائد» / «تم الاستلام من العمليات» and the time of that ✓,
+ *     or «لم يتم الاستلام», muted — on a draft nobody collected yet, and for good on a receipt
+ *     nobody handed over («والخزنه تستلم عادي»: the vault never writes the pickup);
+ *   · «حالة الخزينة» — «لم تُستلم بعد», «بالخزينة», or for a receipt of today that has already left,
+ *     «خرجت للتسليم» / «تم التسليم» — each received one with «استُلمت …», the vault's own time.
+ *
+ * A stamp is the time alone when it is today (every receipt here is, and most pickups) and the day
+ * with it otherwise (`queueStampText`) — a pickup from yesterday still waiting says so.
+ */
+const PICKUP_LOOK: Record<VaultPickupColumn, OperationsSecuredStage> = {
+  captain: 'withCaptain',
+  operations: 'withOperations',
+  none: 'awaitingPickup',
+};
+export const VAULT_PICKUP_LABEL: Record<VaultPickupColumn, string> = {
+  captain: 'operations.board.stage.withCaptain',
+  operations: 'operations.board.stage.withOperations',
+  none: 'operations.vault.queue.awaiting',
+};
+const HOLD_LOOK: Record<VaultHoldColumn, OperationsSecuredStage> = {
+  waiting: 'awaitingPickup',
+  inVault: 'inVault',
+  dispatched: 'dispatched',
+  completed: 'completed',
+};
+export const VAULT_HOLD_LABEL: Record<VaultHoldColumn, string> = {
+  waiting: 'operations.vault.queue.hold.waiting',
+  inVault: 'operations.board.stage.inVault',
+  dispatched: 'operations.board.stage.dispatched',
+  completed: 'operations.board.stage.completed',
+};
+const HOLD_HINT: Record<VaultHoldColumn, string> = {
+  waiting: 'operations.vault.queue.holdHint.waiting',
+  inVault: 'operations.board.stageHint.inVault',
+  dispatched: 'operations.board.stageHint.dispatched',
+  completed: 'operations.board.stageHint.completed',
+};
+
+/**
+ * The line under a column's badge — a Cairo stamp, its figures kept in their own order. A pickup's
+ * may wrap at its space (`wrap`), so one from another day («2026-11-13 16:30») takes two short lines
+ * rather than widening the column past its badge; the vault's «استُلمت 09:40» is always today's, and
+ * keeps its one line.
+ */
+const QueueStamp = ({
+  iso,
+  wrap = false,
+  children,
+}: {
+  iso: string;
+  wrap?: boolean;
+  children: string;
+}): JSX.Element => (
+  <time
+    dateTime={iso}
+    data-vault-stamp
+    className={cn(
+      'block text-[11px] leading-tight text-slate-500 dark:text-slate-400',
+      wrap ? 'whitespace-normal' : 'whitespace-nowrap',
+    )}
+  >
+    {children}
+  </time>
+);
+
+export const VaultPickupStatus = ({
+  row,
+}: {
+  row: Pick<OperationsVaultQueueShipmentDto, 'pickedUpBy' | 'pickedUpAt'>;
+}): JSX.Element => {
+  const t = useT();
+  const { by, at } = vaultPickupCell(row);
+  const hint = t(`operations.vault.queue.pickupHint.${by}`);
+  return (
+    <span data-vault-pickup={by} title={hint} className="inline-flex flex-col items-start gap-0.5">
+      <StageFace
+        look={PICKUP_LOOK[by]}
+        label={t(VAULT_PICKUP_LABEL[by])}
+        hint={hint}
+        muted={by === 'none'}
+        fit="pickup"
+      />
+      {at !== null && (
+        <QueueStamp iso={at} wrap>
+          {ltrIsolate(queueStampText(at, cairoToday()))}
+        </QueueStamp>
+      )}
+    </span>
+  );
+};
+
+export const VaultHoldStatus = ({
+  row,
+}: {
+  row: Pick<OperationsVaultQueueShipmentDto, 'status'> &
+    Partial<Pick<OperationsVaultQueueShipmentDto, 'vaultReceivedAt'>>;
+}): JSX.Element => {
+  const t = useT();
+  const { hold, at } = vaultHoldCell(row);
+  const hint = t(HOLD_HINT[hold]);
+  return (
+    <span data-vault-hold={hold} title={hint} className="inline-flex flex-col items-start gap-0.5">
+      <StageFace look={HOLD_LOOK[hold]} label={t(VAULT_HOLD_LABEL[hold])} hint={hint} fit="hold" />
+      {at !== null && (
+        <QueueStamp iso={at}>
+          {t('operations.vault.queue.receivedAt', {
+            at: ltrIsolate(queueStampText(at, cairoToday())),
+          })}
+        </QueueStamp>
+      )}
     </span>
   );
 };

@@ -87,11 +87,14 @@ const render = (
     permissions = ['setting.edit'],
     options = [CASH, CASH_TANTA, HR],
     configured = [] as string[],
+    failed = null,
   }: {
     locale?: Locale;
     permissions?: string[];
     options?: OrgUnitOptionDto[] | null;
     configured?: string[];
+    /** A read that answered with an error instead of data. */
+    failed?: 'settings' | 'options' | null;
   } = {},
 ): string => {
   const store = configureStore({
@@ -103,11 +106,23 @@ const render = (
     },
   });
   const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    // `retryOnMount: false` so a query left in error is READ as an error, not re-tried as pending.
+    defaultOptions: {
+      queries: { retry: false, retryOnMount: false, staleTime: Infinity, refetchOnMount: false },
+    },
   });
-  qc.setQueryData(['platform', 'settings', 'me'], [setting(configured)]);
-  if (options !== null) {
+  const fail = (queryKey: unknown[]): void =>
+    qc
+      .getQueryCache()
+      .build(qc, { queryKey })
+      .setState({ status: 'error', error: new Error('offline'), fetchStatus: 'idle' });
+  if (failed === 'settings') fail(['platform', 'settings', 'me']);
+  else qc.setQueryData(['platform', 'settings', 'me'], [setting(configured)]);
+  if (failed === 'options') fail(['organization', 'departments', 'reference-options']);
+  else if (options !== null) {
     qc.setQueryData(['organization', 'departments', 'reference-options'], options);
+  }
+  if (options !== null) {
     qc.setQueryData(['organization', 'departments', 'reference-options', 'withInactive'], options);
     qc.setQueryData(['organization', 'branches', 'options', 'withInactive'], BRANCHES);
   }
@@ -225,6 +240,22 @@ describe('CrewDepartmentsCard — closed until its arrow is pressed', () => {
     expect(html).toContain(en('common.loading'));
     expect(html).not.toContain(en('operations.crew.departments.summaryNone'));
   });
+
+  // An unread setting is not "nothing chosen", and an unread department list is not "every saved
+  // department has gone": the closed card says it could not load, and claims neither.
+  it('says it could not load when the setting cannot be read, not that nothing is chosen', () => {
+    const html = card({ failed: 'settings' });
+    expect(html).toContain('data-crew-departments-failed="true"');
+    expect(html).toContain(en('common.error.title'));
+    expect(html).not.toContain(en('operations.crew.departments.summaryNone'));
+  });
+
+  it('says it could not load when the departments cannot be read, not that they are gone', () => {
+    const html = card({ failed: 'options', configured: [CASH.id] });
+    expect(html).toContain(en('common.error.title'));
+    expect(html).not.toContain(en('operations.crew.departments.unknownDepartment'));
+    expect(html).not.toContain('data-crew-department-chip=');
+  });
 });
 
 describe('CrewDepartmentsHeader — the arrow', () => {
@@ -238,6 +269,7 @@ describe('CrewDepartmentsHeader — the arrow', () => {
         onToggle,
         crewCount: null,
         loading: false,
+        failed: false,
         saved,
         dirty: false,
       }),

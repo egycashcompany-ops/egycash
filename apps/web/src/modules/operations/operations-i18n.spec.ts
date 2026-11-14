@@ -321,12 +321,15 @@ const SECURED_KEYS = [
   'operations.vault.queue.pickedUp',
   'operations.vault.queue.receivedToday',
   'operations.vault.queue.awaiting',
-  'operations.vault.queue.pickedUpAt',
   'operations.vault.queue.receivedAt',
   'operations.vault.queue.receive',
-  // Round 10 — the desk's pickup under a yellow row, and why a white row has no ✓.
-  'operations.vault.queue.operationsPickedUpAt',
-  'operations.vault.queue.viewOnly',
+  // Round 13 — «مكان الحاله عمودين»: «حالة الاستلام» and «حالة الخزينة», their filters' answers,
+  // and each badge's sentence (the others are the stage badge's own words).
+  'operations.vault.queue.pickupColumn',
+  'operations.vault.queue.vaultColumn',
+  ...['captain', 'operations', 'none'].map((by) => `operations.vault.queue.pickupHint.${by}`),
+  'operations.vault.queue.hold.waiting',
+  'operations.vault.queue.holdHint.waiting',
   // Round 10 — the desk's pickup ✓ on the secured screen and its undo («لو القائد عمل صح ممكن
   // العمليات تشيلها»), and the special grant's «إلغاء استلام الخزينة».
   ...['toggle', 'confirm', 'undo', 'undoCaptain', 'confirmUndoCaptain'].map(

@@ -11053,17 +11053,25 @@ const en: Record<string, string> = {
   'operations.vault.empty': 'The vault is empty',
   // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
   'operations.vault.queue.all': 'All',
+  // Round 13 — «الكل» adds the white rows booked for a later collection day; every row is receivable.
   'operations.vault.queue.allHint':
-    'Also list the secured shipments nobody has confirmed collecting yet — for viewing only',
+    'Also list the secured shipments booked for a later collection day',
   'operations.vault.queue.pickedUp': 'With the captain or Operations',
   'operations.vault.queue.receivedToday': 'In the vault today',
-  'operations.vault.queue.awaiting': 'Not collected yet',
-  'operations.vault.queue.pickedUpAt': 'Collected {{at}}',
-  'operations.vault.queue.operationsPickedUpAt': 'Collected by Operations {{at}}',
-  'operations.vault.queue.viewOnly':
-    'View only — receivable once the captain or Operations confirms the pickup',
+  'operations.vault.queue.awaiting': 'Not collected',
   'operations.vault.queue.receivedAt': 'Received {{at}}',
   'operations.vault.queue.receive': 'Receive into the vault',
+  // Round 13 — «مكان الحاله عمودين»: who collected it from the bank, and the vault's side.
+  'operations.vault.queue.pickupColumn': 'Collection status',
+  'operations.vault.queue.vaultColumn': 'Vault status',
+  'operations.vault.queue.pickupHint.captain':
+    'The crew captain confirmed collecting it from the bank, in the app',
+  'operations.vault.queue.pickupHint.operations': 'Operations confirmed collecting it from the bank',
+  'operations.vault.queue.pickupHint.none':
+    'Neither the crew captain nor Operations confirmed collecting it from the bank',
+  'operations.vault.queue.hold.waiting': 'Not received yet',
+  'operations.vault.queue.holdHint.waiting':
+    'The vault has not received it yet — it can be received now',
   // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
   'operations.nav.vaultReport': 'Vault roll-up',
   'operations.cards.vaultReport': 'Secured shipments received into the vault in the period, by bank',
@@ -24386,16 +24394,21 @@ const ar: Record<string, string> = {
   'operations.vault.empty': 'الخزينة فارغة',
   // الجولة 8 — قائمة استلام الخزينة: أصفر مع القائد، أخضر بالخزينة اليوم.
   'operations.vault.queue.all': 'الكل',
-  'operations.vault.queue.allHint':
-    'إظهار الشحنات المحصنة التي لم يُؤكَّد استلامها من البنك بعد أيضًا — للعرض فقط',
+  // الجولة 13 — «الكل» يضيف المحصنات المحجوزة ليوم استلام لاحق؛ وكل صف قابل للاستلام.
+  'operations.vault.queue.allHint': 'إظهار المحصنات المحجوزة ليوم استلام لاحق أيضًا',
   'operations.vault.queue.pickedUp': 'مع القائد أو العمليات',
   'operations.vault.queue.receivedToday': 'بالخزينة اليوم',
-  'operations.vault.queue.awaiting': 'لم يتم التسليم',
-  'operations.vault.queue.pickedUpAt': 'استلمها القائد {{at}}',
-  'operations.vault.queue.operationsPickedUpAt': 'استلمتها العمليات {{at}}',
-  'operations.vault.queue.viewOnly': 'للعرض فقط — تُستلم بعد أن يؤكد القائد أو العمليات استلامها',
-  'operations.vault.queue.receivedAt': 'استُلمت في الخزينة {{at}}',
+  'operations.vault.queue.awaiting': 'لم يتم الاستلام',
+  'operations.vault.queue.receivedAt': 'استُلمت {{at}}',
   'operations.vault.queue.receive': 'استلام في الخزينة',
+  // الجولة 13 — «مكان الحاله عمودين»: من استلمها من البنك، وجانب الخزينة.
+  'operations.vault.queue.pickupColumn': 'حالة الاستلام',
+  'operations.vault.queue.vaultColumn': 'حالة الخزينة',
+  'operations.vault.queue.pickupHint.captain': 'أكّد قائد الطاقم استلامها من البنك من التطبيق',
+  'operations.vault.queue.pickupHint.operations': 'أكّدت العمليات استلامها من البنك',
+  'operations.vault.queue.pickupHint.none': 'لم يؤكد قائد الطاقم ولا العمليات استلامها من البنك',
+  'operations.vault.queue.hold.waiting': 'لم تُستلم بعد',
+  'operations.vault.queue.holdHint.waiting': 'لم تستلمها الخزينة بعد، ويمكن استلامها الآن',
   // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────
   'operations.nav.vaultReport': 'تجميع الخزينة',
   'operations.cards.vaultReport': 'المحصنات المستلمة في الخزينة خلال الفترة، حسب البنك',

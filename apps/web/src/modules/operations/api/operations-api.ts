@@ -360,10 +360,10 @@ export const listVaultInventory = (
   getPage<OperationsVaultInventoryRowDto>(`/operations/secured/vault${buildQuery(params)}`);
 
 /**
- * «شاشة استلام الخزينه» — the vault's receive queue, as board rows: by default the secured
- * shipments the captain has collected (yellow) and those received into the vault today (green);
- * `all` adds the ones no captain has collected yet (white). `all=false` is the default, so it is
- * not sent.
+ * «شاشة استلام الخزينه» — the vault's receive queue, as board rows. By default (Round 13) what the
+ * vault can receive now — every secured draft collected today or earlier, white or yellow, every
+ * yellow one — and those received into the vault today (green); `all` adds the white ones booked
+ * for a later collection day. `all=false` is the default, so it is not sent.
  */
 export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
   get<OperationsVaultQueueDto>(`/operations/secured/vault-queue${buildQuery(all ? { all } : {})}`);
@@ -371,9 +371,9 @@ export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
 /**
  * `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). Answers the SHIPMENT
  * (now `inVault`, its new version) — not its custody, which this file had typed it as before Round
- * 10 although the route never sent one. Since Round 10 only a shipment somebody has collected
- * (`OPERATIONS_SECURED_RECEIVABLE_STAGES`); a white one is refused, 409
- * `OPERATIONS_SECURED_NOT_PICKED_UP`.
+ * 10 although the route never sent one. Since Round 13 from ANY draft, white or yellow
+ * (`OPERATIONS_SECURED_RECEIVABLE_STAGES` — «والخزنه تستلم عادي»); the receipt records no pickup,
+ * so one nobody handed over keeps «لم يتم الاستلام» in the vault screen's pickup column.
  */
 export const receiveIntoVault = (
   id: string,

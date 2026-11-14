@@ -44,10 +44,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // reader whose screen was read before the vault's ✓ (or a colleague's ✓, for the pickup).
     OPERATIONS_SECURED_LOCKED:
       'The vault has received this secured shipment — it can no longer be changed.',
-    // «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault's ✓ before any pickup ✓,
-    // or a pickup undo with no ✓ left to take back.
+    // Since Round 13 the vault receives without a pickup («والخزنه تستلم عادي»), so this reaches only
+    // the desk's undo of a pickup ✓ that is no longer there — a colleague's undo got there first.
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'Nobody has confirmed collecting this secured shipment from the bank yet — the captain or Operations confirms it first.',
+      'There is no confirmed pickup on this secured shipment to take back — nobody has confirmed collecting it from the bank.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'The pickup of this secured shipment is already confirmed — by its captain or by Operations.',
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
@@ -110,7 +110,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
     OPERATIONS_SECURED_LOCKED: 'استلمت الخزينة هذه المحصنة، فلم يعد تغييرها ممكنًا.',
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'لم يُؤكَّد استلام هذه المحصنة من البنك بعد — يؤكده القائد أو العمليات أولًا.',
+      'لا يوجد تأكيد استلام لهذه المحصنة لإلغائه — لم يؤكد أحد استلامها من البنك.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',

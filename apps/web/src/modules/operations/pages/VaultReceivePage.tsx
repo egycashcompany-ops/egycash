@@ -24,15 +24,15 @@
 //     the screen for the rest of the day instead of vanishing under the treasurer's hand;
 //   · «الكل» lists every one no captain has collected yet as well, on a white row — a captain
 //     without the app never presses ✓, and his shipment must still be receivable. (Round 10
-//     changed that: the desk confirms such a pickup on the secured screen, and a white row here is
-//     for viewing only — see below.)
+//     changed that: the desk confirms such a pickup on the secured screen, and a white row here was
+//     for viewing only; Round 13 lifted that again — see below.)
 //
 // ROUND 9 — THE DAY BOARD'S LOOK. «شاشة الاستلام من الخزنة خليها زى شاشة التشغيل اليومى برضو»: the
 // screen IS the operations board (`components/ShipmentsBoard.tsx`) — the figures over the rows
 // shown and their «عملات أخرى», the one-row dark filter bar, the dark table with its hover cards,
 // the stage badges, the receipt image and «السجل» — drawn with the secured screen's columns
-// (`kind="secured"`: «تاريخ الاستلام» beside «تاريخ التسليم», no «النوع»). What only this screen
-// has, it hands the board:
+// («تاريخ الاستلام» beside «تاريخ التسليم», no «النوع»; since Round 13 the vault's own `kind`, which
+// adds its two status columns). What only this screen has, it hands the board:
 //
 //   · the vault's ✓ («استلام في الخزينة») among the row's actions, at the desk ✓'s place — the
 //     receive form (packaging, seals, two treasurers), unchanged. Only for a reader who may
@@ -40,10 +40,9 @@
 //   · its colours (`vaultRowTint`): yellow with the captain, green once received — still green
 //     after it has gone out, where the Operations boards turn it blue, because here it is today's
 //     receipt;
-//   · under each badge, WHEN it got there — the captain's ✓ on a yellow row, the vault's on a green
-//     one (the Cairo clock, as every Operations stamp);
-//   · in the toolbar, the legend's counts (over the rows shown, as the figures are) and «الكل»;
-//   · a «الحالة» filter offering exactly the stages the list can hold (`vaultQueueStages`).
+//   · in the toolbar, the legend's counts (over the rows shown, as the figures are) and «الكل».
+// (Round 9 also had a line under the status badge saying when, and a «الحالة» filter of the stages
+// the list could hold; Round 13's two columns took both over — see below.)
 //
 // And what it does not: no edit or delete, no desk ✓, and the receipt image is looked at, never
 // managed (`canEditRows={false}`) — the treasury receives here, the desk edits elsewhere. (Round 12
@@ -64,9 +63,8 @@
 //     القائد») or the Operations desk on the secured screen («تم الاستلام من العمليات»). The legend
 //     has ONE yellow chip for both, «مع القائد أو العمليات»: for the vault they are the same work,
 //     and the badge on each row (a van, or the Operations office) says which;
-//   · the vault's ✓ is offered on a yellow row only (`mayReceive`). The white rows «الكل» adds are
-//     there to be SEEN — the owner's «ظاهره … بس مش هيقدر يعمل صح» — with no ✓, and the line under
-//     their badge says why («للعرض فقط …»);
+//   · the vault's ✓ was offered on a yellow row only, the white rows «الكل» added being there to be
+//     SEEN («ظاهره … بس مش هيقدر يعمل صح») — lifted in Round 13, below;
 //   · once received, the row is LOCKED (the board draws no edit or photo change anywhere), and the
 //     one way back is «إلغاء استلام الخزينة» on a green row still IN the vault, for whoever holds
 //     that special grant (`canCancelReceipt`, the board's act and dialog) — it turns yellow again.
@@ -81,8 +79,27 @@
 // (`operationsShipment.create`, which the board checks). The form's catalogs — banks, branches,
 // areas, currencies — are read on the vault's grant too, so a treasurer who may book can fill it.
 // A محصنة booked here starts where every new one starts: nobody has collected it yet, so it is a
-// white row, listed under «الكل», receivable once the captain or the desk confirms the pickup. Only
-// ADDING moves here: the rows themselves stay the desk's to edit (`canEditRows={false}`).
+// white row — on the default list once its collection day has come (Round 13), and receivable as it
+// is. Only ADDING moves here: the rows themselves stay the desk's to edit (`canEditRows={false}`).
+//
+// ROUND 13 — TWO STATUS COLUMNS, AND THE VAULT RECEIVES WITHOUT A PICKUP. «انا عايز الجدول بتاع استلام
+// الخزينه يكون مكان الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من
+// العمليات، والعمود التاني بتاع الحاله برضو يبين استلام من الخزينه. واستلام الخزينه ممكن تستلم يكون
+// القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي»:
+//
+//   · the board is the VAULT's (`kind="vault"`): in «الحالة»'s place, «حالة الاستلام» — «تم الاستلام
+//     من القائد» / «تم الاستلام من العمليات» with the time, or «لم يتم الاستلام» — and «حالة الخزينة»
+//     — «لم تُستلم بعد», «بالخزينة» with the time, or for a receipt of today that has left since,
+//     «خرجت للتسليم» / «تم التسليم». Each column has its own filter in the bar, where the stage box
+//     stands on the secured screen (still one row: nine boxes, as the day board's);
+//   · the vault's ✓ is on EVERY row not yet received, white or yellow (`mayReceive`) — Round 10's
+//     «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح» is lifted. A receipt of a white row
+//     writes no pickup: its row turns green and its pickup column keeps «لم يتم الاستلام», for
+//     good — the two columns say who did what;
+//   · the queue lists by default what the vault can receive NOW (the server's): every محصنة
+//     collected today or earlier, white or yellow, every yellow one, and today's receipts; «الكل»
+//     adds the white ones booked for a later collection day. So the legend counts all three
+//     colours from the start — «لم يتم الاستلام», «مع القائد أو العمليات», «بالخزينة اليوم».
 import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -103,22 +120,21 @@ import { useOperationsVaultQueue } from '../api/operations-queries';
 import { ReceiveIntoVaultDialog } from '../components/ReceiveIntoVaultDialog';
 import { ADD_BUTTON, BRAND_BUTTON, ShipmentsBoard } from '../components/ShipmentsBoard';
 import { isHistoryTooLarge } from '../lib/shipment-history';
-import { cairoStampText, ltrIsolate } from '../lib/shipment-log';
 import {
+  VAULT_LEGEND,
   mayReceive,
   readVaultQueueAll,
   vaultQueueCounts,
-  vaultQueueStages,
-  vaultQueueState,
   vaultRowTint,
   type VaultQueueState,
 } from '../lib/vault-queue';
 
 /**
- * Remembered across visits: the filters the secured board reads (`boardFilterParams('secured')` —
- * day-board-filters.spec holds the two together), and NOT «الكل». The screen opens on the vault's
- * work — the shipments with the captain and today's receipts — and «الكل» is a look further for
- * the moment; it stays in the URL, so a reload keeps it.
+ * Remembered across visits: the filters the vault's board reads (`boardFilterParams('vault')` —
+ * day-board-filters.spec holds the two together: its two status columns' boxes in the stage's
+ * place), and NOT «الكل». The screen opens on the vault's work — what it can receive now and
+ * today's receipts — and «الكل» is a look further for the moment; it stays in the URL, so a reload
+ * keeps it.
  */
 const REMEMBERED_FILTERS = [
   'vehicle',
@@ -127,7 +143,8 @@ const REMEMBERED_FILTERS = [
   'destination',
   'area',
   'captain',
-  'stage',
+  'pickup',
+  'vault',
   'notes',
 ] as const;
 
@@ -140,8 +157,10 @@ const SWATCH: Record<VaultQueueState, string> = {
 
 /**
  * ONE yellow chip for the captain's pickup and the desk's alike — «مع القائد أو العمليات»: the legend
- * says what each colour means to the vault, and both yellows mean the same thing here (its work,
- * receivable now). Two chips would split one colour into two counts the treasurer reads together.
+ * says what each colour means to the vault, and both yellows mean the same thing here (in hand, on
+ * its way in). Two chips would split one colour into two counts the treasurer reads together. The
+ * white chip says the pickup column's own words, «لم يتم الاستلام»: nobody handed it over, and the
+ * vault has not received it either (a receipt nobody handed over is green, and counted there).
  */
 const LEGEND_KEY: Record<VaultQueueState, string> = {
   pickedUp: 'operations.vault.queue.pickedUp',
@@ -201,8 +220,8 @@ export const VaultReceivePage = (): JSX.Element => {
   const [receiving, setReceiving] = useState<OperationsVaultQueueShipmentDto | null>(null);
   const canReceive = can('operationsVault.receive');
 
-  // More candidates than one screen may show (open محصنات plus today's receipts) is REFUSED by the
-  // server, never cut short. Said in the table's place in the secured screen's words — the generic
+  // More candidates than one screen may show (the محصنات the list would read plus today's receipts)
+  // is REFUSED by the server, never cut short. Said in the table's place in the secured screen's words — the generic
   // wording of that refusal asks to narrow a date range, and this screen has none. A refused
   // refetch keeps its last answer beside the error: neither its rows, its figures nor its legend
   // are shown.
@@ -214,56 +233,11 @@ export const VaultReceivePage = (): JSX.Element => {
     : null;
   const loaded = !tooLarge && queue.data !== undefined;
 
-  const legend: VaultQueueState[] = all
-    ? ['pickedUp', 'received', 'awaiting']
-    : ['pickedUp', 'received'];
-
-  /**
-   * Where the row stands and WHEN it got there, under its badge — and the specs' handle on it: the
-   * vault's ✓ on a green row, the pickup ✓ on a yellow one (who confirmed it: the captain or the
-   * desk), and on a white one why it has no ✓ — it is listed to be seen, not received.
-   */
-  const statusNote = (row: OperationsVaultQueueShipmentDto): ReactNode => {
-    const state = vaultQueueState(row);
-    const stamp =
-      state === 'received' ? row.vaultReceivedAt : state === 'pickedUp' ? row.pickedUpAt : null;
-    const stampKey =
-      state === 'received'
-        ? 'operations.vault.queue.receivedAt'
-        : row.pickedUpBy === 'operations'
-          ? 'operations.vault.queue.operationsPickedUpAt'
-          : 'operations.vault.queue.pickedUpAt';
-    return (
-      <span
-        data-vault-row={state}
-        className={cn(
-          'block text-[11px] text-slate-500 dark:text-slate-400',
-          // The view-only line may wrap — it is a sentence; a stamp keeps its one line. About a
-          // stamp's width, so it takes two lines rather than three beside the receipts' stamps.
-          state === 'awaiting'
-            ? 'min-w-[12rem] max-w-[14rem] whitespace-normal leading-tight'
-            : 'whitespace-nowrap',
-        )}
-      >
-        {state === 'awaiting'
-          ? t('operations.vault.queue.viewOnly')
-          : stamp !== null &&
-            t(
-              stampKey,
-              // In the board's own figures — Latin digits, the Cairo day and time — as «السجل»
-              // writes a stamp, and kept in its own order inside the Arabic sentence.
-              { at: ltrIsolate(cairoStampText(stamp)) },
-            )}
-      </span>
-    );
-  };
-
-  // The vault's ✓ — the day board's ✓, in its place and its look, opening the receive form. Only on
-  // a YELLOW row (`mayReceive`): a green row has been received, and the server would refuse it
-  // twice; a white one nobody has collected yet, and the server refuses it until the captain or
-  // the desk confirms the pickup (`OPERATIONS_SECURED_NOT_PICKED_UP`). The board keeps the ✓'s
-  // square, empty, where «السجل» follows it — or fills it with «إلغاء استلام الخزينة» on a row in
-  // the vault, for whoever holds that grant.
+  // The vault's ✓ — the day board's ✓, in its place and its look, opening the receive form. On EVERY
+  // row not yet received (`mayReceive`), white or yellow — «والخزنه تستلم عادي» (Round 13): a green
+  // row has been received, and the server would refuse it twice. The board keeps the ✓'s square,
+  // empty, where «السجل» follows it — or fills it with «إلغاء استلام الخزينة» on a row in the vault,
+  // for whoever holds that grant.
   const receiveAction = (row: OperationsVaultQueueShipmentDto): ReactNode =>
     mayReceive(row) ? (
       <button
@@ -286,16 +260,17 @@ export const VaultReceivePage = (): JSX.Element => {
         {/* What each colour means, and how many of the rows shown wear it — once there are rows
             to count; never beside a refusal. */}
         {loaded &&
-          legend.map((state) => (
+          VAULT_LEGEND.map((state) => (
             <LegendChip key={state} state={state} count={formatNumber(counts[state], locale)}>
               {t(LEGEND_KEY[state])}
             </LegendChip>
           ))}
-        {/* «الكل»: the shipments nobody has collected yet, too — to be seen, not received (Round
-            10: «ظاهره … بس مش هيقدر يعمل صح»; its hint says so). A toggle, pressed while on —
-            the board's button, filled like its «إضافة» while it is. Always offered, while the list
-            loads, fails or is refused: it is the screen's choice of view, not part of the answer.
-            (It cannot lift a refusal — the server's cap counts every open محصنة either way.) */}
+        {/* «الكل»: the white محصنات booked for a later collection day, too — receivable like every
+            row (Round 13; its hint says what it adds). A toggle, pressed while on — the board's
+            button, filled like its «إضافة» while it is. No count of its own: what it would add is
+            not read until it is on, and once on, the figures' count says how many are shown.
+            Always offered, while the list loads, fails or is refused: it is the screen's choice of
+            view, not part of the answer. */}
         <button
           type="button"
           data-vault-all-toggle
@@ -331,10 +306,9 @@ export const VaultReceivePage = (): JSX.Element => {
         createType="secured"
         canToggleReceived={false}
         canEditRows={false}
-        kind="secured"
-        stages={vaultQueueStages(all)}
+        // The vault's board: the secured board's columns, «الحالة» split in two (Round 13).
+        kind="vault"
         tintOf={vaultRowTint}
-        statusNote={statusNote}
         rowAction={canReceive ? receiveAction : undefined}
         // «بس صلاحية خاصة تقدر تلغى استلام الخزينة» — on a green row still in the vault, for whoever
         // holds that grant (the board checks it).

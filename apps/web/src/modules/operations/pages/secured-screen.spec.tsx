@@ -35,7 +35,7 @@ import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
 import { formatNumber } from '../../../shared/lib/format';
 import { __securedBoardKey } from '../api/operations-queries';
-import { CancelVaultReceiptDialog } from '../components/CancelVaultReceiptDialog';
+import { CancelVaultReceiptDialog, noPickup } from '../components/CancelVaultReceiptDialog';
 import { ShipmentsBoard } from '../components/ShipmentsBoard';
 import { SecuredBacklogPage } from './SecuredBacklogPage';
 
@@ -326,12 +326,12 @@ describe('«بس صلاحية خاصة تقدر تلغى استلام الخزي
 });
 
 describe('«إلغاء استلام الخزينة» — the dialog', () => {
-  const dialog = (): string =>
+  const dialog = (row: OperationsDayBoardShipmentDto = GREEN): string =>
     renderToStaticMarkup(
       <Provider store={storeFor([...DESK_GRANTS, CANCEL_GRANT])}>
         <QueryClientProvider client={new QueryClient()}>
           <CancelVaultReceiptDialog
-            target={{ row: GREEN, caption: 'بنك الأهلي · فرع المهندسين ← فرع الدقي · 2026-11-12' }}
+            target={{ row, caption: 'بنك الأهلي · فرع المهندسين ← فرع الدقي · 2026-11-12' }}
             onClose={() => undefined}
           />
         </QueryClientProvider>
@@ -344,7 +344,29 @@ describe('«إلغاء استلام الخزينة» — the dialog', () => {
     expect(html).toContain(ar('operations.secured.cancelReceipt.action'));
     expect(html).toContain('بنك الأهلي · فرع المهندسين ← فرع الدقي · 2026-11-12');
     expect(html).toContain(ar('operations.secured.cancelReceipt.body'));
+    expect(html).toContain('data-cancel-receipt-returns="yellow"');
     expect(html).toContain('data-cancel-receipt-number="R-2026-1111"');
+  });
+
+  // Round 13 — «والخزنه تستلم عادي»: a receipt nobody handed over goes back WHITE when cancelled
+  // (the server restores the pickup record as it stood — nobody — and invents none). Promising
+  // «تعود صفراء» there would tell the treasurer something the board will not show.
+  it('says WHITE again, not yellow, when the vault had received it with nobody’s pickup ✓', () => {
+    const direct = secured('s-direct', 'inVault', 'inVault', null);
+    const html = dialog(direct);
+    expect(html).toContain('data-cancel-receipt-returns="white"');
+    expect(html).toContain(ar('operations.secured.cancelReceipt.bodyNoPickup'));
+    expect(html).not.toContain(ar('operations.secured.cancelReceipt.body'));
+    expect(ar('operations.secured.cancelReceipt.bodyNoPickup')).toContain('الأبيض');
+    expect(ar('operations.secured.cancelReceipt.bodyNoPickup')).not.toContain('صفراء');
+    expect(ar('operations.secured.cancelReceipt.doneNoPickup')).toContain('الأبيض');
+    expect(ar('operations.secured.cancelReceipt.doneNoPickup')).not.toContain('صفراء');
+    // Whoever had collected it — the desk (GREEN) or the captain — it goes back yellow.
+    expect(dialog(secured('s-cap', 'inVault', 'inVault', 'captain'))).toContain(
+      'data-cancel-receipt-returns="yellow"',
+    );
+    expect(noPickup(direct)).toBe(true);
+    expect(noPickup(GREEN)).toBe(false);
   });
 
   it('requires the reason — the red button is off until it is written', () => {

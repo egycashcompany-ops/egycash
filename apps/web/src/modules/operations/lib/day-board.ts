@@ -143,9 +143,10 @@ export const boardFilterParams = (kind: BoardKind): readonly (keyof DayBoardFilt
 
 /**
  * The filters with every one the board offers no box for read as empty — and, given the stages
- * its «الحالة» box offers (`stages`), a stage it does not offer read as empty too: the vault queue
- * offers «لم يتم التسليم» only with «الكل», and an old `?stage=awaitingPickup` left behind once
- * «الكل» is off must not empty the table with nothing on screen to say why.
+ * its «الحالة» box offers (`stages`), a stage it does not offer read as empty too: «محصنات الخزينة»
+ * offers «بالخزينة» alone, and an old `?stage=awaitingPickup` carried over from the secured screen
+ * must not empty the table with nothing on screen to say why. (The vault's receive queue has no
+ * stage box at all since Round 13 — its two status columns' boxes stand there instead.)
  */
 export const offeredFilters = (
   filters: DayBoardFilters,

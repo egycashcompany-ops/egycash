@@ -11044,6 +11044,11 @@ const en: Record<string, string> = {
   'operations.secured.cancelReceipt.save': 'Cancel the receipt',
   'operations.secured.cancelReceipt.back': 'Back',
   'operations.secured.cancelReceipt.done': 'Vault receipt cancelled — the shipment is yellow again.',
+  // Round 13 — a receipt nobody handed over («والخزنه تستلم عادي») goes back WHITE: no pickup is invented.
+  'operations.secured.cancelReceipt.bodyNoPickup':
+    'The shipment leaves the vault and turns white again, as before the receipt — nobody had confirmed collecting it from the bank: it can be edited, then received into the vault anew. The cancelled receipt and its reason stay in the log.',
+  'operations.secured.cancelReceipt.doneNoPickup':
+    'Vault receipt cancelled — the shipment is white again: nobody had confirmed collecting it.',
   'operations.vault.title': 'Vault contents',
   'operations.vault.subtitle': 'Everything held in the vault right now.',
   'operations.vault.packages': 'Packages',
@@ -24385,6 +24390,11 @@ const ar: Record<string, string> = {
   'operations.secured.cancelReceipt.save': 'إلغاء الاستلام',
   'operations.secured.cancelReceipt.back': 'رجوع',
   'operations.secured.cancelReceipt.done': 'أُلغي استلام الخزينة، وعادت المحصنة صفراء.',
+  // الجولة 13 — المحصنة التي استلمتها الخزينة دون تأكيد استلام تعود بيضاء: لا يُختلَق استلام.
+  'operations.secured.cancelReceipt.bodyNoPickup':
+    'ستخرج المحصنة من الخزينة وتعود باللون الأبيض كما كانت قبل الاستلام، إذ لم يؤكد أحد استلامها من البنك: يمكن تعديلها، ثم استلامها في الخزينة من جديد. يبقى الاستلام الملغى وسببه في السجل.',
+  'operations.secured.cancelReceipt.doneNoPickup':
+    'أُلغي استلام الخزينة، وعادت المحصنة إلى اللون الأبيض، إذ لم يؤكد أحد استلامها من البنك.',
   'operations.vault.title': 'محتويات الخزينة',
   'operations.vault.subtitle': 'كل ما هو محفوظ في الخزينة الآن.',
   'operations.vault.packages': 'العبوات',

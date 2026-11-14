@@ -488,9 +488,10 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
    */
   canEditRows?: boolean;
   /**
-   * On a secured board (`kind`), the stages its «الحالة» filter offers — the ones its rows can be
-   * in. The secured screen's open stages by default; the vault queue hands in its own (with or
-   * without «الكل»). A stage in the URL that is not offered narrows nothing, as a param with no box.
+   * On a secured board (`kind="secured"`), the stages its «الحالة» filter offers — the ones its
+   * rows can be in. The secured screen's open stages by default; «محصنات الخزينة» and «سجل الخزينة»
+   * hand in their own. A stage in the URL that is not offered narrows nothing, as a param with no
+   * box. (The vault's board has no stage box since Round 13: its two status columns' boxes.)
    */
   stages?: readonly OperationsSecuredStage[];
   /**

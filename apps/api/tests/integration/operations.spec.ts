@@ -7067,7 +7067,8 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
 // العمليات تم الاستلام من العمليات … مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح ،الشاشه
 // بتاعت استلام الخزينة لما تعمل صح ميقدر حد من القادة او العمليات او الخزنه يعدل عليها والمحصنة دى بتروح
 // تلقائى ل صرف الخزنة». The pickup is ONE record on the shipment (the captain's ✓ in the app or the
-// desk's), the vault receives only a picked-up shipment, a received one is locked, a special grant
+// desk's), the vault receives only a picked-up shipment (lifted in Round 13 — «والخزنه تستلم عادي»:
+// sections B and F now pin a receipt nobody handed over), a received one is locked, a special grant
 // cancels the receipt, and «صرف الخزينة» lists everything in the vault in the board look.
 describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and «صرف الخزينة»', () => {
   const R10_PICKUP = shift(370);

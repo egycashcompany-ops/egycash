@@ -337,6 +337,8 @@ const SECURED_KEYS = [
   ),
   ...[
     'action', 'body', 'receiptNumber', 'reason', 'reasonHint', 'reasonShort', 'save', 'back', 'done',
+    // Round 13 — the cancel of a receipt nobody handed over says white, not yellow.
+    'bodyNoPickup', 'doneNoPickup',
   ].map((key) => `operations.secured.cancelReceipt.${key}`),
 ];
 

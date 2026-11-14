@@ -358,7 +358,8 @@ its entry here in the same PR.
       the vault's ✓ is on every row not yet received, and the «للعرض فقط» line is gone. Each column
       has its own filter where the stage filter was (the bar stays one row); the legend counts
       «لم يتم الاستلام», «مع القائد أو العمليات» and «بالخزينة اليوم» from the start. The other
-      boards keep their one «الحالة».
+      boards keep their one «الحالة». «إلغاء استلام الخزينة» on a receipt nobody handed over says
+      the row goes back white, not yellow.
     - The captain's route: a pickup he never started on a محصنة the vault has received is done with
       — it no longer holds back his next stop, and his record of it stays as it was (not started). One
       he had started stays his to finish; his ✓ then records his own step only. A cancelled receipt

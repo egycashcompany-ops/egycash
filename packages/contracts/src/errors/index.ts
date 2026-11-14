@@ -173,8 +173,8 @@ export const ErrorCodes = {
   OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
   /**
    * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
-   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
-   * desk's undo has no pickup ✓ to take back.
+   * desk's undo has no pickup ✓ to take back. Round 10's other use — the vault's ✓ refusing a white
+   * row — was lifted in Round 13 («والخزنه تستلم عادي»): the vault receives any draft.
    */
   OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
   /**
@@ -222,7 +222,11 @@ export const ErrorCodes = {
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',
   /** The sequential lock: an earlier stop on this captain's route is not finished yet. */
   OPERATIONS_EXECUTION_OUT_OF_SEQUENCE: 'OPERATIONS_EXECUTION_OUT_OF_SEQUENCE',
-  /** Nothing left to execute here — the stop is already settled. */
+  /**
+   * Nothing left to execute here — the stop is already settled: the captain finished it, the back
+   * office completed the shipment, or (Round 13) the vault received a secured shipment whose pickup
+   * leg he never started.
+   */
   OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',

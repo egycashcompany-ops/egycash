@@ -336,7 +336,8 @@ class OperationsSecuredService {
   /**
    * THE DESK'S PICKUP ✓ — «لو العمليات تم الاستلام من العمليات» (Round 10). The Operations desk
    * confirms it has collected a secured shipment: the shipment's pickup record is written as the
-   * desk's, the row turns yellow (`withOperations`) and the vault may receive it. Never on a leg —
+   * desk's, the row turns yellow (`withOperations`) and the vault's screen says who brought it in
+   * (since Round 13 the vault may receive a shipment without it). Never on a leg —
    * the captain's execution record is his own.
    *
    * Only while the vault has not received it (`assertSecuredUnlocked`), and only when no pickup is

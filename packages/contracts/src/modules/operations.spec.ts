@@ -20,6 +20,7 @@ import {
   OPERATIONS_PICKED_UP_EXECUTION_STATUSES,
   OPERATIONS_RECEIPT_CANCEL_REASON_MAX,
   OPERATIONS_SECURED_PICKED_UP_BY,
+  OPERATIONS_SECURED_PICKED_UP_STAGES,
   OPERATIONS_SECURED_RECEIVABLE_STAGES,
   OPERATIONS_SECURED_STAGES,
   OPERATIONS_SHIPMENT_HISTORY_MAX_DAYS,
@@ -109,8 +110,15 @@ describe('operations vocabulary — the shape it actually has today', () => {
       'dispatched',
       'completed',
     ]);
-    // The vault receives a yellow row only — never a white one.
-    expect(OPERATIONS_SECURED_RECEIVABLE_STAGES).toEqual(['withCaptain', 'withOperations']);
+    // Round 13 — «والخزنه تستلم عادي»: the vault receives ANY draft, white or yellow (Round 10 had
+    // allowed the yellow ones only)…
+    expect(OPERATIONS_SECURED_RECEIVABLE_STAGES).toEqual([
+      'awaitingPickup',
+      'withCaptain',
+      'withOperations',
+    ]);
+    // "Picked up" is its own list — the two yellow ones — what the pickup column reads.
+    expect(OPERATIONS_SECURED_PICKED_UP_STAGES).toEqual(['withCaptain', 'withOperations']);
     expect(OPERATIONS_SECURED_PICKED_UP_BY).toEqual(['captain', 'operations']);
     // The captain's ✓ on collecting it from the bank is every state from `pickedUp` on.
     expect(OPERATIONS_PICKED_UP_EXECUTION_STATUSES).toEqual(['pickedUp', 'delivered', 'completed']);

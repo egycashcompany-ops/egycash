@@ -9,18 +9,13 @@ export const getCaptainReport = async (req: Request, res: Response): Promise<voi
   ok(res, await operationsReportService.captainReport(query));
 };
 
+/**
+ * «تقرير البنوك» (Round 14, the legacy `/vault1_reports`) — over the reports' period, which here
+ * means the days the vault RECEIVED the shipments (the owner's decision, report.service.ts).
+ */
 export const getBankReport = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsReportQuery>(req);
   ok(res, await operationsReportService.bankReport(query));
-};
-
-/**
- * The legacy `/vault1_reports` — over the reports' period, which here means the days the vault
- * RECEIVED the shipments (the owner's decision, report.service.ts).
- */
-export const getVaultReport = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, OperationsReportQuery>(req);
-  ok(res, await operationsReportService.vaultReport(query));
 };
 
 /**

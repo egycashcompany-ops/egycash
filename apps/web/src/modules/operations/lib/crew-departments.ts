@@ -216,3 +216,12 @@ export const choiceMatches = (choice: CrewDepartmentChoice, query: string): bool
   const hay = [choice.label ?? '', ...choice.branches.map((branch) => branch.name ?? '')];
   return hay.some((text) => foldOrgUnitName(text).includes(needle));
 };
+
+/**
+ * «إدارات العمليات» — the screen of its own (Round 14: «شاشة لوحدها في القائمة»), and the grant that
+ * opens it. The grant is the setting's write (`setting.edit`): the screen does nothing else, and
+ * the settings endpoint refuses that write to anybody without it. routes.tsx and the sidebar row
+ * spell the same key; a spec holds them together.
+ */
+export const CREW_DEPARTMENTS_ROUTE = '/operations/crew-departments';
+export const CREW_DEPARTMENTS_PERMISSION = 'setting.edit';

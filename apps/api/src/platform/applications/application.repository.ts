@@ -10,8 +10,9 @@ class ApplicationRepository extends BaseRepository<ApplicationDoc> {
   /**
    * Every live application whose `permissionKey` is one of `permissionKeys` — the catalog half of
    * deriving navigation from what the caller may actually do — plus the rows at `hubRoutes`: the
-   * navigation hubs the caller opens through one of their tabs' keys, whatever key the row itself
-   * carries. The resolver still decides entitlement; this only keeps the candidates small.
+   * navigation hubs the caller opens through one of their tabs' keys, and the shared rows he opens
+   * through one of theirs, whatever key the row itself carries. The resolver still decides
+   * entitlement; this only keeps the candidates small.
    *
    * A row with a NULL key never matches, and that is the point rather than a side effect: null means
    * "no permission was declared for this screen", and a screen nobody declared authority over must

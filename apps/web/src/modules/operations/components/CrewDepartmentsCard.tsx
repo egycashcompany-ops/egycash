@@ -1,4 +1,4 @@
-// WHO IS OPERATIONS CREW — configured on the screen where its absence is noticed.
+// WHO IS OPERATIONS CREW — configured on «إدارات العمليات», a screen of its own (Round 14).
 //
 // The setting (`operations.crewDepartmentIds`) has existed since the roster became the org chart,
 // but only as a list of ObjectIds typed into system settings. It went unset, and unset means the
@@ -14,15 +14,18 @@
 // branches have it and which; the server reads a chosen department in every branch, a branch that
 // adds it later included (lib/crew-departments.ts here, crew/crew-departments.ts on the server).
 //
-// COLLAPSED BY DEFAULT: «عاوز أخليها تبقى الديفولت بتاعها إن هي مخفية، ولما أدوس كليك على السهم
-// يعرضها لي». The header still says what is chosen — the departments as chips and how many people
-// that makes — so a closed card never hides the state the roster below depends on. It starts closed
-// on every visit: remembering an opened card would make it open by default, which is what he asked
-// not to have.
+// A SCREEN OF ITS OWN (Round 14): «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز الطاقم», and
+// asked where, «شاشة لوحدها في القائمة». Round 15 had folded the card shut on «كشف الأطقم» («عاوز
+// أخليها تبقى الديفولت بتاعها إن هي مخفية») because it sat above the roster and was in the way; on
+// «إدارات العمليات» (`pages/CrewDepartmentsPage.tsx`) it IS the page, so it is simply open — there is
+// nothing for it to be in the way of, and a fold the reader must open on every visit to the one
+// thing the screen does would be a click for nothing. Its look is round 15's: one tile per company
+// department, the search, «تراجع» / «حفظ» and the count under them; the page title names it, and
+// «تغييرات غير محفوظة» sits by «حفظ», where the eye is when it matters.
 //
 // It writes at ORGANIZATION scope because the setting is declared organization-only — who works in
 // Operations is one fact about the company, not a per-branch opinion.
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OperationsSettingKeys, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -37,7 +40,7 @@ import { Card } from '../../../shared/ui/Card';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { SearchInput } from '../../../shared/ui/SearchInput';
-import { BuildingIcon, ChevronIcon, SitemapIcon } from '../../../shared/ui/icons';
+import { BuildingIcon } from '../../../shared/ui/icons';
 import { cn } from '../../../shared/lib/cn';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useSetOperationsSetting } from '../api/operations-queries';
@@ -55,24 +58,11 @@ import {
 const configuredIds = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
 
-/** How many chosen departments the closed header names before it says «+N». */
-export const SUMMARY_CHIPS = 6;
-
-export const CrewDepartmentsCard = ({
-  crewCount = null,
-}: {
-  /**
-   * How many people the SAVED choice makes — the roster's own count, passed by the page that has
-   * already read it. Null while it is unknown, and when the roster is the unconfigured fallback.
-   */
-  crewCount?: number | null;
-}): JSX.Element | null => {
+export const CrewDepartmentsCard = (): JSX.Element | null => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const canEdit = can('setting.edit');
-  const headerId = useId();
-  const panelId = useId();
 
   // None of these requests is made for somebody who cannot write the setting: this card is the
   // only reader here, and it renders nothing without `setting.edit`.
@@ -110,7 +100,6 @@ export const CrewDepartmentsCard = ({
   );
   const savedKeys = useMemo(() => savedChoiceKeys(choices, stored), [choices, stored]);
 
-  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<string[]>(savedKeys);
   // Follow the server once it answers, and after every save — keyed on CONTENT, so a refetch that
@@ -130,11 +119,10 @@ export const CrewDepartmentsCard = ({
     options.isLoading || allDepartments.isLoading || branches.isLoading || settings.isLoading;
   // Either read failing leaves the card unable to say what is chosen. The setting unread is not
   // "nothing chosen" (and a save from there would overwrite what is saved without anyone seeing
-  // it), and the departments unread would turn every saved one into «إدارة لم تعد نشطة» on the
-  // closed card. So the card says it could not load, and offers nothing to save. A failed REFETCH
-  // keeps what was read before, which is still the truth as far as anyone knows — not a failure.
+  // it), and the departments unread would turn every saved one into «إدارة لم تعد نشطة». So the
+  // card says it could not load, and offers nothing to save. A failed REFETCH keeps what was read
+  // before, which is still the truth as far as anyone knows — not a failure.
   const failed = options.isLoadingError || settings.isLoadingError;
-  const byKey = new Map(choices.map((choice) => [choice.key, choice]));
 
   const submit = (): void => {
     save.mutate(
@@ -148,36 +136,20 @@ export const CrewDepartmentsCard = ({
   };
 
   return (
-    <Card className="mb-4 overflow-hidden">
-      <div data-crew-departments={open ? 'open' : 'closed'}>
-        <CrewDepartmentsHeader
-          headerId={headerId}
-          panelId={panelId}
-          open={open}
-          onToggle={() => setOpen((was) => !was)}
-          crewCount={crewCount}
-          loading={loading}
-          failed={failed}
-          saved={savedKeys.flatMap((key) => byKey.get(key) ?? [])}
-          dirty={!sameChoices(draft, savedKeys)}
-        />
-        {open && (
-          <CrewDepartmentsPanel
-            headerId={headerId}
-            panelId={panelId}
-            state={failed ? 'failed' : loading ? 'loading' : 'ready'}
-            choices={choices}
-            draft={draft}
-            savedKeys={savedKeys}
-            search={search}
-            onSearch={setSearch}
-            onToggleChoice={(key) => setDraft((prev) => toggleChoice(prev, key))}
-            onDiscard={() => setDraft(savedKeys)}
-            onSave={submit}
-            saving={save.isPending}
-          />
-        )}
-      </div>
+    <Card className="overflow-hidden">
+      <CrewDepartmentsPanel
+        label={t('operations.crew.departments.title')}
+        state={failed ? 'failed' : loading ? 'loading' : 'ready'}
+        choices={choices}
+        draft={draft}
+        savedKeys={savedKeys}
+        search={search}
+        onSearch={setSearch}
+        onToggleChoice={(key) => setDraft((prev) => toggleChoice(prev, key))}
+        onDiscard={() => setDraft(savedKeys)}
+        onSave={submit}
+        saving={save.isPending}
+      />
     </Card>
   );
 };
@@ -187,129 +159,9 @@ const useChoiceLabel = (): ((choice: CrewDepartmentChoice) => string) => {
   return (choice) => choice.label ?? t('operations.crew.departments.unknownDepartment');
 };
 
-/**
- * The line that is always there: the title, the people count, the SAVED departments as chips, and
- * the arrow. One real `<button>` — Enter and Space open it, and `aria-expanded` says which way.
- */
-export const CrewDepartmentsHeader = ({
-  headerId,
-  panelId,
-  open,
-  onToggle,
-  crewCount,
-  loading,
-  failed,
-  saved,
-  dirty,
-}: {
-  headerId: string;
-  panelId: string;
-  open: boolean;
-  onToggle: () => void;
-  crewCount: number | null;
-  loading: boolean;
-  /** The setting or the departments could not be read: nothing can be said about what is chosen. */
-  failed: boolean;
-  /** The saved departments, in the order the panel lists them. */
-  saved: readonly CrewDepartmentChoice[];
-  /** Ticks not yet saved — said on the closed card too, so they are not forgotten behind it. */
-  dirty: boolean;
-}): JSX.Element => {
-  const t = useT();
-  const labelOf = useChoiceLabel();
-  return (
-    <h3 className="m-0">
-      <button
-        type="button"
-        id={headerId}
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-start transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:hover:bg-slate-800/60 sm:px-5"
-      >
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300">
-          <SitemapIcon className="h-[18px] w-[18px]" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {t('operations.crew.departments.title')}
-            </span>
-            {crewCount !== null && (
-              <span
-                className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium tabular-nums leading-4 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                data-crew-departments-people="true"
-              >
-                {t('operations.crew.departments.people', { count: crewCount })}
-              </span>
-            )}
-            {dirty && (
-              <Badge tone="warning" size="sm">
-                {t('operations.crew.departments.unsaved')}
-              </Badge>
-            )}
-          </span>
-          <span
-            className="mt-1.5 flex flex-wrap items-center gap-1.5"
-            data-crew-departments-summary="true"
-          >
-            {failed ? (
-              <span
-                className="text-xs text-amber-700 dark:text-amber-400"
-                data-crew-departments-failed="true"
-              >
-                {t('common.error.title')}
-              </span>
-            ) : loading ? (
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {t('common.loading')}
-              </span>
-            ) : saved.length === 0 ? (
-              <span className="text-xs text-amber-700 dark:text-amber-400">
-                {t('operations.crew.departments.summaryNone')}
-              </span>
-            ) : (
-              <>
-                {saved.slice(0, SUMMARY_CHIPS).map((choice) => (
-                  <span
-                    key={choice.key}
-                    data-crew-department-chip={choice.key}
-                    className={cn(
-                      'max-w-[14rem] truncate rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset',
-                      choice.state === 'active'
-                        ? 'bg-brand-50 text-brand-700 ring-brand-200 dark:bg-brand-950 dark:text-brand-300 dark:ring-brand-800'
-                        : 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800',
-                    )}
-                  >
-                    {labelOf(choice)}
-                  </span>
-                ))}
-                {saved.length > SUMMARY_CHIPS && (
-                  <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                    {t('operations.crew.departments.more', {
-                      count: saved.length - SUMMARY_CHIPS,
-                    })}
-                  </span>
-                )}
-              </>
-            )}
-          </span>
-        </span>
-        <ChevronIcon
-          className={cn(
-            'h-5 w-5 shrink-0 text-slate-400 transition-transform duration-200 dark:text-slate-500',
-            open && 'rotate-180',
-          )}
-        />
-      </button>
-    </h3>
-  );
-};
-
-/** The open card: the search, one tile per department, and «تراجع» / «حفظ». */
+/** The card's body: what it is for, the search, one tile per department, and «تراجع» / «حفظ». */
 export const CrewDepartmentsPanel = ({
-  headerId,
-  panelId,
+  label,
   state,
   choices,
   draft,
@@ -321,8 +173,8 @@ export const CrewDepartmentsPanel = ({
   onSave,
   saving,
 }: {
-  headerId: string;
-  panelId: string;
+  /** The region's accessible name — the page's title. */
+  label: string;
   /**
    * `loading` until the inactive departments and the branch names are in as well: a tile that
    * re-groups or renames itself under the pointer would be worse than a short wait.
@@ -345,10 +197,10 @@ export const CrewDepartmentsPanel = ({
 
   return (
     <div
-      id={panelId}
       role="region"
-      aria-labelledby={headerId}
-      className="space-y-4 border-t border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-5"
+      aria-label={label}
+      data-crew-departments="true"
+      className="space-y-4 px-4 py-4 sm:px-5"
     >
       <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
         {t('operations.crew.departments.hint')}
@@ -402,8 +254,18 @@ export const CrewDepartmentsPanel = ({
             </p>
           )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-              {t('operations.crew.departments.chosenCount', { count: draft.length })}
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                {t('operations.crew.departments.chosenCount', { count: draft.length })}
+              </span>
+              {dirty && (
+                // Beside «حفظ», where the eye is when it matters — the tiles already show the ticks.
+                <span data-crew-departments-unsaved="true">
+                  <Badge tone="warning" size="sm">
+                    {t('operations.crew.departments.unsaved')}
+                  </Badge>
+                </span>
+              )}
             </span>
             <div className="flex flex-wrap gap-2">
               <Button

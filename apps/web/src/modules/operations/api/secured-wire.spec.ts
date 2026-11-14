@@ -7,15 +7,16 @@
 //   · «بس صلاحية خاصة تقدر تلغى استلام الخزينة»: the cancelled receipt POSTs its reason and version;
 //   · «كله يبقى موجود فى تاريخ يتفلتر»: «صرف الخزينة» asks for every day with NO `date` key (the
 //     server refuses an empty one), or for one delivery day;
-//   · «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» (Round 11): «تجميع الخزينة» asks for
-//     its period — `from` and `to` on the request, as the captain report's.
+//   · «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» (Round 11): the vault roll-up asks for
+//     its period — `from` and `to` on the request, as the captain report's — at
+//     `/reports/banks` since Round 14, when it became «تقرير البنوك».
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { del, get, post } from '../../../shared/lib/api-client';
 import {
   cancelVaultReceipt,
   confirmSecuredPickup,
+  getBankReport,
   getSecuredDispatchBoard,
-  getVaultReport,
   undoSecuredPickup,
 } from './operations-api';
 
@@ -76,9 +77,9 @@ describe('«صرف الخزينة» — every shipment in the vault, or one deli
   });
 });
 
-describe('«تجميع الخزينة» — the period of vault receipts', () => {
-  it('carries `from` and `to` on the request, both days inclusive', async () => {
-    await getVaultReport({ from: '2026-11-01', to: '2026-11-30' });
-    expect(get).toHaveBeenCalledWith('/operations/reports/vault?from=2026-11-01&to=2026-11-30');
+describe('«تقرير البنوك» — the period of vault receipts (was «تجميع الخزينة»)', () => {
+  it('carries `from` and `to` on the request, both days inclusive, at the screen’s own name', async () => {
+    await getBankReport({ from: '2026-11-01', to: '2026-11-30' });
+    expect(get).toHaveBeenCalledWith('/operations/reports/banks?from=2026-11-01&to=2026-11-30');
   });
 });

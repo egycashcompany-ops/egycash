@@ -31,11 +31,15 @@
 // advertises nothing the six separate rows did not. Its own stored key still opens it too, so an
 // administrator who edits that key is not silently ignored.
 //
+// A SHARED ROW (`SHARED_NAVIGATION_ROWS`, Round 14) is the same rule for one screen without tabs
+// that two grants open — «تقرير البنوك», read by the shipments' readers and the vault's, because it
+// is the screen «تجميع الخزينة» was. `navigationRowKeys` answers both kinds.
+//
 // A NULL `permissionKey` is entitled to nobody. It means no permission was declared for that screen,
 // and "nobody said who may open this" must not resolve to "everybody may". The caller loading the
 // candidates already excludes them; the check is repeated here so the rule holds for any caller of
 // this function, and so it is visible where the decision is made.
-import { hubPermissions, type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
+import { navigationRowKeys, type MyApplicationCategoryDto, type DataScope } from '@ecms/contracts';
 
 export interface EffectiveAppInput {
   id: string;
@@ -73,13 +77,13 @@ export const assembleEffectiveApplications = (
   sections: EffectiveSectionInput[] = [],
 ): MyApplicationCategoryDto[] => {
   // Dedupe by id (first wins), keep only active applications, and keep only the ones the caller is
-  // entitled to: a declared permission that they hold — or, for a hub, any of its tabs' keys. No
-  // key declared → nobody is entitled, hub or not.
+  // entitled to: a declared permission that they hold — or, for a hub or a shared row, any of its
+  // other keys. No key declared → nobody is entitled, hub, shared row or not.
   const entitled = (app: EffectiveAppInput): boolean => {
     const key = app.permissionKey;
     if (key === null) return false;
     if (permissions[key] !== undefined) return true;
-    return hubPermissions(app.route).some((tabKey) => permissions[tabKey] !== undefined);
+    return navigationRowKeys(app.route).some((other) => permissions[other] !== undefined);
   };
   const active = new Map<string, EffectiveAppInput>();
   for (const app of apps) {

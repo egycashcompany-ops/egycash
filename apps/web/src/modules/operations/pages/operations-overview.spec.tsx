@@ -20,7 +20,11 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { OPERATIONS_SHORTCUTS, OperationsOverviewPage } from './OperationsOverviewPage';
+import {
+  OPERATIONS_SHORTCUTS,
+  OperationsOverviewPage,
+  opensShortcut,
+} from './OperationsOverviewPage';
 
 const ar = (key: string): string => translate('ar', key);
 
@@ -145,7 +149,9 @@ describe('a card only for a screen its reader may open', () => {
   it('a vault-only reader sees the vault’s screens and none of the desk’s', () => {
     const routes = cards(render(VAULT));
     expect(routes).toEqual(
-      OPERATIONS_SHORTCUTS.filter((c) => c.permission === 'operationsVault.view').map((c) => c.to),
+      OPERATIONS_SHORTCUTS.filter((c) => opensShortcut(c, (key) => VAULT.includes(key))).map(
+        (c) => c.to,
+      ),
     );
     expect(routes).not.toContain('/operations/shipments');
   });
@@ -154,5 +160,38 @@ describe('a card only for a screen its reader may open', () => {
     const html = render([]);
     expect(cards(html)).toEqual([]);
     expect(html).toContain(ar('operations.overview.noAccessTitle'));
+  });
+});
+
+// Round 14 — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك، وتجميع خزينه كشاشه مفيش حاجه
+// اسمها تجميع خزينه، شيلها خالص».
+describe('«تجميع الخزينة» is gone, and «تقرير البنوك» is its card for both its readers', () => {
+  it('draws no card for the retired address, under any grant', () => {
+    const all = render([...SHIPMENTS, ...VAULT, 'operationsCrew.view', 'operationsCatalog.manage']);
+    expect(cards(all)).not.toContain('/operations/reports/vault');
+    expect(all.replace(/<[^>]+>/g, ' ')).not.toContain('تجميع الخزينة');
+    expect(OPERATIONS_SHORTCUTS.map((c) => c.to)).not.toContain('/operations/reports/vault');
+  });
+
+  it('draws «تقرير البنوك» for the shipments’ reader and for the vault’s, with the roll-up’s words', () => {
+    for (const grants of [SHIPMENTS, VAULT]) {
+      const card = cardOf(render(grants), '/operations/reports/banks');
+      expect(card).toContain('تقرير البنوك');
+      expect(card).toContain(ar('operations.cards.bankReport'));
+    }
+    // What the card says is the vault roll-up's content, not the completed shipments any more.
+    expect(ar('operations.cards.bankReport')).toBe('المحصنات المستلمة في الخزينة خلال الفترة، حسب البنك');
+    expect(cards(render(['operationsCrew.view']))).not.toContain('/operations/reports/banks');
+  });
+
+  it('gates it on the route guard’s own list (routes.tsx `anyOf`)', () => {
+    const routes = readFileSync(fileURLToPath(new URL('../routes.tsx', import.meta.url)), 'utf8');
+    const route = routes.slice(routes.indexOf('path="reports/banks"'));
+    expect(/<RequirePermission anyOf=\{([A-Z_]+)\}/.exec(route)?.[1]).toBe(
+      'OPERATIONS_BANK_REPORT_KEYS',
+    );
+    expect(OPERATIONS_SHORTCUTS.find((c) => c.to === '/operations/reports/banks')?.permission).toEqual(
+      ['operationsShipment.view', 'operationsVault.view'],
+    );
   });
 });

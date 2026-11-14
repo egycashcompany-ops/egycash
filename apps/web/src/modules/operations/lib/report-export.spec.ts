@@ -1,5 +1,5 @@
 // The reports' files (`lib/report-export.ts`), asserted directly — «و ان اكسيل او pdf» on «تقرير القادة»
-// and «تجميع الخزينة»: EXACTLY what the screen shows (the rows the name filter left, «الإجمالي» under
+// and «تقرير البنوك»: EXACTLY what the screen shows (the rows the name filter left, «الإجمالي» under
 // them, the money split the table's way), through the app's one xlsx writer and the company's report
 // form; the vault's panel as a second sheet and a second printed page.
 import { describe, expect, it } from 'vitest';
@@ -230,7 +230,7 @@ describe('the workbook sheet and the printed form', () => {
     const doc = reportPrintDoc({
       t,
       locale: 'ar',
-      title: 'تجميع الخزينة',
+      title: 'تقرير البنوك',
       subtitle: 'الفترة',
       table,
     });
@@ -261,7 +261,7 @@ describe('the workbook sheet and the printed form', () => {
   });
 
   it('draws «الإجمالي» inside the table, under the rows, a figure under every column', () => {
-    const doc = reportPrintDoc({ t, locale: 'ar', title: 'تجميع الخزينة', subtitle: '', table });
+    const doc = reportPrintDoc({ t, locale: 'ar', title: 'تقرير البنوك', subtitle: '', table });
     const html = buildFleetReportHtml(doc);
     const body = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
     const last = body.slice(body.lastIndexOf('<tr'));

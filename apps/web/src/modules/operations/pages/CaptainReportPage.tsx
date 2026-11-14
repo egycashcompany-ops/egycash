@@ -11,7 +11,8 @@
 //
 // «عدد الشحنات», NOT legacy's «عدد المحصنات». Legacy's header said «المحصنات» over a count of
 // daily AND secured shipments together (`docs_count` over both facets, :4970); the column is named
-// for what it counts. The vault roll-up, whose rows ARE محصنات only, keeps «عدد المحصنات».
+// for what it counts. «تقرير البنوك» (the vault roll-up), whose rows ARE محصنات only, keeps «عدد
+// المحصنات».
 //
 // NUMBERS WILL DIFFER FROM THE LEGACY REPORT, deliberately and in one direction: package counts
 // were multiplied by the number of currencies on each shipment (Q26), so a multi-currency

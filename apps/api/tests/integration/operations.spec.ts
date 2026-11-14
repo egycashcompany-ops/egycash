@@ -45,7 +45,6 @@ import {
   type OperationsVaultQueueDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
-  type OperationsVaultReportDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -5123,9 +5122,14 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
   });
 });
 
-describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', () => {
+describe('operations reports — legacy /ops_report (B5)', () => {
   // The reports are where three legacy DEFECTS lived, and each of them changed a number a user
   // has read before. These tests exist to pin the corrected numbers, not just the shapes.
+  //
+  // Round 14: the legacy /ops_bank_report port left with its screen — «تقرير البنوك» is the vault
+  // roll-up now («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»), pinned in the B6 suite
+  // below — so the corrected numbers are pinned on the captain report, which keeps the
+  // completed-shipment set, and the Q26 case checks the bank report's packages as well.
   // Anchored, not written down. A roster cannot be planned for a day already past, so the fixed
   // day this suite used to seed expired the moment the calendar walked past it, and took the
   // whole suite's `beforeAll` with it. The day is the 10th of a month far enough ahead to stay
@@ -5167,9 +5171,10 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       )
       .set('Authorization', `Bearer ${token}`);
 
-  const bankReport = (range = REPORT_MONTH, token = adminToken): request.Test =>
+  /** «تقرير البنوك» over the CURRENT month — what the vault received, and every receipt here is now. */
+  const bankReport = (token = adminToken): request.Test =>
     request(app)
-      .get(`/api/v1/operations/reports/banks?from=${range.from}&to=${range.to}`)
+      .get('/api/v1/operations/reports/banks')
       .set('Authorization', `Bearer ${token}`);
 
   /** Create a daily shipment collected inside the report month, then complete it. */
@@ -5322,10 +5327,11 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       .send({ version: fresh.version });
     expect(done.status).toBe(200);
 
-    const res = await bankReport();
+    // The captain report: completed in the month, on the delivery leg's captain.
+    const res = await captainReport();
     expect(res.status).toBe(200);
-    const report = data<OperationsBankReportDto>(res);
-    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    const report = data<OperationsCaptainReportDto>(res);
+    const row = report.rows.find((r) => r.captainEmployeeId === reportCaptain);
     expect(row).toBeDefined();
     // Counted ONCE, not once per currency line. The legacy figure would have been 30/12/6.
     expect(row?.totals.bagCount).toBe(10);
@@ -5335,6 +5341,17 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     expect(row?.totals.currencies.map((c) => c.amount).sort((a, b) => a - b)).toEqual([
       100, 200, 300,
     ]);
+
+    // «تقرير البنوك» — received into the vault this month, so it is in the bank report too, and
+    // its packages are counted once there as well (this bank carries nothing else).
+    const banks = data<OperationsBankReportDto>(await bankReport());
+    const bankRow = banks.rows.find((r) => r.bankId === reportBank.id);
+    expect(bankRow?.totals).toMatchObject({
+      shipmentCount: 1,
+      bagCount: 10,
+      cartonCount: 4,
+      boxCount: 2,
+    });
   });
 
   it('3. Q28 — a zero-currency shipment cannot even be CREATED, which is the stronger fix', async () => {
@@ -5350,22 +5367,29 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     // The roll-up still handles the case, because MIGRATED legacy rows can carry it. That path is
     // covered where it can be exercised directly — report-aggregation.spec.ts, "counts a shipment
     // with no currency lines at all" — rather than faked through an endpoint that refuses it.
-    const report = data<OperationsBankReportDto>(await bankReport());
-    const row = report.rows.find((r) => r.bankId === reportBank.id);
+    const report = data<OperationsCaptainReportDto>(await captainReport());
+    const row = report.rows.find((r) => r.captainEmployeeId === reportCaptain);
     expect(row).toBeDefined();
     expect(row?.totals.shipmentCount).toBeGreaterThanOrEqual(1);
   });
 
   it('4. Q27 — the grand total is a separate field, so summing the rows cannot double-count', async () => {
-    const report = data<OperationsBankReportDto>(await bankReport());
-    const summed = report.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0);
-    // The legacy report appended the total INTO the results array; here `rows` holds only real
-    // rows, and their sum equals the separate grand total exactly.
-    expect(report.grandTotal.shipmentCount).toBe(summed);
-    // And `rows` carries no synthetic total row: legacy appended one keyed `'الإجمالي العام'`
-    // into the same array (:5117/:5399), which is exactly what made summing the rows wrong.
-    expect(report.rows.map((r) => r.bankName)).not.toContain('الإجمالي العام');
-    expect(report.rows.every((r) => r.totals.shipmentCount >= 1)).toBe(true);
+    for (const report of [
+      data<OperationsCaptainReportDto>(await captainReport()),
+      data<OperationsBankReportDto>(await bankReport()),
+    ]) {
+      const rows: { label: string; count: number }[] = report.rows.map((r) => ({
+        label: 'captainName' in r ? r.captainName : r.bankName,
+        count: r.totals.shipmentCount,
+      }));
+      // The legacy report appended the total INTO the results array; here `rows` holds only real
+      // rows, and their sum equals the separate grand total exactly.
+      expect(report.grandTotal.shipmentCount).toBe(rows.reduce((acc, r) => acc + r.count, 0));
+      // And `rows` carries no synthetic total row: legacy appended one keyed `'الإجمالي العام'`
+      // into the same array (:5117/:5399), which is exactly what made summing the rows wrong.
+      expect(rows.map((r) => r.label)).not.toContain('الإجمالي العام');
+      expect(rows.every((r) => r.count >= 1)).toBe(true);
+    }
   });
 
   it('5. attributes a shipment to the captain of the leg its TYPE reports on', async () => {
@@ -5425,7 +5449,8 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   it('8. rides operationsShipment.view — a report is a read of shipments you can already see', async () => {
     const res = await captainReport(REPORT_MONTH, viewerToken);
     expect(res.status).toBe(200);
-    const banks = await bankReport(REPORT_MONTH, viewerToken);
+    // «تقرير البنوك» is still the shipments' readers' report too — one of its two grants.
+    const banks = await bankReport(viewerToken);
     expect(banks.status).toBe(200);
   });
 
@@ -5527,7 +5552,11 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
   });
 });
 
-describe('vault roll-up and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+describe('«تقرير البنوك» (the vault roll-up) and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
+  // ROUND 14 — the roll-up that shipped as «تجميع الخزينة» IS «تقرير البنوك» now, at
+  // `GET /operations/reports/banks` («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»); the
+  // `/reports/vault` path is gone. Its content is unchanged, so every case below still holds.
+  //
   // THE ROLL-UP'S PERIOD IS THE OWNER'S: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
   // Every shipment the vault RECEIVED in the period, on the receipt's Cairo day, whether it has gone
   // out since or not; the current month by default. Every receipt in this file is stamped "now", so
@@ -5539,18 +5568,28 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
   const vaultReport = (query = '', token = adminToken): request.Test =>
     request(app)
-      .get(`/api/v1/operations/reports/vault${query}`)
+      .get(`/api/v1/operations/reports/banks${query}`)
       .set('Authorization', `Bearer ${token}`);
+  /** An account holding exactly these keys — the report's two readers, and somebody neither. */
+  const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R14 ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return login(email);
+  };
 
   /** The vault bank's row of a roll-up, or undefined when the period holds none of its shipments. */
   const vaultBankRow = async (
     query = '',
-  ): Promise<OperationsVaultReportDto['rows'][number] | undefined> => {
+  ): Promise<OperationsBankReportDto['rows'][number] | undefined> => {
     const res = await vaultReport(query);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    return data<OperationsVaultReportDto>(res).rows.find((r) => r.bankId === vaultBank.id);
+    return data<OperationsBankReportDto>(res).rows.find((r) => r.bankId === vaultBank.id);
   };
-  const countOf = (row: OperationsVaultReportDto['rows'][number] | undefined): number =>
+  const countOf = (row: OperationsBankReportDto['rows'][number] | undefined): number =>
     row?.totals.shipmentCount ?? 0;
 
   /** A Cairo calendar month as the screens send it: two inclusive days. */
@@ -5689,7 +5728,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
     const res = await vaultReport();
     expect(res.status).toBe(200);
-    const report = data<OperationsVaultReportDto>(res);
+    const report = data<OperationsBankReportDto>(res);
     const row = report.rows.find((r) => r.bankId === vaultBank.id);
     expect(row).toBeDefined();
     expect(row?.totals.shipmentCount).toBe(1);
@@ -5701,12 +5740,12 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
 
   it('2. sends the period it rolled up — the current Cairo month by default, «البداية كل اول شهر»', async () => {
     const month = cairoMonth(0);
-    const report = data<OperationsVaultReportDto>(await vaultReport());
+    const report = data<OperationsBankReportDto>(await vaultReport());
     // The days, sent the way the captain and bank reports send theirs: UTC midnight of each.
     expect(report.from).toBe(`${month.from}T00:00:00.000Z`);
     expect(report.to).toBe(`${month.to}T00:00:00.000Z`);
     // The same days asked for by name are the same answer.
-    expect(data<OperationsVaultReportDto>(await vaultReport(period(month)))).toEqual(report);
+    expect(data<OperationsBankReportDto>(await vaultReport(period(month)))).toEqual(report);
 
     // The grand total carries every currency, the pound with the rest. Which one is «المصري» is the
     // screen's to decide, with the boards' classifier — the server used to guess it by `EGP`, which
@@ -5862,7 +5901,7 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     const inverted = { from: month.to, to: month.from };
     const res = await vaultReport(period(inverted));
     expect(res.status).toBe(200);
-    const report = data<OperationsVaultReportDto>(res);
+    const report = data<OperationsBankReportDto>(res);
     expect(report.rows).toEqual([]);
     expect(report.grandTotal.shipmentCount).toBe(0);
     expect(report.from.slice(0, 10)).toBe(inverted.from);
@@ -5879,16 +5918,35 @@ describe('vault roll-up and operational areas — legacy /vault1_reports and /da
     const halfTyped = await vaultReport(`?from=0002-11-05&to=${month.to}`);
     expect(halfTyped.status, JSON.stringify(halfTyped.body)).toBe(200);
     expect(
-      countOf(data<OperationsVaultReportDto>(halfTyped).rows.find((r) => r.bankId === vaultBank.id)),
+      countOf(data<OperationsBankReportDto>(halfTyped).rows.find((r) => r.bankId === vaultBank.id)),
     ).toBeGreaterThanOrEqual(countOf(await vaultBankRow(period(month))));
     expect((await vaultReport(`?from=${month.from}&to=9999-12-31`)).status).toBe(200);
   });
 
-  it('5d. rides operationsVault.view, not the shipment grant', async () => {
-    const res = await vaultReport('', viewerToken); // viewer holds operationsShipment.view only
-    expect(res.status).toBe(403);
-    expect((await vaultReport(period(cairoMonth(0)), viewerToken)).status).toBe(403);
-    expect((await request(app).get('/api/v1/operations/reports/vault')).status).toBe(401);
+  it('5d. rides EITHER grant — the shipments’ readers and the vault’s — and is the only path', async () => {
+    // Round 14: «تقرير البنوك» rode `operationsShipment.view` and «تجميع الخزينة» rode
+    // `operationsVault.view`; the one screen left serves both readers.
+    const viewer = await vaultReport('', viewerToken); // viewer holds operationsShipment.view only
+    expect(viewer.status).toBe(200);
+    const vaultOnly = await tokenWith('ops-r14-vault@ecms.local', ['operationsVault.view']);
+    const theirs = await vaultReport(period(cairoMonth(0)), vaultOnly);
+    expect(theirs.status).toBe(200);
+    // The same answer whichever grant asked.
+    expect(data<OperationsBankReportDto>(theirs)).toEqual(
+      data<OperationsBankReportDto>(await vaultReport(period(cairoMonth(0)), viewerToken)),
+    );
+    // Neither grant → refused; nobody → 401.
+    const crewOnly = await tokenWith('ops-r14-crew@ecms.local', ['operationsCrew.view']);
+    expect((await vaultReport('', crewOnly)).status).toBe(403);
+    expect((await request(app).get('/api/v1/operations/reports/banks')).status).toBe(401);
+    // The old address is gone, not a second door onto the same report.
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/operations/reports/vault')
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(404);
   });
 
   it('6. creates an operational area — the legacy /data_edit city, without its id generator', async () => {

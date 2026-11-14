@@ -1,7 +1,8 @@
-// «تجميع الخزينة» and «تقرير القادة» on the boards' look (Round 11) — «تجميع الخزينة هيكون زى الشاشة
-// اللى بعتهالك بتاعت البنوك وتقرير القادة الشاشة هتكون الشاشة التانية»: the legacy screens' STRUCTURE
-// in the boards' look. Rendered from the pages themselves over a seeded cache, and pinned in the
-// source where a refactor could quietly undo a decision:
+// «تقرير البنوك» (the vault roll-up that shipped as «تجميع الخزينة») and «تقرير القادة» on the boards'
+// look (Round 11) — «تجميع الخزينة هيكون زى الشاشة اللى بعتهالك بتاعت البنوك وتقرير القادة الشاشة
+// هتكون الشاشة التانية»: the legacy screens' STRUCTURE in the boards' look. Rendered from the pages
+// themselves over a seeded cache, and pinned in the source where a refactor could quietly undo a
+// decision:
 //
 //   · the columns, legacy's, in its order — «اجمالي العملات» under the boards' word «عملات أخرى»;
 //   · «الإجمالي» is the server's grand total, never the rows added up (Q27);
@@ -10,7 +11,9 @@
 //   · the vault's «من» / «إلى» are the period it covers — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية
 //     كل اول شهر»: they go with the request, open on the current month, refuse an inverted range;
 //   · the captain report's range opens on the current month and refuses an inverted one in words;
-//   · «تقرير البنوك» is left as it was.
+//   · Round 14 — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك، وتجميع خزينه كشاشه مفيش
+//     حاجه اسمها تجميع خزينه»: the roll-up IS «تقرير البنوك» — its title, its files' name, its
+//     address — and the old completed-per-bank screen (`ReportView`, `ReportRangePicker`) is gone.
 //
 // Round 12 — «شيل الديف اللى فيها الفلاتر بتاعت التاريخ وخليها زى الفلاتر عادى وزود ان اعمل فلتر ب اسم
 // القائد [البنك] و ان اكسيل او pdf … والجدول فى الشاشتين يكون الصف بتاع الجماليات يفضل ظاهر»:
@@ -35,7 +38,7 @@ import {
   type OperationsCurrencyDto,
   type OperationsReportCurrencyTotalDto,
   type OperationsReportTotalsDto,
-  type OperationsVaultReportDto,
+  type OperationsBankReportDto,
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
@@ -43,7 +46,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
 import { CaptainReportPage } from './CaptainReportPage';
-import { VaultReportPage } from './VaultReportPage';
+import { BankReportPage } from './BankReportPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -55,9 +58,8 @@ const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 const BOARD = read('../components/ReportBoard.tsx');
 const PANEL = read('../components/VaultValuePanel.tsx');
-const VAULT_PAGE = read('./VaultReportPage.tsx');
-const CAPTAIN_PAGE = read('./CaptainReportPage.tsx');
 const BANK_PAGE = read('./BankReportPage.tsx');
+const CAPTAIN_PAGE = read('./CaptainReportPage.tsx');
 const INVENTORY_PAGE = read('./VaultInventoryPage.tsx');
 const HELD_DIALOG = read('../components/VaultHeldReportDialog.tsx');
 const SHIPMENTS_BOARD = read('../components/ShipmentsBoard.tsx');
@@ -138,7 +140,7 @@ const totals = (
  * The server's answer, in the server's order (by name). Its grand total is deliberately NOT the sum
  * of the rows — what «الإجمالي» shows must be this figure, so it can only have come from here.
  */
-const VAULT: OperationsVaultReportDto = {
+const VAULT: OperationsBankReportDto = {
   from: '2026-11-01T00:00:00.000Z',
   to: '2026-11-30T00:00:00.000Z',
   rows: [
@@ -264,11 +266,11 @@ const render = (path: string, element: JSX.Element, seed: (qc: QueryClient) => v
  * asked for exactly that period — the range IS the query key, as it is the request's `from`/`to`.
  */
 const renderVault = (
-  data: OperationsVaultReportDto = VAULT,
+  data: OperationsBankReportDto = VAULT,
   query = `?from=${RANGE.from}&to=${RANGE.to}`,
   range: { from: string; to: string } = RANGE,
 ): string =>
-  render(`/operations/reports/vault${query}`, <VaultReportPage />, (qc) =>
+  render(`/operations/reports/banks${query}`, <BankReportPage />, (qc) =>
     qc.setQueryData(listKey('operations', 'vaultReport', range), data),
   );
 const renderCaptains = (query = `?from=${RANGE.from}&to=${RANGE.to}`): string =>
@@ -294,7 +296,7 @@ const bodyRows = (html: string): string[] => {
   return [...body.matchAll(/<tr[\s\S]*?<\/tr>/g)].map((m) => m[0]);
 };
 
-describe('«تجميع الخزينة» — the legacy vault roll-up, on the boards’ look', () => {
+describe('«تقرير البنوك» — the legacy vault roll-up (was «تجميع الخزينة»), on the boards’ look', () => {
   it('draws legacy’s table: its title strip and its columns, in its order', () => {
     const html = renderVault();
     expect(html).toContain(ar('operations.vaultReport.table'));
@@ -379,7 +381,7 @@ describe('«تجميع الخزينة» — the legacy vault roll-up, on the boa
     // typed (`reportView`) — and the board itself never sums anything.
     expect(BOARD).toContain('const lines = reportTableLines(rows, total);');
     expect(BOARD).not.toMatch(/\.reduce\(/);
-    expect(VAULT_PAGE).toMatch(
+    expect(BANK_PAGE).toMatch(
       /reportView\(\s*valid \? rows : \[\],\s*valid \? report\.data\?\.grandTotal : undefined,/,
     );
   });
@@ -460,12 +462,12 @@ describe('«تجميع الخزينة» — the legacy vault roll-up, on the boa
     });
 
     it('sends the range, as «تقرير القادة» does — no dates held back', () => {
-      expect(VAULT_PAGE).toContain(
+      expect(BANK_PAGE).toContain(
         "const range = rangeFromParams({ from: sp.get('from'), to: sp.get('to') }, new Date());",
       );
-      expect(VAULT_PAGE).toContain('const report = useVaultReport(range, valid);');
-      expect(VAULT_PAGE).not.toContain('PENDING');
-      expect(VAULT_PAGE).not.toContain('optional: true');
+      expect(BANK_PAGE).toContain('const report = useBankReport(range, valid);');
+      expect(BANK_PAGE).not.toContain('PENDING');
+      expect(BANK_PAGE).not.toContain('optional: true');
     });
   });
 
@@ -476,7 +478,7 @@ describe('«تجميع الخزينة» — the legacy vault roll-up, on the boa
       grandTotal: totals(0, [0, 0, 0], []),
     });
     // Not «الخزينة فارغة»: a month with no receipt says nothing about what the vault holds now.
-    expect(html).toContain(ar('operations.vaultReport.empty'));
+    expect(html).toContain(ar('operations.reports.banks.empty'));
     expect(html).not.toContain(ar('operations.vault.empty'));
     expect(html).not.toContain('data-report-total="true"');
     expect(bodyRows(html)).toHaveLength(1);
@@ -558,12 +560,26 @@ describe('one board for both reports, built from the boards’ own pieces', () =
     expect(BOARD).toContain('stickyHead');
   });
 
-  it('leaves «تقرير البنوك» as it was', () => {
-    expect(BANK_PAGE).toContain(
-      "import { ReportView, type ReportRow } from '../components/ReportView';",
-    );
-    expect(BANK_PAGE).toContain('<ReportRangePicker range={range} onChange={setRange} />');
-    expect(BANK_PAGE).not.toContain('ReportBoard');
+  it('draws «تقرير البنوك» on it too — the roll-up’s screen, under the bank report’s name', () => {
+    // Round 14: «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك». The title and the files'
+    // name are «تقرير البنوك»; «تجميع الخزينة» is no word on the screen any more.
+    expect(BANK_PAGE).toContain('<ReportBoard');
+    expect(BANK_PAGE).toContain("label={t('operations.reports.banks.title')}");
+    expect(BANK_PAGE).toContain("name: t('operations.reports.banks.title'),");
+    expect(ar('operations.reports.banks.title')).toBe('تقرير البنوك');
+    const html = renderVault();
+    expect(html).toContain('تقرير البنوك');
+    expect(html).not.toContain('تجميع الخزينة');
+    // The old completed-per-bank screen's pieces are gone with it.
+    expect(BANK_PAGE).not.toMatch(/components\/Report(View|RangePicker)'/);
+    expect(BANK_PAGE).not.toContain('<PageHeader');
+    for (const gone of [
+      '../components/ReportView.tsx',
+      '../components/ReportRangePicker.tsx',
+      './VaultReportPage.tsx',
+    ]) {
+      expect(() => read(gone), gone).toThrow();
+    }
   });
 
   it('lends «سجل الخزينة»’s «تقرير الخزينة» its table and its files — the same «بيان الشحنات لكل بنك» over what is held now', () => {
@@ -625,8 +641,8 @@ describe('the name filter — applied as typed, and «الإجمالي» FOLLOWS
     );
   const vault = (query: string): string =>
     render(
-      `/operations/reports/vault?from=${RANGE.from}&to=${RANGE.to}&name=${encodeURIComponent(query)}`,
-      <VaultReportPage />,
+      `/operations/reports/banks?from=${RANGE.from}&to=${RANGE.to}&name=${encodeURIComponent(query)}`,
+      <BankReportPage />,
       (qc) => qc.setQueryData(listKey('operations', 'vaultReport', RANGE), VAULT),
     );
 
@@ -682,12 +698,12 @@ describe('the name filter — applied as typed, and «الإجمالي» FOLLOWS
     expect(html).not.toContain('data-report-total="true"');
     expect(html).toMatch(/<button type="button" data-report-export-excel="true" disabled=""/);
     const none = vault('زكريا');
-    expect(none).toContain(ar('operations.vaultReport.noName'));
+    expect(none).toContain(ar('operations.reports.banks.noName'));
     expect(none).not.toContain('data-vault-value=');
   });
 
   it('keeps the name in the URL and remembers it — never the period', () => {
-    for (const page of [CAPTAIN_PAGE, VAULT_PAGE]) {
+    for (const page of [CAPTAIN_PAGE, BANK_PAGE]) {
       expect(page).toContain("const name = sp.get('name') ?? '';");
       expect(page).toContain("const REMEMBERED_FILTERS = ['name'] as const;");
       expect(page).toContain('useRememberedFilters(search, REMEMBERED_FILTERS);');
@@ -714,12 +730,12 @@ describe('«Excel | PDF» — exactly what is shown', () => {
       'reportExportTable(lines, catalog, reportExportHeader(t, keyHeader, countHeader), nameOf)',
     );
     expect(BOARD).toContain('vaultPanelExport(t, total, catalog)');
-    expect(VAULT_PAGE).toContain('withValuePanel: true,');
+    expect(BANK_PAGE).toContain('withValuePanel: true,');
     expect(CAPTAIN_PAGE).not.toContain('withValuePanel');
   });
 
   it('says on paper which period and which name the file is', () => {
-    for (const page of [CAPTAIN_PAGE, VAULT_PAGE]) {
+    for (const page of [CAPTAIN_PAGE, BANK_PAGE]) {
       expect(page).toMatch(
         /subtitle: reportExportSubtitle\(t, \{\s+period: range,\s+filter: \{ label: t\(/,
       );

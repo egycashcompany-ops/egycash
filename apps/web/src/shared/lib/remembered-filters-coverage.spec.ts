@@ -182,7 +182,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
   // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
   ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
-  ['modules/operations/pages/VaultReportPage.tsx', ['from', 'to']],
+  // Round 14 — «تقرير البنوك» is the vault roll-up that was «تجميع الخزينة» (`VaultReportPage`), moved
+  // with its filters: `name` remembered, the period not.
+  ['modules/operations/pages/BankReportPage.tsx', ['from', 'to']],
   // Round 12 — «سجل الخزينة» is «سجل الشحنات» for the محصنات: the secured board's filters remembered
   // alike; `from`/`to` open on this month to date, as the history's.
   ['modules/operations/pages/VaultInventoryPage.tsx', ['from', 'to']],
@@ -377,10 +379,9 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
   ['modules/it/pages/TicketDetailPage.tsx'],
   ['modules/operations/mobile/StopDetailPage.tsx'],
-  [
-    'modules/operations/pages/BankReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
+  // Round 14 — «إدارات العمليات»: one setting edited in place; its search narrows the tiles in
+  // memory and is not a filter of a stored list.
+  ['modules/operations/pages/CrewDepartmentsPage.tsx'],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],

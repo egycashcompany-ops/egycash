@@ -2,7 +2,7 @@
 // «إجمالي العملات الأجنبية», then every currency of its list with its amount. It is legacy's SECOND
 // aggregation (contad_app.js:1524 — the same vault set, the pound taken out), here a view of the
 // total the table beside it shows (`vaultValuePanel`, lib/report-board.ts) — so it covers what the
-// table covers: on «تجميع الخزينة» what entered the vault in the period («يجيب اللى اتسلم واللى
+// table covers: on «تقرير البنوك» what entered the vault in the period («يجيب اللى اتسلم واللى
 // متسلمش»), narrowed with the table when a bank's name is typed (Round 12, `reportView`); on
 // «سجل الخزينة»'s «تقرير الخزينة» what the vault holds now — in the report board's card and the
 // boards' palette: the pound in the pound's green, the foreign sum in the others' amber.

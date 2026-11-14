@@ -38,7 +38,17 @@
 // releases — but not the crew Operations assigns on «توزيع المحصنات» (a shipment topic), which the
 // rows' van and captain show: the list re-reads itself every minute for such a reader, as the
 // receive queue does.
-import { type ReactNode } from 'react';
+//
+// ROUND 16 — «لوحة تحكم». The owner: «دلوقتي محصنات الخزينة أنا عايز يكون فيها لوحة تحكم اللي هي
+// داشبورد جنب الإحصائيات». A button right beside «إخفاء الإحصائيات», in its look — as «لوحة تحكم»
+// sits beside «الإحصائيات» on Fleet's custody board and «تقرير الخزينة» on «سجل الخزينة» — opens the
+// dashboard over the whole screen (`components/SecuredDispatchDashboard.tsx`). It reads THIS board's
+// rows as the board shows them (every filter, every page — what the toolbar is handed), so it is
+// offered once those rows are in and never beside a refusal, where there are none to read. What it
+// changes it changes HERE: «إعادة ضبط الفلاتر» clears the board's filters and its delivery day (the
+// window stays up, dimmed over its last rows, while the board reads the vault's whole list again),
+// and «تسليمها اليوم» / «تسليمها غدًا» set the board's «تاريخ التسليم» to that day and close it.
+import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
@@ -52,9 +62,11 @@ import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAppSelector } from '../../../store';
-import { NUM } from '../../fleet/components/FuelCardBoard';
+import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { useOperationsSecuredDispatchBoard } from '../api/operations-queries';
-import { ShipmentsBoard } from '../components/ShipmentsBoard';
+import { SecuredDispatchDashboard } from '../components/SecuredDispatchDashboard';
+import { BRAND_BUTTON, ShipmentsBoard } from '../components/ShipmentsBoard';
+import { DAY_BOARD_FILTER_PARAMS, offeredFilters, readDayBoardFilters } from '../lib/day-board';
 import {
   dispatchDue,
   dispatchDueCounts,
@@ -143,6 +155,21 @@ export const SecuredDispatchPage = (): JSX.Element => {
   // The server's day — the one it judged «late» by and sorted on (`dispatchDue`).
   const today = board.data?.today.slice(0, 10) ?? null;
 
+  // «لوحة تحكم» — closed on the way in; nothing it reads is asked for until it opens.
+  const [dashOpen, setDashOpen] = useState(false);
+  // A list the server refused (too many rows) or could not give leaves it nothing to read: it
+  // closes, rather than show zeros, and does not come back by itself when a later answer lands. A
+  // list on its way — a reset that dropped the delivery day — keeps it up over its last rows.
+  if (dashOpen && !loaded && !board.isLoading) setDashOpen(false);
+  // The filters as the board READS them (a param with no box narrows nothing), for its line.
+  const filters = offeredFilters(readDayBoardFilters(sp), 'secured', DISPATCH_STAGES);
+  // The board's own reset, in ONE write: its filters and the delivery day together.
+  const clearFilters = (): void => {
+    const next = new URLSearchParams(sp);
+    for (const name of [...DAY_BOARD_FILTER_PARAMS, 'date']) next.delete(name);
+    setSp(next, { replace: true });
+  };
+
   /** «متأخرة» / «تسليمها اليوم» under the row's delivery day. */
   const deliveryNote = (row: OperationsSecuredDispatchRowDto): ReactNode => {
     const due = today === null ? null : dispatchDue(row, today);
@@ -169,9 +196,46 @@ export const SecuredDispatchPage = (): JSX.Element => {
       </span>
     );
 
-  // How many of the rows shown are late, and how many go out today — once there are rows to count;
-  // never beside a refusal. The screen's only toolbar controls: there is nothing to DO here.
-  const toolbar = (shown: readonly OperationsSecuredDispatchRowDto[]): ReactNode => {
+  // «لوحة تحكم» first, right beside «إخفاء الإحصائيات»; then how many of the rows shown are late,
+  // and how many go out today — once there are rows to count; never beside a refusal. Nothing here
+  // DOES anything to a row: the screen is to look at, and so is the dashboard.
+  const toolbar = (shown: readonly OperationsSecuredDispatchRowDto[]): ReactNode => (
+    <>
+      <button
+        type="button"
+        data-dispatch-dashboard-open="true"
+        aria-haspopup="dialog"
+        aria-expanded={dashOpen}
+        // It reads the rows shown: until they are in — or when the list was refused — there are
+        // none to read, and a dashboard of zeros would say the vault is empty.
+        disabled={!loaded}
+        onClick={() => setDashOpen(true)}
+        className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+      >
+        <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+        {t('operations.secured.dashboard.open')}
+      </button>
+      {dueLegend(shown)}
+      {/* The board's rows SHOWN, live: a filter cleared from the dashboard redraws it at once. */}
+      <SecuredDispatchDashboard
+        open={dashOpen}
+        pending={!loaded}
+        onClose={() => setDashOpen(false)}
+        rows={shown}
+        today={today ?? ''}
+        filters={filters}
+        date={date}
+        onClearFilters={clearFilters}
+        onShowDay={(day) => {
+          setDate(day);
+          setDashOpen(false);
+        }}
+      />
+    </>
+  );
+
+  // How many of the rows shown are late, and how many go out today.
+  const dueLegend = (shown: readonly OperationsSecuredDispatchRowDto[]): ReactNode => {
     const counts = today === null ? null : dispatchDueCounts(shown, today);
     return loaded && counts !== null
       ? (['overdue', 'today'] as const).map((due) => (

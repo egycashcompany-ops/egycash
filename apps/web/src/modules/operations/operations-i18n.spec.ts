@@ -246,10 +246,9 @@ const CREW_KEYS = [
   'operations.crew.departments.unknownDepartment',
   'operations.crew.departments.stale',
   'operations.crew.departments.emptyWarning',
-  // Round 15 — one choice per company department, in a card that starts closed.
-  'operations.crew.departments.summaryNone',
+  // Round 15 — one choice per company department (Round 14 put it on a screen of its own, open, so
+  // the closed card's «لم تُحدَّد أي إدارة بعد» and «+N أخرى» went with the fold).
   'operations.crew.departments.people',
-  'operations.crew.departments.more',
   'operations.crew.departments.unsaved',
   'operations.crew.departments.search',
   'operations.crew.departments.noMatch',
@@ -260,6 +259,8 @@ const CREW_KEYS = [
   'operations.crew.departments.discard',
   'operations.crew.rosterFallback',
   'operations.crew.rosterFallbackLink',
+  // Round 14 — what the notices say instead of the link, to a reader who cannot open the screen.
+  'operations.crew.departmentsElsewhere',
 ];
 
 /** B4 — the four secured screens. */
@@ -349,17 +350,17 @@ const REPORT_KEYS = [
   'operations.cards.bankReport',
   'operations.reports.captains.title',
   'operations.reports.banks.title',
-  'operations.reports.banks.subtitle',
+  // Round 14 — «تقرير البنوك» is the vault roll-up («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير
+  // بنوك»): an empty period says no محصنة ENTERED the vault in it, a name nothing matches says so.
+  // (The old screen's `subtitle` and `ReportView`'s packages / amounts / grand total went with it.)
+  'operations.reports.banks.empty',
+  'operations.reports.banks.noName',
   'operations.reports.captain',
   'operations.reports.bank',
   'operations.reports.from',
   'operations.reports.to',
   'operations.reports.invalidRange',
   'operations.reports.shipmentCount',
-  'operations.reports.packages',
-  'operations.reports.amounts',
-  'operations.reports.grandTotal',
-  'operations.reports.noCurrency',
   'operations.reports.unattributed',
   'operations.reports.empty',
 ];
@@ -384,14 +385,11 @@ const ATTENDANCE_KEYS = [
 ];
 
 const VAULT_REPORT_KEYS = [
-  'operations.nav.vaultReport',
-  'operations.cards.vaultReport',
-  'operations.vaultReport.title',
-  // Round 11 — the roll-up's period («يجيب اللى اتسلم واللى متسلمش»): an empty one says no محصنة
-  // ENTERED the vault in it, not that the vault is empty. (`subtitle`, «بلا فترة زمنية عن قصد», went
-  // when the owner gave the dates a meaning.)
-  'operations.vaultReport.empty',
-  // Round 11 — «تجميع الخزينة» and «تقرير القادة» on the boards' look (`components/ReportBoard.tsx`):
+  // Round 14 — «تجميع الخزينة»'s own name, card and empty text left with it; the bank report says
+  // its period's emptiness now (REPORT_KEYS above).
+  //
+  // Round 11 — the roll-up (now «تقرير البنوك») and «تقرير القادة» on the boards' look
+  // (`components/ReportBoard.tsx`):
   // the tables' strips and headers, «الإجمالي», the vault's «إجمالي قيمة الشحنات» panel, and the
   // «عملات أخرى» breakdown named for its row. (`foreign` / `noForeign` went with the old panel.)
   'operations.vaultReport.table',
@@ -413,7 +411,6 @@ const VAULT_REPORT_KEYS = [
 const ROUND12_REPORT_AND_VAULT_KEYS = [
   'operations.reports.bankName',
   'operations.reports.captains.noName',
-  'operations.vaultReport.noName',
   ...['department', 'period', 'filter', 'item', 'amount', 'empty', 'popupBlocked'].map(
     (key) => `operations.reportExport.${key}`,
   ),
@@ -468,6 +465,24 @@ const DISTRIBUTION_KEYS = [
   ].map((key) => `operations.handover.${key}`),
 ];
 
+/**
+ * Round 16 — «لوحة تحكم» on «محصنات الخزينة» («أنا عايز يكون فيها لوحة تحكم اللي هي داشبورد جنب
+ * الإحصائيات»): its button, title, filter line, alerts, «جدول التسليم» and «مدة البقاء في الخزينة».
+ */
+const DISPATCH_DASHBOARD_KEYS = [
+  ...[
+    'open', 'title', 'today', 'figures', 'unit', 'banksEmpty',
+    'filters.label', 'filters.none', 'filters.reset',
+    'alerts.title', 'alerts.overdue', 'alerts.today', 'alerts.tomorrow', 'alerts.undated',
+    'alerts.unplaced', 'alerts.overdueHint', 'alerts.todayHint', 'alerts.tomorrowHint',
+    'alerts.undatedHint', 'alerts.unplacedHint', 'alerts.show',
+    'schedule.title', 'schedule.note', 'schedule.overdue', 'schedule.today', 'schedule.later',
+    'schedule.bar', 'schedule.undated',
+    'aging.title', 'aging.note', 'aging.today', 'aging.days1to2', 'aging.days3to6',
+    'aging.days7plus', 'aging.unknown',
+  ].map((key) => `operations.secured.dashboard.${key}`),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -480,6 +495,7 @@ const ALL_KEYS = [
   ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
   ...DISTRIBUTION_KEYS,
+  ...DISPATCH_DASHBOARD_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {

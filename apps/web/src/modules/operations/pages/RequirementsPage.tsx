@@ -20,6 +20,11 @@
 // adds or removes anybody. What it records is what Operations knows ABOUT a member — the flags —
 // and the row behind them is created the first time one is set. Somebody with no row yet shows
 // with nothing recorded, which is a different thing from carrying nothing.
+//
+// WHICH departments those are is chosen on «إدارات العمليات» (`CrewDepartmentsPage.tsx`), not here
+// — Round 14: «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز الطاقم» … «شاشة لوحدها في القائمة».
+// The card that sat above this table moved there; when nothing is chosen yet, the notice below
+// says so and points at that screen (a link for whoever may open it).
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
@@ -34,7 +39,7 @@ import {
   useOperationsCrewDirectory,
   useSetCrewRequirements,
 } from '../api/operations-queries';
-import { CrewDepartmentsCard } from '../components/CrewDepartmentsCard';
+import { ChooseCrewDepartments } from '../components/CrewRosterNotice';
 import {
   REQUIREMENT_FLAGS,
   toFlagPayload,
@@ -110,16 +115,6 @@ export const RequirementsPage = (): JSX.Element => {
         title={t('operations.crew.requirements.title')}
       />
 
-      {/* Who the crew IS, above what the crew CARRIES — the roster below is a consequence of it,
-          and an operator who cannot see the cause reads an incomplete list as a complete one.
-          The count is the roster this page already read, so the closed card can say how many
-          people the chosen departments make without asking the server again. */}
-      <CrewDepartmentsCard
-        crewCount={
-          directory.data?.rosterIsDerived === true ? directory.data.members.length : null
-        }
-      />
-
       <Card className="mb-4">
         <CardBody>
           <label className="block max-w-sm text-sm">
@@ -132,9 +127,13 @@ export const RequirementsPage = (): JSX.Element => {
           </p>
           {directory.data?.rosterIsDerived === false && (
             // Otherwise a frozen fallback list looks exactly like a correctly configured one, and
-            // nobody would learn why a new hire never appears.
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              {t('operations.crew.requirements.unconfigured')}
+            // nobody would learn why a new hire never appears. The cause is fixed on «إدارات
+            // العمليات», so the notice ends where that is done.
+            <p
+              className="mt-2 text-xs text-amber-700 dark:text-amber-400"
+              data-requirements-unconfigured="true"
+            >
+              {t('operations.crew.requirements.unconfigured')} <ChooseCrewDepartments />
             </p>
           )}
         </CardBody>

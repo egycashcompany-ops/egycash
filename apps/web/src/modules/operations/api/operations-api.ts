@@ -49,7 +49,6 @@ import {
   type OperationsVaultInventoryRowDto,
   type OperationsVaultHeldReportDto,
   type OperationsVaultQueueDto,
-  type OperationsVaultReportDto,
   type OrderOperationsCurrencies,
   type Paginated,
   type PlanOperationsCrew,
@@ -461,12 +460,6 @@ export const getCaptainReport = (
 ): Promise<OperationsCaptainReportDto> =>
   get<OperationsCaptainReportDto>(`/operations/reports/captains${buildQuery(params)}`);
 
-/** `/ops_bank_report` — the same figures keyed on the bank. */
-export const getBankReport = (
-  params: { from: string; to: string },
-): Promise<OperationsBankReportDto> =>
-  get<OperationsBankReportDto>(`/operations/reports/banks${buildQuery(params)}`);
-
 /**
  * The crew's attendance for a day. No legacy equivalent for cash-transfer crew — the legacy
  * `/fleet_attendance` screen is Fleet's and covers drivers only (discovery §2.2/§10.2).
@@ -492,19 +485,22 @@ export const updateOperationsArea = (
 ): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
 
 /**
- * `/vault1_reports` — the vault roll-up over a period, both days inclusive, as the captain and bank
- * reports take theirs. Legacy's two dates filtered nothing (Q32); the owner gave them a meaning —
- * «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: every محصنة RECEIVED into the vault in
- * the period, whether it has gone out since or not, judged on the receipt's Cairo day.
+ * «تقرير البنوك» (Round 14) — the legacy `/vault1_reports`, the vault roll-up that shipped as «تجميع
+ * الخزينة»: «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك». Over a period, both days
+ * inclusive, as the captain report takes his. Legacy's two dates filtered nothing (Q32); the owner
+ * gave them a meaning — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: every محصنة RECEIVED
+ * into the vault in the period, whether it has gone out since or not, judged on the receipt's Cairo
+ * day. At the screen's own name: `/reports/vault` is gone.
  */
-export const getVaultReport = (
+export const getBankReport = (
   params: { from: string; to: string },
-): Promise<OperationsVaultReportDto> =>
-  get<OperationsVaultReportDto>(`/operations/reports/vault${buildQuery(params)}`);
+): Promise<OperationsBankReportDto> =>
+  get<OperationsBankReportDto>(`/operations/reports/banks${buildQuery(params)}`);
 
 /**
  * Round 12 — «تقرير الخزينة»: what the vault holds NOW, per main bank, through the same roll-up as
- * the period's (`getVaultReport`). Live, so it takes no parameter at all (the server refuses one).
+ * the bank report's (`getBankReport`). Live, so it takes no parameter at all (the server refuses
+ * one).
  */
 export const getVaultHeldReport = (): Promise<OperationsVaultHeldReportDto> =>
   get<OperationsVaultHeldReportDto>('/operations/reports/vault/held');

@@ -1,5 +1,6 @@
-// The reports' decisions over an answer the server already rolled up — «تجميع الخزينة» and «تقرير
-// القادة» on the boards' look (`components/ReportBoard.tsx`). Pure, so they are asserted directly.
+// The reports' decisions over an answer the server already rolled up — «تقرير البنوك» (the vault
+// roll-up, «تجميع الخزينة» until Round 14) and «تقرير القادة» on the boards' look
+// (`components/ReportBoard.tsx`). Pure, so they are asserted directly.
 //
 // WHAT THE SERVER DECIDES AND WHAT THIS DOES. The server rolls the shipments up — which ones, how
 // many, their packages counted once (Q26), the grand total kept apart from the rows (Q27), a

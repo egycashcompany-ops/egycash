@@ -243,7 +243,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/operations/vault/receive');
     expect(routes).toContain('/operations/vault/dispatch');
     expect(routes).toContain('/operations/vault');
-    expect(routes).toContain('/operations/reports/vault');
+    // Round 14 — «تجميع الخزينة» is gone (its content is «تقرير البنوك», and its row is retired on
+    // live installations), and «إدارات العمليات» has a screen of its own beneath the roster.
+    expect(routes).not.toContain('/operations/reports/vault');
+    expect(routes).toContain('/operations/crew-departments');
     expect(routes).toContain('/operations/reports/captains');
     expect(routes).toContain('/operations/reports/banks');
     expect(routes).toContain('/operations/catalogs');
@@ -285,7 +288,8 @@ describe('seed → password login (regression)', () => {
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
     // 31 (HR) + 24 (Fleet) + 18 (Operations) + 6 (Organization) + 18 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 11 (Administration) = 138. Re-counted from `seed-navigation.ts`, because an
+    //   + 18 (ATM) + 11 (Administration) = 138 — Operations still 18 after Round 14, which took
+    //   «تجميع الخزينة» out and put «إدارات العمليات» in. Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than

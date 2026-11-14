@@ -1192,11 +1192,18 @@ export type ListOperationsShipmentsQuery = z.infer<typeof ListOperationsShipment
 // ASSIGNMENT entity (pickup leg for daily, delivery leg for secured), because that is where the
 // approved SPLIT put the legacy `leader1`/`leader2` fields. A shipment with no assignment has no
 // captain to group under and is reported under the unassigned bucket rather than silently dropped.
+//
+// ROUND 14 — THE BANK REPORT IS NO LONGER THE CAPTAIN REPORT'S TWIN. The owner: «انا كنت قلت لك اعمل
+// لي شاشه تقرير بنوك … انت فعلا عملتها بس حطيتها في شاشه تجميع خزينه». What he had asked for as «تقرير
+// البنوك» was the per-bank roll-up of what the VAULT received — the screen that shipped as «تجميع
+// الخزينة» — so that content is the bank report now (`OperationsBankReportDto` below), and the
+// completed-shipments-per-bank answer it used to give is gone. The captain report keeps the
+// completed-shipment set described above.
 
 /**
- * The period of all three reports — the captain and bank reports here, and the vault roll-up below
- * (which judges it on the vault receipt's Cairo day rather than a shipment date). One schema, so the
- * three screens' «من» / «إلى» mean the same days and refuse the same malformed ones.
+ * The period of both reports — the captain report's completed shipments, and the bank report's
+ * vault receipts (judged on the receipt's Cairo day rather than a shipment date). One schema, so the
+ * two screens' «من» / «إلى» mean the same days and refuse the same malformed ones.
  */
 export const OperationsReportQuerySchema = z
   .object({
@@ -1248,14 +1255,13 @@ export interface OperationsCaptainReportDto {
   grandTotal: OperationsReportTotalsDto;
 }
 
-export interface OperationsBankReportDto {
-  from: string;
-  to: string;
-  rows: OperationsBankReportRowDto[];
-  grandTotal: OperationsReportTotalsDto;
-}
-
-// ── Vault roll-up (B6 — the legacy /vault1_reports + /vault1 aggregations) ───────────────────────
+// ── Bank report (Round 14) — the vault roll-up of B6 (the legacy /vault1_reports + /vault1) ──────
+//
+// «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك، وتجميع خزينه كشاشه مفيش حاجه اسمها تجميع
+// خزينه، شيلها خالص». Asked which shipments it counts, the owner chose the roll-up exactly as it
+// was: SECURED shipments only, every one RECEIVED INTO THE VAULT in the period, delivered since or
+// not. So `GET /operations/reports/banks` answers what `GET /operations/reports/vault` used to (that
+// path is gone — one endpoint for one report), and the history below is still this report's.
 //
 // WHAT `/vault1_reports` ACTUALLY WAS (discovery §C, contad_app.js:1311-1333): a SHELL. It loaded
 // `DataLists`, discarded it, and rendered a template with nothing but the session. Every figure on
@@ -1264,14 +1270,14 @@ export interface OperationsBankReportDto {
 //
 //   · dataTransaction1 (:1368) — per-BANK roll-up: shipment count, EGP total, non-EGP total, and
 //     bags/boxes/cartons. Packages were computed per DOCUMENT here, before any currency unwind,
-//     so this one was NOT inflated — unlike the captain/bank reports (Q26). The two screens
+//     so this one was NOT inflated — unlike legacy's captain and bank reports (Q26). The screens
 //     therefore disagreed with each other about the same packages.
 //   · dataTransaction2 (:1524) — the non-EGP breakdown of that same set, with EGP excluded by a
 //     literal synonym list `['EGP','مصري','جنيه','جنيه مصري']` (:1409).
 //
 // ONE QUESTION, ASKED ONCE. Both are views of one roll-up here, and it runs through the SAME code
-// path as the bank report — which is what makes it impossible for two screens to report different
-// package counts for the same shipments.
+// path as the captain report and «تقرير الخزينة» (the API's `report-aggregation.ts`) — which is what
+// makes it impossible for two screens to report different package counts for the same shipments.
 //
 // THE PERIOD IS THE OWNER'S, NOT LEGACY'S. Legacy's picker filtered nothing (Q32: its date filters
 // were commented out in both aggregations), so the screen was always "what is held now" under two
@@ -1279,10 +1285,10 @@ export interface OperationsBankReportDto {
 // البداية كل اول شهر». The roll-up is every secured shipment that ENTERED THE VAULT in [from, to] —
 // judged on the vault receipt's Cairo calendar day — whether it is still held, has gone out for
 // delivery or has been delivered since; the period opens on the first of the current month by
-// default, exactly as the captain and bank reports' does (`OperationsReportQuerySchema`). A receipt
+// default, exactly as the captain report's does (`OperationsReportQuerySchema`). A receipt
 // that was CANCELLED (Round 10) never entered the vault for this purpose; a shipment received again
-// counts once, on its new receipt's day. Deleted shipments are left out, as in the other reports.
-// What the vault holds right now is still the inventory's question (`ListVaultInventoryQuerySchema`).
+// counts once, on its new receipt's day. Deleted shipments are left out, as in the captain report.
+// What the vault holds right now is «تقرير الخزينة»'s question (`OperationsVaultHeldReportDto`).
 //
 // NO "WHICH CURRENCY IS THE POUND" FIELDS. An earlier version sent `baseCurrencyCode` and a
 // `foreignCurrencies` list that told the pound by `code === 'EGP'` — wrong on the production
@@ -1290,7 +1296,11 @@ export interface OperationsBankReportDto {
 // No client read them: the screen splits `grandTotal.currencies` with the boards' own classifier
 // (code, name or legacy alias), so the pound/dollar/other split is a VIEW in exactly one place.
 
-export interface OperationsVaultReportDto {
+// Who may read the bank report is `OPERATIONS_BANK_REPORT_KEYS` (platform/navigation-hubs.ts), the
+// shipments' readers and the vault's. It is declared beside the sidebar's shared row rather than
+// here so the platform contracts never import a module's (the HR hub's keys live there the same way).
+
+export interface OperationsBankReportDto {
   /** The first day of the period (UTC midnight of the Cairo calendar day), inclusive. */
   from: string;
   /** The last day of the period, inclusive — the day asked for, not the query's exclusive bound. */
@@ -1306,8 +1316,8 @@ export interface OperationsVaultReportDto {
  * الداتا اللى فى بيان الشحنات لكل بنك ونفس الشكل وكل حاجه بس مفيش فتر من الى هيكون لحظى على ف
  * الخزينة». On top of «سجل الخزينة» (`/operations/vault`).
  *
- * `GET /operations/reports/vault/held` (`operationsVault.view` — the vault screens' grant, as the
- * roll-up's). NO parameters (any query key → 400): it is live, not a period.
+ * `GET /operations/reports/vault/held` (`operationsVault.view` — the vault screens' grant). NO
+ * parameters (any query key → 400): it is live, not a period.
  *
  * WHICH SHIPMENTS: every secured shipment IN THE VAULT right now — status `inVault`, not deleted —
  * which is exactly the set «محصنات الخزينة» lists (`GET /operations/secured/dispatch-board` with no
@@ -1315,9 +1325,9 @@ export interface OperationsVaultReportDto {
  * a dispatched one has left («هتتسلم ساعتها وخلاص مش هتبقى ف الخزنة»), a cancelled receipt put it
  * back to draft — neither is held. Packages come from the live custody, counted once per shipment.
  *
- * THE SAME ROLL-UP as «تجميع الخزينة» (`OperationsVaultReportDto`) and the bank report — the same
- * `bankReportRows`, the same rows keyed on the MAIN (billed) bank, the same `grandTotal` (Q27) — so
- * a screen prints it with the very table «بيان الشحنات لكل بنك» uses; only the period is gone.
+ * THE SAME ROLL-UP as the bank report (`OperationsBankReportDto`) — the same `bankReportRows`, the
+ * same rows keyed on the MAIN (billed) bank, the same `grandTotal` (Q27) — so a screen prints it
+ * with the very table «بيان الشحنات لكل بنك» uses; only the period is gone.
  * Unpaged, like the reports.
  */
 export const OperationsVaultHeldReportQuerySchema = z.object({}).strict();

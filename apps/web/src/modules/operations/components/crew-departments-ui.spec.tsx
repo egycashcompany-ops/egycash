@@ -1,13 +1,16 @@
-// The two surfaces that turn an invisible setting into a visible one, rendered for real.
+// The surfaces that turn an invisible setting into a visible one, rendered for real.
 //
 // `crew-departments.spec.ts` proves the rules; `operations-i18n.spec.ts` proves the catalogs hold
-// the keys. Neither proves the components ASK for the keys that exist, that the card starts CLOSED
-// and opens from its arrow, that its controls are wired to what they say, or that the picker is
-// withheld from a caller who cannot write the setting — and every one of those failures is silent.
+// the keys. Neither proves the components ASK for the keys that exist, that the card is OPEN on its
+// own screen, that its controls are wired to what they say, that the picker is withheld from a
+// caller who cannot write the setting, or that the roster's notices point at the screen only for a
+// reader who may open it — and every one of those failures is silent.
 //
-// The owner, of the card: «عاوز أخليها تبقى الديفولت بتاعها إن هي مخفية، ولما أدوس كليك على السهم
-// يعرضها لي». The suite is node-only (no DOM to click in), so the header and the panel are rendered
-// inside a capturing component and their handlers are called the way a click would call them.
+// Round 14, the owner: «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز الطاقم» … «شاشة لوحدها في
+// القائمة». The card left «كشف الأطقم» for «إدارات العمليات», where it IS the page — so the fold
+// round 15 gave it there («عاوز أخليها تبقى الديفولت بتاعها إن هي مخفية») is gone with the move. The
+// suite is node-only (no DOM to click in), so the panel is rendered inside a capturing component and
+// its handlers are called the way a click would call them.
 import { describe, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -26,13 +29,8 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
-import {
-  CrewDepartmentsCard,
-  CrewDepartmentsHeader,
-  CrewDepartmentsPanel,
-  SUMMARY_CHIPS,
-} from './CrewDepartmentsCard';
-import { CrewRosterNotice } from './CrewRosterNotice';
+import { CrewDepartmentsCard, CrewDepartmentsPanel } from './CrewDepartmentsCard';
+import { ChooseCrewDepartments, CrewRosterNotice } from './CrewRosterNotice';
 import { crewDepartmentChoices, type CrewDepartmentChoice } from '../lib/crew-departments';
 
 const MOH = '507f1f77bcf86cd7994390a1';
@@ -135,8 +133,8 @@ const render = (
   );
 };
 
-const card = (over: Parameters<typeof render>[1] = {}, crewCount: number | null = null): string =>
-  render(<CrewDepartmentsCard crewCount={crewCount} />, over);
+const card = (over: Parameters<typeof render>[1] = {}): string =>
+  render(<CrewDepartmentsCard />, over);
 
 const en = (key: string, params?: Record<string, string | number>): string =>
   translate('en', key, params);
@@ -173,8 +171,7 @@ const CHOICES: CrewDepartmentChoice[] = crewDepartmentChoices({
 const CASH_KEY = 'catalog:6f0000000000000000000001';
 
 const panelProps = (over: Partial<Parameters<typeof CrewDepartmentsPanel>[0]> = {}) => ({
-  headerId: 'h',
-  panelId: 'p',
+  label: 'Operations departments',
   state: 'ready' as const,
   choices: CHOICES,
   draft: [CASH_KEY],
@@ -188,118 +185,71 @@ const panelProps = (over: Partial<Parameters<typeof CrewDepartmentsPanel>[0]> = 
   ...over,
 });
 
-describe('CrewDepartmentsCard — closed until its arrow is pressed', () => {
+describe('CrewDepartmentsCard — open on its own screen, no fold', () => {
   for (const locale of ['en', 'ar'] as Locale[]) {
-    it(`starts closed in ${locale}: the title and the chosen departments, no checkboxes`, () => {
-      const title = translate(locale, 'operations.crew.departments.title');
-      // Guard the guard: a key falling back to itself would make the assertion vacuous.
-      expect(title).not.toBe('operations.crew.departments.title');
+    it(`shows every department at once in ${locale}: the tiles, ticked as saved, no arrow`, () => {
       const html = card({ locale, configured: [CASH.id] });
-      expect(html).toContain(title);
-      expect(html).toContain('aria-expanded="false"');
-      expect(html).toContain('data-crew-departments="closed"');
-      expect(html).not.toContain('type="checkbox"');
-      // The saved department is named on the closed card, in the reader's language.
+      // The panel is there from the first paint — nothing to open.
+      expect(html).toContain('data-crew-departments="true"');
+      expect(html).not.toContain('aria-expanded');
+      expect(html).not.toContain('rotate-180');
+      const boxes = html.match(/<input[^>]*type="checkbox"[^>]*>/g) ?? [];
+      expect(boxes).toHaveLength(2); // «نقل الأموال» once for its two branches, «الموارد البشرية»
+      expect(boxes.filter((box) => box.includes('checked'))).toHaveLength(1);
       expect(html).toContain(locale === 'ar' ? CASH.name.ar : CASH.name.en);
-      expect(html).not.toContain(locale === 'ar' ? HR.name.ar : HR.name.en);
+      expect(html).toContain(locale === 'ar' ? HR.name.ar : HR.name.en);
+      // Named by the page's title, for a screen reader landing on the region.
+      expect(html).toContain(`aria-label="${translate(locale, 'operations.crew.departments.title')}"`);
     });
   }
 
   it('names a department chosen in one branch ONCE, never by unit code', () => {
     const html = card({ configured: [CASH.id, CASH_TANTA.id] });
-    expect(html.match(/data-crew-department-chip=/g)).toHaveLength(1);
+    expect(html.match(/data-crew-department="catalog:/g)).toHaveLength(1);
     expect(html).not.toContain('DEP-0004');
   });
 
-  it('says plainly on the closed card when nothing is chosen', () => {
-    expect(card()).toContain(en('operations.crew.departments.summaryNone'));
-  });
-
-  it('says how many people the saved choice makes when the page knows', () => {
-    expect(card({ configured: [CASH.id] }, 14)).toContain(
-      en('operations.crew.departments.people', { count: 14 }),
+  it('warns when nothing is chosen yet', () => {
+    expect(card()).toContain(en('operations.crew.departments.emptyWarning'));
+    expect(card({ configured: [CASH.id] })).not.toContain(
+      en('operations.crew.departments.emptyWarning'),
     );
-    expect(card({ configured: [CASH.id] })).not.toContain('data-crew-departments-people');
   });
 
   // A configured id that no department answers to is still configured. Dropping it from the list
   // would hide a live part of the configuration — the exact failure this card ends.
-  it('names a configured id nothing answers to on the closed card', () => {
+  it('shows a configured id nothing answers to, so it can be unticked', () => {
     const html = card({ configured: [CASH.id, '507f1f77bcf86cd7994390ff'] });
     expect(html).toContain(en('operations.crew.departments.unknownDepartment'));
+    expect(html).toContain(en('operations.crew.departments.stale'));
   });
 
   // `setting.edit` is what the server demands of the write. Offering the control to anyone else
-  // would be an invitation to a 403.
+  // would be an invitation to a 403 (the route is guarded by it too; this is the second wall).
   it('renders nothing at all without setting.edit', () => {
     expect(card({ permissions: ['operationsCrew.plan'] })).toBe('');
   });
 
-  it('says it is still loading rather than claiming nothing is chosen', () => {
+  it('says it is still loading rather than claiming there are no departments', () => {
     const html = card({ options: null });
     expect(html).toContain(en('common.loading'));
-    expect(html).not.toContain(en('operations.crew.departments.summaryNone'));
+    expect(html).not.toContain(en('operations.crew.departments.none'));
+    expect(html).not.toContain('type="checkbox"');
   });
 
   // An unread setting is not "nothing chosen", and an unread department list is not "every saved
-  // department has gone": the closed card says it could not load, and claims neither.
-  it('says it could not load when the setting cannot be read, not that nothing is chosen', () => {
+  // department has gone": the card says it could not load, and offers nothing to save.
+  it('says it could not load when the setting cannot be read, and offers nothing to tick', () => {
     const html = card({ failed: 'settings' });
-    expect(html).toContain('data-crew-departments-failed="true"');
-    expect(html).toContain(en('common.error.title'));
-    expect(html).not.toContain(en('operations.crew.departments.summaryNone'));
+    expect(html).toContain(en('operations.crew.departments.optionsFailed'));
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).not.toContain('data-crew-departments-save');
   });
 
   it('says it could not load when the departments cannot be read, not that they are gone', () => {
     const html = card({ failed: 'options', configured: [CASH.id] });
-    expect(html).toContain(en('common.error.title'));
+    expect(html).toContain(en('operations.crew.departments.optionsFailed'));
     expect(html).not.toContain(en('operations.crew.departments.unknownDepartment'));
-    expect(html).not.toContain('data-crew-department-chip=');
-  });
-});
-
-describe('CrewDepartmentsHeader — the arrow', () => {
-  const header = (open: boolean, onToggle = vi.fn(), saved = CHOICES.slice(0, 1)) =>
-    // Called, not mounted, so the tree is what the header RETURNS — its button included.
-    capture(() =>
-      CrewDepartmentsHeader({
-        headerId: 'h',
-        panelId: 'p',
-        open,
-        onToggle,
-        crewCount: null,
-        loading: false,
-        failed: false,
-        saved,
-        dirty: false,
-      }),
-    );
-
-  it('is one real button that says which way it is open and what it controls', () => {
-    const closed = header(false).html;
-    expect(closed).toMatch(/<button[^>]*type="button"[^>]*aria-expanded="false"[^>]*aria-controls="p"/);
-    expect(header(true).html).toContain('aria-expanded="true"');
-    // The arrow turns with it.
-    expect(header(true).html).toContain('rotate-180');
-    expect(closed).not.toContain('rotate-180');
-  });
-
-  it('opens and closes on its click — Enter and Space come with the button', () => {
-    const onToggle = vi.fn();
-    const button = header(false, onToggle).tree.find((el) => el.type === 'button');
-    (button?.props as { onClick: () => void }).onClick();
-    expect(onToggle).toHaveBeenCalledTimes(1);
-  });
-
-  it(`names at most ${String(SUMMARY_CHIPS)} departments, then says how many more`, () => {
-    const many = Array.from({ length: SUMMARY_CHIPS + 2 }, (_, i) => ({
-      ...CHOICES[0]!,
-      key: `k${String(i)}`,
-      label: `Dept ${String(i)}`,
-    }));
-    const html = header(false, vi.fn(), many).html;
-    expect(html.match(/data-crew-department-chip=/g)).toHaveLength(SUMMARY_CHIPS);
-    expect(html).toContain(en('operations.crew.departments.more', { count: 2 }));
   });
 });
 
@@ -329,6 +279,13 @@ describe('CrewDepartmentsPanel — the open card', () => {
     );
     (tile?.props as { onToggle: () => void }).onToggle();
     expect(props.onToggleChoice).toHaveBeenCalledWith(CASH_KEY);
+  });
+
+  it('says «تغييرات غير محفوظة» by «حفظ» once a tick differs from what is saved, and not before', () => {
+    expect(panel().html).not.toContain('data-crew-departments-unsaved');
+    const html = panel({ draft: [] }).html;
+    expect(html).toContain('data-crew-departments-unsaved="true"');
+    expect(html).toContain(en('operations.crew.departments.unsaved'));
   });
 
   it('«حفظ» and «تراجع» wait for a change, then do what they say', () => {
@@ -404,13 +361,36 @@ describe('CrewRosterNotice — the pool explains its own short list', () => {
   });
 
   for (const locale of ['en', 'ar'] as Locale[]) {
-    it(`explains the fallback in ${locale} and links to the screen that fixes it`, () => {
+    it(`explains the fallback in ${locale} and links to «إدارات العمليات», which fixes it`, () => {
       const html = render(<CrewRosterNotice rosterIsDerived={false} />, { locale });
       const body = translate(locale, 'operations.crew.rosterFallback');
       expect(body).not.toBe('operations.crew.rosterFallback');
       expect(html).toContain(body);
       expect(html).toContain(translate(locale, 'operations.crew.rosterFallbackLink'));
-      expect(html).toContain('/operations/requirements');
+      // Round 14 — the screen of its own, no longer the roster the card used to sit on.
+      expect(html).toContain('href="/operations/crew-departments"');
+      expect(html).not.toContain('/operations/requirements');
+    });
+  }
+});
+
+describe('ChooseCrewDepartments — a link only for a reader who may open the screen', () => {
+  it('links to «إدارات العمليات» for a holder of setting.edit', () => {
+    const html = render(<ChooseCrewDepartments />, { permissions: ['setting.edit'] });
+    expect(html).toContain('href="/operations/crew-departments"');
+    expect(html).toContain('data-crew-departments-link="true"');
+  });
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    it(`says who chooses it instead, in ${locale}, to a planner who cannot open it`, () => {
+      const html = render(<ChooseCrewDepartments />, {
+        locale,
+        permissions: ['operationsCrew.view', 'operationsCrew.plan'],
+      });
+      expect(html).not.toContain('<a');
+      const words = translate(locale, 'operations.crew.departmentsElsewhere');
+      expect(words).not.toBe('operations.crew.departmentsElsewhere');
+      expect(html).toContain(words.replace(/"/g, '&quot;'));
     });
   }
 });

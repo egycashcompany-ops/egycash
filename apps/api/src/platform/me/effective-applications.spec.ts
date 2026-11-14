@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HR_SETTINGS_HUB, type DataScope } from '@ecms/contracts';
+import { HR_SETTINGS_HUB, OPERATIONS_BANK_REPORT_KEYS, type DataScope } from '@ecms/contracts';
 import {
   assembleEffectiveApplications,
   type EffectiveAppInput,
@@ -416,5 +416,43 @@ describe('a hub row is opened by any of its tabs', () => {
 
   it('keeps an inactive hub out of the sidebar', () => {
     expect(routes(holding('announcement.send'), [hub({ status: 'inactive' })])).toEqual([]);
+  });
+});
+
+// Round 14 — «تقرير البنوك» is the screen «تجميع الخزينة» was, and the two rode different grants:
+// the one row left shows to a holder of either (`SHARED_NAVIGATION_ROWS`).
+describe('a shared row is opened by any of its keys', () => {
+  const report = (extra: Partial<EffectiveAppInput> = {}): EffectiveAppInput =>
+    app('bank-report', 'c1', 0, {
+      route: '/operations/reports/banks',
+      permissionKey: 'operationsShipment.view',
+      ...extra,
+    });
+  const routes = (perms: Record<string, DataScope>, apps = [report()]): string[] =>
+    assembleEffectiveApplications(apps, [cat('c1', 0)], perms).flatMap((c) =>
+      c.applications.map((a) => a.route),
+    );
+
+  it('shows the row to the shipments’ reader and to the vault’s alike', () => {
+    for (const key of OPERATIONS_BANK_REPORT_KEYS) {
+      expect(routes(holding(key)), key).toEqual(['/operations/reports/banks']);
+    }
+  });
+
+  it('hides it from somebody holding neither', () => {
+    expect(routes(holding('operationsCrew.view', 'operationsCatalog.manage'))).toEqual([]);
+  });
+
+  it('opens no other row through those keys — the captain report stays the shipments’', () => {
+    const captains = app('captains', 'c1', 1, {
+      route: '/operations/reports/captains',
+      permissionKey: 'operationsShipment.view',
+    });
+    expect(routes(holding('operationsVault.view'), [captains])).toEqual([]);
+  });
+
+  it('keeps the null-key and inactive rules', () => {
+    expect(routes(holding('operationsVault.view'), [report({ permissionKey: null })])).toEqual([]);
+    expect(routes(holding('operationsVault.view'), [report({ status: 'inactive' })])).toEqual([]);
   });
 });

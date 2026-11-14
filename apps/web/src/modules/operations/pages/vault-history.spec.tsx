@@ -60,6 +60,9 @@ const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const PAGE = read('./VaultInventoryPage.tsx');
 const DIALOG = read('../components/VaultHeldReportDialog.tsx');
+// Round 16 — the window and the tiles «تقرير الخزينة» wears are the vault reports' one, written once
+// for it and «محصنات الخزينة»'s «لوحة تحكم»: their pins read it there.
+const FRAME = read('../components/ReportModal.tsx');
 
 const me = (permissions: string[]): MeDto =>
   ({
@@ -431,36 +434,40 @@ describe('the modal — over the whole screen, as the custody dashboard', () => 
   it('closes on ×, on Escape, keeps Tab inside, holds the page still and gives the focus back', () => {
     const close = buttonWith(renderDialog(seedAll), 'data-vault-held-close="true"');
     expect(close).toContain(`aria-label="${ar('common.close')}"`);
-    expect(DIALOG).toContain('onClick={() => close.current()}');
-    expect(DIALOG).toContain("if (e.key === 'Escape' && !e.defaultPrevented)");
-    expect(DIALOG).toContain("document.addEventListener('keydown', onKey)");
-    expect(DIALOG).toContain("document.removeEventListener('keydown', onKey)");
-    expect(DIALOG).toContain('custodyTrapFocus<Element>({ back, active, first, last, inside })');
-    expect(DIALOG).toContain("document.body.style.overflow = 'hidden'");
-    expect(DIALOG).toContain('document.body.style.overflow = previous;');
-    expect(DIALOG).toContain('opener?.focus();');
-    expect(DIALOG).toContain('closeButton.current?.focus();');
+    // The vault reports' one window, and this report in it.
+    expect(DIALOG).toContain('<ReportModalFrame\n      mark="vault-held"');
+    expect(FRAME).toContain('onClick={() => close.current()}');
+    expect(FRAME).toContain("if (e.key === 'Escape' && !e.defaultPrevented)");
+    expect(FRAME).toContain("document.addEventListener('keydown', onKey)");
+    expect(FRAME).toContain("document.removeEventListener('keydown', onKey)");
+    expect(FRAME).toContain('custodyTrapFocus<Element>({ back, active, first, last, inside })');
+    expect(FRAME).toContain("document.body.style.overflow = 'hidden'");
+    expect(FRAME).toContain('document.body.style.overflow = previous;');
+    expect(FRAME).toContain('opener?.focus();');
+    expect(FRAME).toContain('closeButton.current?.focus();');
   });
 
   it('lets the «عملات أخرى» breakdown over it take Escape, and keeps Tab inside the two', () => {
     // Escape is answered only while this modal is the top of the page's dialog stack
     // (`isTopDialog`): over it, the breakdown closes alone.
-    expect(DIALOG.match(/if \(!onTop\(\)\) return;/g)).toHaveLength(1);
-    expect(DIALOG).toContain(
+    expect(FRAME.match(/if \(!onTop\(\)\) return;/g)).toHaveLength(1);
+    expect(FRAME).toContain(
       "if (e.key === 'Escape' && !e.defaultPrevented) {\n        if (!onTop()) return;",
     );
-    expect(DIALOG).toContain('const onTop = (): boolean => isTopDialog(roots(), rootRef.current);');
-    expect(DIALOG).toContain(
+    expect(FRAME).toContain('const onTop = (): boolean => isTopDialog(roots(), rootRef.current);');
+    expect(FRAME).toContain(
       "const roots = (): Element[] => Array.from(document.querySelectorAll('[data-dialog-root]'));",
     );
     // Tab is never let go: the trap goes round the breakdown while it is up (`focusScope`) — the
     // breakdown keeps no focus of its own — and round the report otherwise.
-    expect(DIALOG).toContain('const root = focusScope(roots(), rootRef.current);');
-    expect(DIALOG).toContain('const inside = active !== null && box?.contains(active) === true;');
-    expect(DIALOG).toContain('scope()?.contains(e.target) === false');
-    expect(DIALOG).not.toContain('panelRef.current?.contains(e.target)');
+    expect(FRAME).toContain('const root = focusScope(roots(), rootRef.current);');
+    expect(FRAME).toContain('const inside = active !== null && box?.contains(active) === true;');
+    expect(FRAME).toContain('scope()?.contains(e.target) === false');
+    expect(FRAME).not.toContain('panelRef.current?.contains(e.target)');
+    // No second copy of the keyboard left behind in the report itself.
+    expect(DIALOG).not.toContain("addEventListener('keydown'");
     // Closed, the breakdown hands the focus back to the tile that opened it.
-    expect(DIALOG).toContain(
+    expect(FRAME).toContain(
       'if (othersWasOpen.current && !othersOpen) othersTile.current?.focus();',
     );
     expect(buttonWith(renderDialog(seedAll), 'data-vault-held-tile="others"')).toContain(
@@ -490,13 +497,14 @@ describe('the modal — over the whole screen, as the custody dashboard', () => 
   });
 
   it('wears the custody dashboard’s two surfaces — light and dark', () => {
-    expect(DIALOG).toContain('bg-[#f8fafc]');
-    expect(DIALOG).toContain('dark:bg-[#0b0f19]');
-    expect(DIALOG).toContain('dark:bg-[#0c111e]/95');
+    expect(FRAME).toContain('bg-[#f8fafc]');
+    expect(FRAME).toContain('dark:bg-[#0b0f19]');
+    expect(FRAME).toContain('dark:bg-[#0c111e]/95');
     // Its scroll is its own, in the dashboard's thin bars on the dark theme.
-    expect(DIALOG).toContain(
+    expect(FRAME).toContain(
       "'min-h-0 flex-1 overflow-y-auto overscroll-contain',\n            SCROLLBAR,",
     );
+    expect(renderDialog(seedAll)).toContain('data-vault-held-scroll="true"');
   });
 });
 
@@ -539,9 +547,10 @@ describe('the figure tiles — off the grand total, in the custody dashboard’s
     const others = buttonWith(renderDialog(seedAll), 'data-vault-held-tile="others"');
     expect(others).toContain('aria-haspopup="dialog"');
     expect(others).toContain(`title="${ar('operations.board.figures.otherCurrenciesHint')}"`);
-    expect(DIALOG).toContain('<OtherCurrenciesDialog');
-    expect(DIALOG).toContain('cards={reportOtherCards(tiles.money)}');
+    expect(FRAME).toContain('<OtherCurrenciesDialog');
+    expect(FRAME).toContain('cards={reportOtherCards(tiles.money)}');
     expect(DIALOG).toContain('const tiles = heldReportTiles(data.grandTotal, catalog);');
+    expect(DIALOG).toContain('<ReportFigureTiles\n      mark="vault-held"');
   });
 
   it('keeps its frames at zero for an empty vault, and shimmers while the answer is on its way', () => {

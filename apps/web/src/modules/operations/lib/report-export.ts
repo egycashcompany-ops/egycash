@@ -1,4 +1,5 @@
-// The reports as files — «وزود ان اعمل … و ان اكسيل او pdf», on «تقرير القادة» and «تجميع الخزينة».
+// The reports as files — «وزود ان اعمل … و ان اكسيل او pdf», on «تقرير القادة» and «تقرير البنوك»
+// (the vault roll-up, «تجميع الخزينة» until Round 14).
 //
 // EXACTLY WHAT IS SHOWN. A report is not paged and is already in the browser, so — unlike the Fleet
 // and IT registers, which ask the server again for every page their filters match — the file is

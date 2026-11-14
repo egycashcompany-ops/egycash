@@ -23,7 +23,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import {
+  OPERATIONS_BANK_REPORT_KEYS,
+  navigationRowKeys,
+  platformPermissions,
+} from '@ecms/contracts';
 import { operationsPermissions } from './modules/operations/operations.module';
+import { NAVIGATION_CATALOG } from './seed-navigation';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (file: string): string => readFileSync(resolve(HERE, file), 'utf8');
@@ -84,9 +90,16 @@ const ROUTE_SOURCE = read('../../web/src/modules/operations/routes.tsx');
  * a URL" the rule below protects. Requiring a row for it would demand a link nobody can write.
  */
 const FRONTEND_ROUTES: { route: string; permission: string }[] = [
-  ...ROUTE_SOURCE.matchAll(/path="([^"*]+)"\s*\n\s*element=\{\s*\n\s*<RequirePermission permission="([^"]+)"/g),
+  // `permission="key"`, or — for a page several grants open (Round 14's «تقرير البنوك») —
+  // `anyOf={CONSTANT}`, recorded as `anyOf:CONSTANT` so the comparison below has to name it.
+  ...ROUTE_SOURCE.matchAll(
+    /path="([^"*]+)"\s*\n\s*element=\{\s*\n\s*<RequirePermission (?:permission="([^"]+)"|anyOf=\{([A-Z_]+)\})/g,
+  ),
 ]
-  .map((m) => ({ route: `/operations/${m[1] as string}`, permission: m[2] as string }))
+  .map((m) => ({
+    route: `/operations/${m[1] as string}`,
+    permission: m[2] ?? `anyOf:${m[3] as string}`,
+  }))
   .filter((entry) => !entry.route.includes(':'));
 
 const HAS_INDEX_ROUTE = /<Route index element=\{<OperationsOverviewPage \/>\} \/>/.test(ROUTE_SOURCE);
@@ -146,8 +159,10 @@ describe('the Operations navigation rows', () => {
         '/operations/my-day',
         '/operations/reports/banks',
         '/operations/reports/captains',
-        '/operations/reports/vault',
+        // Round 14 — «تجميع الخزينة» is gone (its content is «تقرير البنوك»); «إدارات العمليات» has
+        // a screen of its own beneath the roster.
         '/operations/requirements',
+        '/operations/crew-departments',
         '/operations/secured',
         // Round 12 — the day's محصنات onto the day's vans, on the secured screen's grant.
         '/operations/secured/distribution',
@@ -203,8 +218,18 @@ describe('permissions are the module\'s own', () => {
 
   it('uses keys the Operations module actually registered — no parallel permission system', () => {
     for (const row of NAV_ROWS) {
+      if (row.route === '/operations/crew-departments') continue; // the platform's — asserted below
       expect(declared.has(row.permission), `${row.route} → ${row.permission}`).toBe(true);
     }
+  });
+
+  it('keys «إدارات العمليات» on the platform grant that writes its setting', () => {
+    // The ONE Operations row on a platform key, and not a parallel system: the screen edits the
+    // organization setting `operations.crewDepartmentIds`, which the settings endpoint writes only
+    // for `setting.edit` — the same key the card has always required.
+    const row = NAV_ROWS.find((r) => r.route === '/operations/crew-departments');
+    expect(row?.permission).toBe('setting.edit');
+    expect(platformPermissions.map((p) => p.key)).toContain('setting.edit');
   });
 
   it('matches the permission the CLIENT ROUTE GUARD checks, route by route', () => {
@@ -214,8 +239,26 @@ describe('permissions are the module\'s own', () => {
     for (const row of NAV_ROWS) {
       if (row.route === '/operations') continue; // the index route carries no guard of its own
       if (row.route === '/operations/attendance') continue; // two chained guards — asserted below
+      if (row.route === '/operations/reports/banks') continue; // any of two — asserted below
       expect(guardOf.get(row.route), `${row.route} guard`).toBe(row.permission);
     }
+  });
+
+  it('opens «تقرير البنوك» to either of its two readers, at the route and in the sidebar alike', () => {
+    // Round 14 — the screen «تجميع الخزينة» was, so the vault's readers keep it beside the
+    // shipments'. ONE list (`OPERATIONS_BANK_REPORT_KEYS`) for the guard and the row: the row stores
+    // one of the keys, and `SHARED_NAVIGATION_ROWS` opens it for the other.
+    const guard = FRONTEND_ROUTES.find((r) => r.route === '/operations/reports/banks');
+    expect(guard?.permission).toBe('anyOf:OPERATIONS_BANK_REPORT_KEYS');
+    const row = NAV_ROWS.find((r) => r.route === '/operations/reports/banks');
+    expect(OPERATIONS_BANK_REPORT_KEYS).toContain(row?.permission);
+    expect([...navigationRowKeys('/operations/reports/banks')].sort()).toEqual(
+      [...OPERATIONS_BANK_REPORT_KEYS].sort(),
+    );
+    expect([...OPERATIONS_BANK_REPORT_KEYS].sort()).toEqual([
+      'operationsShipment.view',
+      'operationsVault.view',
+    ]);
   });
 
   it('declares the OPERATIONS half of the attendance page\'s two chained guards', () => {
@@ -247,5 +290,25 @@ describe('no shipped screen is URL-only', () => {
     served.add('/operations'); // the index route
     const dangling = NAV_ROWS.filter((r) => !served.has(r.route)).map((r) => r.route);
     expect(dangling, 'sidebar rows pointing nowhere').toEqual([]);
+  });
+});
+
+// ── Round 14: «تجميع الخزينة» leaves the app ────────────────────────────────────────────────────
+
+describe('«تجميع الخزينة» is gone, and its address lands on «تقرير البنوك»', () => {
+  it('retires the live row once, rather than leaving it to every installation seeded before', () => {
+    // The boot sync never deletes: a row only dropped from `apps` would stay in every live sidebar.
+    const operations = NAVIGATION_CATALOG.find((c) => c.en === 'Operations');
+    expect(operations?.retired).toEqual([{ revision: 1, routes: ['/operations/reports/vault'] }]);
+    expect(NAV_ROWS.map((r) => r.route)).not.toContain('/operations/reports/vault');
+  });
+
+  it('redirects the old address to the bank report, keeping its query, and guards nothing there', () => {
+    const at = ROUTE_SOURCE.indexOf('path="reports/vault"');
+    expect(at, 'the redirect route').toBeGreaterThan(-1);
+    const element = ROUTE_SOURCE.slice(at, ROUTE_SOURCE.indexOf('/>', at));
+    expect(element).toContain('<RedirectKeepingQuery to="/operations/reports/banks"');
+    // Not a page: nothing to guard, and no sidebar row may point at it (the parse skips it).
+    expect(FRONTEND_ROUTES.map((r) => r.route)).not.toContain('/operations/reports/vault');
   });
 });

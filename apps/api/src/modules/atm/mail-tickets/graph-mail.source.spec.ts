@@ -4,11 +4,14 @@
 // first in `$filter`, or Graph refuses with `InefficientFilter`) — plus that a refused token names
 // the status and the path, never the secret it was asked with. Every value below is synthetic.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as OutboundModule from '../../../infrastructure/http/outbound';
 
 const fetched: { url: string; init: RequestInit | undefined }[] = [];
 let respond: (url: string, init: RequestInit | undefined) => Response | Promise<Response>;
 
-vi.mock('../../../infrastructure/http/outbound', () => ({
+vi.mock('../../../infrastructure/http/outbound', async (importOriginal) => ({
+  // The real refusal type: the transport tells it apart from a connection that failed.
+  ...(await importOriginal<typeof OutboundModule>()),
   outboundFetch: async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     fetched.push({ url, init });
@@ -17,6 +20,7 @@ vi.mock('../../../infrastructure/http/outbound', () => ({
 }));
 
 const { createGraphMailboxSource, GraphRequestError } = await import('./graph-mail.source');
+const { OutboundBlockedError } = await import('../../../infrastructure/http/outbound');
 const { env } = await import('../../../infrastructure/config/env');
 
 const SECRET = 'syn-graph-secret-3c1d-do-not-leak';
@@ -237,6 +241,66 @@ describe('a request Graph refuses or never answers', () => {
     const failure = await failureOf();
     expect(failure.message).toBe(`microsoft graph 502 on ${MESSAGES}`);
     expect(failure).toMatchObject({ graphCode: null, graphMessage: null, requestId: null });
+  });
+
+  it('names the connection’s own code when the request fails before Graph answers', async () => {
+    // undici says only «fetch failed»; what happened is on its cause.
+    listingAnswers(() => {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      });
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES} (ECONNRESET)`);
+    expect(failure).toMatchObject({
+      status: null,
+      graphCode: 'ECONNRESET',
+      graphMessage: 'read ECONNRESET',
+      requestId: null,
+    });
+    expect(failure.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+    // What failed underneath stays on the error for the log: its stack and its cause chain.
+    expect(failure.cause).toBeInstanceOf(TypeError);
+    expect((failure.cause as Error).cause).toMatchObject({ code: 'ECONNRESET' });
+  });
+
+  it('keeps the outbound door’s reason when it refused the request — the host, never a secret', async () => {
+    // Under the default policy a host that does not resolve is refused here, before any socket.
+    const reason =
+      'host graph.microsoft.com does not resolve (getaddrinfo EAI_AGAIN graph.microsoft.com)';
+    listingAnswers(() => {
+      throw new OutboundBlockedError('https://graph.microsoft.com/v1.0/users/x/messages', reason);
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request refused on ${MESSAGES}: ${reason}`);
+    expect(failure).toMatchObject({ status: null, graphCode: null, graphMessage: reason });
+    expect(failure.cause).toBeInstanceOf(OutboundBlockedError);
+  });
+
+  it('keeps the outbound door’s reason for the token request too, and never the secret', async () => {
+    respond = (url) => {
+      if (url.includes('/oauth2/v2.0/token')) {
+        throw new OutboundBlockedError(
+          'https://login.microsoftonline.com/syn-tenant.onmicrosoft.com/oauth2/v2.0/token',
+          'host login.microsoftonline.com is not on the outbound allowlist',
+        );
+      }
+      return json({ value: [] });
+    };
+    const failure = await failureOf();
+    expect(failure.message).toBe(
+      'microsoft graph request refused on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token: host login.microsoftonline.com is not on the outbound allowlist',
+    );
+    expect(failure.message).not.toContain(SECRET);
+  });
+
+  it('says the request failed on its path when the failure names no code', async () => {
+    listingAnswers(() => {
+      throw new Error('socket hang up');
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES}`);
+    expect(failure.graphMessage).toBe('socket hang up');
   });
 
   it('says how long it waited for a request never answered, instead of «This operation was aborted»', async () => {

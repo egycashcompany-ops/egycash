@@ -538,16 +538,64 @@ each request was heavier than on the first days. Four changes:
   mailbox is mostly mail left unread on purpose, so two days is nearly two days of everything. The
   legacy asked for `isRead eq false and receivedDateTime ge {its last look}`, about a minute, on the
   same `/users/{id}/messages`, and was answered for years. `NEWEST_WINDOW_MS` is now 15 minutes
-  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after the longest wait) and
+  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after any ONE wait) and
   `SWEEP_WINDOW_MS` two hours; the horizon stays thirty days. «اختبار الاتصال» lists the 15
   minutes. A cycle of the sweep through an empty pile is now 360 steps, one a minute (six hours);
   a full page steps below its oldest as before.
-- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure
-  is a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», or
-  «microsoft graph did not answer within {n} s on {path}» in place of «This operation was
-  aborted». Only a code shaped like a name reaches the message the screen shows. Graph's text (cut
-  to 300 characters), `request-id`, `client-request-id`, `Retry-After` and the elapsed time are
-  fields of the error, and so of the worker's log line.
+- **An outage's mail is filed first** (review of #701/#702). Waits add up: after four unanswered
+  readings in a row (0 + 2 + 4 + 8 minutes) the gap since the last answered reading is longer than
+  the newest page reaches back, and the sweep, which kept its place through the failures, reached
+  the gap only after wrapping at the horizon — up to six hours (reproduced: a mail of 07:39:30
+  filed at 12:14). Every SCHEDULED reading the mailbox answers now records its start in
+  `MAIL_POLL_ANSWERED_KEY` (Redis, 31 days); a scheduled reading that starts more than
+  `NEWEST_WINDOW_MS − 2 min` after it (`gapFloorOf`) sends the sweep, as soon as its newest page is
+  answered, to just below that page — so the gap is walked first, two hours a reading — and
+  remembers where it stood (`SweepState.resume`, with the step and the failures it had there):
+  once a step ends below the gap's floor (the last answered reading's start − `NEWEST_WINDOW_MS`)
+  — or at the horizon, for a gap older than thirty days — the sweep goes back there, step and
+  failures included, instead of walking again what it had swept; so recurring gaps neither keep
+  the deep backlog out of reach nor restart the count that passes over a window the mailbox cannot
+  answer. A gap that comes while another is walked is walked from the top in turn, and the walk
+  then goes on from where that gap found it, not from the top of the older gap: the places to go
+  back to are a chain (`SweepResume.then`, at most `SWEEP_RESUME_DEPTH_MAX` = 8 kept, the oldest
+  let go past that), released one by one as the walk passes each floor (third and fourth reviews).
+  Only the scheduled reading records the answered time and takes the gap: a «قراءة الآن» pressed
+  during the worker's back-off is answered first more often than not, and recording its time would
+  hide the gap from the worker's next reading, which then walks it (second review). A gap the
+  newest page does cover leaves the sweep where it stood.
+- **The sweep keeps its place through a restart** (fourth review). Its state (`SweepState`) was
+  in the worker's memory only, so every deploy — four in an hour on 2026-11-13 — started it over
+  just below the newest page, and a backlog deeper than the time between two deploys was never
+  reached. It is now stored in Redis as well (`MAIL_POLL_SWEEP_KEY`, 31 days), read when a reading's
+  newest page is answered and written at every move. One state company-wide: the worker and
+  «قراءة الآن» walk the same sweep, one reading at a time under the lease. A save still starts it
+  over (the key carries the document's version). A reading whose read of it failed goes on with
+  the memory's state and writes nothing back — after a deploy, or in the api, that state is none or
+  an old one, and must not replace one it could not see; and a gap whose walk could not be stored
+  leaves the answered time where it was, so the next scheduled reading finds the gap again (fifth
+  review).
+- **A window the mailbox cannot answer does not hold the sweep** (review of #701/#702). A failed
+  older page used to leave the sweep where it was, and — the newest page having answered, so no
+  back-off — the same window was asked for every minute for good. The sweep now carries its step
+  and its failures (`SweepState`): a failure halves the next step down to `SWEEP_MIN_WINDOW_MS`
+  (15 minutes), a success doubles it back to `SWEEP_WINDOW_MS`, and on the `SWEEP_SKIP_AFTER`-th
+  (5th) failure in a row — two hours, one, thirty minutes, fifteen, fifteen — the sweep passes over
+  that last, smallest window (logged; its mail stays unread, the next cycle asks again). A window
+  the mailbox answers ends the streak at once, even when the run is then cut short by its budget.
+  The run still fails with the error, so «آخر قراءة» shows it.
+- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure is
+  a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», «microsoft
+  graph did not answer within {n} s on {path}» in place of «This operation was aborted», «microsoft
+  graph request refused on {path}: {reason}» when the outbound door refused it before a socket
+  opened (under the default policy that is also how a host that does not resolve arrives; the reason
+  names only the host and the address), or — a connection that failed before Graph answered, which
+  undici reports only as «fetch failed» — «microsoft graph request failed on {path} ({the system
+  code, e.g. ECONNRESET})». The underlying error is the `GraphRequestError`'s `cause`, so the log
+  keeps its stack and cause chain. Of Graph's answer only a code shaped like a name reaches the
+  message the screen shows; an outbound refusal also shows the door's reason (the host, the
+  resolver's error, or the private address it resolved to). Graph's text (cut to 300 characters),
+  `request-id`, `client-request-id`, `Retry-After` and the elapsed time are fields of the error, and
+  so of the worker's log line.
 
 ### 6b. Branches that work together — ATM only (2026-10-28)
 

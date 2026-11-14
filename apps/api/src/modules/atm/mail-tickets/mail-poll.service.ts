@@ -89,16 +89,31 @@ const DAY_MS = 24 * HOUR_MS;
 
 /**
  * The newest page is the unread mail of the last fifteen minutes — a new mail is in it on the next
- * minute's reading, and after the longest a failing mailbox is made to wait (`BACKOFF_MAX_MS`).
- * What the mailbox is asked to look at is what it costs: asked for every date, then for two days,
- * it gave up after some twenty seconds every time (2026-11-13, Graph's «502 UnknownError»), the
- * shared mailbox holding mostly mail left unread on purpose. The old reader asked for the minute
- * since its last look, and was answered for years. Older unread mail is the sweep's.
+ * minute's reading, and after any one wait of a failing mailbox (`BACKOFF_MAX_MS`). Waits add up,
+ * though: after a gap longer than this (`MAIL_POLL_ANSWERED_KEY`) the mail of the gap is the
+ * sweep's, which then starts just below the newest page. What the mailbox is asked to look at is
+ * what it costs: asked for every date, then for two days, it gave up after some twenty seconds
+ * every time (2026-11-13, Graph's «502 UnknownError»), the shared mailbox holding mostly mail left
+ * unread on purpose. The old reader asked for the minute since its last look, and was answered for
+ * years. Older unread mail is the sweep's.
  */
 export const NEWEST_WINDOW_MS = 15 * MINUTE_MS;
 
 /** One step of the sweep: two hours of receipt times below where it stands — a small question too. */
 export const SWEEP_WINDOW_MS = 2 * HOUR_MS;
+
+/**
+ * The smallest step a sweep makes when the mailbox cannot answer a window: a failing step is halved
+ * (two hours, one, thirty minutes) down to this.
+ */
+export const SWEEP_MIN_WINDOW_MS = 15 * MINUTE_MS;
+
+/**
+ * Failed older pages in a row at one place after which the sweep passes over the window it was
+ * asking for — the step already at its smallest — rather than ask the mailbox for it every minute
+ * for good. Its mail stays unread; the next cycle asks again.
+ */
+export const SWEEP_SKIP_AFTER = 5;
 
 /**
  * How far back the sweep walks before it starts over: thirty days. Mail left unread longer than
@@ -172,10 +187,22 @@ const readBackoff = async (): Promise<PollBackoff | null> => {
  * filed every minute. One that did not — the token, or the listing itself — counts. Best effort:
  * the cache failing costs the back-off, never the reading.
  */
-const noteOutcome = async (run: AtmMailPollRun, answered: boolean): Promise<void> => {
+const noteOutcome = async (
+  run: AtmMailPollRun,
+  answered: boolean,
+  scheduled: boolean,
+  gapPending: boolean,
+): Promise<void> => {
   try {
     if (run.error === null || answered) {
       await getCache().del(MAIL_POLL_BACKOFF_KEY);
+      if (scheduled && !gapPending) {
+        await getCache().set(
+          MAIL_POLL_ANSWERED_KEY,
+          String(run.at.getTime()),
+          ANSWERED_TTL_SECONDS,
+        );
+      }
       return;
     }
     const failures = ((await readBackoff())?.failures ?? 0) + 1;
@@ -206,6 +233,46 @@ const stillWaiting = async (): Promise<boolean> => {
     return false;
   }
 };
+
+/**
+ * When the last SCHEDULED reading the mailbox answered started (epoch ms). The newest page reaches
+ * back `NEWEST_WINDOW_MS` from now, not from that reading: after a longer gap (waits that add up,
+ * an outage) the mail between them is the sweep's, and the sweep is sent there first
+ * (`readNewestFirst`'s catch-up). Only the scheduled reading writes and reads it: a «قراءة الآن»
+ * pressed during the worker's back-off is often the first reading answered after a gap, and
+ * recording its time would hide the gap from the worker's next reading, which is the one that walks
+ * it.
+ */
+export const MAIL_POLL_ANSWERED_KEY = 'atm-mail-poll:answered';
+
+const ANSWERED_TTL_SECONDS = 31 * 24 * 60 * 60;
+
+/**
+ * How much shorter than the newest window a gap may be and still count as one: the last reading's
+ * listing ran a little after it started, and a mail is not always listed the second it arrives.
+ */
+const CATCH_UP_MARGIN_MS = 2 * MINUTE_MS;
+
+/** The last answered reading's start, or null — never read, expired, or a cache that fails. */
+const readLastAnswered = async (): Promise<number | null> => {
+  try {
+    const raw = await getCache().get(MAIL_POLL_ANSWERED_KEY);
+    const at = raw === null ? Number.NaN : Number(raw);
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * For a reading starting `at` after a gap the newest page does not reach back over: the receipt
+ * time the sweep must walk down to before the gap is behind it — the bottom of the last answered
+ * reading's newest page. Null when there is no such gap (or nothing to measure it by).
+ */
+const gapFloorOf = (at: number, lastAnswered: number | null): number | null =>
+  lastAnswered !== null && at - lastAnswered > NEWEST_WINDOW_MS - CATCH_UP_MARGIN_MS
+    ? lastAnswered - NEWEST_WINDOW_MS
+    : null;
 
 /** A run's error is a provider's sentence, not a log: kept short on the document. */
 const ERROR_MAX = 500;
@@ -288,6 +355,8 @@ interface Tally {
   endsAt: number;
   /** The mailbox answered the run's first listing — whatever failed after it. */
   answered: boolean;
+  /** A gap was found but its walk could not be stored: it is to be found again (`noteOutcome`). */
+  gapPending: boolean;
 }
 
 const emptyTally = (now: number): Tally => ({
@@ -295,6 +364,7 @@ const emptyTally = (now: number): Tally => ({
   unmatchedReasons: [],
   endsAt: now + RUN_BUDGET_MS,
   answered: false,
+  gapPending: false,
 });
 
 /** The run's time for taking on mail is spent: what is left is the next minute's. */
@@ -391,11 +461,118 @@ const readOnce = async (
 };
 
 /**
- * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
- * page lies below (null: just below the newest page). Per document VERSION, so a save — a branch
- * switched on — starts it over.
+ * A place the sweep goes back to once a gap is walked: where it stood before the gap — with the
+ * step and the failures it had there, so a window the mailbox cannot answer is still passed over —
+ * the receipt time below which the gap is behind it, and the place it had itself left for an
+ * earlier gap (`then`): a gap that comes while another is walked sends the walk to the top again
+ * and back to where it was, not back to the start of the older gap.
  */
-let sweep: { key: string; before: string | null } | null = null;
+interface SweepResume {
+  before: string;
+  below: number;
+  step: number;
+  failures: number;
+  then: SweepResume | null;
+}
+
+/**
+ * Where the document's backlog sweep stands (`readNewestFirst`): the receipt time the next older
+ * page lies below (null: just below the newest page), the size of its next step, how many older
+ * pages in a row failed there, and — while it walks gaps first — where to go back to. Per document
+ * VERSION, so a save — a branch switched on — starts it over.
+ */
+interface SweepState {
+  key: string;
+  before: string | null;
+  step: number;
+  failures: number;
+  resume: SweepResume | null;
+}
+
+/**
+ * The sweep's state, kept in Redis as well as in memory (`MAIL_POLL_SWEEP_KEY`): a worker restart —
+ * every deploy — would otherwise start it over at the top, and a backlog deeper than the time
+ * between two deploys would never be reached. One state, company-wide like the lease: the worker
+ * and «قراءة الآن» (in the api) walk the same sweep, one reading at a time. A cache that fails
+ * leaves the memory's.
+ */
+export const MAIL_POLL_SWEEP_KEY = 'atm-mail-poll:sweep';
+
+const SWEEP_TTL_SECONDS = 31 * 24 * 60 * 60;
+
+/** How many places to go back to the sweep keeps; past that, the oldest is let go and walked to. */
+export const SWEEP_RESUME_DEPTH_MAX = 8;
+
+let sweep: SweepState | null = null;
+
+const isInstant = (value: unknown): value is string =>
+  typeof value === 'string' && !Number.isNaN(Date.parse(value));
+
+const resumeOf = (raw: unknown, depth: number): SweepResume | null => {
+  if (raw === null || typeof raw !== 'object' || depth >= SWEEP_RESUME_DEPTH_MAX) return null;
+  const r = raw as Partial<Record<keyof SweepResume, unknown>>;
+  if (!isInstant(r.before)) return null;
+  if (typeof r.below !== 'number' || typeof r.step !== 'number') return null;
+  if (typeof r.failures !== 'number') return null;
+  return {
+    before: r.before,
+    below: r.below,
+    step: r.step,
+    failures: r.failures,
+    then: resumeOf(r.then ?? null, depth + 1),
+  };
+};
+
+/** The places to go back to, the oldest past `SWEEP_RESUME_DEPTH_MAX` let go. */
+const capped = (resume: SweepResume | null): SweepResume | null => resumeOf(resume, 0);
+
+/**
+ * The stored state, read at the start of a reading. True when this reading may write it back: it
+ * read it, found none, or found one it cannot read (which is then replaced). False when the cache
+ * did not answer: the reading goes on with the memory's state — after a deploy none, in the api an
+ * old one — and must not write that over a state it could not see (`storeSweep`).
+ */
+const loadSweep = async (): Promise<boolean> => {
+  let raw: string | null;
+  try {
+    raw = await getCache().get(MAIL_POLL_SWEEP_KEY);
+  } catch {
+    return false;
+  }
+  if (raw === null) return true;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof SweepState, unknown>>;
+    if (typeof parsed.key !== 'string') return true;
+    if (parsed.before !== null && !isInstant(parsed.before)) return true;
+    if (typeof parsed.step !== 'number' || typeof parsed.failures !== 'number') return true;
+    sweep = {
+      key: parsed.key,
+      before: parsed.before,
+      step: parsed.step,
+      failures: parsed.failures,
+      resume: resumeOf(parsed.resume ?? null, 0),
+    };
+  } catch {
+    // Not JSON: this reading's state replaces it.
+  }
+  return true;
+};
+
+/**
+ * Where the sweep now stands — in memory at once, in Redis when this reading may write it
+ * (`loadSweep`). True when it reached Redis.
+ */
+const storeSweep = async (next: SweepState, persist: boolean): Promise<boolean> => {
+  sweep = next;
+  if (!persist) return false;
+  try {
+    await getCache().set(MAIL_POLL_SWEEP_KEY, JSON.stringify(next), SWEEP_TTL_SECONDS);
+    return true;
+  } catch (error) {
+    logger.warn({ err: error }, 'atm mail poll: the sweep position was not stored');
+    return false;
+  }
+};
 
 /**
  * The mailbox document's reading. ONE mailbox serves every branch, and the mail ECMS leaves unread
@@ -423,11 +600,48 @@ const readNewestFirst = async (
   documentCategories: ReadonlyMap<string, string>,
   sweepKey: string,
   tally: Tally,
+  gapFloor: number | null,
 ): Promise<void> => {
   const now = Date.now();
   const newestSince = mailInstant(now - NEWEST_WINDOW_MS);
   const newest = await listPage(POLL_BATCH, { since: newestSince, before: null });
   startTheClock(tally);
+  // Where the sweep stands, as the last reading — here or in the other process — left it.
+  const persist = await loadSweep();
+  // The first scheduled reading answered after a gap longer than the newest window: the mail of the
+  // gap lies just below the newest page, so the sweep walks it first instead of reaching it after a
+  // full cycle (six hours) — and once below it, goes back to where it stood, so recurring gaps do
+  // not keep the deep backlog out of reach. Set before anything else, so a run cut short keeps it.
+  if (gapFloor !== null) {
+    const prior = sweep?.key === sweepKey ? sweep : null;
+    let resume: SweepResume | null = null;
+    if (prior !== null && prior.before !== null) {
+      // Where it stood — in the backlog, or partway down an earlier gap — is where it goes back to.
+      resume = {
+        before: prior.before,
+        below: gapFloor,
+        step: prior.step,
+        failures: prior.failures,
+        then: prior.resume,
+      };
+    } else if (prior?.resume) {
+      // Already at the top of a walk: the walk now goes down to the lower of the two floors.
+      resume = { ...prior.resume, below: Math.min(prior.resume.below, gapFloor) };
+    }
+    const stored = await storeSweep(
+      {
+        key: sweepKey,
+        before: null,
+        step: SWEEP_WINDOW_MS,
+        failures: 0,
+        resume: capped(resume),
+      },
+      persist,
+    );
+    // Not stored, the next reading would load the state from before the gap: the gap stays to be
+    // found again — the last answered time is left where it was (`noteOutcome`).
+    if (!stored) tally.gapPending = true;
+  }
   let categoryOf: CategoryOf | null = null;
   const take = async (message: AtmMailMessage): Promise<void> => {
     categoryOf ??= await categoryLookup(documentCategories);
@@ -445,15 +659,68 @@ const readNewestFirst = async (
   // Where the sweep stands: kept from the last run, else just below the newest page — below its
   // oldest when it was full, below its fifteen minutes when it held all of them.
   const floor = now - SWEEP_HORIZON_MS;
-  const kept = sweep?.key === sweepKey ? sweep.before : null;
+  const stands = sweep?.key === sweepKey ? sweep : null;
+  const step = stands?.step ?? SWEEP_WINDOW_MS;
+  const failures = stands?.failures ?? 0;
+  const resume = stands?.resume ?? null;
   const before =
-    kept ?? (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
+    stands?.before ??
+    (newest.listed >= POLL_BATCH && newest.oldest !== null ? newest.oldest : newestSince);
   if (Date.parse(before) <= floor) {
-    sweep = { key: sweepKey, before: null };
+    await storeSweep(
+      {
+        key: sweepKey,
+        before: null,
+        step: SWEEP_WINDOW_MS,
+        failures: 0,
+        resume: null,
+      },
+      persist,
+    );
     return;
   }
-  const since = mailInstant(Math.max(floor, Date.parse(before) - SWEEP_WINDOW_MS));
-  const older = await listPage(POLL_BATCH, { since, before });
+  const since = mailInstant(Math.max(floor, Date.parse(before) - step));
+  let older: AtmMailPage;
+  try {
+    older = await listPage(POLL_BATCH, { since, before });
+  } catch (error) {
+    // A window the mailbox cannot answer must neither hold the sweep for good nor be asked for
+    // every minute at full size (the newest page answered, so no back-off slows it): the next run
+    // asks for half of it, down to `SWEEP_MIN_WINDOW_MS`, and after `SWEEP_SKIP_AFTER` failures
+    // in a row the sweep passes over it. The run still fails with the error.
+    if (step <= SWEEP_MIN_WINDOW_MS && failures + 1 >= SWEEP_SKIP_AFTER) {
+      logger.warn(
+        { since, before, failures: failures + 1 },
+        'atm mail poll: the sweep passed over a window the mailbox could not answer',
+      );
+      await storeSweep(
+        {
+          key: sweepKey,
+          before: Date.parse(since) <= floor ? null : since,
+          step: SWEEP_WINDOW_MS,
+          failures: 0,
+          // Passed over down to the horizon: the sweep starts over, and a gap it was walking is behind it.
+          resume: Date.parse(since) <= floor ? null : resume,
+        },
+        persist,
+      );
+    } else {
+      await storeSweep(
+        {
+          key: sweepKey,
+          before,
+          step: Math.max(SWEEP_MIN_WINDOW_MS, step / 2),
+          failures: failures + 1,
+          resume,
+        },
+        persist,
+      );
+    }
+    throw error;
+  }
+  // Answered: whatever this run gets through, the window is not failing — a run cut short below
+  // keeps its place without carrying a streak of failures into the next.
+  await storeSweep({ key: sweepKey, before, step, failures: 0, resume }, persist);
   for (const message of older.messages) {
     // A page cut short keeps the sweep where it was: the page is listed again next run, and what
     // this run already took on is either gone from the unread list or judged again, harmlessly.
@@ -465,8 +732,32 @@ const readNewestFirst = async (
   }
   // A full page: the next one lies below its oldest. A short one: these days are done, the next
   // step is the two hours below them — and past the horizon, the sweep starts over.
-  const next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
-  sweep = { key: sweepKey, before: Date.parse(next) <= floor ? null : next };
+  let next = older.listed >= POLL_BATCH && older.oldest !== null ? older.oldest : since;
+  let nextStep = Math.min(SWEEP_WINDOW_MS, step * 2);
+  let nextFailures = 0;
+  let goingOn = resume;
+  // A gap is walked — or the walk reached the horizon, below which a gap older than thirty days
+  // cannot be walked: back to where the sweep stood before it, with the step and the failures it
+  // had there, unless that is above here; then the same for the gap before it, if this is below
+  // that one too.
+  while (goingOn !== null && Date.parse(next) <= Math.max(goingOn.below, floor)) {
+    if (Date.parse(goingOn.before) < Date.parse(next)) {
+      next = goingOn.before;
+      nextStep = goingOn.step;
+      nextFailures = goingOn.failures;
+    }
+    goingOn = goingOn.then;
+  }
+  await storeSweep(
+    {
+      key: sweepKey,
+      before: Date.parse(next) <= floor ? null : next,
+      step: nextStep,
+      failures: nextFailures,
+      resume: goingOn,
+    },
+    persist,
+  );
 };
 
 /** Best effort: the run is the reader's work, its record a convenience for the screen. */
@@ -504,8 +795,10 @@ export const pollAtmMailbox = async (
   const lease = randomUUID();
   if (!(await cache.setIfAbsent(MAIL_POLL_LEASE_KEY, lease, LEASE_TTL_SECONDS))) return null;
   try {
-    const { run, answered } = await readAndRecord(plan, at);
-    await noteOutcome(run, answered);
+    const scheduled = options.scheduled === true;
+    const gapFloor = scheduled ? gapFloorOf(at.getTime(), await readLastAnswered()) : null;
+    const { run, answered, gapPending } = await readAndRecord(plan, at, gapFloor);
+    await noteOutcome(run, answered, scheduled, gapPending);
     return run;
   } finally {
     // Compare-and-delete: a lease that outlived its TTL and was taken by another reading stays.
@@ -519,8 +812,9 @@ export const pollAtmMailbox = async (
 const readAndRecord = async (
   plan: AtmMailPollPlan,
   at: Date,
-): Promise<{ run: AtmMailPollRun; answered: boolean }> => {
-  if (plan.mode === 'off') return { run: idleRun(at), answered: true };
+  gapFloor: number | null,
+): Promise<{ run: AtmMailPollRun; answered: boolean; gapPending: boolean }> => {
+  if (plan.mode === 'off') return { run: idleRun(at), answered: true, gapPending: false };
   const tally = emptyTally(Date.now());
   let error: string | null = null;
   let providerId: string | null = null;
@@ -536,7 +830,7 @@ const readAndRecord = async (
       if (listPage === undefined) await readOnce(source, gate, categories, tally);
       else {
         const sweepKey = `${String(plan.doc._id)}:${String(plan.doc.__v)}`;
-        await readNewestFirst(source, listPage, gate, categories, sweepKey, tally);
+        await readNewestFirst(source, listPage, gate, categories, sweepKey, tally, gapFloor);
       }
     }
   } catch (failure) {
@@ -555,10 +849,13 @@ const readAndRecord = async (
   }
   const run: AtmMailPollRun = { at, ...tally.report, error, unmatchedReasons };
   await recordRun(plan, run);
-  return { run, answered: tally.answered };
+  return { run, answered: tally.answered, gapPending: tally.gapPending };
 };
 
-/** Test seam — the sweep position is process-wide. */
+/**
+ * Test seam — forgets the sweep's position in memory, as a restart does. Its stored copy
+ * (`MAIL_POLL_SWEEP_KEY`) is the cache's, and a test that starts the sweep over deletes it too.
+ */
 export const resetAtmMailSweep = (): void => {
   sweep = null;
 };

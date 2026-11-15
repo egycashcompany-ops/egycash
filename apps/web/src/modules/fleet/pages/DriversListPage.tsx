@@ -71,6 +71,7 @@ import { useBranchOptions } from '../../organization/shared/references';
 import { useEmployeeRecord } from '../components/EmployeeName';
 import { useDriverHoverCard } from '../components/DriverHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import { nameInitials } from '../lib/name-initials';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
@@ -216,12 +217,8 @@ const DriverNameCell = ({
   if (person === undefined || person.fullNameAr === '') {
     return <span className="text-slate-400">—</span>;
   }
-  const words = person.fullNameAr.trim().split(/\s+/u);
-  const initials = words
-    .slice(0, 2)
-    // «السيد» gives «س», not «ا»: the article is not the name.
-    .map((word) => (word.startsWith('ال') && word.length > 2 ? word.charAt(2) : word.charAt(0)))
-    .join('');
+  // «السيد» gives «س», not «ا»: the article is not the name; a rude pair shows one letter.
+  const initials = nameInitials(person.fullNameAr);
   return (
     <span className="flex items-center gap-2.5">
       <span

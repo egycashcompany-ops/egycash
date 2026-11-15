@@ -1208,6 +1208,13 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
+  of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح
+  الحروف». A pair on a short list («كس», «زب», «طز», «شخ», «تف») now shows its first letter alone,
+  with or without a space between the letters. One helper (`lib/name-initials.ts`) serves the three
+  places that drew the letters: the badge beside a driver's name on every Fleet board, form and
+  picker, the drivers list, and the driver's profile card. Any other name draws as before.
+
 - **ATM: the maintenance mailbox is read again.** «الـ Automation بتاع الميل واقف بقاله شوية كتير !»
   and «اختبار الاتصال» on /atm/settings answered «تعذّر الاتصال: This operation was aborted». From
   2026-11-13 02:00 (Cairo 04:00) almost every reading timed out after 20 seconds. The mailbox

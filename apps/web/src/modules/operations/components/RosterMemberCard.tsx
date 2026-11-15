@@ -77,14 +77,21 @@ export const RosterMemberCardBody = ({
             branch
           )}
         </Fact>
-        <Fact label={t('operations.crew.requirements.holds')}>
+      </dl>
+      {/* What they hold, under a rule and across the card's whole width: four chips squeezed into
+        the value column stood one per line. */}
+      <dl className="mt-2.5 border-t border-slate-200 pt-2 text-[13px] leading-snug dark:border-[#2b3b6b]">
+        <dt className="font-semibold text-slate-500 dark:text-slate-400">
+          {t('operations.crew.requirements.holds')}
+        </dt>
+        <dd className="mt-1.5">
           {held.length === 0 ? (
             // Nothing saved — a row with every flag off, or no row yet: either way nothing on file.
             <span className="font-semibold text-slate-500 dark:text-slate-400">
               {t('operations.crew.flag.carriesNothing')}
             </span>
           ) : (
-            <span className="flex flex-wrap gap-1 pt-0.5" data-roster-card-held={held.join(' ')}>
+            <span className="flex flex-wrap gap-1" data-roster-card-held={held.join(' ')}>
               {held.map((flag) => (
                 // A chip that says its flag in words: the card is a tooltip, so an icon alone would
                 // have nothing to hover for its name.
@@ -114,7 +121,7 @@ export const RosterMemberCardBody = ({
               ))}
             </span>
           )}
-        </Fact>
+        </dd>
       </dl>
     </div>
   );

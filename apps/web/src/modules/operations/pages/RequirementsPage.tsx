@@ -138,8 +138,12 @@ const ROSTER_TABLE = cn(
  * A name or a title that may wrap rather than widen its column (the table's cells are `nowrap`) —
  * onto two lines at most for the legacy roster's longest («عبد الغنى ظهير محمدالامين عبد الله»,
  * «رئيس قسم تشغيل نقل الاموال»), so a phone's rows stay a toggle high rather than three lines.
+ *
+ * The person cell holds the column's least width (`PERSON_CELL`), not the name: the code sits
+ * right beside a short name, as the owner drew it, rather than a name's width further on.
  */
-const NAME_WRAP = 'block min-w-[10rem] max-w-[15rem] whitespace-normal leading-snug';
+const NAME_WRAP = 'block max-w-[15rem] whitespace-normal leading-snug';
+const PERSON_CELL = 'flex min-w-[14rem] items-baseline gap-2';
 const TITLE_WRAP = 'block min-w-[9rem] max-w-[14rem] whitespace-normal leading-snug';
 
 export const RequirementsPage = (): JSX.Element => {
@@ -253,7 +257,7 @@ export const RequirementsPage = (): JSX.Element => {
       render: (row) => {
         const failure = failures.get(row.employeeId);
         return (
-          <span className="flex items-baseline gap-2" data-roster-person={row.code}>
+          <span className={PERSON_CELL} data-roster-person={row.code}>
             <RosterMemberHoverName member={row} className={NAME_WRAP} />
             {/* A figure: the figures' face, set left to right and isolated from the name. */}
             <span

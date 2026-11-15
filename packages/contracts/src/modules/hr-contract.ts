@@ -881,49 +881,39 @@ export const UpdateJobPapersSchema = z
 export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
 /**
- * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: a table HR fills by hand, one row per job — the
- * company's job title, its title at the social-insurance authority, and its occupation code
- * («كود المهنه … كله هيتحط manual»). Once saved, «نموذج رقم (1)» prints, for a person whose job carries
- * a row's title, that row's insurance title and occupation code («لما اجي احط المسمي الوظيفي بتاعنا
- * هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
+ * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: every job of the company, each beside its title at
+ * the social-insurance authority and its occupation code («كود المهنه»). The jobs are the data — none
+ * is added or taken off here («هنحط كل الظائف بتاعتنا ك data اساسيه»); «تعديل» beside a job edits its
+ * insurance title and code only («مثبت فيه المسمي الوظيفي عندنا و التعديل … ف مسمي الوظيفي لدي التامينات
+ * و كود المهنه بس»). «نموذج رقم (1)» prints them for a person of that job («لما اجي احط المسمي الوظيفي
+ * بتاعنا هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
  */
 export const INSURANCE_JOB_TITLE_MAX = 150;
 /** An occupation code: up to six digits, or two groups of up to three — «123/456» — as form 1 boxes it. */
 export const OCCUPATION_CODE_PATTERN = /^(\d{1,6}|\d{1,3}\/\d{1,3})?$/;
 
 export interface InsuranceJobTitleRowDto {
-  id: string;
-  /** The company's job title, as typed. */
+  jobTitleId: string;
+  /** The job as the company names it — fixed here. */
   jobTitle: string;
+  /** Its title at the authority; empty: form 1 prints the company's. */
   insuranceTitle: string;
   occupationCode: string;
-  /** A job of the company carries this title — the row reaches form 1. */
-  matched: boolean;
 }
 
 export interface InsuranceJobTitlesDto {
+  /** Every active job of the company, by name. */
   rows: InsuranceJobTitleRowDto[];
-  /** The company's active job titles — offered while a title is typed. */
-  jobNames: string[];
 }
 
-export const UpdateInsuranceJobTitlesSchema = z
+/** «تعديل» on one job: its insurance title and occupation code. Both empty: nothing kept for it. */
+export const UpdateInsuranceJobTitleSchema = z
   .object({
-    /** The whole table as it now stands: a row left out is taken off. */
-    rows: z
-      .array(
-        z
-          .object({
-            jobTitle: z.string().trim().min(1).max(INSURANCE_JOB_TITLE_MAX),
-            insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
-            occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
-          })
-          .strict(),
-      )
-      .max(1000),
+    insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
+    occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
   })
   .strict();
-export type UpdateInsuranceJobTitles = z.infer<typeof UpdateInsuranceJobTitlesSchema>;
+export type UpdateInsuranceJobTitle = z.infer<typeof UpdateInsuranceJobTitleSchema>;
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

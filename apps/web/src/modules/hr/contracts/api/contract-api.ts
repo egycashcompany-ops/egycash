@@ -9,7 +9,7 @@ import {
   type JobPapersDto,
   type UpdateJobPapers,
   type InsuranceJobTitlesDto,
-  type UpdateInsuranceJobTitles,
+  type UpdateInsuranceJobTitle,
   type RenderCandidateBulk,
   type RenderCandidateBulkDto,
   type RenderCandidatePapers,
@@ -124,8 +124,8 @@ export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderC
   post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
 export const getInsuranceJobTitles = (): Promise<InsuranceJobTitlesDto> =>
   get<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles');
-export const saveInsuranceJobTitles = (body: UpdateInsuranceJobTitles): Promise<InsuranceJobTitlesDto> =>
-  patch<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles', body);
+export const saveInsuranceJobTitle = (jobTitleId: string, body: UpdateInsuranceJobTitle): Promise<InsuranceJobTitlesDto> =>
+  patch<InsuranceJobTitlesDto>(`/hr/contracts/insurance-job-titles/${jobTitleId}`, body);
 export const getJobPapers = (): Promise<JobPapersDto> => get<JobPapersDto>('/hr/contracts/job-papers');
 export const saveJobPapers = (body: UpdateJobPapers): Promise<JobPapersDto> =>
   patch<JobPapersDto>('/hr/contracts/job-papers', body);

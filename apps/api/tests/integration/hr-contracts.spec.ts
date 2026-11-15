@@ -1377,50 +1377,53 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect((await save(line({}), aliceToken)).status).toBe(403);
   });
 
-  it('«مسميات الوظائف لدى التأمينات»: rows typed by hand; form 1 prints the matching row\'s title and code (A28)', async () => {
+  it('«مسميات الوظائف لدى التأمينات»: every job is a row; «تعديل» sets its insurance title and code, which form 1 prints (A28)', async () => {
     const read = async (token = adminToken) =>
       request(app).get('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`);
-    const save = async (body: object, token = adminToken) =>
-      request(app).patch('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`).send(body);
-    const row = (jobTitle: string, insuranceTitle = '', occupationCode = '') => ({ jobTitle, insuranceTitle, occupationCode });
+    const save = async (jobTitleId: string, body: object, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/hr/contracts/insurance-job-titles/${jobTitleId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+    const rowOf = (table: InsuranceJobTitlesDto) => table.rows.find((r) => r.jobTitleId === specialistJob);
 
+    // Every active job is a row, by name, with nothing kept for it yet.
     const res = await read();
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const empty = res.body.data as InsuranceJobTitlesDto;
-    expect(empty.rows).toEqual([]);
-    // The company's job titles are offered while ours is typed.
-    expect(empty.jobNames).toContain('أخصائى صراف آلى');
+    const table = res.body.data as InsuranceJobTitlesDto;
+    expect(rowOf(table)).toEqual({ jobTitleId: specialistJob, jobTitle: 'أخصائى صراف آلى', insuranceTitle: '', occupationCode: '' });
+    expect(table.rows.map((r) => r.jobTitleId)).toContain(crewLeaderJob);
+    const names = table.rows.map((r) => r.jobTitle);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'ar')));
 
-    // Typed as HR spells it — folded, it meets the job «أخصائى صراف آلى».
-    const saved = await save({
-      rows: [row(' اخصائي صراف الي ', ' فني صيانة ماكينات ', '742/115'), row('مندوب مبيعات', 'مندوب مبيعات', '123456')],
-    });
+    // «تعديل»: the insurance title and the occupation code.
+    const saved = await save(specialistJob, { insuranceTitle: ' فني صيانة ماكينات ', occupationCode: '742/115' });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    const table = saved.body.data as InsuranceJobTitlesDto;
-    expect(table.rows.map((r) => [r.jobTitle, r.insuranceTitle, r.occupationCode, r.matched])).toEqual([
-      ['اخصائي صراف الي', 'فني صيانة ماكينات', '742/115', true],
-      ['مندوب مبيعات', 'مندوب مبيعات', '123456', false],
-    ]);
+    expect(rowOf(saved.body.data as InsuranceJobTitlesDto)).toMatchObject({
+      jobTitle: 'أخصائى صراف آلى',
+      insuranceTitle: 'فني صيانة ماكينات',
+      occupationCode: '742/115',
+    });
 
-    // Form 1 prints the row's title and its code in the code's boxes; the contract keeps ours.
+    // Form 1 prints the insurance title and the code in its boxes; the contract keeps ours.
     const employee = await employeeIn(specialistJob);
     const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
     expect(html).toContain('فني صيانة ماكينات');
     expect(html).toContain('<span class="cells c3"><i>7</i><i>4</i><i>2</i></span> / <span class="cells c3"><i>1</i><i>1</i><i>5</i></span>');
     expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
 
-    // Taken off (left out of the table): form 1 prints the job's own name and empty code boxes.
-    const cleared = await save({ rows: [row('مندوب مبيعات', 'مندوب مبيعات', '123456')] });
-    expect((cleared.body.data as InsuranceJobTitlesDto).rows.map((r) => r.jobTitle)).toEqual(['مندوب مبيعات']);
+    // Both emptied: nothing kept — form 1 prints the job's own name and empty code boxes.
+    const cleared = await save(specialistJob, { insuranceTitle: '', occupationCode: '' });
+    expect(rowOf(cleared.body.data as InsuranceJobTitlesDto)).toMatchObject({ insuranceTitle: '', occupationCode: '' });
     const later = await employeeIn(specialistJob);
     expect(((await pack(later.id)).body.data as HiringPackDto).html).not.toContain('فني صيانة ماكينات');
 
-    // A title listed twice, a code form 1 cannot box, a row with no title and a user without the
+    // A code form 1 cannot box, our title sent to be changed, an unknown job and a user without the
     // permission are refused.
-    expect((await save({ rows: [row('سائق'), row('ســائق ')] })).status).toBe(400);
-    expect((await save({ rows: [row('سائق', '', '12a')] })).status).toBe(400);
-    expect((await save({ rows: [row('', 'x')] })).status).toBe(400);
+    expect((await save(specialistJob, { insuranceTitle: 'x', occupationCode: '12a' })).status).toBe(400);
+    expect((await save(specialistJob, { jobTitle: 'سائق', insuranceTitle: 'x', occupationCode: '' })).status).toBe(400);
+    expect((await save('64b1f0cccccccccccccccc0e', { insuranceTitle: 'x', occupationCode: '' })).status).toBe(404);
     expect((await read(aliceToken)).status).toBe(403);
-    expect((await save({ rows: [] }, aliceToken)).status).toBe(403);
+    expect((await save(specialistJob, { insuranceTitle: 'x', occupationCode: '' }, aliceToken)).status).toBe(403);
   });
 });

@@ -23,7 +23,8 @@ import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
-import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
+import { OfferFilters, departmentIdsOf, type OfferFiltersState } from '../components/OfferFilters';
+import { useDepartmentReferenceOptions } from '../../../../organization/shared/references';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
@@ -31,6 +32,9 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'active',
+  'branch',
+  'department',
+  'job',
   'q',
   'status',
   'size',
@@ -38,6 +42,9 @@ const REMEMBERED_FILTERS = [
 ] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
+
+/** An id no department has: a department filter whose branch copies are not known yet. */
+const NO_MATCH = '000000000000000000000000';
 
 /** The offer form for somebody already at this stage — their choice fixed (`from=queue`). */
 export const writeOfferPath = (applicantId: string): string => `/job-offers/new?applicantId=${applicantId}&from=queue`;
@@ -55,6 +62,9 @@ export const JobOffersListPage = (): JSX.Element => {
     search: sp.get('q') ?? '',
     status: readList(sp, 'status') as OfferFiltersState['status'],
     active: sp.get('active') === 'true',
+    branch: readList(sp, 'branch'),
+    department: readList(sp, 'department'),
+    job: readList(sp, 'job'),
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -75,8 +85,18 @@ export const JobOffersListPage = (): JSX.Element => {
     setSp(next);
   };
 
+  const { data: departments = [] } = useDepartmentReferenceOptions();
+  const departmentIds = departmentIdsOf(filters.department, departments, filters.branch);
+
   const changeFilters = (nf: OfferFiltersState): void =>
-    patch({ q: nf.search || null, status: writeList(nf.status), active: nf.active ? 'true' : null });
+    patch({
+      q: nf.search || null,
+      status: writeList(nf.status),
+      active: nf.active ? 'true' : null,
+      branch: writeList(nf.branch),
+      department: writeList(nf.department),
+      job: writeList(nf.job),
+    });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
@@ -91,8 +111,18 @@ export const JobOffersListPage = (): JSX.Element => {
       search: filters.search,
       status: filters.status,
       active: filters.active ? true : undefined,
+      branchId: filters.branch,
+      // A company department stands for its branch copies; until they are known, one that
+      // matches nothing — never an unfiltered page.
+      departmentId:
+        filters.department.length === 0
+          ? undefined
+          : departmentIds.length > 0
+            ? departmentIds
+            : [NO_MATCH],
+      jobTitleId: filters.job,
     }),
-    [paramsKey],
+    [paramsKey, departmentIds.join(',')],
   );
 
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);

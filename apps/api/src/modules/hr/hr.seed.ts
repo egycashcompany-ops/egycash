@@ -28,7 +28,7 @@ import {
   ensureNationalIdCardCategory,
 } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
-import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
+import { ensureEvaluationCategory, evaluationPhaseService, evaluationService } from './recruitment/evaluations';
 import {
   registerExternalSurface,
   registerExternalWriteSurface,
@@ -546,6 +546,14 @@ export const seedHrRecruitment = async (): Promise<void> => {
   // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
   // on the stage collections (idempotent, missing-field guarded).
   await migrateRecruitmentLegacy();
+  // «عروض العمل» lists whoever cleared their checks as «جاهز لعرض العمل»: those who cleared them
+  // before clearing moved them to the offer stage, and were never moved by hand, are moved now.
+  try {
+    const moved = await evaluationService.moveClearedApplicantsToOffer();
+    if (moved > 0) logger.info({ moved }, 'recruitment: cleared applicants moved to the offer stage');
+  } catch (error) {
+    logger.warn({ err: error }, 'recruitment: moving cleared applicants to the offer stage skipped');
+  }
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
   // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).

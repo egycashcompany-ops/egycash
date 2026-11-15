@@ -26,6 +26,9 @@ export default defineConfig({
     // db:sync-indexes — the Railway pre-deploy command (railway.json) runs this before every api
     // deploy, so it has to exist on the image like the CLIs above.
     'src/sync-indexes.cli.ts',
+    // purge:applicants — erasing named applicants is only ever done against the LIVE database, so
+    // the service shell is the only place it ever runs. `npm run purge:applicants` needs tsx.
+    'src/purge-applicants.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',

@@ -36,6 +36,9 @@ describe('the operator CLIs reach the deployed image', () => {
     'src/migrate-org-catalog.cli.ts',
     // The index sync is not run by hand at all — Railway runs it before every api deploy.
     'src/sync-indexes.cli.ts',
+    // And the applicant purge: there is no reason to erase an applicant except on the live
+    // database, so the service shell is the only place it ever runs.
+    'src/purge-applicants.cli.ts',
   ];
 
   it('builds every go-live CLI, not only the long-running services', () => {

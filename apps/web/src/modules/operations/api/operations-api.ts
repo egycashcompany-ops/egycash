@@ -13,6 +13,7 @@ import {
   MAX_PAGE_SIZE,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
+  type CheckVaultSeals,
   type CompleteOperationsShipment,
   type ConfirmSecuredPickup,
   type CreateOperationsArea,
@@ -57,6 +58,7 @@ import {
   type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVaultInput,
+  type OperationsVaultSealCheckDto,
   type SetOperationsCrewRequirements,
   type SetOperationsStandingCrew,
   type UpdateOperationsArea,
@@ -77,6 +79,7 @@ import {
   post,
   upload,
   type QueryParams,
+  type ReadOptions,
 } from '../../../shared/lib/api-client';
 
 export type OperationsListParams = QueryParams;
@@ -390,6 +393,23 @@ export const receiveIntoVault = (
   body: ReceiveIntoVaultInput,
 ): Promise<OperationsVaultReceiveResultDto> =>
   post<OperationsVaultReceiveResultDto>(`/operations/secured/${id}/receive`, body);
+
+/**
+ * Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: which of the
+ * seals typed into the receive form the vault still holds on another محصنة, and on which. A POST
+ * that writes nothing — the seals ride in the body, as the receipt's own do, never in a URL — and it
+ * carries the query's AbortSignal, so a check the next keystroke has overtaken is stopped on the
+ * wire. Advice for the form; the receipt itself decides (409 `OPERATIONS_SEAL_HELD_IN_VAULT`).
+ */
+export const checkVaultSeals = (
+  body: CheckVaultSeals,
+  options: ReadOptions = {},
+): Promise<OperationsVaultSealCheckDto> =>
+  api<OperationsVaultSealCheckDto>('/operations/secured/seal-check', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
 
 /**
  * Round 10 — the desk's pickup ✓ on the secured screen («تم الاستلام من العمليات») and its undo,

@@ -47,6 +47,7 @@ import {
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReceiveResultDto,
+  type OperationsVaultSealCheckDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -1858,7 +1859,9 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         receiptNumber: `R-${shipment.id.slice(-6)}`,
         bagCount: 3,
         boxCount: 1,
-        bagSeals: ['S-1', 'S-2', 'S-3'],
+        // Each shipment its own seals: since Round 21b a seal another محصنة still holds in the vault
+        // refuses the receipt («لو موجوده عندنا لا ك محصنة يبقى مينفعش»).
+        bagSeals: ['S-1', 'S-2', 'S-3'].map((seal) => `${seal}-${shipment.id.slice(-6)}`),
         version: shipment.version,
         ...overrides,
       });
@@ -7266,7 +7269,8 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       .send({
         receiptNumber: `R10-${id.slice(-6)}`,
         bagCount: 2,
-        bagSeals: ['R10-S1', 'R10-S2'],
+        // Each shipment its own seals — a seal another محصنة still holds is refused (Round 21b).
+        bagSeals: ['R10-S1', 'R10-S2'].map((seal) => `${seal}-${id.slice(-6)}`),
         version: (await read(id)).version,
       });
   const cancel = async (
@@ -8799,7 +8803,9 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
       // 2 bags × 3 = 6 boxes on the form; two left empty, one only spaces, the rest padded.
       bagSeals: [' 101 ', '102', '', '104', '   ', '106'],
       boxCount: 3,
-      boxSeals: ['6', '7', '8', '10', '11', '13'],
+      // Legacy's summary shape («[6 - 8] - [10 - 11] - 13») two hundred on: this محصنة stays in the
+      // vault, and Round 21's case below takes 1 … 8 (Round 21b — a held seal is not received again).
+      boxSeals: ['206', '207', '208', '210', '211', '213'],
       cartonCount: 1,
       denominations: [
         { value: 200, count: 15 },
@@ -8828,7 +8834,7 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     });
     const [custody] = await custodyOf(shipment.id);
     expect(custody?.bagSeals).toEqual(['101', '102', '104', '106']);
-    expect(custody?.boxSeals).toEqual(['6', '7', '8', '10', '11', '13']);
+    expect(custody?.boxSeals).toEqual(['206', '207', '208', '210', '211', '213']);
     expect(custody?.bagSealsPerBag).toBe(3);
 
     expect(await inventoryRow(shipment.id)).toMatchObject({
@@ -9237,5 +9243,315 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     expect(voided?.denominations).toEqual([{ value: 100, count: 3 }]);
     const kinds = (await logOf(shipment.id)).entries.map((e) => e.kind);
     expect(kinds).toEqual(['created', 'vaultReceived', 'receiptCancelled']);
+  });
+});
+
+// Round 21b — the owner, asked whether a seal already recorded on another محصنة should be refused:
+// «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». A seal the vault STILL HOLDS
+// on another محصنة refuses the receipt (409, nothing written); one whose محصنة came in and went out
+// again — or whose receipt was cancelled — may come again. Every seal here is this suite's own: the
+// suites above leave their receipts in the vault, holding 1 … 13, 101 … 106 and the rest.
+describe('Round 21b — a seal still in the vault is not received on another محصنة', () => {
+  const R21B_DAY = shift(390);
+  const R21B_OUT = shift(391);
+
+  let outCrewId = '';
+  let receiver = ''; // operationsVault.receive and nothing else
+  let vaultViewer = ''; // operationsVault.view — the vault's screens, never the receive
+
+  const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R21b ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return login(email);
+  };
+  const book = async (): Promise<OperationsShipmentDto> => {
+    const res = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: R21B_DAY,
+      deliveryDate: R21B_OUT,
+      notes: 'كما حُجزت',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<OperationsShipmentDto>(res);
+  };
+  const read = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const receive = async (
+    id: string,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/receive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ version: (await read(id)).version, ...body });
+  /** Booked and received with these seals — the محصنة that then holds them. */
+  const held = async (seals: Record<string, unknown>): Promise<OperationsShipmentDto> => {
+    const shipment = await book();
+    const res = await receive(shipment.id, seals);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return shipment;
+  };
+  const check = (body: unknown, token: string | null = adminToken): request.Test => {
+    const call = request(app)
+      .post('/api/v1/operations/secured/seal-check')
+      .send(body as object);
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const heldSeals = async (body: unknown): Promise<OperationsVaultSealCheckDto['held']> => {
+    const res = await check(body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsVaultSealCheckDto>(res).held;
+  };
+  const cancel = async (id: string): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/cancel-receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'استلام بالخطأ', version: (await read(id)).version });
+  const custodyOf = async (shipmentId: string) => {
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    return OperationsVaultCustodyModel.find({ shipmentId }).lean().exec();
+  };
+  const logKinds = async (id: string): Promise<string[]> => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${id}/log`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsShipmentLogDto>(res).entries.map((e) => e.kind);
+  };
+  const details = (res: request.Response) =>
+    (res.body as { error: { details: { field: string; code: string; message: string }[] } }).error
+      .details;
+
+  beforeAll(async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: R21B_OUT, rows: [{ vehicleId: vehicleAId, notes: 'round 21b seed' }] });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: R21B_OUT, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    outCrewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(outCrewId).not.toBe('');
+    receiver = await tokenWith('ops-r21b-receive@ecms.local', ['operationsVault.receive']);
+    vaultViewer = await tokenWith('ops-r21b-view@ecms.local', ['operationsVault.view']);
+  });
+
+  it('refuses a seal another محصنة still holds — 409 naming the seal, its place and the محصنة — and writes nothing', async () => {
+    const first = await held({
+      receiptNumber: 'R21B-A',
+      bagCount: 1,
+      bagSeals: ['21001', '21002'],
+      boxCount: 1,
+      boxSeals: ['21003', '21004'],
+    });
+    const second = await book();
+    const refused = await receive(second.id, {
+      receiptNumber: 'R21B-B',
+      bagCount: 1,
+      bagSeals: ['21900', '21002'],
+      boxCount: 1,
+      boxSeals: ['21004', '21901'],
+      serialTracked: true,
+      // The vault's corrections of the shipment ride the same act — and fall with it.
+      shipment: { notes: 'صحّحته الخزينة' },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(errorCode(refused)).toBe(ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT);
+    // One detail per seal refused: where it is in THIS receipt, and which held محصنة has it.
+    expect(details(refused)).toEqual([
+      { field: 'bagSeals.1', code: 'HELD_IN_VAULT', message: first.id },
+      { field: 'boxSeals.0', code: 'HELD_IN_VAULT', message: first.id },
+    ]);
+    const message = (refused.body as { error: { message: string } }).error.message;
+    expect(message).toContain('"21002"');
+    expect(message).toContain('"21004"');
+    expect(message).toContain('R21B-A');
+    expect(message).toContain(bankA.opsName);
+
+    // NOTHING written: no custody, the shipment a draft at the version it was read at, its notes
+    // and «سيريال» as booked, and «السجل» with neither an edit nor a receipt.
+    expect(await custodyOf(second.id)).toHaveLength(0);
+    const still = await read(second.id);
+    expect(still).toMatchObject({
+      status: 'draft',
+      version: second.version,
+      notes: 'كما حُجزت',
+      serialTracked: false,
+      receiptNumber: null,
+    });
+    expect(await logKinds(second.id)).toEqual(['created']);
+    // The first محصنة is untouched by the refusal — still held, its seals its own.
+    const [kept] = await custodyOf(first.id);
+    expect(kept).toMatchObject({ state: 'held', isDeleted: false });
+
+    // The same receipt with seals of its own: taken.
+    const taken = await receive(second.id, {
+      receiptNumber: 'R21B-B',
+      bagCount: 1,
+      bagSeals: ['21900', '21902'],
+      boxCount: 1,
+      boxSeals: ['21903', '21901'],
+    });
+    expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(taken).status).toBe('inVault');
+  });
+
+  it('reads the same seal as the receipt does — 0099 held is 99 here, and ٩٩ too; text exactly as typed', async () => {
+    const first = await held({ bagCount: 1, bagSeals: ['0021099', 'R21B-X'] });
+    for (const seals of [
+      { boxSeals: ['21099'] },
+      { bagSeals: ['٢١٠٩٩'] },
+      { bagSeals: ['۰۲۱۰۹۹'] },
+      { boxSeals: [' R21B-X '] },
+    ]) {
+      const other = await book();
+      const res = await receive(other.id, seals);
+      expect(res.status, JSON.stringify(seals)).toBe(409);
+      expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT);
+      expect(details(res)[0]?.message).toBe(first.id);
+      expect(await custodyOf(other.id)).toHaveLength(0);
+    }
+    // A neighbour is another seal, and a text seal is compared as typed (no case folded).
+    const neighbour = await book();
+    expect((await receive(neighbour.id, { bagSeals: ['21100', 'r21b-x'] })).status).toBe(200);
+  });
+
+  it('lets a seal come again once its محصنة has gone OUT of the vault — «ولو دخلت وخرجت واتكرر يبقى عادى»', async () => {
+    const gone = await held({ bagCount: 1, bagSeals: ['21201', '21202'] });
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${gone.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+    // Still in the vault: refused.
+    const early = await book();
+    expect((await receive(early.id, { bagSeals: ['21201'] })).status).toBe(409);
+    // Handed to its van: released — the vault no longer holds it.
+    const out = await dispatchOn(R21B_OUT, { crewAssignmentId: outCrewId, shipmentIds: [gone.id] });
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+    const [released] = await custodyOf(gone.id);
+    expect(released?.state).toBe('released');
+    expect(await heldSeals({ seals: ['21201', '21202'] })).toEqual([]);
+    const again = await receive(early.id, { bagSeals: ['21201'], boxSeals: ['21202'] });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    // …and once it is delivered and closed, the same.
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${gone.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await read(gone.id)).version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    // The seals are now held by the محصنة that took them again — that one is what refuses.
+    const third = await book();
+    const refused = await receive(third.id, { bagSeals: ['21202'] });
+    expect(refused.status).toBe(409);
+    expect(details(refused)[0]?.message).toBe(early.id);
+  });
+
+  it('frees the seals of a cancelled receipt — and refuses them back to the محصنة whose receipt it was, once another holds them', async () => {
+    const first = await held({ bagCount: 1, bagSeals: ['21301', '21302'] });
+    const second = await book();
+    expect((await receive(second.id, { bagSeals: ['21301'] })).status).toBe(409);
+    const cancelled = await cancel(first.id);
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    expect(await heldSeals({ seals: ['21301', '21302'] })).toEqual([]);
+    expect((await receive(second.id, { bagSeals: ['21301'] })).status).toBe(200);
+    // The first محصنة, back in draft, is received afresh — but 21301 is the second one's now.
+    const back = await receive(first.id, { bagSeals: ['21301', '21302'] });
+    expect(back.status).toBe(409);
+    expect(details(back)).toEqual([
+      { field: 'bagSeals.0', code: 'HELD_IN_VAULT', message: second.id },
+    ]);
+    expect((await receive(first.id, { bagSeals: ['21302'] })).status).toBe(200);
+  });
+
+  it('answers the check — which seals are held, once each, and on which محصنة — leaving the one being received out', async () => {
+    const first = await held({
+      receiptNumber: 'R21B-CHK',
+      bagCount: 1,
+      bagSeals: ['21401'],
+      boxCount: 1,
+      boxSeals: ['21402'],
+    });
+    const found = await heldSeals({
+      seals: ['21401', '', '  ', '021402', '21499', '21401', '٢١٤٠١'],
+    });
+    const holder = {
+      shipmentId: first.id,
+      receiptNumber: 'R21B-CHK',
+      mainBankName: bankA.opsName,
+      originBranchName: branchA1.name,
+      destinationBranchName: branchA1.name,
+      receivedAt: expect.any(String) as string,
+    };
+    // Each held seal once, at its first spelling, in the order sent; blanks and free seals unsaid.
+    expect(found).toEqual([
+      { seal: '21401', holder },
+      { seal: '021402', holder },
+    ]);
+    expect(Date.now() - new Date(found[0]?.holder.receivedAt ?? 0).getTime()).toBeLessThan(60_000);
+    // The shipment being received is not "another محصنة".
+    expect(await heldSeals({ seals: ['21401'], excludeShipmentId: first.id })).toEqual([]);
+    expect(await heldSeals({ seals: [] })).toEqual([]);
+    // The check is advice: it writes nothing, and the receipt asks again itself.
+    expect(await custodyOf(first.id)).toHaveLength(1);
+  });
+
+  it('is the receive’s own grant — 401 signed out, 403 without operationsVault.receive, 400 on a bad body', async () => {
+    expect((await check({ seals: ['1'] }, null)).status).toBe(401);
+    const viewer = await check({ seals: ['1'] }, vaultViewer);
+    expect(viewer.status).toBe(403);
+    expect((await check({ seals: ['1'] }, viewerToken)).status).toBe(403);
+    expect((await check({ seals: ['21499'] }, receiver)).status).toBe(200);
+    for (const body of [
+      {},
+      { seals: '21401' },
+      { seals: [21401] },
+      { seals: [], excludeShipmentId: 'not-an-id' },
+      { seals: [], version: 0 },
+    ]) {
+      const res = await check(body, receiver);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(errorCode(res)).toBe(ErrorCodes.VALIDATION_FAILED);
+    }
+  });
+
+  // «لو موجوده عندنا لا ك محصنة»: the محصنة being received is never "another" one. Its cancelled
+  // receipt holds nothing, so it comes back into the vault with every one of its own seals; and a
+  // محصنة the vault holds cannot be deleted from under its seals (the Round 10 lock), so a held
+  // seal is always on a live shipment.
+  it('takes a محصنة back with ALL its own seals after its receipt was cancelled — and a held one cannot be deleted from under them', async () => {
+    const seals = { bagCount: 1, bagSeals: ['21501', '21502'], boxCount: 1, boxSeals: ['021503'] };
+    const own = await held(seals);
+    const deleted = await request(app)
+      .delete(`/api/v1/operations/shipments/${own.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleted.status).toBe(409);
+    expect(errorCode(deleted)).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+    expect((await heldSeals({ seals: ['21503'] }))[0]?.holder.shipmentId).toBe(own.id);
+
+    expect((await cancel(own.id)).status).toBe(200);
+    const again = await receive(own.id, { ...seals, boxSeals: ['21503'] });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    // Held again — by itself: left out when it is the one asking, named to anyone else.
+    expect(await heldSeals({ seals: ['21501', '21503'], excludeShipmentId: own.id })).toEqual([]);
+    expect(
+      (await heldSeals({ seals: ['21501', '21503'] })).map((h) => h.holder.shipmentId),
+    ).toEqual([own.id, own.id]);
   });
 });

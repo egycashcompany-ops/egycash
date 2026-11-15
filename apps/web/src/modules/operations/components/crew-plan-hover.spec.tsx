@@ -248,7 +248,7 @@ describe('C — an icon is named by a tip in the cards’ frame, not by the brow
           onDragStart: () => undefined,
           onDragEnd: () => undefined,
         }}
-        drop={{ armed: false, over: false, handlers: {} }}
+        drop={{ armed: false, over: false }}
         returnSelected={null}
       />,
     );

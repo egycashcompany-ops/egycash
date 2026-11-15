@@ -320,6 +320,10 @@ const SECURED_KEYS = [
     ...PLURAL_FORMS.map((form) => `sealRepeat.${form}`),
     ...['both', 'bags', 'boxes'].map((where) => `sealRepeatWhere.${where}`),
     'sealRepeatRule', 'sealRepeatAt', 'sealPlace.bag', 'sealPlace.box', 'sealRepeatRefused',
+    // Round 21b — a seal still in the vault on another محصنة, said in the same one notice.
+    ...PLURAL_FORMS.map((form) => `sealHeld.${form}`),
+    'sealHolder', 'sealHolderOther', 'sealHolderReceipt', 'sealHolderRoute', 'sealHeldAt',
+    'sealHeldAtOther', 'sealHeldRule', 'sealHeldRefused',
     ...[
       'title', 'titleDraft', 'department', 'draftNote', 'takenNote', 'item', 'value', 'line',
       'bags', 'sealCount', 'denomination', 'notes', 'receivedBy', 'receivedAt',
@@ -553,8 +557,31 @@ const CREW_PLAN_KEYS = [
   ...['captain', 'dual', 'specialist'].map((key) => `operations.crewPlan.role.${key}`),
   ...['captain', 'specialist'].map((key) => `operations.crewPlan.outOfRole.${key}`),
   ...['select', 'remove'].map((key) => `operations.crewPlan.chip.${key}`),
+  // Round 22 — a refused drop, in words: one slot, the captain's, both specialists', the whole row;
+  // then what to do about it.
+  ...['full', 'captainFull', 'specialistsFull', 'rowFull', 'takeOff', 'captainElsewhere'].map(
+    (key) => `operations.crewPlan.drop.${key}`,
+  ),
   // Round 22 — the person card on a chip: where he sits in the draft, or that he sits nowhere.
   ...['seat', 'unseated'].map((key) => `operations.crewPlan.card.${key}`),
+  // Round 22 E — a slot's list: its trigger, its head, its tabs and its three parts.
+  ...[
+    'choose.captain', 'choose.specialist', 'add', 'title', 'row', 'pools', 'free',
+    'section.free', 'section.seated', 'section.away',
+  ].map((key) => `operations.crewPlan.picker.${key}`),
+  // Round 22 F — away on the board's day: the chip's word, the day's, why no row takes him; the
+  // refused drop, the refused save, the standing crew and a van; the card's attendance line.
+  ...['absent', 'onLeave'].flatMap((away) => [
+    `operations.crewPlan.away.${away}`,
+    `operations.crewPlan.away.day.${away}`,
+    `operations.crewPlan.away.why.${away}`,
+    `operations.crewPlan.drop.${away}`,
+    `operations.crewPlan.refused.${away}`,
+  ]),
+  ...['drop.awayWhy', 'refused.crew', 'standingAway', 'vanAway', 'vanAwayWho'].map(
+    (key) => `operations.crewPlan.${key}`,
+  ),
+  ...['attendance', 'attendanceNone'].map((key) => `operations.crewPlan.card.${key}`),
   ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
     (key) => `operations.crewPlan.pools.${key}`,
   ),

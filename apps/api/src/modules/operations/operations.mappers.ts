@@ -12,6 +12,7 @@ import {
   type OperationsShiftTypeDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReceiptDto,
+  type OperationsVaultSealHolderDto,
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
@@ -22,6 +23,7 @@ import { type OperationsAreaDoc } from './areas/area.model';
 import { type OperationsShiftTypeDoc } from './shift-types/shift-type.model';
 import { type OperationsShipmentDoc } from './shipments/shipment.model';
 import { type VaultCustodyView } from './treasury-boundary';
+import { type VaultSealHolderView } from './secured/secured.service';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -183,6 +185,16 @@ export const toVaultInventoryRowDto = (
   receivedBySecondaryId: view.receivedBySecondaryId,
   receivedAt: iso(view.receivedAt),
   releasedAt: view.releasedAt === null ? null : iso(view.releasedAt),
+});
+
+/** Round 21b — the held محصنة a seal is on, as `POST /operations/secured/seal-check` names it. */
+export const toVaultSealHolderDto = (view: VaultSealHolderView): OperationsVaultSealHolderDto => ({
+  shipmentId: view.shipmentId,
+  receiptNumber: view.receiptNumber,
+  mainBankName: view.mainBankName,
+  originBranchName: view.originBranchName,
+  destinationBranchName: view.destinationBranchName,
+  receivedAt: iso(view.receivedAt),
 });
 
 /**

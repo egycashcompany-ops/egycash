@@ -510,6 +510,24 @@ its entry here in the same PR.
       where else the seal is), says it once under the seals — «الرقمان 1 و3 مكرران — في الحقائب
       والصناديق» — and holds «استلام» until it is corrected; a refusal of it from the server is
       said there in the same words. Cartons have no seals; other shipments' seals are not compared.
+    - Round 21b — asked whether a seal already recorded on another محصنة should be refused, the
+      owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». A receipt is
+      refused while any of its seals (bags or boxes, by `vaultSealKey`) is a seal of ANOTHER محصنة
+      the vault still holds — its custody `held`, the receipt not cancelled, the vault inventory's
+      own set; one that came in and went out again (released to its van, dispatched, completed) or
+      whose receipt was cancelled may repeat. `POST /operations/secured/:id/receive` answers 409
+      `OPERATIONS_SEAL_HELD_IN_VAULT`, one detail per seal (`bagSeals.1` as stored, the held
+      shipment's id), and writes nothing — the vault's corrections of the shipment included; the
+      held seals are read once, in the receipt's own transaction. `POST
+      /operations/secured/seal-check` (`operationsVault.receive`) answers which of a list of seals
+      the vault holds and on which محصنة (bank, branches, receipt number). The form asks it once
+      the typing pauses — stale checks cancelled — marks a held seal's boxes red like a repeat
+      («موجود في الخزينة على المحصنة: …»), says it in the same one notice under the seals («الرقم 7
+      موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)») and holds «استلام»; a 409 marks the
+      seals it names, and a check that fails holds nothing — the receipt decides. Two treasurers
+      receiving the same seal in the same instant can both be taken (documented in the service):
+      closing it would serialise every receipt on a lock document, for a mistyped number twice in
+      one transaction's time — both receipts are kept, and the first to take it answers for it.
   - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
     القى نظره».
     - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست
@@ -607,6 +625,34 @@ its entry here in the same PR.
         whole list dragged into order (the arrows for a keyboard), a form with the palette's
         eleven swatches and the type drawn as the board draws it, and archive or restore in one
         click.
+      - Round 22, the owner on the live board — «مش راضى يخلينى احط ولا قادة ولا اخصائيين على
+        العربيه … بسحب الاسم بالماوس وبيرجع تانى اكنى متحطش»:
+        - A — the drop no longer hangs on what the browser shows of a drag: the whole board takes
+          the drag, the drop decides (on a slot that slot, anywhere on a row the slot the role
+          takes, the vehicle's cell included), a full slot is said in words, nothing re-draws in
+          `dragstart`, and another desk's save is rebased under an unsaved draft, not over it.
+        - B — «القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر»: the blue ones after the green.
+        - C, D — «لما اقف على سلاح او مزولة … يبقى فشكل احسن» and «لما اقف على القائد يظهر فى كارد زى
+          السواق فى الحركة»: a tip in the cards' frame on every requirement icon, and the Fleet
+          driver card's look on every name, with the role, where he sits and his attendance.
+        - E — «وعاوز مكان عند العربيه زى الحركة كدا لما ادوس عليه يجيب قايمة الناس اللى اختار
+          منهم»: an empty slot says «+ اختيار قائد» / «+ اختيار أخصائي» and a half-full one has a «+»
+          beside its ✕; either opens the people to pick from, as Fleet's «+ اختيار سائق» does —
+          the slot's pool first, the other a tab away, a search by name or code, free first, then
+          who sits elsewhere (picking him moves him), with the role's colour, the code, the icons
+          and «متاح N». A pick runs the drop's own rule. The keyboard works it throughout (arrows,
+          Enter, Escape); a phone gets Fleet's bottom sheet. Picking a name first, then «ضع هنا»,
+          stays.
+        - F — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على
+          العربيه و كذلك الاخصائيين»: somebody HR has absent or on leave that day is listed last in
+          his pool, pale, «غائب» / «إجازة» on him, and cannot be dragged, picked up or picked (the
+          list shows him last, closed, with why); every slot refuses him in red with the reason,
+          and «متاح N» leaves him out. The standing crew leaves him off and names him; a row
+          holding him is given no van. Seated before HR recorded it, he is ringed and marked,
+          stays until taken off, and the save passes; the server's
+          `OPERATIONS_CREW_MEMBER_ABSENT` rings his chip on the row it names and says his name.
+          The pool is read for the board's own day — on the default board (tomorrow) too, where the
+          roster asked without a date would have answered for today.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

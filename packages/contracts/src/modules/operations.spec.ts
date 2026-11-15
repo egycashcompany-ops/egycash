@@ -46,6 +46,8 @@ import {
   ReceiveIntoVaultSchema,
   ReceiveIntoVaultShipmentPatchSchema,
   OPERATIONS_VAULT_DENOMINATIONS,
+  OPERATIONS_VAULT_SEAL_CHECK_MAX,
+  CheckVaultSealsSchema,
   UpdateOperationsCurrencySchema,
   SetOperationsStandingCrewSchema,
   UndoSecuredPickupSchema,
@@ -714,6 +716,34 @@ describe('the vault receipt — one seal, once per receipt', () => {
     expect(parsed.success && parsed.data.boxSeals).toEqual(['7', '8', 'X-9', '010']);
     // Neighbours are not repeats: 0099 and 0100 are two seals.
     expect(receipt(['0099'], ['0100']).success).toBe(true);
+  });
+});
+
+// Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: the receive form
+// asks which of its seals the vault still holds on another محصنة. The rule itself is the server's
+// (integration tests); this pins what the check takes.
+describe('the vault seal check — what it takes', () => {
+  it('takes the seals trimmed, and the shipment being received to leave out', () => {
+    expect(
+      CheckVaultSealsSchema.parse({ seals: [' 7 ', '', '0099'], excludeShipmentId: oid(4) }),
+    ).toEqual({ seals: ['7', '', '0099'], excludeShipmentId: oid(4) });
+    expect(CheckVaultSealsSchema.parse({ seals: [] })).toEqual({ seals: [] });
+  });
+
+  it('refuses what is not a list of seals, a shipment id that is not one, and anything more', () => {
+    expect(CheckVaultSealsSchema.safeParse({}).success).toBe(false);
+    expect(CheckVaultSealsSchema.safeParse({ seals: [7] }).success).toBe(false);
+    expect(CheckVaultSealsSchema.safeParse({ seals: [], excludeShipmentId: 'x' }).success).toBe(
+      false,
+    );
+    expect(CheckVaultSealsSchema.safeParse({ seals: [], version: 0 }).success).toBe(false);
+  });
+
+  it('asks about two lists of seals at most — the receipt\'s own ceiling, 500 each', () => {
+    expect(OPERATIONS_VAULT_SEAL_CHECK_MAX).toBe(1000);
+    const seals = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1));
+    expect(CheckVaultSealsSchema.safeParse({ seals: seals(1000) }).success).toBe(true);
+    expect(CheckVaultSealsSchema.safeParse({ seals: seals(1001) }).success).toBe(false);
   });
 });
 

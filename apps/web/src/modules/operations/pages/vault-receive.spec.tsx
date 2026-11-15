@@ -60,6 +60,11 @@ import {
 } from '../components/ReceiveIntoVaultDialog';
 import {
   NO_SEAL_LIST,
+  mergeHolds,
+  sealHeldNotice,
+  sealHeldTitle,
+  sealHolds,
+  sealNoticeText,
   sealRepeatNotice,
   sealRepeatTitle,
   sealRepeats,
@@ -1076,17 +1081,19 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
       expect(line).not.toContain('data-seal-duplicates');
       expect(line).not.toContain(ar('operations.secured.receive.duplicates', { seals: '5' }));
       // The form reads both lists ON SCREEN as one, and says it once, after both, in the band.
-      expect(DIALOG).toContain(
-        'const repeats = sealRepeats(shownSeals(bagSeals, slots.bags), shownSeals(boxSeals, slots.boxes));',
-      );
+      expect(DIALOG).toContain('const shownBags = shownSeals(bagSeals, slots.bags);');
+      expect(DIALOG).toContain('const shownBoxes = shownSeals(boxSeals, slots.boxes);');
+      expect(DIALOG).toContain('const repeats = sealRepeats(shownBags, shownBoxes);');
       expect(DIALOG).toContain("repeated={repeatedAt('bag', repeats.bags)}");
       expect(DIALOG).toContain("repeated={repeatedAt('box', repeats.boxes)}");
       const band = DIALOG.slice(DIALOG.indexOf('data-receive-band="seals"'));
       expect(band.indexOf("repeated={repeatedAt('box', repeats.boxes)}")).toBeLessThan(
-        band.indexOf('<SealRepeatNotice id={noticeId} text={sealsSaid} />'),
+        band.indexOf('<SealRepeatNotice'),
       );
+      expect(band).toContain('id={noticeId}');
+      expect(band).toContain('text={sealsSaid}');
       expect(band.indexOf('<SealRepeatNotice')).toBeLessThan(band.indexOf('</Band>'));
-      expect(DIALOG.match(/<SealRepeatNotice /g)).toHaveLength(1);
+      expect(DIALOG.match(/<SealRepeatNotice\b/g)).toHaveLength(1);
     });
 
     it('holds «استلام» while a seal repeats — the reason its title, the notice its description', () => {
@@ -1109,11 +1116,15 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
       expect(free).not.toContain('disabled=""');
       expect(free).not.toContain('title=');
       expect(free).not.toContain('aria-describedby');
-      // The form holds it on the notice it shows — and never sends past it.
-      expect(DIALOG).toContain("blocked={repeatNotice === '' ? null : repeatNotice}");
+      // The form holds it on the notice it shows — and never sends past it. Since Round 21b the
+      // notice is the repeats AND the seals still in the vault, one text.
+      expect(DIALOG).toContain("blocked={sealsNotice === '' ? null : sealsNotice}");
+      expect(DIALOG).toContain(
+        'const sealsNotice = sealNoticeText([repeatNotice, heldNotice], locale);',
+      );
       const submit = DIALOG.slice(DIALOG.indexOf('const submit = async'));
-      expect(submit.indexOf("if (repeatNotice !== '') return;")).toBeGreaterThan(-1);
-      expect(submit.indexOf("if (repeatNotice !== '') return;")).toBeLessThan(
+      expect(submit.indexOf("if (sealsNotice !== '') return;")).toBeGreaterThan(-1);
+      expect(submit.indexOf("if (sealsNotice !== '') return;")).toBeLessThan(
         submit.indexOf('receive.mutateAsync'),
       );
     });
@@ -1123,7 +1134,7 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
       expect(DIALOG).toContain("refusal.field === 'seals'");
       expect(DIALOG).toContain('sealRepeats(body.bagSeals ?? [], body.boxSeals ?? []).repeats,');
       expect(DIALOG).toContain(
-        "const sealsSaid = repeatNotice !== '' ? repeatNotice : (refusedOn('seals') ?? '');",
+        "const sealsSaid = sealsNotice !== '' ? sealsNotice : (refusedOn('seals') ?? '');",
       );
       // Said until the seals change.
       expect(DIALOG).toContain(
@@ -1136,6 +1147,156 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
       expect(html).not.toContain('data-seal-repeat');
       expect(html).not.toContain('aria-invalid');
       expect(html).not.toContain('data-receive-blocked');
+    });
+  });
+
+  // Round 21b — the owner, asked whether a seal already recorded on another محصنة should be refused:
+  // «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». The rules are the helpers'
+  // (lib/vault-receipt.spec.ts) and the server's; this pins what reaches the form: the vault asked
+  // as seals are typed, a held seal's box red, the SAME one notice, «استلام» held, and a 409 marking
+  // what it names — with a failed check holding nothing.
+  describe('a seal still in the vault — asked as typed, red like a repeat, said in the one notice', () => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(VAULT_ONLY), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const wrap = (node: JSX.Element): string =>
+      renderToStaticMarkup(<Provider store={store}>{node}</Provider>);
+    const MISR = {
+      shipmentId: 's-misr',
+      receiptNumber: '1234',
+      mainBankName: 'بنك مصر',
+      originBranchName: 'فرع المعادي',
+      destinationBranchName: 'فرع الدقي',
+      receivedAt: '2026-11-14T08:20:00.000Z',
+    };
+    const HOLDS = mergeHolds({ held: [{ seal: '7', holder: MISR }] }, 1, null);
+    const BOXES: SealList = { seals: ['7', '8'], filled: [] };
+    const FOUND = sealHolds([], shownSeals(BOXES, 2), HOLDS);
+    const TITLE = sealHeldTitle({ shipmentId: 's-misr', holder: MISR }, ar, () => '14/11 10:20');
+
+    it('draws a box whose seal another محصنة still holds red and invalid, titled with that محصنة', () => {
+      const html = wrap(
+        <SealBoxes
+          kind="box"
+          title={ar('operations.secured.receive.boxSeals')}
+          list={BOXES}
+          slots={2}
+          perUnit={2}
+          held={FOUND.boxes.map((hold) => (hold === null ? null : TITLE))}
+          onChange={() => undefined}
+        />,
+      );
+      const inputs = html.match(/<input[^>]*>/g) ?? [];
+      expect(inputs[0]).toContain('data-seal-held="true"');
+      expect(inputs[0]).toContain('aria-invalid="true"');
+      expect(inputs[0]).toContain('border-rose-500');
+      expect(inputs[0]).not.toContain('data-seal-repeat');
+      expect(inputs[0]).toContain(
+        `title="${ar('operations.secured.receive.boxSealInput', { unit: 1, seal: 1 })} — موجود في الخزينة على المحصنة: بنك مصر، إيصال 1234 — استُلمت 14/11 10:20"`,
+      );
+      // 8 is its own: no mark.
+      expect(inputs[1]).not.toContain('data-seal-held');
+      expect(inputs[1]).not.toContain('aria-invalid');
+    });
+
+    it('says it in the SAME one notice as a repeat — each with its rule, one alert under the seals', () => {
+      const repeat = sealRepeatNotice(sealRepeats(['1'], ['1']).repeats, ar, 'ar');
+      const held = sealHeldNotice(FOUND.held, ar, 'ar');
+      expect(held).toBe('الرقم 7 موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)');
+      const html = wrap(
+        <SealRepeatNotice
+          id="seal-notice"
+          text={sealNoticeText([repeat, held], 'ar')}
+          rules={[
+            ar('operations.secured.receive.sealRepeatRule'),
+            ar('operations.secured.receive.sealHeldRule'),
+          ]}
+          held
+        />,
+      );
+      expect(html.match(/role="alert"/g)).toHaveLength(1);
+      expect(html).toContain('data-seal-held="true"');
+      expect(html).toContain(`${repeat}؛ ${held}`);
+      expect(html).toContain(ar('operations.secured.receive.sealRepeatRule'));
+      expect(html).toContain(ar('operations.secured.receive.sealHeldRule'));
+      // Held alone: the held rule only.
+      const alone = wrap(
+        <SealRepeatNotice
+          id="n"
+          text={held}
+          rules={[ar('operations.secured.receive.sealHeldRule')]}
+          held
+        />,
+      );
+      expect(alone).not.toContain(ar('operations.secured.receive.sealRepeatRule'));
+      // The form's own choice of rules, and its marks on both lists.
+      expect(DIALOG).toContain(
+        "...(heldNotice !== '' ? [t('operations.secured.receive.sealHeldRule')] : []),",
+      );
+      expect(DIALOG).toContain('held={heldAt(holds.bags)}');
+      expect(DIALOG).toContain('held={heldAt(holds.boxes)}');
+      expect(DIALOG).toContain('rules={sealRules}');
+      expect(DIALOG).toContain("held={heldNotice !== ''}");
+    });
+
+    it('holds «استلام» on the held seal’s words, as on a repeat’s', () => {
+      const held = sealHeldNotice(FOUND.held, ar, 'ar');
+      const button = wrap(
+        <ReceiveSaveButton busy={false} blocked={held} describedBy="n" onClick={() => undefined} />,
+      );
+      expect(button).toMatch(/<button[^>]*disabled=""/);
+      expect(button).toContain(`title="${held}"`);
+      expect(button).toContain('data-receive-blocked="seals"');
+    });
+
+    it('asks the vault once the typing pauses — the seals on screen by key, this shipment left out, only while open', () => {
+      expect(DIALOG).toContain(
+        'const askFor = useSettledSeals(sealsToCheck(shownBags, shownBoxes), SEAL_CHECK_PAUSE_MS);',
+      );
+      expect(DIALOG).toContain(
+        'const sealCheck = useVaultSealCheck(askFor, shipment?.id ?? null, open && taken === null);',
+      );
+      expect(DIALOG).toContain('mergeHolds(sealCheck.data, sealCheck.dataUpdatedAt, heldRefusal)');
+      expect(DIALOG).toMatch(/const SEAL_CHECK_PAUSE_MS = \d+;/u);
+      // The check: under the vault's subtree, the latest seals only (the signal reaches `fetch`),
+      // the last answer's marks kept while the next is asked, never retried.
+      const hook = QUERIES.slice(QUERIES.indexOf('export const useVaultSealCheck'));
+      expect(hook).toContain(
+        'queryFn: ({ signal }) => askVaultSeals(seals, excludeShipmentId, signal),',
+      );
+      expect(hook).toContain('enabled: enabled && seals.length > 0,');
+      expect(hook).toContain('retry: false,');
+      expect(hook).toContain('placeholderData: keepPreviousData,');
+    });
+
+    it('never lets the check hold «استلام» by failing — only what it ANSWERED marks a box', () => {
+      // No loading, error or fetching state of the check reaches the marks, the notice or the button.
+      expect(DIALOG).not.toMatch(
+        /sealCheck\.(isError|isPending|isLoading|isFetching|error|status)/u,
+      );
+      // A failed check answers null (`askVaultSeals`), and null marks nothing.
+      expect(sealHolds(['7'], [], mergeHolds(null, 0, null)).held).toEqual([]);
+    });
+
+    it('marks what a 409 names from the refusal itself — the server is the authority — and keeps the form open', () => {
+      const submit = DIALOG.slice(DIALOG.indexOf('const submit = async'));
+      const branch = submit.slice(submit.indexOf('if (isSealHeldRefusal(error)) {'));
+      expect(branch).toContain('holds: holdsFromRefusal(error, body)');
+      expect(branch).toContain('setHeldRefusal(refusedHeld);');
+      expect(branch.indexOf('return;')).toBeLessThan(branch.indexOf('onClose()'));
+      // Forgotten when the form opens on another محصنة.
+      expect(DIALOG).toContain('    setHeldRefusal(null);\n  }, [shipment]);');
+    });
+
+    it('opens with nothing held — no red box, no notice', () => {
+      const html = dialog(VAULT_ONLY);
+      expect(html).not.toContain('data-seal-held');
+      expect(html).not.toContain('role="alert"');
     });
   });
 

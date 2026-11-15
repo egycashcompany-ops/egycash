@@ -48,6 +48,32 @@ class OperationsVaultCustodyRepository extends BaseRepository<OperationsVaultCus
       .exec();
   }
 
+  /**
+   * Round 21b — the seals of every custody the treasury HOLDS now, and whose they are: `state:
+   * 'held'` on a row not cancelled (a cancel soft-deletes it) — the vault inventory's own set
+   * (`listHeld`), served by `ix_state`. Only the two seal lists and the shipment travel: the vault
+   * holds hundreds of محصنات at most, so a receipt's seals are compared against these in memory
+   * (`vaultSealKey` cannot be asked of an index without storing a second copy of every seal).
+   * Oldest received first, so a seal held twice (receipts taken before this rule) is answered by
+   * the receipt that took it first.
+   */
+  async findHeldSeals(
+    excludeShipmentId?: string,
+    session?: ClientSession,
+  ): Promise<Pick<OperationsVaultCustodyDoc, 'shipmentId' | 'bagSeals' | 'boxSeals'>[]> {
+    return this.model
+      .find({
+        state: 'held',
+        isDeleted: false,
+        ...(excludeShipmentId === undefined ? {} : { shipmentId: { $ne: excludeShipmentId } }),
+      })
+      .select({ shipmentId: 1, bagSeals: 1, boxSeals: 1 })
+      .sort({ receivedAt: 1, _id: 1 })
+      .session(session ?? null)
+      .lean<Pick<OperationsVaultCustodyDoc, 'shipmentId' | 'bagSeals' | 'boxSeals'>[]>()
+      .exec();
+  }
+
   /** Custody for a SET of shipments — the reports' package counts, in one round trip. */
   async findByShipments(shipmentIds: string[]): Promise<OperationsVaultCustodyDoc[]> {
     if (shipmentIds.length === 0) return [];

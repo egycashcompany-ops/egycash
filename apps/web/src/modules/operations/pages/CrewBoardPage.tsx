@@ -19,9 +19,23 @@
 //     | النوع | ملاحظات | the row's colour and its bin;
 //   · the POOLS at the end — on the left in Arabic: القادة (green, and blue) and الأخصائيون (red).
 //
-// MOVING PEOPLE: drag a chip onto a slot, from a pool or from another row; a full slot refuses;
-// back onto a pool frees it. Or press a chip, then «ضع هنا» in a slot — the keyboard's way and the
-// phone's. Every move is a pure step in `lib/crew-plan.ts`; nothing is written until «حفظ».
+// MOVING PEOPLE, three ways, one rule (`resolveDrop`, then `placeMember`):
+//   · PRESS A SLOT (Round 22 E) — «وعاوز مكان عند العربيه زى الحركة كدا لما ادوس عليه يجيب قايمة الناس
+//     اللى اختار منهم»: an empty slot says «+ اختيار قائد» / «+ اختيار أخصائي», a half-full one has a
+//     «+» beside its chip's ✕; either opens the list to pick from (`CrewSlotPicker`), as Fleet's
+//     «الحركة» seat opens its drivers. Seating somebody never depends on a drag;
+//   · drag a chip onto a slot, or anywhere on a row — the vehicle's cell included — and it goes to
+//     the slot its role takes; from a pool or from another row; a full slot refuses, in words; back
+//     onto a pool frees it (Round 22, `lib/crew-drag.ts`);
+//   · or press a CHIP, then «ضع هنا» in a slot — the person first, then where (Fleet's touch board
+//     keeps both orders too). While a chip is picked up, a slot offers «ضع هنا» in place of its «+».
+// Every move is a pure step in `lib/crew-plan.ts`; nothing is written until «حفظ».
+//
+// AWAY THAT DAY (Round 22 F) — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت
+// ومقدرش احطه على العربيه و كذلك الاخصائيين»: HR's absent / on leave (`awayOf`) is listed last in his
+// pool, pale, and cannot be dragged, picked up or picked; every slot refuses him, in words; the
+// standing crew does not load him and a row holding him is given no van. Seated before HR recorded
+// it, he stays — marked — until taken off, and the save passes (the server keeps a held seat).
 //
 // THE ROW'S BOXES LINE UP: «شكلها فى الشاشة تكون زى الساعة والملاحظات كله تحت بعض مفيش حاجه داخلة
 // وحاجه خارجه». The direction, the time, the type and the notes are one box each, of one height and
@@ -35,7 +49,7 @@
 // planned a day ahead (the legacy default).
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
+import { CREW_SLOT_CAPACITY, type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useT } from '../../../platform/localization/useT';
@@ -49,6 +63,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
+import { useMinWidth } from '../../atm/lib/useMinWidth';
 import { useUnsavedGuard } from '../../atm/lib/useUnsavedGuard';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../fleet/components/board-scroll';
 import { pickOne } from '../../fleet/components/dark-filter-bar';
@@ -64,12 +79,7 @@ import {
   usePlanOperationsCrew,
 } from '../api/operations-queries';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
-import {
-  CREW_DRAG_TYPE,
-  CrewPlanChip,
-  RoleLegend,
-  carriesCrewMember,
-} from '../components/CrewPlanChip';
+import { CrewPlanChip, RoleLegend } from '../components/CrewPlanChip';
 import {
   CELL_BOX,
   DirectionPicker,
@@ -81,6 +91,7 @@ import {
 } from '../components/CrewPlanControls';
 import { CrewPlanPool } from '../components/CrewPlanPools';
 import { CrewRosterNotice } from '../components/CrewRosterNotice';
+import { CrewSlotPicker } from '../components/CrewSlotPicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
 import { DAY_BAR, DayBox } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
@@ -93,6 +104,7 @@ import {
   PLAN_POOLS,
   SHIFT_TYPE_LIST,
   attachVan,
+  awayOf,
   changeCount,
   clearStandingFromPlan,
   crewRoleOf,
@@ -110,13 +122,15 @@ import {
   planChanges,
   planRefusal,
   planRowCard,
+  rebaseDraft,
+  rowPeople,
   seatOf,
   shiftTypeStrip,
-  slotRefusal,
   toPlan,
   toPlanRows,
   vansFree,
   vehiclelessRow,
+  type CrewRole,
   type CrewSlot,
   type PlanRefusal,
   type PlanPool,
@@ -124,6 +138,20 @@ import {
   type PlanRow,
   type ShiftTypeFilter,
 } from '../lib/crew-plan';
+import {
+  CREW_DRAG_TYPE,
+  acceptsDragOver,
+  beginDrag,
+  droppedMember,
+  parseTargetKey,
+  refusedAsAway,
+  resolveDrop,
+  targetFromMarks,
+  targetKey,
+  type DropDecision,
+  type DropTarget,
+  type RefusedDrop,
+} from '../lib/crew-drag';
 import { crewPlanSheet } from '../lib/crew-plan-export';
 import { saveReportWorkbook } from '../lib/report-export';
 
@@ -188,6 +216,23 @@ const unknownMember = (employeeId: string, name: string): OperationsCrewMemberDt
     assignedVehicleId: null,
   }) as OperationsCrewMemberDto;
 
+/**
+ * What is under the pointer during a drag, read off the marks the board draws (the DOM half of
+ * `targetFromMarks`): the nearest slot, row and pool around the element. A text node answers through
+ * its parent.
+ */
+const targetAt = (node: EventTarget | null): DropTarget | null => {
+  const element = node instanceof Element ? node : node instanceof Node ? node.parentElement : null;
+  if (element === null) return null;
+  const mark = (name: string): string | null =>
+    element.closest(`[${name}]`)?.getAttribute(name) ?? null;
+  return targetFromMarks({
+    slotZone: mark('data-slot-zone'),
+    rowKey: mark('data-plan-row'),
+    pool: mark('data-plan-pool'),
+  });
+};
+
 export const CrewBoardPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -197,7 +242,13 @@ export const CrewBoardPage = (): JSX.Element => {
   const canPlan = can('operationsCrew.plan');
 
   const board = useOperationsCrewBoard(date);
-  const directory = useOperationsCrewDirectory(date);
+  const day = date ?? (board.data?.date ?? '').slice(0, 10);
+  // The pool is read for the BOARD'S day, never for «no day». With no `?date=` the board is
+  // TOMORROW (the server's planning default), but the roster asked without a date answers for
+  // TODAY — and since Round 22 it says who is absent or on leave, a fact about one day: read for
+  // today, it faded today's absentees on tomorrow's board and offered tomorrow's, whom the save
+  // then refused. So the default board's pool waits for the board to name its day.
+  const directory = useOperationsCrewDirectory(day === '' ? null : day, day !== '');
   const standing = useOperationsStandingCrew();
   // EVERY active area, not one page: the save holds a new direction to all of them.
   const areaNames = useActiveOperationsAreaNames();
@@ -205,22 +256,29 @@ export const CrewBoardPage = (): JSX.Element => {
   const plan = usePlanOperationsCrew();
 
   const serverRows = useMemo(() => toPlanRows(board.data), [board.data]);
-  const day = date ?? (board.data?.date ?? '').slice(0, 10);
 
   // ── The draft ────────────────────────────────────────────────────────────────────────────────
-  // The server's board is the truth; the draft starts from it and starts again from every new
-  // answer (a new day, a save read back) — React's «state from the previous render» pattern, so the
-  // table never shows the old day's rows for a frame.
+  // The server's board is the truth; the draft starts from it — React's «state from the previous
+  // render» pattern, so the table never shows the old day's rows for a frame. It STARTS AGAIN from a
+  // new day and from its own save read back (the read-back arrives while the save is still pending:
+  // `usePlanOperationsCrew` refetches before it settles). Any other new answer — another desk's
+  // save, a reconnect — is REBASED under the planner's unsaved work (`rebaseDraft`, Round 22): Round
+  // 20 replaced the draft there, and a name just dropped went back to its pool on its own.
   const [rows, setRows] = useState<readonly PlanRow[]>([]);
-  const [seen, setSeen] = useState<readonly PlanRow[] | null>(null);
+  const [seen, setSeen] = useState<{ rows: readonly PlanRow[]; day: string | null } | null>(null);
   const [standingKeys, setStandingKeys] = useState<string[] | null>(null);
   /** The last save's refusal, on the row and the box it names — until that box is changed. */
   const [refusal, setRefusal] = useState<(PlanRefusal & { message: string }) | null>(null);
-  if (seen !== serverRows) {
-    setSeen(serverRows);
-    setRows(serverRows);
-    setStandingKeys(null);
-    setRefusal(null);
+  const answeredDay = board.data?.date ?? null;
+  if (seen === null || seen.rows !== serverRows) {
+    setSeen({ rows: serverRows, day: answeredDay });
+    if (seen !== null && seen.day !== null && seen.day === answeredDay && !plan.isPending) {
+      setRows(rebaseDraft(rows, seen.rows, serverRows));
+    } else {
+      setRows(serverRows);
+      setStandingKeys(null);
+      setRefusal(null);
+    }
   }
   const sequence = useRef(0);
 
@@ -266,11 +324,20 @@ export const CrewBoardPage = (): JSX.Element => {
     t('operations.crewPlan.looseRow', { n: formatNumber(looseNumber.get(row.key) ?? 0, locale) });
 
   // ── Picking up, dragging, dropping ───────────────────────────────────────────────────────────
-  // `selected`: a chip pressed (the keyboard's and the phone's way); `dragging`: a chip in a drag.
+  // `selected`: a chip pressed (the keyboard's and the phone's way). `dragging`: a chip in a drag,
+  // for the DRAWING only — the armed slots, the faded chip, no card or tip. WHO is dragged is
+  // `dragRef`, set by the chip's own dragstart, and every drop is decided from it alone, never from
+  // what the browser shows of the drag (`lib/crew-drag.ts` — «بسحب الاسم بالماوس وبيرجع تانى»).
   const [selected, setSelected] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  /** What is under the pointer (`targetKey`) — for the drawing; a repeated dragover keeps it. */
   const [over, setOver] = useState<string | null>(null);
   const moving = dragging ?? selected;
+  const dragRef = useRef<string | null>(null);
+  const overRef = useRef<string | null>(null);
+  /** The drag is drawn (`drawDrag`) — or about to be: once per drag. */
+  const drawnRef = useRef(false);
+  const dragTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (selected === null) return undefined;
@@ -294,63 +361,219 @@ export const CrewBoardPage = (): JSX.Element => {
     return { short, long: `${short} · ${t(`operations.crewPlan.columns.${seat.slot}`)}` };
   };
 
-  const startDrag = (employeeId: string, event: DragEvent<HTMLElement>): void => {
-    event.dataTransfer.setData(CREW_DRAG_TYPE, employeeId);
-    event.dataTransfer.setData('text/plain', employeeId);
-    event.dataTransfer.effectAllowed = 'move';
-    setDragging(employeeId);
-    setSelected(null);
+  const roleOf = (employeeId: string): CrewRole =>
+    crewRoleOf(memberOf(employeeId)?.requirements ?? null);
+  /** Somebody a drop may carry: on the roster, or seated (a stand-in the roster no longer names). */
+  const onBoard = (employeeId: string): boolean =>
+    byId.has(employeeId) || seatOf(rows, employeeId) !== null;
+  /** What a drop — or a pick from a slot's list — does here: the one rule both gestures share. */
+  const decide = (target: DropTarget | null, employeeId: string): DropDecision | null =>
+    target === null
+      ? null
+      : resolveDrop(rows, target, employeeId, roleOf(employeeId), awayOf(memberOf(employeeId)));
+  /**
+   * A refused drop, SAID: what is full — the slot (the first of the row's, for a drop on the row) on
+   * which row — then what to do about it, on the toast's second line. Somebody away that day: who,
+   * and why nobody away goes on a row.
+   */
+  const sayRefusal = (decision: RefusedDrop, employeeId: string): void => {
+    const row = rows.find((candidate) => candidate.key === decision.key);
+    const vars = {
+      slot: t(`operations.crewPlan.columns.${decision.slots[0] ?? 'captain'}`),
+      row: row === undefined ? '—' : rowName(row),
+      name: shownMember(employeeId).fullNameAr,
+    };
+    toast.error(
+      t(`operations.crewPlan.drop.${decision.reason}`, vars),
+      t(
+        refusedAsAway(decision.reason)
+          ? 'operations.crewPlan.drop.awayWhy'
+          : decision.reason === 'captainFull'
+            ? 'operations.crewPlan.drop.captainElsewhere'
+            : 'operations.crewPlan.drop.takeOff',
+        vars,
+      ),
+    );
   };
-  const endDrag = (): void => {
+
+  // ── A slot's list (Round 22 E) ───────────────────────────────────────────────────────────────
+  // «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم»: ONE list for the board, opened on the slot that
+  // was pressed. A phone gets Fleet's bottom sheet. The slot (its zone) places it; what opened it
+  // takes the focus back on Escape.
+  const phone = !useMinWidth(640);
+  const [picker, setPicker] = useState<{ key: string; slot: CrewSlot } | null>(null);
+  const pickerAnchor = useRef<HTMLElement | null>(null);
+  const pickerTrigger = useRef<HTMLElement | null>(null);
+  const openPicker = (key: string, slot: CrewSlot, from: HTMLElement): void => {
+    if (picker?.key === key && picker.slot === slot) {
+      setPicker(null);
+      return;
+    }
+    pickerAnchor.current = from.closest<HTMLElement>('[data-slot-zone]') ?? from;
+    pickerTrigger.current = from;
+    setSelected(null);
+    setPicker({ key, slot });
+  };
+  const closePicker = (back: boolean): void => {
+    setPicker(null);
+    if (!back) return;
+    requestAnimationFrame(() => {
+      const from = pickerTrigger.current;
+      if (from?.isConnected === true) from.focus({ preventScroll: true });
+    });
+  };
+  /** A slot has room for one more — the only slot that offers its list. */
+  const hasRoom = (key: string, slot: CrewSlot): boolean => {
+    const row = rows.find((candidate) => candidate.key === key);
+    return row !== undefined && row.slots[slot].length < CREW_SLOT_CAPACITY;
+  };
+  // The slot filled meanwhile (a drop, another desk's save), its row gone, or the day changed: the
+  // list has nothing left to offer, and closes.
+  if (picker !== null && !hasRoom(picker.key, picker.slot)) setPicker(null);
+  /** A pick: the drop's own decision and step, then the focus on the name just seated. */
+  const pickInto = (employeeId: string): void => {
+    if (picker === null) return;
+    const { key, slot } = picker;
+    const decision = decide({ kind: 'slot', key, slot }, employeeId);
+    setPicker(null);
+    if (decision?.kind === 'refuse') {
+      sayRefusal(decision, employeeId);
+      return;
+    }
+    if (decision?.kind !== 'place') return;
+    place(key, slot, employeeId);
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(
+          `[data-slot-zone="${key}|${slot}"] [data-crew-chip="${employeeId}"] button`,
+        )
+        ?.focus({ preventScroll: true }),
+    );
+  };
+
+  const settleDrag = (): void => {
+    window.clearTimeout(dragTimer.current);
+    dragRef.current = null;
+    overRef.current = null;
     setDragging(null);
     setOver(null);
   };
 
-  /** A drop target's handlers. `accepts` decides; a refused target still lights — in red. */
-  const dropZone = (
-    zone: string,
-    accepts: (employeeId: string) => boolean,
-    onMember: (employeeId: string) => void,
-  ): Pick<
+  const startDrag = (employeeId: string, event: DragEvent<HTMLElement>): void => {
+    // The drag's data and who it is — no state: a re-render here cost a slow PC its drag
+    // (`beginDrag`). The drawing waits for the browser's first answer (`drawDrag`).
+    beginDrag(event.dataTransfer, employeeId);
+    window.clearTimeout(dragTimer.current);
+    dragRef.current = employeeId;
+    drawnRef.current = false;
+  };
+
+  /**
+   * Draw the drag — the armed slots, the faded chip, no card or tip — one task AFTER the first
+   * dragover was answered, never before: re-drawing the board's 321 chips takes 10–20 ms on a laptop
+   * and five times that on a slow PC, and the browser cannot hear the page's first «yes» while it
+   * runs. Measured on the real stack (6× CPU, a hand let go the moment it arrived): drawn straight
+   * after dragstart, the first drag of the day was refused; drawn after the first answer, it lands.
+   */
+  const drawDrag = (employeeId: string): void => {
+    if (drawnRef.current) return;
+    drawnRef.current = true;
+    dragTimer.current = window.setTimeout(() => {
+      if (dragRef.current !== employeeId) return;
+      setDragging(employeeId);
+      setSelected(null);
+      setPicker(null);
+    }, 0);
+  };
+
+  /** The drag ended — dropped (already settled), let go off the board, or Esc. */
+  const endDrag = (): void => {
+    if (dragRef.current !== null) settleDrag();
+  };
+  const endDragRef = useRef(endDrag);
+  useEffect(() => {
+    endDragRef.current = endDrag;
+  });
+  // A chip gone from the page mid-drag (its row re-read, its pool re-filtered) never delivers its
+  // `dragend` to React. The browser sends no pointer events during a drag, so a pointer moving with
+  // no button held means the drag is over, whatever the board still believes.
+  useEffect(() => {
+    const moved = (event: PointerEvent): void => {
+      if (event.buttons === 0 && dragRef.current !== null) endDragRef.current();
+    };
+    window.addEventListener('pointermove', moved, { passive: true });
+    return () => window.removeEventListener('pointermove', moved);
+  }, []);
+
+  /**
+   * THE BOARD IS ONE DROP TARGET — its frame takes every drag event of OUR drag and accepts it
+   * wherever the pointer is (`acceptsDragOver`); the drop then finds what is under it (`targetAt`):
+   * a slot means that slot; anywhere else on a row, the vehicle's cell included, means the slot the
+   * person's role takes; a pool frees him; a full slot is SAID. Legacy accepted on every cell of a
+   * row and alerted a refusal; the Round-20 board accepted only on the dashed boxes — 29% of a row
+   * at 1920 — and refused the rest, and every late answer on a slow PC, without a word.
+   */
+  const overDrag = (event: DragEvent<HTMLElement>): void => {
+    const employeeId = dragRef.current;
+    if (!acceptsDragOver(employeeId)) return;
+    event.preventDefault();
+    drawDrag(employeeId);
+    // What is under the pointer, for the drawing only: the slot the drop would land in, or refuse.
+    const target = targetAt(event.target);
+    const key = target === null ? null : targetKey(target);
+    if (overRef.current !== key) {
+      overRef.current = key;
+      setOver(key);
+    }
+  };
+  const boardDrop: Pick<
     HTMLAttributes<HTMLElement>,
     'onDragOver' | 'onDragEnter' | 'onDragLeave' | 'onDrop'
-  > => ({
-    onDragOver: (event) => {
-      if (!carriesCrewMember(event)) return;
-      if (over !== zone) setOver(zone);
-      if (dragging === null || !accepts(dragging)) {
-        event.dataTransfer.dropEffect = 'none';
-        return;
+  > = canPlan
+    ? {
+        onDragEnter: overDrag,
+        onDragOver: overDrag,
+        onDragLeave: (event) => {
+          if (dragRef.current === null) return;
+          // Moving onto another part of the board is not leaving it.
+          const to = event.relatedTarget;
+          if (to instanceof Node && event.currentTarget.contains(to)) return;
+          overRef.current = null;
+          setOver(null);
+        },
+        onDrop: (event) => {
+          const own = dragRef.current;
+          const custom = event.dataTransfer.getData(CREW_DRAG_TYPE);
+          // Not a drag of ours — a text dropped into a box: the browser's own drop.
+          if (own === null && custom === '') return;
+          event.preventDefault();
+          const text = event.dataTransfer.getData('text/plain');
+          const employeeId = droppedMember({ own, custom, text }, onBoard);
+          const decision = employeeId === null ? null : decide(targetAt(event.target), employeeId);
+          settleDrag();
+          if (employeeId === null || decision === null) return;
+          if (decision.kind === 'place') place(decision.key, decision.slot, employeeId);
+          else if (decision.kind === 'free') free(employeeId);
+          else if (decision.kind === 'refuse') sayRefusal(decision, employeeId);
+        },
       }
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-    },
-    onDragEnter: (event) => {
-      if (!carriesCrewMember(event)) return;
-      setOver(zone);
-      if (dragging !== null && accepts(dragging)) event.preventDefault();
-    },
-    onDragLeave: (event) => {
-      // Moving onto a chip INSIDE the target is not leaving it.
-      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-      setOver((current) => (current === zone ? null : current));
-    },
-    onDrop: (event) => {
-      event.preventDefault();
-      const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE) || dragging;
-      setOver(null);
-      setDragging(null);
-      if (employeeId !== null && employeeId !== '' && accepts(employeeId)) onMember(employeeId);
-    },
-  });
+    : {};
+  // What a drop where the pointer is would do — drawn on the slot it lands in, or refuses.
+  const overTarget = over === null ? null : parseTargetKey(over);
+  const overDecision = dragging === null ? null : decide(overTarget, dragging);
 
+  /** The last save named this person (somebody away): moving him answers it. */
+  const settleRefusedPerson = (employeeId: string): void =>
+    setRefusal((current) => (current?.person?.employeeId === employeeId ? null : current));
   const place = (key: string, slot: CrewSlot, employeeId: string): void => {
     setRows((current) => placeMember(current, key, slot, employeeId));
     setSelected(null);
+    settleRefusedPerson(employeeId);
   };
   const free = (employeeId: string): void => {
     setRows((current) => freeMember(current, employeeId));
     setSelected(null);
+    settleRefusedPerson(employeeId);
   };
   const patch = (key: string, fields: Parameters<typeof patchRow>[2]): void => {
     setRows((current) => patchRow(current, key, fields));
@@ -358,8 +581,10 @@ export const CrewBoardPage = (): JSX.Element => {
     setRefusal((current) => (current?.key === key ? null : current));
   };
 
-  const selectChip = (employeeId: string): void =>
+  const selectChip = (employeeId: string): void => {
+    setPicker(null);
     setSelected((current) => (current === employeeId ? null : employeeId));
+  };
 
   // ── The acts ─────────────────────────────────────────────────────────────────────────────────
   const addRow = (): void => {
@@ -385,19 +610,63 @@ export const CrewBoardPage = (): JSX.Element => {
       })),
     [standing.data],
   );
-  /** «الطاقم الثابت»: fills EMPTY vans in the draft, and off again empties exactly those. */
+  /**
+   * «الطاقم الثابت»: fills EMPTY vans in the draft, and off again empties exactly those. Somebody
+   * away that day is left off his van (Round 22 — no row takes him, and the save would refuse him)
+   * and named, so the planner knows whose seat to fill.
+   */
   const toggleStanding = (): void => {
     if (standingKeys !== null) {
       setRows((current) => clearStandingFromPlan(current, standingKeys));
       setStandingKeys(null);
       return;
     }
-    const load = loadStandingIntoPlan(rows, standingSources);
+    const left = new Set<string>();
+    const present = (ids: readonly string[]): string[] =>
+      ids.filter((employeeId) => {
+        const away = awayOf(memberOf(employeeId)) !== null;
+        if (away) left.add(employeeId);
+        return !away;
+      });
+    const load = loadStandingIntoPlan(
+      rows,
+      standingSources.map((source) => ({
+        vehicleId: source.vehicleId,
+        captainEmployeeIds: present(source.captainEmployeeIds),
+        specialist1EmployeeIds: present(source.specialist1EmployeeIds),
+        specialist2EmployeeIds: present(source.specialist2EmployeeIds),
+      })),
+    );
     setRows(load.rows);
     setStandingKeys(load.filledKeys);
     if (load.unavailable > 0) {
       toast.error(t('operations.crew.standing.unavailable', { count: load.unavailable }));
     }
+    if (left.size > 0) {
+      // The names on the second line: the toast cuts its first one to its width.
+      toast.error(
+        t('operations.crewPlan.standingAway'),
+        [...left].map((employeeId) => shownMember(employeeId).fullNameAr).join('، '),
+      );
+    }
+  };
+
+  /**
+   * A row without a van is given one. Not while somebody on it is away that day: the van would put
+   * him on a van, which the save refuses (Round 22) — said now, by name, rather than at «حفظ».
+   */
+  const giveVan = (row: PlanRow, vanKey: string): void => {
+    const away = rowPeople(row).filter((employeeId) => awayOf(memberOf(employeeId)) !== null);
+    if (away.length > 0) {
+      toast.error(
+        t('operations.crewPlan.vanAway'),
+        t('operations.crewPlan.vanAwayWho', {
+          names: away.map((employeeId) => shownMember(employeeId).fullNameAr).join('، '),
+        }),
+      );
+      return;
+    }
+    setRows((current) => attachVan(current, row.key, vanKey));
   };
 
   const exportExcel = (): void =>
@@ -427,12 +696,19 @@ export const CrewBoardPage = (): JSX.Element => {
         );
         return;
       }
+      // Somebody away that day (Round 22): who, by name — his chip on that row is ringed too.
       const message =
         placed.field === 'direction'
           ? t('operations.crewPlan.refused.direction', { parts: placed.parts.join('، ') })
-          : t('operations.crewPlan.refused.type');
+          : placed.field === 'crew'
+            ? placed.person === undefined
+              ? t('operations.crewPlan.refused.crew')
+              : t(`operations.crewPlan.refused.${placed.person.away}`, {
+                  name: shownMember(placed.person.employeeId).fullNameAr,
+                })
+            : t('operations.crewPlan.refused.type');
       setRefusal({ ...placed, message });
-      toast.error(errorMessage(failure, locale));
+      toast.error(errorMessage(failure, locale), placed.field === 'crew' ? message : undefined);
       if (!shown.some((row) => row.key === placed.key)) setTypeFilter('');
       requestAnimationFrame(() =>
         document
@@ -454,23 +730,38 @@ export const CrewBoardPage = (): JSX.Element => {
   const slotCell = (row: PlanRow, slot: CrewSlot): JSX.Element => {
     const zone = `${row.key}|${slot}`;
     const people = row.slots[slot];
-    const refusal = moving === null ? null : slotRefusal(rows, row.key, slot, moving);
-    const armed = canPlan && moving !== null && refusal === null;
-    const isOver = over === zone;
-    const refused = isOver && refusal === 'full';
+    // Armed: what is picked up or dragged would land here — the drop's own answer, so somebody away
+    // that day lights no slot but on the row he already sits on (Round 22).
+    const armed =
+      canPlan &&
+      moving !== null &&
+      decide({ kind: 'slot', key: row.key, slot }, moving)?.kind === 'place';
+    const slotWord = t(`operations.crewPlan.columns.${slot}`);
+    // Its list, «+ اختيار»: on a slot with room, whenever nothing is picked up (then it is «ضع هنا»).
+    const offerList = canPlan && selected === null && people.length < CREW_SLOT_CAPACITY;
+    const listOpen = picker?.key === row.key && picker.slot === slot;
+    const chooseWord = t(
+      `operations.crewPlan.picker.choose.${slot === 'captain' ? 'captain' : 'specialist'}`,
+    );
+    // Where the pointer's drop would land — this slot, aimed at or routed to from anywhere on its
+    // row — or the slot(s) refusing it; the frame takes the events themselves (`boardDrop`).
+    const isOver =
+      overDecision?.kind === 'place' && overDecision.key === row.key && overDecision.slot === slot;
+    const refused =
+      overDecision?.kind === 'refuse' &&
+      overDecision.key === row.key &&
+      overDecision.slots.includes(slot);
+    // Why it refuses, over the slot: full — or the person away that day, in his own words.
+    const refusedWord =
+      overDecision?.kind === 'refuse' && refusedAsAway(overDecision.reason)
+        ? t(`operations.crewPlan.away.day.${overDecision.reason}`)
+        : t('operations.crewPlan.slotFull');
     return (
       <div
-        {...(canPlan
-          ? dropZone(
-              zone,
-              (employeeId) => slotRefusal(rows, row.key, slot, employeeId) === null,
-              (employeeId) => place(row.key, slot, employeeId),
-            )
-          : {})}
         role="group"
-        aria-label={`${t(`operations.crewPlan.columns.${slot}`)} — ${rowName(row)}`}
+        aria-label={`${slotWord} — ${rowName(row)}`}
         data-slot-zone={zone}
-        data-drop-over={isOver ? (armed ? 'accept' : 'refuse') : undefined}
+        data-drop-over={isOver ? 'accept' : refused ? 'refuse' : undefined}
         className={cn(
           'relative flex min-h-[2.25rem] w-[8.75rem] flex-col gap-1 rounded-lg p-0.5 transition-colors min-[1440px]:w-[9.75rem] min-[1750px]:w-[10.5rem] min-[1900px]:w-[12.25rem]',
           people.length === 0 &&
@@ -505,19 +796,62 @@ export const CrewBoardPage = (): JSX.Element => {
                     )
                   : null
               }
+              refused={
+                refusal?.field === 'crew' &&
+                refusal.key === row.key &&
+                refusal.person?.employeeId === employeeId
+              }
               onSelect={() => selectChip(employeeId)}
               onRemove={() => free(employeeId)}
+              // A slot with room for one more: its list, from the «+» beside the ✕.
+              onAdd={
+                offerList
+                  ? {
+                      label: t('operations.crewPlan.picker.add', {
+                        slot: slotWord,
+                        row: rowName(row),
+                      }),
+                      open: (from) => openPicker(row.key, slot, from),
+                    }
+                  : undefined
+              }
               onDragStart={(event) => startDrag(employeeId, event)}
               onDragEnd={endDrag}
             />
           );
         })}
+        {/* An EMPTY slot is its own «+ اختيار» — Fleet's «+ اختيار سائق» in the dashed seat: the
+            dashed box says a name goes here, a press opens who can. Kept, unseen, under a drag —
+            nothing in the row moves while the hand is on its way. */}
+        {people.length === 0 && offerList && (
+          <button
+            type="button"
+            data-cell-control="pick"
+            data-slot-pick={zone}
+            aria-haspopup="dialog"
+            aria-expanded={listOpen}
+            aria-label={`${chooseWord} — ${slotWord} — ${rowName(row)}`}
+            onClick={(event) => openPicker(row.key, slot, event.currentTarget)}
+            className={cn(
+              'flex min-h-[2rem] flex-1 items-center justify-center gap-1 rounded-md text-[11.5px] font-bold text-slate-400 transition hover:bg-brand-500/10 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:text-slate-500 dark:hover:text-brand-200',
+              listOpen && 'bg-brand-500/15 text-brand-700 dark:text-brand-200',
+              dragging !== null && 'invisible',
+            )}
+          >
+            <BoardIcon d={PATH.plus} className="h-3 w-3" width={3} />
+            {chooseWord}
+          </button>
+        )}
         {/* Under a drag, the slot says where the name will land — the browser's own drag picture
-            is faint, and on a dark board the outline alone was easy to miss. */}
+            is faint, and on a dark board the outline alone was easy to miss. OVER the slot, never
+            in its flow (Round 22): a drop anywhere on a row lights the slot it routes to, and a
+            line added there grew the row and slid the rows below it out from under the pointer —
+            a hand aiming at the next van dropped on this one. */}
         {dragging !== null && isOver && armed && (
           <span
             aria-hidden
-            className="flex h-7 items-center justify-center gap-1 rounded-md bg-brand-500 text-[11.5px] font-black text-white shadow"
+            data-drop-landing="true"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1 rounded-lg bg-brand-500/90 text-[11.5px] font-black text-white shadow"
           >
             <BoardIcon d={PATH.plus} className="h-3 w-3" width={3} />
             {t('operations.crewPlan.placeHere')}
@@ -540,9 +874,9 @@ export const CrewBoardPage = (): JSX.Element => {
         {refused && (
           <span
             role="status"
-            className="absolute inset-0 flex items-center justify-center rounded-lg bg-rose-600/85 text-[12px] font-black text-white backdrop-blur-[1px]"
+            className="absolute inset-0 flex items-center justify-center rounded-lg bg-rose-600/85 px-1 text-center text-[12px] font-black leading-4 text-white backdrop-blur-[1px]"
           >
-            {t('operations.crewPlan.slotFull')}
+            {refusedWord}
           </span>
         )}
       </div>
@@ -602,7 +936,7 @@ export const CrewBoardPage = (): JSX.Element => {
               rowKey={row.key}
               vans={freeVans}
               disabled={!canPlan}
-              onPick={(vanKey) => setRows((current) => attachVan(current, row.key, vanKey))}
+              onPick={(vanKey) => giveVan(row, vanKey)}
             />
             {warn}
           </div>
@@ -760,7 +1094,7 @@ export const CrewBoardPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <div className={BOARD_FRAME} data-crew-plan="true">
+      <div className={BOARD_FRAME} data-crew-plan="true" {...boardDrop}>
         {/* The toolbar: what the hands do at the start; the acts at the end. */}
         <div
           className="flex flex-wrap items-center justify-between gap-2"
@@ -1001,8 +1335,10 @@ export const CrewBoardPage = (): JSX.Element => {
                   }}
                   drop={{
                     armed: canPlan && dragging !== null && poolAccepts(dragging),
-                    over: over === `pool:${pool}`,
-                    handlers: canPlan ? dropZone(`pool:${pool}`, poolAccepts, free) : {},
+                    over:
+                      overDecision?.kind === 'free' &&
+                      overTarget?.kind === 'pool' &&
+                      overTarget.pool === pool,
                   }}
                   returnSelected={
                     canPlan && selectedSeated && selected !== null ? (
@@ -1053,6 +1389,28 @@ export const CrewBoardPage = (): JSX.Element => {
           </div>
         </div>
       </div>
+
+      {/* The slot's list — one for the board, started afresh for each slot pressed. */}
+      {picker !== null && (
+        <CrewSlotPicker
+          key={`${picker.key}|${picker.slot}`}
+          target={picker}
+          slotName={t(`operations.crewPlan.columns.${picker.slot}`)}
+          rowName={(() => {
+            const row = rows.find((candidate) => candidate.key === picker.key);
+            return row === undefined ? '—' : rowName(row);
+          })()}
+          anchor={pickerAnchor}
+          trigger={pickerTrigger}
+          sheet={phone}
+          members={members}
+          rows={rows}
+          ready={rosterReady}
+          seatLabel={(employeeId) => placedAt(employeeId)?.long ?? null}
+          onPick={pickInto}
+          onClose={closePicker}
+        />
+      )}
 
       {/* «تغييرات غير محفوظة» — another day, a link in the menu, a reload. */}
       <DesignDialog

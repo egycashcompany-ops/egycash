@@ -6,7 +6,8 @@
 // «كشف طاقم العمليات» (`RosterMemberCard`, Round 19b, «زى السواق»), with what THIS board adds:
 //   · the ROLE, in the chip's own colour — green «قائد», blue «أخصائي يعمل قائدًا», red «أخصائي»;
 //   · WHERE HE SITS in the draft — the row and the slot («213 · قائد الطاقم»), or «غير معيَّن اليوم»;
-//   · a place kept for his attendance on the board's day (`attendance` — nothing fills it yet);
+//   · his ATTENDANCE on the board's day (`PlanAttendanceFact`, Round 22 F): «غائب» or «في إجازة» as HR
+//     has it — the reason a pale chip cannot be put on a row — or that HR records neither;
 //   · what he holds, each flag by its ICON (the chips' drawings) and its name.
 // The owner said «القائد»; the card is on EVERY person chip, captains and specialists alike — one
 // board, one way to ask «who is this», and a specialist's flags are as much the planner's question.
@@ -35,7 +36,7 @@ import {
   useHoverCard,
   type HoverCardTriggerProps,
 } from '../../fleet/components/HoverCardLayer';
-import { crewRoleOf, flagsOf, type CrewRole } from '../lib/crew-plan';
+import { crewRoleOf, flagsOf, type CrewAway, type CrewRole } from '../lib/crew-plan';
 import { CardHead, PersonIcon } from './BoardCrewCards';
 import { FLAG_PATH } from './crew-plan-icons';
 import { CardHeld, CarriesNothing, CrewPersonFacts, HeldChip } from './RosterMemberCard';
@@ -45,6 +46,34 @@ const ROLE_PILL: Record<CrewRole, string> = {
   captain: 'bg-emerald-600 dark:bg-emerald-700',
   dual: 'bg-sky-600 dark:bg-sky-700',
   specialist: 'bg-rose-600 dark:bg-rose-700',
+};
+
+/** The attendance line's words in the badge's colours: «غائب» red, «في إجازة» amber. */
+const AWAY_TONE: Record<CrewAway, string> = {
+  absent: 'text-rose-700 dark:text-rose-300',
+  onLeave: 'text-amber-700 dark:text-amber-300',
+};
+
+/**
+ * The card's attendance line on the board's day (Round 22 F): «غائب في هذا اليوم» or «في إجازة في
+ * هذا اليوم» — what keeps him off a row — or «لا غياب ولا إجازة مسجَّلة» when HR answers neither (at
+ * work, a day off, or not computed yet: an unknown is not an absence).
+ */
+export const PlanAttendanceFact = ({ away }: { away: CrewAway | null }): JSX.Element => {
+  const t = useT();
+  return (
+    <Fact label={t('operations.crewPlan.card.attendance')}>
+      {away === null ? (
+        <span data-plan-member-away="none" className="text-slate-500 dark:text-slate-400">
+          {t('operations.crewPlan.card.attendanceNone')}
+        </span>
+      ) : (
+        <span data-plan-member-away={away} className={cn('font-black', AWAY_TONE[away])}>
+          {t(`operations.crewPlan.away.day.${away}`)}
+        </span>
+      )}
+    </Fact>
+  );
 };
 
 /**
@@ -95,7 +124,7 @@ export const PlanMemberCardBody = ({
             <span data-plan-member-seat="true">{seat}</span>
           )}
         </Fact>
-        {/* His attendance on the board's day goes HERE, one line, when the board knows it. */}
+        {/* His attendance on the board's day — one line (`PlanAttendanceFact`, from the chip). */}
         {attendance}
       </dl>
       {/* «قائد» and «أخصائي» are the role above; these are the rest, as the chip's icons. */}

@@ -26,7 +26,11 @@
 //      order («يملى اللى ف النص بالترتيب بينهم»; the rules are `fillSealRange`'s). Round 21: «مينفعش
 //      يكون فيه رقم للحقائب و الصناديق زى بعض برضو» — a seal is named ONCE in the receipt, bags and
 //      boxes together: every box holding a repeat is red, one notice under the seals says which
-//      numbers and where, and «استلام» waits until they are corrected (`sealRepeats`).
+//      numbers and where, and «استلام» waits until they are corrected (`sealRepeats`). Round 21b:
+//      «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى» — nor a seal the vault
+//      still holds on another محصنة: asked of the server as seals are typed (`useVaultSealCheck`),
+//      marked red the same way, said in the same notice, «استلام» held; a refused receipt marks the
+//      seals its 409 names, should the check have been stale. A check that fails holds nothing.
 //
 // «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى»: NO NAMES — the two
 // treasurers (Q2's dual control) are gone, with «يجب أن يستلم كل شحنة شخصان مختلفان»; the receiver
@@ -68,6 +72,7 @@ import {
   useOperationsBanks,
   useOperationsCurrencies,
   useReceiveIntoVault,
+  useVaultSealCheck,
 } from '../api/operations-queries';
 import { currencyKind } from '../lib/day-board';
 import { SHIPMENT_DATE_PROBLEM_KEY, secondaryBankFor } from '../lib/shipment-form';
@@ -81,20 +86,29 @@ import {
   denominationsTotal,
   draftSlots,
   fillSealRange,
+  holdsFromRefusal,
+  isSealHeldRefusal,
+  mergeHolds,
   parseCount,
   poundAmount,
   receiveRefusal,
   receiveRequest,
+  sealHeldNotice,
+  sealHeldTitle,
+  sealHolds,
+  sealNoticeText,
   sealPartText,
   sealRangeNote,
   sealRepeatNotice,
   sealRepeatTitle,
   sealRepeats,
   sealSummary,
+  sealsToCheck,
   sealsToSend,
   shipmentPatch,
   shownSeals,
   typeSeal,
+  type HeldRefusal,
   type ReceiptDraft,
   type ReceiveField,
   type SealList,
@@ -211,9 +225,26 @@ export const SealSummaryLine = ({ seals }: { seals: readonly string[] }): JSX.El
  * Round 21 — the ONE notice under the seals: which numbers repeat and where («الرقم 1 مكرر — في
  * الحقائب والصناديق»), and the rule it breaks. Red, as the boxes it explains; announced as it
  * appears, so a scanner's operator hears it too. `id` is what «استلام» points at for its reason.
+ *
+ * Round 21b — the same notice says a seal the vault still holds on another محصنة («الرقم 7 موجود في
+ * الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)»), after the repeats and with its own rule: one notice
+ * for whatever holds «استلام», never two boxes of red under the seals.
  */
-export const SealRepeatNotice = ({ id, text }: { id: string; text: string }): JSX.Element => {
+export const SealRepeatNotice = ({
+  id,
+  text,
+  rules,
+  held = false,
+}: {
+  id: string;
+  text: string;
+  /** The rules the text breaks — the repeat's (the default), the held seal's, or both. */
+  rules?: readonly string[];
+  /** The notice names a seal still in the vault (Round 21b). */
+  held?: boolean;
+}): JSX.Element => {
   const t = useT();
+  const said = rules ?? [t('operations.secured.receive.sealRepeatRule')];
   const at = useRef<HTMLDivElement>(null);
   // It appears under the last seal box, where the form may end below the fold (1440 × 900 with
   // both lists filled): brought into view once, as it appears — the least scroll that shows it,
@@ -228,6 +259,7 @@ export const SealRepeatNotice = ({ id, text }: { id: string; text: string }): JS
       id={id}
       role="alert"
       data-seal-repeat="true"
+      data-seal-held={held ? 'true' : undefined}
       className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] dark:border-rose-500/50 dark:bg-rose-500/10"
     >
       {/* The triangle stays beside the words at every width; the words wrap on a phone. */}
@@ -237,9 +269,11 @@ export const SealRepeatNotice = ({ id, text }: { id: string; text: string }): JS
       />
       <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="font-bold text-rose-800 dark:text-rose-200">{text}</span>
-        <span className="font-medium text-rose-700/90 dark:text-rose-300/90">
-          {t('operations.secured.receive.sealRepeatRule')}
-        </span>
+        {said.map((rule) => (
+          <span key={rule} className="font-medium text-rose-700/90 dark:text-rose-300/90">
+            {rule}
+          </span>
+        ))}
       </p>
     </div>
   );
@@ -278,6 +312,7 @@ export const SealBoxes = ({
   slots,
   perUnit,
   repeated = [],
+  held = [],
   onChange,
 }: {
   kind: 'bag' | 'box';
@@ -292,6 +327,11 @@ export const SealBoxes = ({
    * (or nothing) for a box whose seal is its own. A box with a word here is drawn red.
    */
   repeated?: readonly (string | null)[];
+  /**
+   * Round 21b — per box on screen, where in the vault its seal is held (`sealHeldTitle`); null (or
+   * nothing) for a box whose seal is free. Drawn red like a repeat.
+   */
+  held?: readonly (string | null)[];
   onChange: (index: number, value: string) => void;
 }): JSX.Element => {
   const t = useT();
@@ -344,6 +384,9 @@ export const SealBoxes = ({
             // A repeat is the box's problem whoever wrote it — the range fill's number too: red
             // wins over the fill's tint, and the title says where else the seal is.
             const repeat = repeated[index] ?? null;
+            // Round 21b — a seal another محصنة still holds in the vault: the same red, its own title.
+            const inVault = held[index] ?? null;
+            const invalid = repeat !== null || inVault !== null;
             return (
               <input
                 // A box is a POSITION (legacy's): its index is its identity.
@@ -363,16 +406,18 @@ export const SealBoxes = ({
                 data-seal-input={kind}
                 data-seal-filled={filled ? 'true' : undefined}
                 data-seal-repeat={repeat === null ? undefined : 'true'}
-                aria-invalid={repeat === null ? undefined : true}
+                data-seal-held={inVault === null ? undefined : 'true'}
+                aria-invalid={invalid ? true : undefined}
                 aria-label={label}
                 title={[
                   label,
                   ...(filled ? [t('operations.secured.receive.sealFilled')] : []),
                   ...(repeat === null ? [] : [repeat]),
+                  ...(inVault === null ? [] : [inVault]),
                 ].join(' — ')}
                 className={cn(
                   'h-9 w-full rounded-lg border px-2 text-center text-[15px] font-semibold shadow-inner transition-colors',
-                  repeat !== null
+                  invalid
                     ? 'border-2 border-rose-500 bg-rose-50 text-rose-800 focus:border-rose-600 focus:ring-rose-500 dark:border-rose-400 dark:bg-rose-500/15 dark:text-rose-100'
                     : filled
                       ? 'border-indigo-200 bg-indigo-50 text-indigo-800 focus:border-indigo-500 focus:ring-indigo-500 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200'
@@ -390,9 +435,10 @@ export const SealBoxes = ({
 };
 
 /**
- * «استلام» — legacy's dark red button. HELD while a seal is named twice in the receipt (Round 21):
- * `blocked` is the notice's own words, said again as its title, and the button points at the
- * notice (`describedBy`) — a refusal the server would answer anyway is not sent.
+ * «استلام» — legacy's dark red button. HELD while a seal is named twice in the receipt (Round 21),
+ * or is still in the vault on another محصنة (Round 21b): `blocked` is the notice's own words, said
+ * again as its title, and the button points at the notice (`describedBy`) — a refusal the server
+ * would answer anyway is not sent.
  */
 export const ReceiveSaveButton = ({
   busy,
@@ -433,6 +479,24 @@ export const ReceiveSaveButton = ({
     </button>
   );
 };
+
+/**
+ * Round 21b — the seals to ask the vault about once the typing has paused: a scanner types a seal a
+ * digit at a time, and «40» is not the seal «4» was, so only the list that stood `ms` without a
+ * change is asked. Compared by its text, so a render that builds the same list again is no change.
+ */
+const useSettledSeals = (seals: readonly string[], ms: number): readonly string[] => {
+  const joined = seals.join('\n');
+  const [settled, setSettled] = useState(joined);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(joined), ms);
+    return () => clearTimeout(timer);
+  }, [joined, ms]);
+  return useMemo(() => (settled === '' ? [] : settled.split('\n')), [settled]);
+};
+
+/** How long the typing must pause before the vault is asked about the seals. */
+const SEAL_CHECK_PAUSE_MS = 350;
 
 export const ReceiveIntoVaultDialog = ({
   shipment,
@@ -480,6 +544,8 @@ export const ReceiveIntoVaultDialog = ({
   const [refused, setRefused] = useState<{ field: ReceiveField; text: string } | null>(null);
   /** The receipt the server took — the form is locked from then on, and «إيصال» prints it. */
   const [taken, setTaken] = useState<OperationsVaultReceiptDto | null>(null);
+  /** Round 21b — what a refused receipt said is still in the vault, until the check answers since. */
+  const [heldRefusal, setHeldRefusal] = useState<HeldRefusal | null>(null);
   const sending = useRef(false);
 
   useEffect(() => {
@@ -497,6 +563,7 @@ export const ReceiveIntoVaultDialog = ({
     setTried(false);
     setRefused(null);
     setTaken(null);
+    setHeldRefusal(null);
   }, [shipment]);
 
   const receipt: ReceiptDraft = {
@@ -525,9 +592,32 @@ export const ReceiveIntoVaultDialog = ({
   // «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: the boxes ON SCREEN, both lists read as
   // one — a box the range fill wrote counts like one typed. Every box of a repeat is red, the
   // notice says which numbers and where, and «استلام» waits: the contract would refuse it.
-  const repeats = sealRepeats(shownSeals(bagSeals, slots.bags), shownSeals(boxSeals, slots.boxes));
+  const shownBags = shownSeals(bagSeals, slots.bags);
+  const shownBoxes = shownSeals(boxSeals, slots.boxes);
+  const repeats = sealRepeats(shownBags, shownBoxes);
   const repeatNotice = sealRepeatNotice(repeats.repeats, t, locale);
   const noticeId = useId();
+
+  // ── Nor a seal still in the vault (Round 21b) ──────────────────────────────────────────────────
+  // «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: the seals on screen are
+  // asked of the vault once the typing pauses — each once, by its key, this shipment left out — and
+  // a seal another محصنة still holds is marked like a repeat. Only while the form is open to edit: a
+  // receipt taken is locked, and its seals are its own now. A check that fails answers null and
+  // marks nothing; a refused receipt marks what its 409 names until the check has answered since.
+  const askFor = useSettledSeals(sealsToCheck(shownBags, shownBoxes), SEAL_CHECK_PAUSE_MS);
+  const sealCheck = useVaultSealCheck(askFor, shipment?.id ?? null, open && taken === null);
+  const holds = sealHolds(
+    shownBags,
+    shownBoxes,
+    mergeHolds(sealCheck.data, sealCheck.dataUpdatedAt, heldRefusal),
+  );
+  const heldNotice = sealHeldNotice(holds.held, t, locale);
+  const heldAt = (marks: typeof holds.bags): (string | null)[] =>
+    marks.map((hold) =>
+      hold === null ? null : sealHeldTitle(hold, t, (iso) => formatBusinessDateTime(iso, locale)),
+    );
+  // ONE notice for whatever holds «استلام»: the repeats first, then the seals still in the vault.
+  const sealsNotice = sealNoticeText([repeatNotice, heldNotice], locale);
   const repeatedAt = (list: 'bag' | 'box', marks: typeof repeats.bags): (string | null)[] =>
     marks.map((repeat, index) =>
       repeat === null ? null : sealRepeatTitle(repeat, { list, index }, perBag, t, locale),
@@ -572,9 +662,16 @@ export const ReceiveIntoVaultDialog = ({
   const missing = (field: keyof typeof emptied): boolean => tried && emptied[field];
   const refusedOn = (field: ReceiveField): string | undefined =>
     refused?.field === field ? refused.text : undefined;
-  // What the seals' notice says: the repeat on screen, or — when the server refused one the form
-  // did not see — the server's refusal in the same words.
-  const sealsSaid = repeatNotice !== '' ? repeatNotice : (refusedOn('seals') ?? '');
+  // What the seals' notice says: the repeat or the held seal on screen, or — when the server refused
+  // a repeat the form did not see — the server's refusal in the same words. A seal the server
+  // refused as held is on screen already (`heldRefusal`), so it is said with the rest.
+  const sealsSaid = sealsNotice !== '' ? sealsNotice : (refusedOn('seals') ?? '');
+  const sealRules = [
+    ...(repeatNotice !== '' || (sealsNotice === '' && sealsSaid !== '')
+      ? [t('operations.secured.receive.sealRepeatRule')]
+      : []),
+    ...(heldNotice !== '' ? [t('operations.secured.receive.sealHeldRule')] : []),
+  ];
 
   const values = (): ShipmentDraftValues => ({
     mainBankId: draft.mainBankId,
@@ -590,8 +687,9 @@ export const ReceiveIntoVaultDialog = ({
 
   const submit = async (): Promise<void> => {
     if (shipment === null || sending.current) return;
-    // A seal named twice is never sent — the button is held; this is its second lock.
-    if (repeatNotice !== '') return;
+    // A seal named twice, or one still in the vault, is never sent — the button is held; this is
+    // its second lock.
+    if (sealsNotice !== '') return;
     setRefused(null);
     // The dates' floors are said here first, as the shipment form says them — against today read
     // at this moment.
@@ -614,6 +712,24 @@ export const ReceiveIntoVaultDialog = ({
       toast.success(t('operations.secured.receive.done'));
     } catch (error) {
       const refusal = receiveRefusal(error);
+      // Round 21b — a seal still in the vault that the check had not seen (or could not ask): the
+      // server is the authority. Its boxes are marked from the refusal itself, said in the notice's
+      // words, and named as soon as the check — re-read by the refusal — names the محصنة.
+      if (isSealHeldRefusal(error)) {
+        const refusedHeld: HeldRefusal = { at: Date.now(), holds: holdsFromRefusal(error, body) };
+        setHeldRefusal(refusedHeld);
+        const words = sealHeldNotice(
+          sealHolds(
+            body.bagSeals ?? [],
+            body.boxSeals ?? [],
+            mergeHolds(sealCheck.data, sealCheck.dataUpdatedAt, refusedHeld),
+          ).held,
+          t,
+          locale,
+        );
+        toast.error(words !== '' ? words : t(refusal.key ?? 'operations.secured.receive.failed'));
+        return;
+      }
       // A seal refused as named twice is said in the words the form says it in, read from what
       // was sent; the refusal's own key only if those find no repeat.
       const sealWords =
@@ -728,7 +844,7 @@ export const ReceiveIntoVaultDialog = ({
             {!locked && (
               <ReceiveSaveButton
                 busy={busy}
-                blocked={repeatNotice === '' ? null : repeatNotice}
+                blocked={sealsNotice === '' ? null : sealsNotice}
                 describedBy={noticeId}
                 onClick={() => void submit()}
               />
@@ -1070,6 +1186,7 @@ export const ReceiveIntoVaultDialog = ({
               slots={slots.bags}
               perUnit={perBag}
               repeated={repeatedAt('bag', repeats.bags)}
+              held={heldAt(holds.bags)}
               onChange={setSeal(setBagSeals, slots.bags)}
             />
             <SealBoxes
@@ -1079,10 +1196,19 @@ export const ReceiveIntoVaultDialog = ({
               slots={slots.boxes}
               perUnit={BOX_SEALS_PER_BOX}
               repeated={repeatedAt('box', repeats.boxes)}
+              held={heldAt(holds.boxes)}
               onChange={setSeal(setBoxSeals, slots.boxes)}
             />
-            {/* Round 21 — one notice for the whole receipt, under both lists. */}
-            {sealsSaid !== '' && <SealRepeatNotice id={noticeId} text={sealsSaid} />}
+            {/* Round 21 — one notice for the whole receipt, under both lists; since Round 21b it
+                says a seal still in the vault too. */}
+            {sealsSaid !== '' && (
+              <SealRepeatNotice
+                id={noticeId}
+                text={sealsSaid}
+                rules={sealRules}
+                held={heldNotice !== ''}
+              />
+            )}
           </Band>
         </fieldset>
       </DesignDialog>

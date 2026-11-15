@@ -10,7 +10,7 @@
 // so «احمد» finds «أحمد» — and filters by the requirement icons (AND, as legacy's buttons). Somebody
 // already on a row stays LISTED, after the free ones, dimmed, with where they sit: the pool answers
 // «where is he», and dragging him from here moves him. Dropping a chip back onto either pool frees it.
-import { type DragEvent, type HTMLAttributes, type ReactNode } from 'react';
+import { type DragEvent, type ReactNode } from 'react';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
@@ -103,14 +103,14 @@ export const CrewPlanPool = ({
   query: PlanPoolQuery;
   onQueryChange: (next: PlanPoolQuery) => void;
   chips: PoolChipHandlers;
-  /** The pool is where a chip comes off the board — by drag, or by the button below. */
+  /**
+   * The pool is where a chip comes off the board — by drag, or by the button below. It only LIGHTS:
+   * the board's frame takes every drop and finds the pool from `data-plan-pool` (Round 22), so the
+   * whole pool, its header included, is the target.
+   */
   drop: {
     armed: boolean;
     over: boolean;
-    handlers: Pick<
-      HTMLAttributes<HTMLElement>,
-      'onDragOver' | 'onDragEnter' | 'onDragLeave' | 'onDrop'
-    >;
   };
   /** A seated chip is picked up: the keyboard's way to send it back. */
   returnSelected: ReactNode;
@@ -200,7 +200,6 @@ export const CrewPlanPool = ({
       </header>
 
       <div
-        {...drop.handlers}
         data-pool-drop={pool}
         data-drop-over={drop.over ? 'true' : undefined}
         className={cn(

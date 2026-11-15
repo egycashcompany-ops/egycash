@@ -2424,7 +2424,13 @@ export const vaultSealKey = (seal: string): string | null => {
  *     a box's, and no seal may be typed twice in its own list. "The same seal" is
  *     `vaultSealKey`'s (0099 = 99 = ٩٩). A refusal, not a warning: 400 `VALIDATION_FAILED`, the
  *     issue on the LATER occurrence (`body.boxSeals.1`, as sent — blanks counted), its message
- *     naming the seal and where it first appeared. Other shipments' seals are not compared.
+ *     naming the seal and where it first appeared.
+ *   · NOR A SEAL STILL IN THE VAULT (Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
+ *     وخرجت واتكرر يبقى عادى»): a seal of ANOTHER محصنة the vault holds now (its custody `held`, the
+ *     receipt not cancelled) refuses the receipt — 409 `OPERATIONS_SEAL_HELD_IN_VAULT`, nothing
+ *     written. A seal of one that came in and went out again (released, dispatched, completed), or
+ *     whose receipt was cancelled, may repeat. Same `vaultSealKey`. The form asks as seals are
+ *     typed: `POST /operations/secured/seal-check` (`CheckVaultSealsSchema`).
  *   · «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination
  *     (`OPERATIONS_VAULT_DENOMINATIONS`); a value not in the list, or the same one twice, is a 400;
  *     a count of 0 is accepted and not stored.
@@ -2536,6 +2542,62 @@ export const ReceiveIntoVaultSchema = z
 export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
 /** What a client sends — every field but `version` may be left out. */
 export type ReceiveIntoVaultInput = z.input<typeof ReceiveIntoVaultSchema>;
+
+/** One seal check asks about at most two lists' worth of seals — the receipt's own ceiling. */
+export const OPERATIONS_VAULT_SEAL_CHECK_MAX = 1000;
+
+/**
+ * Round 21b — WHICH OF THESE SEALS IS STILL IN THE VAULT? `POST /operations/secured/seal-check`,
+ * on the receive's own grant (`operationsVault.receive`). The owner, asked whether a seal already
+ * recorded on another محصنة should be refused: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت
+ * واتكرر يبقى عادى». The receive form asks as seals are typed or scanned, and marks the ones the vault
+ * holds now before «استلام» is pressed.
+ *
+ *   · "Still in the vault" is the receipt's own rule: a custody `held` (not released to a van) on a
+ *     receipt not cancelled — exactly what the vault inventory lists. "The same seal" is
+ *     `vaultSealKey`'s (0099 = 99 = ٩٩; a seal with a letter in it as typed).
+ *   · `seals`: bags and boxes in one list, each trimmed; a blank one is no seal and is skipped.
+ *   · `excludeShipmentId`: the shipment being received — its own custody, should it hold one, is
+ *     not "another محصنة".
+ *   · A POST although it writes nothing: a list of a receipt's seals belongs in a body, out of URLs
+ *     and access logs, as the receipt itself carries them.
+ *
+ * Answers 200 `OperationsVaultSealCheckDto`. ADVICE ONLY: the receipt decides, in its own
+ * transaction, with 409 `OPERATIONS_SEAL_HELD_IN_VAULT` — a check made a moment before another
+ * receipt was taken can be stale.
+ */
+export const CheckVaultSealsSchema = z
+  .object({
+    seals: z.array(z.string().trim()).max(OPERATIONS_VAULT_SEAL_CHECK_MAX),
+    excludeShipmentId: objectId().optional(),
+  })
+  .strict();
+export type CheckVaultSeals = z.infer<typeof CheckVaultSealsSchema>;
+
+/** The held محصنة a seal is on — what tells it apart to a treasurer, as the vault screens name it. */
+export interface OperationsVaultSealHolderDto {
+  shipmentId: string;
+  /** That receipt's «رقم الإيصال»; null when the vault typed none. */
+  receiptNumber: string | null;
+  /** The main bank's operational name (`opsName`). */
+  mainBankName: string;
+  originBranchName: string;
+  destinationBranchName: string;
+  /** When the vault took it in — ISO instant. */
+  receivedAt: string;
+}
+
+/** A seal the check was asked about that the vault holds now. */
+export interface OperationsVaultHeldSealDto {
+  /** The seal as sent, trimmed — its first spelling when the same seal was sent more than once. */
+  seal: string;
+  holder: OperationsVaultSealHolderDto;
+}
+
+export interface OperationsVaultSealCheckDto {
+  /** Each seal sent that the vault holds now, once, in the order sent; empty when none is. */
+  held: OperationsVaultHeldSealDto[];
+}
 
 /**
  * Round 18 — the receipt the vault's ✓ just took, as the Treasury port hands it back: what the

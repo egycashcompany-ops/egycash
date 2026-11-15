@@ -208,6 +208,19 @@ export const ErrorCodes = {
    * already dispatched or completed.
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+  /**
+   * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
+   * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
+   * وخرجت واتكرر يبقى عادى» — refused while that محصنة is with us; once it has gone out (released to
+   * its van, dispatched, completed) or its receipt was cancelled, the number may come again. "Held"
+   * is the custody's `state: 'held'` on a receipt not cancelled — what the vault inventory lists;
+   * "the same seal" is `vaultSealKey`'s (0099 = 99 = ٩٩). Nothing is written. One detail per seal
+   * refused: `field` its place in THIS receipt as stored (`bagSeals.<i>` / `boxSeals.<i>`, blank
+   * boxes dropped — the form sends none), `code` 'HELD_IN_VAULT', `message` the id of the held
+   * shipment it is on; `POST /operations/secured/seal-check` names that محصنة (bank, branches,
+   * receipt number) for a screen.
+   */
+  OPERATIONS_SEAL_HELD_IN_VAULT: 'OPERATIONS_SEAL_HELD_IN_VAULT',
 
   // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
   /**

@@ -216,6 +216,9 @@ export const MaintenanceTab = ({ data, links, can, onRetry }: PeriodBodyProps): 
               />{' '}
             </>
           )}
+          {/* The basis, said here as «أرقام الفترة» says it: beside the overview's month visits
+              (by exit day) the two figures read correctly. */}
+          <span data-visits-basis="checkIn">{t('fleet.dash.maintenance.basis')}</span>{' '}
           <span data-no-money="true">{t('fleet.dash.maintenance.noMoney')}</span>
         </p>
       </Card>

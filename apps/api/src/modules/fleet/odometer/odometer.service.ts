@@ -138,8 +138,11 @@ export interface OdometerKmContext {
   today: string;
   /** N = `fleet.odometer.missingReadingDays`: the grace before an open row turns stale (R-15). */
   staleDays: number;
-  /** The switcher's branch (`activeBranchId`): the km by type is drawn only when one is chosen. */
-  branchId: string | null;
+  /**
+   * Whether «حسب النوع» is drawn: exactly one branch is in scope — the switcher's, or a reader's only
+   * branch (D10). The company and «كل فروعي» get the km by branch instead.
+   */
+  byType: boolean;
   /** A vehicle set narrows the period (R-13): rows without a car are then not reported apart. */
   setNarrows: boolean;
 }
@@ -655,7 +658,7 @@ class FleetOdometerService {
         ];
       }),
     );
-    const byType = ctx.branchId !== null;
+    const byType = ctx.byType;
     const typeIds = byType
       ? [
           ...new Set(

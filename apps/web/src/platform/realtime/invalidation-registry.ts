@@ -448,7 +448,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // maintenance subtrees: every write that moves the alarm names it, here as in `fleet-queries.ts`,
   // or a board left open never hears of a reading somebody else recorded.
   // The dashboard's two live reads ride the rows whose writes move one of its figures (D13); the
-  // custody rows do not — tab 1's custody line is the custody hooks' own `['fleet', 'custody']`.
+  // custody rows do not — the overview's custody line is the custody hooks' own
+  // `['fleet', 'custody']`.
   'fleet.vehicle': [
     ['fleet', 'vehicles'],
     ['fleet', 'roster'],
@@ -496,7 +497,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'fleet.vehicleLicensing': [['fleet', 'licensing'], ...fleetDashboardNow],
   'fleet.notice': [['fleet', 'notices'], ...fleetDashboardNow],
   // A notice's scans (Files rows owned by `fleetNotice`) and a form's set-up both live on the
-  // notices screen and its editor (and in tab 1's «إخطارات ناقصة المرفقات»).
+  // notices screen and its editor (and in the overview's action centre, «إخطارات ناقصة المرفقات»).
   'fleet.fleetNotice': [['fleet', 'notices'], ...fleetDashboardNow],
   'fleet.noticeSettings': [['fleet', 'notices'], ...fleetDashboardNow],
   // A licence record is a settle candidate of the custody fund («تسوية العهدة») too.

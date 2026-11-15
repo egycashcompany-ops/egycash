@@ -184,8 +184,8 @@ describe('vehicleSet — the dashboard’s set and its echo (R-13)', () => {
   it('codes ∩ types ∩ operations ∩ the switcher’s branch', async () => {
     const { ids, scope } = await vehicleSet(
       { vehicleCodes: ['101', '105', '102'], typeIds: [T1], operationIds: [O1] },
-      B1,
-      { count: true },
+      [B1],
+      { count: true, branchId: B1 },
     );
     expect(sorted(ids)).toEqual(sorted([idOf(c1), idOf(gone)]));
     // The echo is the FILTERS the links carry, never the resolved ids.
@@ -199,14 +199,29 @@ describe('vehicleSet — the dashboard’s set and its echo (R-13)', () => {
   });
 
   it('a branch alone narrows to that branch’s cars, deleted ones included', async () => {
-    const { ids, scope } = await vehicleSet({}, B2, { count: true });
+    const { ids, scope } = await vehicleSet({}, [B2], { count: true, branchId: B2 });
     expect(sorted(ids)).toEqual(sorted([idOf(c2), idOf(c4)]));
     expect(scope.count).toBe(2); // c4 is disposed, not deleted: still a registry car
     expect(scope.branchId).toBe(B2);
   });
 
+  it('«كل فروعي» — several branches narrow to the cars of any of them; the echo names no switcher', async () => {
+    const { ids, scope } = await vehicleSet({ typeIds: [T1] }, [B1, B2], { count: true });
+    expect(sorted(ids)).toEqual(sorted([idOf(c1), idOf(c2), idOf(gone)]));
+    expect(scope.count).toBe(2); // gone is soft-deleted: in the set, not in the count
+    expect(scope.branchId).toBeNull();
+  });
+
+  it('a reader whose branch reach is empty (`[]`) narrows to NOTHING — never the whole company', async () => {
+    const { ids, scope } = await vehicleSet({}, [], { count: true });
+    expect(ids).toEqual([]);
+    expect(scope.count).toBe(0);
+    // `[]` asks no question of the registry: no branch, no car.
+    expect(sent).toEqual([]);
+  });
+
   it('a set nobody is in counts 0 — not null', async () => {
-    const { ids, scope } = await vehicleSet({ typeIds: [T2] }, B1, { count: true });
+    const { ids, scope } = await vehicleSet({ typeIds: [T2] }, [B1], { count: true });
     expect(ids).toEqual([idOf(c3)]);
     const none = await vehicleSet({ vehicleCodes: ['999'] }, null, { count: true });
     expect(none.ids).toEqual([]);
@@ -236,12 +251,13 @@ describe('vehicleSet — the dashboard’s set and its echo (R-13)', () => {
     };
     // The trap: the home-branch fallback would name B1 here …
     expect(currentBranchId(ctx)).toBe(B1);
-    // … but the set is built from the switcher, so the whole company has no vehicle clause.
-    const whole = await vehicleSet({}, ctx.activeBranchId ?? null);
+    // … but the set is built from what the figures cover — the whole company for this grant
+    // (`DashboardContext.branchIds` = null) — so it has no vehicle clause.
+    const whole = await vehicleSet({}, null);
     expect(whole.ids).toBeUndefined();
     expect(whole.scope.branchId).toBeNull();
     expect(sent).toEqual([]);
-    const typed = await vehicleSet({ typeIds: [T1] }, ctx.activeBranchId ?? null);
+    const typed = await vehicleSet({ typeIds: [T1] }, null);
     expect(sorted(typed.ids)).toEqual(sorted([idOf(c1), idOf(c2), idOf(gone)]));
     expect(sent.some((filter) => 'branchId' in filter)).toBe(false);
   });

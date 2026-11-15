@@ -390,16 +390,32 @@ export const CHIP =
   'whitespace-nowrap rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-xs font-bold text-slate-600 dark:border-[#223048] dark:bg-[#0a0e17] dark:font-medium dark:text-slate-300';
 export const HEAD_CHIP = TITLE_CHIP;
 
-/** «لقطة الآن، ولا تتأثر بالفلاتر» — the scope chip with the section's live emerald dot. */
-export const LiveChip = (): JSX.Element => {
+/** The live chip's words: what each «الآن» heading says of its figures. */
+const LIVE_WORDS = {
+  /** «لقطة الآن، ولا تتأثر بالفلاتر» — every «الآن» tab (the default). */
+  long: 'fleet.dash.common.liveChip',
+  /** «لقطة الآن — بيانات الأسطول اللحظية» — the overview's heading (approved layout B). */
+  overview: 'fleet.dash.common.liveOverview',
+} as const;
+
+/** The scope chip with the section's live emerald dot. */
+export const LiveChip = ({
+  variant = 'long',
+}: {
+  variant?: keyof typeof LIVE_WORDS;
+}): JSX.Element => {
   const t = useT();
   return (
-    <span data-live-chip="true" className={cn(CHIP, 'inline-flex items-center gap-1.5 py-1')}>
+    <span
+      data-live-chip="true"
+      data-live-variant={variant}
+      className={cn(CHIP, 'inline-flex items-center gap-1.5 py-1')}
+    >
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400" />
       </span>
-      {t('fleet.dash.common.liveChip')}
+      {t(LIVE_WORDS[variant])}
     </span>
   );
 };
@@ -431,9 +447,10 @@ export const TabHead = ({
       <IconTile d={icon} tone={tone} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* One line from 640 px; a phone wraps a long heading rather than scroll the page. */}
           <h2
             className={cn(
-              'whitespace-nowrap text-[22px] font-bold text-slate-900 dark:text-white',
+              'text-[22px] font-bold text-slate-900 sm:whitespace-nowrap dark:text-white',
               CAIRO,
             )}
           >
@@ -553,7 +570,8 @@ export const Tag = ({
   </span>
 );
 
-/** «الشركة كلها» — a company-wide part while a branch is chosen (fuel, custody, notices, drivers). */
+/** «الشركة كلها» — a company-wide part while the figures are narrowed to the reader's branches (one
+ *  branch, or «كل فروعي»: `scopeBranches !== null`): fuel, custody, notices, drivers. */
 export const CompanyWide = ({ show }: { show: boolean }): JSX.Element | null => {
   const t = useT();
   if (!show) return null;

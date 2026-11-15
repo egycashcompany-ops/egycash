@@ -457,7 +457,7 @@ describe('visitBreakdown — every figure is the list it links to (R-18, D9)', (
   });
 
   it('the dashboard’s set (vehicleSet) gives the same count as the screen’s filter', async () => {
-    const set = await vehicleSet({ operationIds: [O1] }, B1, { count: true });
+    const set = await vehicleSet({ operationIds: [O1] }, [B1], { count: true, branchId: B1 });
     expect([...(set.ids ?? [])].sort()).toEqual([c1.id, c5.id, gone.id].sort());
     // The set keeps the deleted car (its visits still count); the display count is the registry's.
     expect(set.scope).toEqual({
@@ -471,6 +471,57 @@ describe('visitBreakdown — every figure is the list it links to (R-18, D9)', (
       asQuery({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }),
     );
     expect(out.count).toBe(await total({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }));
+  });
+});
+
+// ── 1b · exitCount = the list over the EXIT day ───────────────────────────────────────────────
+
+describe('exitCount — the overview’s «زيارات الصيانة» by EXIT day is the list’s outFrom/outTo (D6)', () => {
+  const OCTOBER_OUT = { outFrom: '2026-10-01', outTo: '2026-10-31' };
+  const asExitQuery = (q: Record<string, unknown>): MaintenanceFilterQuery => {
+    const { outFrom, outTo, ...rest } = q;
+    return {
+      ...asQuery(rest),
+      ...(outFrom === undefined ? {} : { outFrom: new Date(`${String(outFrom)}T00:00:00.000Z`) }),
+      ...(outTo === undefined ? {} : { outTo: new Date(`${String(outTo)}T00:00:00.000Z`) }),
+    };
+  };
+  const cases: { name: string; query: () => Record<string, unknown> }[] = [
+    { name: 'the exit days alone (company view)', query: () => OCTOBER_OUT },
+    { name: 'one branch', query: () => ({ ...OCTOBER_OUT, branchIds: [B1] }) },
+    { name: '«كل فروعي» — two branches', query: () => ({ ...OCTOBER_OUT, branchIds: [B1, B2] }) },
+    {
+      name: 'operation ∩ branch',
+      query: () => ({ ...OCTOBER_OUT, operationIds: [O1], branchIds: [B1] }),
+    },
+    { name: 'codes', query: () => ({ ...OCTOBER_OUT, vehicleCodes: [c1.code, 'B-90'] }) },
+  ];
+  for (const c of cases) {
+    it(c.name, async () => {
+      const q = c.query();
+      expect(await fleetMaintenanceService.exitCount(asExitQuery(q))).toBe(await total(q));
+    });
+  }
+
+  it('two branches are the sum of each (a car is in one branch)', async () => {
+    const one = await fleetMaintenanceService.exitCount(
+      asExitQuery({ ...OCTOBER_OUT, branchIds: [B1] }),
+    );
+    const two = await fleetMaintenanceService.exitCount(
+      asExitQuery({ ...OCTOBER_OUT, branchIds: [B2] }),
+    );
+    const both = await fleetMaintenanceService.exitCount(
+      asExitQuery({ ...OCTOBER_OUT, branchIds: [B1, B2] }),
+    );
+    expect(both).toBe(one + two);
+  });
+
+  it('an open visit has not left: it is never an exit, whatever its check-in day', async () => {
+    expect(await total({ open: true })).toBeGreaterThan(0);
+    const exits = await fleetMaintenanceService.exitCount(
+      asExitQuery({ outFrom: '2000-01-01', outTo: '2100-12-31' }),
+    );
+    expect(exits).toBe((await total({})) - (await total({ open: true })));
   });
 });
 

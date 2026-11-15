@@ -897,7 +897,7 @@ export const LicencesTab = (props: NowTabProps): JSX.Element => {
               papers={now.papers}
               cards={now.fuelCards}
               links={links}
-              branch={now.branchId !== null}
+              branch={now.scopeBranches !== null}
             />
           )}
         </div>

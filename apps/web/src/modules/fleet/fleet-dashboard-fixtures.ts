@@ -48,6 +48,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
   today: TODAY,
   asOf: AS_OF,
   branchId: null,
+  scopeBranches: null,
   vehicles: {
     active: 40,
     outOfService: 2,
@@ -79,6 +80,67 @@ export const NOW_DTO: FleetDashboardNowDto = {
     profileInactive: 1,
     notEmployed: 1,
     licenceExpiredDrivers: 1,
+    // The lists agree with the counts: 5 unmanned = 2 crewGap + 1 stalePlan + 2 noCrew + 0
+    // unassigned (all five listed, class then code); 5 absent = 3 «تمام» + 2 leave, crew first.
+    unmannedRows: [
+      {
+        vehicleId: 'v121',
+        code: '121',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+        mission: { ar: 'نقل نقدية', en: 'Cash transit' },
+        why: 'crewGap',
+        absent: { employeeId: 'e-abs-1', reason: 'fleetUnavailability' },
+      },
+      {
+        vehicleId: 'v133',
+        code: '133',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
+        mission: null,
+        why: 'crewGap',
+        absent: { employeeId: 'e-abs-4', reason: 'hrLeave' },
+      },
+      {
+        vehicleId: 'v145',
+        code: '145',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        branch: { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+        mission: null,
+        why: 'stalePlan',
+        absent: { employeeId: 'e-abs-2', reason: 'fleetUnavailability' },
+      },
+      {
+        vehicleId: 'v162',
+        code: '162',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        branch: null,
+        mission: null,
+        why: 'noCrew',
+        absent: null,
+      },
+      {
+        vehicleId: 'v170',
+        code: '170',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
+        mission: null,
+        why: 'noCrew',
+        absent: null,
+      },
+    ],
+    unmannedUnassigned: 0,
+    absentDrivers: [
+      {
+        employeeId: 'e-abs-1',
+        reason: 'fleetUnavailability',
+        crewVehicle: { vehicleId: 'v121', code: '121' },
+      },
+      { employeeId: 'e-abs-4', reason: 'hrLeave', crewVehicle: { vehicleId: 'v133', code: '133' } },
+      { employeeId: 'e-abs-2', reason: 'fleetUnavailability', crewVehicle: null },
+      { employeeId: 'e-abs-3', reason: 'fleetUnavailability', crewVehicle: null },
+      { employeeId: 'e-abs-5', reason: 'hrLeave', crewVehicle: null },
+    ],
   },
   workshop: {
     open: 6,
@@ -117,6 +179,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
       },
     ],
     totals: { counts: { [B1]: 25, [B2]: 14 }, noBranch: 1, total: 40 },
+    branchCount: 2,
     cash: { vehicles: 24, operationIds: [OP_CASH] },
     atm: { vehicles: 11, operationIds: [OP_ATM] },
   },
@@ -157,6 +220,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
     requested: { count: 4, amount: 6500 },
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 7500,
+    cards: 24,
   },
   recentWorkshop: [
     {
@@ -214,6 +278,12 @@ export const NOW_DTO: FleetDashboardNowDto = {
     },
     total: 6450,
   },
+  // Every year still owed: this year's (violationsYear) plus older statements and fines.
+  violationsOpen: {
+    company: { amount: 5600, count: 9 },
+    drivers: { total: { amount: 3050, count: 7 } },
+    total: { amount: 8650, count: 16 },
+  },
   alerts: [
     { id: 'maintenanceRed', level: 'red', count: 3 },
     { id: 'vehicleLicenceExpired', level: 'red', count: 2 },
@@ -234,7 +304,14 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
   today: TODAY,
   asOf: AS_OF,
   range: { preset: 'thisMonth', from: TODAY, to: TODAY, days: 1, granularity: 'day' },
-  vehicleScope: { count: null, typeIds: [], operationIds: [], vehicleCodes: [], branchId: null },
+  vehicleScope: {
+    count: null,
+    typeIds: [],
+    operationIds: [],
+    vehicleCodes: [],
+    branchId: null,
+    scopeBranches: null,
+  },
   km: {
     total: 4896,
     invalidRows: 0,
@@ -261,6 +338,7 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     topVehicles: [],
     unregistered: null,
   },
+  exits: { count: 19 },
   accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
   accidentList: null,
   opex: null,

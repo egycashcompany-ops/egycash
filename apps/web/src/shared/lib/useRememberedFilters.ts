@@ -13,6 +13,11 @@
 // list per screen is more to write once, and the only version that cannot silently start
 // remembering the wrong thing later.
 //
+// WHAT IS RESTORED IS DECLARED TOO. Storage outlives a release: a screen that stops declaring a
+// name (the fleet dashboard stopped remembering its period, so every visit opens on «هذا الشهر»)
+// would otherwise hand that name back once more from the string a browser stored before. A stored
+// view is read through the same declaration before it is put back.
+//
 // Two rules keep this from becoming a bug:
 //
 //   • A URL THAT ALREADY SAYS SOMETHING WINS. Arriving with a query string — a shared link, a
@@ -90,6 +95,18 @@ export const rememberedOnly = (sp: URLSearchParams, remembered: readonly string[
   }
   return kept.toString();
 };
+
+/**
+ * A stored view as it may be put back: only the names the screen declares TODAY. A browser keeps the
+ * string it wrote under an older declaration (`period=lastMonth&type=x` from before the dashboard
+ * stopped remembering its period); restoring it verbatim would bring the dropped name back once.
+ */
+export const declaredView = (saved: string, remembered: readonly string[]): string =>
+  rememberedOnly(new URLSearchParams(saved), remembered);
+
+/** What storage holds for this screen, through today's declaration — the hook's only read. */
+const readDeclared = (pathname: string, scope: string, remembered: readonly string[]): string =>
+  declaredView(read(pathname, scope), remembered);
 
 /** What the hook knows when a render commits. */
 export interface FilterPass {
@@ -197,16 +214,19 @@ export const useRememberedFilters = (
     if (settled.current && scope !== opened.current) {
       opened.current = scope;
       navigating.current = true;
-      setSp(new URLSearchParams(scopedView(sp, remembered, read(pathname, scope))), {
-        replace: true,
-      });
+      setSp(
+        new URLSearchParams(scopedView(sp, remembered, readDeclared(pathname, scope, remembered))),
+        {
+          replace: true,
+        },
+      );
       return;
     }
     const action = runFilterPass({
       settled: settled.current,
       navigating: navigating.current,
       current,
-      saved: settled.current ? '' : read(pathname, scope),
+      saved: settled.current ? '' : readDeclared(pathname, scope, remembered),
       fallback,
     });
     settled.current = true;

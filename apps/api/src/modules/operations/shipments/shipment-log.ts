@@ -122,6 +122,21 @@ const list: Render = (value) =>
     ? value.map((item) => textOf(item) ?? '').join(LIST_SEPARATOR)
     : null;
 
+/**
+ * Round 18 — «عدد الورق من كل فئة»: each denomination the receipt counted as «denomination × count»,
+ * in the order stored (smallest first), Latin digits like every amount here («0.5 × 40، 200 × 15»).
+ */
+const denominations: Render = (value) => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const printedLines = value.flatMap((line: unknown) => {
+    const { value: denomination, count } = (line ?? {}) as { value?: unknown; count?: unknown };
+    return typeof denomination === 'number' && typeof count === 'number'
+      ? [`${String(denomination)} × ${amountFormat.format(count)}`]
+      : [];
+  });
+  return printedLines.length === 0 ? null : printedLines.join(LIST_SEPARATOR);
+};
+
 /** 'true' / 'false' — the screen says yes / no (`OPERATIONS_SHIPMENT_LOG_BOOLEAN_FIELDS`). */
 const flag: Render = (value) => (typeof value === 'boolean' ? String(value) : null);
 
@@ -158,13 +173,19 @@ const LEG_ORDER_FIELDS: Readonly<Record<string, FieldRule>> = {
   sequence: { field: 'sequence', render: plain },
 };
 
+// WHO RECEIVED IT is not a field here since Round 18: the receiver is the signed-in user who pressed
+// «إستلام», which is exactly the entry's actor (`actorName`) — named already, so `receivedById` is
+// not printed again (the `releasedById` precedent below). A receipt taken BEFORE Round 18 named two
+// treasurers on the form; their rows still print both names.
 const CUSTODY_FIELDS: Readonly<Record<string, FieldRule>> = {
   receiptNumber: { field: 'receiptNumber', render: plain },
   bagCount: { field: 'bagCount', render: plain },
   cartonCount: { field: 'cartonCount', render: plain },
   boxCount: { field: 'boxCount', render: plain },
+  bagSealsPerBag: { field: 'bagSealsPerBag', render: plain },
   bagSeals: { field: 'bagSeals', render: list },
   boxSeals: { field: 'boxSeals', render: list },
+  denominations: { field: 'denominations', render: denominations },
   receivedByPrimaryId: { field: 'receivedByPrimary', render: person, ref: 'employeeIds' },
   receivedBySecondaryId: { field: 'receivedBySecondary', render: person, ref: 'employeeIds' },
 };
@@ -357,7 +378,15 @@ const legEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => 
 /** One custody row → its entry: into the vault (with the receipt), out of it, or its receipt undone. */
 const custodyEntry = (row: AuditLogDto, names: ShipmentLogNames): Drafted | null => {
   if (row.action === 'create') {
-    return { kind: 'vaultReceived', changes: printed(row, CUSTODY_FIELDS, names) };
+    // Round 18 made every field of the receipt optional («كله اختيارى»): a receipt with no seals and
+    // no notes counted would otherwise read as a column of «— ← —». A value that prints as nothing
+    // on both sides says nothing, and is left out; a count of 0 is a value, and stays.
+    return {
+      kind: 'vaultReceived',
+      changes: printed(row, CUSTODY_FIELDS, names).filter(
+        (change) => change.old !== null || change.new !== null,
+      ),
+    };
   }
   // Round 10 — a cancelled receipt voids the custody (audited as its delete). The reason is printed
   // from the SHIPMENT's row of the same request, which this entry is folded into.

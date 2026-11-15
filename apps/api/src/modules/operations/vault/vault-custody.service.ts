@@ -7,7 +7,7 @@
 // `secured/secured.service.ts`, which drives this port. Keeping the port that dumb is what makes
 // swapping in a real Treasury module a registration change rather than a rewrite.
 import { Types, type ClientSession } from 'mongoose';
-import { OperationsEvents } from '@ecms/contracts';
+import { OPERATIONS_VAULT_DENOMINATIONS, OperationsEvents } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -16,6 +16,7 @@ import {
   registerVaultCustodyProvider,
   type VaultCustodyProvider,
   type VaultCustodyView,
+  type VaultDenominationCount,
   type VaultReceiptInput,
 } from '../treasury-boundary';
 import { operationsVaultCustodyRepository } from './vault-custody.repository';
@@ -27,49 +28,83 @@ const entityRef = (id: string) => ({
   entityId: id,
 });
 
+const idOrNull = (id: Types.ObjectId | null | undefined): string | null =>
+  id == null ? null : String(id);
+
+/**
+ * The audited surface. A row written before Round 18 carries its two treasurers and none of the
+ * Round 18 fields; a newer row the other way round — each snapshot holds what its row holds, so an
+ * old receipt's release diff never invents fields it did not have.
+ */
 const snapshot = (doc: OperationsVaultCustodyDoc) => ({
   state: doc.state,
   receiptNumber: doc.receiptNumber,
   bagCount: doc.bagCount,
   cartonCount: doc.cartonCount,
   boxCount: doc.boxCount,
+  ...(doc.bagSealsPerBag == null ? {} : { bagSealsPerBag: doc.bagSealsPerBag }),
   bagSeals: doc.bagSeals,
   boxSeals: doc.boxSeals,
-  receivedByPrimaryId: String(doc.receivedByPrimaryId),
-  receivedBySecondaryId: String(doc.receivedBySecondaryId),
-  releasedById: doc.releasedById === null ? null : String(doc.releasedById),
+  ...(doc.denominations === undefined ? {} : { denominations: doc.denominations }),
+  ...(doc.receivedById == null ? {} : { receivedById: String(doc.receivedById) }),
+  ...(doc.receivedByPrimaryId == null
+    ? {}
+    : { receivedByPrimaryId: String(doc.receivedByPrimaryId) }),
+  ...(doc.receivedBySecondaryId == null
+    ? {}
+    : { receivedBySecondaryId: String(doc.receivedBySecondaryId) }),
+  releasedById: idOrNull(doc.releasedById),
 });
 
 export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView => ({
   id: String(doc._id),
   shipmentId: String(doc.shipmentId),
   state: doc.state,
-  receiptNumber: doc.receiptNumber,
+  // `?? null` on every Round 18 field: a row written before carries none of them, and absent reads
+  // as "not recorded" — never as a default the receipt did not choose.
+  receiptNumber: doc.receiptNumber ?? null,
   receivedAt: doc.receivedAt,
   releasedAt: doc.releasedAt,
   bagCount: doc.bagCount,
   cartonCount: doc.cartonCount,
   boxCount: doc.boxCount,
-  receivedByPrimaryId: String(doc.receivedByPrimaryId),
-  receivedBySecondaryId: String(doc.receivedBySecondaryId),
+  bagSealsPerBag: doc.bagSealsPerBag ?? null,
+  denominations: (doc.denominations ?? []).map((line) => ({ value: line.value, count: line.count })),
+  receivedById: idOrNull(doc.receivedById),
+  receivedByPrimaryId: idOrNull(doc.receivedByPrimaryId),
+  receivedBySecondaryId: idOrNull(doc.receivedBySecondaryId),
   // `?? null`: a row written before Round 10 carries no cancellation fields at all.
   cancelledAt: doc.cancelledAt ?? null,
 });
 
+/**
+ * «عدد الورق من كل فئة» as stored: only the denominations with notes, smallest first — the order of
+ * the legacy form's row of boxes, whatever order the request listed them in. A count of 0 is the
+ * form's untouched box, not a fact worth keeping. (Duplicates and unknown values never get here:
+ * the contract refuses them.)
+ */
+const storedDenominations = (lines: readonly VaultDenominationCount[]): VaultDenominationCount[] =>
+  lines
+    .filter((line) => line.count > 0)
+    .sort(
+      (a, b) =>
+        OPERATIONS_VAULT_DENOMINATIONS.indexOf(a.value) -
+        OPERATIONS_VAULT_DENOMINATIONS.indexOf(b.value),
+    )
+    .map((line) => ({ value: line.value, count: line.count }));
+
 class OperationsVaultCustodyService implements VaultCustodyProvider {
+  /**
+   * Take custody, received by `by` — the signed-in user (Round 18: «انا مش عاوز اى اسماء»). Q2's
+   * dual-control check is gone with the two names it compared; there is one receiver, and the
+   * token says who.
+   */
   async receive(
     input: VaultReceiptInput,
     by: string,
     session?: unknown,
   ): Promise<VaultCustodyView> {
     const typedSession = session as ClientSession | undefined;
-    // Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced.
-    if (input.receivedByPrimaryId === input.receivedBySecondaryId) {
-      throw new BusinessRuleError(
-        'the two receiving treasurers must be different people',
-        'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
-      );
-    }
     const existing = await operationsVaultCustodyRepository.findByShipment(
       input.shipmentId,
       typedSession,
@@ -88,10 +123,11 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         bagCount: input.bagCount,
         cartonCount: input.cartonCount,
         boxCount: input.boxCount,
+        bagSealsPerBag: input.bagSealsPerBag,
         bagSeals: input.bagSeals,
         boxSeals: input.boxSeals,
-        receivedByPrimaryId: new Types.ObjectId(input.receivedByPrimaryId),
-        receivedBySecondaryId: new Types.ObjectId(input.receivedBySecondaryId),
+        denominations: storedDenominations(input.denominations),
+        receivedById: new Types.ObjectId(by),
         receivedAt: new Date(),
         releasedById: null,
         releasedAt: null,
@@ -168,7 +204,8 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
    * (the inventory, the roll-up, today's receipts, the reports' package counts), and `ux_shipment`
    * is partial on it — so a cancelled receipt leaves all of them, and frees the shipment for a fresh
    * receipt, without changing an index or teaching every reader a third state. Nothing is erased:
-   * the receipt number, counts, seals and treasurers stay on the row, and `history` reads it back.
+   * the receipt number, counts, seals, note counts and who received it stay on the row, and
+   * `history` reads it back.
    */
   async cancelReceipt(
     shipmentId: string,

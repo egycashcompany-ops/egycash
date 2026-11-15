@@ -10,6 +10,7 @@ import {
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReceiptDto,
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
@@ -148,7 +149,10 @@ export const toShipmentAssignmentDto = (
  * mapper takes `VaultCustodyView`, not `OperationsVaultCustodyDoc`, so an Operations controller
  * physically cannot serialize a custody field the port did not hand it.
  */
-export const toVaultInventoryRowDto = (view: VaultCustodyView): OperationsVaultInventoryRowDto => ({
+export const toVaultInventoryRowDto = (
+  view: VaultCustodyView,
+  receivedByName: string | null,
+): OperationsVaultInventoryRowDto => ({
   id: view.id,
   shipmentId: view.shipmentId,
   state: view.state,
@@ -156,8 +160,35 @@ export const toVaultInventoryRowDto = (view: VaultCustodyView): OperationsVaultI
   bagCount: view.bagCount,
   cartonCount: view.cartonCount,
   boxCount: view.boxCount,
+  bagSealsPerBag: view.bagSealsPerBag,
+  denominations: view.denominations.map((line) => ({ value: line.value, count: line.count })),
+  receivedById: view.receivedById,
+  receivedByName,
+  // A receipt taken before Round 18 named two treasurers; mapped as they always were.
   receivedByPrimaryId: view.receivedByPrimaryId,
   receivedBySecondaryId: view.receivedBySecondaryId,
   receivedAt: iso(view.receivedAt),
   releasedAt: view.releasedAt === null ? null : iso(view.releasedAt),
+});
+
+/**
+ * Round 18 — the receipt the vault's ✓ just took, from the port's view (never the custody doc, for
+ * the reason above: the seals stay behind the port), with its receiver: the user who received it —
+ * the request's own, whom the custody recorded. A receipt taken now always has a seals-per-bag
+ * choice; the fallback only satisfies the view's wider type, which also reads older rows.
+ */
+export const toVaultReceiptDto = (
+  view: VaultCustodyView,
+  receiver: { id: string; name: string | null },
+): OperationsVaultReceiptDto => ({
+  custodyId: view.id,
+  receiptNumber: view.receiptNumber,
+  receivedAt: iso(view.receivedAt),
+  receivedById: receiver.id,
+  receivedByName: receiver.name,
+  bagCount: view.bagCount,
+  cartonCount: view.cartonCount,
+  boxCount: view.boxCount,
+  bagSealsPerBag: view.bagSealsPerBag ?? 2,
+  denominations: view.denominations.map((line) => ({ value: line.value, count: line.count })),
 });

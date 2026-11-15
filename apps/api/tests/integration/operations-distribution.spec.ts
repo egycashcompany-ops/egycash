@@ -314,8 +314,6 @@ const intoVault = async (id: string, bags = 2): Promise<void> => {
     .send({
       receiptNumber: `R12-${id.slice(-6)}`,
       bagCount: bags,
-      receivedByPrimaryId: spec1,
-      receivedBySecondaryId: spec2,
       version: (await read(id)).version,
     });
   expect(received.status, JSON.stringify(received.body)).toBe(200);

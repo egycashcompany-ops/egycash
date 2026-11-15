@@ -55,7 +55,8 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
-import { vaultCustody } from '../treasury-boundary';
+import { vaultCustody, type VaultCustodyView } from '../treasury-boundary';
+import { userDisplayNames } from '../user-names';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { nextSequence } from '../assignments/leg-sequence';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
@@ -460,12 +461,34 @@ class OperationsSecuredService {
    * handed over must keep saying «لم يتم الاستلام» in the first one for good. Stamping the vault as
    * the collector would make the two columns say one thing twice, and lose the only trace that the
    * captain and the desk never pressed ✓.
+   *
+   * ROUND 18 — the legacy «إستلام محصنة» form («عاوز اخلى الفورم دا لما اجى استلم محصنة»):
+   *   · every field optional, NO NAMES («انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى
+   *     كله اختيارى») — the receiver is `by`, the signed-in user the route read from the token;
+   *   · the vault may CORRECT THE SHIPMENT'S DATA in the same form («تعدّلها عادي»): `input.shipment`
+   *     goes through the edit form's own rules (`operationsShipmentService.prepareEdit`) BEFORE the
+   *     transaction, and is written INSIDE it, first, under the version the screen read — then the
+   *     custody, then the move to `inVault` under the version the edit left. One transaction: an
+   *     edit the rules refuse writes nothing at all, and a receive that fails after the edit takes
+   *     the edit back with it — the vault never corrects a shipment it then did not receive.
+   *     Audited as an EDIT (`edited` in «السجل», what the vault changed, old → new) before the
+   *     receipt's own entry. The receive's grant (`operationsVault.receive`) covers it: the edits
+   *     are part of the vault's act, made on a draft (the only state a receive starts from) that the
+   *     very same act locks. `operationsShipment.edit` is not asked.
+   *   · «سيريال» — «بتتعرف عند الاستلام اذا كان سيريال او لا»: `serialTracked` is the receipt's own
+   *     field, written with the move to `inVault` and recorded on that row (so «السجل» shows it on
+   *     the `vaultReceived` entry, for every reader), not as an edit.
    */
   async receiveIntoVault(
     shipmentId: string,
     input: ReceiveIntoVault,
     by: string,
-  ): Promise<OperationsShipmentDoc> {
+  ): Promise<{
+    shipment: OperationsShipmentDoc;
+    receipt: VaultCustodyView;
+    /** The receiver's name, for the «إيصال» print — `by`, named the way «السجل» names an actor. */
+    receivedByName: string | null;
+  }> {
     const before = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(before);
     if (!canTransitionShipment(before.shipmentType, before.status, 'inVault')) {
@@ -487,14 +510,29 @@ class OperationsSecuredService {
     // The version is checked up front for the plain answer, and again by the shipment write.
     if (before.__v !== input.version) throw new StaleDocumentError();
 
-    // ONE transaction (Round 10). The treasury takes custody first — if it refuses (already held,
-    // dual control), no shipment status moves; its uniqueness index is the real double-receive
-    // guard — and the shipment moves to `inVault` under the version the screen read. Before Round 10
-    // the two writes stood apart, so a receive refused at the second one (stale, because something
-    // changed the shipment a moment earlier) left a HELD custody on a shipment still in draft —
-    // never receivable again. The pickup ✓ and its undo made that moment likelier (each moves the
-    // version), so the two writes now commit or roll back together.
-    const { custody, updated } = await unitOfWork(async (session) => {
+    // Round 18 — the corrections, checked by EVERY rule of the edit form before anything is written.
+    const edit =
+      input.shipment === undefined
+        ? null
+        : await operationsShipmentService.prepareEdit(before, input.shipment);
+
+    // ONE transaction (Round 10). The treasury takes custody — if it refuses (already held), no
+    // shipment status moves; its uniqueness index is the real double-receive guard — and the
+    // shipment moves to `inVault` under the version the screen read. Before Round 10 the two writes
+    // stood apart, so a receive refused at the second one (stale, because something changed the
+    // shipment a moment earlier) left a HELD custody on a shipment still in draft — never
+    // receivable again. The pickup ✓ and its undo made that moment likelier (each moves the
+    // version), so the writes now commit or roll back together — since Round 18 with the vault's
+    // corrections of the shipment first among them.
+    const { custody, edited, updated } = await unitOfWork(async (session) => {
+      const corrected =
+        edit === null
+          ? null
+          : await operationsShipmentService.applyEdit(edit, {
+              by,
+              version: input.version,
+              session,
+            });
       const taken = await vaultCustody().receive(
         {
           shipmentId,
@@ -502,10 +540,10 @@ class OperationsSecuredService {
           bagCount: input.bagCount,
           cartonCount: input.cartonCount,
           boxCount: input.boxCount,
+          bagSealsPerBag: input.bagSealsPerBag,
           bagSeals: input.bagSeals,
           boxSeals: input.boxSeals,
-          receivedByPrimaryId: input.receivedByPrimaryId,
-          receivedBySecondaryId: input.receivedBySecondaryId,
+          denominations: input.denominations,
         },
         by,
         session,
@@ -518,24 +556,51 @@ class OperationsSecuredService {
           ...freezeNobody,
           ...(input.serialTracked === undefined ? {} : { serialTracked: input.serialTracked }),
         },
-        { by, version: input.version, session },
+        { by, version: corrected?.__v ?? input.version, session },
       );
-      return { custody: taken, updated: moved };
+      return { custody: taken, edited: corrected, updated: moved };
     });
 
-    // Audit + events only after commit — the custody's first, as before.
+    // Audit + events only after commit: the vault's corrections first (so «السجل» reads them before
+    // the receipt), then the custody's, then the shipment's move — as before.
+    if (edit !== null && edited !== null) await operationsShipmentService.announceEdit(edit, edited);
+    const statusBefore = edited ?? before;
     await operationsVaultCustodyService.announceReceived(custody);
     await auditService.record({
       entityRef: shipmentRef(shipmentId),
       action: 'update',
-      changes: diffChanges({ status: before.status }, { status: updated.status }),
+      changes: diffChanges(
+        { status: statusBefore.status, serialTracked: statusBefore.serialTracked },
+        { status: updated.status, serialTracked: updated.serialTracked },
+      ),
     });
     await emit(OperationsEvents.ShipmentUpdated, {
       shipmentId,
       shipmentType: updated.shipmentType,
       status: updated.status,
     });
-    return updated;
+    const names = await userDisplayNames([by]);
+    return { shipment: updated, receipt: custody, receivedByName: names.get(by) ?? null };
+  }
+
+  /**
+   * The `/vault1` inventory — what the treasury holds now, through the port — with who received each
+   * one, by name (Round 18: the signed-in user; a receipt taken before names its two treasurers by
+   * id, as it always did). One directory read for the page.
+   */
+  async vaultInventory(
+    page: number,
+    pageSize: number,
+  ): Promise<{
+    items: VaultCustodyView[];
+    total: number;
+    receiverNames: Map<string, string | null>;
+  }> {
+    const { items, total } = await vaultCustody().listHeld(page, pageSize);
+    const receiverNames = await userDisplayNames(
+      items.flatMap((item) => (item.receivedById === null ? [] : [item.receivedById])),
+    );
+    return { items, total, receiverNames };
   }
 
   /**

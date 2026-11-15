@@ -188,6 +188,8 @@ $facet: {
 | `bagCount`,`cartonCount`,`boxCount` | `bag`,`cartoon`,`box` |
 | `bagSeals[]`,`boxSeals[]` | `bag_seals`,`box_seals` |
 | `receivedByPrimaryId` **+** `receivedBySecondaryId` | 🐞 يُصلح Q2 — **كلاهما مطلوب** |
+| `receivedById` *(Round 18)* | المستخدم المسجّل دخوله، من التوكن — ألغى المالك الأسماء («انا مش عاوز اى اسماء … كله اختيارى»)، فلا يُكتب الأمينان بعدها ويبقيان مقروءين للإيصالات القديمة فقط |
+| `bagSealsPerBag`, `denominations` *(Round 18)* | «2×/3×» و«عدد الورق من كل فئة» من نموذج «إستلام محصنة» القديم — اختياريان، وكذلك `receiptNumber` |
 | `receivedAt` | `treasurer_receive_date` |
 | `deliveredById`, `deliveredAt` | 🐞 يُصلح Q3 — يُكتبان فعليًا |
 

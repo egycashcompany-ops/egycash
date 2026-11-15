@@ -927,7 +927,8 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
 // reads: banks and branches by name, captains by name, vans by code, dates as 'YYYY-MM-DD', money as
 // «currency amount». The screen translates only the entry's `kind` and each change's `field`.
 //
-// The vault custody's own record (receipt number, counts, seals, the receiving treasurers) is the
+// The vault custody's own record (receipt number, counts, seals, the note counts — and on a
+// receipt taken before Round 18, the two receiving treasurers) is the
 // treasury's, read only for a caller holding `operationsVault.view` — the grant of the vault
 // screens. Without it the log still says the shipment entered the vault and was dispatched (its
 // own status moves), with no custody details.
@@ -952,8 +953,14 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *   executionDelivered   he confirmed the delivery — «تم التسليم» (pickedUp → delivered).
  *   executionCompleted   he closed the leg (delivered → completed).
  *   vaultReceived        a secured shipment entered the vault; `changes` carry the receipt number,
- *                        the package counts, the seals and the two receiving treasurers — for a
- *                        reader with `operationsVault.view`; empty for anyone else.
+ *                        the package counts, the seals and the note counts — for a reader with
+ *                        `operationsVault.view` — and, for every reader, `serialTracked` when the
+ *                        vault changed it at the receipt (Round 18, «بتتعرف عند الاستلام اذا كان
+ *                        سيريال او لا»). WHO received it is the entry's `actorName` since Round 18 —
+ *                        the signed-in user who pressed «إستلام» («انا مش عاوز اى اسماء»); a receipt
+ *                        taken before it also carries the two treasurers it named. When the vault
+ *                        corrected the shipment's data in the same form (Round 18, «تعدّلها عادي»),
+ *                        an `edited` entry by the same person comes just before this one.
  *   dispatched           a secured shipment left the vault for delivery.
  *   pickupConfirmed      (Round 10) the Operations desk confirmed it collected a secured shipment —
  *                        «تم الاستلام من العمليات» (`POST /operations/secured/:id/pickup`). `changes`
@@ -1032,10 +1039,19 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *   sequence                     the leg's 1-based place on its captain's route
  * The vault custody (on `vaultReceived`) — ONLY for a reader with `operationsVault.view`, the
  * treasury's grant; anyone else gets the `vaultReceived` entry with no changes:
- *   receiptNumber                the vault receipt number
+ *   receiptNumber                the vault receipt number (optional since Round 18 — a receipt
+ *                                taken without one carries no such change)
  *   bagCount, cartonCount, boxCount  whole numbers, as digits
+ *   bagSealsPerBag               '2' or '3' — the seals on each bag (Round 18, «2×» / «3×»)
  *   bagSeals, boxSeals           the seal numbers, joined by «، »
- *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names
+ *   denominations                the notes counted of each pound denomination (Round 18, «عدد
+ *                                الورق من كل فئة»), as «denomination × count», smallest first,
+ *                                joined by «، » («0.5 × 40، 200 × 15»)
+ *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names — ONLY on a
+ *                                receipt taken before Round 18, which named two; since then the
+ *                                receiver is the entry's `actorName`
+ * A custody value that prints as nothing on both sides (an empty seal list, no notes counted) is
+ * left out: a receipt with most fields blank reads as its entry, not as a column of dashes.
  * The pickup record (on `pickupConfirmed` / `pickupUndone`, Round 10) — for every reader:
  *   pickedUpBy                   'captain' or 'operations' (`OPERATIONS_SECURED_PICKED_UP_BY`) —
  *                                a code, not a name: the screen says «القائد» / «العمليات»
@@ -1067,6 +1083,8 @@ export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'receivedBySecondary',
   'pickedUpBy',
   'reason',
+  'bagSealsPerBag',
+  'denominations',
 ] as const;
 export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
 
@@ -1953,25 +1971,79 @@ export const OPERATIONS_CUSTODY_STATES = ['held', 'released'] as const;
 export const OperationsCustodyStateSchema = z.enum(OPERATIONS_CUSTODY_STATES);
 export type OperationsCustodyState = z.infer<typeof OperationsCustodyStateSchema>;
 
+/**
+ * Round 18 — «عدد الورق من كل فئة»: the Egyptian pound denominations the legacy receive form counts
+ * notes of, smallest first, as its row of boxes reads (0.25 … 200). A receipt may record how many
+ * notes of each the vault took in; none is required.
+ */
+export const OPERATIONS_VAULT_DENOMINATIONS = [0.25, 0.5, 1, 5, 10, 20, 50, 100, 200] as const;
+export type OperationsVaultDenomination = (typeof OPERATIONS_VAULT_DENOMINATIONS)[number];
+
+const isVaultDenomination = (value: number): value is OperationsVaultDenomination =>
+  (OPERATIONS_VAULT_DENOMINATIONS as readonly number[]).includes(value);
+
+/**
+ * Round 18 — how many seals close each bag: the legacy form's «2×» / «3×» beside «عدد الحقائب». The
+ * form draws `bagCount × bagSealsPerBag` barcode boxes; the server stores the choice and whatever
+ * seals were typed, and ties no count to the other («كله اختيارى»).
+ */
+export const OPERATIONS_VAULT_BAG_SEALS_PER_BAG = [2, 3] as const;
+export type OperationsVaultBagSealsPerBag = (typeof OPERATIONS_VAULT_BAG_SEALS_PER_BAG)[number];
+
+/** The notes of one denomination a receipt counted. Stored only when `count` is above zero. */
+export interface OperationsVaultDenominationCountDto {
+  value: OperationsVaultDenomination;
+  count: number;
+}
+
+export const OperationsVaultDenominationCountSchema = z
+  .object({
+    value: z.number().refine(isVaultDenomination, {
+      message: `a denomination is one of ${OPERATIONS_VAULT_DENOMINATIONS.join(', ')}`,
+    }),
+    count: z.number().int().min(0),
+  })
+  .strict();
+
+/**
+ * Custody of a secured shipment while it sits with the treasury — the treasury's own record. No
+ * endpoint serves it whole: Operations reads custody through the Treasury port
+ * (`OperationsVaultInventoryRowDto`, `OperationsVaultReceiptDto`), which leaves the seals out.
+ */
 export interface OperationsVaultCustodyDto {
   id: string;
   shipmentId: string;
   state: OperationsCustodyState;
-  /** Legacy `receipt_num` — typed by the treasurer at receive. */
-  receiptNumber: string;
+  /**
+   * Legacy `receipt_num` — typed by the vault at receive. OPTIONAL since Round 18 («ومش عاوز اى خانة
+   * من الخانات دى اجبارى كله اختيارى»): null when none was typed — a screen prints «—».
+   */
+  receiptNumber: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
-  /** Legacy `bag_seals` / `box_seals` — barcode arrays. */
+  /** Round 18 — «2×» / «3×»; null on a receipt taken before the form asked. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag | null;
+  /** Legacy `bag_seals` / `box_seals` — barcode arrays, blank entries dropped. */
   bagSeals: string[];
   boxSeals: string[];
+  /** Round 18 — the notes counted of each denomination, smallest first; only those above zero. */
+  denominations: OperationsVaultDenominationCountDto[];
   /**
-   * Legacy `treasurer_receive` + `treasurer_receive2`. Legacy wrote the FIRST one as `""` on
-   * every save (contad_app.js:1211/1266) so the two-man rule never actually recorded two people;
-   * here both are required — Q2 NORMALIZE, an explicit decision, not a silent fix.
+   * Round 18 — WHO received it: the signed-in user who pressed «إستلام», read by the server from the
+   * token, never sent by the form («انا مش عاوز اى اسماء»). Null on a receipt taken before Round 18,
+   * which named two treasurers instead (below).
    */
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  receivedById: string | null;
+  /** That user's Arabic display name (English when there is none); null when unknown or none. */
+  receivedByName: string | null;
+  /**
+   * Legacy `treasurer_receive` + `treasurer_receive2` — the two treasurers a receipt taken BEFORE
+   * Round 18 named (Q2's dual control, which the owner dropped: «انا مش عاوز اى اسماء»). Kept as they
+   * were stored, so an old receipt still says who signed for it; null on every newer receipt.
+   */
+  receivedByPrimaryId: string | null;
+  receivedBySecondaryId: string | null;
   receivedAt: string;
   /** Legacy `treasurer_delivery` / `treasurer_delivery_date` — declared but NEVER written (Q3). */
   releasedById: string | null;
@@ -1982,9 +2054,60 @@ export interface OperationsVaultCustodyDto {
 }
 
 /**
+ * Round 18 — the shipment's data as the vault corrects it in its own receive form: «تعدّلها عادي».
+ * EXACTLY the edit form's fields and rules (`UpdateOperationsShipmentSchema`, and on the server the
+ * very checks `PATCH /operations/shipments/:id` makes — banks, branch-of-bank, currencies, the date
+ * rules, a delivery date moved off its van's day), minus two: `version`, which the receive carries
+ * once for the whole act, and `serialTracked`, which is the receipt's own field
+ * (`ReceiveIntoVaultSchema.serialTracked`). Send only what changed: every field is optional and a
+ * field left out is not touched.
+ */
+export const ReceiveIntoVaultShipmentPatchSchema = UpdateOperationsShipmentSchema.omit({
+  version: true,
+  serialTracked: true,
+});
+export type ReceiveIntoVaultShipmentPatch = z.infer<typeof ReceiveIntoVaultShipmentPatchSchema>;
+
+/** A list of seal numbers as typed: each trimmed, the blank ones dropped (an empty box is no seal). */
+const sealNumbers = z
+  .array(z.string().trim())
+  .max(500)
+  .default([])
+  .transform((seals) => seals.filter((seal) => seal !== ''));
+
+/**
  * The vault's ✓ — `POST /operations/secured/:id/receive` (`operationsVault.receive`): custody taken,
  * the shipment `draft` → `inVault`, and from then on LOCKED (`isOperationsShipmentLocked`). Answers
- * 200 with the updated `OperationsShipmentDto` (not a custody record).
+ * 200 with `OperationsVaultReceiveResultDto` — the updated shipment, plus the receipt just taken.
+ *
+ * ROUND 18 — THE LEGACY «إستلام محصنة» FORM («عاوز اخلى الفورم دا لما اجى استلم محصنة»), and the
+ * owner's answers:
+ *   · EVERYTHING IS OPTIONAL («انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله
+ *     اختيارى») — the receipt number included. `{ version }` alone receives. `receiptNumber` is
+ *     trimmed, and an empty one is none (null). The counts default to 0, `bagSealsPerBag` to 2.
+ *   · NO NAMES. The two treasurers (`receivedByPrimaryId` / `receivedBySecondaryId`, Q2's dual
+ *     control) are gone from the request — sending them is a 400 like any unknown field. The
+ *     custody records WHO received it from the token (`receivedById`): the signed-in user.
+ *   · SEALS: `bagSeals` / `boxSeals` as typed, each trimmed, blank entries dropped. No length is tied
+ *     to the counts — the form draws `bagCount × bagSealsPerBag` boxes for bags and 2 per box, and
+ *     what is left empty is simply not a seal. Cartons have none.
+ *   · «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination
+ *     (`OPERATIONS_VAULT_DENOMINATIONS`); a value not in the list, or the same one twice, is a 400;
+ *     a count of 0 is accepted and not stored.
+ *   · «سيريال» — «بتتعرف عند الاستلام اذا كان سيريال او لا»: `serialTracked` sets the shipment's flag
+ *     at the receipt (left out → untouched); a change shows on the `vaultReceived` entry of «السجل».
+ *   · THE SHIPMENT'S DATA MAY BE CORRECTED IN THE SAME FORM («تعدّلها عادي»): `shipment` carries the
+ *     edits (`ReceiveIntoVaultShipmentPatchSchema` — the edit form's fields and rules), applied in
+ *     the SAME transaction as the receipt: the edit first (version-checked), then the custody and
+ *     the move to `inVault`. Refused by any edit rule (422 `OPERATIONS_UNKNOWN_BRANCH`,
+ *     `OPERATIONS_BRANCH_BANK_MISMATCH`, a date rule, 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` …) →
+ *     nothing is written, the shipment stays draft and unreceived; a receive that fails after the
+ *     edit rolls the edit back with it. «السجل» shows an `edited` entry with what the vault changed,
+ *     then `vaultReceived`, both by the receiver. The GRANT is the receive's: `operationsVault.receive`
+ *     covers the edits made inside it — `operationsShipment.edit` is not asked — because they are
+ *     part of the vault's act, made while it receives, on a shipment that is still a draft (the only
+ *     state a receive starts from), and locked by the very same act.
+ *   After the receipt everything is locked, as since Round 10.
  *
  * FROM ANY DRAFT since Round 13 — white or yellow (`OPERATIONS_SECURED_RECEIVABLE_STAGES`): «واستلام
  * الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي».
@@ -2009,36 +2132,79 @@ export interface OperationsVaultCustodyDto {
  * 409 `STALE_DOCUMENT`, 409 when custody is already held.
  *
  * A receipt cancelled later (`POST /operations/secured/:id/cancel-receipt`) VOIDS its custody: the
- * row is kept (receipt, counts, seals, treasurers, plus when / who / why it was cancelled) but no
- * list reads it again — the shipment's «السجل» still shows it, as `vaultReceived` then
- * `receiptCancelled`.
+ * row is kept (receipt, counts, seals, note counts, who received it, plus when / who / why it was
+ * cancelled) but no list reads it again — the shipment's «السجل» still shows it, as
+ * `vaultReceived` then `receiptCancelled`.
  */
 export const ReceiveIntoVaultSchema = z
   .object({
-    receiptNumber: z.string().min(1),
+    receiptNumber: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((value) => (value == null || value === '' ? null : value)),
     bagCount: z.number().int().min(0).default(0),
     cartonCount: z.number().int().min(0).default(0),
     boxCount: z.number().int().min(0).default(0),
-    bagSeals: z.array(z.string().min(1)).max(500).default([]),
-    boxSeals: z.array(z.string().min(1)).max(500).default([]),
-    receivedByPrimaryId: objectId(),
-    receivedBySecondaryId: objectId(),
-    /** The shipment's `serial` flag, settable at receive exactly as the legacy edit form did. */
+    bagSealsPerBag: z.union([z.literal(2), z.literal(3)]).default(2),
+    bagSeals: sealNumbers,
+    boxSeals: sealNumbers,
+    denominations: z
+      .array(OperationsVaultDenominationCountSchema)
+      .max(OPERATIONS_VAULT_DENOMINATIONS.length)
+      .default([]),
+    /** The shipment's `serial` flag — «بتتعرف عند الاستلام اذا كان سيريال او لا». */
     serialTracked: z.boolean().optional(),
+    /** Round 18 — the shipment's data as the vault corrected it in the form («تعدّلها عادي»). */
+    shipment: ReceiveIntoVaultShipmentPatchSchema.optional(),
     version: z.number().int().min(0),
   })
   .strict()
   .superRefine((value, ctx) => {
-    // Q2's whole point: two DIFFERENT people. One person twice is one person.
-    if (value.receivedByPrimaryId === value.receivedBySecondaryId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['receivedBySecondaryId'],
-        message: 'the two receiving treasurers must be different people (dual control)',
-      });
-    }
+    // One count per denomination: two boxes for «200» would be two answers to one question.
+    const seen = new Set<number>();
+    value.denominations.forEach((line, index) => {
+      if (seen.has(line.value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['denominations', index, 'value'],
+          message: 'a denomination appears twice in one receipt',
+        });
+      }
+      seen.add(line.value);
+    });
   });
 export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
+/** What a client sends — every field but `version` may be left out. */
+export type ReceiveIntoVaultInput = z.input<typeof ReceiveIntoVaultSchema>;
+
+/**
+ * Round 18 — the receipt the vault's ✓ just took, as the Treasury port hands it back: what the
+ * «إيصال» print needs that the form does not already hold — when it was received, the receipt
+ * number and counts as STORED (trimmed, zero counts dropped), and who received it, by name. The seal
+ * numbers stay behind the port, as on every Operations read: the print takes them from the form,
+ * trimmed and with the blank ones dropped — the very rule the server stores them by.
+ */
+export interface OperationsVaultReceiptDto {
+  custodyId: string;
+  receiptNumber: string | null;
+  /** ISO instant. */
+  receivedAt: string;
+  /** The signed-in user who received it (from the token). */
+  receivedById: string;
+  /** Their Arabic display name (English when there is none); null when unknown. */
+  receivedByName: string | null;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  bagSealsPerBag: OperationsVaultBagSealsPerBag;
+  denominations: OperationsVaultDenominationCountDto[];
+}
+
+/** `POST /operations/secured/:id/receive`'s answer: the shipment (now `inVault`) and its receipt. */
+export interface OperationsVaultReceiveResultDto extends OperationsShipmentDto {
+  receipt: OperationsVaultReceiptDto;
+}
 
 // ── Shipment assignment: the two legs (OP-4) ────────────────────────────────────────────────────
 //
@@ -2119,20 +2285,33 @@ export type ListVaultInventoryQuery = z.infer<typeof ListVaultInventoryQuerySche
  *
  * The custody record above is the treasury's own; this row is the subset the Treasury port hands
  * across the boundary (`VaultCustodyView`). It carries the packaging counts, because the legacy
- * screen totalled bags/boxes/cartons per bank (contad_app.js:1437-1447), and both receiving
- * treasurers, because dual control is only meaningful if both names are visible (Q2). It carries
- * NO seal barcodes: no legacy Operations screen or report read them, so they stay behind the port.
+ * screen totalled bags/boxes/cartons per bank (contad_app.js:1437-1447), and since Round 18 the
+ * note counts and the seals-per-bag choice of the legacy receive form, and WHO received it — the
+ * signed-in user, by name. A receipt taken before Round 18 named two treasurers (Q2's dual control,
+ * dropped by the owner: «انا مش عاوز اى اسماء»); those stay readable here as they were stored. It
+ * carries NO seal barcodes: no legacy Operations screen or report read them, so they stay behind
+ * the port.
  */
 export interface OperationsVaultInventoryRowDto {
   id: string;
   shipmentId: string;
   state: OperationsCustodyState;
-  receiptNumber: string;
+  /** Null when the vault typed none (optional since Round 18) — a screen prints «—». */
+  receiptNumber: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  /** «2×» / «3×»; null on a receipt taken before Round 18. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag | null;
+  /** «عدد الورق من كل فئة», smallest first, only those above zero; empty on an older receipt. */
+  denominations: OperationsVaultDenominationCountDto[];
+  /** The user who received it (Round 18); null on a receipt taken before. */
+  receivedById: string | null;
+  /** Their Arabic display name (English when there is none); null when unknown or none. */
+  receivedByName: string | null;
+  /** The two treasurers of a receipt taken before Round 18; null on every newer one. */
+  receivedByPrimaryId: string | null;
+  receivedBySecondaryId: string | null;
   receivedAt: string;
   releasedAt: string | null;
 }
@@ -2206,8 +2385,9 @@ export const OPERATIONS_RECEIPT_CANCEL_REASON_MAX = 500;
  * `POST /operations/secured/:id/cancel-receipt` on `operationsVault.cancelReceipt` («إلغاء استلام
  * الخزينة» — a special grant held by NO role by default; `super-admin` holds every key by design).
  * Only while the shipment is `inVault` (received, not yet dispatched). In one transaction:
- *   · the vault custody is VOIDED, never erased: the custody row keeps its receipt, counts, seals
- *     and treasurers, gains `cancelledAt` / `cancelledById` / `cancelReason`, and leaves every live
+ *   · the vault custody is VOIDED, never erased: the custody row keeps its receipt, counts, seals,
+ *     note counts and who received it (the receiving user since Round 18; the two treasurers of a
+ *     receipt taken before), gains `cancelledAt` / `cancelledById` / `cancelReason`, and leaves every live
  *     read (the vault inventory, the roll-up, the reports, today's receipts on the receive queue) —
  *     so a fresh receipt can be taken later;
  *   · the shipment returns to `draft`, its `receiptNumber` cleared, its pickup record INTACT — so
@@ -2691,8 +2871,8 @@ export interface OperationsSecuredBoardDto {
  *     ahead). Every row of it is receivable too.
  *
  * Every DRAFT row is receivable (`OPERATIONS_SECURED_RECEIVABLE_STAGES` — white or yellow): the
- * vault's ✓ is `POST /operations/secured/:id/receive` (`operationsVault.receive` — the receive form
- * with the packaging, the seals and the two treasurers), and from it the shipment is locked
+ * vault's ✓ is `POST /operations/secured/:id/receive` (`operationsVault.receive` — since Round 18
+ * the legacy «إستلام محصنة» form, every field optional, no names), and from it the shipment is locked
  * (`isOperationsShipmentLocked`). A row past `draft` is a receipt of today, never receivable again.
  *
  * READING A ROW IN TWO COLUMNS (Round 13 — «مكان الحاله عمودين»):

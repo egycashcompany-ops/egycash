@@ -452,6 +452,32 @@ its entry here in the same PR.
     محصنة»); the dashboard's Excel and PDF add «تنبيهات التسليم», «جدول التسليم» and «مدة البقاء في
     الخزينة» after the bank table and its panel (the reports' files are unchanged); and the handover's
     today-only refusal reads «التسليم يتم يوم خروج السيارة فقط».
+  - «إستلام محصنة» — the legacy receive form on the vault's ✓: «عاوز اخلى الفورم دا لما اجى استلم
+    محصنة», and «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى».
+    - `POST /operations/secured/:id/receive` takes `{ version }` alone. The receipt number is
+      optional (trimmed; blank is none — a custody without one reads «—»), the counts default to 0,
+      and «2×» / «3×» is `bagSealsPerBag` (default 2). The seals are kept as typed, trimmed, blank
+      boxes dropped, with no length tied to a count; cartons have none.
+    - No names: the two treasurers are gone from the request (a 400 if sent) and from Q2's rule —
+      the custody records the signed-in user from the token (`receivedById`). Receipts taken before
+      keep their two treasurers, still shown on the vault list and in «السجل»; cancelling one works
+      as before.
+    - «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination (0.25 …
+      200, `OPERATIONS_VAULT_DENOMINATIONS`); an unknown one or one twice is a 400, zero counts are
+      not stored. «سيريال» — «بتتعرف عند الاستلام اذا كان سيريال او لا» — is `serialTracked`, set at
+      the receipt and shown on its «السجل» entry.
+    - «تعدّلها عادي»: the vault may correct the shipment's data in the same form (`shipment` — the
+      edit form's fields and the very rules `PATCH /operations/shipments/:id` applies, minus the
+      version and «سيريال»). The corrections and the receipt are ONE transaction: refused by an
+      edit rule, or failing after the edit, nothing is written. «السجل» shows what the vault
+      changed, then the receipt, both by the receiver. `operationsVault.receive` covers the
+      corrections; `operationsShipment.edit` is not asked. After the receipt everything locks, as
+      since Round 10.
+    - The answer adds `receipt` (`OperationsVaultReceiptDto`): when, the stored values and who
+      received it by name — for the «إيصال» print. The vault list rows carry `bagSealsPerBag`,
+      `denominations`, `receivedById` and `receivedByName`; «السجل» prints `bagSealsPerBag` and
+      `denominations`. No uniqueness rule ever applied to receipt numbers, so none changes, and no
+      migration: older rows read as they were stored.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

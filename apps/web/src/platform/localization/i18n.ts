@@ -10871,6 +10871,8 @@ const en: Record<string, string> = {
   'operations.shipment.log.field.receivedBySecondary': 'Second receiving treasurer',
   'operations.shipment.log.field.pickedUpBy': 'Confirmed by',
   'operations.shipment.log.field.reason': 'Reason',
+  'operations.shipment.log.field.bagSealsPerBag': 'Seals per bag',
+  'operations.shipment.log.field.denominations': 'Notes of each denomination',
   'operations.shipment.log.pickedUpBy.captain': 'The captain',
   'operations.shipment.log.pickedUpBy.operations': 'Operations',
   // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — the deleted shipments of the history's range.
@@ -24309,6 +24311,8 @@ const ar: Record<string, string> = {
   'operations.shipment.log.field.receivedBySecondary': 'أمين الخزينة المستلم الثاني',
   'operations.shipment.log.field.pickedUpBy': 'أكّد الاستلام',
   'operations.shipment.log.field.reason': 'السبب',
+  'operations.shipment.log.field.bagSealsPerBag': 'عدد الأختام لكل حقيبة',
+  'operations.shipment.log.field.denominations': 'عدد الأوراق من كل فئة',
   'operations.shipment.log.pickedUpBy.captain': 'القائد',
   'operations.shipment.log.pickedUpBy.operations': 'العمليات',
   // «اعملى ايقون اقدر اجيب منه اللى اتمسح» — الشحنات المحذوفة من مدة السجل.

@@ -121,8 +121,6 @@ export const ErrorCodes = {
    * contad_app.js:2255).
    */
   OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
-  /** Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced. */
-  OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED: 'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

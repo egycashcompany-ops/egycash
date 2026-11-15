@@ -14,8 +14,8 @@ import {
   CandidateBulkSchema,
   UpdateJobPapersSchema,
   type UpdateJobPapers,
-  UpdateInsuranceJobTitlesSchema,
-  type UpdateInsuranceJobTitles,
+  UpdateInsuranceJobTitleSchema,
+  type UpdateInsuranceJobTitle,
   HireCandidateSchema,
   RenderCandidateBulkSchema,
   type CandidateBulk,
@@ -274,10 +274,10 @@ const listInsuranceJobTitles = async (_req: Request, res: Response): Promise<voi
   ok(res, await insuranceJobTitleService.list());
 };
 
-const saveInsuranceJobTitles = async (req: Request, res: Response): Promise<void> => {
+const saveInsuranceJobTitle = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
-  const { body } = validated<UpdateInsuranceJobTitles>(req);
-  ok(res, await insuranceJobTitleService.update(ctx, body));
+  const { body, params } = validated<UpdateInsuranceJobTitle, never, { jobTitleId: string }>(req);
+  ok(res, await insuranceJobTitleService.update(ctx, params.jobTitleId, body));
 };
 
 const listJobPapers = async (_req: Request, res: Response): Promise<void> => {
@@ -308,8 +308,9 @@ export const buildContractsRouter = (): Router => {
     validate({ params: z.object({ employeeId: objectId() }).strict() }), asyncHandler(employeePapers));
   // A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority. Before '/:id'.
   router.get('/insurance-job-titles', ...guard('insuranceJobTitle.manage'), asyncHandler(listInsuranceJobTitles));
-  router.patch('/insurance-job-titles', ...guard('insuranceJobTitle.manage'),
-    validate({ body: UpdateInsuranceJobTitlesSchema }), asyncHandler(saveInsuranceJobTitles));
+  router.patch('/insurance-job-titles/:jobTitleId', ...guard('insuranceJobTitle.manage'),
+    validate({ body: UpdateInsuranceJobTitleSchema, params: z.object({ jobTitleId: objectId() }).strict() }),
+    asyncHandler(saveInsuranceJobTitle));
   // A28 — «مستندات الوظائف»: every job beside every paper; what each job prints. Before '/:id'.
   router.get('/job-papers', ...guard('contractTemplate.manage'), asyncHandler(listJobPapers));
   router.patch('/job-papers', ...guard('contractTemplate.manage'), validate({ body: UpdateJobPapersSchema }),

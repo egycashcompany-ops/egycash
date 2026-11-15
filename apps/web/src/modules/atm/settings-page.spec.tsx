@@ -37,6 +37,8 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
+import { ApiError } from '../../shared/lib/api-client';
+import { errorMessage } from '../../shared/lib/errors';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { formatBusinessDateTime } from '../../shared/lib/format';
 import { AtmSettingsPage } from './pages/AtmSettingsPage';
@@ -495,5 +497,26 @@ describe('every write stales what it changed', () => {
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
     await held(qc, useSaveAtmBranchLinks).mutateAsync({ links: [] });
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([['atm']]);
+  });
+});
+
+describe('«آخر قراءة» keeps up with the worker (2026-11-13)', () => {
+  // A «قراءة الآن» refused because a reading is running (ATM_MAIL_POLL_BUSY) promises that
+  // reading's result under «آخر قراءة» in a moment: the card reads its document again on its own.
+  it('reads the mailbox document again every 20 seconds while the card is open', () => {
+    const source = readFileSync(resolve(HERE, './api/settings-queries.ts'), 'utf8');
+    const hook = source.slice(source.indexOf('export const useAtmMailboxConfig'));
+    expect(hook.slice(0, hook.indexOf('});') + 3)).toMatch(
+      /refetchInterval: 20_000,\s*refetchIntervalInBackground: false,/,
+    );
+  });
+
+  it('says so in both languages, in the server’s own words for a busy reader', () => {
+    expect(errorMessage(new ApiError('ATM_MAIL_POLL_BUSY', 'busy', 409), 'ar')).toBe(
+      'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
+    );
+    expect(errorMessage(new ApiError('ATM_MAIL_POLL_BUSY', 'busy', 409), 'en')).toContain(
+      '«Last reading»',
+    );
   });
 });

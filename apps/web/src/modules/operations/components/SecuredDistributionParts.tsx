@@ -31,6 +31,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { useAppSelector } from '../../../store';
 import { FILTER_ICON, FilterWithIcon } from '../../fleet/components/FilterWithIcon';
 import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
@@ -566,7 +567,10 @@ export const VanCard = ({
             'ms-auto rounded-full bg-brand-500/15 px-2.5 py-0.5 text-xs font-black text-brand-700 dark:text-brand-200',
           )}
         >
-          {t('operations.distribution.loadCount', { count: formatNumber(figures.count, locale) })}
+          {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`). */}
+          {t(pluralKey('operations.distribution.loadCount', locale, figures.count), {
+            count: formatNumber(figures.count, locale),
+          })}
         </span>
       </header>
       <div

@@ -1,10 +1,15 @@
-// The Operations reports — the legacy /ops_report (by captain) and /ops_bank_report (by bank), and
-// the vault roll-up /vault1_reports (by bank, over the vault's receipts: see `vaultReport`).
+// The Operations reports — the legacy /ops_report (by captain), and «تقرير البنوك»: the legacy vault
+// roll-up /vault1_reports (by bank, over the vault's receipts: see `bankReport`).
 //
-// WHAT THE FIRST TWO REPORT, precisely (discovery §D): COMPLETED shipments in a date range, where
-// daily shipments are attributed by their COLLECTION date and secured ones by their DELIVERY date.
-// That two-date split is not a detail — it is the same distinction the day board turns on, and
-// getting it wrong moves money between months.
+// ROUND 14. «انا كنت قلت لك اعمل لي شاشه تقرير بنوك … انت فعلا عملتها بس حطيتها في شاشه تجميع خزينه»:
+// the bank report the owner asked for was the vault roll-up, so the roll-up is the bank report now,
+// and the legacy /ops_bank_report port (the captain report's completed shipments keyed on the bank
+// instead) is gone — nothing else read it.
+//
+// WHAT THE CAPTAIN REPORT COUNTS, precisely (discovery §D): COMPLETED shipments in a date range,
+// where daily shipments are attributed by their COLLECTION date and secured ones by their DELIVERY
+// date. That two-date split is not a detail — it is the same distinction the day board turns on,
+// and getting it wrong moves money between months.
 //
 // THE CAPTAIN COMES FROM THE ASSIGNMENT. Legacy read `leader1` for the daily facet and `leader2`
 // for the secured one (contad_app.js:4894/4935) — two fields on the shipment. The approved SPLIT
@@ -22,7 +27,6 @@ import {
   type OperationsCaptainReportDto,
   type OperationsReportQuery,
   type OperationsVaultHeldReportDto,
-  type OperationsVaultReportDto,
 } from '@ecms/contracts';
 import { fromMinorUnits, ymdToUtcDate } from '@ecms/contracts';
 import { getDirectoryEmployee } from '../../../platform/directory';
@@ -135,8 +139,11 @@ class OperationsReportService {
   }
 
   /**
-   * The legacy `/vault1_reports` + `/vault1` aggregations, rolled up by bank (B6) — over the
-   * period the owner gave the screen's dates: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
+   * «تقرير البنوك» (Round 14) — the legacy `/vault1_reports` + `/vault1` aggregations, rolled up by
+   * bank (B6, the screen that shipped as «تجميع الخزينة»: «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه
+   * تقرير بنوك») — over the period the owner gave the screen's dates: «يجيب اللى اتسلم واللى متسلمش
+   * ويجيب البداية كل اول شهر». Asked which shipments it counts once it became the bank report, he
+   * kept exactly this: secured shipments only, every one received into the vault in the period.
    *
    * WHICH SHIPMENTS. Every custody the vault TOOK in the period, judged on the receipt's Cairo day
    * (`vaultReceiptRange`), whatever happened to it since — still held, released on dispatch, the
@@ -147,15 +154,15 @@ class OperationsReportService {
    * receipt's packages. A deleted shipment is not in it either (`findByIds` reads live rows), as
    * in the other two reports.
    *
-   * It goes through the SAME `bankReportRows` the bank report uses. That is the point: the legacy
-   * pair computed package counts two different ways over overlapping sets — the vault screen per
-   * document, the bank report per currency line (Q26) — so the two screens disagreed about the
-   * same shipments. One code path cannot.
+   * It goes through the SAME roll-up as the captain report and «تقرير الخزينة»
+   * (report-aggregation.ts). That is the point: the legacy screens computed package counts two
+   * different ways over overlapping sets — the vault screen per document, its bank report per
+   * currency line (Q26) — so they disagreed about the same shipments. One code path cannot.
    */
-  async vaultReport(
+  async bankReport(
     query: OperationsReportQuery,
     now: Date = new Date(),
-  ): Promise<OperationsVaultReportDto> {
+  ): Promise<OperationsBankReportDto> {
     const range = vaultReceiptRange(query, now);
     // One custody per shipment at most: `ux_shipment` allows a single live custody, so a shipment
     // cannot appear twice however many times it was received and cancelled.
@@ -186,7 +193,7 @@ class OperationsReportService {
 
       rows.push({
         shipmentId: custody.shipmentId,
-        // The vault roll-up is not keyed on a captain; custody is the treasury's, not a route's.
+        // The bank report is not keyed on a captain; custody is the treasury's, not a route's.
         captainEmployeeId: null,
         captainName: '',
         bankId,
@@ -228,7 +235,7 @@ class OperationsReportService {
    * transaction (receive, dispatch, cancel), so the two sets are the same, and this one is the one the
    * neighbouring screen shows. The custody is read for the packages only, counted once per shipment.
    *
-   * Through `bankReportRows`, like the roll-up and the bank report: one code path, one answer.
+   * Through `bankReportRows`, like the bank report: one code path, one answer.
    */
   async vaultHeldReport(now: Date = new Date()): Promise<OperationsVaultHeldReportDto> {
     const shipments = await operationsShipmentRepository.securedInVault();
@@ -250,7 +257,7 @@ class OperationsReportService {
       const bankId = String(shipment.mainBankId);
       return {
         shipmentId,
-        // Like the roll-up, keyed on the bank: custody is the treasury's, not a route's.
+        // Like the bank report, keyed on the bank: custody is the treasury's, not a route's.
         captainEmployeeId: null,
         captainName: '',
         bankId,
@@ -270,17 +277,6 @@ class OperationsReportService {
     return { asOf: now.toISOString(), rows: built, grandTotal };
   }
 
-  /** The legacy `/ops_bank_report` — one row per bank. */
-  async bankReport(query: OperationsReportQuery): Promise<OperationsBankReportDto> {
-    const { rows, from, toExclusive } = await this.collect(query);
-    const { rows: built, grandTotal } = bankReportRows(rows);
-    return {
-      from: from.toISOString(),
-      to: new Date(toExclusive.getTime() - 86_400_000).toISOString(),
-      rows: built,
-      grandTotal,
-    };
-  }
 }
 
 export const operationsReportService = new OperationsReportService();

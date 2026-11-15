@@ -426,25 +426,25 @@ describe('crew board write fan-out (B3)', () => {
 
 // ── Reports + attendance (B5) ───────────────────────────────────────────────────────────────────
 //
-// The guard here is the OPPOSITE of the one above: these three must NOT be dragged into any
-// Operations write's fan-out. A month's report is a roll-up of shipments that are already
+// The guard here is the OPPOSITE of the one above: these two must NOT be dragged into any
+// Operations write's fan-out. The captain report is a roll-up of shipments that are already
 // complete, and attendance is HR's record — a shipment saved today changes neither, and staling
-// them on every write would refetch a month's aggregation for nothing.
+// them on every write would refetch a month's aggregation for nothing. («تقرير البنوك» is the vault
+// roll-up since Round 14, and is in the secured fan-out: B6 below.)
 describe('report and attendance caches (B5)', () => {
   const seedB5 = (qc: QueryClient): void => {
     qc.setQueryData(listKey('operations', 'reportCaptains', { from: '2026-08-01', to: '2026-08-31' }), {
       rows: [],
     });
-    qc.setQueryData(listKey('operations', 'reportBanks', { from: '2026-08-01', to: '2026-08-31' }), {
-      rows: [],
-    });
     qc.setQueryData(listKey('operations', 'crewAttendance', { date: '2026-08-18' }), { members: [] });
   };
 
-  it('keeps the two reports and attendance on their own subtrees', () => {
+  it('keeps the captain report and attendance on their own subtrees', () => {
     expect(__operationsKeys.reportCaptains).toEqual(['operations', 'reportCaptains']);
-    expect(__operationsKeys.reportBanks).toEqual(['operations', 'reportBanks']);
     expect(__operationsKeys.crewAttendance).toEqual(['operations', 'crewAttendance']);
+    // Round 14 — the completed-per-bank report's subtree went with it: «تقرير البنوك» is the vault
+    // roll-up, which lives under `vaultReport` (B6 below).
+    expect(__operationsKeys).not.toHaveProperty('reportBanks');
   });
 
   it('a secured act stales the four secured screens and leaves the reports alone', async () => {
@@ -466,7 +466,6 @@ describe('report and attendance caches (B5)', () => {
 
     expect(isStale(qc, __operationsKeys.vault)).toBe(true);
     expect(isStale(qc, __operationsKeys.reportCaptains)).toBe(false);
-    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
     expect(isStale(qc, __operationsKeys.crewAttendance)).toBe(false);
   });
 
@@ -485,10 +484,14 @@ describe('report and attendance caches (B5)', () => {
   it('the two reports are independent — a captain range does not stale the bank one', async () => {
     const qc = new QueryClient();
     seedB5(qc);
+    // «تقرير البنوك» (Round 14) — the vault roll-up, under its own subtree.
+    qc.setQueryData(listKey('operations', 'vaultReport', { from: '2026-08-01', to: '2026-08-31' }), {
+      rows: [],
+    });
     await qc.invalidateQueries({ queryKey: __operationsKeys.reportCaptains });
 
     expect(isStale(qc, __operationsKeys.reportCaptains)).toBe(true);
-    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
+    expect(isStale(qc, __operationsKeys.vaultReport)).toBe(false);
   });
 
   it('caches each range separately, so switching months back is a hit not a refetch', () => {
@@ -506,7 +509,8 @@ describe('report and attendance caches (B5)', () => {
 
 // ── Vault roll-up + areas (B6) ──────────────────────────────────────────────────────────────────
 //
-// The roll-up is the OPPOSITE case from the reports: it IS part of the secured fan-out. It answers
+// The roll-up — «تقرير البنوك» since Round 14 — is the OPPOSITE case from the captain report: it IS
+// part of the secured fan-out. It answers
 // "what entered the vault in the period" («يجيب اللى اتسلم واللى متسلمش»), so a receipt — or a
 // cancelled one — changes this month's figures, and if it did not stale alongside the inventory the
 // two vault screens would disagree about the same receipt side by side. Keyed by its period, like
@@ -522,7 +526,7 @@ describe('vault roll-up and area caches (B6)', () => {
     // Two periods, two cache entries — switching months never shows the other month's roll-up.
     expect(qc.getQueryData(november)).toEqual({ rows: ['november'] });
     expect(qc.getQueryData(october)).toEqual({ rows: ['october'] });
-    qc.setQueryData(listKey('operations', 'reportBanks', { from: 'x', to: 'y' }), { rows: [] });
+    qc.setQueryData(listKey('operations', 'reportCaptains', { from: 'x', to: 'y' }), { rows: [] });
 
     for (const key of [
       __operationsKeys.securedBacklog,
@@ -539,7 +543,7 @@ describe('vault roll-up and area caches (B6)', () => {
     expect(qc.getQueryState(november)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(october)?.isInvalidated).toBe(true);
     // ...while the completed-shipment report is still untouched: dispatching does not complete.
-    expect(isStale(qc, __operationsKeys.reportBanks)).toBe(false);
+    expect(isStale(qc, __operationsKeys.reportCaptains)).toBe(false);
   });
 
   it('stales the branches when an area changes — the branch form suggests from that list', async () => {

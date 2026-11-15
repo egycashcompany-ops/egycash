@@ -32,10 +32,20 @@ const ROUTE_SOURCE = readFileSync(resolve(HERE, './routes.tsx'), 'utf8');
  * captain reaches it by tapping a stop on his day — which is exactly the "reachable without typing
  * a URL" the rule below protects. Requiring a row for it would demand a link nobody can write.
  */
+const ROUTES = [...ROUTE_SOURCE.matchAll(/path="([^"*]+)"\s*\n?\s*element=\{\s*<(\w+)/g)].map(
+  (m) => ({ route: `/operations/${m[1] as string}`, element: m[2] as string }),
+);
+
+/**
+ * A RETIRED address that only forwards to its successor (Round 14: «تجميع الخزينة» → «تقرير
+ * البنوك») is not a screen: no row may point at it, and none is owed to it.
+ */
+const REDIRECTS = ROUTES.filter((r) => r.element === 'RedirectKeepingQuery').map((r) => r.route);
+
 const SERVED = [
   '/operations', // the index route
-  ...[...ROUTE_SOURCE.matchAll(/path="([^"*]+)"/g)]
-    .map((m) => `/operations/${m[1] as string}`)
+  ...ROUTES.filter((r) => r.element !== 'RedirectKeepingQuery')
+    .map((r) => r.route)
     .filter((route) => !route.includes(':')),
 ];
 
@@ -54,6 +64,8 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       ['Crew Board', '/operations/crew-board', 'users'],
       ['Standing Crew', '/operations/standing-crew', 'truck'],
       ['Crew Requirements', '/operations/requirements', 'badge'],
+      // Round 14 — «إدارات العمليات», a screen of its own right beneath the roster it decides.
+      ['Operations Departments', '/operations/crew-departments', 'sitemap'],
       ['Crew Attendance', '/operations/attendance', 'calendar'],
       ['Secured Shipments', '/operations/secured', 'inbox'],
       // Round 12 — the day's محصنات onto the day's vans, and the vault handing each van its load.
@@ -63,7 +75,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       // Round 12 renamed these two: «محصنات الخزينة» and «سجل الخزينة».
       ['Vault Shipments', '/operations/vault/dispatch', 'truck'],
       ['Vault History', '/operations/vault', 'folder'],
-      ['Vault Roll-up', '/operations/reports/vault', 'chart'],
+      // Round 14 — «تجميع الخزينة» is gone; its content is «تقرير البنوك», two rows down.
       ['Captain Report', '/operations/reports/captains', 'chart'],
       ['Bank Report', '/operations/reports/banks', 'chart'],
       // C1 — the captain's phone surface, listed like any other app. Its grant decides who may
@@ -86,6 +98,24 @@ describe('the parse itself', () => {
     // Guards the joins below: an empty set makes "all covered" vacuously true.
     expect(SERVED.length).toBeGreaterThanOrEqual(18);
     expect(SERVED).toContain('/operations/crew-board');
+    // …and told a forwarding address from a screen.
+    expect(REDIRECTS).toEqual(['/operations/reports/vault']);
+    expect(SERVED).not.toContain('/operations/reports/vault');
+  });
+});
+
+describe('«تجميع الخزينة» leaves the sidebar, and its address forwards (Round 14)', () => {
+  it('offers no row at the retired address', () => {
+    const routes = moduleApps(toModules(OPERATIONS_PAYLOAD)[0]!).map((a) => a.route);
+    for (const gone of REDIRECTS) expect(routes, gone).not.toContain(gone);
+  });
+
+  it('forwards it to «تقرير البنوك», a screen the sidebar does offer', () => {
+    const at = ROUTE_SOURCE.indexOf('path="reports/vault"');
+    expect(ROUTE_SOURCE.slice(at, ROUTE_SOURCE.indexOf('/>', at))).toContain(
+      '<RedirectKeepingQuery to="/operations/reports/banks"',
+    );
+    expect(SERVED).toContain('/operations/reports/banks');
   });
 });
 

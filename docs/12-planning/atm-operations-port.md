@@ -471,6 +471,132 @@ filter (`receivedDateTime ge 1900-01-01 and isRead eq false`, `$orderby=received
 and «اختبار الاتصال» lists with that same query. The environment mode keeps its own listing and
 batch, unchanged.
 
+**One reading at a time, a short one, found by date (2026-11-13).** «الـ Automation بتاع الميل
+واقف بقاله شوية كتير». The worker's logs showed every minute's reading timing out after 20 seconds
+(«This operation was aborted») from 2026-11-13 02:00 UTC, about five failures a minute. Microsoft
+Graph serves at most four concurrent requests per mailbox for one application and queues the rest.
+The scheduled task inherited the job queue's defaults: five attempts with backoff, run by a worker
+that takes five jobs at once. So a reading that timed out was retried four more times, 2 to 16
+seconds apart between 20-second timeouts — some two minutes of retries — while the next minutes'
+readings started, the readers queued behind each other in the mailbox, and every timeout bred more
+retries. The pile of mail left unread on purpose had grown to over a hundred
+newest messages a run, each listing carrying the bodies, and the sweep's `$skip` grew with it, so
+each request was heavier than on the first days. Four changes:
+
+- **A lease** (`MAIL_POLL_LEASE_KEY`, Redis `SET NX EX`, released by compare-and-delete) around
+  every reading, the worker's minute and the server's «قراءة الآن» alike. A reading that finds it
+  taken returns null: the scheduled task does nothing that minute, and «قراءة الآن» answers 409
+  `ATM_MAIL_POLL_BUSY` («تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.»).
+  Nothing is recorded for a reading that stepped aside.
+- **No retry inside the minute**: a scheduled task may declare `retry: false`, and the mailbox poll
+  does. Its failure is recorded (`lastResult: failed`) and logged, not rethrown, so the job queue
+  does not retry it: the next minute is the retry.
+- **A time budget** (`RUN_BUDGET_MS`, 40 s): a reading stops taking on new mail when it is spent,
+  and the sweep stays where it stood. It bounds when a reading stops starting work, not when it
+  ends: a request already started runs to its timeout (a token fetched first, to its own), so a
+  slow reading can last about 80 s, past the next tick. The lease keeps them apart: that tick steps
+  aside. The lease's TTL (2 min) stays above that worst case.
+- **The sweep pages by date**: `listUnreadPage(limit, before)` asks for the unread mail received
+  before the last page's oldest (`receivedDateTime lt …`, `AtmMailPage.oldest`) instead of a `$skip`
+  that made the mailbox count its way down the pile. The bound is checked to be a receipt time
+  before it is written into the query. A page's edge is a receipt time to the second: the rest of a
+  same-second group cut by an edge is passed over by that sweep, and reached by a later one once
+  the unread list moves the edges (new mail, a mail filed or read). Past fifty unread mails in one
+  second the rest are never swept, an accepted limit for a mailbox that has never received that
+  many at once.
+- **Days, not every date** (after #699 was deployed). With one reading a minute again, the network
+  flow showed the request sent and NOTHING back for 20 s: the mailbox was evaluating «unread,
+  newest first, every date» (`receivedDateTime ge 1900-01-01`) over all it ever received. Every
+  page is now a range of receipt times (`AtmMailWindow { since, before }`): the newest page is the
+  last two days (`NEWEST_WINDOW_MS`); the sweep lists three days (`SWEEP_WINDOW_MS`) below where it
+  stands — below a full page's oldest, else below the window it just listed — back to thirty days
+  (`SWEEP_HORIZON_MS`), then starts over. «اختبار الاتصال» lists the newest two days. Unread mail
+  older than thirty days is not filed by the reader. (Two days and three proved too much as well:
+  15 minutes and two hours since, «Minutes, not days» below.)
+- **A slow mailbox is waited for** (after #699 was deployed). With one reading a minute again, the
+  newest listing still took over 20 s and every reading was cut off. `ATM_MAIL_GRAPH_TIMEOUT_MS`
+  now defaults to 45 s; the budget counts from the moment the newest page is listed
+  (`startTheClock`), so a slow listing does not eat the filing time; and the lease's TTL follows
+  the timeout: 4 × timeout + budget + 30 s (250 s at the default).
+- **«آخر قراءة» keeps up**: the mailbox card reads its document again every 20 s while open
+  (`useAtmMailboxConfig` `refetchInterval`), so the line follows the worker's readings — and the
+  409's «ستظهر نتيجتها في «آخر قراءة» بعد لحظات» holds. A refetch never resets a draft: the form
+  follows the server only when an editable field changes.
+- **A failing mailbox is given time** (after #700 was deployed: one reading a minute, and Graph
+  answered every listing with 502 after some twenty seconds). Readings in a row whose FIRST
+  listing the mailbox did not answer (the token, or the listing itself: `Tally.answered`, set by
+  `startTheClock`) are counted in `MAIL_POLL_BACKOFF_KEY` (Redis, company-wide like the lease,
+  expiring a day after the last failure): after two the SCHEDULED reading waits 2 minutes from the
+  last one's start, then 4, 8, and `BACKOFF_MAX_MS` (10) from then on (`backoffAfter`); a reading
+  that waits returns null and records nothing, so «آخر قراءة» keeps the last error. A reading whose
+  first listing came back clears the count even when a later step failed (the older page, a
+  mark-read): new mail is still looked for every minute. «قراءة الآن» (`pollAtmMailbox()` without
+  `scheduled`) never waits. A cache that fails costs the back-off, never the reading.
+- **Minutes, not days** (after #701 named the error). Every newest listing of two days came back
+  `502 UnknownError` with an empty message after 21 s (request `6e6c4cde-…`, 09:57 UTC): Graph's
+  front end giving up on the mailbox. The mailbox weighs every mail in the range, and the shared
+  mailbox is mostly mail left unread on purpose, so two days is nearly two days of everything. The
+  legacy asked for `isRead eq false and receivedDateTime ge {its last look}`, about a minute, on the
+  same `/users/{id}/messages`, and was answered for years. `NEWEST_WINDOW_MS` is now 15 minutes
+  (above `BACKOFF_MAX_MS`, so a new mail is still in the newest page after any ONE wait) and
+  `SWEEP_WINDOW_MS` two hours; the horizon stays thirty days. «اختبار الاتصال» lists the 15
+  minutes. A cycle of the sweep through an empty pile is now 360 steps, one a minute (six hours);
+  a full page steps below its oldest as before.
+- **An outage's mail is filed first** (review of #701/#702). Waits add up: after four unanswered
+  readings in a row (0 + 2 + 4 + 8 minutes) the gap since the last answered reading is longer than
+  the newest page reaches back, and the sweep, which kept its place through the failures, reached
+  the gap only after wrapping at the horizon — up to six hours (reproduced: a mail of 07:39:30
+  filed at 12:14). Every SCHEDULED reading the mailbox answers now records its start in
+  `MAIL_POLL_ANSWERED_KEY` (Redis, 31 days); a scheduled reading that starts more than
+  `NEWEST_WINDOW_MS − 2 min` after it (`gapFloorOf`) sends the sweep, as soon as its newest page is
+  answered, to just below that page — so the gap is walked first, two hours a reading — and
+  remembers where it stood (`SweepState.resume`, with the step and the failures it had there):
+  once a step ends below the gap's floor (the last answered reading's start − `NEWEST_WINDOW_MS`)
+  — or at the horizon, for a gap older than thirty days — the sweep goes back there, step and
+  failures included, instead of walking again what it had swept; so recurring gaps neither keep
+  the deep backlog out of reach nor restart the count that passes over a window the mailbox cannot
+  answer. A gap that comes while another is walked is walked from the top in turn, and the walk
+  then goes on from where that gap found it, not from the top of the older gap: the places to go
+  back to are a chain (`SweepResume.then`, at most `SWEEP_RESUME_DEPTH_MAX` = 8 kept, the oldest
+  let go past that), released one by one as the walk passes each floor (third and fourth reviews).
+  Only the scheduled reading records the answered time and takes the gap: a «قراءة الآن» pressed
+  during the worker's back-off is answered first more often than not, and recording its time would
+  hide the gap from the worker's next reading, which then walks it (second review). A gap the
+  newest page does cover leaves the sweep where it stood.
+- **The sweep keeps its place through a restart** (fourth review). Its state (`SweepState`) was
+  in the worker's memory only, so every deploy — four in an hour on 2026-11-13 — started it over
+  just below the newest page, and a backlog deeper than the time between two deploys was never
+  reached. It is now stored in Redis as well (`MAIL_POLL_SWEEP_KEY`, 31 days), read when a reading's
+  newest page is answered and written at every move. One state company-wide: the worker and
+  «قراءة الآن» walk the same sweep, one reading at a time under the lease. A save still starts it
+  over (the key carries the document's version). A reading whose read of it failed goes on with
+  the memory's state and writes nothing back — after a deploy, or in the api, that state is none or
+  an old one, and must not replace one it could not see; and a gap whose walk could not be stored
+  leaves the answered time where it was, so the next scheduled reading finds the gap again (fifth
+  review).
+- **A window the mailbox cannot answer does not hold the sweep** (review of #701/#702). A failed
+  older page used to leave the sweep where it was, and — the newest page having answered, so no
+  back-off — the same window was asked for every minute for good. The sweep now carries its step
+  and its failures (`SweepState`): a failure halves the next step down to `SWEEP_MIN_WINDOW_MS`
+  (15 minutes), a success doubles it back to `SWEEP_WINDOW_MS`, and on the `SWEEP_SKIP_AFTER`-th
+  (5th) failure in a row — two hours, one, thirty minutes, fifteen, fifteen — the sweep passes over
+  that last, smallest window (logged; its mail stays unread, the next cycle asks again). A window
+  the mailbox answers ends the streak at once, even when the run is then cut short by its budget.
+  The run still fails with the error, so «آخر قراءة» shows it.
+- **The error says what Graph said.** Every Graph request sends a `client-request-id`. A failure is
+  a `GraphRequestError`: «microsoft graph {status} on {path} ({Graph's error code})», «microsoft
+  graph did not answer within {n} s on {path}» in place of «This operation was aborted», «microsoft
+  graph request refused on {path}: {reason}» when the outbound door refused it before a socket
+  opened (under the default policy that is also how a host that does not resolve arrives; the reason
+  names only the host and the address), or — a connection that failed before Graph answered, which
+  undici reports only as «fetch failed» — «microsoft graph request failed on {path} ({the system
+  code, e.g. ECONNRESET})». The underlying error is the `GraphRequestError`'s `cause`, so the log
+  keeps its stack and cause chain. Of Graph's answer only a code shaped like a name reaches the
+  message the screen shows; an outbound refusal also shows the door's reason (the host, the
+  resolver's error, or the private address it resolved to). Graph's text (cut to 300 characters),
+  `request-id`, `client-request-id`, `Retry-After` and the elapsed time are fields of the error, and
+  so of the worker's log line.
+
 ### 6b. Branches that work together — ATM only (2026-10-28)
 
 The owner: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين —

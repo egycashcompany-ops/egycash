@@ -4,9 +4,13 @@
 // special grant's act (`operationsVault.cancelReceipt`), opened from a green row's «إلغاء استلام
 // الخزينة» on the secured screen and on the vault's receive screen (`ShipmentsBoard`).
 //
-// What happens is said before the click: the محصنة leaves the vault and is yellow again, as before
+// What happens is said before the click: the محصنة leaves the vault and is back as it was before
 // the receipt — editable, and receivable anew — and the cancelled receipt stays in «السجل» with its
-// reason (the server voids the custody, it never erases it). The reason is REQUIRED, within the
+// reason (the server voids the custody, it never erases it). "As it was" is said in its colour:
+// yellow when the captain or the desk had confirmed the pickup, and WHITE when the vault had
+// received it with nobody's ✓ (Round 13 — «والخزنه تستلم عادي»): the cancel restores the pickup
+// record as it stood and invents none, so promising yellow there would be untrue (`noPickup`).
+// The reason is REQUIRED, within the
 // server's own bounds (`receiptCancelReasonProblem`), and the red button stays off until it is
 // there. The way back says «رجوع», never «إلغاء», which would read as the act itself (the Fleet
 // custody's cancel dialog's rule).
@@ -20,6 +24,7 @@ import {
   OPERATIONS_RECEIPT_CANCEL_REASON_MAX,
   OPERATIONS_RECEIPT_CANCEL_REASON_MIN,
   type Locale,
+  type OperationsDayBoardShipmentDto,
   type OperationsShipmentDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -41,10 +46,21 @@ import { SHIPMENT_PATH } from './shipment-icons';
 
 /** What the dialog is about: the row in the vault, and the line under the title that names it. */
 export interface CancelReceiptTarget {
-  row: OperationsShipmentDto;
+  /**
+   * A board row: its `pickedUpBy` says whether anybody had confirmed collecting it — null on a
+   * receipt nobody handed over, which the cancel turns white again, not yellow.
+   */
+  row: OperationsShipmentDto & Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>;
   /** «الأهلي · المعادي ← الدقي · 2026-11-12» (`shipmentCaption`), as «السجل» names it. */
   caption: string;
 }
+
+/**
+ * The receipt being cancelled was taken with nobody's pickup ✓ (Round 13): the cancel gives the
+ * row back WHITE. Only a row that says so — one without the field (not a board row) keeps the
+ * yellow wording every receipt had before Round 13.
+ */
+export const noPickup = (row: CancelReceiptTarget['row']): boolean => row.pickedUpBy === null;
 
 /** The red save of the design: `DesignSave`'s shape, the danger colour (as the custody's cancel). */
 const DANGER_SAVE = cn(
@@ -85,6 +101,8 @@ export const CancelVaultReceiptDialog = ({
   const { row } = target;
   const problem = receiptCancelReasonProblem(reason);
   const busy = waiting || cancel.isPending;
+  // White again, or yellow again — what the row will say once the receipt is gone.
+  const white = noPickup(row);
 
   const send = (): void => {
     setTried(true);
@@ -95,7 +113,13 @@ export const CancelVaultReceiptDialog = ({
       .mutateAsync({ id: row.id, body: { reason: reason.trim(), version: row.version } })
       .then(
         () => {
-          toast.success(t('operations.secured.cancelReceipt.done'));
+          toast.success(
+            t(
+              white
+                ? 'operations.secured.cancelReceipt.doneNoPickup'
+                : 'operations.secured.cancelReceipt.done',
+            ),
+          );
           onClose();
         },
         (error: unknown) => {
@@ -151,7 +175,13 @@ export const CancelVaultReceiptDialog = ({
           d={SHIPMENT_PATH.unlock}
           className="mt-1.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
         />
-        <span>{t('operations.secured.cancelReceipt.body')}</span>
+        <span data-cancel-receipt-returns={white ? 'white' : 'yellow'}>
+          {t(
+            white
+              ? 'operations.secured.cancelReceipt.bodyNoPickup'
+              : 'operations.secured.cancelReceipt.body',
+          )}
+        </span>
       </div>
 
       {/* The receipt being cancelled, by its number — what the treasury signed. */}

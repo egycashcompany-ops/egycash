@@ -44,10 +44,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // reader whose screen was read before the vault's ✓ (or a colleague's ✓, for the pickup).
     OPERATIONS_SECURED_LOCKED:
       'The vault has received this secured shipment — it can no longer be changed.',
-    // «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault's ✓ before any pickup ✓,
-    // or a pickup undo with no ✓ left to take back.
+    // Since Round 13 the vault receives without a pickup («والخزنه تستلم عادي»), so this reaches only
+    // the desk's undo of a pickup ✓ that is no longer there — a colleague's undo got there first.
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'Nobody has confirmed collecting this secured shipment from the bank yet — the captain or Operations confirms it first.',
+      'There is no confirmed pickup on this secured shipment to take back — nobody has confirmed collecting it from the bank.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'The pickup of this secured shipment is already confirmed — by its captain or by Operations.',
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
@@ -72,6 +72,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    // «تسليم المحصنات» (Round 17): the server refuses a handover of any van but today's. The screen
+    // offers «تسليم» on today's vans only, so this reaches a page left open from another day — or
+    // past midnight — and says the same rule the screen does.
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'A van is handed over only on the day it goes out — this van is not one of today’s.',
+    ATM_MAIL_POLL_BUSY:
+      'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -108,7 +115,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
     OPERATIONS_SECURED_LOCKED: 'استلمت الخزينة هذه المحصنة، فلم يعد تغييرها ممكنًا.',
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'لم يُؤكَّد استلام هذه المحصنة من البنك بعد — يؤكده القائد أو العمليات أولًا.',
+      'لا يوجد تأكيد استلام لهذه المحصنة لإلغائه — لم يؤكد أحد استلامها من البنك.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
@@ -124,6 +131,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
+    ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

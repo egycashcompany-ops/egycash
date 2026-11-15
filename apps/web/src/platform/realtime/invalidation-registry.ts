@@ -277,9 +277,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'operations.bank': [
     ['operations', 'banks'],
     ['operations', 'bankBranches'],
-    ['operations', 'reportBanks'],
-    // «تجميع الخزينة» prints each row's bank name as the server sent it, as the bank report does —
-    // a bank renamed on another desk would keep its old name on the roll-up until the next receipt.
+    // «تقرير البنوك» (the vault roll-up, Round 14) prints each row's bank name as the server sent it —
+    // a bank renamed on another desk would keep its old name on the report until the next receipt.
     ['operations', 'vaultReport'],
   ],
   'operations.bankBranch': [
@@ -357,6 +356,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],
+  'hr.insuranceJobTitle': [['hr', 'contracts', 'insuranceJobTitles']],
   'hr.contractType': [['hr', 'contracts']],
   'hr.costCenterAssignment': [
     ['hr', 'employeeCostCenters'],

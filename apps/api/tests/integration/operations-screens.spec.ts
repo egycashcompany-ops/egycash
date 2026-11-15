@@ -128,15 +128,15 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   { screen: 'vault dispatch board', url: '/operations/secured/dispatch-board', paginated: false },
   { screen: 'vault dispatch board · one day', url: `/operations/secured/dispatch-board?date=${TODAY}`, paginated: false },
   { screen: 'vault inventory', url: '/operations/secured/vault?page=1&pageSize=25', paginated: true },
-  { screen: 'vault roll-up', url: '/operations/reports/vault', paginated: false },
-  // The owner's period: what the vault received from «من» to «إلى», as the screen sends it.
-  { screen: 'vault roll-up · from–to', url: '/operations/reports/vault?from=2026-08-01&to=2026-08-31', paginated: false },
+  // Round 14 — «تقرير البنوك» is the vault roll-up that shipped as «تجميع الخزينة»: what the vault
+  // received, by bank, over the current month or the owner's «من» to «إلى», as the screen sends it.
+  { screen: 'bank report', url: '/operations/reports/banks', paginated: false },
+  { screen: 'bank report · from–to', url: '/operations/reports/banks?from=2026-08-01&to=2026-08-31', paginated: false },
   { screen: 'crew board', url: `/operations/crew-board?date=${TODAY}`, paginated: false },
   { screen: 'crew pool', url: `/operations/crew-board/directory?date=${TODAY}`, paginated: false },
   { screen: 'requirements roster', url: '/operations/crew-board/requirements?page=1&pageSize=25&sortDir=desc', paginated: true },
   { screen: 'crew attendance', url: `/operations/crew-board/attendance?date=${TODAY}`, paginated: false },
   { screen: 'captain report', url: '/operations/reports/captains?from=2026-08-01&to=2026-08-31', paginated: false },
-  { screen: 'bank report', url: '/operations/reports/banks?from=2026-08-01&to=2026-08-31', paginated: false },
   // Round 12: «سجل الخزينة» — «تقرير الخزينة» on top (live, no period) and «سجل الشحنات» for the
   // محصنات alone beneath it, its deleted list too; «توزيع المحصنات» / «تسليم المحصنات» open on today.
   { screen: 'vault history · held report', url: '/operations/reports/vault/held', paginated: false },

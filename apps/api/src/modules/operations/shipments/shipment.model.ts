@@ -79,7 +79,9 @@ export interface OperationsShipmentDoc extends BaseDocFields {
    * reads `.lean()`, so it comes back `undefined`: "never written". Only such a row falls back to
    * its pickup leg (picked up in the app → the captain's) — exactly what its stage said before the
    * record existed. Every row written since carries the field (the schema defaults it to null), and
-   * the desk's undo writes an explicit null, so a ✓ taken back can never be revived from the leg.
+   * the desk's undo writes an explicit null, so a ✓ taken back can never be revived from the leg —
+   * and so does the vault's receipt of a never-written row nobody collected (Round 13), so a direct
+   * receipt keeps saying «لم يتم الاستلام» whatever the captain's leg says later.
    * Hence: no `$unset` of this field anywhere, and no read of it through a hydrated document (which
    * would apply the default and turn "never written" into null).
    */

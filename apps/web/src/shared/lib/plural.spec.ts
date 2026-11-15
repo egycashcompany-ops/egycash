@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pluralForm } from './plural';
+import { pluralForm, pluralKey } from './plural';
 
 describe('pluralForm — the five Arabic forms and the two English ones', () => {
   it.each([
@@ -26,5 +26,26 @@ describe('pluralForm — the five Arabic forms and the two English ones', () => 
   it('reads a fraction or a negative by its whole size', () => {
     expect(pluralForm('ar', 2.7)).toBe('two');
     expect(pluralForm('ar', -1)).toBe('one');
+  });
+});
+
+describe('pluralKey — the catalog key of a counted phrase', () => {
+  it('joins the key and the count’s form with a dot, as the catalog spells them', () => {
+    expect(pluralKey('operations.distribution.loadCount', 'ar', 1)).toBe(
+      'operations.distribution.loadCount.one',
+    );
+    expect(pluralKey('operations.distribution.loadCount', 'ar', 2)).toBe(
+      'operations.distribution.loadCount.two',
+    );
+    expect(pluralKey('operations.distribution.loadCount', 'ar', 4)).toBe(
+      'operations.distribution.loadCount.few',
+    );
+    expect(pluralKey('operations.distribution.loadCount', 'ar', 11)).toBe(
+      'operations.distribution.loadCount.many',
+    );
+    expect(pluralKey('operations.distribution.loadCount', 'ar', 100)).toBe(
+      'operations.distribution.loadCount.other',
+    );
+    expect(pluralKey('x', 'en', 4)).toBe('x.other');
   });
 });

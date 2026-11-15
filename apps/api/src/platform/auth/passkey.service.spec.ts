@@ -194,6 +194,7 @@ beforeEach(() => {
   world.duplicateOnCreate = false;
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.mocked(verifyRegistrationResponse).mockClear();
 });
@@ -434,6 +435,12 @@ describe('adding a passkey', () => {
   });
 
   it('asks for the TOTP code too when the account has one', async () => {
+    // The clock stands still, mid-way through a 30-second step: the password is checked first
+    // (argon2), and on a busy CI runner that took long enough for the step to turn between making
+    // the code and checking it — «Invalid TOTP code» for the right one (2026-11-13). Only `Date` is
+    // frozen; argon2 and the timers run as ever.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.UTC(2026, 10, 13, 9, 0, 15));
     const secret = authenticator.generateSecret();
     const user = makeUser({}, { totp: { enabled: true, secret } });
     const ctx = ctxOf(user);

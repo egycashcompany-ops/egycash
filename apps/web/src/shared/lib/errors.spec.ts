@@ -101,6 +101,20 @@ describe('errorMessage', () => {
     }
     expect(new Set(words).size).toBe(words.length);
   });
+
+  // «تسليم المحصنات» (Round 17) — the server now refuses a handover of any van but today's. The
+  // screen offers «تسليم» on today's vans only, so this reaches a page left open from another day;
+  // it must read as the screen's own rule, in the reader's language, never the server's English.
+  it('words the handover’s today-only refusal as the screen says it', () => {
+    const refused = new ApiError(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY, 'server english', 422);
+    const ar = errorMessage(refused, 'ar');
+    const en = errorMessage(refused, 'en');
+    expect(ar).not.toBe('server english');
+    expect(en).not.toBe('server english');
+    // The handover screen's own words for the rule (`operations.handover.notToday`).
+    expect(ar).toContain('التسليم يتم يوم خروج السيارة فقط');
+    expect(en).toMatch(/only on the day it goes out/);
+  });
 });
 
 describe('errorDiagnostic — a failure has to be findable in the API log', () => {

@@ -8,6 +8,8 @@ import {
   type HireCandidateDto,
   type JobPapersDto,
   type UpdateJobPapers,
+  type InsuranceJobTitlesDto,
+  type UpdateInsuranceJobTitles,
   type RenderCandidateBulk,
   type RenderCandidateBulkDto,
   type RenderCandidatePapers,
@@ -120,6 +122,10 @@ export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPer
   post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
 export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
   post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
+export const getInsuranceJobTitles = (): Promise<InsuranceJobTitlesDto> =>
+  get<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles');
+export const saveInsuranceJobTitles = (body: UpdateInsuranceJobTitles): Promise<InsuranceJobTitlesDto> =>
+  patch<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles', body);
 export const getJobPapers = (): Promise<JobPapersDto> => get<JobPapersDto>('/hr/contracts/job-papers');
 export const saveJobPapers = (body: UpdateJobPapers): Promise<JobPapersDto> =>
   patch<JobPapersDto>('/hr/contracts/job-papers', body);

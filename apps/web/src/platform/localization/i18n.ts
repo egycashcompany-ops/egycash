@@ -185,6 +185,7 @@ const en: Record<string, string> = {
   'hr.settings.group.recruitment': 'Recruitment settings',
   'hr.settings.group.communication': 'Communication',
   'hr.settings.tab.recruitment-form': 'Application form',
+  'hr.settings.tab.insurance-job-titles': 'Job titles at social insurance',
   'hr.settings.tab.applicant-sources': 'Applicant sources',
   'hr.settings.tab.interview-stages': 'Interview stages',
   'hr.settings.tab.evaluation-phases': 'Evaluation phases',
@@ -856,6 +857,22 @@ const en: Record<string, string> = {
   'contracts.bulk.printed': 'Printed the papers of {{count}} people.',
   'contracts.bulk.skipped': '{{count}} could not be printed for.',
   'employees.ready.jobPapers': 'Job papers',
+  'contracts.insuranceTitles.title': 'Job titles at social insurance',
+  'contracts.insuranceTitles.subtitle': 'Our job titles, their titles at social insurance and their occupation codes',
+  'contracts.insuranceTitles.hint': 'Type each row by hand. Once saved, form 1 prints for whoever holds our job title its title at social insurance and its occupation code.',
+  'contracts.insuranceTitles.ours': 'Our job title',
+  'contracts.insuranceTitles.oursPlaceholder': 'As it is written in the system',
+  'contracts.insuranceTitles.theirs': 'Job title at social insurance',
+  'contracts.insuranceTitles.code': 'Occupation code',
+  'contracts.insuranceTitles.unknown': 'No job in the system carries this title yet.',
+  'contracts.insuranceTitles.problem.title': 'Type our job title.',
+  'contracts.insuranceTitles.problem.twice': 'This job title is already listed.',
+  'contracts.insuranceTitles.problem.code': 'Up to six digits, or 123/456.',
+  'contracts.insuranceTitles.empty': 'No row yet. Add the first one.',
+  'contracts.insuranceTitles.add': 'Add a row',
+  'contracts.insuranceTitles.remove': 'Remove',
+  'contracts.insuranceTitles.save': 'Save',
+  'contracts.insuranceTitles.saved': 'Saved the job titles at social insurance.',
   'contracts.jobPapers.title': 'Job papers',
   'contracts.jobPapers.hint': 'Each department with the jobs in it, and beside each job every paper: what is ticked prints for whoever is hired into that job in that department. The first line of a department ticks a paper for all its jobs at once.',
   'contracts.jobPapers.departments': 'Departments ({{count}})',
@@ -10324,7 +10341,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
     'The record ids of Fleet «Operations» catalog items, separated by commas. Active vehicles whose Operation is one of them are offered for the standing crew; when the list is empty, every active vehicle is offered.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
-    'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
+    'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. Each department counts in every branch that has it. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -10698,7 +10715,11 @@ const en: Record<string, string> = {
     'Delivery day moved to the distribution day — overdue in the vault (a flow action, allowed after the vault receipt)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».
   'operations.distribution.vanLabel': 'Van {{code}}',
-  'operations.distribution.loadCount': '{{count}} secured',
+  'operations.distribution.loadCount.one': '1 secured',
+  'operations.distribution.loadCount.two': '2 secured',
+  'operations.distribution.loadCount.few': '{{count}} secured',
+  'operations.distribution.loadCount.many': '{{count}} secured',
+  'operations.distribution.loadCount.other': '{{count}} secured',
   'operations.distribution.noDirection': 'No direction',
   'operations.distribution.captains': 'Captains',
   'operations.distribution.noCaptain': 'No captain — takes no shipments',
@@ -10721,9 +10742,28 @@ const en: Record<string, string> = {
   'operations.distribution.remove': 'Take off the van',
   'operations.distribution.autoNone':
     'No shipment off a van has an area that the direction of exactly one van names.',
-  'operations.distribution.autoDone': '{{count}} proposed by direction — review them, then save.',
-  'operations.distribution.saved': 'Distribution saved: {{count}} shipments.',
-  'operations.distribution.savedRescheduled':
+  'operations.distribution.autoDone.one': '1 proposed by direction — review it, then save.',
+  'operations.distribution.autoDone.two': '2 proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.few':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.many':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.autoDone.other':
+    '{{count}} proposed by direction — review them, then save.',
+  'operations.distribution.saved.one': 'Distribution saved: 1 shipment.',
+  'operations.distribution.saved.two': 'Distribution saved: 2 shipments.',
+  'operations.distribution.saved.few': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.saved.many': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.saved.other': 'Distribution saved: {{count}} shipments.',
+  'operations.distribution.savedRescheduled.one':
+    'Distribution saved: 1 shipment, overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.two':
+    'Distribution saved: 2 shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.few':
+    'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.many':
+    'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
+  'operations.distribution.savedRescheduled.other':
     'Distribution saved: {{count}} shipments, {{rescheduled}} of them overdue and moved to this day.',
   'operations.distribution.refused': 'The distribution was not saved: {{reason}}',
   'operations.distribution.vans': 'Vans',
@@ -10758,7 +10798,15 @@ const en: Record<string, string> = {
   'operations.distribution.boxes': 'Boxes',
   'operations.handover.popupBlocked':
     'The browser blocked the print window — allow pop-ups for this site.',
-  'operations.handover.done': '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.one': '1 shipment handed over to van {{code}} — it has left the vault.',
+  'operations.handover.done.two':
+    '2 shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.few':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.many':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
+  'operations.handover.done.other':
+    '{{count}} shipments handed over to van {{code}} — they have left the vault.',
   'operations.handover.failed': 'Van {{code}} could not be handed over: {{reason}}',
   'operations.handover.notInVault': 'Not in the vault yet',
   'operations.handover.notInVaultHint':
@@ -10772,11 +10820,23 @@ const en: Record<string, string> = {
     'The plan for {{day}} — to view and print. Handover happens only on the day the van goes out.',
   'operations.handover.handover': 'Hand over ({{count}})',
   'operations.handover.print': 'Print',
-  'operations.handover.heldNote':
+  'operations.handover.heldNote.one':
+    '1 on this van not received by the vault yet — it is not handed over now.',
+  'operations.handover.heldNote.two':
+    '2 on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.few':
+    '{{count}} on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.many':
+    '{{count}} on this van not received by the vault yet — they are not handed over now.',
+  'operations.handover.heldNote.other':
     '{{count}} on this van not received by the vault yet — they are not handed over now.',
   'operations.handover.unplacedHint': 'For information — Secured distribution places them on vans',
   'operations.handover.confirmTitle': 'Hand over van {{code}}’s load',
-  'operations.handover.confirm': 'Hand over {{count}}',
+  'operations.handover.confirm.one': 'Hand over 1',
+  'operations.handover.confirm.two': 'Hand over 2',
+  'operations.handover.confirm.few': 'Hand over {{count}}',
+  'operations.handover.confirm.many': 'Hand over {{count}}',
+  'operations.handover.confirm.other': 'Hand over {{count}}',
   'operations.handover.back': 'Back',
   'operations.handover.confirmBody':
     'These {{count}} secured shipments leave the vault now — today, {{day}} — with van {{code}}’s crew, and are no longer held in the vault.',
@@ -10911,12 +10971,11 @@ const en: Record<string, string> = {
   'operations.crew.requirements.saveFailed': 'Could not save the change.',
   'operations.crew.requirements.unconfigured':
     'No operations department is chosen yet, so this list is only the people who already have ' +
-    'flags recorded — anyone hired since is missing from it, and from every crew screen. Choose ' +
-    'the department above and the whole department appears here.',
+    'flags recorded — anyone hired since is missing from it, and from every crew screen.',
   'operations.crew.requirements.empty': 'Nobody on the roster yet',
   'operations.crew.departments.title': 'Operations departments',
   'operations.crew.departments.hint':
-    'The employees of these departments ARE the operations crew — the roster below, the crew board, the standing crew and the shipment captains all draw from them. Someone hired into a chosen department appears without anyone adding them.',
+    'The employees of these departments ARE the operations crew — the crew roster, the crew board, the standing crew and the shipment captains all draw from them. Each department is chosen once and counts in every branch that has it, including a branch that adds it later; someone hired into a chosen department appears without anyone adding them.',
   'operations.crew.departments.saved': 'Operations departments saved',
   'operations.crew.departments.none': 'No active departments to choose from',
   'operations.crew.departments.optionsFailed':
@@ -10925,9 +10984,21 @@ const en: Record<string, string> = {
   'operations.crew.departments.stale': 'Not found',
   'operations.crew.departments.emptyWarning':
     'With no department chosen, the roster falls back to whoever already has flags recorded — new hires will not appear.',
+  'operations.crew.departments.people': 'Crew: {{count}}',
+  'operations.crew.departments.unsaved': 'Unsaved changes',
+  'operations.crew.departments.search': 'Search by department or branch',
+  'operations.crew.departments.noMatch': 'No department matches the search',
+  'operations.crew.departments.branches': 'Branches: {{count}}',
+  'operations.crew.departments.unnamedBranch': 'Unnamed branch',
+  'operations.crew.departments.inactive': 'Inactive',
+  'operations.crew.departments.chosenCount': 'Departments chosen: {{count}}',
+  'operations.crew.departments.discard': 'Discard changes',
   'operations.crew.rosterFallback':
     'No operations department is configured, so this pool is only the people who already have flags recorded — anyone hired since is missing.',
   'operations.crew.rosterFallbackLink': 'Choose the department',
+  // Round 14 — said instead of the link to «Operations departments», for a reader who cannot open it.
+  'operations.crew.departmentsElsewhere':
+    'A settings administrator chooses it on the Operations departments screen.',
   // ── Operations B4 — the four secured screens
   'operations.nav.secured': 'Secured shipments',
   'operations.cards.secured': 'The open secured backlog — everything not yet delivered',
@@ -10998,6 +11069,59 @@ const en: Record<string, string> = {
   'operations.secured.dispatch.loadFailed': 'Vehicle {{vehicle}} was not released: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'Dispatch selected ({{count}})',
   'operations.secured.dispatch.selectRow': 'Select {{caption}} for dispatch',
+  // Round 16 — «لوحة تحكم» on «محصنات الخزينة», over the board's own rows.
+  'operations.secured.dashboard.open': 'Dashboard',
+  'operations.secured.dashboard.title': 'Vault secured shipments — dashboard',
+  'operations.secured.dashboard.today': 'Today {{day}}',
+  'operations.secured.dashboard.figures': 'The secured shipments shown, in figures',
+  'operations.secured.dashboard.unit.one': 'shipment',
+  'operations.secured.dashboard.unit.two': 'shipments',
+  'operations.secured.dashboard.unit.few': 'shipments',
+  'operations.secured.dashboard.unit.many': 'shipments',
+  'operations.secured.dashboard.unit.other': 'shipments',
+  'operations.secured.dashboard.filters.label': 'The board’s filters',
+  'operations.secured.dashboard.filters.none': 'Every secured shipment in the vault — no filter',
+  'operations.secured.dashboard.filters.reset': 'Reset filters',
+  'operations.secured.dashboard.alerts.title': 'Delivery alerts',
+  'operations.secured.dashboard.alerts.overdue': 'Overdue',
+  'operations.secured.dashboard.alerts.today': 'Due today',
+  'operations.secured.dashboard.alerts.tomorrow': 'Due tomorrow',
+  'operations.secured.dashboard.alerts.undated': 'No delivery day',
+  'operations.secured.dashboard.alerts.unplaced': 'Not on a vehicle',
+  'operations.secured.dashboard.alerts.overdueHint':
+    'Its delivery day has passed and it is still in the vault',
+  'operations.secured.dashboard.alerts.todayHint': 'Its delivery day is today',
+  'operations.secured.dashboard.alerts.tomorrowHint': 'Its delivery day is tomorrow, {{day}}',
+  'operations.secured.dashboard.alerts.undatedHint':
+    'No delivery day was given — no vehicle can take it until one is',
+  'operations.secured.dashboard.alerts.unplacedHint':
+    'Overdue or due today, and on none of today’s vehicles',
+  'operations.secured.dashboard.alerts.show': 'Show them on the board',
+  'operations.secured.dashboard.schedule.title': 'Delivery schedule',
+  'operations.secured.dashboard.schedule.note':
+    'How many secured shipments are due on each delivery day',
+  'operations.secured.dashboard.schedule.overdue': 'Overdue',
+  'operations.secured.dashboard.schedule.today': 'Today',
+  'operations.secured.dashboard.schedule.later': 'Later',
+  'operations.secured.dashboard.schedule.bar.one': '{{label}}: 1 secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.two': '{{label}}: 2 secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.few': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.many': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.bar.other': '{{label}}: {{count}} secured — EGP {{egp}}',
+  'operations.secured.dashboard.schedule.undated': 'With no delivery day: {{count}}',
+  'operations.secured.dashboard.aging.title': 'Time in the vault',
+  'operations.secured.dashboard.aging.note': 'Days since the vault received it',
+  'operations.secured.dashboard.aging.today': 'Received today',
+  'operations.secured.dashboard.aging.days1to2': '1–2 days',
+  'operations.secured.dashboard.aging.days3to6': '3–6 days',
+  'operations.secured.dashboard.aging.days7plus': '7 days or more',
+  'operations.secured.dashboard.aging.unknown': 'With no receipt time: {{count}}',
+  // Round 17 — the dashboard's files: the heads of its further sheets and printed pages.
+  'operations.secured.dashboard.export.alert': 'Alert',
+  'operations.secured.dashboard.export.when': 'When due',
+  'operations.secured.dashboard.export.span': 'Time in the vault',
+  'operations.secured.dashboard.export.agingUnknown': 'No receipt time',
+  'operations.secured.dashboard.banksEmpty': 'No secured shipment matches the board’s filters',
   // Round 10 — the desk's pickup ✓ on the secured screen, and its undo.
   'operations.secured.pickup.toggle': 'Confirm the pickup from the bank',
   'operations.secured.pickup.confirm': 'Mark as collected by Operations',
@@ -11016,6 +11140,11 @@ const en: Record<string, string> = {
   'operations.secured.cancelReceipt.save': 'Cancel the receipt',
   'operations.secured.cancelReceipt.back': 'Back',
   'operations.secured.cancelReceipt.done': 'Vault receipt cancelled — the shipment is yellow again.',
+  // Round 13 — a receipt nobody handed over («والخزنه تستلم عادي») goes back WHITE: no pickup is invented.
+  'operations.secured.cancelReceipt.bodyNoPickup':
+    'The shipment leaves the vault and turns white again, as before the receipt — nobody had confirmed collecting it from the bank: it can be edited, then received into the vault anew. The cancelled receipt and its reason stay in the log.',
+  'operations.secured.cancelReceipt.doneNoPickup':
+    'Vault receipt cancelled — the shipment is white again: nobody had confirmed collecting it.',
   'operations.vault.title': 'Vault contents',
   'operations.vault.subtitle': 'Everything held in the vault right now.',
   'operations.vault.packages': 'Packages',
@@ -11025,23 +11154,28 @@ const en: Record<string, string> = {
   'operations.vault.empty': 'The vault is empty',
   // Round 8 — the vault's receive queue: yellow with the captain, green in the vault today.
   'operations.vault.queue.all': 'All',
+  // Round 13 — «الكل» adds the white rows booked for a later collection day; every row is receivable.
   'operations.vault.queue.allHint':
-    'Also list the secured shipments nobody has confirmed collecting yet — for viewing only',
+    'Also list the secured shipments booked for a later collection day',
   'operations.vault.queue.pickedUp': 'With the captain or Operations',
   'operations.vault.queue.receivedToday': 'In the vault today',
-  'operations.vault.queue.awaiting': 'Not collected yet',
-  'operations.vault.queue.pickedUpAt': 'Collected {{at}}',
-  'operations.vault.queue.operationsPickedUpAt': 'Collected by Operations {{at}}',
-  'operations.vault.queue.viewOnly':
-    'View only — receivable once the captain or Operations confirms the pickup',
+  'operations.vault.queue.awaiting': 'Not collected',
   'operations.vault.queue.receivedAt': 'Received {{at}}',
   'operations.vault.queue.receive': 'Receive into the vault',
+  // Round 13 — «مكان الحاله عمودين»: who collected it from the bank, and the vault's side.
+  'operations.vault.queue.pickupColumn': 'Collection status',
+  'operations.vault.queue.vaultColumn': 'Vault status',
+  'operations.vault.queue.pickupHint.captain':
+    'The crew captain confirmed collecting it from the bank, in the app',
+  'operations.vault.queue.pickupHint.operations': 'Operations confirmed collecting it from the bank',
+  'operations.vault.queue.pickupHint.none':
+    'Neither the crew captain nor Operations confirmed collecting it from the bank',
+  'operations.vault.queue.hold.waiting': 'Not received yet',
+  'operations.vault.queue.holdHint.waiting':
+    'The vault has not received it yet — it can be received now',
   // ── Operations reports + crew attendance (B5) · vault roll-up + areas (B6) ────────────────────
-  'operations.nav.vaultReport': 'Vault roll-up',
-  'operations.cards.vaultReport': 'Secured shipments received into the vault in the period, by bank',
-  'operations.vaultReport.title': 'Vault roll-up',
-  'operations.vaultReport.empty': 'No secured shipment was received into the vault in this period',
-  // Round 11 — the vault roll-up and the captain report on the boards' look (`ReportBoard`).
+  // Round 11 — the vault roll-up (the bank report since Round 14) and the captain report on the
+  // boards' look (`ReportBoard`); «تقرير الخزينة» prints the same table.
   'operations.vaultReport.table': 'Shipments by bank',
   'operations.vaultReport.securedCount': 'Secured shipments',
   'operations.vaultReport.value': 'Total value of the shipments',
@@ -11061,7 +11195,6 @@ const en: Record<string, string> = {
   // live «تقرير الخزينة».
   'operations.reports.bankName': 'Bank name',
   'operations.reports.captains.noName': 'No captain by that name in this period',
-  'operations.vaultReport.noName': 'No bank by that name in this period',
   'operations.reportExport.department': 'Operations Department',
   'operations.reportExport.period': 'Period {{from}} to {{to}}',
   'operations.reportExport.filter': 'Filtered by {{label}}: {{value}}',
@@ -11091,22 +11224,20 @@ const en: Record<string, string> = {
   'operations.nav.captainReport': 'Captain report',
   'operations.cards.captainReport': "The period's completed shipments, by captain",
   'operations.nav.bankReport': 'Bank report',
-  'operations.cards.bankReport': "The period's completed shipments, by bank",
+  // Round 14 — «تقرير البنوك» is the vault roll-up that shipped as «تجميع الخزينة».
+  'operations.cards.bankReport': 'Secured shipments received into the vault in the period, by bank',
   'operations.nav.attendance': 'Crew attendance',
   'operations.cards.attendance': "The crew's attendance for a day — information only",
   'operations.reports.captains.title': 'Captain report',
   'operations.reports.banks.title': 'Bank report',
-  'operations.reports.banks.subtitle': 'The same completed shipments, grouped by bank.',
+  'operations.reports.banks.empty': 'No secured shipment was received into the vault in this period',
+  'operations.reports.banks.noName': 'No bank by that name in this period',
   'operations.reports.captain': 'Captain',
   'operations.reports.bank': 'Bank',
   'operations.reports.from': 'From',
   'operations.reports.to': 'To',
   'operations.reports.invalidRange': 'The start date must not be after the end date.',
   'operations.reports.shipmentCount': 'Shipments',
-  'operations.reports.packages': 'Packages',
-  'operations.reports.amounts': 'Amounts',
-  'operations.reports.grandTotal': 'Grand total',
-  'operations.reports.noCurrency': 'No amounts recorded',
   'operations.reports.unattributed': 'Unattributed',
   'operations.reports.empty': 'No completed shipments in this period',
   'operations.attendance.title': 'Crew attendance',
@@ -13698,6 +13829,7 @@ const ar: Record<string, string> = {
   'hr.settings.group.recruitment': 'إعدادات التوظيف',
   'hr.settings.group.communication': 'التواصل',
   'hr.settings.tab.recruitment-form': 'نموذج التقديم',
+  'hr.settings.tab.insurance-job-titles': 'مسميات الوظائف لدى التأمينات',
   'hr.settings.tab.applicant-sources': 'مصادر التقديم',
   'hr.settings.tab.interview-stages': 'مراحل المقابلات',
   'hr.settings.tab.evaluation-phases': 'مراحل التقييم',
@@ -14377,6 +14509,22 @@ const ar: Record<string, string> = {
   'contracts.bulk.printed': 'طُبعت مستندات {{count}} شخص.',
   'contracts.bulk.skipped': 'تعذرت الطباعة لـ {{count}}.',
   'employees.ready.jobPapers': 'مستندات الوظائف',
+  'contracts.insuranceTitles.title': 'مسميات الوظائف لدى التأمينات',
+  'contracts.insuranceTitles.subtitle': 'المسميات الوظيفية لدينا ومسمياتها لدى التأمينات وأكواد المهن',
+  'contracts.insuranceTitles.hint': 'اكتب كل صف بيدك. بعد الحفظ يُطبع في نموذج رقم (1) لمن يشغل المسمى الوظيفي لدينا مسماه لدى التأمينات وكود المهنة.',
+  'contracts.insuranceTitles.ours': 'المسمى الوظيفي لدينا',
+  'contracts.insuranceTitles.oursPlaceholder': 'كما هو مكتوب في النظام',
+  'contracts.insuranceTitles.theirs': 'المسمى الوظيفي لدى التأمينات',
+  'contracts.insuranceTitles.code': 'كود المهنة',
+  'contracts.insuranceTitles.unknown': 'لا توجد وظيفة في النظام بهذا المسمى بعد.',
+  'contracts.insuranceTitles.problem.title': 'اكتب المسمى الوظيفي لدينا.',
+  'contracts.insuranceTitles.problem.twice': 'هذا المسمى الوظيفي مكتوب في صف آخر.',
+  'contracts.insuranceTitles.problem.code': 'حتى ستة أرقام، أو بالشكل 123/456.',
+  'contracts.insuranceTitles.empty': 'لا توجد صفوف بعد. أضف أول صف.',
+  'contracts.insuranceTitles.add': 'إضافة صف',
+  'contracts.insuranceTitles.remove': 'حذف',
+  'contracts.insuranceTitles.save': 'حفظ',
+  'contracts.insuranceTitles.saved': 'حُفظت مسميات الوظائف لدى التأمينات.',
   'contracts.jobPapers.title': 'مستندات الوظائف',
   'contracts.jobPapers.hint': 'كل إدارة والوظائف التي فيها، وبجانب كل وظيفة كل المستندات: المحدَّد منها يُطبع لمن يُعيَّن على هذه الوظيفة في هذه الإدارة. الصف الأول في كل إدارة يحدِّد المستند لكل وظائفها مرة واحدة.',
   'contracts.jobPapers.departments': 'الإدارات ({{count}})',
@@ -23661,7 +23809,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
     'معرّفات سجلات عناصر قائمة «التشغيل» في الحركة، مفصولة بفواصل. تُعرض للطاقم الثابت المركبات النشطة التي يكون «التشغيل» الخاص بها أحد هذه العناصر، وإن كانت القائمة فارغة تُعرض كل المركبات النشطة.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
-    'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
+    'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وتُحتسب كل إدارة في كل فرع توجد فيه. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',
@@ -24014,7 +24162,11 @@ const ar: Record<string, string> = {
     'نُقل يوم التسليم إلى يوم التوزيع لتأخرها في الخزينة (إجراء تشغيلي مستثنى من قفل الخزينة)',
   // Round 12 (web B) — «توزيع المحصنات» and «تسليم المحصنات».
   'operations.distribution.vanLabel': 'السيارة {{code}}',
-  'operations.distribution.loadCount': '{{count}} محصنة',
+  'operations.distribution.loadCount.one': 'محصنة واحدة',
+  'operations.distribution.loadCount.two': 'محصنتان',
+  'operations.distribution.loadCount.few': '{{count}} محصنات',
+  'operations.distribution.loadCount.many': '{{count}} محصنة',
+  'operations.distribution.loadCount.other': '{{count}} محصنة',
   'operations.distribution.noDirection': 'بلا اتجاه',
   'operations.distribution.captains': 'القادة',
   'operations.distribution.noCaptain': 'بلا قائد — لا تأخذ محصنات',
@@ -24035,9 +24187,26 @@ const ar: Record<string, string> = {
   'operations.distribution.moveTo': 'نقل إلى…',
   'operations.distribution.remove': 'إزالة من السيارة',
   'operations.distribution.autoNone': 'لا توجد محصنة بلا سيارة يطابق منطقتها اتجاه سيارة واحدة فقط.',
-  'operations.distribution.autoDone': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
-  'operations.distribution.saved': 'حُفظ التوزيع: {{count}} محصنة.',
-  'operations.distribution.savedRescheduled':
+  'operations.distribution.autoDone.one': 'اقتُرحت محصنة واحدة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.two': 'اقتُرحت محصنتان حسب الاتجاه — راجعهما ثم احفظ.',
+  'operations.distribution.autoDone.few': 'اقتُرحت {{count}} محصنات حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.many': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.autoDone.other': 'اقتُرحت {{count}} محصنة حسب الاتجاه — راجعها ثم احفظ.',
+  'operations.distribution.saved.one': 'حُفظ التوزيع: محصنة واحدة.',
+  'operations.distribution.saved.two': 'حُفظ التوزيع: محصنتان.',
+  'operations.distribution.saved.few': 'حُفظ التوزيع: {{count}} محصنات.',
+  'operations.distribution.saved.many': 'حُفظ التوزيع: {{count}} محصنة.',
+  'operations.distribution.saved.other': 'حُفظ التوزيع: {{count}} محصنة.',
+  'operations.distribution.savedRescheduled.one':
+    'حُفظ التوزيع: محصنة واحدة متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  // Two take the dual pronoun «منهما», as «راجعهما» and «وغادرتا» do; «منها» is for three or more.
+  'operations.distribution.savedRescheduled.two':
+    'حُفظ التوزيع: محصنتان، منهما {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.few':
+    'حُفظ التوزيع: {{count}} محصنات، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.many':
+    'حُفظ التوزيع: {{count}} محصنة، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
+  'operations.distribution.savedRescheduled.other':
     'حُفظ التوزيع: {{count}} محصنة، منها {{rescheduled}} متأخرة نُقل يوم تسليمها إلى هذا اليوم.',
   'operations.distribution.refused': 'لم يُحفظ التوزيع: {{reason}}',
   'operations.distribution.vans': 'السيارات',
@@ -24071,7 +24240,11 @@ const ar: Record<string, string> = {
   'operations.distribution.boxes': 'صناديق',
   'operations.handover.popupBlocked':
     'منع المتصفح فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
-  'operations.handover.done': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.one': 'سُلّمت محصنة واحدة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.two': 'سُلّمت محصنتان للسيارة {{code}} وغادرتا الخزينة.',
+  'operations.handover.done.few': 'سُلّمت {{count}} محصنات للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.many': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
+  'operations.handover.done.other': 'سُلّمت {{count}} محصنة للسيارة {{code}} وغادرت الخزينة.',
   'operations.handover.failed': 'تعذّر تسليم السيارة {{code}}: {{reason}}',
   'operations.handover.notInVault': 'ليست بالخزينة بعد',
   'operations.handover.notInVaultHint': 'لم تستلمها الخزينة بعد، فلا تُسلَّم مع السيارة الآن',
@@ -24084,11 +24257,24 @@ const ar: Record<string, string> = {
     'خطة يوم {{day}} — للاطلاع والطباعة. التسليم يتم يوم خروج السيارة فقط.',
   'operations.handover.handover': 'تسليم ({{count}})',
   'operations.handover.print': 'طباعة',
-  'operations.handover.heldNote':
+  'operations.handover.heldNote.one':
+    'محصنة واحدة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.two':
+    'محصنتان على هذه السيارة لم تستلمهما الخزينة بعد، فلا تُسلَّمان الآن.',
+  'operations.handover.heldNote.few':
+    '{{count}} محصنات على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.many':
+    '{{count}} محصنة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
+  'operations.handover.heldNote.other':
     '{{count}} محصنة على هذه السيارة لم تستلمها الخزينة بعد، فلا تُسلَّم الآن.',
   'operations.handover.unplacedHint': 'للعلم فقط — يضعها توزيع المحصنات على السيارات',
   'operations.handover.confirmTitle': 'تسليم محصنات السيارة {{code}}',
-  'operations.handover.confirm': 'تسليم {{count}} محصنة',
+  // After «تسليم» the noun is in the genitive: «تسليم محصنتين», not «محصنتان».
+  'operations.handover.confirm.one': 'تسليم محصنة واحدة',
+  'operations.handover.confirm.two': 'تسليم محصنتين',
+  'operations.handover.confirm.few': 'تسليم {{count}} محصنات',
+  'operations.handover.confirm.many': 'تسليم {{count}} محصنة',
+  'operations.handover.confirm.other': 'تسليم {{count}} محصنة',
   'operations.handover.back': 'رجوع',
   'operations.handover.confirmBody':
     'ستغادر هذه المحصنات ({{count}}) الخزينة الآن، اليوم {{day}}، مع طاقم السيارة {{code}}، ولن تبقى بالخزينة.',
@@ -24221,11 +24407,11 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.employee': 'الموظف',
   'operations.crew.requirements.saveFailed': 'تعذّر حفظ التغيير.',
   'operations.crew.requirements.unconfigured':
-    'لم تُحدَّد إدارة العمليات بعد، لذا المعروض هنا هم مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر هنا ولا في أي شاشة من شاشات الطاقم. اختر الإدارة بالأعلى ليظهر كل مَن فيها.',
+    'لم تُحدَّد إدارة العمليات بعد، لذا المعروض هنا هم مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر هنا ولا في أي شاشة من شاشات الطاقم.',
   'operations.crew.requirements.empty': 'لا يوجد أحد في الكشف بعد',
   'operations.crew.departments.title': 'إدارات العمليات',
   'operations.crew.departments.hint':
-    'موظفو هذه الإدارات هم طاقم العمليات — الكشف بالأسفل ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
+    'موظفو هذه الإدارات هم طاقم العمليات — كشف الأطقم ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. تُختار كل إدارة مرة واحدة فتُحتسب في كل فرع توجد فيه، بما في ذلك الفرع الذي يضيفها لاحقًا، ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
   'operations.crew.departments.saved': 'تم حفظ إدارات العمليات',
   'operations.crew.departments.none': 'لا توجد إدارات نشطة للاختيار منها',
   'operations.crew.departments.optionsFailed':
@@ -24234,9 +24420,19 @@ const ar: Record<string, string> = {
   'operations.crew.departments.stale': 'غير موجودة',
   'operations.crew.departments.emptyWarning':
     'بدون اختيار أي إدارة يعود الكشف إلى مَن لديهم بيانات متطلبات بالفعل فقط — والموظفون الجدد لن يظهروا.',
+  'operations.crew.departments.people': 'أفراد الطاقم: {{count}}',
+  'operations.crew.departments.unsaved': 'تغييرات غير محفوظة',
+  'operations.crew.departments.search': 'ابحث باسم الإدارة أو الفرع',
+  'operations.crew.departments.noMatch': 'لا توجد إدارة تطابق البحث',
+  'operations.crew.departments.branches': 'عدد الفروع: {{count}}',
+  'operations.crew.departments.unnamedBranch': 'فرع بلا اسم',
+  'operations.crew.departments.inactive': 'غير نشطة',
+  'operations.crew.departments.chosenCount': 'الإدارات المختارة: {{count}}',
+  'operations.crew.departments.discard': 'تراجع',
   'operations.crew.rosterFallback':
     'لم تُحدَّد إدارة العمليات، لذا هذه القائمة هي مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر.',
   'operations.crew.rosterFallbackLink': 'حدِّد الإدارة',
+  'operations.crew.departmentsElsewhere': 'يحدِّدها مسؤول الإعدادات من شاشة «إدارات العمليات».',
   // ── العمليات B4 — شاشات المحصنات الأربع
   'operations.nav.secured': 'الشحنات المحصنة',
   'operations.cards.secured': 'سجل المحصنات المفتوح — كل ما لم يُسلَّم بعد',
@@ -24303,6 +24499,56 @@ const ar: Record<string, string> = {
   'operations.secured.dispatch.loadFailed': 'لم تُصرف المركبة {{vehicle}}: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'صرف المحدد ({{count}})',
   'operations.secured.dispatch.selectRow': 'تحديد {{caption}} للصرف',
+  // الجولة 16 — «لوحة تحكم» في «محصنات الخزينة»، على صفوف الشاشة نفسها.
+  'operations.secured.dashboard.open': 'لوحة تحكم',
+  'operations.secured.dashboard.title': 'لوحة تحكم محصنات الخزينة',
+  'operations.secured.dashboard.today': 'اليوم {{day}}',
+  'operations.secured.dashboard.figures': 'أرقام المحصنات المعروضة',
+  'operations.secured.dashboard.unit.one': 'محصنة',
+  'operations.secured.dashboard.unit.two': 'محصنتان',
+  'operations.secured.dashboard.unit.few': 'محصنات',
+  'operations.secured.dashboard.unit.many': 'محصنة',
+  'operations.secured.dashboard.unit.other': 'محصنة',
+  'operations.secured.dashboard.filters.label': 'فلاتر الشاشة',
+  'operations.secured.dashboard.filters.none': 'كل المحصنات بالخزينة — بلا فلتر',
+  'operations.secured.dashboard.filters.reset': 'إعادة ضبط الفلاتر',
+  'operations.secured.dashboard.alerts.title': 'تنبيهات التسليم',
+  'operations.secured.dashboard.alerts.overdue': 'متأخرة',
+  'operations.secured.dashboard.alerts.today': 'تسليمها اليوم',
+  'operations.secured.dashboard.alerts.tomorrow': 'تسليمها غدًا',
+  'operations.secured.dashboard.alerts.undated': 'بدون يوم تسليم',
+  'operations.secured.dashboard.alerts.unplaced': 'لم تُوزَّع على سيارة',
+  'operations.secured.dashboard.alerts.overdueHint': 'فات يوم تسليمها وما زالت بالخزينة',
+  'operations.secured.dashboard.alerts.todayHint': 'يوم تسليمها هو اليوم',
+  'operations.secured.dashboard.alerts.tomorrowHint': 'يوم تسليمها غدًا، {{day}}',
+  'operations.secured.dashboard.alerts.undatedHint':
+    'لم يُحدَّد لها يوم تسليم، ولا تُوزَّع على سيارة قبل تحديده',
+  'operations.secured.dashboard.alerts.unplacedHint':
+    'متأخرة أو تسليمها اليوم، وليست على أي سيارة من سيارات اليوم',
+  'operations.secured.dashboard.alerts.show': 'عرضها في الجدول',
+  'operations.secured.dashboard.schedule.title': 'جدول التسليم',
+  'operations.secured.dashboard.schedule.note': 'عدد المحصنات المستحقة لكل يوم تسليم',
+  'operations.secured.dashboard.schedule.overdue': 'متأخرة',
+  'operations.secured.dashboard.schedule.today': 'اليوم',
+  'operations.secured.dashboard.schedule.later': 'لاحقًا',
+  'operations.secured.dashboard.schedule.bar.one': '{{label}}: محصنة واحدة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.two': '{{label}}: محصنتان — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.few': '{{label}}: {{count}} محصنات — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.many': '{{label}}: {{count}} محصنة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.bar.other': '{{label}}: {{count}} محصنة — {{egp}} مصري',
+  'operations.secured.dashboard.schedule.undated': 'بدون يوم تسليم: {{count}}',
+  'operations.secured.dashboard.aging.title': 'مدة البقاء في الخزينة',
+  'operations.secured.dashboard.aging.note': 'الأيام منذ استلام الخزينة لها',
+  'operations.secured.dashboard.aging.today': 'استُلمت اليوم',
+  'operations.secured.dashboard.aging.days1to2': 'من يوم إلى يومين',
+  'operations.secured.dashboard.aging.days3to6': 'من 3 إلى 6 أيام',
+  'operations.secured.dashboard.aging.days7plus': '7 أيام فأكثر',
+  'operations.secured.dashboard.aging.unknown': 'بلا وقت استلام: {{count}}',
+  'operations.secured.dashboard.export.alert': 'التنبيه',
+  'operations.secured.dashboard.export.when': 'الموعد',
+  'operations.secured.dashboard.export.span': 'المدة',
+  'operations.secured.dashboard.export.agingUnknown': 'بلا وقت استلام',
+  'operations.secured.dashboard.banksEmpty': 'لا توجد محصنات مطابقة لفلاتر الشاشة',
   // الجولة 10 — تأكيد العمليات للاستلام من البنك في شاشة المحصنات، والتراجع عنه.
   'operations.secured.pickup.toggle': 'تأكيد الاستلام من البنك',
   'operations.secured.pickup.confirm': 'تأكيد الاستلام من العمليات',
@@ -24321,6 +24567,11 @@ const ar: Record<string, string> = {
   'operations.secured.cancelReceipt.save': 'إلغاء الاستلام',
   'operations.secured.cancelReceipt.back': 'رجوع',
   'operations.secured.cancelReceipt.done': 'أُلغي استلام الخزينة، وعادت المحصنة صفراء.',
+  // الجولة 13 — المحصنة التي استلمتها الخزينة دون تأكيد استلام تعود بيضاء: لا يُختلَق استلام.
+  'operations.secured.cancelReceipt.bodyNoPickup':
+    'ستخرج المحصنة من الخزينة وتعود باللون الأبيض كما كانت قبل الاستلام، إذ لم يؤكد أحد استلامها من البنك: يمكن تعديلها، ثم استلامها في الخزينة من جديد. يبقى الاستلام الملغى وسببه في السجل.',
+  'operations.secured.cancelReceipt.doneNoPickup':
+    'أُلغي استلام الخزينة، وعادت المحصنة إلى اللون الأبيض، إذ لم يؤكد أحد استلامها من البنك.',
   'operations.vault.title': 'محتويات الخزينة',
   'operations.vault.subtitle': 'كل ما هو محفوظ في الخزينة الآن.',
   'operations.vault.packages': 'العبوات',
@@ -24330,22 +24581,23 @@ const ar: Record<string, string> = {
   'operations.vault.empty': 'الخزينة فارغة',
   // الجولة 8 — قائمة استلام الخزينة: أصفر مع القائد، أخضر بالخزينة اليوم.
   'operations.vault.queue.all': 'الكل',
-  'operations.vault.queue.allHint':
-    'إظهار الشحنات المحصنة التي لم يُؤكَّد استلامها من البنك بعد أيضًا — للعرض فقط',
+  // الجولة 13 — «الكل» يضيف المحصنات المحجوزة ليوم استلام لاحق؛ وكل صف قابل للاستلام.
+  'operations.vault.queue.allHint': 'إظهار المحصنات المحجوزة ليوم استلام لاحق أيضًا',
   'operations.vault.queue.pickedUp': 'مع القائد أو العمليات',
   'operations.vault.queue.receivedToday': 'بالخزينة اليوم',
-  'operations.vault.queue.awaiting': 'لم يتم التسليم',
-  'operations.vault.queue.pickedUpAt': 'استلمها القائد {{at}}',
-  'operations.vault.queue.operationsPickedUpAt': 'استلمتها العمليات {{at}}',
-  'operations.vault.queue.viewOnly': 'للعرض فقط — تُستلم بعد أن يؤكد القائد أو العمليات استلامها',
-  'operations.vault.queue.receivedAt': 'استُلمت في الخزينة {{at}}',
+  'operations.vault.queue.awaiting': 'لم يتم الاستلام',
+  'operations.vault.queue.receivedAt': 'استُلمت {{at}}',
   'operations.vault.queue.receive': 'استلام في الخزينة',
-  // ── تقارير العمليات + حضور الطاقم (B5) · تجميع الخزينة + المناطق (B6) ─────────────────────────
-  'operations.nav.vaultReport': 'تجميع الخزينة',
-  'operations.cards.vaultReport': 'المحصنات المستلمة في الخزينة خلال الفترة، حسب البنك',
-  'operations.vaultReport.title': 'تجميع الخزينة',
-  'operations.vaultReport.empty': 'لم تُستلم أي محصنة في الخزينة خلال هذه الفترة',
-  // Round 11 — تجميع الخزينة وتقرير القادة بشكل لوحات التشغيل (`ReportBoard`).
+  // الجولة 13 — «مكان الحاله عمودين»: من استلمها من البنك، وجانب الخزينة.
+  'operations.vault.queue.pickupColumn': 'حالة الاستلام',
+  'operations.vault.queue.vaultColumn': 'حالة الخزينة',
+  'operations.vault.queue.pickupHint.captain': 'أكّد قائد الطاقم استلامها من البنك من التطبيق',
+  'operations.vault.queue.pickupHint.operations': 'أكّدت العمليات استلامها من البنك',
+  'operations.vault.queue.pickupHint.none': 'لم يؤكد قائد الطاقم ولا العمليات استلامها من البنك',
+  'operations.vault.queue.hold.waiting': 'لم تُستلم بعد',
+  'operations.vault.queue.holdHint.waiting': 'لم تستلمها الخزينة بعد، ويمكن استلامها الآن',
+  // ── تقارير العمليات + حضور الطاقم (B5) · تقرير البنوك + المناطق (B6) ──────────────────────────
+  // Round 11 — تقرير البنوك (منذ الجولة 14) وتقرير القادة بشكل لوحات التشغيل (`ReportBoard`).
   'operations.vaultReport.table': 'بيان الشحنات لكل بنك',
   'operations.vaultReport.securedCount': 'عدد المحصنات',
   'operations.vaultReport.value': 'إجمالي قيمة الشحنات',
@@ -24365,7 +24617,6 @@ const ar: Record<string, string> = {
   // الخزينة» اللحظي فوقه.
   'operations.reports.bankName': 'اسم البنك',
   'operations.reports.captains.noName': 'لا يوجد قائد بهذا الاسم في هذه الفترة',
-  'operations.vaultReport.noName': 'لا يوجد بنك بهذا الاسم في هذه الفترة',
   'operations.reportExport.department': 'إدارة العمليات',
   'operations.reportExport.period': 'الفترة من {{from}} إلى {{to}}',
   'operations.reportExport.filter': 'تصفية {{label}}: {{value}}',
@@ -24394,22 +24645,19 @@ const ar: Record<string, string> = {
   'operations.nav.captainReport': 'تقرير القادة',
   'operations.cards.captainReport': 'الشحنات المكتملة خلال الفترة، حسب القائد',
   'operations.nav.bankReport': 'تقرير البنوك',
-  'operations.cards.bankReport': 'الشحنات المكتملة خلال الفترة، حسب البنك',
+  'operations.cards.bankReport': 'المحصنات المستلمة في الخزينة خلال الفترة، حسب البنك',
   'operations.nav.attendance': 'حضور الطاقم',
   'operations.cards.attendance': 'حضور الطاقم في يوم محدد — للعلم فقط',
   'operations.reports.captains.title': 'تقرير القادة',
   'operations.reports.banks.title': 'تقرير البنوك',
-  'operations.reports.banks.subtitle': 'نفس الشحنات المكتملة، مجمّعة حسب البنك.',
+  'operations.reports.banks.empty': 'لم تُستلم أي محصنة في الخزينة خلال هذه الفترة',
+  'operations.reports.banks.noName': 'لا يوجد بنك بهذا الاسم في هذه الفترة',
   'operations.reports.captain': 'القائد',
   'operations.reports.bank': 'البنك',
   'operations.reports.from': 'من',
   'operations.reports.to': 'إلى',
   'operations.reports.invalidRange': 'تاريخ البداية يجب ألا يكون بعد تاريخ النهاية.',
   'operations.reports.shipmentCount': 'عدد الشحنات',
-  'operations.reports.packages': 'الطرود',
-  'operations.reports.amounts': 'المبالغ',
-  'operations.reports.grandTotal': 'الإجمالي العام',
-  'operations.reports.noCurrency': 'لا توجد مبالغ مسجّلة',
   'operations.reports.unattributed': 'غير منسوب',
   'operations.reports.empty': 'لا توجد شحنات مكتملة في هذه الفترة',
   'operations.attendance.title': 'حضور الطاقم',

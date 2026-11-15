@@ -14,6 +14,8 @@ import {
   CandidateBulkSchema,
   UpdateJobPapersSchema,
   type UpdateJobPapers,
+  UpdateInsuranceJobTitlesSchema,
+  type UpdateInsuranceJobTitles,
   HireCandidateSchema,
   RenderCandidateBulkSchema,
   type CandidateBulk,
@@ -56,6 +58,7 @@ import { contractService } from './contract.service';
 import { hiringPackService } from './hiring-pack.service';
 import { candidateDraftService } from '../candidates';
 import { jobPapersService } from '../job-papers';
+import { insuranceJobTitleService } from '../insurance-job-titles';
 import { verifyContract } from './contract-verify';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -267,6 +270,16 @@ const removeAttachment = async (req: Request, res: Response): Promise<void> => {
   ok(res, await withTypeName(params.id, ctx));
 };
 
+const listInsuranceJobTitles = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await insuranceJobTitleService.list());
+};
+
+const saveInsuranceJobTitles = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<UpdateInsuranceJobTitles>(req);
+  ok(res, await insuranceJobTitleService.update(ctx, body));
+};
+
 const listJobPapers = async (_req: Request, res: Response): Promise<void> => {
   ok(res, await jobPapersService.list());
 };
@@ -293,6 +306,10 @@ export const buildContractsRouter = (): Router => {
     asyncHandler(hiringPack));
   router.get('/employee-papers/:employeeId', ...guard('contract.print'),
     validate({ params: z.object({ employeeId: objectId() }).strict() }), asyncHandler(employeePapers));
+  // A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority. Before '/:id'.
+  router.get('/insurance-job-titles', ...guard('insuranceJobTitle.manage'), asyncHandler(listInsuranceJobTitles));
+  router.patch('/insurance-job-titles', ...guard('insuranceJobTitle.manage'),
+    validate({ body: UpdateInsuranceJobTitlesSchema }), asyncHandler(saveInsuranceJobTitles));
   // A28 — «مستندات الوظائف»: every job beside every paper; what each job prints. Before '/:id'.
   router.get('/job-papers', ...guard('contractTemplate.manage'), asyncHandler(listJobPapers));
   router.patch('/job-papers', ...guard('contractTemplate.manage'), validate({ body: UpdateJobPapersSchema }),

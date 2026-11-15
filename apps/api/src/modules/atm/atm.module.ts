@@ -527,11 +527,17 @@ export const atmModule: ModuleManifest = {
       description: "Read the maintenance mailbox and file each mail under its machine's branch",
       cron: '* * * * *',
       ownerService: 'atm',
+      // The next minute is the retry (2026-11-13): retried four more times over the next two
+      // minutes, a failed reading met the next ones in the mailbox, and up to five readers queued
+      // behind each other until every request timed out.
+      retry: false,
       handler: async () => {
         // A mailbox that failed as a whole (token refused, unreachable) is the run's `error` — on
-        // the screen's last-run line — and still a FAILED scheduled run, as it was before.
-        const run = await pollAtmMailbox();
-        if (run.error !== null) throw new Error(run.error);
+        // the screen's last-run line — and still a FAILED scheduled run, as it was before. Null:
+        // another reading holds the lease (a long one, or «قراءة الآن»), or a failing mailbox is
+        // being given time — either way this minute is not due.
+        const run = await pollAtmMailbox({ scheduled: true });
+        if (run !== null && run.error !== null) throw new Error(run.error);
       },
     },
     {

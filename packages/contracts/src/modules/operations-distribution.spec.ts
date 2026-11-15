@@ -209,6 +209,8 @@ describe('the distribution read and save', () => {
     expect(ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED).toBe(
       'OPERATIONS_DISTRIBUTION_LEG_STARTED',
     );
+    // The handover's own: «تسليم» on a van that is not today's.
+    expect(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY).toBe('OPERATIONS_DISPATCH_NOT_TODAY');
   });
 
   it('logs a van taken off and an overdue day moved, and announces the removal', () => {

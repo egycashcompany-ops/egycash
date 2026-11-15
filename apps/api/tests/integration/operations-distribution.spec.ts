@@ -14,9 +14,14 @@
 // OVERDUE fixtures: «متأخرة» means the delivery day has PASSED (before today), and nothing books or
 // plans a past day, so they are booked and planned on EARLY and then the clock is played forward
 // for them — their dates, and EARLY's operating day, moved to PAST in the database.
+//
+// The vault's «تسليم» is today's only (`OPERATIONS_DISPATCH_NOT_TODAY`, Round 17), so a van of DAY or
+// SOON is handed over ON ITS DAY: `dispatchOn` sets the clock to that morning for the one call. The
+// last suite plans van 4 on TODAY and TOMORROW (Cairo) — the real clock, both sides of the rule —
+// and then moves the clock to 00:30 Cairo on TOMORROW, where UTC still says TODAY.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   ErrorCodes,
@@ -24,6 +29,7 @@ import {
   OperationsEvents,
   SettingKeys,
   addDaysYmd,
+  cairoDayStart,
   cairoYmd,
   platformPermissions,
   type FleetVehicleDto,
@@ -56,6 +62,7 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsShipmentAssignmentModel } from '../../src/modules/operations/shipments/shipment-assignment.model';
 import { OperationsShipmentModel } from '../../src/modules/operations/shipments/shipment.model';
+import { OperationsVaultCustodyModel } from '../../src/modules/operations/vault/vault-custody.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -65,6 +72,7 @@ let adminId = '';
 let adminToken = '';
 let viewerToken = ''; // operationsShipment.view only — reads the screen, may not save it
 let vaultToken = ''; // operationsVault.view + dispatch — «تسليم المحصنات», no crew plan, no save
+const VAULT_EMAIL = 'ops-r12-vault@ecms.local';
 let nobodyToken = ''; // an Operations grant that is neither of the screen's
 const seenEvents: { name: string; payload: unknown }[] = [];
 
@@ -321,6 +329,63 @@ const assignDelivery = async (id: string, crewAssignmentId: string, captainEmplo
   expect(res.status, JSON.stringify(res.body)).toBe(200);
 };
 
+/** The vault's release — `POST /operations/secured/dispatch` — sent NOW, with the token given. */
+const dispatch = (
+  body: { crewAssignmentId: string; shipmentIds: string[] },
+  token = adminToken,
+): request.Test =>
+  request(app)
+    .post('/api/v1/operations/secured/dispatch')
+    .set('Authorization', `Bearer ${token}`)
+    .send(body);
+
+/** `dispatchOn`'s sign-ins, one per person and moved clock, so the sign-in limit never bites. */
+const tokensOnDay = new Map<string, string>();
+
+/**
+ * The same release sent ON THE VAN'S OWN DAY.
+ *
+ * The server releases a van of TODAY only (`OPERATIONS_DISPATCH_NOT_TODAY`), and DAY and SOON are
+ * days still to come — they have to be: SOON sits between today and DAY, and the roster plans no
+ * past day. So a case that sends one of their vans out does it the way the vault does: on that day.
+ * The clock is set to 10:00 that morning in Cairo (or `minutesIn` past that day's Cairo midnight)
+ * for this one call and put back after it, whatever the call answered.
+ *
+ * Two things do not survive the jump, and are handled here rather than in every case:
+ *   · the suite's tokens expire long before that day, so the call carries a token signed at that
+ *     hour (one per person and moved clock, kept for the next call at the same time);
+ *   · Mongoose judges the connection by how long ago its last heartbeat was, read on the same moved
+ *     clock, and would call a healthy connection dead and hold every query. The stamp is cleared
+ *     going in and coming out; the next heartbeat writes it again.
+ */
+const dispatchOn = async (
+  day: string,
+  body: { crewAssignmentId: string; shipmentIds: string[] },
+  email = 'ops-r12-admin@ecms.local',
+  minutesIn = 10 * 60,
+): Promise<request.Response> => {
+  const connection = OperationsShipmentModel.db as unknown as { _lastHeartbeatAt: number | null };
+  vi.useFakeTimers({
+    toFake: ['Date'],
+    now: new Date(cairoDayStart(day).getTime() + minutesIn * 60_000),
+    shouldAdvanceTime: true,
+  });
+  connection._lastHeartbeatAt = null;
+  try {
+    // Keyed by the time too: a token signed at 10:00 is not one to show at 00:30 the same day.
+    const key = `${email} ${day} ${minutesIn}`;
+    let token = tokensOnDay.get(key);
+    if (token === undefined) {
+      token = await login(email);
+      tokensOnDay.set(key, token);
+    }
+    return await dispatch(body, token);
+  } finally {
+    vi.useRealTimers();
+    connection._lastHeartbeatAt = null;
+  }
+};
+
 const distribution = (query = '', token = adminToken): Promise<request.Response> =>
   request(app)
     .get(`/api/v1/operations/secured/distribution${query}`)
@@ -419,10 +484,7 @@ beforeAll(async () => {
   });
   adminToken = await login('ops-r12-admin@ecms.local');
   viewerToken = await tokenWith('ops-r12-viewer@ecms.local', ['operationsShipment.view']);
-  vaultToken = await tokenWith('ops-r12-vault@ecms.local', [
-    'operationsVault.view',
-    'operationsVault.dispatch',
-  ]);
+  vaultToken = await tokenWith(VAULT_EMAIL, ['operationsVault.view', 'operationsVault.dispatch']);
   nobodyToken = await tokenWith('ops-r12-crew@ecms.local', ['operationsCrew.view']);
 
   const branchRes = await request(app)
@@ -546,10 +608,7 @@ beforeAll(async () => {
   alreadyOut = (await book(DAY, 'الهرم')).id;
   await intoVault(alreadyOut);
   await assignDelivery(alreadyOut, crew2, capC);
-  const out = await request(app)
-    .post('/api/v1/operations/secured/dispatch')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({ crewAssignmentId: crew2, shipmentIds: [alreadyOut] });
+  const out = await dispatchOn(DAY, { crewAssignmentId: crew2, shipmentIds: [alreadyOut] });
   expect(out.status, JSON.stringify(out.body)).toBe(200);
   const dailyRes = await request(app)
     .post('/api/v1/operations/shipments')
@@ -697,11 +756,9 @@ describe('«توزيع المحصنات» — GET /operations/secured/distributi
     expect((await read(heldSoon)).deliveryDate).toBe(iso(SOON));
     expect(String((await deliveryLegOf(heldSoon))?.crewAssignmentId)).toBe(soonCrew);
 
-    // It goes out on its own day's van — and so leaves the vault the reports below count.
-    const out = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ crewAssignmentId: soonCrew, shipmentIds: [heldSoon] });
+    // It goes out on its own day's van, on that day — and so leaves the vault the reports below
+    // count.
+    const out = await dispatchOn(SOON, { crewAssignmentId: soonCrew, shipmentIds: [heldSoon] });
     expect(out.status, JSON.stringify(out.body)).toBe(200);
   });
 
@@ -1058,18 +1115,21 @@ describe('«تسليم المحصنات» — the vault hands each van its load 
     const inVault = onVan2.filter((s) => s.status === 'inVault').map((s) => s.id);
     expect(inVault.sort()).toEqual([dueVault, overdueNoLeg].sort());
 
+    // DAY's «تسليم» is pressed on DAY (`dispatchOn`): a van leaves on its own day.
     // The draft one is refused by the dispatch — the screen does not send it.
-    const withDraft = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${vaultToken}`)
-      .send({ crewAssignmentId: crew2, shipmentIds: [...inVault, dueDraft] });
+    const withDraft = await dispatchOn(
+      DAY,
+      { crewAssignmentId: crew2, shipmentIds: [...inVault, dueDraft] },
+      VAULT_EMAIL,
+    );
     expect(withDraft.status).toBe(422);
     expect(errorOf(withDraft).code).toBe(ErrorCodes.OPERATIONS_INVALID_SHIPMENT_TRANSITION);
 
-    const out = await request(app)
-      .post('/api/v1/operations/secured/dispatch')
-      .set('Authorization', `Bearer ${vaultToken}`)
-      .send({ crewAssignmentId: crew2, shipmentIds: inVault });
+    const out = await dispatchOn(
+      DAY,
+      { crewAssignmentId: crew2, shipmentIds: inVault },
+      VAULT_EMAIL,
+    );
     expect(out.status, JSON.stringify(out.body)).toBe(200);
     expect(data<{ dispatched: number }>(out).dispatched).toBe(2);
 
@@ -1533,5 +1593,135 @@ describe('an edit that moves a placed محصنة’s delivery day takes it off i
     expect(String(after?.crewAssignmentId)).toBe(fromCrew);
     expect(stopOf(await myDay(MOVE_FROM), kept)).toBeDefined();
     expect((await logOf(kept)).entries.some((e) => e.kind === 'crewRemoved')).toBe(false);
+  });
+});
+
+describe('«تسليم» on today’s vans only — a van of another day is refused, nothing written', () => {
+  // Cairo's calendar, read as the cases run — the one the server judges «today» by.
+  const TODAY = cairoYmd(new Date());
+  const TOMORROW = addDaysYmd(TODAY, 1);
+  let van4 = '';
+  let todayCrew = '';
+  let tomorrowCrew = '';
+
+  /** A محصنة collected today and due out on `day`: in the vault, on van 4 of that day. */
+  const loaded = async (day: string, crew: string): Promise<string> => {
+    const id = (await book(day, 'المعادي', { collectionDate: TODAY })).id;
+    await intoVault(id);
+    await assignDelivery(id, crew, capA);
+    return id;
+  };
+  const custodyOf = (shipmentId: string) =>
+    OperationsVaultCustodyModel.findOne({ shipmentId }).sort({ receivedAt: -1 }).lean().exec();
+  const dispatchedOf = (id: string, since: number) =>
+    seenEvents
+      .slice(since)
+      .filter(
+        (e) =>
+          e.name === OperationsEvents.SecuredDispatched &&
+          (e.payload as { shipmentId: string }).shipmentId === id,
+      );
+
+  beforeAll(async () => {
+    // Its own van, planned on no other day of this file, so nothing above sees it.
+    van4 = await mkVehicle('OPS-D4');
+    todayCrew =
+      (await planDay(TODAY, [{ vehicleId: van4, captainEmployeeIds: [capA] }])).get(van4) ?? '';
+    tomorrowCrew =
+      (await planDay(TOMORROW, [{ vehicleId: van4, captainEmployeeIds: [capA] }])).get(van4) ?? '';
+    expect([todayCrew, tomorrowCrew].every((id) => id !== '')).toBe(true);
+  });
+
+  it('hands over a van of TODAY — out of the vault, its custody released', async () => {
+    const id = await loaded(TODAY, todayCrew);
+    const since = seenEvents.length;
+    const res = await dispatch({ crewAssignmentId: todayCrew, shipmentIds: [id] }, vaultToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<{ dispatched: number }>(res).dispatched).toBe(1);
+    expect((await read(id)).status).toBe('dispatched');
+    expect((await custodyOf(id))?.state).toBe('released');
+    await waitFor(() => dispatchedOf(id, since).length > 0);
+    expect(dispatchedOf(id, since)).toHaveLength(1);
+  });
+
+  it('refuses a van of TOMORROW with OPERATIONS_DISPATCH_NOT_TODAY — and writes nothing', async () => {
+    const id = await loaded(TOMORROW, tomorrowCrew);
+    const shipmentBefore = await read(id);
+    const legBefore = await deliveryLegOf(id);
+    const custodyBefore = await custodyOf(id);
+    expect(custodyBefore?.state).toBe('held');
+    const since = seenEvents.length;
+
+    // The vault's own grant and the widest one alike: a rule of the day, not of who asks.
+    for (const token of [vaultToken, adminToken]) {
+      const res = await dispatch({ crewAssignmentId: tomorrowCrew, shipmentIds: [id] }, token);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+      expect(errorOf(res).details).toEqual([
+        { field: 'crewAssignmentId', code: 'TODAY_ONLY', message: TODAY },
+      ]);
+    }
+
+    // Nothing written: the shipment, its leg and its custody are exactly as they were.
+    expect(await read(id)).toEqual(shipmentBefore);
+    const legAfter = await deliveryLegOf(id);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    expect(await custodyOf(id)).toEqual(custodyBefore);
+
+    // On its own day it goes, like any van — and that release is the only one ever announced.
+    const onItsDay = await dispatchOn(
+      TOMORROW,
+      { crewAssignmentId: tomorrowCrew, shipmentIds: [id] },
+      VAULT_EMAIL,
+    );
+    expect(onItsDay.status, JSON.stringify(onItsDay.body)).toBe(200);
+    expect((await read(id)).status).toBe('dispatched');
+    await waitFor(() => dispatchedOf(id, since).length > 0);
+    expect(dispatchedOf(id, since)).toHaveLength(1);
+  });
+
+  it('refuses a van of a PASSED day the same way — that van has left', async () => {
+    // EARLY's van, its operating day played back to PAST at the top of the file.
+    const before = await read(overdueWithLeg);
+    const res = await dispatch(
+      { crewAssignmentId: earlyCrew, shipmentIds: [overdueWithLeg] },
+      vaultToken,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+    expect(await read(overdueWithLeg)).toEqual(before);
+  });
+
+  it('turns the day at midnight in Cairo, not in UTC', async () => {
+    // 00:30 on TOMORROW in Cairo is still TODAY in UTC (Cairo is ahead of UTC all year). This is
+    // the half hour where the two calendars disagree, so it is where a server reading UTC's date
+    // would go wrong: it would still release today's van and refuse tomorrow's.
+    const lateToday = await loaded(TODAY, todayCrew);
+    const earlyTomorrow = await loaded(TOMORROW, tomorrowCrew);
+    const halfPastMidnight = 30;
+
+    const todays = await dispatchOn(
+      TOMORROW,
+      { crewAssignmentId: todayCrew, shipmentIds: [lateToday] },
+      VAULT_EMAIL,
+      halfPastMidnight,
+    );
+    expect(todays.status, JSON.stringify(todays.body)).toBe(422);
+    expect(errorOf(todays).code).toBe(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY);
+    // The day it names as allowed is already Cairo's new one.
+    expect(errorOf(todays).details).toEqual([
+      { field: 'crewAssignmentId', code: 'TODAY_ONLY', message: TOMORROW },
+    ]);
+    expect((await read(lateToday)).status).toBe('inVault');
+
+    const tomorrows = await dispatchOn(
+      TOMORROW,
+      { crewAssignmentId: tomorrowCrew, shipmentIds: [earlyTomorrow] },
+      VAULT_EMAIL,
+      halfPastMidnight,
+    );
+    expect(tomorrows.status, JSON.stringify(tomorrows.body)).toBe(200);
+    expect((await read(earlyTomorrow)).status).toBe('dispatched');
   });
 });

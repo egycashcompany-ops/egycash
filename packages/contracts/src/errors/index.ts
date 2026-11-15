@@ -173,8 +173,8 @@ export const ErrorCodes = {
   OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
   /**
    * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
-   * vault's ✓ refuses it («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»), and the
-   * desk's undo has no pickup ✓ to take back.
+   * desk's undo has no pickup ✓ to take back. Round 10's other use — the vault's ✓ refusing a white
+   * row — was lifted in Round 13 («والخزنه تستلم عادي»): the vault receives any draft.
    */
   OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
   /**
@@ -216,13 +216,26 @@ export const ErrorCodes = {
    * written. Detail: `field` 'shipmentId', `message` its id.
    */
   OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
+  /**
+   * 422 — a dispatch (`POST /operations/secured/dispatch`, the vault's «تسليم») named a van — a crew
+   * row — whose operating day is not TODAY on the Cairo calendar. A van is handed over on its own
+   * day: «تسليم المحصنات» offers «تسليم» on today's vans only, and the server holds the same line, so
+   * a page left open from another day, or a call made by hand, cannot release tomorrow's van today
+   * (nor a past day's, which has left). Checked before any shipment; nothing is written. One
+   * detail: `field` 'crewAssignmentId', `code` 'TODAY_ONLY', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISPATCH_NOT_TODAY: 'OPERATIONS_DISPATCH_NOT_TODAY',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',
   /** The sequential lock: an earlier stop on this captain's route is not finished yet. */
   OPERATIONS_EXECUTION_OUT_OF_SEQUENCE: 'OPERATIONS_EXECUTION_OUT_OF_SEQUENCE',
-  /** Nothing left to execute here — the stop is already settled. */
+  /**
+   * Nothing left to execute here — the stop is already settled: the captain finished it, the back
+   * office completed the shipment, or (Round 13) the vault received a secured shipment whose pickup
+   * leg he never started.
+   */
   OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
@@ -235,6 +248,12 @@ export const ErrorCodes = {
    * any more — a machine may have several open of either kind. Kept reserved, never reused.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
+  /**
+   * «قراءة الآن» while a reading of the maintenance mailbox is already running (the minute's own, or
+   * another person's): one reading at a time (2026-11-13), and that one's result is what the
+   * screen's last-run line will show.
+   */
+  ATM_MAIL_POLL_BUSY: 'ATM_MAIL_POLL_BUSY',
 
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md) ─────────────────────
   /** D6: the machine code already has an OPEN custody period somewhere in the company. */

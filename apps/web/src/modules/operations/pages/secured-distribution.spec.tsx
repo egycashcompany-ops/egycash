@@ -418,6 +418,10 @@ describe('«توزيع المحصنات» — the desk', () => {
   it('sums each van’s load — the money, and the packages the vault counted', () => {
     const v101 = vanOf(html, 'cr-101');
     expect(v101).toContain(`data-van-count="2"`);
+    // Round 17 — the count's own Arabic form: two are «محصنتان», never «2 محصنة».
+    expect(v101).toContain(`>${ar('operations.distribution.loadCount.two')}<`);
+    expect(ar('operations.distribution.loadCount.two')).toBe('محصنتان');
+    expect(v101).not.toContain('2 محصنة');
     expect(v101).toMatch(/data-money="EGP"[\s\S]*2,000,000/);
     expect(cardOf(html, 's-maadi')).toContain('data-packages="4/0/1"');
   });
@@ -666,6 +670,7 @@ const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const DIST = read('./SecuredDistributionPage.tsx');
 const HANDOVER = read('./VaultHandoverPage.tsx');
+const PARTS = read('../components/SecuredDistributionParts.tsx');
 const QUERIES = read('../api/operations-queries.ts');
 const REGISTRY = read('../../../platform/realtime/invalidation-registry.ts');
 
@@ -678,6 +683,20 @@ describe('what the screens are built from', () => {
     // Never the one-shipment assign (the old dialog's) — a distribution is all or nothing.
     expect(DIST).not.toContain('useAssignSecuredDelivery');
     expect(DIST).not.toContain('useDispatchSecured');
+  });
+
+  // Round 17 — every count of محصنات on the two screens takes its own Arabic form («محصنة واحدة ·
+  // محصنتان · 4 محصنات · 11 محصنة»), through the one helper that joins a key and its form.
+  it('counts the محصنات in their Arabic forms on both screens', () => {
+    for (const key of ['autoDone', 'saved', 'savedRescheduled']) {
+      expect(DIST).toContain(`pluralKey('operations.distribution.${key}', locale,`);
+    }
+    for (const key of ['done', 'heldNote', 'confirm']) {
+      expect(HANDOVER).toContain(`pluralKey('operations.handover.${key}', locale,`);
+    }
+    expect(PARTS).toContain(
+      "pluralKey('operations.distribution.loadCount', locale, figures.count)",
+    );
   });
 
   it('the vault hands over through the existing dispatch with the van’s in-vault shipments only', () => {

@@ -190,9 +190,10 @@ export const operationsModule: ModuleManifest = {
   // and store nothing, so no permission or page was added.
   //
   // B6 completes the surface: the vault roll-up joins the reports prefix under the EXISTING
-  // `operationsVault.view` grant, and the legacy `/data_edit` city list arrives as
-  // `operations_areas` under the EXISTING catalog grants. One new prefix, one new collection, and
-  // still no new permission or page — the catalogs page already owns the reference surface.
+  // `operationsVault.view` grant (Round 14 made it «تقرير البنوك», below), and the legacy
+  // `/data_edit` city list arrives as `operations_areas` under the EXISTING catalog grants. One new
+  // prefix, one new collection, and still no new permission or page — the catalogs page already
+  // owns the reference surface.
   //
   // The standing crew (الطاقم الثابت) follows the same shape a third time: one new prefix, one new
   // collection, no new permission and no new page. It rides `operationsCrew.view` / `.plan`,
@@ -218,7 +219,14 @@ export const operationsModule: ModuleManifest = {
   // `operationsVault.view`, and «سجل الخزينة» is the shipments history with `type=secured`. One
   // assignment index (`ix_shipment_all_legs`, the action log's read of a retired leg) and one event
   // (`operations.shipmentAssignment.removed`).
-  version: '0.13.0',
+  //
+  // Round 14 adds NO permission, page, prefix or collection, and takes one route away. «تقرير
+  // البنوك» is the vault roll-up now — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك» — served
+  // at `GET /operations/reports/banks` to holders of EITHER `operationsShipment.view` or
+  // `operationsVault.view` (the two screens' readers); `GET /operations/reports/vault` and the old
+  // completed-per-bank answer are gone. «إدارات العمليات» gets a screen of its own, on the platform's
+  // `setting.edit` — the grant that writes the setting it edits.
+  version: '0.14.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,

@@ -34,3 +34,11 @@ export const pluralForm = (locale: Locale, n: number): PluralForm => {
   const category = arabicRules.select(whole);
   return category === 'zero' ? 'few' : (category as PluralForm);
 };
+
+/**
+ * The catalog key of a counted phrase for this count — `<key>.<form>`, the catalog holding the five
+ * forms side by side («محصنة واحدة · محصنتان · 4 محصنات · 11 محصنة · 100 محصنة»). One spelling of
+ * the join, so a screen cannot ask for `key.few` on one line and `key_few` on the next.
+ */
+export const pluralKey = (key: string, locale: Locale, n: number): string =>
+  `${key}.${pluralForm(locale, n)}`;

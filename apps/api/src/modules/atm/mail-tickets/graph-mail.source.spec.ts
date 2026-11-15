@@ -4,19 +4,24 @@
 // first in `$filter`, or Graph refuses with `InefficientFilter`) — plus that a refused token names
 // the status and the path, never the secret it was asked with. Every value below is synthetic.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as OutboundModule from '../../../infrastructure/http/outbound';
 
 const fetched: { url: string; init: RequestInit | undefined }[] = [];
-let respond: (url: string) => Response;
+let respond: (url: string, init: RequestInit | undefined) => Response | Promise<Response>;
 
-vi.mock('../../../infrastructure/http/outbound', () => ({
+vi.mock('../../../infrastructure/http/outbound', async (importOriginal) => ({
+  // The real refusal type: the transport tells it apart from a connection that failed.
+  ...(await importOriginal<typeof OutboundModule>()),
   outboundFetch: async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     fetched.push({ url, init });
-    return respond(url);
+    return respond(url, init);
   },
 }));
 
-const { createGraphMailboxSource } = await import('./graph-mail.source');
+const { createGraphMailboxSource, GraphRequestError } = await import('./graph-mail.source');
+const { OutboundBlockedError } = await import('../../../infrastructure/http/outbound');
+const { env } = await import('../../../infrastructure/config/env');
 
 const SECRET = 'syn-graph-secret-3c1d-do-not-leak';
 
@@ -57,26 +62,72 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe('the mailbox document’s listing', () => {
-  it('asks for unread mail newest first after `skip`, in the shape Graph accepts', async () => {
-    await source().listUnreadPage?.(50, 120);
+  const SINCE = '2026-11-11T09:00:00Z';
+
+  it('asks for the unread mail of a range of dates, newest first, in the shape Graph accepts', async () => {
+    // 2026-11-13: asked for every date (`ge 1900-01-01`), then for two days, the mailbox gave up
+    // after twenty seconds. A short range of receipt times is what it can answer.
+    await source().listUnreadPage?.(50, { since: SINCE, before: null });
     const query = messagesCall().searchParams;
-    expect(query.get('$filter')).toBe(
-      'receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false',
-    );
+    expect(query.get('$filter')).toBe(`receivedDateTime ge ${SINCE} and isRead eq false`);
     expect(query.get('$orderby')).toBe('receivedDateTime desc');
     expect(query.get('$top')).toBe('50');
-    expect(query.get('$skip')).toBe('120');
+    expect(query.has('$skip')).toBe(false);
   });
 
-  it('counts every message listed, the ones it cannot use included', async () => {
-    const page = await source().listUnreadPage?.(50, 0);
-    // m2 has no body: left out of the messages, and still one of the places in the list.
+  it('finds an older page by its dates, never by counting down the pile with `$skip`', async () => {
+    await source().listUnreadPage?.(50, { since: SINCE, before: '2026-11-12T08:15:02Z' });
+    const query = messagesCall().searchParams;
+    expect(query.get('$filter')).toBe(
+      `receivedDateTime ge ${SINCE} and receivedDateTime lt 2026-11-12T08:15:02Z and isRead eq false`,
+    );
+    expect(query.get('$orderby')).toBe('receivedDateTime desc');
+    expect(query.has('$skip')).toBe(false);
+  });
+
+  it('writes nothing into the query but receipt times', async () => {
+    for (const window of [
+      { since: SINCE, before: '2026-11-12T08:15:02Z or isRead eq true' },
+      { since: '1900-01-01 or isRead eq true', before: null },
+    ]) {
+      const failure = await source()
+        .listUnreadPage?.(50, window)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+    }
+    expect(fetched.some((entry) => entry.url.includes('/messages'))).toBe(false);
+  });
+
+  it('counts every message listed, the ones it cannot use included, and names the oldest', async () => {
+    respond = (url) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : json({
+            value: [
+              graphMessage('m1', 'Managed client:BM000345'),
+              { ...graphMessage('m2', ''), receivedDateTime: '2026-10-28T07:59:00Z' },
+            ],
+          });
+    const page = await source().listUnreadPage?.(50, { since: SINCE, before: null });
+    // m2 has no body: left out of the messages, and still one of the places in the list — and
+    // the page's oldest, where the next page starts.
     expect(page?.messages.map((m) => m.providerMessageId)).toEqual(['m1']);
     expect(page?.listed).toBe(2);
+    expect(page?.oldest).toBe('2026-10-28T07:59:00Z');
+  });
+
+  it('names no oldest on an empty page', async () => {
+    respond = (url) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : json({ value: [] });
+    const page = await source().listUnreadPage?.(50, { since: SINCE, before: null });
+    expect(page).toEqual({ messages: [], listed: 0, oldest: null });
   });
 });
 
@@ -99,14 +150,179 @@ describe('a refused token', () => {
         ? json({ error: 'invalid_client', error_description: 'AADSTS7000215' }, 401)
         : json({ value: [] });
     const failure = await source()
-      .listUnreadPage?.(1, 0)
+      .listUnreadPage?.(1, { since: '2026-11-11T09:00:00Z', before: null })
       .catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe(
-      'microsoft graph 401 on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token',
+      'microsoft graph 401 on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token (invalid_client)',
     );
     expect((failure as Error).message).not.toContain(SECRET);
     // The secret travelled in the token request's form body, and nowhere in a URL.
     expect(fetched.every((entry) => !entry.url.includes(SECRET))).toBe(true);
+  });
+});
+
+describe('a request Graph refuses or never answers', () => {
+  const WINDOW = { since: '2026-11-11T09:00:00Z', before: null };
+  const MESSAGES = '/v1.0/users/maintenance%40bank.example/messages';
+
+  /** The token as usual; the listing answered by `listing`. */
+  const listingAnswers = (
+    listing: (init: RequestInit | undefined) => Response | Promise<Response>,
+  ): void => {
+    respond = (url, init) =>
+      url.includes('/oauth2/v2.0/token')
+        ? json({ access_token: 'syn-token', expires_in: 3600 })
+        : listing(init);
+  };
+
+  const failureOf = async (): Promise<InstanceType<typeof GraphRequestError>> => {
+    const failure = await source()
+      .listUnreadPage?.(50, WINDOW)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(GraphRequestError);
+    return failure as InstanceType<typeof GraphRequestError>;
+  };
+
+  it('names Graph’s own error code, and keeps the request’s ids and Graph’s text for the log', async () => {
+    // 2026-11-13: every listing came back «microsoft graph 502» and nothing else.
+    listingAnswers(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'UnknownError',
+              message: 'The backend took too long.',
+              innerError: { 'request-id': 'syn-inner-id', date: '2026-11-13T09:30:26' },
+            },
+          }),
+          { status: 502, headers: { 'request-id': 'syn-request-id' } },
+        ),
+    );
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 502 on ${MESSAGES} (UnknownError)`);
+    expect(failure).toMatchObject({
+      status: 502,
+      graphCode: 'UnknownError',
+      graphMessage: 'The backend took too long.',
+      requestId: 'syn-request-id',
+    });
+    // The id this transport sent with the listing — the one Graph is asked to echo.
+    const sent = new Headers(
+      fetched.find((entry) => entry.url.includes('/messages'))?.init?.headers,
+    );
+    expect(sent.get('return-client-request-id')).toBe('true');
+    expect(failure.clientRequestId).toBe(sent.get('client-request-id'));
+    expect(failure.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('takes the request id from the body when no header carries it, and the wait Graph asked for', async () => {
+    listingAnswers(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'ApplicationThrottled', innerError: { 'request-id': 'syn-inner-id' } },
+          }),
+          { status: 429, headers: { 'retry-after': '30' } },
+        ),
+    );
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 429 on ${MESSAGES} (ApplicationThrottled)`);
+    expect(failure).toMatchObject({ requestId: 'syn-inner-id', retryAfter: '30' });
+  });
+
+  it('keeps a code that is not a name out of the message, and survives a body that is not JSON', async () => {
+    listingAnswers(
+      () => new Response(JSON.stringify({ error: { code: 'not a code <b>' } }), { status: 503 }),
+    );
+    expect((await failureOf()).message).toBe(`microsoft graph 503 on ${MESSAGES}`);
+
+    listingAnswers(() => new Response('<html>Bad Gateway</html>', { status: 502 }));
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph 502 on ${MESSAGES}`);
+    expect(failure).toMatchObject({ graphCode: null, graphMessage: null, requestId: null });
+  });
+
+  it('names the connection’s own code when the request fails before Graph answers', async () => {
+    // undici says only «fetch failed»; what happened is on its cause.
+    listingAnswers(() => {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      });
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES} (ECONNRESET)`);
+    expect(failure).toMatchObject({
+      status: null,
+      graphCode: 'ECONNRESET',
+      graphMessage: 'read ECONNRESET',
+      requestId: null,
+    });
+    expect(failure.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+    // What failed underneath stays on the error for the log: its stack and its cause chain.
+    expect(failure.cause).toBeInstanceOf(TypeError);
+    expect((failure.cause as Error).cause).toMatchObject({ code: 'ECONNRESET' });
+  });
+
+  it('keeps the outbound door’s reason when it refused the request — the host, never a secret', async () => {
+    // Under the default policy a host that does not resolve is refused here, before any socket.
+    const reason =
+      'host graph.microsoft.com does not resolve (getaddrinfo EAI_AGAIN graph.microsoft.com)';
+    listingAnswers(() => {
+      throw new OutboundBlockedError('https://graph.microsoft.com/v1.0/users/x/messages', reason);
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request refused on ${MESSAGES}: ${reason}`);
+    expect(failure).toMatchObject({ status: null, graphCode: null, graphMessage: reason });
+    expect(failure.cause).toBeInstanceOf(OutboundBlockedError);
+  });
+
+  it('keeps the outbound door’s reason for the token request too, and never the secret', async () => {
+    respond = (url) => {
+      if (url.includes('/oauth2/v2.0/token')) {
+        throw new OutboundBlockedError(
+          'https://login.microsoftonline.com/syn-tenant.onmicrosoft.com/oauth2/v2.0/token',
+          'host login.microsoftonline.com is not on the outbound allowlist',
+        );
+      }
+      return json({ value: [] });
+    };
+    const failure = await failureOf();
+    expect(failure.message).toBe(
+      'microsoft graph request refused on /syn-tenant.onmicrosoft.com/oauth2/v2.0/token: host login.microsoftonline.com is not on the outbound allowlist',
+    );
+    expect(failure.message).not.toContain(SECRET);
+  });
+
+  it('says the request failed on its path when the failure names no code', async () => {
+    listingAnswers(() => {
+      throw new Error('socket hang up');
+    });
+    const failure = await failureOf();
+    expect(failure.message).toBe(`microsoft graph request failed on ${MESSAGES}`);
+    expect(failure.graphMessage).toBe('socket hang up');
+  });
+
+  it('says how long it waited for a request never answered, instead of «This operation was aborted»', async () => {
+    vi.useFakeTimers();
+    listingAnswers(
+      (init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('This operation was aborted', 'AbortError'));
+          });
+        }),
+    );
+    const pending = source()
+      .listUnreadPage?.(50, WINDOW)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(env.ATM_MAIL_GRAPH_TIMEOUT_MS);
+    const failure = await pending;
+    expect(failure).toBeInstanceOf(GraphRequestError);
+    const seconds = String(Math.round(env.ATM_MAIL_GRAPH_TIMEOUT_MS / 1000));
+    expect((failure as Error).message).toBe(
+      `microsoft graph did not answer within ${seconds} s on ${MESSAGES}`,
+    );
+    expect(failure).toMatchObject({ status: null, elapsedMs: env.ATM_MAIL_GRAPH_TIMEOUT_MS });
   });
 });

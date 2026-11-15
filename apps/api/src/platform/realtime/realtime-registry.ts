@@ -118,6 +118,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },
+  'hr.insuranceJobTitle': { permission: 'insuranceJobTitle.manage' },
   'hr.contractType': { permission: 'contractType.manage' },
   'hr.costCenterAssignment': { permission: 'costCenter.view' },
   'hr.attendanceDay': { permission: 'attendance.view' },

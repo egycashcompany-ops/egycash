@@ -18,6 +18,7 @@ import {
   type OperationsSecuredDispatchBoardQuery,
   type OperationsVaultQueueDto,
   type OperationsVaultQueueQuery,
+  type OperationsVaultReceiveResultDto,
   type ReceiveIntoVault,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
@@ -27,9 +28,9 @@ import {
   toShipmentAssignmentDto,
   toShipmentDto,
   toVaultInventoryRowDto,
+  toVaultReceiptDto,
 } from '../operations.mappers';
 import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
-import { vaultCustody } from '../treasury-boundary';
 import { operationsSecuredService } from './secured.service';
 import { operationsDistributionService } from './distribution.service';
 
@@ -142,7 +143,10 @@ export const listDue = async (req: Request, res: Response): Promise<void> => {
 
 export const listVaultInventory = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListVaultInventoryQuery>(req);
-  const { items, total } = await vaultCustody().listHeld(query.page, query.pageSize);
+  const { items, total, receiverNames } = await operationsSecuredService.vaultInventory(
+    query.page,
+    query.pageSize,
+  );
   // The standard paginated envelope, like every other list in the system — the port answers with
   // a flat count, and the HTTP layer is where that becomes `meta`.
   okPage(
@@ -156,18 +160,31 @@ export const listVaultInventory = async (req: Request, res: Response): Promise<v
         totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
       },
     },
-    toVaultInventoryRowDto,
+    (view) =>
+      toVaultInventoryRowDto(
+        view,
+        view.receivedById === null ? null : (receiverNames.get(view.receivedById) ?? null),
+      ),
   );
 };
 
+/**
+ * The vault's ✓ (Round 18: the legacy «إستلام محصنة» form). Answers the shipment, as before, plus
+ * the receipt just taken — what the «إيصال» print needs beyond the form: when, the stored values,
+ * and who received it by name. The receiver is the token's user; the body never says.
+ */
 export const receiveIntoVault = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<ReceiveIntoVault, never, IdParam>(req);
-  const doc = await operationsSecuredService.receiveIntoVault(
+  const { userId } = authContext(req);
+  const { shipment, receipt, receivedByName } = await operationsSecuredService.receiveIntoVault(
     params.id,
     body,
-    authContext(req).userId,
+    userId,
   );
-  ok(res, toShipmentDto(doc));
+  ok<OperationsVaultReceiveResultDto>(res, {
+    ...toShipmentDto(shipment),
+    receipt: toVaultReceiptDto(receipt, { id: userId, name: receivedByName }),
+  });
 };
 
 export const assignDeliveryLeg = async (req: Request, res: Response): Promise<void> => {

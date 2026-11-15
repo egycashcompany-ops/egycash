@@ -29,6 +29,7 @@ import { rbacService } from '../../platform/rbac';
 import { runOperationsMigrations } from './operations.migration';
 import { operationsPermissions } from './operations.module';
 import { ensureShipmentReceiptCategory } from './shipments/shipment-files';
+import { seedOperationsShiftTypes } from './shift-types/shift-type.service';
 
 export const seedOperations = async (): Promise<void> => {
   // The module's OWN declared keys — read from the manifest rather than restated, so a permission
@@ -51,4 +52,8 @@ export const seedOperations = async (): Promise<void> => {
   // order-independent in effect; keeping the same order across modules is what makes the boot log
   // readable when two modules seed in the same breath.
   await runOperationsMigrations();
+
+  // «أنواع التشغيل» (Round 20): the legacy board's nine types, inserted once and never overwritten —
+  // «انا عاوز النوع يكون بيضاف من البيانات المرجعيه», so from then on they are the owner's to edit.
+  await seedOperationsShiftTypes();
 };

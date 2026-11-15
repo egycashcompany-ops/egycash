@@ -314,8 +314,6 @@ const intoVault = async (id: string, bags = 2): Promise<void> => {
     .send({
       receiptNumber: `R12-${id.slice(-6)}`,
       bagCount: bags,
-      receivedByPrimaryId: spec1,
-      receivedBySecondaryId: spec2,
       version: (await read(id)).version,
     });
   expect(received.status, JSON.stringify(received.body)).toBe(200);
@@ -524,6 +522,16 @@ beforeAll(async () => {
   capC = await mkEmployee('قائد ثالث');
   spec1 = await mkEmployee('أخصائي أول');
   spec2 = await mkEmployee('أخصائي ثان');
+
+  // The areas the vans head for — since Round 20 a crew row's «الاتجاه» must name ACTIVE operations
+  // areas («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»); «المعادي - حلوان» names two.
+  for (const name of ['المعادي', 'حلوان', 'الهرم']) {
+    const areaRes = await request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name });
+    expect(areaRes.status, JSON.stringify(areaRes.body)).toBe(201);
+  }
 
   const dayCrews = await planDay(DAY, [
     {
@@ -1334,9 +1342,10 @@ describe('«إضافة محصنة» on «استلام الخزينة» — the f
     ]) {
       const res = await request(app).get(url).set('Authorization', `Bearer ${vaultToken}`);
       expect(res.status, url).toBe(200);
-      // …and stay closed to an Operations grant that is neither.
+      // …and stay closed to an Operations grant that is neither — but for the areas, which the crew
+      // board's «الاتجاه» picks from since Round 20, so `operationsCrew.view` reads them too.
       const closed = await request(app).get(url).set('Authorization', `Bearer ${nobodyToken}`);
-      expect(closed.status, url).toBe(403);
+      expect(closed.status, url).toBe(url.includes('/operations/areas') ? 200 : 403);
     }
     // Booking is still `operationsShipment.create`'s.
     const booked = await request(app)
@@ -1593,6 +1602,62 @@ describe('an edit that moves a placed محصنة’s delivery day takes it off i
     expect(String(after?.crewAssignmentId)).toBe(fromCrew);
     expect(stopOf(await myDay(MOVE_FROM), kept)).toBeDefined();
     expect((await logOf(kept)).entries.some((e) => e.kind === 'crewRemoved')).toBe(false);
+  });
+
+  // Round 18 — «تعدّلها عادي»: the vault corrects the shipment in its receive form, by the edit form's
+  // own rules — this one included. Moving the delivery day off the van retires the leg INSIDE the
+  // receive's transaction; a leg the captain has started refuses the whole receipt.
+  it('the vault\'s receive that moves the delivery day takes it off its van in the same act — or, when the leg is started, writes nothing', async () => {
+    const viaVault = (await book(MOVE_FROM, 'الهرم')).id;
+    const startedViaVault = (await book(MOVE_FROM, 'الهرم')).id;
+    const placed = await save(
+      [viaVault, startedViaVault].map((shipmentId) => ({
+        shipmentId,
+        crewAssignmentId: fromCrew,
+        captainEmployeeId: capD,
+        version: null,
+      })),
+      MOVE_FROM,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    const receiveMoving = async (id: string): Promise<request.Response> =>
+      request(app)
+        .post(`/api/v1/operations/secured/${id}/receive`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ shipment: { deliveryDate: MOVE_TO }, version: (await read(id)).version });
+
+    const res = await receiveMoving(viaVault);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(res)).toMatchObject({
+      status: 'inVault',
+      deliveryDate: iso(MOVE_TO),
+    });
+    expect(await deliveryLegOf(viaVault)).toBeNull();
+    expect(stopOf(await myDay(MOVE_FROM), viaVault)).toBeUndefined();
+    // «السجل»: the correction, the van it left, then the receipt.
+    const kinds = (await logOf(viaVault)).entries.map((e) => e.kind);
+    expect(kinds.slice(-3)).toEqual(['edited', 'crewRemoved', 'vaultReceived']);
+
+    await OperationsShipmentAssignmentModel.updateOne(
+      { shipmentId: startedViaVault, leg: 'delivery', isDeleted: false },
+      { $set: { executionStatus: 'active' } },
+    ).exec();
+    const legBefore = await deliveryLegOf(startedViaVault);
+    const before = await read(startedViaVault);
+    const refused = await receiveMoving(startedViaVault);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(errorOf(refused).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_LEG_STARTED);
+    expect(await read(startedViaVault)).toMatchObject({
+      status: 'draft',
+      version: before.version,
+      deliveryDate: iso(MOVE_FROM),
+    });
+    expect(await OperationsVaultCustodyModel.countDocuments({ shipmentId: startedViaVault })).toBe(0);
+    expect((await deliveryLegOf(startedViaVault))?.__v).toBe(legBefore?.__v);
+    await OperationsShipmentAssignmentModel.updateOne(
+      { shipmentId: startedViaVault, leg: 'delivery', isDeleted: false },
+      { $set: { executionStatus: 'pending' } },
+    ).exec();
   });
 });
 

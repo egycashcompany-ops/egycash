@@ -23,11 +23,20 @@ describe('resolveCatalogKind', () => {
     expect(resolveCatalogKind('')).toBe('banks');
   });
 
-  it('offers the four kinds the legacy /data_edit screen maintained', () => {
+  it('offers the four kinds the legacy /data_edit screen maintained, then «أنواع التشغيل»', () => {
     // B1 shipped three and recorded cities as read by nothing. B6 corrected that: the legacy view
     // renders them into the `<datalist>` behind a branch's area field (data_edit.ejs:924), so
     // they ARE consumed — as suggestions for a free-text field, which is what `areas` maintains.
-    expect([...OPERATIONS_CATALOG_KINDS]).toEqual(['banks', 'branches', 'currencies', 'areas']);
+    // Round 20 adds the crew board's «النوع», a fixed list in the legacy template that the owner
+    // asked to be reference data («انا عاوز النوع يكون بيضاف من البيانات المرجعيه») — LAST, so every
+    // bookmarked tab keeps its place.
+    expect([...OPERATIONS_CATALOG_KINDS]).toEqual([
+      'banks',
+      'branches',
+      'currencies',
+      'areas',
+      'shiftTypes',
+    ]);
   });
 });
 

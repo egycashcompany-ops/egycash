@@ -250,8 +250,11 @@ export const HoverCardLayer = ({
 }: {
   id: string;
   anchor: RefObject<HTMLElement | null>;
-  /** `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), on these mechanics. */
-  mark: 'driver' | 'vehicle' | 'captain' | 'crew';
+  /**
+   * `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), and `roster` the
+   * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics.
+   */
+  mark: 'driver' | 'vehicle' | 'captain' | 'crew' | 'roster';
   children: ReactNode;
 }): JSX.Element | null => {
   const panel = useRef<HTMLDivElement>(null);

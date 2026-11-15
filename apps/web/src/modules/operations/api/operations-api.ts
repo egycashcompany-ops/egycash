@@ -20,6 +20,7 @@ import {
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type CreateOperationsShipment,
+  type CreateOperationsShiftType,
   type DispatchSecuredShipments,
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
@@ -45,14 +46,17 @@ import {
   type OperationsSecuredDistributionDto,
   type OperationsSecuredDistributionSaveDto,
   type OperationsShipmentLogDto,
+  type OperationsShiftTypeDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReceiveResultDto,
   type OperationsVaultHeldReportDto,
   type OperationsVaultQueueDto,
   type OrderOperationsCurrencies,
+  type OrderOperationsShiftTypes,
   type Paginated,
   type PlanOperationsCrew,
-  type ReceiveIntoVault,
+  type ReceiveIntoVaultInput,
   type SetOperationsCrewRequirements,
   type SetOperationsStandingCrew,
   type UpdateOperationsArea,
@@ -60,6 +64,7 @@ import {
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
+  type UpdateOperationsShiftType,
 } from '@ecms/contracts';
 import {
   api,
@@ -368,17 +373,23 @@ export const getVaultQueue = (all: boolean): Promise<OperationsVaultQueueDto> =>
   get<OperationsVaultQueueDto>(`/operations/secured/vault-queue${buildQuery(all ? { all } : {})}`);
 
 /**
- * `/receive_mohsana` — into the vault, under the two-man rule (Q2 NORMALIZE). Answers the SHIPMENT
- * (now `inVault`, its new version) — not its custody, which this file had typed it as before Round
- * 10 although the route never sent one. Since Round 13 from ANY draft, white or yellow
- * (`OPERATIONS_SECURED_RECEIVABLE_STAGES` — «والخزنه تستلم عادي»); the receipt records no pickup,
- * so one nobody handed over keeps «لم يتم الاستلام» in the vault screen's pickup column.
+ * `/receive_mohsana` — into the vault. Answers the SHIPMENT (now `inVault`, its new version) with
+ * the RECEIPT just taken (`OperationsVaultReceiveResultDto.receipt` — what the «إيصال» print needs
+ * that the form does not hold: when, and who, by name). Since Round 13 from ANY draft, white or
+ * yellow (`OPERATIONS_SECURED_RECEIVABLE_STAGES` — «والخزنه تستلم عادي»); the receipt records no
+ * pickup, so one nobody handed over keeps «لم يتم الاستلام» in the vault screen's pickup column.
+ *
+ * Round 18 — the legacy «إستلام محصنة» form: NO NAMES and nothing required («انا مش عاوز اى اسماء
+ * ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى»). The two treasurers of Q2's dual control are
+ * gone from the body (the server refuses them); WHO received it is the signed-in user, read by the
+ * server from the token — never sent. The body may carry the vault's corrections of the shipment
+ * (`shipment`, only what changed), applied in the same transaction as the receipt.
  */
 export const receiveIntoVault = (
   id: string,
-  body: ReceiveIntoVault,
-): Promise<OperationsShipmentDto> =>
-  post<OperationsShipmentDto>(`/operations/secured/${id}/receive`, body);
+  body: ReceiveIntoVaultInput,
+): Promise<OperationsVaultReceiveResultDto> =>
+  post<OperationsVaultReceiveResultDto>(`/operations/secured/${id}/receive`, body);
 
 /**
  * Round 10 — the desk's pickup ✓ on the secured screen («تم الاستلام من العمليات») and its undo,
@@ -483,6 +494,31 @@ export const updateOperationsArea = (
   id: string,
   body: UpdateOperationsArea,
 ): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
+
+/**
+ * «أنواع التشغيل» (Round 20) — the crew board's «النوع» as reference data: «انا عاوز النوع يكون بيضاف
+ * من البيانات المرجعيه». Listed in the catalog's dragged order when no `sortBy` is asked for,
+ * archived types included unless `isActive` filters them out. No DELETE: archiving is
+ * `isActive: false` on the PATCH.
+ */
+export const listOperationsShiftTypes = (
+  params: OperationsListParams,
+): Promise<Paginated<OperationsShiftTypeDto>> =>
+  getPage<OperationsShiftTypeDto>(`/operations/shift-types${buildQuery(params)}`);
+
+export const createOperationsShiftType = (
+  body: CreateOperationsShiftType,
+): Promise<OperationsShiftTypeDto> => post<OperationsShiftTypeDto>('/operations/shift-types', body);
+
+export const updateOperationsShiftType = (
+  id: string,
+  body: UpdateOperationsShiftType,
+): Promise<OperationsShiftTypeDto> =>
+  patch<OperationsShiftTypeDto>(`/operations/shift-types/${id}`, body);
+
+/** The types' dragged order, as the currencies' (`orderCurrencies`): the ids in order; 204. */
+export const orderOperationsShiftTypes = (body: OrderOperationsShiftTypes): Promise<void> =>
+  put<void>('/operations/shift-types/order', body);
 
 /**
  * «تقرير البنوك» (Round 14) — the legacy `/vault1_reports`, the vault roll-up that shipped as «تجميع

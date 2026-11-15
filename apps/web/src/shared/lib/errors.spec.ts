@@ -115,6 +115,26 @@ describe('errorMessage', () => {
     expect(ar).toContain('التسليم يتم يوم خروج السيارة فقط');
     expect(en).toMatch(/only on the day it goes out/);
   });
+
+  // «لوحة التشغيلة» (Round 20) — a save refused for a type archived since it was picked, or a
+  // direction no area answers. The board marks the row; these are the words said beside it.
+  it('words the crew board’s two row refusals, each its own, never the server’s English', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE,
+      ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA,
+    ]) {
+      const refused = new ApiError(code, 'server english', 422);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+    }
+    expect(new Set(words).size).toBe(words.length);
+    expect(words[0]).toContain('البيانات المرجعية');
+    expect(words[2]).toContain('المناطق');
+  });
 });
 
 describe('errorDiagnostic — a failure has to be findable in the API log', () => {

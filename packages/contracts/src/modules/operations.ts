@@ -467,6 +467,94 @@ export const UpdateOperationsAreaSchema = z
   .strict();
 export type UpdateOperationsArea = z.infer<typeof UpdateOperationsAreaSchema>;
 
+// ── Shift types «أنواع التشغيل» (Round 20 — the crew board's «النوع») ──────────────────────────
+//
+// The legacy crew board's «النوع» column (يومي، احتياطي، احتياطي سفر، أسوان، إيباج، سفر، شلاتين، محصنة،
+// مسائي) was a fixed list in the template. The owner approved the board with one change to it: «انا
+// عاوز النوع يكون بيضاف من البيانات المرجعيه» — so it is a CATALOG on the reference-data screen, built
+// the way the currencies are (dragged order, archived never deleted, audited, no events), and a
+// crew row points at one by id (`shiftTypeId`). The legacy nine are seeded on boot, once.
+
+/**
+ * The colours a type may wear — a small fixed palette the screen maps to its tag colours, so a
+ * type added on the reference screen still reads as a coloured tag on the board without anybody
+ * picking a hex value. Names, never CSS: the screen owns how each looks in light and dark.
+ */
+export const OPERATIONS_SHIFT_TYPE_COLOURS = [
+  'rose',
+  'orange',
+  'amber',
+  'lime',
+  'emerald',
+  'teal',
+  'sky',
+  'indigo',
+  'violet',
+  'fuchsia',
+  'slate',
+] as const;
+export const OperationsShiftTypeColourSchema = z.enum(OPERATIONS_SHIFT_TYPE_COLOURS);
+export type OperationsShiftTypeColour = z.infer<typeof OperationsShiftTypeColourSchema>;
+
+export interface OperationsShiftTypeDto {
+  id: string;
+  /** The Arabic name the board shows («يومي»). Unique among the live types. */
+  name: string;
+  /** The English name, or null — the areas' rule: optional, the board reads Arabic. */
+  nameEn: string | null;
+  colour: OperationsShiftTypeColour;
+  /**
+   * The type's place in the catalog's ARRANGED order — 0 first — or null while nobody has arranged
+   * the list (`PUT /operations/shift-types/order`, the currencies' drag exactly). THE ORDER THE LIST
+   * ANSWERS IN when no `sortBy` is asked for: `sortOrder` ascending (null after every placed one),
+   * then the Arabic name. The board's type picker and its counts strip follow it.
+   */
+  sortOrder: number | null;
+  /**
+   * An archived type is offered for no new row, and a row that already carries it keeps it: the
+   * save refuses an inactive type only when it is newly chosen (`PlanOperationsCrewRowSchema`).
+   */
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const shiftTypeCore = {
+  name: z.string().trim().min(1).max(60),
+  nameEn: z.string().trim().min(1).max(60).nullable().default(null),
+  colour: OperationsShiftTypeColourSchema,
+  /** Optional, as the currencies': left out on create, a new type joins the END of an arranged list. */
+  sortOrder: z.number().int().min(0).nullable().optional(),
+};
+/** `POST /operations/shift-types` (`operationsCatalog.manage`) → 201. A taken name → 409. */
+export const CreateOperationsShiftTypeSchema = z.object(shiftTypeCore).strict();
+export type CreateOperationsShiftType = z.infer<typeof CreateOperationsShiftTypeSchema>;
+/** `PATCH /operations/shift-types/:id` (`operationsCatalog.manage`). No DELETE: `isActive: false`. */
+export const UpdateOperationsShiftTypeSchema = z
+  .object(shiftTypeCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsShiftType = z.infer<typeof UpdateOperationsShiftTypeSchema>;
+
+/**
+ * `PUT /operations/shift-types/order` (`operationsCatalog.manage`) → 204 — the dragged order, the
+ * currencies' `PUT /operations/currencies/order` exactly: the ids named first, in the order given,
+ * every type not named after them in its old place; an id that is not a type → 409, nothing
+ * written; versions untouched; audited as one `update` with the field `order` (old → new, names).
+ */
+export const OrderOperationsShiftTypesSchema = z
+  .object({
+    ids: z
+      .array(objectId())
+      .min(1)
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'A type is listed twice' }),
+  })
+  .strict();
+export type OrderOperationsShiftTypes = z.infer<typeof OrderOperationsShiftTypesSchema>;
+
 // ── Cash shipments (OP-2) ───────────────────────────────────────────────────────────────────────
 //
 // The legacy `transactions` document normalized per the approved SPLIT (design §15): this entity
@@ -927,7 +1015,8 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
 // reads: banks and branches by name, captains by name, vans by code, dates as 'YYYY-MM-DD', money as
 // «currency amount». The screen translates only the entry's `kind` and each change's `field`.
 //
-// The vault custody's own record (receipt number, counts, seals, the receiving treasurers) is the
+// The vault custody's own record (receipt number, counts, seals, the note counts — and on a
+// receipt taken before Round 18, the two receiving treasurers) is the
 // treasury's, read only for a caller holding `operationsVault.view` — the grant of the vault
 // screens. Without it the log still says the shipment entered the vault and was dispatched (its
 // own status moves), with no custody details.
@@ -952,8 +1041,14 @@ export interface OperationsDayBoardShipmentDto extends OperationsShipmentDto {
  *   executionDelivered   he confirmed the delivery — «تم التسليم» (pickedUp → delivered).
  *   executionCompleted   he closed the leg (delivered → completed).
  *   vaultReceived        a secured shipment entered the vault; `changes` carry the receipt number,
- *                        the package counts, the seals and the two receiving treasurers — for a
- *                        reader with `operationsVault.view`; empty for anyone else.
+ *                        the package counts, the seals and the note counts — for a reader with
+ *                        `operationsVault.view` — and, for every reader, `serialTracked` when the
+ *                        vault changed it at the receipt (Round 18, «بتتعرف عند الاستلام اذا كان
+ *                        سيريال او لا»). WHO received it is the entry's `actorName` since Round 18 —
+ *                        the signed-in user who pressed «إستلام» («انا مش عاوز اى اسماء»); a receipt
+ *                        taken before it also carries the two treasurers it named. When the vault
+ *                        corrected the shipment's data in the same form (Round 18, «تعدّلها عادي»),
+ *                        an `edited` entry by the same person comes just before this one.
  *   dispatched           a secured shipment left the vault for delivery.
  *   pickupConfirmed      (Round 10) the Operations desk confirmed it collected a secured shipment —
  *                        «تم الاستلام من العمليات» (`POST /operations/secured/:id/pickup`). `changes`
@@ -1032,10 +1127,19 @@ export type OperationsShipmentLogKind = (typeof OPERATIONS_SHIPMENT_LOG_KINDS)[n
  *   sequence                     the leg's 1-based place on its captain's route
  * The vault custody (on `vaultReceived`) — ONLY for a reader with `operationsVault.view`, the
  * treasury's grant; anyone else gets the `vaultReceived` entry with no changes:
- *   receiptNumber                the vault receipt number
+ *   receiptNumber                the vault receipt number (optional since Round 18 — a receipt
+ *                                taken without one carries no such change)
  *   bagCount, cartonCount, boxCount  whole numbers, as digits
+ *   bagSealsPerBag               '2' or '3' — the seals on each bag (Round 18, «2×» / «3×»)
  *   bagSeals, boxSeals           the seal numbers, joined by «، »
- *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names
+ *   denominations                the notes counted of each pound denomination (Round 18, «عدد
+ *                                الورق من كل فئة»), as «denomination × count», smallest first,
+ *                                joined by «، » («0.5 × 40، 200 × 15»)
+ *   receivedByPrimary, receivedBySecondary  the two treasurers' full Arabic names — ONLY on a
+ *                                receipt taken before Round 18, which named two; since then the
+ *                                receiver is the entry's `actorName`
+ * A custody value that prints as nothing on both sides (an empty seal list, no notes counted) is
+ * left out: a receipt with most fields blank reads as its entry, not as a column of dashes.
  * The pickup record (on `pickupConfirmed` / `pickupUndone`, Round 10) — for every reader:
  *   pickedUpBy                   'captain' or 'operations' (`OPERATIONS_SECURED_PICKED_UP_BY`) —
  *                                a code, not a name: the screen says «القائد» / «العمليات»
@@ -1067,6 +1171,8 @@ export const OPERATIONS_SHIPMENT_LOG_FIELDS = [
   'receivedBySecondary',
   'pickedUpBy',
   'reason',
+  'bagSealsPerBag',
+  'denominations',
 ] as const;
 export type OperationsShipmentLogField = (typeof OPERATIONS_SHIPMENT_LOG_FIELDS)[number];
 
@@ -1436,6 +1542,30 @@ export interface OperationsCrewMemberDto {
   fullNameAr: string;
   /** HR employment status, read through the seam — an exited employee is never offered. */
   status: string;
+  /**
+   * Round 19 — «الوظيفة»: the seat HR placed this member in, by id, named from the organization's
+   * job-title catalogue. The legacy roster printed it beside the name and filtered by it («اختر
+   * الوظيفة»), and «كشف طاقم العمليات» does the same.
+   *
+   * It travels the way the name and the code already do — through the platform directory seam, HR
+   * answering — so it is read under the roster's own grant (`operationsCrew.view`), not HR's: a
+   * colleague's title on the crew roster is no more an HR read than their name is. Null when HR
+   * has no seat on file, or the title is no longer in the catalogue.
+   */
+  jobTitle: { id: string; name: { ar: string; en: string } } | null;
+  /**
+   * Round 19b — the member's card on «كشف طاقم العمليات»: «ولما اقف على القائد يجيب بياناته زى
+   * السواق». The Fleet driver card's facts, so the mobile number and the branch travel with the
+   * roster too — through the same directory seam and under the same grant as the name, the code
+   * and «الوظيفة» (`operationsCrew.view`, the one the day board's captain card already reads the
+   * captain's phone under). HR's primary phone as HR keeps it; null when HR has none on file.
+   */
+  phone: string | null;
+  /**
+   * The branch HR placed the member in, by id — a screen names it from the shared branch list, as
+   * the captain card does. Null when HR has none on file.
+   */
+  branchId: string | null;
   requirements: OperationsCrewRequirementsDto | null;
   /**
    * The vehicle this member already holds on the requested day, or null. Legacy computed the same
@@ -1491,6 +1621,12 @@ export interface OperationsCrewAttendanceDto {
   attendance: { status: AttendanceDayStatus; onLeave: boolean } | null;
   /** Whether this member holds a vehicle on the day — the planner's reason for looking. */
   assignedVehicleId: string | null;
+  /**
+   * Whether this member holds a place on ANY of the day's crew rows — a van's row or a row with
+   * no van (Round 20). The page asks "is this person crewed today?", and a row without a van
+   * holds its people under Q11 all the same, though `assignedVehicleId` has no vehicle to name.
+   */
+  isCrewed: boolean;
 }
 
 export interface OperationsCrewAttendanceDayDto {
@@ -1576,11 +1712,33 @@ export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
  */
 export const CREW_SLOT_CAPACITY = 2;
 
+/**
+ * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». Six
+ * names, and null for none. A planner's mark, nothing more: no rule reads it.
+ */
+export const OPERATIONS_CREW_ROW_COLOURS = [
+  'yellow',
+  'green',
+  'blue',
+  'red',
+  'purple',
+  'orange',
+] as const;
+export const OperationsCrewRowColourSchema = z.enum(OPERATIONS_CREW_ROW_COLOURS);
+export type OperationsCrewRowColour = z.infer<typeof OperationsCrewRowColourSchema>;
+
 export interface OperationsCrewAssignmentDto {
   id: string;
   operationsDayId: string;
-  vehicleId: string;
-  fleetDutyAssignmentId: string;
+  /**
+   * Null for a row WITHOUT A VAN (Round 20): «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات
+   * برضو». Such a row carries a crew and every field of a van's row, and no Fleet duty row.
+   */
+  vehicleId: string | null;
+  fleetDutyAssignmentId: string | null;
+  /** «النوع» — a type of the `أنواع التشغيل` catalog, or null («اختر»). */
+  shiftTypeId: string | null;
+  rowColour: OperationsCrewRowColour | null;
   /**
    * The slot's occupants, in the order Operations entered them — at most `CREW_SLOT_CAPACITY`.
    *
@@ -1603,6 +1761,38 @@ export interface OperationsCrewAssignmentDto {
   updatedAt: string;
 }
 
+/**
+ * A crew row's own facts, as the board reads them — a van's (`OperationsCrewBoardRowDto.crew`) and
+ * a row without a van (`OperationsCrewBoardDto.vehiclelessRows`) alike.
+ */
+export interface OperationsCrewBoardCrewDto {
+  /**
+   * The crew row's OWN id — the `crewAssignmentId` every downstream act is addressed by, and what
+   * the save names a row without a van by (`PlanOperationsCrewRowSchema.crewAssignmentId`,
+   * `PlanOperationsCrewSchema.removeCrewAssignmentIds`).
+   *
+   * Its absence was a live defect: the vault dispatch screen had no crew id to send, so it sent
+   * `fleetDutyAssignmentId` instead, which is an id from a DIFFERENT collection. Both of that
+   * screen's actions therefore 404'd at
+   * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
+   */
+  id: string;
+  /** Up to `CREW_SLOT_CAPACITY` per slot; `[]` means the slot is empty, never `null`. */
+  captainEmployeeIds: string[];
+  specialist1EmployeeIds: string[];
+  specialist2EmployeeIds: string[];
+  /**
+   * «الاتجاه». Saved since Round 20 as the names of ACTIVE operations areas (see
+   * `canonicalOperationsDirection`); a value saved before that may be any text, and is kept.
+   */
+  direction: string | null;
+  plannedTime: string | null;
+  notes: string | null;
+  /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
+  shiftTypeId: string | null;
+  rowColour: OperationsCrewRowColour | null;
+}
+
 /** One board row: the Fleet duty facts (read-only here, §9.4) joined with the cash-crew facts. */
 export interface OperationsCrewBoardRowDto {
   vehicleId: string;
@@ -1611,32 +1801,40 @@ export interface OperationsCrewBoardRowDto {
   /** Fleet-owned facts, displayed not edited: the legacy tashghela board showed the drivers too. */
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
+  /**
+   * Round 20 — the same two drivers BY NAME ONLY, for the van's hover card («ولما اعمل هوفر على
+   * العربيه يظهر السواقيين اللى عليها»): the round-5 rule, a driver's details are Fleet's. Driver 1
+   * then driver 2, the empty seats left out; a name the directory cannot give is null.
+   */
+  drivers: OperationsDayBoardDriverDto[];
   missionTypeId: string | null;
-  crew: {
-    /**
-     * The crew row's OWN id — the `crewAssignmentId` every downstream act is addressed by.
-     *
-     * Its absence was a live defect: the vault dispatch screen had no crew id to send, so it sent
-     * `fleetDutyAssignmentId` instead, which is an id from a DIFFERENT collection. Both of that
-     * screen's actions therefore 404'd at
-     * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
-     */
-    id: string;
-    /** Up to `CREW_SLOT_CAPACITY` per slot; `[]` means the slot is empty, never `null`. */
-    captainEmployeeIds: string[];
-    specialist1EmployeeIds: string[];
-    specialist2EmployeeIds: string[];
-    direction: string | null;
-    plannedTime: string | null;
-    notes: string | null;
-  } | null;
+  crew: OperationsCrewBoardCrewDto | null;
+}
+
+/** Round 20 — a van Fleet's workshop holds on the board's day («صيانة» on the legacy strip). */
+export interface OperationsCrewBoardWorkshopVehicleDto {
+  vehicleId: string;
+  vehicleCode: string;
 }
 
 export interface OperationsCrewBoardDto {
   /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
   date: string;
   day: OperationsDayDto | null;
+  /** The VANS of the day — Fleet's duty rows, each with its crew row or null. Never a row without a van. */
   rows: OperationsCrewBoardRowDto[];
+  /**
+   * Round 20 — the day's crew rows WITHOUT A VAN («إضافة صف بدون سيارة»), in the order they were
+   * added. Apart from `rows` on purpose: every other reader of the day's crews (the van cards, the
+   * distribution, the captain's day) is about vans, and none of them sees these.
+   */
+  vehiclelessRows: OperationsCrewBoardCrewDto[];
+  /**
+   * Round 20 — the vans in a Fleet workshop visit on the day, by code: the day's duty-row vans, the
+   * standing crew's vans and (when configured) the cash-transfer vans, asked of Fleet's own
+   * open-visit seam. A figure on the board («صيانة ٣», the codes on hover), not rows.
+   */
+  workshopVehicles: OperationsCrewBoardWorkshopVehicleDto[];
 }
 
 const crewEmployeeSlots = [
@@ -1658,18 +1856,49 @@ const crewEmployeeSlots = [
 const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
+/**
+ * One row of the save. A VAN's row is upserted by (day, `vehicleId`), as it always was. A row
+ * WITHOUT A VAN (Round 20) has `vehicleId: null`: with no `crewAssignmentId` it is a NEW one, with
+ * one it is that saved row, edited. A van row never carries `crewAssignmentId`.
+ *
+ * Whole rows, as ever: an omitted slot or field CLEARS it — `shiftTypeId` and `rowColour` included.
+ *
+ * WHAT THE SERVER CHECKS BEYOND THE SHAPE (each refused with nothing written):
+ *   · `shiftTypeId`, when NEWLY chosen for the row, must be an ACTIVE type → else 422
+ *     `OPERATIONS_UNKNOWN_SHIFT_TYPE`. A type the row already holds stays, archived or not.
+ *   · `direction`, when NEW or CHANGED, must name ACTIVE operations areas
+ *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
+ *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
+ *     included — stays as written while it is sent unchanged.
+ *   · Up to `CREW_SLOT_CAPACITY` people per slot (here). «من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — the
+ *     MINIMUMS are the board's warning (⚠), never a refusal: legacy enforced none (:2419), and a
+ *     van is planned in steps.
+ */
 export const PlanOperationsCrewRowSchema = z
   .object({
-    vehicleId: objectId(),
+    vehicleId: objectId().nullable(),
+    crewAssignmentId: objectId().optional(),
     captainEmployeeIds: crewSlot(),
     specialist1EmployeeIds: crewSlot(),
     specialist2EmployeeIds: crewSlot(),
     direction: z.string().min(1).nullable().optional(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
+    shiftTypeId: objectId().nullable().optional(),
+    rowColour: OperationsCrewRowColourSchema.nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    // ONE way to say each thing. A van's row is addressed by its van; naming a crew row on it too
+    // would be a second address that could disagree with the first. A row without a van that is
+    // given a van is said as the board does it: its removal plus the van's row, in one save.
+    if (value.vehicleId !== null && value.crewAssignmentId !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['crewAssignmentId'],
+        message: 'a van row is addressed by its vehicle; crewAssignmentId names a row without one',
+      });
+    }
     // Two rules, one pass. Cross-slot: a person cannot be both captain and specialist on the same
     // vehicle (unchanged in meaning from when each slot held one person). Intra-slot: NEW with
     // capacity 2 — the same person cannot be listed twice inside one slot, which was impossible to
@@ -1700,29 +1929,84 @@ export const PlanOperationsCrewRowSchema = z
   });
 export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
 
-/** Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape). */
+/**
+ * Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape) — plus, since
+ * Round 20, the rows without a van: new ones created, saved ones edited by id, and
+ * `removeCrewAssignmentIds` DELETING saved ones (a van's row is never deleted here — the van is
+ * Fleet's roster for the day; the board empties it instead).
+ *
+ * The whole save is ONE end state, judged as one (Q11 included): a row removed here releases its
+ * crew for the rows of the same save. That is how a row without a van is GIVEN a van — the board's
+ * `attachVan` moves its crew and fields onto the van's row and drops it, and the save says exactly
+ * that: the van's row, and the old row's id in `removeCrewAssignmentIds`.
+ *
+ * Refused (400): nothing to save (no row and no removal), a van twice, a row id twice, a row both
+ * edited and removed, a removal listed twice. Refused by the server: a `crewAssignmentId` or a
+ * removal that is not a live row WITHOUT A VAN of this day → 404 (`NOT_FOUND`), or 422 for a van's.
+ */
 export const PlanOperationsCrewSchema = z
   .object({
     date: z.coerce.date(),
-    rows: z.array(PlanOperationsCrewRowSchema).min(1).max(500),
+    rows: z.array(PlanOperationsCrewRowSchema).max(500),
+    removeCrewAssignmentIds: z.array(objectId()).max(500).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    const seenVehicles = new Set<string>();
-    const seenEmployees = new Set<string>();
-    value.rows.forEach((row, index) => {
-      if (seenVehicles.has(row.vehicleId)) {
+    const removals = value.removeCrewAssignmentIds ?? [];
+    if (value.rows.length === 0 && removals.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rows'],
+        message: 'a plan names at least one row or one removal',
+      });
+    }
+    const removed = new Set<string>();
+    removals.forEach((id, index) => {
+      if (removed.has(id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['rows', index, 'vehicleId'],
-          message: 'a vehicle appears twice in one plan',
+          path: ['removeCrewAssignmentIds', index],
+          message: 'a row is removed twice in one plan',
         });
       }
-      seenVehicles.add(row.vehicleId);
-      // Q11 is UNCHANGED in meaning — one person, one vehicle per operating day. Only the
-      // traversal widened: each slot is now a list, so the check flattens it. Three
-      // implementations of this rule exist and must move together — here, the service's
-      // end-state check, and the repository's `takenCrew`.
+      removed.add(id);
+    });
+    const seenVehicles = new Set<string>();
+    const seenRows = new Set<string>();
+    const seenEmployees = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (row.vehicleId !== null) {
+        if (seenVehicles.has(row.vehicleId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'vehicleId'],
+            message: 'a vehicle appears twice in one plan',
+          });
+        }
+        seenVehicles.add(row.vehicleId);
+      }
+      if (row.crewAssignmentId !== undefined) {
+        if (seenRows.has(row.crewAssignmentId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'crewAssignmentId'],
+            message: 'a row appears twice in one plan',
+          });
+        }
+        if (removed.has(row.crewAssignmentId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'crewAssignmentId'],
+            message: 'a row cannot be both edited and removed in one plan',
+          });
+        }
+        seenRows.add(row.crewAssignmentId);
+      }
+      // Q11 is UNCHANGED in meaning — one person, one ROW per operating day. Only the traversal
+      // widened: each slot is now a list, so the check flattens it, and since Round 20 a row
+      // without a van counts like any other («one person, one row»). Three implementations of
+      // this rule exist and must move together — here, the service's end-state check, and the
+      // repository's `takenCrew`.
       for (const slot of crewEmployeeSlots) {
         const employees = row[slot];
         if (employees === undefined) continue;
@@ -1733,7 +2017,7 @@ export const PlanOperationsCrewSchema = z
               path: ['rows', index, slot, position],
               // Q11 — the legacy duplicate-crew check lived only in the browser
               // (tashghela.ejs:1332); the domain enforces it now.
-              message: 'a crew member may hold one vehicle per operating day (Q11)',
+              message: 'a crew member may hold one row per operating day (Q11)',
             });
           }
           seenEmployees.add(employee);
@@ -1953,25 +2237,79 @@ export const OPERATIONS_CUSTODY_STATES = ['held', 'released'] as const;
 export const OperationsCustodyStateSchema = z.enum(OPERATIONS_CUSTODY_STATES);
 export type OperationsCustodyState = z.infer<typeof OperationsCustodyStateSchema>;
 
+/**
+ * Round 18 — «عدد الورق من كل فئة»: the Egyptian pound denominations the legacy receive form counts
+ * notes of, smallest first, as its row of boxes reads (0.25 … 200). A receipt may record how many
+ * notes of each the vault took in; none is required.
+ */
+export const OPERATIONS_VAULT_DENOMINATIONS = [0.25, 0.5, 1, 5, 10, 20, 50, 100, 200] as const;
+export type OperationsVaultDenomination = (typeof OPERATIONS_VAULT_DENOMINATIONS)[number];
+
+const isVaultDenomination = (value: number): value is OperationsVaultDenomination =>
+  (OPERATIONS_VAULT_DENOMINATIONS as readonly number[]).includes(value);
+
+/**
+ * Round 18 — how many seals close each bag: the legacy form's «2×» / «3×» beside «عدد الحقائب». The
+ * form draws `bagCount × bagSealsPerBag` barcode boxes; the server stores the choice and whatever
+ * seals were typed, and ties no count to the other («كله اختيارى»).
+ */
+export const OPERATIONS_VAULT_BAG_SEALS_PER_BAG = [2, 3] as const;
+export type OperationsVaultBagSealsPerBag = (typeof OPERATIONS_VAULT_BAG_SEALS_PER_BAG)[number];
+
+/** The notes of one denomination a receipt counted. Stored only when `count` is above zero. */
+export interface OperationsVaultDenominationCountDto {
+  value: OperationsVaultDenomination;
+  count: number;
+}
+
+export const OperationsVaultDenominationCountSchema = z
+  .object({
+    value: z.number().refine(isVaultDenomination, {
+      message: `a denomination is one of ${OPERATIONS_VAULT_DENOMINATIONS.join(', ')}`,
+    }),
+    count: z.number().int().min(0),
+  })
+  .strict();
+
+/**
+ * Custody of a secured shipment while it sits with the treasury — the treasury's own record. No
+ * endpoint serves it whole: Operations reads custody through the Treasury port
+ * (`OperationsVaultInventoryRowDto`, `OperationsVaultReceiptDto`), which leaves the seals out.
+ */
 export interface OperationsVaultCustodyDto {
   id: string;
   shipmentId: string;
   state: OperationsCustodyState;
-  /** Legacy `receipt_num` — typed by the treasurer at receive. */
-  receiptNumber: string;
+  /**
+   * Legacy `receipt_num` — typed by the vault at receive. OPTIONAL since Round 18 («ومش عاوز اى خانة
+   * من الخانات دى اجبارى كله اختيارى»): null when none was typed — a screen prints «—».
+   */
+  receiptNumber: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
-  /** Legacy `bag_seals` / `box_seals` — barcode arrays. */
+  /** Round 18 — «2×» / «3×»; null on a receipt taken before the form asked. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag | null;
+  /** Legacy `bag_seals` / `box_seals` — barcode arrays, blank entries dropped. */
   bagSeals: string[];
   boxSeals: string[];
+  /** Round 18 — the notes counted of each denomination, smallest first; only those above zero. */
+  denominations: OperationsVaultDenominationCountDto[];
   /**
-   * Legacy `treasurer_receive` + `treasurer_receive2`. Legacy wrote the FIRST one as `""` on
-   * every save (contad_app.js:1211/1266) so the two-man rule never actually recorded two people;
-   * here both are required — Q2 NORMALIZE, an explicit decision, not a silent fix.
+   * Round 18 — WHO received it: the signed-in user who pressed «إستلام», read by the server from the
+   * token, never sent by the form («انا مش عاوز اى اسماء»). Null on a receipt taken before Round 18,
+   * which named two treasurers instead (below).
    */
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  receivedById: string | null;
+  /** That user's Arabic display name (English when there is none); null when unknown or none. */
+  receivedByName: string | null;
+  /**
+   * Legacy `treasurer_receive` + `treasurer_receive2` — the two treasurers a receipt taken BEFORE
+   * Round 18 named (Q2's dual control, which the owner dropped: «انا مش عاوز اى اسماء»). Kept as they
+   * were stored, so an old receipt still says who signed for it; null on every newer receipt.
+   */
+  receivedByPrimaryId: string | null;
+  receivedBySecondaryId: string | null;
   receivedAt: string;
   /** Legacy `treasurer_delivery` / `treasurer_delivery_date` — declared but NEVER written (Q3). */
   releasedById: string | null;
@@ -1982,9 +2320,60 @@ export interface OperationsVaultCustodyDto {
 }
 
 /**
+ * Round 18 — the shipment's data as the vault corrects it in its own receive form: «تعدّلها عادي».
+ * EXACTLY the edit form's fields and rules (`UpdateOperationsShipmentSchema`, and on the server the
+ * very checks `PATCH /operations/shipments/:id` makes — banks, branch-of-bank, currencies, the date
+ * rules, a delivery date moved off its van's day), minus two: `version`, which the receive carries
+ * once for the whole act, and `serialTracked`, which is the receipt's own field
+ * (`ReceiveIntoVaultSchema.serialTracked`). Send only what changed: every field is optional and a
+ * field left out is not touched — so an empty patch corrects nothing and is no edit at all.
+ */
+export const ReceiveIntoVaultShipmentPatchSchema = UpdateOperationsShipmentSchema.omit({
+  version: true,
+  serialTracked: true,
+});
+export type ReceiveIntoVaultShipmentPatch = z.infer<typeof ReceiveIntoVaultShipmentPatchSchema>;
+
+/** A list of seal numbers as typed: each trimmed, the blank ones dropped (an empty box is no seal). */
+const sealNumbers = z
+  .array(z.string().trim())
+  .max(500)
+  .default([])
+  .transform((seals) => seals.filter((seal) => seal !== ''));
+
+/**
  * The vault's ✓ — `POST /operations/secured/:id/receive` (`operationsVault.receive`): custody taken,
  * the shipment `draft` → `inVault`, and from then on LOCKED (`isOperationsShipmentLocked`). Answers
- * 200 with the updated `OperationsShipmentDto` (not a custody record).
+ * 200 with `OperationsVaultReceiveResultDto` — the updated shipment, plus the receipt just taken.
+ *
+ * ROUND 18 — THE LEGACY «إستلام محصنة» FORM («عاوز اخلى الفورم دا لما اجى استلم محصنة»), and the
+ * owner's answers:
+ *   · EVERYTHING IS OPTIONAL («انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله
+ *     اختيارى») — the receipt number included. `{ version }` alone receives. `receiptNumber` is
+ *     trimmed, and an empty one is none (null). The counts default to 0, `bagSealsPerBag` to 2.
+ *   · NO NAMES. The two treasurers (`receivedByPrimaryId` / `receivedBySecondaryId`, Q2's dual
+ *     control) are gone from the request — sending them is a 400 like any unknown field. The
+ *     custody records WHO received it from the token (`receivedById`): the signed-in user.
+ *   · SEALS: `bagSeals` / `boxSeals` as typed, each trimmed, blank entries dropped. No length is tied
+ *     to the counts — the form draws `bagCount × bagSealsPerBag` boxes for bags and 2 per box, and
+ *     what is left empty is simply not a seal. Cartons have none.
+ *   · «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination
+ *     (`OPERATIONS_VAULT_DENOMINATIONS`); a value not in the list, or the same one twice, is a 400;
+ *     a count of 0 is accepted and not stored.
+ *   · «سيريال» — «بتتعرف عند الاستلام اذا كان سيريال او لا»: `serialTracked` sets the shipment's flag
+ *     at the receipt (left out → untouched); a change shows on the `vaultReceived` entry of «السجل».
+ *   · THE SHIPMENT'S DATA MAY BE CORRECTED IN THE SAME FORM («تعدّلها عادي»): `shipment` carries the
+ *     edits (`ReceiveIntoVaultShipmentPatchSchema` — the edit form's fields and rules), applied in
+ *     the SAME transaction as the receipt: the edit first (version-checked), then the custody and
+ *     the move to `inVault`. Refused by any edit rule (422 `OPERATIONS_UNKNOWN_BRANCH`,
+ *     `OPERATIONS_BRANCH_BANK_MISMATCH`, a date rule, 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` …) →
+ *     nothing is written, the shipment stays draft and unreceived; a receive that fails after the
+ *     edit rolls the edit back with it. «السجل» shows an `edited` entry with what the vault changed,
+ *     then `vaultReceived`, both by the receiver. The GRANT is the receive's: `operationsVault.receive`
+ *     covers the edits made inside it — `operationsShipment.edit` is not asked — because they are
+ *     part of the vault's act, made while it receives, on a shipment that is still a draft (the only
+ *     state a receive starts from), and locked by the very same act.
+ *   After the receipt everything is locked, as since Round 10.
  *
  * FROM ANY DRAFT since Round 13 — white or yellow (`OPERATIONS_SECURED_RECEIVABLE_STAGES`): «واستلام
  * الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم والخزنه تستلم عادي».
@@ -2009,36 +2398,79 @@ export interface OperationsVaultCustodyDto {
  * 409 `STALE_DOCUMENT`, 409 when custody is already held.
  *
  * A receipt cancelled later (`POST /operations/secured/:id/cancel-receipt`) VOIDS its custody: the
- * row is kept (receipt, counts, seals, treasurers, plus when / who / why it was cancelled) but no
- * list reads it again — the shipment's «السجل» still shows it, as `vaultReceived` then
- * `receiptCancelled`.
+ * row is kept (receipt, counts, seals, note counts, who received it, plus when / who / why it was
+ * cancelled) but no list reads it again — the shipment's «السجل» still shows it, as
+ * `vaultReceived` then `receiptCancelled`.
  */
 export const ReceiveIntoVaultSchema = z
   .object({
-    receiptNumber: z.string().min(1),
+    receiptNumber: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((value) => (value == null || value === '' ? null : value)),
     bagCount: z.number().int().min(0).default(0),
     cartonCount: z.number().int().min(0).default(0),
     boxCount: z.number().int().min(0).default(0),
-    bagSeals: z.array(z.string().min(1)).max(500).default([]),
-    boxSeals: z.array(z.string().min(1)).max(500).default([]),
-    receivedByPrimaryId: objectId(),
-    receivedBySecondaryId: objectId(),
-    /** The shipment's `serial` flag, settable at receive exactly as the legacy edit form did. */
+    bagSealsPerBag: z.union([z.literal(2), z.literal(3)]).default(2),
+    bagSeals: sealNumbers,
+    boxSeals: sealNumbers,
+    denominations: z
+      .array(OperationsVaultDenominationCountSchema)
+      .max(OPERATIONS_VAULT_DENOMINATIONS.length)
+      .default([]),
+    /** The shipment's `serial` flag — «بتتعرف عند الاستلام اذا كان سيريال او لا». */
     serialTracked: z.boolean().optional(),
+    /** Round 18 — the shipment's data as the vault corrected it in the form («تعدّلها عادي»). */
+    shipment: ReceiveIntoVaultShipmentPatchSchema.optional(),
     version: z.number().int().min(0),
   })
   .strict()
   .superRefine((value, ctx) => {
-    // Q2's whole point: two DIFFERENT people. One person twice is one person.
-    if (value.receivedByPrimaryId === value.receivedBySecondaryId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['receivedBySecondaryId'],
-        message: 'the two receiving treasurers must be different people (dual control)',
-      });
-    }
+    // One count per denomination: two boxes for «200» would be two answers to one question.
+    const seen = new Set<number>();
+    value.denominations.forEach((line, index) => {
+      if (seen.has(line.value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['denominations', index, 'value'],
+          message: 'a denomination appears twice in one receipt',
+        });
+      }
+      seen.add(line.value);
+    });
   });
 export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
+/** What a client sends — every field but `version` may be left out. */
+export type ReceiveIntoVaultInput = z.input<typeof ReceiveIntoVaultSchema>;
+
+/**
+ * Round 18 — the receipt the vault's ✓ just took, as the Treasury port hands it back: what the
+ * «إيصال» print needs that the form does not already hold — when it was received, the receipt
+ * number and counts as STORED (trimmed, zero counts dropped), and who received it, by name. The seal
+ * numbers stay behind the port, as on every Operations read: the print takes them from the form,
+ * trimmed and with the blank ones dropped — the very rule the server stores them by.
+ */
+export interface OperationsVaultReceiptDto {
+  custodyId: string;
+  receiptNumber: string | null;
+  /** ISO instant. */
+  receivedAt: string;
+  /** The signed-in user who received it (from the token). */
+  receivedById: string;
+  /** Their Arabic display name (English when there is none); null when unknown. */
+  receivedByName: string | null;
+  bagCount: number;
+  cartonCount: number;
+  boxCount: number;
+  bagSealsPerBag: OperationsVaultBagSealsPerBag;
+  denominations: OperationsVaultDenominationCountDto[];
+}
+
+/** `POST /operations/secured/:id/receive`'s answer: the shipment (now `inVault`) and its receipt. */
+export interface OperationsVaultReceiveResultDto extends OperationsShipmentDto {
+  receipt: OperationsVaultReceiptDto;
+}
 
 // ── Shipment assignment: the two legs (OP-4) ────────────────────────────────────────────────────
 //
@@ -2119,20 +2551,33 @@ export type ListVaultInventoryQuery = z.infer<typeof ListVaultInventoryQuerySche
  *
  * The custody record above is the treasury's own; this row is the subset the Treasury port hands
  * across the boundary (`VaultCustodyView`). It carries the packaging counts, because the legacy
- * screen totalled bags/boxes/cartons per bank (contad_app.js:1437-1447), and both receiving
- * treasurers, because dual control is only meaningful if both names are visible (Q2). It carries
- * NO seal barcodes: no legacy Operations screen or report read them, so they stay behind the port.
+ * screen totalled bags/boxes/cartons per bank (contad_app.js:1437-1447), and since Round 18 the
+ * note counts and the seals-per-bag choice of the legacy receive form, and WHO received it — the
+ * signed-in user, by name. A receipt taken before Round 18 named two treasurers (Q2's dual control,
+ * dropped by the owner: «انا مش عاوز اى اسماء»); those stay readable here as they were stored. It
+ * carries NO seal barcodes: no legacy Operations screen or report read them, so they stay behind
+ * the port.
  */
 export interface OperationsVaultInventoryRowDto {
   id: string;
   shipmentId: string;
   state: OperationsCustodyState;
-  receiptNumber: string;
+  /** Null when the vault typed none (optional since Round 18) — a screen prints «—». */
+  receiptNumber: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  /** «2×» / «3×»; null on a receipt taken before Round 18. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag | null;
+  /** «عدد الورق من كل فئة», smallest first, only those above zero; empty on an older receipt. */
+  denominations: OperationsVaultDenominationCountDto[];
+  /** The user who received it (Round 18); null on a receipt taken before. */
+  receivedById: string | null;
+  /** Their Arabic display name (English when there is none); null when unknown or none. */
+  receivedByName: string | null;
+  /** The two treasurers of a receipt taken before Round 18; null on every newer one. */
+  receivedByPrimaryId: string | null;
+  receivedBySecondaryId: string | null;
   receivedAt: string;
   releasedAt: string | null;
 }
@@ -2206,8 +2651,9 @@ export const OPERATIONS_RECEIPT_CANCEL_REASON_MAX = 500;
  * `POST /operations/secured/:id/cancel-receipt` on `operationsVault.cancelReceipt` («إلغاء استلام
  * الخزينة» — a special grant held by NO role by default; `super-admin` holds every key by design).
  * Only while the shipment is `inVault` (received, not yet dispatched). In one transaction:
- *   · the vault custody is VOIDED, never erased: the custody row keeps its receipt, counts, seals
- *     and treasurers, gains `cancelledAt` / `cancelledById` / `cancelReason`, and leaves every live
+ *   · the vault custody is VOIDED, never erased: the custody row keeps its receipt, counts, seals,
+ *     note counts and who received it (the receiving user since Round 18; the two treasurers of a
+ *     receipt taken before), gains `cancelledAt` / `cancelledById` / `cancelReason`, and leaves every live
  *     read (the vault inventory, the roll-up, the reports, today's receipts on the receive queue) —
  *     so a fresh receipt can be taken later;
  *   · the shipment returns to `draft`, its `receiptNumber` cleared, its pickup record INTACT — so
@@ -2617,6 +3063,40 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
   ];
 };
 
+/**
+ * Round 20 — a direction as the crew board SAVES it: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من
+ * الاتجاهات اللى موجوده بتاعت البنوك». Every area it names must be one of `areaNames` (the ACTIVE
+ * operations areas — the names the branches' «المنطقة» uses), compared FOLDED (rule 2), and the
+ * direction is returned in the areas' OWN spelling: one area → its name; several (rule 1's
+ * separators — a direction may still name «المعادي - حلوان», the distribution reads both) → their
+ * names joined by « - », each once. The WHOLE text is tried as one area first, so an area whose
+ * name holds a separator («شبرا/الخيمة») is never split.
+ *
+ * `{ unknown }` lists the parts no area answers, as typed — the save refuses those. Shared by the
+ * server's save and the board's picker, so the two cannot disagree about what is an area.
+ */
+export const canonicalOperationsDirection = (
+  direction: string,
+  areaNames: readonly string[],
+): { direction: string } | { unknown: string[] } => {
+  const byFold = new Map<string, string>();
+  for (const name of areaNames) {
+    const folded = foldOperationsAreaName(name);
+    if (folded !== '' && !byFold.has(folded)) byFold.set(folded, name);
+  }
+  const whole = byFold.get(foldOperationsAreaName(direction));
+  if (whole !== undefined) return { direction: whole };
+  const parts = direction
+    .split(DIRECTION_SEPARATOR)
+    .map((part) => part.trim())
+    .filter((part) => foldOperationsAreaName(part) !== '');
+  const unknown = parts.filter((part) => !byFold.has(foldOperationsAreaName(part)));
+  if (parts.length === 0) return { unknown: [direction] };
+  if (unknown.length > 0) return { unknown };
+  const names = [...new Set(parts.map((part) => byFold.get(foldOperationsAreaName(part)) as string))];
+  return { direction: names.join(' - ') };
+};
+
 /** Does this van's direction name this shipment's area (rules 3-4)? */
 export const operationsDirectionMatchesArea = (
   direction: string | null | undefined,
@@ -2691,8 +3171,8 @@ export interface OperationsSecuredBoardDto {
  *     ahead). Every row of it is receivable too.
  *
  * Every DRAFT row is receivable (`OPERATIONS_SECURED_RECEIVABLE_STAGES` — white or yellow): the
- * vault's ✓ is `POST /operations/secured/:id/receive` (`operationsVault.receive` — the receive form
- * with the packaging, the seals and the two treasurers), and from it the shipment is locked
+ * vault's ✓ is `POST /operations/secured/:id/receive` (`operationsVault.receive` — since Round 18
+ * the legacy «إستلام محصنة» form, every field optional, no names), and from it the shipment is locked
  * (`isOperationsShipmentLocked`). A row past `draft` is a receipt of today, never receivable again.
  *
  * READING A ROW IN TWO COLUMNS (Round 13 — «مكان الحاله عمودين»):
@@ -3136,7 +3616,10 @@ export const OperationsStandingCrewChangedPayloadV1 = z.object({
 
 export const OperationsCrewAssignmentChangedPayloadV1 = z.object({
   dayId: objectId(),
-  vehicleId: objectId(),
+  /** Round 20 — the crew row itself, so a row without a van can be told from another. */
+  crewAssignmentId: objectId(),
+  /** Null for a row without a van (Round 20). A removed row reports its slots empty. */
+  vehicleId: objectId().nullable(),
   date: z.date(),
   captainEmployeeIds: z.array(objectId()),
   specialist1EmployeeIds: z.array(objectId()),

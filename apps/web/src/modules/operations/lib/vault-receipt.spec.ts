@@ -351,6 +351,16 @@ describe('the range fill — the first and the last box fill the boxes between t
         3,
       ),
     ).toEqual(['00100', '00099', '00098']);
+    // Leading zeros only where the first box has them: 10 down to 7 writes 9 and 8.
+    expect(
+      shown(
+        typed(3, [
+          [0, '0'],
+          [2, '2'],
+        ]),
+        3,
+      ),
+    ).toEqual(['0', '1', '2']);
     expect(
       sealRangeNote(
         typed(4, [
@@ -516,7 +526,7 @@ describe('the range fill — the first and the last box fill the boxes between t
     const six = typeSeal(atThree, 6, 5, '6');
     expect(shown(six, 6)).toEqual(['1', '2', '3', '4', '5', '6']);
     expect(marks(six, 6)).toBe('.ff.f.');
-    // Lowered again to four boxes: the box at the end now is the fill's 4… no — box 4 was typed.
+    // Lowered again to four: the box at the end holds the 4 typed by hand — 1 … 4 stands.
     const lowered = fillSealRange(six, 4);
     expect(shown(lowered, 4)).toEqual(['1', '2', '3', '4']);
     expect(marks(lowered, 4)).toBe('.ff.');

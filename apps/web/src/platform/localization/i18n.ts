@@ -11103,7 +11103,12 @@ const en: Record<string, string> = {
   'operations.secured.receive.bagSealInput': 'Bag {{unit}} — seal {{seal}}',
   'operations.secured.receive.boxSealInput': 'Box {{unit}} — seal {{seal}}',
   'operations.secured.receive.duplicates': 'Entered twice: {{seals}}',
-  'operations.secured.receive.scanHint': 'A scanner moves on to the next box by itself (Enter).',
+  'operations.secured.receive.scanHint':
+    'A scanner moves on to the next box by itself (Enter); the first and last boxes fill the ones between in order.',
+  // Round 18b — the first and the last box fill the boxes between («يملى اللى ف النص بالترتيب بينهم»).
+  'operations.secured.receive.sealFilled': 'Filled in order between the first and the last box',
+  'operations.secured.receive.rangeMismatch':
+    'The range {{from}} to {{to}} does not match the number of boxes ({{boxes}}), so the boxes between were not filled.',
   'operations.secured.receive.receiverNote': 'Received by the signed-in user: {{name}}',
   'operations.secured.receive.print': 'Receipt',
   'operations.secured.receive.printHint': 'Print the vault receipt',
@@ -24620,7 +24625,12 @@ const ar: Record<string, string> = {
   'operations.secured.receive.bagSealInput': 'الحقيبة {{unit}} — الختم {{seal}}',
   'operations.secured.receive.boxSealInput': 'الصندوق {{unit}} — الختم {{seal}}',
   'operations.secured.receive.duplicates': 'مكرر: {{seals}}',
-  'operations.secured.receive.scanHint': 'ينتقل الماسح إلى الخانة التالية تلقائيًا (Enter).',
+  'operations.secured.receive.scanHint':
+    'ينتقل الماسح إلى الخانة التالية تلقائيًا (Enter)، وتُملأ الخانات بين الأولى والأخيرة بالترتيب.',
+  // الجولة 18ب — تملأ الخانة الأولى والأخيرة ما بينهما بالترتيب.
+  'operations.secured.receive.sealFilled': 'مُلئت بالترتيب بين الخانة الأولى والأخيرة',
+  'operations.secured.receive.rangeMismatch':
+    'النطاق من {{from}} إلى {{to}} لا يساوي عدد الخانات ({{boxes}})، فلم تُملأ الخانات بينهما.',
   'operations.secured.receive.receiverNote': 'يُسجَّل المستلم تلقائيًا: {{name}}',
   'operations.secured.receive.print': 'إيصال',
   'operations.secured.receive.printHint': 'طباعة إيصال الاستلام',

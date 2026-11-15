@@ -84,8 +84,8 @@ const ALL_DIGITS = /^\d+$/u;
 //     — which seal would be missing, or which box would hold two? — so nothing is filled, and a
 //     line under the list's bar says why (`sealRangeNote`). The run may go down as well as up (a
 //     bag scanned from its other end): «بالترتيب بينهم» is the order between the two, either way.
-//   · A number is written as the first box writes its own: padded with zeros to its width
-//     (00098 → 00099 → 00100), in its digits.
+//   · A number is written as the first box writes its own: a first box with leading zeros sets the
+//     width (00098 → 00099 → 00100), one without sets none (10 down to 7 is 9, 8); in its digits.
 //   · It never writes over a box typed by hand — only an EMPTY box, or one it wrote itself that
 //     nobody has typed into since (`filled`). A box typed by hand that disagrees stays as typed: the
 //     summary line already says it («1 - [3 - 4] - 7»).

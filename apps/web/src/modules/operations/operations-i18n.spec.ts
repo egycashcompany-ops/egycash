@@ -312,6 +312,8 @@ const SECURED_KEYS = [
     'denominationsMatch', 'denominationsMatched', 'denominationsMismatch', 'denominationsDiffer',
     'sealsEmpty', 'bagSealInput', 'boxSealInput', 'duplicates', 'scanHint', 'receiverNote',
     'print', 'printHint', 'takenBanner', 'shipmentIncomplete', 'errors.notDraft',
+    // Round 18b — the first and the last box fill the boxes between them.
+    'sealFilled', 'rangeMismatch',
     ...[
       'title', 'titleDraft', 'department', 'draftNote', 'takenNote', 'item', 'value', 'line',
       'bags', 'sealCount', 'denomination', 'notes', 'receivedBy', 'receivedAt',

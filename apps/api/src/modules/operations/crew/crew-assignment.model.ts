@@ -11,13 +11,30 @@
 //
 // Upsert-in-place per (day, vehicle) exactly as legacy replaced the tashghela row
 // (contad_app.js:2413) — no history row; the audit trail carries the changes.
+//
+// ROUND 20 — A ROW WITHOUT A VAN. «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات برضو»: a
+// crew row may now have NO vehicle (and so no Fleet duty row) — a crew planned before its van is
+// known. Such a row is the board's alone: every reader that is about VANS (the van cards, the
+// distribution, the captain's day, a leg's crew) reads `OperationsVanCrewDoc` through the
+// repository's van reads and never sees one. And the row gained the legacy board's two other
+// columns, «النوع» (`shiftTypeId`, the `أنواع التشغيل` catalog) and its colour (`rowColour`).
 import { Schema, model, type Types } from 'mongoose';
+import { OPERATIONS_CREW_ROW_COLOURS, type OperationsCrewRowColour } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface OperationsCrewAssignmentDoc extends BaseDocFields {
   operationsDayId: Types.ObjectId;
-  vehicleId: Types.ObjectId;
-  fleetDutyAssignmentId: Types.ObjectId;
+  /** Null for a row without a van (Round 20). */
+  vehicleId: Types.ObjectId | null;
+  /** The Fleet duty row of the same (vehicle, day); null exactly when `vehicleId` is. */
+  fleetDutyAssignmentId: Types.ObjectId | null;
+  /**
+   * «النوع» — a row of `operations_shift_types`, or null («اختر»). Optional on the type because rows
+   * written before Round 20 carry no such field; `.lean()` reads absent as undefined.
+   */
+  shiftTypeId?: Types.ObjectId | null;
+  /** The row's tint (Round 20), or null. Optional for the same reason. */
+  rowColour?: OperationsCrewRowColour | null;
   /**
    * The three slots, each now holding up to `CREW_SLOT_CAPACITY` people (six per vehicle). The
    * cap is a contract rule (`PlanOperationsCrewRowSchema`), enforced where the payload arrives
@@ -49,8 +66,10 @@ const crewSlot = {
 const crewAssignmentSchema = new Schema<OperationsCrewAssignmentDoc>(
   {
     operationsDayId: { type: Schema.Types.ObjectId, required: true },
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
-    fleetDutyAssignmentId: { type: Schema.Types.ObjectId, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    fleetDutyAssignmentId: { type: Schema.Types.ObjectId, default: null },
+    shiftTypeId: { type: Schema.Types.ObjectId, default: null },
+    rowColour: { type: String, enum: [...OPERATIONS_CREW_ROW_COLOURS, null], default: null },
     captainEmployeeIds: crewSlot,
     specialist1EmployeeIds: crewSlot,
     specialist2EmployeeIds: crewSlot,
@@ -73,9 +92,19 @@ const crewAssignmentSchema = new Schema<OperationsCrewAssignmentDoc>(
 // The legacy (car_num, date) identity, normalized: one crew row per vehicle per operating day.
 // A concurrent double-plan for the same vehicle-day collides here (the fleet ux_vehicle_date
 // precedent); the crew-member half spans three multi-valued fields and is service-checked (Q11).
+//
+// PARTIAL ON A PRESENT VAN since Round 20: a day may hold any number of rows WITHOUT a van, and a
+// unique index over every live row would make the second of them collide with the first on
+// (day, null). `$type: 'objectId'` leaves exactly those rows out and keeps every van row in. A
+// database built before carries the old shape until the boot's index-drift repair rebuilds it
+// (`migrateCrewAssignmentIndexes`, operations.migration.ts).
 crewAssignmentSchema.index(
   { operationsDayId: 1, vehicleId: 1 },
-  { unique: true, name: 'ux_day_vehicle', partialFilterExpression: { isDeleted: false } },
+  {
+    unique: true,
+    name: 'ux_day_vehicle',
+    partialFilterExpression: { isDeleted: false, vehicleId: { $type: 'objectId' } },
+  },
 );
 crewAssignmentSchema.index({ operationsDayId: 1 }, { name: 'ix_day' });
 // "Which vehicles am I a captain of today?" — the captaincy anchor the mobile surface resolves
@@ -93,6 +122,16 @@ crewAssignmentSchema.index(
   { operationsDayId: 1, captainEmployeeIds: 1 },
   { name: 'ix_day_captains' },
 );
+
+/** A crew row ON A VAN — what every reader about vans (cards, legs, the captain's day) reads. */
+export type OperationsVanCrewDoc = OperationsCrewAssignmentDoc & {
+  vehicleId: Types.ObjectId;
+  fleetDutyAssignmentId: Types.ObjectId;
+};
+
+/** Is this crew row on a van? `!= null`: a `.lean()` row may hand an absent field back as undefined. */
+export const hasVan = (row: OperationsCrewAssignmentDoc): row is OperationsVanCrewDoc =>
+  row.vehicleId != null;
 
 export const OperationsCrewAssignmentModel = model<OperationsCrewAssignmentDoc>(
   'OperationsCrewAssignment',

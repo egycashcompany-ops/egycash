@@ -29,6 +29,7 @@ import {
   type FleetDriverProfileDto,
   type FleetFuelCardDto,
   type FleetLicensingRowDto,
+  type FleetMaintenanceVisitDto,
   type FleetReceiptDto,
   type FleetVehicleDto,
   type FleetViolationDto,
@@ -47,6 +48,7 @@ import { FuelCardsPage } from './pages/FuelCardsPage';
 import { AccidentsPage } from './pages/AccidentsPage';
 import { DealershipPage } from './pages/DealershipPage';
 import { ReceiptsPage } from './pages/ReceiptsPage';
+import { MaintenancePage } from './pages/MaintenancePage';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { paperStage } from './pages/LicensingPage';
 
@@ -662,6 +664,125 @@ describe('the period screens read the vehicle set — type, operation, branch', 
   });
 });
 
+// ── «نظرة عامة»: «مصروف الوقود» and «زيارات الصيانة» by exit day ──────────────
+
+describe('/fleet/receipts reads the fuel receipts of «مصروف الوقود» (kind=fuel)', () => {
+  it('sends the kind with the month and the reader’s branches', () => {
+    const html = receiptsAt(
+      '/fleet/receipts?from=2026-11-01&to=2026-11-15&branch=b1,b2&kind=fuel',
+      {
+        from: '2026-11-01',
+        to: '2026-11-15',
+        kind: ['fuel'],
+        branchIds: ['b1', 'b2'],
+      },
+    );
+    expect(tbody(html)).toContain('سائق الإيصال المفلتر');
+  });
+
+  it('does not answer a fuel address from the list of every kind', () => {
+    const html = receiptsAt('/fleet/receipts?from=2026-11-01&to=2026-11-15&kind=fuel', {
+      from: '2026-11-01',
+      to: '2026-11-15',
+    });
+    expect(tbody(html)).not.toContain('سائق الإيصال المفلتر');
+  });
+
+  it('remembers `kind` and reads it in its own source', () => {
+    expect(remembered('ReceiptsPage.tsx')).toContain('kind');
+    expect(source('ReceiptsPage.tsx')).toContain("csv(sp.get('kind'))");
+  });
+});
+
+const visit = (over: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisitDto => ({
+  id: 'm-1',
+  vehicleId: 'v-1',
+  vehicleCode: '150',
+  operationId: null,
+  branchId: 'b1',
+  driverInEmployeeId: null,
+  driverOutEmployeeId: null,
+  driverInName: null,
+  driverOutName: null,
+  inDate: '2026-10-28T00:00:00.000Z',
+  outDate: '2026-11-03T00:00:00.000Z',
+  workshopId: 'ws1',
+  workTypeId: 'wt1',
+  spareParts: [],
+  sparePartIds: [],
+  odometerAtService: 98765,
+  exitOdometer: null,
+  takenInByEmployeeId: null,
+  takenOutByEmployeeId: null,
+  notes: null,
+  version: 0,
+  createdAt: '2026-10-28T00:00:00.000Z',
+  updatedAt: '2026-11-03T00:00:00.000Z',
+  ...over,
+});
+
+const maintenanceAt = (route: string, filters: Record<string, unknown>): string => {
+  const qc = client();
+  qc.setQueryData(
+    listKey('fleet', 'maintenance', {
+      ...filters,
+      page: 1,
+      pageSize: 25,
+      sortBy: 'inDate',
+      sortDir: 'desc',
+      sort: 'inDate:desc',
+    }),
+    paged([visit()]),
+  );
+  return mount(qc, ['fleetMaintenance.view'], route, '/fleet/maintenance', <MaintenancePage />);
+};
+
+describe('/fleet/maintenance reads the visits that LEFT the workshop (exits)', () => {
+  it('sends the month as check-out bounds with the set — never as check-in bounds', () => {
+    const route = '/fleet/maintenance?outFrom=2026-11-01&outTo=2026-11-15&type=ty1&branch=b1,b2';
+    expect(
+      tbody(
+        maintenanceAt(route, {
+          outFrom: '2026-11-01',
+          outTo: '2026-11-15',
+          typeIds: ['ty1'],
+          branchIds: ['b1', 'b2'],
+        }),
+      ),
+    ).toContain('98,765');
+    // The same days as check-in bounds are another question: not this list.
+    expect(
+      tbody(
+        maintenanceAt(route, {
+          from: '2026-11-01',
+          to: '2026-11-15',
+          typeIds: ['ty1'],
+          branchIds: ['b1', 'b2'],
+        }),
+      ),
+    ).not.toContain('98,765');
+  });
+
+  it('remembers both bounds and reads them in its own source', () => {
+    expect(remembered('MaintenancePage.tsx')).toEqual(expect.arrayContaining(['outFrom', 'outTo']));
+    expect(readsInSource('MaintenancePage.tsx', 'outFrom')).toBe(true);
+    expect(readsInSource('MaintenancePage.tsx', 'outTo')).toBe(true);
+  });
+});
+
+// ── «الحركة اليوم»: the day's board, searched or narrowed to the reasons ───────
+
+describe('/fleet/roster reads the car and the reasons «الحركة اليوم» opens it on', () => {
+  it('reads `q` (a car of «سيارات بلا سائق اليوم») and `unavailable` (the reasons) in its own source', () => {
+    // The board is the day's one read (one key per date); both narrow it on the screen — the
+    // roster specs render them (fleet-daily-roster.spec.tsx `q`, fleet-roster-licence.spec.tsx
+    // several reasons at once).
+    expect(readsInSource('RosterPage.tsx', 'q')).toBe(true);
+    expect(readsInSource('RosterPage.tsx', 'unavailable')).toBe(true);
+    expect(remembered('RosterPage.tsx')).toEqual(expect.arrayContaining(['q', 'unavailable']));
+  });
+});
+
 // ── /fleet/violations — T5.11, T5.12 ────────────────────────────────────────
 
 const rollupRow = (over: Partial<FleetViolationRollupDto> = {}): FleetViolationRollupDto => ({
@@ -799,6 +920,28 @@ describe('/fleet/violations reads «مجهول» and the vehicle set', () => {
   it('remembers `dunknown` and reads it in its own source', () => {
     expect(remembered('ViolationsPage.tsx')).toContain('dunknown');
     expect(readsInSource('ViolationsPage.tsx', 'dunknown')).toBe(true);
+  });
+
+  it('asks both ledgers for EVERY year’s unpaid fines — «مخالفات قائمة» (cset + dset, no year)', () => {
+    const html = violationsAt('/fleet/violations?cset=false&dset=false&branch=b1,b2', {
+      rollup: { year: '', branchIds: 'b1,b2' },
+      drivers: { collected: false, branchIds: ['b1', 'b2'] },
+    });
+    const { company, drivers } = halves(html);
+    expect(company, 'the company rollup of every year').toContain('168');
+    expect(drivers, 'the drivers’ unpaid fines of every year').toContain('733');
+    // The one-year rollup is another question.
+    const yearOnly = violationsAt('/fleet/violations?cset=false&dset=false&branch=b1,b2', {
+      drivers: { collected: false, branchIds: ['b1', 'b2'] },
+    });
+    expect(halves(yearOnly).company).not.toContain('168');
+  });
+
+  it('remembers `cset` and `dset` and reads them in its own source', () => {
+    for (const param of ['cset', 'dset']) {
+      expect(remembered('ViolationsPage.tsx')).toContain(param);
+      expect(readsInSource('ViolationsPage.tsx', param)).toBe(true);
+    }
   });
 });
 

@@ -55,7 +55,7 @@ import {
   retireLeg,
 } from '../assignments/leg-retire';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -159,7 +159,7 @@ type Plan =
       kind: 'place';
       shipment: OperationsShipmentDoc;
       leg: OperationsShipmentAssignmentDoc | null;
-      crew: OperationsCrewAssignmentDoc;
+      crew: OperationsVanCrewDoc;
       captainEmployeeId: string;
       /** The leg already rides this van with this captain on this day — only the date moves. */
       legUnchanged: boolean;
@@ -223,7 +223,8 @@ class OperationsDistributionService {
 
     const dayDoc = await operationsDayService.findByDate(day);
     const crewRows =
-      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id);
+      // The day's VANS — a crew row without a van (Round 20) has nothing to load a محصنة into.
+      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findVansForDay(dayDoc._id);
     const [board, { crews }, custody, legs] = await Promise.all([
       operationsShipmentService.boardView(docs),
       operationsShipmentService.vanCardsOf(crewRows),
@@ -338,7 +339,8 @@ class OperationsDistributionService {
         continue;
       }
 
-      const crew = await operationsCrewAssignmentRepository.findById(change.crewAssignmentId);
+      // A van's row: a crew row without a van (Round 20) has no van to place a shipment on.
+      const crew = await operationsCrewAssignmentRepository.findVanById(change.crewAssignmentId);
       if (crew === null) {
         throw refused(ErrorCodes.NOT_FOUND, 404, id, 'crew assignment not found');
       }

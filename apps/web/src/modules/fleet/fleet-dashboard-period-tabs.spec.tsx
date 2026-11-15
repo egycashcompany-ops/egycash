@@ -138,7 +138,7 @@ describe('tab 6 «أرقام الفترة»', () => {
         url: URL_30('period'),
         dto: {
           ...PERIOD_FULL,
-          opex: { card: 1, custody: 1, total: 2, count: 2, dataFrom: '2026-10-10' },
+          opex: { card: 1, custody: 1, fuel: 0, total: 2, count: 2, dataFrom: '2026-10-10' },
           dealership: { amount: 5, rows: 1, pending: 0, dataFrom: '2026-10-05' },
         },
       }),
@@ -161,6 +161,7 @@ describe('tab 6 «أرقام الفترة»', () => {
             operationIds: [],
             vehicleCodes: [],
             branchId: null,
+            scopeBranches: null,
           },
         },
       }),
@@ -276,7 +277,7 @@ describe('tab 7 «الكيلومترات» — the R-15 drawing', () => {
     expect(hrefOf(branches, 'km.total')).toBe(`/fleet/odometer?${DATES}`);
   });
 
-  it('adds the by-type card only when the server gives it (a branch is chosen)', () => {
+  it('adds the by-type card only when the server gives it (one branch in scope)', () => {
     expect(body).not.toContain('data-period-card="km.byType"');
     const typed = tabBody(
       renderPeriod({
@@ -289,6 +290,7 @@ describe('tab 7 «الكيلومترات» — the R-15 drawing', () => {
             operationIds: [],
             vehicleCodes: [],
             branchId: B1,
+            scopeBranches: [{ id: B1, name: { ar: 'القاهرة', en: 'Cairo' } }],
           },
           km: {
             ...(PERIOD_FULL.km as NonNullable<FleetDashboardPeriodDto['km']>),
@@ -415,6 +417,9 @@ describe('tab 9 «الصيانة»', () => {
     expect(text(body)).not.toContain('ج.م.');
     expect(body).toContain('data-no-money="true"');
     expect(text(body)).toContain(ar('fleet.dash.maintenance.noMoney'));
+    // Its visits are by check-in day, and it says so (the overview's month visits are by exit day).
+    expect(body).toContain('data-visits-basis="checkIn"');
+    expect(text(body)).toContain(ar('fleet.dash.maintenance.basis'));
   });
 });
 
@@ -543,6 +548,7 @@ describe('the filter bar — one state for the five tabs', () => {
           operationIds: [],
           vehicleCodes: ['182', '207'],
           branchId: null,
+          scopeBranches: null,
         },
       },
     });

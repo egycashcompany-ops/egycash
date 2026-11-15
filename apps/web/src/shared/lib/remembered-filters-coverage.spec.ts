@@ -74,9 +74,11 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
   ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx', []],
-  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period filters are ONE
-  // state for the five period tabs (TAB_SHARED below).
-  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab']],
+  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period opens on «هذا
+  // الشهر» on every visit — a chosen period stays in the address bar between tabs, for the rest of
+  // the visit only (DECISIONS §0c); type, operation and codes are remembered, ONE state for the five
+  // period tabs (TAB_SHARED below).
+  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab', 'period', 'from', 'to']],
   ['modules/fleet/pages/FuelCardsPage.tsx', []],
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
   ['modules/fleet/pages/ReceiptsPage.tsx', []],
@@ -180,6 +182,11 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // at once is not where the next visit starts.
   ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'
+  // are. It reads no `date` any more — the roster is the same every day. Round 19b: `code` and
+  // `name`, the two boxes before «الاسم أو الكود» (`q`), are read only to fold an old link or a
+  // remembered view into `q`, and are taken off the address at once.
+  ['modules/operations/pages/RequirementsPage.tsx', ['code', 'name']],
   // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
   // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
   ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
@@ -239,7 +246,6 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     'modules/operations/pages/CrewBoardPage.tsx',
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
-  ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
   // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
   // محصنات); nothing else is read from the URL.
   [
@@ -574,7 +580,7 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
 const TAB_SHARED: readonly (readonly [string, string])[] = [
   [
     'modules/fleet/pages/FleetDashboardPage.tsx',
-    'the five period tabs draw one filter bar (period, type, operation, codes) over one read, R2 — «الفلاتر ثابتة بين التبويبات»',
+    'the five period tabs draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
   ],
 ];
 

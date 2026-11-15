@@ -23,6 +23,9 @@ const WIDTH = {
   '4xl': '!max-w-4xl',
   // A form laid out in columns so it fits the screen with no scroll — the shipment form.
   '6xl': '!max-w-6xl',
+  // The legacy «إستلام محصنة» form's three bands — the shipment's data, the receipt with its nine
+  // denominations in one row, then the seals — which legacy drew across the whole screen.
+  '7xl': '!max-w-7xl',
 };
 
 export const DesignDialog = ({

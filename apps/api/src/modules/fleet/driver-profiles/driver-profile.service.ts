@@ -191,10 +191,12 @@ class FleetDriverProfileService {
    * What it buys is a page that cannot lie: a filter is applied to the whole roster, never to one
    * fetched page of it.
    */
-  async listRoster(
-    query: ListFleetDriversQuery,
-  ): Promise<
-    Paginated<{ employeeId: string; branchId: string | null; profile: FleetDriverProfileDoc | null }>
+  async listRoster(query: ListFleetDriversQuery): Promise<
+    Paginated<{
+      employeeId: string;
+      branchId: string | null;
+      profile: FleetDriverProfileDoc | null;
+    }>
   > {
     const jobTitleIds = await jobTitleRepository.idsRequiringDrivingTestSystem();
     const roster = await listDirectoryEmployeesByJobTitles(jobTitleIds);
@@ -270,19 +272,26 @@ class FleetDriverProfileService {
   async registryDigest(input: {
     today: string;
     warnDays: number;
-    branchId: string | null;
+    /**
+     * The HR branches the figures cover, read as `?branch=a,b` reads them: `null` = everyone; a
+     * list (the dashboard reader's branches) = the drivers placed in one of them. `[]` — a reader
+     * with no branch to cover — is NOBODY, never everybody (`matchesRosterBranch` reads an empty
+     * ask as «no filter», so it is answered here before the roster is read).
+     */
+    branchIds: readonly string[] | null;
     cashSpecIds: readonly string[];
     atmSpecIds: readonly string[];
   }): Promise<FleetDriverRegistryDigest> {
-    const roster = await drivingSeatRoster();
+    const nobody = input.branchIds !== null && input.branchIds.length === 0;
+    const roster = nobody ? [] : await drivingSeatRoster();
+    const placed = roster.filter((employee) =>
+      matchesRosterBranch(employee.branchId, input.branchIds ?? undefined),
+    );
     const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(
-      roster.map((employee) => employee.employeeId),
+      placed.map((employee) => employee.employeeId),
     );
     const byEmployee = new Map(profiles.map((doc) => [String(doc.employeeId), doc]));
-    const branch = input.branchId === null ? undefined : [input.branchId];
-    const rows = roster
-      .filter((employee) => matchesRosterBranch(employee.branchId, branch))
-      .map((employee) => byEmployee.get(employee.employeeId) ?? null);
+    const rows = placed.map((employee) => byEmployee.get(employee.employeeId) ?? null);
 
     const count = (query: Parameters<typeof matchesFleetFilters>[1]): number =>
       rows.filter((profile) => matchesFleetFilters(profile, query)).length;
@@ -389,7 +398,8 @@ class FleetDriverProfileService {
     // Each reference is written only when the caller SAID something about it, and `null` is one of
     // the things it can say — so an omitted key leaves the stored grade alone while an explicit
     // null clears it.
-    if (input.jobId !== undefined) set.jobId = await assertCatalogRef('jobId', 'driverJob', input.jobId);
+    if (input.jobId !== undefined)
+      set.jobId = await assertCatalogRef('jobId', 'driverJob', input.jobId);
     if (input.specializationId !== undefined) {
       set.specializationId = await assertCatalogRef(
         'specializationId',

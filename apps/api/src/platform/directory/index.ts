@@ -45,6 +45,19 @@ export interface DirectoryEmployee {
    * column is a registry whose reader needs that module's grant. See `FleetPersonDto`.
    */
   address: string | null;
+  /**
+   * The seat — the job title HR placed the person in, by id (its NAME is the organization
+   * catalogue's, which a consumer reads through the platform).
+   *
+   * Round 19: «كشف طاقم العمليات» prints «الوظيفة» beside the name and filters by it, as the legacy
+   * roster did, and that roster is built from `listDirectoryEmployeesByDepartment` — so the seat
+   * has to travel with it, as the name and the code do, rather than be asked of a second lookup
+   * per member. The register listing already carried it (`DirectoryEmployeeListing`).
+   *
+   * Optional ONLY so a source that cannot answer — a test double built before this field — reads
+   * as "no seat on file"; HR's registration always answers it.
+   */
+  jobTitleId?: string | null;
 }
 
 /**
@@ -278,6 +291,7 @@ export interface DirectoryEmployeeQuery {
 export interface DirectoryEmployeeListing extends DirectoryEmployee {
   /** The linked login (ADR-017) — what a ticket names a person by. Null until one is created. */
   userId: string | null;
+  /** Always answered on a listing (the lookups' shape leaves it optional). */
   jobTitleId: string | null;
   /** When the current employment ended — null while employed. */
   exitedAt: Date | null;

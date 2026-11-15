@@ -1,5 +1,6 @@
-// «لوحة تحكم الحركة» — the frame: no page head, the sticky pill bar with its two groups and its counts,
-// the tabs a reader sees, the panel a link opens, and the reads a reader is allowed to send.
+// «لوحة تحكم الحركة» — the frame: no page head, the sticky pill bar with its ONE strip, its counts and
+// «الفرع: …» at its end, the tabs a reader sees, the panel a link opens (old links to the retired
+// tabs included), and the reads a reader is allowed to send.
 //
 // Rendered in the node environment over seeded caches (`renderToStaticMarkup`), the fleet-dashboard
 // way: React Query's server snapshot reads a seeded answer, so each case seeds what the server would
@@ -11,6 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { custodyQueryKeys } from './api/fleet-queries';
 import {
   ALL_KEYS,
+  B1,
+  B2,
   NOW_DTO,
   PERIOD_DTO,
   ar,
@@ -22,6 +25,25 @@ import { alertLines, alertSummary, tabBadges, visibleTabs } from './lib/fleet-da
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'pages/FleetDashboardPage.tsx'), 'utf8');
+const SHELL = readFileSync(join(HERE, 'components/fleet-dashboard/dash-shell.tsx'), 'utf8');
+
+/** The whole element whose opening tag holds `marker` (its own tag name counted for depth). */
+const element = (html: string, marker: string): string => {
+  const at = html.indexOf(marker);
+  if (at < 0) return '';
+  const start = html.lastIndexOf('<', at);
+  const name = /^<([a-z]+)/u.exec(html.slice(start))?.[1] ?? 'div';
+  const tags = new RegExp(`<${name}\\b|</${name}>`, 'gu');
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + m[0].length);
+  }
+  return html.slice(start);
+};
+const B1_NAMED = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+const B2_NAMED = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
 
 /** The tabs the bar shows, in its order. */
 const barTabs = (html: string): string[] =>
@@ -42,38 +64,46 @@ describe('the frame', () => {
     expect(html).toContain('sticky top-0');
   });
 
-  it('draws the brand logo badge and the two groups «الآن» | «حسب الفلاتر»', () => {
+  it('draws the brand logo badge and ONE strip of tabs — no «الآن» | «حسب الفلاتر» groups', () => {
     expect(html).toContain('data-dash-nav="true"');
-    expect(html).toContain(
-      `aria-label="${ar('fleet.dash.shell.group.now')}" data-dash-group="now"`,
-    );
-    expect(html).toContain(
-      `aria-label="${ar('fleet.dash.shell.group.filters')}" data-dash-group="filters"`,
-    );
-    expect(html.indexOf('data-dash-group="now"')).toBeLessThan(
-      html.indexOf('data-dash-group="filters"'),
-    );
+    const strip = element(html, 'data-dash-strip="true"');
+    expect(strip).toContain('role="tablist"');
+    expect(strip).toContain(`aria-label="${ar('fleet.dash.shell.navLabel')}"`);
+    expect(barTabs(strip)).toEqual(barTabs(html));
+    expect(html).not.toContain('data-dash-group');
+    // One tab list on the page: the strip.
+    expect(html.match(/role="tablist"/gu)).toHaveLength(1);
   });
 
   it('shows all ten tabs, in the bar’s order, to a reader with every key', () => {
     expect(barTabs(html)).toEqual([
-      'alerts',
-      'now',
+      'overview',
+      'today',
       'distribution',
-      'licences',
-      'summaries',
-      'period',
+      'maintenance',
       'km',
       'ranking',
-      'maintenance',
       'accidents',
+      'period',
+      'summaries',
+      'licences',
     ]);
   });
 
-  it('presses the first visible tab on a clean address, in the system’s indigo', () => {
-    expect(pressed(html)).toBe('alerts');
+  it('presses «نظرة عامة» on a clean address, in the system’s indigo', () => {
+    expect(pressed(html)).toBe('overview');
     expect(html).toMatch(/aria-selected="true"[^>]*class="[^"]*bg-brand-600/u);
-    expect(html).toContain('data-dash-panel="alerts"');
+    expect(html).toContain('data-dash-panel="overview"');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.overview')}<`);
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.today')}<`);
+  });
+
+  it('draws the scroll cue only once an overflow was measured — never at rest', () => {
+    expect(html).not.toContain('data-dash-cue');
+    // The cue exists in the frame, behind the measured overflow of the strip.
+    expect(SHELL).toContain('data-dash-cue={side}');
+    expect(SHELL).toContain('{cue.start && <StripCue side="start"');
+    expect(SHELL).toContain('{cue.end && <StripCue side="end"');
   });
 
   it('opens the tab the link names, and keeps its words as the bar writes them', () => {
@@ -85,14 +115,26 @@ describe('the frame', () => {
 
   it('falls back to the first visible tab for a hidden or an unknown tab', () => {
     const unknown = renderDashboard({ url: '/fleet?tab=nonsense' });
-    expect(pressed(unknown)).toBe('alerts');
+    expect(pressed(unknown)).toBe('overview');
     // A reader of the vehicles alone has no summaries tab: the link lands on the first visible one.
     const hidden = renderDashboard({
       url: '/fleet?tab=summaries',
       permissions: ['fleetVehicle.view'],
     });
     expect(barTabs(hidden)).not.toContain('summaries');
-    expect(pressed(hidden)).toBe('alerts');
+    expect(pressed(hidden)).toBe('overview');
+  });
+
+  it('opens an old link to a retired tab on the tab that took its content', () => {
+    // «التنبيهات» → «نظرة عامة», «الحركة الآن» → «الحركة اليوم» — no dead link.
+    const alerts = renderDashboard({ url: '/fleet?tab=alerts' });
+    expect(pressed(alerts)).toBe('overview');
+    expect(alerts).toContain('data-dash-panel="overview"');
+    const now = renderDashboard({ url: '/fleet?tab=now' });
+    expect(pressed(now)).toBe('today');
+    expect(now).toContain('data-dash-panel="today"');
+    expect(barTabs(now)).not.toContain('now');
+    expect(barTabs(alerts)).not.toContain('alerts');
   });
 
   it('renders the period tabs through the period hand-over (H1)', () => {
@@ -105,8 +147,8 @@ describe('the frame', () => {
 describe('the tabs a reader sees (R-28: permission first, then the server’s nulls)', () => {
   it('shows only the tabs a key opens', () => {
     const html = renderDashboard({ permissions: ['fleetVehicle.view'] });
-    expect(barTabs(html)).toEqual(['alerts', 'now', 'distribution', 'licences']);
-    expect(html).not.toContain('data-dash-group="filters"');
+    expect(barTabs(html)).toEqual(['overview', 'today', 'distribution', 'licences']);
+    expect(html).not.toContain('data-period-tab');
   });
 
   it('hides a tab once the server answered every one of its sections with null', () => {
@@ -124,8 +166,8 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
       workshop: null,
       unavailable: ['roster' as const],
     };
-    const html = renderDashboard({ url: '/fleet?tab=now', client: dashboardClient({ now }) });
-    expect(barTabs(html)).toContain('now');
+    const html = renderDashboard({ url: '/fleet?tab=today', client: dashboardClient({ now }) });
+    expect(barTabs(html)).toContain('today');
     expect(html).toContain('data-section-error="roster"');
     expect(html).toContain(ar('fleet.dash.common.retry'));
   });
@@ -135,8 +177,10 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
       permissions: ['fleetCustody.view'],
       client: dashboardClient({ now: null, period: null }),
     });
-    expect(barTabs(html)).toEqual(['alerts', 'summaries']);
-    expect(html).toContain('data-alert="custody"');
+    expect(barTabs(html)).toEqual(['overview', 'summaries']);
+    expect(html).toContain('data-dash-action="custody"');
+    // Neither read was sent: the chip states the custody figures' own scope, the whole company.
+    expect(html).toContain('data-dash-branch="company"');
   });
 
   it('shows one honest empty state when nothing is left to show', () => {
@@ -153,23 +197,86 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
   });
 
   it('shows the skeleton of a tab while R1 is on its way — never zeroes pretending to be data', () => {
-    const html = renderDashboard({ url: '/fleet?tab=now', client: dashboardClient({ now: null }) });
+    const html = renderDashboard({
+      url: '/fleet?tab=today',
+      client: dashboardClient({ now: null }),
+    });
     expect(html).toContain('data-dash-loading="true"');
     expect(html).toContain('animate-pulse');
-    expect(html).not.toContain('data-now-card=');
+    expect(html).not.toContain('data-today-card=');
+  });
+});
+
+describe('«الفرع: …» at the bar’s end (what the figures cover, as the server answered it)', () => {
+  const chip = (html: string): string => element(html, 'data-dash-branch=');
+  const withScope = (scopeBranches: typeof NOW_DTO.scopeBranches): string =>
+    renderDashboard({ client: dashboardClient({ now: { ...NOW_DTO, scopeBranches } }) });
+
+  it('says «الشركة كلها» for the whole company, outside the tab list', () => {
+    const html = renderDashboard();
+    expect(chip(html)).toContain('data-dash-branch="company"');
+    expect(chip(html)).toContain(ar('fleet.dash.shell.branch'));
+    expect(chip(html)).toContain(ar('nav.branchSwitcher.all'));
+    expect(element(html, 'data-dash-strip="true"')).not.toContain('data-dash-branch');
+    expect(element(html, 'data-dash-nav="true"')).toContain('data-dash-branch="company"');
+    // A statement, not a picker: no link and no button.
+    expect(chip(html)).not.toMatch(/<a\b|<button\b/u);
+  });
+
+  it('names the one branch, and says «كل فروعي» for several', () => {
+    const one = chip(withScope([B1_NAMED]));
+    expect(one).toContain('data-dash-branch="one"');
+    expect(one).toContain('القاهرة');
+    const several = chip(withScope([B1_NAMED, B2_NAMED]));
+    expect(several).toContain('data-dash-branch="several"');
+    expect(several).toContain(ar('nav.branchSwitcher.mine'));
+    expect(several).not.toContain('القاهرة');
+  });
+
+  it('is not drawn while the reads are on their way, nor for a reach with no branch', () => {
+    const loading = renderDashboard({ client: dashboardClient({ now: null, period: null }) });
+    expect(loading).not.toContain('data-dash-branch');
+    expect(withScope([])).not.toContain('data-dash-branch');
+  });
+
+  it('takes R2’s echo for a reader of the period figures alone', () => {
+    const html = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      permissions: ['fleetMaintenance.view'],
+      client: dashboardClient({
+        now: null,
+        period: {
+          ...PERIOD_DTO,
+          vehicleScope: { ...PERIOD_DTO.vehicleScope, scopeBranches: [B2_NAMED] },
+        },
+      }),
+    });
+    expect(chip(html)).toContain('data-dash-branch="one"');
+    expect(chip(html)).toContain('الجيزة');
+  });
+
+  it('stands above the bar on a phone, where the logo hides', () => {
+    const html = renderDashboard();
+    expect(html).toContain('data-dash-branch-phone="company"');
+    expect(html.indexOf('data-dash-branch-phone')).toBeLessThan(html.indexOf('data-dash-nav'));
   });
 });
 
 describe('the counts on the bar (plan §5.10)', () => {
   const html = renderDashboard();
 
-  it('counts the alert LINES that fired, the custody line included, red when one is red', () => {
-    expect(badge(html, 'alerts')).toBe('11');
-    expect(html).toMatch(/data-dash-badge="alerts"[^>]*class="[^"]*bg-red-500/u);
+  it('puts no count on «نظرة عامة» — the retired «التنبيهات» count went with its tab', () => {
+    expect(badge(html, 'overview')).toBeUndefined();
+    expect(html).not.toContain('data-dash-badge="alerts"');
+    expect(html).not.toContain('data-dash-badge="overview"');
   });
 
   it('equals the figure its tab shows', () => {
-    expect(badge(html, 'now')).toBe(String(NOW_DTO.roster?.unmanned));
+    expect(badge(html, 'today')).toBe(String(NOW_DTO.roster?.unmanned));
+    expect(html).toMatch(/data-dash-badge="today"[^>]*class="[^"]*bg-amber-100/u);
+    expect(html).toContain(
+      `title="${ar('fleet.dash.shell.badge.today', { count: NOW_DTO.roster?.unmanned ?? 0 })}"`,
+    );
     expect(badge(html, 'distribution')).toBe(String(NOW_DTO.distributionVehicles?.totals.total));
     expect(badge(html, 'licences')).toBe('3'); // 2 vehicle licences + 1 driver licence
     expect(badge(html, 'maintenance')).toBe(String(PERIOD_DTO.visits?.count));
@@ -183,18 +290,19 @@ describe('the counts on the bar (plan §5.10)', () => {
       client: dashboardClient({ now }),
       permissions: ALL_KEYS.filter((k) => k !== 'fleetRoster.view'),
     });
-    expect(badge(html2, 'now')).toBeUndefined();
+    expect(badge(html2, 'today')).toBeUndefined();
     const answers = {
       can: () => true,
       now: { ...NOW_DTO, licenceVehicles: null, licenceDrivers: null },
       period: undefined,
     };
-    expect(tabBadges(answers, null).licences).toBeUndefined();
+    expect(tabBadges(answers).licences).toBeUndefined();
   });
 
   it('is amber for the cars without a driver, plain once there are none', () => {
     const answers = { can: () => true, now: NOW_DTO, period: undefined };
-    expect(tabBadges(answers, null).now).toEqual({ n: 5, tone: 'amber' });
+    expect(tabBadges(answers).today).toEqual({ n: 5, tone: 'amber' });
+    expect(tabBadges(answers).overview).toBeUndefined();
     const none = {
       ...answers,
       now: {
@@ -202,10 +310,10 @@ describe('the counts on the bar (plan §5.10)', () => {
         roster: { ...(NOW_DTO.roster as NonNullable<typeof NOW_DTO.roster>), unmanned: 0 },
       },
     };
-    expect(tabBadges(none, null).now).toEqual({ n: 0, tone: 'plain' });
+    expect(tabBadges(none).today).toEqual({ n: 0, tone: 'plain' });
   });
 
-  it('orders the lines red first, the custody line after the notices', () => {
+  it('orders the overview’s action lines red first, the custody line after the notices', () => {
     const lines = alertLines(NOW_DTO.alerts, 1);
     expect(lines.map((l) => l.id)).toEqual([
       'maintenanceRed',
@@ -220,12 +328,7 @@ describe('the counts on the bar (plan §5.10)', () => {
       'custody',
       'noReading',
     ]);
-    expect(alertSummary(lines)).toEqual({
-      total: 11,
-      red: 4,
-      orange: 7,
-      byCategory: { cars: 4, drivers: 2, fuel: 5 },
-    });
+    expect(alertSummary(lines)).toEqual({ total: 11, red: 4, orange: 7 });
     expect(alertLines(NOW_DTO.alerts, 0)).toHaveLength(10);
     expect(alertLines(NOW_DTO.alerts, null)).toHaveLength(10);
   });
@@ -249,19 +352,26 @@ describe('the custody hooks are mounted only with `fleetCustody.view` (D3)', () 
 });
 
 describe('the address bar (D14)', () => {
-  it('remembers the six filters for the page, never `tab`', () => {
-    expect(REMEMBERED_FILTERS).toEqual([
-      'period',
-      'from',
-      'to',
-      'type',
-      'operation',
-      'vehicleCodes',
-    ]);
+  it('remembers the type, the operation and the codes — never the period, never `tab` (§0c)', () => {
+    expect(REMEMBERED_FILTERS).toEqual(['type', 'operation', 'vehicleCodes']);
     expect(PAGE).toContain('const REMEMBERED_FILTERS = [');
     expect(PAGE).toContain('useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);');
     expect(PAGE).toContain("sp.get('tab')");
-    for (const param of REMEMBERED_FILTERS) expect(PAGE).toContain(`sp.get('${param}')`);
+    // The page still reads the period from the address bar: a chosen period stays between tabs.
+    for (const param of [...REMEMBERED_FILTERS, 'period', 'from', 'to']) {
+      expect(PAGE).toContain(`sp.get('${param}')`);
+    }
+  });
+
+  it('keeps the page’s period on a tab switch, and reads «هذا الشهر» apart for the overview', () => {
+    expect(PAGE).toContain('const pick = (tab: FleetDashboardTab): void => write({ tab });');
+    expect(PAGE).toContain(
+      "const MONTH_QUERY: FleetDashboardPeriodQuery = { preset: 'thisMonth' };",
+    );
+    // Whitespace aside: the month read is asked only on the overview, by a reader of R2.
+    expect(PAGE.replace(/\s+/gu, ' ')).toContain(
+      "useFleetDashboardPeriod( MONTH_QUERY, 'live', reads.period && active === 'overview', )",
+    );
   });
 
   it('decides the read’s face: a skeleton on its way, an error with no answer, the answer otherwise', () => {

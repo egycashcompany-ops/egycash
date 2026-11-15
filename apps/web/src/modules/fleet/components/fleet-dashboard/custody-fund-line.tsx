@@ -1,5 +1,6 @@
-// «لوحة تحكم الحركة» — the custody figures of tab 1 (T1.11) and tab 5 (T5.6–T5.9), read from the
-// custody screen's OWN hooks so the dashboard says exactly what «لوحة تحكم العهدة» says (D3):
+// «لوحة تحكم الحركة» — the custody figures of «نظرة عامة» (T1.11) and «ملخصات» (T5.6–T5.9), read
+// from the custody screen's OWN hooks so the dashboard says exactly what «لوحة تحكم العهدة» says
+// (D3):
 //
 //   · the alert line counts the fund dashboard's banner lines — `useCustodyFundAlerts(fundTotal)`,
 //     the very call `CustodyFundDashboard` makes — and nothing else: the receipt-audit lines stay on

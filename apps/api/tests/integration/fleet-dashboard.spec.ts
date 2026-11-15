@@ -7,9 +7,11 @@
 //      period presets resolve on it; the period query is refused when it is not a real period;
 //   2. who gets what: a caller with no key is turned away (403 + the audit row); a caller with one
 //      key gets exactly the sections that key opens — and NOT a section whose data key they hold
-//      without the linked screen's guard; a branch-scoped reader sees their branch; an `own` grant
-//      never narrows a company source to what the reader created; the switcher (X-Active-Branch)
-//      narrows the read and is echoed;
+//      without the linked screen's guard; a branch-scoped reader sees their branch — every figure,
+//      the company sources too — and a reader reaching two branches sees both («كل فروعي»); an `own`
+//      grant never narrows a company source to what the reader created; the switcher
+//      (X-Active-Branch) narrows the read inside the reader's branches and is echoed, a stale one is
+//      ignored;
 //   3. the old book's rows — an odometer row and a visit with only a code, an undated accident —
 //      count in the company view exactly as on the unfiltered screens, and drop out once a set exists;
 //   4. the old landing read (`GET /fleet/dashboard`) is gone.
@@ -129,10 +131,12 @@ const NOW_SECTIONS: readonly FleetDashboardNowSection[] = [
   'dealershipPending',
   'accidentsOpen',
   'violationsYear',
+  'violationsOpen',
 ];
 const PERIOD_SECTIONS: readonly FleetDashboardPeriodSection[] = [
   'km',
   'visits',
+  'exits',
   'accidents',
   'accidentList',
   'opex',
@@ -172,6 +176,24 @@ const reader = async (
     await rbacService.ensureAssignment(id, String(role._id), scope);
   }
   return { id, token: await authService.signAccessToken(id, new Types.ObjectId().toString(), 0) };
+};
+
+/** A reader placed in B1 whose branch grant also lists B2 — «كل فروعي» (ADR-015 reach). */
+const multiReader = async (keys: string[]): Promise<{ id: string; token: string }> => {
+  const placed = await reader([], 'branch', B1);
+  mailbox += 1;
+  const role = await rbacService.createRole(
+    {
+      name: { en: `Dashboard reach ${mailbox}`, ar: `قارئ الفروع ${mailbox}` },
+      permissionKeys: keys,
+    },
+    adminUserId,
+  );
+  await rbacService.assignRole(
+    { userId: placed.id, roleId: String(role._id), scope: 'branch', branchIds: [B2] },
+    adminUserId,
+  );
+  return placed;
 };
 
 let B1: string;
@@ -417,7 +439,7 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     const now = await nowOf(clerk.token);
     expect(present(now, NOW_SECTIONS)).toEqual(['workshop', 'recentWorkshop']);
     expect(now.alerts.map((a) => a.id)).not.toContain('maintenanceRed');
-    expect(present(await periodOf(clerk.token), PERIOD_SECTIONS)).toEqual(['visits']);
+    expect(present(await periodOf(clerk.token), PERIOD_SECTIONS)).toEqual(['visits', 'exits']);
   });
 
   it('the cards reader gets the expired cards; the balances need the charging screen too', async () => {
@@ -475,17 +497,108 @@ describe('the doors — real roles (R-28, §5.5)', () => {
   it('the switcher narrows the read to its branch and says so', async () => {
     const now = await nowOf(adminToken, B1);
     expect(now.branchId).toBe(B1);
+    expect(now.scopeBranches).toEqual([{ id: B1, name: { ar: 'فرع دمنهور', en: 'فرع دمنهور' } }]);
     expect(now.vehicles?.active).toBe(1);
-    expect(now.vehicleScope).toMatchObject({ branchId: B1, count: 1 });
+    expect(now.vehicleScope).toMatchObject({
+      branchId: B1,
+      count: 1,
+      scopeBranches: now.scopeBranches,
+    });
     // Both open files are B1's car's — the undated one too: «open now» knows no period (R-23).
     expect(now.accidentsOpen?.count).toBe(2);
     const period = await periodOf(adminToken, OCT, B1);
-    expect(period.vehicleScope).toMatchObject({ branchId: B1, count: 1 });
+    expect(period.vehicleScope).toMatchObject({
+      branchId: B1,
+      count: 1,
+      scopeBranches: now.scopeBranches,
+    });
     expect(period.km?.total).toBe(60);
+    // One branch in scope: «حسب النوع» is drawn (D10).
+    expect(period.km?.byType?.map((t) => t.km)).toEqual([60]);
     expect(period.visits?.count).toBe(0);
+    expect(period.exits).toEqual({ count: 0 });
     // A home branch is not a switch: the whole company.
     const homed = await reader(['fleetVehicle.view'], 'organization', B1);
     expect((await nowOf(homed.token)).vehicles?.active).toBe(2);
+    expect((await nowOf(homed.token)).scopeBranches).toBeNull();
+  });
+});
+
+describe('what the figures cover — one branch, «كل فروعي», a stale header (D9, D10)', () => {
+  const KEYS = [
+    'fleetVehicle.view',
+    'fleetAccident.view',
+    'fleetOdometer.view',
+    'fleetMaintenance.view',
+  ];
+  const SOHAG = { id: '', name: { ar: 'فرع سوهاج', en: 'فرع سوهاج' } };
+
+  it('a branch reader: the company sources narrow to the branch too, and the echo names it', async () => {
+    const branch = await reader(KEYS, 'branch', B2);
+    const now = await nowOf(branch.token);
+    expect(now.scopeBranches).toEqual([{ ...SOHAG, id: B2 }]);
+    // No switcher named: the branch is the reader's own, not a choice.
+    expect(now.branchId).toBeNull();
+    expect(now.vehicleScope).toMatchObject({
+      branchId: null,
+      count: 1,
+      scopeBranches: now.scopeBranches,
+    });
+    // Both open accident files are car1's (B1): none is this branch's. The company says 2.
+    expect(now.accidentsOpen?.count).toBe(0);
+    expect((await nowOf(adminToken)).accidentsOpen?.count).toBe(2);
+    // car2's open visit is the branch's.
+    expect(now.workshop?.open).toBe(1);
+    const period = await periodOf(branch.token);
+    expect(period.km?.total).toBe(90);
+    // The book's 40 km have no car, so no branch: not reported apart under a set.
+    expect(period.km?.unregistered).toBeNull();
+    // ONE branch in scope — the reader's only one — draws «حسب النوع», as a switcher would (D10).
+    expect(period.km?.byType?.map((t) => t.km)).toEqual([90]);
+    expect(period.vehicleScope.scopeBranches).toEqual(now.scopeBranches);
+  });
+
+  it('«كل فروعي» — a reader reaching B1 and B2 sees both, named, and never the book’s rows', async () => {
+    const both = await multiReader(KEYS);
+    const now = await nowOf(both.token);
+    expect(new Set(now.scopeBranches?.map((b) => b.id))).toEqual(new Set([B1, B2]));
+    expect(now.branchId).toBeNull();
+    expect(now.vehicleScope).not.toBeNull();
+    expect(now.vehicleScope?.count).toBe(2);
+    expect(now.vehicles?.active).toBe(2);
+    expect(now.accidentsOpen?.count).toBe(2);
+    expect(now.workshop?.open).toBe(1);
+    const period = await periodOf(both.token);
+    expect(period.km?.total).toBe(150);
+    expect(period.km?.unregistered).toBeNull();
+    // Two branches are not «a branch»: by branch, never by type.
+    expect(period.km?.byType).toBeNull();
+    expect(new Set(period.km?.byBranch.map((b) => b.branchId))).toEqual(new Set([B1, B2]));
+    // The book's visit (no car) is the company's only exit in October: not this reader's.
+    expect(period.exits).toEqual({ count: 0 });
+    expect(new Set(period.vehicleScope.scopeBranches?.map((b) => b.id))).toEqual(new Set([B1, B2]));
+  });
+
+  it('«كل فروعي» with the switcher on one of them: that branch, honoured and echoed', async () => {
+    const both = await multiReader(KEYS);
+    const one = await nowOf(both.token, B2);
+    expect(one.branchId).toBe(B2);
+    expect(one.scopeBranches).toEqual([{ ...SOHAG, id: B2 }]);
+    expect(one.accidentsOpen?.count).toBe(0);
+    expect((await periodOf(both.token, OCT, B2)).km?.total).toBe(90);
+  });
+
+  it('a stale header (a branch outside a home-only reader’s grant) is ignored — the home branch stays', async () => {
+    const home = await reader(KEYS, 'branch', B1);
+    const now = await nowOf(home.token, B2);
+    expect(now.branchId).toBeNull();
+    expect(now.scopeBranches?.map((b) => b.id)).toEqual([B1]);
+    expect(now.vehicles?.active).toBe(1);
+    expect(now.accidentsOpen?.count).toBe(2);
+    expect(now.workshop?.open).toBe(0);
+    const period = await periodOf(home.token, OCT, B2);
+    expect(period.km?.total).toBe(60);
+    expect(period.vehicleScope.branchId).toBeNull();
   });
 });
 
@@ -498,7 +611,15 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
       (dto.km?.byBranch ?? []).reduce((a, b) => a + b.km, 0) + (dto.km?.unregistered ?? 0),
     ).toBe(dto.km?.total);
     expect(dto.visits).toMatchObject({ count: 2, unregistered: 1 });
+    // By EXIT day: only the book's visit left the workshop in October (car2's is still open).
+    expect(dto.exits).toEqual({ count: 1 });
+    expect(
+      ok<unknown[]>(
+        await call('/fleet/maintenance', adminToken, { outFrom: OCT.from, outTo: OCT.to }),
+      ).length,
+    ).toBe(1);
     expect(dto.accidents).toMatchObject({ count: 1, undated: 1 });
+    expect(dto.vehicleScope.scopeBranches).toBeNull();
     expect(dto.accidentList?.rows.map((row) => [row.code, row.date, row.remaining])).toEqual([
       [car1.code, '2026-10-18', 500],
     ]);
@@ -510,6 +631,7 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(dto.km?.total).toBe(150);
     expect(dto.km?.unregistered).toBeNull();
     expect(dto.visits).toMatchObject({ count: 1, unregistered: null });
+    expect(dto.exits).toEqual({ count: 0 });
     expect(dto.accidents?.undated).toBeNull();
   });
 });

@@ -41,15 +41,19 @@ import {
   useHoverCard,
 } from '../../fleet/components/HoverCardLayer';
 
-/** A code, a phone or a time: a figure, read left to right in the figures' face. */
-const Figure = ({ children }: { children: ReactNode }): JSX.Element => (
+/**
+ * A code, a phone or a time: a figure, read left to right in the figures' face. Shared with the
+ * member card on «كشف طاقم العمليات» (`RosterMemberCard`), as are the head, its drawing and the
+ * branch's name below — one look for every Operations person card.
+ */
+export const Figure = ({ children }: { children: ReactNode }): JSX.Element => (
   <span dir="ltr" className="font-figures">
     {children}
   </span>
 );
 
 /** The person drawing at the head of the captain card — the Fleet driver card's. */
-const PersonIcon = (): JSX.Element => (
+export const PersonIcon = (): JSX.Element => (
   <svg
     viewBox="0 0 24 24"
     className="h-3.5 w-3.5"
@@ -65,7 +69,7 @@ const PersonIcon = (): JSX.Element => (
 );
 
 /** The card's head line: its drawing, then the line the card is about. */
-const CardHead = ({
+export const CardHead = ({
   icon,
   children,
   sub,
@@ -88,7 +92,7 @@ const CardHead = ({
 );
 
 /** The branch's name, from the one shared list — «…» while it loads, «—» for none. */
-const useBranchName = (branchId: string | null): string | 'loading' | null => {
+export const useBranchName = (branchId: string | null): string | 'loading' | null => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useBranchNames(branchId !== null);
   if (branchId === null) return null;

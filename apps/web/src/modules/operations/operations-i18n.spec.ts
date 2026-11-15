@@ -17,12 +17,14 @@ import {
   OPERATIONS_SHIPMENT_LOG_KINDS,
   OPERATIONS_SHIPMENT_STATUSES,
   OPERATIONS_SHIPMENT_TYPES,
+  OPERATIONS_SHIFT_TYPE_COLOURS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { PLURAL_FORMS, pluralKey } from '../../shared/lib/plural';
 import { OPERATIONS_CATALOG_KINDS } from './pages/CatalogsPage';
 import { CREW_SLOTS } from './lib/crew-board';
+import { CREW_ROW_COLOURS, PLAN_FLAGS, PLAN_POOLS } from './lib/crew-plan';
 import { REQUIREMENT_FLAGS } from './lib/requirements';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -239,6 +241,18 @@ const CREW_KEYS = [
   'operations.crew.requirements.saveFailed',
   'operations.crew.requirements.unconfigured',
   'operations.crew.requirements.empty',
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its columns, filters, figures, batch save,
+  // the leave dialog, and the counted results in each of Arabic's five forms (`pluralKey`).
+  // Round 19b: the code's column and its box are gone — one box, «الاسم أو الكود» (`search`).
+  ...[
+    'name', 'jobTitle', 'search', 'holds', 'noJobTitle', 'noMatch',
+    'figures.members', 'figures.captains', 'figures.specialists',
+    'save', 'discard', 'pendingCell', 'readOnly', 'rowNotSaved',
+    'leaveTitle', 'leaveConfirm', 'leaveStay',
+  ].map((key) => `operations.crew.requirements.${key}`),
+  ...['saved', 'notSaved', 'leaveBody'].flatMap((key) =>
+    PLURAL_FORMS.map((form) => `operations.crew.requirements.${key}.${form}`),
+  ),
   'operations.crew.departments.title',
   'operations.crew.departments.hint',
   'operations.crew.departments.saved',
@@ -289,14 +303,24 @@ const SECURED_KEYS = [
   'operations.secured.receive.boxes',
   'operations.secured.receive.bagSeals',
   'operations.secured.receive.boxSeals',
-  'operations.secured.receive.sealsHint',
-  'operations.secured.receive.primary',
-  'operations.secured.receive.secondary',
-  'operations.secured.receive.dualControl',
-  'operations.secured.receive.sameTreasurer',
   'operations.secured.receive.done',
   'operations.secured.receive.failed',
-  'operations.secured.receive.noRoster',
+  // Round 18 — the legacy «إستلام محصنة» form: no names, nothing required, «إيصال» prints it.
+  // (The two treasurers' words — primary, secondary, dualControl, sameTreasurer, noRoster — and
+  // the free-text seals' hint are gone with them; vault-receive.spec holds them gone.)
+  ...[
+    'formTitle', 'formSubtitle', 'money', 'crewReadOnly', 'serial', 'serialBox', 'serialHint',
+    'sealsPerBag', 'denominations', 'denominationInput', 'denominationsTotal', 'shipmentPound',
+    'denominationsMatch', 'denominationsMatched', 'denominationsMismatch', 'denominationsDiffer',
+    'sealsEmpty', 'bagSealInput', 'boxSealInput', 'duplicates', 'scanHint', 'receiverNote',
+    'print', 'printHint', 'takenBanner', 'shipmentIncomplete', 'errors.notDraft',
+    // Round 18b — the first and the last box fill the boxes between them.
+    'sealFilled', 'rangeMismatch',
+    ...[
+      'title', 'titleDraft', 'department', 'draftNote', 'takenNote', 'item', 'value', 'line',
+      'bags', 'sealCount', 'denomination', 'notes', 'receivedBy', 'receivedAt',
+    ].map((key) => `print.${key}`),
+  ].map((key) => `operations.secured.receive.${key}`),
   'operations.secured.dispatch.noCrew',
   'operations.secured.dispatch.assigned',
   'operations.secured.dispatch.release',
@@ -496,6 +520,60 @@ const DISPATCH_DASHBOARD_KEYS = [
   ),
 ];
 
+/**
+ * Round 20 — «لوحة التشغيلة» after the legacy board: the table's columns, a row's type and colour,
+ * the pools, the pickers, a refused save and the leave dialog (counted in Arabic's five forms). The
+ * types' own names are not here: they are «أنواع التشغيل», reference data (`SHIFT_TYPE_KEYS`).
+ */
+const CREW_PLAN_KEYS = [
+  ...[
+    'title', 'fileStem', 'day', 'hint', 'viewOnly', 'picked', 'cancelPick', 'placeHere', 'slotFull',
+    'standing', 'addRow', 'discard', 'saveCount', 'saved', 'typeAll', 'counts', 'total', 'workshop',
+    'workshopHint', 'workshopNone', 'noneOfType', 'noVehicle', 'looseRow', 'pickVehicle',
+    'pickVehicleTitle', 'noEmptyVehicle', 'unknownPerson', 'leaveTitle', 'leaveConfirm',
+    'leaveStay',
+  ].map((key) => `operations.crewPlan.${key}`),
+  ...PLURAL_FORMS.map((form) => `operations.crewPlan.leaveBody.${form}`),
+  ...[...CREW_SLOTS, 'vehicle', 'direction', 'time', 'type', 'notes', 'actions'].map(
+    (key) => `operations.crewPlan.columns.${key}`,
+  ),
+  ...['choose', 'clear', 'untyped', 'archived', 'archivedHint', 'empty'].map(
+    (key) => `operations.crewPlan.type.${key}`,
+  ),
+  ...['type', 'direction'].map((key) => `operations.crewPlan.refused.${key}`),
+  ...[...CREW_ROW_COLOURS, 'open', 'none'].map((key) => `operations.crewPlan.colour.${key}`),
+  ...['empty', 'unknown', 'clear'].map((key) => `operations.crewPlan.direction.${key}`),
+  ...['open', 'hours', 'minutes', 'clear'].map((key) => `operations.crewPlan.time.${key}`),
+  ...['clear', 'remove'].map((key) => `operations.crewPlan.row.${key}`),
+  ...['captain', 'specialists1', 'specialists2'].map((key) => `operations.crewPlan.short.${key}`),
+  ...['captain', 'dual', 'specialist'].map((key) => `operations.crewPlan.role.${key}`),
+  ...['captain', 'specialist'].map((key) => `operations.crewPlan.outOfRole.${key}`),
+  ...['select', 'remove'].map((key) => `operations.crewPlan.chip.${key}`),
+  ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
+    (key) => `operations.crewPlan.pools.${key}`,
+  ),
+  ...PLAN_POOLS.map((pool) => `operations.crewPlan.pools.empty.${pool}`),
+  // The chips' icons and the pools' filters are named by the requirements screen's own words.
+  ...PLAN_FLAGS.map((flag) => `operations.crew.flag.${flag}`),
+];
+
+/**
+ * Round 20 — «أنواع التشغيل» on the reference screen: «انا عاوز النوع يكون بيضاف من البيانات
+ * المرجعيه». Its form, its drag order, archive and restore, and a name for every colour of the
+ * palette the contract allows (each swatch is named for a reader who cannot see it).
+ */
+const SHIFT_TYPE_KEYS = [
+  'operations.catalogs.tab.shiftTypes',
+  ...[
+    'add', 'edit', 'empty', 'name', 'nameEn', 'colour', 'colourHint', 'nameTaken',
+    'dragToOrder', 'moveUp', 'moveDown', 'orderSaved', 'orderHint',
+    'archive', 'restore', 'archived', 'restored',
+  ].map((key) => `operations.catalogs.shiftType.${key}`),
+  ...OPERATIONS_SHIFT_TYPE_COLOURS.map(
+    (colour) => `operations.catalogs.shiftType.colours.${colour}`,
+  ),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -509,6 +587,8 @@ const ALL_KEYS = [
   ...AREA_KEYS,
   ...DISTRIBUTION_KEYS,
   ...DISPATCH_DASHBOARD_KEYS,
+  ...CREW_PLAN_KEYS,
+  ...SHIFT_TYPE_KEYS,
 ];
 
 describe('operations i18n catalogs (B1–B6)', () => {

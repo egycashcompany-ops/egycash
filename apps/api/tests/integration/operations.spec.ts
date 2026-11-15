@@ -46,6 +46,7 @@ import {
   type OperationsVaultQueueDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReceiveResultDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -436,6 +437,17 @@ beforeAll(async () => {
       ],
     });
   expect(rosterRes.status).toBe(200);
+
+  // The areas the crews below head for. Since Round 20 a crew row's «الاتجاه» must name an ACTIVE
+  // operations area («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»), so the directions this file
+  // plans with exist before the first plan. None is a name the areas suite creates itself.
+  for (const name of ['الجيزة', 'القاهرة', 'بنها']) {
+    const areaRes = await request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name });
+    expect(areaRes.status, JSON.stringify(areaRes.body)).toBe(201);
+  }
 }, 240_000);
 
 afterAll(async () => {
@@ -1847,8 +1859,6 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         bagCount: 3,
         boxCount: 1,
         bagSeals: ['S-1', 'S-2', 'S-3'],
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: treasurer2Id,
         version: shipment.version,
         ...overrides,
       });
@@ -1893,11 +1903,17 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     expect(ids).toContain(shipment.id);
   });
 
-  it('2+3. receives into the vault: draft → inVault, custody held, dual control enforced', async () => {
+  it('2+3. receives into the vault: draft → inVault, custody held, received by the token\'s user', async () => {
     const shipment = await mkSecured();
 
-    const sameTreasurer = await receive(shipment, { receivedBySecondaryId: captainId });
-    expect(sameTreasurer.status).toBe(400); // schema-level dual-control guard
+    // Round 18 — «انا مش عاوز اى اسماء»: the two treasurers are gone from the request. Naming them
+    // is a 400 like any unknown field — the server reads who received it from the token.
+    const named = await receive(shipment, { receivedByPrimaryId: captainId });
+    expect(named.status).toBe(400);
+    expect(errorCode(named)).toBe(ErrorCodes.VALIDATION_FAILED);
+    const second = await receive(shipment, { receivedBySecondaryId: treasurer2Id });
+    expect(second.status).toBe(400);
+    expect(errorCode(second)).toBe(ErrorCodes.VALIDATION_FAILED);
 
     const res = await receive(shipment);
     expect(res.status).toBe(200);
@@ -1914,16 +1930,20 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     expect(body.meta).toMatchObject({ page: 1, totalItems: expect.any(Number) as number });
     const row = body.data.find((r) => r.shipmentId === shipment.id);
     expect(row).toBeDefined();
-    // The port's widened view, end to end: packaging counts and BOTH treasurers reach the desk...
+    // The port's widened view, end to end: packaging counts and WHO received it reach the desk —
+    // since Round 18 the signed-in user, by name, and no treasurers...
     expect(row).toMatchObject({
       state: 'held',
       bagCount: 3,
       cartonCount: 0,
       boxCount: 1,
-      receivedByPrimaryId: expect.any(String) as string,
-      receivedBySecondaryId: expect.any(String) as string,
+      bagSealsPerBag: 2,
+      denominations: [],
+      receivedById: adminId,
+      receivedByName: 'م م',
+      receivedByPrimaryId: null,
+      receivedBySecondaryId: null,
     });
-    expect(row?.receivedByPrimaryId).not.toBe(row?.receivedBySecondaryId);
     // ...and the seal barcodes do NOT — they stay behind the Treasury boundary.
     expect(row).not.toHaveProperty('bagSeals');
     expect(row).not.toHaveProperty('boxSeals');
@@ -2065,12 +2085,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     const res = await request(app)
       .post(`/api/v1/operations/secured/${shipment.id}/receive`)
       .set('Authorization', `Bearer ${viewerToken}`)
-      .send({
-        receiptNumber: 'R-X',
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: treasurer2Id,
-        version: shipment.version,
-      });
+      .send({ receiptNumber: 'R-X', version: shipment.version });
     expect(res.status).toBe(403);
 
     const vaultRead = await request(app)
@@ -2901,15 +2916,12 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
         deliveryDate: DELIVERY,
       }),
     );
-    const treasurer = await mkEmployee();
     const pickedUp = await deskPickUp(secured.id);
     const received = await request(app)
       .post(`/api/v1/operations/secured/${secured.id}/receive`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         receiptNumber: `R-M-${secured.id.slice(-5)}`,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: treasurer,
         version: pickedUp.version,
       });
     expect(received.status).toBe(200);
@@ -3444,14 +3456,11 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       }),
     );
     securedDueDispatched = secured.id;
-    const treasurer = await mkEmployee();
     const received = await request(app)
       .post(`/api/v1/operations/secured/${secured.id}/receive`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         receiptNumber: `R-BOARD-${secured.id.slice(-5)}`,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: treasurer,
         version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
@@ -3470,8 +3479,6 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         receiptNumber: `R-BOARD-${inVault.id.slice(-5)}`,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: treasurer,
         version: (await deskPickUp(inVault.id)).version,
       });
     expect(vaulted.status).toBe(200);
@@ -3655,10 +3662,15 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
           old: null,
           new: `R-BOARD-${securedDueDispatched.slice(-5)}`,
         },
-        { field: 'receivedByPrimary', old: null, new: 'طاقم اختبار' },
-        { field: 'receivedBySecondary', old: null, new: 'طاقم اختبار' },
+        { field: 'bagSealsPerBag', old: null, new: '2' },
       ]),
     );
+    // Round 18 — no names on the receipt («انا مش عاوز اى اسماء»): WHO received it is the entry's
+    // actor (checked for every entry below), never a treasurer field — and nothing blank twice.
+    const intoVaultFields = intoVault?.changes.map((c) => c.field) ?? [];
+    expect(intoVaultFields).not.toContain('receivedByPrimary');
+    expect(intoVaultFields).not.toContain('receivedBySecondary');
+    expect(intoVault?.changes.every((c) => c.old !== null || c.new !== null)).toBe(true);
     expect(crewed).toMatchObject({
       leg: 'delivery',
       changes: [
@@ -3825,8 +3837,6 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         receiptNumber: `R-BOARD-${twoLegs.id.slice(-5)}`,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: await mkEmployee(),
         version: (await deskPickUp(twoLegs.id)).version,
       });
     expect(received.status).toBe(200);
@@ -5333,8 +5343,6 @@ describe('operations reports — legacy /ops_report (B5)', () => {
         bagCount: 10,
         cartonCount: 4,
         boxCount: 2,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: specialist1Id,
         version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
@@ -5577,6 +5585,7 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
     const row = day.members.find((m) => m.employeeId === attendanceMember);
     // ...and the page then SHOWS that this un-recorded member is crewed today.
     expect(row?.assignedVehicleId).toBe(vehicleAId);
+    expect(row?.isCrewed).toBe(true);
   });
 
   it('4. needs BOTH grants — the Operations roster read and HR\'s own attendance read', async () => {
@@ -5668,8 +5677,6 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
       .send({
         receiptNumber: `R-VLT-${String(receiptCounter)}-${id.slice(-5)}`,
         bagCount,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: specialist1Id,
         version: (await readShipment(id)).version,
       });
   };
@@ -5768,8 +5775,6 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
         bagCount: 7,
         cartonCount: 3,
         boxCount: 1,
-        receivedByPrimaryId: captainId,
-        receivedBySecondaryId: specialist1Id,
         version: (await deskPickUp(secured.id)).version,
       });
     expect(received.status).toBe(200);
@@ -6605,8 +6610,6 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         receiptNumber: `R8-${shipmentId.slice(-6)}`,
-        receivedByPrimaryId: specialist1Id,
-        receivedBySecondaryId: specialist2Id,
         version: data<OperationsShipmentDto>(current).version,
       });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -7149,8 +7152,6 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
         .set('Authorization', `Bearer ${treasurer}`)
         .send({
           receiptNumber: `R9-${turning.slice(-6)}`,
-          receivedByPrimaryId: specialist1Id,
-          receivedBySecondaryId: specialist2Id,
           version: row?.version,
         });
       expect(received.status, JSON.stringify(received.body)).toBe(200);
@@ -7266,8 +7267,6 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
         receiptNumber: `R10-${id.slice(-6)}`,
         bagCount: 2,
         bagSeals: ['R10-S1', 'R10-S2'],
-        receivedByPrimaryId: specialist1Id,
-        receivedBySecondaryId: specialist2Id,
         version: (await read(id)).version,
       });
   const cancel = async (
@@ -8625,5 +8624,557 @@ describe('the currency catalog\'s order — PUT /operations/currencies/order', (
       .get('/api/v1/operations/currencies')
       .set('Authorization', `Bearer ${viewerToken}`);
     expect(read.status).toBe(200);
+  });
+});
+
+// ── Round 18 — the legacy «إستلام محصنة» form on the vault's ✓ ─────────────────────────────────────
+//
+// The owner: «عاوز اخلى الفورم دا لما اجى استلم محصنة», and his answers — the vault may correct the
+// shipment's data in the form («تعدّلها عادي»), recorded in «السجل»; «عدد الورق من كل فئة»; «سيريال»
+// decided at the receipt; and «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله
+// اختيارى» — no treasurers, every field optional, the receiver read from the token.
+describe('Round 18 — «إستلام محصنة»: every field optional, no names, the shipment corrected in the same act', () => {
+  const R18_DAY = shift(385);
+  const R18_OUT = shift(386);
+
+  let branchA2: OperationsBankBranchDto;
+  let vaultOnly = { token: '', userId: '' }; // operationsVault.receive and NOTHING else
+  let treasurerA = '';
+  let treasurerB = '';
+
+  const userWith = async (
+    email: string,
+    permissionKeys: string[],
+  ): Promise<{ token: string; userId: string }> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R18 ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return { token: await login(email), userId };
+  };
+  const book = async (): Promise<OperationsShipmentDto> => {
+    const res = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: R18_DAY,
+      deliveryDate: R18_OUT,
+      notes: 'كما حُجزت',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<OperationsShipmentDto>(res);
+  };
+  const read = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const receive = (
+    id: string,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/receive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  const custodyOf = async (shipmentId: string) => {
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    return OperationsVaultCustodyModel.find({ shipmentId }).lean().exec();
+  };
+  const inventoryRow = async (
+    shipmentId: string,
+  ): Promise<OperationsVaultInventoryRowDto | undefined> => {
+    const res = await request(app)
+      .get('/api/v1/operations/secured/vault?pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return (res.body as { data: OperationsVaultInventoryRowDto[] }).data.find(
+      (row) => row.shipmentId === shipmentId,
+    );
+  };
+  const logOf = async (id: string, token = adminToken): Promise<OperationsShipmentLogDto> => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${id}/log`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsShipmentLogDto>(res);
+  };
+
+  beforeAll(async () => {
+    const branch = await request(app)
+      .post('/api/v1/operations/bank-branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ bankId: bankA.id, name: 'فرع الدقي', code: 'A-118', opsAreaName: 'الدقي' });
+    expect(branch.status, JSON.stringify(branch.body)).toBe(201);
+    branchA2 = data<OperationsBankBranchDto>(branch);
+    vaultOnly = await userWith('ops-r18-vault@ecms.local', ['operationsVault.receive']);
+    treasurerA = await mkEmployee({ fullNameAr: 'أمين قديم أول' });
+    treasurerB = await mkEmployee({ fullNameAr: 'أمين قديم ثان' });
+  });
+
+  it('receives with NOTHING but the version — the receiver is the token\'s user, no number reads «—»', async () => {
+    const shipment = await book();
+    const res = await receive(shipment.id, { version: shipment.version }, vaultOnly.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const result = data<OperationsVaultReceiveResultDto>(res);
+    // The shipment, as the route always answered…
+    expect(result).toMatchObject({
+      id: shipment.id,
+      status: 'inVault',
+      receiptNumber: null,
+      version: shipment.version + 1,
+    });
+    // …and the receipt just taken, for the «إيصال» print: who, by name, and every default.
+    expect(result.receipt).toEqual({
+      custodyId: expect.any(String) as string,
+      receiptNumber: null,
+      receivedAt: expect.any(String) as string,
+      receivedById: vaultOnly.userId,
+      receivedByName: 'م م',
+      bagCount: 0,
+      cartonCount: 0,
+      boxCount: 0,
+      bagSealsPerBag: 2,
+      denominations: [],
+    });
+    expect(Date.now() - new Date(result.receipt.receivedAt).getTime()).toBeLessThan(60_000);
+
+    // The custody row records the token's user — and no treasurer.
+    const [custody] = await custodyOf(shipment.id);
+    expect(String(custody?.receivedById)).toBe(vaultOnly.userId);
+    expect(custody?.receiptNumber).toBeNull();
+    expect(custody).not.toHaveProperty('receivedByPrimaryId');
+    expect(custody).not.toHaveProperty('receivedBySecondaryId');
+
+    // The vault inventory: no receipt number is null (the screen prints «—»), the receiver named.
+    expect(await inventoryRow(shipment.id)).toMatchObject({
+      receiptNumber: null,
+      bagSealsPerBag: 2,
+      denominations: [],
+      receivedById: vaultOnly.userId,
+      receivedByName: 'م م',
+      receivedByPrimaryId: null,
+      receivedBySecondaryId: null,
+    });
+
+    // «السجل»: ONE vaultReceived entry, by the receiver, and no line printed blank on both sides.
+    const log = await logOf(shipment.id);
+    const intoVault = log.entries.filter((e) => e.kind === 'vaultReceived');
+    expect(intoVault).toHaveLength(1);
+    expect(intoVault[0]?.actorName).toBe('م م');
+    expect(intoVault[0]?.changes.map((c) => c.field)).not.toContain('receiptNumber');
+    expect(intoVault[0]?.changes.every((c) => c.old !== null || c.new !== null)).toBe(true);
+  });
+
+  it('a blank receipt number is none — trimmed, and empty or spaces read as null', async () => {
+    const spaced = await book();
+    const res = await receive(spaced.id, { receiptNumber: '  R18-77  ', version: spaced.version });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(res).receiptNumber).toBe('R18-77');
+    expect(data<OperationsVaultReceiveResultDto>(res).receipt.receiptNumber).toBe('R18-77');
+
+    for (const blank of ['', '   ', null]) {
+      const shipment = await book();
+      const blankRes = await receive(shipment.id, {
+        receiptNumber: blank,
+        version: shipment.version,
+      });
+      expect(blankRes.status, JSON.stringify(blankRes.body)).toBe(200);
+      expect(data<OperationsVaultReceiveResultDto>(blankRes).receipt.receiptNumber).toBeNull();
+      expect((await custodyOf(shipment.id))[0]?.receiptNumber).toBeNull();
+    }
+  });
+
+  it('receives with EVERY field — ×3 seals, blank seals dropped, notes per denomination, «سيريال»', async () => {
+    const shipment = await book();
+    expect(shipment.serialTracked).toBe(false);
+    const res = await receive(shipment.id, {
+      receiptNumber: 'R18-FULL',
+      bagCount: 2,
+      bagSealsPerBag: 3,
+      // 2 bags × 3 = 6 boxes on the form; two left empty, one only spaces, the rest padded.
+      bagSeals: [' 101 ', '102', '', '104', '   ', '106'],
+      boxCount: 3,
+      boxSeals: ['6', '7', '8', '10', '11', '13'],
+      cartonCount: 1,
+      denominations: [
+        { value: 200, count: 15 },
+        { value: 0.25, count: 40 },
+        { value: 50, count: 0 },
+        { value: 0.5, count: 8 },
+      ],
+      serialTracked: true,
+      version: shipment.version,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const result = data<OperationsVaultReceiveResultDto>(res);
+    expect(result.serialTracked).toBe(true);
+    // Stored smallest first, the untouched «50» box (0) not stored at all.
+    expect(result.receipt).toMatchObject({
+      receiptNumber: 'R18-FULL',
+      bagCount: 2,
+      cartonCount: 1,
+      boxCount: 3,
+      bagSealsPerBag: 3,
+      denominations: [
+        { value: 0.25, count: 40 },
+        { value: 0.5, count: 8 },
+        { value: 200, count: 15 },
+      ],
+    });
+    const [custody] = await custodyOf(shipment.id);
+    expect(custody?.bagSeals).toEqual(['101', '102', '104', '106']);
+    expect(custody?.boxSeals).toEqual(['6', '7', '8', '10', '11', '13']);
+    expect(custody?.bagSealsPerBag).toBe(3);
+
+    expect(await inventoryRow(shipment.id)).toMatchObject({
+      receiptNumber: 'R18-FULL',
+      bagSealsPerBag: 3,
+      denominations: [
+        { value: 0.25, count: 40 },
+        { value: 0.5, count: 8 },
+        { value: 200, count: 15 },
+      ],
+    });
+
+    // «السجل» — the receipt's details for the vault's reader, «سيريال» for every reader.
+    const intoVault = (await logOf(shipment.id)).entries.find((e) => e.kind === 'vaultReceived');
+    expect(intoVault?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'receiptNumber', old: null, new: 'R18-FULL' },
+        { field: 'bagSealsPerBag', old: null, new: '3' },
+        { field: 'bagSeals', old: null, new: '101، 102، 104، 106' },
+        { field: 'denominations', old: null, new: '0.25 × 40، 0.5 × 8، 200 × 15' },
+        { field: 'serialTracked', old: 'false', new: 'true' },
+      ]),
+    );
+    const viewerEntry = (await logOf(shipment.id, viewerToken)).entries.find(
+      (e) => e.kind === 'vaultReceived',
+    );
+    expect(viewerEntry?.changes).toEqual([{ field: 'serialTracked', old: 'false', new: 'true' }]);
+  });
+
+  it('refuses an unknown denomination, one twice, a bad count or a third seal choice — nothing written', async () => {
+    const shipment = await book();
+    const refused: Record<string, unknown>[] = [
+      { denominations: [{ value: 3, count: 1 }] },
+      { denominations: [{ value: 2, count: 1 }] },
+      {
+        denominations: [
+          { value: 200, count: 1 },
+          { value: 200, count: 2 },
+        ],
+      },
+      { denominations: [{ value: 100, count: -1 }] },
+      { denominations: [{ value: 100, count: 1.5 }] },
+      { denominations: [{ value: 100 }] },
+      { bagSealsPerBag: 4 },
+      { bagCount: -1 },
+      { bagSeals: [7] },
+    ];
+    for (const body of refused) {
+      const res = await receive(shipment.id, { ...body, version: shipment.version });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(errorCode(res)).toBe(ErrorCodes.VALIDATION_FAILED);
+    }
+    expect(await custodyOf(shipment.id)).toHaveLength(0);
+    expect((await read(shipment.id)).status).toBe('draft');
+  });
+
+  it('applies the vault\'s corrections and the receipt in ONE act — logged as an edit, then the receipt', async () => {
+    const shipment = await book();
+    const res = await receive(
+      shipment.id,
+      {
+        receiptNumber: 'R18-EDIT',
+        shipment: {
+          destinationBranchId: branchA2.id,
+          lines: [{ currencyId: egp.id, amount: 1770 }],
+          notes: 'صحّحته الخزينة',
+        },
+        version: shipment.version,
+      },
+      vaultOnly.token,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const result = data<OperationsVaultReceiveResultDto>(res);
+    expect(result).toMatchObject({
+      status: 'inVault',
+      destinationBranchId: branchA2.id,
+      lines: [{ currencyId: egp.id, amount: 1770 }],
+      notes: 'صحّحته الخزينة',
+      // Two writes in the one transaction: the edit, then the move to `inVault`.
+      version: shipment.version + 2,
+    });
+
+    // «السجل»: what the vault corrected (old → new), then the receipt — both by the receiver.
+    const log = await logOf(shipment.id);
+    expect(log.entries.map((e) => e.kind)).toEqual(['created', 'edited', 'vaultReceived']);
+    const [, edited, intoVault] = log.entries;
+    expect(edited?.changes).toEqual(
+      expect.arrayContaining([
+        {
+          field: 'destinationBranch',
+          old: 'فرع المهندسين (A-101)',
+          new: 'فرع الدقي (A-118)',
+        },
+        { field: 'notes', old: 'كما حُجزت', new: 'صحّحته الخزينة' },
+        { field: 'lines', old: expect.any(String) as string, new: 'مصري 1,770' },
+      ]),
+    );
+    expect(edited?.actorName).toBe('م م');
+    expect(intoVault?.actorName).toBe('م م');
+    expect(intoVault?.changes).toEqual(
+      expect.arrayContaining([{ field: 'receiptNumber', old: null, new: 'R18-EDIT' }]),
+    );
+    // …and from here everything is locked, as since Round 10.
+    const locked = await request(app)
+      .patch(`/api/v1/operations/shipments/${shipment.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ notes: 'بعد الاستلام', version: result.version });
+    expect(locked.status).toBe(409);
+    expect(errorCode(locked)).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+  });
+
+  it('the receive\'s grant covers the corrections — operationsVault.receive alone, never operationsShipment.edit', async () => {
+    const shipment = await book();
+    // The same person may not edit the shipment on its own…
+    const plainEdit = await request(app)
+      .patch(`/api/v1/operations/shipments/${shipment.id}`)
+      .set('Authorization', `Bearer ${vaultOnly.token}`)
+      .send({ notes: 'تعديل مباشر', version: shipment.version });
+    expect(plainEdit.status).toBe(403);
+    // …and corrects it inside the receipt.
+    const res = await receive(
+      shipment.id,
+      { shipment: { notes: 'تعديل مع الاستلام' }, version: shipment.version },
+      vaultOnly.token,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(res).notes).toBe('تعديل مع الاستلام');
+    // Without the receive grant, neither.
+    const other = await book();
+    const denied = await receive(
+      other.id,
+      { shipment: { notes: 'x' }, version: other.version },
+      viewerToken,
+    );
+    expect(denied.status).toBe(403);
+  });
+
+  it('an empty correction is no edit — one write, no «edited» entry', async () => {
+    // «Send only what changed»: `shipment: {}` changed nothing, so nothing is edited — the version
+    // moves once (the receipt), not twice, and «السجل» reads the receipt alone.
+    const shipment = await book();
+    const res = await receive(shipment.id, { shipment: {}, version: shipment.version });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(res)).toMatchObject({
+      status: 'inVault',
+      notes: 'كما حُجزت',
+      version: shipment.version + 1,
+    });
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).toEqual([
+      'created',
+      'vaultReceived',
+    ]);
+  });
+
+  it('the corrections follow the edit form\'s own rules and shape — refused, nothing is written', async () => {
+    const shipment = await book();
+    // A destination branch of ANOTHER bank than the shipment's: the edit form's rule, the same code.
+    const mismatch = await receive(shipment.id, {
+      receiptNumber: 'R18-BAD',
+      shipment: { destinationBranchId: branchB1.id, notes: 'لن تُحفظ' },
+      version: shipment.version,
+    });
+    expect(mismatch.status, JSON.stringify(mismatch.body)).toBe(422);
+    expect(errorCode(mismatch)).toBe('OPERATIONS_BRANCH_BANK_MISMATCH');
+    // A date before the day it is on: the edit form's date rule.
+    const backwards = await receive(shipment.id, {
+      shipment: { collectionDate: shift(384) },
+      version: shipment.version,
+    });
+    expect(backwards.status, JSON.stringify(backwards.body)).toBe(422);
+    expect(errorCode(backwards)).toBe(ErrorCodes.OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL);
+    // `serialTracked` is the receipt's own field, `version` the receive's, and the type is never
+    // edited — none rides inside the corrections.
+    for (const patch of [{ serialTracked: true }, { version: 0 }, { shipmentType: 'daily' }]) {
+      const res = await receive(shipment.id, { shipment: patch, version: shipment.version });
+      expect(res.status, JSON.stringify(patch)).toBe(400);
+    }
+    // A stale version, corrections and all.
+    const stale = await receive(shipment.id, {
+      shipment: { notes: 'لن تُحفظ' },
+      version: shipment.version + 3,
+    });
+    expect(stale.status).toBe(409);
+    expect(errorCode(stale)).toBe(ErrorCodes.STALE_DOCUMENT);
+
+    const after = await read(shipment.id);
+    expect(after).toMatchObject({
+      status: 'draft',
+      version: shipment.version,
+      notes: 'كما حُجزت',
+      destinationBranchId: branchA1.id,
+    });
+    expect(await custodyOf(shipment.id)).toHaveLength(0);
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).toEqual(['created']);
+  });
+
+  it('a receive that fails AFTER the corrections were written takes them back with it — one transaction', async () => {
+    const shipment = await book();
+    // A held custody already on the draft (planted straight into the collection): the treasury
+    // refuses the receipt INSIDE the transaction, after the edit has been written.
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    const planted = await OperationsVaultCustodyModel.create({
+      shipmentId: new mongoose.Types.ObjectId(shipment.id),
+      state: 'held',
+      receiptNumber: null,
+      receivedAt: new Date(),
+    });
+    const res = await receive(shipment.id, {
+      shipment: { notes: 'لن تبقى', destinationBranchId: branchA2.id },
+      version: shipment.version,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    // Nothing of the act survived: not the corrections, not the version, not a status move.
+    expect(await read(shipment.id)).toMatchObject({
+      status: 'draft',
+      version: shipment.version,
+      notes: 'كما حُجزت',
+      destinationBranchId: branchA1.id,
+    });
+    expect(await custodyOf(shipment.id)).toHaveLength(1);
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).toEqual(['created']);
+
+    // With the planted row gone, the same request goes through.
+    await OperationsVaultCustodyModel.deleteOne({ _id: planted._id });
+    const again = await receive(shipment.id, {
+      shipment: { notes: 'بقيت' },
+      version: shipment.version,
+    });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(again).notes).toBe('بقيت');
+  });
+
+  it('a receipt taken before Round 18 still reads — its two treasurers, its number — and can be cancelled', async () => {
+    const shipment = await book();
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    const { OperationsShipmentModel } = await import(
+      '../../src/modules/operations/shipments/shipment.model'
+    );
+    const { auditService } = await import('../../src/platform/audit');
+    // The row exactly as OP-4 wrote it: a receipt number, two treasurers, none of Round 18's fields.
+    const oldId = new mongoose.Types.ObjectId();
+    const receivedAt = new Date();
+    await OperationsVaultCustodyModel.collection.insertOne({
+      _id: oldId,
+      shipmentId: new mongoose.Types.ObjectId(shipment.id),
+      state: 'held',
+      receiptNumber: 'OLD-17',
+      bagCount: 2,
+      cartonCount: 0,
+      boxCount: 1,
+      bagSeals: ['O-1', 'O-2'],
+      boxSeals: [],
+      receivedByPrimaryId: new mongoose.Types.ObjectId(treasurerA),
+      receivedBySecondaryId: new mongoose.Types.ObjectId(treasurerB),
+      receivedAt,
+      releasedById: null,
+      releasedAt: null,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      createdBy: null,
+      updatedBy: null,
+      createdAt: receivedAt,
+      updatedAt: receivedAt,
+      __v: 0,
+    });
+    await OperationsShipmentModel.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(shipment.id) },
+      { $set: { status: 'inVault', receiptNumber: 'OLD-17' }, $inc: { __v: 1 } },
+    );
+    // …and its audit row as OP-4 recorded it, so «السجل» has the old receipt to print.
+    await auditService.record({
+      entityRef: { moduleId: 'operations', entityType: 'vaultCustody', entityId: String(oldId) },
+      action: 'create',
+      changes: [
+        { field: 'state', old: null, new: 'held' },
+        { field: 'receiptNumber', old: null, new: 'OLD-17' },
+        { field: 'receivedByPrimaryId', old: null, new: treasurerA },
+        { field: 'receivedBySecondaryId', old: null, new: treasurerB },
+      ],
+    });
+
+    expect(await inventoryRow(shipment.id)).toMatchObject({
+      receiptNumber: 'OLD-17',
+      bagCount: 2,
+      boxCount: 1,
+      bagSealsPerBag: null,
+      denominations: [],
+      receivedById: null,
+      receivedByName: null,
+      receivedByPrimaryId: treasurerA,
+      receivedBySecondaryId: treasurerB,
+    });
+    const log = await logOf(shipment.id);
+    expect(log.entries.find((e) => e.kind === 'vaultReceived')?.changes).toEqual([
+      { field: 'receiptNumber', old: null, new: 'OLD-17' },
+      { field: 'receivedByPrimary', old: null, new: 'أمين قديم أول' },
+      { field: 'receivedBySecondary', old: null, new: 'أمين قديم ثان' },
+    ]);
+
+    // Cancel-receipt works on it as on any receipt — voided, its treasurers kept.
+    const cancelled = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/cancel-receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'إيصال قديم بالخطأ', version: (await read(shipment.id)).version });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(cancelled).status).toBe('draft');
+    const [voided] = await custodyOf(shipment.id);
+    expect(voided).toMatchObject({ isDeleted: true, cancelReason: 'إيصال قديم بالخطأ' });
+    expect(String(voided?.receivedByPrimaryId)).toBe(treasurerA);
+    expect(String(voided?.receivedBySecondaryId)).toBe(treasurerB);
+    expect(await inventoryRow(shipment.id)).toBeUndefined();
+
+    // …and the shipment is received afresh the Round 18 way.
+    const fresh = await read(shipment.id);
+    const again = await receive(shipment.id, { version: fresh.version }, vaultOnly.token);
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(await inventoryRow(shipment.id)).toMatchObject({
+      receivedById: vaultOnly.userId,
+      receivedByPrimaryId: null,
+      receivedBySecondaryId: null,
+    });
+  });
+
+  it('cancel-receipt still voids a Round 18 receipt — keeping who received it', async () => {
+    const shipment = await book();
+    const received = await receive(
+      shipment.id,
+      { denominations: [{ value: 100, count: 3 }], version: shipment.version },
+      vaultOnly.token,
+    );
+    expect(received.status, JSON.stringify(received.body)).toBe(200);
+    const cancelled = await request(app)
+      .post(`/api/v1/operations/secured/${shipment.id}/cancel-receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'استلام بالخطأ', version: data<OperationsVaultReceiveResultDto>(received).version });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    const [voided] = await custodyOf(shipment.id);
+    expect(voided).toMatchObject({ isDeleted: true, cancelReason: 'استلام بالخطأ' });
+    expect(String(voided?.receivedById)).toBe(vaultOnly.userId);
+    expect(voided?.denominations).toEqual([{ value: 100, count: 3 }]);
+    const kinds = (await logOf(shipment.id)).entries.map((e) => e.kind);
+    expect(kinds).toEqual(['created', 'vaultReceived', 'receiptCancelled']);
   });
 });

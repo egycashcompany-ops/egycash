@@ -51,7 +51,8 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { formatNumber } from '../../../shared/lib/format';
 import { HISTORY_TOO_LARGE } from '../lib/shipment-history';
 import { __vaultQueueKey } from '../api/operations-queries';
-import { ReceiveIntoVaultDialog } from '../components/ReceiveIntoVaultDialog';
+import { ReceiveIntoVaultDialog, SealBoxes } from '../components/ReceiveIntoVaultDialog';
+import { NO_SEAL_LIST, typeSeal } from '../lib/vault-receipt';
 import { VaultReceivePage } from './VaultReceivePage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -708,10 +709,12 @@ describe('who may receive, and who may read what', () => {
   });
 });
 
-// The receive form names its two treasurers from the operations roster, read on the crew grant.
-// A treasurer without it is not sent to ask for the roster (a request that could only be refused,
-// and audited as one): the form says why it cannot be completed instead.
-describe('the receive form opened from the ✓', () => {
+// Round 18 — «إستلام محصنة», the legacy receive form: «عاوز اخلى الفورم دا لما اجى استلم محصنة».
+// «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى»: no treasurers, nothing
+// of the receipt required; the shipment's data editable in the same form («تعدّلها عادي»), with the
+// shipment form's own boxes and rules; «إيصال» prints the receipt. The rules themselves are pinned
+// in lib/vault-receipt.spec.ts and lib/vault-receipt-print.spec.ts; this pins what reaches the form.
+describe('«استلام محصنة» — the receive form opened from the ✓', () => {
   const dialog = (
     permissions: string[],
     shipment: OperationsVaultQueueShipmentDto = WITH_CAPTAIN,
@@ -733,37 +736,323 @@ describe('the receive form opened from the ✓', () => {
       </Provider>,
     );
   };
+  const VAULT_ONLY = ['operationsVault.view', 'operationsVault.receive'];
 
-  it('says why it cannot be completed to a treasurer who may not read the roster', () => {
-    const html = dialog(['operationsVault.view', 'operationsVault.receive']);
-    expect(html).toContain('data-receive-no-roster="true"');
-    expect(html).toContain(ar('operations.secured.receive.noRoster'));
-    expect(html).toMatch(/<button type="submit"[^>]*disabled=""/);
+  it('names nobody — no treasurer to pick, no roster asked for, no «شخصان مختلفان»', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toContain('data-receive-form="open"');
+    expect(html).not.toContain('الأمين الأول');
+    expect(html).not.toContain('الأمين الثاني');
+    expect(html).not.toContain('شخصان مختلفان');
+    expect(html).not.toContain('data-receive-no-roster');
+    // The receiver is whoever is signed in — said, never picked, never sent.
+    expect(html).toContain('data-receive-receiver="true"');
+    expect(html).toContain(ar('operations.secured.receive.receiverNote', { name: 'أ ب' }));
+    expect(DIALOG).not.toContain('useOperationsCrewDirectory');
+    expect(DIALOG).not.toMatch(/receivedBy(Primary|Secondary)Id/);
+    // The retired words are gone from the catalog with the pickers.
+    for (const key of [
+      'primary',
+      'secondary',
+      'dualControl',
+      'sameTreasurer',
+      'noRoster',
+      'sealsHint',
+    ]) {
+      expect(ar(`operations.secured.receive.${key}`)).toBe(`operations.secured.receive.${key}`);
+    }
   });
 
-  it('asks for the roster only with the crew grant', () => {
-    expect(DIALOG).toContain("const mayReadRoster = can('operationsCrew.view');");
-    expect(DIALOG).toContain(
-      'useOperationsCrewDirectory(null, shipment !== null && mayReadRoster);',
+  it('requires nothing of the receipt — the number, the counts, the notes counted, the seals', () => {
+    const html = dialog(VAULT_ONLY);
+    const receipt = html.slice(
+      html.indexOf('data-receive-band="receipt"'),
+      html.indexOf('data-receive-band="seals"'),
     );
-    const html = dialog(['operationsVault.view', 'operationsVault.receive', 'operationsCrew.view']);
-    expect(html).not.toContain('data-receive-no-roster');
-    expect(html).toContain(ar('operations.secured.receive.primary'));
+    expect(receipt).toContain('data-receive-number="true"');
+    expect(receipt).not.toContain('required=""');
+    expect(receipt).not.toContain('aria-required');
+    // No star on any of its labels.
+    expect(receipt).not.toContain('text-rose-500">*');
+    // «استلام» is offered as the form opens, empty as it is.
+    expect(html).toMatch(/<button type="button"[^>]*data-receive-save="true"/);
+    expect(html).not.toMatch(/data-receive-save="true"[^>]*disabled=""/);
+  });
+
+  // «ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى» — and the form says «جميع الخانات اختيارية»
+  // under its title: no box anywhere on it carries the rose star, the shipment's own included (they
+  // arrive filled; the vault only corrects them). The shipment form, where they are filled in, keeps
+  // its stars.
+  it('marks nothing mandatory anywhere — not even the shipment’s data it arrives with', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toContain(ar('operations.secured.receive.formSubtitle'));
+    const form = html.slice(html.indexOf('data-receive-band="shipment"'));
+    expect(form).not.toMatch(/text-rose-500">\*/);
+    expect(form).not.toContain('required=""');
+    expect(form).not.toContain('aria-required');
+    for (const box of [
+      '<MainBankField',
+      '<DraftBranchSide',
+      '<CollectionDateField',
+      '<DeliveryDateField',
+    ]) {
+      const at = DIALOG.indexOf(box);
+      expect(at, box).toBeGreaterThan(-1);
+      expect(DIALOG.slice(at, DIALOG.indexOf('/>', at)), box).toContain('starred={false}');
+    }
+  });
+
+  it('is legacy’s three bands: the shipment’s data, the receipt, the seals', () => {
+    const html = dialog(VAULT_ONLY);
+    const at = (band: string): number => html.indexOf(`data-receive-band="${band}"`);
+    expect(at('shipment')).toBeGreaterThan(-1);
+    expect(at('shipment')).toBeLessThan(at('receipt'));
+    expect(at('receipt')).toBeLessThan(at('seals'));
+    // The shipment's data: its banks and branches, the area, the money, the crew, the days, «سيريال».
+    const shipment = html.slice(at('shipment'), at('receipt'));
+    for (const label of [
+      'operations.shipment.form.mainBank',
+      'operations.shipment.origin',
+      'operations.shipment.destination',
+      'operations.shipment.area',
+      'operations.secured.receive.money',
+      'operations.shipment.form.captain',
+      'operations.shipment.form.vehicle',
+      'operations.board.collectedOn',
+      'operations.shipment.deliveryDate',
+      'operations.shipment.notes',
+      'operations.secured.receive.serial',
+    ]) {
+      expect(shipment, label).toContain(ar(label));
+    }
+    expect(shipment).toContain('data-receive-serial="true"');
+    // The receipt: the number, bags with «2×»/«3×», boxes, cartons, nine denominations.
+    const receipt = html.slice(at('receipt'), at('seals'));
+    expect(receipt).toContain('data-receive-per-bag="2"');
+    expect(receipt).toContain('data-receive-per-bag="3"');
+    expect(receipt).toMatch(/role="radio"[^>]*aria-checked="true"[^>]*data-receive-per-bag="2"/);
+    for (const count of ['bags', 'boxes', 'cartons']) {
+      expect(receipt).toContain(`data-receive-count="${count}"`);
+    }
+    expect(receipt.match(/data-receive-denomination="/g)).toHaveLength(9);
+    expect(receipt).toContain('data-receive-denomination="0.50"');
+    expect(receipt).toContain('data-receive-total="none"');
+    // The seals: bags then boxes — no box drawn before a count is typed.
+    const seals = html.slice(at('seals'));
+    expect(seals.indexOf('data-seal-list="bag"')).toBeLessThan(
+      seals.indexOf('data-seal-list="box"'),
+    );
+    expect(seals).not.toContain('data-seal-input=');
+    expect(seals).toContain(ar('operations.secured.receive.sealsEmpty'));
+  });
+
+  // Round 18b — «خلى الفئات لوحدها كدا فوق رقم الايصال والكلام دا»: the notes of each denomination
+  // on a row of their own, over the receipt number and the packages, as legacy drew them — no
+  // longer a column beside them.
+  it('puts «عدد الورق من كل فئة» on a row of its own, OVER the receipt number and the packages', () => {
+    const html = dialog(VAULT_ONLY);
+    const band = html.slice(
+      html.indexOf('data-receive-band="receipt"'),
+      html.indexOf('data-receive-band="seals"'),
+    );
+    const order = [
+      'data-receive-denominations="true"',
+      ar('operations.secured.receive.receiptNumber'),
+      'data-receive-number="true"',
+      'data-receive-per-bag="2"',
+      'data-receive-count="bags"',
+      'data-receive-count="boxes"',
+      'data-receive-count="cartons"',
+    ].map((mark) => band.indexOf(mark));
+    for (const at of order) expect(at).toBeGreaterThan(-1);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // The row holds the nine boxes, the words and what they come to — and none of the receipt's
+    // own fields beside them.
+    const row = band.slice(order[0], order[1]);
+    expect(row.match(/data-receive-denomination="/g)).toHaveLength(9);
+    expect(row).toContain(ar('operations.secured.receive.denominations'));
+    expect(row).toContain('data-receive-total="none"');
+    expect(row).toContain(ar('operations.secured.receive.shipmentPound'));
+    expect(row).not.toContain('data-receive-count=');
+    expect(row).not.toContain('data-receive-per-bag=');
+    // Nine across from a tablet up — the old side-by-side split of the band is gone.
+    expect(DIALOG).toContain('grid grid-cols-5 gap-1.5 sm:grid-cols-9');
+    expect(DIALOG).not.toContain('xl:grid-cols-[minmax(0,4.5fr)_minmax(0,5.5fr)]');
+  });
+
+  // «والكراتين اقدر اكتب رقم بس ملهاش سيريال ولا الكلام دا رقم عادى».
+  it('takes the cartons as a plain count — no seal box, no serial', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toContain('data-receive-count="cartons"');
+    expect(html.match(/data-seal-list="/g)).toHaveLength(2);
+    expect(html).not.toContain('data-seal-list="carton"');
+    expect(DIALOG).toMatch(/rule="integer"\s+value=\{cartonCount\}/);
+    expect(DIALOG).not.toMatch(/carton\w*Seal|kind="carton"/i);
+  });
+
+  // Round 18b — «عاوز لو دخل اول خانة فى الحقائب او الصناديق و دخل فى الخانة الاخير رقم يملى اللى ف
+  // النص بالترتيب بينهم». The rules are `fillSealRange`'s, pinned in lib/vault-receipt.spec.ts; this
+  // pins that the form runs them — on each list alone, on every box typed, and when the count or
+  // «2×»/«3×» moves the last box — and sends what the boxes show.
+  it('fills the boxes between the first and the last — bags and boxes each on their own', () => {
+    expect(DIALOG).toContain('set((prev) => typeSeal(prev, boxes, index, value));');
+    expect(DIALOG).toContain('onChange={setSeal(setBagSeals, slots.bags)}');
+    expect(DIALOG).toContain('onChange={setSeal(setBoxSeals, slots.boxes)}');
+    expect(DIALOG).toContain(
+      'useEffect(() => setBagSeals((list) => fillSealRange(list, slots.bags)), [slots.bags]);',
+    );
+    expect(DIALOG).toContain(
+      'useEffect(() => setBoxSeals((list) => fillSealRange(list, slots.boxes)), [slots.boxes]);',
+    );
+    // Sent and printed as the boxes show them, the filled ones with the rest.
+    expect(DIALOG).toContain('bagSeals: bagSeals.seals,');
+    expect(DIALOG).toContain('boxSeals: boxSeals.seals,');
+    expect(DIALOG).toContain('bagSeals: sealsToSend(bagSeals.seals, slots.bags),');
+    expect(DIALOG).toContain('boxSeals: sealsToSend(boxSeals.seals, slots.boxes),');
+    // A new receipt starts with no box typed and none filled.
+    expect(DIALOG).toContain('setBagSeals(NO_SEAL_LIST);');
+    expect(DIALOG).toContain('setBoxSeals(NO_SEAL_LIST);');
+  });
+
+  it('tints a box the fill wrote, and says a run that does not fit beside the summary line', () => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(VAULT_ONLY), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const bags = (first: string, last: string): string =>
+      renderToStaticMarkup(
+        <Provider store={store}>
+          <SealBoxes
+            kind="bag"
+            title={ar('operations.secured.receive.bagSeals')}
+            list={typeSeal(typeSeal(NO_SEAL_LIST, 4, 0, first), 4, 3, last)}
+            slots={4}
+            perUnit={2}
+            onChange={() => undefined}
+          />
+        </Provider>,
+      );
+    // 1 … 4 over four boxes: 2 and 3 written by the form, tinted and titled so.
+    const filled = bags('1', '4');
+    expect(filled.match(/data-seal-filled="true"/g)).toHaveLength(2);
+    const inputs = filled.match(/<input[^>]*>/g) ?? [];
+    expect(inputs.filter((tag) => tag.includes('data-seal-filled="true"'))).toEqual([
+      expect.stringContaining('value="2"'),
+      expect.stringContaining('value="3"'),
+    ]);
+    expect(filled).toContain(
+      `title="${ar('operations.secured.receive.bagSealInput', { unit: 1, seal: 2 })} — ${ar('operations.secured.receive.sealFilled')}"`,
+    );
+    expect(filled).not.toContain('data-seal-range');
+    // 1 … 5 over four boxes: nothing filled, and the bar says why — after the summary it explains.
+    const said = bags('1', '5');
+    expect(said).not.toContain('data-seal-filled');
+    expect(said).toContain('data-seal-range="mismatch"');
+    expect(said).toContain(
+      ar('operations.secured.receive.rangeMismatch', { from: '1', to: '5', boxes: 4 }),
+    );
+    const bar = said.slice(0, said.indexOf('<input'));
+    expect(bar.indexOf('data-seal-summary')).toBeGreaterThan(-1);
+    expect(bar.indexOf('data-seal-summary')).toBeLessThan(bar.indexOf('data-seal-range'));
+  });
+
+  it('shows the captain and the van read only — the crew is set on the crew screens', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toMatch(/data-receive-captain="true"[^>]*role="textbox"[^>]*aria-readonly="true"/);
+    expect(html).toMatch(/data-receive-captain="true"[^>]*>محمود حسن</);
+    expect(html).toMatch(/data-receive-vehicle="true"[^>]*>150</);
+    expect(html).toContain(ar('operations.secured.receive.crewReadOnly'));
+  });
+
+  it('offers «إيصال» beside «استلام» — a draft before the receipt, the receipt after it', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toContain('data-receive-print="draft"');
+    expect(html).toContain(ar('operations.secured.receive.print'));
+    expect(DIALOG).toContain("data-receive-print={locked ? 'final' : 'draft'}");
+    expect(DIALOG).toContain('printFleetReport(report);');
   });
 
   // Round 13 — «والخزنه تستلم عادي»: opened from a WHITE row it is the same form, asking nothing
   // about a pickup — the vault receives what nobody handed over exactly as the rest.
   it('is the same form opened from a white row — nothing asks for a pickup first', () => {
-    const perms = ['operationsVault.view', 'operationsVault.receive', 'operationsCrew.view'];
-    const white = dialog(perms, AWAITING);
-    const yellow = dialog(perms, WITH_CAPTAIN);
+    const white = dialog(VAULT_ONLY, AWAITING);
+    const yellow = dialog(VAULT_ONLY, WITH_CAPTAIN);
     expect(white).toContain('role="dialog"');
-    expect(white).toContain(ar('operations.secured.receive.primary'));
-    expect(white).toMatch(/<button type="submit"/);
-    expect(white).not.toMatch(/<button type="submit"[^>]*disabled=""/);
+    expect(white).not.toMatch(/data-receive-save="true"[^>]*disabled=""/);
     // The very same form, field for field: the dialog never reads who collected it.
     expect(white).toBe(yellow);
     expect(DIALOG).not.toMatch(/pickedUp|securedStage|NOT_PICKED_UP/);
+  });
+
+  // «Extract shared pieces from the shipment form rather than copy»: the receive form holds the
+  // shipment's data in the shipment form's own draft, and draws it with its boxes.
+  it('edits the shipment’s data with the shipment form’s own draft and boxes — no copy of its rules', () => {
+    expect(DIALOG).toContain("from './ShipmentDraftFields';");
+    expect(DIALOG).toMatch(
+      /const draft = useShipmentDraft\(\{\s+open,\s+shipment,\s+createType: 'secured',/,
+    );
+    for (const box of [
+      '<MainBankField',
+      '<DraftBranchSide',
+      '<AreaBox',
+      '<MoneyLines',
+      '<CollectionDateField',
+      '<DeliveryDateField',
+      '<NotesField',
+      '<DraftBranchCreate',
+    ]) {
+      expect(DIALOG, box).toContain(box);
+    }
+    for (const rule of [
+      'followMainBank(',
+      'areaOfDestination(',
+      'deliveryDateProblem(',
+      'shipmentDateProblem(',
+    ]) {
+      expect(DIALOG, rule).not.toContain(rule);
+    }
+  });
+
+  it('sends ONE request: the receipt, with only the shipment fields the vault changed', () => {
+    expect(DIALOG).toContain(
+      'const body = receiveRequest(receipt, shipmentPatch(shipment, values()), shipment.version);',
+    );
+    expect(DIALOG).toContain('await receive.mutateAsync({ id: shipment.id, body });');
+    expect(DIALOG.match(/mutateAsync\(/g)).toHaveLength(1);
+    // The dates' floors are said before anything is sent, as the shipment form says them.
+    const submit = DIALOG.slice(DIALOG.indexOf('const submit = async'));
+    expect(submit.indexOf('draft.dateProblems(cairoToday())')).toBeLessThan(
+      submit.indexOf('receive.mutateAsync'),
+    );
+  });
+
+  it('moves a scanner on to the next seal box on Enter — and never submits on it', () => {
+    expect(DIALOG).toMatch(
+      /if \(e\.key !== 'Enter'\) return;\s+e\.preventDefault\(\);\s+toNextSeal\(e\.currentTarget\);/,
+    );
+    expect(DIALOG).toContain('next.select();');
+    // No <form>: an Enter anywhere in it can never press «استلام».
+    expect(DIALOG).not.toContain('<form');
+  });
+
+  it('stays open after the receipt, locked, so «إيصال» prints it at once', () => {
+    expect(DIALOG).toContain('setTaken(result.receipt);');
+    expect(DIALOG).toContain('<fieldset disabled={locked}');
+    // It closes on its own only for a refusal that says this row can no longer be received here.
+    expect(DIALOG).toContain('if (refusal.closes) onClose();');
+    expect(DIALOG).toContain(
+      'if (refusal.field !== null) setRefused({ field: refusal.field, text });',
+    );
+  });
+
+  it('owns its refusal’s words, and re-reads the boards either way', () => {
+    const hook = QUERIES.slice(QUERIES.indexOf('export const useReceiveIntoVault'));
+    expect(hook.slice(0, hook.indexOf('};'))).toContain('onSettled: invalidate,');
+    expect(hook.slice(0, hook.indexOf('};'))).toContain('onError: formOwnsTheError,');
   });
 });
 

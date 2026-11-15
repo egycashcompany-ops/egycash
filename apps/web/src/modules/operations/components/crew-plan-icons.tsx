@@ -1,0 +1,121 @@
+// What a crew member carries, as icons — «على حسب الحاجات اللى انا مسجلها فى متطلبات الطاقم يظهر جمب
+// القائد او الاخصائى». The legacy chips carried a gun, a card and a pen beside the name.
+//
+// DRAWN, NOT EMOJI. The crew cards before this used emoji (🔫 ✍️ 🪪 ⏳): a water pistol on most
+// phones, a different picture on every system, and no way to colour them for a dark chip. These are
+// stroke drawings in the boards' own icon style (`StrokeIcon`), one per flag, white on the chip's
+// colour, each with its name as `title` (the hover) and `aria-label` (the screen reader).
+//
+// INDICATORS, NOT GATES: they inform the planner and filter the pools; none stops an assignment.
+import { useT } from '../../../platform/localization/useT';
+import { cn } from '../../../shared/lib/cn';
+import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
+import { type PlanFlag } from '../lib/crew-plan';
+
+const ring = (cx: number, cy: number, r: number): string =>
+  `M${cx + r} ${cy}a${r} ${r} 0 1 1-${r * 2} 0a${r} ${r} 0 1 1 ${r * 2} 0`;
+
+/** One drawing per requirement — 24×24 strokes, as every board icon. */
+export const FLAG_PATH: Record<PlanFlag, readonly string[]> = {
+  // A pistol: slide, grip, trigger.
+  hasWeapon: ['M3 7h18v4h-8.5v1.5a2 2 0 0 1-2 2H8.4L7.2 20H3.6l1.6-9H3z', 'M9.5 11v1.6'],
+  // A pen over a line — the signature on file.
+  hasSignature: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'],
+  // An id card — the practising licence.
+  hasLicense: [
+    'M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+    ring(9, 10.5, 2),
+    'M5.8 15.5c.6-1.2 1.8-1.9 3.2-1.9s2.6.7 3.2 1.9',
+    'M14.5 10h4',
+    'M14.5 14h3',
+  ],
+  // An hourglass — the TEMPORARY licence, told apart at a glance from the full one.
+  hasTemporaryLicense: [
+    'M6 3h12',
+    'M6 21h12',
+    'M7.5 3v3.4a2 2 0 0 0 .6 1.4L12 12l3.9-4.2a2 2 0 0 0 .6-1.4V3',
+    'M7.5 21v-3.4a2 2 0 0 1 .6-1.4L12 12l3.9 4.2a2 2 0 0 1 .6 1.4V21',
+  ],
+  // A briefcase — «موظف عمليات», the office's own staff.
+  isOpsAdmin: [
+    'M4 8h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z',
+    'M9 8V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2',
+    'M3 13.5h18',
+  ],
+  // Sparkles — «جديد».
+  isNewJoiner: [
+    'M11 3l1.8 4.7L17.5 9.5l-4.7 1.8L11 16l-1.8-4.7L4.5 9.5l4.7-1.8z',
+    'M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
+  ],
+  // A star — «أولوية».
+  isPriority: ['M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z'],
+  // A target — «مهمة خاصة».
+  isAssignedSpecialTask: [ring(12, 12, 9), ring(12, 12, 5), ring(12, 12, 1)],
+};
+
+/** The board's own drawings for its controls. */
+export const PLAN_ICON = {
+  clock: [ring(12, 12, 9), 'M12 7v5l3 2'],
+  pin: ['M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 1 1 13 0C18.5 15.4 12 21 12 21z', ring(12, 10.5, 2.2)],
+  drop: ['M12 3.2s6 6.4 6 10.8a6 6 0 0 1-12 0c0-4.4 6-10.8 6-10.8z'],
+  noVan: [
+    'M3 3l18 18',
+    'M8 6h5a1 1 0 0 1 1 1v8M3 7v9a1 1 0 0 0 1 1h1',
+    'M17 9h1.6l3.4 3.4V16a1 1 0 0 1-1 1h-1',
+  ],
+  wrench: [
+    'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z',
+  ],
+  layers: ['M12 3l9 5-9 5-9-5z', 'M3 13l9 5 9-5'],
+  tag: [
+    'M7 7h.01',
+    'M3 3h7.6a2 2 0 0 1 1.4.6l8.4 8.4a2 2 0 0 1 0 2.8l-5.6 5.6a2 2 0 0 1-2.8 0L3.6 12A2 2 0 0 1 3 10.6z',
+  ],
+} as const;
+
+/**
+ * The person's icons, in `PLAN_FLAGS` order, in the text's colour — white on a chip. `sm` (a pool's
+ * chip) draws each on a faint square; `xs` (a chip seated in the table's narrow slot) the bare
+ * drawing, so the name keeps the room.
+ */
+export const CrewFlagMarks = ({
+  flags,
+  size = 'sm',
+  className,
+}: {
+  flags: readonly PlanFlag[];
+  size?: 'xs' | 'sm';
+  className?: string;
+}): JSX.Element | null => {
+  const t = useT();
+  if (flags.length === 0) return null;
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center',
+        size === 'xs' ? 'gap-px' : 'gap-0.5',
+        className,
+      )}
+    >
+      {flags.map((flag) => (
+        <span
+          key={flag}
+          role="img"
+          data-flag={flag}
+          title={t(`operations.crew.flag.${flag}`)}
+          aria-label={t(`operations.crew.flag.${flag}`)}
+          className={cn(
+            'inline-flex items-center justify-center',
+            size === 'xs' ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px] rounded bg-white/20',
+          )}
+        >
+          <StrokeIcon
+            d={FLAG_PATH[flag]}
+            className={size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5'}
+            width={2.2}
+          />
+        </span>
+      ))}
+    </span>
+  );
+};

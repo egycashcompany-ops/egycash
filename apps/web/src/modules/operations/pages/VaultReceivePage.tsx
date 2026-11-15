@@ -11,8 +11,9 @@
 //     save from this screen re-stamped `status: 2` and the receive timestamp — even a note fix
 //     (quirk Q29). NOT PRESERVED: receiving is its own act here, and it happens once.
 //   · `treasurer_receive` was written as `""` on every path (:1211/:1266), so the two-man rule the
-//     schema described never actually recorded two people (quirk Q2). NORMALIZED: both treasurers
-//     are required, and the server refuses the same person twice.
+//     schema described never actually recorded two people (quirk Q2). Normalized until Round 18
+//     (two different treasurers required); since then the owner's own rule: «انا مش عاوز اى اسماء»
+//     — nobody is named on the form, and the server records the signed-in user who received it.
 //
 // ROUND 8 — YELLOW AND GREEN. «لما القائد هيستلم من البنك ويعمل علامة صح هيبقى الصف باللون الاصفر …
 // وساعتها هيظهر للخزنة فى شاشة استلام الخزينه نفس المحصنة … وهتكون باللون الاصفر عشان تعرف ان المحصنة
@@ -35,7 +36,8 @@
 // adds its two status columns). What only this screen has, it hands the board:
 //
 //   · the vault's ✓ («استلام في الخزينة») among the row's actions, at the desk ✓'s place — the
-//     receive form (packaging, seals, two treasurers), unchanged. Only for a reader who may
+//     receive form — since Round 18 the legacy «إستلام محصنة» (`ReceiveIntoVaultDialog`: the
+//     shipment's data editable, the receipt, the seals, «إيصال»). Only for a reader who may
 //     receive, only on a row still outside the vault; after it the row turns green and STAYS;
 //   · its colours (`vaultRowTint`): yellow with the captain, green once received — still green
 //     after it has gone out, where the Operations boards turn it blue, because here it is today's
@@ -51,8 +53,8 @@
 // WHO READS IT. The screen is the vault's grant (`operationsVault.view`), and a treasurer may hold
 // it without `operationsShipment.view`. The bank and currency names the board prints are read on
 // either grant (the catalogs' list routes); what stays the shipment grant's — «السجل», the receipt
-// image's bytes — the board does not offer such a reader, and the receive form's treasurer list is
-// the crew grant's (`ReceiveIntoVaultDialog`). Such a reader hears no shipment signal (a captain's
+// image's bytes — the board does not offer such a reader; the receive form asks for no roster at
+// all since Round 18 (no names). Such a reader hears no shipment signal (a captain's
 // ✓ is announced on the shipment topics), so the queue re-reads itself every minute for them.
 //
 // ROUND 10 — THE VAULT'S ✓ ONLY AFTER A PICKUP, THE LOCK, THE CANCELLED RECEIPT. «لو قائد تم الاستلام

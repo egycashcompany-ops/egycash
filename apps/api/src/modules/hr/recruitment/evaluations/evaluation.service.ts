@@ -248,7 +248,29 @@ class EvaluationService {
       phaseKey: before.phaseKey,
       decision: input.decision,
     });
+    // The last check cleared — the medical exam, as the owner names it: «اي حد يخلص كشف الطبي يظهر
+    // … ك جاهزون لعرض العمل». The applicant moves to the Job Offer stage by that, and «عروض العمل»
+    // lists them as «جاهز لعرض العمل» until somebody writes their offer.
+    if (input.decision === 'approved' && (await this.hasClearedRequiredEvaluations(String(before.applicantId)))) {
+      await applicantService.moveToOfferOnceCleared(ctx.userId, String(before.applicantId));
+    }
     return updated;
+  }
+
+  /**
+   * Boot backfill: everybody who cleared their checks before clearing them moved them, and was
+   * never moved by hand, is moved now — so «عروض العمل» lists them as «جاهز لعرض العمل» too.
+   * Idempotent: an applicant already moved, or out of the active pipeline, is left as is.
+   *
+   * @returns how many were moved.
+   */
+  async moveClearedApplicantsToOffer(): Promise<number> {
+    let moved = 0;
+    for (const { applicantId } of await this.applicantsWithApprovals()) {
+      if (!(await this.hasClearedRequiredEvaluations(applicantId))) continue;
+      if (await applicantService.moveToOfferOnceCleared(null, applicantId)) moved += 1;
+    }
+    return moved;
   }
 
   /**

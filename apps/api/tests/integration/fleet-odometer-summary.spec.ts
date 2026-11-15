@@ -419,7 +419,7 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
     const km = await fleetOdometerService.kmBreakdown(RANGE, {
       today: '2026-10-09',
       staleDays: 3,
-      branchId: null,
+      byType: false,
       setNarrows: false,
     });
     const summary = ok<FleetOdometerSummaryDto>(await get('/fleet/odometer/summary', RANGE));
@@ -438,7 +438,7 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
     const km = await fleetOdometerService.kmBreakdown(RANGE, {
       today: '2026-10-09',
       staleDays: 3,
-      branchId: null,
+      byType: false,
       setNarrows: false,
     });
     expect(km.buckets.find((b) => b.key === '2026-10-05')).toMatchObject({
@@ -461,7 +461,7 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
   });
 
   it('«في الورشة طوال الفترة» is asked of the period: an older visit covering it counts though a newer one followed', async () => {
-    const ctx = { today: '2026-11-03', staleDays: 3, branchId: null, setNarrows: false };
+    const ctx = { today: '2026-11-03', staleDays: 3, byType: false, setNarrows: false };
     const km = await fleetOdometerService.kmBreakdown(OCTOBER, ctx);
     const reasons = new Map(km.withoutReadings.map((r) => [r.vehicleId, r.reason]));
     expect(reasons.get(twice.id)).toBe('inWorkshop');
@@ -487,10 +487,10 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
     expect(late.withoutReadings.find((r) => r.vehicleId === twice.id)?.reason).toBe('noRow');
   });
 
-  it('with a set and a branch: the km by type, and no «غير مسجّلة» line', async () => {
+  it('with a set and ONE branch in scope: the km by type, and no «غير مسجّلة» line', async () => {
     const km = await fleetOdometerService.kmBreakdown(
       { ...RANGE, branchIds: [B1] },
-      { today: '2026-10-09', staleDays: 3, branchId: B1, setNarrows: true },
+      { today: '2026-10-09', staleDays: 3, byType: true, setNarrows: true },
     );
     const summary = ok<FleetOdometerSummaryDto>(
       await get('/fleet/odometer/summary', wire({ ...RANGE, branchIds: [B1] })),
@@ -499,6 +499,20 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
     expect(km.unregistered).toBeNull();
     expect(km.byBranch.map((b) => b.branchId)).toEqual([B1]);
     expect((km.byType ?? []).reduce((sum, t) => sum + t.km, 0)).toBe(summary.km);
+  });
+
+  it('«كل فروعي» (two branches in scope): the km by branch, never by type (D10)', async () => {
+    const km = await fleetOdometerService.kmBreakdown(
+      { ...RANGE, branchIds: [B1, B2] },
+      { today: '2026-10-09', staleDays: 3, byType: false, setNarrows: true },
+    );
+    const summary = ok<FleetOdometerSummaryDto>(
+      await get('/fleet/odometer/summary', wire({ ...RANGE, branchIds: [B1, B2] })),
+    );
+    expect(km.total).toBe(summary.km);
+    expect(km.byType).toBeNull();
+    expect(new Set(km.byBranch.map((b) => b.branchId))).toEqual(new Set([B1, B2]));
+    expect(km.byBranch.reduce((sum, b) => sum + b.km, 0)).toBe(summary.km);
   });
 });
 

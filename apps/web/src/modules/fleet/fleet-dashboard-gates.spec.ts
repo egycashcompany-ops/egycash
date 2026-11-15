@@ -59,6 +59,20 @@ describe('the home route', () => {
     const union = new Set(SECTIONS.flatMap((section) => fleetDashboardGateKeys(section)));
     expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...union].sort());
   });
+
+  it('gains no key from the overview’s two new sections — no new permission key', () => {
+    // «مخالفات قائمة» is gated as the year's fines, «زيارات الصيانة» by exit day as the visits.
+    expect(fleetDashboardGateKeys('violationsOpen')).toEqual(
+      fleetDashboardGateKeys('violationsYear'),
+    );
+    expect(fleetDashboardGateKeys('exits')).toEqual(fleetDashboardGateKeys('visits'));
+    const before = new Set(
+      SECTIONS.filter((section) => section !== 'violationsOpen' && section !== 'exits').flatMap(
+        (section) => fleetDashboardGateKeys(section),
+      ),
+    );
+    expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
+  });
 });
 
 describe('a reader asks only for what a gate lets them see', () => {

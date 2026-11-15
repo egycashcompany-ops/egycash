@@ -630,11 +630,11 @@ describe('drivers — registryDigest and the list filters it shares', () => {
     await mkDriver(B1); // no profile at all
   }, 120_000);
 
-  const digest = (branchId: string | null) =>
+  const digest = (branchIds: readonly string[] | null) =>
     fleetDriverProfileService.registryDigest({
       today: TODAY,
       warnDays: WARN,
-      branchId,
+      branchIds,
       cashSpecIds: [],
       atmSpecIds: [],
     });
@@ -669,9 +669,32 @@ describe('drivers — registryDigest and the list filters it shares', () => {
   });
 
   it('a switcher branch is the HR branch — `?branchId=`', async () => {
-    const out = await digest(B2);
+    const out = await digest([B2]);
     expect(out.total).toBe(await total('/fleet/drivers', { branchId: B2 }));
     expect(out.licence).toMatchObject({ expired: 0, soon: 1, notRecorded: 1, unregistered: 0 });
+  });
+
+  it('«كل فروعي» — the reader’s branches are a list, as `?branchId=a,b` reads it', async () => {
+    const out = await digest([B1, B2]);
+    expect(out.total).toBe(await total('/fleet/drivers', { branchId: `${B1},${B2}` }));
+    expect(out.licence.expired).toBe(
+      await total('/fleet/drivers', {
+        branchId: `${B1},${B2}`,
+        licenseExpiresBefore: calendarDayBounds(TODAY, TODAY).before.toISOString(),
+      }),
+    );
+  });
+
+  it('no branch to cover (`[]`) is nobody — never the whole registry', async () => {
+    const out = await digest([]);
+    expect(out.total).toBe(0);
+    expect(out.licence).toEqual({
+      expired: 0,
+      expiring: 0,
+      soon: 0,
+      notRecorded: 0,
+      unregistered: 0,
+    });
   });
 });
 

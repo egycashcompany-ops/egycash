@@ -854,17 +854,45 @@ class ApplicantService {
     if (before.status !== 'new') {
       throw new BusinessRuleError('only an applicant in the active pipeline can be moved to the offer stage');
     }
+    return this.moveToOfferStage(before, ctx.userId, input.version, input.note ?? null, scope);
+  }
+
+  /**
+   * «اي حد يخلص كشف الطبي يظهر … ك جاهزون لعرض العمل» — the applicant who has just cleared every
+   * check that applies to them is moved to the Job Offer stage by that clearance, and stands in
+   * «عروض العمل» as «جاهز لعرض العمل» until somebody writes their offer. The same move HR makes by
+   * hand (`moveToOffer`), recorded as made by whoever decided the last check — `null` for the boot
+   * backfill. Nothing happens for an applicant already moved or no longer in the active pipeline.
+   *
+   * @returns whether the applicant was moved.
+   */
+  async moveToOfferOnceCleared(actorUserId: string | null, id: string): Promise<boolean> {
+    const before = await applicantRepository.findById(id);
+    if (before === null || before.movedToOfferAt !== null || before.status !== 'new') return false;
+    await this.moveToOfferStage(before, actorUserId, before.__v, 'cleared every check', undefined);
+    return true;
+  }
+
+  /** The move itself: stamped, audited, announced, and the stage's queue row opened (I11). */
+  private async moveToOfferStage(
+    before: ApplicantDoc,
+    actorUserId: string | null,
+    version: number,
+    note: string | null,
+    scope: ScopeSelector | undefined,
+  ): Promise<ApplicantDoc> {
+    const id = String(before._id);
     const updated = await applicantRepository.updateById(
       id,
-      { movedToOfferAt: new Date(), movedToOfferBy: new Types.ObjectId(ctx.userId) },
-      { by: ctx.userId, version: input.version, scope },
+      { movedToOfferAt: new Date(), movedToOfferBy: actorUserId === null ? null : new Types.ObjectId(actorUserId) },
+      { by: actorUserId, version, scope },
     );
     await auditService.record({
       entityRef: entityRef(id),
       action: 'statusChange',
       changes: [
         { field: 'movedToOffer', old: false, new: true },
-        ...(input.note === undefined ? [] : [{ field: 'moveToOfferNote', old: null, new: input.note }]),
+        ...(note === null ? [] : [{ field: 'moveToOfferNote', old: null, new: note }]),
       ],
     });
     await emit(HrEvents.ApplicantMovedToOffer, {

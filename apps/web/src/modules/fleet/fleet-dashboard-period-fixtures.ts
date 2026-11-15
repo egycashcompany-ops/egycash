@@ -105,7 +105,14 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
   today: TODAY,
   asOf: AS_OF,
   range: { preset: 'last30', from: FROM_30, to: TODAY, days: 30, granularity: 'day' },
-  vehicleScope: { count: null, typeIds: [], operationIds: [], vehicleCodes: [], branchId: null },
+  vehicleScope: {
+    count: null,
+    typeIds: [],
+    operationIds: [],
+    vehicleCodes: [],
+    branchId: null,
+    scopeBranches: null,
+  },
   km: {
     total: KM_TOTAL,
     invalidRows: 2,
@@ -176,6 +183,7 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     unregistered: 2,
   },
+  exits: { count: 18 },
   accidents: { count: 4, open: 2, openRemaining: 9800, undated: 25 },
   accidentList: {
     rows: [
@@ -222,7 +230,15 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     more: 0,
   },
-  opex: { card: 64600, custody: 47850, total: 112450, count: 210, dataFrom: '2026-09-14' },
+  // Of the 112,450: 71,300 is fuel (card + custody fuel), the rest maintenance, wash and the like.
+  opex: {
+    card: 64600,
+    custody: 47850,
+    fuel: 71300,
+    total: 112450,
+    count: 210,
+    dataFrom: '2026-09-14',
+  },
   dealership: { amount: 38900, rows: 9, pending: 3, dataFrom: '2026-09-01' },
   unavailable: [],
 };

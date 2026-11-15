@@ -10,6 +10,10 @@
 // typed name already in. Offered only once the search for that text has ANSWERED: before that,
 // "not found" only means "not looked for yet", and adding then would duplicate a branch the
 // answer was about to show.
+//
+// COMPACT (Round 18, «إستلام محصنة»): the legacy receive form's own shape — «من فرع» with its bank
+// chooser small on the label's line, and the branch box under it — so the side is one box tall in
+// a row of boxes, not a card.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { type OperationsBankBranchDto, type OperationsBankDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -40,6 +44,10 @@ export const ShipmentBranchSide = ({
   canCreate,
   onRequestCreate,
   branchMissing,
+  branchError,
+  bankError,
+  compact = false,
+  starred = true,
   children,
 }: {
   side: 'origin' | 'destination';
@@ -61,6 +69,17 @@ export const ShipmentBranchSide = ({
   canCreate: boolean;
   onRequestCreate: (bankId: string, name: string) => void;
   branchMissing: boolean;
+  /** A server refusal said on the branch box (a branch of another bank, a stopped branch). */
+  branchError?: string | undefined;
+  /** …and on the bank box (a stopped bank). */
+  bankError?: string | undefined;
+  /** The legacy receive form's shape: the bank small on the label's line, no card. */
+  compact?: boolean;
+  /**
+   * Whether the branch carries the rose star. Off on the receive form, which marks nothing
+   * mandatory («كله اختيارى») — its branches arrive filled; emptying one is still said under it.
+   */
+  starred?: boolean;
   /** What belongs to this side under its branch — the destination's area. */
   children?: ReactNode;
 }): JSX.Element => {
@@ -99,6 +118,97 @@ export const ShipmentBranchSide = ({
   const answered = asked === typed && !search.isFetching;
   const bankName = banks.find((bank) => bank.id === bankId)?.opsName ?? '';
 
+  const refusedFrame =
+    '[&_input]:!border-rose-500/70 [&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] [&_input]:!pe-28 [&_.end-2]:!end-10';
+  const bankBox = (
+    <Combobox
+      value={bankId}
+      options={banks.filter((bank) => bank.isActive).map((bank) => bank.id)}
+      optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
+      onChange={onBankChange}
+      placeholder={t('operations.shipment.form.pickBank')}
+      emptyText={t('common.noResults')}
+      clearLabel={t('common.clear')}
+      ariaLabel={`${title} — ${t('operations.shipment.form.sideBank')}`}
+      testId={`${side}-bank`}
+    />
+  );
+  const branchBox = (
+    <Combobox
+      value={branchId}
+      options={found.map((branch) => branch.id)}
+      optionLabel={nameOf}
+      onSearch={setTyped}
+      onChange={(id) => {
+        // Picking the branch already held changes nothing. Not a nicety: the held branch is
+        // shown pinned at the top of the list even when it is not on the page the server
+        // answered (a bank of hundreds of branches), and resolving it from that page alone
+        // would turn "keep this one" into "clear it".
+        if (id === branchId) return;
+        onBranchChange(id === '' ? null : (found.find((branch) => branch.id === id) ?? null));
+      }}
+      disabled={bankId === ''}
+      placeholder={
+        bankId === ''
+          ? t('operations.shipment.form.pickBankFirst')
+          : t('operations.shipment.form.pickBranch')
+      }
+      emptyText={t(search.isFetching ? 'common.loading' : 'common.noResults')}
+      clearLabel={t('common.clear')}
+      ariaLabel={`${title} — ${t('operations.shipment.form.branch')}`}
+      testId={`${side}-branch`}
+      tallList
+      {...(canCreate && answered
+        ? {
+            onCreate: (name: string) => onRequestCreate(bankId, name),
+            createLabel: (name: string) =>
+              t('operations.shipment.form.addBranch', { name, bank: bankName }),
+          }
+        : {})}
+    />
+  );
+  const branchFrame = cn(
+    carBoxClass(false),
+    (branchMissing || branchError !== undefined) && refusedFrame,
+  );
+
+  if (compact) {
+    // The legacy receive form's «من فرع ⌄مصر»: the side's name and its bank on one line, the
+    // branch box under them — one box tall. The bank box is small and quiet; the branch is the
+    // field. A refusal is said under the branch box, where the eye is.
+    return (
+      <div data-branch-side={side} data-branch-side-compact="true" className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="shrink-0 text-[15px] font-bold text-slate-900 dark:text-white">
+            {title} {starred && <span className="font-bold text-rose-500">*</span>}
+          </span>
+          <div
+            className={cn(
+              'w-[8.5rem] min-w-0',
+              '[&_input]:!h-8 [&_input]:!rounded-lg [&_input]:!py-1 [&_input]:!ps-2.5 [&_input]:!pe-12 [&_input]:!text-[13px] [&_input]:!font-semibold',
+              '[&_input]:!border-slate-200 [&_input]:!bg-slate-50 [&_input]:!text-slate-700 dark:[&_input]:!border-[#2b3b6b] dark:[&_input]:!bg-[#0a1233] dark:[&_input]:!text-slate-200',
+              '[&_.end-2]:!end-1.5 [&_.end-2_svg]:!h-3.5 [&_.end-2_svg]:!w-3.5',
+              '[&_[role=listbox]]:!min-w-[12rem] [&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-white dark:[&_[role=listbox]]:!bg-[#131d35]',
+              bankError !== undefined && '[&_input]:!border-rose-500/70',
+            )}
+            title={bankError ?? t('operations.shipment.form.sideBank')}
+          >
+            {bankBox}
+          </div>
+        </div>
+        <DesignField
+          label={`${title} — ${t('operations.shipment.form.branch')}`}
+          labelHidden
+          missing={branchMissing}
+          error={branchError ?? bankError}
+        >
+          <div className={branchFrame}>{branchBox}</div>
+        </DesignField>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div
       data-branch-side={side}
@@ -115,65 +225,17 @@ export const ShipmentBranchSide = ({
       {/* The bank and its branch side by side: one line of the card, so the shipment form keeps
           to the screen's height (« … متهكنش فيها اسكرول»). The branch gets the wider share. */}
       <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <DesignField label={t('operations.shipment.form.sideBank')}>
-          <div className={carBoxClass(false)}>
-            <Combobox
-              value={bankId}
-              options={banks.filter((bank) => bank.isActive).map((bank) => bank.id)}
-              optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
-              onChange={onBankChange}
-              placeholder={t('operations.shipment.form.pickBank')}
-              emptyText={t('common.noResults')}
-              clearLabel={t('common.clear')}
-              ariaLabel={`${title} — ${t('operations.shipment.form.sideBank')}`}
-              testId={`${side}-bank`}
-            />
-          </div>
+        <DesignField label={t('operations.shipment.form.sideBank')} error={bankError}>
+          <div className={carBoxClass(false)}>{bankBox}</div>
         </DesignField>
 
-        <DesignField label={t('operations.shipment.form.branch')} required missing={branchMissing}>
-          <div
-            className={cn(
-              carBoxClass(false),
-              branchMissing &&
-                '[&_input]:!border-rose-500/70 [&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] [&_input]:!pe-28 [&_.end-2]:!end-10',
-            )}
-          >
-            <Combobox
-              value={branchId}
-              options={found.map((branch) => branch.id)}
-              optionLabel={nameOf}
-              onSearch={setTyped}
-              onChange={(id) => {
-                // Picking the branch already held changes nothing. Not a nicety: the held branch is
-                // shown pinned at the top of the list even when it is not on the page the server
-                // answered (a bank of hundreds of branches), and resolving it from that page alone
-                // would turn "keep this one" into "clear it".
-                if (id === branchId) return;
-                onBranchChange(
-                  id === '' ? null : (found.find((branch) => branch.id === id) ?? null),
-                );
-              }}
-              disabled={bankId === ''}
-              placeholder={
-                bankId === ''
-                  ? t('operations.shipment.form.pickBankFirst')
-                  : t('operations.shipment.form.pickBranch')
-              }
-              emptyText={t(search.isFetching ? 'common.loading' : 'common.noResults')}
-              clearLabel={t('common.clear')}
-              ariaLabel={`${title} — ${t('operations.shipment.form.branch')}`}
-              testId={`${side}-branch`}
-              tallList
-              {...(canCreate && answered
-                ? {
-                    onCreate: (name: string) => onRequestCreate(bankId, name),
-                    createLabel: (name: string) =>
-                      t('operations.shipment.form.addBranch', { name, bank: bankName }),
-                  }
-                : {})}
-            />
-          </div>
+        <DesignField
+          label={t('operations.shipment.form.branch')}
+          required={starred}
+          missing={branchMissing}
+          error={branchError}
+        >
+          <div className={branchFrame}>{branchBox}</div>
         </DesignField>
       </div>
       {children}

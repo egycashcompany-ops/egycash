@@ -4,8 +4,9 @@
 // browser labels and links from the echo, never from its own clock. The vehicle set (R-13) is echoed
 // as FILTERS; each section then calls its owning module with the same query its linked screen sends
 // (D9): `from`/`to` as the page sends them, `vehicleCodes`/`typeIds`/`operationIds` as given, and
-// `branchIds = [activeBranchId]` when the switcher names a branch. Each module resolves that query
-// exactly as its screen does, so a figure equals its link by construction.
+// `branchIds` = the reader's branches (`DashboardContext.branchIds`: the switcher's branch, the
+// reader's only branch, or «كل فروعي»; nothing for the whole company). Each module resolves that
+// query exactly as its screen does, so a figure equals its link by construction.
 import {
   FLEET_DASHBOARD_ACCIDENT_ROWS,
   FleetSettingKeys,
@@ -31,7 +32,7 @@ import { fleetOdometerService } from '../odometer/odometer.service';
 import { fleetReceiptService } from '../receipts/receipt.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { vehicleSet, withVehicleFilterMemo } from '../vehicles/vehicle-set';
-import { dashboardContext, type DashboardContext } from './dashboard-context';
+import { dashboardContext, scopeBranchesOf, type DashboardContext } from './dashboard-context';
 import { runSections, section, type DashboardSection } from './dashboard-sections';
 
 type PeriodValues = { [K in FleetDashboardPeriodSection]: NonNullable<FleetDashboardPeriodDto[K]> };
@@ -40,7 +41,7 @@ type PeriodValues = { [K in FleetDashboardPeriodSection]: NonNullable<FleetDashb
 export interface PeriodInput {
   range: { from: string; to: string };
   /**
-   * A vehicle set narrows (codes, type, operation or the switcher's branch) — read from the QUERY,
+   * A vehicle set narrows (codes, type, operation or the reader's branches) — read from the QUERY,
    * so no section waits on (or fails with) the set's resolution: each owning module resolves the
    * filter itself, as its screen does.
    */
@@ -54,15 +55,19 @@ export interface PeriodInput {
   };
 }
 
-/** The filter the linked screens send for this query and switcher branch (D9). */
+/**
+ * The filter the linked screens send for this query and the reader's branches (D9): `null` = the
+ * whole company, no branch clause; a list (one branch, «كل فروعي», or `[]`, which narrows to
+ * nothing) travels as `branchIds`, which every linked screen reads as a list.
+ */
 export const screenFilter = (
   query: Pick<FleetDashboardPeriodQuery, 'vehicleCodes' | 'typeIds' | 'operationIds'>,
-  branchId: string | null,
+  branchIds: readonly string[] | null,
 ): PeriodInput['filter'] => ({
   ...(query.vehicleCodes === undefined ? {} : { vehicleCodes: query.vehicleCodes }),
   ...(query.typeIds === undefined ? {} : { typeIds: query.typeIds }),
   ...(query.operationIds === undefined ? {} : { operationIds: query.operationIds }),
-  ...(branchId === null ? {} : { branchIds: [branchId] }),
+  ...(branchIds === null ? {} : { branchIds: [...branchIds] }),
 });
 
 /** A money sum of two figures, to the piastre (never a float tail on the card). */
@@ -85,7 +90,9 @@ const periodSections = (
       {
         today: d.today,
         staleDays: await d.setting<number>(FleetSettingKeys.OdometerMissingReadingDays),
-        branchId: d.branchId,
+        // «حسب النوع» is drawn for exactly ONE branch in scope — the switcher's, or a reader's only
+        // branch (D10); never for the company or «كل فروعي».
+        byType: d.branchIds?.length === 1,
         setNarrows: p.setNarrows,
       },
     ),
@@ -93,6 +100,17 @@ const periodSections = (
 
   // T6.3/T6.4, tab 9 — R-18 over the maintenance list's own filter (check-in day in the period).
   visits: section('visits', 'company+set', () => fleetMaintenanceService.visitBreakdown(dated(p))),
+
+  // The overview's «زيارات الصيانة» (D6) — the visits that LEFT the workshop in the period, by the
+  // maintenance list's own filter over `outFrom`/`outTo` (the EXIT day) and never `from`/`to` (the
+  // check-in day `visits` keeps for the old tabs).
+  exits: section('exits', 'company+set', async () => ({
+    count: await fleetMaintenanceService.exitCount({
+      outFrom: ymdToUtcDate(p.range.from),
+      outTo: ymdToUtcDate(p.range.to),
+      ...p.filter,
+    }),
+  })),
 
   // T6.5/T6.6, T10.2 — R-23: the period's files, and of them the open ones now («حتى الآن»).
   accidents: section('accidents', 'company+set', async () => {
@@ -151,6 +169,8 @@ const periodSections = (
     return {
       card: totals.cardTotal,
       custody: totals.custodyTotal,
+      // «مصروف الوقود» — the fuel receipts of either payer, the receipts screen's `kind=fuel` total.
+      fuel: totals.fuelTotal,
       total: addMoney(totals.cardTotal, totals.custodyTotal),
       count: totals.count,
       dataFrom,
@@ -192,7 +212,7 @@ class FleetDashboardPeriodService {
         ? { from: query.from, to: query.to }
         : undefined;
     const range = periodOf(query.preset, d.today, custom);
-    const filter = screenFilter(query, d.branchId);
+    const filter = screenFilter(query, d.branchIds);
     const input: PeriodInput = { range, setNarrows: Object.keys(filter).length > 0, filter };
     const [{ values, unavailable }, vehicleScope] = await Promise.all([
       runSections(
@@ -226,9 +246,10 @@ class FleetDashboardPeriodService {
   }
 
   /**
-   * R-13's echo: the FILTERS the links are built from, always; the car count only for a reader of
-   * the registry (`fleetVehicle.view`, deleted cars left out). A failure to resolve the set costs
-   * the count, never the read (the sections run on the query, not on the set).
+   * R-13's echo: the FILTERS the links are built from and the reader's branches by name
+   * (`scopeBranches`, what the figures cover), always; the car count only for a reader of the
+   * registry (`fleetVehicle.view`, deleted cars left out). A failure to resolve the set costs the
+   * count, never the read (the sections run on the query, not on the set).
    */
   private async scopeEcho(
     d: DashboardContext,
@@ -239,19 +260,25 @@ class FleetDashboardPeriodService {
       typeIds: query.typeIds,
       operationIds: query.operationIds,
     };
-    try {
-      return (await vehicleSet(f, d.branchId, { count: hasPermission(d.ctx, 'fleetVehicle.view') }))
-        .scope;
-    } catch (err) {
-      logger.error({ err, read: 'period' }, 'fleet dashboard vehicle scope failed');
-      return {
-        count: null,
-        typeIds: [...(f.typeIds ?? [])],
-        operationIds: [...(f.operationIds ?? [])],
-        vehicleCodes: [...(f.vehicleCodes ?? [])],
+    const [set, scopeBranches] = await Promise.all([
+      vehicleSet(f, d.branchIds, {
+        count: hasPermission(d.ctx, 'fleetVehicle.view'),
         branchId: d.branchId,
-      };
-    }
+      }).catch((err: unknown) => {
+        logger.error({ err, read: 'period' }, 'fleet dashboard vehicle scope failed');
+        return null;
+      }),
+      scopeBranchesOf(d),
+    ]);
+    if (set !== null) return { ...set.scope, scopeBranches };
+    return {
+      count: null,
+      typeIds: [...(f.typeIds ?? [])],
+      operationIds: [...(f.operationIds ?? [])],
+      vehicleCodes: [...(f.vehicleCodes ?? [])],
+      branchId: d.branchId,
+      scopeBranches,
+    };
   }
 }
 

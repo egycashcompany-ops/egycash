@@ -62,6 +62,10 @@ const FULL: AlertSources = {
     profileInactive: 0,
     notEmployed: 0,
     licenceExpiredDrivers: 0,
+    // The «الحركة اليوم» lists raise no alert line: empty here.
+    unmannedRows: [],
+    unmannedUnassigned: 0,
+    absentDrivers: [],
   },
   fuelCharging: {
     wataniya: 0,
@@ -69,6 +73,7 @@ const FULL: AlertSources = {
     requested: { count: 4, amount: 900 },
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 0,
+    cards: 0, // No alert line reads the card count.
   },
   dealershipPending: { rows: 3 },
   notices: { open: 9, missingAny: 3, missingLicences: 2, missingCheckImage: 2 },

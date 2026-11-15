@@ -15,7 +15,9 @@
 // `operationsCrew.view`): nothing is fetched when a card opens except the branch names, one cached
 // list any signed-in reader may read. A reader without `operationsCrew.view` is sent no phone, and
 // the card has no phone line at all — as the captain card — rather than a dash that reads «no
-// phone».
+// phone». The roster itself is read under that grant, so today everyone who can open this screen
+// gets the line; the guard stays so the card never shows a phone line the server sent nothing for,
+// should the roster ever be read under another grant.
 import { type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';

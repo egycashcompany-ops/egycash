@@ -148,7 +148,14 @@ export type WithdrawJobOffer = z.infer<typeof WithdrawJobOfferSchema>;
 export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   status: listQuery(OfferStatusSchema),
   applicantId: objectId().optional(),
-  branchId: objectId().optional(),
+  /**
+   * «فلتر … واحده للاداره و واحده للوظيفه و واحده للفرع» — the branch, department and job the
+   * offer is for: its terms once written, the candidate's placement while «جاهز لعرض العمل».
+   * Departments are their branch copies; the screen expands a company department to them.
+   */
+  branchId: listQuery(objectId()),
+  departmentId: listQuery(objectId(), 500),
+  jobTitleId: listQuery(objectId()),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
   search: z.string().max(100).optional(),
   /**
@@ -157,6 +164,8 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
    * stage counter run the SAME server-side predicate and their totals cannot drift.
    */
   hired: booleanQuery().optional(),
+  /** «النشطة فقط»: offers still under way — ready for an offer, drafted, or sent. */
+  active: booleanQuery().optional(),
   /**
    * When the candidate answered the offer. This is the date the Employees Ready queue sorts by,
    * so it is the one a user filtering that queue means by "accepted between".

@@ -1384,11 +1384,29 @@ stage — by one engine method, `ensureStageRecord()`, which is the only creator
 | Interview stage *N* passed | stage *N+1*'s record (`waiting`) |
 | Interview round cancelled | a new attempt at the same stage (`waiting`) |
 | All interview stages cleared | one record per **applicable** evaluation phase (`waiting`) |
-| HR moves the candidate to Job Offer | the Job Offer record (`waiting`) |
+| HR moves the candidate to Job Offer — or the candidate clears the last evaluation that applies to them (A28) | the Job Offer record (`waiting`) |
 | Return to an earlier stage (RW13) | the target stage's new attempt (`waiting`) |
 
 Materialization is idempotent — it is the attempt-unique index plus a find-or-create, so a retry,
 a concurrent request and the migration all converge on the same single record.
+
+**Clearing the checks is a move (A28, 2026-11-15).** The owner: «هنشيل الجزء اللي فوق دا خالص و
+هنخلي الجزء اللي تحت هو البيدج … اي حد يخلص كشف الطبي يظهر فيه الحاله ك جاهزون لعرض العمل».
+- **The move.** Approving an evaluation that leaves the candidate with every applicable check
+  approved moves them to the Job Offer stage, exactly as HR's hand move does: `movedToOfferAt`,
+  the audit, `ApplicantMovedToOffer`, and the `waiting` offer row. The move is recorded as made by
+  whoever decided that last check (`applicantService.moveToOfferOnceCleared`).
+- **The boot backfill.** `evaluationService.moveClearedApplicantsToOffer`, run from the HR seed,
+  moves the candidates who cleared their checks before this release and were never moved. It is
+  idempotent.
+- **The page.** «عروض العمل» is one table. The «جاهزون لعرض عمل» queue above it is gone.
+  - A `waiting` offer reads «جاهز لعرض العمل», with «اكتب العرض» on its row. That opens the form
+    with the candidate fixed (`from=queue`).
+  - The table filters by status, department (the company's department, standing for its branch
+    copies), job, branch, and «النشطة فقط» (`waiting`, `draft`, `sent`).
+  - Until the offer is written, branch and department come from the candidate's placement, then
+    from the applicant's mirrored axis; job comes from the placement.
+  - `GET /hr/job-offers/awaiting` is still served, but the page no longer reads it.
 
 **Consequences, all applied:**
 

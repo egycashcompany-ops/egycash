@@ -1648,7 +1648,7 @@ const en: Record<string, string> = {
   'interviews.detail.rescheduled': 'Rescheduled',
 
   // Job Offers (Stage 4)
-  'offers.status.waiting': 'Waiting',
+  'offers.status.waiting': 'Ready for an offer',
   'offers.status.draft': 'Draft',
   'offers.status.superseded': 'Superseded',
   'offers.status.sent': 'Sent',
@@ -2258,6 +2258,8 @@ const en: Record<string, string> = {
   'offers.filters.status': 'Status',
   'offers.filters.allStatuses': 'All statuses',
   'offers.filters.activeOnly': 'Active only',
+  'offers.filters.department': 'Department',
+  'offers.filters.job': 'Job',
   // ── Training (P-HR-TRN, phase T2) ────────────────────────────────────────
   'training.title': 'Training',
   'training.saved': 'Saved',
@@ -2542,13 +2544,7 @@ const en: Record<string, string> = {
   'training.session.done.complete': 'Session completed — {{n}} record(s) written',
   'training.session.done.cancel': 'Session called off',
 
-  'offers.awaiting.title': 'Ready for an offer',
-  'offers.awaiting.hint':
-    'Candidates who have cleared every check that applies to them and have no offer written yet.',
-  'offers.awaiting.empty': 'Nobody is waiting for an offer',
-  'offers.awaiting.loadFailed': 'We could not load the queue. Try again.',
   'offers.awaiting.write': 'Write the offer',
-  'offers.awaiting.moveAndWrite': 'Move and write the offer',
   'offers.actions.create': 'New offer',
   'offers.actions.send': 'Send',
   'offers.actions.revise': 'Revise',
@@ -15287,7 +15283,7 @@ const ar: Record<string, string> = {
   'interviews.detail.rescheduled': 'أُعيد جدولتها',
 
   // Job Offers (Stage 4)
-  'offers.status.waiting': 'في الانتظار',
+  'offers.status.waiting': 'جاهز لعرض العمل',
   'offers.status.draft': 'مسودة',
   'offers.status.superseded': 'ملغى بالرجوع لمرحلة سابقة',
   'offers.status.sent': 'مُرسَل',
@@ -16155,12 +16151,7 @@ const ar: Record<string, string> = {
   'training.session.done.complete': 'اكتملت الجلسة — كُتب {{n}} سجل',
   'training.session.done.cancel': 'أُلغيت الجلسة',
 
-  'offers.awaiting.title': 'جاهزون لعرض عمل',
-  'offers.awaiting.hint': 'من اجتازوا كل الفحوص المنطبقة عليهم ولم يُكتب لهم عرض بعد.',
-  'offers.awaiting.empty': 'لا أحد ينتظر عرضًا',
-  'offers.awaiting.loadFailed': 'تعذّر تحميل القائمة. حاول مرة أخرى.',
   'offers.awaiting.write': 'اكتب العرض',
-  'offers.awaiting.moveAndWrite': 'انقله واكتب العرض',
   'offers.list.subtitle': 'أنشئ العروض وأرسلها وتابعها حتى القبول.',
   'offers.columns.code': 'رقم العرض',
   'offers.columns.applicant': 'المتقدِّم',
@@ -16171,6 +16162,8 @@ const ar: Record<string, string> = {
   'offers.filters.status': 'الحالة',
   'offers.filters.allStatuses': 'كل الحالات',
   'offers.filters.activeOnly': 'النشِطة فقط',
+  'offers.filters.department': 'الإدارة',
+  'offers.filters.job': 'الوظيفة',
   'offers.actions.create': 'عرض جديد',
   'offers.actions.send': 'إرسال',
   'offers.actions.revise': 'تعديل',

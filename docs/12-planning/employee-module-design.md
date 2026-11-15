@@ -103,6 +103,7 @@ Rules:
 |---|---|
 | Transfer (branch) | employee `code` prefix (ADR-017) · **linked user's placement** (branch/department/section on the user drive data-scope) · Employee File `branchId` **and** `employeeCode` |
 | Transfer (dept/section) | linked user's placement |
+| Transfer (job title — optional `jobTitleId`) | linked user's `organization.jobTitleId` · salary follows the new job's default only when it was following one (P-HR-22, as on a promotion); a transfer states no salary of its own |
 | Exit | user → `suspended` (D3) · direct-reports decision (bulk reassign to a named manager, or explicit unassigned + "no active manager" badge) · close employment period |
 | Rehire | reopen period · reactivate prior user account (offered) or create fresh · **append** new hiring-document copies to the EXISTING file |
 | Suspend / Reinstate | user suspend (default on, D6) / re-activate |

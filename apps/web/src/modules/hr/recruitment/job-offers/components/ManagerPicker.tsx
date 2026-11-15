@@ -22,6 +22,7 @@ export const ManagerPicker = ({
       clearLabel={t('offers.form.change')}
       noAccessLabel={t('offers.form.needDirectory')}
       emptyLabel={t('offers.form.noUsers')}
+      typedName={{ use: (typed) => t('offers.form.managerUseName', { name: typed }), chip: t('offers.form.managerNoAccount') }}
     />
   );
 };

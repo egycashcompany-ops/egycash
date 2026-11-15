@@ -16,6 +16,7 @@ import {
   type BulkJobOffers,
   type BulkWorkflowResultDto,
   type WorkflowEnvelopeDto,
+  type OfferDefaultsDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -35,6 +36,10 @@ export const listJobOffers = (params: JobOfferListParams): Promise<Paginated<Job
   getPage<JobOfferDto>(`/hr/job-offers${buildQuery(params)}`);
 
 export const getJobOffer = (id: string): Promise<JobOfferDto> => get<JobOfferDto>(`/hr/job-offers/${id}`);
+
+/** What «اكتب العرض» starts from for a candidate (A28). */
+export const getOfferDefaults = (applicantId: string): Promise<OfferDefaultsDto> =>
+  get<OfferDefaultsDto>(`/hr/job-offers/defaults${buildQuery({ applicantId })}`);
 
 export const createJobOffer = (body: CreateJobOffer): OfferEnvelope =>
   postWorkflow<JobOfferDto>('/hr/job-offers', body);

@@ -98,19 +98,20 @@ const periodSections = (
     ),
   ),
 
-  // T6.3/T6.4, tab 9 — R-18 over the maintenance list's own filter (check-in day in the period).
-  visits: section('visits', 'company+set', () => fleetMaintenanceService.visitBreakdown(dated(p))),
+  // T6.3/T6.4 — «أرقام الفترة» alone: the visits that CHECKED IN in the period (`from`/`to`) and
+  // their state now, over the maintenance list's own filter.
+  visits: section('visits', 'company+set', () => fleetMaintenanceService.visitStates(dated(p))),
 
-  // The overview's «زيارات الصيانة» (D6) — the visits that LEFT the workshop in the period, by the
-  // maintenance list's own filter over `outFrom`/`outTo` (the EXIT day) and never `from`/`to` (the
-  // check-in day `visits` keeps for the old tabs).
-  exits: section('exits', 'company+set', async () => ({
-    count: await fleetMaintenanceService.exitCount({
+  // «الصيانة والورش» (every period figure) and the overview's «زيارات الصيانة» (D6) — the visits that
+  // LEFT the workshop in the period, by the maintenance list's own filter over `outFrom`/`outTo`
+  // (the EXIT day) and never `from`/`to` (the check-in day `visits` keeps for «أرقام الفترة»).
+  exits: section('exits', 'company+set', () =>
+    fleetMaintenanceService.exitBreakdown({
       outFrom: ymdToUtcDate(p.range.from),
       outTo: ymdToUtcDate(p.range.to),
       ...p.filter,
     }),
-  })),
+  ),
 
   // T6.5/T6.6, T10.2 — R-23: the period's files, and of them the open ones now («حتى الآن»).
   accidents: section('accidents', 'company+set', async () => {

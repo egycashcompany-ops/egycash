@@ -78,13 +78,30 @@ const MONTH: FleetDashboardPeriodDto = {
     scopeBranches: null,
   },
   km: { ...need(PERIOD_DTO.km), total: 4896 },
-  exits: { count: 21 },
+  // The month's exits (by exit day): the overview draws their count; the rest is the tab's.
+  exits: { ...need(PERIOD_DTO.exits), count: 21 },
   accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
   opex: { card: 9000, custody: 3500, fuel: 8200, total: 12500, count: 40, dataFrom: null },
   unavailable: [],
 };
 
 const CAIRO_BRANCH = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+
+/** Alarm rows for a literal's own codes (the table is the tab's; the overview draws counts). */
+const alarmRows = (
+  ...cars: [code: string, level: 'red' | 'yellow'][]
+): NonNullable<FleetDashboardNowDto['maintenanceAlarm']>['rows'] =>
+  cars.map(([code, level], i) => ({
+    vehicleId: `v${code}`,
+    code,
+    typeName: null,
+    level,
+    remainingKm: level === 'red' ? 100 + i : 500 + i,
+    sinceServiceKm: 10_000 - (level === 'red' ? 100 + i : 500 + i),
+    intervalKm: 10_000,
+    lastServiceAt: null,
+    inWorkshop: null,
+  }));
 const GIZA_BRANCH = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
 
 const page = (
@@ -409,6 +426,9 @@ describe('«نظرة عامة» — the action centre', () => {
           overdue: 1,
           yellow: 2,
           codes: { red: ['101'], yellow: ['207', '208'] },
+          redKm: 300,
+          yellowKm: 1000,
+          rows: alarmRows(['101', 'red'], ['207', 'yellow'], ['208', 'yellow']),
         },
       },
     });
@@ -416,7 +436,18 @@ describe('«نظرة عامة» — the action centre', () => {
       '/fleet/maintenance-alarms?level=yellow&vehicleCodes=207,208',
     ]);
     const none = page('/fleet?tab=overview', {
-      now: { ...NOW, maintenanceAlarm: { red: 3, overdue: 1, yellow: 0, codes: null } },
+      now: {
+        ...NOW,
+        maintenanceAlarm: {
+          red: 3,
+          overdue: 1,
+          yellow: 0,
+          codes: null,
+          redKm: 300,
+          yellowKm: 1000,
+          rows: alarmRows(['141', 'red'], ['127', 'red'], ['166', 'red']),
+        },
+      },
     });
     expect(text(row(none, 'maintenanceRed'))).not.toContain('تقترب منه');
     // The crew line: what was covered, the stale plans, the other reasons — each only when > 0.
@@ -540,8 +571,8 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
       'vehicles.tab': 'today',
       'roster.tab': 'today',
       'distributionVehicles.tab': 'distribution',
-      'workshop.tab': 'today',
-      'visits.tab': 'maintenance',
+      'workshop.tab': 'maintenance',
+      'maintenanceAlarm.tab': 'maintenance',
       'accidents.tab': 'accidents',
       'opex.tab': 'period',
       'licenceVehicles.tab': 'licences',
@@ -572,10 +603,27 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
   });
 
   it('draws no foot for a tab the reader cannot see', () => {
+    // «الحوادث» is not in the bar (no accident section): its card keeps the fines line, no foot.
+    const noAccidents = page('/fleet?tab=overview', {
+      period: { ...MONTH, accidents: null, accidentList: null },
+    });
+    expect(noAccidents).not.toContain('data-dash-hub-foot="incidents"');
+    expect(hubCard(noAccidents, 'incidents')).toContain('data-dash-hub-line="violations"');
+    expect(hrefOf(noAccidents, 'accidents.tab')).toEqual([]);
+    // «الصيانة والورش» shows through any of its four parts — the period's visits are not one of
+    // them any more: without them its card keeps its lines AND its foot…
     const noVisits = page('/fleet?tab=overview', { period: { ...MONTH, visits: null } });
-    expect(noVisits).not.toContain('data-dash-hub-foot="maintenance"');
-    expect(hubCard(noVisits, 'maintenance')).toContain('data-dash-hub-line="workshop"');
-    expect(hrefOf(noVisits, 'workshop.tab')).toHaveLength(1);
+    expect(noVisits).toContain('data-dash-hub-foot="maintenance"');
+    expect(hrefOf(noVisits, 'workshop.tab')).toHaveLength(2);
+    // …and with none of the four it is not in the bar, and nothing on the overview opens it.
+    const none = page('/fleet?tab=overview', {
+      now: { ...NOW, workshop: null, maintenanceAlarm: null, dealershipPending: null },
+      period: { ...MONTH, exits: null },
+    });
+    expect(none).not.toContain('data-dash-hub="maintenance"');
+    expect(links(none).filter((l) => parse(l.href).params.get('tab') === 'maintenance')).toEqual(
+      [],
+    );
   });
 
   it('«حوادث الشهر» opens the accidents tab; «مخالفات قائمة N مخالفة» the register, every year', () => {
@@ -623,11 +671,36 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
     expect(text(hubLine(one, 'biggestType'))).toContain('24 سيارة');
   });
 
-  it('the in-workshop figure opens «الحركة اليوم» (its KPI shows it); the red alarm its board', () => {
-    expect(
-      hrefOf(hubLine(html, 'workshop'), 'workshop.tab').map((h) => parse(h).params.get('tab')),
-    ).toEqual(['today']);
-    expect(hrefOf(hubLine(html, 'alarm'), 'maintenanceAlarm.red')).toEqual([
+  it('the in-workshop and red-alarm figures open «الصيانة والورش», whose «الآن» band shows both', () => {
+    expect(hrefOf(hubLine(html, 'workshop'), 'workshop.tab')).toEqual(['/fleet?tab=maintenance']);
+    expect(hrefOf(hubLine(html, 'alarm'), 'maintenanceAlarm.tab')).toEqual([
+      '/fleet?tab=maintenance',
+    ]);
+    expect(hrefOf(hubLine(html, 'alarm'), 'maintenanceAlarm.red')).toEqual([]);
+    const [foot = ''] = hrefOf(
+      part(html, 'data-dash-hub-foot="maintenance"', /<\/div>/u),
+      'workshop.tab',
+    );
+    expect(foot).toBe('/fleet?tab=maintenance');
+    // Under a branch whose red cars are over the screens' cap the line still opens the tab (the
+    // alarms board needed the codes; the tab is narrowed by the server).
+    const branched = page('/fleet?tab=overview', {
+      now: {
+        ...NOW,
+        branchId: B1,
+        scopeBranches: [CAIRO_BRANCH],
+        maintenanceAlarm: {
+          ...need(NOW.maintenanceAlarm),
+          red: 60,
+          codes: { red: [], yellow: [] },
+        },
+      },
+    });
+    expect(hrefOf(hubLine(branched, 'alarm'), 'maintenanceAlarm.tab')).toEqual([
+      '/fleet?tab=maintenance',
+    ]);
+    // The action centre's «فتح» stays on the lists (owner: «خلي الزراير كلها فتح»).
+    expect(hrefOf(row(html, 'maintenanceRed'), 'maintenanceAlarm.red')).toEqual([
       '/fleet/maintenance-alarms?level=red',
     ]);
   });
@@ -683,7 +756,7 @@ describe('«نظرة عامة» — «ملخص إحصائيات هذا الشه�
       ...MONTH,
       km: { ...need(MONTH.km), total: 9999 },
       accidents: { count: 77, open: 0, openRemaining: 0, undated: 0 },
-      exits: { count: 55 },
+      exits: { ...need(MONTH.exits), count: 55 },
     });
     const filtered = renderDashboard({ url, client });
     expect(text(monthStat(filtered, 'km'))).toContain('4,896');

@@ -15,7 +15,7 @@ import { shareText } from '../../lib/fleet-dashboard-tabs';
 import { Card, CardHead, Fig, HEAD_CHIP, N, NOTE, STRONG, WELL, cn } from './dash-kit';
 import { SectionError } from './dash-shell';
 import { KmDayChart } from './km-chart';
-import { HBars, HeadChip, type HBarRow } from './tab-maintenance';
+import { HBars, HeadChip, type HBarRow } from './dash-blocks';
 import { kmText, sectionFailed, type PeriodBodyProps } from './tab-period';
 
 const SPLIT_ROW = 'flex items-center justify-between gap-2';

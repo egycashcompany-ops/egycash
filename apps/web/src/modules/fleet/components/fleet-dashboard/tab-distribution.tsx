@@ -1,42 +1,70 @@
-// Tab 3 «توزيع السيارات» — the approved v2 sample (zz-fleetdash-v2-distribution.tsx) over R1's
-// `distributionVehicles` and `distributionDrivers` (T3.1–T3.8, R-08).
+// Tab 3 «توزيع السيارات» — the owner-approved sample (approved/dist-dark.png, dist-branch-dark.png;
+// harness zz-distribution.tsx) over the real reads: R1 `distributionVehicles` / `distributionDrivers`,
+// the fixed «هذا الشهر» read (`props.month`, R2 with no page filter) for the kilometres, and the supply
+// contracts' own summary (three calls of the contracts screen's hook, this year's contracts only).
 //
-// The columns are the reader's scope branches, in the server's order; «بلا فرع» appears only when a
-// legacy car has no branch, and has no link (the vehicles screen has no such parameter). Every cell
-// opens the vehicles list on its type and branch. The colouring (the biggest branch, the biggest
-// branch of each type) and the shares are display arithmetic on the server's cells. The owner's
-// answers (D5): drivers per vehicle is a plain ratio with no target, and there is no export button.
-import { useState, type ReactNode } from 'react';
-import { type FleetDashboardNowDto, type Locale } from '@ecms/contracts';
+//   1  the heading — its line names only what this reader is shown (drivers, km, supply by grant)
+//   2  the operation row — «كل السيارات النشطة» (cash · ATM · «أخرى» on one meter), «نقل الأموال»,
+//      «ATM»; each with its drivers in the grey band (the drivers, «سائق لكل سيارة», more/fewer)
+//   3  the company (and «كل فروعي»): «الفروع» — a card per branch in the server's order (active cars
+//      desc), its operations line from the server's `kinds` — then the type × branch matrix and, under
+//      it, the month's kilometres by branch as a column chart, both the page's full width (the
+//      owner: «الجدول … واخد عرض الصفحة كلها … الكيلومترات يكون تحته ويبقى شارتس مش بروجريس»)
+//   3' one branch in scope (`scopeBranches.length === 1`, the switcher's branch or a one-branch
+//      reader alike): the branch's cars by type (bars, two columns) and its kilometres by type
+//   4  «عقود توريد السيارات» — this year's contracts, company-wide (contracts carry no branch)
+//
+// NOTHING IS COUNTED HERE. Every figure is a field a read sent: «أخرى» is the server's `other` and
+// `kinds`, a branch's line its `kinds`, the km columns R2's rows. The browser draws shares, the
+// drivers ratio, the more/fewer gap and «المتبقية» (contracted − received) — display arithmetic on
+// figures shown side by side. «أخرى», «بلا فرع» and «غير مسجّلة» have no link: no screen lists exactly
+// them. The km links come from the month read's OWN echo, never the page's filters. Every data bar and
+// column is the brand's (DECISIONS §5); the operations keep their colours (brand · sky · slate).
+import { type ReactNode } from 'react';
+import {
+  type FleetDashboardNowDto,
+  type FleetDashboardPeriodDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { localized } from '../../../../shared/lib/format';
-import { nowLinks, type DashLink, type NowLinks } from '../../lib/fleet-dashboard-links';
-import { leadIndex, ratioText, share, shareText } from '../../lib/fleet-dashboard-tabs';
+import { Skeleton } from '../../../../shared/ui/Skeleton';
+import { useVehicleContractSummary } from '../../api/vehicle-contract-queries';
 import {
-  AMBER,
+  nowLinks,
+  periodLinks,
+  type DashLink,
+  type NowLinks,
+} from '../../lib/fleet-dashboard-links';
+import {
+  leadIndex,
+  ratioText,
+  sectionPermitted,
+  share,
+  shareText,
+  slashDay,
+} from '../../lib/fleet-dashboard-tabs';
+import {
   BAND,
   BOX,
+  BOX_HOVER,
+  Btn,
   CAIRO,
-  CHIP,
   Card,
-  CardHead,
+  CompanyWide,
   DIVIDE,
   Fig,
+  HEAD_CHIP,
   I,
-  Icon,
   IconTile,
   MUTED,
   Meter,
   N,
   NOTE,
-  NUM,
-  PCT,
   RED,
-  ROW_HOVER,
   RULE,
   STRONG,
-  SectionHead,
   TH,
   TH_ROW,
   TITLE,
@@ -45,1029 +73,1231 @@ import {
   Tag,
   cn,
   type IconPath,
+  type Tone,
 } from './dash-kit';
-import { Phrase, RefreshTools, SectionError, count, useNoun, type NowTabProps } from './dash-shell';
+import {
+  BlockFoot,
+  BlockHead,
+  COUNT_CHIP,
+  HBars,
+  Kpi,
+  NoteLine,
+  RangeChip,
+  SHARE,
+  Sep,
+  Small,
+  WORDS,
+  Big,
+  monthName,
+  type HBarRow,
+} from './dash-blocks';
+import { ColumnChart, type ColumnDatum } from './dash-columns';
+import {
+  Phrase,
+  RefreshTools,
+  SectionError,
+  count,
+  useNoun,
+  type MonthRead,
+  type NowTabProps,
+} from './dash-shell';
+import { kmText } from './tab-period';
 
 type Vehicles = NonNullable<FleetDashboardNowDto['distributionVehicles']>;
 type Drivers = NonNullable<FleetDashboardNowDto['distributionDrivers']>;
+type Kinds = Vehicles['noBranchKinds'];
+type Km = NonNullable<FleetDashboardPeriodDto['km']>;
 
-// ── The system's classes this tab draws with (beyond the kit) ─────────────────────────────────
+const W = 'fleet.dash.distribution';
 
-const LEAD_INK = 'text-brand-700 dark:text-brand-300';
-const LEAD_WASH = 'bg-brand-50/70 dark:bg-brand-950/40';
-const LEAD_HEAD = 'bg-brand-100/70 text-brand-800 dark:bg-brand-950/70 dark:text-brand-300';
-const LEAD_FOOT = 'bg-brand-100/60 dark:bg-brand-950/60';
-const TH_SHAPE = 'text-[13px] font-bold';
-const TH_INK = 'text-slate-500 dark:text-slate-400';
-const COL_WASH = 'bg-slate-100/70 dark:bg-[#16203a]/70';
-const COL_HEAD = 'bg-slate-200/60 text-slate-800 dark:bg-[#16203a] dark:text-slate-100';
-const TOTAL_HEAD = 'bg-slate-200/80 text-slate-900 dark:bg-[#131f35] dark:text-emerald-300';
-const TOTAL_CELL = 'bg-slate-50 dark:bg-[#131f35]/50';
-const GRAND_ROW = cn(
-  'bg-slate-100 dark:bg-[#090e18]',
-  '[&>td]:shadow-[inset_0_2px_0_#10b981]',
-  '[&>td:last-child]:bg-emerald-50 dark:[&>td:last-child]:bg-[#122238]',
-  '[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_1px_0_0_#a7f3d0,inset_-1px_0_0_#a7f3d0] dark:[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_0_3px_0_rgba(16,185,129,0.3)]',
-);
-const GRAND_WORD = 'text-emerald-800 dark:text-emerald-400';
-const GRAND_INK = 'text-emerald-800 dark:text-emerald-300';
-const TILE_LABEL = 'text-xs font-bold text-slate-800 dark:font-semibold dark:text-slate-300';
-const COUNT_CHIP =
-  'border-slate-200 bg-slate-200/80 text-slate-700 dark:border-slate-700/60 dark:bg-[#142135] dark:text-slate-300';
-const PCT_SHAPE = cn('whitespace-nowrap rounded-md px-1.5 py-px text-[11px] font-bold', NUM);
-const PCT_LEAD = cn(
-  PCT_SHAPE,
-  'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300',
-);
-const PCT_RED = cn(PCT_SHAPE, 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300');
-const BIG_FACE = cn('font-black leading-none tracking-tight tabular-nums', CAIRO);
+/** A part's share of a whole for a meter (0 when there is no whole). */
+const pct = (part: number, whole: number): number => share(part, whole) ?? 0;
 
-/** A big figure of a card face (Cairo, tabular), left to right. */
-const Big = ({
-  link,
-  children,
-  className = cn('text-[34px]', STRONG),
-}: {
-  link: DashLink | null;
-  children: ReactNode;
-  className?: string;
-}): JSX.Element => (
-  <Fig link={link} className={cn(BIG_FACE, className)}>
-    <span dir="ltr">{children}</span>
-  </Fig>
+/** The meter of the three operations, in card 1's colours: cash brand · ATM sky · «أخرى» slate. */
+const kindParts = (kinds: Kinds, whole: number): { pct: number; tone: Tone }[] => [
+  { pct: pct(kinds.cash, whole), tone: 'brand' },
+  { pct: pct(kinds.atm, whole), tone: 'sky' },
+  { pct: pct(kinds.other, whole), tone: 'slate' },
+];
+
+const LegendDot = ({ tone, children }: { tone: Tone; children: ReactNode }): JSX.Element => (
+  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+    <span aria-hidden="true" className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', TONE[tone].bar)} />
+    {children}
+  </span>
 );
 
-/** The figures every part of the tab reads: one place, from the server's cells. */
-const useMatrix = (vehicles: Vehicles) => {
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const branches = vehicles.branches.map((b) => ({ id: b.id, name: localized(b.name, locale) }));
-  const branchTotals = branches.map((b) => vehicles.totals.counts[b.id] ?? 0);
-  const rows = vehicles.rows.map((row) => ({
-    typeId: row.typeId,
-    name: localized(row.name, locale),
-    per: branches.map((b) => row.counts[b.id] ?? 0),
-    noBranch: row.noBranch,
-    total: row.total,
-  }));
-  return {
-    branches,
-    branchTotals,
-    rows,
-    total: vehicles.totals.total,
-    noBranch: vehicles.totals.noBranch,
-    leadBranch: leadIndex(branchTotals),
-    leadType: leadIndex(rows.map((row) => row.total)),
-    leadPerType: rows.map((row) => leadIndex(row.per)),
-  };
-};
-type Matrix = ReturnType<typeof useMatrix>;
-
-// ── Row 1 · vehicles and drivers ──────────────────────────────────────────────────────────────
-
-const Stat = ({
-  label,
-  n,
-  link,
-  note,
-  drivers = false,
-}: {
-  label: string;
-  n: number;
-  link: DashLink | null;
-  note: ReactNode;
-  drivers?: boolean;
-}): JSX.Element => (
-  <div
-    className={cn(
-      BOX,
-      'flex h-full min-w-0 flex-col px-4 py-3.5 transition-colors hover:border-slate-300 dark:hover:border-slate-600',
-    )}
-  >
-    <span className={TILE_LABEL}>{label}</span>
-    <Big link={link} className={cn('mt-2 self-start text-[30px]', drivers ? LEAD_INK : STRONG)}>
-      {count(n)}
-    </Big>
-    <span className={cn('mt-2 text-[11px] font-semibold leading-4', MUTED)}>{note}</span>
+/** The kit's section head with its line UNDER the title (the approved «الفروع» head). */
+const SectionTitle = ({ title, sub }: { title: string; sub: string }): JSX.Element => (
+  <div className="mb-3 mt-7 border-b border-slate-200 pb-2.5 dark:border-[#1c263b]">
+    <h3 className={cn(TITLE, 'flex items-center gap-2')}>
+      <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', TONE.emerald.dot)} />
+      {title}
+    </h3>
+    <p className={cn('mt-0.5 ps-4 text-xs font-semibold', MUTED)}>{sub}</p>
   </div>
 );
 
-/**
- * The drivers' track of a pool: as many drivers as there are cars in the solid indigo, the drivers
- * above the number of cars in a lighter one after it (the approved drawing), so the gap the line
- * below names can be seen.
- */
-const DriversMeter = ({
-  cars,
-  drivers,
-  longer,
+/** A block's head figure: its label, then the big total and its unit. */
+const HeadFigure = ({
+  id,
+  label,
+  value,
+  unit,
+  link,
 }: {
-  cars: number;
-  drivers: number;
-  longer: number;
-}): JSX.Element => {
-  const extra = drivers > cars ? (share(drivers - cars, longer) ?? 0) : 0;
-  if (extra === 0) return <Meter parts={[{ pct: share(drivers, longer) ?? 0, tone: 'brand' }]} />;
-  return (
-    <div className="flex h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]">
-      <div
-        className={cn('h-full rounded-s-full', TONE.brand.bar)}
-        style={{ width: `${share(cars, longer) ?? 0}%` }}
-      />
-      <div
-        className="h-full rounded-e-full bg-brand-300 dark:bg-brand-400/40"
-        style={{ width: `${extra}%` }}
-      />
+  id: string;
+  label: string;
+  value: string;
+  unit: string;
+  link: DashLink | null;
+}): JSX.Element => (
+  <div data-dist-total={id} className="px-5 pb-1">
+    <div className={cn('text-xs font-bold dark:font-semibold', MUTED)}>{label}</div>
+    <div className="mt-2 flex items-baseline gap-2">
+      <Big link={link}>{value}</Big>
+      <span className={WORDS}>{unit}</span>
     </div>
-  );
-};
+  </div>
+);
 
-const PoolCard = ({
-  data,
-  title,
-  sub,
-  icon,
-  cars,
+// ── 1 · The heading ───────────────────────────────────────────────────────────────────────────
+
+const Heading = ({
+  props,
+  oneBranch,
   drivers,
+  km,
+  supply,
 }: {
-  data: string;
-  title: string;
-  sub: string;
-  icon: IconPath;
-  cars: { label: string; n: number; link: DashLink | null; note: ReactNode } | null;
-  drivers: { label: string; n: number; link: DashLink | null; note: ReactNode } | null;
+  props: NowTabProps;
+  oneBranch: boolean;
+  drivers: boolean;
+  km: boolean;
+  supply: { updatedAt: number; fetching: boolean; refetch: () => void } | null;
 }): JSX.Element => {
   const t = useT();
-  const both = cars !== null && drivers !== null;
-  const longer = both ? Math.max(cars.n, drivers.n) : 0;
+  const view = oneBranch ? 'branch' : 'company';
+  const sub = t(`${W}.sub.line`, {
+    what: t(`${W}.sub.${view}`),
+    drivers: drivers ? t(`${W}.sub.drivers.${view}`) : '',
+    km: km ? t(`${W}.sub.km.${view}`) : '',
+    supply: supply === null ? '' : t(`${W}.sub.supply`),
+  });
+  // The heading's age is its OLDEST figures': R1 and the month read (the page), and the contracts.
+  const updatedAt =
+    supply === null || supply.updatedAt === 0
+      ? props.updatedAt
+      : props.updatedAt === 0
+        ? supply.updatedAt
+        : Math.min(props.updatedAt, supply.updatedAt);
   return (
-    <Card data-pool={data}>
-      <div className="px-5 pb-5 pt-5">
-        <div className="flex items-start gap-3">
-          <IconTile d={icon} tone="slate" />
-          <div className="min-w-0">
-            <h3 className={TITLE}>{title}</h3>
-            <p className={cn('mt-0.5', NOTE)}>{sub}</p>
-          </div>
-        </div>
-        <div className={cn('mt-4 grid gap-3', both ? 'grid-cols-2' : 'grid-cols-1')}>
-          {cars !== null && <Stat {...cars} />}
-          {drivers !== null && <Stat {...drivers} drivers />}
-        </div>
-      </div>
-      {both && (
-        <div className={cn(BAND, 'mt-auto px-5 pb-4 pt-3.5')}>
-          <div className="flex items-center gap-1.5">
-            <span
-              dir="ltr"
-              className={cn(
-                CAIRO,
-                'text-[22px] font-black leading-none tracking-tight tabular-nums',
-                LEAD_INK,
-              )}
-            >
-              {ratioText(drivers.n, cars.n)}
-            </span>
-            <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">
-              {t('fleet.dash.distribution.perVehicle')}
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2">
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              {t('fleet.dash.distribution.cars')}
-            </span>
-            <Meter parts={[{ pct: share(cars.n, longer) ?? 0, tone: 'slate' }]} />
-            <N className={cn('text-[13px] font-black', STRONG)}>{count(cars.n)}</N>
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              {t('fleet.dash.distribution.drivers')}
-            </span>
-            <DriversMeter cars={cars.n} drivers={drivers.n} longer={longer} />
-            <N className={cn('text-[13px] font-black', LEAD_INK)}>{count(drivers.n)}</N>
-          </div>
-          <p className="mt-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            {drivers.n === cars.n ? (
-              t('fleet.dash.distribution.even')
-            ) : (
-              <Phrase
-                text={t(
-                  drivers.n > cars.n
-                    ? 'fleet.dash.distribution.moreDrivers'
-                    : 'fleet.dash.distribution.moreCars',
-                )}
-                parts={{
-                  count: (
-                    <N className={cn('font-bold', LEAD_INK)}>
-                      {count(Math.abs(drivers.n - cars.n))}
-                    </N>
-                  ),
-                }}
-              />
-            )}
-          </p>
-        </div>
-      )}
-    </Card>
+    <TabHead
+      icon={I.pin}
+      title={t(`${W}.title`)}
+      sub={sub}
+      end={
+        <RefreshTools
+          updatedAt={updatedAt}
+          onRefresh={() => {
+            props.onRefresh();
+            supply?.refetch();
+          }}
+          refreshing={props.refreshing || (supply?.fetching ?? false)}
+          {...(props.clock === undefined ? {} : { clock: props.clock })}
+        />
+      }
+    />
   );
 };
 
-const Pools = ({
+// ── 2 · The operation row ─────────────────────────────────────────────────────────────────────
+
+const TILE_FIG = cn(
+  'text-[24px] font-black leading-none tracking-tight text-slate-900 dark:text-white',
+  CAIRO,
+);
+
+/** A tile of the drivers' band: the label over the figure, the icon at its side. */
+const BandTile = ({
+  id,
+  icon,
+  label,
+  children,
+}: {
+  id: string;
+  icon: IconPath;
+  label: string;
+  children: ReactNode;
+}): JSX.Element => (
+  <div
+    data-dist-tile={id}
+    className={cn(BOX, BOX_HOVER, 'flex min-w-0 items-center justify-between gap-2 px-3.5 py-3')}
+  >
+    <div className="min-w-0">
+      <div className={cn(WORDS, 'whitespace-nowrap text-[12.5px]')}>{label}</div>
+      <div className="mt-1.5">{children}</div>
+    </div>
+    <IconTile d={icon} tone="slate" size="sm" />
+  </div>
+);
+
+/** «منهم N بتصنيف قديم» — drivers counted through the old specialisation; only when there are. */
+const Legacy = ({ n }: { n: number }): JSX.Element | null => {
+  const t = useT();
+  if (n <= 0) return null;
+  return (
+    <p data-dist-legacy="true" className={cn('mt-1 px-1 text-[12px] font-semibold', MUTED)}>
+      <Phrase text={t(`${W}.legacy`)} parts={{ count: <N className="font-bold">{count(n)}</N> }} />
+    </p>
+  );
+};
+
+/** The drivers against the cars: the drivers (a link), «سائق لكل سيارة» (a plain ratio — no mark, no
+ *  colour, no target) and the system's more/fewer sentence. */
+const DriversBand = ({
+  id,
+  drivers,
+  cars,
+  link,
+  legacy,
+}: {
+  id: string;
+  drivers: number;
+  cars: number;
+  link: DashLink | null;
+  legacy: number;
+}): JSX.Element => {
+  const t = useT();
+  const gap = drivers - cars;
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <BandTile id={`${id}.drivers`} icon={I.users} label={t(`${W}.drivers`)}>
+          <Fig link={link} className={TILE_FIG}>
+            <N className="!font-[inherit]">{count(drivers)}</N>
+          </Fig>
+        </BandTile>
+        <BandTile id={`${id}.ratio`} icon={I.scale} label={t(`${W}.perVehicle`)}>
+          <span data-dist-ratio={id} className={TILE_FIG}>
+            <N className="!font-[inherit]">{ratioText(drivers, cars)}</N>
+          </span>
+        </BandTile>
+      </div>
+      <p
+        data-dist-sentence={id}
+        className={cn('mt-2.5 px-1 text-[12.5px] font-semibold leading-5', MUTED)}
+      >
+        {gap === 0 ? (
+          t(`${W}.even`)
+        ) : (
+          <Phrase
+            text={t(gap > 0 ? `${W}.moreDrivers` : `${W}.moreCars`)}
+            parts={{ count: <N className={cn('font-bold', STRONG)}>{count(Math.abs(gap))}</N> }}
+          />
+        )}
+      </p>
+      <Legacy n={legacy} />
+    </>
+  );
+};
+
+const OperationRow = ({
   vehicles,
   drivers,
   links,
+  oneBranch,
+  narrowed,
 }: {
   vehicles: Vehicles | null;
   drivers: Drivers | null;
   links: NowLinks;
+  oneBranch: boolean;
+  narrowed: boolean;
 }): JSX.Element => {
   const t = useT();
+  const noun = useNoun();
   const active = vehicles?.totals.total ?? 0;
-  const ofActive = (n: number): ReactNode => (
-    <>
-      <span dir="ltr" className={PCT}>
-        {shareText(n, active)}
-      </span>{' '}
-      {t('fleet.dash.distribution.ofActive')}
-    </>
+  const activeUnit = (n: number): string => t(`${W}.activeUnit`, { noun: noun('car', n) });
+  const ofActive = t(oneBranch ? `${W}.ofBranchActive` : `${W}.ofActive`);
+  const ofCount = (
+    <span>
+      <Phrase
+        text={t(oneBranch ? `${W}.ofBranchActiveCount` : `${W}.ofActiveCount`)}
+        parts={{
+          count: <N className={cn('font-bold', STRONG)}>{count(active)}</N>,
+          noun: noun('car', active),
+        }}
+      />
+    </span>
   );
-  const legacy = (n: number): ReactNode =>
-    n > 0 ? (
-      <span className={AMBER}>
-        <Phrase
-          text={t('fleet.dash.distribution.legacy')}
-          parts={{ count: <N className="font-bold">{count(n)}</N> }}
+  const kindLink = (key: 'cash' | 'atm'): DashLink | null =>
+    vehicles === null || vehicles[key].operationIds.length === 0
+      ? null
+      : links.vehiclesBy(
+          { operationIds: vehicles[key].operationIds },
+          `distributionVehicles.${key}`,
+        );
+  const driversLink = (key: 'cash' | 'atm'): DashLink | null =>
+    drivers === null
+      ? null
+      : links.driversBySpec(drivers[key].specializationIds, `distributionDrivers.${key}`);
+
+  // A reader with the drivers but not the cars: each card holds its drivers alone (absent, not 0,
+  // for the cars).
+  if (vehicles === null) {
+    if (drivers === null) return <></>;
+    const card = (id: 'all' | 'cash' | 'atm', tone: Tone, icon: IconPath, title: string) => {
+      const n = id === 'all' ? drivers.total : drivers[id].drivers;
+      return (
+        <Kpi
+          key={id}
+          id={id}
+          data-op-card={id}
+          tone={tone}
+          icon={icon}
+          title={title}
+          figure={
+            <>
+              <Big link={id === 'all' ? links.drivers() : driversLink(id)}>{count(n)}</Big>
+              <span className={WORDS}>{noun('driver', n)}</span>
+            </>
+          }
+          sub={id === 'all' ? undefined : <Legacy n={drivers[id].legacy} />}
         />
-      </span>
-    ) : (
-      t('fleet.dash.distribution.fromRegistry')
+      );
+    };
+    return (
+      <div data-dist-block="operations" className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {card('all', 'emerald', I.truck, t(`${W}.allTitle`))}
+        {card('cash', 'brand', I.cash, t(`${W}.cashTitle`))}
+        {card('atm', 'sky', I.card, t(`${W}.atmTitle`))}
+      </div>
     );
-  const kind = (key: 'cash' | 'atm') => ({
-    cars:
-      vehicles === null
-        ? null
-        : {
-            label: t('fleet.dash.distribution.cars'),
-            n: vehicles[key].vehicles,
-            link:
-              vehicles[key].operationIds.length === 0
-                ? null
-                : links.vehiclesBy(
-                    { operationIds: vehicles[key].operationIds },
-                    `distributionVehicles.${key}`,
-                  ),
-            note: ofActive(vehicles[key].vehicles),
-          },
-    drivers:
-      drivers === null
-        ? null
-        : {
-            label: t('fleet.dash.distribution.drivers'),
-            n: drivers[key].drivers,
-            link: links.driversBySpec(drivers[key].specializationIds, `distributionDrivers.${key}`),
-            note: legacy(drivers[key].legacy),
-          },
-  });
+  }
+
+  const kinds: Kinds = {
+    cash: vehicles.cash.vehicles,
+    atm: vehicles.atm.vehicles,
+    other: vehicles.other.vehicles,
+  };
+  const allSub =
+    drivers === null
+      ? t(oneBranch ? `${W}.allSubCarsBranch` : `${W}.allSubCars`)
+      : t(oneBranch ? `${W}.allSubBranch` : `${W}.allSub`);
+  const kindCard = (key: 'cash' | 'atm', tone: Tone, icon: IconPath) => {
+    const n = vehicles[key].vehicles;
+    return (
+      <Kpi
+        id={key}
+        data-op-card={key}
+        tone={tone}
+        icon={icon}
+        title={t(`${W}.${key}Title`)}
+        tag={
+          <Tag tone={tone} dot>
+            <N>{shareText(n, active)}</N> {ofActive}
+          </Tag>
+        }
+        figure={
+          <>
+            <Big link={kindLink(key)}>{count(n)}</Big>
+            <span className={WORDS}>{activeUnit(n)}</span>
+          </>
+        }
+        sub={
+          <div className="w-full">
+            <Meter height="h-2.5" parts={[{ pct: pct(n, active), tone }]} />
+            <div className={cn('mt-2.5 flex min-h-5 items-center text-xs font-semibold', MUTED)}>
+              {ofCount}
+            </div>
+          </div>
+        }
+        {...(drivers === null
+          ? {}
+          : {
+              box: (
+                <DriversBand
+                  id={key}
+                  drivers={drivers[key].drivers}
+                  cars={n}
+                  link={driversLink(key)}
+                  legacy={drivers[key].legacy}
+                />
+              ),
+            })}
+      />
+    );
+  };
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <PoolCard
-        data="all"
-        title={t('fleet.dash.distribution.allTitle')}
-        sub={t('fleet.dash.distribution.allSub')}
-        icon={I.scale}
-        cars={
-          vehicles === null
-            ? null
+    <>
+      <div data-dist-block="operations" className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Kpi
+          id="all"
+          data-op-card="all"
+          tone="emerald"
+          icon={I.truck}
+          title={t(`${W}.allTitle`)}
+          tag={<span className={cn(NOTE, 'whitespace-nowrap')}>{allSub}</span>}
+          figure={
+            <>
+              <Big link={links.vehiclesBy({}, 'distributionVehicles.total')}>{count(active)}</Big>
+              <span className={WORDS}>{activeUnit(active)}</span>
+            </>
+          }
+          sub={
+            <div className="w-full">
+              <Meter height="h-2.5" parts={kindParts(kinds, active)} />
+              <div
+                data-op-legend="all"
+                className={cn(
+                  'mt-2.5 flex min-h-5 flex-wrap items-center gap-x-4 text-xs font-semibold',
+                  MUTED,
+                )}
+              >
+                <LegendDot tone="brand">
+                  {t(`${W}.cashTitle`)} <Small link={kindLink('cash')}>{count(kinds.cash)}</Small>
+                </LegendDot>
+                <LegendDot tone="sky">
+                  {t(`${W}.atmTitle`)} <Small link={kindLink('atm')}>{count(kinds.atm)}</Small>
+                </LegendDot>
+                <LegendDot tone="slate">
+                  {t(`${W}.other`)} <Small>{count(kinds.other)}</Small>
+                </LegendDot>
+              </div>
+            </div>
+          }
+          {...(drivers === null
+            ? {}
             : {
-                label: t('fleet.dash.distribution.allCars'),
-                n: active,
-                link: links.vehiclesBy({}, 'distributionVehicles.total'),
-                note: t('fleet.dash.distribution.activeFleet'),
-              }
-        }
-        drivers={
-          drivers === null
-            ? null
-            : {
-                label: t('fleet.dash.distribution.allDrivers'),
-                n: drivers.total,
-                link: links.drivers(),
-                note: t('fleet.dash.distribution.fromRegistry'),
-              }
-        }
-      />
-      <PoolCard
-        data="cash"
-        title={t('fleet.dash.distribution.cashTitle')}
-        sub={t('fleet.dash.distribution.cashSub')}
-        icon={I.shield}
-        {...kind('cash')}
-      />
-      <PoolCard
-        data="atm"
-        title={t('fleet.dash.distribution.atmTitle')}
-        sub={t('fleet.dash.distribution.atmSub')}
-        icon={I.cash}
-        {...kind('atm')}
-      />
-    </div>
+                box: (
+                  <DriversBand
+                    id="all"
+                    drivers={drivers.total}
+                    cars={active}
+                    link={links.drivers()}
+                    legacy={0}
+                  />
+                ),
+              })}
+        />
+        {kindCard('cash', 'brand', I.cash)}
+        {kindCard('atm', 'sky', I.card)}
+      </div>
+      {narrowed && drivers !== null && (
+        <div data-dist-drivers-note="true" className="mt-3 px-1">
+          <NoteLine>{t(`${W}.driversBranchNote`)}</NoteLine>
+        </div>
+      )}
+    </>
   );
 };
 
-// ── Row 2 · the branches ──────────────────────────────────────────────────────────────────────
+// ── 3 · «الفروع»: a card per branch, in the server's order ──────────────────────────────────────
 
-/**
- * A branch's letter: its first, past the Arabic article («القاهرة» → «ق») and past a leading alef
- * («الإسكندرية» → «س»): a lone «إ» or «أ» in the badge reads as «!», the «بلا فرع» badge's mark.
- */
-const initial = (name: string): string =>
-  name
-    .replace(/^ال/u, '')
-    .replace(/^[اأإآ](?=.)/u, '')
-    .slice(0, 1);
+/** The «بلا فرع» card: red, and no link (the vehicles screen has no such parameter). */
+const NONE_CARD =
+  'relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-red-200/90 bg-red-50/80 px-4 pb-4 pt-4 shadow-sm dark:border-red-500/40 dark:bg-[linear-gradient(180deg,rgba(19,26,43,.82)_0%,rgba(13,18,30,.92)_100%)] dark:shadow-[0_8px_24px_-4px_rgba(0,0,0,.5),inset_0_1px_0_0_rgba(255,255,255,.04)]';
 
-const Letter = ({
-  letter,
-  kind,
+const BranchCard = ({
+  id,
+  name,
+  n,
+  kinds,
+  whole,
+  lead,
+  links,
+  vehicles,
 }: {
-  letter: string;
-  kind: 'lead' | 'plain' | 'none';
-}): JSX.Element => (
-  <span
-    aria-hidden="true"
-    className={cn(
-      'grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[17px] font-black',
-      CAIRO,
-      kind === 'lead' ? TONE.brand.tile : kind === 'plain' ? TONE.slate.tile : TONE.red.tile,
-    )}
-  >
-    {letter}
+  /** The branch id; `null` = «بلا فرع». */
+  id: string | null;
+  name: string;
+  n: number;
+  kinds: Kinds;
+  whole: number;
+  lead: boolean;
+  links: NowLinks;
+  vehicles: Vehicles;
+}): JSX.Element => {
+  const t = useT();
+  const none = id === null;
+  const kindLink = (key: 'cash' | 'atm'): DashLink | null =>
+    id === null || vehicles[key].operationIds.length === 0
+      ? null
+      : links.vehiclesBy(
+          { branchId: id, operationIds: vehicles[key].operationIds },
+          key === 'cash' ? 'distributionVehicles.branchCash' : 'distributionVehicles.branchAtm',
+        );
+  const body = (
+    <>
+      <div className="flex h-6 items-center justify-between gap-2">
+        <h4 className={cn(TITLE, 'truncate whitespace-nowrap', none && RED)}>{name}</h4>
+        {lead && <Tag tone="brand">{t(`${W}.biggest`)}</Tag>}
+      </div>
+      <div className="mt-3 flex items-baseline justify-between gap-2">
+        <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <Big
+            link={
+              id === null ? null : links.vehiclesBy({ branchId: id }, 'distributionVehicles.branch')
+            }
+            className={cn('!text-[30px]', none && '!text-red-700 dark:!text-red-300')}
+          >
+            {count(n)}
+          </Big>
+          <span className={WORDS}>{t(`${W}.activeShort`)}</span>
+        </span>
+        <N className="text-[13px] font-bold text-slate-600 dark:text-slate-300">
+          {shareText(n, whole)}
+        </N>
+      </div>
+      <div className="mt-2.5">
+        <Meter parts={none ? [{ pct: pct(n, whole), tone: 'red' }] : kindParts(kinds, whole)} />
+      </div>
+      <div
+        data-branch-kinds={id ?? 'none'}
+        className={cn(
+          BOX,
+          'mt-3.5 whitespace-nowrap px-2.5 py-2 text-center text-xs font-semibold text-slate-600 dark:text-slate-300',
+        )}
+      >
+        {t(`${W}.cashTitle`)} <Small link={kindLink('cash')}>{count(kinds.cash)}</Small>
+        <Sep />
+        {t(`${W}.atmTitle`)} <Small link={kindLink('atm')}>{count(kinds.atm)}</Small>
+        <Sep />
+        {t(`${W}.other`)} <Small>{count(kinds.other)}</Small>
+      </div>
+    </>
+  );
+  return none ? (
+    <div data-branch-card="none" className={NONE_CARD}>
+      {body}
+    </div>
+  ) : (
+    <Card data-branch-card={id} className="px-4 pb-4 pt-4">
+      {body}
+    </Card>
+  );
+};
+
+const Branches = ({ vehicles, links }: { vehicles: Vehicles; links: NowLinks }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const whole = vehicles.totals.total;
+  const lead = leadIndex(vehicles.branches.map((b) => vehicles.totals.counts[b.id] ?? 0));
+  const zero: Kinds = { cash: 0, atm: 0, other: 0 };
+  return (
+    <section data-dist-block="branches">
+      <SectionTitle title={t(`${W}.branchesTitle`)} sub={t(`${W}.branchesSub`)} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 min-[1700px]:grid-cols-[repeat(auto-fit,minmax(13.5rem,1fr))]">
+        {vehicles.branches.map((b, i) => (
+          <BranchCard
+            key={b.id}
+            id={b.id}
+            name={localized(b.name, locale)}
+            n={vehicles.totals.counts[b.id] ?? 0}
+            kinds={vehicles.kinds[b.id] ?? zero}
+            whole={whole}
+            lead={i === lead}
+            links={links}
+            vehicles={vehicles}
+          />
+        ))}
+        {vehicles.totals.noBranch > 0 && (
+          <BranchCard
+            id={null}
+            name={t(`${W}.noBranch`)}
+            n={vehicles.totals.noBranch}
+            kinds={vehicles.noBranchKinds}
+            whole={whole}
+            lead={false}
+            links={links}
+            vehicles={vehicles}
+          />
+        )}
+      </div>
+    </section>
+  );
+};
+
+// ── 4 · The type × branch matrix, the page's full width ─────────────────────────────────────────
+
+const TCELL = 'px-2.5 py-3.5 align-middle first:ps-5 last:pe-5';
+const TOTAL_COL = 'bg-slate-50 dark:bg-[#0c121e]';
+/** The type column stays put while a narrow screen scrolls the table sideways under it. */
+const STICKY = 'sticky start-0 z-[1]';
+/** Its cells' own ground — only where the table can scroll (under the card's 880 px), so the wide
+ *  table reads as one surface. */
+const STICKY_BODY = 'max-lg:bg-white max-lg:dark:bg-[#0e1422]';
+
+/** A zero cell: a dash, never a 0 and never a link. */
+const Zero = (): JSX.Element => (
+  <span aria-label="0" className="font-semibold text-slate-400 dark:text-slate-600">
+    —
   </span>
 );
 
-const NONE_CARD =
-  'relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-red-200/90 bg-red-50/80 shadow-sm dark:border-red-500/40 dark:bg-red-950/20 dark:bg-[linear-gradient(180deg,rgba(19,26,43,.82)_0%,rgba(13,18,30,.92)_100%)] dark:shadow-[0_8px_24px_-4px_rgba(0,0,0,.5),inset_0_1px_0_0_rgba(255,255,255,.04)] dark:backdrop-blur-[12px]';
-
-const BranchCard = ({
-  m,
-  index,
-  links,
-}: {
-  m: Matrix;
-  index: number | 'none';
-  links: NowLinks;
-}): JSX.Element => {
+const Matrix = ({ vehicles, links }: { vehicles: Vehicles; links: NowLinks }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
-  const none = index === 'none';
-  const branch = none ? null : m.branches[index];
-  const total = none ? m.noBranch : (m.branchTotals[index] ?? 0);
-  const lead = !none && index === m.leadBranch;
-  const pct = share(total, m.total) ?? 0;
-  const body = (
-    <div className="flex flex-1 flex-col p-4" data-branch-card={branch?.id ?? 'none'}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Letter
-            letter={none ? '!' : initial(branch?.name ?? '')}
-            kind={none ? 'none' : lead ? 'lead' : 'plain'}
-          />
-          <div className="min-w-0">
-            <div className={cn('text-[11px] font-semibold', none ? RED : MUTED)}>
-              {none
-                ? t('fleet.dash.distribution.legacyRecord')
-                : t('fleet.dash.distribution.branch')}
-            </div>
-            <h4
-              className={cn('truncate text-base font-bold leading-6', CAIRO, none ? RED : STRONG)}
-            >
-              {none ? t('fleet.dash.distribution.noBranch') : branch?.name}
-            </h4>
-          </div>
-        </div>
-        {lead && (
-          <span className="self-start">
-            <Tag tone="brand">{t('fleet.dash.distribution.biggest')}</Tag>
-          </span>
-        )}
-      </div>
-      <div className="mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <Big
-          link={
-            none || branch === undefined || branch === null
-              ? null
-              : links.vehiclesBy({ branchId: branch.id }, 'distributionVehicles.branch')
-          }
-          className={cn('text-[34px]', none ? RED : STRONG)}
-        >
-          {count(total)}
-        </Big>
-        <span
-          className={cn(
-            'text-[13px] font-bold',
-            none ? 'text-red-700 dark:text-red-300' : 'text-slate-600 dark:text-slate-300',
-          )}
-        >
-          {none ? (
-            // The counted noun («1 سيارة», «3 سيارات») before the words, as the branches say it.
-            <Phrase
-              text={t('fleet.dash.distribution.noBranchCounted')}
-              parts={{ noun: noun('car', total) }}
-            />
-          ) : (
-            <Phrase
-              text={t('fleet.dash.distribution.activeUnit')}
-              parts={{ noun: noun('car', total) }}
-            />
-          )}
-        </span>
-      </div>
-      <div className="mt-3 flex items-center gap-2.5">
-        <Meter
-          height="h-1.5"
-          className="flex-1"
-          parts={[{ pct, tone: none ? 'red' : lead ? 'brand' : 'slate' }]}
-        />
-        <span dir="ltr" className={none ? PCT_RED : lead ? PCT_LEAD : PCT}>
-          {shareText(total, m.total)}
-        </span>
-      </div>
-      <ul
-        className={cn(
-          'mt-4 flex flex-1 flex-col justify-between rounded-xl border px-1.5 py-1.5',
-          none
-            ? 'border-red-200 bg-white/70 dark:border-red-500/20 dark:bg-[#0a101b]/70'
-            : 'border-slate-200 bg-slate-50/60 dark:border-[#1e2a3f] dark:bg-[#0a101b]/70',
-        )}
-      >
-        {m.rows.map((row) => {
-          const n = none ? row.noBranch : (row.per[index] ?? 0);
-          return (
-            <li
-              key={row.typeId}
-              className={cn(
-                'flex items-center justify-between gap-2 rounded-lg px-2 py-[5px] text-[13px]',
-                n > 0 && !none && ROW_HOVER,
-              )}
-            >
-              <span
-                className={
-                  n === 0
-                    ? 'text-slate-400 dark:text-slate-500'
-                    : 'font-semibold text-slate-700 dark:text-slate-200'
-                }
-              >
-                {row.name}
-              </span>
-              {n === 0 ? (
-                <span className="w-7 text-center text-slate-300 dark:text-slate-600">—</span>
-              ) : (
-                <Fig
-                  link={
-                    none || branch === undefined || branch === null
-                      ? null
-                      : links.vehiclesBy(
-                          { typeId: row.typeId, branchId: branch.id },
-                          'distributionVehicles.cell',
-                        )
-                  }
-                  className={cn(
-                    'inline-flex h-6 min-w-7 items-center justify-center rounded-md border px-1 text-[12px] font-black',
-                    NUM,
-                    none ? TONE.red.soft : COUNT_CHIP,
-                  )}
-                >
-                  {count(n)}
-                </Fig>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-  return none ? <div className={NONE_CARD}>{body}</div> : <Card>{body}</Card>;
-};
-
-// ── Row 3 · the matrix ────────────────────────────────────────────────────────────────────────
-
-const MatrixCard = ({ m, links }: { m: Matrix; links: NowLinks }): JSX.Element => {
-  const t = useT();
-  const noun = useNoun();
-  const [col, setCol] = useState<number | null>(null);
-  const th = cn('px-2 py-3 text-center', TH_SHAPE);
-  const tint = (i: number): string => (i === m.leadBranch ? LEAD_WASH : col === i ? COL_WASH : '');
-  const showNone = m.noBranch > 0;
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const total = vehicles.totals.total;
+  const showNone = vehicles.totals.noBranch > 0;
   return (
-    <Card data-fleet-matrix="true">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-        <CardHead
-          title={t('fleet.dash.distribution.matrixTitle')}
-          sub={
+    <Card data-dist-block="matrix" data-fleet-matrix="true">
+      <BlockHead
+        icon={I.grid}
+        tone="brand"
+        title={t(`${W}.matrixTitle`)}
+        note={t(`${W}.matrixSub`)}
+        chips={
+          <span data-dist-chip="matrix" className={cn(COUNT_CHIP, TONE.brand.soft)}>
             <Phrase
-              text={t('fleet.dash.distribution.matrixSub')}
-              parts={{
-                count: (
-                  <N className="font-bold text-slate-700 dark:text-slate-200">{count(m.total)}</N>
-                ),
-                noun: noun('car', m.total),
-              }}
+              text={t(`${W}.matrixChip`)}
+              parts={{ count: <N>{count(total)}</N>, noun: noun('car', total) }}
             />
-          }
-        />
-      </div>
-      {m.rows.length === 0 ? (
-        <p className={cn('px-5 pb-6', NOTE)}>{t('fleet.dash.distribution.empty')}</p>
+          </span>
+        }
+      />
+      {vehicles.rows.length === 0 ? (
+        <p className={cn('px-5 pb-6', NOTE)}>{t(`${W}.empty`)}</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table
-            className="w-full min-w-[640px] border-collapse text-sm"
-            onMouseLeave={() => setCol(null)}
-          >
-            <thead>
-              <tr className={cn(TH_ROW, 'border-y border-slate-200 dark:border-[#1c293f]')}>
-                <th className={cn('px-5 py-3 text-start', TH)}>
-                  {t('fleet.dash.distribution.type')}
+        <div data-dist-scroll="matrix" className="overflow-x-auto">
+          <table className="w-full min-w-[880px] table-fixed border-collapse text-[13px]">
+            <thead className={TH_ROW}>
+              <tr className={cn('border-y', RULE)}>
+                <th className={cn(TCELL, TH, STICKY, TH_ROW, 'w-[19%] py-2.5 text-start')}>
+                  {t(`${W}.type`)}
                 </th>
-                {m.branches.map((b, i) => (
-                  <th
-                    key={b.id}
-                    className={cn(
-                      th,
-                      'transition-colors',
-                      i === m.leadBranch ? LEAD_HEAD : col === i ? COL_HEAD : TH_INK,
-                    )}
-                  >
-                    {b.name}
+                {vehicles.branches.map((b) => (
+                  <th key={b.id} className={cn(TCELL, TH, 'whitespace-nowrap py-2.5 text-center')}>
+                    {localized(b.name, locale)}
                   </th>
                 ))}
                 {showNone && (
-                  <th className={cn(th, RED)}>{t('fleet.dash.distribution.noBranch')}</th>
+                  <th className={cn(TCELL, TH, 'whitespace-nowrap py-2.5 text-center', RED)}>
+                    {t(`${W}.noBranch`)}
+                  </th>
                 )}
-                <th className={cn(th, TOTAL_HEAD)}>{t('fleet.dash.distribution.total')}</th>
+                <th className={cn(TCELL, TH, 'w-[12%] py-2.5 text-center')}>{t(`${W}.total`)}</th>
               </tr>
             </thead>
-            <tbody>
-              {m.rows.map((row, r) => (
-                <tr
-                  key={row.typeId}
-                  className="group border-b border-slate-200 dark:border-slate-800/80"
-                >
-                  <td className="px-5 py-3.5 text-start transition-colors group-hover:bg-slate-100 dark:group-hover:bg-[#16203a]">
-                    <span className="flex items-center gap-2.5 font-bold text-slate-800 dark:text-slate-100">
-                      <span
-                        aria-hidden="true"
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400 dark:bg-slate-500"
-                      />
-                      {row.name}
-                    </span>
+            <tbody className={DIVIDE}>
+              {vehicles.rows.map((row) => (
+                <tr key={row.typeId} data-dist-type={row.typeId}>
+                  <td
+                    className={cn(
+                      TCELL,
+                      STICKY,
+                      STICKY_BODY,
+                      'whitespace-nowrap font-bold',
+                      STRONG,
+                    )}
+                  >
+                    {localized(row.name, locale)}
                   </td>
-                  {row.per.map((n, i) => {
-                    const branch = m.branches[i];
-                    const link =
-                      branch === undefined
-                        ? null
-                        : links.vehiclesBy(
-                            { typeId: row.typeId, branchId: branch.id },
-                            'distributionVehicles.cell',
-                          );
+                  {vehicles.branches.map((b) => {
+                    const n = row.counts[b.id] ?? 0;
                     return (
-                      <td
-                        key={branch?.id ?? i}
-                        onMouseEnter={() => setCol(i)}
-                        className={cn('px-2 py-3.5 text-center transition-colors', tint(i))}
-                      >
+                      <td key={b.id} className={cn(TCELL, 'text-center')}>
                         {n === 0 ? (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
-                        ) : i === m.leadPerType[r] ? (
-                          <Fig
-                            link={link}
-                            className={cn(
-                              'inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-[15px] font-black',
-                              NUM,
-                              TONE.brand.soft,
-                            )}
-                          >
-                            {count(n)}
-                          </Fig>
+                          <Zero />
                         ) : (
-                          <Fig
-                            link={link}
-                            className={cn(
-                              'text-[15px] font-bold text-slate-700 dark:text-slate-200',
-                              NUM,
+                          <Small
+                            link={links.vehiclesBy(
+                              { typeId: row.typeId, branchId: b.id },
+                              'distributionVehicles.cell',
                             )}
+                            className="text-slate-700 dark:text-slate-200"
                           >
                             {count(n)}
-                          </Fig>
+                          </Small>
                         )}
                       </td>
                     );
                   })}
                   {showNone && (
-                    <td className="px-2 py-3.5 text-center" onMouseEnter={() => setCol(null)}>
+                    <td className={cn(TCELL, 'text-center')}>
                       {row.noBranch === 0 ? (
-                        <span className="text-slate-300 dark:text-slate-600">—</span>
+                        <Zero />
                       ) : (
-                        <N className={cn('text-[15px] font-black', RED)}>{count(row.noBranch)}</N>
+                        <Small className={RED}>{count(row.noBranch)}</Small>
                       )}
                     </td>
                   )}
-                  <td
-                    className={cn('px-2 py-3.5 text-center', TOTAL_CELL)}
-                    onMouseEnter={() => setCol(null)}
-                  >
-                    <Fig
+                  <td className={cn(TCELL, TOTAL_COL, 'whitespace-nowrap text-center')}>
+                    <Small
                       link={links.vehiclesBy(
                         { typeId: row.typeId },
                         'distributionVehicles.typeTotal',
                       )}
-                      className={cn('text-[16px] font-black', NUM, STRONG)}
                     >
                       {count(row.total)}
-                    </Fig>
+                    </Small>
+                    <N className={cn('ms-1.5', SHARE)}>{shareText(row.total, total)}</N>
                   </td>
                 </tr>
               ))}
-              <tr className={GRAND_ROW}>
-                <td className={cn('px-5 py-4 text-start font-black', GRAND_WORD)}>
-                  {t('fleet.dash.distribution.branchTotal')}
+            </tbody>
+            <tfoot>
+              <tr className={cn('border-t', RULE, TH_ROW)}>
+                <td className={cn(TCELL, STICKY, TH_ROW, 'whitespace-nowrap font-bold', STRONG)}>
+                  {t(`${W}.branchTotal`)}
                 </td>
-                {m.branchTotals.map((n, i) => {
-                  const branch = m.branches[i];
-                  return (
-                    <td
-                      key={branch?.id ?? i}
-                      onMouseEnter={() => setCol(i)}
-                      className={cn(
-                        'px-2 py-4 text-center transition-colors',
-                        i === m.leadBranch ? LEAD_FOOT : col === i && COL_WASH,
-                      )}
+                {vehicles.branches.map((b) => (
+                  <td key={b.id} className={cn(TCELL, 'text-center')}>
+                    <Small
+                      link={links.vehiclesBy({ branchId: b.id }, 'distributionVehicles.branch')}
                     >
-                      <Fig
-                        link={
-                          branch === undefined
-                            ? null
-                            : links.vehiclesBy(
-                                { branchId: branch.id },
-                                'distributionVehicles.branch',
-                              )
-                        }
-                        className={cn(
-                          'font-black',
-                          NUM,
-                          i === m.leadBranch
-                            ? cn('text-[22px]', LEAD_INK)
-                            : cn('text-[17px]', STRONG),
-                        )}
-                      >
-                        {count(n)}
-                      </Fig>
-                    </td>
-                  );
-                })}
+                      {count(vehicles.totals.counts[b.id] ?? 0)}
+                    </Small>
+                  </td>
+                ))}
                 {showNone && (
-                  <td className="px-2 py-4 text-center" onMouseEnter={() => setCol(null)}>
-                    <N className={cn('text-[17px] font-black', RED)}>{count(m.noBranch)}</N>
+                  <td className={cn(TCELL, 'text-center')}>
+                    <Small className={RED}>{count(vehicles.totals.noBranch)}</Small>
                   </td>
                 )}
-                <td className="px-2 py-4 text-center" onMouseEnter={() => setCol(null)}>
-                  <Big
+                <td className={cn(TCELL, 'text-center')}>
+                  <Small
                     link={links.vehiclesBy({}, 'distributionVehicles.total')}
-                    className={cn('text-[28px]', GRAND_INK)}
+                    className={cn('text-[15px]', TONE.brand.text)}
                   >
-                    {count(m.total)}
-                  </Big>
+                    {count(total)}
+                  </Small>
                 </td>
               </tr>
-            </tbody>
+            </tfoot>
           </table>
         </div>
       )}
-      <div className={cn('flex items-start gap-2 border-t px-5 py-3.5', RULE)}>
-        <Icon d={I.info} className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
-        <p className={cn(NOTE, 'leading-6')}>{t('fleet.dash.distribution.matrixNote')}</p>
-      </div>
+      <BlockFoot stack>
+        <NoteLine>{t(`${W}.matrixNote`)}</NoteLine>
+        {showNone && <NoteLine>{t(`${W}.matrixNoBranchNote`)}</NoteLine>}
+      </BlockFoot>
     </Card>
   );
 };
 
-// ── Row 4 · a quick read and the branchless cars ──────────────────────────────────────────────
+// ── 5 · The month's kilometres (the fixed «هذا الشهر» read, never the page's filters) ─────────────
 
-const Fact = ({
-  label,
-  value,
-  n,
-  of,
-  link,
+/** «نوفمبر 2026» — the month alone, where the title already says «هذا الشهر». */
+const MonthChip = ({ range }: { range: FleetDashboardPeriodDto['range'] }): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <span data-dash-month={range.from.slice(0, 7)} className={HEAD_CHIP}>
+      {monthName(range.from, locale)} <N>{range.from.slice(0, 4)}</N>
+    </span>
+  );
+};
+
+/** The average of the confirmed days, or why there is none yet. */
+const AverageLine = ({ km }: { km: Km }): JSX.Element => {
+  const t = useT();
+  if (km.closedDays === 0 || km.average === null || km.confirmedThrough === null) {
+    return (
+      <p data-dist-average="none" className="font-semibold">
+        {t('fleet.dash.km.legend.noAverage')}
+      </p>
+    );
+  }
+  return (
+    <p data-dist-average="true" className="font-semibold">
+      <Phrase
+        text={t(`${W}.averageLine`)}
+        parts={{
+          day: <N>{slashDay(km.confirmedThrough)}</N>,
+          km: <N className={cn('font-bold', STRONG)}>{kmText(km.average)}</N>,
+        }}
+      />
+    </p>
+  );
+};
+
+/** The km block's face while the month read is on its way, or its error and retry. */
+const MonthPending = ({
+  id,
+  month,
+  icon,
+  title,
 }: {
-  label: string;
-  value: string;
-  n: number;
-  of: number;
-  link: DashLink | null;
+  id: string;
+  month: MonthRead;
+  icon: IconPath;
+  title: string;
+}): JSX.Element =>
+  month.failed ? (
+    <div data-dist-block={id}>
+      <SectionError section="km" onRetry={month.onRetry} />
+    </div>
+  ) : (
+    <Card data-dist-block={id} data-dist-loading="true">
+      <BlockHead icon={icon} tone="teal" title={title} />
+      <div className="px-5 pb-5">
+        <Skeleton className="h-[300px] rounded-xl" />
+      </div>
+    </Card>
+  );
+
+/** The month read as this tab draws it: hidden, on its way / failed, failed section, or its km. */
+const monthKm = (
+  month: MonthRead,
+  can: (permission: string) => boolean,
+): 'hidden' | 'pending' | 'failed' | { data: FleetDashboardPeriodDto; km: Km } => {
+  if (!month.enabled || !sectionPermitted('km', can)) return 'hidden';
+  const data = month.data;
+  if (data === undefined) return 'pending';
+  if ((data.unavailable as readonly string[]).includes('km')) return 'failed';
+  return data.km === null ? 'hidden' : { data, km: data.km };
+};
+
+const KmByBranch = ({ data, km }: { data: FleetDashboardPeriodDto; km: Km }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const unit = t('fleet.dash.km.unit');
+  const of = t(`${W}.ofTotal`);
+  // The month read's OWN echo: its range and its set, one branch narrower per column.
+  const narrowed = (branchId: string) =>
+    periodLinks({ range: data.range, vehicleScope: { ...data.vehicleScope, branchId } });
+  const columns: ColumnDatum[] = km.byBranch.map((row) => ({
+    key: row.branchId ?? 'none',
+    name: row.name === null ? t('fleet.dash.km.noBranch') : localized(row.name, locale),
+    value: row.km,
+    valueText: kmText(row.km),
+    unit,
+    share: shareText(row.km, km.total),
+    link: row.branchId === null ? null : narrowed(row.branchId).km('km.byBranch'),
+    muted: row.branchId === null,
+  }));
+  if (km.unregistered !== null && km.unregistered > 0) {
+    columns.push({
+      key: 'unregistered',
+      name: t('fleet.dash.km.unregistered'),
+      value: km.unregistered,
+      valueText: kmText(km.unregistered),
+      unit,
+      share: shareText(km.unregistered, km.total),
+      link: null,
+      muted: true,
+    });
+  }
+  return (
+    <Card data-dist-block="km">
+      <BlockHead
+        icon={I.gauge}
+        tone="teal"
+        title={t(`${W}.kmTitle`)}
+        note={t(`${W}.kmNote`)}
+        chips={<RangeChip range={data.range} />}
+      />
+      <HeadFigure
+        id="km"
+        label={t(`${W}.kmTotal`)}
+        value={kmText(km.total)}
+        unit={unit}
+        link={periodLinks(data).km('km.total')}
+      />
+      {columns.length === 0 ? (
+        <p className={cn('px-5 pb-5 pt-3', NOTE)}>{t('fleet.dash.km.noReadings')}</p>
+      ) : (
+        <ColumnChart id="km" columns={columns} ariaLabel={t(`${W}.kmTitle`)} of={of} />
+      )}
+      <BlockFoot stack>
+        <AverageLine km={km} />
+        <NoteLine>{t('fleet.dash.km.byBranchNote')}</NoteLine>
+      </BlockFoot>
+    </Card>
+  );
+};
+
+// ── 5' · One branch in scope: its cars by type, its kilometres by type ─────────────────────────
+
+const BranchCarsByType = ({
+  vehicles,
+  branchId,
+  links,
+}: {
+  vehicles: Vehicles;
+  branchId: string;
+  links: NowLinks;
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const total = vehicles.totals.total;
+  const rows: HBarRow[] = vehicles.rows
+    .filter((row) => (row.counts[branchId] ?? 0) > 0)
+    .map((row) => {
+      const n = row.counts[branchId] ?? 0;
+      return {
+        key: row.typeId,
+        name: localized(row.name, locale),
+        value: count(n),
+        n,
+        unit: noun('car', n),
+        extra: shareText(n, total),
+        link: links.vehiclesBy(
+          { typeId: row.typeId, branchId },
+          'distributionVehicles.typeInBranch',
+        ),
+      };
+    });
   return (
-    <div className={cn(BOX, 'min-w-0 px-4 py-3.5')}>
-      <div className={TILE_LABEL}>{label}</div>
-      <div className={cn('mt-1 truncate text-[19px] font-black tracking-tight', CAIRO, STRONG)}>
-        {value}
+    <Card data-dist-block="branch-types">
+      <BlockHead
+        icon={I.grid}
+        tone="brand"
+        title={t(`${W}.branchTypesTitle`)}
+        note={t(`${W}.branchTypesNote`)}
+      />
+      <HeadFigure
+        id="branch-types"
+        label={t(`${W}.branchActive`)}
+        value={count(total)}
+        unit={t(`${W}.activeUnit`, { noun: noun('car', total) })}
+        link={links.vehiclesBy({ branchId }, 'distributionVehicles.branch')}
+      />
+      <div className="px-5 pb-5 pt-4">
+        {rows.length === 0 ? (
+          <p className={NOTE}>{t(`${W}.empty`)}</p>
+        ) : (
+          <HBars rows={rows} tone="brand" columns={2} />
+        )}
       </div>
-      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 text-xs text-slate-600 dark:text-slate-300">
-        <Fig link={link} className={cn('font-bold', STRONG)}>
-          <N>{count(n)}</N>
+      <BlockFoot stack>
+        <NoteLine>{t(`${W}.matrixNote`)}</NoteLine>
+        <NoteLine>{t(`${W}.barsNote`)}</NoteLine>
+      </BlockFoot>
+    </Card>
+  );
+};
+
+const BranchKmByType = ({ data, km }: { data: FleetDashboardPeriodDto; km: Km }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const unit = t('fleet.dash.km.unit');
+  const narrowed = (typeId: string) =>
+    periodLinks({ range: data.range, vehicleScope: { ...data.vehicleScope, typeIds: [typeId] } });
+  const columns: ColumnDatum[] = (km.byType ?? []).map((row) => ({
+    key: row.typeId,
+    name: localized(row.name, locale),
+    value: row.km,
+    valueText: kmText(row.km),
+    unit,
+    share: shareText(row.km, km.total),
+    link: narrowed(row.typeId).km('km.byType'),
+  }));
+  if (km.unregistered !== null && km.unregistered > 0) {
+    columns.push({
+      key: 'unregistered',
+      name: t('fleet.dash.km.unregistered'),
+      value: km.unregistered,
+      valueText: kmText(km.unregistered),
+      unit,
+      share: shareText(km.unregistered, km.total),
+      link: null,
+      muted: true,
+    });
+  }
+  return (
+    <Card data-dist-block="branch-km">
+      <BlockHead
+        icon={I.gauge}
+        tone="teal"
+        title={t(`${W}.branchKmTitle`)}
+        note={t(`${W}.branchKmNote`)}
+        chips={<MonthChip range={data.range} />}
+      />
+      <HeadFigure
+        id="branch-km"
+        label={t(`${W}.branchKmTotal`)}
+        value={kmText(km.total)}
+        unit={unit}
+        link={periodLinks(data).km('km.total')}
+      />
+      {columns.length === 0 ? (
+        <p className={cn('px-5 pb-5 pt-3', NOTE)}>{t('fleet.dash.km.noReadings')}</p>
+      ) : (
+        <ColumnChart
+          id="branch-km"
+          columns={columns}
+          ariaLabel={t(`${W}.branchKmTitle`)}
+          of={t(`${W}.ofBranchKm`)}
+        />
+      )}
+      <BlockFoot stack>
+        <AverageLine km={km} />
+        <NoteLine>
+          {t('fleet.dash.km.byTypeNote')} {t(`${W}.notClosedYet`)}
+        </NoteLine>
+      </BlockFoot>
+    </Card>
+  );
+};
+
+// ── 6 · «عقود توريد السيارات»: this year's contracts, company-wide ──────────────────────────────
+
+type Summary = ReturnType<typeof useVehicleContractSummary>;
+const yearWindow = (year: string) => ({ from: `${year}-01-01`, to: `${year}-12-31` });
+
+/** The contracts' three summaries (all, red, yellow) over the contracts dated in R1's year. */
+const useSupply = (now: FleetDashboardNowDto | null, can: (permission: string) => boolean) => {
+  const permitted = now !== null && sectionPermitted('supplyContracts', can);
+  const year = now === null ? '' : now.today.slice(0, 4);
+  const all = useVehicleContractSummary(yearWindow(year), permitted);
+  const red = useVehicleContractSummary({ ...yearWindow(year), alarm: ['red'] }, permitted);
+  const yellow = useVehicleContractSummary({ ...yearWindow(year), alarm: ['yellow'] }, permitted);
+  const reads: readonly Summary[] = [all, red, yellow];
+  return permitted
+    ? {
+        year,
+        all,
+        red,
+        yellow,
+        // The oldest of the three, once all three have answered.
+        updatedAt: reads.every((q) => q.dataUpdatedAt > 0)
+          ? Math.min(...reads.map((q) => q.dataUpdatedAt))
+          : 0,
+        fetching: reads.some((q) => q.isFetching),
+        refetch: () => {
+          for (const q of reads) void q.refetch({ cancelRefetch: false });
+        },
+      }
+    : null;
+};
+type Supply = NonNullable<ReturnType<typeof useSupply>>;
+
+const SupplyTile = ({
+  id,
+  icon,
+  tone,
+  label,
+  children,
+  foot,
+}: {
+  id: string;
+  icon: IconPath;
+  tone: Tone;
+  label: string;
+  children: ReactNode;
+  foot?: ReactNode;
+}): JSX.Element => (
+  <div data-supply-tile={id} className={cn(BOX, 'flex min-w-0 flex-col px-4 pb-3.5 pt-3.5')}>
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className={cn(WORDS, 'whitespace-nowrap')}>{label}</div>
+        <div className="mt-2">{children}</div>
+      </div>
+      <IconTile d={icon} tone={tone} size="sm" />
+    </div>
+    {foot}
+  </div>
+);
+
+const ALARM_FIG = cn('text-[22px] font-black leading-none tracking-tight', CAIRO);
+
+/** An alarm line of the third tile: the colour named, the CONTRACTS' count beside it. */
+const AlarmRow = ({
+  id,
+  tone,
+  word,
+  n,
+  link,
+}: {
+  id: 'red' | 'yellow';
+  tone: Tone;
+  word: string;
+  n: number;
+  link: DashLink;
+}): JSX.Element => {
+  const noun = useNoun();
+  return (
+    <div
+      data-supply-alarm={id}
+      className={cn(
+        'flex min-w-[8.5rem] flex-1 items-center justify-between gap-3 rounded-lg border px-3 py-1.5',
+        TONE[tone].soft,
+      )}
+    >
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-bold">
+        <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', TONE[tone].dot)} />
+        {word}
+      </span>
+      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+        <Fig link={link} className={cn(ALARM_FIG, TONE[tone].text)}>
+          <N className="!font-[inherit]">{count(n)}</N>
         </Fig>
-        <span>{noun('car', n)}</span>
-        <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
-          ·
-        </span>
-        <span dir="ltr" className={PCT_LEAD}>
-          {shareText(n, of)}
-        </span>
-        <span>{t('fleet.dash.distribution.ofActive')}</span>
-      </div>
+        <span className={cn('text-[13px] font-bold', TONE[tone].text)}>{noun('contract', n)}</span>
+      </span>
     </div>
   );
 };
 
-const QuickRead = ({ m, links }: { m: Matrix; links: NowLinks }): JSX.Element | null => {
-  const t = useT();
-  const leadBranch = m.branches[m.leadBranch];
-  const leadType = m.rows[m.leadType];
-  if (leadBranch === undefined && leadType === undefined) return null;
-  const sameLeader = m.leadBranch >= 0 && m.leadPerType.every((i) => i === m.leadBranch);
-  return (
-    <Card data-quick-read="true">
-      <div className="flex flex-1 flex-col p-5">
-        <CardHead
-          title={t('fleet.dash.distribution.quickTitle')}
-          sub={t('fleet.dash.distribution.quickSub')}
-          end={<IconTile d={I.bars} tone="slate" size="sm" />}
-        />
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {leadBranch !== undefined && (
-            <Fact
-              label={t('fleet.dash.distribution.biggestBranch')}
-              value={leadBranch.name}
-              n={m.branchTotals[m.leadBranch] ?? 0}
-              of={m.total}
-              link={links.vehiclesBy({ branchId: leadBranch.id }, 'distributionVehicles.branch')}
-            />
-          )}
-          {leadType !== undefined && (
-            <Fact
-              label={t('fleet.dash.distribution.biggestType')}
-              value={leadType.name}
-              n={leadType.total}
-              of={m.total}
-              link={links.vehiclesBy({ typeId: leadType.typeId }, 'distributionVehicles.typeTotal')}
-            />
-          )}
-        </div>
-        <div className="mt-4 flex flex-1 flex-col">
-          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-              {t('fleet.dash.distribution.leaderPerType')}
-            </span>
-            {sameLeader && leadBranch !== undefined && (
-              <Tag tone="brand">
-                <Phrase
-                  text={t('fleet.dash.distribution.sameLeader')}
-                  parts={{ branch: leadBranch.name }}
-                />
-              </Tag>
-            )}
-          </div>
-          <ul className={cn('flex flex-1 flex-col justify-between', DIVIDE)}>
-            {m.rows.map((row, r) => {
-              const i = m.leadPerType[r] ?? -1;
-              const branch = m.branches[i];
-              const n = row.per[i] ?? 0;
-              return (
-                <li
-                  key={row.typeId}
-                  className={cn(
-                    'grid items-center gap-3 py-2 text-[13px]',
-                    sameLeader
-                      ? 'grid-cols-[5.5rem_minmax(0,1fr)_3.75rem]'
-                      : 'grid-cols-[5.5rem_4.75rem_minmax(0,1fr)_3.75rem]',
-                  )}
-                >
-                  <span className="truncate font-semibold text-slate-700 dark:text-slate-200">
-                    {row.name}
-                  </span>
-                  {!sameLeader && (
-                    <span className={cn('truncate whitespace-nowrap font-bold', LEAD_INK)}>
-                      {branch?.name ?? '—'}
-                    </span>
-                  )}
-                  <Meter
-                    height="h-1.5"
-                    className="min-w-0"
-                    parts={[{ pct: share(n, row.total) ?? 0, tone: 'brand' }]}
-                  />
-                  <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                    <Phrase
-                      text={t('fleet.dash.now.partOf')}
-                      parts={{
-                        part: (
-                          <Fig
-                            link={
-                              branch === undefined
-                                ? null
-                                : links.vehiclesBy(
-                                    { typeId: row.typeId, branchId: branch.id },
-                                    'distributionVehicles.cell',
-                                  )
-                            }
-                            className={cn('font-bold', STRONG)}
-                          >
-                            <N>{count(n)}</N>
-                          </Fig>
-                        ),
-                        whole: <N>{count(row.total)}</N>,
-                      }}
-                    />
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </div>
-    </Card>
-  );
-};
-
-const Branchless = ({ m }: { m: Matrix }): JSX.Element => {
+const SupplyCard = ({
+  supply,
+  links,
+  narrowed,
+}: {
+  supply: Supply;
+  links: NowLinks;
+  narrowed: boolean;
+}): JSX.Element => {
   const t = useT();
   const noun = useNoun();
-  return (
-    // Its own height beside «قراءة سريعة»: it has no list to fill a stretched card with (the
-    // «بلا فرع» cars have no exact list to open — a named exception).
-    <Card accent="red" data-branchless="true" className="lg:self-start">
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <IconTile d={I.warn} tone="red" size="sm" />
-            <div className="min-w-0">
-              <h3 className={TITLE}>{t('fleet.dash.distribution.branchlessTitle')}</h3>
-              <p className={cn('mt-0.5', NOTE)}>{t('fleet.dash.distribution.branchlessSub')}</p>
-            </div>
-          </div>
-          <Tag tone="red" dot>
-            {t('fleet.dash.distribution.needsReview')}
-          </Tag>
-        </div>
-        <p className="mt-4 text-[13px] leading-6 text-slate-600 dark:text-slate-300">
-          <Phrase
-            text={t('fleet.dash.distribution.branchlessText')}
-            parts={{
-              count: <N className={cn('font-bold', RED)}>{count(m.noBranch)}</N>,
-              noun: noun('car', m.noBranch),
-              total: <N className="font-bold">{count(m.total)}</N>,
-            }}
-          />
-        </p>
+  const { year } = supply;
+  const all = supply.all.data;
+  const red = supply.red.data;
+  const yellow = supply.yellow.data;
+  const reads = [supply.all, supply.red, supply.yellow];
+  const failed = reads.some((q) => q.isError && q.data === undefined);
+  const head = (
+    <div className="flex flex-wrap items-center justify-between gap-3 pe-5">
+      <BlockHead
+        icon={I.doc}
+        tone="violet"
+        title={t('fleet.vehicleContracts.title')}
+        note={t(`${W}.supply.note`, { year })}
+        chips={
+          <>
+            <span data-supply-chip="year" className={HEAD_CHIP}>
+              <Phrase text={t(`${W}.supply.chip`)} parts={{ year: <N>{year}</N> }} />
+            </span>
+            <CompanyWide show={narrowed} />
+          </>
+        }
+      />
+      <div className="shrink-0 ps-5">
+        <Btn link={links.supplyContracts('supplyContracts.open')} className="h-9 px-4">
+          {t(`${W}.supply.open`)}
+        </Btn>
       </div>
+    </div>
+  );
+  if (failed) {
+    return (
+      <div data-dist-block="supply" className="mt-5">
+        <SectionError section="supplyContracts" onRetry={supply.refetch} />
+      </div>
+    );
+  }
+  let band: ReactNode;
+  if (all === undefined || red === undefined || yellow === undefined) {
+    band = (
+      <div data-dist-loading="true" className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    );
+  } else if (all.count === 0) {
+    band = (
+      <p data-supply-empty="true" className={cn('px-1 py-2', NOTE)}>
+        {t(`${W}.supply.empty`, { year })}
+      </p>
+    );
+  } else {
+    const remaining = all.contracted - all.received;
+    band = (
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <SupplyTile
+          id="received"
+          icon={I.check}
+          tone="emerald"
+          label={t(`${W}.supply.received`)}
+          foot={
+            <div className="mt-2.5">
+              <Meter
+                height="h-3"
+                parts={[{ pct: pct(all.received, all.contracted), tone: 'emerald' }]}
+              />
+            </div>
+          }
+        >
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <Big link={links.supplyContracts('supplyContracts.received')}>
+              {count(all.received)}
+            </Big>
+            <span className={WORDS}>
+              <Phrase
+                text={t(`${W}.supply.of`)}
+                parts={{
+                  count: (
+                    <Small link={links.supplyContracts('supplyContracts.contracted')}>
+                      {count(all.contracted)}
+                    </Small>
+                  ),
+                  noun: noun('car', all.contracted),
+                }}
+              />
+            </span>
+          </div>
+        </SupplyTile>
+        <SupplyTile id="remaining" icon={I.clock} tone="slate" label={t(`${W}.supply.remaining`)}>
+          <div className="flex items-baseline gap-2 whitespace-nowrap">
+            <Big link={links.supplyContracts('supplyContracts.remaining')}>{count(remaining)}</Big>
+            <span className={WORDS}>{noun('car', remaining)}</span>
+          </div>
+        </SupplyTile>
+        <SupplyTile
+          id="alarm"
+          icon={I.bell}
+          tone="slate"
+          label={t('fleet.vehicleContracts.alarm.title')}
+        >
+          <div className="flex flex-wrap gap-2">
+            <AlarmRow
+              id="red"
+              tone="red"
+              word={t(`${W}.supply.red`)}
+              n={red.count}
+              link={links.supplyContracts('supplyContracts.red', 'red')}
+            />
+            <AlarmRow
+              id="yellow"
+              tone="amber"
+              word={t(`${W}.supply.yellow`)}
+              n={yellow.count}
+              link={links.supplyContracts('supplyContracts.yellow', 'yellow')}
+            />
+          </div>
+        </SupplyTile>
+      </div>
+    );
+  }
+  return (
+    <Card data-dist-block="supply" className="mt-5">
+      {head}
+      <div className={cn(BAND, 'px-4 pb-4 pt-3')}>{band}</div>
     </Card>
   );
 };
 
 // ── The tab ───────────────────────────────────────────────────────────────────────────────────
 
-const BranchChip = ({
-  name,
-  n,
-  link,
-  none = false,
-  lead = false,
-}: {
-  name: string;
-  n: number;
-  link: DashLink | null;
-  none?: boolean;
-  lead?: boolean;
-}): JSX.Element => (
-  <span
-    className={cn(
-      'inline-flex items-center gap-2 whitespace-nowrap rounded-xl border px-3 py-1.5 text-[13px] font-semibold shadow-sm transition-colors',
-      none
-        ? TONE.red.soft
-        : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400 dark:border-[#223048] dark:bg-[#0a0e17] dark:text-slate-300 dark:hover:border-slate-500',
-    )}
-  >
-    {name}
-    <Fig
-      link={link}
-      className={cn('text-[14px] font-bold', NUM, none ? RED : lead ? LEAD_INK : STRONG)}
-    >
-      {count(n)}
-    </Fig>
-  </span>
-);
-
-const Body = ({
-  vehicles,
-  drivers,
-  links,
-}: {
-  vehicles: Vehicles;
-  drivers: Drivers | null;
-  links: NowLinks;
-}): JSX.Element => {
-  const t = useT();
-  const m = useMatrix(vehicles);
-  return (
-    <>
-      <Pools vehicles={vehicles} drivers={drivers} links={links} />
-      {m.branches.length > 0 && (
-        <>
-          <SectionHead
-            title={t('fleet.dash.distribution.branchesTitle')}
-            sub={t('fleet.dash.distribution.branchesSub')}
-          />
-          <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-5">
-            {m.branches.map((b, i) => (
-              <BranchCard key={b.id} m={m} index={i} links={links} />
-            ))}
-            {m.noBranch > 0 && <BranchCard m={m} index="none" links={links} />}
-          </div>
-        </>
-      )}
-      <div className="mt-5">
-        <MatrixCard m={m} links={links} />
-      </div>
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <QuickRead m={m} links={links} />
-        {m.noBranch > 0 && <Branchless m={m} />}
-      </div>
-    </>
-  );
-};
-
-const HeadChips = ({ vehicles, links }: { vehicles: Vehicles; links: NowLinks }): JSX.Element => {
-  const t = useT();
-  const noun = useNoun();
-  const m = useMatrix(vehicles);
-  return (
-    <>
-      <span className={cn(CHIP, 'inline-flex items-center gap-1 py-1')}>
-        <Phrase
-          text={t('fleet.dash.distribution.headChip')}
-          parts={{
-            count: (
-              <Fig
-                link={links.vehiclesBy({}, 'distributionVehicles.total')}
-                className={cn('font-bold', STRONG)}
-              >
-                <N>{count(m.total)}</N>
-              </Fig>
-            ),
-            noun: noun('car', m.total),
-          }}
-        />
-      </span>
-      {m.branches.map((b, i) => (
-        <BranchChip
-          key={b.id}
-          name={b.name}
-          n={m.branchTotals[i] ?? 0}
-          lead={i === m.leadBranch}
-          link={links.vehiclesBy({ branchId: b.id }, 'distributionVehicles.branch')}
-        />
-      ))}
-      {m.noBranch > 0 && (
-        <BranchChip name={t('fleet.dash.distribution.noBranch')} n={m.noBranch} link={null} none />
-      )}
-    </>
-  );
-};
-
 export const DistributionTab = (props: NowTabProps): JSX.Element => {
   const t = useT();
-  const { now } = props;
+  const { now, can } = props;
+  const supply = useSupply(now, can);
   const links = now === null ? null : nowLinks(now);
   const vehicles = now?.distributionVehicles ?? null;
   const drivers = now?.distributionDrivers ?? null;
+  const scope = now?.scopeBranches ?? null;
+  // One branch in scope — the switcher's branch, or a reader whose grant holds one branch.
+  const branch = scope !== null && scope.length === 1 ? (scope[0] ?? null) : null;
+  const narrowed = scope !== null;
+  const month = monthKm(props.month, can);
   const failed = (section: 'distributionVehicles' | 'distributionDrivers'): boolean =>
     now?.unavailable.includes(section) ?? false;
+  const kmPending = (id: string, title: string): JSX.Element => (
+    <MonthPending id={id} month={props.month} icon={I.gauge} title={title} />
+  );
   return (
     <div data-dash-tab-body="distribution">
-      <TabHead
-        icon={I.grid}
-        title={t('fleet.dash.shell.tab.distribution')}
-        sub={t('fleet.dash.distribution.sub')}
-        end={
-          <>
-            {vehicles !== null && links !== null && <HeadChips vehicles={vehicles} links={links} />}
-            <RefreshTools
-              updatedAt={props.updatedAt}
-              onRefresh={props.onRefresh}
-              refreshing={props.refreshing}
-              {...(props.clock === undefined ? {} : { clock: props.clock })}
-            />
-          </>
-        }
+      <Heading
+        props={props}
+        oneBranch={branch !== null}
+        drivers={drivers !== null}
+        km={month !== 'hidden'}
+        supply={supply}
       />
       {(failed('distributionVehicles') || failed('distributionDrivers')) && (
         <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -1079,11 +1309,47 @@ export const DistributionTab = (props: NowTabProps): JSX.Element => {
           )}
         </div>
       )}
-      {links !== null && vehicles !== null && (
-        <Body vehicles={vehicles} drivers={drivers} links={links} />
+      {links !== null && (vehicles !== null || drivers !== null) && (
+        <OperationRow
+          vehicles={vehicles}
+          drivers={drivers}
+          links={links}
+          oneBranch={branch !== null}
+          narrowed={narrowed}
+        />
       )}
-      {links !== null && vehicles === null && drivers !== null && (
-        <Pools vehicles={null} drivers={drivers} links={links} />
+      {links !== null && vehicles !== null && branch === null && (
+        <Branches vehicles={vehicles} links={links} />
+      )}
+      <div className="mt-5 flex flex-col gap-5 empty:hidden">
+        {branch === null ? (
+          <>
+            {links !== null && vehicles !== null && <Matrix vehicles={vehicles} links={links} />}
+            {month === 'pending' && kmPending('km', t(`${W}.kmTitle`))}
+            {month === 'failed' && (
+              <div data-dist-block="km">
+                <SectionError section="km" onRetry={props.month.onRetry} />
+              </div>
+            )}
+            {typeof month === 'object' && <KmByBranch data={month.data} km={month.km} />}
+          </>
+        ) : (
+          <>
+            {links !== null && vehicles !== null && (
+              <BranchCarsByType vehicles={vehicles} branchId={branch.id} links={links} />
+            )}
+            {month === 'pending' && kmPending('branch-km', t(`${W}.branchKmTitle`))}
+            {month === 'failed' && (
+              <div data-dist-block="branch-km">
+                <SectionError section="km" onRetry={props.month.onRetry} />
+              </div>
+            )}
+            {typeof month === 'object' && <BranchKmByType data={month.data} km={month.km} />}
+          </>
+        )}
+      </div>
+      {supply !== null && links !== null && (
+        <SupplyCard supply={supply} links={links} narrowed={narrowed} />
       )}
     </div>
   );

@@ -2,16 +2,19 @@
 //
 // Ten tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the finished
 // dashboard will keep (plan D2):
-//   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة · الكيلومترات · ترتيب السيارات · الحوادث ·
-//   أرقام الفترة · ملخصات · التراخيص
-// «نظرة عامة» and «الحركة اليوم» are the redesigned screens (they took the content of the retired
-// «التنبيهات» and «الحركة الآن»; an old `?tab=alerts` / `?tab=now` opens them). The other eight are
-// the old tabs, unchanged, each standing where its redesign will stand:
+//   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة والورش · الكيلومترات · ترتيب السيارات ·
+//   الحوادث · أرقام الفترة · ملخصات · التراخيص
+// The first four are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
+// retired «التنبيهات» and «الحركة الآن» (an old `?tab=alerts` / `?tab=now` opens them);
+// «توزيع السيارات» and «الصيانة والورش» were rebuilt under their old keys (an old link opens the new
+// body). The other six are the old tabs, unchanged, each standing where its redesign will stand:
 //   · R1 `GET /fleet/dashboard/now` (Cairo today, untouched by the filters) — overview, today,
-//     distribution, summaries, licences; the overview also reads R2 over «هذا الشهر» with no page
-//     filter (its month card);
-//   · R2 `GET /fleet/dashboard/period` — maintenance, km, ranking, accidents, period, under ONE
-//     filter bar shared by the five.
+//     distribution, summaries, licences; the overview and «توزيع السيارات» (its km, with the km key)
+//     also read R2 over «هذا الشهر» with no page filter;
+//   · R2 `GET /fleet/dashboard/period` — km, ranking, accidents, period, under ONE filter bar shared
+//     by the four;
+//   · «الصيانة والورش» — the first MIXED panel: an R1 «الآن» band and a period band over the page's R2,
+//     with the same filter bar drawn between the two; each band wears its own read's face.
 // At the strip's end «الفرع: …» says what the figures cover, as the server answered it.
 //
 // THE ADDRESS BAR IS THE STATE (D14). `tab` names the panel and is never remembered. Of the filters,
@@ -61,13 +64,16 @@ import {
   TabSkeleton,
   TopNav,
   type DashScope,
+  type MixedTabProps,
   type MonthRead,
   type NowTabProps,
+  type PageRead,
 } from '../components/fleet-dashboard/dash-shell';
 import { PeriodTab } from '../components/fleet-dashboard/period-tabs';
 import { OverviewTab } from '../components/fleet-dashboard/tab-overview';
 import { TodayTab } from '../components/fleet-dashboard/tab-today';
 import { DistributionTab } from '../components/fleet-dashboard/tab-distribution';
+import { MaintenanceTab } from '../components/fleet-dashboard/tab-maintenance';
 import { LicencesTab } from '../components/fleet-dashboard/tab-licences';
 import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
 
@@ -78,7 +84,10 @@ import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
  */
 export const REMEMBERED_FILTERS = ['type', 'operation', 'vehicleCodes'] as const;
 
-/** The overview's month card: R2 over «هذا الشهر» with no page filter (plan D16). */
+/**
+ * «هذا الشهر» with no page filter (plan D16): the overview's month card, and the km by branch of
+ * «توزيع السيارات».
+ */
 const MONTH_QUERY: FleetDashboardPeriodQuery = { preset: 'thisMonth' };
 
 /**
@@ -101,11 +110,22 @@ export const dashboardReads = (
   custody: sectionPermitted('custodyFund', can),
 });
 
-const isPeriodTab = (tab: FleetDashboardTab): tab is (typeof FLEET_DASHBOARD_PERIOD_TABS)[number] =>
+type PeriodTabKey = (typeof FLEET_DASHBOARD_PERIOD_TABS)[number];
+
+const isPeriodTab = (tab: FleetDashboardTab): tab is PeriodTabKey =>
   (FLEET_DASHBOARD_PERIOD_TABS as readonly string[]).includes(tab);
 
+/** The panels of R1 and R2 both, each band with its own read's face (plan D3). */
+const MIXED_PANELS = { maintenance: MaintenanceTab } as const satisfies Partial<
+  Record<FleetDashboardTab, (props: MixedTabProps) => JSX.Element>
+>;
+type MixedTabKey = keyof typeof MIXED_PANELS;
+
+const isMixedTab = (tab: FleetDashboardTab): tab is MixedTabKey =>
+  (Object.keys(MIXED_PANELS) as readonly string[]).includes(tab);
+
 const NOW_PANELS: Record<
-  Exclude<FleetDashboardTab, (typeof FLEET_DASHBOARD_PERIOD_TABS)[number]>,
+  Exclude<FleetDashboardTab, PeriodTabKey | MixedTabKey>,
   (props: NowTabProps) => JSX.Element
 > = {
   overview: OverviewTab,
@@ -151,18 +171,18 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const lines = alertLines(nowQ.data?.alerts ?? [], custody?.lines ?? null);
   const badges = tabBadges(answers);
 
-  // «هذا الشهر» for the overview's month card: the page's filters never reach it. At the default
-  // filters it is the page's own R2 key, so the two are one request.
-  const monthQ = useFleetDashboardPeriod(
-    MONTH_QUERY,
-    'live',
-    reads.period && active === 'overview',
-  );
+  // «هذا الشهر» for the overview's month card and the km of «توزيع السيارات» (only for a reader of
+  // the km): the page's filters never reach it. At the default filters it is the page's own R2 key,
+  // so the two are one request.
+  const monthEnabled =
+    reads.period &&
+    (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));
+  const monthQ = useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled);
   const month: MonthRead = {
     data: monthQ.data,
     loading: monthQ.isPending,
     failed: monthQ.isError && monthQ.data === undefined,
-    enabled: reads.period && active === 'overview',
+    enabled: monthEnabled,
     onRetry: () => void monthQ.refetch({ cancelRefetch: false }),
   };
   const toTab = (tab: FleetDashboardTab, metric: string, own?: TabLinkFilters) =>
@@ -213,8 +233,53 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
     if (reads.period) void periodQ.refetch({ cancelRefetch: false });
   };
 
+  // R1's face for the tabs that draw it as a band of their own (the overview, «الصيانة والورش»):
+  // R1 on its way (or failed) costs only R1's parts.
+  const nowView = reads.now ? dashboardView(nowQ) : 'ready';
+  const nowPending =
+    nowView === 'ready' ? undefined : { state: nowView, error: nowQ.error as unknown };
+
   let panel: JSX.Element;
-  if (isPeriodTab(active)) {
+  if (isMixedTab(active)) {
+    // «الصيانة والورش»: «الآن» (R1) and the period (the page's R2, under the bar it draws between
+    // the two). «تحديث» refetches both; the heading's age is the OLDER of the two answers.
+    const Panel = MIXED_PANELS[active];
+    const stamps = [
+      ...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []),
+      ...(reads.period && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),
+    ];
+    const refreshBoth = (): void => {
+      if (reads.now) void nowQ.refetch({ cancelRefetch: false });
+      refreshPeriod();
+    };
+    const pageRead: PageRead = {
+      data: periodQ.data,
+      loading: reads.period && periodQ.isPending,
+      failed: periodQ.isError && periodQ.data === undefined,
+      enabled: reads.period,
+      onRetry: refreshPeriod,
+      updatedAt: periodQ.dataUpdatedAt,
+      refreshing: periodQ.isFetching,
+      filters,
+      onFilters,
+    };
+    panel = (
+      <Panel
+        now={nowQ.data ?? null}
+        custody={custody}
+        lines={lines}
+        can={can}
+        updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}
+        refreshing={(reads.now && nowQ.isFetching) || (reads.period && periodQ.isFetching)}
+        onRefresh={refreshBoth}
+        onRetry={refreshNow}
+        month={month}
+        tabLink={toTab}
+        period={pageRead}
+        {...(nowPending === undefined ? {} : { nowPending })}
+      />
+    );
+  } else if (isPeriodTab(active)) {
     panel = (
       <PeriodTab
         tab={active}
@@ -240,12 +305,10 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   } else {
     // The overview is not gated on R1 here: its month card and custody parts are other reads, so
     // R1 on its way (or failed) costs only R1's parts — the tab draws them as pending itself.
-    const nowView = reads.now ? dashboardView(nowQ) : 'ready';
-    const nowPending =
-      nowView === 'ready' ? undefined : { state: nowView, error: nowQ.error as unknown };
     const Panel = NOW_PANELS[active];
     const ownUpdatedAt = reads.now ? nowQ.dataUpdatedAt : (custody?.updatedAt ?? 0);
-    // The overview's heading says how old its OLDEST figures are: R1's or the month read's.
+    // A heading that draws the month read (the overview, «توزيع السيارات») says how old its OLDEST
+    // figures are: R1's or the month read's.
     const updatedAt =
       month.enabled && monthQ.data !== undefined && monthQ.dataUpdatedAt > 0
         ? ownUpdatedAt > 0

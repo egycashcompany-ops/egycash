@@ -9,8 +9,8 @@ import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FLEET_DASHBOARD_RANK_ROWS,
+  FLEET_DASHBOARD_WORKSHOP_ROWS,
   ListFleetMaintenanceQuerySchema,
-  type FleetDashboardPeriodVisitsDto,
   type ListFleetMaintenanceQuery,
   type LocalizedString,
 } from '@ecms/contracts';
@@ -18,6 +18,7 @@ import { FleetMaintenanceVisitModel } from './maintenance.model';
 import { fleetMaintenanceService, type MaintenanceFilterQuery } from './maintenance.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 
 const oid = (): Types.ObjectId => new Types.ObjectId();
 const [CAR1, CAR2, CAR3, CAR4, CAR_GONE] = [oid(), oid(), oid(), oid(), oid()];
@@ -157,20 +158,57 @@ const QUERIES: Record<string, Record<string, unknown>> = {
   },
 };
 
-describe('visitBreakdown — the list’s own filter (R-18)', () => {
+/** The same queries asked by EXIT day — what «الصيانة والورش» sends. */
+const EXIT_QUERIES: Record<string, Record<string, unknown>> = {
+  'the exit period alone': { outFrom: '2026-10-01', outTo: '2026-10-31' },
+  'exit period + operation + branch': {
+    outFrom: '2026-10-01',
+    outTo: '2026-10-31',
+    operationIds: O1,
+    branchIds: B1,
+  },
+  'exit period + type + codes': {
+    outFrom: '2026-10-01',
+    outTo: '2026-10-31',
+    typeIds: T1,
+    vehicleCodes: '201,B-77',
+  },
+  'exit period + a bar (work type) + a car': {
+    outFrom: '2026-10-01',
+    outTo: '2026-10-31',
+    workTypeIds: String(WT_OIL),
+    vehicleCodes: '201',
+  },
+};
+
+const EMPTY_BREAKDOWN = [{ state: [], byWorkType: [], byWorkshop: [], byVehicle: [] }];
+
+describe('exitBreakdown / visitStates — the list’s own filter (R-18)', () => {
   beforeEach(() => {
-    facets = [{ state: [], byWorkType: [], byWorkshop: [], byVehicle: [] }];
+    vi.spyOn(fleetVehicleTypeRepository, 'listAll').mockResolvedValue([]);
   });
 
-  for (const [name, raw] of Object.entries(QUERIES)) {
-    it(`matches exactly the rows /fleet/maintenance counts — ${name}`, async () => {
+  for (const [name, raw] of Object.entries({ ...QUERIES, ...EXIT_QUERIES })) {
+    it(`exitBreakdown matches exactly the rows /fleet/maintenance counts — ${name}`, async () => {
+      facets = EMPTY_BREAKDOWN;
       const listed = await listCountFilter(raw);
-      await fleetMaintenanceService.visitBreakdown(filterPart(parse(raw)));
+      await fleetMaintenanceService.exitBreakdown(filterPart(parse(raw)));
       expect(aggregates).toHaveLength(1);
       expect(matchOf(aggregates[0])).toEqual(listed);
       // One `$facet` over that match — one round trip for the whole breakdown.
       expect(aggregates[0]).toHaveLength(2);
       expect(aggregates[0]?.[1]).toHaveProperty('$facet');
+    });
+
+    it(`visitStates matches exactly the rows /fleet/maintenance counts — ${name}`, async () => {
+      facets = [];
+      const listed = await listCountFilter(raw);
+      await fleetMaintenanceService.visitStates(filterPart(parse(raw)));
+      expect(aggregates).toHaveLength(1);
+      expect(matchOf(aggregates[0])).toEqual(listed);
+      // ONE `$group` — the check-in figures need no facet, no names, no cars.
+      expect(aggregates[0]).toHaveLength(2);
+      expect(aggregates[0]?.[1]).toHaveProperty('$group');
     });
   }
 
@@ -191,14 +229,48 @@ describe('visitBreakdown — the list’s own filter (R-18)', () => {
     const listed = JSON.stringify(await listCountFilter({ typeIds: T1 }));
     expect(listed).toContain('"$in":[]');
   });
+
+  it('the exit day reads `outDate`, never the check-in day', async () => {
+    facets = EMPTY_BREAKDOWN;
+    await fleetMaintenanceService.exitBreakdown(
+      filterPart(parse({ outFrom: '2026-10-01', outTo: '2026-10-31' })),
+    );
+    const match = JSON.stringify(matchOf(aggregates[0]));
+    expect(match).toContain('"outDate":{"$gte":"2026-10-01T00:00:00.000Z"}');
+    expect(match).toContain('"outDate":{"$lt":"2026-11-01T00:00:00.000Z"}');
+    expect(match).not.toContain('"inDate"');
+  });
 });
 
-describe('visitBreakdown — the figures (R-17, R-18, R-26)', () => {
+describe('visitStates — «أرقام الفترة» (check-in day)', () => {
+  it('count, and the state NOW: closed + open = count', async () => {
+    facets = [{ count: 12, open: 3 }];
+    const out = await fleetMaintenanceService.visitStates(
+      filterPart(parse({ from: '2026-10-01', to: '2026-10-31' })),
+    );
+    expect(out).toEqual({ count: 12, closed: 9, open: 3 });
+  });
+
+  it('an empty period is zeros; an old row with no `outDate` at all is open', async () => {
+    facets = [];
+    expect(await fleetMaintenanceService.visitStates(filterPart(parse({})))).toEqual({
+      count: 0,
+      closed: 0,
+      open: 0,
+    });
+    const group = JSON.stringify(aggregates[0]?.[1]);
+    expect(group).toContain('{"$eq":[{"$ifNull":["$outDate",null]},null]}');
+  });
+});
+
+describe('exitBreakdown — the figures (R-17, R-18, R-26)', () => {
   const day = (ymd: string): Date => new Date(`${ymd}T00:00:00.000Z`);
+  const T_MERC = oid();
+  const T_GONE = oid();
   beforeEach(() => {
     facets = [
       {
-        state: [{ count: 12, open: 3, unregistered: 1 }],
+        state: [{ count: 12, open: 0, unregistered: 1, staySum: 29 }],
         byWorkType: [
           { _id: WT_BRAKES, count: 4 },
           { _id: WT_OIL, count: 4 },
@@ -209,39 +281,76 @@ describe('visitBreakdown — the figures (R-17, R-18, R-26)', () => {
           { _id: WS_A, count: 6 },
         ],
         byVehicle: [
-          { _id: { vehicleId: CAR3, vehicleCode: null }, visits: 2, lastInDate: day('2026-10-20') },
-          { _id: { vehicleId: CAR2, vehicleCode: null }, visits: 3, lastInDate: day('2026-10-05') },
-          { _id: { vehicleId: CAR1, vehicleCode: null }, visits: 3, lastInDate: day('2026-10-09') },
-          {
-            _id: { vehicleId: null, vehicleCode: 'B-77' },
-            visits: 1,
-            lastInDate: day('2026-10-02'),
-          },
-          {
-            _id: { vehicleId: CAR_GONE, vehicleCode: null },
-            visits: 2,
-            lastInDate: day('2026-10-20'),
-          },
-          { _id: { vehicleId: CAR4, vehicleCode: null }, visits: 2, lastInDate: day('2026-10-20') },
-          {
-            _id: { vehicleId: oid(), vehicleCode: null },
-            visits: 1,
-            lastInDate: day('2026-10-01'),
-          },
+          { _id: CAR3, visits: 2, lastInDate: day('2026-10-20'), lastWorkTypeId: WT_OIL },
+          { _id: CAR2, visits: 3, lastInDate: day('2026-10-05'), lastWorkTypeId: WT_TYRES },
+          { _id: CAR1, visits: 3, lastInDate: day('2026-10-09'), lastWorkTypeId: WT_BRAKES },
+          { _id: CAR_GONE, visits: 2, lastInDate: day('2026-10-20'), lastWorkTypeId: WT_OIL },
+          { _id: CAR4, visits: 2, lastInDate: day('2026-10-20'), lastWorkTypeId: null },
+          // A car the registry no longer answers for at all: code «—», still ranked by its id.
+          { _id: oid(), visits: 1, lastInDate: day('2026-10-01'), lastWorkTypeId: WS_B },
         ],
       },
     ];
+    vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockImplementation((async (
+      ids: readonly string[],
+    ) =>
+      ids.flatMap((id) => {
+        const car = CARS.get(id);
+        if (car === undefined) return [];
+        // CAR1/CAR2 are Mercedes; CAR3's make was deleted (no name); CAR4 has no make.
+        const typeId =
+          id === String(CAR1) || id === String(CAR2) ? T_MERC : id === String(CAR3) ? T_GONE : null;
+        return [{ ...car, typeId }];
+      })) as never);
+    vi.spyOn(fleetVehicleTypeRepository, 'listAll').mockResolvedValue([
+      { _id: T_MERC, name: { ar: 'مرسيدس', en: 'Mercedes' } },
+    ] as never);
   });
 
-  const breakdown = (raw: Record<string, unknown> = {}): Promise<FleetDashboardPeriodVisitsDto> =>
-    fleetMaintenanceService.visitBreakdown(filterPart(parse(raw)));
+  const breakdown = (raw: Record<string, unknown> = {}) =>
+    fleetMaintenanceService.exitBreakdown(
+      filterPart(parse({ outFrom: '2026-10-01', outTo: '2026-10-31', ...raw })),
+    );
 
-  it('count, and the state NOW: closed + open = count', async () => {
-    const out = await breakdown({ from: '2026-10-01', to: '2026-10-31' });
+  it('count, and the mean stay over the exits to one decimal', async () => {
+    const out = await breakdown();
     expect(out.count).toBe(12);
-    expect(out.open).toBe(3);
-    expect(out.closed).toBe(9);
-    expect(out.closed + out.open).toBe(out.count);
+    // 29 whole days over 12 exits = 2.4166… → 2.4.
+    expect(out.avgStayDays).toBe(2.4);
+  });
+
+  it('the mean rounds half up at one decimal; the same-day exit counts 0', async () => {
+    facets = [
+      {
+        state: [{ count: 4, open: 0, unregistered: 0, staySum: 1 }],
+        byWorkType: [],
+        byWorkshop: [],
+        byVehicle: [],
+      },
+    ];
+    expect((await breakdown()).avgStayDays).toBe(0.3); // 0.25 → 0.3
+    facets = [
+      {
+        state: [{ count: 3, open: 0, unregistered: 0, staySum: 0 }],
+        byWorkType: [],
+        byWorkshop: [],
+        byVehicle: [],
+      },
+    ];
+    expect((await breakdown()).avgStayDays).toBe(0);
+  });
+
+  it('the stay is whole days check-in → check-out over the CLOSED visits ($dateDiff, day)', async () => {
+    await breakdown();
+    const facet = (aggregates[0]?.[1] as { $facet: Record<string, unknown> }).$facet;
+    const state = JSON.stringify(facet['state']);
+    expect(state).toContain(
+      '{"$dateDiff":{"startDate":"$inDate","endDate":"$outDate","unit":"day"}}',
+    );
+    // An open visit (none among exits, but the read never assumes it) adds no stay.
+    expect(state).toContain(
+      '"staySum":{"$sum":{"$cond":[{"$eq":[{"$ifNull":["$outDate",null]},null]},0,',
+    );
   });
 
   it('Σ byWorkType = Σ byWorkshop = count', async () => {
@@ -260,29 +369,39 @@ describe('visitBreakdown — the figures (R-17, R-18, R-26)', () => {
     ]);
   });
 
-  it('most-visited: visits desc, then the latest check-in desc, then the code — at most five', async () => {
+  it('most-visited: exits desc, then the latest check-in desc, then the code — at most five', async () => {
     const out = await breakdown();
     expect(out.topVehicles).toHaveLength(FLEET_DASHBOARD_RANK_ROWS);
-    // 203 and 205 tie on visits and day: the fleet's code order decides. The deleted car (204, the
-    // same two visits) is not ranked — its row would open an empty register.
-    expect(out.topVehicles.map((row) => row.code)).toEqual(['201', '202', '203', '205', 'B-77']);
+    // 203 and 205 tie on exits and day: the fleet's code order decides. The deleted car (204, the
+    // same two exits) is not ranked — its row would open an empty register.
+    expect(out.topVehicles.map((row) => row.code)).toEqual(['201', '202', '203', '205', '—']);
     expect(out.topVehicles[0]).toEqual({
       vehicleId: String(CAR1),
       code: '201',
+      typeName: { ar: 'مرسيدس', en: 'Mercedes' },
       visits: 3,
       lastInDate: '2026-10-09',
+      lastWorkType: { ar: 'فرامل', en: 'Brakes' },
     });
-    // A visit from the old book is ranked under the code the book wrote, with no car.
-    expect(out.topVehicles[4]).toEqual({
-      vehicleId: null,
-      code: 'B-77',
-      visits: 1,
-      lastInDate: '2026-10-02',
-    });
+    // A deleted make has no name; a car with no make neither; a missing work type is null.
+    expect(out.topVehicles[2]).toMatchObject({ code: '203', typeName: null });
+    expect(out.topVehicles[3]).toMatchObject({ code: '205', typeName: null, lastWorkType: null });
+    // An unnamed catalog id (WS_B) as the last work type reads null, never an id.
+    expect(out.topVehicles[4]).toMatchObject({ lastWorkType: null });
+  });
+
+  it('an old-book exit with no registry car is never ranked (the facet groups registry cars only)', async () => {
+    await breakdown();
+    const facet = (aggregates[0]?.[1] as { $facet: Record<string, unknown[]> }).$facet;
+    expect(facet['byVehicle']?.[0]).toEqual({ $match: { vehicleId: { $type: 'objectId' } } });
+    // Its latest check-in's work type: the later recorded of two on one day.
+    expect(JSON.stringify(facet['byVehicle']?.[1])).toContain(
+      '"lastWorkTypeId":{"$top":{"sortBy":{"inDate":-1,"_id":-1}',
+    );
   });
 
   it('«سيارات غير مسجّلة» only when no vehicle clause applies (R-13)', async () => {
-    expect((await breakdown({ from: '2026-10-01' })).unregistered).toBe(1);
+    expect((await breakdown()).unregistered).toBe(1);
     expect((await breakdown({ operationIds: O1 })).unregistered).toBeNull();
     expect((await breakdown({ typeIds: T1 })).unregistered).toBeNull();
     expect((await breakdown({ vehicleCodes: '201' })).unregistered).toBeNull();
@@ -291,21 +410,21 @@ describe('visitBreakdown — the figures (R-17, R-18, R-26)', () => {
 
   it('carries no money: visits have no amount (R-26)', async () => {
     expect(Object.keys(await breakdown()).sort()).toEqual(
-      ['byWorkType', 'byWorkshop', 'closed', 'count', 'open', 'topVehicles', 'unregistered'].sort(),
+      ['avgStayDays', 'byWorkType', 'byWorkshop', 'count', 'topVehicles', 'unregistered'].sort(),
     );
   });
 
-  it('an empty period is zeros, not an error', async () => {
-    facets = [{ state: [], byWorkType: [], byWorkshop: [], byVehicle: [] }];
-    expect(await breakdown({ from: '2026-10-01' })).toEqual({
+  it('an empty period is zeros and no mean — not an error, and no make is read', async () => {
+    facets = EMPTY_BREAKDOWN;
+    expect(await breakdown()).toEqual({
       count: 0,
-      closed: 0,
-      open: 0,
+      avgStayDays: null,
       byWorkType: [],
       byWorkshop: [],
       topVehicles: [],
       unregistered: 0,
     });
+    expect(fleetVehicleTypeRepository.listAll).not.toHaveBeenCalled();
   });
 
   it('a field ABSENT on an old row counts as null, as the list’s `outDate: null` does', async () => {
@@ -320,18 +439,35 @@ describe('visitBreakdown — the figures (R-17, R-18, R-26)', () => {
 });
 
 describe('openNow — «في الورشة الآن» (R-09)', () => {
+  const T_MERC = oid();
+  const stay = (over: Record<string, unknown>) => ({
+    _id: oid(),
+    vehicleId: null,
+    vehicleCode: null,
+    inDate: new Date('2026-10-25T00:00:00Z'),
+    workshopId: WS_A,
+    workTypeId: WT_OIL,
+    ...over,
+  });
+  beforeEach(() => {
+    vi.spyOn(fleetVehicleTypeRepository, 'listAll').mockResolvedValue([
+      { _id: T_MERC, name: { ar: 'مرسيدس', en: 'Mercedes' } },
+    ] as never);
+  });
+
   it('is the list with state=open, over the same vehicle filter', async () => {
-    facets = [{ total: [], oldest: [], cars: [] }];
+    facets = [{ total: [], longest: [], cars: [] }];
     const listed = await listCountFilter({ open: 'true', branchIds: B1 });
     await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: { branchIds: [B1] } });
     expect(matchOf(aggregates[0])).toEqual(listed);
   });
 
   it('splits by the car’s status now; a deleted car or a book row is in neither part', async () => {
+    const visit = oid();
     facets = [
       {
         total: [{ n: 5 }],
-        oldest: [{ vehicleId: CAR2, vehicleCode: null, inDate: new Date('2026-10-25T00:00:00Z') }],
+        longest: [stay({ _id: visit, vehicleId: CAR2 })],
         cars: [
           { _id: CAR1, visits: 1 },
           { _id: CAR2, visits: 1 },
@@ -342,7 +478,7 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
     ];
     vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockResolvedValue([
       { _id: CAR1, code: '201', status: 'active', isDeleted: false },
-      { _id: CAR2, code: '202', status: 'outOfService', isDeleted: false },
+      { _id: CAR2, code: '202', status: 'outOfService', isDeleted: false, typeId: T_MERC },
       { _id: CAR3, code: '203', status: 'active', isDeleted: false },
       { _id: CAR_GONE, code: '204', status: 'active', isDeleted: true },
     ] as never);
@@ -352,45 +488,124 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       openActive: 2,
       openOutOfService: 1,
       oldest: { vehicleId: String(CAR2), code: '202', inDate: '2026-10-25', days: 7 },
+      longest: [
+        {
+          visitId: String(visit),
+          vehicleId: String(CAR2),
+          code: '202',
+          typeName: { ar: 'مرسيدس', en: 'Mercedes' },
+          inDate: '2026-10-25',
+          days: 7,
+          workshop: { ar: 'ورشة التوكيل', en: 'Dealer' },
+          workType: { ar: 'تغيير زيت', en: 'Oil' },
+        },
+      ],
     });
   });
 
+  it('the longest stays: the facet’s order kept, `oldest` = the first, names from ONE catalog read', async () => {
+    facets = [
+      {
+        total: [{ n: 9 }],
+        longest: [
+          stay({ vehicleId: CAR1, inDate: new Date('2026-10-02T00:00:00Z') }),
+          stay({ vehicleCode: 'B-77', inDate: new Date('2026-10-02T00:00:00Z'), workshopId: WS_B }),
+          stay({ vehicleId: CAR_GONE, inDate: new Date('2026-10-20T00:00:00Z') }),
+          stay({ vehicleId: CAR3, inDate: new Date('2026-10-30T00:00:00Z'), workTypeId: null }),
+          stay({ vehicleId: CAR4, inDate: new Date('2026-11-01T00:00:00Z') }),
+        ],
+        cars: [CAR1, CAR_GONE, CAR3, CAR4].map((_id) => ({ _id, visits: 1 })),
+      },
+    ];
+    vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockImplementation((async (
+      ids: readonly string[],
+    ) =>
+      ids.flatMap((id) => {
+        const car = CARS.get(id);
+        return car === undefined ? [] : [{ ...car, status: 'active', typeId: T_MERC }];
+      })) as never);
+    const out = await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
+    expect(out.longest.map((row) => [row.code, row.inDate, row.days])).toEqual([
+      ['201', '2026-10-02', 30],
+      ['B-77', '2026-10-02', 30],
+      ['204', '2026-10-20', 12],
+      ['203', '2026-10-30', 2],
+      ['205', '2026-11-01', 0],
+    ]);
+    expect(out.oldest).toEqual({
+      vehicleId: String(CAR1),
+      code: '201',
+      inDate: '2026-10-02',
+      days: 30,
+    });
+    // The old book's row has no car, so no make; an unnamed workshop and a missing work type null.
+    expect(out.longest[1]).toMatchObject({ vehicleId: null, typeName: null, workshop: null });
+    expect(out.longest[3]).toMatchObject({ workType: null });
+    expect(out.longest.length).toBeLessThanOrEqual(out.open);
+    expect(fleetCatalogItemRepository.namesByIds).toHaveBeenCalledTimes(1);
+    expect(fleetVehicleTypeRepository.listAll).toHaveBeenCalledTimes(1);
+  });
+
   it('the oldest from the old book is named by the book’s code; checked in today = 0 days', async () => {
+    const visit = oid();
     facets = [
       {
         total: [{ n: 1 }],
-        oldest: [
-          { vehicleId: null, vehicleCode: 'B-77', inDate: new Date('2026-11-01T00:00:00Z') },
+        longest: [
+          stay({
+            _id: visit,
+            vehicleCode: 'B-77',
+            inDate: new Date('2026-11-01T00:00:00Z'),
+          }),
         ],
         cars: [],
       },
     ];
     vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockResolvedValue([]);
-    expect(await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} })).toEqual({
+    const out = await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
+    expect(out).toMatchObject({
       open: 1,
       openActive: 0,
       openOutOfService: 0,
       oldest: { vehicleId: null, code: 'B-77', inDate: '2026-11-01', days: 0 },
     });
+    expect(out.longest).toEqual([
+      {
+        visitId: String(visit),
+        vehicleId: null,
+        code: 'B-77',
+        typeName: null,
+        inDate: '2026-11-01',
+        days: 0,
+        workshop: { ar: 'ورشة التوكيل', en: 'Dealer' },
+        workType: { ar: 'تغيير زيت', en: 'Oil' },
+      },
+    ]);
+    // No registry car among the stays: no make is read.
+    expect(fleetVehicleTypeRepository.listAll).not.toHaveBeenCalled();
   });
 
-  it('nothing open: zeros and no oldest', async () => {
-    facets = [{ total: [], oldest: [], cars: [] }];
+  it('nothing open: zeros, no oldest, no stays — and no name is read', async () => {
+    facets = [{ total: [], longest: [], cars: [] }];
     vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockResolvedValue([]);
     expect(await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} })).toEqual({
       open: 0,
       openActive: 0,
       openOutOfService: 0,
       oldest: null,
+      longest: [],
     });
+    expect(fleetCatalogItemRepository.namesByIds).not.toHaveBeenCalled();
+    expect(fleetVehicleTypeRepository.listAll).not.toHaveBeenCalled();
   });
 
-  it('sorts the oldest by check-in day, the earlier-recorded first (a total order)', async () => {
-    facets = [{ total: [], oldest: [], cars: [] }];
+  it(`sorts the stays by check-in day, the earlier-recorded first, at most ${String(FLEET_DASHBOARD_WORKSHOP_ROWS)}`, async () => {
+    facets = [{ total: [], longest: [], cars: [] }];
     vi.spyOn(fleetVehicleRepository, 'findByIdsSystem').mockResolvedValue([]);
     await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
-    const facet = (aggregates[0]?.[1] as { $facet: { oldest: unknown[] } }).$facet;
-    expect(facet.oldest[0]).toEqual({ $sort: { inDate: 1, _id: 1 } });
+    const facet = (aggregates[0]?.[1] as { $facet: { longest: unknown[] } }).$facet;
+    expect(facet.longest[0]).toEqual({ $sort: { inDate: 1, _id: 1 } });
+    expect(facet.longest[1]).toEqual({ $limit: FLEET_DASHBOARD_WORKSHOP_ROWS });
   });
 });
 

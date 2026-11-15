@@ -4,7 +4,11 @@
 //
 // The figures agree with each other the way the server's do: ready = rows − in the workshop −
 // licence expired (33 = 40 − 5 − 2); the registry = available + absent + inactive + suspended +
-// licence expired (52 = 44 + 5 + 1 + 1 + 1); the matrix adds up to the active cars (40).
+// licence expired (52 = 44 + 5 + 1 + 1 + 1); the matrix adds up to the active cars (40), and each
+// branch's cars by operation kind add up to its column (Σ cash = 24, Σ ATM = 11, «أخرى» 5); the alarm
+// rows are the first 8 of the 3 red + 6 yellow (red first, the most overdue first); the longest stays
+// are the 5 oldest of the 6 open visits (the oldest first, = `oldest`); every exit bar list adds up
+// to the exits (19).
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -25,6 +29,8 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { custodyQueryKeys } from './api/fleet-queries';
 import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
+import { periodLiveness } from './lib/fleet-dashboard-refresh';
+import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
 import { FleetDashboardPage } from './pages/FleetDashboardPage';
 
 export const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -39,6 +45,37 @@ export const OP_ATM = '650000000000000000000302';
 export const SP_CASH = '650000000000000000000401';
 export const SP_ATM = '650000000000000000000402';
 export const DRIVER = '64b1f0dddddddddddddddd01';
+export const WT_TYRES = '650000000000000000000511';
+export const WT_BRAKES_FX = '650000000000000000000512';
+export const WS_COMPANY_FX = '650000000000000000000611';
+export const WS_HARAMAIN = '650000000000000000000612';
+
+const ARMOURED = { ar: 'مصفحة', en: 'Armoured' };
+const JEEP = { ar: 'جيب', en: 'Jeep' };
+const COMPANY_WS = { ar: 'ورشة الشركة', en: 'Company workshop' };
+const HARAMAIN_WS = { ar: 'ورشة الحرمين', en: 'Haramain workshop' };
+const TYRES = { ar: 'كاوتش', en: 'Tyres' };
+const BRAKES = { ar: 'فرامل', en: 'Brakes' };
+
+type AlarmRow = NonNullable<FleetDashboardNowDto['maintenanceAlarm']>['rows'][number];
+const alarmRow = (
+  code: string,
+  level: 'red' | 'yellow',
+  remainingKm: number,
+  typeName: AlarmRow['typeName'],
+  lastServiceAt: string | null,
+  inWorkshop: AlarmRow['inWorkshop'] = null,
+): AlarmRow => ({
+  vehicleId: `v${code}`,
+  code,
+  typeName,
+  level,
+  remainingKm,
+  sinceServiceKm: 10_000 - remainingKm,
+  intervalKm: 10_000,
+  lastServiceAt,
+  inWorkshop,
+});
 
 /** Cairo today, and the server's clock at 10:00 Cairo (EET, UTC+2, after the October change). */
 export const TODAY = '2026-11-01';
@@ -147,8 +184,79 @@ export const NOW_DTO: FleetDashboardNowDto = {
     openActive: 5,
     openOutOfService: 1,
     oldest: { vehicleId: 'v141', code: '141', inDate: '2026-10-23', days: 9 },
+    // The 5 oldest of the 6 open visits, the oldest first (`oldest` = the first).
+    longest: [
+      {
+        visitId: 'w141',
+        vehicleId: 'v141',
+        code: '141',
+        typeName: ARMOURED,
+        inDate: '2026-10-23',
+        days: 9,
+        workshop: COMPANY_WS,
+        workType: BRAKES,
+      },
+      {
+        visitId: 'w158',
+        vehicleId: 'v158',
+        code: '158',
+        typeName: JEEP,
+        inDate: '2026-10-26',
+        days: 6,
+        workshop: HARAMAIN_WS,
+        workType: TYRES,
+      },
+      {
+        visitId: 'w187',
+        vehicleId: 'v187',
+        code: '187',
+        typeName: ARMOURED,
+        inDate: '2026-10-29',
+        days: 3,
+        workshop: COMPANY_WS,
+        workType: null,
+      },
+      {
+        visitId: 'w203',
+        vehicleId: 'v203',
+        code: '203',
+        typeName: JEEP,
+        inDate: '2026-10-31',
+        days: 1,
+        workshop: null,
+        workType: BRAKES,
+      },
+      {
+        visitId: 'w1',
+        vehicleId: 'v231',
+        code: '231',
+        typeName: ARMOURED,
+        inDate: TODAY,
+        days: 0,
+        workshop: HARAMAIN_WS,
+        workType: TYRES,
+      },
+    ],
   },
-  maintenanceAlarm: { red: 3, overdue: 1, yellow: 6, codes: null },
+  // 3 red (one past the limit) and 6 yellow; the table's 8 rows: red first, the most overdue first.
+  maintenanceAlarm: {
+    red: 3,
+    overdue: 1,
+    yellow: 6,
+    codes: null,
+    redKm: 300,
+    yellowKm: 1000,
+    rows: [
+      alarmRow('141', 'red', -120, ARMOURED, '2026-06-02', { workshop: COMPANY_WS }),
+      alarmRow('127', 'red', 140, ARMOURED, '2026-06-19'),
+      alarmRow('166', 'red', 260, JEEP, null),
+      alarmRow('112', 'yellow', 420, JEEP, '2026-07-04'),
+      alarmRow('139', 'yellow', 560, ARMOURED, '2026-07-11'),
+      alarmRow('174', 'yellow', 700, ARMOURED, '2026-07-20'),
+      alarmRow('190', 'yellow', 830, JEEP, '2026-07-28'),
+      alarmRow('214', 'yellow', 950, null, '2026-08-03'),
+    ],
+  },
   noReading: {
     days: 3,
     stale: [
@@ -182,6 +290,13 @@ export const NOW_DTO: FleetDashboardNowDto = {
     branchCount: 2,
     cash: { vehicles: 24, operationIds: [OP_CASH] },
     atm: { vehicles: 11, operationIds: [OP_ATM] },
+    // Each column by operation kind (25 = 15 + 7 + 3, 14 = 8 + 4 + 2, «بلا فرع» 1 = 1 + 0 + 0).
+    kinds: {
+      [B1]: { cash: 15, atm: 7, other: 3 },
+      [B2]: { cash: 8, atm: 4, other: 2 },
+    },
+    noBranchKinds: { cash: 1, atm: 0, other: 0 },
+    other: { vehicles: 5 },
   },
   distributionDrivers: {
     total: 52,
@@ -329,16 +444,40 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     bottom5: [],
     withoutReadings: [],
   },
-  visits: {
-    count: 27,
-    closed: 20,
-    open: 7,
-    byWorkType: [],
-    byWorkshop: [],
-    topVehicles: [],
-    unregistered: null,
+  // By CHECK-IN day («أرقام الفترة»).
+  visits: { count: 27, closed: 20, open: 7 },
+  // By EXIT day: each bar list adds up to the 19; one old-book exit (unranked).
+  exits: {
+    count: 19,
+    avgStayDays: 2.6,
+    byWorkType: [
+      { id: WT_TYRES, name: TYRES, count: 11 },
+      { id: WT_BRAKES_FX, name: BRAKES, count: 8 },
+    ],
+    byWorkshop: [
+      { id: WS_COMPANY_FX, name: COMPANY_WS, count: 12 },
+      { id: WS_HARAMAIN, name: HARAMAIN_WS, count: 7 },
+    ],
+    topVehicles: [
+      {
+        vehicleId: 'v295',
+        code: '295',
+        typeName: JEEP,
+        visits: 2,
+        lastInDate: '2026-10-29',
+        lastWorkType: BRAKES,
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        typeName: ARMOURED,
+        visits: 1,
+        lastInDate: '2026-10-30',
+        lastWorkType: TYRES,
+      },
+    ],
+    unregistered: 1,
   },
-  exits: { count: 19 },
   accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
   accidentList: null,
   opex: null,
@@ -402,11 +541,23 @@ export const ALL_KEYS: readonly string[] = [...FLEET_DASHBOARD_PAGE_KEYS, 'fleet
 
 export const PERIOD_KEY = fleetDashboardKeys.period('live', { preset: 'thisMonth' });
 
+/** R2's key for the filters a dashboard URL's address bar holds — the page's own read. */
+export const pagePeriodKey = (url: string): readonly unknown[] => {
+  const query = toPeriodQuery(readPeriodFilters(new URL(url, 'http://x').searchParams));
+  return fleetDashboardKeys.period(periodLiveness(query, TODAY), query);
+};
+
+/**
+ * The caches the page reads: R1 (`now`), «هذا الشهر» with no filter (`period`, the default page key
+ * and the month read), the custody screen's reads, and — `page` — an R2 answer under the key the
+ * URL's filters make (the page's own read when the address bar holds filters), beside R1.
+ */
 export const dashboardClient = (
   seed: {
     now?: FleetDashboardNowDto | null;
     period?: FleetDashboardPeriodDto | null;
     custody?: boolean;
+    page?: { url: string; dto: FleetDashboardPeriodDto };
   } = {},
 ): QueryClient => {
   const qc = new QueryClient({
@@ -414,6 +565,7 @@ export const dashboardClient = (
   });
   if (seed.now !== null) qc.setQueryData(fleetDashboardKeys.now, seed.now ?? NOW_DTO);
   if (seed.period !== null) qc.setQueryData(PERIOD_KEY, seed.period ?? PERIOD_DTO);
+  if (seed.page !== undefined) qc.setQueryData(pagePeriodKey(seed.page.url), seed.page.dto);
   if (seed.custody !== false) seedCustody(qc);
   return qc;
 };

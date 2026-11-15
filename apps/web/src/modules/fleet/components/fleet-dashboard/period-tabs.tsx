@@ -1,5 +1,7 @@
-// «حسب الفلاتر» — the five period tabs (6 «أرقام الفترة», 7 «الكيلومترات», 8 «ترتيب السيارات»,
-// 9 «الصيانة», 10 «الحوادث»), all read from R2 and all under ONE filter state.
+// «حسب الفلاتر» — the four period tabs still waiting for their redesign (6 «أرقام الفترة»,
+// 7 «الكيلومترات», 8 «ترتيب السيارات», 10 «الحوادث»), all read from R2 and all under ONE filter state.
+// (9 «الصيانة» was rebuilt as «الصيانة والورش», a tab of «الآن» and a period both: it draws the same
+// filter bar over the same read inside its own body — FLEET_DASHBOARD_PERIOD_TABS.)
 //
 // HAND-OVER POINT H1 (unified.md §4): W-SHELL writes this file as a stub with the final
 // `PeriodTabProps` / `PeriodTab`, and W-PERIOD owns it afterwards. The props are the contract between
@@ -20,17 +22,16 @@ import { Phrase, ReadError, RefreshTools, TabSkeleton } from './dash-shell';
 import { PeriodFilterBar } from './period-filter-bar';
 import { AccidentsTab } from './tab-accidents';
 import { KmTab } from './tab-km';
-import { MaintenanceTab } from './tab-maintenance';
 import { PeriodFiguresTab, type PeriodBodyProps } from './tab-period';
 import { RankingTab } from './tab-ranking';
 
 export interface PeriodTabProps {
-  tab: 'period' | 'km' | 'ranking' | 'maintenance' | 'accidents';
+  tab: 'period' | 'km' | 'ranking' | 'accidents';
   data: FleetDashboardPeriodDto | undefined;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
-  /** The ONE filter state of the five tabs, as the address bar holds it. */
+  /** The ONE filter state of the period tabs, as the address bar holds it. */
   filters: PeriodFilters;
   /** A new filter state: the page writes it to the address bar (`periodFiltersPatch`). */
   onFilters: (next: PeriodFilters) => void;
@@ -47,7 +48,6 @@ const ICON: Record<PeriodTabProps['tab'], IconPath> = {
   period: I.bars,
   km: I.pin,
   ranking: I.rank,
-  maintenance: I.cog,
   accidents: I.warn,
 };
 
@@ -55,7 +55,6 @@ const BODY: Record<PeriodTabProps['tab'], (props: PeriodBodyProps) => JSX.Elemen
   period: PeriodFiguresTab,
   km: KmTab,
   ranking: RankingTab,
-  maintenance: MaintenanceTab,
   accidents: AccidentsTab,
 };
 

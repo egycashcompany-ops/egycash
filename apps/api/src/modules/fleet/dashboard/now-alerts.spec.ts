@@ -21,7 +21,16 @@ const NONE: AlertSources = {
 };
 
 const FULL: AlertSources = {
-  maintenanceAlarm: { red: 3, overdue: 1, yellow: 6, codes: null },
+  // The alerts read the counts alone: the table rows and the thresholds never make a line.
+  maintenanceAlarm: {
+    red: 3,
+    overdue: 1,
+    yellow: 6,
+    codes: null,
+    redKm: 300,
+    yellowKm: 1000,
+    rows: [],
+  },
   licenceVehicles: {
     warnDays: 30,
     expired: 2,
@@ -108,7 +117,15 @@ describe('deriveNowAlerts', () => {
     expect(deriveNowAlerts(NONE)).toEqual([]);
     const quiet: AlertSources = {
       ...FULL,
-      maintenanceAlarm: { red: 0, overdue: 0, yellow: 6, codes: null },
+      maintenanceAlarm: {
+        red: 0,
+        overdue: 0,
+        yellow: 6,
+        codes: null,
+        redKm: 300,
+        yellowKm: 1000,
+        rows: [],
+      },
       notices: { open: 9, missingAny: 0, missingLicences: 0, missingCheckImage: 0 },
       noReading: { days: 3, stale: [], neverRead: [{ vehicleId: 'c', code: '318' }] },
     };

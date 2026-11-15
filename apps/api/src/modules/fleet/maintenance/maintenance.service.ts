@@ -11,6 +11,7 @@ import {
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
   type FleetDashboardNowWorkshopDto,
+  type FleetDashboardPeriodExitsDto,
   type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRecentVisitDto,
   type ListFleetMaintenanceQuery,
@@ -33,6 +34,7 @@ import {
 } from '../vehicles/vehicle.repository';
 import { resolveVehicleFilterIds, type VehicleFilter } from '../vehicles/vehicle-set';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { alarmSortsFor } from './alarm-sort';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import {
@@ -635,6 +637,8 @@ class FleetMaintenanceService {
   private async carNamer(vehicleIds: readonly string[]): Promise<{
     codeOf: (vehicleId: string | null, bookCode: string | null | undefined) => string;
     deleted: (vehicleId: string | null) => boolean;
+    /** The car's make id (`typeId`); `null` for a car the registry does not hold. */
+    typeIdOf: (vehicleId: string | null) => string | null;
   }> {
     const cars = new Map(
       (await fleetVehicleRepository.findByIdsSystem([...new Set(vehicleIds)])).map((car) => [
@@ -646,16 +650,32 @@ class FleetMaintenanceService {
       codeOf: (vehicleId, bookCode) =>
         (vehicleId === null ? undefined : cars.get(vehicleId)?.code) ?? bookCode ?? '—',
       deleted: (vehicleId) => vehicleId !== null && cars.get(vehicleId)?.isDeleted === true,
+      typeIdOf: (vehicleId) => {
+        const typeId = vehicleId === null ? undefined : cars.get(vehicleId)?.typeId;
+        return typeId == null ? null : String(typeId);
+      },
     };
+  }
+
+  /**
+   * The makes' names by id — ONE read of the live makes (a handful), as the alarms board names a
+   * car's make; a make since deleted has no name. Asked only when a row will be named.
+   */
+  private async makeNames(asked: boolean): Promise<ReadonlyMap<string, LocalizedString>> {
+    if (!asked) return new Map();
+    const types = await fleetVehicleTypeRepository.listAll();
+    return new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
   }
 
   /**
    * T2.4, R-09 — «في الورشة الآن»: the open visits of ANY status, through the list's own filter
    * (`/fleet/maintenance?state=open` with the same vehicle filter lists exactly these), split by
-   * the car's status now, with the oldest stay in Cairo days.
+   * the car's status now, with the longest stays in Cairo days («أطول بقاء في الورشة الآن»: the
+   * oldest check-ins first, at most FLEET_DASHBOARD_WORKSHOP_ROWS; `oldest` is the first).
    *
    * A car deleted from the registry, or a visit kept from the old book without one, is counted in
-   * `open` — the list shows it — and in neither status part.
+   * `open` — the list shows it — and in neither status part; its stay is still listed, under the
+   * registry's code or the book's.
    */
   async openNow(input: {
     today: string;
@@ -664,13 +684,20 @@ class FleetMaintenanceService {
     const facts = await fleetMaintenanceRepository.openFacts(
       await this.filterFor({ ...listFieldsOf(input.filter), open: true }),
     );
-    // Every registry car with an open visit — the oldest one's among them — read once, deleted
-    // ones included: their visit is on the list, so the card must still name its car.
-    const cars = new Map(
-      (await fleetVehicleRepository.findByIdsSystem(facts.cars.map((car) => car.vehicleId))).map(
-        (car) => [String(car._id), car],
-      ),
-    );
+    // Every registry car with an open visit — the longest stays' among them — read once, deleted
+    // ones included: their visit is on the list, so the card must still name its car. Beside it,
+    // the listed stays' workshop and work-type names (one catalog read) and makes (one read).
+    const listedIds = [
+      ...new Set(facts.longest.flatMap((row) => [row.workshopId, row.workTypeId])),
+    ].flatMap((id) => (id === null ? [] : [id]));
+    const [carList, names, makes] = await Promise.all([
+      fleetVehicleRepository.findByIdsSystem(facts.cars.map((car) => car.vehicleId)),
+      listedIds.length === 0
+        ? Promise.resolve(new Map<string, LocalizedString>())
+        : fleetCatalogItemRepository.namesByIds(listedIds),
+      this.makeNames(facts.longest.some((row) => row.vehicleId !== null)),
+    ]);
+    const cars = new Map(carList.map((car) => [String(car._id), car]));
     let openActive = 0;
     let openOutOfService = 0;
     for (const { vehicleId, visits } of facts.cars) {
@@ -679,24 +706,39 @@ class FleetMaintenanceService {
       if (car.status === 'active') openActive += visits;
       if (car.status === 'outOfService') openOutOfService += visits;
     }
-    const oldest = facts.oldest;
+    const codeOf = (vehicleId: string | null, bookCode: string | null): string =>
+      (vehicleId === null ? undefined : cars.get(vehicleId)?.code) ?? bookCode ?? '—';
+    const nameOf = (id: string | null): LocalizedString | null =>
+      id === null ? null : (names.get(id) ?? null);
+    const longest = facts.longest.map((row) => {
+      const typeId = row.vehicleId === null ? undefined : cars.get(row.vehicleId)?.typeId;
+      return {
+        visitId: row.visitId,
+        vehicleId: row.vehicleId,
+        code: codeOf(row.vehicleId, row.vehicleCode),
+        typeName: typeId == null ? null : (makes.get(String(typeId)) ?? null),
+        inDate: ymdOf(row.inDate),
+        // «منذ N يومًا» — Cairo today minus the check-in day; no ceiling (owner decision 4-3).
+        days: daysBetweenYmd(ymdOf(row.inDate), input.today),
+        workshop: nameOf(row.workshopId),
+        workType: nameOf(row.workTypeId),
+      };
+    });
+    const oldest = longest[0];
     return {
       open: facts.count,
       openActive,
       openOutOfService,
       oldest:
-        oldest === null
+        oldest === undefined
           ? null
           : {
               vehicleId: oldest.vehicleId,
-              code:
-                (oldest.vehicleId === null ? undefined : cars.get(oldest.vehicleId)?.code) ??
-                oldest.vehicleCode ??
-                '—',
-              inDate: ymdOf(oldest.inDate),
-              // «منذ N أيام» — Cairo today minus the check-in day; no ceiling (owner decision 4-3).
-              days: daysBetweenYmd(ymdOf(oldest.inDate), input.today),
+              code: oldest.code,
+              inDate: oldest.inDate,
+              days: oldest.days,
             },
+      longest,
     };
   }
 
@@ -739,53 +781,66 @@ class FleetMaintenanceService {
   }
 
   /**
-   * T6.3/T6.4 and tab 9, R-18 — the visits the list's filter matches (with `from`/`to`: those that
-   * CHECKED IN in the period), in one `$facet`: the state each is in now («حتى الآن», R-22), per
-   * work type, per workshop and the most-visited cars (R-17: visits desc, latest check-in desc,
-   * code asc; a car deleted from the registry is not ranked). Every bar sums to `count`. Visits
-   * carry no money (R-26), so none is computed.
+   * «الصيانة والورش», the period band — the visits the list's filter matches. The dashboard asks it
+   * by EXIT day (`outFrom`/`outTo`: the visits that LEFT the workshop in the range; never
+   * `from`/`to`), so `/fleet/maintenance?outFrom&outTo&<set>` lists exactly these rows. ONE
+   * `$facet` (R-18): the count, the mean whole-day stay check-in → check-out (the same day = 0, one
+   * decimal; `null` with no exit), per work type and per workshop (each list sums to `count`), and
+   * the cars that left most often (R-17: exits desc, latest check-in desc, code asc; a car deleted
+   * from the registry is not ranked — its row would open an empty register — and neither is an
+   * old-book visit with no registry car; both stay in `count` and the bars). Visits carry no money
+   * (R-26), so none is computed. `ix_out_date` serves the range.
    *
-   * `unregistered` — the visits with no registry car — is reported only when no vehicle clause
+   * `unregistered` — the exits with no registry car — is reported only when no vehicle clause
    * applies; with one, they are already outside the count (R-13).
    */
-  async visitBreakdown(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodVisitsDto> {
+  async exitBreakdown(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodExitsDto> {
     const { filter, narrowed } = await this.scopedFilter(query);
     const facts = await fleetMaintenanceRepository.breakdown(filter);
-    const [{ codeOf, deleted }, names] = await Promise.all([
-      this.carNamer(
-        facts.byVehicle.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId])),
-      ),
+    const vehicleIds = facts.byVehicle.map((row) => row.vehicleId);
+    const [{ codeOf, deleted, typeIdOf }, names, makes] = await Promise.all([
+      this.carNamer(vehicleIds),
       fleetCatalogItemRepository.namesByIds([
-        ...new Set([...facts.byWorkType, ...facts.byWorkshop].map((row) => row.id)),
+        ...new Set([
+          ...[...facts.byWorkType, ...facts.byWorkshop].map((row) => row.id),
+          ...facts.byVehicle.flatMap((row) =>
+            row.lastWorkTypeId === null ? [] : [row.lastWorkTypeId],
+          ),
+        ]),
       ]),
+      this.makeNames(vehicleIds.length > 0),
     ]);
     const named = (rows: readonly { id: string; count: number }[]) =>
       rows
         .map((row) => ({ id: row.id, name: names.get(row.id) ?? null, count: row.count }))
         .sort(byCountThenName);
-    // A car since DELETED from the registry is not ranked: its row would open the register on its
-    // code, which the register resolves through the live registry only — an empty list (§8.11).
-    // Its visits are still in `count` and in every bar.
     const topVehicles = facts.byVehicle
       .filter((row) => !deleted(row.vehicleId))
-      .map((row) => ({
-        vehicleId: row.vehicleId,
-        code: codeOf(row.vehicleId, row.vehicleCode),
-        visits: row.visits,
-        lastInDate: ymdOf(row.lastInDate),
-      }))
+      .map((row) => {
+        const typeId = typeIdOf(row.vehicleId);
+        return {
+          vehicleId: row.vehicleId,
+          code: codeOf(row.vehicleId, null),
+          typeName: typeId === null ? null : (makes.get(typeId) ?? null),
+          visits: row.visits,
+          lastInDate: ymdOf(row.lastInDate),
+          lastWorkType:
+            row.lastWorkTypeId === null ? null : (names.get(row.lastWorkTypeId) ?? null),
+        };
+      })
       .sort(
         (a, b) =>
           b.visits - a.visits ||
           b.lastInDate.localeCompare(a.lastInDate) ||
           compareFleetVehicleCodes(a.code, b.code) ||
-          (a.vehicleId ?? '').localeCompare(b.vehicleId ?? ''),
+          a.vehicleId.localeCompare(b.vehicleId),
       )
       .slice(0, FLEET_DASHBOARD_RANK_ROWS);
+    // Over the CLOSED visits the stays were summed on — every exit is one.
+    const closed = facts.count - facts.open;
     return {
       count: facts.count,
-      closed: facts.count - facts.open,
-      open: facts.open,
+      avgStayDays: closed === 0 ? null : Math.round((facts.staySum / closed) * 10) / 10,
       byWorkType: named(facts.byWorkType),
       byWorkshop: named(facts.byWorkshop),
       topVehicles,
@@ -794,15 +849,14 @@ class FleetMaintenanceService {
   }
 
   /**
-   * The fleet dashboard's overview «زيارات الصيانة» (D6): how many visits the list's filter matches
-   * — built by the list's own `scopedFilter` and counted under the list's own base filter (soft
-   * delete), so `/fleet/maintenance?outFrom&outTo&<set>` lists exactly these rows. The caller asks
-   * the EXIT day (`outFrom`/`outTo`: visits that LEFT the workshop in the range); the old tabs'
-   * check-in figures stay `visitBreakdown`'s. `ix_out_date` serves the range.
+   * T6.3/T6.4, R-18 — «أرقام الفترة»: the visits the list's filter matches (asked with `from`/`to`:
+   * those that CHECKED IN in the period) and the state each is in NOW («حتى الآن», R-22), in one
+   * `$group`. `/fleet/maintenance?from&to[&state=…]&<set>` lists exactly these rows.
    */
-  async exitCount(query: MaintenanceFilterQuery): Promise<number> {
+  async visitStates(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodVisitsDto> {
     const { filter } = await this.scopedFilter(query);
-    return fleetMaintenanceRepository.count(filter);
+    const { count, open } = await fleetMaintenanceRepository.stateCounts(filter);
+    return { count, closed: count - open, open };
   }
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {

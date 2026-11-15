@@ -16,6 +16,7 @@ import {
   FLEET_DASHBOARD_GATES,
   addDaysYmd,
   licenceWindows,
+  type FleetDashboardNowAlarmDto,
   type FleetDashboardSection,
   type FleetDashboardVehicleScopeDto,
 } from '@ecms/contracts';
@@ -74,6 +75,20 @@ const MINE_SET: FleetDashboardVehicleScopeDto = {
   scopeBranches: [B1_NAMED, B2_NAMED],
 };
 const RANGE = { from: '2026-10-01', to: '2026-10-31' };
+/** An alarm as R1 sends it: `codes` null for the company, per level (≤ 50, else `[]`) narrowed. */
+const ALARM = (
+  red: number,
+  yellow: number,
+  codes: FleetDashboardNowAlarmDto['codes'],
+): FleetDashboardNowAlarmDto => ({
+  red,
+  overdue: 0,
+  yellow,
+  codes,
+  redKm: 300,
+  yellowKm: 1000,
+  rows: [],
+});
 
 /** Every link the builder can emit, each builder called with representative arguments. */
 const everyLink = (): DashLink[] => {
@@ -86,6 +101,12 @@ const everyLink = (): DashLink[] => {
       L.violationsOpen(),
       L.alarm('red', null),
       L.alarm('yellow', ['133']),
+      L.alarmRow('red', '133'),
+      L.alarmsAll(ALARM(2, 1, null)),
+      L.alarmsAll(ALARM(1, 1, { red: ['133'], yellow: ['141'] })),
+      L.workshopCar('141'),
+      L.supplyContracts('supplyContracts.open'),
+      L.supplyContracts('supplyContracts.red', 'red'),
       L.vehicleLicencesExpired(),
       L.vehicleLicencesExpiring(30),
       L.vehicleLicencesSoon(30),
@@ -160,7 +181,9 @@ const everyLink = (): DashLink[] => {
       P.vehicle('v1', 'km.vehicle'),
       P.visits(),
       P.visits('visits.closed', { state: 'closed' }),
-      P.visits('visits.workType', { workTypes: ['w1'] }),
+      P.exits('exits.byWorkType', { workTypes: ['w1'] }),
+      P.exits('exits.byWorkshop', { workshops: ['s1'] }),
+      P.exits('exits.topVehicle', { vehicleCodes: ['207'] }),
       P.accidents(),
       P.accidents('accidents.open', 'open'),
       P.accidentDay('154', '2026-10-05'),
@@ -447,6 +470,96 @@ describe('the links of «نظرة عامة» and «الحركة اليوم»', (
     expect(parse(P.exits()).params.has('to')).toBe(false);
   });
 
+  it('counts every period figure of «الصيانة والورش» by exit day: a bar adds its catalog id, a car replaces the codes', () => {
+    const P = periodLinks({
+      range: RANGE,
+      vehicleScope: {
+        ...NO_SET,
+        typeIds: ['t1'],
+        operationIds: ['o1'],
+        vehicleCodes: ['133', '141'],
+        branchId: 'b1',
+        scopeBranches: [B1_NAMED],
+      },
+    });
+    const head = `/fleet/maintenance?outFrom=${RANGE.from}&outTo=${RANGE.to}&type=t1&operation=o1&branch=b1`;
+    expect(P.exits()).toEqual({ to: `${head}&vehicleCodes=133,141`, metric: 'exits.count' });
+    expect(P.exits('exits.byWorkType', { workTypes: ['w1'] })).toEqual({
+      to: `${head}&vehicleCodes=133,141&workTypes=w1`,
+      metric: 'exits.byWorkType',
+    });
+    expect(P.exits('exits.byWorkshop', { workshops: ['s1'] })).toEqual({
+      to: `${head}&vehicleCodes=133,141&workshops=s1`,
+      metric: 'exits.byWorkshop',
+    });
+    expect(P.exits('exits.topVehicle', { vehicleCodes: ['207'] })).toEqual({
+      to: `${head}&vehicleCodes=207`,
+      metric: 'exits.topVehicle',
+    });
+    for (const link of [P.exits(), P.exits('exits.byWorkType', { workTypes: ['w1'] })]) {
+      expect(parse(link).params.has('from')).toBe(false);
+      expect(parse(link).params.has('to')).toBe(false);
+    }
+    // «أرقام الفترة» keeps its check-in days, and its state alone.
+    expect(P.visits('visits.open', { state: 'open' }).to).toBe(
+      `/fleet/maintenance?from=${RANGE.from}&to=${RANGE.to}&type=t1&operation=o1&branch=b1&vehicleCodes=133,141&state=open`,
+    );
+  });
+
+  it('opens a «الآن» row of «الصيانة والورش» on its own car: the alarms board, the open visit', () => {
+    expect(NOW.alarmRow('red', '247')).toEqual({
+      to: '/fleet/maintenance-alarms?level=red&vehicleCodes=247',
+      metric: 'maintenanceAlarm.row',
+    });
+    expect(NOW.workshopCar('247')).toEqual({
+      to: '/fleet/maintenance?state=open&vehicleCodes=247',
+      metric: 'workshop.longest',
+    });
+    expect(NOW_BRANCH.workshopCar('247').to).toBe(
+      '/fleet/maintenance?state=open&vehicleCodes=247&branch=b1',
+    );
+    expect(NOW_MINE.workshopCar('247').to).toBe(
+      '/fleet/maintenance?state=open&vehicleCodes=247&branch=b1,b2',
+    );
+    // The alarms board has no branch filter: a row names its car, whatever the scope.
+    expect(NOW_BRANCH.alarmRow('yellow', '305').to).toBe(
+      '/fleet/maintenance-alarms?level=yellow&vehicleCodes=305',
+    );
+  });
+
+  it('opens «كل إنذارات الصيانة» on both levels — under a branch, on the branch’s cars by code', () => {
+    expect(NOW.alarmsAll(ALARM(2, 6, null))).toEqual({
+      to: '/fleet/maintenance-alarms?level=red,yellow',
+      metric: 'maintenanceAlarm.all',
+    });
+    expect(NOW_BRANCH.alarmsAll(ALARM(1, 2, { red: ['133'], yellow: ['141', '207'] }))).toEqual({
+      to: '/fleet/maintenance-alarms?level=red,yellow&vehicleCodes=133,141,207',
+      metric: 'maintenanceAlarm.all',
+    });
+    // A level with no car names no codes, and needs none.
+    expect(NOW_BRANCH.alarmsAll(ALARM(0, 1, { red: [], yellow: ['141'] }))?.to).toBe(
+      '/fleet/maintenance-alarms?level=red,yellow&vehicleCodes=141',
+    );
+  });
+
+  it('opens the supply contracts dated in today’s year — with one alarm level for red / yellow', () => {
+    expect(NOW.supplyContracts('supplyContracts.received')).toEqual({
+      to: '/fleet/vehicle-contracts?from=2026-01-01&to=2026-12-31',
+      metric: 'supplyContracts.received',
+    });
+    expect(NOW.supplyContracts('supplyContracts.red', 'red').to).toBe(
+      '/fleet/vehicle-contracts?from=2026-01-01&to=2026-12-31&alarm=red',
+    );
+    // Contracts carry no branch: the company's, whatever the scope.
+    expect(NOW_BRANCH.supplyContracts('supplyContracts.yellow', 'yellow').to).toBe(
+      '/fleet/vehicle-contracts?from=2026-01-01&to=2026-12-31&alarm=yellow',
+    );
+    const newYear = nowLinks({ today: '2027-01-01', branchId: null, scopeBranches: null });
+    expect(newYear.supplyContracts('supplyContracts.open').to).toBe(
+      '/fleet/vehicle-contracts?from=2027-01-01&to=2027-12-31',
+    );
+  });
+
   it('opens «مصروف الوقود» on the fuel receipts of the range', () => {
     const P = periodLinks({ range: RANGE, vehicleScope: NO_SET });
     expect(P.opexFuel()).toEqual({
@@ -519,6 +632,21 @@ describe('a figure with no exact list has no link', () => {
     expect(NOW.alarm('red', [])).toBeNull();
     expect(NOW.alarm('red', codes(LINK_CODES_CAP + 1))).toBeNull();
     expect(NOW.alarm('red', codes(LINK_CODES_CAP))).not.toBeNull();
+  });
+
+  it('gives «كل إنذارات الصيانة» no link under a branch over the cap — a level’s list or the two together', () => {
+    // A level with cars whose list came back `[]` is over the screens' cap.
+    expect(NOW_BRANCH.alarmsAll(ALARM(60, 1, { red: [], yellow: ['141'] }))).toBeNull();
+    expect(NOW_BRANCH.alarmsAll(ALARM(1, 60, { red: ['133'], yellow: [] }))).toBeNull();
+    // Each level fits, the two together do not.
+    expect(
+      NOW_BRANCH.alarmsAll(ALARM(30, 30, { red: codes(30), yellow: codes(60).slice(30) })),
+    ).toBeNull();
+    expect(
+      NOW_BRANCH.alarmsAll(ALARM(25, 25, { red: codes(25), yellow: codes(50).slice(25) })),
+    ).not.toBeNull();
+    // No car in alarm under the branch: nothing to open.
+    expect(NOW_BRANCH.alarmsAll(ALARM(0, 0, { red: [], yellow: [] }))).toBeNull();
   });
 
   it('opens the stale cars’ whole history, and gives no link past 50 of them (T1.12)', () => {

@@ -4,10 +4,13 @@
 // and the recent workshop records (T4.8) are calls into the maintenance service with the query the
 // linked screen sends. This file proves the promise on real rows written through the real endpoints:
 //
-//   1. `visitBreakdown` over [from, to] counts exactly the visits `/fleet/maintenance?from&to` lists,
-//      with and without the vehicle set — «النوع / التشغيل / الفرع» and codes — on a fixture WITH A
-//      DELETED CAR, and every breakdown links to a list that shows its count;
-//   2. `openNow` is `/fleet/maintenance?state=open` (`open=true`) with the oldest stay in days;
+//   1. `visitStates` over [from, to] («أرقام الفترة», check-in day) counts exactly the visits
+//      `/fleet/maintenance?from&to` lists, and their state now, with and without the vehicle set —
+//      «النوع / التشغيل / الفرع» and codes — on a fixture WITH A DELETED CAR;
+//   1b. `exitBreakdown` over [outFrom, outTo] («الصيانة والورش», EXIT day) is the list over the
+//      exit day: the count, every bar and every ranked car link to a list that shows its figure,
+//      and the mean stay is the mean of the listed rows' whole days;
+//   2. `openNow` is `/fleet/maintenance?state=open` (`open=true`) with the longest stays in days;
 //   3. `recentWritten` keeps the window (a row the day before it is out) and the write order;
 //   4. the period read is planned on an index, never a collection scan;
 //   5. every row — and every write's answer — carries its CAR's «الفرع», the branch `?branchIds`
@@ -17,6 +20,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
+  FLEET_DASHBOARD_WORKSHOP_ROWS,
   SettingKeys,
   addDaysYmd,
   platformPermissions,
@@ -355,7 +359,7 @@ afterAll(async () => {
   if (replSet !== null) await replSet.stop();
 });
 
-// ── 1 · visitBreakdown = the list ─────────────────────────────────────────────────────────────
+// ── 1 · visitStates = the list over the CHECK-IN day ─────────────────────────────────────────
 
 const OCTOBER = { from: '2026-10-01', to: '2026-10-31' };
 /** The service's query, from the same plain object the page puts in its URL. */
@@ -372,88 +376,51 @@ interface Case {
   name: string;
   query: () => Record<string, unknown>;
   count: number;
-  unregistered: number | null;
 }
 const CASES: Case[] = [
-  { name: 'the period alone (company view)', query: () => OCTOBER, count: 7, unregistered: 1 },
+  { name: 'the period alone (company view)', query: () => OCTOBER, count: 7 },
   {
     name: 'operation O1 ∩ branch B1 — the deleted car’s visit included',
     query: () => ({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }),
     count: 4,
-    unregistered: null,
   },
   {
     name: 'type T1 — the deleted car is a T1',
     query: () => ({ ...OCTOBER, typeIds: [T1] }),
     count: 4,
-    unregistered: null,
   },
   {
     name: 'type T2 ∩ branch B2 — nobody visited in October',
     query: () => ({ ...OCTOBER, typeIds: [T2], branchIds: [B2] }),
     count: 0,
-    unregistered: null,
   },
   {
     name: 'codes — the old book’s code matches its own visit',
     query: () => ({ ...OCTOBER, vehicleCodes: [c1.code, 'B-90'] }),
     count: 3,
-    unregistered: null,
   },
 ];
 
-describe('visitBreakdown — every figure is the list it links to (R-18, D9)', () => {
+describe('visitStates — «أرقام الفترة»: every figure is the list it links to (R-18, D9)', () => {
   for (const c of CASES) {
     it(c.name, async () => {
       const q = c.query();
-      const out = await fleetMaintenanceService.visitBreakdown(asQuery(q));
+      const out = await fleetMaintenanceService.visitStates(asQuery(q));
       expect(out.count).toBe(c.count);
       expect(out.count).toBe(await total(q));
       // «خرجت X · ما زالت في الورشة Y (حتى الآن)» — the state now, each its own list.
       expect(out.open).toBe(await total({ ...q, open: true }));
       expect(out.closed).toBe(await total({ ...q, open: false }));
       expect(out.open + out.closed).toBe(out.count);
-      // Every facet partitions the same rows.
-      const sum = (rows: { count: number }[]) => rows.reduce((s, row) => s + row.count, 0);
-      expect(sum(out.byWorkType)).toBe(out.count);
-      expect(sum(out.byWorkshop)).toBe(out.count);
-      for (const row of out.byWorkType) {
-        expect(row.count, row.id).toBe(await total({ ...q, workTypeIds: [row.id] }));
-      }
-      for (const row of out.byWorkshop) {
-        expect(row.count, row.id).toBe(await total({ ...q, workshopIds: [row.id] }));
-      }
-      expect(out.unregistered).toBe(c.unregistered);
     });
   }
 
-  it('the company view, figure by figure', async () => {
-    const out = await fleetMaintenanceService.visitBreakdown(asQuery(OCTOBER));
-    expect(out).toMatchObject({ count: 7, open: 3, closed: 4, unregistered: 1 });
-    expect(out.byWorkType.map((row) => [row.id, row.count])).toEqual([
-      [WT1, 4],
-      [WT2, 3],
-    ]);
-    expect(out.byWorkType[0]?.name?.ar).toBe('صيانة دورية');
-    expect(out.byWorkshop.map((row) => [row.id, row.count])).toEqual([
-      [WS1, 4],
-      [WS2, 3],
-    ]);
-    // Visits desc, then the latest check-in desc: c1 twice, then by the day each last came in.
-    // The deleted car (in 8 Oct) is not ranked — the register cannot open it by its code — though
-    // its visit is in the count and in both bars above.
-    expect(out.topVehicles).toEqual([
-      { vehicleId: c1.id, code: c1.code, visits: 2, lastInDate: '2026-10-20' },
-      { vehicleId: null, code: 'B-90', visits: 1, lastInDate: '2026-10-18' },
-      { vehicleId: c3.id, code: c3.code, visits: 1, lastInDate: '2026-10-15' },
-      { vehicleId: c2.id, code: c2.code, visits: 1, lastInDate: '2026-10-10' },
-      { vehicleId: c5.id, code: c5.code, visits: 1, lastInDate: '2026-10-01' },
-    ]);
-    expect(await total({ ...OCTOBER, vehicleCodes: [gone.code] })).toBe(0);
-    // Each ranked car links to its own list.
-    for (const row of out.topVehicles) {
-      expect(row.visits, row.code).toBe(await total({ ...OCTOBER, vehicleCodes: [row.code] }));
-    }
+  it('the company view: the visits that CHECKED IN in October, and their state now', async () => {
+    expect(await fleetMaintenanceService.visitStates(asQuery(OCTOBER))).toEqual({
+      count: 7,
+      closed: 4,
+      open: 3,
+    });
   });
 
   it('the dashboard’s set (vehicleSet) gives the same count as the screen’s filter', async () => {
@@ -467,16 +434,16 @@ describe('visitBreakdown — every figure is the list it links to (R-18, D9)', (
       vehicleCodes: [],
       branchId: B1,
     });
-    const out = await fleetMaintenanceService.visitBreakdown(
+    const out = await fleetMaintenanceService.visitStates(
       asQuery({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }),
     );
     expect(out.count).toBe(await total({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }));
   });
 });
 
-// ── 1b · exitCount = the list over the EXIT day ───────────────────────────────────────────────
+// ── 1b · exitBreakdown = the list over the EXIT day ───────────────────────────────────────────
 
-describe('exitCount — the overview’s «زيارات الصيانة» by EXIT day is the list’s outFrom/outTo (D6)', () => {
+describe('exitBreakdown — «الصيانة والورش» by EXIT day is the list’s outFrom/outTo (D6)', () => {
   const OCTOBER_OUT = { outFrom: '2026-10-01', outTo: '2026-10-31' };
   const asExitQuery = (q: Record<string, unknown>): MaintenanceFilterQuery => {
     const { outFrom, outTo, ...rest } = q;
@@ -486,57 +453,179 @@ describe('exitCount — the overview’s «زيارات الصيانة» by EXIT
       ...(outTo === undefined ? {} : { outTo: new Date(`${String(outTo)}T00:00:00.000Z`) }),
     };
   };
-  const cases: { name: string; query: () => Record<string, unknown> }[] = [
-    { name: 'the exit days alone (company view)', query: () => OCTOBER_OUT },
-    { name: 'one branch', query: () => ({ ...OCTOBER_OUT, branchIds: [B1] }) },
-    { name: '«كل فروعي» — two branches', query: () => ({ ...OCTOBER_OUT, branchIds: [B1, B2] }) },
+  /** The listed rows themselves — the list's own page, sent the way the page sends it. */
+  const listed = async (query: Record<string, unknown>): Promise<FleetMaintenanceVisitDto[]> =>
+    ok<FleetMaintenanceVisitDto[]>(
+      await get('/fleet/maintenance', { ...wire(query), pageSize: 100 }),
+    );
+  const stayDays = (row: FleetMaintenanceVisitDto): number =>
+    Math.round(
+      (Date.parse(`${(row.outDate ?? row.inDate).slice(0, 10)}T00:00:00Z`) -
+        Date.parse(`${row.inDate.slice(0, 10)}T00:00:00Z`)) /
+        86_400_000,
+    );
+  const cases: { name: string; query: () => Record<string, unknown>; narrowed: boolean }[] = [
+    { name: 'the exit days alone (company view)', query: () => OCTOBER_OUT, narrowed: false },
+    { name: 'one branch', query: () => ({ ...OCTOBER_OUT, branchIds: [B1] }), narrowed: true },
+    {
+      name: '«كل فروعي» — two branches',
+      query: () => ({ ...OCTOBER_OUT, branchIds: [B1, B2] }),
+      narrowed: true,
+    },
     {
       name: 'operation ∩ branch',
       query: () => ({ ...OCTOBER_OUT, operationIds: [O1], branchIds: [B1] }),
+      narrowed: true,
     },
-    { name: 'codes', query: () => ({ ...OCTOBER_OUT, vehicleCodes: [c1.code, 'B-90'] }) },
+    {
+      name: 'codes',
+      query: () => ({ ...OCTOBER_OUT, vehicleCodes: [c1.code, 'B-90'] }),
+      narrowed: true,
+    },
   ];
   for (const c of cases) {
     it(c.name, async () => {
       const q = c.query();
-      expect(await fleetMaintenanceService.exitCount(asExitQuery(q))).toBe(await total(q));
+      const out = await fleetMaintenanceService.exitBreakdown(asExitQuery(q));
+      expect(out.count).toBe(await total(q));
+      const sum = (rows: { count: number }[]) => rows.reduce((s, row) => s + row.count, 0);
+      expect(sum(out.byWorkType)).toBe(out.count);
+      expect(sum(out.byWorkshop)).toBe(out.count);
+      for (const row of out.byWorkType) {
+        expect(row.count, row.id).toBe(await total({ ...q, workTypeIds: [row.id] }));
+      }
+      for (const row of out.byWorkshop) {
+        expect(row.count, row.id).toBe(await total({ ...q, workshopIds: [row.id] }));
+      }
+      // A ranked car's codes replace the set's: the list of that car's exits.
+      for (const row of out.topVehicles) {
+        expect(row.visits, row.code).toBe(await total({ ...q, vehicleCodes: [row.code] }));
+      }
+      const rows = await listed(q);
+      expect(rows).toHaveLength(out.count);
+      expect(out.avgStayDays).toBe(
+        rows.length === 0
+          ? null
+          : Math.round((rows.reduce((a, row) => a + stayDays(row), 0) / rows.length) * 10) / 10,
+      );
+      if (c.narrowed) expect(out.unregistered).toBeNull();
     });
   }
 
+  it('the company view, figure by figure', async () => {
+    const out = await fleetMaintenanceService.exitBreakdown(asExitQuery(OCTOBER_OUT));
+    // Left in October: c4 (in 25 Sep), c3 (in 28 Sep), c1, the deleted car, c2 and c3 again (the
+    // same day: 0). Stays 7 + 6 + 1 + 1 + 2 + 0 = 17 over 6 → 2.8. c5 and c1's second are open.
+    expect(out).toMatchObject({ count: 6, avgStayDays: 2.8, unregistered: 0 });
+    expect(out.byWorkType.map((row) => [row.id, row.count])).toEqual([
+      [WT1, 4],
+      [WT2, 2],
+    ]);
+    expect(out.byWorkType[0]?.name?.ar).toBe('صيانة دورية');
+    expect(out.byWorkshop.map((row) => [row.id, row.count]).sort()).toEqual(
+      [
+        [WS1, 3],
+        [WS2, 3],
+      ].sort(),
+    );
+    // Exits desc, then the latest check-in desc. The deleted car (in 8 Oct) is not ranked — the
+    // register cannot open it by its code — though its exit is in the count, the bars and the mean.
+    expect(out.topVehicles.map((row) => [row.code, row.visits, row.lastInDate])).toEqual([
+      [c3.code, 2, '2026-10-15'],
+      [c2.code, 1, '2026-10-10'],
+      [c1.code, 1, '2026-10-05'],
+      [c4.code, 1, '2026-09-25'],
+    ]);
+    expect(out.topVehicles[0]).toMatchObject({
+      vehicleId: c3.id,
+      typeName: { ar: 'ميكروباص الورشة' },
+      lastWorkType: { ar: 'إصلاح عطل' },
+    });
+    expect(out.topVehicles[1]).toMatchObject({
+      typeName: { ar: 'مصفحة الورشة' },
+      lastWorkType: { ar: 'صيانة دورية' },
+    });
+    expect(await total({ ...OCTOBER_OUT, vehicleCodes: [gone.code] })).toBe(0);
+  });
+
   it('two branches are the sum of each (a car is in one branch)', async () => {
-    const one = await fleetMaintenanceService.exitCount(
+    const one = await fleetMaintenanceService.exitBreakdown(
       asExitQuery({ ...OCTOBER_OUT, branchIds: [B1] }),
     );
-    const two = await fleetMaintenanceService.exitCount(
+    const two = await fleetMaintenanceService.exitBreakdown(
       asExitQuery({ ...OCTOBER_OUT, branchIds: [B2] }),
     );
-    const both = await fleetMaintenanceService.exitCount(
+    const both = await fleetMaintenanceService.exitBreakdown(
       asExitQuery({ ...OCTOBER_OUT, branchIds: [B1, B2] }),
     );
-    expect(both).toBe(one + two);
+    expect(both.count).toBe(one.count + two.count);
   });
 
   it('an open visit has not left: it is never an exit, whatever its check-in day', async () => {
     expect(await total({ open: true })).toBeGreaterThan(0);
-    const exits = await fleetMaintenanceService.exitCount(
+    const exits = await fleetMaintenanceService.exitBreakdown(
       asExitQuery({ outFrom: '2000-01-01', outTo: '2100-12-31' }),
     );
-    expect(exits).toBe((await total({})) - (await total({ open: true })));
+    expect(exits.count).toBe((await total({})) - (await total({ open: true })));
+  });
+
+  it('no exit in the range: zeros and no mean', async () => {
+    expect(
+      await fleetMaintenanceService.exitBreakdown(
+        asExitQuery({ outFrom: '2026-12-01', outTo: '2026-12-31' }),
+      ),
+    ).toEqual({
+      count: 0,
+      avgStayDays: null,
+      byWorkType: [],
+      byWorkshop: [],
+      topVehicles: [],
+      unregistered: 0,
+    });
   });
 });
 
 // ── 2 · openNow = /fleet/maintenance?state=open ───────────────────────────────────────────────
 
 describe('openNow — «في الورشة الآن» (R-09)', () => {
-  it('the company: every open visit of any status, the oldest stay in Cairo days', async () => {
+  it('the company: every open visit of any status, the longest stays in Cairo days', async () => {
     const out = await fleetMaintenanceService.openNow({ today: TODAY, filter: {} });
-    expect(out).toEqual({
+    expect(out).toMatchObject({
       open: 3,
       openActive: 1, // c1
       openOutOfService: 1, // c5 — the book's row is in neither part
       oldest: { vehicleId: c5.id, code: c5.code, inDate: '2026-10-01', days: 31 },
     });
     expect(out.open).toBe(await total({ open: true }));
+    // «أطول بقاء في الورشة الآن»: the oldest check-in first — the out-of-service car and the
+    // book's row are listed too, as the list shows them.
+    expect(out.longest.map((row) => [row.code, row.inDate, row.days])).toEqual([
+      [c5.code, '2026-10-01', 31],
+      ['B-90', '2026-10-18', 14],
+      [c1.code, '2026-10-20', 12],
+    ]);
+    expect(out.longest[0]).toMatchObject({
+      vehicleId: c5.id,
+      typeName: { ar: 'ميكروباص الورشة' },
+      workshop: { ar: 'ورشة التوكيل' },
+      workType: { ar: 'إصلاح عطل' },
+    });
+    expect(out.longest[1]).toMatchObject({
+      vehicleId: null,
+      typeName: null,
+      workshop: { ar: 'ورشة الشركة' },
+      workType: { ar: 'صيانة دورية' },
+    });
+    // The list's own order by check-in day gives the same visits.
+    const open = ok<FleetMaintenanceVisitDto[]>(
+      await get('/fleet/maintenance', { open: 'true', pageSize: 100 }),
+    );
+    expect(out.longest.map((row) => row.visitId)).toEqual(
+      [...open]
+        .sort((a, b) => a.inDate.localeCompare(b.inDate) || a.id.localeCompare(b.id))
+        .slice(0, FLEET_DASHBOARD_WORKSHOP_ROWS)
+        .map((row) => row.id),
+    );
   });
 
   const FILTERS: [string, () => VehicleFilter][] = [
@@ -550,6 +639,7 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       const f = filter();
       const out = await fleetMaintenanceService.openNow({ today: TODAY, filter: f });
       expect(out.open).toBe(await total({ ...f, open: true }));
+      expect(out.longest.length).toBe(Math.min(out.open, FLEET_DASHBOARD_WORKSHOP_ROWS));
     });
   }
 
@@ -564,6 +654,7 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       inDate: '2026-10-01',
       days: 10,
     });
+    expect(out.longest[0]?.days).toBe(10);
   });
 });
 
@@ -635,15 +726,32 @@ describe('recentWritten — the recent workshop records (R-12)', () => {
 // ── 4 · the plan ──────────────────────────────────────────────────────────────────────────────
 
 describe('explain() — the period read is an index scan', () => {
-  it('visitBreakdown over [from, to], with and without the set', async () => {
+  const planOf = async (read: () => Promise<unknown>): Promise<string> => {
+    const spy = vi.spyOn(FleetMaintenanceVisitModel, 'aggregate');
+    await read();
+    const pipeline = spy.mock.calls[0]?.[0] ?? [];
+    spy.mockRestore();
+    return JSON.stringify(
+      await FleetMaintenanceVisitModel.aggregate(pipeline).explain('queryPlanner'),
+    );
+  };
+
+  it('visitStates over [from, to], with and without the set', async () => {
     for (const q of [OCTOBER, { ...OCTOBER, typeIds: [T1], branchIds: [B1] }]) {
-      const spy = vi.spyOn(FleetMaintenanceVisitModel, 'aggregate');
-      await fleetMaintenanceService.visitBreakdown(asQuery(q));
-      const pipeline = spy.mock.calls[0]?.[0] ?? [];
-      spy.mockRestore();
-      const plan = JSON.stringify(
-        await FleetMaintenanceVisitModel.aggregate(pipeline).explain('queryPlanner'),
-      );
+      const plan = await planOf(() => fleetMaintenanceService.visitStates(asQuery(q)));
+      expect(plan).toContain('IXSCAN');
+      expect(plan).not.toContain('COLLSCAN');
+    }
+  });
+
+  it('exitBreakdown over [outFrom, outTo] (`ix_out_date`), with and without the set', async () => {
+    const out = (q: Record<string, unknown>): MaintenanceFilterQuery => ({
+      ...asQuery(q),
+      outFrom: new Date('2026-10-01T00:00:00.000Z'),
+      outTo: new Date('2026-10-31T00:00:00.000Z'),
+    });
+    for (const q of [{}, { typeIds: [T1], branchIds: [B1] }]) {
+      const plan = await planOf(() => fleetMaintenanceService.exitBreakdown(out(q)));
       expect(plan).toContain('IXSCAN');
       expect(plan).not.toContain('COLLSCAN');
     }

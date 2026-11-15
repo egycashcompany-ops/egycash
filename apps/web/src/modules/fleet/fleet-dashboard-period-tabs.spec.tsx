@@ -1,8 +1,10 @@
-// The five «حسب الفلاتر» tabs on the real page (plan §8.6–§8.10, unified.md W-PERIOD): what each
-// tab shows from R2's answer, where every figure leads, the R-15 drawing in the markup, the one
-// filter state shared by the five, and what the period tabs must never draw.
+// The four «حسب الفلاتر» tabs on the real page (plan §8.6–§8.8, §8.10, unified.md W-PERIOD): what
+// each tab shows from R2's answer, where every figure leads, the R-15 drawing in the markup, the one
+// filter state shared by the four and by the period band of «الصيانة والورش» (which draws the same
+// bar inside its body — its own figures are pinned in fleet-dashboard-tab-maintenance.spec.tsx), and
+// what the period tabs must never draw.
 import { describe, expect, it } from 'vitest';
-import { type FleetDashboardPeriodDto } from '@ecms/contracts';
+import { FLEET_DASHBOARD_PERIOD_TABS, type FleetDashboardPeriodDto } from '@ecms/contracts';
 import { periodFiltersPatch, readPeriodFilters } from './lib/fleet-dashboard-url';
 import { CLEARED, isCleared, withPreset } from './components/fleet-dashboard/period-filter-bar';
 import { ALL_KEYS, B1, T1, TODAY, ar } from './fleet-dashboard-fixtures';
@@ -16,8 +18,6 @@ import {
   SPAN_DAY,
   STALE_DAY,
   UNREGISTERED_KM,
-  WS_COMPANY,
-  WT_SERVICE,
   renderPeriod,
   renderPeriodTab,
 } from './fleet-dashboard-period-fixtures';
@@ -395,34 +395,6 @@ describe('tab 8 «ترتيب السيارات»', () => {
   });
 });
 
-// ── Tab 9 ─────────────────────────────────────────────────────────────────────────────────────
-
-describe('tab 9 «الصيانة»', () => {
-  const body = tabBody(renderPeriod({ url: URL_30('maintenance') }), 'maintenance');
-
-  it('opens each work type, workshop and car on the maintenance screen over the period', () => {
-    expect(hrefOf(body, 'visits.byWorkType')).toBe(
-      `/fleet/maintenance?${DATES}&workTypes=${WT_SERVICE}`,
-    );
-    expect(hrefs(body, 'visits.byWorkType')).toHaveLength(5);
-    expect(hrefOf(body, 'visits.byWorkshop')).toBe(
-      `/fleet/maintenance?${DATES}&workshops=${WS_COMPANY}`,
-    );
-    expect(hrefOf(body, 'visits.topVehicle')).toBe(`/fleet/maintenance?${DATES}&vehicleCodes=182`);
-    expect(text(body)).toContain(ar('fleet.dash.maintenance.unnamed'));
-    expect(text(body)).toContain(ar('fleet.dash.maintenance.lastToday'));
-  });
-
-  it('carries no money anywhere, and says where the cost is', () => {
-    expect(text(body)).not.toContain('ج.م.');
-    expect(body).toContain('data-no-money="true"');
-    expect(text(body)).toContain(ar('fleet.dash.maintenance.noMoney'));
-    // Its visits are by check-in day, and it says so (the overview's month visits are by exit day).
-    expect(body).toContain('data-visits-basis="checkIn"');
-    expect(text(body)).toContain(ar('fleet.dash.maintenance.basis'));
-  });
-});
-
 // ── Tab 10 ────────────────────────────────────────────────────────────────────────────────────
 
 describe('tab 10 «الحوادث»', () => {
@@ -479,11 +451,10 @@ describe('tab 10 «الحوادث»', () => {
 
 // ── The filter bar and the one filter state ───────────────────────────────────────────────────
 
-describe('the filter bar — one state for the five tabs', () => {
-  const tabs = ['period', 'km', 'ranking', 'maintenance', 'accidents'] as const;
-
+describe('the filter bar — one state for the four tabs and «الصيانة والورش»', () => {
   it('stands at the top of every period tab, with the same filters and the echoed range', () => {
-    for (const tab of tabs) {
+    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period', 'km', 'ranking', 'accidents']);
+    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
       const html = renderPeriod({ url: URL_30(tab) });
       expect(html, tab).toContain('data-period-filters="true"');
       expect(html, tab).toMatch(/<option value="last30" selected="">/u);
@@ -494,6 +465,23 @@ describe('the filter bar — one state for the five tabs', () => {
         '2026/10/03',
       );
     }
+  });
+
+  it('is the same bar inside «الصيانة والورش», between its «الآن» band and its period figures', () => {
+    const html = renderPeriod({ url: URL_30('maintenance') });
+    const body = tabBody(html, 'maintenance');
+    expect(html).not.toContain('data-period-tab=');
+    expect(body.match(/data-period-filters="true"/gu)).toHaveLength(1);
+    expect(body).toMatch(/<option value="last30" selected="">/u);
+    const range = text(slice(body, 'data-period-chip', 'range', 'data-period-chip'));
+    expect(range).toContain('2026/10/03');
+    expect(range).toContain('2026/11/01');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(body.indexOf('data-maint-band="now"')).toBeLessThan(bar);
+    expect(body.indexOf('data-maint-band="period"')).toBeLessThan(bar);
+    expect(bar).toBeLessThan(body.indexOf('data-maint-kpi="exits"'));
+    // Its own head names the range as the server echoed it.
+    expect(text(slice(body, 'data-dash-range', 'last30', '</span>'))).toContain('2026/10/03');
   });
 
   it('writes a new state without touching the tab', () => {
@@ -590,15 +578,15 @@ describe('the period read', () => {
   });
 
   it('keeps the shell’s hand-over: the tab’s heading and its range', () => {
-    const html = renderPeriodTab({ tab: 'maintenance', data: PERIOD_FULL });
-    expect(html).toContain('data-period-tab="maintenance"');
-    expect(html).toContain(ar('fleet.dash.shell.tab.maintenance'));
+    const html = renderPeriodTab({ tab: 'km', data: PERIOD_FULL });
+    expect(html).toContain('data-period-tab="km"');
+    expect(html).toContain(ar('fleet.dash.shell.tab.km'));
     expect(html).toContain('data-period-range="true"');
   });
 
   it('draws no Phase-2 piece and names every figure after a period section', () => {
     const sections = new Set(['km', 'visits', 'accidents', 'accidentList', 'opex', 'dealership']);
-    for (const tab of ['period', 'km', 'ranking', 'maintenance', 'accidents']) {
+    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
       const html = renderPeriod({ url: URL_30(tab) });
       const body = tabBody(html, tab);
       for (const word of ['ترتيب السائقين', 'تكلفة التشغيل', 'عقود التوريد', 'تدقيق الإيصالات']) {

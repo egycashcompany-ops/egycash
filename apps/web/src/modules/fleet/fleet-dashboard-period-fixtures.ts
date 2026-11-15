@@ -1,4 +1,5 @@
-// «لوحة تحكم الحركة» — the fixtures of the five period tabs' specs: one R2 answer with every section
+// «لوحة تحكم الحركة» — the fixtures of the period tabs' specs (the four old ones and the period band of
+// «الصيانة والورش»): one R2 answer with every section
 // over «آخر 30 يومًا» (2026-10-03 … today 2026-11-01, by the day), the same over «هذه السنة» (by the
 // month), and the renderers that mount the real page (or one period tab alone) in the node test
 // environment over seeded caches — no DOM, no fetch.
@@ -6,7 +7,8 @@
 // The figures agree with each other the way the server's do (R-15, R-16, R-18, R-23):
 //   km.total = Σ confirmedKm + Σ spanKm = Σ byBranch + unregistered;
 //   the average = the closed km of 10/03 … 10/30 ÷ 28 closed calendar days;
-//   Σ byWorkType = Σ byWorkshop = visits.count = closed + open;
+//   visits.count = closed + open (CHECK-IN day, «أرقام الفترة»);
+//   Σ exits.byWorkType = Σ exits.byWorkshop = exits.count (EXIT day, «الصيانة والورش»);
 //   opex.total = card + custody (and the dealership figure is never added to it).
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -23,9 +25,6 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
-import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
-import { periodLiveness } from './lib/fleet-dashboard-refresh';
-import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
 import { PeriodTab, type PeriodTabProps } from './components/fleet-dashboard/period-tabs';
 import { CLEARED } from './components/fleet-dashboard/period-filter-bar';
 import {
@@ -150,40 +149,61 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       { vehicleId: 'v260', code: '260', reason: 'notActive' },
     ],
   },
-  visits: {
-    count: 27,
-    closed: 21,
-    open: 6,
+  // By CHECK-IN day: the 27 visits that entered in the 30 days, and their state now.
+  visits: { count: 27, closed: 21, open: 6 },
+  // By EXIT day: the 18 visits that left in the 30 days; two of them old-book (counted, not ranked).
+  exits: {
+    count: 18,
+    avgStayDays: 2.4,
     byWorkType: [
-      { id: WT_SERVICE, name: { ar: 'صيانة دورية', en: 'Service' }, count: 11 },
-      { id: WT_BRAKES, name: { ar: 'فرامل', en: 'Brakes' }, count: 5 },
-      { id: '650000000000000000000503', name: { ar: 'كهرباء', en: 'Electrics' }, count: 4 },
-      { id: '650000000000000000000504', name: { ar: 'كاوتش', en: 'Tyres' }, count: 4 },
-      { id: '650000000000000000000505', name: null, count: 3 },
+      { id: WT_SERVICE, name: { ar: 'صيانة دورية', en: 'Service' }, count: 7 },
+      { id: WT_BRAKES, name: { ar: 'فرامل', en: 'Brakes' }, count: 4 },
+      { id: '650000000000000000000503', name: { ar: 'كهرباء', en: 'Electrics' }, count: 3 },
+      { id: '650000000000000000000504', name: { ar: 'كاوتش', en: 'Tyres' }, count: 2 },
+      { id: '650000000000000000000505', name: null, count: 2 },
     ],
     byWorkshop: [
-      { id: WS_COMPANY, name: { ar: 'ورشة الشركة — القاهرة', en: 'Company workshop' }, count: 12 },
-      { id: WS_TOYOTA, name: { ar: 'مركز خدمة تويوتا', en: 'Toyota service' }, count: 7 },
+      { id: WS_COMPANY, name: { ar: 'ورشة الشركة — القاهرة', en: 'Company workshop' }, count: 8 },
+      { id: WS_TOYOTA, name: { ar: 'مركز خدمة تويوتا', en: 'Toyota service' }, count: 5 },
       {
         id: '650000000000000000000603',
         name: { ar: 'ورشة النور للكهرباء', en: 'Al-Nour' },
-        count: 4,
+        count: 3,
       },
       {
         id: '650000000000000000000604',
         name: { ar: 'الحرمين للكاوتش', en: 'Al-Haramain' },
-        count: 4,
+        count: 2,
       },
     ],
     topVehicles: [
-      { vehicleId: 'v182', code: '182', visits: 3, lastInDate: TODAY },
-      { vehicleId: 'v295', code: '295', visits: 2, lastInDate: '2026-10-26' },
-      { vehicleId: 'v207', code: '207', visits: 2, lastInDate: '2026-10-19' },
-      { vehicleId: null, code: '150', visits: 1, lastInDate: '2026-10-26' },
+      {
+        vehicleId: 'v182',
+        code: '182',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        visits: 3,
+        lastInDate: '2026-10-28',
+        lastWorkType: { ar: 'صيانة دورية', en: 'Service' },
+      },
+      {
+        vehicleId: 'v295',
+        code: '295',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        visits: 2,
+        lastInDate: '2026-10-26',
+        lastWorkType: { ar: 'فرامل', en: 'Brakes' },
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        visits: 2,
+        lastInDate: '2026-10-19',
+        lastWorkType: null,
+      },
     ],
     unregistered: 2,
   },
-  exits: { count: 18 },
   accidents: { count: 4, open: 2, openRemaining: 9800, undated: 25 },
   accidentList: {
     rows: [
@@ -278,13 +298,8 @@ export const PERIOD_YEAR: FleetDashboardPeriodDto = {
 // ── Mounting ──────────────────────────────────────────────────────────────────────────────────
 
 /** The client the page reads: R1, custody, and `dto` under the key the URL's filters make. */
-export const periodClient = (url: string, dto: FleetDashboardPeriodDto | null): QueryClient => {
-  const qc = dashboardClient({ period: null });
-  const query = toPeriodQuery(readPeriodFilters(new URL(url, 'http://x').searchParams));
-  if (dto !== null)
-    qc.setQueryData(fleetDashboardKeys.period(periodLiveness(query, TODAY), query), dto);
-  return qc;
-};
+export const periodClient = (url: string, dto: FleetDashboardPeriodDto | null): QueryClient =>
+  dashboardClient({ period: null, ...(dto === null ? {} : { page: { url, dto } }) });
 
 /** The real page at `url`, with `dto` as R2's answer for that URL's filters. */
 export const renderPeriod = ({

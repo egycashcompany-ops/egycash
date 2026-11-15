@@ -9,7 +9,7 @@
 //
 // The invariants of unified.md §6.2 are asserted on the same fixture: ready = rows − inWorkshop −
 // licenceExpired; registry = available + absent + inactive + not employed + licence expired; km =
-// Σ buckets (confirmed + span) = Σ byBranch + unregistered; Σ byWorkType = Σ byWorkshop = visits.count;
+// Σ buckets (confirmed + span) = Σ byBranch + unregistered; Σ byWorkType = Σ byWorkshop = exits.count;
 // drivers' violations = attributed + unknown + unlinked; the licence buckets are disjoint; the
 // «الحركة اليوم» rows are the board's own ready-and-unmanned rows; and a reader reaching two branches
 // («كل فروعي») reads every figure its links reproduce with `branchIds=a,b`.
@@ -18,10 +18,13 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
+  FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_PERIOD_KEYS,
+  FLEET_DASHBOARD_WORKSHOP_ROWS,
   SettingKeys,
   calendarDayBounds,
+  compareFleetVehicleCodes,
   platformPermissions,
   type FleetCatalogItemDto,
   type FleetDashboardNowDto,
@@ -49,6 +52,7 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
 import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
+import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { nextNationalId } from './helpers/national-id';
 
 /** Cairo's 2026-11-01, 01:30 — the UTC date is still the 31st (R-01). */
@@ -119,6 +123,39 @@ const total = async (path: string, query: Record<string, unknown>, branch?: stri
 const first = (ymd: string) => calendarDayBounds(ymd, ymd).from.toISOString();
 const last = (ymd: string) => calendarDayBounds(ymd, ymd).before.toISOString();
 const csv = (ids: readonly string[]) => ids.join(',');
+/**
+ * «إنذارات الصيانة بالكيلومتر» as the alarms board would list it: its red and yellow rows with a
+ * figure, in the board's triage order (level, then the km left, then the code), the first eight.
+ */
+const alarmRowsOf = (board: readonly FleetMaintenanceAlarmDto[]) =>
+  board
+    .filter(
+      (row) =>
+        (row.level === 'red' || row.level === 'yellow') &&
+        row.remainingKm !== null &&
+        row.sinceServiceKm !== null,
+    )
+    .sort(
+      (a, b) =>
+        (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1) ||
+        (a.remainingKm ?? 0) - (b.remainingKm ?? 0) ||
+        compareFleetVehicleCodes(a.code, b.code),
+    )
+    .slice(0, FLEET_DASHBOARD_ALARM_ROWS)
+    .map((row) => ({
+      vehicleId: row.vehicleId,
+      code: row.code,
+      typeName: row.rule.vehicleType?.name ?? null,
+      level: row.level,
+      remainingKm: row.remainingKm,
+      sinceServiceKm: row.sinceServiceKm,
+      intervalKm: row.rule.intervalKm,
+      lastServiceAt: row.lastServiceAt === null ? null : row.lastServiceAt.slice(0, 10),
+      inWorkshop:
+        row.newerUncountedVisit?.why === 'open'
+          ? { workshop: row.newerUncountedVisit.workshop?.name ?? null }
+          : null,
+    }));
 
 // ── the world ─────────────────────────────────────────────────────────────────────────────────
 
@@ -768,6 +805,37 @@ describe('R1 parity — «الحركة اليوم» (the old «الحركة ال
       days: 7,
     });
   });
+
+  it('«أطول بقاء في الورشة الآن» = /fleet/maintenance?state=open by check-in day, the first five', async () => {
+    const open = ok<FleetMaintenanceVisitDto[]>(
+      await get('/fleet/maintenance', { open: true, pageSize: 100 }),
+    );
+    const byStay = [...open].sort(
+      (a, b) => a.inDate.localeCompare(b.inDate) || a.id.localeCompare(b.id),
+    );
+    expect(now.workshop?.longest.map((row) => row.visitId)).toEqual(
+      byStay.slice(0, FLEET_DASHBOARD_WORKSHOP_ROWS).map((row) => row.id),
+    );
+    expect(now.workshop?.longest.map((row) => row.code)).toEqual(
+      byStay.slice(0, FLEET_DASHBOARD_WORKSHOP_ROWS).map((row) => row.vehicleCode),
+    );
+    expect(now.workshop?.longest[0]).toEqual({
+      visitId: byStay[0]?.id,
+      vehicleId: v4.id,
+      code: v4.code,
+      typeName: expect.objectContaining({ ar: 'ميكروباص' }) as unknown,
+      inDate: '2026-10-25',
+      days: 7,
+      workshop: expect.objectContaining({ ar: 'ورشة اللوحة' }) as unknown,
+      workType: expect.objectContaining({ ar: 'صيانة' }) as unknown,
+    });
+    // `oldest` is the first of them; never more rows than `open` counts.
+    expect(now.workshop?.oldest).toMatchObject({
+      code: now.workshop?.longest[0]?.code,
+      days: now.workshop?.longest[0]?.days,
+    });
+    expect(now.workshop?.longest.length).toBeLessThanOrEqual(now.workshop?.open ?? 0);
+  });
 });
 
 describe('R1 parity — the overview’s action centre (the old «التنبيهات» lines)', () => {
@@ -780,6 +848,17 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
     );
     expect(now.maintenanceAlarm?.yellow).toBe(rows.filter((row) => row.level === 'yellow').length);
     expect(now.maintenanceAlarm?.codes).toBeNull();
+  });
+
+  it('«إنذارات الصيانة بالكيلومتر» = the board’s red/yellow rows in its triage order, the first eight', async () => {
+    const board = ok<FleetMaintenanceAlarmDto[]>(await get('/fleet/odometer/alarms'));
+    expect(now.maintenanceAlarm?.rows).toEqual(alarmRowsOf(board));
+    // The two thresholds = the settings the board's rows were judged by (present with no alarm).
+    expect(board.length).toBeGreaterThan(0);
+    for (const row of board) {
+      expect(row.rule.redKm).toBe(now.maintenanceAlarm?.redKm);
+      expect(row.rule.yellowKm).toBe(now.maintenanceAlarm?.yellowKm);
+    }
   });
 
   it('T1.12: last chain reading Oct 28 fires, Oct 29 does not; the workshop car never; the never-read apart', async () => {
@@ -991,6 +1070,49 @@ describe('R1 parity — tabs 3 and 5', () => {
     expect(dist?.branchCount).toBe(2);
   });
 
+  it('«نقل الأموال · ATM · أخرى» per branch = the vehicles list by branch and operation; largest first', async () => {
+    const dist = now.distributionVehicles;
+    const cashIds = csv(dist?.cash.operationIds ?? []);
+    const atmIds = csv(dist?.atm.operationIds ?? []);
+    for (const branch of dist?.branches ?? []) {
+      const kinds = dist?.kinds[branch.id];
+      expect(kinds?.cash, branch.id).toBe(
+        await total('/fleet/vehicles', {
+          status: 'active',
+          branchId: branch.id,
+          operationId: cashIds,
+        }),
+      );
+      expect(kinds?.atm, branch.id).toBe(
+        await total('/fleet/vehicles', {
+          status: 'active',
+          branchId: branch.id,
+          operationId: atmIds,
+        }),
+      );
+      expect((kinds?.cash ?? 0) + (kinds?.atm ?? 0) + (kinds?.other ?? 0), branch.id).toBe(
+        dist?.totals.counts[branch.id] ?? 0,
+      );
+    }
+    // Σ over the columns and «بلا فرع» = the list's own cash / ATM counts.
+    const sum = (kind: 'cash' | 'atm' | 'other') =>
+      Object.values(dist?.kinds ?? {}).reduce((a, k) => a + k[kind], 0) +
+      (dist?.noBranchKinds[kind] ?? 0);
+    expect(sum('cash')).toBe(dist?.cash.vehicles);
+    expect(sum('atm')).toBe(dist?.atm.vehicles);
+    expect(sum('other')).toBe(dist?.other.vehicles);
+    expect(sum('cash') + sum('atm') + sum('other')).toBe(dist?.totals.total);
+    // The fixture: B1 = v1, v3 (cash) + v4 (none); B2 = v2 (ATM) + v6 (none); no «بلا فرع».
+    expect(dist?.kinds[B1]).toEqual({ cash: 2, atm: 0, other: 1 });
+    expect(dist?.kinds[B2]).toEqual({ cash: 0, atm: 1, other: 1 });
+    expect(dist?.noBranchKinds).toEqual({ cash: 0, atm: 0, other: 0 });
+    expect(dist?.other).toEqual({ vehicles: 2 });
+    // One order for the cards and the matrix: active cars desc.
+    const counts = (dist?.branches ?? []).map((b) => dist?.totals.counts[b.id] ?? 0);
+    expect(counts).toEqual([...counts].sort((a, b) => b - a));
+    expect(dist?.branches.slice(0, 2).map((b) => b.id)).toEqual([B1, B2]);
+  });
+
   it('T3.4/T3.6/T3.8 = /fleet/drivers, by `spec`', async () => {
     const drv = now.distributionDrivers;
     expect(drv?.total).toBe(await total('/fleet/drivers', {}));
@@ -1133,6 +1255,14 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     expect(b2.maintenanceAlarm?.codes).toEqual({ red: codesOf('red'), yellow: codesOf('yellow') });
     expect(b2.maintenanceAlarm?.red).toBe(codesOf('red').length);
     expect(b2.maintenanceAlarm?.yellow).toBe(codesOf('yellow').length);
+    // The table lists the branch's own rows only, in the board's order.
+    expect(b2.maintenanceAlarm?.rows).toEqual(
+      alarmRowsOf(board.filter((row) => inBranch.has(row.code))),
+    );
+    // The branch's open visits, as /fleet/maintenance?state=open&branch lists them (none on B2).
+    expect(b2.workshop?.longest.length).toBe(
+      await total('/fleet/maintenance', { open: true, branchIds: B2 }),
+    );
     expect(b2.noReading?.stale.map((row) => row.code)).toEqual([v2.code]);
     expect(b2.noReading?.neverRead.map((row) => row.code)).toEqual([v6.code]);
     expect(b2.vehicleScope).toMatchObject({
@@ -1152,6 +1282,14 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
 /** The period screens' own query for the dashboard's range and filters. */
 const screen = (extra: Record<string, unknown> = {}) => ({ from: OCT.from, to: OCT.to, ...extra });
 
+/** Whole days check-in → check-out of a listed visit (the same day = 0). */
+const stayDays = (row: FleetMaintenanceVisitDto): number =>
+  Math.round(
+    (Date.parse(`${(row.outDate ?? row.inDate).slice(0, 10)}T00:00:00Z`) -
+      Date.parse(`${row.inDate.slice(0, 10)}T00:00:00Z`)) /
+      86_400_000,
+  );
+
 const periodParity = async (
   dto: FleetDashboardPeriodDto,
   set: Record<string, unknown>,
@@ -1163,22 +1301,46 @@ const periodParity = async (
   );
   expect(dto.km?.total).toBe(km.km);
   expect(dto.km?.invalidRows).toBe(km.invalidRows);
+  // «أرقام الفترة»: the visits that CHECKED IN in the range (`from`/`to`), and their state now.
   expect(dto.visits?.count).toBe(await total('/fleet/maintenance', q, branch));
   expect(dto.visits?.closed).toBe(await total('/fleet/maintenance', { ...q, open: false }, branch));
   expect(dto.visits?.open).toBe(await total('/fleet/maintenance', { ...q, open: true }, branch));
-  // The overview's «زيارات الصيانة»: the same list over the EXIT day, never the check-in day.
+  // «الصيانة والورش» and the overview's «زيارات الصيانة»: the same list over the EXIT day
+  // (`outFrom`/`outTo`), never the check-in day — every figure, bar and car of it.
   const { from, to, ...rest } = q;
-  expect(dto.exits?.count).toBe(
-    await total('/fleet/maintenance', { ...rest, outFrom: from, outTo: to }, branch),
-  );
-  for (const bar of dto.visits?.byWorkType ?? []) {
+  const exitQ = { ...rest, outFrom: from, outTo: to };
+  expect(dto.exits?.count).toBe(await total('/fleet/maintenance', exitQ, branch));
+  for (const bar of dto.exits?.byWorkType ?? []) {
     expect(bar.count).toBe(
-      await total('/fleet/maintenance', { ...q, workTypeIds: bar.id }, branch),
+      await total('/fleet/maintenance', { ...exitQ, workTypeIds: bar.id }, branch),
     );
   }
-  for (const car of dto.visits?.topVehicles ?? []) {
+  for (const bar of dto.exits?.byWorkshop ?? []) {
+    expect(bar.count).toBe(
+      await total('/fleet/maintenance', { ...exitQ, workshopIds: bar.id }, branch),
+    );
+  }
+  const listed = ok<FleetMaintenanceVisitDto[]>(
+    await get('/fleet/maintenance', { ...exitQ, pageSize: 100 }, branch),
+  );
+  expect(listed.length).toBe(dto.exits?.count);
+  // «متوسط أيام البقاء» = the mean of the listed rows' whole-day stays, one decimal.
+  expect(dto.exits?.avgStayDays).toBe(
+    listed.length === 0
+      ? null
+      : Math.round((listed.reduce((a, row) => a + stayDays(row), 0) / listed.length) * 10) / 10,
+  );
+  for (const car of dto.exits?.topVehicles ?? []) {
+    // A row's codes replace the set's: the list of that car's exits in the range.
     expect(car.visits).toBe(
-      await total('/fleet/maintenance', { ...q, vehicleCodes: car.code }, branch),
+      await total('/fleet/maintenance', { ...exitQ, vehicleCodes: car.code }, branch),
+    );
+    const own = listed.filter((row) => row.vehicleId === car.vehicleId);
+    expect(car.lastInDate).toBe(
+      own
+        .map((row) => row.inDate.slice(0, 10))
+        .sort()
+        .at(-1),
     );
   }
   const acc = ok<{ count: number }>(await get('/fleet/accidents/summary', q, branch));
@@ -1222,9 +1384,10 @@ const kmInvariants = (dto: FleetDashboardPeriodDto) => {
   expect((km?.byBranch ?? []).reduce((a, b) => a + b.km, 0) + (km?.unregistered ?? 0)).toBe(
     km?.total,
   );
+  const exits = dto.exits;
+  expect((exits?.byWorkType ?? []).reduce((a, b) => a + b.count, 0)).toBe(exits?.count);
+  expect((exits?.byWorkshop ?? []).reduce((a, b) => a + b.count, 0)).toBe(exits?.count);
   const visits = dto.visits;
-  expect((visits?.byWorkType ?? []).reduce((a, b) => a + b.count, 0)).toBe(visits?.count);
-  expect((visits?.byWorkshop ?? []).reduce((a, b) => a + b.count, 0)).toBe(visits?.count);
   expect((visits?.closed ?? 0) + (visits?.open ?? 0)).toBe(visits?.count);
 };
 
@@ -1260,11 +1423,30 @@ describe('R2 parity — the company view of October', () => {
     expect(oct.opex?.custody).toBe(85 + 120);
     expect(oct.opex?.fuel).toBe(120);
     expect(oct.opex?.total).toBe((oct.opex?.card ?? 0) + (oct.opex?.custody ?? 0));
-    // By EXIT day: v2's (Oct 12) and the deleted v7's (Oct 7); v4 is still in.
-    expect(oct.exits).toEqual({ count: 2 });
+    // By EXIT day: v2's (in Oct 10, out Oct 12: 2 days) and the deleted v7's (Oct 6 → 7: 1 day);
+    // v4 is still in. The deleted car's exit counts — in the mean and the bars — but is not ranked.
+    expect(oct.exits).toMatchObject({
+      count: 2,
+      avgStayDays: 1.5,
+      byWorkType: [{ id: workTypeId, count: 2 }],
+      byWorkshop: [{ id: workshopId, count: 2 }],
+      topVehicles: [
+        {
+          vehicleId: v2.id,
+          code: v2.code,
+          typeName: expect.objectContaining({ ar: 'مصفحة' }) as unknown,
+          visits: 1,
+          lastInDate: '2026-10-10',
+          lastWorkType: expect.objectContaining({ ar: 'صيانة' }) as unknown,
+        },
+      ],
+      unregistered: 0,
+    });
+    // «أرقام الفترة» keeps the CHECK-IN day: v4 (Oct 25, open), v2 and v7 (closed).
+    expect(oct.visits).toEqual({ count: 3, closed: 2, open: 1 });
   });
 
-  it('holds the invariants: km = Σ buckets = Σ branches + unregistered; Σ bars = visits', () => {
+  it('holds the invariants: km = Σ buckets = Σ branches + unregistered; Σ bars = exits', () => {
     kmInvariants(oct);
     expect(oct.km?.buckets.length).toBe(31);
   });
@@ -1279,6 +1461,14 @@ describe('R2 parity — the company view of October', () => {
       granularity: 'day',
     });
     expect(thisMonth.visits?.count).toBe(0);
+    expect(thisMonth.exits).toEqual({
+      count: 0,
+      avgStayDays: null,
+      byWorkType: [],
+      byWorkshop: [],
+      topVehicles: [],
+      unregistered: 0,
+    });
   });
 });
 
@@ -1394,5 +1584,79 @@ describe('«كل فروعي» parity — every figure is its screen with `branch
     expect(mineOct.km?.byType).toBeNull();
     expect(mineOct.km?.unregistered).toBeNull();
     expect(mineOct.accidents?.undated).toBeNull();
+  });
+});
+
+// ── «إنذارات الصيانة بالكيلومتر» on cars really in alarm — LAST, so no figure above sees them ──
+
+describe('R1 parity — the alarm table on cars in alarm (red, yellow, one in the workshop)', () => {
+  let red: FleetVehicleDto;
+  let yellow: FleetVehicleDto;
+  let after: FleetDashboardNowDto;
+  beforeAll(async () => {
+    // A make with a short interval and a work type that counts: a counted service on 2 October,
+    // then the counter runs on — 780 km (220 left: red) and 480 km (520 left: yellow).
+    const short = ok<FleetVehicleTypeDto>(
+      await send('post', '/fleet/vehicle-types', {
+        name: { ar: 'نصف نقل', en: 'Pickup' },
+        maintenanceIntervalKm: 1000,
+      }),
+      201,
+    ).id;
+    const counting = await mkCatalog('workType', 'صيانة دورية', { countsForAlarm: true });
+    red = await mkVehicle({ typeId: short });
+    yellow = await mkVehicle({ typeId: short, branchId: B2 });
+    for (const [car, reached] of [
+      [red, 900],
+      [yellow, 600],
+    ] as const) {
+      await read(car.id, '2026-10-01', 100);
+      await read(car.id, '2026-10-30', reached);
+      await FleetMaintenanceVisitModel.create({
+        vehicleId: new Types.ObjectId(car.id),
+        inDate: new Date('2026-10-02T00:00:00.000Z'),
+        outDate: new Date('2026-10-02T00:00:00.000Z'),
+        workshopId: new Types.ObjectId(workshopId),
+        workTypeId: new Types.ObjectId(counting),
+        odometerAtService: 120,
+      });
+    }
+    // The yellow car is back in the workshop since yesterday: «في الورشة: ورشة اللوحة».
+    await checkIn(yellow.id, '2026-10-31', dA);
+    after = ok<FleetDashboardNowDto>(await get('/fleet/dashboard/now'));
+  }, 120_000);
+
+  it('the rows = the alarms board’s red/yellow rows in its order; the counts stay the board’s', async () => {
+    const board = ok<FleetMaintenanceAlarmDto[]>(await get('/fleet/odometer/alarms'));
+    const rows = after.maintenanceAlarm?.rows ?? [];
+    expect(rows).toEqual(alarmRowsOf(board));
+    expect(rows.map((row) => [row.code, row.level, row.remainingKm])).toEqual([
+      [red.code, 'red', 220],
+      [yellow.code, 'yellow', 520],
+    ]);
+    expect(rows[0]).toMatchObject({
+      sinceServiceKm: 780,
+      intervalKm: 1000,
+      lastServiceAt: '2026-10-02',
+      inWorkshop: null,
+    });
+    expect(rows[1]?.inWorkshop).toEqual({
+      workshop: expect.objectContaining({ ar: 'ورشة اللوحة' }) as unknown,
+    });
+    expect(after.maintenanceAlarm?.red).toBe(board.filter((row) => row.level === 'red').length);
+    expect(after.maintenanceAlarm?.yellow).toBe(
+      board.filter((row) => row.level === 'yellow').length,
+    );
+  });
+
+  it('under a branch, the table keeps that branch’s rows only — the codes its link carries', async () => {
+    const b2 = ok<FleetDashboardNowDto>(await get('/fleet/dashboard/now', {}, B2));
+    expect(b2.maintenanceAlarm?.rows.map((row) => row.code)).toEqual([yellow.code]);
+    expect(b2.maintenanceAlarm?.codes).toEqual({ red: [], yellow: [yellow.code] });
+    // The workshop's longest stays narrow the same way: the yellow car is B2's only open visit.
+    expect(b2.workshop?.longest.map((row) => [row.code, row.days])).toEqual([[yellow.code, 1]]);
+    expect(b2.workshop?.longest.length).toBe(
+      await total('/fleet/maintenance', { open: true, branchIds: B2 }),
+    );
   });
 });

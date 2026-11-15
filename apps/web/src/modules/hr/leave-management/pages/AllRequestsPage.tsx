@@ -9,6 +9,7 @@ import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { EmptyState, FilterBar, Pagination } from '../../../../shared/ui';
 import { Select } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { useLeaveRequests, useLeaveTypes, useUnreconciledLeave } from '../api/leave-queries';
 import { RequestsTable } from '../components/RequestsTable';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
@@ -85,12 +86,15 @@ export const AllRequestsPage = (): JSX.Element => {
             <option key={s} value={s}>{t(`leave.status.${s}`)}</option>
           ))}
         </Select>
-        <Select value={typeId} onChange={(e) => patch({ type: e.target.value })} className="w-44">
-          <option value="">{t('leave.filters.allTypes')}</option>
-          {(types ?? []).map((x) => (
-            <option key={x.id} value={x.id}>{x.name.ar}</option>
-          ))}
-        </Select>
+        <div className="w-44">
+          <SearchableSelect
+            value={typeId}
+            onChange={(type) => patch({ type })}
+            options={(types ?? []).map((x) => ({ value: x.id, label: x.name.ar }))}
+            placeholder={t('leave.filters.allTypes')}
+            ariaLabel={t('leave.filters.allTypes')}
+          />
+        </div>
       </FilterBar>
       <RequestsTable
         rows={data?.items ?? []}

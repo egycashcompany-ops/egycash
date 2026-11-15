@@ -102,13 +102,15 @@ describe('the department, the section and the job are typed into', () => {
     );
   });
 
-  it('does the same in the external employee dialog, whose branch stays a list', () => {
+  it('does the same in the external employee dialog, whose branch is typed into too', () => {
     const DIALOG = readFileSync(join(HERE, 'components/ExternalEmployeeDialog.tsx'), 'utf8');
     expect(DIALOG.match(/<Combobox\b/g)).toHaveLength(3);
     expect(DIALOG).toContain('id="external-department"');
     expect(DIALOG).toContain('id="external-section"');
     expect(DIALOG).toContain('id="external-job"');
-    expect(DIALOG).toMatch(/<Select\s+id="external-branch"/);
+    // «اعمل سيرش بحرف او اتنين» — the branch too, matched on its name.
+    expect(DIALOG).toMatch(/<SearchableSelect\s+id="external-branch"/);
+    expect(DIALOG).toContain('if (next !== branchId) pickBranch(next);');
     // The lists open inside the dialog's body, which is cut short unless the dialog is tall.
     expect(DIALOG).toMatch(/onClose=\{close\}[\s\S]{0,200}\btall\b/);
   });

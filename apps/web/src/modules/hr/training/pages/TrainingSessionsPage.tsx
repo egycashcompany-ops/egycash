@@ -23,6 +23,7 @@ import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { SearchInput } from '../../../../shared/ui';
 import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { SessionStatusBadge } from '../components/SessionStatusBadge';
@@ -109,14 +110,11 @@ const ScheduleDialog = ({ onClose }: { onClose: () => void }): JSX.Element => {
     >
       <div className="space-y-3">
         <Field label={t('training.session.course')} required>
-          <Select value={courseId} onChange={(e) => setCourseId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {courses.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.name[locale]}
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={courseId}
+            onChange={setCourseId}
+            options={courses.map((course) => ({ value: course.id, label: course.name[locale] }))}
+          />
         </Field>
         <Field label={t('training.session.startsAt')} required>
           <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} dir="ltr" />

@@ -16,6 +16,7 @@ import { Button } from '../../../../../shared/ui/Button';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import { PlusIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
 import { IdCardDialog } from '../id-card/IdCardDialog';
@@ -345,54 +346,42 @@ export const EmployeesListPage = (): JSX.Element => {
           */}
           {view !== 'toSettle' && (
             <>
-              <Select
-                aria-label={t('employees.columns.branch')}
-                value={placement.branchId}
-                onChange={(e) => setPlacement({ branchId: e.target.value })}
-              >
-                <option value="">{t('employees.filters.anyBranch')}</option>
-                {branchOptions.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name[locale]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                aria-label={t('employees.columns.department')}
-                value={placement.departmentKey}
-                onChange={(e) => setPlacement({ departmentKey: e.target.value })}
-              >
-                <option value="">{t('employees.filters.anyDepartment')}</option>
-                {departments.map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.name[locale]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                aria-label={t('employees.columns.section')}
-                value={placement.sectionKey}
-                onChange={(e) => setPlacement({ sectionKey: e.target.value })}
-              >
-                <option value="">{t('employees.filters.anySection')}</option>
-                {sections.map((sec) => (
-                  <option key={sec.key} value={sec.key}>
-                    {sec.name[locale]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                aria-label={t('employees.columns.jobTitle')}
-                value={placement.jobTitleId}
-                onChange={(e) => setPlacement({ jobTitleId: e.target.value })}
-              >
-                <option value="">{t('employees.filters.anyJobTitle')}</option>
-                {jobTitleOptions.map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.name[locale]}
-                  </option>
-                ))}
-              </Select>
+              <div className="w-full sm:w-44">
+                <SearchableSelect
+                  ariaLabel={t('employees.columns.branch')}
+                  value={placement.branchId}
+                  onChange={(branchId) => setPlacement({ branchId })}
+                  options={branchOptions.map((b) => ({ value: b.id, label: b.name[locale] }))}
+                  placeholder={t('employees.filters.anyBranch')}
+                />
+              </div>
+              <div className="w-full sm:w-44">
+                <SearchableSelect
+                  ariaLabel={t('employees.columns.department')}
+                  value={placement.departmentKey}
+                  onChange={(departmentKey) => setPlacement({ departmentKey })}
+                  options={departments.map((d) => ({ value: d.key, label: d.name[locale] }))}
+                  placeholder={t('employees.filters.anyDepartment')}
+                />
+              </div>
+              <div className="w-full sm:w-44">
+                <SearchableSelect
+                  ariaLabel={t('employees.columns.section')}
+                  value={placement.sectionKey}
+                  onChange={(sectionKey) => setPlacement({ sectionKey })}
+                  options={sections.map((sec) => ({ value: sec.key, label: sec.name[locale] }))}
+                  placeholder={t('employees.filters.anySection')}
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  ariaLabel={t('employees.columns.jobTitle')}
+                  value={placement.jobTitleId}
+                  onChange={(jobTitleId) => setPlacement({ jobTitleId })}
+                  options={jobTitleOptions.map((j) => ({ value: j.id, label: j.name[locale] }))}
+                  placeholder={t('employees.filters.anyJobTitle')}
+                />
+              </div>
               {/* How the person entered the registry — «تعيين خارجي» is the external employees. */}
               <Select
                 aria-label={t('employees.columns.origin')}

@@ -31,7 +31,8 @@ import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Combobox } from '../../../../../shared/ui/Combobox';
-import { Field, Input, Select } from '../../../../../shared/ui/form';
+import { Field, Input } from '../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import { ApiError } from '../../../../../shared/lib/api-client';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized, orgUnitLabel } from '../../../../../shared/lib/format';
@@ -213,18 +214,15 @@ export const ExternalEmployeeDialog = ({
           />
         </Field>
         <Field label={t('offers.form.branch')} htmlFor="external-branch" required>
-          <Select
+          <SearchableSelect
             id="external-branch"
             value={branchId}
-            onChange={(e) => pickBranch(e.target.value)}
-          >
-            <option value="">{t('common.select')}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {localized(b.name, locale)}
-              </option>
-            ))}
-          </Select>
+            onChange={(next) => {
+              // A re-pick of the branch already held must not throw the department away.
+              if (next !== branchId) pickBranch(next);
+            }}
+            options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+          />
         </Field>
         <Field
           label={t('offers.form.department')}

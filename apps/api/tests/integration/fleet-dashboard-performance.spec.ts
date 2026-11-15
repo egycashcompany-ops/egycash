@@ -3,7 +3,8 @@
 //
 // What is ASSERTED is what a regression would move silently:
 //   · the number of database commands one read sends (counted with the driver's own `commandStarted`
-//     events, the app's connection being opened with `monitorCommands`), warm — R1 ≤ 45, R2 ≤ 15;
+//     events, the app's connection being opened with `monitorCommands`), warm — against CEILING below
+//     (the plan's §5.11 estimate, R1 ≤ 45 and R2 ≤ 15, is printed beside each measurement);
 //   · no collection scan: every command R2 sends to the odometer, visits or receipts collections is
 //     re-run under `explain` and its plan must not contain a COLLSCAN;
 //   · a TYPE filter covering more than 50 cars (the screens' code cap) still reproduces every period
@@ -82,13 +83,23 @@ const PLAN = { r1: 45, r2: 15 };
 // R2 was 17: «في الورشة طوال الفترة» (R-16 (d)) is now asked of the period itself — one bounded
 // `distinct` over the asked cars' visits (`workshopThroughoutFilter`) — instead of being read off
 // each car's newest visit, which hid an older visit that covered a past period.
-const CEILING = { r1: 71, r2: 18 };
+// «نظرة عامة» + «الحركة اليوم»: R1 measured 65 before them, 66 with them — «مخالفات قائمة» is ONE
+// more `fleet_violations` aggregate (every year, the rollup's own sums); the «الحركة اليوم» lists
+// name their rows from the type and branch lists the matrix already reads (memoised, shared) and
+// add nothing here; on a board whose listed rows carry a mission, or whose absent drivers' standing
+// cars are off the board, they add at most two (one `namesByIds`, one `codesByIds`) — hence 68.
+// R2 was 18: the overview's «زيارات الصيانة» by EXIT day is ONE count over the visits list's own
+// filter (`exitCount`) — 19.
+const CEILING = { r1: 68, r2: 19 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
  * the registry once (`withVehicleFilterMemo`): the type once, the codes once, the echo's car count,
  * and the narrowed sections' own car reads — a constant few (measured 22; 27 before the memo, and
  * growing with every module that resolves the filter; 23 with the period's workshop question).
+ * Measured 21 before the overview and 23 with it: the exit-day count, and the maintenance list's
+ * own code resolution for that count (the visits list resolves codes as its screen does, live cars
+ * only — not through the registry memo).
  */
 const CEILING_FILTERED_R2 = 23;
 

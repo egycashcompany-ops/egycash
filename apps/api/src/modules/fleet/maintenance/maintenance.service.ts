@@ -793,6 +793,18 @@ class FleetMaintenanceService {
     };
   }
 
+  /**
+   * The fleet dashboard's overview «زيارات الصيانة» (D6): how many visits the list's filter matches
+   * — built by the list's own `scopedFilter` and counted under the list's own base filter (soft
+   * delete), so `/fleet/maintenance?outFrom&outTo&<set>` lists exactly these rows. The caller asks
+   * the EXIT day (`outFrom`/`outTo`: visits that LEFT the workshop in the range); the old tabs'
+   * check-in figures stay `visitBreakdown`'s. `ix_out_date` serves the range.
+   */
+  async exitCount(query: MaintenanceFilterQuery): Promise<number> {
+    const { filter } = await this.scopedFilter(query);
+    return fleetMaintenanceRepository.count(filter);
+  }
+
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
     const sorts = parseFleetSort(query.sort);
     // The filter and the alarm columns need nothing of each other, so neither waits for the other.

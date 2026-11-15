@@ -1,8 +1,12 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet), Phase 1.
 //
-// Two reads feed ten tabs:
-//   · R1 `GET /fleet/dashboard/now`    — the state of the fleet NOW (tabs 1–5), one Cairo `today`;
-//   · R2 `GET /fleet/dashboard/period` — a period's figures (tabs 6–10), a preset or a custom range.
+// Two reads feed ten tabs, in the strip's order (FLEET_DASHBOARD_TABS): the two rebuilt tabs
+// «نظرة عامة» (overview) and «الحركة اليوم» (today), then the eight old tabs, each standing where its
+// rebuilt replacement will stand and drawn as before until it is rebuilt:
+//   · R1 `GET /fleet/dashboard/now`    — the state of the fleet NOW, one Cairo `today`;
+//   · R2 `GET /fleet/dashboard/period` — a period's figures, a preset or a custom range. The overview
+//     also reads R2 for «هذا الشهر» on its own (never the page filters) — the 'month' read.
+// FLEET_DASHBOARD_TAB_READS says which read(s) each tab draws.
 // The server resolves every date (R-01) and echoes it; the browser builds every label, chip and link
 // from that echo, never from its own clock. Every section is NULLABLE: `null` is "the reader may not
 // see it" or, when it is also named in `unavailable`, "its source failed" — never a zero.
@@ -14,32 +18,58 @@ import { z } from 'zod';
 import { type LocalizedString } from '../common/localized.js';
 import { listQuery, objectId } from '../common/index.js';
 import { addDaysYmd, daysBetweenYmd, isYmd, ymdOf } from '../common/cairo-date.js';
-import { type FleetAccidentStatus, vehicleCodesQuery } from './fleet.js';
+import {
+  type FleetAccidentStatus,
+  type FleetDriverUnavailableReason,
+  vehicleCodesQuery,
+} from './fleet.js';
 
 // ── Tabs, presets, constants ────────────────────────────────────────────────
 
+/**
+ * The strip, in its visible order: «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة» ·
+ * «الكيلومترات» · «ترتيب السيارات» · «الحوادث» · «أرقام الفترة» · «ملخصات» · «التراخيص». `overview`
+ * and `today` replaced the old `alerts` and `now` (a link to either opens its replacement); the
+ * other eight are the old tabs, unchanged, each where its rebuilt replacement will stand.
+ */
 export const FLEET_DASHBOARD_TABS = [
-  'alerts',
-  'now',
+  'overview',
+  'today',
   'distribution',
-  'licences',
-  'summaries',
-  'period',
+  'maintenance',
   'km',
   'ranking',
-  'maintenance',
   'accidents',
+  'period',
+  'summaries',
+  'licences',
 ] as const;
 export type FleetDashboardTab = (typeof FLEET_DASHBOARD_TABS)[number];
-/** «الآن» — the tabs read from R1. */
-export const FLEET_DASHBOARD_NOW_TABS = [
-  'alerts',
-  'now',
-  'distribution',
-  'licences',
-  'summaries',
-] as const;
-/** «حسب الفلاتر» — the tabs read from R2. */
+
+/**
+ * What a tab draws from: 'now' = R1; 'period' = R2 under the page filters; 'month' = R2 «هذا الشهر»
+ * with no filter at all (the overview's month card); 'web' = the custody hooks in the browser.
+ */
+export type FleetDashboardRead = 'now' | 'period' | 'month' | 'web';
+export const FLEET_DASHBOARD_TAB_READS: Readonly<
+  Record<FleetDashboardTab, readonly FleetDashboardRead[]>
+> = Object.freeze({
+  overview: ['now', 'month', 'web'],
+  today: ['now'],
+  distribution: ['now'],
+  maintenance: ['period'],
+  km: ['period'],
+  ranking: ['period'],
+  accidents: ['period'],
+  period: ['period'],
+  summaries: ['now', 'web'],
+  licences: ['now'],
+});
+
+/**
+ * The five old tabs drawn under the page filter bar (the old `PeriodTab` wrapper), read from R2 —
+ * kept until each one is rebuilt.
+ */
 export const FLEET_DASHBOARD_PERIOD_TABS = [
   'period',
   'km',
@@ -64,6 +94,8 @@ export const FLEET_LICENCE_GREY_DAYS = 60;
 /** R-12: the recent-records window, in Cairo days (today included). */
 export const FLEET_DASHBOARD_RECENT_DAYS = 30;
 export const FLEET_DASHBOARD_RECENT_ROWS = 8;
+/** «الحركة اليوم»: rows of each list («سيارات بلا سائق اليوم», «الغائبون اليوم») before «عرض الكل (N)». */
+export const FLEET_DASHBOARD_TODAY_ROWS = 8;
 /** T4.4: licence rows listed before «+N». */
 export const FLEET_DASHBOARD_LICENCE_ROWS = 6;
 /** T10.1: accident rows listed before «+M». */
@@ -281,10 +313,12 @@ export const FLEET_DASHBOARD_NOW_SECTIONS = [
   'dealershipPending',
   'accidentsOpen',
   'violationsYear',
+  'violationsOpen',
 ] as const;
 export const FLEET_DASHBOARD_PERIOD_SECTIONS = [
   'km',
   'visits',
+  'exits',
   'accidents',
   'accidentList',
   'opex',
@@ -344,8 +378,10 @@ export const FLEET_DASHBOARD_GATES: Readonly<Record<FleetDashboardSection, Fleet
     notices: gate('now', 'fleetNotice.view', '/fleet/notices'),
     dealershipPending: gate('now', 'fleetDealership.view', '/fleet/dealership'),
     violationsYear: gate('now', 'fleetViolation.view', '/fleet/violations'),
+    violationsOpen: gate('now', 'fleetViolation.view', '/fleet/violations'),
     km: gate('period', 'fleetOdometer.view', '/fleet/odometer'),
     visits: gate('period', 'fleetMaintenance.view', '/fleet/maintenance'),
+    exits: gate('period', 'fleetMaintenance.view', '/fleet/maintenance'),
     accidents: gate('period', 'fleetAccident.view', '/fleet/accidents'),
     accidentList: gate('period', 'fleetAccident.view', '/fleet/accidents'),
     opex: gate('period', 'fleetReceipt.view', '/fleet/receipts'),
@@ -385,19 +421,31 @@ export const FLEET_DASHBOARD_PAGE_KEYS: readonly string[] = keysOfRead(null);
 export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
   Record<FleetDashboardTab, readonly FleetDashboardSection[]>
 > = Object.freeze({
-  alerts: [
+  /**
+   * KPIs, the action centre (every alert section), the hub and the «هذا الشهر» card (`km`, `exits`,
+   * `accidents`, `opex` — read through the 'month' read).
+   */
+  overview: [
+    'vehicles',
+    'roster',
+    'workshop',
     'maintenanceAlarm',
+    'noReading',
+    'distributionVehicles',
     'licenceVehicles',
     'licenceDrivers',
     'fuelCards',
-    'roster',
     'fuelCharging',
     'dealershipPending',
     'notices',
-    'noReading',
+    'violationsOpen',
     'custodyFund',
+    'km',
+    'exits',
+    'accidents',
+    'opex',
   ],
-  now: ['vehicles', 'roster', 'workshop'],
+  today: ['vehicles', 'roster', 'workshop'],
   distribution: ['distributionVehicles', 'distributionDrivers'],
   licences: [
     'licenceVehicles',
@@ -415,7 +463,8 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
   accidents: ['accidents', 'accidentList'],
 });
 
-// ── Alerts (tab 1). The server derives them LAST from the sections; custody is added by the web. ──
+// ── Alerts (the overview's action centre). The server derives them LAST from the sections; custody
+// is added by the web. ──
 
 /** Display order (red first). The web inserts its own 'custody' line (T1.11) after 'noticesMissing'. */
 export const FLEET_DASHBOARD_ALERTS = [
@@ -455,8 +504,16 @@ export interface FleetDashboardVehicleScopeDto {
   typeIds: string[];
   operationIds: string[];
   vehicleCodes: string[];
-  /** `ctx.activeBranchId` (never `currentBranchId`). */
+  /**
+   * The branch switcher's branch (`ctx.activeBranchId`, never `currentBranchId`), honoured only when
+   * it is one of the reader's branches; `null` otherwise.
+   */
   branchId: string | null;
+  /**
+   * What the figures cover: `null` = the whole company; else the reader's branches (one = a branch
+   * view, several = «كل فروعي»; `[]` = a branch reach with no branch, which narrows to nothing).
+   */
+  scopeBranches: FleetDashboardNamedDto[] | null;
 }
 
 // ── R1: GET /fleet/dashboard/now (no query; branch from X-Active-Branch) ────
@@ -466,7 +523,10 @@ export interface FleetDashboardNowDto {
   today: string;
   /** ISO instant of the request clock. */
   asOf: string;
+  /** The switcher's branch, honoured only inside `scopeBranches` (as on `vehicleScope`). */
   branchId: string | null;
+  /** What the figures cover: `null` = the whole company; else the reader's branches. */
+  scopeBranches: FleetDashboardNamedDto[] | null;
   vehicles: FleetDashboardNowVehiclesDto | null;
   roster: FleetDashboardNowRosterDto | null;
   workshop: FleetDashboardNowWorkshopDto | null;
@@ -492,9 +552,10 @@ export interface FleetDashboardNowDto {
   /** Q-07: open files only. */
   accidentsOpen: { count: number; remaining: number } | null;
   violationsYear: FleetDashboardNowViolationsDto | null;
+  violationsOpen: FleetDashboardNowViolationsOpenDto | null;
   /** count > 0 only, red first. */
   alerts: FleetDashboardAlertDto[];
-  /** Non-null only when a branch narrows. */
+  /** Non-null only when the figures are narrowed (`scopeBranches !== null`). */
   vehicleScope: FleetDashboardVehicleScopeDto | null;
   /** Sections that FAILED (they are also null). */
   unavailable: FleetDashboardNowSection[];
@@ -554,6 +615,43 @@ export interface FleetDashboardNowRosterDto {
   profileInactive: number;
   notEmployed: number;
   licenceExpiredDrivers: number;
+  /**
+   * «الحركة اليوم»: at most FLEET_DASHBOARD_TODAY_ROWS of the `unmanned` cars, by class
+   * (crewGap → stalePlan → noCrew → unassigned, the same rules as the tiles), then code asc.
+   */
+  unmannedRows: FleetDashboardUnmannedRowDto[];
+  /** Of unmanned: none of the three tile rules, so the three tiles + this = unmanned. */
+  unmannedUnassigned: number;
+  /**
+   * At most FLEET_DASHBOARD_TODAY_ROWS of the absent drivers (fleetUnavailability | hrLeave):
+   * fixed-crew members first, then «تمام» before leave, then employee code.
+   */
+  absentDrivers: FleetDashboardAbsentDriverDto[];
+}
+
+/** Why a ready car has no driver today — the class of a «سيارات بلا سائق اليوم» row. */
+export type FleetDashboardUnmannedClass = 'crewGap' | 'stalePlan' | 'noCrew' | 'unassigned';
+
+/** One row of «سيارات بلا سائق اليوم»; every name resolved on the server. */
+export interface FleetDashboardUnmannedRowDto {
+  vehicleId: string;
+  code: string;
+  typeName: LocalizedString | null;
+  /** The car's current branch; `null` = «بلا فرع». */
+  branch: FleetDashboardNamedDto | null;
+  /** The day's mission type (planned, or carried from the standing crew); `null` = none. */
+  mission: LocalizedString | null;
+  why: FleetDashboardUnmannedClass;
+  /** crewGap → the first gap seat's fixed driver; stalePlan → the planned unavailable driver; else null. */
+  absent: { employeeId: string; reason: FleetDriverUnavailableReason } | null;
+}
+
+/** One row of «الغائبون اليوم». */
+export interface FleetDashboardAbsentDriverDto {
+  employeeId: string;
+  reason: 'fleetUnavailability' | 'hrLeave';
+  /** The car whose STANDING (fixed) crew holds this driver; `null` = none. */
+  crewVehicle: { vehicleId: string; code: string } | null;
 }
 
 /** T2.4, R-09 — open visits of ANY status. */
@@ -597,6 +695,8 @@ export interface FleetDashboardNowDistributionVehiclesDto {
   }[];
   /** total = vehicles.active. */
   totals: { counts: Record<string, number>; noBranch: number; total: number };
+  /** Branches holding ≥ 1 active car in the reader's fleetVehicle.view scope («بلا فرع» is no branch). */
+  branchCount: number;
   cash: { vehicles: number; operationIds: string[] };
   atm: { vehicles: number; operationIds: string[] };
 }
@@ -642,6 +742,8 @@ export interface FleetDashboardNowFuelChargingDto {
    * it the day from Cairo's midnight, no longer a rolling 24 hours. The name is kept.
    */
   charged24h: number;
+  /** The fuel-card summary's `cardCount` («موزعة على N كارتًا»). */
+  cards: number;
 }
 
 /** T4.8, R-12. */
@@ -686,6 +788,21 @@ export interface FleetDashboardNowViolationsDto {
   total: number;
 }
 
+/**
+ * Every fine still owed («قائمة»), of EVERY year — the violations register's own outstanding sums
+ * (amounts rounded as the register's). «ملخصات» keeps `violationsYear` (the Cairo year, amounts).
+ */
+export interface FleetDashboardNowViolationsOpenDto {
+  /** Σ outstandingVehicleAmount / Σ outstandingVehicleCount. */
+  company: { amount: number; count: number };
+  drivers: {
+    /** Σ outstandingDriverAmount / Σ outstandingDriverCount. */
+    total: { amount: number; count: number };
+  };
+  /** company + drivers. */
+  total: { amount: number; count: number };
+}
+
 // ── R2: GET /fleet/dashboard/period?preset&from&to&typeIds&operationIds&vehicleCodes ──
 
 export interface FleetDashboardPeriodDto {
@@ -700,7 +817,13 @@ export interface FleetDashboardPeriodDto {
   };
   vehicleScope: FleetDashboardVehicleScopeDto;
   km: FleetDashboardPeriodKmDto | null;
+  /** By CHECK-IN day (the old «الصيانة» and «أرقام الفترة» tabs: «بتاريخ دخول الورشة»). */
   visits: FleetDashboardPeriodVisitsDto | null;
+  /**
+   * Visits that LEFT the workshop in the range (EXIT day, `outFrom`/`outTo`), over the maintenance
+   * list's own filter — the overview's «زيارات الصيانة» («بتاريخ الخروج من الورشة»).
+   */
+  exits: { count: number } | null;
   /** `undated`: company view only. */
   accidents: { count: number; open: number; openRemaining: number; undated: number | null } | null;
   accidentList: { rows: FleetDashboardPeriodAccidentRowDto[]; more: number } | null;
@@ -708,6 +831,8 @@ export interface FleetDashboardPeriodDto {
   opex: {
     card: number;
     custody: number;
+    /** Fuel receipts (card + custody): the receipts screen's `kind=fuel` total. */
+    fuel: number;
     total: number;
     count: number;
     dataFrom: string | null;
@@ -761,7 +886,7 @@ export interface FleetDashboardPeriodKmDto {
   spans: { km: number; count: number };
   /** Current branch (K-12). */
   byBranch: { branchId: string | null; name: LocalizedString | null; km: number }[];
-  /** Only when a branch is chosen. */
+  /** Only when exactly one branch is in scope (`vehicleScope.scopeBranches` of length 1). */
   byType: { typeId: string; name: LocalizedString; km: number }[] | null;
   /** km of vehicleId-null rows; null when a set exists. */
   unregistered: number | null;

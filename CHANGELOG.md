@@ -1402,6 +1402,41 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«لوحة تحكم الحركة» at `/fleet`: the first two redesigned tabs, «نظرة عامة» and «الحركة اليوم»,
+  take the place of «التنبيهات» and «الحركة الآن»; the figures of a reader of one branch or of
+  several are now that reader's branches.** «نفذ اول شاشتين وضيفهم فى pr ولما يخضر اعمل ميرج» —
+  «عاوز فى اى وقت ابقى احدد الفرع اللى انا عاوز اجيب الاحصائيات عليه» — «انا عاوز الافتراضى يكون
+  ل بداية الشهر». The dashboard opens on «نظرة عامة» (layout B as approved): six cards (fleet
+  readiness, ready cars without a driver today in amber «تحتاج تعيين», the workshop now, urgent
+  alerts counted as lines, the two fuel-card balances, the custody fund), the action centre (one row
+  per alert line that fired, urgent first, each with one «فتح»; the absent fixed crews and the
+  custody lines of «التنبيهات» included), the sections' hub (each line opens the tab that shows the
+  same figure, keeping the page's filters, or its register: «إنذار حرج» the alarms, «مخالفات قائمة N
+  مخالفة» every year's unpaid fines, «مصروف الوقود» the fuel receipts) and «ملخص إحصائيات هذا
+  الشهر», read for this month with no page filter — its «زيارات الصيانة» counted by the day a car
+  LEFT the workshop and saying so, while the old «الصيانة» and «أرقام الفترة» still count by the day
+  it went in until «الصيانة والورش» is built. «الحركة اليوم»: readiness and the day's balance of
+  cars and drivers, five cards, «سيارات بلا سائق اليوم» (at most 8 rows, why each has no driver in
+  the roster's own words — a fourth reason «لم يُعيَّن لها سائق» when none of the three applies —
+  «فتح» on the day's roster, «عرض الكل (N)») and «الغائبون اليوم» (names only with
+  `fleetDriver.view`). Nothing without data is drawn: «أمر حركة عاجل», a cost per km, coverage days,
+  savings and the like are gone. The other eight tabs are unchanged, each standing in the bar where
+  its redesign will stand; an old link to `?tab=alerts` opens «نظرة عامة» and `?tab=now` opens
+  «الحركة اليوم». One strip of tabs (no «الآن | حسب الفلاتر» groups), with a scroll cue when the
+  tabs do not fit and «الفرع: الشركة كلها / <الفرع> / كل فروعي» at its end — what the figures
+  cover, not a second picker. The counts: «الحركة اليوم» amber with the cars without a driver,
+  none on «نظرة عامة», the old tabs' as before. Branch scope: a reader whose grant covers one branch
+  or several («كل فروعي») now gets every company figure narrowed to those branches on every tab —
+  many were the whole company before; a switcher branch outside them is ignored; the custody,
+  drivers, fuel-card and notices figures stay company-wide and wear «الشركة كلها». A reader of one
+  branch sees «الكيلومترات حسب النوع» as a chosen branch does. The period opens on «هذا الشهر» on
+  every visit and a chosen one stays while moving between tabs; type, operation and codes are still
+  remembered (`useRememberedFilters` now restores only the names a screen declares). New read fields:
+  `scopeBranches` (R1 and both `vehicleScope`s), R1 `violationsOpen` (every year, amount and count),
+  `fuelCharging.cards`, `distributionVehicles.branchCount` and the roster's `unmannedRows`,
+  `unmannedUnassigned` and `absentDrivers`; R2 `exits` (visits by exit day) and `opex.fuel`. No new
+  permission key. No migration; data unchanged.
+
 - **«الصيانة»: «سائق الخروج» can be corrected in «تعديل الزيارة».** «دلوقتى عاوز ف الصيانة عاوز اقدر
   اعدل السواق التانى اللى هو سائق الخروج». Before, a wrong exit driver could only be fixed by
   reopening the visit, which also clears the exit date, the exit counter and the custody, and

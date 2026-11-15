@@ -1050,7 +1050,8 @@ export const SummariesTab = (props: NowTabProps): JSX.Element => {
   const t = useT();
   const { now, custody } = props;
   const links = now === null ? null : nowLinks(now);
-  const branch = now?.branchId != null;
+  // «الشركة كلها» whenever the figures are narrowed — one branch or «كل فروعي» (D11).
+  const branch = now?.scopeBranches != null;
   const fuel = now?.fuelCharging ?? null;
   const accidents = now?.accidentsOpen ?? null;
   const violations = now?.violationsYear ?? null;

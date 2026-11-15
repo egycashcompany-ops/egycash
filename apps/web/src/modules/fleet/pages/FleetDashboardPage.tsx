@@ -1,14 +1,23 @@
-// «لوحة تحكم الحركة» — the fleet module's home (/fleet), Phase 1 (plan §5, unified.md W-SHELL).
+// «لوحة تحكم الحركة» — the fleet module's home (/fleet).
 //
-// Ten tabs in two groups on one sticky pill bar, and NO page head (owner-decisions #3):
-//   «الآن»         التنبيهات · الحركة الآن · توزيع السيارات · التراخيص وآخر ما سُجّل · ملخصات
-//                  — R1 `GET /fleet/dashboard/now`, Cairo today, untouched by the filters;
-//   «حسب الفلاتر»  أرقام الفترة · الكيلومترات · ترتيب السيارات · الصيانة · الحوادث
-//                  — R2 `GET /fleet/dashboard/period`, under ONE filter state shared by the five.
+// Ten tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the finished
+// dashboard will keep (plan D2):
+//   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة · الكيلومترات · ترتيب السيارات · الحوادث ·
+//   أرقام الفترة · ملخصات · التراخيص
+// «نظرة عامة» and «الحركة اليوم» are the redesigned screens (they took the content of the retired
+// «التنبيهات» and «الحركة الآن»; an old `?tab=alerts` / `?tab=now` opens them). The other eight are
+// the old tabs, unchanged, each standing where its redesign will stand:
+//   · R1 `GET /fleet/dashboard/now` (Cairo today, untouched by the filters) — overview, today,
+//     distribution, summaries, licences; the overview also reads R2 over «هذا الشهر» with no page
+//     filter (its month card);
+//   · R2 `GET /fleet/dashboard/period` — maintenance, km, ranking, accidents, period, under ONE
+//     filter bar shared by the five.
+// At the strip's end «الفرع: …» says what the figures cover, as the server answered it.
 //
-// THE ADDRESS BAR IS THE STATE (D14). `tab` names the panel and is never remembered; the filters
-// (`REMEMBERED_FILTERS`) are remembered for the page, so a return visit and every period tab keep
-// them. Switching tabs re-reads nothing: `tab` is in neither query key.
+// THE ADDRESS BAR IS THE STATE (D14). `tab` names the panel and is never remembered. Of the filters,
+// only type / operation / codes are remembered across visits (`REMEMBERED_FILTERS`); the period opens
+// on «هذا الشهر» on every visit and a chosen period stays in the address bar while the reader moves
+// between tabs (DECISIONS §0c). Switching tabs re-reads nothing: `tab` is in neither query key.
 //
 // PERMISSIONS ARE THE SERVER'S (R-28). A reader holding no key of a read never asks for it; a section
 // the reader may not see comes back `null` and renders nothing; a tab with no section left is not in
@@ -21,6 +30,7 @@ import {
   FLEET_DASHBOARD_PERIOD_KEYS,
   cairoYmd,
   FLEET_DASHBOARD_PERIOD_TABS,
+  type FleetDashboardPeriodQuery,
   type FleetDashboardTab,
 } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
@@ -40,13 +50,8 @@ import {
   type PeriodFilters,
 } from '../lib/fleet-dashboard-url';
 import { midnightClock, periodLiveness } from '../lib/fleet-dashboard-refresh';
-import {
-  alertLines,
-  alertSummary,
-  sectionPermitted,
-  tabBadges,
-  visibleTabs,
-} from '../lib/fleet-dashboard-tabs';
+import { tabLink } from '../lib/fleet-dashboard-links';
+import { alertLines, sectionPermitted, tabBadges, visibleTabs } from '../lib/fleet-dashboard-tabs';
 import {
   CustodyFundSource,
   type CustodyFigures,
@@ -55,24 +60,26 @@ import {
   ReadError,
   TabSkeleton,
   TopNav,
+  type DashScope,
+  type MonthRead,
   type NowTabProps,
 } from '../components/fleet-dashboard/dash-shell';
 import { PeriodTab } from '../components/fleet-dashboard/period-tabs';
-import { AlertsTab } from '../components/fleet-dashboard/tab-alerts';
-import { NowTab } from '../components/fleet-dashboard/tab-now';
+import { OverviewTab } from '../components/fleet-dashboard/tab-overview';
+import { TodayTab } from '../components/fleet-dashboard/tab-today';
 import { DistributionTab } from '../components/fleet-dashboard/tab-distribution';
 import { LicencesTab } from '../components/fleet-dashboard/tab-licences';
 import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
 
-/** The filters the page keeps across tabs and visits — never `tab` (a link names its tab). */
-export const REMEMBERED_FILTERS = [
-  'period',
-  'from',
-  'to',
-  'type',
-  'operation',
-  'vehicleCodes',
-] as const;
+/**
+ * The filters the page remembers across visits — never `tab` (a link names its tab), and never the
+ * period (DECISIONS §0c): the dashboard opens on «هذا الشهر» on every visit, while a period the
+ * reader chose stays in the address bar between tabs for the rest of the visit.
+ */
+export const REMEMBERED_FILTERS = ['type', 'operation', 'vehicleCodes'] as const;
+
+/** The overview's month card: R2 over «هذا الشهر» with no page filter (plan D16). */
+const MONTH_QUERY: FleetDashboardPeriodQuery = { preset: 'thisMonth' };
 
 /**
  * Which face a read's panel wears. A read on its way is a skeleton; a read with no answer is an error
@@ -101,8 +108,8 @@ const NOW_PANELS: Record<
   Exclude<FleetDashboardTab, (typeof FLEET_DASHBOARD_PERIOD_TABS)[number]>,
   (props: NowTabProps) => JSX.Element
 > = {
-  alerts: AlertsTab,
-  now: NowTab,
+  overview: OverviewTab,
+  today: TodayTab,
   distribution: DistributionTab,
   licences: LicencesTab,
   summaries: SummariesTab,
@@ -142,7 +149,35 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const visible = visibleTabs(answers);
   const active = readTab(asked, visible);
   const lines = alertLines(nowQ.data?.alerts ?? [], custody?.lines ?? null);
-  const badges = tabBadges(answers, alertSummary(lines));
+  const badges = tabBadges(answers);
+
+  // «هذا الشهر» for the overview's month card: the page's filters never reach it. At the default
+  // filters it is the page's own R2 key, so the two are one request.
+  const monthQ = useFleetDashboardPeriod(
+    MONTH_QUERY,
+    'live',
+    reads.period && active === 'overview',
+  );
+  const month: MonthRead = {
+    data: monthQ.data,
+    loading: monthQ.isPending,
+    failed: monthQ.isError && monthQ.data === undefined,
+    enabled: reads.period && active === 'overview',
+    onRetry: () => void monthQ.refetch({ cancelRefetch: false }),
+  };
+  const toTab = (tab: FleetDashboardTab, metric: string) => tabLink(tab, metric, sp, visible);
+
+  // «الفرع: …» — what the figures cover, as the server echoed it (never the switcher's header):
+  // R1's, else R2's; `null` («الشركة كلها») for a reader with neither read (custody alone), and
+  // `undefined` (no chip) while the reads are on their way.
+  const scope: DashScope =
+    nowQ.data !== undefined
+      ? nowQ.data.scopeBranches
+      : periodQ.data !== undefined
+        ? periodQ.data.vehicleScope.scopeBranches
+        : !reads.now && !reads.period
+          ? null
+          : undefined;
 
   const write = (patch: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -170,6 +205,7 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   // second R1 while one is in flight (`cancelRefetch: false` joins it rather than restarting it).
   const refreshNow = (): void => {
     if (reads.now) void nowQ.refetch({ cancelRefetch: false });
+    if (month.enabled) void monthQ.refetch({ cancelRefetch: false });
     custody?.refetch();
   };
   const refreshPeriod = (): void => {
@@ -202,23 +238,33 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
       );
   } else {
     const Panel = NOW_PANELS[active];
+    const ownUpdatedAt = reads.now ? nowQ.dataUpdatedAt : (custody?.updatedAt ?? 0);
+    // The overview's heading says how old its OLDEST figures are: R1's or the month read's.
+    const updatedAt =
+      month.enabled && monthQ.data !== undefined && monthQ.dataUpdatedAt > 0
+        ? ownUpdatedAt > 0
+          ? Math.min(ownUpdatedAt, monthQ.dataUpdatedAt)
+          : monthQ.dataUpdatedAt
+        : ownUpdatedAt;
     panel = (
       <Panel
         now={nowQ.data ?? null}
         custody={custody}
         lines={lines}
         can={can}
-        updatedAt={reads.now ? nowQ.dataUpdatedAt : (custody?.updatedAt ?? 0)}
-        refreshing={nowQ.isFetching}
+        updatedAt={updatedAt}
+        refreshing={nowQ.isFetching || (month.enabled && monthQ.isFetching)}
         onRefresh={refreshNow}
         onRetry={refreshNow}
+        month={month}
+        tabLink={toTab}
       />
     );
   }
 
   return (
     <div data-fleet-dashboard="true" className="mx-auto w-full shrink-0 px-4 pb-10 sm:px-6 lg:px-8">
-      <TopNav visible={visible} active={active} badges={badges} onPick={pick} />
+      <TopNav visible={visible} active={active} badges={badges} onPick={pick} scope={scope} />
       <section
         role="tabpanel"
         data-dash-panel={active}

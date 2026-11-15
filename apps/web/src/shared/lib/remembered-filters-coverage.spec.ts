@@ -73,6 +73,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
+  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx', []],
   // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period opens on «هذا
   // الشهر» on every visit — a chosen period stays in the address bar between tabs, for the rest of
   // the visit only (DECISIONS §0c); type, operation and codes are remembered, ONE state for the five
@@ -321,7 +322,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',
     'the select assigns a category to this contract',
   ],
-  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx'],
   ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
   [
     'modules/hr/contracts/pages/TemplatesListPage.tsx',

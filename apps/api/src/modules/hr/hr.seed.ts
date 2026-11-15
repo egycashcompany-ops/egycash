@@ -65,6 +65,7 @@ import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
 import { ensureLoanAttachmentsCategory, grantEssLoanAccess } from './employee-loans';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
+import { migrateCandidateDrafts } from './contracts/candidates';
 import {
   backfillAdjustmentDepartments,
   backfillEmployeePayItemDepartments,
@@ -594,6 +595,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await backfillAdjustmentDepartments();
   await backfillEmployeePayItemDepartments();
   await backfillEmployeeLoanDepartments();
+  // Contracts (A28): a «عقد جديد» draft keeps what HR changed on the job's papers, not a whole list.
+  await migrateCandidateDrafts();
   // Contracts (frozen contracts design D11): the expiring-soon notice template.
   await notificationTemplateService.ensure({
     key: HrContractTemplates.ExpiringSoon,

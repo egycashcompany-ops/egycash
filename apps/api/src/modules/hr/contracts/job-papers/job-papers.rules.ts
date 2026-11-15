@@ -12,6 +12,8 @@
 //   · «مستندات الوظائف» changes what is ticked for the job in the department: papers ADDED, papers
 //     TAKEN OFF. A paper taken off is not offered at all; one only offered stays offered, unticked.
 //   · ONE CONTRACT: the first ticked by print order is the person's contract.
+//   · THE PERSON: what HR ticks on «عقد جديد» is kept the same way — papers ticked beyond the job's,
+//     papers taken off them — so every paper HR did not touch follows the job as it now stands.
 import { type CandidatePaperGroup } from '@ecms/contracts';
 import { printSettings, type ContractTemplateDoc } from '../contract-templates/contract-template.model';
 import { optionalForJob } from '../hiring-templates';
@@ -104,6 +106,35 @@ export const papersOfJob = (
 
 /** The papers ticked for the person until somebody ticks otherwise. */
 export const isTickedForJob = (paper: Pick<JobPaper, 'optional'>): boolean => !paper.optional;
+
+/** What HR changed on one person's papers: ticked beyond what their job ticks, and unticked from it. */
+export interface PaperChoice {
+  added: readonly string[];
+  removed: readonly string[];
+}
+
+/** Is the paper ticked for the person — as their job ticks it, but for what HR changed for them? */
+export const isTickedForPerson = (
+  paper: { template: Pick<ContractTemplateDoc, 'key'>; optional: boolean },
+  choice: PaperChoice,
+): boolean =>
+  choice.added.includes(paper.template.key) || (isTickedForJob(paper) && !choice.removed.includes(paper.template.key));
+
+/**
+ * What a person keeps when HR ticks exactly `keys` of their papers: the papers their job does not
+ * tick that are ticked, and those it ticks that are not. A key not among their papers is dropped.
+ * Applied back, it ticks exactly `keys`.
+ */
+export const choiceFor = (
+  papers: readonly { template: Pick<ContractTemplateDoc, 'key'>; optional: boolean }[],
+  keys: readonly string[],
+): { added: string[]; removed: string[] } => {
+  const wanted = new Set(keys);
+  return {
+    added: papers.filter((paper) => !isTickedForJob(paper) && wanted.has(paper.template.key)).map((paper) => paper.template.key),
+    removed: papers.filter((paper) => isTickedForJob(paper) && !wanted.has(paper.template.key)).map((paper) => paper.template.key),
+  };
+};
 
 /** The keys of a job's papers ticked in a department, in print order — its line in «مستندات الوظائف». */
 export const tickedKeys = (

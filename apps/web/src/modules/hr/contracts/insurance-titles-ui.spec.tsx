@@ -1,18 +1,19 @@
-// «مسميات الوظائف لدى التأمينات» (A28) — a tab of «الإعدادات» beside «نموذج التقديم»: a table typed by
-// hand, our job title, its title at social insurance, its occupation code; what «حفظ» sends and what
-// it refuses. Read from source where the screen needs a live client.
+// «مسميات الوظائف لدى التأمينات» (A28) — a tab of «الإعدادات» beside «نموذج التقديم»: every job of the
+// company is a row, and «تعديل» beside it opens a small popup — our title fixed, its title at social
+// insurance and its occupation code typed. What the popup sends and what it refuses; read from source
+// where the screen needs a live client.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { HR_SETTINGS_HUB, type Locale } from '@ecms/contracts';
+import { HR_SETTINGS_HUB, type InsuranceJobTitleRowDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 import { SETTINGS_SCREENS } from '../settings/routes';
-import { InsuranceJobTitlesPage, foldTitle, isChanged, problemsOf, requestOf, type TypedRow } from './pages/InsuranceJobTitlesPage';
+import { InsuranceJobTitlesPage, isChanged, isOccupationCode, matchesSearch, requestOf } from './pages/InsuranceJobTitlesPage';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(resolve(HERE, 'pages/InsuranceJobTitlesPage.tsx'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
-const row = (key: string, jobTitle: string, insuranceTitle = '', occupationCode = ''): TypedRow => ({ key, jobTitle, insuranceTitle, occupationCode });
+const row: InsuranceJobTitleRowDto = { jobTitleId: 'j1', jobTitle: 'أمين خزينة', insuranceTitle: 'أمين خزينة', occupationCode: '412/101' };
 
 describe('«مسميات الوظائف لدى التأمينات»', () => {
   it('is a tab of «الإعدادات» right after «نموذج التقديم», on its own permission', () => {
@@ -23,52 +24,59 @@ describe('«مسميات الوظائف لدى التأمينات»', () => {
     expect(translate('ar', 'hr.settings.tab.insurance-job-titles')).toBe('مسميات الوظائف لدى التأمينات');
   });
 
-  it('folds a job title as the server matches it', () => {
-    expect(foldTitle(' أخصائى عد و فرز ')).toBe(foldTitle('اخصائي عد وفرز'));
-    expect(foldTitle('ســائق')).toBe(foldTitle('سائق'));
+  it('lists every job as it comes — no row is added or taken off here', () => {
+    expect(PAGE).toContain('rows.map((row) => (');
+    expect(PAGE).not.toContain('data-insurance-add');
+    expect(PAGE).not.toContain('ghost-danger');
+    expect(PAGE).toContain('onClick={() => setEditing(row)}');
   });
 
-  it('refuses a row with no title, a title listed twice, and a code form 1 cannot box', () => {
-    const problems = problemsOf([
-      row('a', 'أمين خزينة', '', '412/101'),
-      row('b', 'امين خزينه'),
-      row('c', '  '),
-      row('d', 'سائق', '', '12a'),
-      row('e', 'محاسب', '', '123456'),
-    ]);
-    expect([...problems]).toEqual([
-      ['b', 'twice'],
-      ['c', 'title'],
-      ['d', 'code'],
-    ]);
+  it('opens a small popup on «تعديل»: our title fixed, the insurance title and the code typed', () => {
+    expect(PAGE).toContain('size="sm"');
+    // Our title is shown, never an input.
+    expect(PAGE).toMatch(/<p[^>]*data-insurance-ours\s*>\s*\{row\.jobTitle\}/);
+    expect(PAGE).toContain('data-insurance-theirs');
+    expect(PAGE).toContain('data-insurance-code');
+    expect(PAGE).toMatch(/save\.mutateAsync\(\{\s*jobTitleId: row\.jobTitleId,\s*body: requestOf\(insuranceTitle, occupationCode\),?\s*\}\)/);
+    expect(PAGE).toContain('disabled={!changed || !codeOk}');
   });
 
-  it('sends the whole table, trimmed — a row left out is taken off', () => {
-    const saved = [row('1', 'أمين خزينة', 'أمين خزينة', '412/101')];
-    const typed = [row('1', ' أمين خزينة ', ' أمين خزينة', '412/101 '), row('2', 'سائق', 'سائق مهني', '832/101')];
-    expect(isChanged(saved, saved)).toBe(false);
-    expect(isChanged(saved, [row('1', 'أمين خزينة ', 'أمين خزينة', '412/101')])).toBe(false);
-    expect(requestOf(typed)).toEqual({
-      rows: [
-        { jobTitle: 'أمين خزينة', insuranceTitle: 'أمين خزينة', occupationCode: '412/101' },
-        { jobTitle: 'سائق', insuranceTitle: 'سائق مهني', occupationCode: '832/101' },
-      ],
-    });
-    expect(isChanged(saved, [])).toBe(true);
+  it('finds a job by our title, its insurance title or its code — «لو عاوز اعمل سيرش علي وظيفه»', () => {
+    const driver: InsuranceJobTitleRowDto = { jobTitleId: 'j2', jobTitle: 'سائق', insuranceTitle: '', occupationCode: '' };
+    expect(matchesSearch(row, '')).toBe(true);
+    expect(matchesSearch(row, 'امين')).toBe(true);
+    expect(matchesSearch(row, 'خزينه')).toBe(true);
+    expect(matchesSearch(row, '412')).toBe(true);
+    expect(matchesSearch(row, 'أمين 101')).toBe(true);
+    expect(matchesSearch(driver, 'امين')).toBe(false);
+    // The search is remembered as the other lists' are, and shown above the table.
+    expect(PAGE).toContain("useRememberedFilters([sp, setSp], REMEMBERED_FILTERS)");
+    expect(PAGE).toContain('<SearchInput');
+    expect(PAGE).toContain("t('contracts.insuranceTitles.noMatch')");
   });
 
-  it('types each row by hand — our title offered from the system — adds and removes rows, and saves', () => {
-    expect(PAGE).toContain('list="insurance-job-names"');
-    expect(PAGE).toContain("t('contracts.insuranceTitles.unknown')");
-    expect(PAGE).toContain('data-insurance-add');
-    expect(PAGE).toContain('onClick={() => remove(row.key)}');
-    expect(PAGE).toContain('save.mutateAsync(requestOf(rows))');
-    expect(PAGE).toContain('disabled={!changed || problems.size > 0}');
+  it('shows the code under its heading, away from «تعديل», reading left to right', () => {
+    expect(PAGE).toMatch(/<td className="px-3 py-2 text-start[^"]*">\s*\{row\.occupationCode === ''/);
+    expect(PAGE).toContain('<span dir="ltr" className="tabular-nums" data-insurance-code-cell>');
+  });
+
+  it('refuses a code form 1 cannot box — empty is allowed', () => {
+    expect(isOccupationCode('412/101')).toBe(true);
+    expect(isOccupationCode(' 123456 ')).toBe(true);
+    expect(isOccupationCode('')).toBe(true);
+    expect(isOccupationCode('12a')).toBe(false);
+    expect(isOccupationCode('1234/5')).toBe(false);
+  });
+
+  it('sends the two values trimmed, and only once something changed', () => {
+    expect(requestOf(' أمين خزينة ', ' 412/101 ')).toEqual({ insuranceTitle: 'أمين خزينة', occupationCode: '412/101' });
+    expect(isChanged(row, 'أمين خزينة ', '412/101')).toBe(false);
+    expect(isChanged(row, 'أمين صندوق', '412/101')).toBe(true);
+    expect(isChanged(row, 'أمين خزينة', '')).toBe(true);
   });
 
   it('names everything in both languages', () => {
-    const used = [...PAGE.matchAll(/t\('([a-zA-Z.-]+)'/g)].map((m) => m[1] ?? '');
-    for (const problem of ['title', 'twice', 'code']) used.push(`contracts.insuranceTitles.problem.${problem}`);
+    const used = [...PAGE.matchAll(/\bt\('([a-zA-Z.-]+)'/g)].map((m) => m[1] ?? '');
     expect(used.length).toBeGreaterThan(10);
     for (const locale of ['ar', 'en'] as Locale[]) {
       for (const key of used) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);

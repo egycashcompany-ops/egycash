@@ -190,9 +190,10 @@ const WIRED: readonly Wired[] = [
   ...(
     [
       ['tab-accidents.tsx', 'accidents'],
-      ['tab-alerts.tsx', 'alerts'],
+      ['tab-overview.tsx', 'overview'],
+      ['tab-overview-actions.tsx', 'overview action centre'],
       ['tab-maintenance.tsx', 'maintenance'],
-      ['tab-now.tsx', 'now'],
+      ['tab-today.tsx', 'today'],
       ['tab-ranking.tsx', 'ranking'],
     ] as const
   ).map(([file, tab]) => ({
@@ -474,7 +475,7 @@ describe('the shared chips carry the card', () => {
 });
 
 describe('the dashboard draws its cars’ codes with the card', () => {
-  it.each(['alerts', 'now', 'licences'])('the %s tab', (tab) => {
+  it.each(['overview', 'today', 'licences'])('the %s tab', (tab) => {
     expect(renderDashboard({ url: `/fleet?tab=${tab}` })).toContain(MARK);
   });
 
@@ -487,7 +488,7 @@ describe('the dashboard draws its cars’ codes with the card', () => {
 
   it('none for a reader who may not see the registry', () => {
     const permissions = ALL_KEYS.filter((key) => key !== 'fleetVehicle.view');
-    for (const tab of ['alerts', 'now', 'licences']) {
+    for (const tab of ['overview', 'today', 'licences']) {
       expect(renderDashboard({ url: `/fleet?tab=${tab}`, permissions }), tab).not.toContain(MARK);
     }
   });

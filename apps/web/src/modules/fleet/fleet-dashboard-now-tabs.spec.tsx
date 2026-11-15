@@ -1,14 +1,18 @@
-// «لوحة تحكم الحركة» — tabs 1–5, the «الآن» tabs (plan §8.1–§8.5, unified.md W-SHELL).
+// «لوحة تحكم الحركة» — the old R1 tabs still waiting for their redesign: «توزيع السيارات»,
+// «التراخيص وآخر ما سُجّل» and «ملخصات» (plan §8.1–§8.5, unified.md W-SHELL). «نظرة عامة» and
+// «الحركة اليوم» — which took the retired «التنبيهات» and «الحركة الآن» — have their own specs
+// (fleet-dashboard-tab-overview.spec.tsx, fleet-dashboard-tab-today.spec.tsx).
 //
 // What this file pins is that each figure reads the field it is about, opens the screen that shows
 // the same number (through the one link builder), says what the approved sample says, and draws
 // nothing the owner ruled out: no Q marker, no receipt-audit part, no export or print, no custody
-// ceiling, no Phase-2 piece. A null section renders nothing; a failed one shows its error.
+// ceiling, no Phase-2 piece — on every tab of the bar. A null section renders nothing; a failed one
+// shows its error.
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { addDaysYmd } from '@ecms/contracts';
+import { FLEET_DASHBOARD_TABS, addDaysYmd } from '@ecms/contracts';
 import {
   ALL_KEYS,
   B1,
@@ -49,216 +53,6 @@ const part = (html: string, marker: string, next: RegExp): string => {
   const end = rest.search(next);
   return marker + (end < 0 ? rest : rest.slice(0, end));
 };
-
-// ── Tab 1 «التنبيهات» ──────────────────────────────────────────────────────────────────────────
-
-describe('tab 1 — the alerts', () => {
-  const html = tab('alerts');
-  const line = (id: string): string => part(html, `data-alert="${id}"`, /data-alert="/u);
-
-  it('puts the red lines first, then the orange ones, in the contracts’ order with custody after the notices', () => {
-    const ids = [...html.matchAll(/data-alert="([a-zA-Z]+)"/gu)].map((m) => m[1]);
-    expect(ids).toEqual([
-      'maintenanceRed',
-      'vehicleLicenceExpired',
-      'driverLicenceExpired',
-      'fuelCardExpired',
-      'crewAbsent',
-      'fuelRequests',
-      'fuelLow',
-      'dealershipPending',
-      'noticesMissing',
-      'custody',
-      'noReading',
-    ]);
-    expect(html.indexOf('data-alert-section="red"')).toBeLessThan(
-      html.indexOf('data-alert-section="orange"'),
-    );
-  });
-
-  it('says how many lines fired, and how many of them are urgent', () => {
-    expect(html).toContain('data-alert-total="11"');
-    expect(text(line('maintenanceRed'))).toContain(
-      '3 سيارات بلغت حد الصيانة، منها 1 تجاوزته؛ و6 تقترب منه',
-    );
-  });
-
-  it('opens each line’s screen from its figure and from its buttons', () => {
-    expect(hrefOf(html, 'maintenanceAlarm.red')).toContain('/fleet/maintenance-alarms?level=red');
-    expect(hrefOf(html, 'maintenanceAlarm.yellow')).toContain(
-      '/fleet/maintenance-alarms?level=yellow',
-    );
-    expect(hrefOf(html, 'licenceVehicles.expired')).toContain(
-      `/fleet/vehicles?status=active&licExpBefore=${TODAY}`,
-    );
-    expect(hrefOf(html, 'licenceDrivers.expired')).toContain(
-      `/fleet/drivers?licExpBefore=${TODAY}`,
-    );
-    expect(hrefOf(html, 'fuelCards.expired')).toContain(`/fleet/fuel-cards?expiresBefore=${TODAY}`);
-    expect(hrefOf(html, 'roster.crewGap')).toContain(`/fleet/roster?date=${TODAY}&view=crewGap`);
-    expect(hrefOf(html, 'fuelCharging.requested')).toContain(
-      '/fleet/fuel-cards/charging?state=requested',
-    );
-    expect(hrefOf(html, 'fuelCharging.low')).toContain('/fleet/fuel-cards/charging?state=low');
-    expect(hrefOf(html, 'dealershipPending.rows')).toContain('/fleet/dealership?state=pending');
-  });
-
-  it('names the expired cars with how long ago, the oldest first, and keeps them out of «ready»', () => {
-    const body = text(line('vehicleLicenceExpired'));
-    expect(body).toContain('2 سيارات ترخيصها منتهٍ');
-    expect(body.indexOf('249')).toBeLessThan(body.indexOf('118'));
-    expect(body).toContain('منذ 18 يومًا');
-    expect(body).toContain(ar('fleet.dash.alerts.vehicleLicenceExpired.sub'));
-  });
-
-  it('counts a notice missing both attachments ONCE: the union headline, its two parts as sub-lines (T1.10)', () => {
-    const body = text(line('noticesMissing'));
-    expect(body).toContain('3 إخطارات مفتوحة ينقصها مرفق واحد على الأقل');
-    expect(body).toContain('صور الرخص 2');
-    expect(body).toContain('صورة الشيك 2');
-    expect(body).toContain(ar('fleet.dash.alerts.noticesMissing.once'));
-    expect(hrefOf(line('noticesMissing'), 'notices.missingCheckImage')).toContain(
-      '/fleet/notices?status=open&checkImage=missing',
-    );
-  });
-
-  it('counts EXACTLY the custody dashboard’s banner lines, and links to it — no receipt audit (D3)', () => {
-    const body = line('custody');
-    expect(text(body)).toContain('العهدة: 1 تنبيه في لوحة تحكم العهدة');
-    expect(hrefOf(body, 'custodyFund.lines')).toEqual([
-      '/fleet/custody/dashboard',
-      '/fleet/custody/dashboard',
-    ]);
-    expect(text(html)).not.toContain('تدقيق الإيصالات');
-    expect(text(html)).not.toContain('تفويل مرتين');
-  });
-
-  it('names the cars without a reading, the never-read car on its own line (T1.12)', () => {
-    const body = line('noReading');
-    expect(text(body)).toContain('2 سيارات نشطة بلا قراءة عداد في آخر 3 أيام');
-    expect(text(body)).toContain('منذ 2026/10/22');
-    expect(text(body)).toContain(ar('fleet.dash.alerts.noReading.neverRead'));
-    expect(hrefOf(body, 'noReading.stale')).toContain(
-      '/fleet/odometer?vehicleCodes=304,112&period=all',
-    );
-    expect(hrefOf(body, 'noReading.neverRead')).toContain('/fleet/vehicles?vehicleCodes=318');
-  });
-
-  it('wears «الشركة كلها» on the company-wide lines only while a branch is chosen', () => {
-    expect(html).not.toContain('data-company-wide');
-    const branched = tab('alerts', { now: { ...NOW_DTO, branchId: B1 } });
-    const fuel = part(branched, 'data-alert="fuelRequests"', /data-alert="/u);
-    expect(fuel).toContain('data-company-wide="true"');
-    expect(part(branched, 'data-alert="maintenanceRed"', /data-alert="/u)).not.toContain(
-      'data-company-wide',
-    );
-  });
-
-  it('shows one calm line when nothing fired', () => {
-    const calm = renderDashboard({
-      url: '/fleet?tab=alerts',
-      client: dashboardClient({ now: { ...NOW_DTO, alerts: [] }, custody: false }),
-      permissions: ALL_KEYS.filter((k) => k !== 'fleetCustody.view'),
-    });
-    expect(calm).toContain('data-alerts-none="true"');
-    expect(calm).not.toContain('data-alert="');
-  });
-});
-
-// ── Tab 2 «الحركة الآن» ────────────────────────────────────────────────────────────────────────
-
-describe('tab 2 — the movement now', () => {
-  const html = tab('now');
-  const card = (key: string): string => part(html, `data-now-card="${key}"`, /data-now-card="/u);
-
-  it('reads the badge as the ready cars that have a driver: readyManned ÷ ready (D5-1)', () => {
-    expect(html).toMatch(/data-now-badge="true"[^>]*>84\.8%</u);
-    expect(text(card('summary'))).toContain(
-      '28 من 33 سيارة جاهزة لها سائق متاح اليوم، و5 بلا سائق.',
-    );
-  });
-
-  it('counts ready as active − in the workshop − licence expired, and opens the roster’s view of it', () => {
-    expect(text(card('ready'))).toContain('استُبعدت 7 سيارات من النشطة:');
-    expect(hrefOf(card('ready'), 'roster.ready')).toEqual([
-      `/fleet/roster?date=${TODAY}&view=ready`,
-    ]);
-    expect(hrefOf(card('unmanned'), 'roster.unmanned')).toEqual([
-      `/fleet/roster?date=${TODAY}&view=unmanned`,
-    ]);
-  });
-
-  it('splits «أسباب عدم التعيين» into parts of the unmanned cars only — never the ready stale plans', () => {
-    const roster = NOW_DTO.roster as NonNullable<typeof NOW_DTO.roster>;
-    const html2 = tab('now', {
-      now: {
-        ...NOW_DTO,
-        roster: {
-          ...roster,
-          unmannedCrewGap: 1,
-          unmannedStalePlan: 2,
-          unmannedNoCrew: 1,
-          crewGap: { ...roster.crewGap, stalePlan: 9 },
-        },
-      },
-    });
-    const unmanned = text(part(html2, 'data-now-card="unmanned"', /data-now-card="/u)).replace(
-      /\s+/gu,
-      '',
-    );
-    const tile = (n: number): string =>
-      `${n}${ar('fleet.dash.now.unmannedStalePlan')}`.replace(/\s+/gu, '');
-    expect(unmanned).toContain(tile(2));
-    expect(unmanned).not.toContain(tile(9));
-  });
-
-  it('writes the out-of-service reasons as recorded, and says so when there is none', () => {
-    const body = text(card('vehicles'));
-    expect(body).toContain('حادث');
-    expect(body).toContain(ar('fleet.dash.now.noReason'));
-    expect(hrefOf(card('vehicles'), 'vehicles.outOfService')).toContain(
-      '/fleet/vehicles?status=outOfService',
-    );
-  });
-
-  it('dates the oldest workshop stay with no ceiling, and opens the open visits (D5-3, R-09)', () => {
-    const body = text(card('workshop'));
-    expect(body).toContain('منذ 9 أيام');
-    expect(body).not.toContain('سقف');
-    expect(hrefOf(card('workshop'), 'workshop.open')).toEqual(['/fleet/maintenance?state=open']);
-  });
-
-  it('splits the absent by reason, each part opening its own list, the attendance sheet only with its grant', () => {
-    const body = card('absent');
-    expect(hrefOf(body, 'roster.absent.attendance')).toEqual([
-      `/fleet/roster?date=${TODAY}&unavailable=fleetUnavailability`,
-    ]);
-    expect(hrefOf(body, 'roster.absent.leave')).toEqual([
-      `/fleet/roster?date=${TODAY}&unavailable=hrLeave`,
-    ]);
-    expect(hrefOf(body, 'roster.absent.attendanceSheet')).toEqual([
-      `/fleet/attendance?date=${TODAY}`,
-    ]);
-    const without = tab(
-      'now',
-      {},
-      ALL_KEYS.filter((k) => k !== 'fleetAvailability.view'),
-    );
-    expect(hrefOf(without, 'roster.absent.attendanceSheet')).toEqual([]);
-  });
-
-  it('keeps the suggestions to links that OPEN existing screens — no button acts (D5-2)', () => {
-    const suggestions = card('suggestions');
-    expect(suggestions).not.toContain('<button');
-    expect(links(suggestions).length).toBeGreaterThan(0);
-  });
-
-  it('renders nothing for a section the reader may not see', () => {
-    const none = tab('now', { now: { ...NOW_DTO, vehicles: null } });
-    expect(none).not.toContain('data-now-card="vehicles"');
-    expect(none).toContain('data-now-card="ready"');
-  });
-});
 
 // ── Tab 3 «توزيع السيارات» ─────────────────────────────────────────────────────────────────────
 
@@ -477,7 +271,7 @@ describe('tab 5 — the summaries', () => {
 
 // ── The source: nothing counted, nothing ruled out ────────────────────────────────────────────
 
-describe('tabs 1–5 count nothing in the browser and draw no ruled-out piece', () => {
+describe('the dashboard’s tabs count nothing in the browser and draw no ruled-out piece', () => {
   const files = readdirSync(DASH).filter((name) => /^(tab-|dash-|custody-|period-)/u.test(name));
   const source = (name: string): string =>
     readFileSync(join(DASH, name), 'utf8')
@@ -507,124 +301,30 @@ describe('tabs 1–5 count nothing in the browser and draw no ruled-out piece', 
     }
   });
 
-  it('draws no Phase-2 piece on any of the ten tabs', () => {
-    for (const key of [
-      'alerts',
-      'now',
-      'distribution',
-      'licences',
-      'summaries',
-      'period',
-      'km',
-      'ranking',
-      'maintenance',
-      'accidents',
-    ]) {
-      const body = text(tab(key));
+  it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the ten tabs', () => {
+    for (const key of FLEET_DASHBOARD_TABS) {
+      const html = tab(key);
+      const body = text(html);
       for (const word of [
         'عقود التوريد',
         'عقد توريد',
         'ترتيب السائقين',
         'تكلفة التشغيل',
         'تدقيق الإيصالات',
+        'ج.م/كم',
+        'تكلفة الكيلو',
+        'أمر حركة',
       ]) {
         expect(body, `${key}: ${word}`).not.toContain(word);
       }
-      expect(links(tab(key)).filter((l) => l.href.startsWith('/fleet/vehicle-contracts'))).toEqual(
-        [],
-      );
+      expect(links(html).filter((l) => l.href.startsWith('/fleet/vehicle-contracts'))).toEqual([]);
     }
   });
 });
 
-// ── The final-fix pins: failures said, links only with their own guard, one scope per balance ──
+// ── The final-fix pins of the old tabs (tabs 1 and 2 moved to the overview and «الحركة اليوم» specs) ──
 
-describe('the final fixes on tabs 1, 2 and 5', () => {
-  const without = (key: string): string[] => ALL_KEYS.filter((k) => k !== key);
-  const SILENT_ALERTS = {
-    ...NOW_DTO,
-    maintenanceAlarm: null,
-    licenceVehicles: null,
-    licenceDrivers: null,
-    fuelCards: null,
-    fuelCharging: null,
-    dealershipPending: null,
-    notices: null,
-    noReading: null,
-    roster: null,
-    alerts: [],
-  };
-
-  it('tab 1 says which source failed, with its retry — never «لا توجد تنبيهات الآن» over it', () => {
-    const failed = tab('alerts', {
-      now: { ...SILENT_ALERTS, unavailable: ['maintenanceAlarm', 'licenceVehicles'] },
-      custody: false,
-    });
-    expect(failed).toContain('data-section-error="maintenanceAlarm"');
-    expect(failed).toContain('data-section-error="licenceVehicles"');
-    expect(failed).not.toContain('data-alerts-none="true"');
-    // Nothing failed and nothing fires: the all-clear stays.
-    const clear = tab('alerts', { now: { ...SILENT_ALERTS, unavailable: [] }, custody: false });
-    expect(clear).toContain('data-alerts-none="true"');
-  });
-
-  it('tab 1 offers «سيارات بلا أي قراءة» only with the vehicles screen’s own guard', () => {
-    expect(hrefOf(tab('alerts'), 'noReading.neverRead')).toHaveLength(1);
-    const blind = tab('alerts', {}, without('fleetVehicle.view'));
-    expect(hrefOf(blind, 'noReading.neverRead')).toEqual([]);
-    expect(text(blind)).toContain('318'); // the car is still named, as plain text
-  });
-
-  it('tab 1 says «منتهٍ اليوم» for a licence that expires today, as tab 4 does', () => {
-    const lic = NOW_DTO.licenceVehicles as NonNullable<typeof NOW_DTO.licenceVehicles>;
-    const today = tab('alerts', {
-      now: {
-        ...NOW_DTO,
-        licenceVehicles: {
-          ...lic,
-          list: [{ vehicleId: 'v500', code: '500', expiresAt: `${TODAY}T00:00:00.000Z`, days: 0 }],
-        },
-      },
-    });
-    const line = part(today, 'data-alert="vehicleLicenceExpired"', /data-alert="/u);
-    expect(text(line)).toContain(ar('fleet.dash.licences.expiredToday'));
-    expect(text(line)).not.toContain('منذ 0');
-  });
-
-  it('tab 2 links the workshop’s oldest car and «ملف السيارة» only with fleetVehicle.view', () => {
-    const full = tab('now');
-    expect(hrefOf(full, 'workshop.oldest')).toEqual(['/fleet/vehicles/v141']);
-    expect(hrefOf(full, 'workshop.oldest.file')).toEqual(['/fleet/vehicles/v141']);
-    const blind = tab('now', {}, without('fleetVehicle.view'));
-    expect(hrefOf(blind, 'workshop.oldest')).toEqual([]);
-    expect(hrefOf(blind, 'workshop.oldest.file')).toEqual([]);
-    expect(hrefOf(blind, 'workshop.open.suggestion')).toHaveLength(1);
-  });
-
-  it('tab 2 says «منذ اليوم» for a car that entered the workshop today, never «منذ 0 أيام»', () => {
-    const workshop = NOW_DTO.workshop as NonNullable<typeof NOW_DTO.workshop>;
-    const oldest = workshop.oldest as NonNullable<typeof workshop.oldest>;
-    const today = text(
-      tab('now', {
-        now: { ...NOW_DTO, workshop: { ...workshop, oldest: { ...oldest, days: 0 } } },
-      }),
-    );
-    expect(today).toContain(ar('fleet.dash.common.sinceToday'));
-    expect(today).not.toContain('منذ 0');
-  });
-
-  it('tab 2’s balance offers no driver-versus-car difference while a branch is chosen', () => {
-    const company = part(tab('now'), 'data-now-card="summary"', /data-now-card="/u);
-    expect(company).toContain('data-now-balance-gap="true"');
-    const branch = part(
-      tab('now', { now: { ...NOW_DTO, branchId: B1 } }),
-      'data-now-card="summary"',
-      /data-now-card="/u,
-    );
-    expect(branch).not.toContain('data-now-balance-gap="true"');
-    expect(branch).toContain('data-company-wide="true"');
-  });
-
+describe('the final fixes kept on tab 5', () => {
   it('tab 5’s open total links nowhere when it is the fines alone (company + drivers, no one list)', () => {
     const open = part(
       tab('summaries', { now: { ...NOW_DTO, accidentsOpen: null } }),

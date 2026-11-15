@@ -118,11 +118,11 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks());
 
-const digest = (branchId: string | null) =>
+const digest = (branchIds: readonly string[] | null) =>
   fleetDriverProfileService.registryDigest({
     today: TODAY,
     warnDays: W,
-    branchId,
+    branchIds,
     cashSpecIds: [String(CASH_SPEC)],
     atmSpecIds: [String(ATM_SPEC)],
   });
@@ -194,9 +194,9 @@ describe('registryDigest — the whole company', () => {
   });
 });
 
-describe('registryDigest — a switcher branch is the HR branch, as `?branch=`', () => {
+describe('registryDigest — the reader’s branches are HR branches, as `?branch=a,b`', () => {
   it('narrows every figure to the drivers placed there', async () => {
-    const out = await digest(GIZA);
+    const out = await digest([GIZA]);
     expect(out.total).toBe(3);
     expect(out.total).toBe(await listTotal({ branchId: [GIZA] }));
     expect(out.licence).toEqual({
@@ -211,9 +211,31 @@ describe('registryDigest — a switcher branch is the HR branch, as `?branch=`',
   });
 
   it('a driver the directory could not place is in no branch', async () => {
-    const out = await digest(MAADI);
+    const out = await digest([MAADI]);
     expect(out.total).toBe(10);
     expect(out.licence.unregistered).toBe(0);
+  });
+
+  it('«كل فروعي» — several branches are the drivers of any of them, as the list’s own `?branch=`', async () => {
+    const out = await digest([MAADI, GIZA]);
+    expect(out.total).toBe(13);
+    expect(out.total).toBe(await listTotal({ branchId: [MAADI, GIZA] }));
+    expect(out.licence.expired).toBe(await listTotal({ ...expiredQuery, branchId: [MAADI, GIZA] }));
+    // The unplaced driver (no branch on file) is in neither.
+    expect(out.total).toBe((await digest(null)).total - 1);
+  });
+
+  it('a reader with no branch to cover (`[]`) gets nobody — never the whole registry', async () => {
+    const out = await digest([]);
+    expect(out.total).toBe(0);
+    expect(out.licence).toEqual({
+      expired: 0,
+      expiring: 0,
+      soon: 0,
+      notRecorded: 0,
+      unregistered: 0,
+    });
+    expect(out.cash).toEqual({ drivers: 0, legacy: 0 });
   });
 });
 

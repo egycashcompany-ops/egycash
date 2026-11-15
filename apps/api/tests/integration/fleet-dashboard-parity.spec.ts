@@ -10,12 +10,16 @@
 // The invariants of unified.md §6.2 are asserted on the same fixture: ready = rows − inWorkshop −
 // licenceExpired; registry = available + absent + inactive + not employed + licence expired; km =
 // Σ buckets (confirmed + span) = Σ byBranch + unregistered; Σ byWorkType = Σ byWorkshop = visits.count;
-// drivers' violations = attributed + unknown + unlinked; the licence buckets are disjoint.
+// drivers' violations = attributed + unknown + unlinked; the licence buckets are disjoint; the
+// «الحركة اليوم» rows are the board's own ready-and-unmanned rows; and a reader reaching two branches
+// («كل فروعي») reads every figure its links reproduce with `branchIds=a,b`.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
+  FLEET_DASHBOARD_NOW_KEYS,
+  FLEET_DASHBOARD_PERIOD_KEYS,
   SettingKeys,
   calendarDayBounds,
   platformPermissions,
@@ -250,6 +254,7 @@ let dE: string; // B2 · valid · التمامات today — v2's fixed driver
 
 let now: FleetDashboardNowDto;
 let oct: FleetDashboardPeriodDto;
+let adminId: string;
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -270,7 +275,7 @@ beforeAll(async () => {
     },
     null,
   );
-  const adminId = String(user._id);
+  adminId = String(user._id);
   await userService.forceActivate(adminId);
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   const ctx: AuthContext = {
@@ -422,6 +427,18 @@ beforeAll(async () => {
     }),
     201,
   );
+  // «مصروف الوقود»: a fuel receipt paid from the custody fund.
+  ok(
+    await send('post', '/fleet/receipts', {
+      date: '2026-10-16',
+      vehicleId: v3.id,
+      kind: 'fuel',
+      fuelType: 'diesel',
+      amount: 120,
+      driverName: 'سائق',
+    }),
+    201,
+  );
   ok(
     await send('post', '/fleet/violations/vehicle', {
       vehicleId: v1.id,
@@ -429,6 +446,18 @@ beforeAll(async () => {
       violationTypeId: vehicleSide,
       count: 1,
       unitValue: 200,
+    }),
+    201,
+  );
+  // Last year's statement, still owed: «مخالفات قائمة» counts it, «ملخصات» (this year) does not.
+  // Two violations on ONE statement row: its count is 2, not 1.
+  ok(
+    await send('post', '/fleet/violations/vehicle', {
+      vehicleId: v2.id,
+      year: 2025,
+      violationTypeId: vehicleSide,
+      count: 2,
+      unitValue: 150,
     }),
     201,
   );
@@ -592,7 +621,7 @@ describe('R1 — the Cairo day', () => {
   });
 });
 
-describe('R1 parity — tab 2 «الحركة الآن»', () => {
+describe('R1 parity — «الحركة اليوم» (the old «الحركة الآن» figures and the two lists)', () => {
   it('T2.1/T2.2 = the vehicles list by status; the reason is printed as written', async () => {
     expect(now.vehicles?.active).toBe(await total('/fleet/vehicles', { status: 'active' }));
     expect(now.vehicles?.active).toBe(5);
@@ -666,6 +695,69 @@ describe('R1 parity — tab 2 «الحركة الآن»', () => {
     expect(r?.licenceRule).toBe('flag');
   });
 
+  it('«سيارات بلا سائق اليوم» = the board’s ready, unmanned rows — class by class, each with its car’s branch', async () => {
+    const board = ok<FleetRosterDayDto>(await get('/fleet/roster', { date: TODAY }));
+    const unmanned = board.rows.filter((row) => row.assignable === true && row.manned !== true);
+    const r = now.roster;
+    expect(r?.unmannedRows.map((row) => row.code).sort()).toEqual(
+      unmanned
+        .map((row) => row.code)
+        .slice(0, 8)
+        .sort(),
+    );
+    // Crew gap first (v2: its standing driver on «تمام»), then «بلا طاقم ثابت ولا تخطيط» (v6).
+    expect(r?.unmannedRows.map((row) => [row.code, row.why])).toEqual([
+      [v2.code, 'crewGap'],
+      [v6.code, 'noCrew'],
+    ]);
+    expect(r?.unmannedRows[0]?.absent).toEqual({ employeeId: dE, reason: 'fleetUnavailability' });
+    expect(r?.unmannedRows[1]?.absent).toBeNull();
+    for (const row of r?.unmannedRows ?? []) {
+      const car = ok<FleetVehicleDto>(await get(`/fleet/vehicles/${row.vehicleId}`));
+      expect(row.branch?.id ?? null, row.code).toBe(car.branchId);
+      expect(row.typeName?.ar).toBe('مصفحة');
+    }
+    expect(r?.unmannedRows[0]?.branch?.name).toEqual({ ar: 'فرع أسيوط', en: 'فرع أسيوط' });
+    // The tiles and the residue add up to unmanned.
+    expect(
+      (r?.unmannedCrewGap ?? 0) +
+        (r?.unmannedStalePlan ?? 0) +
+        (r?.unmannedNoCrew ?? 0) +
+        (r?.unmannedUnassigned ?? 0),
+    ).toBe(r?.unmanned);
+    // Each row's «فتح» opens the roster of the day with `q` = its code — a filter the roster page
+    // applies to this very board, where the row is present and unmanned.
+    for (const row of r?.unmannedRows ?? []) {
+      expect(
+        unmanned.some((x) => x.vehicleId === row.vehicleId && x.code === row.code),
+        row.code,
+      ).toBe(true);
+    }
+  });
+
+  it('«الغائبون اليوم» = the board’s unavailable drivers on «تمام» or leave, with their standing car', async () => {
+    const board = ok<FleetRosterDayDto>(await get('/fleet/roster', { date: TODAY }));
+    const absent = board.unavailableDrivers.filter((d) =>
+      ['fleetUnavailability', 'hrLeave'].includes(d.reason),
+    );
+    const r = now.roster;
+    expect(r?.absentDrivers.map((d) => d.employeeId).sort()).toEqual(
+      absent
+        .map((d) => d.employeeId)
+        .slice(0, 8)
+        .sort(),
+    );
+    expect(r?.absentDrivers).toEqual([
+      {
+        employeeId: dE,
+        reason: 'fleetUnavailability',
+        crewVehicle: { vehicleId: v2.id, code: v2.code },
+      },
+    ]);
+    // «عرض الكل (N)» — N is the server's count of the two reasons.
+    expect((r?.absent.attendance ?? 0) + (r?.absent.leave ?? 0)).toBe(absent.length);
+  });
+
   it('T2.4 = /fleet/maintenance?state=open, the oldest stay in Cairo days', async () => {
     expect(now.workshop?.open).toBe(await total('/fleet/maintenance', { open: true }));
     expect(now.workshop).toMatchObject({ open: 1, openActive: 1, openOutOfService: 0 });
@@ -678,7 +770,7 @@ describe('R1 parity — tab 2 «الحركة الآن»', () => {
   });
 });
 
-describe('R1 parity — tab 1 «التنبيهات»', () => {
+describe('R1 parity — the overview’s action centre (the old «التنبيهات» lines)', () => {
   it('T1.1 = the alarms board’s red rows (and of them the overdue)', async () => {
     const rows = ok<FleetMaintenanceAlarmDto[]>(await get('/fleet/odometer/alarms'));
     const red = rows.filter((row) => row.level === 'red');
@@ -733,9 +825,13 @@ describe('R1 parity — tab 1 «التنبيهات»', () => {
       requested: { count: all['requestedCount'], amount: all['requestedAmount'] },
       low: { belowYellow: low.cardCount, belowRed: red.cardCount, yellowAt: 300, redAt: 100 },
       charged24h: all['chargedTodayAmount'],
+      cards: all['cardCount'],
     });
     expect(now.fuelCharging?.requested).toEqual({ count: 1, amount: 200 });
     expect(now.fuelCharging?.charged24h).toBe(500);
+    // «موزعة على N كارتًا» = the cards screen's own count.
+    expect(now.fuelCharging?.cards).toBe(await total('/fleet/fuel-cards', {}));
+    expect(now.fuelCharging?.cards).toBe(3);
   });
 
   it('T1.9 = /fleet/dealership?state=pending (pending=true)', async () => {
@@ -885,6 +981,14 @@ describe('R1 parity — tabs 3 and 5', () => {
       }),
     );
     expect(dist?.branches.map((b) => b.id)).toEqual(expect.arrayContaining([B1, B2]));
+    // «N فرعًا» = the distinct branches of the active cars on /fleet/vehicles.
+    const active = ok<FleetVehicleDto[]>(
+      await get('/fleet/vehicles', { status: 'active', pageSize: 100 }),
+    );
+    expect(dist?.branchCount).toBe(
+      new Set(active.flatMap((car) => (car.branchId === null ? [] : [car.branchId]))).size,
+    );
+    expect(dist?.branchCount).toBe(2);
   });
 
   it('T3.4/T3.6/T3.8 = /fleet/drivers, by `spec`', async () => {
@@ -940,6 +1044,34 @@ describe('R1 parity — tabs 3 and 5', () => {
     });
   });
 
+  it('«مخالفات قائمة» = the rollup with NO year — every year still owed, amounts AND counts', async () => {
+    const rollup = ok<FleetViolationRollupDto[]>(await get('/fleet/violations/rollup'));
+    const sum = (pick: (row: FleetViolationRollupDto) => number) =>
+      Math.round(rollup.reduce((acc, row) => acc + pick(row), 0) * 100) / 100;
+    const v = now.violationsOpen;
+    expect(v?.company).toEqual({
+      amount: sum((row) => row.outstandingVehicleAmount),
+      count: sum((row) => row.outstandingVehicleCount),
+    });
+    expect(v?.drivers.total).toEqual({
+      amount: sum((row) => row.outstandingDriverAmount),
+      count: sum((row) => row.outstandingDriverCount),
+    });
+    expect(v?.total.count).toBe(sum((row) => row.outstandingTotalCount));
+    expect(v?.total.amount).toBe(sum((row) => row.outstandingTotalAmount));
+    // The drivers' half is the drivers' list of every year still owed, one fine a row.
+    expect(v?.drivers.total.count).toBe(
+      await total('/fleet/violations', { kind: 'driver', collected: false }),
+    );
+    // Last year's statement (2 × 150) is in it; this year's «ملخصات» figure is not.
+    expect(v).toEqual({
+      company: { amount: 500, count: 3 },
+      drivers: { total: { amount: 117, count: 3 } },
+      total: { amount: 617, count: 6 },
+    });
+    expect(now.violationsYear?.company).toBe(200);
+  });
+
   it('T4.6 = the licensing papers counted read-only (none open on this fixture)', () => {
     expect(now.papers).toEqual({ insurance: 0, tax: 0 });
   });
@@ -969,6 +1101,24 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
       await total('/fleet/drivers', { licenseExpiresBefore: last(TODAY), branchId: B2 }),
     );
     expect(b2.distributionDrivers?.total).toBe(await total('/fleet/drivers', { branchId: B2 }));
+    const rollup = ok<FleetViolationRollupDto[]>(
+      await get('/fleet/violations/rollup', { branchIds: B2 }),
+    );
+    expect(b2.violationsOpen?.total.count).toBe(
+      rollup.reduce((acc, row) => acc + row.outstandingTotalCount, 0),
+    );
+    expect(b2.scopeBranches).toEqual([{ id: B2, name: { ar: 'فرع أسيوط', en: 'فرع أسيوط' } }]);
+    // The «الحركة اليوم» rows follow the roster's scope: the branch's own cars only.
+    const board = ok<FleetRosterDayDto>(await get('/fleet/roster', { date: TODAY }, B2));
+    expect(b2.roster?.unmannedRows.map((row) => row.code).sort()).toEqual(
+      board.rows
+        .filter((row) => row.assignable === true && row.manned !== true)
+        .map((row) => row.code)
+        .sort(),
+    );
+    expect(b2.roster?.unmannedRows.every((row) => row.branch?.id === B2)).toBe(true);
+    // The absent drivers are the company's pool (R-27): unchanged by the switcher.
+    expect(b2.roster?.absentDrivers).toEqual(now.roster?.absentDrivers);
   });
 
   it('the alarm and no-reading lines narrow to the branch’s cars, the link carrying their codes', async () => {
@@ -990,6 +1140,7 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
       typeIds: [],
       operationIds: [],
       vehicleCodes: [],
+      scopeBranches: [{ id: B2, name: { ar: 'فرع أسيوط', en: 'فرع أسيوط' } }],
     });
     // The driver pool stays company-wide, as /fleet/roster shows it (R-27).
     expect(b2.roster?.registry).toBe(now.roster?.registry);
@@ -1015,6 +1166,11 @@ const periodParity = async (
   expect(dto.visits?.count).toBe(await total('/fleet/maintenance', q, branch));
   expect(dto.visits?.closed).toBe(await total('/fleet/maintenance', { ...q, open: false }, branch));
   expect(dto.visits?.open).toBe(await total('/fleet/maintenance', { ...q, open: true }, branch));
+  // The overview's «زيارات الصيانة»: the same list over the EXIT day, never the check-in day.
+  const { from, to, ...rest } = q;
+  expect(dto.exits?.count).toBe(
+    await total('/fleet/maintenance', { ...rest, outFrom: from, outTo: to }, branch),
+  );
   for (const bar of dto.visits?.byWorkType ?? []) {
     expect(bar.count).toBe(
       await total('/fleet/maintenance', { ...q, workTypeIds: bar.id }, branch),
@@ -1043,6 +1199,11 @@ const periodParity = async (
     custody: rec.custodyTotal,
     count: rec.count,
   });
+  // «مصروف الوقود» = the receipts screen filtered to fuel.
+  const fuel = ok<{ fuelTotal: number }>(
+    await get('/fleet/receipts/summary', { ...q, kind: 'fuel' }, branch),
+  );
+  expect(dto.opex?.fuel).toBe(fuel.fuelTotal);
   const deal = ok<{ count: number; pending: number; dealershipTotal: number }>(
     await get('/fleet/dealership/summary', q, branch),
   );
@@ -1082,6 +1243,7 @@ describe('R2 parity — the company view of October', () => {
       operationIds: [],
       vehicleCodes: [],
       branchId: null,
+      scopeBranches: null,
     });
     expect(oct.unavailable).toEqual([]);
   });
@@ -1095,8 +1257,11 @@ describe('R2 parity — the company view of October', () => {
       openRemaining: oct.accidents?.openRemaining,
       undated: 1,
     });
-    expect(oct.opex?.custody).toBe(85);
+    expect(oct.opex?.custody).toBe(85 + 120);
+    expect(oct.opex?.fuel).toBe(120);
     expect(oct.opex?.total).toBe((oct.opex?.card ?? 0) + (oct.opex?.custody ?? 0));
+    // By EXIT day: v2's (Oct 12) and the deleted v7's (Oct 7); v4 is still in.
+    expect(oct.exits).toEqual({ count: 2 });
   });
 
   it('holds the invariants: km = Σ buckets = Σ branches + unregistered; Σ bars = visits', () => {
@@ -1136,8 +1301,11 @@ describe('R2 parity — the vehicle set travels as filters', () => {
   it('the switcher branch B2 rides as branchIds on every screen', async () => {
     const b2 = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', OCT, B2));
     expect(b2.vehicleScope.branchId).toBe(B2);
+    expect(b2.vehicleScope.scopeBranches?.map((b) => b.id)).toEqual([B2]);
     await periodParity(b2, { branchIds: B2 }, B2);
     kmInvariants(b2);
+    // One branch in scope: «حسب النوع» is drawn and sums to the km.
+    expect((b2.km?.byType ?? []).reduce((a, t) => a + t.km, 0)).toBe(b2.km?.total);
   });
 
   it('operation + codes: the intersection, as each screen resolves it', async () => {
@@ -1145,5 +1313,86 @@ describe('R2 parity — the vehicle set travels as filters', () => {
     const dto = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', q));
     expect(dto.vehicleScope.count).toBe(1);
     await periodParity(dto, { operationIds: O_CASH, vehicleCodes: `${v1.code},${v2.code}` });
+  });
+});
+
+// ── «كل فروعي» — a reader whose grant reaches B1 and B2 ──────────────────────────────────────────
+
+describe('«كل فروعي» parity — every figure is its screen with `branchIds=B1,B2` (D9, D12)', () => {
+  let mine: FleetDashboardNowDto;
+  let mineOct: FleetDashboardPeriodDto;
+  const BOTH = () => `${B1},${B2}`;
+  beforeAll(async () => {
+    const { user } = await userService.create(
+      {
+        email: 'dashboard-parity-reach@ecms.local',
+        firstName: { ar: 'م', en: 'T' },
+        lastName: { ar: 'م', en: 'T' },
+        locale: 'en',
+        organization: { branchId: B1, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    const id = String(user._id);
+    await userService.forceActivate(id);
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Dashboard reach', ar: 'قارئ الفروع' },
+        permissionKeys: [...new Set([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS])],
+      },
+      adminId,
+    );
+    await rbacService.assignRole(
+      { userId: id, roleId: String(role._id), scope: 'branch', branchIds: [B2] },
+      adminId,
+    );
+    const token = await authService.signAccessToken(id, new Types.ObjectId().toString(), 0);
+    const as = (path: string, query: Record<string, unknown> = {}) =>
+      request(app).get(`/api/v1${path}`).query(query).set('Authorization', `Bearer ${token}`);
+    mine = ok<FleetDashboardNowDto>(await as('/fleet/dashboard/now'));
+    mineOct = ok<FleetDashboardPeriodDto>(await as('/fleet/dashboard/period', OCT));
+  });
+
+  it('echoes both branches by name and no switcher; the set echo is non-null', () => {
+    expect(new Set(mine.scopeBranches?.map((b) => b.id))).toEqual(new Set([B1, B2]));
+    expect(mine.branchId).toBeNull();
+    expect(mine.vehicleScope).not.toBeNull();
+    expect(mine.vehicleScope?.branchId).toBeNull();
+    expect(new Set(mineOct.vehicleScope.scopeBranches?.map((b) => b.id))).toEqual(
+      new Set([B1, B2]),
+    );
+  });
+
+  it('R1: the company sources are the screens’ with the list', async () => {
+    expect(mine.workshop?.open).toBe(
+      await total('/fleet/maintenance', { open: true, branchIds: BOTH() }),
+    );
+    const open = ok<{ count: number; remaining: number }>(
+      await get('/fleet/accidents/summary', { status: 'open', branchIds: BOTH() }),
+    );
+    expect(mine.accidentsOpen).toEqual({ count: open.count, remaining: open.remaining });
+    // The accident on the car the registry never had is in no branch: out of the list.
+    expect(mine.accidentsOpen?.count).toBe((now.accidentsOpen?.count ?? 0) - 1);
+    expect(mine.dealershipPending?.rows).toBe(
+      await total('/fleet/dealership', { pending: true, branchIds: BOTH() }),
+    );
+    const rollup = ok<FleetViolationRollupDto[]>(
+      await get('/fleet/violations/rollup', { branchIds: BOTH() }),
+    );
+    expect(mine.violationsOpen?.total.count).toBe(
+      rollup.reduce((acc, row) => acc + row.outstandingTotalCount, 0),
+    );
+    expect(mine.distributionDrivers?.total).toBe(
+      await total('/fleet/drivers', { branchId: BOTH() }),
+    );
+    expect(mine.vehicles?.active).toBe(5);
+  });
+
+  it('R2: every period screen reproduces the figure with the list; the km by branch, not by type', async () => {
+    await periodParity(mineOct, { branchIds: BOTH() });
+    kmInvariants(mineOct);
+    expect(mineOct.km?.byType).toBeNull();
+    expect(mineOct.km?.unregistered).toBeNull();
+    expect(mineOct.accidents?.undated).toBeNull();
   });
 });

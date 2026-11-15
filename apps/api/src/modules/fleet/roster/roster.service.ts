@@ -28,10 +28,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import {
-  drivingSeatEmployeeIds,
-  drivingSeatRoster,
-} from '../driver-profiles/driving-seat-roster';
+import { drivingSeatEmployeeIds, drivingSeatRoster } from '../driver-profiles/driving-seat-roster';
 import {
   driverAvailabilityForRoster,
   driverAvailabilityOn,
@@ -130,8 +127,11 @@ class FleetRosterService {
   }
 
   /**
-   * `board()` with the standing crews it read on the way — the dashboard's roster digest needs
-   * «which cars have a fixed crew» and would otherwise read `fleet_fixed_crews` a second time.
+   * `board()` with what it read on the way — the dashboard's roster digest needs «which cars have
+   * a fixed crew» and would otherwise read `fleet_fixed_crews` a second time; its «الحركة اليوم»
+   * lists need each board car's current branch (`branchOf`, from the scoped cars the board already
+   * loaded) and each pool driver's employee code (`driverCodes`, from the driving-seat roster the
+   * board already read), to name and order their rows. No query of its own.
    */
   async boardWithCrews(
     date: Date,
@@ -139,6 +139,10 @@ class FleetRosterService {
   ): Promise<{
     board: FleetRosterDayDto;
     fixedCrews: Awaited<ReturnType<typeof fleetFixedCrewRepository.findAll>>;
+    /** vehicleId → the car's branch now (`null` = «بلا فرع»), for every row of the board. */
+    branchOf: Map<string, string | null>;
+    /** employeeId → the HR employee code, for every driver of the pool. */
+    driverCodes: Map<string, string>;
   }> {
     const day = utcDay(date);
     // The day the board DESCRIBES, as the rules read it (R-02): the date part of `day`. The
@@ -333,6 +337,13 @@ class FleetRosterService {
         licenceRule,
       },
       fixedCrews,
+      branchOf: new Map(
+        vehicles.map((vehicle) => [
+          String(vehicle._id),
+          vehicle.branchId == null ? null : String(vehicle.branchId),
+        ]),
+      ),
+      driverCodes: new Map(seatRoster.map((employee) => [employee.employeeId, employee.code])),
     };
   }
 
@@ -590,7 +601,6 @@ class FleetRosterService {
       if (batch.items.length < 100) return vehicles;
     }
   }
-
 }
 
 export const fleetRosterService = new FleetRosterService();

@@ -9,6 +9,7 @@ import {
   FleetEvents,
   parseFleetSort,
   type FleetDashboardNowViolationsDto,
+  type FleetDashboardNowViolationsOpenDto,
   type FleetViolationKind,
   type FleetViolationRollupDto,
   type FleetViolationSide,
@@ -39,7 +40,7 @@ import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetGrievanceRepository, fleetViolationRepository } from './violation.repository';
-import { assembleRollups, assembleYearDigest } from './violation-rollup';
+import { assembleOpenDigest, assembleRollups, assembleYearDigest } from './violation-rollup';
 import { type FleetGrievanceDoc, type FleetViolationDoc } from './violation.model';
 import { vehicleIdOf } from '../fleet.mappers';
 
@@ -630,6 +631,19 @@ class FleetViolationService {
       fleetViolationRepository.driverFineGroups(input.year, scope),
     ]);
     return assembleYearDigest(input.year, sums, groups);
+  }
+
+  /**
+   * «مخالفات قائمة» — every year's fines still owed, amount and count, for the fleet dashboard's
+   * overview: the rollup's own sums with NO year asked (`yearSums(undefined, …)` is every year)
+   * over the rollup's own vehicle narrowing, so the figure is `/fleet/violations/rollup`'s footer
+   * for the whole history. One aggregate; the drivers' split stays `yearDigest`'s.
+   */
+  async openDigest(input: {
+    filter: VehicleFilterQuery;
+  }): Promise<FleetDashboardNowViolationsOpenDto> {
+    const scope = await this.carsOf(input.filter);
+    return assembleOpenDigest(await fleetViolationRepository.yearSums(undefined, scope));
   }
 }
 

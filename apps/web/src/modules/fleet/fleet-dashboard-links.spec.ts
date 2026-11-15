@@ -4,7 +4,9 @@
 //   · no list link is bare (a bare list URL restores the reader's remembered filters, CR-11) — only a
 //     record and the two screens that keep no filter may be named by their path alone;
 //   · every link that counts over days carries those days explicitly, from the server's echo;
-//   · a type, operation or branch travels as `type` / `operation` / `branch`, whatever its size;
+//   · a type, operation or branch travels as `type` / `operation` / `branch`, whatever its size — the
+//     branch being the switcher's, else the reader's own branches («كل فروعي» as a list);
+//   · a link to another tab of the page keeps the page's filters as they stand;
 //   · a figure with no exact list gets no link (`null`), never an approximate one.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -22,7 +24,9 @@ import {
   PATH_ONLY,
   custodyDashboardLink,
   nowLinks,
+  echoTabFilters,
   periodLinks,
+  tabLink,
   type DashLink,
 } from './lib/fleet-dashboard-links';
 
@@ -35,7 +39,8 @@ const routePatterns = (): RegExp[] =>
     .map((m) => m[1] as string)
     .filter((path) => path !== '*')
     .map((path) => new RegExp(`^/fleet/${path.replace(/:[a-zA-Z]+\??/gu, '[^/?]+')}$`, 'u'));
-const ROUTE_RES = routePatterns();
+/** The index route — `/fleet` itself, the dashboard (a tab link opens another of its tabs). */
+const ROUTE_RES = [...routePatterns(), ...(/<Route\s+index\b/u.test(ROUTES) ? [/^\/fleet$/u] : [])];
 const isRoute = (pathname: string): boolean => ROUTE_RES.some((re) => re.test(pathname));
 
 const TODAY = '2026-11-01';
@@ -47,22 +52,38 @@ const ids = (n: number, base: number): string[] =>
   Array.from({ length: n }, (_, i) => (base + i).toString(16).padStart(24, '0'));
 const codes = (n: number): string[] => Array.from({ length: n }, (_, i) => String(100 + i));
 
-const NOW = nowLinks({ today: TODAY, branchId: null });
-const NOW_BRANCH = nowLinks({ today: TODAY, branchId: 'b1' });
+const B1_NAMED = { id: 'b1', name: { ar: 'القاهرة', en: 'Cairo' } };
+const B2_NAMED = { id: 'b2', name: { ar: 'الجيزة', en: 'Giza' } };
+const NOW = nowLinks({ today: TODAY, branchId: null, scopeBranches: null });
+const NOW_BRANCH = nowLinks({ today: TODAY, branchId: 'b1', scopeBranches: [B1_NAMED] });
+/** A reader of one branch with no switcher: the figures are that branch's (plan D9). */
+const NOW_ONE = nowLinks({ today: TODAY, branchId: null, scopeBranches: [B1_NAMED] });
+/** «كل فروعي»: two branches, no switcher. */
+const NOW_MINE = nowLinks({ today: TODAY, branchId: null, scopeBranches: [B1_NAMED, B2_NAMED] });
 const NO_SET: FleetDashboardVehicleScopeDto = {
   count: null,
   typeIds: [],
   operationIds: [],
   vehicleCodes: [],
   branchId: null,
+  scopeBranches: null,
+};
+const MINE_SET: FleetDashboardVehicleScopeDto = {
+  ...NO_SET,
+  count: 39,
+  scopeBranches: [B1_NAMED, B2_NAMED],
 };
 const RANGE = { from: '2026-10-01', to: '2026-10-31' };
 
 /** Every link the builder can emit, each builder called with representative arguments. */
 const everyLink = (): DashLink[] => {
   const all: (DashLink | null)[] = [];
-  for (const L of [NOW, NOW_BRANCH]) {
+  for (const L of [NOW, NOW_BRANCH, NOW_ONE, NOW_MINE]) {
     all.push(
+      L.rosterCar('133'),
+      L.rosterAbsentAll(),
+      L.rosterUnavailableAll(),
+      L.violationsOpen(),
       L.alarm('red', null),
       L.alarm('yellow', ['133']),
       L.vehicleLicencesExpired(),
@@ -121,10 +142,19 @@ const everyLink = (): DashLink[] => {
   }
   for (const scope of [
     NO_SET,
-    { ...NO_SET, typeIds: ['t1'], branchId: 'b1', vehicleCodes: ['133'] },
+    {
+      ...NO_SET,
+      typeIds: ['t1'],
+      branchId: 'b1',
+      scopeBranches: [B1_NAMED],
+      vehicleCodes: ['133'],
+    },
+    MINE_SET,
   ]) {
     const P = periodLinks({ range: RANGE, vehicleScope: scope });
     all.push(
+      P.exits(),
+      P.opexFuel(),
       P.km(),
       P.carKm('133', 'km.top'),
       P.vehicle('v1', 'km.vehicle'),
@@ -139,6 +169,10 @@ const everyLink = (): DashLink[] => {
       P.opexCustody(),
       P.dealership(),
     );
+  }
+  const sp = new URLSearchParams('tab=overview&period=last30&type=t1');
+  for (const tab of ['today', 'distribution', 'maintenance', 'accidents', 'period'] as const) {
+    all.push(tabLink(tab, `${tab === 'today' ? 'roster' : 'visits'}.tab`, sp, [tab]));
   }
   return all.flatMap((link) => (link === null ? [] : [link]));
 };
@@ -175,7 +209,8 @@ describe('every link the dashboard can make', () => {
       ['/fleet/dealership', ['from', 'to', 'state']],
       ['/fleet/accidents', ['from', 'to', 'status']],
       ['/fleet/maintenance', ['from', 'to', 'state', 'outFrom']],
-      ['/fleet/violations', ['year']],
+      // A year's fines carry the year; «مخالفات قائمة» (every year) carries what is still owed.
+      ['/fleet/violations', ['year', 'cset']],
     ];
     for (const link of links) {
       const { pathname, params } = parse(link);
@@ -292,6 +327,7 @@ describe('the branch and the vehicle set travel as filters', () => {
         operationIds: ['o1'],
         vehicleCodes: ['133', '207'],
         branchId: 'b1',
+        scopeBranches: [B1_NAMED],
       },
     });
     const p = parse(P.km()).params;
@@ -322,6 +358,155 @@ describe('the branch and the vehicle set travel as filters', () => {
         'operation',
       ),
     ).toBe('o1,o2');
+  });
+});
+
+describe('the branch the figures cover (plan D12): the switcher, else the reader’s own branches', () => {
+  it('sends a reader’s one branch, and «كل فروعي» as the list of both, to every branch-scoped screen', () => {
+    for (const [L, branch] of [
+      [NOW_ONE, 'b1'],
+      [NOW_MINE, 'b1,b2'],
+    ] as const) {
+      for (const link of [
+        L.workshopOpen(),
+        L.dealershipPending(),
+        L.accidentsOpen(),
+        L.drivers(),
+        L.driverLicencesExpired(),
+        L.violationsOpen(),
+        L.violationsCompany(2026),
+        L.visitsRecent(30),
+      ]) {
+        expect(parse(link).params.get('branch'), link.to).toBe(branch);
+      }
+      // The company-wide sources still take no branch.
+      expect(parse(L.charging('low')).params.has('branch')).toBe(false);
+      expect(parse(L.noticesOpen()).params.has('branch')).toBe(false);
+    }
+  });
+
+  it('keeps the switcher’s branch exact when it names one inside the reader’s branches', () => {
+    const L = nowLinks({ today: TODAY, branchId: 'b2', scopeBranches: [B1_NAMED, B2_NAMED] });
+    expect(parse(L.workshopOpen()).params.get('branch')).toBe('b2');
+  });
+
+  it('narrows the period set the same way, and a row’s own branch still wins (km by branch)', () => {
+    const P = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
+    expect(parse(P.km()).params.get('branch')).toBe('b1,b2');
+    expect(parse(P.visits()).params.get('branch')).toBe('b1,b2');
+    const row = periodLinks({ range: RANGE, vehicleScope: { ...MINE_SET, branchId: 'b2' } });
+    expect(parse(row.km('km.byBranch')).params.get('branch')).toBe('b2');
+  });
+
+  it('sends the custody part to the receipts for a narrowed reader, «كل فروعي» included (D20)', () => {
+    const mine = periodLinks({ range: RANGE, vehicleScope: MINE_SET }).opexCustody();
+    expect(parse(mine).pathname).toBe('/fleet/receipts');
+    expect(parse(mine).params.get('branch')).toBe('b1,b2');
+    expect(parse(periodLinks({ range: RANGE, vehicleScope: NO_SET }).opexCustody()).pathname).toBe(
+      '/fleet/custody-expenses',
+    );
+  });
+});
+
+describe('the links of «نظرة عامة» and «الحركة اليوم»', () => {
+  it('opens a row of «سيارات بلا سائق اليوم» on the day’s board, searched for that car', () => {
+    expect(NOW.rosterCar('133')).toEqual({
+      to: `/fleet/roster?date=${TODAY}&q=133`,
+      metric: 'roster.unmannedRows',
+    });
+  });
+
+  it('opens «الغائبون اليوم» on the two absence reasons, and the unavailable on all five', () => {
+    expect(NOW.rosterAbsentAll()).toEqual({
+      to: `/fleet/roster?date=${TODAY}&unavailable=fleetUnavailability,hrLeave`,
+      metric: 'roster.absent',
+    });
+    expect(NOW.rosterUnavailableAll()).toEqual({
+      to: `/fleet/roster?date=${TODAY}&unavailable=profileInactive,notEmployed,fleetUnavailability,hrLeave,licenceExpired`,
+      metric: 'roster.unavailable',
+    });
+  });
+
+  it('opens «مخالفات قائمة» on every year’s unpaid fines — company and drivers, no year', () => {
+    expect(NOW.violationsOpen()).toEqual({
+      to: '/fleet/violations?cset=false&dset=false',
+      metric: 'violationsOpen.total',
+    });
+    expect(NOW_BRANCH.violationsOpen().to).toBe(
+      '/fleet/violations?cset=false&dset=false&branch=b1',
+    );
+  });
+
+  it('counts the month’s visits by the day they LEFT the workshop — never by check-in', () => {
+    const P = periodLinks({ range: RANGE, vehicleScope: { ...NO_SET, typeIds: ['t1'] } });
+    expect(P.exits()).toEqual({
+      to: `/fleet/maintenance?outFrom=${RANGE.from}&outTo=${RANGE.to}&type=t1`,
+      metric: 'exits.count',
+    });
+    expect(parse(P.exits()).params.has('from')).toBe(false);
+    expect(parse(P.exits()).params.has('to')).toBe(false);
+  });
+
+  it('opens «مصروف الوقود» on the fuel receipts of the range', () => {
+    const P = periodLinks({ range: RANGE, vehicleScope: NO_SET });
+    expect(P.opexFuel()).toEqual({
+      to: `/fleet/receipts?from=${RANGE.from}&to=${RANGE.to}&kind=fuel`,
+      metric: 'opex.fuel',
+    });
+  });
+
+  it('opens another tab with the page’s filters as they stand, or not at all when it is hidden', () => {
+    const sp = new URLSearchParams(
+      'tab=overview&period=custom&from=2026-10-01&to=2026-10-09&type=t1',
+    );
+    expect(tabLink('accidents', 'accidents.tab', sp, ['overview', 'accidents'])).toEqual({
+      to: '/fleet?tab=accidents&period=custom&from=2026-10-01&to=2026-10-09&type=t1',
+      metric: 'accidents.tab',
+    });
+    expect(tabLink('accidents', 'accidents.tab', sp, ['overview'])).toBeNull();
+    expect(tabLink('today', 'roster.tab', new URLSearchParams('tab=overview'), ['today'])?.to).toBe(
+      '/fleet?tab=today',
+    );
+  });
+
+  it('opens a tab on a figure’s OWN slice when it names one — the page’s filters never ride along', () => {
+    const sp = new URLSearchParams('tab=overview&period=lastMonth&type=t1&vehicleCodes=133');
+    const month = {
+      range: {
+        preset: 'thisMonth' as const,
+        from: '2026-11-01',
+        to: TODAY,
+        days: 1,
+        granularity: 'day' as const,
+      },
+      vehicleScope: NO_SET,
+    };
+    expect(echoTabFilters(month)).toEqual({ period: 'thisMonth' });
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['accidents'], echoTabFilters(month)),
+    ).toEqual({
+      to: '/fleet?tab=accidents&period=thisMonth',
+      metric: 'accidents.month',
+    });
+    // A custom range names its days; a read's own filters come from its echo, never the page.
+    const custom = {
+      range: {
+        preset: 'custom' as const,
+        from: '2026-10-01',
+        to: '2026-10-09',
+        days: 9,
+        granularity: 'day' as const,
+      },
+      vehicleScope: { ...NO_SET, typeIds: ['t2'], operationIds: ['o1'], vehicleCodes: ['207'] },
+    };
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['accidents'], echoTabFilters(custom))?.to,
+    ).toBe(
+      '/fleet?tab=accidents&period=custom&from=2026-10-01&to=2026-10-09&type=t2&operation=o1&vehicleCodes=207',
+    );
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['overview'], echoTabFilters(month)),
+    ).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 // «لوحة تحكم الحركة» — which tabs a reader sees, what each tab's badge says, the order of the alert
-// lines, and the few display sums the tabs draw. Pure functions over the server's answers.
+// lines (the overview's action centre), and the few display sums the tabs draw. Pure functions over
+// the server's answers.
 //
 // WHO SEES WHAT (R-28, §5.5). A section exists for a reader only with EVERY key of its gate (the
 // data's API key and the linked screen's guard, `FLEET_DASHBOARD_GATES`). A tab is visible while one
@@ -65,31 +66,14 @@ export const visibleTabs = (answers: DashboardAnswers): FleetDashboardTab[] =>
     ),
   );
 
-// ── The alert lines (tab 1) ───────────────────────────────────────────────────────────────────
+// ── The alert lines (the overview's action centre) ────────────────────────────────────────────
 
-export type AlertCategory = 'cars' | 'drivers' | 'fuel';
 export type AlertLineId = FleetDashboardAlertId | 'custody';
 export interface AlertLine {
   id: AlertLineId;
   level: 'red' | 'orange';
   count: number;
-  category: AlertCategory;
 }
-
-/** The filter chips' three families, as the approved sample groups the lines. */
-export const ALERT_CATEGORY: Readonly<Record<AlertLineId, AlertCategory>> = {
-  maintenanceRed: 'cars',
-  vehicleLicenceExpired: 'cars',
-  driverLicenceExpired: 'drivers',
-  fuelCardExpired: 'fuel',
-  crewAbsent: 'drivers',
-  fuelRequests: 'fuel',
-  fuelLow: 'fuel',
-  dealershipPending: 'fuel',
-  noticesMissing: 'cars',
-  custody: 'fuel',
-  noReading: 'cars',
-};
 
 /** Display order: the contracts' order, with the custody line after the notices (T1.11). */
 const ORDER: readonly AlertLineId[] = FLEET_DASHBOARD_ALERTS.flatMap((alert): AlertLineId[] =>
@@ -106,9 +90,9 @@ export const alertLines = (
 ): AlertLine[] => {
   const lines: AlertLine[] = alerts
     .filter((alert) => alert.count > 0)
-    .map((alert) => ({ ...alert, category: ALERT_CATEGORY[alert.id] }));
+    .map((alert) => ({ id: alert.id, level: alert.level, count: alert.count }));
   if (custodyLines !== null && custodyLines > 0) {
-    lines.push({ id: 'custody', level: 'orange', count: custodyLines, category: 'fuel' });
+    lines.push({ id: 'custody', level: 'orange', count: custodyLines });
   }
   return lines.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
 };
@@ -117,21 +101,14 @@ export interface AlertSummary {
   total: number;
   red: number;
   orange: number;
-  byCategory: Record<AlertCategory, number>;
 }
 
-/** How many LINES fired — the badge, the «إجمالي التنبيهات الآن» chip and the filter chips. */
+/** How many LINES fired — the overview's «تنبيهات عاجلة» card and its «عاجل · للمتابعة» tallies. */
 export const alertSummary = (lines: readonly AlertLine[]): AlertSummary => {
-  const summary: AlertSummary = {
-    total: 0,
-    red: 0,
-    orange: 0,
-    byCategory: { cars: 0, drivers: 0, fuel: 0 },
-  };
+  const summary: AlertSummary = { total: 0, red: 0, orange: 0 };
   for (const line of lines) {
     summary.total += 1;
     summary[line.level] += 1;
-    summary.byCategory[line.category] += 1;
   }
   return summary;
 };
@@ -143,17 +120,17 @@ export interface TabBadge {
   tone: 'red' | 'amber' | 'plain';
 }
 
+/**
+ * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «نظرة عامة» has
+ * no count (plan D14 — the retired «التنبيهات» count went with its tab); the old tabs keep theirs.
+ */
 export const tabBadges = (
   answers: DashboardAnswers,
-  alerts: AlertSummary | null,
 ): Partial<Record<FleetDashboardTab, TabBadge>> => {
   const { now, period } = answers;
   const badges: Partial<Record<FleetDashboardTab, TabBadge>> = {};
-  if (alerts !== null && alerts.total > 0) {
-    badges.alerts = { n: alerts.total, tone: alerts.red > 0 ? 'red' : 'amber' };
-  }
   if (now?.roster != null) {
-    badges.now = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
+    badges.today = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
   }
   if (now?.distributionVehicles != null) {
     badges.distribution = { n: now.distributionVehicles.totals.total, tone: 'plain' };

@@ -5,6 +5,7 @@
 import {
   isUnknownFleetDriver,
   type FleetDashboardNowViolationsDto,
+  type FleetDashboardNowViolationsOpenDto,
   type FleetViolationRollupDto,
 } from '@ecms/contracts';
 import { type DriverFineGroup, type ViolationYearSums } from './violation.repository';
@@ -164,5 +165,35 @@ export const assembleYearDigest = (
       unlinked,
     },
     total: money(company + drivers),
+  };
+};
+
+/**
+ * «مخالفات قائمة» — every fine still owed, of EVERY year, as the fleet dashboard's overview shows
+ * it: an amount AND a count for the company's statements and for the drivers' fines.
+ *
+ * THE ROLLUP'S OWN SUMS over the same `yearSums` rows the rollup endpoint is built from with no
+ * year asked: `company` is Σ `outstandingVehicleAmount` / Σ `outstandingVehicleCount` (a
+ * statement row counts the violations it records), the drivers' Σ `outstandingDriverAmount` /
+ * Σ `outstandingDriverCount` (one per fine). So the figure is the board's footer for the whole
+ * history by construction; a ticked (collected) row is in neither. `total` = company + drivers.
+ */
+export const assembleOpenDigest = (
+  sums: readonly ViolationYearSums[],
+): FleetDashboardNowViolationsOpenDto => {
+  const company = { amount: 0, count: 0 };
+  const drivers = { amount: 0, count: 0 };
+  for (const row of sums) {
+    company.amount += row.outstandingVehicleAmount;
+    company.count += row.outstandingVehicleCount;
+    drivers.amount += row.outstandingDriverAmount;
+    drivers.count += row.outstandingDriverCount;
+  }
+  company.amount = money(company.amount);
+  drivers.amount = money(drivers.amount);
+  return {
+    company,
+    drivers: { total: drivers },
+    total: { amount: money(company.amount + drivers.amount), count: company.count + drivers.count },
   };
 };

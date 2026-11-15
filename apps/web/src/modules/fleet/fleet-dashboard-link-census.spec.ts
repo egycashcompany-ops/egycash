@@ -3,8 +3,9 @@
 // A figure on the dashboard opens the screen that shows the same number. The server half of that
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
 // parameters). This is the browser half: render all ten tabs from the fixtures — the company, a
-// chosen branch, and period filters that narrow by type, operation, codes and branch — collect
-// EVERY figure link the page draws, and hold each to the screen it opens:
+// chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
+// operation, codes and branch — collect EVERY figure link the page draws (the overview's links to
+// other tabs of the page included), and hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
 //   · every query parameter it carries is one that page READS from its URL — a parameter the
 //     target ignores would open a wider list than the figure counts, silently;
@@ -17,10 +18,17 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FLEET_DASHBOARD_GATES, type FleetDashboardPeriodDto } from '@ecms/contracts';
+import {
+  FLEET_DASHBOARD_GATES,
+  FLEET_DASHBOARD_PERIOD_TABS,
+  FLEET_DASHBOARD_TABS,
+  FLEET_DASHBOARD_TAB_READS,
+  type FleetDashboardPeriodDto,
+} from '@ecms/contracts';
 import {
   ALL_KEYS,
   B1,
+  B2,
   NOW_DTO,
   OP_CASH,
   T1,
@@ -31,7 +39,13 @@ import {
   renderDashboard,
 } from './fleet-dashboard-fixtures';
 import { PERIOD_FULL, PERIOD_YEAR, renderPeriod } from './fleet-dashboard-period-fixtures';
-import { PATH_ONLY, nowLinks, periodLinks, type DashLink } from './lib/fleet-dashboard-links';
+import {
+  PATH_ONLY,
+  nowLinks,
+  periodLinks,
+  tabLink,
+  type DashLink,
+} from './lib/fleet-dashboard-links';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string): string => readFileSync(join(HERE, rel), 'utf8');
@@ -116,13 +130,21 @@ const anchors = (html: string): Anchor[] =>
     };
   });
 
-const NOW_TABS = ['alerts', 'now', 'distribution', 'licences', 'summaries'] as const;
-const PERIOD_TABS = ['period', 'km', 'ranking', 'maintenance', 'accidents'] as const;
+/** The tabs drawn over R1 (the overview's month card is R2 «هذا الشهر», seeded under its own key). */
+const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
+  FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
+);
+/** The five old tabs under the filter bar. */
+const PERIOD_TABS = FLEET_DASHBOARD_PERIOD_TABS;
+
+const CAIRO = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+const GIZA = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
 
 /** R1 with a branch chosen, and the alarm / no-reading codes the branch narrows to (D19). */
 const NOW_BRANCH = {
   ...NOW_DTO,
   branchId: B1,
+  scopeBranches: [CAIRO],
   maintenanceAlarm: {
     ...(NOW_DTO.maintenanceAlarm as NonNullable<typeof NOW_DTO.maintenanceAlarm>),
     codes: { red: ['133'], yellow: ['133', '141'] },
@@ -139,8 +161,26 @@ const NARROWED: FleetDashboardPeriodDto = {
     operationIds: [OP_CASH],
     vehicleCodes: ['133', '141'],
     branchId: B1,
+    scopeBranches: [CAIRO],
   },
 };
+
+/** «كل فروعي»: a reader of two branches, no switcher — the figures cover B1 and B2 (plan D9/D12). */
+const NOW_MINE = {
+  ...NOW_DTO,
+  branchId: null,
+  scopeBranches: [CAIRO, GIZA],
+  maintenanceAlarm: {
+    ...(NOW_DTO.maintenanceAlarm as NonNullable<typeof NOW_DTO.maintenanceAlarm>),
+    codes: { red: ['133'], yellow: ['133', '141'] },
+  },
+};
+const PERIOD_MINE: FleetDashboardPeriodDto = {
+  ...PERIOD_FULL,
+  vehicleScope: { ...PERIOD_FULL.vehicleScope, count: 39, scopeBranches: [CAIRO, GIZA] },
+};
+/** The overview opened under page filters: its links to other tabs carry them as they stand. */
+const PAGE_FILTERS = `&period=last30&type=${T1}&operation=${OP_CASH}&vehicleCodes=133`;
 
 const rendered = (): Anchor[] => {
   const pages: string[] = [];
@@ -152,11 +192,19 @@ const rendered = (): Anchor[] => {
         client: dashboardClient({ now: NOW_BRANCH }),
       }),
     );
+    pages.push(
+      renderDashboard({
+        url: `/fleet?tab=${tab}`,
+        client: dashboardClient({ now: NOW_MINE }),
+      }),
+    );
   }
+  pages.push(renderDashboard({ url: `/fleet?tab=overview${PAGE_FILTERS}` }));
   for (const tab of PERIOD_TABS) {
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30` }));
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=thisYear`, dto: PERIOD_YEAR }));
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30${SET}`, dto: NARROWED }));
+    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30`, dto: PERIOD_MINE }));
     // A reader without the custody screen: D20's fallback for the custody part.
     pages.push(
       renderPeriod({
@@ -174,10 +222,15 @@ const built = (): Anchor[] => {
     link === null ? [] : [{ href: link.to, metric: link.metric }];
   const all: (DashLink | null)[] = [];
   for (const L of [
-    nowLinks({ today: TODAY, branchId: null }),
-    nowLinks({ today: TODAY, branchId: B1 }),
+    nowLinks({ today: TODAY, branchId: null, scopeBranches: null }),
+    nowLinks({ today: TODAY, branchId: B1, scopeBranches: [CAIRO] }),
+    nowLinks({ today: TODAY, branchId: null, scopeBranches: [CAIRO, GIZA] }),
   ]) {
     all.push(
+      L.rosterCar('133'),
+      L.rosterAbsentAll(),
+      L.rosterUnavailableAll(),
+      L.violationsOpen(),
       L.alarm('red', null),
       L.alarm('yellow', ['133', '141']),
       L.noReading(['133']),
@@ -191,9 +244,17 @@ const built = (): Anchor[] => {
       L.attendance(),
     );
   }
-  for (const vehicleScope of [PERIOD_FULL.vehicleScope, NARROWED.vehicleScope]) {
+  const sp = new URLSearchParams(`tab=overview${PAGE_FILTERS}`);
+  for (const tab of FLEET_DASHBOARD_TABS) all.push(tabLink(tab, 'vehicles.tab', sp, [tab]));
+  for (const vehicleScope of [
+    PERIOD_FULL.vehicleScope,
+    NARROWED.vehicleScope,
+    PERIOD_MINE.vehicleScope,
+  ]) {
     const P = periodLinks({ range: { from: '2026-10-03', to: TODAY }, vehicleScope });
     all.push(
+      P.exits(),
+      P.opexFuel(),
       P.opexCustody(),
       P.opex('opex.custody', 'custody'),
       P.dealership('dealership.pending', 'pending'),
@@ -269,7 +330,15 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/receipts?type',
         '/fleet/receipts?source',
         '/fleet/violations?dunknown',
+        '/fleet/violations?cset',
+        '/fleet/violations?dset',
         '/fleet/custody-expenses?from',
+        '/fleet/roster?q',
+        '/fleet/receipts?kind',
+        '/fleet/drivers?branch',
+        '/fleet?tab',
+        '/fleet?period',
+        '/fleet?type',
       ]),
     );
   });
@@ -294,12 +363,14 @@ describe('the link census — every figure link against the screen it opens', ()
     const period = (metric: string): boolean =>
       FLEET_DASHBOARD_GATES[metric.split('.')[0] as keyof typeof FLEET_DASHBOARD_GATES]?.read ===
       'period';
-    // km.byType / km.byBranch put the row's own type / branch in place of the echo's (W-PERIOD).
+    // km.byType / km.byBranch put the row's own type / branch in place of the echo's (W-PERIOD); a
+    // link to another tab (`*.tab`) carries the page's own params, not the echo (plan D15).
     const narrowed = LINKS.filter(
       (l) =>
         period(l.metric) &&
         l.href.includes(`operation=${OP_CASH}`) &&
-        !['km.byType', 'km.byBranch'].includes(l.metric),
+        !['km.byType', 'km.byBranch'].includes(l.metric) &&
+        !l.metric.endsWith('.tab'),
     );
     expect(narrowed.length).toBeGreaterThan(10);
     for (const link of narrowed) {
@@ -308,6 +379,63 @@ describe('the link census — every figure link against the screen it opens', ()
       expect(params.get('operation'), link.href).toBe(OP_CASH);
       expect(params.get('branch'), link.href).toBe(B1);
     }
+  });
+});
+
+describe('«كل فروعي» and the links to other tabs (plan D12, D15)', () => {
+  it('narrows every company+set figure of a reader of several branches to those branches', () => {
+    const pages = NOW_TABS.map((tab) =>
+      renderDashboard({ url: `/fleet?tab=${tab}`, client: dashboardClient({ now: NOW_MINE }) }),
+    );
+    // The matrix's cells and columns name their own branch (a column = one branch): not the echo.
+    const branchLinks = pages
+      .flatMap(anchors)
+      .filter(
+        (a) => parse(a.href).params.has('branch') && !a.metric.startsWith('distributionVehicles.'),
+      );
+    expect(branchLinks.length).toBeGreaterThan(5);
+    for (const link of branchLinks) {
+      expect(parse(link.href).params.get('branch'), link.metric).toBe(`${B1},${B2}`);
+    }
+    const metrics = new Set(branchLinks.map((l) => l.metric));
+    for (const metric of ['workshop.open', 'violationsOpen.total', 'dealershipPending.rows']) {
+      expect(metrics.has(metric), metric).toBe(true);
+    }
+    // The same reader's period figures: the set's branch is the reader's two branches.
+    const km = anchors(renderPeriod({ url: '/fleet?tab=km&period=last30', dto: PERIOD_MINE }));
+    const total = km.find((a) => a.metric === 'km.total');
+    expect(parse(total?.href ?? '').params.get('branch')).toBe(`${B1},${B2}`);
+  });
+
+  it('keeps the switcher’s one branch exact, and the whole company with no branch at all', () => {
+    const one = anchors(
+      renderDashboard({ url: '/fleet?tab=today', client: dashboardClient({ now: NOW_BRANCH }) }),
+    );
+    expect(
+      parse(one.find((a) => a.metric === 'workshop.open')?.href ?? '').params.get('branch'),
+    ).toBe(B1);
+    const company = anchors(renderDashboard({ url: '/fleet?tab=today' }));
+    expect(company.filter((a) => parse(a.href).params.has('branch'))).toEqual([]);
+  });
+
+  it('opens another tab of the page with the page’s own filters — never a period of its own', () => {
+    const html = renderDashboard({ url: `/fleet?tab=overview${PAGE_FILTERS}` });
+    const tabs = anchors(html).filter((a) => a.metric.endsWith('.tab'));
+    expect(tabs.length).toBeGreaterThan(5);
+    for (const link of tabs) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname, link.metric).toBe('/fleet');
+      expect(params.get('period'), link.metric).toBe('last30');
+      expect(params.get('type'), link.metric).toBe(T1);
+      expect(params.get('operation'), link.metric).toBe(OP_CASH);
+      expect(params.get('vehicleCodes'), link.metric).toBe('133');
+      expect(FLEET_DASHBOARD_TABS as readonly string[]).toContain(params.get('tab'));
+    }
+    // At default filters a tab link names its tab alone.
+    const plain = anchors(renderDashboard({ url: '/fleet?tab=overview' })).filter((a) =>
+      a.metric.endsWith('.tab'),
+    );
+    for (const link of plain) expect(link.href).toMatch(/^\/fleet\?tab=[a-z]+$/u);
   });
 });
 

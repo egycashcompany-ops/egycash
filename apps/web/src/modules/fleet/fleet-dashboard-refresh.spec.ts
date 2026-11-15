@@ -213,10 +213,22 @@ describe('the address bar is the filter state (D14)', () => {
   });
 
   it('falls back to the first visible tab for a hidden or an unknown one', () => {
-    expect(readTab('km', ['alerts', 'now', 'km'])).toBe('km');
-    expect(readTab('km', ['alerts', 'now'])).toBe('alerts');
-    expect(readTab('nonsense', ['now', 'licences'])).toBe('now');
+    expect(readTab('km', ['overview', 'today', 'km'])).toBe('km');
+    expect(readTab('km', ['overview', 'today'])).toBe('overview');
+    expect(readTab('nonsense', ['today', 'licences'])).toBe('today');
     expect(readTab(null, ['distribution'])).toBe('distribution');
+    // Nothing visible (a reader whose reads are on their way): the page's first tab.
+    expect(readTab(null, [])).toBe('overview');
+  });
+
+  it('opens an old link to a retired tab on the tab that took its content (plan D1)', () => {
+    expect(readTab('alerts', ['overview', 'today', 'km'])).toBe('overview');
+    expect(readTab('now', ['overview', 'today', 'km'])).toBe('today');
+    // The new tab hidden from this reader: the first visible one, as for any hidden tab.
+    expect(readTab('now', ['overview', 'summaries'])).toBe('overview');
+    expect(readTab('alerts', ['summaries'])).toBe('summaries');
+    // A key that merely looks like an object's own is no legacy tab.
+    expect(readTab('constructor', ['today'])).toBe('today');
   });
 });
 
@@ -251,6 +263,9 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
   it('the page refetches R1 only for a reader of R1, joining a read already in flight', () => {
     const page = source('pages/FleetDashboardPage.tsx');
     expect(page).toContain('if (reads.now) void nowQ.refetch({ cancelRefetch: false });');
+    // On the overview «تحديث» also refreshes the month card's read — only when it is asked at all.
+    expect(page).toContain('if (month.enabled) void monthQ.refetch({ cancelRefetch: false });');
+    expect(page).toContain("enabled: reads.period && active === 'overview',");
     expect(page).toContain('if (reads.period) void periodQ.refetch({ cancelRefetch: false });');
     // The period tabs' button spins and holds like the «الآن» tabs' one.
     expect(page).toContain('refreshing={periodQ.isFetching}');

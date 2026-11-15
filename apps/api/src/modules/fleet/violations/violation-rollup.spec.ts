@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assembleRollups } from './violation-rollup';
+import { assembleOpenDigest, assembleRollups } from './violation-rollup';
+import { type ViolationYearSums } from './violation.repository';
 
 const codes = new Map([
   ['v1', 'V1'],
@@ -188,9 +189,9 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   // «لما مسحت كله فضلت موجوده». A grievance record is keyed by (vehicle, year) and outlives the
   // violations it was raised against, so deleting the last fine used to leave a row of four zeroes
   // with nothing behind it to open, tick or settle.
-  const sums = (over: Partial<Parameters<typeof assembleRollups>[0][number]> = {}): Parameters<
-    typeof assembleRollups
-  >[0] => [
+  const sums = (
+    over: Partial<Parameters<typeof assembleRollups>[0][number]> = {},
+  ): Parameters<typeof assembleRollups>[0] => [
     {
       vehicleId: 'v1',
       vehicleCode: null,
@@ -210,9 +211,9 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   ];
 
   it('drops a row whose grievance is the only thing holding it up, and that is zero', () => {
-    expect(assembleRollups([], [{ vehicleId: 'v1', year: 2025, totalBeforeGrievance: 0 }], codes)).toEqual(
-      [],
-    );
+    expect(
+      assembleRollups([], [{ vehicleId: 'v1', year: 2025, totalBeforeGrievance: 0 }], codes),
+    ).toEqual([]);
   });
 
   it('KEEPS a car whose fines are all collected — and keeps its FIGURES', () => {
@@ -291,7 +292,11 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   it('KEEPS a year whose only fines are the DRIVERS’ — the board still reports their money', () => {
     // `rowCount` counts the whole group now, drivers' fines included, because that is what the
     // board's tick reaches. A driver-only year therefore has rows to tick and belongs on the board.
-    const rows = assembleRollups(sums({ rowCount: 1, driverCount: 1, driverAmount: 120 }), [], codes);
+    const rows = assembleRollups(
+      sums({ rowCount: 1, driverCount: 1, driverAmount: 120 }),
+      [],
+      codes,
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.rowCount, 'and the tick can settle them from here').toBe(1);
     expect(rows[0]?.driverAmount).toBe(120);
@@ -317,13 +322,19 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   });
 
   it('KEEPS a grievance-only car when the figure is real — the appeal wiped the statement', () => {
-    const rows = assembleRollups([], [{ vehicleId: 'v2', year: 2025, totalBeforeGrievance: 900 }], codes);
+    const rows = assembleRollups(
+      [],
+      [{ vehicleId: 'v2', year: 2025, totalBeforeGrievance: 900 }],
+      codes,
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.totalBeforeGrievance).toBe(900);
   });
 
   it('keeps a car that still owes money', () => {
-    expect(assembleRollups(sums({ vehicleCount: 1, vehicleAmount: 50, rowCount: 1 }), [], codes)).toHaveLength(1);
+    expect(
+      assembleRollups(sums({ vehicleCount: 1, vehicleAmount: 50, rowCount: 1 }), [], codes),
+    ).toHaveLength(1);
   });
 
   it('drops the empty one and keeps the rest in the same answer', () => {
@@ -365,5 +376,88 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
         codes,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('assembleOpenDigest — «مخالفات قائمة»: every year still owed, amount AND count', () => {
+  const sums = (over: Partial<ViolationYearSums>): ViolationYearSums => ({
+    vehicleId: 'v1',
+    vehicleCode: null,
+    year: 2026,
+    vehicleCount: 0,
+    vehicleAmount: 0,
+    driverCount: 0,
+    driverAmount: 0,
+    outstandingVehicleAmount: 0,
+    outstandingDriverAmount: 0,
+    outstandingVehicleCount: 0,
+    outstandingDriverCount: 0,
+    rowCount: 0,
+    collectedCount: 0,
+    ...over,
+  });
+
+  it('sums the outstanding halves of several cars and several YEARS — never only this year', () => {
+    const out = assembleOpenDigest([
+      // A statement row counts the violations it records (its `count`): 4 here.
+      sums({ year: 2026, outstandingVehicleAmount: 400, outstandingVehicleCount: 4 }),
+      // Last year's car is still owed: it is in the figure.
+      sums({
+        vehicleId: 'v2',
+        year: 2025,
+        outstandingVehicleAmount: 250.5,
+        outstandingVehicleCount: 1,
+      }),
+      // The drivers' fines count one per row.
+      sums({ year: 2024, outstandingDriverAmount: 150, outstandingDriverCount: 3 }),
+    ]);
+    expect(out).toEqual({
+      company: { amount: 650.5, count: 5 },
+      drivers: { total: { amount: 150, count: 3 } },
+      total: { amount: 800.5, count: 8 },
+    });
+  });
+
+  it('a collected (ticked) row is outside the figure: only the outstanding parts are read', () => {
+    const out = assembleOpenDigest([
+      sums({
+        vehicleCount: 6,
+        vehicleAmount: 600,
+        driverCount: 2,
+        driverAmount: 200,
+        // 2 statements and 1 driver fine collected since.
+        outstandingVehicleAmount: 400,
+        outstandingVehicleCount: 4,
+        outstandingDriverAmount: 100,
+        outstandingDriverCount: 1,
+        rowCount: 3,
+        collectedCount: 1,
+      }),
+    ]);
+    expect(out.company).toEqual({ amount: 400, count: 4 });
+    expect(out.drivers.total).toEqual({ amount: 100, count: 1 });
+    expect(out.total).toEqual({ amount: 500, count: 5 });
+  });
+
+  it('money to the piastre: no binary tail from `$sum`, and a −0 is a plain 0', () => {
+    const out = assembleOpenDigest([
+      sums({ outstandingVehicleAmount: 0.1, outstandingDriverAmount: 0.1 }),
+      sums({ vehicleId: 'v2', outstandingVehicleAmount: 0.2, outstandingDriverAmount: 0.2 }),
+    ]);
+    expect(out.company.amount).toBe(0.3);
+    expect(out.drivers.total.amount).toBe(0.3);
+    expect(out.total.amount).toBe(0.6);
+    expect(
+      Object.is(assembleOpenDigest([sums({ outstandingVehicleAmount: -0 })]).company.amount, 0),
+    ).toBe(true);
+  });
+
+  it('nothing owed — and no rows at all — is zeros, never a missing figure', () => {
+    const zero = { amount: 0, count: 0 };
+    expect(assembleOpenDigest([])).toEqual({
+      company: zero,
+      drivers: { total: zero },
+      total: zero,
+    });
   });
 });

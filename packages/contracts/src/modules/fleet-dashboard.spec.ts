@@ -10,14 +10,16 @@ import {
   FLEET_DASHBOARD_MAX_CUSTOM_DAYS,
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_NOW_SECTIONS,
-  FLEET_DASHBOARD_NOW_TABS,
   FLEET_DASHBOARD_PAGE_KEYS,
   FLEET_DASHBOARD_PERIOD_KEYS,
   FLEET_DASHBOARD_PERIOD_SECTIONS,
   FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_PRESETS,
+  FLEET_DASHBOARD_RECENT_ROWS,
   FLEET_DASHBOARD_TABS,
+  FLEET_DASHBOARD_TAB_READS,
   FLEET_DASHBOARD_TAB_SECTIONS,
+  FLEET_DASHBOARD_TODAY_ROWS,
   FLEET_LICENCE_GREY_DAYS,
   FLEET_LICENSING_PAPERS,
   FleetDashboardPeriodQuerySchema,
@@ -27,6 +29,7 @@ import {
   paperStage,
   periodGranularity,
   periodOf,
+  type FleetDashboardRead,
   type FleetDashboardSection,
 } from './fleet-dashboard.js';
 import {
@@ -422,8 +425,10 @@ const TABLE: Record<
   notices: ['now', 'fleetNotice.view', 'fleetNotice.view', '/fleet/notices'],
   dealershipPending: ['now', 'fleetDealership.view', 'fleetDealership.view', '/fleet/dealership'],
   violationsYear: ['now', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
+  violationsOpen: ['now', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
   km: ['period', 'fleetOdometer.view', 'fleetOdometer.view', '/fleet/odometer'],
   visits: ['period', 'fleetMaintenance.view', 'fleetMaintenance.view', '/fleet/maintenance'],
+  exits: ['period', 'fleetMaintenance.view', 'fleetMaintenance.view', '/fleet/maintenance'],
   accidents: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   accidentList: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   opex: ['period', 'fleetReceipt.view', 'fleetReceipt.view', '/fleet/receipts'],
@@ -490,6 +495,37 @@ describe('the gate table', () => {
     expect(FLEET_DASHBOARD_PERIOD_KEYS).not.toContain('fleetRoster.view');
   });
 
+  it('the two new sections reuse keys already gating a section: no union changes', () => {
+    // `violationsOpen` sits beside `violationsYear`, `exits` beside `visits` — the same keys, so
+    // the routes' authorizeAny and the index route's guard are what they were.
+    expect(FLEET_DASHBOARD_GATES.violationsOpen).toEqual(FLEET_DASHBOARD_GATES.violationsYear);
+    expect(FLEET_DASHBOARD_GATES.exits).toEqual(FLEET_DASHBOARD_GATES.visits);
+    expect(sorted(FLEET_DASHBOARD_NOW_KEYS)).toEqual([
+      'fleetAccident.view',
+      'fleetDealership.view',
+      'fleetDriver.view',
+      'fleetFuelCard.view',
+      'fleetFuelCharge.view',
+      'fleetLicensing.view',
+      'fleetMaintenance.view',
+      'fleetNotice.view',
+      'fleetOdometer.view',
+      'fleetRoster.view',
+      'fleetVehicle.view',
+      'fleetViolation.view',
+    ]);
+    expect(sorted(FLEET_DASHBOARD_PERIOD_KEYS)).toEqual([
+      'fleetAccident.view',
+      'fleetDealership.view',
+      'fleetMaintenance.view',
+      'fleetOdometer.view',
+      'fleetReceipt.view',
+    ]);
+    expect(sorted(FLEET_DASHBOARD_PAGE_KEYS)).toEqual(
+      sorted([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS, 'fleetCustody.view']),
+    );
+  });
+
   it('is frozen: nothing at runtime can widen a gate', () => {
     expect(Object.isFrozen(FLEET_DASHBOARD_GATES)).toBe(true);
     expect(Object.isFrozen(FLEET_DASHBOARD_GATES.roster)).toBe(true);
@@ -498,12 +534,49 @@ describe('the gate table', () => {
 });
 
 describe('tabs and their sections', () => {
-  it('ten tabs: five read now, five by the filters, in the navbar’s order', () => {
+  it('ten tabs in the strip’s order: the two rebuilt ones, then the old eight where their replacements will stand', () => {
     expect(FLEET_DASHBOARD_TABS).toEqual([
-      ...FLEET_DASHBOARD_NOW_TABS,
-      ...FLEET_DASHBOARD_PERIOD_TABS,
+      'overview',
+      'today',
+      'distribution',
+      'maintenance',
+      'km',
+      'ranking',
+      'accidents',
+      'period',
+      'summaries',
+      'licences',
     ]);
-    expect(FLEET_DASHBOARD_TABS).toHaveLength(10);
+    // The retired `alerts` and `now` keys are gone (the web maps a link to them onto overview / today).
+    expect(FLEET_DASHBOARD_TABS).not.toContain('alerts');
+    expect(FLEET_DASHBOARD_TABS).not.toContain('now');
+  });
+
+  it('names the read(s) of every tab, and the five old filter-bar tabs read R2 alone', () => {
+    expect(Object.keys(FLEET_DASHBOARD_TAB_READS)).toEqual([...FLEET_DASHBOARD_TABS]);
+    expect(Object.isFrozen(FLEET_DASHBOARD_TAB_READS)).toBe(true);
+    expect(FLEET_DASHBOARD_TAB_READS).toEqual({
+      overview: ['now', 'month', 'web'],
+      today: ['now'],
+      distribution: ['now'],
+      maintenance: ['period'],
+      km: ['period'],
+      ranking: ['period'],
+      accidents: ['period'],
+      period: ['period'],
+      summaries: ['now', 'web'],
+      licences: ['now'],
+    });
+    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
+      expect(FLEET_DASHBOARD_TABS, tab).toContain(tab);
+      expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['period']);
+    }
+    // …and they are the only tabs drawn under the page filters.
+    expect(
+      sorted(
+        FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_READS[tab].includes('period')),
+      ),
+    ).toEqual(sorted(FLEET_DASHBOARD_PERIOD_TABS));
   });
 
   it('maps every tab to at least one real section', () => {
@@ -513,38 +586,55 @@ describe('tabs and their sections', () => {
     for (const tab of FLEET_DASHBOARD_TABS) {
       const sections = FLEET_DASHBOARD_TAB_SECTIONS[tab];
       expect(sections.length, tab).toBeGreaterThan(0);
+      expect(new Set(sections).size, tab).toBe(sections.length);
       for (const section of sections) expect(ALL_SECTIONS, `${tab}:${section}`).toContain(section);
     }
   });
 
-  it('a now tab shows now sections (custody included); a period tab shows period sections', () => {
-    for (const tab of FLEET_DASHBOARD_NOW_TABS) {
+  it('every section of a tab belongs to a read the tab names', () => {
+    // 'month' is R2 too (at «هذا الشهر», no filter), so it admits period sections.
+    const readsOf = (reads: readonly FleetDashboardRead[]): string[] =>
+      reads.map((read) => (read === 'month' ? 'period' : read));
+    for (const tab of FLEET_DASHBOARD_TABS) {
+      const reads = readsOf(FLEET_DASHBOARD_TAB_READS[tab]);
       for (const section of FLEET_DASHBOARD_TAB_SECTIONS[tab]) {
-        expect(['now', 'web'], `${tab}:${section}`).toContain(FLEET_DASHBOARD_GATES[section].read);
+        expect(reads, `${tab}:${section}`).toContain(FLEET_DASHBOARD_GATES[section].read);
+      }
+      // …and every read it names feeds at least one of its sections.
+      for (const read of new Set(reads)) {
+        expect(
+          FLEET_DASHBOARD_TAB_SECTIONS[tab].some((s) => FLEET_DASHBOARD_GATES[s].read === read),
+          `${tab}:${read}`,
+        ).toBe(true);
       }
     }
-    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
-      for (const section of FLEET_DASHBOARD_TAB_SECTIONS[tab]) {
-        expect(FLEET_DASHBOARD_GATES[section].read, `${tab}:${section}`).toBe('period');
-      }
-    }
+    // The overview reads R2 only for «هذا الشهر», never under the page filters.
+    expect(FLEET_DASHBOARD_TAB_READS.overview).not.toContain('period');
   });
 
-  it('pins the plan’s mapping', () => {
+  it('pins the plan’s mapping (the old eight unchanged)', () => {
     expect(FLEET_DASHBOARD_TAB_SECTIONS).toEqual({
-      alerts: [
+      overview: [
+        'vehicles',
+        'roster',
+        'workshop',
         'maintenanceAlarm',
+        'noReading',
+        'distributionVehicles',
         'licenceVehicles',
         'licenceDrivers',
         'fuelCards',
-        'roster',
         'fuelCharging',
         'dealershipPending',
         'notices',
-        'noReading',
+        'violationsOpen',
         'custodyFund',
+        'km',
+        'exits',
+        'accidents',
+        'opex',
       ],
-      now: ['vehicles', 'roster', 'workshop'],
+      today: ['vehicles', 'roster', 'workshop'],
       distribution: ['distributionVehicles', 'distributionDrivers'],
       licences: [
         'licenceVehicles',
@@ -562,16 +652,36 @@ describe('tabs and their sections', () => {
       accidents: ['accidents', 'accidentList'],
     });
   });
+
+  it('the old tabs keep their sections: violationsYear and visits (check-in day) stay', () => {
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('violationsYear');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).not.toContain('violationsOpen');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.maintenance).toEqual(['visits']);
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).toContain('visits');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).not.toContain('exits');
+    // Each new section has a tab that draws it.
+    for (const section of ['violationsOpen', 'exits'] as const) {
+      expect(FLEET_DASHBOARD_TAB_SECTIONS.overview, section).toContain(section);
+    }
+  });
+
+  it('caps the «الحركة اليوم» lists with their own constant', () => {
+    expect(FLEET_DASHBOARD_TODAY_ROWS).toBe(8);
+    // Same number as the recent lists today, but a separate rule: changing one never moves the other.
+    expect(FLEET_DASHBOARD_RECENT_ROWS).toBe(8);
+  });
 });
 
-describe('the alerts of tab 1', () => {
+describe('the alerts of the overview’s action centre', () => {
   it('names a real now section for every alert, each id once, red before orange', () => {
     const ids = FLEET_DASHBOARD_ALERTS.map((alert) => alert.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const alert of FLEET_DASHBOARD_ALERTS) {
       expect(FLEET_DASHBOARD_NOW_SECTIONS, alert.id).toContain(alert.section);
-      expect(FLEET_DASHBOARD_TAB_SECTIONS.alerts, alert.id).toContain(alert.section);
+      expect(FLEET_DASHBOARD_TAB_SECTIONS.overview, alert.id).toContain(alert.section);
     }
+    // The custody line the web adds is drawn there too.
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.overview).toContain('custodyFund');
     const levels = FLEET_DASHBOARD_ALERTS.map((alert) => alert.level);
     expect(levels.indexOf('orange')).toBe(levels.lastIndexOf('red') + 1);
   });

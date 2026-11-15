@@ -114,6 +114,9 @@ export const ExternalEmployeeDialog = ({
     setSectionId('');
   };
   const pickDepartment = (id: string): void => {
+    // The box reports a re-pick of the department already held, as a native list did not; only a
+    // real change throws the section under it away.
+    if (id === departmentId) return;
     setDepartmentId(id);
     setSectionId('');
   };
@@ -165,6 +168,8 @@ export const ExternalEmployeeDialog = ({
     <Dialog
       open={open}
       onClose={close}
+      // The three boxes' lists open inside the body; a short body would cut them (`Dialog`, `tall`).
+      tall
       title={t('employees.external.title')}
       description={t('employees.external.description')}
       footer={
@@ -233,7 +238,10 @@ export const ExternalEmployeeDialog = ({
             options={idsMatching(departments, departmentLabel, departmentTyped)}
             optionLabel={nameIn(departments, departmentLabel)}
             onSearch={setDepartmentTyped}
-            onChange={pickDepartment}
+            onChange={(id) => {
+              setDepartmentTyped('');
+              pickDepartment(id);
+            }}
             disabled={branchId === ''}
             placeholder={t('common.select')}
             emptyText={t(departmentsQuery.isLoading ? 'common.loading' : 'common.noResults')}
@@ -247,7 +255,10 @@ export const ExternalEmployeeDialog = ({
             options={idsMatching(sections, sectionLabel, sectionTyped)}
             optionLabel={nameIn(sections, sectionLabel)}
             onSearch={setSectionTyped}
-            onChange={setSectionId}
+            onChange={(id) => {
+              setSectionTyped('');
+              setSectionId(id);
+            }}
             disabled={departmentId === ''}
             placeholder={t('common.select')}
             emptyText={t(sectionsQuery.isLoading ? 'common.loading' : 'common.noResults')}
@@ -261,7 +272,10 @@ export const ExternalEmployeeDialog = ({
             options={idsMatching(jobTitles, jobTitleLabel, jobTitleTyped)}
             optionLabel={nameIn(jobTitles, jobTitleLabel)}
             onSearch={setJobTitleTyped}
-            onChange={setJobTitleId}
+            onChange={(id) => {
+              setJobTitleTyped('');
+              setJobTitleId(id);
+            }}
             placeholder={t('common.select')}
             emptyText={t(jobTitlesQuery.isLoading ? 'common.loading' : 'common.noResults')}
             clearLabel={t('common.clear')}

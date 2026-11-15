@@ -109,6 +109,16 @@ describe('the department, the section and the job are typed into', () => {
     expect(DIALOG).toContain('id="external-section"');
     expect(DIALOG).toContain('id="external-job"');
     expect(DIALOG).toMatch(/<Select\s+id="external-branch"/);
+    // The lists open inside the dialog's body, which is cut short unless the dialog is tall.
+    expect(DIALOG).toMatch(/onClose=\{close\}[\s\S]{0,200}\btall\b/);
+  });
+
+  // A box reports a re-pick of what it already holds; a native list never did.
+  it('throws nothing away when the department or the job already held is picked again', () => {
+    expect(PAGE).toContain('if (id === departmentId) return;');
+    expect(PAGE).toContain('if (id !== jobTitleId) pickJobTitle(id);');
+    const DIALOG = readFileSync(join(HERE, 'components/ExternalEmployeeDialog.tsx'), 'utf8');
+    expect(DIALOG).toContain('if (id === departmentId) return;');
   });
 });
 
@@ -131,7 +141,7 @@ describe('the form', () => {
   it('narrows the lists to the branch, and fills them from the job title', () => {
     expect(PAGE).toContain("useDepartmentOptions(branchId === '' ? undefined : branchId)");
     expect(PAGE).toContain('useJobTitlePlacements(branchId)');
-    expect(PAGE).toContain('onChange={pickJobTitle}');
+    expect(PAGE).toContain('if (id !== jobTitleId) pickJobTitle(id);');
     expect(PAGE).toContain('placementForTitle(id, placements, departments)');
   });
 

@@ -77,10 +77,17 @@ export const EMPLOYEE_ACTION_ATTACHMENTS_FILE_CATEGORY = 'hr-employee-actions';
  */
 export const EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE = 'employeeActionAttachment';
 
-/** Action types that carry salary data and therefore obey compensation redaction. */
+/**
+ * Action types that carry salary data and therefore obey compensation redaction — and whose
+ * `employment.salary` change entries payroll walks back to price a past period (PY-8).
+ *
+ * `transfer` is here because one that names a job moves pay that follows the job (P-HR-22). Left
+ * out, payroll would never see that change and would price the months before it at the new pay.
+ */
 export const SALARY_BEARING_ACTION_TYPES: readonly EmployeeActionType[] = [
   'salaryChange',
   'promotion',
+  'transfer',
   'hire',
   'rehire',
 ];

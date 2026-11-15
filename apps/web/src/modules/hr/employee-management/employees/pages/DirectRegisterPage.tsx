@@ -383,6 +383,10 @@ export const DirectRegisterPage = (): JSX.Element => {
                   onSearch={setDepartmentTyped}
                   disabled={branchId === ''}
                   onChange={(id) => {
+                    setDepartmentTyped('');
+                    // The box reports a re-pick of the department already held, as a native list
+                    // did not; only a real change throws the section under it away.
+                    if (id === departmentId) return;
                     setDepartmentId(id);
                     setSectionId('');
                   }}
@@ -400,7 +404,10 @@ export const DirectRegisterPage = (): JSX.Element => {
                   optionLabel={nameIn(sections, sectionLabel)}
                   onSearch={setSectionTyped}
                   disabled={departmentId === ''}
-                  onChange={setSectionId}
+                  onChange={(id) => {
+                    setSectionTyped('');
+                    setSectionId(id);
+                  }}
                   placeholder={t('employees.actions.transfer.noSection')}
                   emptyText={t(sectionsQuery.isLoading ? 'common.loading' : 'common.noResults')}
                   clearLabel={t('common.clear')}
@@ -420,7 +427,12 @@ export const DirectRegisterPage = (): JSX.Element => {
                   optionLabel={nameIn(jobTitles, jobTitleLabel)}
                   onSearch={setJobTitleTyped}
                   disabled={branchId === ''}
-                  onChange={pickJobTitle}
+                  onChange={(id) => {
+                    setJobTitleTyped('');
+                    // A re-pick of the job already held must not put back the department and
+                    // section it once filled in over what HR has changed since.
+                    if (id !== jobTitleId) pickJobTitle(id);
+                  }}
                   placeholder={branchId === '' ? t('employees.register.typeCodeFirst') : t('common.select')}
                   emptyText={t(jobTitlesQuery.isLoading ? 'common.loading' : 'common.noResults')}
                   clearLabel={t('common.clear')}

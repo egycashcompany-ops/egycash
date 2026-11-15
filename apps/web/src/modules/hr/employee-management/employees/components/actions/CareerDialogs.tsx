@@ -110,10 +110,28 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
   // until HR picks another.
   const [jobTitleId, setJobTitleId] = useState(employee.employment.jobTitleId);
   const [reason, setReason] = useState('');
+  // The menu keeps this dialog mounted and only toggles `open`, so each opening starts again from
+  // the employee as they are NOW. Without it, a promotion made in between would leave the old job
+  // here, and the transfer would send it back as a change — undoing the promotion.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setBranchId(employee.employment.branchId);
+      setDepartmentId(employee.employment.departmentId);
+      setSectionId(employee.employment.sectionId ?? '');
+      setJobTitleId(employee.employment.jobTitleId);
+      setReason('');
+    }
+  }
   const { data: branches = [] } = useBranchOptions();
   const { data: departments = [] } = useDepartmentOptions(branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
   const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  // The catalog offers active titles only. A title retired since the employee took it is still
+  // the one they hold, so it stays on the list, by the name their record carries, instead of the
+  // list showing its first title as if it were theirs.
+  const heldTitleRetired = !jobTitles.some((jt) => jt.id === employee.employment.jobTitleId);
 
   const submit = async (): Promise<void> => {
     const changedBranch = branchId !== employee.employment.branchId;
@@ -196,8 +214,13 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
           ))}
         </Select>
       </Field>
-      <Field label={t('offers.form.jobTitle')} hint={t('employees.actions.transfer.jobTitleHint')}>
+      <Field label={t('offers.form.jobTitle')} required hint={t('employees.actions.transfer.jobTitleHint')}>
         <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
+          {heldTitleRetired && (
+            <option value={employee.employment.jobTitleId}>
+              {employee.placement.jobTitle === null ? '—' : localized(employee.placement.jobTitle.name, locale)}
+            </option>
+          )}
           {jobTitles.map((jt) => (
             <option key={jt.id} value={jt.id}>
               {localized(jt.name, locale)}

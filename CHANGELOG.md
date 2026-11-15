@@ -20,12 +20,18 @@ its entry here in the same PR.
     transfer action (refused when the title is retired, checked before anything moves), records it in
     the history, and moves the linked login's job with its placement. No salary is stated on a
     transfer: pay that follows the job follows the new one, exactly as on a promotion (P-HR-22), and
-    pay set by hand stays. The overlap warning now sees a transfer meet a promotion on the job title
-    and the salary.
+    pay set by hand stays. `transfer` joins `SALARY_BEARING_ACTION_TYPES`, so payroll's salary history
+    (PY-8) sees that change and prices the months before it at the old pay, and the history marks it
+    withheld from a reader without the pay key. The overlap warning now sees a transfer meet a
+    promotion on the job title and the salary. The dialog starts each opening from the employee as
+    they are now (it stays mounted, so a promotion made in between was sent back undone), and a
+    retired title the employee still holds stays on the list by its name.
   - **Register:** on «تسجيل موظف» and in «موظف خارجي», the department, the section and the job title
     are boxes to type into, matched on the name the way Arabic is typed (hamza, ta marbuta), never on
     the id behind it. The job list still puts the branch's own titles first, now said in a hint under
     the box. The branch stays as it was: read off the code on the register page, a list in the dialog.
+    Picking again the department or job already held throws nothing away (a native list never
+    reported it), and the dialog is tall so the lists are not cut by its body.
   - **Employees list:** a «مصدر التعيين» filter — التوظيف, تسجيل مباشر or تعيين خارجي, the last being
     the external employees. It is remembered with the other filters, cleared with them, and hidden in
     «بانتظار التسوية» like the placement filters. The registry already filtered on `origin`.

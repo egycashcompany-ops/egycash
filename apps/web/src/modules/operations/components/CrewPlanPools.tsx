@@ -1,10 +1,12 @@
 // The two pools of «لوحة التشغيلة» — القادة and الأخصائيون — at the board's END: on the left in
 // Arabic, as the legacy board had its two columns of names beside the table.
 //
-//   · القادة: green chips, and BLUE ones — the specialists ticked «قائد» too, who may take either a
-//     captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى») — listed AFTER the green
-//     ones («يكونوا فى الاخر», Round 22; the order is `listPool`'s);
-//   · الأخصائيون: red chips.
+//   · القادة: green chips, and BLUE ones — the specialists ticked «قائد» too, the ONLY ones who may
+//     take either a captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى»; since Round 23
+//     nobody else may cross: «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى») —
+//     listed AFTER the green ones, in the free part and the placed part alike («لو قائد واخصائى يبقى
+//     فى القايمة بتاعت القائد بس يكونوا فى الاخر»; the order is `listPool`'s);
+//   · الأخصائيون: red chips — never a blue one.
 //
 // What the colours mean is said once, in the toolbar (`RoleLegend`). Each pool counts its people (and how many are still free), searches by name or code — folded,
 // so «احمد» finds «أحمد» — and filters by the requirement icons (AND, as legacy's buttons). Somebody

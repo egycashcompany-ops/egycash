@@ -16,7 +16,7 @@
 // own database, so nothing here meets another suite's rows.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
@@ -51,6 +51,7 @@ import { operationsCrewAssignmentRepository } from '../../src/modules/operations
 import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-types/shift-type.model';
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
 import { migrateCrewAssignmentIndexes } from '../../src/modules/operations/operations.migration';
+import { operationsCrewRequirementsRepository } from '../../src/modules/operations/crew/crew-requirements.repository';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { AttendanceDayModel } from '../../src/modules/hr/attendance';
 import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
@@ -191,6 +192,23 @@ const mkEmployee = async (
     });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
   return data<{ id: string }>(res).id;
+};
+
+/**
+ * «متطلبات الطاقم» for one employee, through its own screen's route. Since Round 23 the two role
+ * flags decide which slot a person may newly take («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى
+ * حالة انه قائد اخصائى»), so every captain this file seats is ticked «قائد»; a specialist needs no
+ * row at all — nobody ticked is a specialist.
+ */
+const flag = async (
+  employeeId: string,
+  flags: { isCaptain?: boolean; isSpecialist?: boolean },
+): Promise<void> => {
+  const res = await request(app)
+    .put(`/api/v1/operations/crew-board/requirements/${employeeId}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send(flags);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
 };
 
 const mkVehicle = async (code: string): Promise<string> => {
@@ -353,6 +371,8 @@ beforeAll(async () => {
   spec3 = await mkEmployee('أخصائي التشغيلة الثالث');
   drv1 = await mkEmployee('سائق التشغيلة الأول', driverSeat);
   drv2 = await mkEmployee('سائق التشغيلة الثاني', driverSeat);
+  // Round 23: a captain's slot takes a captain — the three are ticked «قائد» on «متطلبات الطاقم».
+  for (const captain of [cap1, cap2, cap3]) await flag(captain, { isCaptain: true });
 
   for (const date of [DAY, OTHER]) {
     const roster = await request(app)
@@ -1076,7 +1096,7 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
   let plannedLeave = ''; // no record yet — an APPROVED leave covers the day
   let incompleteSpec = ''; // HR's record: incomplete — attendance could not decide
   let freeSpec = ''; // no record, no leave
-  let laterAway = ''; // planned first, recorded absent after
+  let laterAway = ''; // planned first, recorded absent after — a captain-specialist (see below)
 
   const dayRecord = (employeeId: string, status: string, date = AWAY_DAY) =>
     AttendanceDayModel.create({
@@ -1103,10 +1123,12 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
     incompleteSpec = await mkEmployee('أخصائي لم يُحسم يومه');
     freeSpec = await mkEmployee('أخصائي حاضر');
     laterAway = await mkEmployee('قائد غاب بعد التخطيط');
-    // A requirements row is what puts them on an unconfigured install's roster.
+    // A requirements row is what puts them on an unconfigured install's roster. `laterAway` is
+    // ticked BOTH (Round 23): the case below moves him from the captain's slot to a specialist's on
+    // his own row, which only a captain-specialist may take — the absence rule is what it asks about.
     for (const [employeeId, flags] of [
       [absentCap, { isCaptain: true }],
-      [laterAway, { isCaptain: true }],
+      [laterAway, { isCaptain: true, isSpecialist: true }],
       [leaveSpec, { isSpecialist: true }],
       [plannedLeave, { isSpecialist: true }],
       [incompleteSpec, { isSpecialist: true }],
@@ -1266,5 +1288,305 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
       code: 'ABSENT',
       message: laterAway,
     });
+  });
+});
+
+describe('Round 23 — a captain’s slot takes a captain, a specialist’s a specialist («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»)', () => {
+  // The owner, on «لوحة التشغيلة»: forbidden to put a captain in a specialist's slot or a specialist
+  // in the captain's, EXCEPT a captain-specialist, who may go anywhere. The roles are the contracts'
+  // own (`crewRoleOf`, `fitsCrewSlot`), read from «متطلبات الطاقم»; on a day of its own.
+  const ROLE_DAY = shift(90);
+  let onlyCaptain = ''; // «قائد» alone
+  let onlySpecialist = ''; // «أخصائي» alone
+  let both = ''; // «قائد» and «أخصائي» — the blue one, fit for every slot
+  let unticked = ''; // a requirements row with neither ticked
+  let rowless = ''; // no requirements row at all
+  let reflagged = ''; // seated while both, then ticked «قائد» alone
+
+  beforeAll(async () => {
+    onlyCaptain = await mkEmployee('قائد فقط');
+    onlySpecialist = await mkEmployee('أخصائي فقط');
+    both = await mkEmployee('قائد وأخصائي');
+    unticked = await mkEmployee('بلا علامة');
+    rowless = await mkEmployee('بلا صف متطلبات');
+    reflagged = await mkEmployee('تغيّرت علامته');
+    await flag(onlyCaptain, { isCaptain: true });
+    await flag(onlySpecialist, { isSpecialist: true });
+    await flag(both, { isCaptain: true, isSpecialist: true });
+    await flag(unticked, {});
+    await flag(reflagged, { isCaptain: true, isSpecialist: true });
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: ROLE_DAY,
+        rows: [
+          { vehicleId: van2, notes: 'r23' },
+          { vehicleId: van3, notes: 'r23' },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+  });
+
+  it('refuses a captain-only in a specialist’s slot — coded, naming him and the row, nothing written', async () => {
+    const res = await save(
+      {
+        rows: [
+          { vehicleId: van3, captainEmployeeIds: [both] },
+          { vehicleId: van2, specialist1EmployeeIds: [onlyCaptain] },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const error = errorOf(res);
+    expect(error.code).toBe(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT);
+    expect(error.details).toEqual([
+      { field: 'employeeId', code: 'NOT_A_SPECIALIST', message: onlyCaptain },
+      { field: 'rows', code: 'ROW_INDEX', message: '1' },
+    ]);
+    // One end state, refused as one: the other row was not written either.
+    const dto = await board(ROLE_DAY);
+    expect(vanRow(dto, van2)?.crew).toBeNull();
+    expect(vanRow(dto, van3)?.crew).toBeNull();
+    // «أخصائي 2» is a specialist's slot as much as «أخصائي 1».
+    const second = await save(
+      { rows: [{ vehicleId: van2, specialist2EmployeeIds: [onlyCaptain] }] },
+      ROLE_DAY,
+    );
+    expect(second.status).toBe(422);
+    expect(errorOf(second).details?.[0]).toEqual({
+      field: 'employeeId',
+      code: 'NOT_A_SPECIALIST',
+      message: onlyCaptain,
+    });
+  });
+
+  it('refuses a specialist in the captain’s slot — on a van and on a row without one', async () => {
+    for (const vehicleId of [van2, null]) {
+      const res = await save(
+        { rows: [{ vehicleId, captainEmployeeIds: [onlySpecialist], notes: 'r23' }] },
+        ROLE_DAY,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res)).toMatchObject({
+        code: ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT,
+        details: [
+          { field: 'employeeId', code: 'NOT_A_CAPTAIN', message: onlySpecialist },
+          { field: 'rows', code: 'ROW_INDEX', message: '0' },
+        ],
+      });
+    }
+    const dto = await board(ROLE_DAY);
+    expect(vanRow(dto, van2)?.crew).toBeNull();
+    expect(dto.vehiclelessRows).toEqual([]);
+  });
+
+  it('counts nobody ticked, and nobody with no requirements row, as a specialist', async () => {
+    for (const employeeId of [unticked, rowless]) {
+      const res = await save(
+        { rows: [{ vehicleId: van2, captainEmployeeIds: [employeeId] }] },
+        ROLE_DAY,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).details?.[0]).toEqual({
+        field: 'employeeId',
+        code: 'NOT_A_CAPTAIN',
+        message: employeeId,
+      });
+    }
+    // …and a specialist's slot takes them both.
+    const planned = await saved(
+      {
+        rows: [
+          { vehicleId: van2, specialist1EmployeeIds: [unticked], specialist2EmployeeIds: [rowless] },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(vanRow(planned, van2)?.crew).toMatchObject({
+      specialist1EmployeeIds: [unticked],
+      specialist2EmployeeIds: [rowless],
+    });
+    await saved({ rows: [{ vehicleId: van2 }] }, ROLE_DAY);
+  });
+
+  it('seats a captain-specialist anywhere — the captain’s slot, either specialist’s', async () => {
+    for (const slot of ['captainEmployeeIds', 'specialist1EmployeeIds', 'specialist2EmployeeIds']) {
+      const planned = await saved({ rows: [{ vehicleId: van3, [slot]: [both] }] }, ROLE_DAY);
+      expect(vanRow(planned, van3)?.crew?.[slot as 'captainEmployeeIds'], slot).toEqual([both]);
+    }
+    // A captain-only in the captain's slot and a specialist-only in a specialist's, beside him.
+    const crew = await saved(
+      {
+        rows: [
+          {
+            vehicleId: van3,
+            captainEmployeeIds: [onlyCaptain, both],
+            specialist1EmployeeIds: [onlySpecialist],
+          },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(vanRow(crew, van3)?.crew).toMatchObject({
+      captainEmployeeIds: [onlyCaptain, both],
+      specialist1EmployeeIds: [onlySpecialist],
+    });
+    await saved({ rows: [{ vehicleId: van3 }] }, ROLE_DAY);
+  });
+
+  it('keeps a seat held before his flags changed — the row’s other changes save; another slot is refused', async () => {
+    const planned = await saved(
+      { rows: [{ vehicleId: van2, specialist1EmployeeIds: [reflagged], plannedTime: '07:00' }] },
+      ROLE_DAY,
+    );
+    expect(vanRow(planned, van2)?.crew?.specialist1EmployeeIds).toEqual([reflagged]);
+    // «متطلبات الطاقم» changes him to a captain only — the seat he holds no longer fits him.
+    await flag(reflagged, { isCaptain: true });
+
+    // The same slot of the same row, other changes: he stays, and the save passes.
+    const edited = await saved(
+      {
+        rows: [
+          {
+            vehicleId: van2,
+            specialist1EmployeeIds: [reflagged],
+            plannedTime: '08:15',
+            rowColour: 'green',
+          },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(vanRow(edited, van2)?.crew).toMatchObject({
+      specialist1EmployeeIds: [reflagged],
+      plannedTime: '08:15',
+      rowColour: 'green',
+    });
+
+    // Moved to the other specialist's slot of the SAME row — a new seat, refused; the row stays.
+    const moved = await save(
+      { rows: [{ vehicleId: van2, specialist2EmployeeIds: [reflagged], plannedTime: '08:15' }] },
+      ROLE_DAY,
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(422);
+    expect(errorOf(moved).details?.[0]).toEqual({
+      field: 'employeeId',
+      code: 'NOT_A_SPECIALIST',
+      message: reflagged,
+    });
+    expect(vanRow(await board(ROLE_DAY), van2)?.crew?.specialist1EmployeeIds).toEqual([reflagged]);
+
+    // Moved onto ANOTHER row in that same slot — a new seat too.
+    const elsewhere = await save(
+      {
+        rows: [
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: van3, specialist1EmployeeIds: [reflagged] },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(elsewhere.status).toBe(422);
+    expect(errorOf(elsewhere).details).toContainEqual({
+      field: 'rows',
+      code: 'ROW_INDEX',
+      message: '1',
+    });
+
+    // Taken out, he cannot be put back in it — but the captain's slot takes him now.
+    await saved({ rows: [{ vehicleId: van2, plannedTime: '08:15' }] }, ROLE_DAY);
+    const back = await save(
+      { rows: [{ vehicleId: van2, specialist1EmployeeIds: [reflagged] }] },
+      ROLE_DAY,
+    );
+    expect(back.status).toBe(422);
+    const asCaptain = await saved(
+      { rows: [{ vehicleId: van2, captainEmployeeIds: [reflagged] }] },
+      ROLE_DAY,
+    );
+    expect(vanRow(asCaptain, van2)?.crew?.captainEmployeeIds).toEqual([reflagged]);
+    await saved({ rows: [{ vehicleId: van2 }] }, ROLE_DAY);
+  });
+
+  it('keeps a held seat on a row WITHOUT a van through its own edits — but giving it a van is a new seat, refused', async () => {
+    // The board refuses a van to such a row before «حفظ» (`giveVan`); this is the rule it mirrors.
+    const looseHeld = await mkEmployee('مقعد محفوظ بلا سيارة');
+    await flag(looseHeld, { isCaptain: true, isSpecialist: true });
+    const planned = await saved(
+      { rows: [{ vehicleId: null, specialist1EmployeeIds: [looseHeld], notes: 'r23-loose' }] },
+      ROLE_DAY,
+    );
+    const loose = planned.vehiclelessRows.find((row) => row.notes === 'r23-loose');
+    expect(loose?.specialist1EmployeeIds).toEqual([looseHeld]);
+    const looseId = loose?.id ?? '';
+    await flag(looseHeld, { isCaptain: true });
+
+    // Its own row, by its id, same slot: kept, and the row's other changes save.
+    const edited = await saved(
+      {
+        rows: [
+          {
+            vehicleId: null,
+            crewAssignmentId: looseId,
+            specialist1EmployeeIds: [looseHeld],
+            notes: 'r23-loose',
+            plannedTime: '09:30',
+          },
+        ],
+      },
+      ROLE_DAY,
+    );
+    expect(edited.vehiclelessRows.find((row) => row.id === looseId)).toMatchObject({
+      specialist1EmployeeIds: [looseHeld],
+      plannedTime: '09:30',
+    });
+
+    // Given a van: the van's row is another row, so the seat is new — refused, nothing written.
+    const given = await save(
+      {
+        rows: [{ vehicleId: van2, specialist1EmployeeIds: [looseHeld], notes: 'r23-loose' }],
+        removeCrewAssignmentIds: [looseId],
+      },
+      ROLE_DAY,
+    );
+    expect(given.status, JSON.stringify(given.body)).toBe(422);
+    expect(errorOf(given)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT,
+      details: [
+        { field: 'employeeId', code: 'NOT_A_SPECIALIST', message: looseHeld },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    const after = await board(ROLE_DAY);
+    expect(after.vehiclelessRows.map((row) => row.id)).toContain(looseId);
+    // Van 2's row (emptied by the cases above) took nobody.
+    expect(vanRow(after, van2)?.crew?.specialist1EmployeeIds ?? []).toEqual([]);
+    expect(vanRow(after, van2)?.crew?.notes ?? null).toBeNull();
+
+    await saved({ rows: [], removeCrewAssignmentIds: [looseId] }, ROLE_DAY);
+  });
+
+  it('reads «متطلبات الطاقم» ONCE for everybody the save puts on a row', async () => {
+    const read = vi.spyOn(operationsCrewRequirementsRepository, 'findByEmployees');
+    try {
+      await saved(
+        {
+          rows: [
+            { vehicleId: van2, captainEmployeeIds: [onlyCaptain], specialist1EmployeeIds: [rowless] },
+            { vehicleId: van3, captainEmployeeIds: [both], specialist2EmployeeIds: [onlySpecialist] },
+          ],
+        },
+        ROLE_DAY,
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+      expect([...(read.mock.calls[0]?.[0] ?? [])].sort()).toEqual(
+        [onlyCaptain, rowless, both, onlySpecialist].sort(),
+      );
+    } finally {
+      read.mockRestore();
+    }
+    await saved({ rows: [{ vehicleId: van2 }, { vehicleId: van3 }] }, ROLE_DAY);
   });
 });

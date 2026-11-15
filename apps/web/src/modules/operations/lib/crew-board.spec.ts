@@ -367,6 +367,23 @@ describe('splitPool — the two legacy pools, captains and specialists', () => {
   it('gives two empty pools for nobody', () => {
     expect(splitPool([])).toEqual({ captains: [], specialists: [] });
   });
+
+  // Round 23 — «لو قائد واخصائى يبقى فى القايمة بتاعت القائد بس يكونوا فى الاخر» (the standing crew's
+  // pools too): a captain-specialist in the captains' pool only, after every captain.
+  it('lists the captain-specialists LAST among the captains — out of the server’s order — and never as specialists', () => {
+    const dual = (id: string) =>
+      member(id, { requirements: flags({ isCaptain: true, isSpecialist: true }) });
+    const pools = splitPool([
+      dual('d1'),
+      member('c1', { requirements: flags({ isCaptain: true }) }),
+      dual('d2'),
+      member('s1', { requirements: flags({ isSpecialist: true }) }),
+      member('c2', { requirements: flags({ isCaptain: true }) }),
+      dual('d3'),
+    ]);
+    expect(pools.captains.map((m) => m.employeeId)).toEqual(['c1', 'c2', 'd1', 'd2', 'd3']);
+    expect(pools.specialists.map((m) => m.employeeId)).toEqual(['s1']);
+  });
 });
 
 describe('changedRows — only what moved is sent', () => {
@@ -500,6 +517,16 @@ describe('assignCaptainWithCrew — a captain brings his crew with him', () => {
     expect(slotOccupants(next[0] as BoardRow, 'captain')).toEqual(['capA']);
     expect(slotOccupants(next[0] as BoardRow, 'specialist1')).toEqual(['a1']);
     expect(slotOccupants(next[0] as BoardRow, 'specialist2')).toEqual(['a2']);
+  });
+
+  // Round 23 — a companion the slot no longer fits (a captain-only kept in a specialist's seat from
+  // before the rule) STAYS: moved, he would take a new seat the save refuses.
+  it('leaves behind a companion his slot does not fit, and brings the rest', () => {
+    const fits = (employeeId: string, slot: string): boolean =>
+      !(employeeId === 's1' && slot !== 'captain');
+    const next = assignCaptainWithCrew(loaded(), 'v2', 0, 'cap', fits);
+    expect(rowCrew(next[1] as BoardRow)).toEqual(['cap', 's2']);
+    expect(slotOccupants(next[0] as BoardRow, 'specialist1')).toEqual(['s1']);
   });
 
   it('takes EVERY specialist when he is the vehicle\u2019s only captain', () => {

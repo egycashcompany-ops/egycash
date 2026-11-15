@@ -8,13 +8,17 @@ import {
   CreateOperationsShiftTypeSchema,
   OPERATIONS_CREW_AVAILABILITIES,
   OPERATIONS_CREW_ROW_COLOURS,
+  OPERATIONS_CREW_SLOTS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   OperationsCrewAssignmentChangedPayloadV1,
   OrderOperationsShiftTypesSchema,
   PlanOperationsCrewSchema,
   UpdateOperationsShiftTypeSchema,
   canonicalOperationsDirection,
+  crewRoleOf,
+  fitsCrewSlot,
   type OperationsCrewMemberDto,
+  type OperationsCrewRole,
 } from './operations.js';
 import { ErrorCodes } from '../errors/index.js';
 
@@ -225,5 +229,34 @@ describe('Round 22 — who is away on the board’s day («لو القائد غ�
 
   it('names the refusal of a newly placed member who is away', () => {
     expect(ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT).toBe('OPERATIONS_CREW_MEMBER_ABSENT');
+  });
+});
+
+describe('Round 23 — who may take which slot («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»)', () => {
+  const flags = (isCaptain: boolean, isSpecialist: boolean) => ({ isCaptain, isSpecialist });
+
+  it('reads the role off the two flags — and nobody ticked, or no row at all, is a specialist', () => {
+    expect(crewRoleOf(flags(true, false))).toBe('captain');
+    expect(crewRoleOf(flags(true, true))).toBe('dual');
+    expect(crewRoleOf(flags(false, true))).toBe('specialist');
+    expect(crewRoleOf(flags(false, false))).toBe('specialist');
+    expect(crewRoleOf(null)).toBe('specialist');
+    expect(crewRoleOf(undefined)).toBe('specialist');
+  });
+
+  it('names the three slots in the board’s order', () => {
+    expect([...OPERATIONS_CREW_SLOTS]).toEqual(['captain', 'specialist1', 'specialist2']);
+  });
+
+  it('seats a captain only as captain, a specialist only as specialist, and a captain-specialist anywhere', () => {
+    const fits = (role: OperationsCrewRole): string =>
+      OPERATIONS_CREW_SLOTS.filter((slot) => fitsCrewSlot(role, slot)).join(' ');
+    expect(fits('captain')).toBe('captain');
+    expect(fits('specialist')).toBe('specialist1 specialist2');
+    expect(fits('dual')).toBe('captain specialist1 specialist2');
+  });
+
+  it('names the refusal of somebody newly put in a slot his role does not fit', () => {
+    expect(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT).toBe('OPERATIONS_CREW_MEMBER_WRONG_SLOT');
   });
 });

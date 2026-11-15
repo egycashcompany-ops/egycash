@@ -143,6 +143,16 @@ export const ErrorCodes = {
    * 'ROW_INDEX', `message` the row's index in the save).
    */
   OPERATIONS_CREW_MEMBER_ABSENT: 'OPERATIONS_CREW_MEMBER_ABSENT',
+  /**
+   * 422 — Round 23: a crew-board save, or a standing-crew save, NEWLY put somebody in a slot his
+   * role does not fit (`fitsCrewSlot`): «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+   * اخصائى». A captain-only in a specialist's slot, or a specialist — or somebody with no requirements
+   * row — in the captain's; a captain-specialist fits every slot. Somebody already in that same slot
+   * of that same row before the save stays. Details: `field` 'employeeId' (`code` 'NOT_A_CAPTAIN' or
+   * 'NOT_A_SPECIALIST', `message` the employee's id), then `field` 'rows' (`code` 'ROW_INDEX',
+   * `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_WRONG_SLOT: 'OPERATIONS_CREW_MEMBER_WRONG_SLOT',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

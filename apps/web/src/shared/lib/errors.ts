@@ -92,6 +92,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // Round 22 — «لو القائد غايب … مقدرش احطه على العربيه»: somebody attendance has absent or on
     // leave that day was put on a row. The board names him on the marked row (`planRefusal`).
     OPERATIONS_CREW_MEMBER_ABSENT: 'Somebody on a row is absent or on leave on this day.',
+    // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: somebody was
+    // newly put in a slot his role does not fit. The board names him on the marked row.
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'Somebody is in a slot that is not their role’s — a captain in a specialist’s slot, or a specialist in the captain’s.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -155,6 +159,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_DIRECTION_NOT_AN_AREA:
       'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — اختره من القائمة في الصف المُعلَّم.',
     OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

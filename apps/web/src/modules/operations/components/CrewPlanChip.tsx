@@ -26,6 +26,13 @@
 //     or «إجازة» (amber) and is ringed in that colour, and stays until the planner takes him off — the
 //     server lets a seat held before the absence stay, so the save still passes.
 //
+// IN A SLOT NOT HIS ROLE'S (Round 23) — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+// اخصائى». No drop, pick or load puts anybody there any more; somebody already sitting there (seated
+// before the rule, or before «متطلبات الطاقم» changed his flags) keeps the seat, as the server lets
+// him, and is MARKED: a dashed amber ring and a word on the chip — «ليس قائدًا» / «ليس أخصائيًا» —
+// with the whole reason for a screen reader and on hover. Not removed: taking him out is the
+// planner's act. (The Round-20 board drew a quiet dot here and called it «marked, not refused».)
+//
 // «+» BESIDE THE ✕ (Round 22 E): a seated chip in a slot with room for one more carries the slot's
 // own «choose from the list» — «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم» — where the ✕ is, so
 // the half-full slot keeps its one line.
@@ -34,7 +41,14 @@ import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
-import { awayOf, crewRoleOf, flagsOf, type CrewAway, type CrewRole } from '../lib/crew-plan';
+import {
+  awayOf,
+  crewRoleOf,
+  flagsOf,
+  type CrewAway,
+  type CrewRole,
+  type WrongSlot,
+} from '../lib/crew-plan';
 import { PlanAttendanceFact, usePlanMemberCard } from './CrewPlanMemberCard';
 import { CrewFlagMarks } from './crew-plan-icons';
 
@@ -74,6 +88,13 @@ const AWAY_SEATED: Record<CrewAway, string> = {
   onLeave: 'outline outline-2 outline-offset-1 outline-amber-400 dark:outline-amber-300',
 };
 
+/** The dashed amber ring of a seat held outside one's role (Round 23) — apart from the away ring. */
+const WRONG_SLOT_RING =
+  'outline-dashed outline-2 outline-offset-1 outline-amber-400 dark:outline-amber-300';
+
+/** The word on that chip — amber, solid, readable on all three role colours. */
+const WRONG_SLOT_BADGE = 'bg-amber-300 text-amber-950 ring-1 ring-amber-500 dark:bg-amber-300';
+
 /** The role's colour without its hover — under the seated chip's ✕, which covers the icons. */
 const ROLE_FLAT: Record<CrewRole, string> = {
   captain: 'bg-emerald-700 dark:bg-emerald-800',
@@ -97,7 +118,7 @@ export const CrewPlanChip = ({
   placedAt,
   seatedAt = null,
   dragActive = false,
-  outOfRole,
+  wrongSlot = null,
   refused = false,
   onSelect,
   onRemove,
@@ -124,8 +145,12 @@ export const CrewPlanChip = ({
   seatedAt?: string | null;
   /** A chip — any — is being dragged on the board: no card and no icon tip opens. */
   dragActive?: boolean;
-  /** Seated outside their role — a quiet mark, never a refusal (see `outOfRole`). */
-  outOfRole?: string | null;
+  /**
+   * Seated in a slot his role does not fit — a seat HELD from before the rule or before his flags
+   * changed (Round 23): `why` says which way, `badge` the word on the chip, `reason` the whole
+   * sentence. Null — he fits where he sits (or sits nowhere).
+   */
+  wrongSlot?: { why: WrongSlot; badge: string; reason: string } | null;
   /** The last save named THIS person on this row (`planRefusal`'s `crew`): ringed until moved. */
   refused?: boolean;
   onSelect: () => void;
@@ -167,6 +192,7 @@ export const CrewPlanChip = ({
       data-placed={placed ? 'true' : undefined}
       data-selected={selected ? 'true' : undefined}
       data-away={away ?? undefined}
+      data-wrong-slot={wrongSlot?.why}
       data-refused={refused ? 'true' : undefined}
       className={cn(
         'group/chip relative flex min-w-0 items-stretch rounded-lg transition',
@@ -176,6 +202,8 @@ export const CrewPlanChip = ({
         movable && 'cursor-grab active:cursor-grabbing',
         placed && !blocked && 'opacity-50 saturate-50 hover:opacity-80',
         away !== null && variant === 'seat' && AWAY_SEATED[away],
+        // Away outranks it for the ring (both say «take him out»); the word stays on the chip.
+        wrongSlot !== null && away === null && WRONG_SLOT_RING,
         dragging && 'opacity-30',
         selected &&
           'ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-amber-300 dark:ring-offset-[#0b1226]',
@@ -193,7 +221,9 @@ export const CrewPlanChip = ({
         aria-label={
           blocked
             ? `${member.fullNameAr} — ${t(`operations.crewPlan.away.why.${away}`)}`
-            : t('operations.crewPlan.chip.select', { name: member.fullNameAr })
+            : wrongSlot !== null
+              ? `${t('operations.crewPlan.chip.select', { name: member.fullNameAr })} — ${wrongSlot.reason}`
+              : t('operations.crewPlan.chip.select', { name: member.fullNameAr })
         }
         {...card.buttonProps}
         onClick={blocked ? undefined : onSelect}
@@ -224,6 +254,18 @@ export const CrewPlanChip = ({
             )}
           >
             {where.short}
+          </span>
+        )}
+        {wrongSlot !== null && (
+          <span
+            data-wrong-slot-badge={wrongSlot.why}
+            title={wrongSlot.reason}
+            className={cn(
+              'shrink-0 rounded px-1 text-[11px] font-black leading-4',
+              WRONG_SLOT_BADGE,
+            )}
+          >
+            {wrongSlot.badge}
           </span>
         )}
         {away !== null && awayWord !== null && (
@@ -287,15 +329,6 @@ export const CrewPlanChip = ({
             </button>
           )}
         </span>
-      )}
-      {outOfRole !== undefined && outOfRole !== null && (
-        <span
-          role="img"
-          data-out-of-role="true"
-          aria-label={outOfRole}
-          title={outOfRole}
-          className="absolute -top-1 -start-1 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white dark:ring-[#111827]"
-        />
       )}
       {card.card}
     </div>

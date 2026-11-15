@@ -31,6 +31,17 @@
 //     keeps both orders too). While a chip is picked up, a slot offers «ضع هنا» in place of its «+».
 // Every move is a pure step in `lib/crew-plan.ts`; nothing is written until «حفظ».
 //
+// WHO TAKES WHICH SLOT (Round 23) — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+// اخصائى»: a captain only in «قائد الطاقم», a specialist only in «أخصائي 1/2», a captain-specialist
+// (blue) anywhere — the contracts' `fitsCrewSlot`, which the save holds to as well. Every way of
+// seating somebody asks it: a drop aimed at a slot not his is refused in words (red while he
+// hovers), a drop on the row routes him only into slots he fits, a slot's list offers only who fits
+// it (the blue ones last), «اختر ثم ضع هنا» arms only those slots, and the standing crew leaves out a
+// seat its person no longer fits. Somebody seated so BEFORE the rule — or before his flags changed —
+// keeps the seat, marked, until the planner takes him out, and a row holding him gets no van. And
+// in the pools a captain-specialist is listed in «القادة» only, at its end: «لو قائد واخصائى يبقى فى
+// القايمة بتاعت القائد بس يكونوا فى الاخر».
+//
 // AWAY THAT DAY (Round 22 F) — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت
 // ومقدرش احطه على العربيه و كذلك الاخصائيين»: HR's absent / on leave (`awayOf`) is listed last in his
 // pool, pale, and cannot be dragged, picked up or picked; every slot refuses him, in words; the
@@ -116,20 +127,22 @@ import {
   listPool,
   loadStandingIntoPlan,
   matchesShiftType,
-  outOfRole,
   patchRow,
   placeMember,
   planChanges,
   planRefusal,
   planRowCard,
   rebaseDraft,
+  rowMisfits,
   rowPeople,
   seatOf,
   shiftTypeStrip,
+  standingForDay,
   toPlan,
   toPlanRows,
   vansFree,
   vehiclelessRow,
+  wrongSlotOf,
   type CrewRole,
   type CrewSlot,
   type PlanRefusal,
@@ -145,6 +158,7 @@ import {
   droppedMember,
   parseTargetKey,
   refusedAsAway,
+  refusedAsWrongSlot,
   resolveDrop,
   targetFromMarks,
   targetKey,
@@ -374,7 +388,8 @@ export const CrewBoardPage = (): JSX.Element => {
   /**
    * A refused drop, SAID: what is full — the slot (the first of the row's, for a drop on the row) on
    * which row — then what to do about it, on the toast's second line. Somebody away that day: who,
-   * and why nobody away goes on a row.
+   * and why nobody away goes on a row. A slot not his role's (Round 23): «لا يُعيَّن قائد في خانة
+   * أخصائي» / «لا يُعيَّن أخصائي في خانة القائد», then whom that slot takes.
    */
   const sayRefusal = (decision: RefusedDrop, employeeId: string): void => {
     const row = rows.find((candidate) => candidate.key === decision.key);
@@ -388,8 +403,8 @@ export const CrewBoardPage = (): JSX.Element => {
       t(
         refusedAsAway(decision.reason)
           ? 'operations.crewPlan.drop.awayWhy'
-          : decision.reason === 'captainFull'
-            ? 'operations.crewPlan.drop.captainElsewhere'
+          : refusedAsWrongSlot(decision.reason)
+            ? `operations.crewPlan.drop.${decision.reason}Why`
             : 'operations.crewPlan.drop.takeOff',
         vars,
       ),
@@ -611,9 +626,11 @@ export const CrewBoardPage = (): JSX.Element => {
     [standing.data],
   );
   /**
-   * «الطاقم الثابت»: fills EMPTY vans in the draft, and off again empties exactly those. Somebody
-   * away that day is left off his van (Round 22 — no row takes him, and the save would refuse him)
-   * and named, so the planner knows whose seat to fill.
+   * «الطاقم الثابت»: fills EMPTY vans in the draft, and off again empties exactly those. Left off
+   * his van, and named so the planner knows whose seat to fill (`standingForDay`): somebody away
+   * that day (Round 22 — no row takes him, and the save would refuse him), and somebody whose
+   * standing seat is not his role's (Round 23 — written before the rule, or before his flags
+   * changed; loaded, he would take a seat the save refuses). Each counts as not loaded.
    */
   const toggleStanding = (): void => {
     if (standingKeys !== null) {
@@ -621,39 +638,38 @@ export const CrewBoardPage = (): JSX.Element => {
       setStandingKeys(null);
       return;
     }
-    const left = new Set<string>();
-    const present = (ids: readonly string[]): string[] =>
-      ids.filter((employeeId) => {
-        const away = awayOf(memberOf(employeeId)) !== null;
-        if (away) left.add(employeeId);
-        return !away;
-      });
-    const load = loadStandingIntoPlan(
-      rows,
-      standingSources.map((source) => ({
-        vehicleId: source.vehicleId,
-        captainEmployeeIds: present(source.captainEmployeeIds),
-        specialist1EmployeeIds: present(source.specialist1EmployeeIds),
-        specialist2EmployeeIds: present(source.specialist2EmployeeIds),
-      })),
-    );
+    const day = standingForDay(standingSources, memberOf);
+    const load = loadStandingIntoPlan(rows, day.sources);
     setRows(load.rows);
     setStandingKeys(load.filledKeys);
     if (load.unavailable > 0) {
       toast.error(t('operations.crew.standing.unavailable', { count: load.unavailable }));
     }
-    if (left.size > 0) {
+    if (day.away.length > 0) {
       // The names on the second line: the toast cuts its first one to its width.
       toast.error(
         t('operations.crewPlan.standingAway'),
-        [...left].map((employeeId) => shownMember(employeeId).fullNameAr).join('، '),
+        day.away.map((employeeId) => shownMember(employeeId).fullNameAr).join('، '),
+      );
+    }
+    if (day.wrongSlot.length > 0) {
+      toast.error(
+        t('operations.crewPlan.standingWrongSlot'),
+        day.wrongSlot
+          .map(
+            ({ employeeId, slot }) =>
+              `${shownMember(employeeId).fullNameAr} (${t(`operations.crewPlan.columns.${slot}`)})`,
+          )
+          .join('، '),
       );
     }
   };
 
   /**
    * A row without a van is given one. Not while somebody on it is away that day: the van would put
-   * him on a van, which the save refuses (Round 22) — said now, by name, rather than at «حفظ».
+   * him on a van, which the save refuses (Round 22) — said now, by name, rather than at «حفظ». Nor
+   * while somebody on it holds a seat his role does not fit (Round 23): on the van's row that seat
+   * is a new one, which the save refuses too.
    */
   const giveVan = (row: PlanRow, vanKey: string): void => {
     const away = rowPeople(row).filter((employeeId) => awayOf(memberOf(employeeId)) !== null);
@@ -662,6 +678,19 @@ export const CrewBoardPage = (): JSX.Element => {
         t('operations.crewPlan.vanAway'),
         t('operations.crewPlan.vanAwayWho', {
           names: away.map((employeeId) => shownMember(employeeId).fullNameAr).join('، '),
+        }),
+      );
+      return;
+    }
+    // Only people the roster names: whose requirements the board cannot read, the save judges.
+    const misfits = rowMisfits(row, (employeeId) =>
+      byId.has(employeeId) ? roleOf(employeeId) : null,
+    );
+    if (misfits.length > 0) {
+      toast.error(
+        t('operations.crewPlan.vanWrongSlot'),
+        t('operations.crewPlan.vanWrongSlotWho', {
+          names: misfits.map(({ employeeId }) => shownMember(employeeId).fullNameAr).join('، '),
         }),
       );
       return;
@@ -696,19 +725,21 @@ export const CrewBoardPage = (): JSX.Element => {
         );
         return;
       }
-      // Somebody away that day (Round 22): who, by name — his chip on that row is ringed too.
+      // Somebody away that day (Round 22), or in a slot not his role's (Round 23): who, by name —
+      // his chip on that row is ringed too.
+      const aboutPerson = placed.field === 'crew' || placed.field === 'slot';
       const message =
         placed.field === 'direction'
           ? t('operations.crewPlan.refused.direction', { parts: placed.parts.join('، ') })
-          : placed.field === 'crew'
+          : aboutPerson
             ? placed.person === undefined
-              ? t('operations.crewPlan.refused.crew')
-              : t(`operations.crewPlan.refused.${placed.person.away}`, {
+              ? t(`operations.crewPlan.refused.${placed.field}`)
+              : t(`operations.crewPlan.refused.${placed.person.reason}`, {
                   name: shownMember(placed.person.employeeId).fullNameAr,
                 })
             : t('operations.crewPlan.refused.type');
       setRefusal({ ...placed, message });
-      toast.error(errorMessage(failure, locale), placed.field === 'crew' ? message : undefined);
+      toast.error(errorMessage(failure, locale), aboutPerson ? message : undefined);
       if (!shown.some((row) => row.key === placed.key)) setTypeFilter('');
       requestAnimationFrame(() =>
         document
@@ -751,11 +782,14 @@ export const CrewBoardPage = (): JSX.Element => {
       overDecision?.kind === 'refuse' &&
       overDecision.key === row.key &&
       overDecision.slots.includes(slot);
-    // Why it refuses, over the slot: full — or the person away that day, in his own words.
+    // Why it refuses, over the slot: full — the person away that day, in his own words — or
+    // (Round 23) a slot for the other role: «للقادة فقط» / «للأخصائيين فقط».
     const refusedWord =
       overDecision?.kind === 'refuse' && refusedAsAway(overDecision.reason)
         ? t(`operations.crewPlan.away.day.${overDecision.reason}`)
-        : t('operations.crewPlan.slotFull');
+        : overDecision?.kind === 'refuse' && refusedAsWrongSlot(overDecision.reason)
+          ? t(`operations.crewPlan.wrongSlot.over.${overDecision.reason}`)
+          : t('operations.crewPlan.slotFull');
     return (
       <div
         role="group"
@@ -777,7 +811,11 @@ export const CrewBoardPage = (): JSX.Element => {
       >
         {people.map((employeeId) => {
           const member = shownMember(employeeId);
-          const role = crewRoleOf(member.requirements);
+          // A seat held outside his role (Round 23) — marked, never taken from him here. Not for
+          // somebody the roster no longer names: his requirements cannot be read, so no claim.
+          const wrong = byId.has(employeeId)
+            ? wrongSlotOf(crewRoleOf(member.requirements), slot)
+            : null;
           return (
             <CrewPlanChip
               key={employeeId}
@@ -789,15 +827,17 @@ export const CrewBoardPage = (): JSX.Element => {
               // The person card's «في التشغيلة» line; and no card or icon tip under a drag.
               seatedAt={placedAt(employeeId)?.long ?? null}
               dragActive={dragging !== null}
-              outOfRole={
-                outOfRole(role, slot)
-                  ? t(
-                      `operations.crewPlan.outOfRole.${slot === 'captain' ? 'captain' : 'specialist'}`,
-                    )
-                  : null
+              wrongSlot={
+                wrong === null
+                  ? null
+                  : {
+                      why: wrong,
+                      badge: t(`operations.crewPlan.wrongSlot.badge.${wrong}`),
+                      reason: t(`operations.crewPlan.wrongSlot.held.${wrong}`),
+                    }
               }
               refused={
-                refusal?.field === 'crew' &&
+                (refusal?.field === 'crew' || refusal?.field === 'slot') &&
                 refusal.key === row.key &&
                 refusal.person?.employeeId === employeeId
               }

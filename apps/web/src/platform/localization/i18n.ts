@@ -11150,8 +11150,10 @@ const en: Record<string, string> = {
   'operations.crew.requirements.title': 'Operations crew roster',
   'operations.crew.requirements.subtitle':
     'Who counts as operations crew, and what each of them carries.',
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: the two role
+  // flags now decide the crew board's slot; the line that said nothing here gates a slot was wrong.
   'operations.crew.requirements.notAGate':
-    'These are indicators, not conditions. Anyone on the roster can be assigned to any slot, whatever is ticked here.',
+    '«Captain» and «Specialist» alone decide the slot on the crew board: a captain takes «Crew captain», a specialist (or somebody ticked neither) a specialist’s slot, and somebody ticked both any slot. The other flags are indicators, not conditions.',
   'operations.crew.requirements.employee': 'Employee',
   'operations.crew.requirements.saveFailed': 'Could not save the change.',
   'operations.crew.requirements.unconfigured':
@@ -11245,15 +11247,16 @@ const en: Record<string, string> = {
   'operations.crewPlan.drop.specialistsFull': 'Both specialist slots on row {{row}} are full',
   'operations.crewPlan.drop.rowFull': 'Every slot on row {{row}} is full',
   'operations.crewPlan.drop.takeOff': 'Take somebody off first, then drop the name again.',
-  'operations.crewPlan.drop.captainElsewhere':
-    'Take somebody off it first, or drop {{name}} straight onto a specialist slot.',
   // Round 22 E — a slot's list: «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم».
   'operations.crewPlan.picker.choose.captain': 'Choose a captain',
   'operations.crewPlan.picker.choose.specialist': 'Choose a specialist',
   'operations.crewPlan.picker.add': 'Add another to «{{slot}}» — row {{row}}',
   'operations.crewPlan.picker.title': 'Choose for «{{slot}}»',
   'operations.crewPlan.picker.row': 'Row {{row}}',
-  'operations.crewPlan.picker.pools': 'Which list',
+  // Round 23 — a slot's list offers only who fits it, the captain-specialists at the end.
+  'operations.crewPlan.picker.offers': 'Offered here:',
+  'operations.crewPlan.picker.then': 'then',
+  'operations.crewPlan.picker.dualsLast': '(at the end)',
   'operations.crewPlan.picker.free': 'Free',
   'operations.crewPlan.picker.section.free': 'Free',
   'operations.crewPlan.picker.section.seated': 'On the board — picking moves them here',
@@ -11276,6 +11279,32 @@ const en: Record<string, string> = {
   'operations.crewPlan.standingAway': 'Left off the standing crew — absent or on leave',
   'operations.crewPlan.vanAway': 'No vehicle for a row with somebody absent or on leave',
   'operations.crewPlan.vanAwayWho': '{{names}} — take them off the row first.',
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى».
+  'operations.crewPlan.drop.notCaptain': 'A specialist does not go in the captain’s slot',
+  'operations.crewPlan.drop.notSpecialist': 'A captain does not go in a specialist’s slot',
+  'operations.crewPlan.drop.notCaptainWhy':
+    '{{name}} is not ticked «Captain». «Crew captain» takes a captain, or somebody who is both captain and specialist.',
+  'operations.crewPlan.drop.notSpecialistWhy':
+    '{{name}} is a captain only. The specialists’ slots take a specialist, or somebody who is both captain and specialist.',
+  'operations.crewPlan.wrongSlot.over.notCaptain': 'Captains only',
+  'operations.crewPlan.wrongSlot.over.notSpecialist': 'Specialists only',
+  'operations.crewPlan.wrongSlot.badge.notCaptain': 'Not a captain',
+  'operations.crewPlan.wrongSlot.badge.notSpecialist': 'Not a specialist',
+  'operations.crewPlan.wrongSlot.held.notCaptain':
+    'Not ticked «Captain» — kept in this slot from before the rule. Take them out, or move them to a specialist’s slot.',
+  'operations.crewPlan.wrongSlot.held.notSpecialist':
+    'A captain only — kept in this slot from before the rule. Take them out, or move them to the captain’s slot.',
+  'operations.crewPlan.refused.notCaptain':
+    '{{name}} is not a captain — take them out of the captain’s slot on this row.',
+  'operations.crewPlan.refused.notSpecialist':
+    '{{name}} is a captain only — take them out of the specialist’s slot on this row.',
+  'operations.crewPlan.refused.slot': 'Somebody on this row is in a slot that is not their role’s.',
+  'operations.crewPlan.standingWrongSlot':
+    'Left off the standing crew — in a slot that is not their role’s',
+  'operations.crewPlan.vanWrongSlot':
+    'No vehicle for a row with somebody in a slot that is not their role’s',
+  'operations.crewPlan.vanWrongSlotWho':
+    '{{names}} — take them out, or move them to a slot that fits, first.',
   'operations.crewPlan.card.attendance': 'Attendance',
   'operations.crewPlan.card.attendanceNone': 'No absence or leave on record',
   'operations.crewPlan.standing': 'Standing crew',
@@ -11342,8 +11371,6 @@ const en: Record<string, string> = {
   'operations.crewPlan.role.captain': 'Captain',
   'operations.crewPlan.role.dual': 'Specialist who leads',
   'operations.crewPlan.role.specialist': 'Specialist',
-  'operations.crewPlan.outOfRole.captain': 'Not ticked «Captain» on the crew roster',
-  'operations.crewPlan.outOfRole.specialist': 'Ticked as a captain only on the crew roster',
   'operations.crewPlan.chip.select': 'Pick up {{name}} to move',
   'operations.crewPlan.chip.remove': 'Take {{name}} off the slot',
   'operations.crewPlan.card.seat': 'On the board',
@@ -25088,7 +25115,7 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.title': 'كشف طاقم العمليات',
   'operations.crew.requirements.subtitle': 'من يُعدّ من طاقم العمليات، وما الذي يحمله كل منهم.',
   'operations.crew.requirements.notAGate':
-    'هذه مؤشرات وليست شروطًا. أي فرد في الكشف يمكن تعيينه في أي خانة مهما كان المُعلَّم هنا.',
+    '«قائد» و«أخصائي» وحدهما يحددان الخانة في لوحة التشغيلة: القائد لخانة «قائد الطاقم»، والأخصائي (ومن لم يُعلَّم بأيهما) لخانتي الأخصائيين، ومن عُلِّم بالاثنين لأي خانة. أما بقية العلامات فمؤشرات وليست شروطًا.',
   'operations.crew.requirements.employee': 'الموظف',
   'operations.crew.requirements.saveFailed': 'تعذّر حفظ التغيير.',
   'operations.crew.requirements.unconfigured':
@@ -25177,15 +25204,16 @@ const ar: Record<string, string> = {
   'operations.crewPlan.drop.specialistsFull': 'خانتا الأخصائيين في صف {{row}} ممتلئتان',
   'operations.crewPlan.drop.rowFull': 'جميع خانات صف {{row}} ممتلئة',
   'operations.crewPlan.drop.takeOff': 'أخرِج أحدًا أولًا، ثم أفلِت الاسم من جديد.',
-  'operations.crewPlan.drop.captainElsewhere':
-    'أخرِج أحدًا منها أولًا، أو أفلِت {{name}} على خانة أخصائي مباشرة.',
   // Round 22 E — قائمة الخانة: «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم».
   'operations.crewPlan.picker.choose.captain': 'اختيار قائد',
   'operations.crewPlan.picker.choose.specialist': 'اختيار أخصائي',
   'operations.crewPlan.picker.add': 'إضافة آخر إلى «{{slot}}» — صف {{row}}',
   'operations.crewPlan.picker.title': 'الاختيار لخانة «{{slot}}»',
   'operations.crewPlan.picker.row': 'صف {{row}}',
-  'operations.crewPlan.picker.pools': 'القائمة',
+  // Round 23 — قائمة الخانة لا تعرض إلا من تناسبه الخانة، ومن هو قائد وأخصائي معًا في آخرها.
+  'operations.crewPlan.picker.offers': 'تُعرض هنا:',
+  'operations.crewPlan.picker.then': 'ثم',
+  'operations.crewPlan.picker.dualsLast': '(في الآخر)',
   'operations.crewPlan.picker.free': 'متاح',
   'operations.crewPlan.picker.section.free': 'متاحون',
   'operations.crewPlan.picker.section.seated': 'في التشغيلة — اختياره ينقله إلى هنا',
@@ -25207,6 +25235,28 @@ const ar: Record<string, string> = {
   'operations.crewPlan.standingAway': 'لم يُوضع من الطاقم الثابت غائب ولا من في إجازة',
   'operations.crewPlan.vanAway': 'لا تُعطى سيارة لصف عليه غائب أو من في إجازة',
   'operations.crewPlan.vanAwayWho': '{{names}} — أخرِجه من الصف أولًا.',
+  // Round 23 — لا يُعيَّن قائد في خانة أخصائي ولا أخصائي في خانة القائد، إلا من هو قائد وأخصائي معًا.
+  'operations.crewPlan.drop.notCaptain': 'لا يُعيَّن أخصائي في خانة القائد',
+  'operations.crewPlan.drop.notSpecialist': 'لا يُعيَّن قائد في خانة أخصائي',
+  'operations.crewPlan.drop.notCaptainWhy':
+    '{{name}} غير مُعلَّم «قائد». خانة «قائد الطاقم» للقائد، أو لمن هو قائد وأخصائي معًا.',
+  'operations.crewPlan.drop.notSpecialistWhy':
+    '{{name}} قائد فقط. خانتا الأخصائيين للأخصائي، أو لمن هو قائد وأخصائي معًا.',
+  'operations.crewPlan.wrongSlot.over.notCaptain': 'للقادة فقط',
+  'operations.crewPlan.wrongSlot.over.notSpecialist': 'للأخصائيين فقط',
+  'operations.crewPlan.wrongSlot.badge.notCaptain': 'ليس قائدًا',
+  'operations.crewPlan.wrongSlot.badge.notSpecialist': 'ليس أخصائيًا',
+  'operations.crewPlan.wrongSlot.held.notCaptain':
+    'غير مُعلَّم «قائد» — بقي في هذه الخانة من قبل هذه القاعدة. أخرِجه، أو انقله إلى خانة أخصائي.',
+  'operations.crewPlan.wrongSlot.held.notSpecialist':
+    'قائد فقط — بقي في هذه الخانة من قبل هذه القاعدة. أخرِجه، أو انقله إلى خانة القائد.',
+  'operations.crewPlan.refused.notCaptain': '{{name}} ليس قائدًا — أخرِجه من خانة القائد في هذا الصف.',
+  'operations.crewPlan.refused.notSpecialist':
+    '{{name}} قائد فقط — أخرِجه من خانة الأخصائي في هذا الصف.',
+  'operations.crewPlan.refused.slot': 'على هذا الصف من يجلس في خانة لا تناسبه.',
+  'operations.crewPlan.standingWrongSlot': 'لم يُوضع من الطاقم الثابت من كانت خانته لا تناسبه',
+  'operations.crewPlan.vanWrongSlot': 'لا تُعطى سيارة لصف عليه من يجلس في خانة لا تناسبه',
+  'operations.crewPlan.vanWrongSlotWho': '{{names}} — أخرِجه أو انقله إلى خانة تناسبه أولًا.',
   'operations.crewPlan.card.attendance': 'الحضور',
   'operations.crewPlan.card.attendanceNone': 'لم يُسجَّل غياب ولا إجازة',
   'operations.crewPlan.standing': 'الطاقم الثابت',
@@ -25271,8 +25321,6 @@ const ar: Record<string, string> = {
   'operations.crewPlan.role.captain': 'قائد',
   'operations.crewPlan.role.dual': 'أخصائي يعمل قائدًا',
   'operations.crewPlan.role.specialist': 'أخصائي',
-  'operations.crewPlan.outOfRole.captain': 'غير مُعلَّم «قائد» في كشف الطاقم',
-  'operations.crewPlan.outOfRole.specialist': 'مُعلَّم «قائد» فقط في كشف الطاقم',
   'operations.crewPlan.chip.select': 'اختيار {{name}} لنقله',
   'operations.crewPlan.chip.remove': 'إخراج {{name}} من الخانة',
   'operations.crewPlan.card.seat': 'في التشغيلة',

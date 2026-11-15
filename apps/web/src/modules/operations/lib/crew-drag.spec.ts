@@ -7,6 +7,8 @@
 //   3. a slow PC: `dragstart` writes the drag's data and sets no state;
 //   4. a stale closure: who is dragged is a ref, read at the moment of each event;
 //   5. another desk's save under an unsaved drop: the draft is rebased, not replaced.
+// And Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: a slot the
+// role does not fit refuses, in its own words, and a drop on the row never routes into one.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +21,7 @@ import {
   droppedMember,
   parseTargetKey,
   refusedAsAway,
+  refusedAsWrongSlot,
   resolveDrop,
   rowDropSlots,
   targetFromMarks,
@@ -26,7 +29,16 @@ import {
   type DragSourceData,
   type DropTarget,
 } from './crew-drag';
-import { changeCount, planChanges, placeMember, rebaseDraft, type PlanRow } from './crew-plan';
+import {
+  CREW_SLOTS,
+  changeCount,
+  fitsCrewSlot,
+  planChanges,
+  placeMember,
+  rebaseDraft,
+  type CrewRole,
+  type PlanRow,
+} from './crew-plan';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -229,7 +241,6 @@ describe('a drop on the row goes where the role sits (candidate 2: «على ال
         expect(say(reason)).toContain('249');
       }
       expect(say('takeOff')).not.toContain('operations.');
-      expect(say('captainElsewhere')).toContain('N');
     }
   });
 
@@ -242,11 +253,14 @@ describe('a drop on the row goes where the role sits (candidate 2: «على ال
     expect(moved).toEqual({ kind: 'place', key: LOOSE.key, slot: 'captain' });
   });
 
-  it('a drop aimed at a slot means that slot — out of role included, full refused', () => {
+  it('a drop aimed at a slot means that slot — the role’s own, full refused', () => {
     const full = Array.from({ length: CREW_SLOT_CAPACITY }, (_, i) => `x${i}`);
     const rows = [row('van:249', { slots: slots([], [], full) }), LOOSE];
     expect(
-      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist1' }, 'cap', 'captain'),
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist1' }, 'sp', 'specialist'),
+    ).toEqual({ kind: 'place', key: 'van:249', slot: 'specialist1' });
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist1' }, 'blue', 'dual'),
     ).toEqual({ kind: 'place', key: 'van:249', slot: 'specialist1' });
     expect(
       resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist2' }, 'sp', 'specialist'),
@@ -395,5 +409,135 @@ describe('another desk saves under an unsaved drop (candidate 5)', () => {
       'if (seen !== null && seen.day !== null && seen.day === answeredDay && !plan.isPending) {',
     );
     expect(page).toContain('setRows(rebaseDraft(rows, seen.rows, serverRows));');
+  });
+});
+
+// ── Round 23 — who may take which slot ─────────────────────────────────────────────────────────────
+
+describe('Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»', () => {
+  const ROLES: readonly CrewRole[] = ['captain', 'dual', 'specialist'];
+
+  it('refuses a captain-only aimed at a specialist’s slot, and a specialist aimed at the captain’s — with its own reason', () => {
+    const rows = [row('van:249'), LOOSE];
+    for (const slot of ['specialist1', 'specialist2'] as const) {
+      expect(resolveDrop(rows, { kind: 'slot', key: 'van:249', slot }, 'cap', 'captain')).toEqual({
+        kind: 'refuse',
+        key: 'van:249',
+        slots: [slot],
+        reason: 'notSpecialist',
+      });
+    }
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: LOOSE.key, slot: 'captain' }, 'sp', 'specialist'),
+    ).toEqual({ kind: 'refuse', key: LOOSE.key, slots: ['captain'], reason: 'notCaptain' });
+    expect(refusedAsWrongSlot('notCaptain')).toBe(true);
+    expect(refusedAsWrongSlot('notSpecialist')).toBe(true);
+    expect(refusedAsWrongSlot('full')).toBe(false);
+    expect(refusedAsAway('notCaptain')).toBe(false);
+  });
+
+  it('lets a captain-specialist land in every slot, aimed at or routed to', () => {
+    const rows = [row('van:249')];
+    for (const slot of CREW_SLOTS) {
+      expect(resolveDrop(rows, { kind: 'slot', key: 'van:249', slot }, 'blue', 'dual')).toEqual({
+        kind: 'place',
+        key: 'van:249',
+        slot,
+      });
+    }
+  });
+
+  it('says the role, not the room, when a full slot is not his anyway', () => {
+    const full = Array.from({ length: CREW_SLOT_CAPACITY }, (_, i) => `x${i}`);
+    const rows = [row('van:249', { slots: slots(full) })];
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'captain' }, 'sp', 'specialist'),
+    ).toMatchObject({ kind: 'refuse', reason: 'notCaptain' });
+  });
+
+  it('routes a drop on the ROW only into slots the role fits — never the other role’s, full or not', () => {
+    for (const role of ROLES) {
+      expect(
+        rowDropSlots(role).every((slot) => fitsCrewSlot(role, slot)),
+        role,
+      ).toBe(true);
+    }
+    // A captain whose slot is full is refused — never seated as a specialist instead.
+    const full = Array.from({ length: CREW_SLOT_CAPACITY }, (_, i) => `x${i}`);
+    const captainsFull = [row('van:249', { slots: slots(full) })];
+    expect(resolveDrop(captainsFull, { kind: 'row', key: 'van:249' }, 'cap', 'captain')).toEqual({
+      kind: 'refuse',
+      key: 'van:249',
+      slots: ['captain'],
+      reason: 'captainFull',
+    });
+    // A specialist on an empty row goes to «أخصائي 1» — never the empty captain's slot.
+    expect(
+      resolveDrop([row('van:249')], { kind: 'row', key: 'van:249' }, 'sp', 'specialist'),
+    ).toEqual({
+      kind: 'place',
+      key: 'van:249',
+      slot: 'specialist1',
+    });
+    // A captain-specialist: the captain's slot first, then the specialists'.
+    expect(resolveDrop(captainsFull, { kind: 'row', key: 'van:249' }, 'blue', 'dual')).toEqual({
+      kind: 'place',
+      key: 'van:249',
+      slot: 'specialist1',
+    });
+  });
+
+  it('keeps a seat held before the rule where it is, and refuses moving it to another slot not his', () => {
+    // A captain-only seated in «أخصائي 1» before the rule.
+    const rows = [row('van:249', { slots: slots([], ['cap']) })];
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist1' }, 'cap', 'captain'),
+    ).toEqual({ kind: 'stay' });
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'specialist2' }, 'cap', 'captain'),
+    ).toMatchObject({ kind: 'refuse', reason: 'notSpecialist' });
+    // Into the slot he fits — the move that answers the mark — and off the board, both open.
+    expect(
+      resolveDrop(rows, { kind: 'slot', key: 'van:249', slot: 'captain' }, 'cap', 'captain'),
+    ).toEqual({ kind: 'place', key: 'van:249', slot: 'captain' });
+    expect(resolveDrop(rows, { kind: 'pool', pool: 'captains' }, 'cap', 'captain')).toEqual({
+      kind: 'free',
+    });
+  });
+
+  it('says each refusal in both languages — the owner’s own words in Arabic, and whom the slot takes', () => {
+    expect(translate('ar', 'operations.crewPlan.drop.notSpecialist')).toBe(
+      'لا يُعيَّن قائد في خانة أخصائي',
+    );
+    expect(translate('ar', 'operations.crewPlan.drop.notCaptain')).toBe(
+      'لا يُعيَّن أخصائي في خانة القائد',
+    );
+    for (const locale of ['ar', 'en'] as const) {
+      for (const why of ['notCaptain', 'notSpecialist']) {
+        const said = translate(locale, `operations.crewPlan.drop.${why}Why`, { name: 'N' });
+        expect(said).toContain('N');
+        expect(said).not.toContain('operations.');
+        expect(translate(locale, `operations.crewPlan.wrongSlot.over.${why}`)).not.toContain(
+          'operations.',
+        );
+      }
+    }
+    expect(translate('ar', 'operations.crewPlan.wrongSlot.over.notCaptain')).toBe('للقادة فقط');
+    expect(translate('ar', 'operations.crewPlan.wrongSlot.over.notSpecialist')).toBe(
+      'للأخصائيين فقط',
+    );
+  });
+
+  it('the page says it: red over the slot with «للقادة فقط» / «للأخصائيين فقط», and the toast with why', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toContain('t(`operations.crewPlan.wrongSlot.over.${overDecision.reason}`)');
+    expect(page).toContain('`operations.crewPlan.drop.${decision.reason}Why`');
+    // «اختر ثم ضع هنا» arms only what the drop would place — so only the slots he fits.
+    expect(page).toContain(
+      "decide({ kind: 'slot', key: row.key, slot }, moving)?.kind === 'place'",
+    );
+    // The old «a captain may go in a specialist's slot» advice is gone with the rule it described.
+    expect(page).not.toContain('captainElsewhere');
+    expect(page).not.toContain('outOfRole');
   });
 });

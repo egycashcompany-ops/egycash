@@ -556,8 +556,9 @@ its entry here in the same PR.
       one transaction's time — both receipts are kept, and the first to take it answers for it.
   - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
     القى نظره».
-    - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست
-      شروطًا …») a line under it, the figures over the rows shown («الأفراد», «القادة»,
+    - The Operations boards' look: the title in the toolbar with the hint a line under it (since
+      Round 23 it says that «قائد» and «أخصائي» decide the crew board's slot and the other flags
+      are indicators, not conditions), the figures over the rows shown («الأفراد», «القادة»,
       «الأخصائيون»), the one-row dark filter bar, the dark table, the boards' pager past 50 rows.
       The «not configured» notice stays, as a slim line ending on «إدارات العمليات».
     - Columns الاسم | الوظيفة, then all ten flags, «قائد» and «أخصائي» first and the legacy order
@@ -631,6 +632,19 @@ its entry here in the same PR.
       (`employeeId`, `ABSENT` / `ON_LEAVE`) and the row (`ROW_INDEX`), with nothing written. Someone
       already on that row stays, so the row's other changes still save; moved to another row, he
       is refused.
+    - Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: the save refuses
+      to NEWLY put somebody in a slot his role does not fit — a captain-only in «أخصائي 1/2», or a
+      specialist (also anybody ticked neither, or with no requirements row) in «قائد الطاقم»; a
+      captain-specialist fits every slot. 422 `OPERATIONS_CREW_MEMBER_WRONG_SLOT`, naming him
+      (`employeeId`, `NOT_A_CAPTAIN` / `NOT_A_SPECIALIST`) and the row (`ROW_INDEX`), with nothing
+      written. The roles come from «متطلبات الطاقم» in one read for all the save's people. Somebody
+      already in that same slot of that same row stays (seated before the rule, or before his flags
+      changed), so the row's other changes still save; another slot or another row is a new seat.
+      The standing crew's save holds to the same rule. «قائد» and «أخصائي» are the only requirement
+      flags that decide anything; what they make a person and which slot that fits
+      (`crewRoleOf`, `fitsCrewSlot`) are in the contracts, one definition for the server and the
+      board. This replaces the Round-20 default the owner never asked for: a specialist in a
+      captain's slot was marked, not refused.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the
@@ -664,9 +678,9 @@ its entry here in the same PR.
         - E — «وعاوز مكان عند العربيه زى الحركة كدا لما ادوس عليه يجيب قايمة الناس اللى اختار
           منهم»: an empty slot says «+ اختيار قائد» / «+ اختيار أخصائي» and a half-full one has a «+»
           beside its ✕; either opens the people to pick from, as Fleet's «+ اختيار سائق» does —
-          the slot's pool first, the other a tab away, a search by name or code, free first, then
-          who sits elsewhere (picking him moves him), with the role's colour, the code, the icons
-          and «متاح N». A pick runs the drop's own rule. The keyboard works it throughout (arrows,
+          the people the slot takes (only those since Round 23, below), a search by name or code,
+          free first, then who sits elsewhere (picking him moves him), with the role's colour, the
+          code, the icons and «متاح N». A pick runs the drop's own rule. The keyboard works it throughout (arrows,
           Enter, Escape); a phone gets Fleet's bottom sheet. Picking a name first, then «ضع هنا»,
           stays.
         - F — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على
@@ -679,6 +693,32 @@ its entry here in the same PR.
           `OPERATIONS_CREW_MEMBER_ABSENT` rings his chip on the row it names and says his name.
           The pool is read for the board's own day — on the default board (tomorrow) too, where the
           roster asked without a date would have answered for today.
+      - Round 23, the owner — «فى مشكلتين الاولى ان قولتلك لو قائد واخصائى يبقى فى القايمة بتاعت القائد
+        بس يكونوا فى الاخر دلوقتي فى الاول والتانية ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة
+        انه قائد اخصائى»:
+        - The first: a captain-specialist (blue) is listed in «القادة» only, after every green
+          captain — in its free part and its placed part — and never in «الأخصائيون»; the same in
+          every slot's list and in the standing crew's «قادة الأطقم». He saw them first because
+          production still runs Round 20; Round 22's B, which put them last, ships in this PR.
+        - The second: a captain goes only in «قائد الطاقم», a specialist only in «أخصائي 1/2», a
+          captain-specialist anywhere. A drop aimed at a slot not his is refused in words — «لا يُعيَّن
+          قائد في خانة أخصائي» / «لا يُعيَّن أخصائي في خانة القائد», then whom that slot takes — and
+          the slot shows red with «للقادة فقط» / «للأخصائيين فقط» while he hovers; a drop on the row
+          routes him only into slots he fits. A slot's list offers only who fits it: «قائد الطاقم»
+          the captains, then the captain-specialists; «أخصائي 1/2» the specialists, then the
+          captain-specialists. They are folded in, last in each part, not given a tab: a tab hides
+          the fallback, and a free captain-specialist should come before people who would have to
+          be moved off another van. The tab to the other pool is gone (it held only people the slot
+          refuses); a strip says who is offered and «متاح N». «اختر ثم ضع هنا» lights only the slots
+          he fits.
+        - Somebody seated so before the rule keeps the seat, ringed in dashed amber with «ليس
+          قائدًا» / «ليس أخصائيًا» and the reason, until the planner takes him out; a row holding him
+          is given no van. «الطاقم الثابت» leaves such a seat empty on the day and names whom it
+          left off, as it does somebody away. The standing crew's editor refuses the same drops,
+          and a captain moving with his crew leaves behind a companion the slot no longer fits. The
+          server's `OPERATIONS_CREW_MEMBER_WRONG_SLOT` is worded in both languages and rings the
+          chip on the row it names. «كشف طاقم العمليات» no longer tells the operator that anybody
+          may take any slot: its hint says which slot each role takes.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

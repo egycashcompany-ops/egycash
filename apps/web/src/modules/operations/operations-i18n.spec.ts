@@ -555,19 +555,20 @@ const CREW_PLAN_KEYS = [
   ...['clear', 'remove'].map((key) => `operations.crewPlan.row.${key}`),
   ...['captain', 'specialists1', 'specialists2'].map((key) => `operations.crewPlan.short.${key}`),
   ...['captain', 'dual', 'specialist'].map((key) => `operations.crewPlan.role.${key}`),
-  ...['captain', 'specialist'].map((key) => `operations.crewPlan.outOfRole.${key}`),
   ...['select', 'remove'].map((key) => `operations.crewPlan.chip.${key}`),
   // Round 22 — a refused drop, in words: one slot, the captain's, both specialists', the whole row;
   // then what to do about it.
-  ...['full', 'captainFull', 'specialistsFull', 'rowFull', 'takeOff', 'captainElsewhere'].map(
+  ...['full', 'captainFull', 'specialistsFull', 'rowFull', 'takeOff'].map(
     (key) => `operations.crewPlan.drop.${key}`,
   ),
   // Round 22 — the person card on a chip: where he sits in the draft, or that he sits nowhere.
   ...['seat', 'unseated'].map((key) => `operations.crewPlan.card.${key}`),
   // Round 22 E — a slot's list: its trigger, its head, its tabs and its three parts.
   ...[
-    'choose.captain', 'choose.specialist', 'add', 'title', 'row', 'pools', 'free',
+    'choose.captain', 'choose.specialist', 'add', 'title', 'row', 'free',
     'section.free', 'section.seated', 'section.away',
+    // Round 23 — who the list offers: the slot's own role, then the captain-specialists.
+    'offers', 'then', 'dualsLast',
   ].map((key) => `operations.crewPlan.picker.${key}`),
   // Round 22 F — away on the board's day: the chip's word, the day's, why no row takes him; the
   // refused drop, the refused save, the standing crew and a van; the card's attendance line.
@@ -582,6 +583,20 @@ const CREW_PLAN_KEYS = [
     (key) => `operations.crewPlan.${key}`,
   ),
   ...['attendance', 'attendanceNone'].map((key) => `operations.crewPlan.card.${key}`),
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: a slot not his
+  // role's — the refused drop and why, the word over the slot, the held seat's mark, the refused
+  // save, the standing crew left off, a van refused to a row holding such a seat.
+  ...['notCaptain', 'notSpecialist'].flatMap((why) => [
+    `operations.crewPlan.drop.${why}`,
+    `operations.crewPlan.drop.${why}Why`,
+    `operations.crewPlan.wrongSlot.over.${why}`,
+    `operations.crewPlan.wrongSlot.badge.${why}`,
+    `operations.crewPlan.wrongSlot.held.${why}`,
+    `operations.crewPlan.refused.${why}`,
+  ]),
+  ...['refused.slot', 'standingWrongSlot', 'vanWrongSlot', 'vanWrongSlotWho'].map(
+    (key) => `operations.crewPlan.${key}`,
+  ),
   ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
     (key) => `operations.crewPlan.pools.${key}`,
   ),

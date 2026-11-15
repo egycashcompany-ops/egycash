@@ -192,6 +192,15 @@ describe('«كشف طاقم العمليات» — the legacy roster in the boar
     expect(html).toMatch(/<h1[^>]*>كشف طاقم العمليات<\/h1>/);
     const hint = html.slice(html.indexOf('data-requirements-hint'));
     expect(hint.slice(0, hint.indexOf('</p>'))).toContain(ar('operations.crew.requirements.notAGate'));
+    // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: the hint says
+    // what the two role flags now decide, and no longer that anybody may take any slot.
+    expect(ar('operations.crew.requirements.notAGate')).toContain('«قائد الطاقم»');
+    expect(ar('operations.crew.requirements.notAGate')).toContain('ومن عُلِّم بالاثنين لأي خانة');
+    expect(ar('operations.crew.requirements.notAGate')).not.toContain('يمكن تعيينه في أي خانة');
+    expect(translate('en', 'operations.crew.requirements.notAGate')).toContain('«Crew captain»');
+    expect(translate('en', 'operations.crew.requirements.notAGate')).not.toContain(
+      'can be assigned to any slot',
+    );
     expect(html).toContain('data-requirements-toolbar="true"');
     expect(html).toContain('data-requirements-filters="true"');
   });

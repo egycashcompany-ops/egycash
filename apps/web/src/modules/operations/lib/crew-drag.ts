@@ -27,16 +27,22 @@
 //   · A REFUSAL IS SAID — a toast naming the slot and the row, as legacy's alert did — never only a
 //     name that springs back. While he hovers, the slot that would refuse is drawn red.
 //
+// ROUND 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: a slot his role
+// does not fit (`wrongSlotOf`) refuses him like a full one, with its own words — «لا يُعيَّن قائد في
+// خانة أخصائي» / «لا يُعيَّن أخصائي في خانة القائد» — and a drop on the row never routes him into one.
+//
 // The page keeps the DOM half (reading the marks under the pointer, the events); everything that
 // decides is here, pure, and pinned in `crew-drag.spec.ts`.
 import {
   CREW_SLOTS,
   seatOf,
   slotRefusal,
+  wrongSlotOf,
   type CrewAway,
   type CrewRole,
   type CrewSlot,
   type PlanRow,
+  type WrongSlot,
 } from './crew-plan';
 
 /**
@@ -141,12 +147,12 @@ export const parseTargetKey = (key: string): DropTarget | null => {
 /**
  * The slots a drop ON THE ROW tries, in order, for a role — the legacy board's own routing
  * (tashghela.ejs:1316-1325: a leader to the captain's column, a specialist to a specialist's, «both»
- * to either):
- *   · a captain → «قائد الطاقم» only. Seating him as a specialist is the planner's choice, made by
- *     aiming at that slot (marked out of role, never refused);
+ * to either) — and, since Round 23, exactly the slots the role FITS (`fitsCrewSlot`), so a loose
+ * drop never lands anybody where the save would refuse him:
+ *   · a captain → «قائد الطاقم» only — a specialist's slot refuses a captain-only, aimed at or not;
  *   · a specialist who also leads (blue) → «قائد الطاقم» first, then the specialists' — «اقدر
  *     اوظفهم ك قائد او اخصائى»;
- *   · a specialist → «أخصائي 1», then «أخصائي 2».
+ *   · a specialist → «أخصائي 1», then «أخصائي 2» — never the captain's.
  */
 export const rowDropSlots = (role: CrewRole): readonly CrewSlot[] =>
   role === 'captain'
@@ -157,20 +163,28 @@ export const rowDropSlots = (role: CrewRole): readonly CrewSlot[] =>
 
 /**
  * Why a drop is refused — each said in its own words (`operations.crewPlan.drop.*`): a slot or a
- * row full, or (Round 22) the person AWAY that day — `absent` or `onLeave`, HR's two answers.
+ * row full; (Round 22) the person AWAY that day — `absent` or `onLeave`, HR's two answers; or
+ * (Round 23) a slot his role does not fit — `notCaptain` (a specialist aimed at «قائد الطاقم») or
+ * `notSpecialist` (a captain-only aimed at «أخصائي 1/2»).
  */
-export type DropRefusal = 'full' | 'captainFull' | 'specialistsFull' | 'rowFull' | CrewAway;
+export type DropRefusal =
+  'full' | 'captainFull' | 'specialistsFull' | 'rowFull' | CrewAway | WrongSlot;
 
 /** Is this refusal about the person (away), not about the room on the row? */
 export const refusedAsAway = (reason: DropRefusal): reason is CrewAway =>
   reason === 'absent' || reason === 'onLeave';
 
+/** Is this refusal the slot's role — not his to take, whatever room it has? */
+export const refusedAsWrongSlot = (reason: DropRefusal): reason is WrongSlot =>
+  reason === 'notCaptain' || reason === 'notSpecialist';
+
 /**
- * What a drop does — the drag's, and the same answer for a pick from a slot's list (Round 22 E):
+ * What a drop does — the drag's, and the same answer for a pick from a slot's list (Round 22 E) and
+ * for «اختر ثم ضع هنا»:
  *   · `place` — seat him there (moving him off any other row: `placeMember`);
  *   · `free` — a seated person dropped on a pool: off the board;
- *   · `refuse` — the slot (or every slot the row would give him) is full, or he is away that day:
- *     said, and drawn on those slots while he hovers;
+ *   · `refuse` — the slot (or every slot the row would give him) is full, he is away that day, or
+ *     (Round 23) the slot aimed at is not his role's: said, and drawn on those slots while he hovers;
  *   · `stay` — nothing to do, nothing to say: dropped where he already is, or a free name back on a
  *     pool.
  */
@@ -215,9 +229,15 @@ export const resolveDrop = (
   }
   if (target.kind === 'slot') {
     const refusal = slotRefusal(rows, target.key, target.slot, employeeId);
-    if (refusal === null) return { kind: 'place', key: target.key, slot: target.slot };
-    return refusal === 'here'
-      ? { kind: 'stay' }
+    // Already in this very slot — a seat held before the rule included: nothing to do.
+    if (refusal === 'here') return { kind: 'stay' };
+    // Round 23: not his role's slot — refused whatever room it has (the more lasting reason).
+    const wrong = wrongSlotOf(role, target.slot);
+    if (wrong !== null) {
+      return { kind: 'refuse', key: target.key, slots: [target.slot], reason: wrong };
+    }
+    return refusal === null
+      ? { kind: 'place', key: target.key, slot: target.slot }
       : { kind: 'refuse', key: target.key, slots: [target.slot], reason: 'full' };
   }
   // Somebody already on this row, dropped on it again but not on a slot: he stays where he sits — a

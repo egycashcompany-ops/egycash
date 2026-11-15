@@ -1458,6 +1458,9 @@ export interface OperationsVaultHeldReportDto {
 //   1. Requirements gate NOTHING server-side. They are metadata, visual indicators and filters.
 //      No slot on the crew board checks them; an employee missing a weapon or a signature can be
 //      assigned exactly as in legacy. (Owner decision, carried since PR 1.)
+//      ROUND 23 — the owner reversed it for the two role flags, and only those: «ممنوع ان اعين قائد
+//      مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». «قائد» and «أخصائي» now decide which SLOT a
+//      person may newly take (`crewRoleOf`, `fitsCrewSlot`); the other eight still gate nothing.
 //   2. The record is OPERATIONS-OWNED, not a set of extra columns on the HR employee. Legacy wrote
 //      them onto `employees` because it had one database and no module boundary; ECMS does. HR
 //      owns the person, Operations owns "what this person is to Operations", and the two meet
@@ -1746,6 +1749,45 @@ export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
 export const CREW_SLOT_CAPACITY = 2;
 
 /**
+ * The three slots of a crew row, by name — the board's columns «قائد الطاقم» | «أخصائي 1» |
+ * «أخصائي 2», and the save's `captainEmployeeIds` / `specialist1EmployeeIds` / `specialist2EmployeeIds`.
+ */
+export const OPERATIONS_CREW_SLOTS = ['captain', 'specialist1', 'specialist2'] as const;
+export type OperationsCrewSlot = (typeof OPERATIONS_CREW_SLOTS)[number];
+
+/**
+ * What the requirements («متطلبات الطاقم») make somebody on a crew — ONE definition, so the board
+ * that colours and offers him and the server that refuses him cannot disagree (Round 23):
+ *
+ *   · `captain`    — «قائد» ticked and «أخصائي» not (green on the board);
+ *   · `dual`       — BOTH ticked (blue): «قائد اخصائى», the one kind the owner lets sit anywhere —
+ *                    «اقدر اوظفهم ك قائد او اخصائى»;
+ *   · `specialist` — everybody else: «أخصائي» alone, NEITHER ticked, or NO requirements row at all
+ *                    (red) — the answer legacy gave an employee nobody had ticked.
+ */
+export type OperationsCrewRole = 'captain' | 'dual' | 'specialist';
+
+export const crewRoleOf = (
+  requirements: { isCaptain: boolean; isSpecialist: boolean } | null | undefined,
+): OperationsCrewRole =>
+  requirements?.isCaptain === true
+    ? requirements.isSpecialist === true
+      ? 'dual'
+      : 'captain'
+    : 'specialist';
+
+/**
+ * May somebody of this role take this slot? Round 23, the owner: «ممنوع ان اعين قائد مكان اخصائى
+ * والعكس الا فى حالة انه قائد اخصائى» — forbidden to put a captain in a specialist's slot, or a
+ * specialist in the captain's, EXCEPT a captain-specialist, who fits every slot:
+ *   · «قائد الطاقم» ← a captain, or a dual;
+ *   · «أخصائي 1» / «أخصائي 2» ← a specialist, or a dual.
+ * It replaces the Round-20 «a specialist in a captain's slot is marked, not refused».
+ */
+export const fitsCrewSlot = (role: OperationsCrewRole, slot: OperationsCrewSlot): boolean =>
+  role === 'dual' || (slot === 'captain' ? role === 'captain' : role === 'specialist');
+
+/**
  * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». Six
  * names, and null for none. A planner's mark, nothing more: no rule reads it.
  */
@@ -1906,6 +1948,9 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
  *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
  *     row stays, so a planner can still save the row's other changes.
+ *   · Round 23 — a person NEWLY put in a slot must fit it (`fitsCrewSlot`: «قائد الطاقم» a captain
+ *     or a dual, «أخصائي 1/2» a specialist or a dual) → else 422 `OPERATIONS_CREW_MEMBER_WRONG_SLOT`.
+ *     Somebody already in that same slot of that same row stays.
  *   · Up to `CREW_SLOT_CAPACITY` people per slot (here). «من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — the
  *     MINIMUMS are the board's warning (⚠), never a refusal: legacy enforced none (:2419), and a
  *     van is planned in steps.
@@ -2169,6 +2214,12 @@ export interface OperationsStandingCrewBoardDto {
 const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
+/**
+ * One vehicle's standing crew. Beyond the shape, the server holds it to the day's own slot rule
+ * (Round 23): a person NEWLY put in a slot must fit it (`fitsCrewSlot`) → else 422
+ * `OPERATIONS_CREW_MEMBER_WRONG_SLOT`; somebody already in that slot of that vehicle's row stays.
+ * The day is seeded from this row, so a seat the day would refuse must not be written here either.
+ */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
     vehicleId: objectId(),

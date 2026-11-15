@@ -18,9 +18,18 @@
 //     operating day, and showing a day's fact on a dateless screen would tell an operator that a
 //     free person is busy. The rule this screen DOES enforce, server-side, is its own: one person
 //     holds one vehicle in the standing crew.
+//
+// ROUND 23 — the day's SLOT rule holds here too, because a day is loaded from this list: «ممنوع ان
+// اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». A drop into a slot the person's role does
+// not fit (`fitsCrewSlot` — the contracts' own, which the save asks too) is refused in the board's
+// own words, a captain moving with his crew leaves behind a companion the slot no longer fits, and
+// in «قادة الأطقم» the captain-specialists are listed last («يكونوا فى الاخر» — `splitPool`).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type OperationsCrewMemberDto } from '@ecms/contracts';
+import { crewRoleOf, fitsCrewSlot, type OperationsCrewMemberDto } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -76,6 +85,7 @@ const REMEMBERED_FILTERS = ['cq', 'cflags', 'sq', 'sflags'] as const;
 export const StandingCrewPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  const locale = useAppSelector((state) => state.locale.locale);
 
   const standing = useOperationsStandingCrew();
   // The pool is the Operations roster. Its `date` only decides `assignedVehicleId`, which this
@@ -121,6 +131,9 @@ export const StandingCrewPage = (): JSX.Element => {
   const members = directory.data?.members ?? [];
   const memberOf = (employeeId: string | null): OperationsCrewMemberDto | undefined =>
     employeeId === null ? undefined : members.find((m) => m.employeeId === employeeId);
+  /** May this person take this slot (Round 23)? Nobody on the roster, or nobody ticked, is a specialist. */
+  const fits = (employeeId: string, slot: CrewSlot): boolean =>
+    fitsCrewSlot(crewRoleOf(memberOf(employeeId)?.requirements ?? null), slot);
 
   // A vehicle added locally is not on the server yet, so it counts as changed on its own — that is
   // what makes an EMPTY new row saveable, which is exactly what "in the fleet, nobody on it yet"
@@ -139,11 +152,25 @@ export const StandingCrewPage = (): JSX.Element => {
       event.preventDefault();
       const employeeId = event.dataTransfer.getData(CREW_DRAG_TYPE);
       if (employeeId === '' || !canPlan) return;
+      // Round 23: not his role's slot — refused, in the day board's own words, before anything moves.
+      // Dropped where he already sits (a seat held from before the rule), nothing changes either way.
+      if (!fits(employeeId, slot)) {
+        const row = rows.find((candidate) => candidate.vehicleId === vehicleId);
+        if (row !== undefined && slotValue(row, slot, position) === employeeId) return;
+        const name = memberOf(employeeId)?.fullNameAr ?? t('operations.crewPlan.unknownPerson');
+        const why = slot === 'captain' ? 'notCaptain' : 'notSpecialist';
+        toast.error(
+          t(`operations.crewPlan.drop.${why}`),
+          t(`operations.crewPlan.drop.${why}Why`, { name }),
+        );
+        return;
+      }
       // A captain moving between vehicles takes the specialists sharing his card position with
-      // him: a crew is what was decided, not three independent seats.
+      // him: a crew is what was decided, not three independent seats — less any the slot no longer
+      // fits, who stay where they sit (Round 23).
       setRows((prev) =>
         slot === 'captain'
-          ? assignCaptainWithCrew(prev, vehicleId, position, employeeId)
+          ? assignCaptainWithCrew(prev, vehicleId, position, employeeId, fits)
           : assignToSlot(prev, vehicleId, slot, position, employeeId),
       );
     };
@@ -160,9 +187,14 @@ export const StandingCrewPage = (): JSX.Element => {
     try {
       await save.mutateAsync({ rows: toStandingPayloadRows(pending) });
       toast.success(t('operations.standingCrew.saved', { count: pending.length }));
-    } catch {
-      // The domain refuses one person on two vehicles; say so rather than swallowing it.
-      toast.error(t('operations.standingCrew.saveFailed'));
+    } catch (failure) {
+      // Round 23: a seat not its person's role — said in its own words. Anything else is what the
+      // domain refuses most: one person on two vehicles; say so rather than swallowing it.
+      toast.error(
+        failure instanceof ApiError && failure.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
+          ? errorMessage(failure, locale)
+          : t('operations.standingCrew.saveFailed'),
+      );
     }
   };
 

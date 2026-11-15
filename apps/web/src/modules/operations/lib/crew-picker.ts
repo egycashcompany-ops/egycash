@@ -10,9 +10,18 @@
 // the same `placeMember` the drop runs; so a full slot, somebody away that day, a move off another
 // row, are the drop's rules exactly.
 //
-// WHAT IT LISTS — the slot's own pool first («قائد الطاقم» the captains, the two specialist slots the
-// specialists), the other one a tab away: a blue one may sit anywhere, and a captain in a specialist's
-// slot is marked, never refused. In `listPool`'s order, cut into three:
+// WHAT IT LISTS (Round 23) — ONLY WHO FITS THE SLOT: «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى
+// حالة انه قائد اخصائى». «قائد الطاقم» lists the captains, then the captain-specialists; «أخصائي 1» and
+// «أخصائي 2» list the specialists, then the captain-specialists — «يكونوا فى الاخر». A captain-only is
+// never offered for a specialist's slot, nor a specialist for the captain's.
+//
+// THE CAPTAIN-SPECIALISTS ARE FOLDED IN, NOT A TAB OF THEIR OWN: they close each part of the list,
+// as they close «القادة» (`inListOrder` — the pools' own tails). A tab hides the fallback behind a
+// press the planner may never make; a part of its own after «في التشغيلة» would put a FREE
+// captain-specialist below specialists seated on other vans, whom picking would MOVE off them — the
+// free fallback must come before anybody who has to be taken from somewhere. Each is drawn blue.
+//
+// In that order, cut into three:
 //   · FREE — on no row yet;
 //   · ON THE BOARD — on another row, or another slot of this one, with where: picking him MOVES him,
 //     as the drop does (a person is on one row a day, Q11);
@@ -23,20 +32,29 @@
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { resolveDrop } from './crew-drag';
 import {
+  EMPTY_POOL_QUERY,
   awayOf,
+  countFree,
   crewRoleOf,
-  listPool,
+  fitsCrewSlot,
+  inListOrder,
+  matchesPoolQuery,
   seatOf,
   slotRefusal,
   type CrewAway,
+  type CrewRole,
   type CrewSlot,
   type PlanPool,
   type PlanRow,
 } from './crew-plan';
 
-/** The pool a slot's list opens on. */
+/** The pool a slot belongs to — its list's first role, and what an empty list says. */
 export const slotPool = (slot: CrewSlot): PlanPool =>
   slot === 'captain' ? 'captains' : 'specialists';
+
+/** The roles a slot's list offers, in the order it lists them: its own, then the blue ones. */
+export const slotRoles = (slot: CrewSlot): readonly CrewRole[] =>
+  slot === 'captain' ? ['captain', 'dual'] : ['specialist', 'dual'];
 
 /** The three parts of the list, in the order they are shown. */
 export const PICK_SECTIONS = ['free', 'seated', 'away'] as const;
@@ -53,19 +71,23 @@ export interface PickOption {
 }
 
 /**
- * The list one slot opens, over one pool, narrowed by a search (name or code, folded — the pools'
- * own search). `free` counts the pool's people who can be put on a row now («متاح N», the pool's own
- * figure), whatever the search.
+ * The list one slot opens — the people who FIT it (`fitsCrewSlot`), the captain-specialists last in
+ * each part — narrowed by a search (name or code, folded: the pools' own). `free` counts the ones
+ * who can be put on a row now («متاح N»), whatever the search.
  */
 export const slotPickList = (
   members: readonly OperationsCrewMemberDto[],
-  pool: PlanPool,
   rows: readonly PlanRow[],
   target: { key: string; slot: CrewSlot },
   search: string,
 ): { options: PickOption[]; free: number } => {
-  const listing = listPool(members, pool, rows, { search, flags: [] });
-  const options = listing.listed
+  const fitting = members.filter((member) =>
+    fitsCrewSlot(crewRoleOf(member.requirements), target.slot),
+  );
+  const options = inListOrder(
+    fitting.filter((member) => matchesPoolQuery(member, { ...EMPTY_POOL_QUERY, search })),
+    rows,
+  )
     .filter((member) => slotRefusal(rows, target.key, target.slot, member.employeeId) !== 'here')
     .map((member): PickOption => {
       const away = awayOf(member);
@@ -85,7 +107,7 @@ export const slotPickList = (
         pickable: decision.kind === 'place',
       };
     });
-  return { options, free: listing.free };
+  return { options, free: countFree(fitting, rows) };
 };
 
 /**

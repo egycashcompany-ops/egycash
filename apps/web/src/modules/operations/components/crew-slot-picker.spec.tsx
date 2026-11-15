@@ -7,6 +7,9 @@
 //   F. «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على العربيه و
 //      كذلك الاخصائيين» — away people last, pale, not movable, refused by every slot; somebody seated
 //      before HR recorded it is marked and stays.
+// And Round 23 — «فى مشكلتين الاولى ان قولتلك لو قائد واخصائى يبقى فى القايمة بتاعت القائد بس يكونوا
+// فى الاخر … والتانية ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: each slot
+// lists only who fits it, the captain-specialists at the end of each part; a held seat is marked.
 //
 // What a typecheck cannot see:
 //   • the list is the drop's own rule (`resolveDrop`): who it offers, who it closes, and that picking
@@ -40,8 +43,8 @@ import { authSlice } from '../../../store/authSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
-import { vehiclelessRow, type PlanRow } from '../lib/crew-plan';
-import { nextPickable, slotPickList, slotPool } from '../lib/crew-picker';
+import { crewRoleOf, vehiclelessRow, type PlanRow } from '../lib/crew-plan';
+import { nextPickable, slotPickList, slotPool, slotRoles } from '../lib/crew-picker';
 import { CrewPlanChip } from './CrewPlanChip';
 import { PlanAttendanceFact, PlanMemberCardBody } from './CrewPlanMemberCard';
 import { useSlotPickerParts, type SlotPickerProps } from './CrewSlotPicker';
@@ -116,6 +119,7 @@ const VAN: PlanRow = {
 const ROWS = [VAN, LOOSE];
 const ids = (list: { member: OperationsCrewMemberDto }[]): string[] =>
   list.map((one) => one.member.employeeId);
+const crewRole = (member: OperationsCrewMemberDto) => crewRoleOf(member.requirements);
 
 const render = (node: ReactNode, locale: Locale = 'ar'): string =>
   renderToStaticMarkup(
@@ -151,14 +155,17 @@ const text = (html: string): string =>
 // ── E — the list, by the drop's own rule ───────────────────────────────────────────────────────────
 
 describe('E — the list a slot opens is the drop’s own rule', () => {
-  it('opens on the slot’s own pool: the captains for «قائد الطاقم», the specialists for the others', () => {
+  it('belongs to the slot’s own pool, and offers its role first, then the captain-specialists', () => {
     expect(slotPool('captain')).toBe('captains');
     expect(slotPool('specialist1')).toBe('specialists');
     expect(slotPool('specialist2')).toBe('specialists');
+    expect(slotRoles('captain')).toEqual(['captain', 'dual']);
+    expect(slotRoles('specialist1')).toEqual(['specialist', 'dual']);
+    expect(slotRoles('specialist2')).toEqual(['specialist', 'dual']);
   });
 
   it('lists the free first, then who sits elsewhere (picking MOVES him), then the away ones, closed', () => {
-    const list = slotPickList(ROSTER, 'captains', ROWS, { key: LOOSE.key, slot: 'captain' }, '');
+    const list = slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot: 'captain' }, '');
     expect(
       list.options.map((one) => `${one.member.code}:${one.section}:${String(one.pickable)}`),
     ).toEqual([
@@ -177,36 +184,18 @@ describe('E — the list a slot opens is the drop’s own rule', () => {
   });
 
   it('offers nobody already in that very slot; somebody seated before his absence moves only on his row', () => {
-    const own = slotPickList(
-      ROSTER,
-      'specialists',
-      ROWS,
-      { key: VAN.key, slot: 'specialist2' },
-      '',
-    );
+    const own = slotPickList(ROSTER, ROWS, { key: VAN.key, slot: 'specialist2' }, '');
     // 0300021 sits on 248 already, away: slot to slot on his own row is allowed, as the server does.
     expect(own.options.find((one) => one.member.code === '0300021')).toMatchObject({
       section: 'away',
       pickable: true,
     });
-    const elsewhere = slotPickList(
-      ROSTER,
-      'specialists',
-      ROWS,
-      { key: LOOSE.key, slot: 'specialist1' },
-      '',
-    );
+    const elsewhere = slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot: 'specialist1' }, '');
     expect(elsewhere.options.find((one) => one.member.code === '0300021')).toMatchObject({
       section: 'away',
       pickable: false,
     });
-    const same = slotPickList(
-      ROSTER,
-      'specialists',
-      ROWS,
-      { key: VAN.key, slot: 'specialist1' },
-      '',
-    );
+    const same = slotPickList(ROSTER, ROWS, { key: VAN.key, slot: 'specialist1' }, '');
     expect(ids(same.options)).not.toContain('e-0300021');
   });
 
@@ -215,31 +204,85 @@ describe('E — the list a slot opens is the drop’s own rule', () => {
       ...LOOSE,
       slots: { captain: ['e-0100007', 'e-0200011'], specialist1: [], specialist2: [] },
     };
-    const none = slotPickList(
-      ROSTER,
-      'captains',
-      [VAN, full],
-      { key: full.key, slot: 'captain' },
-      '',
-    );
+    const none = slotPickList(ROSTER, [VAN, full], { key: full.key, slot: 'captain' }, '');
     expect(none.options.every((one) => !one.pickable)).toBe(true);
     expect(
-      ids(
-        slotPickList(ROSTER, 'captains', ROWS, { key: LOOSE.key, slot: 'captain' }, 'أحمد').options,
-      ),
+      ids(slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot: 'captain' }, 'أحمد').options),
       // «محمد ياسر احمد علي» too — on van 248, so after the free ones.
     ).toEqual(['e-0100007', 'e-0200011', 'e-0100008']);
     expect(
-      ids(
-        slotPickList(
-          ROSTER,
-          'specialists',
-          ROWS,
-          { key: LOOSE.key, slot: 'specialist1' },
-          '0300057',
-        ).options,
-      ),
+      ids(slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot: 'specialist1' }, '0300057').options),
     ).toEqual(['e-0300057']);
+  });
+
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى».
+  it('offers a specialist’s slot the specialists, then the captain-specialists — never a captain-only', () => {
+    for (const slot of ['specialist1', 'specialist2'] as const) {
+      const list = slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot }, '');
+      expect(
+        list.options.map((one) => `${one.member.code}:${one.section}:${String(one.pickable)}`),
+        slot,
+      ).toEqual([
+        '0300012:free:true',
+        '0300057:free:true',
+        '0200011:free:true', // the BLUE one — at the end of the free part
+        // Away: the pools' own tails — those on no row first (blue last among them), then the one
+        // on van 248 since before HR recorded his absence, who may not go to another row.
+        '0200052:away:false',
+        '0300021:away:false',
+      ]);
+      for (const option of list.options) {
+        expect(
+          option.member.requirements?.isCaptain === true &&
+            !option.member.requirements.isSpecialist,
+        ).toBe(false);
+      }
+      // «متاح N» — the free who fit: two red, one blue.
+      expect(list.free).toBe(3);
+    }
+  });
+
+  it('offers «قائد الطاقم» the captains, then the captain-specialists — never a specialist', () => {
+    const list = slotPickList(ROSTER, ROWS, { key: LOOSE.key, slot: 'captain' }, '');
+    expect(list.options.some((one) => crewRole(one.member) === 'specialist')).toBe(false);
+    // Inside every part the blue ones close it: free green, free blue; away green, away blue.
+    for (const section of ['free', 'seated', 'away'] as const) {
+      const roles = list.options
+        .filter((one) => one.section === section)
+        .map((one) => crewRole(one.member));
+      expect(roles.join(' ')).toBe(
+        [...roles].sort((a, b) => Number(a === 'dual') - Number(b === 'dual')).join(' '),
+      );
+    }
+  });
+
+  it('puts the BLUE ones last OUT of the server’s order too — several, mixed among the green', () => {
+    const blue = (code: string) => person(code, `أزرق ${code}`, BLUE);
+    const green = (code: string) => person(code, `أخضر ${code}`, CAPTAIN);
+    const red = (code: string) => person(code, `أحمر ${code}`, RED);
+    const mixed = [
+      blue('9001'),
+      green('9002'),
+      blue('9003'),
+      red('9004'),
+      green('9005'),
+      blue('9006'),
+    ];
+    const captain = slotPickList(mixed, [], { key: LOOSE.key, slot: 'captain' }, '');
+    expect(captain.options.map((one) => one.member.code)).toEqual([
+      '9002',
+      '9005',
+      '9001',
+      '9003',
+      '9006',
+    ]);
+    const specialist = slotPickList(mixed, [], { key: LOOSE.key, slot: 'specialist2' }, '');
+    expect(specialist.options.map((one) => one.member.code)).toEqual([
+      '9004',
+      '9001',
+      '9003',
+      '9006',
+    ]);
   });
 
   it('walks only what can be picked, round from either end, and finds nothing in a closed list', () => {
@@ -261,7 +304,7 @@ const Parts = (props: Omit<SlotPickerProps, 'anchor' | 'trigger'>): JSX.Element 
   return (
     <div>
       {parts.head}
-      {parts.tabs}
+      {parts.offers}
       {parts.searchBox}
       {parts.list}
     </div>
@@ -290,19 +333,30 @@ const parts = (
   );
 
 describe('E — the list, as Fleet’s «الحركة» draws its drivers', () => {
-  it('says which slot of which row it fills, with the slot’s pool open and «متاح N» on each tab', () => {
+  it('says which slot of which row it fills, whom it offers in which order, and «متاح N»', () => {
     const html = parts();
     expect(html).toContain(t('operations.crewPlan.picker.title', { slot: 'قائد الطاقم' }));
     expect(html).toContain(t('operations.crewPlan.picker.row', { row: 'بدون سيارة (١)' }));
-    expect(html).toMatch(/role="tab" aria-selected="true"[^>]*data-picker-tab="captains"/u);
-    expect(html).toMatch(/role="tab" aria-selected="false"[^>]*data-picker-tab="specialists"/u);
-    // Captains: 0100007 and 0200011 free; specialists: 0300012 and 0300057.
+    // No tabs any more: the other pool held only people this slot refuses.
+    expect(html).not.toContain('role="tab"');
+    expect(html).toContain('data-picker-offers="captain"');
+    expect([...html.matchAll(/data-picker-offers-role="([a-z]+)"/gu)].map((m) => m[1])).toEqual([
+      'captain',
+      'dual',
+    ]);
+    // Captains who fit and are free: 0100007 (green) and 0200011 (blue).
     expect(text(html)).toContain(
-      `${t('operations.crewPlan.pools.captains')} ${t('operations.crewPlan.pools.free', { count: '٢' })}`,
+      `${t('operations.crewPlan.picker.offers')} ${t('operations.crewPlan.role.captain')} ${t('operations.crewPlan.picker.then')} ${t('operations.crewPlan.role.dual')} ${t('operations.crewPlan.picker.dualsLast')} ${t('operations.crewPlan.pools.free', { count: '٢' })}`,
     );
-    expect(text(html)).toContain(
-      `${t('operations.crewPlan.pools.specialists')} ${t('operations.crewPlan.pools.free', { count: '٢' })}`,
-    );
+    // A specialist's slot offers the specialists, then the blue ones — three free of them.
+    const specialist = parts({ target: { key: LOOSE.key, slot: 'specialist1' } });
+    expect(specialist).toContain('data-picker-offers="specialist"');
+    expect(
+      [...specialist.matchAll(/data-picker-offers-role="([a-z]+)"/gu)].map((m) => m[1]),
+    ).toEqual(['specialist', 'dual']);
+    expect(text(specialist)).toContain(t('operations.crewPlan.pools.free', { count: '٣' }));
+    // Nobody green in it: every option drawn red or blue.
+    expect(specialist).not.toContain('bg-emerald-600');
   });
 
   it('is a combobox over a listbox: on the first that can be picked, its options named, the closed ones said', () => {
@@ -521,7 +575,7 @@ describe('F — away that day, drawn', () => {
       'Somebody on a row is absent or on leave on this day.',
     );
     const page = read('../pages/CrewBoardPage.tsx');
-    expect(page).toContain('t(`operations.crewPlan.refused.${placed.person.away}`, {');
+    expect(page).toContain('t(`operations.crewPlan.refused.${placed.person.reason}`, {');
     expect(page).toContain('refusal.person?.employeeId === employeeId');
     expect(t('operations.crewPlan.refused.absent', { name: 'عمرو' })).toBe(
       'عمرو غائب في هذا اليوم — أخرِجه من هذا الصف.',
@@ -534,7 +588,9 @@ describe('F — away that day, drawn', () => {
       page.indexOf('const toggleStanding ='),
       page.indexOf('const giveVan ='),
     );
-    expect(standing).toContain('awayOf(memberOf(employeeId)) !== null');
+    // The day's filter is `standingForDay` (lib/crew-plan.ts, pinned there): away, or not his slot.
+    expect(standing).toContain('standingForDay(standingSources, memberOf)');
+    expect(read('../lib/crew-plan.ts')).toContain('if (awayOf(member) !== null) {');
     expect(standing).toContain("t('operations.crewPlan.standingAway')");
     const van = page.slice(page.indexOf('const giveVan ='), page.indexOf('const exportExcel ='));
     expect(van).toContain("t('operations.crewPlan.vanAway')");
@@ -552,5 +608,92 @@ describe('F — away that day, drawn', () => {
     expect(page.indexOf('const day = date')).toBeLessThan(
       page.indexOf('useOperationsCrewDirectory('),
     );
+  });
+});
+
+// ── Round 23 — a seat held outside one's role, and the save's refusal ───────────────────────────────
+
+describe('Round 23 — a seat held from before the rule is marked, never removed', () => {
+  const held = (why: 'notCaptain' | 'notSpecialist') => ({
+    why,
+    badge: t(`operations.crewPlan.wrongSlot.badge.${why}`),
+    reason: t(`operations.crewPlan.wrongSlot.held.${why}`),
+  });
+
+  it('rings the chip in dashed amber with the word and the reason — still movable, still removable', () => {
+    const html = chip({
+      member: ROSTER[0] as OperationsCrewMemberDto,
+      variant: 'seat',
+      onRemove: () => undefined,
+      wrongSlot: held('notSpecialist'),
+    });
+    expect(html).toContain('data-wrong-slot="notSpecialist"');
+    expect(html).toContain('outline-dashed');
+    expect(html).toContain('outline-amber-400');
+    expect(html).toMatch(/data-wrong-slot-badge="notSpecialist"[^>]*>ليس أخصائيًا</u);
+    expect(html).toContain(`title="${t('operations.crewPlan.wrongSlot.held.notSpecialist')}"`);
+    // The reason is in the chip's own name for a screen reader.
+    expect(html).toContain(t('operations.crewPlan.wrongSlot.held.notSpecialist'));
+    expect(html).toContain('draggable="true"');
+    expect(html).toContain('data-cell-control="remove"');
+    // The colour stays the role's — he is still a captain, in the wrong seat.
+    expect(html).toContain('bg-emerald-600 hover:bg-emerald-500');
+  });
+
+  it('says «ليس قائدًا» for a specialist in the captain’s slot, and nothing on a chip that fits', () => {
+    const red = chip({
+      member: ROSTER[5] as OperationsCrewMemberDto,
+      variant: 'seat',
+      wrongSlot: held('notCaptain'),
+    });
+    expect(red).toMatch(/data-wrong-slot-badge="notCaptain"[^>]*>ليس قائدًا</u);
+    const fits = chip({ member: ROSTER[0] as OperationsCrewMemberDto, variant: 'seat' });
+    expect(fits).not.toContain('data-wrong-slot');
+    // The Round-20 quiet dot is gone with the «marked, not refused» it stood for.
+    expect(fits).not.toContain('data-out-of-role');
+  });
+
+  it('the page marks exactly the seats the rule refuses — by the contracts’ own `fitsCrewSlot`', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toContain('? wrongSlotOf(crewRoleOf(member.requirements), slot)');
+    // Not for somebody the roster no longer names — his requirements cannot be read.
+    expect(page).toContain('const wrong = byId.has(employeeId)');
+    expect(page).toContain('badge: t(`operations.crewPlan.wrongSlot.badge.${wrong}`)');
+    expect(page).toContain('reason: t(`operations.crewPlan.wrongSlot.held.${wrong}`)');
+    expect(page).not.toContain('outOfRole');
+  });
+
+  it('says the server’s refusal in both languages, and rings him on the row it names', () => {
+    const failure = new ApiError('OPERATIONS_CREW_MEMBER_WRONG_SLOT', 'wrong slot', 422);
+    expect(errorMessage(failure, 'ar')).toBe(
+      'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
+    );
+    expect(errorMessage(failure, 'en')).toContain('captain in a specialist’s slot');
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toContain("(refusal?.field === 'crew' || refusal?.field === 'slot') &&");
+    expect(t('operations.crewPlan.refused.notSpecialist', { name: 'أحمد' })).toBe(
+      'أحمد قائد فقط — أخرِجه من خانة الأخصائي في هذا الصف.',
+    );
+  });
+});
+
+describe('Round 23 — «الطاقم الثابت»: the same slot rule, and the captain-specialists last', () => {
+  const page = read('../pages/StandingCrewPage.tsx');
+
+  it('refuses a drop into a slot the person’s role does not fit, in the day board’s own words', () => {
+    const drop = page.slice(page.indexOf('const drop ='), page.indexOf('const addVehicle ='));
+    expect(drop).toContain('if (!fits(employeeId, slot)) {');
+    expect(drop).toContain('t(`operations.crewPlan.drop.${why}`)');
+    expect(drop).toContain('t(`operations.crewPlan.drop.${why}Why`, { name })');
+    // A captain moving with his crew leaves behind a companion the slot no longer fits.
+    expect(drop).toContain('assignCaptainWithCrew(prev, vehicleId, position, employeeId, fits)');
+    expect(page).toContain(
+      'fitsCrewSlot(crewRoleOf(memberOf(employeeId)?.requirements ?? null), slot)',
+    );
+  });
+
+  it('says the save’s slot refusal in its own words', () => {
+    expect(page).toContain("failure.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'");
+    expect(page).toContain('errorMessage(failure, locale)');
   });
 });

@@ -5,8 +5,11 @@
 // from, searchable, under the seat (`DriverSlotPicker`) — and on a phone the same list rises as a
 // bottom sheet (`RosterBottomSheet`). This is that, for a crew slot:
 //   · the head says which slot of which row is being filled;
-//   · two tabs, the slot's own pool first — «القادة» for «قائد الطاقم», «الأخصائيون» for the others —
-//     each with how many are free («متاح N», the pool's own figure);
+//   · ROUND 23 — ONLY WHO FITS THE SLOT («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+//     اخصائى»): «قائد الطاقم» the captains, «أخصائي 1/2» the specialists, and in both the
+//     captain-specialists at the end. The two pool tabs it had are gone — the other pool held only
+//     people the slot refuses — and a strip says who is offered, in that order, and how many are
+//     free («متاح N»). Why the blue ones are folded in rather than a tab: `crew-picker.ts`;
 //   · a search by name or code (folded: «احمد» finds «أحمد»), on the keyboard from the start;
 //   · the people as Fleet's list draws drivers — a round mark in the ROLE'S colour (green, blue,
 //     red), the name, the code and the requirement icons under it, and at the end what he is now:
@@ -23,6 +26,7 @@
 // page — the table scrolls, and a list inside a cell is cut by its edge — kept in place while
 // anything under it scrolls. A PHONE gets Fleet's bottom sheet.
 import {
+  Fragment,
   useEffect,
   useId,
   useLayoutEffect,
@@ -41,26 +45,17 @@ import { floatingSpot } from '../../../shared/ui/MultiSelect';
 import { useAppSelector } from '../../../store';
 import { NUM } from '../../fleet/components/FuelCardBoard';
 import { BottomSheet } from '../../fleet/components/roster/RosterBottomSheet';
-import {
-  EMPTY_POOL_QUERY,
-  PLAN_POOLS,
-  crewRoleOf,
-  flagsOf,
-  listPool,
-  type CrewRole,
-  type CrewSlot,
-  type PlanPool,
-  type PlanRow,
-} from '../lib/crew-plan';
+import { crewRoleOf, flagsOf, type CrewRole, type CrewSlot, type PlanRow } from '../lib/crew-plan';
 import {
   PICK_SECTIONS,
   nextPickable,
   slotPickList,
   slotPool,
+  slotRoles,
   type PickOption,
   type PickSection,
 } from '../lib/crew-picker';
-import { AWAY_BADGE } from './CrewPlanChip';
+import { AWAY_BADGE, ROLE_DOT } from './CrewPlanChip';
 import { CrewFlagMarks } from './crew-plan-icons';
 
 /** The list's width and its tallest on a computer — a name, its code and its badge on one line. */
@@ -166,7 +161,7 @@ export const useSlotPickerParts = ({
   onClose,
 }: Omit<SlotPickerProps, 'anchor' | 'trigger'>): {
   head: JSX.Element;
-  tabs: JSX.Element;
+  offers: JSX.Element;
   searchBox: JSX.Element;
   list: JSX.Element;
   title: string;
@@ -177,7 +172,6 @@ export const useSlotPickerParts = ({
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const id = useId();
-  const [pool, setPool] = useState<PlanPool>(() => slotPool(target.slot));
   const [search, setSearch] = useState('');
   /** The option the arrows are on, by who it is — a list that changes under it keeps it. */
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -186,10 +180,8 @@ export const useSlotPickerParts = ({
   const close = useRef(onClose);
   close.current = onClose;
 
-  const { options } = slotPickList(members, pool, rows, target, search);
+  const { options, free } = slotPickList(members, rows, target, search);
   const indexOf = new Map(options.map((one, index) => [one, index]));
-  // «متاح N» on each tab: the pool's own figure, whatever is typed.
-  const freeIn = (one: PlanPool): number => listPool(members, one, rows, EMPTY_POOL_QUERY).free;
   const found = options.findIndex((option) => option.member.employeeId === activeId);
   const active =
     found >= 0 && options[found]?.pickable === true ? found : nextPickable(options, -1, 1);
@@ -237,65 +229,43 @@ export const useSlotPickerParts = ({
     close.current(true);
   };
 
-  const switchPool = (next: PlanPool): void => {
-    setPool(next);
-    setActiveId(null);
-  };
-
-  const tabs = (
+  // Who this slot's list offers, in its order — the slot's own role, then the captain-specialists
+  // («يكونوا فى الاخر») — and how many of them are free. Said, so the planner reading a specialist's
+  // list knows no captain-only is missing from it by mistake.
+  const roles = slotRoles(target.slot);
+  const offers = (
     <div
-      role="tablist"
-      aria-label={t('operations.crewPlan.picker.pools')}
-      className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800/80"
-      onKeyDown={(event) => {
-        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-        event.preventDefault();
-        const next = pool === 'captains' ? 'specialists' : 'captains';
-        switchPool(next);
-        panel.current
-          ?.querySelector<HTMLButtonElement>(`[data-picker-tab="${next}"]`)
-          ?.focus({ preventScroll: true });
-      }}
+      data-picker-offers={target.slot === 'captain' ? 'captain' : 'specialist'}
+      className="flex min-h-8 flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg bg-slate-100 px-2 py-1 text-[11.5px] font-bold text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"
     >
-      {PLAN_POOLS.map((one) => {
-        const on = pool === one;
-        return (
-          <button
-            key={one}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            tabIndex={on ? 0 : -1}
-            data-picker-tab={one}
-            onClick={() => switchPool(one)}
-            className={cn(
-              'flex min-h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[12.5px] font-black transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
-              on
-                ? cn(
-                    'bg-white shadow-sm ring-1 ring-slate-900/5 dark:bg-slate-700 dark:ring-white/10',
-                    one === 'captains'
-                      ? 'text-emerald-800 dark:text-emerald-200'
-                      : 'text-rose-800 dark:text-rose-200',
-                  )
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100',
-            )}
-          >
-            <span className="truncate">{t(`operations.crewPlan.pools.${one}`)}</span>
-            {ready && (
-              <span
-                className={cn(
-                  'shrink-0 rounded-full px-1.5 text-[11px] font-bold',
-                  on
-                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                    : 'bg-slate-200/70 dark:bg-slate-700/60',
-                )}
-              >
-                {t('operations.crewPlan.pools.free', { count: formatNumber(freeIn(one), locale) })}
+      <span className="text-slate-500 dark:text-slate-400">
+        {t('operations.crewPlan.picker.offers')}
+      </span>
+      {roles.map((role, at) => (
+        <Fragment key={role}>
+          {at > 0 && (
+            <span className="text-slate-400 dark:text-slate-500">
+              {t('operations.crewPlan.picker.then')}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1" data-picker-offers-role={role}>
+            <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', ROLE_DOT[role])} />
+            <span className="text-slate-800 dark:text-slate-100">
+              {t(`operations.crewPlan.role.${role}`)}
+            </span>
+            {role === 'dual' && (
+              <span className="text-slate-500 dark:text-slate-400">
+                {t('operations.crewPlan.picker.dualsLast')}
               </span>
             )}
-          </button>
-        );
-      })}
+          </span>
+        </Fragment>
+      ))}
+      {ready && (
+        <span className="ms-auto shrink-0 rounded-full bg-white px-1.5 text-[11px] font-black text-slate-700 ring-1 ring-slate-900/5 dark:bg-slate-700 dark:text-slate-200 dark:ring-white/10">
+          {t('operations.crewPlan.pools.free', { count: formatNumber(free, locale) })}
+        </span>
+      )}
     </div>
   );
 
@@ -415,7 +385,7 @@ export const useSlotPickerParts = ({
       id={`${id}-list`}
       role="listbox"
       aria-label={`${slotName} — ${rowName}`}
-      data-picker-list={pool}
+      data-picker-list={target.slot === 'captain' ? 'captain' : 'specialist'}
       className={cn(
         'min-h-0 flex-1 overflow-y-auto overscroll-contain',
         sheet ? 'px-3 py-2' : 'p-1.5',
@@ -425,7 +395,7 @@ export const useSlotPickerParts = ({
         <p className="px-2 py-6 text-center text-[12.5px] font-bold text-slate-500 dark:text-slate-400">
           {narrowed
             ? t('operations.crewPlan.pools.noMatch')
-            : t(`operations.crewPlan.pools.empty.${pool}`)}
+            : t(`operations.crewPlan.pools.empty.${slotPool(target.slot)}`)}
         </p>
       )}
       {PICK_SECTIONS.map((section) => {
@@ -486,7 +456,7 @@ export const useSlotPickerParts = ({
 
   return {
     head,
-    tabs,
+    offers,
     searchBox,
     list,
     title,
@@ -528,7 +498,7 @@ export const CrewSlotPicker = (props: SlotPickerProps): JSX.Element | null => {
         subtitle={t('operations.crewPlan.picker.row', { row: rowName })}
         toolbar={
           <div className="space-y-2.5" ref={panel}>
-            {parts.tabs}
+            {parts.offers}
             {parts.searchBox}
           </div>
         }
@@ -556,7 +526,7 @@ export const CrewSlotPicker = (props: SlotPickerProps): JSX.Element | null => {
     >
       <div className="shrink-0 space-y-2 border-b border-slate-200 px-2.5 pb-2.5 pt-2 dark:border-slate-800">
         {parts.head}
-        {parts.tabs}
+        {parts.offers}
         {parts.searchBox}
       </div>
       {parts.list}

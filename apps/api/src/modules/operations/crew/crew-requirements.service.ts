@@ -2,9 +2,12 @@
 // the pool the crew board drags from.
 //
 // THE ONE RULE THAT IS NOT HERE. Requirements gate nothing (approved decision, carried since PR 1):
-// no method below refuses an assignment, and the crew service consults none of these flags. They
-// are metadata, indicators and filters, which is precisely what they were in legacy — only
-// `leader`/`isCaptain` was ever read by a server query, and even that only narrowed a picker.
+// no method below refuses an assignment. They are metadata, indicators and filters, which is
+// precisely what they were in legacy — only `leader`/`isCaptain` was ever read by a server query,
+// and even that only narrowed a picker.
+// ROUND 23 — except the two ROLE flags, for the crew saves: «ممنوع ان اعين قائد مكان اخصائى والعكس
+// الا فى حالة انه قائد اخصائى». `crew-roles.ts` reads «قائد» and «أخصائي» to refuse a new seat the
+// role does not fit; this service still refuses nothing, and the other eight flags gate nothing.
 //
 // WHAT IS ENFORCED is reference integrity: an employee must exist and not have left, resolved
 // through the platform directory seam. That is the same check the crew service makes on a slot,

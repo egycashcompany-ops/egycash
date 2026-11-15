@@ -30,12 +30,16 @@
 // settling of an empty cell, not a change of crew.
 import {
   CREW_SLOT_CAPACITY,
+  OPERATIONS_CREW_SLOTS,
+  crewRoleOf,
   type OperationsCrewBoardRowDto,
   type OperationsCrewMemberDto,
+  type OperationsCrewSlot,
 } from '@ecms/contracts';
 
-export const CREW_SLOTS = ['captain', 'specialist1', 'specialist2'] as const;
-export type CrewSlot = (typeof CREW_SLOTS)[number];
+/** The three slots — the contracts' own list, so the save's rule names the same three (Round 23). */
+export const CREW_SLOTS = OPERATIONS_CREW_SLOTS;
+export type CrewSlot = OperationsCrewSlot;
 
 /** The card positions inside one slot: `[0, 1]` at capacity 2. */
 export const SLOT_POSITIONS: readonly number[] = Array.from(
@@ -187,12 +191,17 @@ export const removeFromBoard = (
  * It applies only to a captain who is already on a vehicle. From the pool there is nobody "with
  * him" yet, so he arrives alone — dragging one card must not silently move three people who were
  * never placed together.
+ *
+ * ROUND 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». A companion the
+ * slot no longer fits (`fits` — a captain-only kept in a specialist's seat from before the rule)
+ * STAYS where he sits: moved, he would take a new seat the save refuses. Everybody else comes along.
  */
 export const assignCaptainWithCrew = (
   rows: readonly BoardRow[],
   vehicleId: string,
   position: number,
   employeeId: string,
+  fits: (employeeId: string, slot: CrewSlot) => boolean = () => true,
 ): BoardRow[] => {
   const [from] = slotsHolding(rows, employeeId).filter((held) => held.slot === 'captain');
   let next = assignToSlot(rows, vehicleId, 'captain', position, employeeId);
@@ -204,7 +213,9 @@ export const assignCaptainWithCrew = (
 
   for (const slot of ['specialist1', 'specialist2'] as const) {
     const held = slotValue(source, slot, from.position);
-    const companions = lone ? slotOccupants(source, slot) : held === null ? [] : [held];
+    const companions = (lone ? slotOccupants(source, slot) : held === null ? [] : [held]).filter(
+      (companion) => fits(companion, slot),
+    );
     companions.forEach((companion, index) => {
       // One companion rides on the captain's own card so the crew stays visibly aligned; two fill
       // both cards of the slot, because there is nowhere else for the second to go.
@@ -261,8 +272,9 @@ export const availablePool = (
  * maintains on the requirements screen. Somebody with no requirements row at all has no flag, so
  * they land with the specialists — the same answer legacy gave an employee nobody had ticked.
  *
- * Which pool a member sits in decides only where the planner LOOKS for them. A captain may still
- * be dropped into a specialist slot and the reverse; nothing here gates an assignment.
+ * Which pool a member sits in decides where the planner LOOKS for them. Which SLOT he may take is
+ * the contracts' `fitsCrewSlot` since Round 23 («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة
+ * انه قائد اخصائى»): the standing crew's drop asks it, and so does its save.
  */
 export const POOL_KINDS = ['captains', 'specialists'] as const;
 export type PoolKind = (typeof POOL_KINDS)[number];
@@ -270,19 +282,30 @@ export type PoolKind = (typeof POOL_KINDS)[number];
 export const poolKindOf = (member: OperationsCrewMemberDto): PoolKind =>
   member.requirements?.isCaptain === true ? 'captains' : 'specialists';
 
-/** Both pools at once, each keeping the order the server sent (captains-first, then by code). */
+/**
+ * Both pools at once, each in the order the server sent (captains-first, then by code) — but for
+ * the captain-specialists, who close the captains' pool. «لو قائد واخصائى يبقى فى القايمة بتاعت
+ * القائد بس يكونوا فى الاخر» (Round 23, the day's board's own order): the planner looks for a
+ * captain first, and one who is also a specialist is the fallback. Never in the specialists' pool.
+ */
 export const splitPool = (
   members: readonly OperationsCrewMemberDto[],
 ): Record<PoolKind, OperationsCrewMemberDto[]> => {
   const pools: Record<PoolKind, OperationsCrewMemberDto[]> = { captains: [], specialists: [] };
-  for (const member of members) pools[poolKindOf(member)].push(member);
+  const duals: OperationsCrewMemberDto[] = [];
+  for (const member of members) {
+    if (crewRoleOf(member.requirements) === 'dual') duals.push(member);
+    else pools[poolKindOf(member)].push(member);
+  }
+  pools.captains.push(...duals);
   return pools;
 };
 
 /**
  * The legacy pool's requirement filters (tashghela.ejs:1114-1142 — the icons doubled as filter
  * buttons). They narrow WHAT IS SHOWN and nothing else: an unfiltered member is still assignable,
- * because requirements gate nothing (approved decision).
+ * because these flags gate nothing (approved decision). Only the two ROLE flags decide anything —
+ * which slot a person may take (Round 23, `fitsCrewSlot`).
  */
 export type RequirementFilter =
   | 'hasWeapon'

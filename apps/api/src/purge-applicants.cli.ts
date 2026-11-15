@@ -43,6 +43,21 @@
 // one per applicant naming what went and where the backup is. History is not rewritten because a
 // record was removed.
 //
+// `--empty <collection,collection>` ADDITIONALLY EMPTIES THOSE COLLECTIONS IN FULL — every row,
+// everybody's, not only the named applicants'. «أمسح كله ماعدا المتقدمين والفرز»: clearing the
+// interview, evaluation and job-offer screens is a different act from erasing seven people, so it
+// is a separate flag and a separate line in the report rather than something a name match can do
+// by accident. Only a collection the applicant derivation already found may be named, so it can
+// never reach the employee registry or the accounts. Both interview stages — «المقابلة الأولى»
+// and «المقابلة الثانية» — are rows in `hr_interviews`, so emptying it clears both screens:
+//
+//   --empty hr_interviews,hr_evaluations,hr_job_offers
+//
+// What that deliberately does NOT touch: `hr_applicants` and `hr_screenings`, and the timeline
+// entries that mention an emptied interview or offer. A reference left pointing at a record that
+// no longer exists is the honest state — the same reasoning `workforce-reset/targets.ts` applies
+// to a `keep` collection — and rewriting those rows would be a destructive edit nobody asked for.
+//
 // THERE IS NO UNDO, which is why `--write` is not enough on its own. It also needs `--confirm
 // DELETE`, so the destructive form cannot be made by editing a previous command; `--ids`, the exact
 // ids the dry run printed, so what was approved is provably what runs; and `--as <username>`, a
@@ -109,6 +124,10 @@ const options = (names: string[], status: ApplicantStatus): PurgeOptions => ({
     .map((id) => id.trim())
     .filter((id) => id !== ''),
   operator: flag('as'),
+  emptyCollections: (flag('empty') ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c !== ''),
 });
 
 const main = async (): Promise<void> => {
@@ -161,7 +180,13 @@ const main = async (): Promise<void> => {
     JSON.stringify(
       {
         report,
-        documents: await affectedDocuments(plan.ids, plan.plans, plan.portalAccounts, plan.files),
+        documents: await affectedDocuments(
+          plan.ids,
+          plan.plans,
+          plan.portalAccounts,
+          plan.files,
+          plan.empties,
+        ),
       },
       null,
       2,

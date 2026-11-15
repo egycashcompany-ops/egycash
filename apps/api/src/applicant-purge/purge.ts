@@ -39,6 +39,18 @@ export interface PurgeOptions {
   approvedIds: string[];
   /** Username whose account the audit rows name. Required to write. */
   operator: string | null;
+  /**
+   * Collections to empty ENTIRELY — every row, not only the named applicants'.
+   *
+   * «أمسح كله ماعدا المتقدمين والفرز»: clearing the interview, evaluation and job-offer screens is
+   * a different act from erasing seven people, and it is kept a different act here rather than
+   * folded into the name match, so a run that empties a collection says so in its own line of the
+   * report and cannot happen as a side effect of a name resolving oddly.
+   *
+   * Only a collection `applicantTargets()` already derived may be named (see `planPurge`), so this
+   * can never be pointed at the employee registry or anything outside recruitment.
+   */
+  emptyCollections: string[];
 }
 
 export interface MatchedApplicant {
@@ -84,6 +96,8 @@ export interface PurgeReport {
     rowsPulledFrom: number;
     rowsLeftEmptyByPull: string[];
   }[];
+  /** Collections emptied in full — everybody's rows, not only the named applicants'. */
+  emptied: { collection: string; documents: number }[];
   files: { count: number; bytes: number; byEntityType: Record<string, number> };
   portalAccounts: string[];
   userScoped: { collection: string; path: string; documents: number }[];
@@ -283,6 +297,7 @@ export const affectedDocuments = async (
   plans: CollectionPlan[],
   portalAccounts: Types.ObjectId[],
   files: PlannedFile[],
+  empties: EmptyPlan[],
 ): Promise<Record<string, unknown[]>> => {
   const documents: Record<string, unknown[]> = {};
   documents[APPLICANT_REGISTRY] = await db()
@@ -310,14 +325,29 @@ export const affectedDocuments = async (
       if (rows.length > 0) documents[collection] = rows;
     }
   }
+  for (const empty of empties) {
+    if (empty.documents === 0) continue;
+    // The WHOLE collection, not just the named applicants' rows: it is about to be emptied, and
+    // this file is the only thing that will still hold what everybody else's rows said.
+    documents[empty.collection] = await db().collection(empty.collection).find({}).toArray();
+  }
   documents['files'] = files;
   return documents;
 };
+
+export interface EmptyPlan {
+  collection: string;
+  /** How many rows the collection holds — all of which go. */
+  documents: number;
+  /** Their ids, so their attachments are found and the backup can be checked against them. */
+  ids: Types.ObjectId[];
+}
 
 export interface Plan {
   matched: MatchedApplicant[];
   ids: Types.ObjectId[];
   plans: CollectionPlan[];
+  empties: EmptyPlan[];
   files: PlannedFile[];
   portalAccounts: Types.ObjectId[];
   userScoped: { collection: string; path: string; documents: number }[];
@@ -348,12 +378,37 @@ export const planPurge = async (options: PurgeOptions): Promise<Plan> => {
     }
   }
 
+  // Emptying a whole collection is only ever allowed for one the applicant derivation already
+  // found, so a typo or a widened flag cannot reach `hr_employees`, `users`, or anything else.
+  const emptiable = new Set(targets.map((t) => t.collection));
+  const notEmptiable = options.emptyCollections.filter((c) => !emptiable.has(c));
+  if (notEmptiable.length > 0) {
+    throw new Error(
+      `refusing to empty: ${notEmptiable.join(', ')} — only a recruitment collection holding ` +
+        'applicant data may be emptied in full. The ones this run derived are: ' +
+        `${[...emptiable].sort().join(', ')}.`,
+    );
+  }
+
   const plans: CollectionPlan[] = [];
   for (const target of targets) plans.push(await planCollection(target, ids));
-  const files = await planFiles(
-    ids,
-    plans.flatMap((p) => p.deleteIds),
-  );
+
+  const empties: EmptyPlan[] = [];
+  for (const collection of options.emptyCollections) {
+    const rows = await db().collection(collection).find({}).project({ _id: 1 }).toArray();
+    empties.push({
+      collection,
+      documents: rows.length,
+      ids: rows.map((r) => r['_id'] as Types.ObjectId),
+    });
+  }
+
+  // An emptied row's attachments go with it — an evaluation's sheet, an offer's signed papers —
+  // or they would be left in storage with nothing left to say whose they were.
+  const files = await planFiles(ids, [
+    ...plans.flatMap((p) => p.deleteIds),
+    ...empties.flatMap((e) => e.ids),
+  ]);
   const portalAccounts = await planPortalAccounts(ids);
 
   const userScoped: Plan['userScoped'] = [];
@@ -369,7 +424,7 @@ export const planPurge = async (options: PurgeOptions): Promise<Plan> => {
               .countDocuments({ [path]: { $in: portalAccounts } }),
     });
   }
-  return { matched, ids, plans, files, portalAccounts, userScoped };
+  return { matched, ids, plans, empties, files, portalAccounts, userScoped };
 };
 
 /** Delete it. Only ever called after the backup has been written. */
@@ -421,6 +476,13 @@ export const execute = async (
     }
   }
 
+  // Whole-collection emptying, after the per-applicant work: the named applicants' rows are
+  // already gone by here, so what this removes is everybody else's, which is what makes the
+  // report's two sections mean different things.
+  for (const empty of plan.empties) {
+    await db().collection(empty.collection).deleteMany({});
+  }
+
   if (portalAccounts.length > 0) {
     for (const { collection, path } of USER_SCOPED_COLLECTIONS) {
       await db()
@@ -468,6 +530,7 @@ export const reportOf = (plan: Plan, options: PurgeOptions): PurgeReport => ({
     rowsPulledFrom: p.pullFrom.length,
     rowsLeftEmptyByPull: p.emptiedByPull,
   })),
+  emptied: plan.empties.map((e) => ({ collection: e.collection, documents: e.documents })),
   files: {
     count: plan.files.length,
     bytes: plan.files.reduce((sum, f) => sum + f.size, 0),

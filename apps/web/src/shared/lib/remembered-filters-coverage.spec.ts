@@ -73,6 +73,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
+  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx', []],
   // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period filters are ONE
   // state for the five period tabs (TAB_SHARED below).
   ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab']],
@@ -319,7 +320,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',
     'the select assigns a category to this contract',
   ],
-  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx'],
   ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
   [
     'modules/hr/contracts/pages/TemplatesListPage.tsx',

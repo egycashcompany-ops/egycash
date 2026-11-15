@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { HR_SETTINGS_HUB, type InsuranceJobTitleRowDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 import { SETTINGS_SCREENS } from '../settings/routes';
-import { InsuranceJobTitlesPage, isChanged, isOccupationCode, requestOf } from './pages/InsuranceJobTitlesPage';
+import { InsuranceJobTitlesPage, isChanged, isOccupationCode, matchesSearch, requestOf } from './pages/InsuranceJobTitlesPage';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(resolve(HERE, 'pages/InsuranceJobTitlesPage.tsx'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
@@ -34,11 +34,30 @@ describe('«مسميات الوظائف لدى التأمينات»', () => {
   it('opens a small popup on «تعديل»: our title fixed, the insurance title and the code typed', () => {
     expect(PAGE).toContain('size="sm"');
     // Our title is shown, never an input.
-    expect(PAGE).toMatch(/<p[^>]*data-insurance-ours>\s*\{row\.jobTitle\}/);
+    expect(PAGE).toMatch(/<p[^>]*data-insurance-ours\s*>\s*\{row\.jobTitle\}/);
     expect(PAGE).toContain('data-insurance-theirs');
     expect(PAGE).toContain('data-insurance-code');
-    expect(PAGE).toContain('save.mutateAsync({ jobTitleId: row.jobTitleId, body: requestOf(insuranceTitle, occupationCode) })');
+    expect(PAGE).toMatch(/save\.mutateAsync\(\{\s*jobTitleId: row\.jobTitleId,\s*body: requestOf\(insuranceTitle, occupationCode\),?\s*\}\)/);
     expect(PAGE).toContain('disabled={!changed || !codeOk}');
+  });
+
+  it('finds a job by our title, its insurance title or its code — «لو عاوز اعمل سيرش علي وظيفه»', () => {
+    const driver: InsuranceJobTitleRowDto = { jobTitleId: 'j2', jobTitle: 'سائق', insuranceTitle: '', occupationCode: '' };
+    expect(matchesSearch(row, '')).toBe(true);
+    expect(matchesSearch(row, 'امين')).toBe(true);
+    expect(matchesSearch(row, 'خزينه')).toBe(true);
+    expect(matchesSearch(row, '412')).toBe(true);
+    expect(matchesSearch(row, 'أمين 101')).toBe(true);
+    expect(matchesSearch(driver, 'امين')).toBe(false);
+    // The search is remembered as the other lists' are, and shown above the table.
+    expect(PAGE).toContain("useRememberedFilters([sp, setSp], REMEMBERED_FILTERS)");
+    expect(PAGE).toContain('<SearchInput');
+    expect(PAGE).toContain("t('contracts.insuranceTitles.noMatch')");
+  });
+
+  it('shows the code under its heading, away from «تعديل», reading left to right', () => {
+    expect(PAGE).toMatch(/<td className="px-3 py-2 text-start[^"]*">\s*\{row\.occupationCode === ''/);
+    expect(PAGE).toContain('<span dir="ltr" className="tabular-nums" data-insurance-code-cell>');
   });
 
   it('refuses a code form 1 cannot box — empty is allowed', () => {
@@ -57,7 +76,7 @@ describe('«مسميات الوظائف لدى التأمينات»', () => {
   });
 
   it('names everything in both languages', () => {
-    const used = [...PAGE.matchAll(/t\('([a-zA-Z.-]+)'/g)].map((m) => m[1] ?? '');
+    const used = [...PAGE.matchAll(/\bt\('([a-zA-Z.-]+)'/g)].map((m) => m[1] ?? '');
     expect(used.length).toBeGreaterThan(10);
     for (const locale of ['ar', 'en'] as Locale[]) {
       for (const key of used) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);

@@ -23,6 +23,15 @@ const MODULE = 'hr';
 const FEATURE = 'jobOffers';
 
 
+/** «اكتب العرض»'s starting values for one candidate — placement, manager, full-time, salary (A28). */
+export const useOfferDefaults = (applicantId: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'jobOfferDefaults', applicantId),
+    queryFn: () => api.getOfferDefaults(applicantId),
+    enabled: applicantId !== '',
+    retry: false,
+  });
+
 export const useJobOffers = (params: JobOfferListParams) =>
   useQuery({
     queryKey: listKey(MODULE, FEATURE, params),

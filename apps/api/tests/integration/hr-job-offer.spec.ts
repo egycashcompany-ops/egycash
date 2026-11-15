@@ -17,6 +17,7 @@ import {
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
+  type OfferDefaultsDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -875,5 +876,62 @@ describe('the offers list filters by branch, department and job, and by «الن
     const active = await list({ active: 'true' });
     expect(active).toEqual(expect.arrayContaining([drafted.id, sent.id]));
     expect(active).not.toContain(withdrawn.id);
+  });
+});
+
+// ── «اكتب العرض» opens filled in (A28) ──────────────────────────────────────────────────────────
+describe('offer defaults — the placement, the manager, full-time, the job\'s fixed salary', () => {
+  const defaultsFor = (applicantId: string, token = adminToken) =>
+    request(app)
+      .get('/api/v1/hr/job-offers/defaults')
+      .query({ applicantId })
+      .set('Authorization', `Bearer ${token}`);
+
+  it('fills the job from the placement, full-time, and the job\'s «الراتب الثابت»', async () => {
+    const titleRes = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'JT-OFFER-DEF',
+        name: { ar: 'أخصائي نقل أموال', en: 'CIT specialist' },
+        jobGrade: 'G5',
+        fixedSalary: { amount: 11000, currency: 'EGP' },
+      });
+    expect(titleRes.status, JSON.stringify(titleRes.body)).toBe(201);
+    const jobTitleId = (titleRes.body as { data: { id: string } }).data.id;
+
+    const applicant = await registerApplicant();
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const reassigned = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ placement: { jobTitleId }, reason: 'a vacancy opened', version: (current.body.data as ApplicantDto).version });
+    expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
+
+    const res = await defaultsFor(applicant.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const defaults = res.body.data as OfferDefaultsDto;
+    expect(defaults).toMatchObject({
+      jobTitleId,
+      employmentType: 'fullTime',
+      salary: { amount: 11000, currency: 'EGP' },
+      // No department or branch on this placement names a manager.
+      manager: null,
+    });
+    expect(defaults.jobSalaries).toContainEqual({ jobTitleId, amount: 11000, currency: 'EGP' });
+
+    // An unplaced candidate starts empty but full-time; a reader who cannot write offers is refused.
+    const bare = (await defaultsFor((await registerApplicant()).id)).body.data as OfferDefaultsDto;
+    expect(bare).toMatchObject({ jobTitleId: null, salary: null, employmentType: 'fullTime' });
+    expect((await defaultsFor(applicant.id, aliceToken)).status).toBe(403);
+  });
+
+  it('keeps a manager typed by name when they have no account — and drops it beside a user', async () => {
+    const named = await draftFor(await offerReadyApplicant(), { managerId: null, managerName: '  سامح فؤاد ' });
+    expect(named.terms).toMatchObject({ managerId: null, managerName: 'سامح فؤاد' });
+    const both = await draftFor(await offerReadyApplicant(), { managerName: 'سامح فؤاد' });
+    expect(both.terms).toMatchObject({ managerId: interviewerId, managerName: null });
   });
 });

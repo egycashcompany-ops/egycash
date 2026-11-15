@@ -497,6 +497,18 @@ its entry here in the same PR.
       down, the first box's leading zeros kept), never over a box typed by hand, again whenever
       an end or the count changes — and a run that does not fit fills nothing and is said beside
       the list's summary. Cartons stay a plain count with no seals.
+    - Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو» (said over the form with bags
+      1 … 6 and boxes 1 and 3): within ONE receipt a seal number appears once, the bags and the
+      boxes read as one list, and a seal typed twice in its own list is the same fault — now a
+      refusal, where it was an amber «مكرر». "The same seal" has one definition, in the contract
+      (`vaultSealKey`): digits compared as whole numbers (0099 = 99, Arabic-Indic digits counted),
+      anything else as typed, trimmed. `POST /operations/secured/:id/receive` answers 400
+      `VALIDATION_FAILED` on the later occurrence (`body.boxSeals.1`, at the index sent), its
+      message naming the seal and where it first appeared, and writes nothing. The form marks
+      every box holding a repeat red (a number the range fill wrote included, its title saying
+      where else the seal is), says it once under the seals — «الرقمان 1 و3 مكرران — في الحقائب
+      والصناديق» — and holds «استلام» until it is corrected; a refusal of it from the server is
+      said there in the same words. Cartons have no seals; other shipments' seals are not compared.
   - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
     القى نظره».
     - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست

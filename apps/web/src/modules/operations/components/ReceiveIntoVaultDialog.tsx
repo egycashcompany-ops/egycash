@@ -81,7 +81,6 @@ import {
   denominationsTotal,
   draftSlots,
   fillSealRange,
-  growSeals,
   parseCount,
   poundAmount,
   receiveRefusal,
@@ -378,6 +377,51 @@ export const SealBoxes = ({
   );
 };
 
+/**
+ * «استلام» — legacy's dark red button. HELD while a seal is named twice in the receipt (Round 21):
+ * `blocked` is the notice's own words, said again as its title, and the button points at the
+ * notice (`describedBy`) — a refusal the server would answer anyway is not sent.
+ */
+export const ReceiveSaveButton = ({
+  busy,
+  blocked,
+  describedBy,
+  onClick,
+}: {
+  busy: boolean;
+  /** Why «استلام» is held — the repeat notice's text; null when nothing holds it. */
+  blocked: string | null;
+  describedBy?: string;
+  onClick: () => void;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      data-receive-save="true"
+      data-receive-blocked={blocked === null ? undefined : 'seals'}
+      aria-busy={busy}
+      disabled={busy || blocked !== null}
+      title={blocked ?? undefined}
+      aria-describedby={blocked === null ? undefined : describedBy}
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-2 rounded-xl px-8 py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60',
+        // Legacy's «إستلام» was the form's dark red button; the design's gradient keeps
+        // that colour, so the act reads as the one the vault answers for.
+        'bg-gradient-to-r from-rose-800 to-red-700 shadow-[0_6px_24px_rgba(159,18,57,0.45)] hover:from-rose-700 hover:to-red-600',
+      )}
+    >
+      {busy ? (
+        <Spinner className="h-4 w-4" />
+      ) : (
+        <Stroke d={[...SHIPMENT_PATH.check]} className="h-4 w-4" />
+      )}
+      <span>{t('operations.secured.receive.action')}</span>
+    </button>
+  );
+};
+
 export const ReceiveIntoVaultDialog = ({
   shipment,
   onClose,
@@ -465,6 +509,23 @@ export const ReceiveIntoVaultDialog = ({
   useEffect(() => setBagSeals((list) => fillSealRange(list, slots.bags)), [slots.bags]);
   useEffect(() => setBoxSeals((list) => fillSealRange(list, slots.boxes)), [slots.boxes]);
 
+  // ── One seal, once per receipt (Round 21) ──────────────────────────────────────────────────────
+  // «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: the boxes ON SCREEN, both lists read as
+  // one — a box the range fill wrote counts like one typed. Every box of a repeat is red, the
+  // notice says which numbers and where, and «استلام» waits: the contract would refuse it.
+  const repeats = sealRepeats(shownSeals(bagSeals, slots.bags), shownSeals(boxSeals, slots.boxes));
+  const repeatNotice = sealRepeatNotice(repeats.repeats, t, locale);
+  const noticeId = useId();
+  const repeatedAt = (list: 'bag' | 'box', marks: typeof repeats.bags): (string | null)[] =>
+    marks.map((repeat, index) =>
+      repeat === null ? null : sealRepeatTitle(repeat, { list, index }, perBag, t, locale),
+    );
+  // A seal the server refused is said until the seals change — then it is no longer what it refused.
+  useEffect(
+    () => setRefused((prev) => (prev?.field === 'seals' ? null : prev)),
+    [bagSeals.seals, boxSeals.seals, slots.bags, slots.boxes],
+  );
+
   // ── «عدد الورق من كل فئة» against the shipment's pound ─────────────────────────────────────────
   const counted = denominationsTotal(denominationLines(counts));
   const shipmentPound = poundAmount(toShipmentLines(draft.lines), (currencyId) => {
@@ -499,6 +560,9 @@ export const ReceiveIntoVaultDialog = ({
   const missing = (field: keyof typeof emptied): boolean => tried && emptied[field];
   const refusedOn = (field: ReceiveField): string | undefined =>
     refused?.field === field ? refused.text : undefined;
+  // What the seals' notice says: the repeat on screen, or — when the server refused one the form
+  // did not see — the server's refusal in the same words.
+  const sealsSaid = repeatNotice !== '' ? repeatNotice : (refusedOn('seals') ?? '');
 
   const values = (): ShipmentDraftValues => ({
     mainBankId: draft.mainBankId,
@@ -514,6 +578,8 @@ export const ReceiveIntoVaultDialog = ({
 
   const submit = async (): Promise<void> => {
     if (shipment === null || sending.current) return;
+    // A seal named twice is never sent — the button is held; this is its second lock.
+    if (repeatNotice !== '') return;
     setRefused(null);
     // The dates' floors are said here first, as the shipment form says them — against today read
     // at this moment.
@@ -536,7 +602,22 @@ export const ReceiveIntoVaultDialog = ({
       toast.success(t('operations.secured.receive.done'));
     } catch (error) {
       const refusal = receiveRefusal(error);
-      const text = refusal.key === null ? errorMessage(error, locale) : t(refusal.key);
+      // A seal refused as named twice is said in the words the form says it in, read from what
+      // was sent; the refusal's own key only if those find no repeat.
+      const sealWords =
+        refusal.field === 'seals'
+          ? sealRepeatNotice(
+              sealRepeats(body.bagSeals ?? [], body.boxSeals ?? []).repeats,
+              t,
+              locale,
+            )
+          : '';
+      const text =
+        sealWords !== ''
+          ? sealWords
+          : refusal.key === null
+            ? errorMessage(error, locale)
+            : t(refusal.key);
       toast.error(text);
       if (refusal.field !== null) setRefused({ field: refusal.field, text });
       if (refusal.closes) onClose();
@@ -633,26 +714,12 @@ export const ReceiveIntoVaultDialog = ({
         footer={
           <div className="flex w-full flex-wrap items-center gap-3">
             {!locked && (
-              <button
-                type="button"
-                data-receive-save="true"
-                aria-busy={busy}
-                disabled={busy}
+              <ReceiveSaveButton
+                busy={busy}
+                blocked={repeatNotice === '' ? null : repeatNotice}
+                describedBy={noticeId}
                 onClick={() => void submit()}
-                className={cn(
-                  'flex items-center gap-2 rounded-xl px-8 py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60',
-                  // Legacy's «إستلام» was the form's dark red button; the design's gradient keeps
-                  // that colour, so the act reads as the one the vault answers for.
-                  'bg-gradient-to-r from-rose-800 to-red-700 shadow-[0_6px_24px_rgba(159,18,57,0.45)] hover:from-rose-700 hover:to-red-600',
-                )}
-              >
-                {busy ? (
-                  <Spinner className="h-4 w-4" />
-                ) : (
-                  <Stroke d={[...SHIPMENT_PATH.check]} className="h-4 w-4" />
-                )}
-                <span>{t('operations.secured.receive.action')}</span>
-              </button>
+              />
             )}
             <button
               type="button"
@@ -990,6 +1057,7 @@ export const ReceiveIntoVaultDialog = ({
               list={bagSeals}
               slots={slots.bags}
               perUnit={perBag}
+              repeated={repeatedAt('bag', repeats.bags)}
               onChange={setSeal(setBagSeals, slots.bags)}
             />
             <SealBoxes
@@ -998,8 +1066,11 @@ export const ReceiveIntoVaultDialog = ({
               list={boxSeals}
               slots={slots.boxes}
               perUnit={BOX_SEALS_PER_BOX}
+              repeated={repeatedAt('box', repeats.boxes)}
               onChange={setSeal(setBoxSeals, slots.boxes)}
             />
+            {/* Round 21 — one notice for the whole receipt, under both lists. */}
+            {sealsSaid !== '' && <SealRepeatNotice id={noticeId} text={sealsSaid} />}
           </Band>
         </fieldset>
       </DesignDialog>

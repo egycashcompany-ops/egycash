@@ -426,7 +426,11 @@ export const otherPlaces = (repeat: SealRepeat, self: SealSpot, perBag: number):
     .filter((spot) => spot.list !== self.list || spot.index !== self.index)
     .map((spot) => {
       const per = spot.list === 'bag' ? perBag : BOX_SEALS_PER_BOX;
-      return { list: spot.list, unit: Math.floor(spot.index / per) + 1, seal: (spot.index % per) + 1 };
+      return {
+        list: spot.list,
+        unit: Math.floor(spot.index / per) + 1,
+        seal: (spot.index % per) + 1,
+      };
     });
 
 /** What a red box's title says: «مكرر — موجود أيضًا في الصندوق 1، الختم 1». */

@@ -51,8 +51,23 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { formatNumber } from '../../../shared/lib/format';
 import { HISTORY_TOO_LARGE } from '../lib/shipment-history';
 import { __vaultQueueKey } from '../api/operations-queries';
-import { ReceiveIntoVaultDialog, SealBoxes } from '../components/ReceiveIntoVaultDialog';
-import { NO_SEAL_LIST, typeSeal } from '../lib/vault-receipt';
+import {
+  ReceiveIntoVaultDialog,
+  ReceiveSaveButton,
+  SealBoxes,
+  SealRepeatNotice,
+  SealSummaryLine,
+} from '../components/ReceiveIntoVaultDialog';
+import {
+  NO_SEAL_LIST,
+  sealRepeatNotice,
+  sealRepeatTitle,
+  sealRepeats,
+  shownSeals,
+  typeSeal,
+  type SealList,
+  type SealRepeats,
+} from '../lib/vault-receipt';
 import { VaultReceivePage } from './VaultReceivePage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -958,6 +973,170 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
     const bar = said.slice(0, said.indexOf('<input'));
     expect(bar.indexOf('data-seal-summary')).toBeGreaterThan(-1);
     expect(bar.indexOf('data-seal-summary')).toBeLessThan(bar.indexOf('data-seal-range'));
+  });
+
+  // Round 21 — the owner, over this very form with bags 1 … 6 and boxes 1 and 3: «مينفعش يكون فيه
+  // رقم للحقائب و الصناديق زى بعض برضو». The rules are `sealRepeats`'s (lib/vault-receipt.spec.ts);
+  // this pins what reaches the form: the red boxes, the ONE notice, «استلام» held.
+  describe('one seal, once per receipt — the red boxes, the one notice, «استلام» held', () => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(VAULT_ONLY), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const wrap = (node: JSX.Element): string =>
+      renderToStaticMarkup(<Provider store={store}>{node}</Provider>);
+    // The owner's screen: bags 1 … 6 — typed at the ends, the fill writing 2 … 5 — boxes 1 and 3.
+    const BAGS = typeSeal(typeSeal(NO_SEAL_LIST, 6, 0, '1'), 6, 5, '6');
+    const BOXES: SealList = { seals: ['1', '3'], filled: [] };
+    const FOUND = sealRepeats(shownSeals(BAGS, 6), shownSeals(BOXES, 2));
+    const titles = (list: 'bag' | 'box', marks: SealRepeats['bags']): (string | null)[] =>
+      marks.map((repeat, index) =>
+        repeat === null ? null : sealRepeatTitle(repeat, { list, index }, 2, ar, 'ar'),
+      );
+    const NOTICE = sealRepeatNotice(FOUND.repeats, ar, 'ar');
+
+    it('draws every box of a repeat red and invalid, titled with where else its seal is', () => {
+      const bags = wrap(
+        <SealBoxes
+          kind="bag"
+          title={ar('operations.secured.receive.bagSeals')}
+          list={BAGS}
+          slots={6}
+          perUnit={2}
+          repeated={titles('bag', FOUND.bags)}
+          onChange={() => undefined}
+        />,
+      );
+      const inputs = bags.match(/<input[^>]*>/g) ?? [];
+      expect(inputs.map((tag) => tag.includes('data-seal-repeat="true"'))).toEqual([
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+      ]);
+      expect(inputs[0]).toContain('aria-invalid="true"');
+      expect(inputs[0]).toContain('border-rose-500');
+      expect(inputs[0]).toContain(
+        `title="${ar('operations.secured.receive.bagSealInput', { unit: 1, seal: 1 })} — مكرر — موجود أيضًا في الصندوق 1، الختم 1"`,
+      );
+      expect(inputs[1]).not.toContain('aria-invalid');
+      expect(inputs[1]).not.toContain('border-rose-500');
+      // The 3 the range fill wrote collides too: still the fill's, and marked all the same.
+      expect(inputs[2]).toContain('data-seal-filled="true"');
+      expect(inputs[2]).toContain('aria-invalid="true"');
+      expect(inputs[2]).toContain(
+        `title="${ar('operations.secured.receive.bagSealInput', { unit: 2, seal: 1 })} — ${ar('operations.secured.receive.sealFilled')} — مكرر — موجود أيضًا في الصندوق 1، الختم 2"`,
+      );
+      const boxes = wrap(
+        <SealBoxes
+          kind="box"
+          title={ar('operations.secured.receive.boxSeals')}
+          list={BOXES}
+          slots={2}
+          perUnit={2}
+          repeated={titles('box', FOUND.boxes)}
+          onChange={() => undefined}
+        />,
+      );
+      const boxInputs = boxes.match(/<input[^>]*>/g) ?? [];
+      expect(boxInputs.every((tag) => tag.includes('aria-invalid="true"'))).toBe(true);
+      expect(boxInputs[1]).toContain('موجود أيضًا في الحقيبة 2، الختم 1');
+      // Nothing repeated, nothing marked.
+      const clean = wrap(
+        <SealBoxes
+          kind="box"
+          title={ar('operations.secured.receive.boxSeals')}
+          list={{ seals: ['7', '8'], filled: [] }}
+          slots={2}
+          perUnit={2}
+          onChange={() => undefined}
+        />,
+      );
+      expect(clean).not.toContain('aria-invalid');
+      expect(clean).not.toContain('data-seal-repeat');
+    });
+
+    it('says it ONCE, under both lists — the amber «مكرر» beside each summary line is gone', () => {
+      expect(NOTICE).toBe('الرقمان 1 و3 مكرران — في الحقائب والصناديق');
+      const notice = wrap(<SealRepeatNotice id="seal-notice" text={NOTICE} />);
+      expect(notice).toContain('role="alert"');
+      expect(notice).toContain('id="seal-notice"');
+      expect(notice).toContain('data-seal-repeat="true"');
+      expect(notice).toContain(NOTICE);
+      expect(notice).toContain(ar('operations.secured.receive.sealRepeatRule'));
+      // A seal typed twice in one list is listed once on its line, with no chip of its own.
+      const line = wrap(<SealSummaryLine seals={['5', '6', '5']} />);
+      expect(line).toContain('[5 - 6]');
+      expect(line).not.toContain('data-seal-duplicates');
+      expect(line).not.toContain(ar('operations.secured.receive.duplicates', { seals: '5' }));
+      // The form reads both lists ON SCREEN as one, and says it once, after both, in the band.
+      expect(DIALOG).toContain(
+        'const repeats = sealRepeats(shownSeals(bagSeals, slots.bags), shownSeals(boxSeals, slots.boxes));',
+      );
+      expect(DIALOG).toContain("repeated={repeatedAt('bag', repeats.bags)}");
+      expect(DIALOG).toContain("repeated={repeatedAt('box', repeats.boxes)}");
+      const band = DIALOG.slice(DIALOG.indexOf('data-receive-band="seals"'));
+      expect(band.indexOf("repeated={repeatedAt('box', repeats.boxes)}")).toBeLessThan(
+        band.indexOf('<SealRepeatNotice id={noticeId} text={sealsSaid} />'),
+      );
+      expect(band.indexOf('<SealRepeatNotice')).toBeLessThan(band.indexOf('</Band>'));
+      expect(DIALOG.match(/<SealRepeatNotice /g)).toHaveLength(1);
+    });
+
+    it('holds «استلام» while a seal repeats — the reason its title, the notice its description', () => {
+      const held = wrap(
+        <ReceiveSaveButton
+          busy={false}
+          blocked={NOTICE}
+          describedBy="n"
+          onClick={() => undefined}
+        />,
+      );
+      expect(held).toMatch(/<button[^>]*disabled=""/);
+      expect(held).toContain(`title="${NOTICE}"`);
+      expect(held).toContain('aria-describedby="n"');
+      expect(held).toContain('data-receive-blocked="seals"');
+      expect(held).toContain(ar('operations.secured.receive.action'));
+      const free = wrap(
+        <ReceiveSaveButton busy={false} blocked={null} describedBy="n" onClick={() => undefined} />,
+      );
+      expect(free).not.toContain('disabled=""');
+      expect(free).not.toContain('title=');
+      expect(free).not.toContain('aria-describedby');
+      // The form holds it on the notice it shows — and never sends past it.
+      expect(DIALOG).toContain("blocked={repeatNotice === '' ? null : repeatNotice}");
+      const submit = DIALOG.slice(DIALOG.indexOf('const submit = async'));
+      expect(submit.indexOf("if (repeatNotice !== '') return;")).toBeGreaterThan(-1);
+      expect(submit.indexOf("if (repeatNotice !== '') return;")).toBeLessThan(
+        submit.indexOf('receive.mutateAsync'),
+      );
+    });
+
+    it('says the server’s refusal of a repeat in the same words, on the form', () => {
+      // Read from what was SENT, in the notice's own words — not «بعض الحقول تحتاج إلى مراجعة».
+      expect(DIALOG).toContain("refusal.field === 'seals'");
+      expect(DIALOG).toContain('sealRepeats(body.bagSeals ?? [], body.boxSeals ?? []).repeats,');
+      expect(DIALOG).toContain(
+        "const sealsSaid = repeatNotice !== '' ? repeatNotice : (refusedOn('seals') ?? '');",
+      );
+      // Said until the seals change.
+      expect(DIALOG).toContain(
+        "() => setRefused((prev) => (prev?.field === 'seals' ? null : prev)),",
+      );
+    });
+
+    it('opens with nothing to say — no red box, no notice, «استلام» offered', () => {
+      const html = dialog(VAULT_ONLY);
+      expect(html).not.toContain('data-seal-repeat');
+      expect(html).not.toContain('aria-invalid');
+      expect(html).not.toContain('data-receive-blocked');
+    });
   });
 
   it('shows the captain and the van read only — the crew is set on the crew screens', () => {

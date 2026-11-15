@@ -1,12 +1,17 @@
 // Job Offer list: free-text search + status + active-only filters, a sortable DataTable, pagination,
 // and a create entry point — all permission-gated. Filters/sort/pagination are synchronized with the
 // URL query string (deep-linkable, back/forward aware).
+//
+// ONE TABLE. «هنشيل الجزء اللي فوق دا خالص و هنخلي الجزء اللي تحت هو البيدج … اي حد يخلص كشف الطبي
+// يظهر فيه الحاله ك جاهزون لعرض العمل». Whoever has cleared their checks is moved to this stage by
+// the server and listed here as «جاهز لعرض العمل» (`waiting`: no offer written yet), with
+// «كتابة العرض» on their row; the offer written, the row carries on as «مسودة», «مُرسَل», ….
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
@@ -16,7 +21,6 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { AwaitingOfferQueue } from '../components/AwaitingOfferQueue';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
@@ -27,7 +31,6 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'active',
-  'awaiting',
   'q',
   'status',
   'size',
@@ -36,10 +39,15 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+/** The offer form for somebody already at this stage — their choice fixed (`from=queue`). */
+export const writeOfferPath = (applicantId: string): string => `/job-offers/new?applicantId=${applicantId}&from=queue`;
+
 export const JobOffersListPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
+  const can = useCan();
+  const canCreate = can('jobOffer.create');
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
@@ -55,7 +63,6 @@ export const JobOffersListPage = (): JSX.Element => {
     by: string;
     dir: 'asc' | 'desc';
   };
-  const awaitingPage = Math.max(1, Number(sp.get('awaiting') ?? '1') || 1);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -112,7 +119,8 @@ export const JobOffersListPage = (): JSX.Element => {
     {
       key: 'code',
       header: t('offers.columns.code'),
-      render: (o) => <span className="font-mono text-xs" dir="ltr">{o.code}</span>,
+      render: (o) =>
+        o.code === null ? <span className="text-slate-400">—</span> : <span className="font-mono text-xs" dir="ltr">{o.code}</span>,
     },
     {
       key: 'applicant',
@@ -130,6 +138,25 @@ export const JobOffersListPage = (): JSX.Element => {
           : formatMoney(o.terms.salary.amount, o.terms.salary.currency, locale),
     },
     { key: 'createdAt', header: t('offers.columns.created'), sortable: true, render: (o) => formatDate(o.createdAt, locale) },
+    {
+      key: 'write',
+      header: '',
+      // «جاهز لعرض العمل»: nobody has written the offer yet — the form opens for this person, as
+      // the queue above the table used to open it.
+      render: (o) =>
+        o.status === 'waiting' && canCreate ? (
+          <Button
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(writeOfferPath(o.applicantId));
+            }}
+            data-write-offer={o.applicantId}
+          >
+            {t('offers.awaiting.write')}
+          </Button>
+        ) : null,
+    },
   ];
 
   return (
@@ -137,18 +164,6 @@ export const JobOffersListPage = (): JSX.Element => {
       <PageHeader
         title={t('recruitment.nav.offers')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.offers') }]}
-      />
-
-      {/*
-        The queue replaces the «+ new offer» button that used to sit in the header. That button
-        asked somebody to remember who was ready and then find them in a picker; the information
-        was already in the system and nothing was showing it. Its own page parameter, because it
-        pages independently of the offers below it.
-      */}
-      <AwaitingOfferQueue
-        search={filters.search ?? ''}
-        page={awaitingPage}
-        onPageChange={(next) => { patch({ awaiting: String(next) }, false); }}
       />
 
       <div className="space-y-4">

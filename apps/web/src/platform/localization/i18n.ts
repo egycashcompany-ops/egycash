@@ -1648,7 +1648,7 @@ const en: Record<string, string> = {
   'interviews.detail.rescheduled': 'Rescheduled',
 
   // Job Offers (Stage 4)
-  'offers.status.waiting': 'Waiting',
+  'offers.status.waiting': 'Ready for an offer',
   'offers.status.draft': 'Draft',
   'offers.status.superseded': 'Superseded',
   'offers.status.sent': 'Sent',
@@ -15287,7 +15287,7 @@ const ar: Record<string, string> = {
   'interviews.detail.rescheduled': 'أُعيد جدولتها',
 
   // Job Offers (Stage 4)
-  'offers.status.waiting': 'في الانتظار',
+  'offers.status.waiting': 'جاهز لعرض العمل',
   'offers.status.draft': 'مسودة',
   'offers.status.superseded': 'ملغى بالرجوع لمرحلة سابقة',
   'offers.status.sent': 'مُرسَل',

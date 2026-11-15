@@ -239,6 +239,18 @@ const CREW_KEYS = [
   'operations.crew.requirements.saveFailed',
   'operations.crew.requirements.unconfigured',
   'operations.crew.requirements.empty',
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its columns, filters, figures, batch save,
+  // the leave dialog, and the counted results in each of Arabic's five forms (`pluralKey`).
+  // Round 19b: the code's column and its box are gone — one box, «الاسم أو الكود» (`search`).
+  ...[
+    'name', 'jobTitle', 'search', 'holds', 'noJobTitle', 'noMatch',
+    'figures.members', 'figures.captains', 'figures.specialists',
+    'save', 'discard', 'pendingCell', 'readOnly', 'rowNotSaved',
+    'leaveTitle', 'leaveConfirm', 'leaveStay',
+  ].map((key) => `operations.crew.requirements.${key}`),
+  ...['saved', 'notSaved', 'leaveBody'].flatMap((key) =>
+    PLURAL_FORMS.map((form) => `operations.crew.requirements.${key}.${form}`),
+  ),
   'operations.crew.departments.title',
   'operations.crew.departments.hint',
   'operations.crew.departments.saved',
@@ -289,14 +301,22 @@ const SECURED_KEYS = [
   'operations.secured.receive.boxes',
   'operations.secured.receive.bagSeals',
   'operations.secured.receive.boxSeals',
-  'operations.secured.receive.sealsHint',
-  'operations.secured.receive.primary',
-  'operations.secured.receive.secondary',
-  'operations.secured.receive.dualControl',
-  'operations.secured.receive.sameTreasurer',
   'operations.secured.receive.done',
   'operations.secured.receive.failed',
-  'operations.secured.receive.noRoster',
+  // Round 18 — the legacy «إستلام محصنة» form: no names, nothing required, «إيصال» prints it.
+  // (The two treasurers' words — primary, secondary, dualControl, sameTreasurer, noRoster — and
+  // the free-text seals' hint are gone with them; vault-receive.spec holds them gone.)
+  ...[
+    'formTitle', 'formSubtitle', 'money', 'crewReadOnly', 'serial', 'serialBox', 'serialHint',
+    'sealsPerBag', 'denominations', 'denominationInput', 'denominationsTotal', 'shipmentPound',
+    'denominationsMatch', 'denominationsMatched', 'denominationsMismatch', 'denominationsDiffer',
+    'sealsEmpty', 'bagSealInput', 'boxSealInput', 'duplicates', 'scanHint', 'receiverNote',
+    'print', 'printHint', 'takenBanner', 'shipmentIncomplete', 'errors.notDraft',
+    ...[
+      'title', 'titleDraft', 'department', 'draftNote', 'takenNote', 'item', 'value', 'line',
+      'bags', 'sealCount', 'denomination', 'notes', 'receivedBy', 'receivedAt',
+    ].map((key) => `print.${key}`),
+  ].map((key) => `operations.secured.receive.${key}`),
   'operations.secured.dispatch.noCrew',
   'operations.secured.dispatch.assigned',
   'operations.secured.dispatch.release',

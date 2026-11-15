@@ -28,7 +28,7 @@ import {
   type OrderOperationsCurrencies,
   type PlanOperationsCrew,
   type SetOperationsStandingCrew,
-  type ReceiveIntoVault,
+  type ReceiveIntoVaultInput,
   type SetOperationsCrewRequirements,
   type UpdateOperationsArea,
   type UpdateOperationsBank,
@@ -44,6 +44,7 @@ import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
 import { isLockedRefusal } from '../lib/shipment-form';
+import { saveRowsInTurn } from '../lib/requirements';
 import * as api from './operations-api';
 import { type OperationsListParams } from './operations-api';
 
@@ -625,6 +626,29 @@ export const useSetCrewRequirements = () => {
 };
 
 /**
+ * Round 19 — «حفظ (n)» on «كشف طاقم العمليات»: every member with a tick waiting, one whole-row
+ * upsert each, one after the other (`saveRowsInTurn`), through the same `PUT` the screen always
+ * used.
+ *
+ * Not a batch endpoint, on purpose. Each row is its own decision on the server — the employee must
+ * exist and must not have left, and each write is audited as that employee's — so a batch would
+ * have to answer, row by row, exactly what these answers already say; and refusing all of them for
+ * one member who left in the meantime would throw away every other tick.
+ *
+ * It never throws for a row: a refused row comes back in `failed` (the page marks it and keeps its
+ * ticks), so the global error toast does not speak once per row — the page says it once. The
+ * roster is re-read ONCE, after the last row, rather than after each.
+ */
+export const useSaveCrewRequirementsBatch = () => {
+  const invalidate = useRosterInvalidation();
+  return useMutation({
+    mutationFn: (requests: readonly { employeeId: string; body: SetOperationsCrewRequirements }[]) =>
+      saveRowsInTurn(requests, api.setCrewRequirements),
+    onSettled: invalidate,
+  });
+};
+
+/**
  * Operations settings write. The platform owns the endpoint; what OPERATIONS knows is that
  * `operations.crewDepartmentIds` decides who the crew IS — so changing it moves the pool, the
  * board that draws from the pool, and the standing crew built out of the same people. Invalidating
@@ -758,12 +782,20 @@ const useSecuredInvalidation = () => {
   };
 };
 
+/**
+ * The vault's ✓ — Round 18's «إستلام محصنة» form. The FORM owns the refusal's words: it says a
+ * refused branch, bank, currency or date under its own box (`receiveRefusal`), so the global
+ * notifier stays quiet (declaring `onError`), and the message is said once. A refusal re-reads as
+ * well as a success (`onSettled`): a stale row, or one received by someone else meanwhile, is a row
+ * the screen is still showing as it was.
+ */
 export const useReceiveIntoVault = () => {
   const invalidate = useSecuredInvalidation();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVault }) =>
+    mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVaultInput }) =>
       api.receiveIntoVault(id, body),
-    onSuccess: invalidate,
+    onSettled: invalidate,
+    onError: formOwnsTheError,
   });
 };
 

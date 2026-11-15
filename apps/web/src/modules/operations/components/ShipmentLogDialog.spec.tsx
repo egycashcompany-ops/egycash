@@ -278,6 +278,79 @@ describe('the secured shipment’s pickup ✓, its undo and a cancelled vault re
   });
 });
 
+// Round 18 — «إستلام محصنة»: the vault corrects the shipment inside its receipt («تعدّلها عادي»),
+// names nobody («انا مش عاوز اى اسماء» — the receiver is the entry's actor, the signed-in user), and
+// records how many seals close each bag and the notes of each denomination. A receipt from before
+// Round 18 still names its two treasurers, as it was stored.
+describe('a Round 18 receipt in «السجل» — the vault’s corrections, the receiver, the new fields', () => {
+  const RECEIPT: OperationsShipmentLogDto = {
+    shipmentId: 's-18',
+    truncated: false,
+    entries: [
+      entry('c1', {
+        kind: 'edited',
+        at: '2026-11-15T09:00:00.000Z',
+        actorName: 'أمين الخزينة',
+        changes: [{ field: 'notes', old: null, new: 'وصلت مختومة' }],
+      }),
+      entry('c2', {
+        kind: 'vaultReceived',
+        at: '2026-11-15T09:00:00.000Z',
+        actorName: 'أمين الخزينة',
+        changes: [
+          { field: 'receiptNumber', old: null, new: '165' },
+          { field: 'bagCount', old: null, new: '2' },
+          { field: 'bagSealsPerBag', old: null, new: '3' },
+          { field: 'denominations', old: null, new: '0.5 × 40، 200 × 1,500' },
+          { field: 'serialTracked', old: 'false', new: 'true' },
+        ],
+      }),
+      entry('c3', {
+        kind: 'vaultReceived',
+        at: '2026-10-01T09:00:00.000Z',
+        changes: [
+          { field: 'receivedByPrimary', old: null, new: 'سامح فؤاد' },
+          { field: 'receivedBySecondary', old: null, new: 'هاني عادل' },
+        ],
+      }),
+    ],
+  };
+  const html = timeline(RECEIPT);
+  const received = entryOf(html, 'vaultReceived');
+
+  it('says the vault’s correction as an edit by the receiver, before the receipt', () => {
+    const edited = entryOf(html, 'edited');
+    expect(edited).toContain('أمين الخزينة');
+    expect(edited).toMatch(/data-log-new="true"[^>]*>وصلت مختومة</);
+    expect(html.indexOf('data-log-entry="edited"')).toBeLessThan(
+      html.indexOf('data-log-entry="vaultReceived"'),
+    );
+  });
+
+  it('names the receiver as the entry’s actor — and no treasurer field on a new receipt', () => {
+    expect(received).toContain('أمين الخزينة');
+    expect(received).not.toContain(ar('operations.shipment.log.field.receivedByPrimary'));
+    expect(received).not.toContain(ar('operations.shipment.log.field.receivedBySecondary'));
+  });
+
+  it('labels the seals per bag and the notes of each denomination in Arabic', () => {
+    expect(ar('operations.shipment.log.field.bagSealsPerBag')).toBe('عدد الأختام لكل حقيبة');
+    expect(ar('operations.shipment.log.field.denominations')).toBe('عدد الأوراق من كل فئة');
+    expect(received).toContain(ar('operations.shipment.log.field.bagSealsPerBag'));
+    expect(received).toContain(ar('operations.shipment.log.field.denominations'));
+    expect(received).toMatch(/data-log-new="true"[^>]*>0\.5 × 40، 200 × 1,500</);
+    // «سيريال» decided at the receipt — yes / no, as every flag reads.
+    expect(received).toMatch(/data-log-field="serialTracked"[\s\S]*?data-log-new="true"[^>]*>نعم</);
+  });
+
+  it('still names the two treasurers of a receipt taken before Round 18', () => {
+    const older = html.slice(html.lastIndexOf('data-log-entry="vaultReceived"'));
+    expect(older).toContain(ar('operations.shipment.log.field.receivedByPrimary'));
+    expect(older).toMatch(/data-log-new="true"[^>]*>سامح فؤاد</);
+    expect(older).toMatch(/data-log-new="true"[^>]*>هاني عادل</);
+  });
+});
+
 describe('the lines in the timeline’s place', () => {
   it('says the oldest were left out, at the top where they would be', () => {
     const html = timeline({ ...STORY, truncated: true });

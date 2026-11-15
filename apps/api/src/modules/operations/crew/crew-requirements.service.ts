@@ -28,6 +28,7 @@ import {
   getDirectoryEmployee,
   listDirectoryEmployeesByDepartment,
 } from '../../../platform/directory';
+import { jobTitleRepository } from '../../../platform/organization';
 import { settingsService } from '../../../platform/settings';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
@@ -194,6 +195,27 @@ class OperationsCrewRequirementsService {
             await Promise.all(rows.map((row) => getDirectoryEmployee(String(row.employeeId))))
           ).filter((employee): employee is NonNullable<typeof employee> => employee !== null);
 
+    // «الوظيفة» (Round 19): the seats travel with the roster as ids; their names are the
+    // organization catalogue's, read once for the whole roster rather than once per member. A seat
+    // the catalogue no longer has is shown as none, never as an id.
+    const jobTitleIds = [
+      ...new Set(
+        roster
+          .map((employee) => employee.jobTitleId ?? null)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const jobTitleNames = new Map(
+      (await jobTitleRepository.findByIdsSystem(jobTitleIds)).map((title) => [
+        String(title._id),
+        { ar: title.name.ar, en: title.name.en },
+      ]),
+    );
+    const jobTitleOf = (id: string | null | undefined): OperationsCrewMemberDto['jobTitle'] => {
+      const name = id == null ? undefined : jobTitleNames.get(id);
+      return id == null || name === undefined ? null : { id, name };
+    };
+
     const search = query?.search?.trim().toLowerCase() ?? '';
     const members: OperationsCrewMemberDto[] = [];
     for (const employee of roster) {
@@ -213,6 +235,11 @@ class OperationsCrewRequirementsService {
         code: employee.code,
         fullNameAr: employee.fullNameAr,
         status: employee.status,
+        jobTitle: jobTitleOf(employee.jobTitleId),
+        // The member's card on «كشف طاقم العمليات» (Round 19b): the Fleet driver card's phone and
+        // branch, as the seam already answers them for every entry — nothing extra is read.
+        phone: employee.phone,
+        branchId: employee.branchId,
         // Null means "nothing recorded yet", NOT "carries nothing" — the card says so, and the
         // first flag anybody sets creates the row.
         requirements: row === undefined ? null : toRequirementsDto(row),

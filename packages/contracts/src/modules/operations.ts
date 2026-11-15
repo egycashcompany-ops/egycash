@@ -1454,6 +1454,30 @@ export interface OperationsCrewMemberDto {
   fullNameAr: string;
   /** HR employment status, read through the seam — an exited employee is never offered. */
   status: string;
+  /**
+   * Round 19 — «الوظيفة»: the seat HR placed this member in, by id, named from the organization's
+   * job-title catalogue. The legacy roster printed it beside the name and filtered by it («اختر
+   * الوظيفة»), and «كشف طاقم العمليات» does the same.
+   *
+   * It travels the way the name and the code already do — through the platform directory seam, HR
+   * answering — so it is read under the roster's own grant (`operationsCrew.view`), not HR's: a
+   * colleague's title on the crew roster is no more an HR read than their name is. Null when HR
+   * has no seat on file, or the title is no longer in the catalogue.
+   */
+  jobTitle: { id: string; name: { ar: string; en: string } } | null;
+  /**
+   * Round 19b — the member's card on «كشف طاقم العمليات»: «ولما اقف على القائد يجيب بياناته زى
+   * السواق». The Fleet driver card's facts, so the mobile number and the branch travel with the
+   * roster too — through the same directory seam and under the same grant as the name, the code
+   * and «الوظيفة» (`operationsCrew.view`, the one the day board's captain card already reads the
+   * captain's phone under). HR's primary phone as HR keeps it; null when HR has none on file.
+   */
+  phone: string | null;
+  /**
+   * The branch HR placed the member in, by id — a screen names it from the shared branch list, as
+   * the captain card does. Null when HR has none on file.
+   */
+  branchId: string | null;
   requirements: OperationsCrewRequirementsDto | null;
   /**
    * The vehicle this member already holds on the requested day, or null. Legacy computed the same
@@ -2060,7 +2084,7 @@ export interface OperationsVaultCustodyDto {
  * rules, a delivery date moved off its van's day), minus two: `version`, which the receive carries
  * once for the whole act, and `serialTracked`, which is the receipt's own field
  * (`ReceiveIntoVaultSchema.serialTracked`). Send only what changed: every field is optional and a
- * field left out is not touched.
+ * field left out is not touched — so an empty patch corrects nothing and is no edit at all.
  */
 export const ReceiveIntoVaultShipmentPatchSchema = UpdateOperationsShipmentSchema.omit({
   version: true,

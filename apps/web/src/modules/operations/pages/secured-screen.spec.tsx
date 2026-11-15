@@ -348,6 +348,18 @@ describe('«إلغاء استلام الخزينة» — the dialog', () => {
     expect(html).toContain('data-cancel-receipt-number="R-2026-1111"');
   });
 
+  // Round 18 — «كله اختيارى»: a receipt taken without a number keeps its line, saying «—», so the
+  // treasurer still sees there IS a receipt being cancelled — just one nobody numbered.
+  it('says «—» on the receipt’s line when the vault typed no number', () => {
+    const html = dialog({ ...GREEN, receiptNumber: null });
+    expect(html).toContain('data-cancel-receipt-number=""');
+    const line = html.slice(html.indexOf('data-cancel-receipt-number=""'));
+    expect(line.slice(0, line.indexOf('</div>'))).toContain(
+      ar('operations.secured.cancelReceipt.receiptNumber'),
+    );
+    expect(line.slice(0, line.indexOf('</div>'))).toMatch(/<bdi[^>]*>—<\/bdi>/);
+  });
+
   // Round 13 — «والخزنه تستلم عادي»: a receipt nobody handed over goes back WHITE when cancelled
   // (the server restores the pickup record as it stood — nobody — and invents none). Promising
   // «تعود صفراء» there would tell the treasurer something the board will not show.

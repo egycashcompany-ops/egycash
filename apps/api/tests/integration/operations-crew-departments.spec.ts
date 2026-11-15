@@ -127,18 +127,23 @@ const mkDepartment = async (
   return { id: dto.id, branchId, version: dto.version };
 };
 
-const mkEmployee = async (fullNameAr: string, unit: Unit): Promise<string> => {
+const mkEmployee = async (
+  fullNameAr: string,
+  unit: Unit,
+  seat = jobTitleId,
+  phone = nextPhone(),
+): Promise<string> => {
   const res = await call('post', '/hr/employees/direct', {
     personal: {
       identity: { fullNameAr, nationalId: nextNid(), nationality: 'Egyptian' },
-      contact: { primaryPhone: nextPhone() },
+      contact: { primaryPhone: phone },
       experience: [],
       drivingLicenses: [],
       certifications: [],
       references: [],
     },
     employment: {
-      jobTitleId,
+      jobTitleId: seat,
       departmentId: unit.id,
       branchId: unit.branchId,
       employmentType: 'fullTime',
@@ -327,5 +332,100 @@ describe('a department chosen once is that department in every branch', () => {
     expect(ids).toContain(people.cashMohandessin);
     expect(ids).toContain(people.cashAlex);
     expect(ids).not.toContain(people.ops);
+  });
+});
+
+// Round 19 — «الوظيفة» on «كشف طاقم العمليات». The legacy roster printed every member's job title
+// beside the name and filtered by it («اختر الوظيفة»). It travels with the roster the way the name
+// and the code do — through the directory seam, HR answering — named from the organization's
+// job-title catalogue, under the roster's own grant.
+describe('each member carries the seat HR placed them in', () => {
+  const HEAD = { ar: 'رئيس قسم تشغيل نقل الأموال', en: 'Head of cash transfer operations' };
+  let headTitleId = '';
+  let head = '';
+
+  const members = async (): Promise<OperationsCrewDirectoryDto['members']> => {
+    const res = await call('get', '/operations/crew-board/directory');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsCrewDirectoryDto>(res).members;
+  };
+
+  beforeAll(async () => {
+    const title = await call('post', '/platform/job-titles', {
+      code: 'OPS-CD-HEAD',
+      name: HEAD,
+      jobGrade: 'G2',
+    });
+    expect(title.status, JSON.stringify(title.body)).toBe(201);
+    headTitleId = data<{ id: string }>(title).id;
+    head = await mkEmployee('أيمن إسماعيل عبد العظيم', cashMohandessin, headTitleId);
+  });
+
+  it('names each member’s own seat from the catalogue', async () => {
+    await saveCrewDepartments([cashMohandessin.id]);
+    const roster = await members();
+    const of = (id: string) => roster.find((member) => member.employeeId === id);
+    expect(of(head)?.jobTitle).toEqual({ id: headTitleId, name: HEAD });
+    expect(of(people.cashMohandessin)?.jobTitle).toEqual({
+      id: jobTitleId,
+      name: { ar: 'أخصائي عمليات', en: 'Ops Specialist' },
+    });
+  });
+
+  it('the unconfigured fallback list carries it too', async () => {
+    // The fallback is whoever already holds a requirements row, read one by one through the seam:
+    // the seat must not depend on which way the roster was found.
+    const set = await request(app)
+      .put(`/api/v1/operations/crew-board/requirements/${head}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isCaptain: true });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await saveCrewDepartments([]);
+    const roster = await members();
+    expect(roster.find((member) => member.employeeId === head)?.jobTitle).toEqual({
+      id: headTitleId,
+      name: HEAD,
+    });
+  });
+});
+
+// Round 19b — «ولما اقف على القائد يجيب بياناته زى السواق»: hovering a member's name on «كشف طاقم
+// العمليات» opens the Fleet driver card's facts — so the mobile number and the branch travel with
+// the roster, through the same seam and under the same grant as the name, the code and the seat.
+describe('each member carries the phone and the branch HR has on file', () => {
+  const PHONE = '01098765432';
+  let captain = '';
+
+  const memberOf = async (id: string): Promise<OperationsCrewDirectoryDto['members'][number]> => {
+    const res = await call('get', '/operations/crew-board/directory');
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const found = data<OperationsCrewDirectoryDto>(res).members.find((m) => m.employeeId === id);
+    expect(found, `${id} is on the roster`).toBeDefined();
+    return found as OperationsCrewDirectoryDto['members'][number];
+  };
+
+  beforeAll(async () => {
+    // Alexandria's never-linked copy: Tanta's was deactivated above, and is crew only when saved.
+    captain = await mkEmployee('وليد صبحي عبد السلام', cashAlexUnlinked, jobTitleId, PHONE);
+  });
+
+  it('on the org-chart roster: HR’s primary phone, and the branch of the seat', async () => {
+    await saveCrewDepartments([cashMohandessin.id]);
+    const member = await memberOf(captain);
+    expect(member.phone).toBe(PHONE);
+    // Alexandria's copy of «نقل الأموال» — the member's own branch, not the branch of the copy saved.
+    expect(member.branchId).toBe(alex);
+    expect((await memberOf(people.cashMohandessin)).branchId).toBe(mohandessin);
+  });
+
+  it('on the unconfigured fallback list too — however the roster was found', async () => {
+    const set = await request(app)
+      .put(`/api/v1/operations/crew-board/requirements/${captain}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isCaptain: true });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    await saveCrewDepartments([]);
+    const member = await memberOf(captain);
+    expect(member).toMatchObject({ phone: PHONE, branchId: alex });
   });
 });

@@ -8954,6 +8954,23 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     expect(denied.status).toBe(403);
   });
 
+  it('an empty correction is no edit — one write, no «edited» entry', async () => {
+    // «Send only what changed»: `shipment: {}` changed nothing, so nothing is edited — the version
+    // moves once (the receipt), not twice, and «السجل» reads the receipt alone.
+    const shipment = await book();
+    const res = await receive(shipment.id, { shipment: {}, version: shipment.version });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(res)).toMatchObject({
+      status: 'inVault',
+      notes: 'كما حُجزت',
+      version: shipment.version + 1,
+    });
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).toEqual([
+      'created',
+      'vaultReceived',
+    ]);
+  });
+
   it('the corrections follow the edit form\'s own rules and shape — refused, nothing is written', async () => {
     const shipment = await book();
     // A destination branch of ANOTHER bank than the shipment's: the edit form's rule, the same code.

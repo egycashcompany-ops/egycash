@@ -511,8 +511,11 @@ class OperationsSecuredService {
     if (before.__v !== input.version) throw new StaleDocumentError();
 
     // Round 18 — the corrections, checked by EVERY rule of the edit form before anything is written.
+    // An empty `shipment` corrects nothing, so it is no edit at all: «Send only what changed», and a
+    // write of nothing would only move the version twice and re-check references the vault never
+    // touched (a bank deactivated since booking would refuse a receipt that changed none of it).
     const edit =
-      input.shipment === undefined
+      input.shipment === undefined || Object.keys(input.shipment).length === 0
         ? null
         : await operationsShipmentService.prepareEdit(before, input.shipment);
 

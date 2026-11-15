@@ -468,16 +468,58 @@ its entry here in the same PR.
       the receipt and shown on its «السجل» entry.
     - «تعدّلها عادي»: the vault may correct the shipment's data in the same form (`shipment` — the
       edit form's fields and the very rules `PATCH /operations/shipments/:id` applies, minus the
-      version and «سيريال»). The corrections and the receipt are ONE transaction: refused by an
-      edit rule, or failing after the edit, nothing is written. «السجل» shows what the vault
-      changed, then the receipt, both by the receiver. `operationsVault.receive` covers the
-      corrections; `operationsShipment.edit` is not asked. After the receipt everything locks, as
-      since Round 10.
+      version and «سيريال»; only what changed — an empty one is no edit). The corrections and the
+      receipt are ONE transaction: refused by an edit rule, or failing after the edit, nothing is
+      written. «السجل» shows what the vault changed, then the receipt, both by the receiver.
+      `operationsVault.receive` covers the corrections; `operationsShipment.edit` is not asked.
+      After the receipt everything locks, as since Round 10.
     - The answer adds `receipt` (`OperationsVaultReceiptDto`): when, the stored values and who
       received it by name — for the «إيصال» print. The vault list rows carry `bagSealsPerBag`,
       `denominations`, `receivedById` and `receivedByName`; «السجل» prints `bagSealsPerBag` and
       `denominations`. No uniqueness rule ever applied to receipt numbers, so none changes, and no
       migration: older rows read as they were stored.
+    - The form, on the vault's ✓ in «استلام الخزينة», is legacy's three bands in the app's look:
+      the shipment's data prefilled and editable with the shipment form's own boxes and rules (bank
+      → branch with the inline add, the area from the TO branch, the money lines in the catalog's
+      order, the dates' floors; the captain and the van shown read only), only what changed sent;
+      the receipt — «رقم الإيصال», «عدد الحقائب» with «2×»/«3×», «عدد الصناديق», «عدد الكراتين»
+      and a count under each of 0.25 … 200 with their total beside the shipment's pounds (a hint
+      when they differ, never a refusal); and the seals — one box per seal (bags × the radio, two
+      per box, none for cartons) under legacy's summary line, «[1 - 4]», «[6 - 8] - [10 - 11] -
+      13», a lone seal in red. A scanner's Enter moves to the next box. No box carries a star and
+      nobody is picked: «يُسجَّل المستلم تلقائيًا». A refused branch, bank, currency or date is said
+      under its box. After «استلام» the form stays open, locked; «إيصال» prints the receipt on
+      the company form (a «مسودة» before «استلام»). The shipment form looks and behaves as before.
+  - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
+    القى نظره».
+    - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست
+      شروطًا …») a line under it, the figures over the rows shown («الأفراد», «القادة»,
+      «الأخصائيون»), the one-row dark filter bar, the dark table, the boards' pager past 50 rows.
+      The «not configured» notice stays, as a slim line ending on «إدارات العمليات».
+    - Columns الاسم | الوظيفة, then all ten flags, «قائد» and «أخصائي» first and the legacy order
+      after; «صحة التوقيع» and «مزاولة المهنة» take the legacy wording (the crew board reads the
+      same labels). The person comes first — «يكون فيها الاسم بتاع القائد فى الاول وجمبه صغير كدا
+      الكود ولما اقف على القائد يجيب بياناته زى السواق»: the name, the code small and muted beside
+      it (no column of its own), and hovering the name (or Tab to it) opens the member's card in the
+      Fleet driver card's look — the whole name, the code, «الوظيفة», the mobile number, the branch,
+      and the flags held as labelled chips. No phone line for a reader the server sends none to. Each flag is the legacy round toggle — green with ✓, grey — a
+      `switch` named for the flag and the member, pressable only with `operationsCrew.plan`; a
+      reader without it is told the screen is view-only.
+    - Filters in the columns' order — «والفلاتر تكون ترتبيها زى الجدول والغى السيرش بالكود خليه
+      مكان واحد للاسم والكود سوا»: ONE box «الاسم أو الكود» (the name or the code, Arabic letter
+      forms and digits folded), «الوظيفة» (the titles on the roster, or «بلا وظيفة مسجَّلة») and
+      «يحمل» (every flag chosen; it reads what is saved, so a row does not vanish while a box in it
+      is unticked), remembered across visits. A view remembered with the two old boxes opens on
+      their text in the one. The screen no longer reads a `date`.
+    - Saving is a batch, as legacy's «حفظ» was: a tick waits — ringed, its row tinted — until «حفظ
+      (n)» sends every waiting row, one whole-row `PUT` after another (no new endpoint: each row
+      keeps its own existence check and audit entry, and one refused row does not cost the
+      others). A refused row stays red with the server's reason and its ticks kept; «تراجع» drops
+      them; leaving with ticks waiting asks first.
+    - `GET /operations/crew-board/directory`: each member carries `jobTitle` (`{ id, name }` or
+      null) — HR's seat through the directory seam, named from the job-title catalogue — and, for
+      the card, `phone` and `branchId` (each null when HR has none on file), all under
+      `operationsCrew.view` as the name and code are.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

@@ -10956,7 +10956,7 @@ const en: Record<string, string> = {
   'operations.crew.flag.isSpecialist': 'Specialist',
   'operations.crew.flag.hasWeapon': 'Weapon',
   'operations.crew.flag.hasSignature': 'Signature',
-  'operations.crew.flag.hasLicense': 'Licence',
+  'operations.crew.flag.hasLicense': 'Practice licence',
   'operations.crew.flag.hasTemporaryLicense': 'Temp. licence',
   'operations.crew.flag.none': 'Not on the operations roster — no flags recorded',
   'operations.crew.flag.carriesNothing': 'Carries nothing recorded',
@@ -10975,6 +10975,50 @@ const en: Record<string, string> = {
     'No operations department is chosen yet, so this list is only the people who already have ' +
     'flags recorded — anyone hired since is missing from it, and from every crew screen.',
   'operations.crew.requirements.empty': 'Nobody on the roster yet',
+  // Round 19 — the roster in the boards' look, after the legacy screen.
+  'operations.crew.requirements.name': 'Name',
+  'operations.crew.requirements.jobTitle': 'Job title',
+  'operations.crew.requirements.search': 'Name or code',
+  'operations.crew.requirements.holds': 'Holds',
+  'operations.crew.requirements.noJobTitle': 'No job title on file',
+  'operations.crew.requirements.noMatch': 'Nobody matches these filters',
+  'operations.crew.requirements.figures.members': 'Members',
+  'operations.crew.requirements.figures.captains': 'Captains',
+  'operations.crew.requirements.figures.specialists': 'Specialists',
+  'operations.crew.requirements.save': 'Save ({{count}})',
+  'operations.crew.requirements.discard': 'Undo',
+  'operations.crew.requirements.pendingCell': 'Changed, not saved yet',
+  'operations.crew.requirements.readOnly':
+    'View only — changing the flags needs the crew-planning permission',
+  'operations.crew.requirements.rowNotSaved': 'This row was not saved: {{reason}}',
+  'operations.crew.requirements.saved.one': 'Saved the changes for 1 member.',
+  'operations.crew.requirements.saved.two': 'Saved the changes for 2 members.',
+  'operations.crew.requirements.saved.few': 'Saved the changes for {{count}} members.',
+  'operations.crew.requirements.saved.many': 'Saved the changes for {{count}} members.',
+  'operations.crew.requirements.saved.other': 'Saved the changes for {{count}} members.',
+  'operations.crew.requirements.notSaved.one': 'Not saved for 1 member; the row is marked in red.',
+  'operations.crew.requirements.notSaved.two':
+    'Not saved for 2 members; their rows are marked in red.',
+  'operations.crew.requirements.notSaved.few':
+    'Not saved for {{count}} members; their rows are marked in red.',
+  'operations.crew.requirements.notSaved.many':
+    'Not saved for {{count}} members; their rows are marked in red.',
+  'operations.crew.requirements.notSaved.other':
+    'Not saved for {{count}} members; their rows are marked in red.',
+  'operations.crew.requirements.leaveTitle': 'Unsaved changes',
+  // Counted, as «حفظ (n)» counts the cells: «في الكشف ٧ تعديل» read wrong in the leave dialog.
+  'operations.crew.requirements.leaveBody.one':
+    'The roster has 1 unsaved change. Leave without saving?',
+  'operations.crew.requirements.leaveBody.two':
+    'The roster has 2 unsaved changes. Leave without saving?',
+  'operations.crew.requirements.leaveBody.few':
+    'The roster has {{count}} unsaved changes. Leave without saving?',
+  'operations.crew.requirements.leaveBody.many':
+    'The roster has {{count}} unsaved changes. Leave without saving?',
+  'operations.crew.requirements.leaveBody.other':
+    'The roster has {{count}} unsaved changes. Leave without saving?',
+  'operations.crew.requirements.leaveConfirm': 'Leave without saving',
+  'operations.crew.requirements.leaveStay': 'Stay',
   'operations.crew.departments.title': 'Operations departments',
   'operations.crew.departments.hint':
     'The employees of these departments ARE the operations crew — the crew roster, the crew board, the standing crew and the shipment captains all draw from them. Each department is chosen once and counts in every branch that has it, including a branch that adds it later; someone hired into a chosen department appears without anyone adding them.',
@@ -11024,25 +11068,69 @@ const en: Record<string, string> = {
   'operations.secured.backlog.tooLarge':
     'There are more than {{max}} open secured shipments, too many to show at once. The shipments history shows them by date range.',
   'operations.secured.receive.title': 'Receive into the vault',
-  'operations.secured.receive.subtitle':
-    'Secured shipments waiting to be taken into the vault. Two treasurers must sign for each one.',
+  'operations.secured.receive.subtitle': 'Secured shipments waiting to be taken into the vault.',
   'operations.secured.receive.action': 'Receive',
   'operations.secured.receive.empty': 'Nothing waiting to be received',
+  // Round 18 — the legacy «إستلام محصنة» form: the shipment's data (editable), the receipt, the
+  // seals. No names, nothing required («كله اختيارى»).
+  'operations.secured.receive.formTitle': 'Receive a secured shipment',
+  'operations.secured.receive.formSubtitle':
+    'The shipment as it arrived, the receipt and the seals — every box is optional.',
   'operations.secured.receive.receiptNumber': 'Receipt number',
   'operations.secured.receive.bags': 'Bags',
   'operations.secured.receive.cartons': 'Cartons',
   'operations.secured.receive.boxes': 'Boxes',
-  'operations.secured.receive.bagSeals': 'Bag seals',
-  'operations.secured.receive.boxSeals': 'Box seals',
-  'operations.secured.receive.sealsHint': 'One per line, or separated by commas.',
-  'operations.secured.receive.primary': 'First treasurer',
-  'operations.secured.receive.secondary': 'Second treasurer',
-  'operations.secured.receive.dualControl': 'Two different people must receive each shipment.',
-  'operations.secured.receive.sameTreasurer': 'The two treasurers must be different people.',
+  'operations.secured.receive.bagSeals': 'Bag barcodes',
+  'operations.secured.receive.boxSeals': 'Box barcodes',
+  'operations.secured.receive.money': 'Currencies and amounts',
+  'operations.secured.receive.crewReadOnly':
+    'The crew is set on the operations screens, not in this form.',
+  'operations.secured.receive.serial': 'Serial',
+  'operations.secured.receive.serialBox': 'Serial shipment',
+  'operations.secured.receive.serialHint':
+    'Decided at receipt: whether the serial numbers of this shipment’s notes are tracked.',
+  'operations.secured.receive.sealsPerBag': 'Seals per bag',
+  'operations.secured.receive.denominations': 'Notes of each denomination',
+  'operations.secured.receive.denominationInput': 'Notes of {{value}}',
+  'operations.secured.receive.denominationsTotal': 'Denominations total',
+  'operations.secured.receive.shipmentPound': 'Shipment EGP',
+  'operations.secured.receive.denominationsMatch': 'Matches the shipment’s pound amount.',
+  'operations.secured.receive.denominationsMatched': 'Matches',
+  'operations.secured.receive.denominationsMismatch':
+    'Differs from the shipment’s pound amount by {{difference}} — saved as counted.',
+  'operations.secured.receive.denominationsDiffer': 'Differs by {{difference}}',
+  'operations.secured.receive.sealsEmpty': 'Enter the count to show its barcode boxes.',
+  'operations.secured.receive.bagSealInput': 'Bag {{unit}} — seal {{seal}}',
+  'operations.secured.receive.boxSealInput': 'Box {{unit}} — seal {{seal}}',
+  'operations.secured.receive.duplicates': 'Entered twice: {{seals}}',
+  'operations.secured.receive.scanHint': 'A scanner moves on to the next box by itself (Enter).',
+  'operations.secured.receive.receiverNote': 'Received by the signed-in user: {{name}}',
+  'operations.secured.receive.print': 'Receipt',
+  'operations.secured.receive.printHint': 'Print the vault receipt',
+  'operations.secured.receive.takenBanner':
+    'Received into the vault at {{at}} — by {{name}}. The «Receipt» button prints it.',
+  'operations.secured.receive.shipmentIncomplete':
+    'The shipment’s data cannot be left empty — fill in the boxes marked.',
+  'operations.secured.receive.errors.notDraft':
+    'This shipment is no longer waiting to be received — it was received meanwhile.',
   'operations.secured.receive.done': 'Received into the vault',
-  'operations.secured.receive.failed': 'Could not record the receipt.',
-  'operations.secured.receive.noRoster':
-    'The treasurers cannot be listed: choosing them needs permission to view the operations crew.',
+  'operations.secured.receive.failed': 'Could not record the receipt. Check the values and try again.',
+  // «إيصال» — the vault receipt on the company's report form.
+  'operations.secured.receive.print.title': 'Secured shipment receipt',
+  'operations.secured.receive.print.titleDraft': 'Secured shipment receipt — draft',
+  'operations.secured.receive.print.department': 'Vault',
+  'operations.secured.receive.print.draftNote':
+    'Draft — not received yet; printed from the form before «Receive».',
+  'operations.secured.receive.print.takenNote': 'Received at {{at}} — by {{name}}',
+  'operations.secured.receive.print.item': 'Item',
+  'operations.secured.receive.print.value': 'Value',
+  'operations.secured.receive.print.line': 'Amount — {{currency}}',
+  'operations.secured.receive.print.bags': '{{count}} — seals per bag: {{per}}',
+  'operations.secured.receive.print.sealCount': 'count: {{count}}',
+  'operations.secured.receive.print.denomination': 'Denomination {{value}}',
+  'operations.secured.receive.print.notes': 'Notes: {{count}} = {{amount}}',
+  'operations.secured.receive.print.receivedBy': 'Received by',
+  'operations.secured.receive.print.receivedAt': 'Received at',
   // «صرف الخزينة» (Round 10 — every secured shipment in the vault, on the boards' board).
   'operations.secured.dispatch.noCrew': 'No vehicle on this day has a captain yet.',
   'operations.secured.dispatch.assigned': 'Assigned to the vehicle',
@@ -24395,8 +24483,8 @@ const ar: Record<string, string> = {
   'operations.crew.flag.isCaptain': 'قائد',
   'operations.crew.flag.isSpecialist': 'أخصائي',
   'operations.crew.flag.hasWeapon': 'سلاح',
-  'operations.crew.flag.hasSignature': 'صحة توقيع',
-  'operations.crew.flag.hasLicense': 'مزاولة',
+  'operations.crew.flag.hasSignature': 'صحة التوقيع',
+  'operations.crew.flag.hasLicense': 'مزاولة المهنة',
   'operations.crew.flag.hasTemporaryLicense': 'مزاولة مؤقتة',
   'operations.crew.flag.none': 'ليس على كشف العمليات — لا توجد بيانات متطلبات',
   'operations.crew.flag.carriesNothing': 'لا يحمل شيئًا مسجَّلًا',
@@ -24413,6 +24501,48 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.unconfigured':
     'لم تُحدَّد إدارة العمليات بعد، لذا المعروض هنا هم مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر هنا ولا في أي شاشة من شاشات الطاقم.',
   'operations.crew.requirements.empty': 'لا يوجد أحد في الكشف بعد',
+  // Round 19 — الكشف بشكل اللوحات، على نسق الشاشة القديمة.
+  'operations.crew.requirements.name': 'الاسم',
+  'operations.crew.requirements.jobTitle': 'الوظيفة',
+  'operations.crew.requirements.search': 'الاسم أو الكود',
+  'operations.crew.requirements.holds': 'يحمل',
+  'operations.crew.requirements.noJobTitle': 'بلا وظيفة مسجَّلة',
+  'operations.crew.requirements.noMatch': 'لا يوجد أحد يطابق هذه الفلاتر',
+  'operations.crew.requirements.figures.members': 'الأفراد',
+  'operations.crew.requirements.figures.captains': 'القادة',
+  'operations.crew.requirements.figures.specialists': 'الأخصائيون',
+  'operations.crew.requirements.save': 'حفظ ({{count}})',
+  'operations.crew.requirements.discard': 'تراجع',
+  'operations.crew.requirements.pendingCell': 'تغيير لم يُحفظ بعد',
+  'operations.crew.requirements.readOnly': 'للاطلاع فقط — تعديل المؤشرات يتطلب صلاحية تخطيط الطاقم',
+  'operations.crew.requirements.rowNotSaved': 'لم يُحفظ هذا الصف: {{reason}}',
+  'operations.crew.requirements.saved.one': 'حُفظت تعديلات فرد واحد.',
+  'operations.crew.requirements.saved.two': 'حُفظت تعديلات فردين.',
+  'operations.crew.requirements.saved.few': 'حُفظت تعديلات {{count}} أفراد.',
+  'operations.crew.requirements.saved.many': 'حُفظت تعديلات {{count}} فردًا.',
+  'operations.crew.requirements.saved.other': 'حُفظت تعديلات {{count}} فرد.',
+  'operations.crew.requirements.notSaved.one': 'لم تُحفظ تعديلات فرد واحد؛ صفه معلَّم بالأحمر.',
+  'operations.crew.requirements.notSaved.two': 'لم تُحفظ تعديلات فردين؛ صفّاهما معلَّمان بالأحمر.',
+  'operations.crew.requirements.notSaved.few':
+    'لم تُحفظ تعديلات {{count}} أفراد؛ صفوفهم معلَّمة بالأحمر.',
+  'operations.crew.requirements.notSaved.many':
+    'لم تُحفظ تعديلات {{count}} فردًا؛ صفوفهم معلَّمة بالأحمر.',
+  'operations.crew.requirements.notSaved.other':
+    'لم تُحفظ تعديلات {{count}} فرد؛ صفوفهم معلَّمة بالأحمر.',
+  'operations.crew.requirements.leaveTitle': 'تغييرات غير محفوظة',
+  // العدد بصيغته: «تعديل واحد · تعديلان · ٧ تعديلات · ١١ تعديلًا · ١٠٠ تعديل».
+  'operations.crew.requirements.leaveBody.one':
+    'في الكشف تعديل واحد لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.crew.requirements.leaveBody.two':
+    'في الكشف تعديلان لم يُحفظا. هل تريد المغادرة دون حفظ؟',
+  'operations.crew.requirements.leaveBody.few':
+    'في الكشف {{count}} تعديلات لم تُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.crew.requirements.leaveBody.many':
+    'في الكشف {{count}} تعديلًا لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.crew.requirements.leaveBody.other':
+    'في الكشف {{count}} تعديل لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.crew.requirements.leaveConfirm': 'المغادرة دون حفظ',
+  'operations.crew.requirements.leaveStay': 'البقاء',
   'operations.crew.departments.title': 'إدارات العمليات',
   'operations.crew.departments.hint':
     'موظفو هذه الإدارات هم طاقم العمليات — كشف الأطقم ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. تُختار كل إدارة مرة واحدة فتُحتسب في كل فرع توجد فيه، بما في ذلك الفرع الذي يضيفها لاحقًا، ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
@@ -24457,25 +24587,66 @@ const ar: Record<string, string> = {
   'operations.secured.backlog.tooLarge':
     'عدد المحصنات المفتوحة يتجاوز {{max}}، وهو أكثر مما يمكن عرضه مرة واحدة. يعرضها سجل الشحنات بتحديد مدة.',
   'operations.secured.receive.title': 'الاستلام في الخزينة',
-  'operations.secured.receive.subtitle':
-    'المحصنات في انتظار الإدخال إلى الخزينة. يوقّع على كل واحدة أمينان.',
+  'operations.secured.receive.subtitle': 'المحصنات في انتظار الإدخال إلى الخزينة.',
   'operations.secured.receive.action': 'استلام',
   'operations.secured.receive.empty': 'لا يوجد ما ينتظر الاستلام',
+  // الجولة 18 — نموذج «استلام محصنة»: بيانات المحصنة (قابلة للتعديل)، والإيصال، والأختام.
+  'operations.secured.receive.formTitle': 'استلام محصنة',
+  'operations.secured.receive.formSubtitle':
+    'بيانات المحصنة كما وصلت، والإيصال، والأختام — جميع الخانات اختيارية.',
   'operations.secured.receive.receiptNumber': 'رقم الإيصال',
-  'operations.secured.receive.bags': 'أكياس',
-  'operations.secured.receive.cartons': 'كراتين',
-  'operations.secured.receive.boxes': 'صناديق',
-  'operations.secured.receive.bagSeals': 'أختام الأكياس',
-  'operations.secured.receive.boxSeals': 'أختام الصناديق',
-  'operations.secured.receive.sealsHint': 'واحد في كل سطر، أو مفصولة بفواصل.',
-  'operations.secured.receive.primary': 'الأمين الأول',
-  'operations.secured.receive.secondary': 'الأمين الثاني',
-  'operations.secured.receive.dualControl': 'يجب أن يستلم كل شحنة شخصان مختلفان.',
-  'operations.secured.receive.sameTreasurer': 'يجب أن يكون الأمينان شخصين مختلفين.',
+  'operations.secured.receive.bags': 'عدد الحقائب',
+  'operations.secured.receive.cartons': 'عدد الكراتين',
+  'operations.secured.receive.boxes': 'عدد الصناديق',
+  'operations.secured.receive.bagSeals': 'باركود الحقائب',
+  'operations.secured.receive.boxSeals': 'باركود الصناديق',
+  'operations.secured.receive.money': 'العملات والمبالغ',
+  'operations.secured.receive.crewReadOnly': 'يُعيَّن الطاقم من شاشات التشغيل، لا من هذا النموذج.',
+  'operations.secured.receive.serial': 'سيريال',
+  'operations.secured.receive.serialBox': 'محصنة سيريال',
+  'operations.secured.receive.serialHint':
+    'يُحدَّد عند الاستلام: هل تُتتبَّع الأرقام التسلسلية لأوراق هذه المحصنة.',
+  'operations.secured.receive.sealsPerBag': 'عدد الأختام لكل حقيبة',
+  'operations.secured.receive.denominations': 'عدد الأوراق من كل فئة',
+  'operations.secured.receive.denominationInput': 'عدد أوراق فئة {{value}}',
+  'operations.secured.receive.denominationsTotal': 'إجمالي الفئات',
+  'operations.secured.receive.shipmentPound': 'جنيه المحصنة',
+  'operations.secured.receive.denominationsMatch': 'يطابق مبلغ الجنيه في المحصنة.',
+  'operations.secured.receive.denominationsMatched': 'مطابق',
+  'operations.secured.receive.denominationsMismatch':
+    'يختلف عن مبلغ الجنيه في المحصنة بمقدار {{difference}} — يُحفظ كما عُدّ.',
+  'operations.secured.receive.denominationsDiffer': 'لا يطابق — الفرق {{difference}}',
+  'operations.secured.receive.sealsEmpty': 'أدخل العدد لتظهر خانات الباركود.',
+  'operations.secured.receive.bagSealInput': 'الحقيبة {{unit}} — الختم {{seal}}',
+  'operations.secured.receive.boxSealInput': 'الصندوق {{unit}} — الختم {{seal}}',
+  'operations.secured.receive.duplicates': 'مكرر: {{seals}}',
+  'operations.secured.receive.scanHint': 'ينتقل الماسح إلى الخانة التالية تلقائيًا (Enter).',
+  'operations.secured.receive.receiverNote': 'يُسجَّل المستلم تلقائيًا: {{name}}',
+  'operations.secured.receive.print': 'إيصال',
+  'operations.secured.receive.printHint': 'طباعة إيصال الاستلام',
+  'operations.secured.receive.takenBanner':
+    'تم الاستلام في الخزينة في {{at}} — المستلم: {{name}}. يُطبع الإيصال من زر «إيصال».',
+  'operations.secured.receive.shipmentIncomplete':
+    'لا تُترك بيانات المحصنة فارغة — أكمل الخانات المحددة.',
+  'operations.secured.receive.errors.notDraft':
+    'لم تعد هذه المحصنة في انتظار الاستلام — استُلمت في أثناء ذلك.',
   'operations.secured.receive.done': 'تم الاستلام في الخزينة',
-  'operations.secured.receive.failed': 'تعذّر تسجيل الاستلام.',
-  'operations.secured.receive.noRoster':
-    'تعذّر عرض أسماء الأمناء: يتطلب اختيارهم صلاحية عرض طاقم التشغيل.',
+  'operations.secured.receive.failed': 'تعذّر تسجيل الاستلام. راجع القيم ثم أعد المحاولة.',
+  // «إيصال» — إيصال الخزينة على نموذج تقارير الشركة.
+  'operations.secured.receive.print.title': 'إيصال استلام محصنة',
+  'operations.secured.receive.print.titleDraft': 'إيصال استلام محصنة — مسودة',
+  'operations.secured.receive.print.department': 'الخزينة',
+  'operations.secured.receive.print.draftNote': 'مسودة — لم تُستلم بعد؛ طُبعت من النموذج قبل «استلام».',
+  'operations.secured.receive.print.takenNote': 'استُلمت في {{at}} — المستلم: {{name}}',
+  'operations.secured.receive.print.item': 'البيان',
+  'operations.secured.receive.print.value': 'القيمة',
+  'operations.secured.receive.print.line': 'قيمة الشحنة — {{currency}}',
+  'operations.secured.receive.print.bags': '{{count}} — الأختام لكل حقيبة: {{per}}',
+  'operations.secured.receive.print.sealCount': 'العدد: {{count}}',
+  'operations.secured.receive.print.denomination': 'فئة {{value}}',
+  'operations.secured.receive.print.notes': 'عدد الأوراق: {{count}} = {{amount}}',
+  'operations.secured.receive.print.receivedBy': 'المستلم',
+  'operations.secured.receive.print.receivedAt': 'وقت الاستلام',
   // «صرف الخزينة» (الجولة 10 — كل المحصنات التي بالخزينة، بشكل لوحات الشحنات).
   'operations.secured.dispatch.noCrew': 'لا توجد مركبة لها قائد في هذا اليوم.',
   'operations.secured.dispatch.assigned': 'تم التعيين على المركبة',

@@ -187,7 +187,7 @@ $facet: {
 | `vaultNumber`, `rackNumber` | `vault_no`, `Rack_no` |
 | `bagCount`,`cartonCount`,`boxCount` | `bag`,`cartoon`,`box` |
 | `bagSeals[]`,`boxSeals[]` | `bag_seals`,`box_seals` |
-| `receivedByPrimaryId` **+** `receivedBySecondaryId` | 🐞 يُصلح Q2 — **كلاهما مطلوب** |
+| `receivedByPrimaryId` **+** `receivedBySecondaryId` | 🐞 يُصلح Q2 — **كلاهما مطلوب** حتى Round 18، ثم لا يُكتبان (انظر `receivedById`) |
 | `receivedById` *(Round 18)* | المستخدم المسجّل دخوله، من التوكن — ألغى المالك الأسماء («انا مش عاوز اى اسماء … كله اختيارى»)، فلا يُكتب الأمينان بعدها ويبقيان مقروءين للإيصالات القديمة فقط |
 | `bagSealsPerBag`, `denominations` *(Round 18)* | «2×/3×» و«عدد الورق من كل فئة» من نموذج «إستلام محصنة» القديم — اختياريان، وكذلك `receiptNumber` |
 | `receivedAt` | `treasurer_receive_date` |

@@ -179,6 +179,11 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // at once is not where the next visit starts.
   ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'
+  // are. It reads no `date` any more — the roster is the same every day. Round 19b: `code` and
+  // `name`, the two boxes before «الاسم أو الكود» (`q`), are read only to fold an old link or a
+  // remembered view into `q`, and are taken off the address at once.
+  ['modules/operations/pages/RequirementsPage.tsx', ['code', 'name']],
   // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
   // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
   ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
@@ -238,7 +243,6 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     'modules/operations/pages/CrewBoardPage.tsx',
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
-  ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
   // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
   // محصنات); nothing else is read from the URL.
   [

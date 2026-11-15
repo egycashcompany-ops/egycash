@@ -46,6 +46,9 @@ const member = (
   code: `BR${id}`,
   fullNameAr: name,
   status: 'active',
+  jobTitle: null,
+  phone: null,
+  branchId: null,
   requirements: req === null ? null : requirements(req),
   assignedVehicleId: null,
 });

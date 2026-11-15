@@ -709,7 +709,14 @@ export interface FleetDashboardNowWorkshopDto {
   open: number;
   openActive: number;
   openOutOfService: number;
-  oldest: { vehicleId: string | null; code: string; inDate: string; days: number } | null;
+  /** `longest[0]`, its `deleted` flag included. */
+  oldest: {
+    vehicleId: string | null;
+    code: string;
+    inDate: string;
+    days: number;
+    deleted: boolean;
+  } | null;
   /**
    * «أطول بقاء في الورشة الآن»: at most FLEET_DASHBOARD_WORKSHOP_ROWS of the open visits `open`
    * counts (the same filter), oldest check-in first, then the visit id; `oldest` is `longest[0]`.
@@ -723,6 +730,13 @@ export interface FleetDashboardWorkshopStayDto {
   visitId: string;
   vehicleId: string | null;
   code: string;
+  /**
+   * The registry car was DELETED since (soft delete; its visit stays open and counted). Its file is
+   * no longer served and the list finds no live car by its code, so the web gives such a row no car
+   * link and opens the open-visits list instead (where the visit is still listed). `false` for an
+   * old-book row with no registry car: its code matches the book's.
+   */
+  deleted: boolean;
   /** The make, as the maintenance list names it; `null` for an old-book code with no registry car. */
   typeName: LocalizedString | null;
   /** Check-in day, 'YYYY-MM-DD'. */
@@ -1066,8 +1080,9 @@ export interface FleetDashboardPeriodExitsDto {
   byWorkshop: FleetDashboardPeriodExitBarDto[];
   /**
    * ≤ FLEET_DASHBOARD_RANK_ROWS: exits desc, latest check-in desc, then code. A car deleted from the
-   * registry is not ranked, and neither is an old-book visit with no registry car — both stay in
-   * `count` and the bars (the old-book ones also in `unregistered`).
+   * registry is not ranked (its code opens an empty list), and — a choice, not a dead link — neither
+   * is an old-book visit with no registry car: every row names a registry car. Both stay in `count`
+   * and the bars (the old-book ones also in `unregistered`).
    */
   topVehicles: FleetDashboardPeriodTopVehicleDto[];
   /** Exits of old-book visits with no registry car; `null` when a vehicle clause applies. */

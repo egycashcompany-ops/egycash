@@ -272,7 +272,7 @@ const KpiRow = ({
               <CarChip
                 code={oldest.code}
                 link={
-                  oldest.vehicleId === null || !can('fleetVehicle.view')
+                  oldest.vehicleId === null || oldest.deleted || !can('fleetVehicle.view')
                     ? null
                     : links.vehicle(oldest.vehicleId, 'workshop.oldest')
                 }

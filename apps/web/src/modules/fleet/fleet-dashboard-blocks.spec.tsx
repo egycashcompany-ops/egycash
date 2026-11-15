@@ -165,6 +165,20 @@ describe('ColumnChart — the brand columns, each figure on its cap', () => {
     expect(html).not.toContain('role="tooltip"');
   });
 
+  it('on a phone, scrolls sideways inside its card rather than crushing its columns together', () => {
+    // Below `sm` each column keeps 88 px and 8 px apart (3 → 3 × 88 + 2 × 8 = 280 px); the value
+    // axis stays outside the scroller; from `sm` up nothing of this applies.
+    const scroller = slice(html, 'data-dash-chart-scroll', 'true');
+    expect(scroller).toContain('max-sm:overflow-x-auto');
+    expect(html).toMatch(
+      /data-dash-chart-plot="true" class="max-sm:min-w-\[var\(--dash-phone-w\)\]" style="--dash-phone-w:280px"/u,
+    );
+    expect(html.indexOf('data-dash-tick=')).toBeLessThan(html.indexOf('data-dash-chart-scroll'));
+    expect(html).toContain('role="list" class="absolute inset-0 flex max-sm:gap-2"');
+    // A name longer than its slot breaks inside it, never over the next one.
+    expect(slice(html, 'data-dash-col-name', 'b1')).toContain('[overflow-wrap:anywhere]');
+  });
+
   it('draws an empty axis for no column, and never a sample marker', () => {
     const empty = render(<ColumnChart id="x" columns={[]} ariaLabel="x" of="x" />);
     expect([...empty.matchAll(/data-dash-tick="(\d+)"/gu)].map((m) => m[1])).toEqual(['0']);
@@ -309,6 +323,9 @@ describe('BlockHead, BlockFoot, NoteLine and BandHead', () => {
     expect(html).toContain('<h3');
     expect(text(html)).toBe('الكيلومترات حسب الفرع chip ما قطعته سيارات كل فرع منذ أول الشهر. end');
     expect(render(<BlockHead icon={I.gauge} tone="brand" title="T" />)).not.toMatch(/<p[\s>]/u);
+    // One line from `sm` up; on a phone a long title wraps inside the card.
+    expect(html).toMatch(/<h3 class="[^"]*text-balance sm:whitespace-nowrap"/u);
+    expect(html).not.toMatch(/<h3 class="[^"]*(?<!sm:)whitespace-nowrap/u);
   });
 
   it('lays the foot out in a row, or one line under another with `stack`', () => {

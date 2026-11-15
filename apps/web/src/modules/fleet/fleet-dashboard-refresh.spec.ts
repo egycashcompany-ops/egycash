@@ -29,6 +29,7 @@ import {
 } from './lib/fleet-dashboard-url';
 import { RefreshTools } from './components/fleet-dashboard/dash-shell';
 import { fleetDashboardKeys, invalidateAtCairoMidnight } from './api/fleet-dashboard-queries';
+import { vehicleContractListKey, vehicleContractSummaryKey } from './api/vehicle-contract-queries';
 import { createRealtimeInvalidator } from '../../platform/realtime/invalidator';
 import {
   THROTTLED_KEY_PREFIXES,
@@ -291,15 +292,20 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
 
   it('«الصيانة والورش» refreshes R1 and R2 together — each only for its reader — and shows the older age', () => {
     const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
+    // R2 only when this tab draws its period band (a km-only reader reads R2 but sees no band).
     expect(flat).toContain(
-      'const refreshBoth = (): void => { if (reads.now) void nowQ.refetch({ cancelRefetch: false }); refreshPeriod(); };',
+      'const periodDrawn = reads.period && sectionPermitted(MIXED_PERIOD_SECTION[active], can);',
+    );
+    expect(flat).toContain("const MIXED_PERIOD_SECTION = { maintenance: 'exits' }");
+    expect(flat).toContain(
+      'const refreshBoth = (): void => { if (reads.now) void nowQ.refetch({ cancelRefetch: false }); if (periodDrawn) refreshPeriod(); };',
     );
     expect(flat).toContain('onRefresh={refreshBoth}');
     expect(flat).toContain(
-      'refreshing={(reads.now && nowQ.isFetching) || (reads.period && periodQ.isFetching)}',
+      'refreshing={(reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching)}',
     );
     expect(flat).toContain(
-      '...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []), ...(reads.period && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),',
+      '...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []), ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),',
     );
     expect(flat).toContain('updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}');
     // Each band retries its own read: «الآن» R1, the period band R2.
@@ -343,6 +349,31 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(moved(keys.lastMonthByType)).toBe(true);
     // A range that ended before today is the same range tomorrow.
     expect(moved(keys.oldRange)).toBe(false);
+  });
+
+  it('the supply contracts’ summaries «توزيع السيارات» reads move with R1’s day — their alarms count days', () => {
+    // `{ summary: true }` is a partial key: it matches the three summaries, never the screen's list.
+    const qc = new QueryClient();
+    const year = { from: '2026-01-01', to: '2026-12-31' };
+    const keys = {
+      all: vehicleContractSummaryKey(year),
+      red: vehicleContractSummaryKey({ ...year, alarm: ['red'] }),
+      yellow: vehicleContractSummaryKey({ ...year, alarm: ['yellow'] }),
+      list: vehicleContractListKey({ ...year, page: 1 }),
+    };
+    for (const key of Object.values(keys)) qc.setQueryData(key, { count: 1 });
+    void qc.invalidateQueries({ queryKey: vehicleContractSummaryKey({}) });
+    const moved = (key: readonly unknown[]): boolean | undefined =>
+      qc.getQueryState(key)?.isInvalidated;
+    expect(moved(keys.all)).toBe(true);
+    expect(moved(keys.red)).toBe(true);
+    expect(moved(keys.yellow)).toBe(true);
+    expect(moved(keys.list)).toBe(false);
+    // …when R1's `today` turns over (midnight moves R1), not on the first answer.
+    const flat = source('components/fleet-dashboard/tab-distribution.tsx').replace(/\s+/gu, ' ');
+    expect(flat).toContain(
+      'if (permitted && seenDay.current !== null && seenDay.current !== today) { void qc.invalidateQueries({ queryKey: vehicleContractSummaryKey({}) }); } seenDay.current = today; }, [today, permitted, qc]);',
+    );
   });
 
   it('the timer runs from R1, or from R2 for a reader who holds only the period tabs', () => {

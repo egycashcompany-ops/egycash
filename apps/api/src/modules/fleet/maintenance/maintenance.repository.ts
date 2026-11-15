@@ -719,6 +719,8 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           byWorkType: [{ $group: { _id: '$workTypeId', count: { $sum: 1 } } }],
           byWorkshop: [{ $group: { _id: '$workshopId', count: { $sum: 1 } } }],
           byVehicle: [
+            // Registry cars only (a choice: the ranking names a registry car); the old book's rows
+            // with no car stay in `state` (count, `unregistered`) and the bars.
             { $match: { vehicleId: { $type: 'objectId' } } },
             {
               $group: {

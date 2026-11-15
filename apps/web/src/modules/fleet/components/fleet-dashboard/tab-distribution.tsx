@@ -20,7 +20,8 @@
 // figures shown side by side. «أخرى», «بلا فرع» and «غير مسجّلة» have no link: no screen lists exactly
 // them. The km links come from the month read's OWN echo, never the page's filters. Every data bar and
 // column is the brand's (DECISIONS §5); the operations keep their colours (brand · sky · slate).
-import { type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   type FleetDashboardNowDto,
   type FleetDashboardPeriodDto,
@@ -30,7 +31,10 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { localized } from '../../../../shared/lib/format';
 import { Skeleton } from '../../../../shared/ui/Skeleton';
-import { useVehicleContractSummary } from '../../api/vehicle-contract-queries';
+import {
+  useVehicleContractSummary,
+  vehicleContractSummaryKey,
+} from '../../api/vehicle-contract-queries';
 import {
   nowLinks,
   periodLinks,
@@ -381,10 +385,21 @@ const OperationRow = ({
     atm: vehicles.atm.vehicles,
     other: vehicles.other.vehicles,
   };
-  const allSub =
+  // Whose cars and drivers the card counts: the branch's, the reader's branches («كل فروعي»), or the
+  // whole company's — never «سجل السائقين كله» over a narrowed count.
+  const allSub = t(
     drivers === null
-      ? t(oneBranch ? `${W}.allSubCarsBranch` : `${W}.allSubCars`)
-      : t(oneBranch ? `${W}.allSubBranch` : `${W}.allSub`);
+      ? oneBranch
+        ? `${W}.allSubCarsBranch`
+        : narrowed
+          ? `${W}.allSubCarsMine`
+          : `${W}.allSubCars`
+      : oneBranch
+        ? `${W}.allSubBranch`
+        : narrowed
+          ? `${W}.allSubMine`
+          : `${W}.allSub`,
+  );
   const kindCard = (key: 'cash' | 'atm', tone: Tone, icon: IconPath) => {
     const n = vehicles[key].vehicles;
     return (
@@ -521,8 +536,9 @@ const BranchCard = ({
 }): JSX.Element => {
   const t = useT();
   const none = id === null;
+  // A zero opens nothing (an empty list); the card still shows it — «كارت صفر».
   const kindLink = (key: 'cash' | 'atm'): DashLink | null =>
-    id === null || vehicles[key].operationIds.length === 0
+    id === null || kinds[key] === 0 || vehicles[key].operationIds.length === 0
       ? null
       : links.vehiclesBy(
           { branchId: id, operationIds: vehicles[key].operationIds },
@@ -538,7 +554,9 @@ const BranchCard = ({
         <span className="flex items-baseline gap-1.5 whitespace-nowrap">
           <Big
             link={
-              id === null ? null : links.vehiclesBy({ branchId: id }, 'distributionVehicles.branch')
+              id === null || n === 0
+                ? null
+                : links.vehiclesBy({ branchId: id }, 'distributionVehicles.branch')
             }
             className={cn('!text-[30px]', none && '!text-red-700 dark:!text-red-300')}
           >
@@ -743,15 +761,23 @@ const Matrix = ({ vehicles, links }: { vehicles: Vehicles; links: NowLinks }): J
                 <td className={cn(TCELL, STICKY, TH_ROW, 'whitespace-nowrap font-bold', STRONG)}>
                   {t(`${W}.branchTotal`)}
                 </td>
-                {vehicles.branches.map((b) => (
-                  <td key={b.id} className={cn(TCELL, 'text-center')}>
-                    <Small
-                      link={links.vehiclesBy({ branchId: b.id }, 'distributionVehicles.branch')}
-                    >
-                      {count(vehicles.totals.counts[b.id] ?? 0)}
-                    </Small>
-                  </td>
-                ))}
+                {vehicles.branches.map((b) => {
+                  const n = vehicles.totals.counts[b.id] ?? 0;
+                  return (
+                    <td key={b.id} className={cn(TCELL, 'text-center')}>
+                      {/* A branch with no active car: its column is dashes to the foot. */}
+                      {n === 0 ? (
+                        <Zero />
+                      ) : (
+                        <Small
+                          link={links.vehiclesBy({ branchId: b.id }, 'distributionVehicles.branch')}
+                        >
+                          {count(n)}
+                        </Small>
+                      )}
+                    </td>
+                  );
+                })}
                 {showNone && (
                   <td className={cn(TCELL, 'text-center')}>
                     <Small className={RED}>{count(vehicles.totals.noBranch)}</Small>
@@ -1047,6 +1073,19 @@ const useSupply = (now: FleetDashboardNowDto | null, can: (permission: string) =
   const red = useVehicleContractSummary({ ...yearWindow(year), alarm: ['red'] }, permitted);
   const yellow = useVehicleContractSummary({ ...yearWindow(year), alarm: ['yellow'] }, permitted);
   const reads: readonly Summary[] = [all, red, yellow];
+  // A contract's alarm level is days to its deadline from the server's today: when R1's day turns
+  // over (Cairo midnight moves R1), the summaries are read again — `{ summary: true }` matches all
+  // three keys. A new year changes the keys themselves.
+  const qc = useQueryClient();
+  const today = now?.today ?? null;
+  const seenDay = useRef(today);
+  useEffect(() => {
+    if (today === null) return;
+    if (permitted && seenDay.current !== null && seenDay.current !== today) {
+      void qc.invalidateQueries({ queryKey: vehicleContractSummaryKey({}) });
+    }
+    seenDay.current = today;
+  }, [today, permitted, qc]);
   return permitted
     ? {
         year,
@@ -1172,15 +1211,11 @@ const SupplyCard = ({
       </div>
     </div>
   );
-  if (failed) {
-    return (
-      <div data-dist-block="supply" className="mt-5">
-        <SectionError section="supplyContracts" onRetry={supply.refetch} />
-      </div>
-    );
-  }
   let band: ReactNode;
-  if (all === undefined || red === undefined || yellow === undefined) {
+  if (failed) {
+    // Its head stays (which part failed, and the contracts still open); the retry asks all three.
+    band = <SectionError section="supplyContracts" onRetry={supply.refetch} />;
+  } else if (all === undefined || red === undefined || yellow === undefined) {
     band = (
       <div data-dist-loading="true" className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         {[0, 1, 2].map((i) => (
@@ -1233,7 +1268,8 @@ const SupplyCard = ({
         </SupplyTile>
         <SupplyTile id="remaining" icon={I.clock} tone="slate" label={t(`${W}.supply.remaining`)}>
           <div className="flex items-baseline gap-2 whitespace-nowrap">
-            <Big link={links.supplyContracts('supplyContracts.remaining')}>{count(remaining)}</Big>
+            {/* Plain, as approved: the cars still owed are a difference, not a list of their own. */}
+            <Big>{count(remaining)}</Big>
             <span className={WORDS}>{noun('car', remaining)}</span>
           </div>
         </SupplyTile>

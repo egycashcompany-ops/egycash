@@ -6453,7 +6453,7 @@ const en: Record<string, string> = {
   'fleet.dash.shell.tabShort.licences': 'Licences',
   'fleet.dash.shell.navLabel': 'Dashboard sections',
   'fleet.dash.shell.badge.licences': 'Expired licences: {{count}}',
-  'fleet.dash.shell.badge.maintenance': 'Cars that reached the service limit: {{count}}',
+  'fleet.dash.shell.badge.maintenance': 'Vehicles that reached the service limit: {{count}}',
   'fleet.dash.shell.badge.accidents': 'Accidents in the period: {{count}}',
   'fleet.dash.shell.refresh': 'Refresh',
   'fleet.dash.shell.updatedNow': 'Updated just now',
@@ -6692,6 +6692,8 @@ const en: Record<string, string> = {
   'fleet.dash.distribution.allSubBranch': 'Every operation of the branch, and its drivers',
   'fleet.dash.distribution.allSubCars': 'Every operation',
   'fleet.dash.distribution.allSubCarsBranch': 'Every operation of the branch',
+  'fleet.dash.distribution.allSubMine': 'Every operation of your branches, and their drivers',
+  'fleet.dash.distribution.allSubCarsMine': 'Every operation of your branches',
   'fleet.dash.distribution.driversBranchNote':
     'Drivers by their branch in the employee records; vehicles by their branch in the vehicle registry.',
   'fleet.dash.distribution.matrixChip': '{{count}} active {{noun}}',
@@ -20326,6 +20328,8 @@ const ar: Record<string, string> = {
   'fleet.dash.distribution.allSubBranch': 'كل تشغيلات الفرع، وسائقو الفرع',
   'fleet.dash.distribution.allSubCars': 'كل التشغيلات',
   'fleet.dash.distribution.allSubCarsBranch': 'كل تشغيلات الفرع',
+  'fleet.dash.distribution.allSubMine': 'كل تشغيلات فروعك، وسائقو فروعك',
+  'fleet.dash.distribution.allSubCarsMine': 'كل تشغيلات فروعك',
   'fleet.dash.distribution.driversBranchNote':
     'السائقون حسب فرعهم في بيانات الموظفين، والسيارات حسب فرعها في سجل السيارات.',
   'fleet.dash.distribution.matrixChip': '{{count}} {{noun}} نشطة',

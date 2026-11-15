@@ -653,6 +653,7 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       code: c5.code,
       inDate: '2026-10-01',
       days: 10,
+      deleted: false,
     });
     expect(out.longest[0]?.days).toBe(10);
   });
@@ -830,5 +831,44 @@ describe('«الفرع» — every row carries its CAR’s branch, never the wor
     );
     expect(closed.branchId).toBe(B2);
     expect([200, 204]).toContain((await del(`/fleet/maintenance/${opened.id}`)).status);
+  });
+});
+
+// ── 6 · a car deleted while it is in the workshop (written last: it adds an open visit) ──────
+
+describe('openNow — a car deleted while in the workshop', () => {
+  let left: FleetVehicleDto;
+  let leftVisit: string;
+  beforeAll(async () => {
+    left = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
+    leftVisit = await visit(left, '2026-10-22', null, WT1, WS2);
+    // The registry lets a car in the workshop be deleted; its visit stays open.
+    expect([200, 204]).toContain((await del(`/fleet/vehicles/${left.id}`)).status);
+  });
+
+  it('still counted and listed, flagged: its code finds no list row, the open list does', async () => {
+    const out = await fleetMaintenanceService.openNow({ today: TODAY, filter: {} });
+    expect(out.open).toBe(await total({ open: true }));
+    const row = out.longest.find((stay) => stay.visitId === leftVisit);
+    expect(row).toMatchObject({ vehicleId: left.id, code: left.code, deleted: true });
+    // Every other stay — the live cars and the old book's row — is not flagged.
+    expect(
+      out.longest.filter((stay) => stay.visitId !== leftVisit).map((stay) => stay.deleted),
+    ).toEqual(out.longest.filter((stay) => stay.visitId !== leftVisit).map(() => false));
+    // Why the web never sends `vehicleCodes=` for it: that list is empty …
+    expect(await total({ open: true, vehicleCodes: [left.code] })).toBe(0);
+    // … while the open list, the company's and the branch's, still lists the visit.
+    const listed = async (query: Record<string, unknown>): Promise<string[]> =>
+      ok<FleetMaintenanceVisitDto[]>(
+        await get('/fleet/maintenance', { ...wire(query), pageSize: 100 }),
+      ).map((visitRow) => visitRow.id);
+    expect(await listed({ open: true })).toContain(leftVisit);
+    expect(await listed({ open: true, branchIds: [B1] })).toContain(leftVisit);
+    const branch = await fleetMaintenanceService.openNow({
+      today: TODAY,
+      filter: { branchIds: [B1] },
+    });
+    expect(branch.longest.find((stay) => stay.visitId === leftVisit)?.deleted).toBe(true);
+    expect(branch.open).toBe(await total({ open: true, branchIds: [B1] }));
   });
 });

@@ -172,9 +172,32 @@ const P_ROW = cn(
   'max-md:grid max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3.5',
 );
 const P_CELL = 'max-md:block max-md:p-0 max-md:first:ps-0 max-md:last:pe-0';
-/** A column's name beside its value, on a phone only (the table's heading says it from 768 px). */
-const PhoneLabel = ({ children }: { children: ReactNode }): JSX.Element => (
-  <span className={cn('me-1.5 text-xs font-semibold md:hidden', MUTED)}>{children}</span>
+/**
+ * The alarm table is the widest (five columns, the meter's sentence on one line): it is a table
+ * from 1024 px only, its rows blocks below — at a tablet's 768–1023 px it would scroll sideways
+ * inside its card and hide «فتح» (the other tables fit from 768 px).
+ */
+const A_TABLE = 'max-lg:block';
+const A_HEAD = 'max-lg:hidden';
+const A_BODY = 'max-lg:block';
+const A_ROW = cn(
+  'max-lg:grid max-lg:items-center max-lg:gap-x-3 max-lg:gap-y-2 max-lg:px-4 max-lg:py-3.5',
+);
+const A_CELL = 'max-lg:block max-lg:p-0 max-lg:first:ps-0 max-lg:last:pe-0';
+/** A column's name beside its value, on a phone only (the table's heading says it from 768 px;
+ *  `lg`: the alarm table's, from 1024 px). */
+const PhoneLabel = ({
+  children,
+  upTo = 'md',
+}: {
+  children: ReactNode;
+  upTo?: 'md' | 'lg';
+}): JSX.Element => (
+  <span
+    className={cn('me-1.5 text-xs font-semibold', upTo === 'lg' ? 'lg:hidden' : 'md:hidden', MUTED)}
+  >
+    {children}
+  </span>
 );
 const WORK_CHIP = cn(CHIP, 'inline-flex items-center whitespace-nowrap py-1');
 
@@ -330,7 +353,7 @@ const WorkshopKpi = ({
             <CarChip
               code={oldest.code}
               link={
-                oldest.vehicleId === null || !can('fleetVehicle.view')
+                oldest.vehicleId === null || oldest.deleted || !can('fleetVehicle.view')
                   ? null
                   : links.vehicle(oldest.vehicleId, 'workshop.oldest')
               }
@@ -450,9 +473,9 @@ const AlarmRow = ({
     <tr
       data-alarm-row={row.code}
       data-alarm-level={row.level}
-      className={cn(P_ROW, 'max-md:grid-cols-[minmax(0,1fr)_auto]')}
+      className={cn(A_ROW, 'max-lg:grid-cols-[minmax(0,1fr)_auto]')}
     >
-      <td className={cn(CELL, P_CELL, 'max-md:col-start-1 max-md:row-start-1')}>
+      <td className={cn(CELL, A_CELL, 'max-lg:col-start-1 max-lg:row-start-1')}>
         <div className="flex flex-wrap items-center gap-2">
           <CarChip
             code={row.code}
@@ -483,7 +506,7 @@ const AlarmRow = ({
           </div>
         )}
       </td>
-      <td className={cn(CELL, P_CELL, 'max-md:col-span-2')}>
+      <td className={cn(CELL, A_CELL, 'max-lg:col-span-2')}>
         <span data-alarm-figure={row.code} className={cn(COUNT_CHIP, 'py-0.5', TONE[tone].soft)}>
           <Dot tone={tone} />
           {row.remainingKm < 0 ? (
@@ -496,7 +519,7 @@ const AlarmRow = ({
           )}
         </span>
       </td>
-      <td className={cn(CELL, P_CELL, 'max-md:col-span-2')}>
+      <td className={cn(CELL, A_CELL, 'max-lg:col-span-2')}>
         <div className="max-w-[300px]">
           <div
             data-alarm-since={row.code}
@@ -513,13 +536,13 @@ const AlarmRow = ({
           <Meter className="mt-1.5" height="h-1.5" parts={[{ pct, tone }]} />
         </div>
       </td>
-      <td className={cn(CELL, P_CELL, 'whitespace-nowrap max-md:col-span-2')}>
-        <PhoneLabel>{w('col.last')}</PhoneLabel>
+      <td className={cn(CELL, A_CELL, 'whitespace-nowrap max-lg:col-span-2')}>
+        <PhoneLabel upTo="lg">{w('col.last')}</PhoneLabel>
         <N className="font-semibold text-slate-700 dark:text-slate-200">
           {row.lastServiceAt === null ? '—' : slashDay(row.lastServiceAt)}
         </N>
       </td>
-      <td className={cn(CELL, P_CELL, 'text-end max-md:col-start-2 max-md:row-start-1')}>
+      <td className={cn(CELL, A_CELL, 'text-end max-lg:col-start-2 max-lg:row-start-1')}>
         <Btn link={links.alarmRow(row.level, row.code)} className="h-9 px-4">
           {w('open')}
         </Btn>
@@ -556,9 +579,9 @@ const AlarmTable = ({
       {alarm.rows.length === 0 ? (
         <EndRow text={w('alarms.empty')} marker="alarms" />
       ) : (
-        <div className="md:overflow-x-auto">
-          <table className={cn('w-full border-collapse text-[13px] md:min-w-[760px]', P_TABLE)}>
-            <thead className={cn(TH_ROW, P_HEAD)}>
+        <div className="lg:overflow-x-auto">
+          <table className={cn('w-full border-collapse text-[13px] lg:min-w-[760px]', A_TABLE)}>
+            <thead className={cn(TH_ROW, A_HEAD)}>
               <tr className={cn('border-y', RULE)}>
                 <th className={cn(th, 'w-[28%]')}>{w('col.car')}</th>
                 <th className={cn(th, 'w-[20%]')}>{w('col.alarm')}</th>
@@ -569,7 +592,7 @@ const AlarmTable = ({
                 </th>
               </tr>
             </thead>
-            <tbody className={cn(DIVIDE, P_BODY, 'max-md:border-t', RULE)}>
+            <tbody className={cn(DIVIDE, A_BODY, 'max-lg:border-t', RULE)}>
               {alarm.rows.map((row) => (
                 <AlarmRow key={row.vehicleId} row={row} links={links} can={can} />
               ))}
@@ -1038,7 +1061,7 @@ const LongestStays = ({
                       code={row.code}
                       typeName={row.typeName}
                       link={
-                        row.vehicleId !== null && can('fleetVehicle.view')
+                        row.vehicleId !== null && !row.deleted && can('fleetVehicle.view')
                           ? links.vehicle(row.vehicleId, 'workshop.vehicle')
                           : null
                       }
@@ -1067,7 +1090,16 @@ const LongestStays = ({
                       'text-end max-md:col-start-2 max-md:row-start-1',
                     )}
                   >
-                    <Btn link={links.workshopCar(row.code)} className="h-9 px-4">
+                    {/* A car deleted since it checked in: no live car carries its code, so the
+                        open list (where its visit is still listed) instead of an empty one. */}
+                    <Btn
+                      link={
+                        row.deleted
+                          ? links.workshopOpen('workshop.longest')
+                          : links.workshopCar(row.code)
+                      }
+                      className="h-9 px-4"
+                    >
                       {w('open')}
                     </Btn>
                   </td>

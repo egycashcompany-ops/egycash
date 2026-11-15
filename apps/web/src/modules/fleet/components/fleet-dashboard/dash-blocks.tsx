@@ -383,7 +383,9 @@ export const BlockHead = ({
       <IconTile d={icon} tone={tone} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className={cn(TITLE, 'whitespace-nowrap')}>{title}</h3>
+          {/* One line from `sm` up; on a phone a long title («كيلومترات الفرع هذا الشهر حسب النوع»)
+              wraps inside the card rather than over its edge. */}
+          <h3 className={cn(TITLE, 'text-balance sm:whitespace-nowrap')}>{title}</h3>
           {chips}
         </div>
         {note !== undefined && <p className={cn('mt-0.5', NOTE)}>{note}</p>}

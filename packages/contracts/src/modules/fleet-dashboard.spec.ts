@@ -841,12 +841,13 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
       open: 2,
       openActive: 2,
       openOutOfService: 0,
-      oldest: { vehicleId: ID_A, code: '150', inDate: '2026-11-03', days: 12 },
+      oldest: { vehicleId: ID_A, code: '150', inDate: '2026-11-03', days: 12, deleted: false },
       longest: [
         {
           visitId: ID_A,
           vehicleId: ID_A,
           code: '150',
+          deleted: false,
           typeName: name,
           inDate: '2026-11-03',
           days: 12,
@@ -857,6 +858,8 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
           visitId: ID_B,
           vehicleId: null,
           code: '9001',
+          // An old-book row: no registry car, so never «deleted»; its code finds the book's row.
+          deleted: false,
           typeName: null,
           inDate: '2026-11-15',
           days: 0,

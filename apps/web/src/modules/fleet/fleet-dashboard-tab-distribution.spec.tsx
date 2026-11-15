@@ -416,6 +416,9 @@ describe('«توزيع السيارات» — the branches', () => {
     expect(text(branchCard(html, B2))).toContain(ar('fleet.dash.distribution.biggest'));
     expect(text(branchCard(html, B1))).not.toContain(ar('fleet.dash.distribution.biggest'));
     expect(text(branchCard(html, B3))).toMatch(/أسيوط 0 نشطة/u);
+    // Its zeros open nothing: an empty list is not a figure's list.
+    expect(links(branchCard(html, B3))).toEqual([]);
+    expect(text(branchCard(html, B3))).toMatch(/نقل الأموال 0 · ATM 0 · أخرى 0/u);
     expect(text(branches)).toContain(
       'السيارات النشطة في كل فرع، ونصيبه منها، وتفصيلها حسب التشغيل.',
     );
@@ -515,6 +518,10 @@ describe('«توزيع السيارات» — the type × branch matrix', () => 
     const armoured = part(tbody, `data-dist-type="${T1}"`, /data-dist-type="|<\/tbody>/u);
     expect(text(armoured)).toMatch(/مصفحة 16 8 — — 24 60%/u);
     expect(armoured).not.toMatch(/>0</u);
+    // The zero branch's column is dashes to its foot, unlinked.
+    const foot = part(matrix, '<tfoot', /<\/tfoot>/u);
+    expect(links(foot).filter((l) => l.href.includes(`branch=${B3}`))).toEqual([]);
+    expect(text(foot)).toMatch(/إجمالي الفرع 25 14 — 1 40/u);
   });
 
   it('writes each row’s share of the active cars, with no lead tint', () => {
@@ -728,6 +735,19 @@ describe('«توزيع السيارات» — «كل فروعي»', () => {
   it('draws no drivers’ note for the whole company', () => {
     expect(tab()).not.toContain('data-dist-drivers-note');
   });
+
+  it('says on «كل السيارات النشطة» whose cars and drivers it counts: the reader’s branches', () => {
+    const all = card(html, 'all');
+    expect(text(all)).toContain('كل تشغيلات فروعك، وسائقو فروعك');
+    expect(text(all)).not.toContain('سجل السائقين كله');
+    // Without the drivers' section: the cars alone.
+    const carsOnly = card(tab({ now: { ...NOW_MINE, distributionDrivers: null } }), 'all');
+    expect(text(carsOnly)).toContain('كل تشغيلات فروعك');
+    expect(text(carsOnly)).not.toContain('سائقو فروعك');
+    // The company's and one branch's keep their own words.
+    expect(text(card(tab(), 'all'))).toContain('كل التشغيلات، وسجل السائقين كله');
+    expect(text(card(tab({ now: NOW_BRANCH }), 'all'))).toContain('كل تشغيلات الفرع، وسائقو الفرع');
+  });
 });
 
 // ── «عقود توريد السيارات» ─────────────────────────────────────────────────────────────────────
@@ -755,6 +775,8 @@ describe('«توزيع السيارات» — this year’s supply contracts', (
     expect(text(received)).toMatch(/30 من 50 سيارة متعاقد عليها/u);
     const remaining = part(supply, 'data-supply-tile="remaining"', /data-supply-tile="/u);
     expect(text(remaining)).toMatch(/المتبقية 20 سيارة/u);
+    // A difference with no list of its own: plain, as the approved sample draws it.
+    expect(remaining).not.toContain('<a');
     expect(text(part(supply, 'data-supply-alarm="red"', /data-supply-alarm="/u))).toMatch(
       /أحمر 1 عقد/u,
     );
@@ -771,7 +793,6 @@ describe('«توزيع السيارات» — this year’s supply contracts', (
         'supplyContracts.open',
         'supplyContracts.received',
         'supplyContracts.red',
-        'supplyContracts.remaining',
         'supplyContracts.yellow',
       ].sort(),
     );
@@ -815,6 +836,46 @@ describe('«توزيع السيارات» — this year’s supply contracts', (
     expect(text(empty)).toContain('لا توجد عقود توريد مؤرخة في عام 2026.');
     expect(empty).not.toContain('data-supply-tile=');
     expect(hrefOf(empty, 'supplyContracts.open')).toHaveLength(1);
+  });
+
+  it('a summary that failed: the contracts’ own error and retry; the rest of the tab stands', () => {
+    // Any one of the three (all, red, yellow) failing with nothing to show fails the part: a
+    // tile of the three cannot be drawn from two.
+    const keys = [
+      vehicleContractSummaryKey(YEAR),
+      vehicleContractSummaryKey({ ...YEAR, alarm: ['red'] }),
+      vehicleContractSummaryKey({ ...YEAR, alarm: ['yellow'] }),
+    ];
+    for (const key of keys) {
+      const qc = client();
+      qc.removeQueries({ queryKey: key, exact: true });
+      // A read the cache holds as a rejected request leaves it.
+      qc.setQueryDefaults(key, { retryOnMount: false });
+      const query = qc.getQueryCache().build(qc, { queryKey: key });
+      query.setState({
+        ...query.state,
+        status: 'error',
+        error: new Error('read down'),
+        errorUpdatedAt: 1,
+        fetchStatus: 'idle',
+      });
+      const html2 = renderDashboard({
+        url: '/fleet?tab=distribution',
+        client: qc,
+        permissions: SUPPLY_KEYS,
+      });
+      const failedPart = block(html2, 'supply');
+      expect(failedPart, JSON.stringify(key)).toContain('data-section-error="supplyContracts"');
+      expect(failedPart).not.toContain('data-supply-tile=');
+      expect(failedPart).not.toContain('data-dist-loading="true"');
+      // Its head stays: the reader sees which part failed, and can still open the contracts.
+      expect(text(failedPart)).toContain(ar('fleet.vehicleContracts.title'));
+      expect(hrefOf(failedPart, 'supplyContracts.open')).toHaveLength(1);
+      // R1's parts and the month's kilometres are not this read's.
+      expect(html2).toContain('data-op-card="all"');
+      expect(html2).toContain('data-fleet-matrix="true"');
+      expect(block(html2, 'km')).not.toContain('data-section-error');
+    }
   });
 
   it('shows its own skeleton while the summaries are on their way', () => {

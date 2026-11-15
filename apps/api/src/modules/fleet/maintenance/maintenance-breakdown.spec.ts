@@ -487,12 +487,19 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       open: 5,
       openActive: 2,
       openOutOfService: 1,
-      oldest: { vehicleId: String(CAR2), code: '202', inDate: '2026-10-25', days: 7 },
+      oldest: {
+        vehicleId: String(CAR2),
+        code: '202',
+        inDate: '2026-10-25',
+        days: 7,
+        deleted: false,
+      },
       longest: [
         {
           visitId: String(visit),
           vehicleId: String(CAR2),
           code: '202',
+          deleted: false,
           typeName: { ar: 'مرسيدس', en: 'Mercedes' },
           inDate: '2026-10-25',
           days: 7,
@@ -525,18 +532,21 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
         return car === undefined ? [] : [{ ...car, status: 'active', typeId: T_MERC }];
       })) as never);
     const out = await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
-    expect(out.longest.map((row) => [row.code, row.inDate, row.days])).toEqual([
-      ['201', '2026-10-02', 30],
-      ['B-77', '2026-10-02', 30],
-      ['204', '2026-10-20', 12],
-      ['203', '2026-10-30', 2],
-      ['205', '2026-11-01', 0],
+    expect(out.longest.map((row) => [row.code, row.inDate, row.days, row.deleted])).toEqual([
+      ['201', '2026-10-02', 30, false],
+      ['B-77', '2026-10-02', 30, false],
+      // CAR_GONE left the registry while in the workshop: still listed and named by its code, but
+      // flagged — no live car carries that code, so the web opens the open list, not the car.
+      ['204', '2026-10-20', 12, true],
+      ['203', '2026-10-30', 2, false],
+      ['205', '2026-11-01', 0, false],
     ]);
     expect(out.oldest).toEqual({
       vehicleId: String(CAR1),
       code: '201',
       inDate: '2026-10-02',
       days: 30,
+      deleted: false,
     });
     // The old book's row has no car, so no make; an unnamed workshop and a missing work type null.
     expect(out.longest[1]).toMatchObject({ vehicleId: null, typeName: null, workshop: null });
@@ -567,13 +577,15 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       open: 1,
       openActive: 0,
       openOutOfService: 0,
-      oldest: { vehicleId: null, code: 'B-77', inDate: '2026-11-01', days: 0 },
+      oldest: { vehicleId: null, code: 'B-77', inDate: '2026-11-01', days: 0, deleted: false },
     });
     expect(out.longest).toEqual([
       {
         visitId: String(visit),
         vehicleId: null,
         code: 'B-77',
+        // The old book's code finds the book's row: not a deleted car.
+        deleted: false,
         typeName: null,
         inDate: '2026-11-01',
         days: 0,

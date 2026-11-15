@@ -823,6 +823,7 @@ describe('R1 parity — «الحركة اليوم» (the old «الحركة ال
       visitId: byStay[0]?.id,
       vehicleId: v4.id,
       code: v4.code,
+      deleted: false,
       typeName: expect.objectContaining({ ar: 'ميكروباص' }) as unknown,
       inDate: '2026-10-25',
       days: 7,

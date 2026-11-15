@@ -1421,24 +1421,28 @@ its entry here in the same PR.
   into «نقل الأموال» · ATM · «أخرى», «نقل الأموال», ATM — each beside its drivers, drivers per car and
   the old-specialisation count only when there is one), the branch cards, largest first, each split
   by operation (a branch with no active car keeps a card of zero; «بلا فرع» only when a car has no
-  branch, unlinked), the type × branch table across the whole page («—» for none, every figure
-  opening the vehicles list), and under it «الكيلومترات حسب الفرع» as a column chart of «هذا الشهر»
+  branch, unlinked), the type × branch table across the whole page («—» for none, every figure but
+  «بلا فرع» opening the vehicles list), and under it «الكيلومترات حسب الفرع» as a column chart of «هذا الشهر»
   (always the month to date, never the page's filters; «بلا فرع» / «غير مسجّلة» columns only when
   there are some, unlinked; the daily average, or «لا يوم مغلق بعد» on the 1st). A reader of one
   branch — chosen, or the only one granted — sees «سيارات الفرع حسب النوع» and «كيلومترات الفرع
   هذا الشهر حسب النوع» instead; «كل فروعي» keeps the company layout over its branches. A reader of
   `fleetVehicleContract.view` also sees this year's supply contracts (dated in the year; received of
-  contracted, remaining, red and yellow contracts; «الشركة كلها» under a branch) — a part of the
+  contracted, remaining, red and yellow contracts; «الشركة كلها» whenever the figures are narrowed,
+  to a branch or to «كل فروعي») — a part of the
   tab: that key alone still does not open the dashboard. «الصيانة والورش»: a «الآن» band — «بلغت حد
   الصيانة» and «تقترب من حد الصيانة» with the two thresholds read from the settings, «في الورشة الآن»
   with its oldest car and «نشطة · خارج الخدمة» (plain), «صفوف توكيل بلا قيمة» — each card under its
   own permission, then «إنذارات الصيانة بالكيلومتر» (at most 8 rows, red first, the most overdue
-  first; «في الورشة: …»; «فتح» on the alarms board for that car; «كل إنذارات الصيانة (N)», with no link
+  first; «في الورشة: …»; no «أيام بلا قراءة» column — «فتح» opens the alarms board for that car, which
+  has it; «كل إنذارات الصيانة (N)», with no link
   under a branch past 50 cars; active cars only, and it says so); then the page's own period bar,
   and «خلال الفترة» counted by the day a visit LEFT the workshop: «خرجت من الورشة», «متوسط أيام
   البقاء» (whole days from check-in to exit, the same day counting 0, one decimal, «—» when none
   left), the visits by work type and by workshop, «أكثر السيارات دخولًا للورشة» and, from «الآن»,
-  «أطول بقاء في الورشة الآن» (at most 5, «منذ اليوم» / «منذ N يومًا», «كل السيارات في الورشة (N)»).
+  «أطول بقاء في الورشة الآن» (at most 5, «منذ اليوم» / «منذ N يومًا», «كل السيارات في الورشة (N)»; a
+  car deleted from the registry while in the workshop stays counted and listed, with no link to its
+  file and its «فتح» on the open visits).
   Every period link carries `outFrom`/`outTo` and the page's set; old-book exits with no registered
   car count in the total and the bars, are not ranked, and get one line when there are some. Each
   band shows its own read's loading and error, so one failing never blanks the other. «أرقام الفترة»

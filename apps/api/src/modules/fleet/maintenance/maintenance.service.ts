@@ -711,11 +711,15 @@ class FleetMaintenanceService {
     const nameOf = (id: string | null): LocalizedString | null =>
       id === null ? null : (names.get(id) ?? null);
     const longest = facts.longest.map((row) => {
-      const typeId = row.vehicleId === null ? undefined : cars.get(row.vehicleId)?.typeId;
+      const car = row.vehicleId === null ? undefined : cars.get(row.vehicleId);
+      const typeId = car?.typeId;
       return {
         visitId: row.visitId,
         vehicleId: row.vehicleId,
         code: codeOf(row.vehicleId, row.vehicleCode),
+        // A registry car the registry no longer serves (soft-deleted since it checked in): its file
+        // and its code lead nowhere, so the web links the open list instead of the car.
+        deleted: row.vehicleId !== null && (car === undefined || car.isDeleted),
         typeName: typeId == null ? null : (makes.get(String(typeId)) ?? null),
         inDate: ymdOf(row.inDate),
         // «منذ N يومًا» — Cairo today minus the check-in day; no ceiling (owner decision 4-3).
@@ -737,6 +741,7 @@ class FleetMaintenanceService {
               code: oldest.code,
               inDate: oldest.inDate,
               days: oldest.days,
+              deleted: oldest.deleted,
             },
       longest,
     };
@@ -786,10 +791,13 @@ class FleetMaintenanceService {
    * `from`/`to`), so `/fleet/maintenance?outFrom&outTo&<set>` lists exactly these rows. ONE
    * `$facet` (R-18): the count, the mean whole-day stay check-in → check-out (the same day = 0, one
    * decimal; `null` with no exit), per work type and per workshop (each list sums to `count`), and
-   * the cars that left most often (R-17: exits desc, latest check-in desc, code asc; a car deleted
-   * from the registry is not ranked — its row would open an empty register — and neither is an
-   * old-book visit with no registry car; both stay in `count` and the bars). Visits carry no money
-   * (R-26), so none is computed. `ix_out_date` serves the range.
+   * the cars that left most often (R-17: exits desc, latest check-in desc, code asc). Two kinds of
+   * row are not ranked, each for its own reason: a car deleted from the registry — its code opens
+   * an empty register (the list resolves live codes only) — and, BY CHOICE, an old-book visit with
+   * no registry car: the ranking names registry cars (their file, their make), though such a row's
+   * book code would open its visits in the company view. Both stay in `count` and the bars, the
+   * old-book ones also in `unregistered` (a told change from the old tab, which ranked book codes).
+   * Visits carry no money (R-26), so none is computed. `ix_out_date` serves the range.
    *
    * `unregistered` — the exits with no registry car — is reported only when no vehicle clause
    * applies; with one, they are already outside the count (R-13).

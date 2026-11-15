@@ -34,6 +34,7 @@ import {
   cairoYmd,
   FLEET_DASHBOARD_PERIOD_TABS,
   type FleetDashboardPeriodQuery,
+  type FleetDashboardSection,
   type FleetDashboardTab,
 } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
@@ -120,6 +121,14 @@ const MIXED_PANELS = { maintenance: MaintenanceTab } as const satisfies Partial<
   Record<FleetDashboardTab, (props: MixedTabProps) => JSX.Element>
 >;
 type MixedTabKey = keyof typeof MIXED_PANELS;
+/**
+ * The R2 section each mixed panel draws its period band from: a reader who may read R2 for another
+ * tab (km, dealership) but not this section sees no band, so its age and «تحديث» leave R2 out.
+ */
+const MIXED_PERIOD_SECTION = { maintenance: 'exits' } as const satisfies Record<
+  MixedTabKey,
+  FleetDashboardSection
+>;
 
 const isMixedTab = (tab: FleetDashboardTab): tab is MixedTabKey =>
   (Object.keys(MIXED_PANELS) as readonly string[]).includes(tab);
@@ -244,13 +253,15 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
     // «الصيانة والورش»: «الآن» (R1) and the period (the page's R2, under the bar it draws between
     // the two). «تحديث» refetches both; the heading's age is the OLDER of the two answers.
     const Panel = MIXED_PANELS[active];
+    // R2 counts in the heading only when this tab draws its band (R2 itself stays page-wide).
+    const periodDrawn = reads.period && sectionPermitted(MIXED_PERIOD_SECTION[active], can);
     const stamps = [
       ...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []),
-      ...(reads.period && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),
+      ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),
     ];
     const refreshBoth = (): void => {
       if (reads.now) void nowQ.refetch({ cancelRefetch: false });
-      refreshPeriod();
+      if (periodDrawn) refreshPeriod();
     };
     const pageRead: PageRead = {
       data: periodQ.data,
@@ -270,7 +281,7 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         lines={lines}
         can={can}
         updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}
-        refreshing={(reads.now && nowQ.isFetching) || (reads.period && periodQ.isFetching)}
+        refreshing={(reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching)}
         onRefresh={refreshBoth}
         onRetry={refreshNow}
         month={month}

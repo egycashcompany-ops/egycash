@@ -113,6 +113,7 @@ const stay = (
   visitId: `visit-${code}`,
   vehicleId: `v${code}`,
   code,
+  deleted: false,
   typeName,
   inDate: '2026-10-20',
   days,
@@ -125,7 +126,7 @@ const WORKSHOP: Workshop = {
   open: 9,
   openActive: 8,
   openOutOfService: 1,
-  oldest: { vehicleId: 'v247', code: '247', inDate: '2026-10-20', days: 12 },
+  oldest: { vehicleId: 'v247', code: '247', inDate: '2026-10-20', days: 12, deleted: false },
   longest: [
     stay('247', 12, KADER, named('صيانة + إصلاح', 'Service + repair')),
     stay('188', 7, TECHNO, SERVICE, ATEGO),
@@ -573,6 +574,17 @@ describe('«إنذارات الصيانة بالكيلومتر» — the page’
     expect(text(table)).toContain('أصفر: متبقٍ 1,000 كم أو أقل');
   });
 
+  it('is a table from 1024 px only — its rows blocks below, so «فتح» never scrolls out of a tablet’s card', () => {
+    // Five columns and the meter's sentence need ~760 px: at 768–1023 px it would scroll sideways
+    // inside its card. The two narrower tables (top, longest) stay tables from 768 px.
+    expect(table).toMatch(/<table class="[^"]*lg:min-w-\[760px\] max-lg:block"/u);
+    expect(table).not.toContain('md:min-w-[760px]');
+    expect(table).toContain('<div class="lg:overflow-x-auto">');
+    expect(table).toMatch(/<thead class="[^"]*max-lg:hidden"/u);
+    expect(part(table, 'data-alarm-row="247"', /data-alarm-row="/u)).not.toContain('max-md:');
+    expect(block(html, 'longest')).toMatch(/<thead class="[^"]*max-md:hidden"/u);
+  });
+
   it('keeps the server’s order: red first, then the least distance left', () => {
     expect(ids(table, 'data-alarm-row')).toEqual([
       '247',
@@ -904,7 +916,7 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
       open: 2,
       openActive: 2,
       openOutOfService: 0,
-      oldest: { vehicleId: 'v188', code: '188', inDate: '2026-10-25', days: 7 },
+      oldest: { vehicleId: 'v188', code: '188', inDate: '2026-10-25', days: 7, deleted: false },
       longest: [stay('188', 7, TECHNO, SERVICE, ATEGO), stay('129', 0, null, null, null)],
     };
     const branch = tab({
@@ -923,6 +935,50 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
     expect(text(block(company, 'longest'))).toContain('لا توجد سيارات أخرى في الورشة الآن.');
   });
 
+  it('a car deleted while in the workshop: no car link, «فتح» opens the open list', () => {
+    // Deleted since it checked in: its file is gone and no live car carries its code, so a
+    // `vehicleCodes=` link would open an empty list. The open list still lists its visit.
+    const gone = { ...stay('247', 12, KADER, SERVICE), deleted: true };
+    const html2 = tab({
+      now: {
+        ...NOW,
+        workshop: {
+          ...WORKSHOP,
+          oldest: { vehicleId: 'v247', code: '247', inDate: '2026-10-20', days: 12, deleted: true },
+          longest: [gone, ...WORKSHOP.longest.slice(1)],
+        },
+      },
+    });
+    const c = block(html2, 'longest');
+    const row = part(c, 'data-longest-row="247"', /data-longest-row="/u);
+    expect(text(row)).toContain('247');
+    expect(hrefOf(row, 'workshop.vehicle')).toEqual([]);
+    expect(hrefOf(row, 'workshop.longest')).toEqual(['/fleet/maintenance?state=open']);
+    // The live rows keep their car and their own open visit.
+    const live = part(c, 'data-longest-row="188"', /data-longest-row="/u);
+    expect(hrefOf(live, 'workshop.vehicle')).toEqual(['/fleet/vehicles/v188']);
+    expect(hrefOf(live, 'workshop.longest')).toEqual([
+      '/fleet/maintenance?state=open&vehicleCodes=188',
+    ]);
+    // «أقدمها» names the car, unlinked.
+    const card = kpi(html2, 'workshop');
+    expect(text(card)).toContain('أقدمها 247 منذ 12 يومًا');
+    expect(hrefOf(card, 'workshop.oldest')).toEqual([]);
+    // Under a branch the open list keeps the branch (deleted cars are in its vehicle set).
+    const branch = tab({
+      now: {
+        ...NOW,
+        branchId: B1,
+        scopeBranches: [CAIRO],
+        workshop: { ...WORKSHOP, longest: [gone] },
+      },
+    });
+    const [open] = hrefOf(block(branch, 'longest'), 'workshop.longest').map(parse);
+    expect(open?.params.get('state')).toBe('open');
+    expect(open?.params.has('vehicleCodes')).toBe(false);
+    expect(open?.params.get('branch')).toBe(B1);
+  });
+
   it('says so when no car is in the workshop', () => {
     const empty: Workshop = {
       open: 0,
@@ -939,6 +995,35 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
 });
 
 // ── Each read its own face ────────────────────────────────────────────────────────────────────
+
+describe('«الصيانة والورش» — the heading’s age', () => {
+  /** R1 answered just now, R2 ten minutes ago. */
+  const aged = (): QueryClient => {
+    const qc = client();
+    qc.setQueryData(pageKey(TAB_URL), PAGE, { updatedAt: Date.now() - 10 * 60_000 });
+    return qc;
+  };
+  const updated = (html: string): string =>
+    text(part(html, 'data-dash-updated="true"', /data-dash-refresh=/u));
+
+  it('is the older of the two answers when the tab draws both bands', () => {
+    const html = renderDashboard({ url: TAB_URL, client: aged(), permissions: ALL_KEYS });
+    expect(html).toContain('data-maint-band="period"');
+    expect(updated(html)).toContain('قبل 10 دقائق');
+  });
+
+  it('leaves R2 out for a reader of the period who draws no period band here', () => {
+    // fleetOdometer.view reads R2 (for «الكيلومترات») but not the exits: no band on this tab, so
+    // the heading is R1's alone.
+    const html = renderDashboard({
+      url: TAB_URL,
+      client: aged(),
+      permissions: ALL_KEYS.filter((key) => key !== 'fleetMaintenance.view'),
+    });
+    expect(html).not.toContain('data-maint-band="period"');
+    expect(updated(html)).toContain(ar('fleet.dash.shell.updatedNow'));
+  });
+});
 
 describe('«الصيانة والورش» — each read its own face', () => {
   it('R1 failed: «الآن» shows its error and retry; the period figures stand', () => {

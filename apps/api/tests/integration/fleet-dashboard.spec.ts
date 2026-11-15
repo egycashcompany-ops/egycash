@@ -48,6 +48,15 @@ import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 
 const NOW = new Date('2026-10-31T23:30:00.000Z');
+/** No exit in the range under a vehicle set: zeros, no mean, and no «غير مسجّلة» line. */
+const NO_EXITS_UNDER_A_SET = {
+  count: 0,
+  avgStayDays: null,
+  byWorkType: [],
+  byWorkshop: [],
+  topVehicles: [],
+  unregistered: null,
+};
 const TODAY = '2026-11-01';
 const OCT = { preset: 'custom', from: '2026-10-01', to: '2026-10-31' } as const;
 
@@ -477,6 +486,10 @@ describe('the doors — real roles (R-28, §5.5)', () => {
       noBranch: 0,
       total: 1,
     });
+    // Its car runs no operation: «أخرى», in its own column; no «بلا فرع».
+    expect(now.distributionVehicles?.kinds).toEqual({ [B2]: { cash: 0, atm: 0, other: 1 } });
+    expect(now.distributionVehicles?.noBranchKinds).toEqual({ cash: 0, atm: 0, other: 0 });
+    expect(now.distributionVehicles?.other).toEqual({ vehicles: 1 });
     expect(now.licenceVehicles?.list.map((row) => row.code)).toEqual([car2.code]);
   });
 
@@ -515,8 +528,8 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     expect(period.km?.total).toBe(60);
     // One branch in scope: «حسب النوع» is drawn (D10).
     expect(period.km?.byType?.map((t) => t.km)).toEqual([60]);
-    expect(period.visits?.count).toBe(0);
-    expect(period.exits).toEqual({ count: 0 });
+    expect(period.visits).toEqual({ count: 0, closed: 0, open: 0 });
+    expect(period.exits).toEqual(NO_EXITS_UNDER_A_SET);
     // A home branch is not a switch: the whole company.
     const homed = await reader(['fleetVehicle.view'], 'organization', B1);
     expect((await nowOf(homed.token)).vehicles?.active).toBe(2);
@@ -547,8 +560,19 @@ describe('what the figures cover — one branch, «كل فروعي», a stale he
     // Both open accident files are car1's (B1): none is this branch's. The company says 2.
     expect(now.accidentsOpen?.count).toBe(0);
     expect((await nowOf(adminToken)).accidentsOpen?.count).toBe(2);
-    // car2's open visit is the branch's.
+    // car2's open visit is the branch's — and its stay, the only one, the longest.
     expect(now.workshop?.open).toBe(1);
+    expect(now.workshop?.longest).toHaveLength(1);
+    expect(now.workshop?.longest[0]).toMatchObject({
+      vehicleId: car2.id,
+      code: car2.code,
+      typeName: { ar: 'مصفحة', en: 'Armored' },
+      inDate: '2026-10-20',
+      days: 12,
+      workshop: { ar: 'ورشة الاختبار' },
+      workType: { ar: 'صيانة' },
+    });
+    expect(now.workshop?.oldest).toMatchObject({ code: car2.code, days: 12 });
     const period = await periodOf(branch.token);
     expect(period.km?.total).toBe(90);
     // The book's 40 km have no car, so no branch: not reported apart under a set.
@@ -575,7 +599,7 @@ describe('what the figures cover — one branch, «كل فروعي», a stale he
     expect(period.km?.byType).toBeNull();
     expect(new Set(period.km?.byBranch.map((b) => b.branchId))).toEqual(new Set([B1, B2]));
     // The book's visit (no car) is the company's only exit in October: not this reader's.
-    expect(period.exits).toEqual({ count: 0 });
+    expect(period.exits).toEqual(NO_EXITS_UNDER_A_SET);
     expect(new Set(period.vehicleScope.scopeBranches?.map((b) => b.id))).toEqual(new Set([B1, B2]));
   });
 
@@ -610,9 +634,18 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(
       (dto.km?.byBranch ?? []).reduce((a, b) => a + b.km, 0) + (dto.km?.unregistered ?? 0),
     ).toBe(dto.km?.total);
-    expect(dto.visits).toMatchObject({ count: 2, unregistered: 1 });
-    // By EXIT day: only the book's visit left the workshop in October (car2's is still open).
-    expect(dto.exits).toEqual({ count: 1 });
+    // «أرقام الفترة» by CHECK-IN day: car2's (still open) and the book's (closed).
+    expect(dto.visits).toEqual({ count: 2, closed: 1, open: 1 });
+    // By EXIT day: only the book's visit left the workshop in October (car2's is still open). It
+    // counts in the bars and as «غير مسجّلة», never in the car ranking; in 12 Oct, out 13 Oct.
+    expect(dto.exits).toMatchObject({
+      count: 1,
+      avgStayDays: 1,
+      byWorkType: [{ name: { ar: 'صيانة' }, count: 1 }],
+      byWorkshop: [{ name: { ar: 'ورشة الاختبار' }, count: 1 }],
+      topVehicles: [],
+      unregistered: 1,
+    });
     expect(
       ok<unknown[]>(
         await call('/fleet/maintenance', adminToken, { outFrom: OCT.from, outTo: OCT.to }),
@@ -630,8 +663,8 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(dto.vehicleScope).toMatchObject({ typeIds: [T1], count: 2 });
     expect(dto.km?.total).toBe(150);
     expect(dto.km?.unregistered).toBeNull();
-    expect(dto.visits).toMatchObject({ count: 1, unregistered: null });
-    expect(dto.exits).toEqual({ count: 0 });
+    expect(dto.visits).toEqual({ count: 1, closed: 0, open: 1 });
+    expect(dto.exits).toEqual(NO_EXITS_UNDER_A_SET);
     expect(dto.accidents?.undated).toBeNull();
   });
 });

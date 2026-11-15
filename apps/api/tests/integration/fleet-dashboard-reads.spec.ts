@@ -774,18 +774,44 @@ describe('vehicles — the dashboard reads equal the registry list', () => {
     );
   });
 
-  it('activeByTypeAndBranch adds up to the active cars, cell by cell', async () => {
+  it('activeByTypeAndBranch adds up to the active cars, cell by cell and operation by operation', async () => {
     const cells = await fleetVehicleRepository.activeByTypeAndBranch(org);
     expect(cells.reduce((sum, cell) => sum + cell.count, 0)).toBe(4);
+    // Each (type, branch, operation) cell is the vehicles list with the three filters.
     for (const cell of cells) {
+      expect(cell.operationId, 'every fixture car runs an operation').not.toBeNull();
       expect(cell.count).toBe(
         await total('/fleet/vehicles', {
           status: 'active',
           typeId: cell.typeId,
           branchId: cell.branchId,
+          operationId: cell.operationId,
         }),
       );
     }
+    // Σ over the operations of one (type, branch) = that cell of the matrix, as the list counts it.
+    const byTypeAndBranch = new Map<string, number>();
+    for (const cell of cells) {
+      const key = `${cell.typeId}|${String(cell.branchId)}`;
+      byTypeAndBranch.set(key, (byTypeAndBranch.get(key) ?? 0) + cell.count);
+    }
+    for (const [key, count] of byTypeAndBranch) {
+      const [typeId, branchId] = key.split('|');
+      expect(count).toBe(await total('/fleet/vehicles', { status: 'active', typeId, branchId }));
+    }
+    // The fixture's four live cars: one per (type, branch), each on its own operation.
+    expect(
+      cells
+        .map((cell) => [cell.typeId, cell.branchId, cell.operationId, cell.count])
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    ).toEqual(
+      [
+        [T1, B1, O1, 1],
+        [T1, B2, O2, 1],
+        [T2, B1, O2, 1],
+        [T2, B2, O1, 1],
+      ].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    );
   });
 
   it('idsWithTypes includes the deleted car — its history is still a T1 car’s', async () => {

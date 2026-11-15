@@ -23,7 +23,7 @@ import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Field, Input, Select, Textarea, FormActions } from '../../../../../shared/ui/form';
-import { Combobox } from '../../../../../shared/ui/Combobox';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { localized } from '../../../../../shared/lib/format';
 import { ManagerPicker, type ManagerRef } from './ManagerPicker';
@@ -121,7 +121,6 @@ export const OfferTermsForm = ({
     if (department !== undefined && department.parentId !== next) setDepartmentId('');
   };
   const departmentsInBranch = (departments.data ?? []).filter((d) => branchId === '' || d.parentId === branchId);
-  const jobName = new Map((jobTitles.data ?? []).map((j) => [j.id, localized(j.name, locale)]));
   const [allowances, setAllowances] = useState<AllowanceRow[]>(
     initial === null
       ? []
@@ -195,32 +194,37 @@ export const OfferTermsForm = ({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t('offers.form.jobTitle')} required>
           {/* «مش select بس لا هكتب كمان و هو يجبلي الحاجه» — type a few letters, pick from the list. */}
-          <Combobox
+          <SearchableSelect
             value={jobTitleId}
-            options={(jobTitles.data ?? []).map((j) => j.id)}
-            optionLabel={(id) => jobName.get(id) ?? id}
+            options={(jobTitles.data ?? []).map((j) => ({ value: j.id, label: localized(j.name, locale) }))}
             onChange={chooseJob}
             placeholder={t('offers.form.jobTitleSearch')}
-            emptyText={t('common.noResults')}
-            clearLabel={t('common.clear')}
+            loading={jobTitles.isLoading}
+            ariaLabel={t('offers.form.jobTitle')}
             testId="offer-job-title"
           />
         </Field>
         <Field label={t('offers.form.department')} required>
-          <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-            <option value="">{t('offers.form.selectRef')}</option>
-            {departmentsInBranch.map((d) => (
-              <option key={d.id} value={d.id}>{localized(d.name, locale)}</option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={departmentId}
+            onChange={setDepartmentId}
+            options={departmentsInBranch.map((d) => ({ value: d.id, label: localized(d.name, locale) }))}
+            placeholder={t('offers.form.selectRef')}
+            loading={departments.isLoading}
+            ariaLabel={t('offers.form.department')}
+          />
         </Field>
         <Field label={t('offers.form.branch')} required>
-          <Select value={branchId} onChange={(e) => chooseBranch(e.target.value)}>
-            <option value="">{t('offers.form.selectRef')}</option>
-            {branches.data?.map((b) => (
-              <option key={b.id} value={b.id}>{localized(b.name, locale)}</option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={branchId}
+            onChange={(next) => {
+              if (next !== branchId) chooseBranch(next);
+            }}
+            options={(branches.data ?? []).map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+            placeholder={t('offers.form.selectRef')}
+            loading={branches.isLoading}
+            ariaLabel={t('offers.form.branch')}
+          />
         </Field>
         <Field label={t('offers.form.manager')} hint={t('offers.form.optional')}>
           <ManagerPicker value={manager} onChange={setManager} />

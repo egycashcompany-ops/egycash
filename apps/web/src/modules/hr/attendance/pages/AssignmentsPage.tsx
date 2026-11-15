@@ -7,7 +7,8 @@ import { type ShiftAssignmentDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Button, DataTable, Dialog, Pagination, type Column } from '../../../../shared/ui';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Spinner } from '../../../../shared/ui/Spinner';
 import { PlusIcon } from '../../../../shared/ui/icons';
@@ -193,16 +194,14 @@ export const AssignmentsPage = (): JSX.Element => {
             </div>
           </Field>
           <Field label={t('attendance.assignments.shift')}>
-            <Select value={shiftId} onChange={(e) => setShiftId(e.target.value)}>
-              <option value="">{t('attendance.assignments.pickShift')}</option>
-              {(shifts.data ?? [])
+            <SearchableSelect
+              value={shiftId}
+              onChange={setShiftId}
+              options={(shifts.data ?? [])
                 .filter((s) => s.active)
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} — {locale === 'ar' ? s.name.ar : s.name.en}
-                  </option>
-                ))}
-            </Select>
+                .map((s) => ({ value: s.id, label: `${s.code} — ${locale === 'ar' ? s.name.ar : s.name.en}` }))}
+              placeholder={t('attendance.assignments.pickShift')}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={t('attendance.assignments.from')}>

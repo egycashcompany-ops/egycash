@@ -18,7 +18,7 @@ import { type AuthContext } from '../../../shared/types';
 
 const fn = (): Mock => vi.fn();
 const odometer = { kmBreakdown: fn() };
-const maintenance = { visitBreakdown: fn(), exitCount: fn() };
+const maintenance = { visitStates: fn(), exitBreakdown: fn() };
 const accidents = { summaryOver: fn(), undatedCount: fn(), list: fn() };
 const receipts = { summaryOver: fn(), firstReceiptDate: fn() };
 const dealership = { summaryOver: fn() };
@@ -81,15 +81,24 @@ const parse = (raw: Record<string, string>) => FleetDashboardPeriodQuerySchema.p
 const day = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
 
 const KM = { total: 1200 };
-const VISITS = { count: 4 };
+const VISITS = { count: 4, closed: 3, open: 1 };
+/** The exit-day breakdown as the maintenance module answers it — passed through untouched. */
+const EXITS = {
+  count: 37,
+  avgStayDays: 2.4,
+  byWorkType: [{ id: 'wt', name: { ar: 'صيانة دورية', en: 'Service' }, count: 37 }],
+  byWorkshop: [{ id: 'ws', name: null, count: 37 }],
+  topVehicles: [],
+  unregistered: 0,
+};
 const NO_ECHO_BRANCHES = { scopeBranches: null };
 
 beforeEach(() => {
   vi.clearAllMocks();
   settings.resolve.mockResolvedValue(3);
   odometer.kmBreakdown.mockResolvedValue(KM);
-  maintenance.visitBreakdown.mockResolvedValue(VISITS);
-  maintenance.exitCount.mockResolvedValue(37);
+  maintenance.visitStates.mockResolvedValue(VISITS);
+  maintenance.exitBreakdown.mockResolvedValue(EXITS);
   branches.listAll.mockResolvedValue([
     { _id: B1, name: CAIRO },
     { _id: B2, name: GIZA },
@@ -168,8 +177,8 @@ beforeEach(() => {
 
 const USES: Record<FleetDashboardPeriodSection, readonly Mock[]> = {
   km: [odometer.kmBreakdown],
-  visits: [maintenance.visitBreakdown],
-  exits: [maintenance.exitCount],
+  visits: [maintenance.visitStates],
+  exits: [maintenance.exitBreakdown],
   accidents: [accidents.summaryOver, accidents.undatedCount],
   accidentList: [accidents.list, vehicles.codesByIds],
   opex: [receipts.summaryOver, receipts.firstReceiptDate],
@@ -381,7 +390,8 @@ describe('R2 — screen-shaped calls (D9)', () => {
       operationIds: [OP1],
       branchIds: [B2],
     };
-    expect(maintenance.visitBreakdown).toHaveBeenCalledWith(shaped);
+    // «أرقام الفترة»: the CHECK-IN day, exactly as the maintenance list's `from`/`to`.
+    expect(maintenance.visitStates).toHaveBeenCalledWith(shaped);
     expect(accidents.summaryOver).toHaveBeenCalledWith(shaped);
     expect(accidents.summaryOver).toHaveBeenCalledWith({ ...shaped, status: 'open' });
     expect(receipts.summaryOver).toHaveBeenCalledWith(shaped);
@@ -397,20 +407,28 @@ describe('R2 — screen-shaped calls (D9)', () => {
       { from: '2026-10-01', to: '2026-10-15', typeIds: [T1], operationIds: [OP1], branchIds: [B2] },
       { today: TODAY, staleDays: 3, byType: true, setNarrows: true },
     );
-    // The exit-day count: the same set, bounded by the EXIT day — never by `from`/`to`.
-    expect(maintenance.exitCount).toHaveBeenCalledWith({
+    // «الصيانة والورش»: the same set, bounded by the EXIT day — never by `from`/`to`.
+    expect(maintenance.exitBreakdown).toHaveBeenCalledWith({
       outFrom: day('2026-10-01'),
       outTo: day('2026-10-15'),
       typeIds: [T1],
       operationIds: [OP1],
       branchIds: [B2],
     });
+    const [exitQuery] = maintenance.exitBreakdown.mock.calls[0] as [Record<string, unknown>];
+    expect(Object.keys(exitQuery)).not.toContain('from');
+    expect(Object.keys(exitQuery)).not.toContain('to');
   });
 
   it('«كل فروعي» narrows every module to BOTH branches — the list the links carry as `branch=a,b`', async () => {
     await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS, MULTI, 'branch'), NOW, parse({}));
     const both = { from: day(TODAY), to: day(TODAY), branchIds: [B1, B2] };
-    expect(maintenance.visitBreakdown).toHaveBeenCalledWith(both);
+    expect(maintenance.visitStates).toHaveBeenCalledWith(both);
+    expect(maintenance.exitBreakdown).toHaveBeenCalledWith({
+      outFrom: day(TODAY),
+      outTo: day(TODAY),
+      branchIds: [B1, B2],
+    });
     expect(accidents.summaryOver).toHaveBeenCalledWith(both);
     expect(receipts.summaryOver).toHaveBeenCalledWith(both);
     expect(dealership.summaryOver).toHaveBeenCalledWith(both);
@@ -491,7 +509,10 @@ describe('R2 — screen-shaped calls (D9)', () => {
       { from: TODAY, to: TODAY },
       { today: TODAY, staleDays: 3, byType: false, setNarrows: false },
     );
-    expect(maintenance.exitCount).toHaveBeenCalledWith({ outFrom: day(TODAY), outTo: day(TODAY) });
+    expect(maintenance.exitBreakdown).toHaveBeenCalledWith({
+      outFrom: day(TODAY),
+      outTo: day(TODAY),
+    });
     expect(accidents.undatedCount).toHaveBeenCalledWith({});
     expect(dto.accidents).toEqual({ count: 3, open: 1, openRemaining: 700, undated: 25 });
   });
@@ -531,7 +552,8 @@ describe('R2 — the figures as their modules give them', () => {
       count: 7,
       dataFrom: '2026-08-15',
     });
-    expect(dto.exits).toEqual({ count: 37 });
+    // «الصيانة والورش» (exit day) and «أرقام الفترة» (check-in day): each as its module answers.
+    expect(dto.exits).toBe(EXITS);
     expect(dto.dealership).toEqual({ amount: 4000, rows: 5, pending: 2, dataFrom: '2026-09-01' });
     expect(dto.km).toBe(KM);
     expect(dto.visits).toBe(VISITS);

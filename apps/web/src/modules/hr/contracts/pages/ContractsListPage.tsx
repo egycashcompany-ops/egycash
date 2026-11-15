@@ -20,6 +20,7 @@ import {
   type Column,
 } from '../../../../shared/ui';
 import { Select } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { formatDate, localized } from '../../../../shared/lib/format';
 import { useContracts, useContractTypes } from '../api/contract-queries';
 import { ContractStatusBadge } from '../components/ContractStatusBadge';
@@ -199,12 +200,15 @@ export const ContractsListPage = (): JSX.Element => {
             <option key={s} value={s}>{t(`contracts.status.${s}`)}</option>
           ))}
         </Select>
-        <Select value={typeId} onChange={(e) => patch({ type: e.target.value })} className="w-44">
-          <option value="">{t('contracts.filters.allTypes')}</option>
-          {(types ?? []).map((x) => (
-            <option key={x.id} value={x.id}>{localized(x.name, locale)}</option>
-          ))}
-        </Select>
+        <div className="w-44">
+          <SearchableSelect
+            value={typeId}
+            onChange={(type) => patch({ type })}
+            options={(types ?? []).map((x) => ({ value: x.id, label: localized(x.name, locale) }))}
+            placeholder={t('contracts.filters.allTypes')}
+            ariaLabel={t('contracts.columns.type')}
+          />
+        </div>
         <Checkbox
           label={t('contracts.filters.expiringSoon')}
           checked={expiring}

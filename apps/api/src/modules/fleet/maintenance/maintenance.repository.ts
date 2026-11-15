@@ -1,5 +1,10 @@
 import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
-import { addDaysYmd, ymdToUtcDate, type Paginated } from '@ecms/contracts';
+import {
+  FLEET_DASHBOARD_WORKSHOP_ROWS,
+  addDaysYmd,
+  ymdToUtcDate,
+  type Paginated,
+} from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
@@ -557,24 +562,41 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
   // filter adds. So a figure is counted from exactly the rows its link lists, by construction.
 
   /**
-   * R-09 — the open visits the filter matches: how many, the oldest by check-in day (the earlier
-   * recorded of two on one day), and the registry cars among them. A car has at most one open
-   * visit (`ux_open_visit`), so the per-car list is bounded by the fleet.
+   * R-09 — the open visits the filter matches: how many, the longest stays (the oldest check-ins,
+   * the earlier recorded of two on one day first — «أطول بقاء في الورشة الآن»; the oldest is the
+   * first of them), and the registry cars among them. A car has at most one open visit
+   * (`ux_open_visit`), so the per-car list is bounded by the fleet.
    */
   async openFacts(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<OpenVisitFacts> {
     const [facets] = await this.model.aggregate<{
       total: { n: number }[];
-      oldest: { vehicleId?: Types.ObjectId | null; vehicleCode?: string | null; inDate: Date }[];
+      longest: {
+        _id: Types.ObjectId;
+        vehicleId?: Types.ObjectId | null;
+        vehicleCode?: string | null;
+        inDate: Date;
+        workshopId?: Types.ObjectId | null;
+        workTypeId?: Types.ObjectId | null;
+      }[];
       cars: { _id: Types.ObjectId; visits: number }[];
     }>([
       { $match: this.baseFilter(undefined, filter) },
       {
         $facet: {
           total: [{ $count: 'n' }],
-          oldest: [
+          longest: [
             { $sort: { inDate: 1, _id: 1 } },
-            { $limit: 1 },
-            { $project: { _id: 0, vehicleId: 1, vehicleCode: 1, inDate: 1 } },
+            { $limit: FLEET_DASHBOARD_WORKSHOP_ROWS },
+            {
+              $project: {
+                _id: 1,
+                vehicleId: 1,
+                vehicleCode: 1,
+                inDate: 1,
+                workshopId: 1,
+                workTypeId: 1,
+              },
+            },
           ],
           cars: [
             { $match: { vehicleId: { $type: 'objectId' } } },
@@ -583,17 +605,24 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
         },
       },
     ]);
-    const oldest = facets?.oldest[0];
+    const idOf = (id: Types.ObjectId | null | undefined): string | null =>
+      id == null ? null : String(id);
+    const longest = (facets?.longest ?? []).map((row) => ({
+      visitId: String(row._id),
+      vehicleId: idOf(row.vehicleId),
+      vehicleCode: row.vehicleCode ?? null,
+      inDate: row.inDate,
+      workshopId: idOf(row.workshopId),
+      workTypeId: idOf(row.workTypeId),
+    }));
+    const oldest = longest[0];
     return {
       count: facets?.total[0]?.n ?? 0,
       oldest:
         oldest === undefined
           ? null
-          : {
-              vehicleId: oldest.vehicleId == null ? null : String(oldest.vehicleId),
-              vehicleCode: oldest.vehicleCode ?? null,
-              inDate: oldest.inDate,
-            },
+          : { vehicleId: oldest.vehicleId, vehicleCode: oldest.vehicleCode, inDate: oldest.inDate },
+      longest,
       cars: (facets?.cars ?? []).map((row) => ({
         vehicleId: String(row._id),
         visits: row.visits,
@@ -642,22 +671,27 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
 
   /**
    * R-18 — the visits the filter matches, broken down in ONE `$facet`: the state each is in NOW,
-   * per work type, per workshop and per car. Every facet partitions the same matched rows, so each
-   * one sums to `count`. A row kept from the old book for a car the registry never had is grouped
-   * under the code the book wrote.
+   * the whole-day stays of the closed ones, per work type, per workshop and per registry car (its
+   * visits, its latest check-in and that visit's work type). The state, work-type and workshop
+   * facets partition the same matched rows, so each sums to `count`. A row kept from the old book
+   * with no registry car is in `count`, the bars and `unregistered` — never in `byVehicle`.
+   *
+   * A stay is `$dateDiff` in days, check-in → check-out: the calendar days crossed in UTC, which is
+   * the day every visit date is read as (`ymdOf`) — the same day = 0, whatever the stored time.
    */
   async breakdown(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<VisitBreakdownFacts> {
     // `$ifNull` so a field ABSENT on an old row reads as the `null` the list's `outDate: null`
     // matches — an aggregation `$eq` would tell missing and null apart, the find filter does not.
     const isNull = (field: string) => ({ $eq: [{ $ifNull: [field, null] }, null] });
     const [facets] = await this.model.aggregate<{
-      state: { count: number; open: number; unregistered: number }[];
+      state: { count: number; open: number; unregistered: number; staySum: number }[];
       byWorkType: { _id: Types.ObjectId; count: number }[];
       byWorkshop: { _id: Types.ObjectId; count: number }[];
       byVehicle: {
-        _id: { vehicleId: Types.ObjectId | null; vehicleCode: string | null };
+        _id: Types.ObjectId;
         visits: number;
         lastInDate: Date;
+        lastWorkTypeId: Types.ObjectId | null;
       }[];
     }>([
       { $match: this.baseFilter(undefined, filter) },
@@ -670,22 +704,36 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
                 count: { $sum: 1 },
                 open: { $sum: { $cond: [isNull('$outDate'), 1, 0] } },
                 unregistered: { $sum: { $cond: [isNull('$vehicleId'), 1, 0] } },
+                staySum: {
+                  $sum: {
+                    $cond: [
+                      isNull('$outDate'),
+                      0,
+                      { $dateDiff: { startDate: '$inDate', endDate: '$outDate', unit: 'day' } },
+                    ],
+                  },
+                },
               },
             },
           ],
           byWorkType: [{ $group: { _id: '$workTypeId', count: { $sum: 1 } } }],
           byWorkshop: [{ $group: { _id: '$workshopId', count: { $sum: 1 } } }],
           byVehicle: [
+            // Registry cars only (a choice: the ranking names a registry car); the old book's rows
+            // with no car stay in `state` (count, `unregistered`) and the bars.
+            { $match: { vehicleId: { $type: 'objectId' } } },
             {
               $group: {
-                _id: {
-                  vehicleId: { $ifNull: ['$vehicleId', null] },
-                  vehicleCode: {
-                    $cond: [isNull('$vehicleId'), { $ifNull: ['$vehicleCode', null] }, null],
-                  },
-                },
+                _id: '$vehicleId',
                 visits: { $sum: 1 },
                 lastInDate: { $max: '$inDate' },
+                // The latest check-in's work type; the later recorded of two on one day.
+                lastWorkTypeId: {
+                  $top: {
+                    sortBy: { inDate: -1, _id: -1 },
+                    output: { $ifNull: ['$workTypeId', null] },
+                  },
+                },
               },
             },
           ],
@@ -697,6 +745,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       count: state?.count ?? 0,
       open: state?.open ?? 0,
       unregistered: state?.unregistered ?? 0,
+      staySum: state?.staySum ?? 0,
       byWorkType: (facets?.byWorkType ?? []).map((row) => ({
         id: String(row._id),
         count: row.count,
@@ -706,20 +755,50 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
         count: row.count,
       })),
       byVehicle: (facets?.byVehicle ?? []).map((row) => ({
-        vehicleId: row._id.vehicleId == null ? null : String(row._id.vehicleId),
-        vehicleCode: row._id.vehicleCode ?? null,
+        vehicleId: String(row._id),
         visits: row.visits,
         lastInDate: row.lastInDate,
+        lastWorkTypeId: row.lastWorkTypeId == null ? null : String(row.lastWorkTypeId),
       })),
     };
+  }
+
+  /**
+   * «أرقام الفترة» — how many visits the filter matches and how many of them are still open NOW,
+   * in ONE `$group` (the check-in figures need nothing else).
+   */
+  async stateCounts(
+    filter: FilterQuery<FleetMaintenanceVisitDoc>,
+  ): Promise<{ count: number; open: number }> {
+    const [row] = await this.model.aggregate<{ count: number; open: number }>([
+      { $match: this.baseFilter(undefined, filter) },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          // `$ifNull`: an old row with no `outDate` at all is open, as the list's filter reads it.
+          open: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$outDate', null] }, null] }, 1, 0] } },
+        },
+      },
+    ]);
+    return { count: row?.count ?? 0, open: row?.open ?? 0 };
   }
 }
 
 /** R-09's facts, before the service names the cars. */
 export interface OpenVisitFacts {
   count: number;
-  /** The oldest open visit by check-in day; `null` when none is open. */
+  /** The oldest open visit by check-in day (`longest[0]`); `null` when none is open. */
   oldest: { vehicleId: string | null; vehicleCode: string | null; inDate: Date } | null;
+  /** ≤ FLEET_DASHBOARD_WORKSHOP_ROWS open visits, oldest check-in first, then `_id`. */
+  longest: {
+    visitId: string;
+    vehicleId: string | null;
+    vehicleCode: string | null;
+    inDate: Date;
+    workshopId: string | null;
+    workTypeId: string | null;
+  }[];
   /** The registry cars among the open visits, with how many each has (one, by `ux_open_visit`). */
   cars: { vehicleId: string; visits: number }[];
 }
@@ -731,14 +810,17 @@ export interface VisitBreakdownFacts {
   open: number;
   /** Visits with no registry car (kept from the old book). */
   unregistered: number;
+  /** Σ whole days check-in → check-out over the CLOSED visits (`count − open` of them). */
+  staySum: number;
   byWorkType: { id: string; count: number }[];
   byWorkshop: { id: string; count: number }[];
-  /** Per registry car, or per book code for a visit without one. */
+  /** Per registry car (a visit with no registry car is not here). */
   byVehicle: {
-    vehicleId: string | null;
-    vehicleCode: string | null;
+    vehicleId: string;
     visits: number;
     lastInDate: Date;
+    /** The work type of its latest check-in (the later recorded on a tie). */
+    lastWorkTypeId: string | null;
   }[];
 }
 

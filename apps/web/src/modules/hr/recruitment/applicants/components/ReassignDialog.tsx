@@ -14,7 +14,8 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Field, Input, Select, Textarea } from '../../../../../shared/ui/form';
+import { Field, Input, Textarea } from '../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
 import { useBranchOptions, useJobTitleReferenceOptions } from '../../../../organization/shared/references';
@@ -109,25 +110,21 @@ export const ReassignDialog = ({
       <div className="space-y-3">
 
         <Field label={t('applicants.reassign.jobTitle')}>
-          <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {titles.map((jt) => (
-              <option key={jt.id} value={jt.id}>
-                {localized(jt.name, locale)}
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={jobTitleId}
+            onChange={setJobTitleId}
+            options={titles.map((jt) => ({ value: jt.id, label: localized(jt.name, locale) }))}
+            ariaLabel={t('applicants.reassign.jobTitle')}
+          />
         </Field>
 
         <Field label={t('applicants.reassign.branch')}>
-          <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {(branches ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {localized(b.name, locale)}
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={branchId}
+            onChange={setBranchId}
+            options={(branches ?? []).map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+            ariaLabel={t('applicants.reassign.branch')}
+          />
         </Field>
 
         <Field label={t('bulk.reason.title')} hint={t('applicants.reassign.reasonHint')}>

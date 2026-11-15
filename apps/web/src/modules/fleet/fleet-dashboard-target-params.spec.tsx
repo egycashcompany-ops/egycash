@@ -29,6 +29,7 @@ import {
   type FleetDriverProfileDto,
   type FleetFuelCardDto,
   type FleetLicensingRowDto,
+  type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type FleetReceiptDto,
   type FleetVehicleDto,
@@ -49,6 +50,9 @@ import { AccidentsPage } from './pages/AccidentsPage';
 import { DealershipPage } from './pages/DealershipPage';
 import { ReceiptsPage } from './pages/ReceiptsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
+import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
+import { VehicleContractsPage } from './pages/VehicleContractsPage';
+import { vehicleContractSummaryKey } from './api/vehicle-contract-queries';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { paperStage } from './pages/LicensingPage';
 
@@ -767,6 +771,126 @@ describe('/fleet/maintenance reads the visits that LEFT the workshop (exits)', (
     expect(remembered('MaintenancePage.tsx')).toEqual(expect.arrayContaining(['outFrom', 'outTo']));
     expect(readsInSource('MaintenancePage.tsx', 'outFrom')).toBe(true);
     expect(readsInSource('MaintenancePage.tsx', 'outTo')).toBe(true);
+  });
+});
+
+// ── «الصيانة والورش»: the alarms board on both levels, or on one car ──────────
+
+const alarm = (
+  code: string,
+  level: FleetMaintenanceAlarmDto['level'],
+): FleetMaintenanceAlarmDto => ({
+  vehicleId: `v${code}`,
+  code,
+  level,
+  remainingKm: level === 'red' ? -100 : level === 'yellow' ? 500 : 4000,
+  sinceServiceKm: 4000,
+  lastServiceAt: '2026-08-01T00:00:00.000Z',
+  lastServiceVisitId: `visit-${code}`,
+  noAlarmReason: null,
+  daysWithoutReading: 0,
+  latestReading: 12000,
+  latestReadingAt: null,
+  latestReadingLogId: null,
+  baseline: null,
+  newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 10000, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
+});
+
+/** The board's rows as drawn: the code cell's own mark, in row order. */
+const alarmCodes = (route: string): string[] => {
+  const qc = client();
+  // The board's ONE read (`fleetKeys.alarms`), fetched whole: the screen narrows it to the link's
+  // levels and codes.
+  qc.setQueryData(
+    ['fleet', 'alarms'],
+    [alarm('247', 'red'), alarm('188', 'red'), alarm('305', 'yellow'), alarm('152', 'none')],
+  );
+  const html = mount(
+    qc,
+    ['fleetOdometer.view'],
+    route,
+    '/fleet/maintenance-alarms',
+    <MaintenanceAlarmsPage />,
+  );
+  return [...tbody(html).matchAll(/data-alarm-code="true"[^>]*>([^<]*)<\/span>/gu)].map(
+    (m) => m[1] ?? '',
+  );
+};
+
+describe('/fleet/maintenance-alarms reads the levels and the car «الصيانة والورش» opens it on', () => {
+  it('«كل إنذارات الصيانة»: both levels (a list), and no car without an alarm', () => {
+    expect(alarmCodes('/fleet/maintenance-alarms?level=red,yellow').sort()).toEqual([
+      '188',
+      '247',
+      '305',
+    ]);
+    // …under a branch, the branch's cars of both levels by code.
+    expect(
+      alarmCodes('/fleet/maintenance-alarms?level=red,yellow&vehicleCodes=247,305').sort(),
+    ).toEqual(['247', '305']);
+  });
+
+  it('«فتح» on a row: that car alone, at its level', () => {
+    expect(alarmCodes('/fleet/maintenance-alarms?level=red&vehicleCodes=247')).toEqual(['247']);
+    expect(alarmCodes('/fleet/maintenance-alarms?level=yellow&vehicleCodes=247')).toEqual([]);
+  });
+
+  it('remembers both and reads them in its own source', () => {
+    expect(remembered('MaintenanceAlarmsPage.tsx')).toEqual(
+      expect.arrayContaining(['level', 'vehicleCodes']),
+    );
+    expect(readsInSource('MaintenanceAlarmsPage.tsx', 'level')).toBe(true);
+    expect(readsInSource('MaintenanceAlarmsPage.tsx', 'vehicleCodes')).toBe(true);
+  });
+});
+
+// ── «توزيع السيارات»: the supply contracts of the year, and one alarm level ────
+
+/** Renders the contracts screen at `route` and says which reads it built: the list and the figures. */
+const contractReads = (route: string): readonly unknown[][] => {
+  const qc = client();
+  mount(
+    qc,
+    ['fleetVehicleContract.view'],
+    route,
+    '/fleet/vehicle-contracts',
+    <VehicleContractsPage />,
+  );
+  return qc
+    .getQueryCache()
+    .findAll({ queryKey: ['fleet', 'vehicleContracts'] })
+    .map((q) => [...q.queryKey]);
+};
+
+describe('/fleet/vehicle-contracts reads the year and the alarm level «عقود التوريد» opens it on', () => {
+  const YEAR = { from: '2026-01-01', to: '2026-12-31' };
+  const LIST = { page: 1, pageSize: 25, sortBy: 'date', sortDir: 'desc', sort: 'date:desc' };
+
+  it('sends the dates to the list AND to its figures — the summary the dashboard reads', () => {
+    const reads = contractReads('/fleet/vehicle-contracts?from=2026-01-01&to=2026-12-31');
+    expect(reads).toContainEqual([...listKey('fleet', 'vehicleContracts', { ...LIST, ...YEAR })]);
+    expect(reads).toContainEqual([...vehicleContractSummaryKey(YEAR)]);
+  });
+
+  it('sends one alarm level with them, as a list', () => {
+    const reads = contractReads('/fleet/vehicle-contracts?from=2026-01-01&to=2026-12-31&alarm=red');
+    expect(reads).toContainEqual([
+      ...listKey('fleet', 'vehicleContracts', { ...LIST, ...YEAR, alarm: ['red'] }),
+    ]);
+    expect(reads).toContainEqual([...vehicleContractSummaryKey({ ...YEAR, alarm: ['red'] })]);
+    // Not the un-narrowed figures.
+    expect(reads).not.toContainEqual([...vehicleContractSummaryKey(YEAR)]);
+  });
+
+  it('remembers them and reads them in its own source', () => {
+    expect(remembered('VehicleContractsPage.tsx')).toEqual(
+      expect.arrayContaining(['from', 'to', 'alarm']),
+    );
+    for (const param of ['from', 'to', 'alarm']) {
+      expect(readsInSource('VehicleContractsPage.tsx', param), param).toBe(true);
+    }
   });
 });
 

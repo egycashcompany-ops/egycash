@@ -10,6 +10,7 @@
 // The pure counting below (the roster digest, the distribution matrix) reads server fields the
 // owning module already derived — it never re-spells a filter.
 import {
+  FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_LICENCE_ROWS,
   FLEET_DASHBOARD_RECENT_DAYS,
   FLEET_DASHBOARD_RECENT_ROWS,
@@ -25,15 +26,18 @@ import {
   ymdOf,
   ymdToUtcDate,
   type FleetDashboardAbsentDriverDto,
+  type FleetDashboardAlarmRowDto,
   type FleetDashboardNamedDto,
   type FleetDashboardNowDistributionVehiclesDto,
   type FleetDashboardNowDto,
   type FleetDashboardNowRosterDto,
   type FleetDashboardNowSection,
+  type FleetDashboardOperationKindsDto,
   type FleetDashboardUnmannedClass,
   type FleetDashboardUnmannedRowDto,
   type FleetDashboardVehicleScopeDto,
   type FleetDriverUnavailableReason,
+  type FleetMaintenanceAlarmDto,
   type FleetRosterDayDto,
   type FleetRosterRowDto,
   type ListFleetVehiclesQuery,
@@ -448,20 +452,31 @@ const scopeBranchIds = (scope: ScopeSelector): ReadonlySet<string> | null => {
  * the reader's branches (plus any branch a counted car sits in, so no car is ever dropped); a car
  * with no branch is «بلا فرع». Row total = Σ cells + noBranch; the grand total = vehicles.active.
  * `branchCount` (the overview's «توزيع السيارات») = the columns that hold a car.
+ *
+ * The cells come split by the car's operation as well; the type rows ignore that split, and each
+ * column folds it into `kinds` through `kindOf` (the very test the cash / ATM links' ids come from),
+ * so a branch's cash + atm + other = its column. The columns are ordered by active cars, largest
+ * first, a tie keeping the branch list's order — one order for the branch cards and the matrix.
  */
 export const distributionMatrix = (input: {
-  cells: readonly { typeId: string; branchId: string | null; count: number }[];
+  cells: readonly {
+    typeId: string;
+    branchId: string | null;
+    operationId: string | null;
+    count: number;
+  }[];
   typeNames: ReadonlyMap<string, LocalizedString>;
   branches: readonly FleetDashboardNamedDto[];
   scopeBranches: ReadonlySet<string> | null;
+  kindOf: (operationId: string | null) => 'cash' | 'atm' | null;
 }): Pick<
   FleetDashboardNowDistributionVehiclesDto,
-  'branches' | 'rows' | 'totals' | 'branchCount'
+  'branches' | 'rows' | 'totals' | 'branchCount' | 'kinds' | 'noBranchKinds' | 'other'
 > => {
   const seen = new Set(
     input.cells.flatMap((cell) => (cell.branchId === null ? [] : [cell.branchId])),
   );
-  const branches = input.branches.filter(
+  const listed = input.branches.filter(
     (branch) =>
       input.scopeBranches === null || input.scopeBranches.has(branch.id) || seen.has(branch.id),
   );
@@ -471,6 +486,12 @@ export const distributionMatrix = (input: {
     noBranch: 0,
     total: 0,
   };
+  const zeroKinds = (): FleetDashboardOperationKindsDto => ({ cash: 0, atm: 0, other: 0 });
+  // Every column, zeros included: a branch with no active car still has its card.
+  const kinds: Record<string, FleetDashboardOperationKindsDto> = Object.fromEntries(
+    listed.map((branch) => [branch.id, zeroKinds()]),
+  );
+  const noBranchKinds = zeroKinds();
   for (const cell of input.cells) {
     const row = rows.get(cell.typeId) ?? {
       typeId: cell.typeId,
@@ -479,17 +500,25 @@ export const distributionMatrix = (input: {
       noBranch: 0,
       total: 0,
     };
+    const kind = input.kindOf(cell.operationId) ?? 'other';
     if (cell.branchId === null) {
       row.noBranch += cell.count;
       totals.noBranch += cell.count;
+      noBranchKinds[kind] += cell.count;
     } else {
       row.counts[cell.branchId] = (row.counts[cell.branchId] ?? 0) + cell.count;
       totals.counts[cell.branchId] = (totals.counts[cell.branchId] ?? 0) + cell.count;
+      const column = (kinds[cell.branchId] ??= zeroKinds());
+      column[kind] += cell.count;
     }
     row.total += cell.count;
     totals.total += cell.count;
     rows.set(cell.typeId, row);
   }
+  // Active cars desc; `sort` is stable, so a tie keeps the branch list's order.
+  const branches = [...listed].sort(
+    (a, b) => (totals.counts[b.id] ?? 0) - (totals.counts[a.id] ?? 0),
+  );
   return {
     branches,
     rows: [...rows.values()].sort(
@@ -498,8 +527,51 @@ export const distributionMatrix = (input: {
     totals,
     // The branches holding at least one counted car; «بلا فرع» is no branch, an empty column none.
     branchCount: Object.values(totals.counts).filter((count) => count > 0).length,
+    kinds,
+    noBranchKinds,
+    other: {
+      vehicles:
+        Object.values(kinds).reduce((sum, column) => sum + column.other, 0) + noBranchKinds.other,
+    },
   };
 };
+
+/**
+ * «إنذارات الصيانة بالكيلومتر» — a projection of the alarm rows the counts read (already narrowed to
+ * the reader's branches): red and yellow cars with a figure, red first, then the km left ascending
+ * (the most overdue first), then the car code; at most FLEET_DASHBOARD_ALARM_ROWS. Every field is
+ * the projection's own — the make and the interval of its rule, the day of its last counted
+ * service, and the workshop of its OPEN visit (`newerUncountedVisit.why === 'open'`) only.
+ */
+export const alarmTableRows = (
+  alarms: readonly FleetMaintenanceAlarmDto[],
+): FleetDashboardAlarmRowDto[] =>
+  alarms
+    .flatMap((alarm): FleetDashboardAlarmRowDto[] => {
+      if (alarm.level !== 'red' && alarm.level !== 'yellow') return [];
+      if (alarm.remainingKm === null || alarm.sinceServiceKm === null) return [];
+      const open = alarm.newerUncountedVisit?.why === 'open' ? alarm.newerUncountedVisit : null;
+      return [
+        {
+          vehicleId: alarm.vehicleId,
+          code: alarm.code,
+          typeName: alarm.rule.vehicleType?.name ?? null,
+          level: alarm.level,
+          remainingKm: alarm.remainingKm,
+          sinceServiceKm: alarm.sinceServiceKm,
+          intervalKm: alarm.rule.intervalKm,
+          lastServiceAt: alarm.lastServiceAt === null ? null : ymdOf(alarm.lastServiceAt),
+          inWorkshop: open === null ? null : { workshop: open.workshop?.name ?? null },
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1) ||
+        a.remainingKm - b.remainingKm ||
+        compareFleetVehicleCodes(a.code, b.code),
+    )
+    .slice(0, FLEET_DASHBOARD_ALARM_ROWS);
 
 // ── The sections ─────────────────────────────────────────────────────────────────────────────
 
@@ -577,9 +649,15 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     fleetMaintenanceService.openNow({ today: d.today, filter: branchFilter(d) }),
   ),
 
-  // T1.1 — the alarm projection, narrowed to the branch's cars AFTER computing (D19).
+  // T1.1 — the alarm projection, narrowed to the branch's cars AFTER computing (D19); the two
+  // thresholds are the settings the projection itself resolves (organization level, memoised).
   maintenanceAlarm: section('maintenanceAlarm', 'company+set', async (d) => {
-    const [alarms, set] = await Promise.all([computeAlarms(), branchSet(d)]);
+    const [alarms, set, redKm, yellowKm] = await Promise.all([
+      computeAlarms(),
+      branchSet(d),
+      d.setting<number>(FleetSettingKeys.AlarmRedKm),
+      d.setting<number>(FleetSettingKeys.AlarmYellowKm),
+    ]);
     const inSet = set.ids === undefined ? null : new Set(set.ids);
     const rows = inSet === null ? alarms : alarms.filter((row) => inSet.has(row.vehicleId));
     const red = rows.filter((row) => row.level === 'red');
@@ -595,6 +673,10 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       overdue: red.filter((row) => row.remainingKm !== null && row.remainingKm < 0).length,
       yellow: yellow.length,
       codes: inSet === null ? null : { red: codesOf(red), yellow: codesOf(yellow) },
+      redKm,
+      yellowKm,
+      // «إنذارات الصيانة بالكيلومتر» — the SAME narrowed rows the counts above read.
+      rows: alarmTableRows(rows),
     };
   }),
 
@@ -644,6 +726,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
         branches: branches.map((b) => ({ id: String(b._id), name: b.name as LocalizedString })),
         scopeBranches: scopeBranchIds(scope),
+        // The same name test the cash / ATM ids (and so their links) come from.
+        kindOf: (operationId) => operationKind(operations, operationId),
       }),
       cash,
       atm,

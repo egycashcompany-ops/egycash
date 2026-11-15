@@ -4,8 +4,9 @@
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
 // parameters). This is the browser half: render all ten tabs from the fixtures — the company, a
 // chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
-// operation, codes and branch — collect EVERY figure link the page draws (the overview's links to
-// other tabs of the page included), and hold each to the screen it opens:
+// operation, codes and branch (the four period tabs and the period band of «الصيانة والورش») — collect
+// EVERY figure link the page draws (the overview's links to other tabs of the page included), and
+// hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
 //   · every query parameter it carries is one that page READS from its URL — a parameter the
 //     target ignores would open a wider list than the figure counts, silently;
@@ -23,6 +24,7 @@ import {
   FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_TABS,
   FLEET_DASHBOARD_TAB_READS,
+  type FleetDashboardNowAlarmDto,
   type FleetDashboardPeriodDto,
 } from '@ecms/contracts';
 import {
@@ -130,12 +132,17 @@ const anchors = (html: string): Anchor[] =>
     };
   });
 
-/** The tabs drawn over R1 (the overview's month card is R2 «هذا الشهر», seeded under its own key). */
+/**
+ * The tabs drawn over R1 — «توزيع السيارات» and «الصيانة والورش» among them (the month read of the
+ * overview and of «توزيع السيارات» is R2 «هذا الشهر», seeded under its own key).
+ */
 const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
 );
-/** The five old tabs under the filter bar. */
-const PERIOD_TABS = FLEET_DASHBOARD_PERIOD_TABS;
+/** The tabs drawn over the PAGE's R2: the four old ones under the filter bar, and «الصيانة والورش». */
+const PAGE_PERIOD_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
+  FLEET_DASHBOARD_TAB_READS[tab].includes('period'),
+);
 
 const CAIRO = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
 const GIZA = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
@@ -200,7 +207,22 @@ const rendered = (): Anchor[] => {
     );
   }
   pages.push(renderDashboard({ url: `/fleet?tab=overview${PAGE_FILTERS}` }));
-  for (const tab of PERIOD_TABS) {
+  // «توزيع السيارات» for a reader of the supply contracts (a part of the tab, not a page key).
+  pages.push(
+    renderDashboard({
+      url: '/fleet?tab=distribution',
+      permissions: [...ALL_KEYS, 'fleetVehicleContract.view'],
+    }),
+  );
+  // «الصيانة والورش» under a narrowed page R2, with the switcher's branch on R1 too.
+  const narrowedUrl = `/fleet?tab=maintenance&period=last30${SET}`;
+  pages.push(
+    renderDashboard({
+      url: narrowedUrl,
+      client: dashboardClient({ now: NOW_BRANCH, page: { url: narrowedUrl, dto: NARROWED } }),
+    }),
+  );
+  for (const tab of PAGE_PERIOD_TABS) {
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30` }));
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=thisYear`, dto: PERIOD_YEAR }));
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30${SET}`, dto: NARROWED }));
@@ -215,6 +237,12 @@ const rendered = (): Anchor[] => {
   }
   return pages.flatMap(anchors).filter((a) => a.metric !== '');
 };
+
+const ALARM: FleetDashboardNowAlarmDto = NOW_DTO.maintenanceAlarm as FleetDashboardNowAlarmDto;
+const ALARM_COMPANY = ALARM;
+const ALARM_NARROWED = { ...ALARM, codes: { red: ['133'], yellow: ['141'] } };
+/** A branch whose red cars are over the screens' cap: that level comes back `[]`. */
+const ALARM_OVER_CAP = { ...ALARM, red: 60, codes: { red: [], yellow: ['141'] } };
 
 /** Links the fixtures may not draw: the builder's other arguments, called directly. */
 const built = (): Anchor[] => {
@@ -233,6 +261,15 @@ const built = (): Anchor[] => {
       L.violationsOpen(),
       L.alarm('red', null),
       L.alarm('yellow', ['133', '141']),
+      L.alarmRow('red', '133'),
+      L.alarmRow('yellow', '141'),
+      L.alarmsAll(ALARM_COMPANY),
+      L.alarmsAll(ALARM_NARROWED),
+      L.alarmsAll(ALARM_OVER_CAP),
+      L.workshopCar('141'),
+      L.supplyContracts('supplyContracts.open'),
+      L.supplyContracts('supplyContracts.red', 'red'),
+      L.supplyContracts('supplyContracts.yellow', 'yellow'),
       L.noReading(['133']),
       L.neverRead(['141']),
       L.visitDay('231', TODAY, true),
@@ -258,8 +295,10 @@ const built = (): Anchor[] => {
       P.opexCustody(),
       P.opex('opex.custody', 'custody'),
       P.dealership('dealership.pending', 'pending'),
-      P.visits('visits.workType', { workTypes: ['w1'], state: 'closed' }),
-      P.visits('visits.workshop', { workshops: ['s1'], vehicleCodes: ['133'] }),
+      P.visits('visits.closed', { state: 'closed' }),
+      P.exits('exits.byWorkType', { workTypes: ['w1'] }),
+      P.exits('exits.byWorkshop', { workshops: ['s1'] }),
+      P.exits('exits.topVehicle', { vehicleCodes: ['133'] }),
       P.accidents('accidents.open', 'open'),
       P.carKm('133', 'km.top'),
     );
@@ -275,9 +314,21 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 
 describe('the link census — every figure link against the screen it opens', () => {
   it('collects the page’s links from all ten tabs (the census is not empty by accident)', () => {
+    expect([...PAGE_PERIOD_TABS].sort()).toEqual(
+      [...FLEET_DASHBOARD_PERIOD_TABS, 'maintenance'].sort(),
+    );
     expect(LINKS.length).toBeGreaterThan(150);
     const metrics = new Set(LINKS.map((l) => l.metric.split('.')[0]));
-    for (const section of ['maintenanceAlarm', 'roster', 'distributionVehicles', 'km', 'visits']) {
+    for (const section of [
+      'maintenanceAlarm',
+      'roster',
+      'distributionVehicles',
+      'km',
+      'visits',
+      'exits',
+      'workshop',
+      'supplyContracts',
+    ]) {
       expect(metrics.has(section), section).toBe(true);
     }
   });
@@ -319,6 +370,14 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/maintenance?type',
         '/fleet/maintenance?outFrom',
         '/fleet/maintenance?outTo',
+        '/fleet/maintenance?workTypes',
+        '/fleet/maintenance?workshops',
+        '/fleet/maintenance?state',
+        '/fleet/maintenance-alarms?level',
+        '/fleet/maintenance-alarms?vehicleCodes',
+        '/fleet/vehicle-contracts?from',
+        '/fleet/vehicle-contracts?to',
+        '/fleet/vehicle-contracts?alarm',
         '/fleet/odometer?type',
         '/fleet/odometer?operation',
         '/fleet/odometer?branch',
@@ -378,6 +437,65 @@ describe('the link census — every figure link against the screen it opens', ()
       expect(params.get('type'), link.href).toBe(`${T1},${T2}`);
       expect(params.get('operation'), link.href).toBe(OP_CASH);
       expect(params.get('branch'), link.href).toBe(B1);
+    }
+  });
+});
+
+describe('the two rebuilt tabs’ own reads (plan D3, D4, D7)', () => {
+  it('«توزيع السيارات»: its km links read «هذا الشهر» alone — never a page filter', () => {
+    const url = `/fleet?tab=distribution${PAGE_FILTERS}`;
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: NARROWED } }),
+    });
+    const km = anchors(html).filter((a) => a.metric.startsWith('km.'));
+    expect(km.length).toBeGreaterThan(0);
+    for (const link of km) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname, link.metric).toBe('/fleet/odometer');
+      expect(params.get('from'), link.metric).toBe(TODAY);
+      expect(params.get('to'), link.metric).toBe(TODAY);
+      for (const name of ['type', 'operation', 'vehicleCodes', 'period'])
+        expect(params.has(name), `${link.metric} ${name}`).toBe(false);
+    }
+  });
+
+  it('«الصيانة والورش»: every period link is by EXIT day and carries the page’s whole set', () => {
+    const exits = LINKS.filter(
+      (l) => l.metric.startsWith('exits.') && l.href.includes(`operation=${OP_CASH}`),
+    );
+    expect(new Set(exits.map((l) => l.metric))).toEqual(
+      new Set(['exits.count', 'exits.byWorkType', 'exits.byWorkshop', 'exits.topVehicle']),
+    );
+    for (const link of exits) {
+      const { params } = parse(link.href);
+      expect(params.has('from'), link.href).toBe(false);
+      expect(params.has('to'), link.href).toBe(false);
+      expect(params.get('outFrom'), link.href).toBe('2026-10-03');
+      expect(params.get('outTo'), link.href).toBe(TODAY);
+      // A ranked car's code replaces the set's codes; every other link keeps the set's.
+      if (link.metric !== 'exits.topVehicle') {
+        expect(params.get('vehicleCodes'), link.href).toBe('133,141');
+      }
+    }
+  });
+
+  it('«الصيانة والورش»: the «الآن» rows open the alarms board on their car, the workshop on its visit', () => {
+    const rows = LINKS.filter((l) => l.metric === 'maintenanceAlarm.row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const link of rows) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname).toBe('/fleet/maintenance-alarms');
+      expect(['red', 'yellow']).toContain(params.get('level'));
+      expect(params.get('vehicleCodes')?.split(',')).toHaveLength(1);
+    }
+    const stays = LINKS.filter((l) => l.metric === 'workshop.longest');
+    expect(stays.length).toBeGreaterThan(0);
+    for (const link of stays) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname).toBe('/fleet/maintenance');
+      expect(params.get('state')).toBe('open');
+      expect(params.get('vehicleCodes')?.split(',')).toHaveLength(1);
     }
   });
 });

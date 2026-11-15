@@ -1,13 +1,16 @@
-// «لوحة تحكم الحركة» — the old R1 tabs still waiting for their redesign: «توزيع السيارات»,
-// «التراخيص وآخر ما سُجّل» and «ملخصات» (plan §8.1–§8.5, unified.md W-SHELL). «نظرة عامة» and
-// «الحركة اليوم» — which took the retired «التنبيهات» and «الحركة الآن» — have their own specs
-// (fleet-dashboard-tab-overview.spec.tsx, fleet-dashboard-tab-today.spec.tsx).
+// «لوحة تحكم الحركة» — the old R1 tabs still waiting for their redesign: «التراخيص وآخر ما سُجّل»
+// and «ملخصات» (plan §8.1–§8.5, unified.md W-SHELL). The four rebuilt tabs have their own specs:
+// «نظرة عامة» and «الحركة اليوم» — which took the retired «التنبيهات» and «الحركة الآن»
+// (fleet-dashboard-tab-overview.spec.tsx, fleet-dashboard-tab-today.spec.tsx), «توزيع السيارات» and
+// «الصيانة والورش» — rebuilt under their old keys (fleet-dashboard-tab-distribution.spec.tsx, which
+// carries the old tab 3's pins, and fleet-dashboard-tab-maintenance.spec.tsx).
 //
 // What this file pins is that each figure reads the field it is about, opens the screen that shows
 // the same number (through the one link builder), says what the approved sample says, and draws
 // nothing the owner ruled out: no Q marker, no receipt-audit part, no export or print, no custody
-// ceiling, no Phase-2 piece — on every tab of the bar. A null section renders nothing; a failed one
-// shows its error.
+// ceiling, no Phase-2 piece — on every tab of the bar (the year's supply contracts, approved for
+// «توزيع السيارات», on that tab alone and for their reader alone). A null section renders nothing; a
+// failed one shows its error.
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,10 +18,8 @@ import { describe, expect, it } from 'vitest';
 import { FLEET_DASHBOARD_TABS, addDaysYmd } from '@ecms/contracts';
 import {
   ALL_KEYS,
-  B1,
   DRIVER,
   NOW_DTO,
-  T1,
   TODAY,
   ar,
   dashboardClient,
@@ -53,72 +54,6 @@ const part = (html: string, marker: string, next: RegExp): string => {
   const end = rest.search(next);
   return marker + (end < 0 ? rest : rest.slice(0, end));
 };
-
-// ── Tab 3 «توزيع السيارات» ─────────────────────────────────────────────────────────────────────
-
-describe('tab 3 — the distribution', () => {
-  const html = tab('distribution');
-  const matrix = part(html, 'data-fleet-matrix="true"', /data-quick-read="/u);
-
-  it('lays the reader’s branches out as columns, «بلا فرع» only when a car has none — and unlinked', () => {
-    expect(text(matrix)).toMatch(/القاهرة\s*الجيزة\s*بلا فرع\s*الإجمالي/u);
-    const plain = tab('distribution', {
-      now: {
-        ...NOW_DTO,
-        distributionVehicles: {
-          ...(NOW_DTO.distributionVehicles as NonNullable<typeof NOW_DTO.distributionVehicles>),
-          rows: [
-            {
-              typeId: T1,
-              name: { ar: 'مصفحة', en: 'Armoured' },
-              counts: { [B1]: 2 },
-              noBranch: 0,
-              total: 2,
-            },
-          ],
-          totals: { counts: { [B1]: 2 }, noBranch: 0, total: 2 },
-        },
-      },
-    });
-    expect(text(part(plain, '<thead', /<\/thead>/u))).not.toContain('بلا فرع');
-    expect(text(part(html, '<thead', /<\/thead>/u))).toContain('بلا فرع');
-    // The «بلا فرع» figures open nothing: the vehicles screen has no such parameter.
-    expect(links(matrix).filter((l) => l.href.includes('branch=none'))).toEqual([]);
-  });
-
-  it('opens every cell on its type and branch, a row on its type, a column on its branch', () => {
-    expect(hrefOf(matrix, 'distributionVehicles.cell')).toContain(
-      `/fleet/vehicles?status=active&type=${T1}&branch=${B1}`,
-    );
-    expect(hrefOf(matrix, 'distributionVehicles.typeTotal')).toContain(
-      `/fleet/vehicles?status=active&type=${T1}`,
-    );
-    expect(hrefOf(matrix, 'distributionVehicles.branch')).toContain(
-      `/fleet/vehicles?status=active&branch=${B1}`,
-    );
-    expect(hrefOf(matrix, 'distributionVehicles.total')).toEqual(['/fleet/vehicles?status=active']);
-  });
-
-  it('writes drivers per vehicle as a plain ratio, with no target and no export (D5-4, D5-5)', () => {
-    expect(text(html)).toContain('1.3');
-    expect(text(html)).not.toContain('توازن مثالي');
-    expect(text(html)).not.toContain('تصدير');
-  });
-
-  it('opens the cash drivers on their specialisation and says how many hold only the old one (R-08)', () => {
-    expect(hrefOf(html, 'distributionDrivers.cash')[0]).toMatch(/^\/fleet\/drivers\?spec=/u);
-    expect(text(html)).toContain('منهم 2 بتصنيف قديم');
-    expect(hrefOf(html, 'distributionDrivers.total')).toEqual([
-      '/fleet/drivers?sort=employeeCode:asc',
-    ]);
-  });
-
-  it('shows no driver tile at all without the drivers’ section — absent, not 0', () => {
-    const none = tab('distribution', { now: { ...NOW_DTO, distributionDrivers: null } });
-    expect(links(none).filter((l) => l.metric.startsWith('distributionDrivers.'))).toEqual([]);
-    expect(text(none)).not.toContain(ar('fleet.dash.distribution.perVehicle'));
-  });
-});
 
 // ── Tab 4 «التراخيص وآخر ما سُجّل» ────────────────────────────────────────────────────────────
 
@@ -302,22 +237,42 @@ describe('the dashboard’s tabs count nothing in the browser and draw no ruled-
   });
 
   it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the ten tabs', () => {
-    for (const key of FLEET_DASHBOARD_TABS) {
-      const html = tab(key);
-      const body = text(html);
-      for (const word of [
-        'عقود التوريد',
-        'عقد توريد',
-        'ترتيب السائقين',
-        'تكلفة التشغيل',
-        'تدقيق الإيصالات',
-        'ج.م/كم',
-        'تكلفة الكيلو',
-        'أمر حركة',
-      ]) {
-        expect(body, `${key}: ${word}`).not.toContain(word);
+    const SUPPLY = ['عقود التوريد', 'عقد توريد'];
+    const RULED_OUT = [
+      'ترتيب السائقين',
+      'تكلفة التشغيل',
+      'تدقيق الإيصالات',
+      'ج.م/كم',
+      'تكلفة الكيلو',
+      'أمر حركة',
+    ];
+    const contracts = (html: string) =>
+      links(html).filter((l) => l.href.startsWith('/fleet/vehicle-contracts'));
+    // Every key of the page — the contracts' is not one of them — and then with it as well.
+    for (const permissions of [ALL_KEYS, [...ALL_KEYS, 'fleetVehicleContract.view']]) {
+      const supplyReader = permissions.includes('fleetVehicleContract.view');
+      for (const key of FLEET_DASHBOARD_TABS) {
+        const html = tab(key, {}, permissions);
+        const body = text(html);
+        for (const word of RULED_OUT) expect(body, `${key}: ${word}`).not.toContain(word);
+        // The year's supply contracts: on «توزيع السيارات» alone, and for their reader alone.
+        const supplyHere = key === 'distribution' && supplyReader;
+        for (const word of SUPPLY) {
+          if (!supplyHere) expect(body, `${key}: ${word}`).not.toContain(word);
+        }
+        if (!supplyHere) {
+          expect(contracts(html), key).toEqual([]);
+          continue;
+        }
+        expect(body).toContain(ar('fleet.dash.distribution.sub.supply').replace(/^، /u, ''));
+        expect(contracts(html).length).toBeGreaterThan(0);
+        for (const { href, metric } of contracts(html)) {
+          const params = new URLSearchParams(href.split('?')[1] ?? '');
+          expect(metric, href).toMatch(/^supplyContracts\./u);
+          expect(params.get('from'), href).toBe(`${TODAY.slice(0, 4)}-01-01`);
+          expect(params.get('to'), href).toBe(`${TODAY.slice(0, 4)}-12-31`);
+        }
       }
-      expect(links(html).filter((l) => l.href.startsWith('/fleet/vehicle-contracts'))).toEqual([]);
     }
   });
 });

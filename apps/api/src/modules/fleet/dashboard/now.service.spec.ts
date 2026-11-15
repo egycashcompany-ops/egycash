@@ -14,6 +14,7 @@
 //     reaches the fuel summary's «شُحن اليوم» (its Cairo day, batch 3's D5).
 // The figures themselves are proved against real endpoints by the integration specs.
 import {
+  FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_GATES,
   FLEET_DASHBOARD_TODAY_ROWS,
   FLEET_DASHBOARD_NOW_KEYS,
@@ -21,6 +22,7 @@ import {
   FLEET_DASHBOARD_PERIOD_KEYS,
   fleetDashboardGateKeys,
   type FleetDashboardNowSection,
+  type FleetMaintenanceAlarmDto,
   type FleetRosterDayDto,
   type FleetRosterRowDto,
 } from '@ecms/contracts';
@@ -135,6 +137,8 @@ const SETTINGS: Record<string, number | boolean> = {
   'fleet.fuelCard.balanceYellow': 300,
   'fleet.fuelCard.balanceRed': 100,
   'fleet.odometer.missingReadingDays': 3,
+  'fleet.alarm.redKm': 300,
+  'fleet.alarm.yellowKm': 1000,
 };
 
 const row = (over: Partial<FleetRosterRowDto>): FleetRosterRowDto => ({
@@ -165,6 +169,27 @@ const BOARD: FleetRosterDayDto = {
   licenceRule: 'flag',
 };
 
+const MERCEDES = { ar: 'مرسيدس', en: 'Mercedes' };
+
+/** One row of `computeAlarms()` as far as R1 reads it; the rest of the projection is irrelevant. */
+const alarm = (over: Partial<FleetMaintenanceAlarmDto>): FleetMaintenanceAlarmDto =>
+  ({
+    vehicleId: 'v',
+    code: '1',
+    level: 'none',
+    remainingKm: 5000,
+    sinceServiceKm: 5000,
+    lastServiceAt: '2026-09-14T00:00:00.000Z',
+    newerUncountedVisit: null,
+    rule: {
+      vehicleType: { id: T1, name: MERCEDES },
+      intervalKm: 10000,
+      yellowKm: 1000,
+      redKm: 300,
+    },
+    ...over,
+  }) as FleetMaintenanceAlarmDto;
+
 const totals = (over: Record<string, number>) => ({
   wataniyaBalance: 0,
   chilloutBalance: 0,
@@ -181,8 +206,8 @@ beforeEach(() => {
   vehicles.statusCounts.mockResolvedValue({ active: 5, outOfService: 1, disposed: 2 });
   vehicles.outOfServiceList.mockResolvedValue([{ vehicleId: 'v9', code: '9', reason: null }]);
   vehicles.activeByTypeAndBranch.mockResolvedValue([
-    { typeId: T1, branchId: B1, count: 3 },
-    { typeId: T1, branchId: null, count: 2 },
+    { typeId: T1, branchId: B1, operationId: OP_CASH, count: 3 },
+    { typeId: T1, branchId: null, operationId: null, count: 2 },
   ]);
   vehicles.countListed.mockResolvedValue(1);
   vehicles.nearestLicences.mockResolvedValue({
@@ -205,9 +230,9 @@ beforeEach(() => {
   maintenance.recentWritten.mockResolvedValue([]);
   vehicles.countLive.mockResolvedValue(2);
   alarms.computeAlarms.mockResolvedValue([
-    { vehicleId: 'v1', code: '1', level: 'red', remainingKm: -10 },
-    { vehicleId: 'v2', code: '2', level: 'red', remainingKm: 50 },
-    { vehicleId: 'v3', code: '3', level: 'yellow', remainingKm: 400 },
+    alarm({ vehicleId: 'v1', code: '1', level: 'red', remainingKm: -10 }),
+    alarm({ vehicleId: 'v2', code: '2', level: 'red', remainingKm: 50 }),
+    alarm({ vehicleId: 'v3', code: '3', level: 'yellow', remainingKm: 400 }),
   ]);
   odometer.noReadingDigest.mockResolvedValue({ stale: [], neverRead: [] });
   set.vehicleSet.mockImplementation(
@@ -425,12 +450,16 @@ describe('R1 — data scope (R-27)', () => {
     expect(dto.branchId).toBe(B2);
     expect(dto.scopeBranches).toEqual([{ id: B2, name: GIZA }]);
     // The alarm projection, narrowed AFTER computing: v2 is not the branch's.
-    expect(dto.maintenanceAlarm).toEqual({
+    expect(dto.maintenanceAlarm).toMatchObject({
       red: 1,
       overdue: 1,
       yellow: 1,
       codes: { red: ['1'], yellow: ['3'] },
+      redKm: 300,
+      yellowKm: 1000,
     });
+    // The table lists the SAME narrowed rows: v2 is not the branch's.
+    expect(dto.maintenanceAlarm?.rows.map((r) => r.code)).toEqual(['1', '3']);
   });
 
   it('the echo’s car count is the registry’s live cars, and only for a reader of the registry', async () => {
@@ -482,7 +511,8 @@ describe('R1 — data scope (R-27)', () => {
     expect(dto.vehicleScope).toBeNull();
     expect(dto.scopeBranches).toBeNull();
     expect(dto.branchId).toBeNull();
-    expect(dto.maintenanceAlarm).toEqual({ red: 2, overdue: 1, yellow: 1, codes: null });
+    expect(dto.maintenanceAlarm).toMatchObject({ red: 2, overdue: 1, yellow: 1, codes: null });
+    expect(dto.maintenanceAlarm?.rows.map((r) => r.code)).toEqual(['1', '2', '3']);
     // The company asks the set with no branch at all: no vehicle clause.
     expect(set.vehicleSet).toHaveBeenCalledWith({}, null, { branchId: null });
   });
@@ -630,12 +660,14 @@ describe('R1 — data scope (R-27)', () => {
   it('each alarm level carries its own codes, capped on its own: 70 green cars never hide 3 red ones', async () => {
     const ids = Array.from({ length: 73 }, (_, i) => `g${i}`);
     alarms.computeAlarms.mockResolvedValue(
-      ids.map((vehicleId, i) => ({
-        vehicleId,
-        code: String(100 + i),
-        level: i < 3 ? 'red' : 'none',
-        remainingKm: i < 3 ? -1 : 5000,
-      })),
+      ids.map((vehicleId, i) =>
+        alarm({
+          vehicleId,
+          code: String(100 + i),
+          level: i < 3 ? 'red' : 'none',
+          remainingKm: i < 3 ? -1 : 5000,
+        }),
+      ),
     );
     set.vehicleSet.mockResolvedValue({
       ids,
@@ -643,6 +675,138 @@ describe('R1 — data scope (R-27)', () => {
     });
     const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS, { activeBranchId: B2 }), NOW);
     expect(dto.maintenanceAlarm?.codes).toEqual({ red: ['100', '101', '102'], yellow: [] });
+  });
+});
+
+describe('R1 — «إنذارات الصيانة بالكيلومتر»: the alarm rows and the two thresholds', () => {
+  const TAHRIR = { ar: 'ورشة التحرير', en: 'Tahrir workshop' };
+  const openVisit = {
+    visitId: 'mv1',
+    inDate: '2026-10-28T00:00:00.000Z',
+    outDate: null,
+    why: 'open' as const,
+    workType: null,
+    workshop: { id: 'w1', name: TAHRIR },
+    counts: true,
+  };
+
+  it('red first, then the km left ascending, then the car code — each row the projection’s own', async () => {
+    alarms.computeAlarms.mockResolvedValue([
+      alarm({
+        vehicleId: 'a',
+        code: '20',
+        level: 'yellow',
+        remainingKm: 900,
+        sinceServiceKm: 9100,
+      }),
+      alarm({ vehicleId: 'b', code: '7', level: 'red', remainingKm: 120, sinceServiceKm: 9880 }),
+      alarm({
+        vehicleId: 'c',
+        code: '31',
+        level: 'red',
+        remainingKm: -460,
+        sinceServiceKm: 10460,
+        newerUncountedVisit: openVisit,
+      }),
+      alarm({ vehicleId: 'd', code: '6', level: 'red', remainingKm: 120, sinceServiceKm: 9880 }),
+      alarm({
+        vehicleId: 'e',
+        code: '2',
+        level: 'yellow',
+        remainingKm: 500,
+        lastServiceAt: null,
+        // A closed newer visit is not «في الورشة».
+        newerUncountedVisit: {
+          ...openVisit,
+          why: 'notCounting',
+          outDate: '2026-10-30T00:00:00.000Z',
+        },
+      }),
+      alarm({ vehicleId: 'f', code: '1', level: 'none', remainingKm: 4000 }),
+      // No figure (no reading, no rule): never a row, whatever its level says.
+      alarm({ vehicleId: 'g', code: '3', level: 'red', remainingKm: null, sinceServiceKm: null }),
+    ]);
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetOdometer.view']), NOW);
+    const rows = dto.maintenanceAlarm?.rows ?? [];
+    expect(rows.map((r) => [r.code, r.level, r.remainingKm])).toEqual([
+      ['31', 'red', -460],
+      ['6', 'red', 120],
+      ['7', 'red', 120],
+      ['2', 'yellow', 500],
+      ['20', 'yellow', 900],
+    ]);
+    expect(rows[0]).toEqual({
+      vehicleId: 'c',
+      code: '31',
+      typeName: MERCEDES,
+      level: 'red',
+      remainingKm: -460,
+      sinceServiceKm: 10460,
+      intervalKm: 10000,
+      lastServiceAt: '2026-09-14',
+      inWorkshop: { workshop: TAHRIR },
+    });
+    expect(rows[3]).toMatchObject({ code: '2', lastServiceAt: null, inWorkshop: null });
+    // The counts are the projection's, not the rows': 'g' is red without a figure.
+    expect(dto.maintenanceAlarm).toMatchObject({ red: 4, overdue: 1, yellow: 2 });
+  });
+
+  it(`caps the rows at ${String(FLEET_DASHBOARD_ALARM_ROWS)} AFTER the branch narrowing`, async () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `r${String(i)}`);
+    alarms.computeAlarms.mockResolvedValue(
+      ids.map((vehicleId, i) =>
+        alarm({ vehicleId, code: String(200 + i), level: 'red', remainingKm: 10 * i }),
+      ),
+    );
+    const company = await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
+    expect(company.maintenanceAlarm?.red).toBe(20);
+    expect(company.maintenanceAlarm?.rows).toHaveLength(FLEET_DASHBOARD_ALARM_ROWS);
+    expect(company.maintenanceAlarm?.rows.map((r) => r.code)).toEqual(
+      ids.slice(0, FLEET_DASHBOARD_ALARM_ROWS).map((_, i) => String(200 + i)),
+    );
+    // The branch holds the ODD cars only: the first eight of ITS ten are listed — never a row of
+    // the company's first eight that is not the branch's.
+    const mine = ids.filter((_, i) => i % 2 === 1);
+    set.vehicleSet.mockResolvedValue({
+      ids: mine,
+      scope: { count: 10, typeIds: [], operationIds: [], vehicleCodes: [], branchId: B2 },
+    });
+    const narrowed = await fleetDashboardNowService.read(
+      ctxWith(ALL_KEYS, { activeBranchId: B2 }),
+      NOW,
+    );
+    expect(narrowed.maintenanceAlarm?.red).toBe(10);
+    expect(narrowed.maintenanceAlarm?.rows.map((r) => r.vehicleId)).toEqual(
+      mine.slice(0, FLEET_DASHBOARD_ALARM_ROWS),
+    );
+  });
+
+  it('no car in alarm: no rows, and the two thresholds still come from the settings', async () => {
+    alarms.computeAlarms.mockResolvedValue([]);
+    settings.resolve.mockImplementation((key: string) =>
+      Promise.resolve(
+        key === 'fleet.alarm.redKm' ? 250 : key === 'fleet.alarm.yellowKm' ? 1500 : SETTINGS[key],
+      ),
+    );
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetOdometer.view']), NOW);
+    expect(dto.maintenanceAlarm).toEqual({
+      red: 0,
+      overdue: 0,
+      yellow: 0,
+      codes: null,
+      redKm: 250,
+      yellowKm: 1500,
+      rows: [],
+    });
+    // Organization level — the very resolution the projection makes.
+    expect(settings.resolve).toHaveBeenCalledWith('fleet.alarm.redKm', {
+      userId: null,
+      branchId: null,
+    });
+    expect(settings.resolve).toHaveBeenCalledWith('fleet.alarm.yellowKm', {
+      userId: null,
+      branchId: null,
+    });
   });
 });
 
@@ -945,19 +1109,27 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
     { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
   ];
+  const OP_OTHER = '650000000000000000000303';
+  /** The operation kinds as `operationKind` names them; an unknown id or none is neither. */
+  const kindOf = (id: string | null): 'cash' | 'atm' | null =>
+    id === OP_CASH ? 'cash' : id === OP_ATM ? 'atm' : null;
+  const cell = (
+    typeId: string,
+    branchId: string | null,
+    count: number,
+    operationId: string | null = null,
+  ) => ({ typeId, branchId, operationId, count });
 
   it('rows sum their cells and «بلا فرع»; the grand total is every active car', () => {
     const m = distributionMatrix({
-      cells: [
-        { typeId: T1, branchId: B1, count: 3 },
-        { typeId: T1, branchId: null, count: 2 },
-        { typeId: 'T2', branchId: B2, count: 4 },
-      ],
+      cells: [cell(T1, B1, 3), cell(T1, null, 2), cell('T2', B2, 4)],
       typeNames: new Map([[T1, { ar: 'مرسيدس', en: 'Mercedes' }]]),
       branches: branchList,
       scopeBranches: null,
+      kindOf,
     });
-    expect(m.branches.map((b) => b.id)).toEqual([B1, B2]);
+    // B2 holds more cars than B1: it comes first.
+    expect(m.branches.map((b) => b.id)).toEqual([B2, B1]);
     expect(m.rows.map((r) => [r.typeId, r.total, r.noBranch])).toEqual([
       [T1, 5, 2],
       ['T2', 4, 0],
@@ -970,15 +1142,16 @@ describe('distributionMatrix — T3.1–T3.3', () => {
   it('branchCount counts the branches holding a car — never «بلا فرع», never an empty column', () => {
     const m = distributionMatrix({
       cells: [
-        { typeId: T1, branchId: B1, count: 3 },
-        { typeId: 'T2', branchId: B1, count: 1 },
-        { typeId: T1, branchId: null, count: 5 },
+        cell(T1, B1, 3),
+        cell('T2', B1, 1),
+        cell(T1, null, 5),
         // A zero cell (a grouped answer that cancelled out) adds no branch.
-        { typeId: 'T2', branchId: B2, count: 0 },
+        cell('T2', B2, 0),
       ],
       typeNames: new Map(),
       branches: branchList,
       scopeBranches: null,
+      kindOf,
     });
     // B2 is still a column (every branch is, for the company) — but it holds no car.
     expect(m.branches.map((b) => b.id)).toEqual([B1, B2]);
@@ -989,18 +1162,108 @@ describe('distributionMatrix — T3.1–T3.3', () => {
         typeNames: new Map(),
         branches: branchList,
         scopeBranches: null,
+        kindOf,
       }).branchCount,
     ).toBe(0);
   });
 
   it('a branch-scoped reader gets their branch as the only column', () => {
     const m = distributionMatrix({
-      cells: [{ typeId: T1, branchId: B2, count: 1 }],
+      cells: [cell(T1, B2, 1)],
       typeNames: new Map(),
       branches: branchList,
       scopeBranches: new Set([B2]),
+      kindOf,
     });
     expect(m.branches.map((b) => b.id)).toEqual([B2]);
+    expect(Object.keys(m.kinds)).toEqual([B2]);
+  });
+
+  it('kinds: each column by operation kind, summing to the column; «بلا فرع» and «أخرى» apart', () => {
+    const m = distributionMatrix({
+      cells: [
+        cell(T1, B1, 3, OP_CASH),
+        cell('T2', B1, 2, OP_CASH),
+        cell(T1, B1, 1, OP_ATM),
+        cell(T1, B1, 1, OP_OTHER),
+        cell(T1, B1, 1, null),
+        cell('T2', B2, 4, OP_ATM),
+        cell(T1, null, 2, OP_CASH),
+        cell(T1, null, 1, null),
+      ],
+      typeNames: new Map(),
+      branches: branchList,
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(m.kinds).toEqual({
+      [B1]: { cash: 5, atm: 1, other: 2 },
+      [B2]: { cash: 0, atm: 4, other: 0 },
+    });
+    expect(m.noBranchKinds).toEqual({ cash: 2, atm: 0, other: 1 });
+    expect(m.other).toEqual({ vehicles: 3 });
+    for (const branch of m.branches) {
+      const k = m.kinds[branch.id];
+      expect((k?.cash ?? 0) + (k?.atm ?? 0) + (k?.other ?? 0), branch.id).toBe(
+        m.totals.counts[branch.id],
+      );
+    }
+    expect(m.noBranchKinds.cash + m.noBranchKinds.atm + m.noBranchKinds.other).toBe(
+      m.totals.noBranch,
+    );
+    // The type rows ignore the operation split: one row per type, cells folded.
+    expect(m.rows.map((r) => [r.typeId, r.counts, r.noBranch, r.total])).toEqual([
+      [T1, { [B1]: 6 }, 3, 9],
+      ['T2', { [B1]: 2, [B2]: 4 }, 0, 6],
+    ]);
+  });
+
+  it('a column with no active car keeps zero kinds; no «بلا فرع» → noBranchKinds all 0', () => {
+    const m = distributionMatrix({
+      cells: [cell(T1, B1, 2, OP_ATM)],
+      typeNames: new Map(),
+      branches: branchList,
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(m.branches.map((b) => b.id)).toEqual([B1, B2]);
+    expect(m.kinds[B2]).toEqual({ cash: 0, atm: 0, other: 0 });
+    expect(m.noBranchKinds).toEqual({ cash: 0, atm: 0, other: 0 });
+    expect(m.other).toEqual({ vehicles: 0 });
+  });
+
+  it('a car in a branch outside the list (a reader-scope miss) still gets a column and its kinds', () => {
+    const m = distributionMatrix({
+      cells: [cell(T1, B3, 2, OP_CASH)],
+      typeNames: new Map(),
+      branches: branchList,
+      scopeBranches: new Set([B1]),
+      kindOf,
+    });
+    // B3 is not in the live branch list: its cars still count, under their own id.
+    expect(m.branches.map((b) => b.id)).toEqual([B1]);
+    expect(m.kinds[B3]).toEqual({ cash: 2, atm: 0, other: 0 });
+    expect(m.totals.counts[B3]).toBe(2);
+  });
+
+  it('the columns are ordered by active cars desc; a tie keeps the branch list’s order', () => {
+    const three = [...branchList, { id: B3, name: { ar: 'الإسكندرية', en: 'Alexandria' } }];
+    const tie = distributionMatrix({
+      cells: [cell(T1, B1, 2), cell(T1, B2, 2), cell(T1, B3, 5)],
+      typeNames: new Map(),
+      branches: three,
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(tie.branches.map((b) => b.id)).toEqual([B3, B1, B2]);
+    const zeros = distributionMatrix({
+      cells: [cell(T1, B2, 1)],
+      typeNames: new Map(),
+      branches: three,
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(zeros.branches.map((b) => b.id)).toEqual([B2, B1, B3]);
   });
 
   it('the distribution section counts the cash and ATM cars through the vehicles list', async () => {
@@ -1014,6 +1277,29 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     expect(dto.distributionVehicles?.totals.total).toBe(5);
     // B1 holds 3 active cars; the 2 without a branch are no branch.
     expect(dto.distributionVehicles?.branchCount).toBe(1);
+  });
+
+  it('the section folds kinds with the operation catalog the cash / ATM ids come from', async () => {
+    vehicles.activeByTypeAndBranch.mockResolvedValue([
+      cell(T1, B1, 2, OP_CASH),
+      cell(T1, B1, 1, OP_ATM),
+      cell(T1, B2, 1, '650000000000000000000399'), // an operation of neither kind
+      cell(T1, null, 1, OP_CASH),
+    ]);
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(dto.distributionVehicles?.kinds).toEqual({
+      [B1]: { cash: 2, atm: 1, other: 0 },
+      [B2]: { cash: 0, atm: 0, other: 1 },
+    });
+    expect(dto.distributionVehicles?.noBranchKinds).toEqual({ cash: 1, atm: 0, other: 0 });
+    expect(dto.distributionVehicles?.other).toEqual({ vehicles: 1 });
+    expect(dto.distributionVehicles?.branches.map((b) => b.id)).toEqual([B1, B2]);
+    // No extra read: the same one group, the same two list counts.
+    expect(vehicles.activeByTypeAndBranch).toHaveBeenCalledTimes(1);
+    const byOperation = vehicles.countListed.mock.calls.filter(
+      ([query]) => (query as Record<string, unknown>)['operationId'] !== undefined,
+    );
+    expect(byOperation).toHaveLength(2);
   });
 });
 

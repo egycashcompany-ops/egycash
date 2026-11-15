@@ -15,7 +15,8 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Badge } from '../../../../../shared/ui/Badge';
-import { Field, Input, Select } from '../../../../../shared/ui/form';
+import { Field, Input } from '../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import { localized } from '../../../../../shared/lib/format';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import {
@@ -83,14 +84,12 @@ export const EmployeeCostCenterCard = ({ employeeId }: { employeeId: string }): 
         <Can permission="costCenter.assign">
           <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3 dark:border-slate-800">
             <Field label={t('organization.costCenter.assignments')}>
-              <Select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
-                <option value="">{dash}</option>
-                {(catalog?.items ?? []).map((cc) => (
-                  <option key={cc.id} value={cc.id}>
-                    {localized(cc.name, locale)}
-                  </option>
-                ))}
-              </Select>
+              <SearchableSelect
+                value={costCenterId}
+                onChange={setCostCenterId}
+                options={(catalog?.items ?? []).map((cc) => ({ value: cc.id, label: localized(cc.name, locale) }))}
+                placeholder={dash}
+              />
             </Field>
             <Field label={t('organization.costCenter.from')}>
               <Input

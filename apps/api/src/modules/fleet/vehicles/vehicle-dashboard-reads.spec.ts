@@ -190,27 +190,41 @@ describe('nearestLicences — T4.4', () => {
 });
 
 describe('activeByTypeAndBranch — T3.1, moved from the old dashboard repository', () => {
-  it('groups the ACTIVE cars of the reader scope, a car with no branch under null', async () => {
+  it('groups the ACTIVE cars of the reader scope by type, branch and operation; none → null', async () => {
     const type = new Types.ObjectId();
     const branch = new Types.ObjectId();
+    const operation = new Types.ObjectId();
     let pipeline: Record<string, unknown>[] = [];
     vi.spyOn(FleetVehicleModel, 'aggregate').mockImplementation(((sent: never[]) => {
       pipeline = sent;
       return {
         exec: async () => [
-          { _id: { typeId: type, branchId: branch }, count: 4 },
-          { _id: { typeId: type, branchId: null }, count: 1 },
+          { _id: { typeId: type, branchId: branch, operationId: operation }, count: 3 },
+          { _id: { typeId: type, branchId: branch, operationId: null }, count: 1 },
+          { _id: { typeId: type, branchId: null, operationId: null }, count: 1 },
         ],
       };
     }) as unknown as typeof FleetVehicleModel.aggregate);
     expect(await fleetVehicleRepository.activeByTypeAndBranch(branchScope)).toEqual([
-      { typeId: String(type), branchId: String(branch), count: 4 },
-      { typeId: String(type), branchId: null, count: 1 },
+      { typeId: String(type), branchId: String(branch), operationId: String(operation), count: 3 },
+      { typeId: String(type), branchId: String(branch), operationId: null, count: 1 },
+      { typeId: String(type), branchId: null, operationId: null, count: 1 },
     ]);
+    expect(pipeline, 'one $match and one $group: the same single pass as before').toHaveLength(2);
     const match = json(pipeline[0]?.['$match']);
     expect(match).toContain('"status":"active"');
     expect(match).toContain('"isDeleted":false');
     expect(match).toContain(BRANCH);
+    expect(json(pipeline[1]?.['$group'])).toBe(
+      json({
+        _id: {
+          typeId: '$typeId',
+          branchId: { $ifNull: ['$branchId', null] },
+          operationId: { $ifNull: ['$operationId', null] },
+        },
+        count: { $sum: 1 },
+      }),
+    );
   });
 });
 

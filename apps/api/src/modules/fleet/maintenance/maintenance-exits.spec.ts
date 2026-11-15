@@ -1,9 +1,11 @@
-// `exitCount` — the overview's «زيارات الصيانة» (D6): the visits that LEFT the workshop in a period.
+// `exitBreakdown` — «الصيانة والورش»'s period band and the overview's «زيارات الصيانة» (D6): the
+// visits that LEFT the workshop in a period.
 //
 // The figure is the LIST's own count: these specs capture the filter `/fleet/maintenance` counts its
-// `totalItems` with for a query and the filter `exitCount` counts with for the same query, and
+// `totalItems` with for a query and the filter `exitBreakdown` matches with for the same query, and
 // require them to be the same object — equal filters are equal numbers, by construction. The sums
-// on real rows are proved by the integration spec `fleet-dashboard-parity.spec.ts`.
+// on real rows are proved by the integration specs `fleet-dashboard-parity.spec.ts` and
+// `fleet-maintenance-breakdown.spec.ts`.
 import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListFleetMaintenanceQuerySchema, type ListFleetMaintenanceQuery } from '@ecms/contracts';
@@ -28,10 +30,12 @@ const filterPart = (q: ListFleetMaintenanceQuery): MaintenanceFilterQuery => {
 };
 
 let counted: unknown[] = [];
+let matched: unknown[] = [];
 let answer = 0;
 
 beforeEach(() => {
   counted = [];
+  matched = [];
   answer = 0;
   vi.spyOn(FleetMaintenanceVisitModel, 'countDocuments').mockImplementation(((f: unknown) => {
     counted.push(f);
@@ -48,8 +52,19 @@ beforeEach(() => {
     };
     return chain;
   }) as unknown as typeof FleetMaintenanceVisitModel.find);
-  vi.spyOn(FleetMaintenanceVisitModel, 'aggregate').mockImplementation((() =>
-    Promise.resolve([])) as unknown as typeof FleetMaintenanceVisitModel.aggregate);
+  // The breakdown's one `$facet`: its `$match` is what these specs compare; it answers `answer`
+  // exits, all of them in the state facet.
+  vi.spyOn(FleetMaintenanceVisitModel, 'aggregate').mockImplementation(((pipeline: unknown[]) => {
+    matched.push((pipeline[0] as { $match?: unknown } | undefined)?.$match);
+    return Promise.resolve([
+      {
+        state: answer === 0 ? [] : [{ count: answer, open: 0, unregistered: 0, staySum: 0 }],
+        byWorkType: [],
+        byWorkshop: [],
+        byVehicle: [],
+      },
+    ]);
+  }) as unknown as typeof FleetMaintenanceVisitModel.aggregate);
   vi.spyOn(fleetVehicleRepository, 'liveIdsByCodes').mockResolvedValue([String(CAR1)]);
   vi.spyOn(fleetVehicleRepository, 'idsWithTypes').mockResolvedValue([String(CAR1), String(CAR2)]);
   vi.spyOn(fleetVehicleRepository, 'idsInBranches').mockImplementation(
@@ -80,10 +95,12 @@ const listCountFilter = async (raw: Record<string, unknown>): Promise<unknown> =
 };
 
 const exitFilter = async (raw: Record<string, unknown>): Promise<unknown> => {
-  await fleetMaintenanceService.exitCount(filterPart(parse(raw)));
-  expect(counted).toHaveLength(1);
-  const filter = counted[0];
-  counted = [];
+  await fleetMaintenanceService.exitBreakdown(filterPart(parse(raw)));
+  // ONE aggregate, no count beside it: the count is the facet's.
+  expect(counted).toHaveLength(0);
+  expect(matched).toHaveLength(1);
+  const filter = matched[0];
+  matched = [];
   return filter;
 };
 
@@ -96,7 +113,7 @@ const QUERIES: Record<string, Record<string, unknown>> = {
   'exit days + type + codes': { ...OCTOBER_OUT, typeIds: T1, vehicleCodes: '201' },
 };
 
-describe('exitCount — the list’s own count over the EXIT day (D6)', () => {
+describe('exitBreakdown — the list’s own rows over the EXIT day (D6)', () => {
   for (const [name, raw] of Object.entries(QUERIES)) {
     it(`counts exactly the rows /fleet/maintenance?outFrom&outTo lists — ${name}`, async () => {
       const listed = await listCountFilter(raw);
@@ -127,8 +144,11 @@ describe('exitCount — the list’s own count over the EXIT day (D6)', () => {
     expect(filter).toContain('"$in":[]');
   });
 
-  it('answers the count the repository counted', async () => {
+  it('its count is the list’s `totalItems` for the same query', async () => {
     answer = 37;
-    expect(await fleetMaintenanceService.exitCount(filterPart(parse(OCTOBER_OUT)))).toBe(37);
+    const page = await fleetMaintenanceService.list(parse(OCTOBER_OUT));
+    const exits = await fleetMaintenanceService.exitBreakdown(filterPart(parse(OCTOBER_OUT)));
+    expect(exits.count).toBe(page.meta.totalItems);
+    expect(exits.count).toBe(37);
   });
 });

@@ -29,6 +29,7 @@ import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { FRESHNESS_TICK_MS, freshness } from '../../lib/fleet-dashboard-refresh';
 import { type DashLink, type TabLinkFilters } from '../../lib/fleet-dashboard-links';
 import { type AlertLine, type TabBadge } from '../../lib/fleet-dashboard-tabs';
+import { type PeriodFilters } from '../../lib/fleet-dashboard-url';
 import { type CustodyFigures } from './custody-fund-line';
 import { COUNT, custodyCountForm, useMoney } from '../custody-dashboard-parts';
 import { BTN, Card, I, Icon, MUTED, N, NUM, NOTE, UNIT, cn } from './dash-kit';
@@ -37,7 +38,8 @@ import { BTN, Card, I, Icon, MUTED, N, NUM, NOTE, UNIT, cn } from './dash-kit';
 
 /**
  * R2 over «هذا الشهر» — the 1st of the month to today, with NO page filter (no period, type,
- * operation or codes): the overview's month card. The page reads it; only the overview draws it.
+ * operation or codes): the overview's month card, and the kilometres of «توزيع السيارات» (by branch,
+ * or by type under one branch). The page reads it for those two tabs only.
  */
 export interface MonthRead {
   /** The answer; `undefined` while it is on its way, failed with nothing kept, or not asked. */
@@ -67,7 +69,7 @@ export interface NowTabProps {
   onRetry: () => void;
   /** A fixed «now» for the heading's freshness — the specs pin it. */
   clock?: number;
-  /** R2 «هذا الشهر» (no page filters) — read by the page, only the overview draws it. */
+  /** R2 «هذا الشهر» (no page filters) — read by the page; the overview and «توزيع السيارات» draw it. */
   month: MonthRead;
   /**
    * A link to another tab of this page, keeping the page's own filters (never a period of its own);
@@ -76,14 +78,47 @@ export interface NowTabProps {
    */
   tabLink: (tab: FleetDashboardTab, metric: string, own?: TabLinkFilters) => DashLink | null;
   /**
-   * The overview only (the page gates every other R1 tab on R1 itself): R1 is on its way
-   * (`'loading'`) or failed with nothing kept (`'error'`, with its `error`). `now` is then `null`;
-   * the tab draws the skeleton or the error in R1's place and keeps every part that is not R1's —
-   * the month card and its hub lines, the custody card and line. Absent once R1 has answered, and
-   * for a reader who holds no key of R1.
+   * The overview and «الصيانة والورش» only (the page gates every other R1 tab on R1 itself): R1 is
+   * on its way (`'loading'`) or failed with nothing kept (`'error'`, with its `error`). `now` is then
+   * `null`; the tab draws the skeleton or the error in R1's place and keeps every part that is not
+   * R1's — the overview's month card and its hub lines, the custody card and line; the maintenance
+   * tab's period band. Absent once R1 has answered, and for a reader who holds no key of R1.
    */
   nowPending?: { state: 'loading' | 'error'; error: unknown };
 }
+
+/**
+ * R2 under the PAGE's filters (the period bar's one state, as the address bar holds it), as a tab of
+ * «الآن» and a period both draws it (the first: «الصيانة والورش»). The four old period tabs get the
+ * same read through `PeriodTab`; this is the same query, handed to a mixed tab with its own face.
+ */
+export interface PageRead {
+  /** The answer; the previous one stays while a new filter loads. `undefined` before any answer. */
+  data: FleetDashboardPeriodDto | undefined;
+  loading: boolean;
+  /** Failed with nothing to show. */
+  failed: boolean;
+  /** `false`: the reader holds no key of R2 — the tab draws no period band at all. */
+  enabled: boolean;
+  /** «إعادة المحاولة» on the period band. */
+  onRetry: () => void;
+  /** When R2 last answered (ms since the epoch; 0 = not yet). */
+  updatedAt: number;
+  /** R2 is on its way. */
+  refreshing: boolean;
+  /** The ONE filter state of the period tabs, as the address bar holds it. */
+  filters: PeriodFilters;
+  /** A new filter state: the page writes it to the address bar (`periodFiltersPatch`). */
+  onFilters: (next: PeriodFilters) => void;
+}
+
+/**
+ * A tab of «الآن» and a period both: R1 (and the reads every «الآن» tab is given) plus the page's R2.
+ * The page hands it `nowPending` instead of gating it on R1, so an R1 failure never blanks the
+ * period band and an R2 failure never blanks «الآن» (each band draws its own read's face). Its
+ * «تحديث» refetches both reads, and `updatedAt` is the older of the two.
+ */
+export type MixedTabProps = NowTabProps & { period: PageRead };
 
 // ── The pill navbar ───────────────────────────────────────────────────────────────────────────
 
@@ -594,7 +629,8 @@ export type DashNoun =
   | 'branch'
   | 'accident'
   | 'second'
-  | 'minute';
+  | 'minute'
+  | 'contract';
 
 /**
  * The counted noun: Arabic writes «1 سيارة», «3 سيارات», «11 سيارة» (the custody dashboard's rule,

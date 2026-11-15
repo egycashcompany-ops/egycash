@@ -619,6 +619,23 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     }
   };
 
+  /**
+   * HR's hand move on a candidate whose cleared checks ALREADY moved them: the same act, already
+   * made — answered 200 with the move standing, and nothing new materialized.
+   */
+  const moveAgain = async (applicant: ApplicantDto): Promise<void> => {
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((current.body.data as ApplicantDto).movedToOfferAt).not.toBeNull();
+    const again = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (current.body.data as ApplicantDto).version });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(envelope<ApplicantDto>(again).data.movedToOfferAt).not.toBeNull();
+  };
+
   it('shows a candidate moved straight from registration — no earlier stage decided at all', async () => {
     // The extreme case, and the cleanest statement of the rule: nothing happened before the move.
     // There is no source stage to key off, so anything that needs one cannot show this candidate.
@@ -750,13 +767,14 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
 
   it('lists a candidate ONCE even when they qualify every way at the same time', async () => {
     // Cleared every check AND standing at the stage: two routes in, one person. The queue merges
-    // them by candidate, so the person working it sees one row to act on rather than two.
+    // them by candidate, so the person working it sees one row to act on rather than two. Clearing
+    // the checks already moved them, so HR's move after it is the same act, already made.
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
     await passStage(applicant.id, 'firstInterview');
     await passStage(applicant.id, 'secondInterview');
     await approveEveryCheck(applicant.id);
-    await moveToOffer(applicant);
+    await moveAgain(applicant);
 
     const rows = await queueFor(applicant);
     expect(rows.length).toBe(1);
@@ -783,7 +801,7 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     expect((offers.body.data as JobOfferDto[]).map((o) => o.status)).toEqual(['waiting']);
 
     // Moving them again by hand changes nothing — the move is the same act, already made.
-    await moveToOffer(applicant);
+    await moveAgain(applicant);
     expect((await queueFor(applicant)).length).toBe(1);
   });
 

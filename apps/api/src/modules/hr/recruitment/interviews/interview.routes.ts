@@ -10,6 +10,7 @@ import {
   setInterviewRecommendation,
   bulkScheduleInterviews,
   bulkStartInterviews,
+  quickDecideInterviews,
   cancelInterview,
   createInterviewStage,
   decideInterview,
@@ -31,6 +32,7 @@ import {
   SetPlacementRecommendationSchema,
   BulkScheduleInterviewsSchema,
   BulkStartInterviewsSchema,
+  QuickDecideInterviewsSchema,
   CancelInterviewSchema,
   CreateInterviewStageSchema,
   DecideInterviewSchema,
@@ -95,6 +97,14 @@ export const buildInterviewsRouter = (): Router => {
     authorize('interview.create'),
     validate({ body: BulkScheduleInterviewsSchema }),
     asyncHandler(bulkScheduleInterviews),
+  );
+  // Approve / reject at a decision-only stage — one candidate or a whole selection.
+  router.post(
+    '/bulk/quick-decide',
+    authenticate,
+    authorize('interview.decide'),
+    validate({ body: QuickDecideInterviewsSchema }),
+    asyncHandler(quickDecideInterviews),
   );
   router.post(
     '/bulk/start',

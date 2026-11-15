@@ -225,6 +225,35 @@ const recruitmentFormPermissions = declarePermissions(
   'hr.application-form',
 );
 
+/**
+ * «مستندات مطلوبة للتعيين» — the documents a hire must bring.
+ *
+ * ITS OWN KEY, for a screen that is still a placeholder, and the reason is the platform's own rule
+ * rather than ambition: a hub tab needs a page, and `validatePageRegistry` refuses a page that no
+ * permission administers (`empty-page`). Borrowing `recruitmentForm.manage` would have left the
+ * role matrix saying this screen is administered by the key that administers the application form,
+ * which is not true and would stop being harmless the moment the screen does something.
+ *
+ * Nobody holds it yet, so the tab shows to nobody yet — which is the right default for a screen
+ * with nothing on it. Granting this key is what reveals it, deliberately.
+ */
+const hiringRequirementPermissions = declarePermissions(
+  'hr',
+  'hiringRequirement',
+  { en: 'hiring requirements', ar: 'مستندات التعيين' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Manage the documents required for hiring',
+        ar: 'إدارة المستندات المطلوبة للتعيين',
+      },
+    },
+  ],
+  'hr.hiring-requirements',
+);
+
 const applicantSourcePermissions = declarePermissions(
   'hr',
   'applicantSource',
@@ -1203,6 +1232,7 @@ export const hrPermissions: PermissionDef[] = [
   ...applicantPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
+  ...hiringRequirementPermissions,
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
@@ -1328,6 +1358,17 @@ export const hrPages: PageDef[] = [
     name: { en: 'Evaluation phases', ar: 'مراحل التقييم' },
     route: '/hr-settings/evaluation-phases',
     sortOrder: 80,
+  },
+  {
+    // The tab is reserved and the screen behind it is still a placeholder, but the page is
+    // declared all the same: the role matrix administers authority PER SCREEN, so a tab missing
+    // from here is a tab nobody can be granted or refused deliberately — and `seed-navigation`
+    // refuses to let a hub tab exist without one.
+    id: 'hr.hiring-requirements',
+    moduleId: 'hr',
+    name: { en: 'Documents required for hiring', ar: 'مستندات مطلوبة للتعيين' },
+    route: '/hr-settings/hiring-requirements',
+    sortOrder: 85,
   },
   {
     id: 'hr.job-offers',

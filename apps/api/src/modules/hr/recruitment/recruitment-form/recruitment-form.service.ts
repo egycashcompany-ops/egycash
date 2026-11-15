@@ -8,8 +8,18 @@
 import { randomBytes } from 'node:crypto';
 import { Types } from 'mongoose';
 import {
+  PUBLIC_APPLY_DOCUMENTS,
+  PUBLIC_HEARD_FROM_FIELD,
+  PUBLIC_ID_CARD_FIELD,
+  PUBLIC_MILITARY_FIELD,
   RECRUITMENT_FORM_DEFAULTS,
   RegisterApplicantSchema,
+  asciiDigits,
+  parseNationalId,
+  type PublicApplyDocument,
+  type PublicIdCardError,
+  type SubmitRecruitmentForm,
+  type PublicNationalIdCardUploadDto,
   type LocalizedString,
   type PublicRecruitmentFormDto,
   type RecruitmentFormDto,
@@ -24,7 +34,17 @@ import { env } from '../../../../infrastructure/config/env';
 import { type AuthContext } from '../../../../shared/types';
 import { applicantSourceRepository } from '../applicants/applicant-source.repository';
 import { applicantService } from '../applicants/applicant.service';
+import { extractNationalIdFields } from '../applicants/national-id-ocr';
+import { APPLICANT_CARD_SCAN_ENTITY_TYPE } from '../applicants/national-id-scan.files';
+import { fileService, type UploadedBinary } from '../../../../platform/files';
+import { logger } from '../../../../infrastructure/logging/logger';
+import {
+  applicantDocumentService,
+  applicantDocumentTypeService,
+  publicApplyFilingContext,
+} from '../applicant-documents';
 import { recruitmentFormRepository } from './recruitment-form.repository';
+import { APPLICANT_CV_MIME_TYPES, resolveApplicantCvCategoryId } from './applicant-cv.files';
 import { type RecruitmentFormDoc } from './recruitment-form.model';
 import { invalidCustom, missingRequired, toRegistrationBody, type Answers } from './apply-mapper';
 
@@ -205,12 +225,246 @@ class RecruitmentFormService {
   }
 
   async getPublic(token: string): Promise<PublicRecruitmentFormDto> {
-    const { doc, sourceName } = await this.resolve(token);
-    return { title: doc.title, intro: doc.intro, sourceName, fields: doc.fields };
+    const { doc, sourceId, sourceName } = await this.resolve(token);
+    const sources = await applicantSourceRepository.listActive();
+    return {
+      title: doc.title,
+      intro: doc.intro,
+      sourceName,
+      fields: doc.fields,
+      sources: sources.map((s) => ({ id: String(s._id), name: s.name })),
+      linkSourceId: sourceId,
+    };
   }
 
-  async submit(token: string, answers: Answers): Promise<RecruitmentFormSubmissionDto> {
-    const { doc, sourceId } = await this.resolve(token);
+  /**
+   * One National-ID card photo from the public page, filed in the link's own scratch bucket so a
+   * submission can name only photos uploaded through a live link of the same source.
+   */
+  async uploadCardPhoto(token: string, binary: UploadedBinary): Promise<PublicNationalIdCardUploadDto> {
+    const { sourceId } = await this.resolve(token);
+    return applicantService.uploadNationalIdCardScan(publicContext(), binary, portalBucket(sourceId));
+  }
+
+  /**
+   * The candidate's CV, from the public page — a PDF, a Word file or a photo. Filed in the link's
+   * scratch bucket like the card photos, and copied onto the applicant when the application is sent.
+   */
+  async uploadCv(token: string, binary: UploadedBinary): Promise<PublicNationalIdCardUploadDto> {
+    const { sourceId } = await this.resolve(token);
+    if (!APPLICANT_CV_MIME_TYPES.includes(binary.mime)) {
+      throw new ValidationError([
+        { field: 'file', code: 'UNSUPPORTED_MEDIA_TYPE', message: 'a CV must be a PDF, a Word file or a photo' },
+      ]);
+    }
+    const file = await fileService.upload(
+      publicContext(),
+      {
+        moduleId: 'hr',
+        entityType: APPLICANT_CARD_SCAN_ENTITY_TYPE,
+        entityId: portalBucket(sourceId),
+        categoryId: await resolveApplicantCvCategoryId(),
+        displayName: binary.originalName,
+        visibility: 'private',
+        tags: [],
+      },
+      binary,
+    );
+    return { fileId: String(file._id) };
+  }
+
+  /** Copy the CV onto the applicant, named as their CV. Never fails the accepted application. */
+  private async fileCv(applicantId: string, applicantName: string, cvFileId: string): Promise<void> {
+    try {
+      await fileService.copy(publicContext(), cvFileId, {
+        moduleId: 'hr',
+        entityType: 'applicant',
+        entityId: applicantId,
+        categoryId: await resolveApplicantCvCategoryId(),
+        displayName: `${applicantName} — السيرة الذاتية (CV)`,
+        visibility: 'private',
+      });
+    } catch (error) {
+      logger.warn({ err: error, applicantId }, 'public apply: filing the CV failed');
+    }
+  }
+
+  /**
+   * THE CARD GATE. The front and back photos are read by the OCR, and the application is accepted
+   * only when the card reads clearly and its number is the number the applicant typed. Anything
+   * else — no photos, the reader down, a blurred or unreadable card, a different number — refuses
+   * the submission with a code the page turns into an instruction (retake the photo, check the
+   * number, try again later). Returns the verified National ID.
+   */
+  private async verifyCard(
+    sourceId: string,
+    typedNationalId: string | undefined,
+    card: { frontFileId: string; backFileId: string } | undefined,
+  ): Promise<{ nationalId: string; portraitFileId: string | null; address: string | null; city: string | null }> {
+    const refuse = (code: PublicIdCardError, message: string): never => {
+      throw new ValidationError([{ field: PUBLIC_ID_CARD_FIELD, code, message }], message);
+    };
+    if (card === undefined) refuse('ID_CARD_REQUIRED', 'Photos of both sides of the National ID card are required');
+    const { frontFileId, backFileId } = card as { frontFileId: string; backFileId: string };
+    for (const id of [frontFileId, backFileId]) {
+      if (!(await inBucket(id, sourceId))) refuse('ID_CARD_REQUIRED', 'Upload the card photos again');
+    }
+
+    let result: Awaited<ReturnType<typeof extractNationalIdFields>>;
+    try {
+      result = await extractNationalIdFields({ frontFileId, backFileId, actor: publicContext() });
+      // Candidates often put the two sides in the wrong boxes. The number is read off the FRONT,
+      // so when nothing usable came back, read the pair the other way round before refusing.
+      if (result.available && (result.nationalId === null || result.nationalId.confidence === 'low')) {
+        const swapped = await extractNationalIdFields({
+          frontFileId: backFileId,
+          backFileId: frontFileId,
+          actor: publicContext(),
+        });
+        if (swapped.nationalId !== null && swapped.nationalId.confidence !== 'low') result = swapped;
+      }
+    } catch (error) {
+      logger.warn({ err: error }, 'public apply: national-id OCR failed');
+      return refuse('ID_OCR_UNAVAILABLE', 'The card could not be checked right now — please try again in a few minutes');
+    }
+    if (!result.available) {
+      refuse('ID_OCR_UNAVAILABLE', 'The card could not be checked right now — please try again in a few minutes');
+    }
+    const read = result.nationalId === null ? null : asciiDigits(result.nationalId.value).replace(/\D/g, '');
+    const rejectedPhoto =
+      result.quality?.front?.verdict === 'reject' || result.quality?.back?.verdict === 'reject';
+    if (
+      read === null ||
+      rejectedPhoto ||
+      result.nationalId?.confidence === 'low' ||
+      parseNationalId(read) === null
+    ) {
+      refuse('ID_CARD_UNREADABLE', 'The card could not be read clearly — retake a sharper, well-lit photo of each side');
+    }
+    const typed = typedNationalId === undefined ? undefined : asciiDigits(typedNationalId).replace(/\D/g, '');
+    if (typed !== undefined && typed !== read) {
+      refuse('ID_CARD_MISMATCH', 'The National ID number on the card does not match the number you entered');
+    }
+    // The holder's face, cut from the card by the reader — kept with the card like HR's scan, so the
+    // interviewer sees who is coming. Never fails the application.
+    let portraitFileId: string | null = null;
+    const portrait = result.images?.portrait;
+    if (portrait !== undefined) {
+      try {
+        const buffer = Buffer.from(portrait.split(',', 2)[1] ?? '', 'base64');
+        if (buffer.length > 0) {
+          const up = await applicantService.uploadNationalIdCardScan(
+            publicContext(),
+            { originalName: 'national-id-photo.jpg', mime: 'image/jpeg', size: buffer.length, buffer },
+            portalBucket(sourceId),
+          );
+          portraitFileId = up.fileId;
+        }
+      } catch (error) {
+        logger.warn({ err: error }, 'public apply: keeping the card portrait failed');
+      }
+    }
+    // The address printed on the card — kept as the applicant's official address, so HR sees where
+    // they live without retyping it. A low-confidence read is dropped rather than kept wrong.
+    const usable = (f: { value: string; confidence: string } | null | undefined): string | null =>
+      f === null || f === undefined || f.confidence === 'low' || f.value.trim() === '' ? null : f.value.trim();
+    return {
+      nationalId: read as string,
+      portraitFileId,
+      address: usable(result.address),
+      city: usable(result.city),
+    };
+  }
+
+  /**
+   * «How did you hear about us»: the source the applicant is recorded under. A source from the list,
+   * or «other» with the candidate's own words — which keeps the link's source and records the words
+   * as the source detail, so HR still reads how they came.
+   */
+  private async heardFrom(
+    linkSourceId: string,
+    input: SubmitRecruitmentForm['heardFrom'],
+  ): Promise<{ sourceId: string; note: string | null }> {
+    const refuse = (message: string): never => {
+      throw new ValidationError([{ field: PUBLIC_HEARD_FROM_FIELD, code: 'required', message }], message);
+    };
+    if (input === undefined) return refuse('Tell us how you heard about us');
+    if (input.sourceId === null) {
+      const other = (input.other ?? '').trim();
+      if (other === '') return refuse('Tell us how you heard about us');
+      return { sourceId: linkSourceId, note: other };
+    }
+    const source = await applicantSourceRepository.findActiveById(input.sourceId);
+    if (source === null) return refuse('Choose one of the listed options');
+    return { sourceId: String(source._id), note: null };
+  }
+
+  /** The papers' photos must be ones uploaded through this source's live link, like the card. */
+  private async checkDocuments(
+    sourceId: string,
+    documents: SubmitRecruitmentForm['documents'],
+    male: boolean,
+  ): Promise<Partial<Record<PublicApplyDocument, string>>> {
+    const given = documents ?? {};
+    if (male && given.militaryService === undefined) {
+      const message = 'A photo of the military service certificate is required';
+      throw new ValidationError([{ field: PUBLIC_MILITARY_FIELD, code: 'required', message }], message);
+    }
+    const out: Partial<Record<PublicApplyDocument, string>> = {};
+    for (const key of PUBLIC_APPLY_DOCUMENTS) {
+      const id = given[key];
+      if (id === undefined) continue;
+      if (!(await inBucket(id, sourceId))) {
+        const message = 'Upload this photo again';
+        throw new ValidationError([{ field: key, code: 'required', message }], message);
+      }
+      out[key] = id;
+    }
+    return out;
+  }
+
+  /**
+   * File the papers in the new applicant's document folder, pending HR's review — the same slots
+   * the portal fills later, so HR reviews them where they review everything else. Never fails the
+   * application: it has already been accepted, and a paper that did not file can be re-sent.
+   */
+  private async fileDocuments(
+    applicantId: string,
+    documents: Partial<Record<PublicApplyDocument, string>>,
+  ): Promise<void> {
+    const keys = Object.keys(documents) as PublicApplyDocument[];
+    if (keys.length === 0) return;
+    const types = await applicantDocumentTypeService.all();
+    const ctx = publicApplyFilingContext(applicantId);
+    for (const key of keys) {
+      const type = types.find((t) => t.key === key && t.active);
+      const fileId = documents[key];
+      if (type === undefined || fileId === undefined) {
+        logger.warn({ key }, 'public apply: no active document type for this paper — not filed');
+        continue;
+      }
+      try {
+        const { doc: file, buffer } = await fileService.readEntityOwnedBuffer(publicContext(), fileId);
+        await applicantDocumentService.submit(ctx, applicantId, { typeId: String(type._id) }, {
+          originalName: `${key}${file.extension}`,
+          mime: file.mime,
+          size: buffer.length,
+          buffer,
+        });
+      } catch (error) {
+        logger.warn({ err: error, key, applicantId }, 'public apply: filing a paper failed');
+      }
+    }
+  }
+
+  async submit(
+    token: string,
+    answers: Answers,
+    card?: { frontFileId: string; backFileId: string },
+    extras: Pick<SubmitRecruitmentForm, 'heardFrom' | 'documents' | 'cvFileId'> = {},
+  ): Promise<RecruitmentFormSubmissionDto> {
+    const { doc, sourceId: linkSourceId } = await this.resolve(token);
+    const source = await this.heardFrom(linkSourceId, extras.heardFrom);
 
     const missing = missingRequired(doc.fields, answers);
     if (missing.length > 0) {
@@ -230,7 +484,8 @@ class RecruitmentFormService {
 
     // One schema, one set of rules — the public path earns no exemptions.
     const parsed = RegisterApplicantSchema.safeParse({
-      sourceId,
+      sourceId: source.sourceId,
+      ...(source.note === null ? {} : { sourceDetail: { note: source.note } }),
       intakeChannel: 'web',
       ...toRegistrationBody(doc.fields, answers),
       // The questions as they stood at this moment. Editing the form later cannot rewrite what
@@ -255,12 +510,63 @@ class RecruitmentFormService {
       );
     }
 
+    // The card is checked last, after every typed answer is valid: it is the slow step, and a
+    // candidate fixing a typo should not wait for the reader each time.
+    const typedId = parsed.data.identity.nationalId;
+    const male = typedId !== undefined && parseNationalId(asciiDigits(typedId))?.gender === 'male';
+    const documents = await this.checkDocuments(linkSourceId, extras.documents, male);
+    if (extras.cvFileId !== undefined && !(await inBucket(extras.cvFileId, linkSourceId))) {
+      const message = 'Upload your CV again';
+      throw new ValidationError([{ field: 'cv', code: 'required', message }], message);
+    }
+    const { nationalId, portraitFileId, address, city } = await this.verifyCard(linkSourceId, typedId, card);
+    const typedAddress = parsed.data.officialAddress;
+    const cardAddress =
+      address === null || (typedAddress !== undefined && typedAddress.line1 !== '')
+        ? {}
+        : {
+            officialAddress: {
+              ...(typedAddress ?? { governorate: '' }),
+              line1: address.slice(0, 500),
+              city: typedAddress?.city !== undefined && typedAddress.city !== '' ? typedAddress.city : (city ?? '').slice(0, 200),
+            },
+          };
+    const verifiedBody = {
+      ...parsed.data,
+      ...cardAddress,
+      identity: { ...parsed.data.identity, nationalId },
+      // Filed on the application like HR's scan: under the person's name, front then back.
+      nationalIdCardFileIds: [card!.frontFileId, card!.backFileId, ...(portraitFileId === null ? [] : [portraitFileId])],
+      nationalIdCardSides: ['front', 'back', ...(portraitFileId === null ? [] : ['portrait'])] as (
+        | 'front'
+        | 'back'
+        | 'portrait'
+      )[],
+    };
+
     // The registrar of a public application is the system, not a user: nobody was logged in.
-    const applicant = await applicantService.register(publicContext(), parsed.data);
+    const applicant = await applicantService.register(publicContext(), verifiedBody, {
+      identityVerified: true,
+    });
     await recruitmentFormRepository.countSubmission(String(doc._id), token);
+    await this.fileDocuments(String(applicant._id), documents);
+    if (extras.cvFileId !== undefined) await this.fileCv(String(applicant._id), applicant.fullNameAr, extras.cvFileId);
     return { code: applicant.code };
   }
 }
+
+/** The scratch bucket a link's card photos land in — one per source, never HR's own. */
+const portalBucket = (sourceId: string): string => `portal:${sourceId}`;
+
+/** True when the photo was uploaded through a live link of this source. */
+const inBucket = async (fileId: string, sourceId: string): Promise<boolean> => {
+  const file = await fileService.getById(fileId, undefined, publicContext()).catch(() => null);
+  return (
+    file !== null &&
+    file.entityRef.entityType === APPLICANT_CARD_SCAN_ENTITY_TYPE &&
+    file.entityRef.entityId === portalBucket(sourceId)
+  );
+};
 
 /** Map an API path back to the form field a candidate can actually see and fix. */
 const builtinFor = (path: string[]): string => {

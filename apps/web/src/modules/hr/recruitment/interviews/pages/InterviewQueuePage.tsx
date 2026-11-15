@@ -16,11 +16,9 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDateTime, formatNumber, localized } from '../../../../../shared/lib/format';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
 import { InterviewFilters, type InterviewFiltersState } from '../components/InterviewFilters';
-import { ScheduleInterviewDialog, type PickedApplicant } from '../components/ScheduleInterviewDialog';
 import { PhaseBoard } from '../components/PhaseBoard';
 import { useBulkInterviews, useInterviews } from '../api/interview-queries';
 import { type InterviewListParams } from '../api/interview-api';
@@ -52,8 +50,6 @@ export const InterviewQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleFor, setScheduleFor] = useState<PickedApplicant | null>(null);
   const view = sp.get('view') === 'board' ? 'board' : 'list';
 
   const filters: InterviewFiltersState = {
@@ -209,11 +205,6 @@ export const InterviewQueuePage = (): JSX.Element => {
                 {t('interviews.stages.title')}
               </Button>
             </Can>
-            <Can permission="interview.create">
-              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => { setScheduleFor(null); setScheduleOpen(true); }}>
-                {t('interviews.actions.schedule')}
-              </Button>
-            </Can>
           </div>
         }
       />
@@ -285,11 +276,6 @@ export const InterviewQueuePage = (): JSX.Element => {
         </Field>
       </Dialog>
 
-      <ScheduleInterviewDialog
-        open={scheduleOpen}
-        onClose={() => { setScheduleOpen(false); setScheduleFor(null); }}
-        {...(scheduleFor === null ? {} : { applicant: scheduleFor })}
-      />
     </PageContainer>
   );
 };

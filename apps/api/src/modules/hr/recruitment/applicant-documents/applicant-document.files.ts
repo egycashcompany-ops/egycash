@@ -63,6 +63,37 @@ const externalSubjectOf = async (
   };
 };
 
+/**
+ * The context the PUBLIC APPLICATION files a new applicant's papers under: nobody is signed in,
+ * and the candidate filing their own certificates is exactly the act the portal account exists
+ * for — it simply does not exist yet. Built only on the server, after the application has been
+ * accepted, and good for that one applicant's folder; a request can never carry it.
+ */
+const PUBLIC_APPLY_FILING = Symbol('publicApplyFiling');
+export const publicApplyFilingContext = (applicantId: string): AuthContext =>
+  ({
+    userId: null,
+    permissions: {},
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    isPrivileged: false,
+    [PUBLIC_APPLY_FILING]: applicantId,
+  }) as unknown as AuthContext;
+const publicApplyFilingOf = (ctx: AuthContext): string | null =>
+  ((ctx as unknown as Record<symbol, unknown>)[PUBLIC_APPLY_FILING] as string | undefined) ?? null;
+
+/**
+ * HR putting a clearer copy into a candidate's folder — a blurred card, a photo taken sideways.
+ * The signed-in reviewer, marked for ONE applicant, and only by the dedicated HR route after its
+ * own permission check; the generic file routes never build it, so they stay read-only for staff.
+ */
+const HR_FILING = Symbol('hrFiling');
+export const hrFilingContext = (ctx: AuthContext, applicantId: string): AuthContext =>
+  ({ ...ctx, [HR_FILING]: applicantId }) as unknown as AuthContext;
+const hrFilingOf = (ctx: AuthContext): string | null =>
+  ((ctx as unknown as Record<symbol, unknown>)[HR_FILING] as string | undefined) ?? null;
+
 export const hrApplicantDocumentFileAuthorizers: FileEntityAuthorizer[] = [
   {
     entityType: APPLICANT_DOCUMENT_ENTITY_TYPE,
@@ -70,6 +101,12 @@ export const hrApplicantDocumentFileAuthorizers: FileEntityAuthorizer[] = [
     // branch below.
     understandsDelete: true,
     authorize: async ({ ctx, entityId, intent }) => {
+      // The public application filing a new applicant's papers: their own folder, never a removal.
+      const filing = publicApplyFilingOf(ctx);
+      if (filing !== null) return intent !== 'delete' && filing === entityId;
+      // HR replacing a paper through its own route: that applicant's folder only.
+      const hrFiling = hrFilingOf(ctx);
+      if (hrFiling !== null && intent !== 'delete') return hrFiling === entityId;
       const subject = await externalSubjectOf(ctx);
       if (subject !== null) {
         // The candidate's own way in, and the ONLY one an external account has. Any other

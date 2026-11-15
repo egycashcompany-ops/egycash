@@ -30,6 +30,7 @@ export const registerNationalIdOcrProvider = (): void => {
     new PaddleNationalIdOcrProvider({
       baseUrl,
       timeoutMs: env.NATIONAL_ID_OCR_TIMEOUT_MS,
+      ...(env.NATIONAL_ID_OCR_ACCESS_CODE === undefined ? {} : { accessCode: env.NATIONAL_ID_OCR_ACCESS_CODE }),
     }),
   );
   logger.info({ baseUrl }, 'national-id OCR: local PaddleOCR provider registered');

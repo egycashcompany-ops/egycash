@@ -11,6 +11,8 @@
 // Now the bar shows their real position and marks the stage you are standing on, so «where are
 // they» and «what am I looking at» are both answerable and never confused for each other. When the
 // two coincide — the common case — the marker simply lands on the current step and says so once.
+import { type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { RECRUITMENT_STAGE_KINDS, type RecruitmentStageKind } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
@@ -19,6 +21,8 @@ import { CheckIcon } from '../../../../shared/ui/icons';
 export const RecruitmentStepBar = ({
   current,
   viewing,
+  links = {},
+  details = {},
 }: {
   /**
    * The candidate's real stage. `null` while it is still loading, or once they have left the
@@ -28,6 +32,10 @@ export const RecruitmentStepBar = ({
   current: RecruitmentStageKind | null;
   /** The stage this screen is about. Always known: it is which page you are on. */
   viewing: RecruitmentStageKind;
+  /** Where each step leads — the candidate's own record in that stage. A step without one is plain. */
+  links?: Partial<Record<RecruitmentStageKind, string>>;
+  /** Which round of a multi-round stage (the interview / evaluation the candidate is in). */
+  details?: Partial<Record<RecruitmentStageKind, string>>;
 }): JSX.Element => {
   const t = useT();
   const standing = current ?? viewing;
@@ -42,6 +50,12 @@ export const RecruitmentStepBar = ({
           const done = i < currentIndex;
           const isCurrent = i === currentIndex;
           const isViewing = i === viewingIndex;
+          // «المقابلة · المقابلة الثانية» — the stage, and which round of it.
+          const detail = details[kind];
+          const label =
+            detail === undefined || detail === ''
+              ? t(`recruitment.step.${kind}`)
+              : `${t(`recruitment.step.${kind}`)} · ${detail}`;
           return (
             <li key={kind} className="flex items-center gap-1">
               {i > 0 && (
@@ -53,12 +67,13 @@ export const RecruitmentStepBar = ({
                   )}
                 />
               )}
-              <span
+              <Step
+                to={isViewing ? undefined : links[kind]}
                 aria-current={isCurrent ? 'step' : undefined}
                 title={
                   isViewing && elsewhere
-                    ? `${t(`recruitment.step.${kind}`)} — ${t('recruitment.step.viewing')}`
-                    : t(`recruitment.step.${kind}`)
+                    ? `${label} — ${t('recruitment.step.viewing')}`
+                    : label
                 }
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors',
@@ -71,6 +86,8 @@ export const RecruitmentStepBar = ({
                   // than a colour: colour already means progress here, and a second meaning on the
                   // same channel is how a legend becomes necessary.
                   isViewing && elsewhere && 'px-2.5 py-1 ring-2 ring-inset ring-brand-400',
+                  !isViewing && links[kind] !== undefined &&
+                    'cursor-pointer hover:underline hover:underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
                 )}
               >
                 <span
@@ -89,12 +106,12 @@ export const RecruitmentStepBar = ({
                 {/* The current step names itself always; the stage you are on names itself too when
                     it is somewhere else, because that is the whole thing this bar had to say. */}
                 <span className={isCurrent || (isViewing && elsewhere) ? '' : 'sr-only sm:not-sr-only'}>
-                  {t(`recruitment.step.${kind}`)}
+                  {label}
                 </span>
                 {isViewing && elsewhere && (
                   <span className="sr-only">{t('recruitment.step.viewing')}</span>
                 )}
-              </span>
+              </Step>
             </li>
           );
         })}
@@ -102,3 +119,23 @@ export const RecruitmentStepBar = ({
     </nav>
   );
 };
+
+/** A step: a link to the candidate's record in that stage when there is one, else plain text. */
+const Step = ({
+  to,
+  children,
+  ...rest
+}: {
+  to: string | undefined;
+  children: ReactNode;
+  className: string;
+  title: string;
+  'aria-current': 'step' | undefined;
+}): JSX.Element =>
+  to === undefined ? (
+    <span {...rest}>{children}</span>
+  ) : (
+    <Link to={to} {...rest}>
+      {children}
+    </Link>
+  );

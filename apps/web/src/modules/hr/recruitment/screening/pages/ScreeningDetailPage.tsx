@@ -2,7 +2,7 @@
 // pending), the decision read-out, and the Accept/Reject actions — all permission-gated and
 // version-checked.
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { type ScreeningOutcome } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
@@ -21,12 +21,16 @@ import { formatDateTime } from '../../../../../shared/lib/format';
 import { ScreeningStatusBadge } from '../components/ScreeningStatusBadge';
 import { DecideDialog } from '../components/DecideDialog';
 import { ApplicantLifecycleActions } from '../../applicants/components/ApplicantLifecycleActions';
-import { ScheduleInterviewDialog } from '../../interviews/components/ScheduleInterviewDialog';
+import { useInterviewStages, useStartInterview } from '../../interviews/api/interview-queries';
+import { PlayIcon } from '../../../../../shared/ui/icons';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { ApplicantFolderDialog } from '../../applicant-documents/components/ApplicantFolderDialog';
+import { useApplicantFolder } from '../../applicant-documents/api/applicant-document-queries';
+import { FolderIcon } from '../../../../../shared/ui/icons';
 
 export const ScreeningDetailPage = (): JSX.Element => {
   const t = useT();
@@ -39,10 +43,19 @@ export const ScreeningDetailPage = (): JSX.Element => {
   const { data: candidate } = useApplicant(s?.applicantId ?? '');
 
   const addNote = useAddScreeningNote(id);
+  // The candidate's folder — the same one the Applicant documents page opens, where HR can swap a
+  // blurred card photo or paper for a clearer one.
+  const [folderOpen, setFolderOpen] = useState(false);
+  const { data: folder } = useApplicantFolder(folderOpen ? (s?.applicantId ?? '') : '');
   const [note, setNote] = useState('');
   const [decide, setDecide] = useState<ScreeningOutcome | null>(null);
   const [editDecide, setEditDecide] = useState<ScreeningOutcome | null>(null);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Interviews are not scheduled — they are started. Starting opens the first round now and lands
+  // on it, with the candidate's file and the evaluation on the page.
+  const navigate = useNavigate();
+  const { data: stages } = useInterviewStages();
+  const startInterview = useStartInterview();
+  const firstStage = [...(stages ?? [])].filter((st) => st.active).sort((a, b) => a.order - b.order)[0];
   // One request for everyone this page mentions. Above the guards below, because a hook runs on
   // every render or on none — and the first render of this page has no data yet.
   useDirectoryPage([...(s?.notes ?? []).map((n) => n.by), s?.decision?.decidedBy ?? null]);
@@ -111,11 +124,20 @@ export const ScreeningDetailPage = (): JSX.Element => {
             </Can>
           ) : (
             <>
-              {/* The applicant is already known here — scheduling never asks for them again. */}
-              {s.status === 'accepted' && (
+              {s.status === 'accepted' && firstStage !== undefined && (
                 <Can permission="interview.create">
-                  <Button size="sm" onClick={() => setScheduleOpen(true)}>
-                    {t('interviews.actions.schedule')}
+                  <Button
+                    size="sm"
+                    leftIcon={<PlayIcon className="h-4 w-4" />}
+                    loading={startInterview.isPending}
+                    onClick={() =>
+                      void startInterview
+                        .mutateAsync({ applicantId: s.applicantId, stageId: firstStage.id, interviewerIds: [] })
+                        .then((iv) => navigate(`/interviews/${iv.id}`))
+                        .catch(() => undefined)
+                    }
+                  >
+                    {t('interviews.actions.startInterview')}
                   </Button>
                 </Can>
               )}
@@ -138,6 +160,11 @@ export const ScreeningDetailPage = (): JSX.Element => {
           {s.applicantName}
         </Link>
         <ScreeningStatusBadge status={s.status} />
+        <Can permission="applicantDocument.view">
+          <Button size="sm" leftIcon={<FolderIcon className="h-4 w-4" />} onClick={() => setFolderOpen(true)}>
+            {t('applicantFile.openFolder')}
+          </Button>
+        </Can>
         <span className="ms-auto">
           <ApplicantLifecycleActions applicantId={s.applicantId} showWithdrawnHint />
         </span>
@@ -219,18 +246,15 @@ export const ScreeningDetailPage = (): JSX.Element => {
         <CandidateTimeline applicantId={s.applicantId} />
       </div>
 
+      {folderOpen && (
+        <ApplicantFolderDialog folder={folder ?? null} onClose={() => setFolderOpen(false)} />
+      )}
       {decide !== null && (
         <DecideDialog open onClose={() => setDecide(null)} outcome={decide} screeningId={s.id} version={s.version} />
       )}
       {editDecide !== null && (
         <DecideDialog open edit onClose={() => setEditDecide(null)} outcome={editDecide} screeningId={s.id} version={s.version} />
       )}
-      {/* Preselected — the dialog shows the applicant read-only, no second search (UX §2). */}
-      <ScheduleInterviewDialog
-        open={scheduleOpen}
-        onClose={() => setScheduleOpen(false)}
-        applicant={{ id: s.applicantId, code: s.applicantCode, fullNameAr: s.applicantName }}
-      />
     </PageContainer>
   );
 };

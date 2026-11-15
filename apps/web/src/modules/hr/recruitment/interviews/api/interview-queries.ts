@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type BulkScheduleInterviews,
   type BulkStartInterviews,
+  type QuickDecideInterviews,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -161,6 +162,13 @@ export const useStartScheduledInterviewRow = () =>
 /** RW12 — bulk "Start now" over a stage's waiting queue. */
 export const useBulkStartInterviews = (onApplied?: () => void) =>
   useBulkMutation<BulkStartInterviews>((body) => api.bulkStartInterviews(body), {
+    applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
+    ...(onApplied === undefined ? {} : { onApplied }),
+  });
+
+/** Approve / reject at a decision-only stage (one candidate or many). */
+export const useQuickDecideInterviews = (onApplied?: () => void) =>
+  useBulkMutation<QuickDecideInterviews>((body) => api.quickDecideInterviews(body), {
     applyResult: (qc, result) => applyBulkWorkflowResult(qc, FEATURE, result),
     ...(onApplied === undefined ? {} : { onApplied }),
   });

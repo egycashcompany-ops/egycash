@@ -158,6 +158,50 @@ class ApplicantDocumentRepository {
       .exec();
   }
 
+  /**
+   * HR put a file into a slot itself: whatever the slot held, it now holds this — already
+   * accepted, because the person who would review it is the one who filed it.
+   */
+  async staffSetDocument(
+    applicantId: string,
+    typeId: string,
+    patch: Pick<
+      ApplicantDocumentItem,
+      'fileId' | 'fileName' | 'fileVersion' | 'licenseClass' | 'uploadedAt' | 'reviewedBy' | 'reviewedAt' | 'reviewNote'
+    >,
+  ): Promise<ApplicantDocumentSetDoc | null> {
+    return ApplicantDocumentSetModel.findOneAndUpdate(
+      live({ applicantId: new Types.ObjectId(applicantId), 'documents.typeId': new Types.ObjectId(typeId) }),
+      {
+        $set: {
+          'documents.$[slot].fileId': patch.fileId,
+          'documents.$[slot].fileName': patch.fileName,
+          'documents.$[slot].fileVersion': patch.fileVersion,
+          'documents.$[slot].licenseClass': patch.licenseClass,
+          'documents.$[slot].uploadedAt': patch.uploadedAt,
+          'documents.$[slot].status': 'accepted',
+          'documents.$[slot].reviewedBy': patch.reviewedBy,
+          'documents.$[slot].reviewedAt': patch.reviewedAt,
+          'documents.$[slot].reviewNote': patch.reviewNote,
+        },
+      },
+      { new: true, arrayFilters: [{ 'slot.typeId': new Types.ObjectId(typeId) }] },
+    )
+      .lean<ApplicantDocumentSetDoc>()
+      .exec();
+  }
+
+  /** Take one slot's document out, leaving the slot empty (to be handed in again). */
+  async removeDocument(applicantId: string, typeId: string): Promise<ApplicantDocumentSetDoc | null> {
+    return ApplicantDocumentSetModel.findOneAndUpdate(
+      live({ applicantId: new Types.ObjectId(applicantId), 'documents.typeId': new Types.ObjectId(typeId) }),
+      { $pull: { documents: { typeId: new Types.ObjectId(typeId) } } },
+      { new: true },
+    )
+      .lean<ApplicantDocumentSetDoc>()
+      .exec();
+  }
+
   /** Rule on a slot that is still waiting. Null means somebody got there first. */
   async reviewDocument(
     applicantId: string,

@@ -178,6 +178,8 @@ export interface PaddleOcrProviderOptions {
   timeoutMs?: number;
   /** Retries for transport failures only — never for a 4xx, which would fail identically. */
   retries?: number;
+  /** The sidecar's access code when it runs locked; sent as the `X-Access-Code` header. */
+  accessCode?: string;
 }
 
 /**
@@ -238,11 +240,14 @@ export class PaddleNationalIdOcrProvider implements NationalIdOcrProvider {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly retries: number;
+  private readonly headers: Record<string, string>;
 
   constructor(options: PaddleOcrProviderOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.retries = options.retries ?? 1;
+    const code = options.accessCode?.trim() ?? '';
+    this.headers = { 'Content-Type': 'application/json', ...(code === '' ? {} : { 'X-Access-Code': code }) };
   }
 
   /** The caller's context, set per request — see `extractNationalIdFields`. */
@@ -284,7 +289,7 @@ export class PaddleNationalIdOcrProvider implements NationalIdOcrProvider {
       try {
         const response = await outboundFetch(`${this.baseUrl}/extract`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.headers,
           body,
           signal: AbortSignal.timeout(this.timeoutMs),
         });

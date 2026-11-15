@@ -527,6 +527,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
   for (const stage of INTERVIEW_STAGES) {
     await interviewStageService.ensure(stage);
   }
+  await interviewStageService.ensureModes();
   for (const phase of EVALUATION_PHASES) {
     await evaluationPhaseService.ensure(phase);
   }

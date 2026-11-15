@@ -17,7 +17,7 @@ import {
   type ApplicantDocumentTypeDoc,
 } from './applicant-document-type.model';
 
-/** The five the design names. Order is the order a candidate is asked for them. */
+/** The design's five, plus the optional licence from the application page. Order is the order a candidate is asked for them. */
 const SEEDED: CreateApplicantDocumentType[] = [
   {
     key: 'qualification',
@@ -59,6 +59,16 @@ const SEEDED: CreateApplicantDocumentType[] = [
     licenseClassRequired: true,
     order: 5,
   },
+  {
+    // Any licence the candidate holds, offered on the public application page. Optional, and asked
+    // of everyone — the professional licence above stays the drivers' required slot.
+    key: 'drivingLicense',
+    name: { ar: 'صورة رخصة القيادة', en: 'Driving licence' },
+    applicability: 'all',
+    required: false,
+    licenseClassRequired: false,
+    order: 6,
+  },
 ];
 
 export const toApplicantDocumentTypeDto = (
@@ -83,11 +93,17 @@ class ApplicantDocumentTypeService {
       // seeds the new document from the filter's equality conditions, and a field named in both
       // places is a path conflict Mongo refuses — which would fail the whole boot sequence.
       const { key, ...rest } = row;
-      await ApplicantDocumentTypeModel.updateOne(
-        { key, isDeleted: false },
-        { $setOnInsert: { ...rest, active: true } },
-        { upsert: true, setDefaultsOnInsert: true },
-      ).exec();
+      try {
+        await ApplicantDocumentTypeModel.updateOne(
+          { key, isDeleted: false },
+          { $setOnInsert: { ...rest, active: true } },
+          { upsert: true, setDefaultsOnInsert: true },
+        ).exec();
+      } catch (error) {
+        // The API and the worker boot together and both seed: when two upserts race on a new row,
+        // the loser hits the unique key — the row exists, which is all this wanted.
+        if ((error as { code?: number }).code !== 11000) throw error;
+      }
     }
   }
 

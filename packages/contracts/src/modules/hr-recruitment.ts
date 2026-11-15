@@ -272,7 +272,15 @@ export const ContactInputSchema = z
  * three records. Only the postal code is refined here: the catalog is a UI affordance, and a
  * legacy record whose city predates the catalog must still be updatable.
  */
+/**
+ * An applicant's address is never REQUIRED, in whole or in part: registering someone needs only
+ * their name, phone and National ID. Whatever part of the address was typed (or read off the
+ * card) is kept, and a missing part is stored as ''.
+ */
 export const ApplicantAddressSchema = AddressSchema.extend({
+  line1: z.string().trim().max(500).default(''),
+  city: z.string().trim().max(200).default(''),
+  governorate: z.string().trim().max(200).default(''),
   postalCode: PostalCodeSchema.optional(),
 });
 

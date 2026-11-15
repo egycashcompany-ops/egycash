@@ -226,11 +226,18 @@ export const DesignField = ({
   endAdornment,
   datePicker,
   tag,
+  labelHidden = false,
   children,
 }: {
   /** A mark beside the label — «من الشيت». */
   tag?: ReactNode;
   label: string;
+  /**
+   * The label is for a screen reader only — a box whose name is already written on the line above
+   * it (the receive form's «من فرع» over its branch box), where a second visible label would only
+   * cost height.
+   */
+  labelHidden?: boolean;
   required?: boolean;
   missing?: boolean;
   error?: string | undefined;
@@ -256,7 +263,12 @@ export const DesignField = ({
     datePicker === true ? {} : datePicker === false ? undefined : datePicker;
   return (
     <div className="space-y-2" {...(missing ? { 'data-field-missing': 'true' } : {})}>
-      <label className="block text-[15px] font-bold text-slate-900 dark:text-white">
+      <label
+        className={cn(
+          'block text-[15px] font-bold text-slate-900 dark:text-white',
+          labelHidden && 'sr-only',
+        )}
+      >
         {label} {required && <span className="font-bold text-rose-500">*</span>}
         {tag}
       </label>

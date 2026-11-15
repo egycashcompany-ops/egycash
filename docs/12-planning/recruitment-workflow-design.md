@@ -1408,6 +1408,24 @@ a concurrent request and the migration all converge on the same single record.
     from the applicant's mirrored axis; job comes from the placement.
   - `GET /hr/job-offers/awaiting` is still served, but the page no longer reads it.
 
+**«اكتب العرض» opens filled in (A28, 2026-11-15).** The owner: «عاوزو يجيب المسمي الوظيفي و الاداره و
+الفرع و المدير المباشر اوتوماتيك … نوع التوظيف هيبقا by default دوام كامل … الراتب … المسميات
+الوظيفيه». `GET /hr/job-offers/defaults?applicantId=` (`jobOffer.create`) returns what the form
+starts from, and every value stays editable.
+- **Job, department, branch and section** come from the candidate's placement. Department and
+  branch fall back to the applicant's own.
+- **The direct manager** is the effective manager (an acting manager inside their window, else the
+  manager) of the section, else the department, else the branch.
+- **«دوام كامل»** is the starting employment type.
+- **The salary** is the job's «الراتب الثابت». Every active job's fixed salary is sent too, so the
+  salary follows the job when HR changes it, until the salary is typed by hand.
+- **The job is a type-ahead** (`Combobox`): a few letters list the matching jobs. The department
+  lists only the chosen branch's departments.
+- **A manager with no account** is typed by name (`terms.managerName`) when no system user
+  matches. The offer shows the name. It is never notified, and it is not linked as the employee's
+  manager, which takes a `managerId`; a `managerId` set beside a name wins.
+- The placement's section is carried into the terms while the department stays the placement's.
+
 **Consequences, all applied:**
 
 - **`INTERVIEW_RECORD_STATUSES` is deleted.** There is no persistable subset: `waiting` is stored

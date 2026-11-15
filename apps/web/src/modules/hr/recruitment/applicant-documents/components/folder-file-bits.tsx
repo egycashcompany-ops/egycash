@@ -6,13 +6,14 @@ import {
   type ApplicantFolderFileKind,
   type FileDto,
 } from '@ecms/contracts';
+import { useEffect, useState } from 'react';
 import { useT } from '../../../../../platform/localization/useT';
+import { fetchBlob } from '../../../../../shared/lib/api-client';
 import { cn } from '../../../../../shared/lib/cn';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { DownloadIcon, FileIcon, ImageIcon } from '../../../../../shared/ui/icons';
-import { fileTicket } from '../api/applicant-document-api';
-import { useFileTicket } from '../api/applicant-document-queries';
 import { type CardTileKind } from './applicant-folder-groups';
+import { PickFileButton, RemoveButton, useFolderEdit } from './folder-edit';
 
 const extensionOf = (file: FileDto): string => file.extension.replace(/^\./, '') || 'jpg';
 
@@ -33,27 +34,63 @@ export const downloadName = (code: string, item: ApplicantFolderFileDto): string
   return name === undefined ? item.file.originalName : `${code}-${name}.${extensionOf(item.file)}`;
 };
 
-/** Saves one file under `name`; opens it in a new tab if the bytes cannot be fetched directly. */
+/**
+ * A file's bytes, fetched WITH the signed-in session. A signed link cannot be used here: an
+ * applicant's papers are protected files, and a link loaded by `<img>` or a bare `fetch` carries no
+ * token, so the server refuses it.
+ */
+const bytesOf = (fileId: string): Promise<Blob> => fetchBlob(`/platform/files/${fileId}/download`);
+
+/** Saves one file under `name`. */
 export const save = async (fileId: string, name: string): Promise<boolean> => {
   try {
-    const { url } = await fileTicket(fileId);
-    try {
-      const blob = await (await fetch(url)).blob();
-      const href = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = href;
-      link.download = name;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
-    } catch {
-      window.open(url, '_blank', 'noopener');
-    }
+    const href = URL.createObjectURL(await bytesOf(fileId));
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(href), 1000);
     return true;
   } catch {
     return false;
   }
+};
+
+/** Opens a file full size in a new tab. */
+export const openFull = async (fileId: string): Promise<boolean> => {
+  try {
+    const href = URL.createObjectURL(await bytesOf(fileId));
+    window.open(href, '_blank', 'noopener');
+    window.setTimeout(() => URL.revokeObjectURL(href), 60_000);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** An in-memory URL for a file's bytes, released when the file changes or the view goes away. */
+const useObjectUrl = (fileId: string | null): string | null => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    let made: string | null = null;
+    setUrl(null);
+    if (fileId === null) return;
+    void bytesOf(fileId)
+      .then((blob) => {
+        if (!live) return;
+        made = URL.createObjectURL(blob);
+        setUrl(made);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+      if (made !== null) URL.revokeObjectURL(made);
+    };
+  }, [fileId]);
+  return url;
 };
 
 export const sizeOf = (bytes: number): string =>
@@ -61,7 +98,7 @@ export const sizeOf = (bytes: number): string =>
     ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
     : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-/** A signed-link image, with a quiet placeholder until (or unless) it loads. */
+/** The image itself, with a quiet placeholder until (or unless) it loads. */
 export const Preview = ({
   fileId,
   alt,
@@ -73,10 +110,10 @@ export const Preview = ({
   className?: string;
   fit?: 'cover' | 'contain';
 }): JSX.Element => {
-  const { data } = useFileTicket(fileId);
-  return data !== undefined ? (
+  const url = useObjectUrl(fileId);
+  return url !== null ? (
     <img
-      src={data.url}
+      src={url}
       alt={alt}
       loading="lazy"
       className={cn(
@@ -129,6 +166,8 @@ export const CardTile = ({
 }): JSX.Element => {
   const t = useT();
   const saveOne = useSaveOne();
+  const edit = useFolderEdit();
+  const side = kind === 'cardFront' ? 'front' : kind === 'cardBack' ? 'back' : 'portrait';
   const label = t(`hr.applicantFolders.kind.${kind}`);
   return (
     <figure className="flex flex-col gap-2">
@@ -156,12 +195,21 @@ export const CardTile = ({
       </div>
       <figcaption className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{label}</span>
-        {item !== undefined && (
-          <DownloadButton
-            label={t('hr.applicantFolders.download')}
-            onClick={() => saveOne(item, code)}
-          />
-        )}
+        <span className="flex flex-wrap items-center gap-2">
+          {edit?.canEdit === true && (
+            <PickFileButton
+              primary={item === undefined}
+              label={item === undefined ? t('applicantFile.upload') : t('applicantFile.replace')}
+              onPick={(file) => edit.putCard(side, file)}
+            />
+          )}
+          {item !== undefined && (
+            <DownloadButton
+              label={t('hr.applicantFolders.download')}
+              onClick={() => saveOne(item, code)}
+            />
+          )}
+        </span>
       </figcaption>
     </figure>
   );
@@ -176,16 +224,31 @@ export const FileRow = ({
 }): JSX.Element => {
   const t = useT();
   const saveOne = useSaveOne();
+  const edit = useFolderEdit();
+  // A handed-in paper can be swapped for a clearer copy, or taken out.
+  const typeId = item.kind === 'document' ? edit?.typeIdOf(item.file.id) : undefined;
   const image = item.file.mime.startsWith('image/');
   return (
     <li className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800">
+      <button
+        type="button"
+        title={t('hr.applicantFolders.openFull')}
+        onClick={() =>
+          void openFull(item.file.id).then((done) => {
+            if (!done) toast.error(t('hr.applicantFolders.downloadFailed'));
+          })
+        }
+        className={cn(
+          'flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 ring-1 ring-slate-200 transition hover:ring-brand-400 dark:bg-slate-800 dark:ring-slate-700',
+          image ? 'h-20 w-28' : 'h-12 w-12',
+        )}
+      >
         {image ? (
           <Preview fileId={item.file.id} alt={item.file.displayName} />
         ) : (
           <FileIcon className="h-5 w-5" />
         )}
-      </span>
+      </button>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
           {item.file.displayName}
@@ -194,10 +257,21 @@ export const FileRow = ({
           {t(`hr.applicantFolders.kind.${item.kind}`)} · {sizeOf(item.file.size)}
         </span>
       </span>
-      <DownloadButton
-        label={t('hr.applicantFolders.download')}
-        onClick={() => saveOne(item, code)}
-      />
+      <span className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {typeId !== undefined && edit?.canEdit === true && (
+          <PickFileButton label={t('applicantFile.replace')} onPick={(file) => edit.putDoc(typeId, file)} />
+        )}
+        {item.kind === 'attachment' && edit?.canAttach === true && (
+          <RemoveButton onClick={() => edit.askRemoveAttachment(item.file.id, item.file.displayName)} />
+        )}
+        {typeId !== undefined && edit?.canRemove === true && (
+          <RemoveButton onClick={() => edit.askRemove(typeId, item.file.displayName)} />
+        )}
+        <DownloadButton
+          label={t('hr.applicantFolders.download')}
+          onClick={() => saveOne(item, code)}
+        />
+      </span>
     </li>
   );
 };

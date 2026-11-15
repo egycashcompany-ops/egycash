@@ -252,6 +252,70 @@ describe('the shipment action log — one audit row, one entry, in names', () =>
     expect(entries[1]?.changes).toEqual([]);
   });
 
+  // Round 18 — the legacy «إستلام محصنة» form: every field optional, no names («انا مش عاوز اى اسماء»),
+  // «2×» / «3×», «عدد الورق من كل فئة», «سيريال» decided at the receipt, and the shipment corrected
+  // in the same form («تعدّلها عادي»).
+  it('prints a Round 18 receipt — its seals per bag and note counts, no receiver field, nothing blank twice', () => {
+    const custody = (action: AuditLogDto['action'], changes: AuditLogDto['changes'], req: string) =>
+      row(SHIPMENT_LOG_ENTITY.custody, CUSTODY, action, changes, req);
+    const entries = build([
+      // The vault's corrections, made in the receive form: an EDIT of the same request.
+      shipmentRow(
+        'update',
+        [{ field: 'destinationBranchId', old: BRANCH_A, new: BRANCH_B }],
+        'req-r18',
+      ),
+      custody(
+        'create',
+        [
+          { field: 'state', old: null, new: 'held' },
+          { field: 'bagCount', old: null, new: 2 },
+          { field: 'cartonCount', old: null, new: 0 },
+          { field: 'bagSealsPerBag', old: null, new: 3 },
+          { field: 'bagSeals', old: null, new: ['1', '2', '3'] },
+          // Nothing typed: an empty list prints as nothing on both sides, and is left out.
+          { field: 'boxSeals', old: null, new: [] },
+          {
+            field: 'denominations',
+            old: null,
+            new: [
+              { value: 0.5, count: 40 },
+              { value: 200, count: 1500 },
+            ],
+          },
+          // The receiver is the entry's actor — never printed as an id.
+          { field: 'receivedById', old: null, new: oid(99) },
+        ],
+        'req-r18',
+      ),
+      shipmentRow(
+        'update',
+        [
+          { field: 'status', old: 'draft', new: 'inVault' },
+          { field: 'serialTracked', old: false, new: true },
+        ],
+        'req-r18',
+      ),
+    ]);
+    expect(entries.map((e) => e.kind)).toEqual(['edited', 'vaultReceived']);
+    expect(entries[0]?.changes).toEqual([
+      { field: 'destinationBranch', old: 'فرع التحرير (101)', new: 'فرع المعادي (202)' },
+    ]);
+    // No receipt number was typed: no receiptNumber line at all. A count of 0 is a value.
+    expect(entries[1]?.changes).toEqual([
+      { field: 'bagCount', old: null, new: '2' },
+      { field: 'cartonCount', old: null, new: '0' },
+      { field: 'bagSealsPerBag', old: null, new: '3' },
+      { field: 'bagSeals', old: null, new: '1، 2، 3' },
+      { field: 'denominations', old: null, new: '0.5 × 40، 200 × 1,500' },
+      // «سيريال» decided at the receipt — the shipment's own row, folded behind the custody's.
+      { field: 'serialTracked', old: 'false', new: 'true' },
+    ]);
+    // Both entries are the receiver's: the actor IS who received it.
+    expect(entries.map((e) => e.actorName)).toEqual(['موظف المكتب', 'موظف المكتب']);
+    expect(JSON.stringify(entries)).not.toContain(oid(99));
+  });
+
   // Round 10 — the pickup record («تم الاستلام من العمليات» / من القائد), its undo, and the vault's
   // receipt cancelled with a reason.
   it('reads the pickup ✓, its undo and a cancelled vault receipt as their own acts — saying WHO', () => {

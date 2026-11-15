@@ -466,6 +466,7 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
       fleetDutyAssignmentId: 'fd-1',
       driver1EmployeeId: null,
       driver2EmployeeId: null,
+      drivers: [],
       missionTypeId: null,
       crew: {
         id: 'ca-1',
@@ -475,9 +476,13 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
         direction: null,
         plannedTime: null,
         notes: null,
+        shiftTypeId: null,
+        rowColour: null,
       },
     },
   ],
+  vehiclelessRows: [],
+  workshopVehicles: [],
 });
 const directory = (date: string): OperationsCrewDirectoryDto => ({
   date: `${date}T00:00:00.000Z`,

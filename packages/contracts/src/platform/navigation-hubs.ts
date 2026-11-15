@@ -49,6 +49,10 @@ export const HR_SETTINGS_HUB = {
     { key: 'applicant-sources', permission: 'applicant.view', group: 'recruitment' },
     { key: 'interview-stages', permission: 'interviewStage.manage', group: 'recruitment' },
     { key: 'evaluation-phases', permission: 'evaluationPhase.manage', group: 'recruitment' },
+    // «مستندات مطلوبة للتعيين» — placeholder; its contents are not decided yet. Keyed on its OWN
+    // authority, not the form's: the screen it will become is administered separately, and the
+    // role matrix has to say so from the start (see `hiringRequirementPermissions`).
+    { key: 'hiring-requirements', permission: 'hiringRequirement.manage', group: 'recruitment' },
     // «التواصل»
     { key: 'announcements', permission: 'announcement.send', group: 'communication' },
     { key: 'notification-rules', permission: 'notificationRule.view', group: 'communication' },

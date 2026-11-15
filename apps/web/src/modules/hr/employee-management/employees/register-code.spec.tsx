@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { maskEmployeeCodeBranch, type JobTitlePlacementDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../../platform/localization/i18n';
-import { branchOfCode, orderTitlesForBranch, placementForTitle } from './lib/register-code';
+import { branchOfCode, idsMatching, orderTitlesForBranch, placementForTitle } from './lib/register-code';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'pages/DirectRegisterPage.tsx'), 'utf8')
@@ -65,6 +65,63 @@ describe('the job title fills in the department and section', () => {
   });
 });
 
+// «عايز الإدارة والمسمي الوظيفي والقسم يكون قابل للبحث فى الأختيارات من خلال Input ميبقاش فقط
+// Selection من Dropdown».
+describe('the department, the section and the job are typed into', () => {
+  const units = [
+    { id: '64a1f0c2e4b0a1b2c3d4e5f6', name: 'الإسماعيلية — 101' },
+    { id: '64a1f0c2e4b0a1b2c3d4e5f7', name: 'الأمن — 102' },
+    { id: '64a1f0c2e4b0a1b2c3d4e5f8', name: 'Accounts — 201' },
+  ];
+  const label = (u: (typeof units)[number]): string => u.name;
+
+  it('keeps every unit, in order, while nothing is typed', () => {
+    expect(idsMatching(units, label, '')).toEqual(units.map((u) => u.id));
+    expect(idsMatching(units, label, '   ')).toEqual(units.map((u) => u.id));
+  });
+
+  it('matches the name the way it is typed — hamza and ta marbuta folded, any case', () => {
+    expect(idsMatching(units, label, 'الاسماعيليه')).toEqual(['64a1f0c2e4b0a1b2c3d4e5f6']);
+    expect(idsMatching(units, label, 'accounts')).toEqual(['64a1f0c2e4b0a1b2c3d4e5f8']);
+  });
+
+  it('matches the name and never the id behind it', () => {
+    // Every id above holds «64a1» and «e5f»; only the codes in the names say «102».
+    expect(idsMatching(units, label, '64a1')).toEqual([]);
+    expect(idsMatching(units, label, 'e5f')).toEqual([]);
+    expect(idsMatching(units, label, '102')).toEqual(['64a1f0c2e4b0a1b2c3d4e5f7']);
+  });
+
+  it('offers the three as boxes to type into, and the branch still as the code\'s', () => {
+    expect(PAGE.match(/<Combobox\b/g)).toHaveLength(3);
+    expect(PAGE).toContain('options={idsMatching(departments, departmentLabel, departmentTyped)}');
+    expect(PAGE).toContain('options={idsMatching(sections, sectionLabel, sectionTyped)}');
+    // The branch's own titles first, as the old list's groups put them.
+    expect(PAGE).toContain(
+      'options={idsMatching([...titlesHere, ...titlesElsewhere], jobTitleLabel, jobTitleTyped)}',
+    );
+  });
+
+  it('does the same in the external employee dialog, whose branch stays a list', () => {
+    const DIALOG = readFileSync(join(HERE, 'components/ExternalEmployeeDialog.tsx'), 'utf8');
+    expect(DIALOG.match(/<Combobox\b/g)).toHaveLength(3);
+    expect(DIALOG).toContain('id="external-department"');
+    expect(DIALOG).toContain('id="external-section"');
+    expect(DIALOG).toContain('id="external-job"');
+    expect(DIALOG).toMatch(/<Select\s+id="external-branch"/);
+    // The lists open inside the dialog's body, which is cut short unless the dialog is tall.
+    expect(DIALOG).toMatch(/onClose=\{close\}[\s\S]{0,200}\btall\b/);
+  });
+
+  // A box reports a re-pick of what it already holds; a native list never did.
+  it('throws nothing away when the department or the job already held is picked again', () => {
+    expect(PAGE).toContain('if (id === departmentId) return;');
+    expect(PAGE).toContain('if (id !== jobTitleId) pickJobTitle(id);');
+    const DIALOG = readFileSync(join(HERE, 'components/ExternalEmployeeDialog.tsx'), 'utf8');
+    expect(DIALOG).toContain('if (id === departmentId) return;');
+  });
+});
+
 describe('the form', () => {
   it('asks for the code first, before the Arabic full name', () => {
     const identity = PAGE.slice(PAGE.indexOf("t('employees.personal.identity')"));
@@ -84,7 +141,7 @@ describe('the form', () => {
   it('narrows the lists to the branch, and fills them from the job title', () => {
     expect(PAGE).toContain("useDepartmentOptions(branchId === '' ? undefined : branchId)");
     expect(PAGE).toContain('useJobTitlePlacements(branchId)');
-    expect(PAGE).toContain('onChange={(e) => pickJobTitle(e.target.value)}');
+    expect(PAGE).toContain('if (id !== jobTitleId) pickJobTitle(id);');
     expect(PAGE).toContain('placementForTitle(id, placements, departments)');
   });
 
@@ -107,8 +164,7 @@ describe('translations', () => {
       'employees.register.codeRequired',
       'employees.register.branchFromCode',
       'employees.register.typeCodeFirst',
-      'employees.register.titlesInBranch',
-      'employees.register.titlesOther',
+      'employees.register.titlesHereFirst',
     ];
     for (const locale of ['en', 'ar'] as Locale[]) {
       for (const key of keys) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);

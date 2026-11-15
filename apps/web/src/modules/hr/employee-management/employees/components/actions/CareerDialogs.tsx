@@ -106,16 +106,25 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
   const [branchId, setBranchId] = useState(employee.employment.branchId);
   const [departmentId, setDepartmentId] = useState(employee.employment.departmentId);
   const [sectionId, setSectionId] = useState(employee.employment.sectionId ?? '');
+  // «إمكانية تعديل المسمي الوظيفي أيضاً» — the job held in the new placement; the current one
+  // until HR picks another.
+  const [jobTitleId, setJobTitleId] = useState(employee.employment.jobTitleId);
   const [reason, setReason] = useState('');
   const { data: branches = [] } = useBranchOptions();
   const { data: departments = [] } = useDepartmentOptions(branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  // The catalog offers active titles only. A title retired since the employee took it is still
+  // the one they hold, so it stays on the list, by the name their record carries, instead of the
+  // list showing its first title as if it were theirs.
+  const heldTitleRetired = !jobTitles.some((jt) => jt.id === employee.employment.jobTitleId);
 
   const submit = async (): Promise<void> => {
     const changedBranch = branchId !== employee.employment.branchId;
     const changedDept = departmentId !== employee.employment.departmentId;
     const changedSection = sectionId !== (employee.employment.sectionId ?? '');
-    if (!changedBranch && !changedDept && !changedSection) {
+    const changedJob = jobTitleId !== employee.employment.jobTitleId;
+    if (!changedBranch && !changedDept && !changedSection && !changedJob) {
       toast.error(t('employees.actions.transfer.nothingChanged'));
       return;
     }
@@ -127,6 +136,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
         ...(changedSection || changedDept || changedBranch
           ? { sectionId: sectionId === '' ? null : sectionId }
           : {}),
+        ...(changedJob ? { jobTitleId } : {}),
         ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
         version: employee.version,
         ...common,
@@ -186,6 +196,20 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
           {sections.map((sec) => (
             <option key={sec.id} value={sec.id}>
               {orgUnitLabel(sec, locale)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label={t('offers.form.jobTitle')} required hint={t('employees.actions.transfer.jobTitleHint')}>
+        <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
+          {heldTitleRetired && (
+            <option value={employee.employment.jobTitleId}>
+              {employee.placement.jobTitle === null ? '—' : localized(employee.placement.jobTitle.name, locale)}
+            </option>
+          )}
+          {jobTitles.map((jt) => (
+            <option key={jt.id} value={jt.id}>
+              {localized(jt.name, locale)}
             </option>
           ))}
         </Select>

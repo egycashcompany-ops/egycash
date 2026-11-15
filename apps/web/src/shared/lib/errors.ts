@@ -77,6 +77,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // past midnight — and says the same rule the screen does.
     OPERATIONS_DISPATCH_NOT_TODAY:
       'A van is handed over only on the day it goes out — this van is not one of today’s.',
+    // «لوحة التشغيلة» (Round 20): a save gave a row a type archived on the reference screen since it
+    // was picked, or a direction no area answers («لازم اختار من الاتجاهات اللى موجوده»). The board
+    // marks the row the refusal names (`planRefusal`); these are the words said with it.
+    OPERATIONS_UNKNOWN_SHIFT_TYPE:
+      'A row was given a shift type that is no longer active on the reference screen — choose another type on the marked row.',
+    OPERATIONS_DIRECTION_NOT_AN_AREA:
+      'A direction is not one of the areas on the reference screen — choose it from the list on the marked row.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -133,6 +140,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
     OPERATIONS_DISPATCH_NOT_TODAY:
       'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
+    OPERATIONS_UNKNOWN_SHIFT_TYPE:
+      'أُعطي أحد الصفوف نوعًا لم يعد مفعّلًا في البيانات المرجعية — اختر نوعًا آخر في الصف المُعلَّم.',
+    OPERATIONS_DIRECTION_NOT_AN_AREA:
+      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — اختره من القائمة في الصف المُعلَّم.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

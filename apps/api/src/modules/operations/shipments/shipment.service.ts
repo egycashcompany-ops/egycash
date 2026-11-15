@@ -44,7 +44,7 @@ import {
   type Paginated,
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
-import { Types, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   AppError,
   BusinessRuleError,
@@ -77,8 +77,9 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
-import { directoryProfileService, getDirectoryEmployees } from '../../../platform/directory';
+import { hasVan, type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
+import { getDirectoryEmployees } from '../../../platform/directory';
+import { userDisplayNames } from '../user-names';
 import { vaultCustody } from '../treasury-boundary';
 import { type OperationsShipmentDoc, type OperationsShipmentLine } from './shipment.model';
 import { type OperationsShipmentAssignmentDoc } from './shipment-assignment.model';
@@ -252,6 +253,19 @@ export const historyTooLarge = (
       ],
     },
   );
+
+/**
+ * An edit's fields — `UpdateOperationsShipment` without the version the caller holds apart (the
+ * edit form sends it with them; the vault's receive carries one version for its whole act).
+ */
+export type OperationsShipmentEdit = Omit<UpdateOperationsShipment, 'version'>;
+
+/** An edit that passed every rule (`prepareEdit`): what it writes, and the leg it leaves behind. */
+export interface PreparedShipmentEdit {
+  before: OperationsShipmentDoc;
+  set: Partial<OperationsShipmentDoc>;
+  leftBehind: OperationsShipmentAssignmentDoc | null;
+}
 
 const eventPayload = (doc: OperationsShipmentDoc) => ({
   shipmentId: String(doc._id),
@@ -568,17 +582,14 @@ class OperationsShipmentService {
     const docs = await operationsShipmentRepository.deletedBoardInRange(first, toExclusive, type);
     // The deleter is the user stamped on the row (`deletedBy`), named in ONE directory read for
     // the whole list — a handful of desk users delete, however many rows they deleted.
-    const deleters = [
-      ...new Set(docs.flatMap((d) => (d.deletedBy == null ? [] : [String(d.deletedBy)]))),
-    ];
-    const profiles = await directoryProfileService.resolve(deleters);
-    const nameOf = (userId: string): string | null => {
-      const name = profiles.get(userId)?.displayName;
-      if (name === undefined) return null;
-      return name.ar !== '' ? name.ar : name.en !== '' ? name.en : null;
-    };
+    const names = await userDisplayNames(
+      docs.flatMap((d) => (d.deletedBy == null ? [] : [String(d.deletedBy)])),
+    );
     const deletedByName = new Map(
-      docs.map((d) => [String(d._id), d.deletedBy == null ? null : nameOf(String(d.deletedBy))]),
+      docs.map((d) => [
+        String(d._id),
+        d.deletedBy == null ? null : (names.get(String(d.deletedBy)) ?? null),
+      ]),
     );
     return { ...(await this.boardView(docs)), deletedByName };
   }
@@ -714,8 +725,11 @@ class OperationsShipmentService {
     const crewById = new Map(
       (await operationsCrewAssignmentRepository.findByIdsSystem(crewIds))
         // `findByIdsSystem` resolves soft-deleted rows too, on purpose, for names. A crew row
-        // that was taken off the plan puts nobody on the van, so it shows no crew at all.
+        // that was taken off the plan puts nobody on the van, so it shows no crew at all. And a
+        // leg only ever rides a row ON A VAN (Round 20 — a row without one is refused to a leg),
+        // so `hasVan` drops nothing real; it is what lets the van card read the row as a van's.
         .filter((c) => !c.isDeleted)
+        .filter(hasVan)
         .map((c) => [String(c._id), c]),
     );
     const crewRows = crewIds.flatMap((id) => {
@@ -785,7 +799,7 @@ class OperationsShipmentService {
    * rows.
    */
   async vanCardsOf(
-    crewRows: readonly OperationsCrewAssignmentDoc[],
+    crewRows: readonly OperationsVanCrewDoc[],
     extra: { employeeIds?: readonly string[]; vehicleIds?: readonly string[] } = {},
   ): Promise<{
     crews: OperationsDayBoardVehicleCrewDto[];
@@ -804,7 +818,7 @@ class OperationsShipmentService {
         .filter((d) => !d.isDeleted)
         .map((d) => [String(d._id), d]),
     );
-    const driversOf = (crew: OperationsCrewAssignmentDoc): string[] => {
+    const driversOf = (crew: OperationsVanCrewDoc): string[] => {
       const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
       if (duty === undefined) return [];
       // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
@@ -859,12 +873,41 @@ class OperationsShipmentService {
     return operationsShipmentRepository.getById(id);
   }
 
+  /**
+   * `PATCH /operations/shipments/:id` — the edit form. Its rules live in `prepareEdit`, its write in
+   * `applyEdit` and its audit in `announceEdit`, so the vault's receive (Round 18, «تعدّلها عادي»)
+   * applies an edit by the very same three steps inside its own transaction — one set of rules, two
+   * doors (secured.service.ts `receiveIntoVault`).
+   */
   async update(
     id: string,
     input: UpdateOperationsShipment,
     by: string,
   ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(id);
+    const { version, ...fields } = input;
+    const edit = await this.prepareEdit(before, fields);
+    // One write needs no transaction; the edit and the leg it leaves behind are one act — both
+    // land or neither does (a stale shipment version, or a captain who started the leg since it
+    // was read, fails the pair).
+    const updated =
+      edit.leftBehind === null
+        ? await this.applyEdit(edit, { by, version })
+        : await unitOfWork(async (session) => this.applyEdit(edit, { by, version, session }));
+    await this.announceEdit(edit, updated);
+    return updated;
+  }
+
+  /**
+   * EVERY RULE OF AN EDIT, checked — nothing written. Returns the write the edit makes and the
+   * delivery leg it leaves behind (or null). Shared by `update` and the vault's receive (Round 18),
+   * which carries the shipment's corrections in its own form: a rule added here holds at both doors.
+   */
+  async prepareEdit(
+    before: OperationsShipmentDoc,
+    input: OperationsShipmentEdit,
+  ): Promise<PreparedShipmentEdit> {
+    const id = String(before._id);
     // Round 10 — checked before anything else: a received محصنة is not edited, whatever the edit.
     assertSecuredUnlocked(before, 'editing it');
 
@@ -932,7 +975,7 @@ class OperationsShipmentService {
         : null;
 
     const set: Partial<OperationsShipmentDoc> = {};
-    const { version, lines, collectionDate, deliveryDate } = input;
+    const { lines, collectionDate, deliveryDate } = input;
     const { mainBankId, secondaryBankId, originBranchId, destinationBranchId } = input;
     if (input.areaName !== undefined) set.areaName = input.areaName;
     if (input.serialTracked !== undefined) set.serialTracked = input.serialTracked;
@@ -948,31 +991,47 @@ class OperationsShipmentService {
     if (deliveryDate !== undefined) {
       set.deliveryDate = deliveryDate === null ? null : utcDay(deliveryDate);
     }
+    return { before, set, leftBehind };
+  }
 
-    // One write needs no transaction; the edit and the leg it leaves behind are one act — both
-    // land or neither does (a stale shipment version, or a captain who started the leg since it
-    // was read, fails the pair).
-    const updated =
-      leftBehind === null
-        ? await operationsShipmentRepository.updateById(id, set, { by, version })
-        : await unitOfWork(async (session) => {
-            const doc = await operationsShipmentRepository.updateById(id, set, {
-              by,
-              version,
-              session,
-            });
-            await retireLeg(leftBehind, { by, at: new Date(), session });
-            return doc;
-          });
+  /**
+   * The edit's write, under the version the editor read — and, when it moves the delivery day off
+   * the leg's van, the leg's retirement in the SAME session (a retirement needs one: the caller
+   * opens the transaction, `update` only when there is a leg to retire, the vault's receive always).
+   */
+  async applyEdit(
+    edit: PreparedShipmentEdit,
+    meta: { by: string; version: number; session?: ClientSession },
+  ): Promise<OperationsShipmentDoc> {
+    const { by, version, session } = meta;
+    const id = String(edit.before._id);
+    const doc = await operationsShipmentRepository.updateById(id, edit.set, {
+      by,
+      version,
+      ...(session === undefined ? {} : { session }),
+    });
+    if (edit.leftBehind !== null) {
+      if (session === undefined) {
+        throw new Error('retiring a delivery leg with an edit needs a transaction');
+      }
+      await retireLeg(edit.leftBehind, { by, at: new Date(), session });
+    }
+    return doc;
+  }
+
+  /**
+   * The edit's audit row (`edited` in «السجل», with every field it changed, old → new), its event,
+   * and — after the edit's own row, so «السجل» reads the new date first and then the van it left —
+   * the retired leg's. Run after the write commits.
+   */
+  async announceEdit(edit: PreparedShipmentEdit, updated: OperationsShipmentDoc): Promise<void> {
     await auditService.record({
-      entityRef: entityRef(id),
+      entityRef: entityRef(String(updated._id)),
       action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(updated)),
+      changes: diffChanges(snapshot(edit.before), snapshot(updated)),
     });
     await emit(OperationsEvents.ShipmentUpdated, eventPayload(updated));
-    // After the edit's own row, so «السجل» reads the new date first and then the van it left.
-    if (leftBehind !== null) await recordLegRetired(leftBehind);
-    return updated;
+    if (edit.leftBehind !== null) await recordLegRetired(edit.leftBehind);
   }
 
   /**

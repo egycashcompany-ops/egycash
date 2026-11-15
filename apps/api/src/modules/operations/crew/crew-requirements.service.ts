@@ -28,10 +28,12 @@ import {
   getDirectoryEmployee,
   listDirectoryEmployeesByDepartment,
 } from '../../../platform/directory';
+import { jobTitleRepository } from '../../../platform/organization';
 import { settingsService } from '../../../platform/settings';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
+import { crewMembers } from './crew-slots';
 import { operationsCrewRequirementsRepository } from './crew-requirements.repository';
 import { resolveCrewDepartmentIds } from './crew-departments';
 import { type OperationsCrewRequirementsDoc } from './crew-requirements.model';
@@ -194,6 +196,27 @@ class OperationsCrewRequirementsService {
             await Promise.all(rows.map((row) => getDirectoryEmployee(String(row.employeeId))))
           ).filter((employee): employee is NonNullable<typeof employee> => employee !== null);
 
+    // «الوظيفة» (Round 19): the seats travel with the roster as ids; their names are the
+    // organization catalogue's, read once for the whole roster rather than once per member. A seat
+    // the catalogue no longer has is shown as none, never as an id.
+    const jobTitleIds = [
+      ...new Set(
+        roster
+          .map((employee) => employee.jobTitleId ?? null)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const jobTitleNames = new Map(
+      (await jobTitleRepository.findByIdsSystem(jobTitleIds)).map((title) => [
+        String(title._id),
+        { ar: title.name.ar, en: title.name.en },
+      ]),
+    );
+    const jobTitleOf = (id: string | null | undefined): OperationsCrewMemberDto['jobTitle'] => {
+      const name = id == null ? undefined : jobTitleNames.get(id);
+      return id == null || name === undefined ? null : { id, name };
+    };
+
     const search = query?.search?.trim().toLowerCase() ?? '';
     const members: OperationsCrewMemberDto[] = [];
     for (const employee of roster) {
@@ -213,6 +236,11 @@ class OperationsCrewRequirementsService {
         code: employee.code,
         fullNameAr: employee.fullNameAr,
         status: employee.status,
+        jobTitle: jobTitleOf(employee.jobTitleId),
+        // The member's card on «كشف طاقم العمليات» (Round 19b): the Fleet driver card's phone and
+        // branch, as the seam already answers them for every entry — nothing extra is read.
+        phone: employee.phone,
+        branchId: employee.branchId,
         // Null means "nothing recorded yet", NOT "carries nothing" — the card says so, and the
         // first flag anybody sets creates the row.
         requirements: row === undefined ? null : toRequirementsDto(row),
@@ -245,6 +273,9 @@ class OperationsCrewRequirementsService {
   async attendance(date: Date): Promise<OperationsCrewAttendanceDayDto> {
     const day = utcDay(date);
     const { members: roster } = await this.directory(day);
+    // Everybody on ANY of the day's rows, a row without a van included (Round 20): the pool's
+    // `assignedVehicleId` names only a vehicle, and this page asks whether the person is crewed.
+    const crewed = await this.crewedOn(day);
     const attendance = await getDirectoryAttendanceDay(
       roster.map((m) => m.employeeId),
       day,
@@ -258,6 +289,7 @@ class OperationsCrewRequirementsService {
         fullNameAr: member.fullNameAr,
         attendance: row === undefined ? null : { status: row.status, onLeave: row.onLeave },
         assignedVehicleId: member.assignedVehicleId,
+        isCrewed: crewed.has(member.employeeId),
       };
     });
 
@@ -277,6 +309,17 @@ class OperationsCrewRequirementsService {
     }
 
     return { date: day.toISOString(), members, summary };
+  }
+
+  /** Every employee holding a slot on one of the day's live crew rows, with a van or without. */
+  private async crewedOn(day: Date): Promise<Set<string>> {
+    const crewed = new Set<string>();
+    const dayDoc = await operationsDayService.findByDate(day);
+    if (dayDoc === null) return crewed;
+    for (const row of await operationsCrewAssignmentRepository.findForDay(dayDoc._id)) {
+      for (const employeeId of crewMembers(row)) crewed.add(employeeId);
+    }
+    return crewed;
   }
 
   async list(query: ListOperationsCrewRequirementsQuery) {

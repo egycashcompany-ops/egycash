@@ -184,20 +184,20 @@ export const CancelVaultReceiptDialog = ({
         </span>
       </div>
 
-      {/* The receipt being cancelled, by its number — what the treasury signed. */}
-      {row.receiptNumber !== null && (
-        <div
-          data-cancel-receipt-number={row.receiptNumber}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80"
-        >
-          <span className="text-[15px] font-bold text-slate-700 dark:text-slate-200">
-            {t('operations.secured.cancelReceipt.receiptNumber')}
-          </span>
-          <bdi dir="ltr" className={cn(NUM, 'text-lg font-black text-slate-900 dark:text-white')}>
-            {row.receiptNumber}
-          </bdi>
-        </div>
-      )}
+      {/* The receipt being cancelled, by its number — what the treasury signed. Since Round 18 the
+          number is optional («كله اختيارى»): a receipt taken without one says «—» on its line,
+          rather than the line vanishing as though there were no receipt to cancel. */}
+      <div
+        data-cancel-receipt-number={row.receiptNumber ?? ''}
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80"
+      >
+        <span className="text-[15px] font-bold text-slate-700 dark:text-slate-200">
+          {t('operations.secured.cancelReceipt.receiptNumber')}
+        </span>
+        <bdi dir="ltr" className={cn(NUM, 'text-lg font-black text-slate-900 dark:text-white')}>
+          {row.receiptNumber ?? '—'}
+        </bdi>
+      </div>
 
       <div>
         <DesignField

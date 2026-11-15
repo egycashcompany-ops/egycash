@@ -73,6 +73,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'operations.bank': { permission: 'operationsCatalog.manage' },
   'operations.bankBranch': { permission: 'operationsCatalog.manage' },
   'operations.currency': { permission: 'operationsCatalog.manage' },
+  // «أنواع التشغيل» (Round 20) — a catalog of the same reference screen, on the same grant as its
+  // siblings; the crew board reads the list on open and on its own save.
+  'operations.shiftType': { permission: 'operationsCatalog.manage' },
 
   // ── HR ─────────────────────────────────────────────────────────────────────
   'hr.employee': { permission: 'employee.view' },

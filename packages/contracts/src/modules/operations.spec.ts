@@ -43,6 +43,9 @@ import {
   OperationsVaultQueueQuerySchema,
   OrderOperationsCurrenciesSchema,
   PlanOperationsCrewSchema,
+  ReceiveIntoVaultSchema,
+  ReceiveIntoVaultShipmentPatchSchema,
+  OPERATIONS_VAULT_DENOMINATIONS,
   UpdateOperationsCurrencySchema,
   SetOperationsStandingCrewSchema,
   UndoSecuredPickupSchema,
@@ -503,6 +506,105 @@ describe('the secured pickup ✓, the lock and the cancelled receipt — their r
   });
 });
 
+// Round 18 — the legacy «إستلام محصنة» form: «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى
+// كله اختيارى».
+describe('the vault receive form — every field optional, no names', () => {
+  it('receives with the version alone, everything else defaulted', () => {
+    expect(ReceiveIntoVaultSchema.parse({ version: 4 })).toEqual({
+      receiptNumber: null,
+      bagCount: 0,
+      cartonCount: 0,
+      boxCount: 0,
+      bagSealsPerBag: 2,
+      bagSeals: [],
+      boxSeals: [],
+      denominations: [],
+      version: 4,
+    });
+    expect(ReceiveIntoVaultSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('trims the receipt number, and a blank one is none', () => {
+    const number = (receiptNumber: unknown) =>
+      ReceiveIntoVaultSchema.parse({ receiptNumber, version: 0 }).receiptNumber;
+    expect(number('  R-1 ')).toBe('R-1');
+    expect(number('')).toBeNull();
+    expect(number('   ')).toBeNull();
+    expect(number(null)).toBeNull();
+    expect(number(undefined)).toBeNull();
+  });
+
+  it('asks for no treasurer — naming one is an unknown field', () => {
+    const oneId = oid(1);
+    expect(
+      ReceiveIntoVaultSchema.safeParse({ version: 0, receivedByPrimaryId: oneId }).success,
+    ).toBe(false);
+    expect(
+      ReceiveIntoVaultSchema.safeParse({ version: 0, receivedBySecondaryId: oneId }).success,
+    ).toBe(false);
+  });
+
+  it('keeps the seals as typed, trimmed, with the blank boxes dropped — no length tied to a count', () => {
+    const parsed = ReceiveIntoVaultSchema.parse({
+      bagCount: 2,
+      bagSealsPerBag: 3,
+      bagSeals: [' 1 ', '', '2', '  '],
+      boxSeals: ['6', '7', '8'],
+      version: 0,
+    });
+    expect(parsed.bagSeals).toEqual(['1', '2']);
+    expect(parsed.boxSeals).toEqual(['6', '7', '8']);
+    expect(parsed.bagSealsPerBag).toBe(3);
+    expect(ReceiveIntoVaultSchema.safeParse({ bagSealsPerBag: 4, version: 0 }).success).toBe(false);
+    expect(ReceiveIntoVaultSchema.safeParse({ bagSealsPerBag: 1, version: 0 }).success).toBe(false);
+  });
+
+  it('counts notes of the legacy form\'s denominations only, each once, a count of 0 accepted', () => {
+    expect(OPERATIONS_VAULT_DENOMINATIONS).toEqual([0.25, 0.5, 1, 5, 10, 20, 50, 100, 200]);
+    const counts = (denominations: unknown) =>
+      ReceiveIntoVaultSchema.safeParse({ denominations, version: 0 }).success;
+    expect(
+      counts(OPERATIONS_VAULT_DENOMINATIONS.map((value) => ({ value, count: 0 }))),
+    ).toBe(true);
+    expect(counts([{ value: 0.25, count: 40 }])).toBe(true);
+    expect(counts([{ value: 3, count: 1 }])).toBe(false);
+    expect(counts([{ value: 0.75, count: 1 }])).toBe(false);
+    expect(
+      counts([
+        { value: 200, count: 1 },
+        { value: 200, count: 1 },
+      ]),
+    ).toBe(false);
+    expect(counts([{ value: 100, count: -1 }])).toBe(false);
+    expect(counts([{ value: 100, count: 2.5 }])).toBe(false);
+    expect(counts([{ value: 100 }])).toBe(false);
+    expect(counts([{ value: 100, count: 1, extra: true }])).toBe(false);
+  });
+
+  it('carries the shipment corrections in the edit form\'s own shape — less the version and «سيريال»', () => {
+    const patch = (shipment: unknown) =>
+      ReceiveIntoVaultSchema.safeParse({ shipment, version: 0 }).success;
+    expect(patch({ notes: 'صحيح', destinationBranchId: oid(2) })).toBe(true);
+    expect(patch({})).toBe(true);
+    expect(patch({ version: 1 })).toBe(false);
+    expect(patch({ serialTracked: true })).toBe(false);
+    expect(patch({ shipmentType: 'daily' })).toBe(false);
+    expect(patch({ lines: [] })).toBe(false);
+    expect(patch({ destinationBranchId: 'not-an-id' })).toBe(false);
+    // Every other field of the edit form is a correction the vault may make.
+    const editFields = Object.keys(UpdateOperationsShipmentSchema.shape).filter(
+      (key) => key !== 'version' && key !== 'serialTracked',
+    );
+    expect(Object.keys(ReceiveIntoVaultShipmentPatchSchema.shape).sort()).toEqual(
+      editFields.sort(),
+    );
+    // «سيريال» is the receipt's own field.
+    expect(ReceiveIntoVaultSchema.parse({ serialTracked: true, version: 0 }).serialTracked).toBe(
+      true,
+    );
+  });
+});
+
 describe('operations shipments history query — whole days, both ends inclusive', () => {
   const ok = (from: string, to: string): boolean =>
     OperationsShipmentHistoryQuerySchema.safeParse({ from, to }).success;
@@ -591,6 +693,10 @@ describe('operations shipment log vocabulary — closed lists a screen can label
     // Round 10 — who confirmed the pickup is a code the screen labels, and the cancel's reason.
     expect(OPERATIONS_SHIPMENT_LOG_PICKED_UP_BY_FIELDS).toEqual(['pickedUpBy']);
     expect(OPERATIONS_SHIPMENT_LOG_FIELDS).toEqual(expect.arrayContaining(['pickedUpBy', 'reason']));
+    // Round 18 — the receive form's «2×» / «3×» and «عدد الورق من كل فئة».
+    expect(OPERATIONS_SHIPMENT_LOG_FIELDS).toEqual(
+      expect.arrayContaining(['bagSealsPerBag', 'denominations']),
+    );
     expect(OPERATIONS_SHIPMENT_LOG_MAX_ENTRIES).toBeGreaterThan(0);
   });
 

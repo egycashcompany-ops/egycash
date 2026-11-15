@@ -6,6 +6,7 @@
 import {
   type BulkScheduleInterviews,
   type BulkStartInterviews,
+  type QuickDecideInterviews,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -105,6 +106,10 @@ export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
   getPage<UserDto>(`/platform/users${buildQuery({ search: term, status: 'active', pageSize: 8 })}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
+
+/** Approve / reject candidates at a decision-only stage — one or a whole selection. */
+export const quickDecideInterviews = (body: QuickDecideInterviews): Promise<BulkWorkflowResultDto> =>
+  post<BulkWorkflowResultDto>('/hr/interviews/bulk/quick-decide', body);
 
 /** RW12 — start the selected candidates' rounds NOW (no prior scheduling required). */
 export const bulkStartInterviews = (body: BulkStartInterviews): Promise<BulkWorkflowResultDto> =>

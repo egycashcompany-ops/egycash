@@ -138,6 +138,7 @@ describe('the delivery crew — from the row’s OWN delivery day, on its leg’
         fleetDutyAssignmentId: 'fd-1',
         driver1EmployeeId: null,
         driver2EmployeeId: null,
+        drivers: [],
         missionTypeId: null,
         crew: {
           id: 'ca-1',
@@ -147,6 +148,8 @@ describe('the delivery crew — from the row’s OWN delivery day, on its leg’
           direction: null,
           plannedTime: null,
           notes: null,
+          shiftTypeId: null,
+          rowColour: null,
         },
       },
     ]);

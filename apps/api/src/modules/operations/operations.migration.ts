@@ -17,8 +17,9 @@
 // field", not "the list disagrees with the scalar": the scalar is frozen at its pre-migration
 // value, so a disagreement is the NORMAL state of every row edited after the migration ran, and a
 // migration that reconciled them would undo real work on every restart.
-import { type Types } from 'mongoose';
+import { type Model, type Types } from 'mongoose';
 import { logger } from '../../infrastructure/logging/logger';
+import { reconcileDeclaredIndexes } from '../../shared/base/index-drift';
 import {
   OperationsCrewAssignmentModel,
   type OperationsCrewAssignmentDoc,
@@ -149,6 +150,29 @@ export const migrateCrewSlotsToArrays = async (): Promise<{ rowsUpdated: number 
   return { rowsUpdated };
 };
 
+/**
+ * Round 20 — rows WITHOUT A VAN («وعاوز اقدر اضيف صف ميكونش ليه عربيه»). `ux_day_vehicle` was one
+ * crew row per (day, vehicle) over every live row, so a second row with no van on the same day
+ * collided with the first on (day, null). The schema now declares it partial on a PRESENT van, and
+ * Mongo never rewrites an index that exists under the same name — so a database built before keeps
+ * the old shape until this drops and rebuilds it: `reconcileDeclaredIndexes`, the platform's drift
+ * repair, which compares every declared index's enforcement with the live one. The change LOOSENS
+ * the index (fewer rows indexed, same keys), so the rebuild cannot fail on existing rows. A no-op
+ * from the second boot on, and on a fresh database.
+ */
+export const migrateCrewAssignmentIndexes = async (): Promise<void> => {
+  // A database with no crew row yet has no index to repair, and asking a collection that does not
+  // exist for its indexes is an error the repair would log as a failure on every fresh install.
+  const db = OperationsCrewAssignmentModel.db.db;
+  if (db === undefined) return;
+  const present = await db
+    .listCollections({ name: OperationsCrewAssignmentModel.collection.collectionName }, { nameOnly: true })
+    .toArray();
+  if (present.length === 0) return;
+  await reconcileDeclaredIndexes(OperationsCrewAssignmentModel as unknown as Model<unknown>);
+};
+
 export const runOperationsMigrations = async (): Promise<void> => {
   await migrateCrewSlotsToArrays();
+  await migrateCrewAssignmentIndexes();
 };

@@ -115,9 +115,29 @@ registerWorkflowApplicantReader(async (applicantId) => {
 /** The built-in source of an applicant HR registers by hand with no source set up. */
 export const DIRECT_REGISTRATION_SOURCE_KEY = 'direct-registration';
 
+/** The side of a card, as the stored file name says it. */
+const CARD_SIDE_AR: Record<NationalIdCardSide, string> = {
+  front: 'الوجه',
+  back: 'الظهر',
+  portrait: 'الصورة الشخصية',
+};
+
 class ApplicantService {
   /** The single intake entry point (§2.1). */
-  async register(ctx: AuthContext, input: RegisterApplicant): Promise<ApplicantDoc> {
+  /**
+   * Register an applicant.
+   *
+   * IDENTITY IS VERIFIED AT REGISTRATION, not afterwards. HR registering someone at the desk has
+   * the person and their card in front of them — the National ID is mandatory on that form — so
+   * the separate «verify identity» step only ever repeated what HR had just done. A public
+   * application is verified when, and only when, its card photo was read and matched the number
+   * typed (`opts.identityVerified`, set by the public form after OCR); it is refused otherwise.
+   */
+  async register(
+    ctx: AuthContext,
+    input: RegisterApplicant,
+    opts: { identityVerified?: boolean } = {},
+  ): Promise<ApplicantDoc> {
     // Idempotent intake: a retried submission with the same key returns the first result.
     if (input.intakeKey !== undefined) {
       const existing = await applicantRepository.findByIntakeKey(input.intakeKey);
@@ -171,6 +191,9 @@ class ApplicantService {
 
     const now = new Date();
     const code = await nextApplicantNumber(now.getUTCFullYear());
+    // A signed-in registrar (HR) verifies by registering; the public path only on an OCR match.
+    const verified =
+      derived !== null && (ctx.userId !== null ? true : opts.identityVerified === true);
     // RW1 — placement may be set at intake and stays editable until Offer Acceptance. When both
     // a placement and a bare branchId arrive, `placement.branchId` wins and the scope field
     // follows it; direct intake with neither keeps working (ADR-016).
@@ -230,9 +253,9 @@ class ApplicantService {
         willingToTravel: input.willingToTravel ?? false,
         willingToShiftWork: input.willingToShiftWork ?? false,
         externalRef: input.externalRef ?? null,
-        identityVerification: 'unverified',
-        identityVerifiedBy: null,
-        identityVerifiedAt: null,
+        identityVerification: verified ? 'verified' : 'unverified',
+        identityVerifiedBy: verified && ctx.userId !== null ? new Types.ObjectId(ctx.userId) : null,
+        identityVerifiedAt: verified ? now : null,
         fullNameAr: input.identity.fullNameAr,
         fullNameEn: input.identity.fullNameEn ?? null,
         searchName: buildSearchName(input.identity.fullNameAr, input.identity.fullNameEn ?? null),
@@ -317,7 +340,7 @@ class ApplicantService {
     await this.fileNationalIdCards(
       ctx,
       String(doc._id),
-      doc.code,
+      doc.fullNameAr,
       input.nationalIdCardFileIds ?? [],
       input.nationalIdCardSides ?? [],
     );
@@ -344,6 +367,19 @@ class ApplicantService {
       branchId: doc.branchId,
       metadata: { source: source.key, intakeChannel: doc.intakeChannel },
     });
+    if (doc.identityVerifiedAt !== null) {
+      await recruitmentTimelineService.recordSafe({
+        applicantId: String(doc._id),
+        applicantCode: doc.code,
+        type: 'identityVerified',
+        correlation: { type: 'applicant', id: String(doc._id) },
+        actorUserId: ctx.userId,
+        at: doc.identityVerifiedAt,
+        entity: { type: 'applicant', id: String(doc._id) },
+        discriminator: doc.identityVerifiedAt.toISOString(),
+        branchId: doc.branchId,
+      });
+    }
     // The screening queue row exists from registration (I11) — the queue is data, never a
     // derivation of who has no record yet.
     await materializeAfterRegistration(String(doc._id));
@@ -400,6 +436,27 @@ class ApplicantService {
       createdTo: query.createdTo,
       search: 'search' in query ? query.search : undefined,
     };
+  }
+
+  /**
+   * SYSTEM: birth date and education level for a page of stage rows — ONE batched `$in`, never a
+   * per-row read (I3). The queues show them as columns; the facts stay on the applicant.
+   */
+  async candidateFactsSystem(
+    ids: readonly string[],
+  ): Promise<Map<string, { birthDate: Date | null; educationLevel: EducationLevel | null }>> {
+    const unique = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (unique.length === 0) return new Map();
+    const rows = await ApplicantModel.find(
+      { _id: { $in: unique.map((id) => new Types.ObjectId(id)) } },
+      { birthDate: 1, 'education.level': 1 },
+    ).lean<{ _id: Types.ObjectId; birthDate: Date | null; education: { level: EducationLevel } | null }[]>();
+    return new Map(
+      rows.map((r) => [
+        String(r._id),
+        { birthDate: r.birthDate ?? null, educationLevel: r.education?.level ?? null },
+      ]),
+    );
   }
 
   async getById(id: string, scope: ScopeSelector): Promise<ApplicantDoc> {
@@ -533,6 +590,8 @@ class ApplicantService {
   async uploadNationalIdCardScan(
     ctx: AuthContext,
     binary: UploadedBinary,
+    /** Scratch bucket; the public apply page files under its own (`portal:<sourceId>`). */
+    entityId: string = APPLICANT_CARD_SCAN_ENTITY_ID,
   ): Promise<{ fileId: string }> {
     if (!binary.mime.startsWith('image/')) {
       throw new ValidationError([
@@ -549,7 +608,7 @@ class ApplicantService {
       {
         moduleId: 'hr',
         entityType: APPLICANT_CARD_SCAN_ENTITY_TYPE,
-        entityId: APPLICANT_CARD_SCAN_ENTITY_ID,
+        entityId,
         categoryId,
         displayName: binary.originalName,
         visibility: 'private',
@@ -563,7 +622,7 @@ class ApplicantService {
   private async fileNationalIdCards(
     ctx: AuthContext,
     applicantId: string,
-    applicantCode: string,
+    applicantName: string,
     fileIds: readonly string[],
     sides: readonly NationalIdCardSide[] = [],
   ): Promise<void> {
@@ -580,10 +639,12 @@ class ApplicantService {
             entityType: 'applicant',
             entityId: applicantId,
             categoryId,
+            // Saved under the person's NAME. The screens label it in the reader's language from
+            // the side tag; this stored name is what a plain download is called.
             displayName:
               side === undefined
-                ? `${applicantCode} — national id ${index + 1}`
-                : `${applicantCode} — national id ${side}`,
+                ? `${applicantName} — بطاقة الرقم القومي ${index + 1}`
+                : `${applicantName} — بطاقة الرقم القومي (${CARD_SIDE_AR[side]})`,
             visibility: 'private',
             ...(side === undefined ? {} : { tags: [nationalIdCardTag(side)] }),
           })
@@ -698,10 +759,26 @@ class ApplicantService {
     scope: ScopeSelector,
   ): Promise<ApplicantDoc> {
     const before = await applicantRepository.getById(id, scope);
-    const verifiedAt = new Date();
+    /**
+     * WHEN IDENTITY WAS FIRST ESTABLISHED, which is not the same as when somebody last pressed the
+     * button. An applicant already verified keeps the original instant and the original verifier.
+     *
+     * This is not tidiness, it is the only recoverable shape. The timeline entry is discriminated
+     * by the verification instant, but the applicant document stores ONE `identityVerifiedAt`, so
+     * re-dating it strands the earlier entry: `reconcileRecruitmentTimeline` rebuilds the entry
+     * from the document and can only ever produce the instant the document still holds. Before
+     * registration verified identity this only mattered to somebody who confirmed twice; now that
+     * HR verifies by registering, every desk registration that later passes the ID gate would
+     * leave an entry no repair could rebuild.
+     *
+     * Correcting the name or the number is still recorded — by the audit row below, and by the
+     * fields themselves. What does not move is the answer to «when was this person identified».
+     */
+    const alreadyVerified = before.identityVerifiedAt !== null;
+    const verifiedAt = before.identityVerifiedAt ?? new Date();
     const set: Partial<ApplicantDoc> = {
       identityVerification: 'verified',
-      identityVerifiedBy: new Types.ObjectId(ctx.userId),
+      ...(alreadyVerified ? {} : { identityVerifiedBy: new Types.ObjectId(ctx.userId) }),
       identityVerifiedAt: verifiedAt,
     };
     if (input.fullNameAr !== undefined) {
@@ -740,8 +817,9 @@ class ApplicantService {
       changes: [{ field: 'identityVerification', old: before.identityVerification, new: 'verified' }],
     });
     // I5 — verification is a fact about the candidate, not a workflow transition, so it is
-    // recorded here or nowhere. The verification instant discriminates the entry, so correcting
-    // and re-verifying adds a second entry rather than colliding with the first.
+    // recorded here or nowhere. The verification instant discriminates the entry, and it is the
+    // FIRST one (see `verifiedAt` above), so confirming again lands on the entry already there
+    // instead of adding one the repair could never rebuild.
     await recruitmentTimelineService.recordSafe({
       applicantId: id,
       applicantCode: updated.code,

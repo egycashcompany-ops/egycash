@@ -86,6 +86,9 @@ const member = (n: number): OperationsCrewDirectoryDto['members'][number] => ({
   code: `E${String(n)}`,
   fullNameAr: `موظف ${String(n)}`,
   status: 'active',
+  jobTitle: null,
+  phone: null,
+  branchId: null,
   requirements: null,
   assignedVehicleId: null,
 });

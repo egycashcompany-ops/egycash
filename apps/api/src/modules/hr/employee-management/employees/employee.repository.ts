@@ -39,8 +39,8 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\
 
 /** What a directory entry reads (`directory-seams.ts` `toDirectoryEmployee`) — and nothing more. */
 export const DIRECTORY_FIELDS =
-  'code status branchId departmentId hiredAt personal.fullNameAr personal.contact.primaryPhone ' +
-  'personal.officialAddress personal.currentAddress';
+  'code status branchId departmentId hiredAt employment.jobTitleId personal.fullNameAr ' +
+  'personal.contact.primaryPhone personal.officialAddress personal.currentAddress';
 
 class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   constructor() {

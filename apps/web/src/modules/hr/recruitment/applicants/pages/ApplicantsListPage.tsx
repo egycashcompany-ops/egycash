@@ -56,7 +56,6 @@ export const ApplicantsListPage = (): JSX.Element => {
     status: readList(sp, 'status') as ApplicantFiltersState['status'],
     sourceId: readList(sp, 'source'),
     intakeChannel: readList(sp, 'channel') as ApplicantFiltersState['intakeChannel'],
-    identityVerification: readList(sp, 'identity') as ApplicantFiltersState['identityVerification'],
     duplicateOnly: sp.get('dup') === '1',
     hasAttachments: sp.get('files') === '1',
   };
@@ -85,7 +84,6 @@ export const ApplicantsListPage = (): JSX.Element => {
       status: writeList(nf.status),
       source: writeList(nf.sourceId),
       channel: writeList(nf.intakeChannel),
-      identity: writeList(nf.identityVerification),
       dup: nf.duplicateOnly ? '1' : null,
       files: nf.hasAttachments ? '1' : null,
     });
@@ -115,7 +113,6 @@ export const ApplicantsListPage = (): JSX.Element => {
       status: filters.status,
       sourceId: filters.sourceId,
       intakeChannel: filters.intakeChannel,
-      identityVerification: filters.identityVerification,
       ...(filters.duplicateOnly ? { duplicateOnly: true } : {}),
       ...(filters.hasAttachments ? { hasAttachments: true } : {}),
     }),
@@ -174,15 +171,22 @@ export const ApplicantsListPage = (): JSX.Element => {
       ),
     },
     { key: 'status', header: t('applicants.columns.status'), render: (a) => <ApplicantStatusBadge status={a.status} /> },
-    { key: 'source', header: t('applicants.columns.source'), render: (a) => sourceName(a.sourceId) },
     {
-      key: 'identity',
-      header: t('applicants.columns.identity'),
-      render: (a) => (
-        <span className={a.identityVerification === 'verified' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}>
-          {t(`applicants.identity.${a.identityVerification}`)}
-        </span>
-      ),
+      key: 'source',
+      header: t('applicants.columns.source'),
+      // What the candidate said brought them — the source they picked, or the words they typed for
+      // «other» — and, under it, that they applied through the online application link.
+      render: (a) => {
+        const typed = a.intakeChannel === 'web' ? (a.sourceDetail?.note ?? '').trim() : '';
+        return (
+          <div className="min-w-0">
+            <p className="truncate">{typed !== '' ? typed : sourceName(a.sourceId)}</p>
+            {a.intakeChannel === 'web' && (
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('applicants.source.viaLink')}</p>
+            )}
+          </div>
+        );
+      },
     },
     { key: 'attachments', header: t('applicants.columns.attachments'), align: 'center', render: (a) => formatNumber(a.attachmentCount, locale) },
     { key: 'createdAt', header: t('applicants.columns.created'), sortable: true, render: (a) => formatDate(a.createdAt, locale) },

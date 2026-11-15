@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest';
 
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
-const FORM = read('./ShipmentFormDialog.tsx');
+// The form and the draft it shares with Round 18's receive form (`ShipmentDraftFields`: the
+// state, the rules and the boxes): a rule pinned here holds in whichever of the two it lives.
+const FORM = read('./ShipmentFormDialog.tsx') + read('./ShipmentDraftFields.tsx');
 // The shared board of the day board, the history and the secured screen — every one of them adds
 // through it (`components/ShipmentsBoard.tsx`).
 const BOARD = read('./ShipmentsBoard.tsx');
@@ -81,8 +83,9 @@ describe('«مينفعش لما يجى يضيف شحنه يختار تاريخ �
 
   it('names a day typed earlier on its own box', () => {
     expect(FORM).toContain('collection: shipmentDateProblem(collectionDate, heldDate, day),');
-    expect(FORM).toContain('error={problemText(dateProblem.collection)}');
-    expect(FORM).toContain('error={problemText(dateProblem.delivery)}');
+    // The form's own words first; a server refusal said on the box (the receive form's) after.
+    expect(FORM).toContain('error={problemText(dateProblem.collection) ?? refused}');
+    expect(FORM).toContain('error={problemText(dateProblem.delivery) ?? refused}');
   });
 
   it('refuses it on save before anything is sent, against today read at that moment', () => {
@@ -119,9 +122,13 @@ describe('«تاريخ التسليم تانى يوم الاستلام افتر�
       'const needsDeliveryDate = deliveryDateRequired(shipmentType, heldDeliveryDate, !editing);',
     );
     expect(FORM).toContain("ok: !needsDeliveryDate || deliveryDate !== '',");
-    expect(FORM).toMatch(
-      /required=\{needsDeliveryDate\}\s+missing=\{required\.isMissing\('deliveryDate'\)\}/u,
+    // The box is the shared draft's; the shipment form tells it when Save found it empty. Its star
+    // is on unless a form turns it off — only the receive form does («كله اختيارى»), never this one.
+    expect(FORM).toMatch(/required=\{starred && needsDeliveryDate\}\s+missing=\{missing\}/u);
+    expect(FORM).toContain(
+      "<DeliveryDateField draft={draft} missing={required.isMissing('deliveryDate')} />",
     );
+    expect(read('./ShipmentFormDialog.tsx')).not.toContain('starred');
   });
 
   it('is titled «إضافة محصنة» — the secured screen’s own word for what it adds', () => {

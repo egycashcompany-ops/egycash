@@ -132,8 +132,9 @@ describe('neither screen keeps the answer where a reload cannot reach it', () =>
     expect(source).not.toContain('location.state');
   });
 
-  it('the queue does not write it', () => {
-    const source = code('components/AwaitingOfferQueue.tsx');
+  // «اكتب العرض» now sits on the «جاهز لعرض العمل» row of the offers table, where the queue was.
+  it('the offers table does not write it', () => {
+    const source = code('pages/JobOffersListPage.tsx');
     expect(source).not.toMatch(/navigate\([^)]*\{\s*state:/);
     expect(source).toContain('applicantId=');
   });

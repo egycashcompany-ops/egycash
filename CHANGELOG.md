@@ -528,6 +528,38 @@ its entry here in the same PR.
       null) — HR's seat through the directory seam, named from the job-title catalogue — and, for
       the card, `phone` and `branchId` (each null when HR has none on file), all under
       `operationsCrew.view` as the name and code are.
+  - «لوحة التشغيلة», the server half — the approved sample, with the owner's two changes: «دى تمام بس
+    انا عاوز النوع يكون بيضاف من البيانات المرجعيه و شكلها فى الشاشة تكون زى الساعة والملاحظات كله
+    تحت بعض مفيش حاجه داخلة وحاجه خارجه».
+    - «أنواع التشغيل», a catalog of the reference data: `GET`/`POST /operations/shift-types`,
+      `PATCH /:id` (archived with `isActive`, never deleted), `PUT /order` (the currencies' drag).
+      Each type has an Arabic name, an optional English one, a colour of a small fixed palette and
+      its place. Written under `operationsCatalog.manage`; read by `operationsCrew.view` too, the
+      board's own grant. The legacy nine (يومي، احتياطي، احتياطي سفر، أسوان، إيباج، سفر، شلاتين،
+      محصنة، مسائي) are seeded on boot in the legacy order, once: a renamed or archived one is never
+      seeded again.
+    - A crew row carries «النوع» (`shiftTypeId`) and its colour (`rowColour` — «وعاوز زرا يبقى فى
+      كذا لون اقدر الون به الصف»: yellow, green, blue, red, purple, orange, or none). A type NEWLY
+      chosen must be active (`OPERATIONS_UNKNOWN_SHIFT_TYPE`); a row keeps the one it holds.
+    - Rows without a van — «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات برضو»: the save
+      creates one with `vehicleId: null`, edits a saved one by `crewAssignmentId`, and deletes one
+      through `removeCrewAssignmentIds`. Q11 counts them (one person, one row per day). Given a van,
+      the row moves onto the van's row in one save: the van's row, and the old row removed. The board
+      returns them apart, as `vehiclelessRows`, and no van reader sees one: not the van cards, the
+      distribution, a shipment leg (404) or the captain's day. `ux_day_vehicle` now counts only rows
+      with a van; the boot rebuilds it on a database that still has the old shape.
+    - «الاتجاه» — «اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»: a new or
+      changed direction must name active operations areas, Arabic letter forms folded, and is
+      stored in the areas' own spelling (several areas joined by « - »; the distribution still
+      reads each). A direction saved before stays while it is sent unchanged
+      (`OPERATIONS_DIRECTION_NOT_AN_AREA` otherwise). The areas list is read by
+      `operationsCrew.view` too.
+    - «كل عربيه هيبقى عليه من 1 ل 2 قادة و من 2 ل 4 اخصائيين»: two per slot at most, as before; the
+      minimums are the board's warning, never a refusal.
+    - The board's read: each van's drivers by name only («ولما اعمل هوفر على العربيه يظهر السواقيين
+      اللى عليها»), and `workshopVehicles` — «صيانة», the day's vans in a Fleet workshop visit.
+      That means the day's roster vans, the standing crew's vans and the configured cash-transfer
+      vans, read from Fleet's own open-visit answer.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

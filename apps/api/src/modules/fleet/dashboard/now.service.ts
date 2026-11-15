@@ -355,6 +355,17 @@ export const listedAbsent = (
 const UNNAMED: LocalizedString = { ar: '—', en: '—' };
 
 /**
+ * A lookup that only names a section's rows: when it fails, the rows go out with that name missing
+ * (as `rosterLists` draws an unknown one) and the section still answers — the failure is logged,
+ * the figures are kept.
+ */
+const namesOnly = <T>(what: string, load: Promise<T>, empty: T): Promise<T> =>
+  load.catch((err: unknown) => {
+    logger.error({ err, lookup: what }, 'fleet dashboard roster names failed');
+    return empty;
+  });
+
+/**
  * «الحركة اليوم» — the two lists beside the digest, PURE: «سيارات بلا سائق اليوم» (the unmanned
  * rows by the digest's own classes, see `listedUnmanned`) and «الغائبون اليوم» (`listedAbsent`).
  *
@@ -528,15 +539,25 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     const offBoard = [
       ...new Set(absent.flatMap((a) => (a.car === null || boardCodes.has(a.car) ? [] : [a.car]))),
     ];
+    // Each lookup only NAMES rows: one that fails costs its names (a type or mission `null`, a
+    // branch «—», no crew car), never the digest the tiles, the badge and the alert line read.
     const [types, branches, missionNames, otherCodes] = await Promise.all([
-      listed.length === 0 ? Promise.resolve([]) : typeList(d),
-      listed.length === 0 ? Promise.resolve([]) : branchList(d),
+      listed.length === 0 ? Promise.resolve([]) : namesOnly('types', typeList(d), []),
+      listed.length === 0 ? Promise.resolve([]) : namesOnly('branches', branchList(d), []),
       missionIds.length === 0
         ? Promise.resolve(new Map<string, LocalizedString>())
-        : fleetCatalogItemRepository.namesByIds(missionIds),
+        : namesOnly(
+            'missions',
+            fleetCatalogItemRepository.namesByIds(missionIds),
+            new Map<string, LocalizedString>(),
+          ),
       offBoard.length === 0
         ? Promise.resolve(new Map<string, string>())
-        : fleetVehicleRepository.codesByIds(offBoard),
+        : namesOnly(
+            'crewCars',
+            fleetVehicleRepository.codesByIds(offBoard),
+            new Map<string, string>(),
+          ),
     ]);
     return {
       ...rosterDigest(board, crewVehicleIds),

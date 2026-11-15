@@ -417,6 +417,9 @@ describe('tab 9 «الصيانة»', () => {
     expect(text(body)).not.toContain('ج.م.');
     expect(body).toContain('data-no-money="true"');
     expect(text(body)).toContain(ar('fleet.dash.maintenance.noMoney'));
+    // Its visits are by check-in day, and it says so (the overview's month visits are by exit day).
+    expect(body).toContain('data-visits-basis="checkIn"');
+    expect(text(body)).toContain(ar('fleet.dash.maintenance.basis'));
   });
 });
 

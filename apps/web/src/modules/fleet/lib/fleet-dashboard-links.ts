@@ -19,10 +19,13 @@
 //
 // A TAB LINK (`tabLink`) opens another tab of this page with the page's own filters as they stand
 // (`period/from/to/type/operation/vehicleCodes`) — never a period of its own — and is `null` when the
-// reader cannot see that tab.
+// reader cannot see that tab. The one exception is a figure read over a slice of its OWN (the
+// overview's «هذا الشهر», no page filter): its tab link names that slice from the read's echo
+// (`echoTabFilters`), so the tab opens on the same number.
 import {
   FLEET_LICENCE_GREY_DAYS,
   addDaysYmd,
+  type FleetDashboardPeriodDto,
   type FleetDashboardTab,
   type FleetDashboardVehicleScopeDto,
 } from '@ecms/contracts';
@@ -90,19 +93,45 @@ export const TAB_LINK_PARAMS = [
   'vehicleCodes',
 ] as const;
 
+/** The page filters a tab link names, by their address-bar names. */
+export type TabLinkFilters = Partial<Record<(typeof TAB_LINK_PARAMS)[number], string>>;
+
+/**
+ * The page filters an R2 read was asked over, from its OWN echo (`range`, `vehicleScope`) — for the
+ * tab link of a figure that read a slice of its own rather than the page's (the overview's «هذا
+ * الشهر»): the tab then opens on exactly what the figure counted.
+ */
+export const echoTabFilters = (
+  dto: Pick<FleetDashboardPeriodDto, 'range' | 'vehicleScope'>,
+): TabLinkFilters => {
+  const own: TabLinkFilters = { period: dto.range.preset };
+  if (dto.range.preset === 'custom') {
+    own.from = dto.range.from;
+    own.to = dto.range.to;
+  }
+  const { typeIds, operationIds, vehicleCodes } = dto.vehicleScope;
+  if (typeIds.length > 0) own.type = typeIds.join(',');
+  if (operationIds.length > 0) own.operation = operationIds.join(',');
+  if (vehicleCodes.length > 0) own.vehicleCodes = vehicleCodes.join(',');
+  return own;
+};
+
 /**
  * A link to another tab of this page (`/fleet?tab=<tab>`), keeping the page's filters exactly as the
  * address bar holds them — never a period of its own — or `null` when the reader cannot see `tab`.
+ * `own` replaces the page's filters with a figure's own slice (`echoTabFilters`): every filter it
+ * does not name is left off, so the page's period, type or codes never ride along.
  */
 export const tabLink = (
   tab: FleetDashboardTab,
   metric: string,
   sp: Pick<URLSearchParams, 'get'>,
   visible: readonly FleetDashboardTab[],
+  own?: TabLinkFilters,
 ): DashLink | null => {
   if (!visible.includes(tab)) return null;
   const params: Record<string, Param> = { tab };
-  for (const name of TAB_LINK_PARAMS) params[name] = sp.get(name);
+  for (const name of TAB_LINK_PARAMS) params[name] = own === undefined ? sp.get(name) : own[name];
   return { to: `/fleet${query(params)}`, metric };
 };
 

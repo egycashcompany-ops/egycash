@@ -50,7 +50,7 @@ import {
   type PeriodFilters,
 } from '../lib/fleet-dashboard-url';
 import { midnightClock, periodLiveness } from '../lib/fleet-dashboard-refresh';
-import { tabLink } from '../lib/fleet-dashboard-links';
+import { tabLink, type TabLinkFilters } from '../lib/fleet-dashboard-links';
 import { alertLines, sectionPermitted, tabBadges, visibleTabs } from '../lib/fleet-dashboard-tabs';
 import {
   CustodyFundSource,
@@ -165,7 +165,8 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
     enabled: reads.period && active === 'overview',
     onRetry: () => void monthQ.refetch({ cancelRefetch: false }),
   };
-  const toTab = (tab: FleetDashboardTab, metric: string) => tabLink(tab, metric, sp, visible);
+  const toTab = (tab: FleetDashboardTab, metric: string, own?: TabLinkFilters) =>
+    tabLink(tab, metric, sp, visible, own);
 
   // «الفرع: …» — what the figures cover, as the server echoed it (never the switcher's header):
   // R1's, else R2's; `null` («الشركة كلها») for a reader with neither read (custody alone), and
@@ -229,7 +230,7 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         can={can}
       />
     );
-  } else if (reads.now && dashboardView(nowQ) !== 'ready') {
+  } else if (reads.now && dashboardView(nowQ) !== 'ready' && active !== 'overview') {
     panel =
       dashboardView(nowQ) === 'error' ? (
         <ReadError error={nowQ.error} onRetry={refreshNow} />
@@ -237,6 +238,11 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         <TabSkeleton />
       );
   } else {
+    // The overview is not gated on R1 here: its month card and custody parts are other reads, so
+    // R1 on its way (or failed) costs only R1's parts — the tab draws them as pending itself.
+    const nowView = reads.now ? dashboardView(nowQ) : 'ready';
+    const nowPending =
+      nowView === 'ready' ? undefined : { state: nowView, error: nowQ.error as unknown };
     const Panel = NOW_PANELS[active];
     const ownUpdatedAt = reads.now ? nowQ.dataUpdatedAt : (custody?.updatedAt ?? 0);
     // The overview's heading says how old its OLDEST figures are: R1's or the month read's.
@@ -258,6 +264,7 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         onRetry={refreshNow}
         month={month}
         tabLink={toTab}
+        {...(nowPending === undefined ? {} : { nowPending })}
       />
     );
   }

@@ -18,6 +18,7 @@ import {
   FLEET_DASHBOARD_TODAY_ROWS,
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_NOW_SECTIONS,
+  FLEET_DASHBOARD_PERIOD_KEYS,
   fleetDashboardGateKeys,
   type FleetDashboardNowSection,
   type FleetRosterDayDto,
@@ -517,6 +518,23 @@ describe('R1 — data scope (R-27)', () => {
     expect(branches.listAll).toHaveBeenCalledTimes(1);
   });
 
+  it('«كل فروعي» with a soft-deleted branch in reach: the echo keeps it («—»), as the figures count it', async () => {
+    // B3 is not in the live branch list (`isDeleted`), yet the reader's grant reaches it and its
+    // cars are counted: the echo must name what the figures cover, or the web's `branch=` links and
+    // one-branch layout would read one branch where the server counted two.
+    const dto = await fleetDashboardNowService.read(
+      ctxWith(ALL_KEYS, { reach: { branchIds: [B1, B3], departments: [] } }, 'branch'),
+      NOW,
+    );
+    expect(accidents.summaryOver).toHaveBeenCalledWith({ status: 'open', branchIds: [B1, B3] });
+    expect(dto.scopeBranches).toEqual([
+      { id: B1, name: CAIRO },
+      { id: B3, name: { ar: '—', en: '—' } },
+    ]);
+    expect(dto.scopeBranches?.map((b) => b.id)).toEqual([B1, B3]);
+    expect(dto.vehicleScope?.scopeBranches).toEqual(dto.scopeBranches);
+  });
+
   it('«كل فروعي» with the switcher on one of them: that one branch, honoured', async () => {
     const dto = await fleetDashboardNowService.read(
       ctxWith(ALL_KEYS, { branchId: B1, activeBranchId: B2, ...MULTI }, 'branch'),
@@ -581,6 +599,26 @@ describe('R1 — data scope (R-27)', () => {
     const dto = await fleetDashboardNowService.read(ctx, NOW);
     expect(dto.scopeBranches).toBeNull();
     expect(dealership.summaryOver).toHaveBeenCalledWith({ pending: true });
+  });
+
+  it('equal grants reaching different branches per key: the LAST such key decides, one list for all (D9)', () => {
+    // The known limit of one answer per request: the figures are narrowed by ONE key's reach. Two
+    // branch grants of the same rank tie, and the last of them in the two reads' key order wins —
+    // pinned so the choice cannot drift silently (exact per-key narrowing is a later hand-off).
+    const keys = [...new Set([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS])];
+    const first = keys[0] ?? '';
+    const last = keys[keys.length - 1] ?? '';
+    const ctx = ctxWith([first, last], { branchId: B1 }, 'branch');
+    ctx.keyReach = {
+      [first]: { branchIds: [B1], departments: [] },
+      [last]: { branchIds: [B1, B2], departments: [] },
+    };
+    expect(dashboardBranches(ctx)).toEqual([B1, B2]);
+    ctx.keyReach = {
+      [first]: { branchIds: [B1, B2], departments: [] },
+      [last]: { branchIds: [B3], departments: [] },
+    };
+    expect(dashboardBranches(ctx)).toEqual([B3]);
   });
 
   it('the custody fund’s key (a browser read) never decides what the figures cover', () => {
@@ -1286,5 +1324,37 @@ describe('rosterLists — «الحركة اليوم»: the rows the tiles count,
     await fleetDashboardNowService.read(ctxWith(['fleetRoster.view', 'fleetVehicle.view']), NOW);
     expect(types.listAll).toHaveBeenCalledTimes(1);
     expect(branches.listAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('a naming lookup that fails costs the names, never the roster: the counts and the rows stay', async () => {
+    roster.boardWithCrews.mockResolvedValueOnce({
+      board,
+      fixedCrews,
+      branchOf: names.branchOf,
+      driverCodes: names.driverCodes,
+    });
+    branches.listAll.mockRejectedValueOnce(new Error('branches down'));
+    types.listAll.mockRejectedValueOnce(new Error('types down'));
+    catalog.namesByIds.mockRejectedValueOnce(new Error('catalog down'));
+    vehicles.codesByIds.mockRejectedValueOnce(new Error('codes down'));
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetRoster.view']), NOW);
+    expect(dto.unavailable).not.toContain('roster');
+    expect(dto.roster?.unmanned).toBe(digest.unmanned);
+    expect(dto.roster?.unmannedRows.map((r) => r.code)).toEqual([
+      '110',
+      '120',
+      '130',
+      '140',
+      '150',
+    ]);
+    const first = dto.roster?.unmannedRows[0];
+    expect(first?.branch).toEqual({ id: B1, name: { ar: '—', en: '—' } });
+    expect(first?.typeName).toBeNull();
+    expect(first?.mission).toBeNull();
+    // The crew car off the board loses its code, so it is not named; the driver stays listed.
+    expect(dto.roster?.absentDrivers.map((a) => a.employeeId)).toEqual(
+      lists.absentDrivers.map((a) => a.employeeId),
+    );
+    expect(dto.roster?.absentDrivers[1]?.crewVehicle).toBeNull();
   });
 });

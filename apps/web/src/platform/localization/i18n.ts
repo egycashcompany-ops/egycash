@@ -6459,7 +6459,8 @@ const en: Record<string, string> = {
   'fleet.dash.shell.navLabel': 'Dashboard sections',
   'fleet.dash.shell.badge.distribution': 'Active vehicles: {{count}}',
   'fleet.dash.shell.badge.licences': 'Expired licences: {{count}}',
-  'fleet.dash.shell.badge.maintenance': 'Workshop visits in the period: {{count}}',
+  'fleet.dash.shell.badge.maintenance':
+    'Workshop visits in the period, by check-in date: {{count}}',
   'fleet.dash.shell.badge.accidents': 'Accidents in the period: {{count}}',
   'fleet.dash.shell.refresh': 'Refresh',
   'fleet.dash.shell.updatedNow': 'Updated just now',
@@ -6483,6 +6484,7 @@ const en: Record<string, string> = {
   'fleet.dash.overview.kpi.unmanned.clear': 'All have a driver',
   'fleet.dash.overview.kpi.unmanned.unit': 'ready {{noun}} without a driver',
   'fleet.dash.overview.kpi.unmanned.of': 'of {{count}} {{noun}} ready today',
+  'fleet.dash.overview.kpi.unmanned.open': 'Open movement today',
   'fleet.dash.overview.kpi.workshop.title': 'In the workshop now',
   'fleet.dash.overview.kpi.workshop.unit': '{{noun}} in the workshop',
   'fleet.dash.overview.kpi.workshop.oldest': 'Oldest',
@@ -6509,6 +6511,7 @@ const en: Record<string, string> = {
   'fleet.dash.overview.actions.line.maintenanceRed.title':
     'Vehicles that reached their service mileage',
   'fleet.dash.overview.actions.line.maintenanceRed.sub': '{{count}} of them past it',
+  'fleet.dash.overview.actions.line.maintenanceRed.yellow': '{{count}} approaching it',
   'fleet.dash.overview.actions.line.vehicleLicenceExpired.title': 'Expired vehicle licences',
   'fleet.dash.overview.actions.line.vehicleLicenceExpired.sub':
     'Not counted among the vehicles ready to run',
@@ -6518,6 +6521,12 @@ const en: Record<string, string> = {
   'fleet.dash.overview.actions.line.fuelCardExpired.title': 'Expired fuel cards',
   'fleet.dash.overview.actions.line.crewAbsent.title': 'Vehicles whose fixed crew is absent today',
   'fleet.dash.overview.actions.line.crewAbsent.sub': 'No available driver is planned for them',
+  'fleet.dash.overview.actions.line.crewAbsent.covered':
+    '{{count}} {{noun}} covered by an available driver',
+  'fleet.dash.overview.actions.line.crewAbsent.stalePlan':
+    'Planned with a driver unavailable today: {{count}}',
+  'fleet.dash.overview.actions.line.crewAbsent.otherReasons':
+    'Crew unavailable for other reasons: {{count}}',
   'fleet.dash.overview.actions.line.fuelRequests.title':
     'Fuel card top-up requests awaiting approval',
   'fleet.dash.overview.actions.line.fuelRequests.sub': 'Totalling {{amount}}',
@@ -6928,6 +6937,7 @@ const en: Record<string, string> = {
   'fleet.dash.maintenance.stillIn':
     "Of the period's visits, {{count}} are still in the workshop (so far).",
   'fleet.dash.maintenance.unregistered': 'Visits with no registered vehicle: {{count}}.',
+  'fleet.dash.maintenance.basis': "The period's visits are counted by check-in date.",
   'fleet.dash.maintenance.noMoney':
     'Workshop visits carry no amounts; maintenance cost is in the receipts and the dealership invoices.',
   'fleet.dash.accidents.title': 'Accidents in the period',
@@ -19992,7 +20002,7 @@ const ar: Record<string, string> = {
   'fleet.dash.shell.navLabel': 'أقسام اللوحة',
   'fleet.dash.shell.badge.distribution': 'السيارات النشطة: {{count}}',
   'fleet.dash.shell.badge.licences': 'تراخيص ورخص منتهية: {{count}}',
-  'fleet.dash.shell.badge.maintenance': 'زيارات الصيانة في الفترة: {{count}}',
+  'fleet.dash.shell.badge.maintenance': 'زيارات الصيانة في الفترة بتاريخ دخول الورشة: {{count}}',
   'fleet.dash.shell.badge.accidents': 'الحوادث في الفترة: {{count}}',
   'fleet.dash.shell.refresh': 'تحديث',
   'fleet.dash.shell.updatedNow': 'آخر تحديث الآن',
@@ -20016,6 +20026,7 @@ const ar: Record<string, string> = {
   'fleet.dash.overview.kpi.unmanned.clear': 'كلها لها سائق',
   'fleet.dash.overview.kpi.unmanned.unit': '{{noun}} جاهزة بلا سائق',
   'fleet.dash.overview.kpi.unmanned.of': 'من {{count}} {{noun}} جاهزة اليوم',
+  'fleet.dash.overview.kpi.unmanned.open': 'فتح الحركة اليوم',
   'fleet.dash.overview.kpi.workshop.title': 'في الورشة الآن',
   'fleet.dash.overview.kpi.workshop.unit': '{{noun}} في الورشة',
   'fleet.dash.overview.kpi.workshop.oldest': 'أقدمها',
@@ -20040,6 +20051,7 @@ const ar: Record<string, string> = {
   'fleet.dash.overview.actions.expiredToday': 'منتهٍ اليوم',
   'fleet.dash.overview.actions.line.maintenanceRed.title': 'سيارات بلغت حد الصيانة بالكيلومتر',
   'fleet.dash.overview.actions.line.maintenanceRed.sub': 'منها {{count}} تجاوزته',
+  'fleet.dash.overview.actions.line.maintenanceRed.yellow': '{{count}} تقترب منه',
   'fleet.dash.overview.actions.line.vehicleLicenceExpired.title': 'تراخيص سيارات منتهية',
   'fleet.dash.overview.actions.line.vehicleLicenceExpired.sub':
     'لا تُحسب ضمن السيارات الجاهزة للتشغيل',
@@ -20049,6 +20061,11 @@ const ar: Record<string, string> = {
   'fleet.dash.overview.actions.line.fuelCardExpired.title': 'كروت وقود منتهية',
   'fleet.dash.overview.actions.line.crewAbsent.title': 'سيارات طاقمها الثابت غائب اليوم',
   'fleet.dash.overview.actions.line.crewAbsent.sub': 'لم يُخطَّط لها سائق متاح',
+  'fleet.dash.overview.actions.line.crewAbsent.covered': 'تمت تغطية {{count}} {{noun}} بسائق متاح',
+  'fleet.dash.overview.actions.line.crewAbsent.stalePlan':
+    'مخطَّط لها سائق غير متاح اليوم: {{count}}',
+  'fleet.dash.overview.actions.line.crewAbsent.otherReasons':
+    'طاقمها غير متاح لأسباب أخرى: {{count}}',
   'fleet.dash.overview.actions.line.fuelRequests.title': 'طلبات رصيد كروت الوقود بانتظار الاعتماد',
   'fleet.dash.overview.actions.line.fuelRequests.sub': 'بإجمالي {{amount}}',
   'fleet.dash.overview.actions.line.fuelLow.title': 'كروت وقود رصيدها أقل من {{yellowAt}}',
@@ -20451,6 +20468,7 @@ const ar: Record<string, string> = {
   'fleet.dash.maintenance.lastToday': 'آخرها اليوم',
   'fleet.dash.maintenance.stillIn': 'من زيارات الفترة ما زالت في الورشة {{count}} (حتى الآن).',
   'fleet.dash.maintenance.unregistered': 'زيارات بلا سيارة مسجّلة: {{count}}.',
+  'fleet.dash.maintenance.basis': 'زيارات الفترة محسوبة بتاريخ دخول الورشة.',
   'fleet.dash.maintenance.noMoney':
     'زيارات الورشة لا تحمل مبالغ؛ تكلفة الصيانة في الإيصالات وفواتير التوكيل.',
   'fleet.dash.accidents.title': 'حوادث الفترة',

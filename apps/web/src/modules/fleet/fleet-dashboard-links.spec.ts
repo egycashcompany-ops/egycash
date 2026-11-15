@@ -24,6 +24,7 @@ import {
   PATH_ONLY,
   custodyDashboardLink,
   nowLinks,
+  echoTabFilters,
   periodLinks,
   tabLink,
   type DashLink,
@@ -466,6 +467,46 @@ describe('the links of «نظرة عامة» and «الحركة اليوم»', (
     expect(tabLink('today', 'roster.tab', new URLSearchParams('tab=overview'), ['today'])?.to).toBe(
       '/fleet?tab=today',
     );
+  });
+
+  it('opens a tab on a figure’s OWN slice when it names one — the page’s filters never ride along', () => {
+    const sp = new URLSearchParams('tab=overview&period=lastMonth&type=t1&vehicleCodes=133');
+    const month = {
+      range: {
+        preset: 'thisMonth' as const,
+        from: '2026-11-01',
+        to: TODAY,
+        days: 1,
+        granularity: 'day' as const,
+      },
+      vehicleScope: NO_SET,
+    };
+    expect(echoTabFilters(month)).toEqual({ period: 'thisMonth' });
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['accidents'], echoTabFilters(month)),
+    ).toEqual({
+      to: '/fleet?tab=accidents&period=thisMonth',
+      metric: 'accidents.month',
+    });
+    // A custom range names its days; a read's own filters come from its echo, never the page.
+    const custom = {
+      range: {
+        preset: 'custom' as const,
+        from: '2026-10-01',
+        to: '2026-10-09',
+        days: 9,
+        granularity: 'day' as const,
+      },
+      vehicleScope: { ...NO_SET, typeIds: ['t2'], operationIds: ['o1'], vehicleCodes: ['207'] },
+    };
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['accidents'], echoTabFilters(custom))?.to,
+    ).toBe(
+      '/fleet?tab=accidents&period=custom&from=2026-10-01&to=2026-10-09&type=t2&operation=o1&vehicleCodes=207',
+    );
+    expect(
+      tabLink('accidents', 'accidents.month', sp, ['overview'], echoTabFilters(month)),
+    ).toBeNull();
   });
 });
 

@@ -27,7 +27,7 @@ import { localized } from '../../../../shared/lib/format';
 import { Skeleton } from '../../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { FRESHNESS_TICK_MS, freshness } from '../../lib/fleet-dashboard-refresh';
-import { type DashLink } from '../../lib/fleet-dashboard-links';
+import { type DashLink, type TabLinkFilters } from '../../lib/fleet-dashboard-links';
 import { type AlertLine, type TabBadge } from '../../lib/fleet-dashboard-tabs';
 import { type CustodyFigures } from './custody-fund-line';
 import { COUNT, custodyCountForm, useMoney } from '../custody-dashboard-parts';
@@ -71,9 +71,18 @@ export interface NowTabProps {
   month: MonthRead;
   /**
    * A link to another tab of this page, keeping the page's own filters (never a period of its own);
-   * `null` when the reader cannot see that tab — the figure is then plain.
+   * `null` when the reader cannot see that tab — the figure is then plain. `own`: a figure read over
+   * a slice of its own (the month card's read) names that slice instead (`echoTabFilters`).
    */
-  tabLink: (tab: FleetDashboardTab, metric: string) => DashLink | null;
+  tabLink: (tab: FleetDashboardTab, metric: string, own?: TabLinkFilters) => DashLink | null;
+  /**
+   * The overview only (the page gates every other R1 tab on R1 itself): R1 is on its way
+   * (`'loading'`) or failed with nothing kept (`'error'`, with its `error`). `now` is then `null`;
+   * the tab draws the skeleton or the error in R1's place and keeps every part that is not R1's —
+   * the month card and its hub lines, the custody card and line. Absent once R1 has answered, and
+   * for a reader who holds no key of R1.
+   */
+  nowPending?: { state: 'loading' | 'error'; error: unknown };
 }
 
 // ── The pill navbar ───────────────────────────────────────────────────────────────────────────

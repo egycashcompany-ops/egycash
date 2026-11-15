@@ -162,6 +162,23 @@ export const useActionLine = (
             </span>,
           );
         }
+        // The cars approaching the limit (the yellow alarms), opening their own board — the
+        // retired «التنبيهات» said them on this line; no other tab shows them.
+        if (alarm.yellow > 0) {
+          parts.push(
+            <Phrase
+              key="yellow"
+              text={k('yellow')}
+              parts={{
+                count: (
+                  <B link={links.alarm('yellow', alarm.codes?.yellow ?? null)}>
+                    {count(alarm.yellow)}
+                  </B>
+                ),
+              }}
+            />,
+          );
+        }
         return {
           ...base,
           icon: I.cog,
@@ -240,11 +257,33 @@ export const useActionLine = (
       }
       case 'crewAbsent': {
         if (now.roster === null) return null;
+        const gap = now.roster.crewGap;
+        // The parts the retired «التنبيهات» said beside the count (each only when there is one):
+        // the cars an available driver covered, the stale plans, the other reasons.
+        const part = (key: 'covered' | 'stalePlan' | 'otherReasons', n: number): ReactNode[] =>
+          n > 0
+            ? [
+                <Phrase
+                  key={key}
+                  text={k(key)}
+                  parts={{ count: <B>{count(n)}</B>, noun: noun('car', n) }}
+                />,
+              ]
+            : [];
         return {
           ...base,
           icon: I.users,
           title: k('title'),
-          sub: k('sub'),
+          sub: (
+            <Parts
+              parts={[
+                k('sub'),
+                ...part('covered', gap.covered),
+                ...part('stalePlan', gap.stalePlan),
+                ...part('otherReasons', gap.otherReasons),
+              ]}
+            />
+          ),
           noun: 'car',
           link: links.crewGap(),
         };

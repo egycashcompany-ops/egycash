@@ -222,15 +222,10 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     expect(hrefOf(chip, 'vehicles.active')).toEqual(['/fleet/vehicles?status=active']);
   });
 
-  it('draws the six cards in the approved order', () => {
-    expect([...html.matchAll(/data-dash-kpi="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'readiness',
-      'unmanned',
-      'workshop',
-      'urgent',
-      'fuel',
-      'custody',
-    ]);
+  it('draws the six cards in the approved order, each with its grey foot band', () => {
+    const order = ['readiness', 'unmanned', 'workshop', 'urgent', 'fuel', 'custody'];
+    expect([...html.matchAll(/data-dash-kpi="(\w+)"/gu)].map((m) => m[1])).toEqual(order);
+    expect([...html.matchAll(/data-dash-foot="(\w+)"/gu)].map((m) => m[1])).toEqual(order);
   });
 
   it('K1 «جاهزية الأسطول»: ready of the board’s rows, its share, and what is out of readiness', () => {
@@ -249,6 +244,10 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     expect(body).toContain('border-l-amber-500');
     expect(text(body)).not.toContain('حرج');
     expect(hrefOf(body, 'roster.unmanned')).toEqual([`/fleet/roster?date=${TODAY}&view=unmanned`]);
+    // Its grey foot band (as all six approved cards draw one): «الحركة اليوم», no figure of its own.
+    expect(body).toContain('data-dash-foot="unmanned"');
+    expect(text(body)).toContain(ar('fleet.dash.overview.kpi.unmanned.open'));
+    expect(hrefOf(body, 'roster.tab')).toEqual(['/fleet?tab=today']);
     const roster = need(NOW.roster);
     const clear = kpi(
       page('/fleet?tab=overview', { now: { ...NOW, roster: { ...roster, unmanned: 0 } } }),
@@ -288,7 +287,8 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
   it('K4 «تنبيهات عاجلة» counts the red LINES, of all the lines that fired — a plain figure', () => {
     const body = kpi(html, 'urgent');
     expect(text(body)).toContain('4 تنبيهات');
-    expect(text(body)).toContain('من 11 تنبيهًا الآن');
+    // «من N تنبيهًا الآن» in its grey foot band, as every card has one.
+    expect(text(part(body, 'data-dash-foot="urgent"', /<\/div>/u))).toContain('من 11 تنبيهًا الآن');
     expect(links(body)).toEqual([]);
   });
 
@@ -389,6 +389,53 @@ describe('«نظرة عامة» — the action centre', () => {
     expect(text(row(html, 'vehicleLicenceExpired'))).toContain('منذ 18 يومًا');
     expect(text(row(html, 'fuelRequests'))).toContain('6,500.00');
     expect(row(html, 'noticesMissing')).toContain('data-dash-action-count="3"');
+  });
+
+  it('keeps the figures the retired «التنبيهات» said on the alarm and crew lines — nobody loses one', () => {
+    // The cars approaching the limit (yellow), opening their own board; under a branch, their codes.
+    const alarm = row(html, 'maintenanceRed');
+    expect(text(alarm)).toContain('منها 1 تجاوزته');
+    expect(text(alarm)).toContain('6 تقترب منه');
+    expect(hrefOf(alarm, 'maintenanceAlarm.yellow')).toEqual([
+      '/fleet/maintenance-alarms?level=yellow',
+    ]);
+    const branched = page('/fleet?tab=overview', {
+      now: {
+        ...NOW,
+        branchId: B1,
+        scopeBranches: [CAIRO_BRANCH],
+        maintenanceAlarm: {
+          red: 3,
+          overdue: 1,
+          yellow: 2,
+          codes: { red: ['101'], yellow: ['207', '208'] },
+        },
+      },
+    });
+    expect(hrefOf(row(branched, 'maintenanceRed'), 'maintenanceAlarm.yellow')).toEqual([
+      '/fleet/maintenance-alarms?level=yellow&vehicleCodes=207,208',
+    ]);
+    const none = page('/fleet?tab=overview', {
+      now: { ...NOW, maintenanceAlarm: { red: 3, overdue: 1, yellow: 0, codes: null } },
+    });
+    expect(text(row(none, 'maintenanceRed'))).not.toContain('تقترب منه');
+    // The crew line: what was covered, the stale plans, the other reasons — each only when > 0.
+    const crew = text(row(html, 'crewAbsent'));
+    expect(crew).toContain(ar('fleet.dash.overview.actions.line.crewAbsent.sub'));
+    expect(crew).toContain('تمت تغطية 3 سيارات بسائق متاح');
+    expect(crew).toContain('مخطَّط لها سائق غير متاح اليوم: 1');
+    expect(crew).not.toContain('لأسباب أخرى');
+    const other = page('/fleet?tab=overview', {
+      now: {
+        ...NOW,
+        roster: {
+          ...need(NOW.roster),
+          crewGap: { vehicles: 2, otherReasons: 4, covered: 0, stalePlan: 0 },
+        },
+      },
+    });
+    expect(text(row(other, 'crewAbsent'))).toContain('طاقمها غير متاح لأسباب أخرى: 4');
+    expect(text(row(other, 'crewAbsent'))).not.toContain('تمت تغطية');
   });
 
   it('has no button where no exact list exists: the red codes over 50 under a branch', () => {
@@ -533,9 +580,11 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
 
   it('«حوادث الشهر» opens the accidents tab; «مخالفات قائمة N مخالفة» the register, every year', () => {
     expect(text(hubLine(html, 'accidents'))).toContain('4 حوادث');
-    expect(
-      hrefOf(hubLine(html, 'accidents'), 'accidents.tab').map((h) => parse(h).params.get('tab')),
-    ).toEqual(['accidents']);
+    // The figure is the month read's (no page filter): its tab opens on that slice — «هذا الشهر»,
+    // no type, operation or codes — so the accidents tab shows the same number.
+    expect(hrefOf(hubLine(html, 'accidents'), 'accidents.month')).toEqual([
+      '/fleet?tab=accidents&period=thisMonth',
+    ]);
     const violations = hubLine(html, 'violations');
     expect(text(violations)).toContain(ar('fleet.dash.overview.hub.incidents.violations'));
     expect(text(violations)).toContain('48 مخالفة');
@@ -643,6 +692,17 @@ describe('«نظرة عامة» — «ملخص إحصائيات هذا الشه�
     expect(text(hubLine(filtered, 'accidents'))).toContain('4 حوادث');
     for (const href of hrefOf(filtered, 'km.total'))
       expect(parse(href).params.has('type')).toBe(false);
+    // …and the tab its hub line opens is that month too: never the page's last month, never T1.
+    expect(hrefOf(hubLine(filtered, 'accidents'), 'accidents.month')).toEqual([
+      '/fleet?tab=accidents&period=thisMonth',
+    ]);
+    // The card foot carries no figure: it keeps the page's filters, as every tab link does.
+    const [foot = ''] = hrefOf(
+      part(filtered, 'data-dash-hub-foot="incidents"', /<\/div>/u),
+      'accidents.tab',
+    );
+    expect(parse(foot).params.get('period')).toBe('lastMonth');
+    expect(parse(foot).params.get('type')).toBe(T1);
   });
 
   it('is never asked by a reader without a period key; on its way it is its own skeleton', () => {
@@ -653,6 +713,28 @@ describe('«نظرة عامة» — «ملخص إحصائيات هذا الشه�
     const waiting = page('/fleet?tab=overview', { period: null });
     expect(waiting).toContain('data-dash-month-loading="true"');
     expect(waiting).toContain('data-dash-block="actions"');
+  });
+
+  it('the month’s hub lines keep their place as «—» while the month read is on its way or failed', () => {
+    for (const month of [
+      { ...MONTH_READ, data: undefined, loading: true },
+      { ...MONTH_READ, data: undefined, failed: true },
+    ]) {
+      const html = tab({ month });
+      expect(hubLine(html, 'accidents')).toContain('data-dash-hub-pending="true"');
+      expect(hubLine(html, 'fuelSpend')).toContain('data-dash-hub-pending="true"');
+      // The fuel card, whose only line is the month's, is still drawn: the hub keeps 2 × 3.
+      expect(html.match(/data-dash-hub="/gu)).toHaveLength(6);
+    }
+    const one = tab({
+      month: { ...MONTH_READ, data: { ...MONTH, unavailable: ['opex'], opex: null } },
+    });
+    expect(hubLine(one, 'fuelSpend')).toContain('data-dash-hub-pending="true"');
+    expect(hubLine(one, 'accidents')).not.toContain('data-dash-hub-pending');
+    // Not asked (no period key): no line at all, and no fuel card.
+    const off = tab({ month: { ...MONTH_READ, data: undefined, enabled: false } });
+    expect(off).not.toContain('data-dash-hub-line="accidents"');
+    expect(off).not.toContain('data-dash-hub="fuel"');
   });
 
   it('a failed month read says so with its retry; a read not asked draws nothing', () => {
@@ -667,6 +749,68 @@ describe('«نظرة عامة» — «ملخص إحصائيات هذا الشه�
     });
     expect(one).toContain('data-section-error="km"');
     expect(one).toContain('data-dash-month-stat="opex"');
+  });
+});
+
+// ── R1 on its way or failed: only R1's parts wait (the page gates the other R1 tabs on R1) ─────
+
+describe('«نظرة عامة» — R1 on its way or failed costs only R1’s parts', () => {
+  /** R1 FAILED — the cache as a rejected request leaves it — beside a month read that answered. */
+  const r1Failed = (): QueryClient => {
+    const client = dashboardClient({ now: null, period: MONTH });
+    client.setQueryDefaults(fleetDashboardKeys.now, { retryOnMount: false });
+    const query = client.getQueryCache().build(client, { queryKey: fleetDashboardKeys.now });
+    query.setState({
+      ...query.state,
+      status: 'error',
+      error: new Error('R1 down'),
+      errorUpdatedAt: 1,
+      fetchStatus: 'idle',
+    });
+    return client;
+  };
+  const ids = (html: string, attr: string): string[] =>
+    [...html.matchAll(new RegExp(`${attr}="(\\w+)"`, 'gu'))].map((m) => m[1] ?? '');
+
+  it('R1 failed: its error and retry in its place; the month card, its hub lines and custody stay', () => {
+    const html = renderDashboard({ url: '/fleet?tab=overview', client: r1Failed() });
+    expect(html).toContain('data-dash-read-error="true"');
+    expect(html).toContain('data-dash-block="month"');
+    expect(ids(html, 'data-dash-month-stat')).toEqual(['km', 'opex', 'visits', 'accidents']);
+    expect(text(monthStat(html, 'km'))).toContain('4,896');
+    // The hub's month lines are the month read's: still there, still linked.
+    expect(text(hubLine(html, 'accidents'))).toContain('4 حوادث');
+    expect(text(hubLine(html, 'fuelSpend'))).toContain('8,200.00');
+    // The custody card and line are the custody screen's reads.
+    expect(ids(html, 'data-dash-kpi')).toEqual(['custody']);
+    expect(ids(html, 'data-dash-action')).toEqual(['custody']);
+    // Never the all-clear over the R1 lines nobody could read.
+    expect(html).not.toContain('data-dash-actions-none');
+  });
+
+  it('R1 on its way: its cards in grey beside the custody card, and the month card answers', () => {
+    const html = renderDashboard({
+      url: '/fleet?tab=overview',
+      client: dashboardClient({ now: null, period: MONTH }),
+    });
+    expect(html).not.toContain('data-dash-read-error');
+    expect(ids(html, 'data-dash-kpi-loading')).toEqual([
+      'readiness',
+      'unmanned',
+      'workshop',
+      'urgent',
+      'fuel',
+    ]);
+    expect(ids(html, 'data-dash-kpi')).toEqual(['custody']);
+    expect(html).toContain('data-dash-actions-loading="true"');
+    expect(html).not.toContain('data-dash-actions-none');
+    expect(ids(html, 'data-dash-month-stat')).toEqual(['km', 'opex', 'visits', 'accidents']);
+  });
+
+  it('every other R1 tab is still the one error (or skeleton) of its read', () => {
+    const html = renderDashboard({ url: '/fleet?tab=today', client: r1Failed() });
+    expect(html).toContain('data-dash-read-error="true"');
+    expect(html).not.toContain('data-today-card=');
   });
 });
 

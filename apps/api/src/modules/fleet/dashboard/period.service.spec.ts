@@ -298,14 +298,16 @@ describe('R2 — the echo (R-01, R-13)', () => {
     expect(branches.listAll).toHaveBeenCalledTimes(1);
   });
 
-  it('a branch the list no longer holds is left out of the echo, never named by a guess', async () => {
+  it('a branch the list no longer holds stays in the echo under «—», never named by a guess', async () => {
     const dto = await fleetDashboardPeriodService.read(
       ctxWith(ALL_KEYS, { activeBranchId: B3 }),
       NOW,
       parse({}),
     );
     expect(dto.vehicleScope.branchId).toBe(B3);
-    expect(dto.vehicleScope.scopeBranches).toEqual([]);
+    // The echo is what the figures cover: one branch, so the web's one-branch layout and its
+    // `branch=` links agree with the server's (`km.byType` is drawn for exactly one branch).
+    expect(dto.vehicleScope.scopeBranches).toEqual([{ id: B3, name: { ar: '—', en: '—' } }]);
   });
 
   it('a failure to read the branch names costs the names, never the read: the ids stay, «—» each', async () => {

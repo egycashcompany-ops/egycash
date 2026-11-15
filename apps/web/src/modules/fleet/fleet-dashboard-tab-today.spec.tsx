@@ -411,6 +411,22 @@ describe('«الحركة اليوم» — the cars without a driver', () => {
     expect(text(row('305'))).toContain('—');
   });
 
+  it('folds the branch and mission under the code on a phone — no column to scroll to', () => {
+    // Under 640 px the table is a list of blocks: no head, the code and «فتح» on the first line.
+    expect(list).toMatch(/<thead class="[^"]*max-sm:hidden/u);
+    const phone = part(row('214'), 'data-today-phone-line="true"', /<\/div>/u);
+    expect(phone).toContain('sm:hidden');
+    expect(text(phone)).toContain('القاهرة');
+    expect(text(phone)).toContain('نقل أموال بنوك');
+    // One branch in scope: no branch column, and none under the code either.
+    const one = card(tab({ ...NOW, branchId: CAIRO.id, scopeBranches: [CAIRO] }), 'unmanned-list');
+    const oneRow = part(one, 'data-today-unmanned="214"', /data-today-unmanned="|<\/tbody>/u);
+    expect(text(part(oneRow, 'data-today-phone-line="true"', /<\/div>/u))).not.toContain('القاهرة');
+    expect(
+      part(one, 'data-today-unmanned="318"', /data-today-unmanned="|<\/tbody>/u),
+    ).not.toContain('data-today-phone-line');
+  });
+
   it('names the absent driver and the roster’s reason under the class', () => {
     expect(squash(text(row('214')))).toContain(squash('أحمد محمد إبراهيم · إجازة معتمدة'));
     expect(squash(text(row('305')))).toContain(squash('محمود فتحي النجار · تمام: غير متاح'));
@@ -501,6 +517,38 @@ describe('«الحركة اليوم» — the absent drivers', () => {
     // Not one of Fleet's people: a dash, never a raw id.
     expect(text(row(E6))).toContain('—');
     expect(text(row(E6))).not.toContain(E6);
+  });
+
+  it('draws at most six of the server’s rows — the two lists end level — and «عرض الكل (N)» opens all', () => {
+    const extra = [
+      '64b1f0eeeeeeeeeeeeeeee07',
+      '64b1f0eeeeeeeeeeeeeeee08',
+      '64b1f0eeeeeeeeeeeeeeee09',
+    ];
+    const eight = card(
+      withRoster({
+        absent: { attendance: 6, leave: 3 },
+        absentDrivers: [
+          ...ABSENT,
+          ...extra.map((employeeId) => ({
+            employeeId,
+            reason: 'fleetUnavailability' as const,
+            crewVehicle: null,
+          })),
+        ],
+      }),
+      'absent-list',
+    );
+    expect([...eight.matchAll(/data-today-absent="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      E1,
+      E2,
+      E4,
+      E6,
+      E5,
+      extra[0],
+    ]);
+    expect(text(eight)).toContain('9 سائقين');
+    expect(text(eight)).toContain('عرض الكل (9)');
   });
 
   it('counts the chip and «عرض الكل (N)» from the server’s two parts, never the rows', () => {

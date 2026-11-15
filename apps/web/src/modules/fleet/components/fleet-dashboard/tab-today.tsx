@@ -10,9 +10,10 @@
 //   4  the lists — «سيارات بلا سائق اليوم» (the server's rows, «فتح» on each) | «الغائبون اليوم»
 //
 // NOTHING IS COUNTED HERE. Every figure is a field the server sent; the lists are the server's rows
-// as sent (at most FLEET_DASHBOARD_TODAY_ROWS), and «عرض الكل (N)» takes N from the server's count,
-// never from the rows. A share is display arithmetic on two server figures; so are «استُبعدت» (rows −
-// ready), «المسجّلة» (active + out of service) and the absent total (attendance + leave).
+// as sent (at most FLEET_DASHBOARD_TODAY_ROWS; the absent list draws the first ABSENT_ROWS of them),
+// and «عرض الكل (N)» takes N from the server's count, never from the rows. A share is display
+// arithmetic on two server figures; so are «استُبعدت» (rows − ready), «المسجّلة» (active + out of
+// service) and the absent total (attendance + leave).
 //
 // WHAT EACH FIGURE COVERS. The cars follow the reader's branches; the drivers' pool is the company's
 // (R-27). So while the figures are narrowed (`scopeBranches !== null`, one branch or «كل فروعي») the
@@ -1080,6 +1081,25 @@ const ShowAll = ({ link, n }: { link: DashLink; n: number }): JSX.Element => {
 
 const CELL = 'px-4 py-4 align-middle first:ps-5 last:pe-5';
 
+/**
+ * Under 640 px a row of «سيارات بلا سائق اليوم» is a block, not a table row: the code and «فتح» on
+ * its first line, the class under them (the branch and mission columns fold under the code), so a
+ * phone sees every row whole with no sideways scroll.
+ */
+const PHONE_TABLE = 'max-sm:block';
+const PHONE_ROW = cn(
+  'max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-start',
+  'max-sm:gap-x-3 max-sm:gap-y-2 max-sm:px-4 max-sm:py-3.5',
+);
+const PHONE_CELL = 'max-sm:block max-sm:p-0 max-sm:first:ps-0 max-sm:last:pe-0';
+
+/**
+ * «الغائبون اليوم» draws at most this many of the server's rows (it sends up to
+ * FLEET_DASHBOARD_TODAY_ROWS): the two lists end level, as the approved picture draws them, and
+ * «عرض الكل (N)» in the list's head opens every one.
+ */
+const ABSENT_ROWS = 6;
+
 const REST_TEXT: Record<Scope, string> = {
   company: 'fleet.dash.now.table.rest',
   branch: 'fleet.dash.now.table.restBranch',
@@ -1107,8 +1127,8 @@ const UnmannedRow = ({
       ? undefined
       : names.get(row.absent.employeeId)?.fullNameAr;
   return (
-    <tr data-today-unmanned={row.code} data-today-why={row.why}>
-      <td className={CELL}>
+    <tr data-today-unmanned={row.code} data-today-why={row.why} className={PHONE_ROW}>
+      <td className={cn(CELL, PHONE_CELL, 'max-sm:col-start-1 max-sm:row-start-1')}>
         <div className="flex flex-col items-start gap-1">
           {/* The car's file is the vehicles screen's: a link only with its own guard. */}
           <CarChip
@@ -1122,16 +1142,40 @@ const UnmannedRow = ({
               {localized(row.typeName, locale)}
             </span>
           )}
+          {/* A phone has no branch and mission columns: they are said here, under the code. */}
+          {(showBranch || row.mission !== null) && (
+            <span
+              data-today-phone-line="true"
+              className={cn(
+                'flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-semibold sm:hidden',
+                MUTED,
+              )}
+            >
+              {showBranch && (
+                <span className={STRONG}>
+                  {row.branch === null
+                    ? t('fleet.dash.now.table.noBranch')
+                    : localized(row.branch.name, locale)}
+                </span>
+              )}
+              {showBranch && row.mission !== null && <Sep />}
+              {row.mission !== null && (
+                <span className={cn(CHIP, 'inline-flex items-center py-0.5')}>
+                  {localized(row.mission, locale)}
+                </span>
+              )}
+            </span>
+          )}
         </div>
       </td>
       {showBranch && (
-        <td className={cn(CELL, 'whitespace-nowrap font-semibold', STRONG)}>
+        <td className={cn(CELL, 'whitespace-nowrap font-semibold max-sm:hidden', STRONG)}>
           {row.branch === null
             ? t('fleet.dash.now.table.noBranch')
             : localized(row.branch.name, locale)}
         </td>
       )}
-      <td className={CELL}>
+      <td className={cn(CELL, 'max-sm:hidden')}>
         {row.mission === null ? (
           <span className={MUTED}>—</span>
         ) : (
@@ -1140,14 +1184,14 @@ const UnmannedRow = ({
           </span>
         )}
       </td>
-      <td className={CELL}>
+      <td className={cn(CELL, PHONE_CELL, 'max-sm:col-span-2 max-sm:row-start-2')}>
         {/* One tone for every class, as the KPI's tiles: no class is more urgent than another; the
             absent driver's line tells them apart. */}
-        <div className={cn('whitespace-nowrap font-bold', STRONG)}>{t(CLASS_WORD[row.why])}</div>
+        <div className={cn('font-bold sm:whitespace-nowrap', STRONG)}>{t(CLASS_WORD[row.why])}</div>
         {row.absent !== null && (
           <div
             data-today-absent-driver="true"
-            className={cn('mt-0.5 whitespace-nowrap text-xs font-semibold', MUTED)}
+            className={cn('mt-0.5 text-xs font-semibold sm:whitespace-nowrap', MUTED)}
           >
             {name !== undefined && (
               <>
@@ -1159,7 +1203,7 @@ const UnmannedRow = ({
           </div>
         )}
       </td>
-      <td className={cn(CELL, 'text-end')}>
+      <td className={cn(CELL, PHONE_CELL, 'text-end max-sm:col-start-2 max-sm:row-start-1')}>
         <Btn link={links.rosterCar(row.code)} className="h-9 px-4">
           {t('fleet.dash.now.table.open')}
         </Btn>
@@ -1223,8 +1267,8 @@ const UnmannedTable = ({
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-start text-[13px]">
-              <thead className={TH_ROW}>
+            <table className={cn('w-full border-collapse text-start text-[13px]', PHONE_TABLE)}>
+              <thead className={cn(TH_ROW, 'max-sm:hidden')}>
                 <tr className={cn('border-y', RULE)}>
                   <th className={th}>{t('fleet.dash.now.table.code')}</th>
                   {showBranch && <th className={th}>{t('fleet.dash.now.table.branch')}</th>}
@@ -1235,7 +1279,7 @@ const UnmannedTable = ({
                   </th>
                 </tr>
               </thead>
-              <tbody className={DIVIDE}>
+              <tbody className={cn(DIVIDE, 'max-sm:block max-sm:border-t', RULE)}>
                 {roster.unmannedRows.map((row) => (
                   <UnmannedRow
                     key={row.vehicleId}
@@ -1325,7 +1369,7 @@ const AbsentList = ({
         </div>
       ) : (
         <ul className={cn('border-t', RULE, DIVIDE)}>
-          {roster.absentDrivers.map((driver) => {
+          {roster.absentDrivers.slice(0, ABSENT_ROWS).map((driver) => {
             const person = names.get(driver.employeeId);
             const name = person?.fullNameAr ?? '—';
             return (

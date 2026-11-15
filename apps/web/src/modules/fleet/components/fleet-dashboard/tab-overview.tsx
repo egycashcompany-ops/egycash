@@ -32,6 +32,7 @@ import { localized } from '../../../../shared/lib/format';
 import { Skeleton } from '../../../../shared/ui/Skeleton';
 import {
   custodyDashboardLink,
+  echoTabFilters,
   nowLinks,
   periodLinks,
   type DashLink,
@@ -40,6 +41,7 @@ import {
 import {
   alertSummary,
   leadIndex,
+  sectionPermitted,
   share,
   shareText,
   slashDay,
@@ -81,6 +83,7 @@ import {
 import {
   Amount,
   Phrase,
+  ReadError,
   RefreshTools,
   SectionError,
   count,
@@ -119,10 +122,28 @@ const KpiRow = ({
   const workshop = now?.workshop ?? null;
   const fuel = now?.fuelCharging ?? null;
 
+  // R1 on its way: its cards in grey, each in its place, beside the custody card (another read).
+  if (props.nowPending?.state === 'loading') {
+    const r1Cards = [
+      ...(sectionPermitted('roster', can) ? ['readiness', 'unmanned'] : []),
+      ...(sectionPermitted('workshop', can) ? ['workshop'] : []),
+      ...(ACTION_SECTIONS.some((section) => sectionPermitted(section, can)) ? ['urgent'] : []),
+      ...(sectionPermitted('fuelCharging', can) ? ['fuel'] : []),
+    ];
+    for (const id of r1Cards) {
+      cards.push(
+        <div key={id} data-dash-loading="true" data-dash-kpi-loading={id}>
+          <Skeleton className="h-44 rounded-2xl" />
+        </div>,
+      );
+    }
+  }
+
   if (failed('roster'))
     cards.push(<SectionError key="roster" section="roster" onRetry={props.onRetry} />);
   if (roster !== null && links !== null) {
     const out = roster.rows - roster.ready;
+    const toToday = props.tabLink('today', 'roster.tab');
     cards.push(
       <Kpi
         key="readiness"
@@ -204,6 +225,11 @@ const KpiRow = ({
             />
           </span>
         }
+        // No figure of its own: the tab whose table names each car and why (the approved card
+        // draws a foot band on all six).
+        {...(toToday === null
+          ? {}
+          : { foot: <FootLink link={toToday}>{w('kpi.unmanned.open')}</FootLink> })}
       />,
     );
   }
@@ -287,16 +313,15 @@ const KpiRow = ({
             <span className={WORDS}>{noun('alert', summary.red)}</span>
           </>
         }
-        sub={
-          <span className={MUTED}>
-            <Phrase
-              text={w('kpi.urgent.of')}
-              parts={{
-                count: <N className={cn('font-bold', STRONG)}>{count(summary.total)}</N>,
-                noun: noun('alert', summary.total),
-              }}
-            />
-          </span>
+        footIcon={I.bell}
+        foot={
+          <Phrase
+            text={w('kpi.urgent.of')}
+            parts={{
+              count: <N className={cn('font-bold', STRONG)}>{count(summary.total)}</N>,
+              noun: noun('alert', summary.total),
+            }}
+          />
         }
       />,
     );
@@ -482,7 +507,8 @@ const ActionCentre = ({ props }: { props: NowTabProps }): JSX.Element => {
     return shown === null ? [] : [{ line, view: shown }];
   });
   const tally = alertSummary(rows.map((row) => row.line));
-  const quiet = failed.length === 0 && !custodyFailed;
+  // R1 failed (the tab says so above): its lines are unknown, so never the all-clear either.
+  const quiet = failed.length === 0 && !custodyFailed && props.nowPending === undefined;
   return (
     <Card data-dash-block="actions">
       <div
@@ -574,6 +600,31 @@ const HubFigure = ({
 const HubNoun = ({ noun, n, tone }: { noun: DashNoun; n: number; tone?: Tone | undefined }) => {
   const word = useNoun();
   return <span className={tone === undefined ? STRONG : TONE[tone].text}> {word(noun, n)}</span>;
+};
+
+/** A month line whose read is on its way or failed: «—» in the figure's place (the month card says
+ *  why, with its retry), so the hub keeps its shape. */
+const HubPending = (): JSX.Element => (
+  <span data-dash-hub-pending="true" className={MUTED}>
+    —
+  </span>
+);
+
+/**
+ * A hub line fed by the month read: drawn with its figure, drawn as «—» while that read is on its
+ * way or failed (or its section failed), or not drawn — no period key, or a section this reader
+ * may not see.
+ */
+const monthLine = (
+  month: MonthRead,
+  section: 'accidents' | 'opex',
+  can: (permission: string) => boolean,
+): 'shown' | 'pending' | 'hidden' => {
+  if (!month.enabled) return 'hidden';
+  const data = month.data;
+  if (data === undefined) return sectionPermitted(section, can) ? 'pending' : 'hidden';
+  if (data.unavailable.includes(section)) return 'pending';
+  return data[section] === null ? 'hidden' : 'shown';
 };
 
 const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
@@ -709,10 +760,14 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     foot: tabLink('maintenance', 'visits.tab'),
   });
 
-  // «الحوادث والمخالفات» — the month's accidents (the accidents tab), every fine still owed (the
+  // «الحوادث والمخالفات» — the month's accidents (the accidents tab, opened on the month read's own
+  // slice — «هذا الشهر», no type or codes — so it shows this number), every fine still owed (the
   // register: no tab holds every year).
   const incidents: HubLine[] = [];
-  if (month?.accidents != null) {
+  const accidentsLine = monthLine(props.month, 'accidents', props.can);
+  if (accidentsLine === 'pending') {
+    incidents.push(line('accidents', w('hub.incidents.accidents'), <HubPending />));
+  } else if (month?.accidents != null) {
     incidents.push(
       line(
         'accidents',
@@ -721,7 +776,7 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
           n={month.accidents.count}
           noun="accident"
           tone="red"
-          link={tabLink('accidents', 'accidents.tab')}
+          link={tabLink('accidents', 'accidents.month', echoTabFilters(month))}
         />,
       ),
     );
@@ -750,7 +805,9 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
 
   // «الوقود والمصروفات» — the month's fuel receipts (the receipts screen, kind fuel).
   const fuel: HubLine[] = [];
-  if (month?.opex != null && monthLinks !== null) {
+  if (monthLine(props.month, 'opex', props.can) === 'pending') {
+    fuel.push(line('fuelSpend', w('hub.fuel.spend'), <HubPending />));
+  } else if (month?.opex != null && monthLinks !== null) {
     fuel.push(
       line(
         'fuelSpend',
@@ -808,17 +865,20 @@ const HubTile = ({ card }: { card: HubCard }): JSX.Element => {
     >
       <div className="flex items-center gap-2.5">
         <IconTile d={card.icon} tone={card.tone} size="sm" />
-        <h4 className={cn(TITLE, 'whitespace-nowrap text-[15px]')}>{card.title}</h4>
+        {/* A title may wrap where the two-column layout begins (xl): never into the padding. */}
+        <h4 className={cn(TITLE, 'min-w-0 text-balance text-[15px]')}>{card.title}</h4>
       </div>
       <dl className="mt-3.5 space-y-2 text-[13px]">
         {card.lines.map((row) => (
+          // Label and value side by side while they fit; the value moves under the label (never
+          // the label breaking beside it) on a narrow tile.
           <div
             key={row.id}
             data-dash-hub-line={row.id}
-            className="flex items-baseline justify-between gap-3"
+            className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
           >
-            <dt className={cn('min-w-0 font-semibold', MUTED)}>{row.label}</dt>
-            <dd className="whitespace-nowrap font-bold">{row.value}</dd>
+            <dt className={cn('whitespace-nowrap font-semibold', MUTED)}>{row.label}</dt>
+            <dd className="ms-auto whitespace-nowrap font-bold">{row.value}</dd>
           </div>
         ))}
       </dl>
@@ -1101,18 +1161,33 @@ const ActiveChip = ({
   );
 };
 
+/**
+ * What stands in the action centre's place: the card while a source of a line is there (or failed)
+ * — R1's, or custody's; R1 on its way: its shape in grey; R1 failed: the card only for the custody
+ * rows (or custody's own error), never an all-clear over the R1 lines nobody could read.
+ */
+const actionsPlace = (props: NowTabProps): 'card' | 'loading' | null => {
+  const { now, custody, nowPending } = props;
+  if (nowPending?.state === 'loading') {
+    const r1 = ACTION_SECTIONS.some((section) => sectionPermitted(section, props.can));
+    return custody !== null || r1 ? 'loading' : null;
+  }
+  if (nowPending?.state === 'error') {
+    return custody !== null && (props.lines.length > 0 || custody.error) ? 'card' : null;
+  }
+  const r1 =
+    now !== null &&
+    ACTION_SECTIONS.some((section) => now[section] !== null || now.unavailable.includes(section));
+  return custody !== null || r1 ? 'card' : null;
+};
+
 export const OverviewTab = (props: NowTabProps): JSX.Element => {
   const w = useWords();
-  const { now, custody } = props;
+  const { now } = props;
+  const pending = props.nowPending;
   const links = now === null ? null : nowLinks(now);
   const hub = useHubCards(props, links);
-  // The action centre stands while a source of a line is there (or failed): R1's, or custody's.
-  const actions =
-    custody !== null ||
-    (now !== null &&
-      ACTION_SECTIONS.some(
-        (section) => now[section] !== null || now.unavailable.includes(section),
-      ));
+  const actions = actionsPlace(props);
   const month = monthState(props.month) !== 'hidden';
   const side = hub.length > 0 || month;
   return (
@@ -1138,16 +1213,24 @@ export const OverviewTab = (props: NowTabProps): JSX.Element => {
         }
       />
       <div className="space-y-5">
+        {/* R1 failed: its error and retry in place of its cards and lines; the month card, the
+            month's hub lines and the custody parts are other reads and still stand. */}
+        {pending?.state === 'error' && <ReadError error={pending.error} onRetry={props.onRetry} />}
         <KpiRow props={props} links={links} />
-        {(actions || side) && (
+        {(actions !== null || side) && (
           <div
             data-dash-columns="true"
             className={cn(
               'grid grid-cols-1 gap-5',
-              actions && side && 'xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]',
+              actions !== null && side && 'xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]',
             )}
           >
-            {actions && <ActionCentre props={props} />}
+            {actions === 'card' && <ActionCentre props={props} />}
+            {actions === 'loading' && (
+              <div data-dash-loading="true" data-dash-actions-loading="true">
+                <Skeleton className="h-[420px] rounded-2xl" />
+              </div>
+            )}
             {side && (
               <div data-dash-side="true" className="flex min-w-0 flex-col gap-5">
                 {hub.length > 0 && <Hub cards={hub} />}

@@ -71,6 +71,13 @@ const DASHBOARD_KEYS: readonly string[] = [
  * The reader's branches under the widest of the dashboard's grants — `null` for the whole company
  * (organization, own) — with the switcher folded in as `scopeSelector` folds it: an organization
  * grant narrows to the chosen branch, a multi-branch reach to the chosen one among its own.
+ *
+ * KNOWN LIMIT (plan D9): ONE list narrows every company+set section, whichever module owns it. When
+ * a reader's grants of the same rank reach different branches per key (`keyReach`), the last such
+ * key in the two reads' key order decides (`widestScopeSelector`'s tie), so a figure can cover a
+ * branch its own register does not show that reader, or leave one out. Narrowing each section by
+ * its own gate key needs an echo per section, which the one «الفرع: …» chip cannot show; it is
+ * handed to a later tab PR.
  */
 export const dashboardBranches = (ctx: AuthContext): readonly string[] | null => {
   const branches = selectorBranches(widestScopeSelector(ctx, DASHBOARD_KEYS));
@@ -108,14 +115,16 @@ export const dashboardContext = (ctx: AuthContext, now: Date): DashboardContext 
 export const branchList = (d: DashboardContext) =>
   d.memo('branches', () => branchRepository.listAll());
 
-/** A branch the list could not name (the read failed): the id, never a made-up name. */
+/** A branch the list could not name (deleted since, or the read failed): the id, never a made-up name. */
 const UNNAMED: LocalizedString = { ar: '—', en: '—' };
 
 /**
  * `branchIds` by name, in the same order — the echo «الفرع: …» is drawn from (`null` = the whole
- * company, one = that branch, several = «كل فروعي»). An id the branch list does not hold is left
- * out. A failure to read the list costs the names, never the read or the count of branches: the
- * ids are echoed with «—», so the web still knows one branch from several.
+ * company, one = that branch, several = «كل فروعي»). EVERY id the figures cover is echoed, so the
+ * web's links (`branch=`) and its one-branch layout read exactly what the server counted: an id the
+ * live branch list does not hold (a soft-deleted branch still in a reader's reach) keeps its place
+ * with «—» for a name, as the roster rows draw it. A failure to read the list costs the names, never
+ * the read or the count of branches: every id is echoed with «—».
  */
 export const scopeBranchesOf = async (
   d: DashboardContext,
@@ -126,10 +135,7 @@ export const scopeBranchesOf = async (
     const names = new Map(
       (await branchList(d)).map((b) => [String(b._id), b.name as LocalizedString]),
     );
-    return d.branchIds.flatMap((id) => {
-      const name = names.get(id);
-      return name === undefined ? [] : [{ id, name }];
-    });
+    return d.branchIds.map((id) => ({ id, name: names.get(id) ?? UNNAMED }));
   } catch (err) {
     logger.error({ err }, 'fleet dashboard branch names failed');
     return d.branchIds.map((id) => ({ id, name: UNNAMED }));

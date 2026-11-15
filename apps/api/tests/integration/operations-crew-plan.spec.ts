@@ -29,6 +29,7 @@ import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCrewBoardDto,
+  type OperationsCrewAttendanceDayDto,
   type OperationsCrewDirectoryDto,
   type OperationsCurrencyDto,
   type OperationsSecuredDistributionDto,
@@ -620,6 +621,26 @@ describe('the crew row’s type and colour', () => {
       rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' }],
     });
     expect(vanRow(res, van2)?.crew).toMatchObject({ shiftTypeId: reserve.id, notes: 'ملاحظة' });
+    // …while ANOTHER row newly picking the same archived type is refused, and the refusal names
+    // THAT row (index 1), not the one keeping it — the board marks the row it names.
+    const picked = await save({
+      rows: [
+        { vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' },
+        {
+          vehicleId: van1,
+          captainEmployeeIds: [cap1],
+          specialist1EmployeeIds: [spec1],
+          plannedTime: '07:30',
+          shiftTypeId: reserve.id,
+          rowColour: 'green',
+        },
+      ],
+    });
+    expect(picked.status).toBe(422);
+    expect(errorOf(picked).details).toEqual([
+      { field: 'shiftTypeId', code: 'SHIFT_TYPE', message: reserve.id },
+      { field: 'rows', code: 'ROW_INDEX', message: '1' },
+    ]);
     const back = await request(app)
       .patch(`/api/v1/operations/shift-types/${reserve.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -840,6 +861,15 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     const members = data<OperationsCrewDirectoryDto>(pool).members;
     expect(members.find((m) => m.employeeId === cap2)?.assignedVehicleId).toBeNull();
     expect(members.find((m) => m.employeeId === cap1)?.assignedVehicleId).toBe(van1);
+
+    // «حضور الطاقم» still says he is crewed today: the row holds him, van or none.
+    const attendance = await request(app)
+      .get(`/api/v1/operations/crew-board/attendance?date=${DAY}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(attendance.status, JSON.stringify(attendance.body)).toBe(200);
+    const day = data<OperationsCrewAttendanceDayDto>(attendance).members;
+    expect(day.find((m) => m.employeeId === cap2)).toMatchObject({ assignedVehicleId: null, isCrewed: true });
+    expect(day.find((m) => m.employeeId === cap1)).toMatchObject({ assignedVehicleId: van1, isCrewed: true });
 
     // «توزيع المحصنات» lists the day's VANS only.
     const distribution = await request(app)

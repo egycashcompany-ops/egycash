@@ -33,6 +33,7 @@ import { settingsService } from '../../../platform/settings';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
+import { crewMembers } from './crew-slots';
 import { operationsCrewRequirementsRepository } from './crew-requirements.repository';
 import { resolveCrewDepartmentIds } from './crew-departments';
 import { type OperationsCrewRequirementsDoc } from './crew-requirements.model';
@@ -272,6 +273,9 @@ class OperationsCrewRequirementsService {
   async attendance(date: Date): Promise<OperationsCrewAttendanceDayDto> {
     const day = utcDay(date);
     const { members: roster } = await this.directory(day);
+    // Everybody on ANY of the day's rows, a row without a van included (Round 20): the pool's
+    // `assignedVehicleId` names only a vehicle, and this page asks whether the person is crewed.
+    const crewed = await this.crewedOn(day);
     const attendance = await getDirectoryAttendanceDay(
       roster.map((m) => m.employeeId),
       day,
@@ -285,6 +289,7 @@ class OperationsCrewRequirementsService {
         fullNameAr: member.fullNameAr,
         attendance: row === undefined ? null : { status: row.status, onLeave: row.onLeave },
         assignedVehicleId: member.assignedVehicleId,
+        isCrewed: crewed.has(member.employeeId),
       };
     });
 
@@ -304,6 +309,17 @@ class OperationsCrewRequirementsService {
     }
 
     return { date: day.toISOString(), members, summary };
+  }
+
+  /** Every employee holding a slot on one of the day's live crew rows, with a van or without. */
+  private async crewedOn(day: Date): Promise<Set<string>> {
+    const crewed = new Set<string>();
+    const dayDoc = await operationsDayService.findByDate(day);
+    if (dayDoc === null) return crewed;
+    for (const row of await operationsCrewAssignmentRepository.findForDay(dayDoc._id)) {
+      for (const employeeId of crewMembers(row)) crewed.add(employeeId);
+    }
+    return crewed;
   }
 
   async list(query: ListOperationsCrewRequirementsQuery) {

@@ -283,14 +283,21 @@ describe('CrewPools — nobody marked as a captain', () => {
 // The pages decide what "not answered yet" means, and `isLoading` is the wrong question: offline, a
 // first fetch is PAUSED — pending but not loading — and an `isLoading` gate read that empty roster
 // as "nobody left to assign". The component cannot see which flag it was given, so the choice is
-// pinned where it is made.
+// pinned where it is made. (Round 20: «لوحة التشغيلة» hands its pools `ready`, read off the same
+// flag — `!directory.isPending && !directory.isError` — rather than `loading`.)
 describe('the crew screens wait for the roster with isPending', () => {
   const PAGES = fileURLToPath(new URL('../pages/', import.meta.url));
-  for (const page of ['CrewBoardPage.tsx', 'StandingCrewPage.tsx']) {
+  // Each page's own spelling of the same flag, pinned whole: a bare `directory.isPending` anywhere
+  // in the file would not prove the roster gate reads it.
+  const GATE: Record<string, string> = {
+    'CrewBoardPage.tsx': 'const rosterReady = !directory.isPending && !directory.isError;',
+    'StandingCrewPage.tsx': 'loading={directory.isPending}',
+  };
+  for (const [page, gate] of Object.entries(GATE)) {
     it(page, () => {
       const src = readFileSync(`${PAGES}${page}`, 'utf8');
-      expect(src).toContain('loading={directory.isPending}');
-      expect(src).not.toContain('loading={directory.isLoading}');
+      expect(src).toContain(gate);
+      expect(src).not.toContain('directory.isLoading');
     });
   }
 });

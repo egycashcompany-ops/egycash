@@ -55,7 +55,8 @@ export const CrewAttendancePage = (): JSX.Element => {
       // The reason a planner is on this page: somebody absent who is nevertheless crewed today.
       header: t('operations.attendance.assignedToday'),
       render: (row) =>
-        row.assignedVehicleId === null ? (
+        // `isCrewed`, not `assignedVehicleId`: a row without a van holds its people too.
+        !row.isCrewed ? (
           <span className="text-slate-400">—</span>
         ) : (
           <Badge tone="info">{t('operations.attendance.assigned')}</Badge>

@@ -5585,6 +5585,7 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
     const row = day.members.find((m) => m.employeeId === attendanceMember);
     // ...and the page then SHOWS that this un-recorded member is crewed today.
     expect(row?.assignedVehicleId).toBe(vehicleAId);
+    expect(row?.isCrewed).toBe(true);
   });
 
   it('4. needs BOTH grants — the Operations roster read and HR\'s own attendance read', async () => {

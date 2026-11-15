@@ -560,6 +560,30 @@ its entry here in the same PR.
       اللى عليها»), and `workshopVehicles` — «صيانة», the day's vans in a Fleet workshop visit.
       That means the day's roster vans, the standing crew's vans and the configured cash-transfer
       vans, read from Fleet's own open-visit answer.
+    - «حضور الطاقم»: each member also carries `isCrewed`, true when the person holds a place on
+      any of the day's rows. A row without a van counts, though `assignedVehicleId` has no vehicle
+      to name for it. The page's «معيَّن» badge reads it, so a person on such a row still shows as
+      crewed.
+    - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
+      table, its boxes, the two pools (green and blue captains, red specialists, the requirement
+      icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the
+      van's hover card with its drivers, «صيانة» with the workshop's codes, and one «حفظ (n)».
+      - «النوع» is the catalog's ACTIVE types, in its order and colours. A row that holds a type
+        archived since keeps it, named and marked amber; the strip's counts and the type filter
+        follow the catalog.
+      - «شكلها … زى الساعة والملاحظات كله تحت بعض»: the type is now a box like the time and the
+        notes. It has the same height, border, corners and padding, fills a column of one width,
+        and shows its colour as a dot at the start. The swatch and the bin sit on the boxes' line.
+      - The direction box takes an area in the area's own spelling, by the server's own rule. Two
+        areas saved as «المعادي - حلوان» read as known. Its list is every active area, read page
+        by page, not the first hundred: the save holds a new direction to all of them.
+      - A save refused for a type or a direction is worded and marked red on the row it names, and
+        that row is scrolled into view. Any other refusal is said once, in its own words; only a
+        Q11 clash reads «قد يكون أحد الأفراد معيَّنًا على مركبة أخرى».
+      - «أنواع التشغيل» is a tab of the reference-data screen, built as the currencies' tab: the
+        whole list dragged into order (the arrows for a keyboard), a form with the palette's
+        eleven swatches and the type drawn as the board draws it, and archive or restore in one
+        click.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

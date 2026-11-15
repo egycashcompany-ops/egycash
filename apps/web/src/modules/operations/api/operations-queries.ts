@@ -20,12 +20,16 @@ import {
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type CreateOperationsShipment,
+  type CreateOperationsShiftType,
   type DispatchSecuredShipments,
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
+  type OperationsAreaDto,
   type OperationsExecutionResultDto,
   type OperationsShipmentType,
+  type Paginated,
   type OrderOperationsCurrencies,
+  type OrderOperationsShiftTypes,
   type PlanOperationsCrew,
   type SetOperationsStandingCrew,
   type ReceiveIntoVaultInput,
@@ -35,6 +39,7 @@ import {
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
+  type UpdateOperationsShiftType,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
@@ -89,6 +94,10 @@ const operationsKeys = {
   // too), which is what every vault act and the vault's realtime topic sweep. The completed-per-bank
   // report's own subtree went with that report.
   areas: featureKey(MODULE, 'areas'),
+  // Round 20 — «أنواع التشغيل», reference data like the currencies. The crew board holds a type by
+  // id only and names it from THIS list, so a renamed or recoloured type re-reads one list and
+  // nothing of the board's.
+  shiftTypes: featureKey(MODULE, 'shiftTypes'),
   vaultReport: featureKey(MODULE, 'vaultReport'),
   reportCaptains: featureKey(MODULE, 'reportCaptains'),
   crewAttendance: featureKey(MODULE, 'crewAttendance'),
@@ -548,7 +557,13 @@ export const useOperationsCrewRequirements = (
     enabled,
   });
 
-/** Planning changes who is taken, so the POOL is staled alongside the board. */
+/**
+ * Planning changes who is taken, so the POOL is staled alongside the board.
+ *
+ * The board owns the refusal (Round 20): it words it and marks the row the server named — a type
+ * archived on another desk, a direction that is not an area — so the global notifier stays quiet,
+ * one refusal, one message (see `formOwnsTheError`).
+ */
 export const usePlanOperationsCrew = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -557,6 +572,7 @@ export const usePlanOperationsCrew = () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
       await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -989,6 +1005,82 @@ export const useOperationsAreas = (params: OperationsListParams, enabled = true)
     queryFn: () => api.listOperationsAreas(params),
     enabled,
   });
+
+/**
+ * Every ACTIVE area's name, however many pages it takes — «لوحة التشغيلة»'s direction (Round 20).
+ * Since this round the save holds a new direction to the active areas («لازم اختار من الاتجاهات
+ * اللى موجوده») — all of them, not a page of them. A list cut at the server's page cap (100) would
+ * leave an area past it impossible to pick, and mark a saved direction that names it as «not an
+ * area». Under the areas' key, so every area write and the areas' realtime topic stale it.
+ */
+export const useActiveOperationsAreaNames = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'areas', { whole: true, isActive: true }),
+    queryFn: () => activeAreaNames(api.listOperationsAreas),
+    enabled,
+  });
+
+/** The read behind `useActiveOperationsAreaNames`, its list call a seam a spec can stub. */
+export const activeAreaNames = async (
+  listAreas: (params: OperationsListParams) => Promise<Paginated<OperationsAreaDto>>,
+): Promise<string[]> => {
+  const all = await fetchWholeCatalog((page, pageSize) =>
+    listAreas({ page, pageSize, sortBy: 'name', isActive: true }),
+  );
+  return all.items.filter((area) => area.isActive).map((area) => area.name);
+};
+
+// ── «أنواع التشغيل» (Round 20) ────────────────────────────────────────────────────────────────
+
+/**
+ * The types, archived ones included — the board names a row's archived type from this list, and
+ * the reference tab lists them to restore. The tab and the board ask with the SAME params (the
+ * whole list, the catalog's order), so they share one cache entry.
+ */
+export const useOperationsShiftTypes = (params: OperationsListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'shiftTypes', params),
+    queryFn: () => api.listOperationsShiftTypes(params),
+    enabled,
+  });
+
+/** The form words its own refusal (a name already taken → 409), so the global notifier is quiet. */
+export const useCreateOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateOperationsShiftType) => api.createOperationsShiftType(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes });
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/** An edit, and the tab's archive / restore (`isActive`), which says its own outcome too. */
+export const useUpdateOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShiftType }) =>
+      api.updateOperationsShiftType(id, body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes });
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * The types' dragged order — `useOrderOperationsCurrencies` exactly: refreshed whatever the answer,
+ * the refresh RETURNED so the tab lets go of the order it shows only once there is a newer one.
+ */
+export const useOrderOperationsShiftTypes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderOperationsShiftTypes) => api.orderOperationsShiftTypes(body),
+    onSettled: () => qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes }),
+    onError: formOwnsTheError,
+  });
+};
 
 export const useCreateOperationsArea = () => {
   const qc = useQueryClient();

@@ -1621,6 +1621,12 @@ export interface OperationsCrewAttendanceDto {
   attendance: { status: AttendanceDayStatus; onLeave: boolean } | null;
   /** Whether this member holds a vehicle on the day — the planner's reason for looking. */
   assignedVehicleId: string | null;
+  /**
+   * Whether this member holds a place on ANY of the day's crew rows — a van's row or a row with
+   * no van (Round 20). The page asks "is this person crewed today?", and a row without a van
+   * holds its people under Q11 all the same, though `assignedVehicleId` has no vehicle to name.
+   */
+  isCrewed: boolean;
 }
 
 export interface OperationsCrewAttendanceDayDto {

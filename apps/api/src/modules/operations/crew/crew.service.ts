@@ -387,21 +387,24 @@ class OperationsCrewService {
         removed.flatMap((row) => (row.direction === null ? [] : [row.direction])),
       );
 
-      const typeOf = (index: number): string | null => input.rows[index]?.shiftTypeId ?? null;
-      const newTypeIds = input.rows.flatMap((_, index) => {
-        const chosen = typeOf(index);
+      // Per ROW, not per id: one row may keep an archived type while another newly picks the same
+      // one, and the refusal must name the row that picked it — the board marks that row red.
+      const newTypeOf = input.rows.map((row, index): string | null => {
+        const chosen = row.shiftTypeId ?? null;
         const current = currentOf[index];
         const held = current?.shiftTypeId == null ? null : String(current.shiftTypeId);
-        return chosen === null || chosen === held || carriedTypes.has(chosen) ? [] : [chosen];
+        return chosen === null || chosen === held || carriedTypes.has(chosen) ? null : chosen;
       });
+      const newTypeIds = [
+        ...new Set(newTypeOf.filter((chosen): chosen is string => chosen !== null)),
+      ];
       const activeTypes = new Set(
-        (await operationsShiftTypeRepository.findLiveByIds([...new Set(newTypeIds)]))
+        (await operationsShiftTypeRepository.findLiveByIds(newTypeIds))
           .filter((type) => type.isActive)
           .map((type) => String(type._id)),
       );
-      input.rows.forEach((_, index) => {
-        const chosen = typeOf(index);
-        if (chosen === null || !newTypeIds.includes(chosen) || activeTypes.has(chosen)) return;
+      newTypeOf.forEach((chosen, index) => {
+        if (chosen === null || activeTypes.has(chosen)) return;
         throw new AppError(
           ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE,
           422,

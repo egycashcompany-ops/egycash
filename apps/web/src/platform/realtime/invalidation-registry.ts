@@ -286,6 +286,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'banks'],
   ],
   'operations.currency': [['operations', 'currencies']],
+  // Round 20 — «أنواع التشغيل»: a type renamed, recoloured, archived or dragged on another desk. The
+  // crew board names a row's type from this list (the row holds only the id), so this one key is all
+  // a change of the catalog moves.
+  'operations.shiftType': [['operations', 'shiftTypes']],
 
   // ── HR ─────────────────────────────────────────────────────────────────────
   // The company ID card's keys ride here rather than on a topic of their own: a print, a receipt

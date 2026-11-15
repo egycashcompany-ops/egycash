@@ -20,6 +20,7 @@ import {
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type CreateOperationsShipment,
+  type CreateOperationsShiftType,
   type DispatchSecuredShipments,
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
@@ -45,12 +46,14 @@ import {
   type OperationsSecuredDistributionDto,
   type OperationsSecuredDistributionSaveDto,
   type OperationsShipmentLogDto,
+  type OperationsShiftTypeDto,
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReceiveResultDto,
   type OperationsVaultHeldReportDto,
   type OperationsVaultQueueDto,
   type OrderOperationsCurrencies,
+  type OrderOperationsShiftTypes,
   type Paginated,
   type PlanOperationsCrew,
   type ReceiveIntoVaultInput,
@@ -61,6 +64,7 @@ import {
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
+  type UpdateOperationsShiftType,
 } from '@ecms/contracts';
 import {
   api,
@@ -490,6 +494,31 @@ export const updateOperationsArea = (
   id: string,
   body: UpdateOperationsArea,
 ): Promise<OperationsAreaDto> => patch<OperationsAreaDto>(`/operations/areas/${id}`, body);
+
+/**
+ * «أنواع التشغيل» (Round 20) — the crew board's «النوع» as reference data: «انا عاوز النوع يكون بيضاف
+ * من البيانات المرجعيه». Listed in the catalog's dragged order when no `sortBy` is asked for,
+ * archived types included unless `isActive` filters them out. No DELETE: archiving is
+ * `isActive: false` on the PATCH.
+ */
+export const listOperationsShiftTypes = (
+  params: OperationsListParams,
+): Promise<Paginated<OperationsShiftTypeDto>> =>
+  getPage<OperationsShiftTypeDto>(`/operations/shift-types${buildQuery(params)}`);
+
+export const createOperationsShiftType = (
+  body: CreateOperationsShiftType,
+): Promise<OperationsShiftTypeDto> => post<OperationsShiftTypeDto>('/operations/shift-types', body);
+
+export const updateOperationsShiftType = (
+  id: string,
+  body: UpdateOperationsShiftType,
+): Promise<OperationsShiftTypeDto> =>
+  patch<OperationsShiftTypeDto>(`/operations/shift-types/${id}`, body);
+
+/** The types' dragged order, as the currencies' (`orderCurrencies`): the ids in order; 204. */
+export const orderOperationsShiftTypes = (body: OrderOperationsShiftTypes): Promise<void> =>
+  put<void>('/operations/shift-types/order', body);
 
 /**
  * «تقرير البنوك» (Round 14) — the legacy `/vault1_reports`, the vault roll-up that shipped as «تجميع

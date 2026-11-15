@@ -192,6 +192,7 @@ const WIRED: readonly Wired[] = [
       ['tab-accidents.tsx', 'accidents'],
       ['tab-overview.tsx', 'overview'],
       ['tab-overview-actions.tsx', 'overview action centre'],
+      // «الصيانة والورش»: the oldest car's line, and the alarm, top and longest-stay tables.
       ['tab-maintenance.tsx', 'maintenance'],
       ['tab-today.tsx', 'today'],
       ['tab-ranking.tsx', 'ranking'],
@@ -475,8 +476,24 @@ describe('the shared chips carry the card', () => {
 });
 
 describe('the dashboard draws its cars’ codes with the card', () => {
-  it.each(['overview', 'today', 'licences'])('the %s tab', (tab) => {
+  it.each(['overview', 'today', 'maintenance', 'licences'])('the %s tab', (tab) => {
     expect(renderDashboard({ url: `/fleet?tab=${tab}` })).toContain(MARK);
+  });
+
+  it('«توزيع السيارات» draws no car’s code at all — its figures are counts by type and branch', () => {
+    expect(DRAWS_A_CODE.test(read('components/fleet-dashboard/tab-distribution.tsx'))).toBe(false);
+    const html = renderDashboard({ url: '/fleet?tab=distribution' });
+    const body = html.slice(html.indexOf('data-dash-tab-body="distribution"'));
+    expect(body).not.toContain(MARK);
+  });
+
+  it('every row of «الصيانة والورش» names its car with the card', () => {
+    const html = renderDashboard({ url: '/fleet?tab=maintenance' });
+    for (const marker of ['data-alarm-row="', 'data-top-vehicle="', 'data-longest-row="']) {
+      const rows = html.split(marker).slice(1);
+      expect(rows.length, marker).toBeGreaterThan(0);
+      for (const row of rows) expect(row.slice(0, row.indexOf('</tr>')), marker).toContain(MARK);
+    }
   });
 
   it('every licence row’s code box', () => {
@@ -488,7 +505,7 @@ describe('the dashboard draws its cars’ codes with the card', () => {
 
   it('none for a reader who may not see the registry', () => {
     const permissions = ALL_KEYS.filter((key) => key !== 'fleetVehicle.view');
-    for (const tab of ['overview', 'today', 'licences']) {
+    for (const tab of ['overview', 'today', 'maintenance', 'licences']) {
       expect(renderDashboard({ url: `/fleet?tab=${tab}`, permissions }), tab).not.toContain(MARK);
     }
   });

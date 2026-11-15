@@ -44,8 +44,10 @@ export const sectionState = (
   answers: DashboardAnswers,
 ): SectionState => {
   if (!sectionPermitted(section, answers.can)) return 'hidden';
-  if (section === 'custodyFund') return 'shown';
   const gate = FLEET_DASHBOARD_GATES[section];
+  // A screen's own hooks in the browser (the custody board, the supply contracts' summary): shown
+  // once permitted — the part draws its own loading and error.
+  if (gate.read === 'web') return 'shown';
   if (gate.read === 'now') {
     const dto = answers.now;
     if (dto === undefined) return 'pending';
@@ -121,8 +123,10 @@ export interface TabBadge {
 }
 
 /**
- * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «نظرة عامة» has
- * no count (plan D14 — the retired «التنبيهات» count went with its tab); the old tabs keep theirs.
+ * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «الصيانة والورش»
+ * the cars that reached the service limit (red, and only when there are some — it hides at 0 and
+ * with its section); «نظرة عامة» and «توزيع السيارات» have no count (the approved bar draws none);
+ * the old tabs keep theirs.
  */
 export const tabBadges = (
   answers: DashboardAnswers,
@@ -132,16 +136,14 @@ export const tabBadges = (
   if (now?.roster != null) {
     badges.today = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
   }
-  if (now?.distributionVehicles != null) {
-    badges.distribution = { n: now.distributionVehicles.totals.total, tone: 'plain' };
-  }
   const vehicles = now?.licenceVehicles?.expired;
   const drivers = now?.licenceDrivers?.expired;
   if (vehicles !== undefined || drivers !== undefined) {
     const n = (vehicles ?? 0) + (drivers ?? 0);
     badges.licences = { n, tone: n > 0 ? 'red' : 'plain' };
   }
-  if (period?.visits != null) badges.maintenance = { n: period.visits.count, tone: 'plain' };
+  const red = now?.maintenanceAlarm?.red;
+  if (red !== undefined && red > 0) badges.maintenance = { n: red, tone: 'red' };
   if (period?.accidents != null) badges.accidents = { n: period.accidents.count, tone: 'plain' };
   return badges;
 };

@@ -960,7 +960,9 @@ its entry here in the same PR.
   once per 30 seconds. Two organization settings, also on `/fleet/settings`:
   `fleet.roster.refuseExpiredLicence` (default **off** — the roster only marks; on, planning refuses
   a driver or a vehicle whose licence expired) and `fleet.odometer.missingReadingDays` (default
-  **3**, 1–30). Phase 2 (supply contracts, driver rankings, cost ranking) is not part of it.
+  **3**, 1–30). Phase 2 (supply contracts, driver rankings, cost ranking) is not part of it; this
+  year's supply contracts have since come to «توزيع السيارات», and the driver and cost rankings are
+  still Phase 2.
 
 - **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
   «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
@@ -1566,6 +1568,54 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **«لوحة تحكم الحركة» at `/fleet`: «توزيع السيارات» and «الصيانة والورش» are rebuilt as approved,
+  in place of the old «توزيع السيارات» and «الصيانة».** «جهز توزيع السيارات و الصيانة والورش عشان
+  نعملهم بى ار» — «الجدول بتاع توزيع الفروع والعربيات يكون واخد عرض الصفحة كلها البروجريس بتاع
+  الكيلومترات يكون تحته ويبقى شارتس مش بروجريس» — «تمام كبر بس الحته اللى ليها علاقة بالعقود
+  شويه». Both keep their tab keys and their place in the bar, so every old link (`?tab=distribution`,
+  `?tab=maintenance`, bookmarks, the overview's lines) opens the new body; the pill «الصيانة» now
+  reads «الصيانة والورش». «توزيع السيارات»: three operation cards (all active cars with their split
+  into «نقل الأموال» · ATM · «أخرى», «نقل الأموال», ATM — each beside its drivers, drivers per car and
+  the old-specialisation count only when there is one), the branch cards, largest first, each split
+  by operation (a branch with no active car keeps a card of zero; «بلا فرع» only when a car has no
+  branch, unlinked), the type × branch table across the whole page («—» for none, every figure but
+  «بلا فرع» opening the vehicles list), and under it «الكيلومترات حسب الفرع» as a column chart of «هذا الشهر»
+  (always the month to date, never the page's filters; «بلا فرع» / «غير مسجّلة» columns only when
+  there are some, unlinked; the daily average, or «لا يوم مغلق بعد» on the 1st). A reader of one
+  branch — chosen, or the only one granted — sees «سيارات الفرع حسب النوع» and «كيلومترات الفرع
+  هذا الشهر حسب النوع» instead; «كل فروعي» keeps the company layout over its branches. A reader of
+  `fleetVehicleContract.view` also sees this year's supply contracts (dated in the year; received of
+  contracted, remaining, red and yellow contracts; «الشركة كلها» whenever the figures are narrowed,
+  to a branch or to «كل فروعي») — a part of the
+  tab: that key alone still does not open the dashboard. «الصيانة والورش»: a «الآن» band — «بلغت حد
+  الصيانة» and «تقترب من حد الصيانة» with the two thresholds read from the settings, «في الورشة الآن»
+  with its oldest car and «نشطة · خارج الخدمة» (plain), «صفوف توكيل بلا قيمة» — each card under its
+  own permission, then «إنذارات الصيانة بالكيلومتر» (at most 8 rows, red first, the most overdue
+  first; «في الورشة: …»; no «أيام بلا قراءة» column — «فتح» opens the alarms board for that car, which
+  has it; «كل إنذارات الصيانة (N)», with no link
+  under a branch past 50 cars; active cars only, and it says so); then the page's own period bar,
+  and «خلال الفترة» counted by the day a visit LEFT the workshop: «خرجت من الورشة», «متوسط أيام
+  البقاء» (whole days from check-in to exit, the same day counting 0, one decimal, «—» when none
+  left), the visits by work type and by workshop, «أكثر السيارات دخولًا للورشة» and, from «الآن»,
+  «أطول بقاء في الورشة الآن» (at most 5, «منذ اليوم» / «منذ N يومًا», «كل السيارات في الورشة (N)»; a
+  car deleted from the registry while in the workshop stays counted and listed, with no link to its
+  file and its «فتح» on the open visits).
+  Every period link carries `outFrom`/`outTo` and the page's set; old-book exits with no registered
+  car count in the total and the bars, are not ranked, and get one line when there are some. Each
+  band shows its own read's loading and error, so one failing never blanks the other. «أرقام الفترة»
+  still counts the period's visits by the day they went in, and says so; the overview's month
+  «زيارات الصيانة» is by exit day, the same as the new tab. The tab now also shows for a reader of
+  the dealership or of the odometer alone, with that part. Counts on the bar: none on «توزيع
+  السيارات» (the approved bar has none); «الصيانة والورش» red with the cars that reached the service
+  limit, hidden at zero (it was the period's visits by check-in day). On «نظرة عامة», «في الورشة»,
+  «إنذار حرج» and the maintenance card's foot open «الصيانة والورش»; the action centre's «فتح» stay
+  on the lists. Bars and columns of both tabs are in the site colour. New read fields: R1
+  `distributionVehicles.kinds` / `noBranchKinds` / `other` (branches now ordered by active cars),
+  `maintenanceAlarm.redKm` / `yellowKm` / `rows`, `workshop.longest`; R2 `exits` grows into the exit
+  breakdown (`avgStayDays`, `byWorkType`, `byWorkshop`, `topVehicles`, `unregistered`) and `visits`
+  keeps only `count` / `closed` / `open`. The other old tabs (الكيلومترات، ترتيب السيارات، الحوادث،
+  أرقام الفترة، ملخصات، التراخيص) are unchanged. No new permission key. No migration; data unchanged.
 
 - **«لوحة تحكم الحركة» at `/fleet`: the first two redesigned tabs, «نظرة عامة» and «الحركة اليوم»,
   take the place of «التنبيهات» and «الحركة الآن»; the figures of a reader of one branch or of

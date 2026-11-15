@@ -92,7 +92,17 @@ import {
   type MonthRead,
   type NowTabProps,
 } from './dash-shell';
-import { Big, BigMoney, COUNT_CHIP, Counted, Kpi, Small, Tally, WORDS } from './dash-blocks';
+import {
+  Big,
+  BigMoney,
+  COUNT_CHIP,
+  Counted,
+  Kpi,
+  Small,
+  Tally,
+  WORDS,
+  monthName,
+} from './dash-blocks';
 import { ACTION_SECTIONS, useActionLine, type ActionView } from './tab-overview-actions';
 
 /** The word of a key under the overview's own namespace. */
@@ -262,7 +272,7 @@ const KpiRow = ({
               <CarChip
                 code={oldest.code}
                 link={
-                  oldest.vehicleId === null || !can('fleetVehicle.view')
+                  oldest.vehicleId === null || oldest.deleted || !can('fleetVehicle.view')
                     ? null
                     : links.vehicle(oldest.vehicleId, 'workshop.oldest')
                 }
@@ -726,18 +736,23 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     foot: tabLink('distribution', 'distributionVehicles.tab'),
   });
 
-  // «الصيانة والورش» — the workshop (shown on «الحركة اليوم») and the red alarm (its own board).
+  // «الصيانة والورش» — the workshop and the red alarm, both shown on the «الصيانة والورش» tab (its
+  // «الآن» band), which the two lines and the foot open.
   const maintenance: HubLine[] = [];
   if (now?.workshop != null) {
     maintenance.push(
       line(
         'workshop',
         w('hub.maintenance.open'),
-        <HubFigure n={now.workshop.open} noun="car" link={tabLink('today', 'workshop.tab')} />,
+        <HubFigure
+          n={now.workshop.open}
+          noun="car"
+          link={tabLink('maintenance', 'workshop.tab')}
+        />,
       ),
     );
   }
-  if (now?.maintenanceAlarm != null && links !== null) {
+  if (now?.maintenanceAlarm != null) {
     maintenance.push(
       line(
         'alarm',
@@ -746,7 +761,7 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
           n={now.maintenanceAlarm.red}
           noun="car"
           tone="red"
-          link={links.alarm('red', now.maintenanceAlarm.codes?.red ?? null)}
+          link={tabLink('maintenance', 'maintenanceAlarm.tab')}
         />,
       ),
     );
@@ -757,7 +772,7 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     icon: I.wrench,
     tone: 'amber',
     lines: maintenance,
-    foot: tabLink('maintenance', 'visits.tab'),
+    foot: tabLink('maintenance', 'workshop.tab'),
   });
 
   // «الحوادث والمخالفات» — the month's accidents (the accidents tab, opened on the month read's own
@@ -944,13 +959,6 @@ const monthState = (month: MonthRead): 'hidden' | 'loading' | 'failed' | 'shown'
     ? 'shown'
     : 'hidden';
 };
-
-/** «نوفمبر» — the month's name in the reader's language; the year is written apart, Latin digits. */
-const monthName = (ymd: string, locale: Locale): string =>
-  new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
-    month: 'long',
-    timeZone: 'UTC',
-  }).format(new Date(`${ymd.slice(0, 7)}-01T00:00:00.000Z`));
 
 const MonthTitle = ({ chip }: { chip: ReactNode }): JSX.Element => {
   const w = useWords();

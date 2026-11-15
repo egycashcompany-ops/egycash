@@ -59,6 +59,8 @@ const ODOMETER_DAYS = 476; // 210 × 476 ≈ 100k rows
  * be in the fixture for the R1 budget to cover it.
  */
 const SEAT_HOLDERS = 40;
+/** Visits still open — one per car, the most «أطول بقاء في الورشة الآن» lists. */
+const OPEN_VISITS = 5;
 /** Arabic letters only (the HR name rule), so each seat-holder is named from two of these. */
 const NAMES = ['أحمد', 'محمود', 'كريم', 'سامي', 'ياسر', 'حسن', 'طارق', 'وليد', 'هشام', 'عادل'];
 /**
@@ -89,8 +91,18 @@ const PLAN = { r1: 45, r2: 15 };
 // add nothing here; on a board whose listed rows carry a mission, or whose absent drivers' standing
 // cars are off the board, they add at most two (one `namesByIds`, one `codesByIds`) — hence 68.
 // R2 was 18: the overview's «زيارات الصيانة» by EXIT day is ONE count over the visits list's own
-// filter (`exitCount`) — 19.
-const CEILING = { r1: 68, r2: 19 };
+// filter — 19.
+// «توزيع السيارات» + «الصيانة والورش» (build-dm): R1 measured 66 before them on a fixture with no
+// open visit. The branch kinds come from the SAME one group (now by operation too) and the alarm
+// table from the same projection: +0; the two alarm thresholds are memoised settings: +0. The
+// fixture now holds OPEN_VISITS open stays, which exercises the workshop's existing car read (+1,
+// asked only when a visit is open), and «أطول بقاء في الورشة الآن» names its ≤ 5 rows with ONE
+// catalog `namesByIds` and ONE vehicle-types read (+2) — 69 measured; with the two of the line
+// above, 71.
+// R2: «أرقام الفترة»'s visits shrink to ONE `$group` (was a `$facet` + the catalog names + the cars
+// — −2), and the exits grow from one count into the exit-day breakdown: ONE `$facet` + the catalog
+// names + the cars + ONE vehicle-types read for the ranked cars' makes (+3) — 20.
+const CEILING = { r1: 71, r2: 20 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
@@ -99,9 +111,10 @@ const CEILING = { r1: 68, r2: 19 };
  * growing with every module that resolves the filter; 23 with the period's workshop question).
  * Measured 21 before the overview and 23 with it: the exit-day count, and the maintenance list's
  * own code resolution for that count (the visits list resolves codes as its screen does, live cars
- * only — not through the registry memo).
+ * only — not through the registry memo). 24 with «الصيانة والورش»: the same +1 as R2 above (the
+ * ranked cars' makes; the visits' names and cars moved into the exit breakdown, not added).
  */
-const CEILING_FILTERED_R2 = 23;
+const CEILING_FILTERED_R2 = 24;
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -456,7 +469,9 @@ beforeAll(async () => {
       vehicleId: new Types.ObjectId(car.id),
       vehicleCode: null,
       inDate,
-      outDate: new Date(inDate.getTime() + DAY),
+      // The last five (five different cars) are still in the workshop: «أطول بقاء في الورشة الآن»
+      // names its rows, so R1's budget covers that read too.
+      outDate: v >= 2000 - OPEN_VISITS ? null : new Date(inDate.getTime() + DAY),
       workshopId: workshop,
       workTypeId: workType,
       sparePartIds: [],
@@ -646,9 +661,10 @@ describe('no collection scan on the workshop reads of R1', () => {
 
 describe('every car unread (after a holiday): the no-reading line reads one row per car', () => {
   it('step 2 seeks each car’s newest chain row — never the whole log', async () => {
-    // Twelve days after the last reading: every active car is past N = 3 days.
+    // Twelve days after the last reading: every active car is past N = 3 days — but a car in the
+    // workshop is never «بلا قراءة» (R-07).
     const digest = await fleetOdometerService.noReadingDigest({ today: '2026-11-12', days: 3 });
-    expect(digest.stale.length).toBe(CARS);
+    expect(digest.stale.length).toBe(CARS - OPEN_VISITS);
     expect(digest.neverRead).toEqual([]);
     const ids = cars.map((car) => car.id);
     const stats = (await FleetVehicleModel.aggregate(

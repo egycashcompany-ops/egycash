@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FLEET_DASHBOARD_GATES,
   FLEET_DASHBOARD_PAGE_KEYS,
+  FLEET_DASHBOARD_PART_SECTIONS,
   fleetDashboardGateKeys,
   type FleetDashboardSection,
 } from '@ecms/contracts';
@@ -35,6 +36,10 @@ const routeGuards = (): Map<string, string[]> => {
 
 const GUARDS = routeGuards();
 const SECTIONS = Object.keys(FLEET_DASHBOARD_GATES) as FleetDashboardSection[];
+/** The sections that open the page: every gate but a PART's (drawn only inside a tab already seen). */
+const PAGE_SECTIONS = SECTIONS.filter(
+  (section) => !(FLEET_DASHBOARD_PART_SECTIONS as readonly string[]).includes(section),
+);
 
 describe('every gate names the guard of the screen it links to', () => {
   it.each(SECTIONS)('%s', (section) => {
@@ -53,11 +58,25 @@ describe('every gate names the guard of the screen it links to', () => {
 });
 
 describe('the home route', () => {
-  it('opens for a reader holding ANY key of any section — the union of the gates', () => {
+  it('opens for a reader holding ANY key of any section — the union of the gates, parts left out', () => {
     expect(GUARDS.get('index')).toEqual(['anyOf:FLEET_DASHBOARD_PAGE_KEYS']);
     expect(ROUTES).toContain("import { FLEET_DASHBOARD_PAGE_KEYS } from '@ecms/contracts';");
-    const union = new Set(SECTIONS.flatMap((section) => fleetDashboardGateKeys(section)));
+    const union = new Set(PAGE_SECTIONS.flatMap((section) => fleetDashboardGateKeys(section)));
     expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...union].sort());
+  });
+
+  it('never opens on the supply contracts’ key alone — a part of «توزيع السيارات», not a section of the page', () => {
+    expect(FLEET_DASHBOARD_PART_SECTIONS).toEqual(['supplyContracts']);
+    // The part's gate IS the contracts screen's guard, so its «فتح» never lands on a 403…
+    expect(GUARDS.get('vehicle-contracts')).toEqual(['fleetVehicleContract.view']);
+    expect(fleetDashboardGateKeys('supplyContracts')).toEqual(['fleetVehicleContract.view']);
+    // …and holding it opens nothing on the dashboard (no new permission key, no access widened).
+    expect(FLEET_DASHBOARD_PAGE_KEYS).not.toContain('fleetVehicleContract.view');
+    expect(dashboardReads((key) => key === 'fleetVehicleContract.view')).toEqual({
+      now: false,
+      period: false,
+      custody: false,
+    });
   });
 
   it('gains no key from the overview’s two new sections — no new permission key', () => {
@@ -67,9 +86,9 @@ describe('the home route', () => {
     );
     expect(fleetDashboardGateKeys('exits')).toEqual(fleetDashboardGateKeys('visits'));
     const before = new Set(
-      SECTIONS.filter((section) => section !== 'violationsOpen' && section !== 'exits').flatMap(
-        (section) => fleetDashboardGateKeys(section),
-      ),
+      PAGE_SECTIONS.filter(
+        (section) => section !== 'violationsOpen' && section !== 'exits',
+      ).flatMap((section) => fleetDashboardGateKeys(section)),
     );
     expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
   });

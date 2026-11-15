@@ -1,5 +1,6 @@
 // «لوحة تحكم الحركة» — ONE builder for the link behind every figure of the dashboard's tabs (plan R-28,
-// unified.md §6.2): «نظرة عامة» · «الحركة اليوم» and the eight tabs still waiting for their redesign. A
+// unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» and the six
+// tabs still waiting for their redesign. A
 // figure on the dashboard opens the screen that shows the same number: this file knows each screen's OWN
 // parameter names and fills them from the server's echo only — `today`, the `range` of a period, the
 // `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` — never from the
@@ -25,6 +26,7 @@
 import {
   FLEET_LICENCE_GREY_DAYS,
   addDaysYmd,
+  type FleetDashboardNowAlarmDto,
   type FleetDashboardPeriodDto,
   type FleetDashboardTab,
   type FleetDashboardVehicleScopeDto,
@@ -186,6 +188,26 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
         ? null
         : at('maintenance-alarms', { level, vehicleCodes: narrowed }, `maintenanceAlarm.${level}`);
     },
+    /** «فتح» on a row of «إنذارات الصيانة بالكيلومتر»: the alarms board on that one car. */
+    alarmRow: (level: 'red' | 'yellow', code: string): DashLink =>
+      at('maintenance-alarms', { level, vehicleCodes: [code] }, 'maintenanceAlarm.row'),
+    /**
+     * «كل إنذارات الصيانة (N)», N = red + yellow: the alarms board on both levels. Under a branch, the
+     * branch's cars by code — only when every level that has cars sent its codes (a level over the
+     * cap comes back `[]`) and the two together fit the screens' cap; else no link (the count stands).
+     */
+    alarmsAll: (alarm: FleetDashboardNowAlarmDto): DashLink | null => {
+      const level = ['red', 'yellow'] as const;
+      if (alarm.codes === null) return at('maintenance-alarms', { level }, 'maintenanceAlarm.all');
+      const { red, yellow } = alarm.codes;
+      if ((alarm.red > 0 && red.length === 0) || (alarm.yellow > 0 && yellow.length === 0)) {
+        return null;
+      }
+      const narrowed = codesOrNull([...new Set([...red, ...yellow])]);
+      return narrowed === null
+        ? null
+        : at('maintenance-alarms', { level, vehicleCodes: narrowed }, 'maintenanceAlarm.all');
+    },
     /** T1.2 / T4.1: expired = on or before today (R-02). */
     vehicleLicencesExpired: (): DashLink => licence('licenceVehicles.expired', null, today),
     /** T4.2: today+1 … today+W. */
@@ -299,8 +321,11 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
     /** T2.4 — open visits of any status. */
     workshopOpen: (metric = 'workshop.open'): DashLink =>
       at('maintenance', { state: 'open', ...br }, metric),
+    /** «فتح» on a row of «أطول بقاء في الورشة الآن»: that car's open visit. */
+    workshopCar: (code: string): DashLink =>
+      at('maintenance', { state: 'open', vehicleCodes: [code], ...br }, 'workshop.longest'),
 
-    // Tab 3 — distribution.
+    // «توزيع السيارات».
     vehiclesBy: (
       cell: { typeId?: string; branchId?: string; operationIds?: readonly string[] },
       metric: string,
@@ -323,6 +348,14 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
       specializationIds.length === 0
         ? null
         : at('drivers', { spec: specializationIds, ...br }, metric),
+    /**
+     * «عقود توريد السيارات»: the contracts DATED in today's Cairo year (contracts carry no branch, so
+     * the company's always), with one alarm level for the red / yellow counts.
+     */
+    supplyContracts: (metric: string, alarm?: 'red' | 'yellow'): DashLink => {
+      const year = today.slice(0, 4);
+      return at('vehicle-contracts', { from: `${year}-01-01`, to: `${year}-12-31`, alarm }, metric);
+    },
 
     // Tab 4 — licences and recent records.
     /** T4.6 (D17): the licensing board's own stats bar, never the bare page. */
@@ -427,22 +460,24 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
       to: `/fleet/vehicles/${encodeURIComponent(vehicleId)}`,
       metric,
     }),
-    /** T6.3 / T6.4 / T9. */
-    visits: (
-      metric = 'visits.count',
+    /** T6.3 / T6.4 — «أرقام الفترة»: the visits that ENTERED in the range (check-in day). */
+    visits: (metric = 'visits.count', extra: { state?: 'open' | 'closed' } = {}): DashLink =>
+      over('maintenance', metric, extra),
+    /**
+     * The visits that LEFT the workshop in the range — the screen's check-out bounds (`outFrom` /
+     * `outTo`), never `from` / `to` (the check-in day): «زيارات الصيانة» of the overview's month and
+     * every period figure of «الصيانة والورش». A bar adds its work type or workshop; a ranked car's
+     * code REPLACES the set's codes (the rest of the set stays).
+     */
+    exits: (
+      metric = 'exits.count',
       extra: {
-        state?: 'open' | 'closed';
         workTypes?: readonly string[];
         workshops?: readonly string[];
         vehicleCodes?: readonly string[];
       } = {},
-    ): DashLink => over('maintenance', metric, extra),
-    /**
-     * «زيارات الصيانة» of the overview's month: the visits that LEFT the workshop in the range — the
-     * screen's check-out bounds (`outFrom` / `outTo`), never `from` / `to` (the check-in day).
-     */
-    exits: (metric = 'exits.count'): DashLink =>
-      at('maintenance', { outFrom: range.from, outTo: range.to, ...set }, metric),
+    ): DashLink =>
+      at('maintenance', { outFrom: range.from, outTo: range.to, ...set, ...extra }, metric),
     /** T6.5 / T6.6 / T10.2. */
     accidents: (metric = 'accidents.count', status?: 'open'): DashLink =>
       over('accidents', metric, { status }),

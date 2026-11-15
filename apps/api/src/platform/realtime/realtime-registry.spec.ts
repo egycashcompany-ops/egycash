@@ -55,7 +55,14 @@ const DYNAMIC_ENTITY_KEYS = [
 // against the scratch reference, reaching for the shared constant rather than retyping it.
 // The employee photo adds ONE site: `employeePhotoRef` in `employee-photo.files.ts`, the single
 // reference both filing a photo and retiring the replaced ones spread rather than retype.
-const EXPECTED_DYNAMIC_SITES = 14; // the sites above + workflow-consumers relaying hr event refs
+// The one editable applicant folder adds TWO sites, and NEITHER adds an entity type — both reach
+// for a constant already pinned above, which is the whole point of the trade this count records:
+//   · `applicant-document.service.ts` gains a third `applicantDocuments` site, where HR puts or
+//     replaces a paper through the dedicated route instead of the generic file routes;
+//   · `recruitment-form.service.ts` gains an `applicantOcr` site, where the public apply page
+//     files the card it just photographed against the scratch reference — the same constant
+//     `applicant.service.ts` already uses for a card photographed inside the system.
+const EXPECTED_DYNAMIC_SITES = 16; // the sites above + workflow-consumers relaying hr event refs
 
 const collectSources = (dir: string, files: string[] = []): string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

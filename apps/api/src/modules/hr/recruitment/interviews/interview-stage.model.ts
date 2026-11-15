@@ -3,7 +3,7 @@
 // the number, names, and order are admin-managed. Localized, extensible, deactivated
 // (never hard-deleted) so historical interviews keep referencing a stage.
 import { Schema, model } from 'mongoose';
-import { type LocalizedString } from '@ecms/contracts';
+import { INTERVIEW_STAGE_MODES, type InterviewStageMode, type LocalizedString } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface InterviewStageDoc extends BaseDocFields {
@@ -11,6 +11,7 @@ export interface InterviewStageDoc extends BaseDocFields {
   name: LocalizedString;
   order: number;
   active: boolean;
+  mode: InterviewStageMode;
 }
 
 const interviewStageSchema = new Schema<InterviewStageDoc>(
@@ -19,6 +20,7 @@ const interviewStageSchema = new Schema<InterviewStageDoc>(
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     order: { type: Number, required: true },
     active: { type: Boolean, required: true, default: true },
+    mode: { type: String, enum: INTERVIEW_STAGE_MODES, required: true, default: 'evaluation' },
     ...baseFields,
   },
   baseSchemaOptions,

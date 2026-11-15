@@ -234,9 +234,9 @@ export const placeInAddressLine = (line: string): { governorate: string } | unde
   return best === undefined ? undefined : { governorate: best.governorate };
 };
 
+// A partial address is kept — none of its parts is required (only name, phone, National ID are).
 const buildAddress = (a: AddressForm): Address | undefined => {
-  if (a.line1.trim() === '' || a.city.trim() === '' || a.governorate.trim() === '')
-    return undefined;
+  if ([a.line1, a.city, a.governorate, a.line2].every((v) => v.trim() === '')) return undefined;
   return {
     line1: a.line1.trim(),
     city: a.city.trim(),

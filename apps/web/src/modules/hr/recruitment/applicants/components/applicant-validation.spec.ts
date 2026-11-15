@@ -139,13 +139,16 @@ describe('validateForm', () => {
     expect(validateForm(form({ nationalId: '' }), 'edit')).toEqual({});
   });
 
-  it('asks for the rest of a half-typed address instead of dropping it', () => {
-    // The API only stores an address with line1 + city + governorate, so a lone city would
-    // vanish on save. The form says so rather than losing the typing quietly.
-    const errors = validateForm(form({ officialAddress: address({ city: 'الدقي' }) }), 'create');
-    expect(errors['officialAddress.line1']).toBe('applicants.validation.required');
-    expect(errors['officialAddress.governorate']).toBe('applicants.validation.required');
-    expect(errors['officialAddress.city']).toBeUndefined();
+  it('requires nothing of an address — a partial one is kept as typed', () => {
+    // Only the name, the phone and the National ID are required to register an applicant.
+    const lineOnly = validateForm(
+      form({ officialAddress: address({ line1: '1 شارع', governorate: 'القاهرة' }) }),
+      'create',
+    );
+    expect(lineOnly['officialAddress.city']).toBeUndefined();
+    const cityOnly = validateForm(form({ officialAddress: address({ city: 'الدقي' }) }), 'create');
+    expect(cityOnly['officialAddress.line1']).toBeUndefined();
+    expect(cityOnly['officialAddress.governorate']).toBeUndefined();
   });
 
   it('leaves a completely empty address alone', () => {

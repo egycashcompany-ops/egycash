@@ -15,7 +15,7 @@ import {
   type Paginated,
   type ReviewApplicantDocument,
 } from '@ecms/contracts';
-import { buildQuery, del, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, post, upload } from '../../../../../shared/lib/api-client';
 
 const BASE = '/hr/applicant-documents';
 
@@ -74,3 +74,23 @@ export const bulkDeleteApplicantFolders = (
 /** A short-lived signed URL for one file's bytes (the URL itself needs no session). */
 export const fileTicket = (fileId: string): Promise<DownloadTicketDto> =>
   get<DownloadTicketDto>(`/platform/files/${fileId}/download?mode=ticket`);
+
+// ── HR fixing a folder ──────────────────────────────────────────────────────
+
+/** HR puts a file into a paper's slot (new or a clearer copy). The slot comes back accepted. */
+export const staffPutDocument = (applicantId: string, typeId: string, file: File): Promise<ApplicantDocumentSetDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload(`${BASE}/${applicantId}/documents/${typeId}/file`, form);
+};
+
+/** HR takes a paper out; the slot is empty again. */
+export const staffRemoveDocument = (applicantId: string, typeId: string): Promise<ApplicantDocumentSetDto> =>
+  del(`${BASE}/${applicantId}/documents/${typeId}`);
+
+/** HR swaps one side of the National-ID card for a clearer photo. */
+export const staffReplaceCard = (applicantId: string, side: 'front' | 'back' | 'portrait', file: File): Promise<{ fileId: string }> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload(`${BASE}/${applicantId}/card/${side}`, form);
+};

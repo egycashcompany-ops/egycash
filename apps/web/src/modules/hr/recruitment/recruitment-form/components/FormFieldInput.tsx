@@ -111,6 +111,7 @@ export const FormFieldInput = ({
       return (
         <Field
           label={label}
+          htmlFor={field.key}
           required={isRequired(field)}
           error={error}
           hint={
@@ -156,7 +157,7 @@ export const FormFieldInput = ({
             : null;
     if (choices !== null) {
       return (
-        <Field label={label} required={isRequired(field)} error={error}>
+        <Field label={label} htmlFor={field.key} required={isRequired(field)} error={error}>
           <Select {...common} value={value} onChange={(e) => set(e.target.value)}>
             <option value="">{t('applicants.form.unspecified')}</option>
             {choices.map((c) => (
@@ -179,6 +180,7 @@ export const FormFieldInput = ({
     return (
       <Field
         label={label}
+        htmlFor={field.key}
         required={isRequired(field)}
         error={error}
         hint={
@@ -213,7 +215,7 @@ export const FormFieldInput = ({
   }
   if (field.kind === 'select') {
     return (
-      <Field label={label} required={isRequired(field)} error={error}>
+      <Field label={label} htmlFor={field.key} required={isRequired(field)} error={error}>
         <Select {...common} value={value} onChange={(e) => set(e.target.value)}>
           <option value="">{t('applicants.form.unspecified')}</option>
           {field.options.map((o, i) => (
@@ -224,7 +226,7 @@ export const FormFieldInput = ({
     );
   }
   return (
-    <Field label={label} required={isRequired(field)} error={error}>
+    <Field label={label} htmlFor={field.key} required={isRequired(field)} error={error}>
       <Input
         {...common}
         type={field.kind === 'number' ? 'number' : field.kind === 'date' ? 'date' : 'text'}

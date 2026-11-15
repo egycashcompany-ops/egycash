@@ -20,6 +20,8 @@ const EnvSchema = z.object({
    */
   NATIONAL_ID_OCR_URL: z.string().url().optional(),
   NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+  /** The sidecar's `OCR_ACCESS_CODE`, when it runs locked (its LAN mode); sent as `X-Access-Code`. */
+  NATIONAL_ID_OCR_ACCESS_CODE: z.string().optional(),
 
   /**
    * ATM maintenance mailbox (ATM-6) — the ONE central reader that replaces the legacy's

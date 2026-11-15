@@ -8,6 +8,8 @@ import { Types } from 'mongoose';
 import {
   APPLICANT_DOCUMENT_REVIEW_STATUSES,
   HrApplicantDocumentEvents,
+  nationalIdCardTag,
+  type NationalIdCardSide,
   type ApplicantDocumentDto,
   type ApplicantDocumentReviewStatus,
   type ApplicantDocumentSetDto,
@@ -41,13 +43,20 @@ import { applicantDocumentRepository } from './applicant-document.repository';
 import { applicantDocumentTypeService } from './applicant-document-type.service';
 import { type ApplicantDocumentTypeDoc } from './applicant-document-type.model';
 import { type ApplicantDocumentSetDoc } from './applicant-document.model';
-import { APPLICANT_DOCUMENT_ENTITY_TYPE, resolveApplicantDocsCategoryId } from './applicant-document.files';
+import {
+  APPLICANT_DOCUMENT_ENTITY_TYPE,
+  hrFilingContext,
+  resolveApplicantDocsCategoryId,
+} from './applicant-document.files';
+import { resolveNationalIdCardCategoryId } from '../applicants/national-id-card.files';
 
 const entityRef = (applicantId: string) => ({
   moduleId: 'hr',
   entityType: APPLICANT_DOCUMENT_ENTITY_TYPE,
   entityId: applicantId,
 });
+
+const CARD_SIDE_AR: Record<NationalIdCardSide, string> = { front: 'الوجه', back: 'الظهر', portrait: 'الصورة الشخصية' };
 
 const factsOf = (doc: ApplicantDocumentTypeDoc): DocumentTypeFacts => ({
   id: String(doc._id),
@@ -349,6 +358,154 @@ class ApplicantDocumentService {
       });
     }
     return dto;
+  }
+
+  // ── HR fixing a candidate's folder ──────────────────────────────────────────
+
+  /**
+   * HR puts a file into a slot: a clearer photo of a paper the candidate sent blurred, or one they
+   * handed over in person. Any slot the candidate is asked for, whatever its status; the old file
+   * is kept as an earlier version, and the slot is accepted — the reviewer filed it themselves.
+   */
+  async staffPut(
+    ctx: AuthContext,
+    applicantId: string,
+    typeId: string,
+    binary: UploadedBinary,
+    licenseClassIn?: UploadApplicantDocument['licenseClass'],
+  ): Promise<ApplicantDocumentSetDto> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null) throw new NotFoundError();
+    const asked = await this.askedOf(applicant);
+    const target = asked.find((entry) => entry.facts.id === typeId);
+    if (target === undefined) {
+      throw new ValidationError([
+        { field: 'typeId', code: 'INVALID', message: 'this document is not asked of this applicant' },
+      ]);
+    }
+    const set = await applicantDocumentRepository.ensureFor(applicantId, applicant.code, applicant.fullNameAr);
+    const existing = set.documents.find((doc) => String(doc.typeId) === typeId) ?? null;
+    const licenseClass = licenseClassIn ?? existing?.licenseClass ?? undefined;
+    if (licenseClassProblem(target.facts, licenseClass) !== null) {
+      throw new ValidationError([
+        { field: 'licenseClass', code: 'INVALID', message: 'choose the licence class — first or second' },
+      ]);
+    }
+    const filing = hrFilingContext(ctx, applicantId);
+    const now = new Date();
+    const verdict = {
+      reviewedBy: new Types.ObjectId(ctx.userId),
+      reviewedAt: now,
+      reviewNote: null,
+    };
+
+    let result: ApplicantDocumentSetDoc | null;
+    if (existing === null) {
+      const file = await fileService.upload(
+        filing,
+        {
+          moduleId: 'hr',
+          entityType: APPLICANT_DOCUMENT_ENTITY_TYPE,
+          entityId: applicantId,
+          categoryId: await resolveApplicantDocsCategoryId(),
+          displayName: target.name.ar,
+          visibility: 'private',
+          tags: [],
+        },
+        binary,
+      );
+      result = await applicantDocumentRepository.addDocument(applicantId, {
+        typeId: new Types.ObjectId(typeId),
+        typeKey: target.facts.key,
+        typeName: target.name,
+        required: target.facts.required,
+        status: 'accepted',
+        fileId: file._id,
+        fileName: file.originalName,
+        fileVersion: file.fileVersion,
+        licenseClass: licenseClass ?? null,
+        uploadedAt: now,
+        ...verdict,
+      });
+      if (result === null) throw new ConflictError('this document was just uploaded — reload and replace it');
+    } else {
+      const file = await fileService.replace(filing, String(existing.fileId), binary);
+      result = await applicantDocumentRepository.staffSetDocument(applicantId, typeId, {
+        fileId: file._id,
+        fileName: file.originalName,
+        fileVersion: file.fileVersion,
+        licenseClass: licenseClass ?? null,
+        uploadedAt: now,
+        ...verdict,
+      });
+      if (result === null) throw new ConflictError('this document changed while you were uploading — reload it');
+    }
+    await auditService.record({
+      entityRef: entityRef(applicantId),
+      action: existing === null ? 'create' : 'update',
+      changes: [{ field: 'documentByHr', old: existing === null ? null : existing.typeKey, new: target.facts.key }],
+    });
+    return this.toDto(result, asked);
+  }
+
+  /** HR takes a paper out of the folder; the slot is empty again and the file goes to the bin. */
+  async staffRemove(ctx: AuthContext, applicantId: string, typeId: string): Promise<ApplicantDocumentSetDto> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null) throw new NotFoundError();
+    const asked = await this.askedOf(applicant);
+    const set = await applicantDocumentRepository.findByApplicant(applicantId);
+    const existing = set?.documents.find((doc) => String(doc.typeId) === typeId) ?? null;
+    if (existing === null) throw new NotFoundError();
+    await fileService.softDelete(ctx, String(existing.fileId));
+    const result = await applicantDocumentRepository.removeDocument(applicantId, typeId);
+    if (result === null) throw new NotFoundError();
+    await auditService.record({
+      entityRef: entityRef(applicantId),
+      action: 'delete',
+      changes: [{ field: 'document', old: existing.typeKey, new: null }],
+    });
+    return this.toDto(result, asked);
+  }
+
+  /**
+   * HR swaps one side of the National-ID card for a clearer photo. The old image is kept as an
+   * earlier version of the same file; with no card on file yet, the photo is filed as that side.
+   */
+  async staffReplaceCard(
+    ctx: AuthContext,
+    applicantId: string,
+    side: NationalIdCardSide,
+    binary: UploadedBinary,
+  ): Promise<{ fileId: string }> {
+    const applicant = await applicantService.findByIdSystem(applicantId);
+    if (applicant === null) throw new NotFoundError();
+    const found = await fileService.list(
+      { moduleId: 'hr', entityType: 'applicant', entityId: applicantId, tag: nationalIdCardTag(side), page: 1, pageSize: 1, sortDir: 'desc' },
+      { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+    );
+    const current = found.items[0];
+    const file =
+      current === undefined
+        ? await fileService.upload(
+            ctx,
+            {
+              moduleId: 'hr',
+              entityType: 'applicant',
+              entityId: applicantId,
+              categoryId: await resolveNationalIdCardCategoryId(),
+              displayName: `${applicant.fullNameAr} — بطاقة الرقم القومي (${CARD_SIDE_AR[side]})`,
+              visibility: 'private',
+              tags: [nationalIdCardTag(side)],
+            },
+            binary,
+          )
+        : await fileService.replace(ctx, String(current._id), binary);
+    await auditService.record({
+      entityRef: { moduleId: 'hr', entityType: 'applicant', entityId: applicantId },
+      action: 'update',
+      changes: [{ field: 'nationalIdCardByHr', old: null, new: side }],
+    });
+    return { fileId: String(file._id) };
   }
 
   /** The staff-side list. */

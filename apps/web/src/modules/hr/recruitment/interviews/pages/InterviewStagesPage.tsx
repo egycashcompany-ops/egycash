@@ -3,7 +3,7 @@
 // order number, and enable/disable — all from the UI, gated by `interviewStage.manage`. The
 // pipeline (progression, per-stage queues, board columns) derives from the ACTIVE stages in order.
 import { useState } from 'react';
-import { type InterviewStageDto, type Locale } from '@ecms/contracts';
+import { INTERVIEW_STAGE_MODES, type InterviewStageDto, type InterviewStageMode, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
@@ -11,7 +11,7 @@ import { PageContainer, PageHeader } from '../../../../../platform/layout/PageCo
 import { Card, CardBody } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Field, Input, Checkbox } from '../../../../../shared/ui/form';
+import { Field, Input, Checkbox, Select } from '../../../../../shared/ui/form';
 import { StatusBadge } from '../../../../../shared/ui/Badge';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
@@ -36,6 +36,7 @@ const StageDialog = ({ editing, onClose }: { editing: NonNullable<Editing>; onCl
   const [nameAr, setNameAr] = useState(stage?.name.ar ?? '');
   const [order, setOrder] = useState(String(stage?.order ?? ''));
   const [active, setActive] = useState(stage?.active ?? true);
+  const [runMode, setRunMode] = useState<InterviewStageMode>(stage?.mode ?? 'evaluation');
   const pending = create.isPending || update.isPending;
 
   const valid =
@@ -47,12 +48,12 @@ const StageDialog = ({ editing, onClose }: { editing: NonNullable<Editing>; onCl
   const submit = async (): Promise<void> => {
     try {
       if (stage === null) {
-        await create.mutateAsync({ key, name: { en: nameEn.trim(), ar: nameAr.trim() }, order: Number(order) });
+        await create.mutateAsync({ key, name: { en: nameEn.trim(), ar: nameAr.trim() }, order: Number(order), mode: runMode });
         toast.success(t('interviews.stages.created'));
       } else {
         await update.mutateAsync({
           id: stage.id,
-          body: { name: { en: nameEn.trim(), ar: nameAr.trim() }, order: Number(order), active, version: stage.version },
+          body: { name: { en: nameEn.trim(), ar: nameAr.trim() }, order: Number(order), active, mode: runMode, version: stage.version },
         });
         toast.success(t('interviews.stages.updated'));
       }
@@ -91,6 +92,13 @@ const StageDialog = ({ editing, onClose }: { editing: NonNullable<Editing>; onCl
         </div>
         <Field label={t('interviews.stages.order')} required hint={t('interviews.stages.orderHint')}>
           <Input type="number" min={1} max={20} value={order} onChange={(e) => setOrder(e.target.value)} dir="ltr" />
+        </Field>
+        <Field label={t('interviews.stages.mode')} hint={t(`interviews.stages.modeHint.${runMode}`)}>
+          <Select value={runMode} onChange={(e) => setRunMode(e.target.value as InterviewStageMode)}>
+            {INTERVIEW_STAGE_MODES.map((m) => (
+              <option key={m} value={m}>{t(`interviews.stages.modeName.${m}`)}</option>
+            ))}
+          </Select>
         </Field>
         {stage !== null && (
           <Checkbox label={t('interviews.stages.active')} checked={active} onChange={(e) => setActive(e.target.checked)} />
@@ -145,6 +153,10 @@ export const InterviewStagesPage = (): JSX.Element => {
                     </p>
                     <p className="truncate font-mono text-xs text-slate-400" dir="ltr">{s.key}</p>
                   </div>
+                  <StatusBadge
+                    tone={s.mode === 'decisionOnly' ? 'info' : 'brand'}
+                    label={t(`interviews.stages.modeName.${s.mode}`)}
+                  />
                   {!s.active && <StatusBadge tone="neutral" label={t('interviews.stages.disabled')} />}
                 </div>
                 <Can permission="interviewStage.manage">

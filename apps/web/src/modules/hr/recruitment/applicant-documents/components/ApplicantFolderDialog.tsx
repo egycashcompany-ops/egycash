@@ -44,6 +44,7 @@ import {
 } from './applicant-folder-groups';
 import { CardTile, FileRow, downloadName, save } from './folder-file-bits';
 import { FolderShell } from './folder-shell';
+import { AddAttachmentButton, FolderEditProvider, PickFileButton, useFolderEdit } from './folder-edit';
 
 /** The glyph on each drawer's front panel. The card drawer holds pictures; the others hold files. */
 const FACE: Record<ApplicantSubFolderId, (props: { className: string }) => JSX.Element> = {
@@ -129,9 +130,44 @@ const DocumentsDrawer = ({
       .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : 0))
       .map(([, group]) => group);
   }, [files, locale, t]);
+  const edit = useFolderEdit();
+  const missing = edit?.canEdit === true ? edit.missing : [];
 
   return (
     <div className="space-y-4">
+      {missing.length > 0 && (
+        <section className="space-y-2">
+          <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t('applicantFile.missing')}
+          </h5>
+          <ul className="grid grid-cols-1 gap-2">
+            {missing.map((slot) => (
+              <li
+                key={slot.typeId}
+                className="flex items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-900"
+              >
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800">
+                  <FileIcon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {localized(slot.name, locale)}
+                  </span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    {slot.required ? t('apply.required') : t('apply.optional')} · {t('applicantFile.none')}
+                  </span>
+                </span>
+                <PickFileButton primary label={t('applicantFile.upload')} onPick={(file) => edit!.putDoc(slot.typeId, file)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {groups.length === 0 && missing.length === 0 && (
+        <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          {t('hr.applicantFolders.subNone.documents')}
+        </p>
+      )}
       {groups.map((group) => (
         <section key={group.label} className="space-y-2">
           <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -191,20 +227,26 @@ const Drawer = ({
 }): JSX.Element => {
   const t = useT();
   if (id === 'card') return <CardDrawer files={files} code={code} />;
+  if (id === 'documents') return <DocumentsDrawer files={files} code={code} />;
   if (files.length === 0) {
     return (
+      <div className="space-y-3">
+        <div className="flex justify-end"><AddAttachmentButton /></div>
       <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
         {t(`hr.applicantFolders.subNone.${id}`)}
       </p>
+      </div>
     );
   }
-  if (id === 'documents') return <DocumentsDrawer files={files} code={code} />;
   return (
-    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {files.map((item) => (
-        <FileRow key={item.file.id} item={item} code={code} />
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <div className="flex justify-end"><AddAttachmentButton /></div>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {files.map((item) => (
+          <FileRow key={item.file.id} item={item} code={code} />
+        ))}
+      </ul>
+    </div>
   );
 };
 
@@ -418,7 +460,9 @@ export const ApplicantFolderDialog = ({
       ) : detail.isError || detail.data === undefined ? (
         <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
       ) : (
-        <ApplicantFolderBody folder={detail.data} sub={sub} onNavigate={setSub} />
+        <FolderEditProvider applicantId={detail.data.applicantId}>
+          <ApplicantFolderBody folder={detail.data} sub={sub} onNavigate={setSub} />
+        </FolderEditProvider>
       )}
     </Dialog>
   );

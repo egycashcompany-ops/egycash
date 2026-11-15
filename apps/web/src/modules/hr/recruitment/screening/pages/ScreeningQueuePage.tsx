@@ -39,6 +39,20 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+/** Whole years since the birth date, today — or null when the birth date is unknown. */
+const ageFromBirthDate = (iso: string | null): number | null => {
+  if (iso === null) return null;
+  const born = new Date(iso);
+  if (Number.isNaN(born.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - born.getUTCFullYear();
+  const beforeBirthday =
+    now.getMonth() < born.getUTCMonth() ||
+    (now.getMonth() === born.getUTCMonth() && now.getDate() < born.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 0 ? age : null;
+};
+
 export const ScreeningQueuePage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -133,6 +147,21 @@ export const ScreeningQueuePage = (): JSX.Element => {
       key: 'applicant',
       header: t('screening.columns.applicant'),
       render: (s) => <span>{s.applicantName}</span>,
+    },
+    {
+      key: 'age',
+      header: t('screening.columns.age'),
+      align: 'center',
+      render: (s) => {
+        const age = ageFromBirthDate(s.applicantBirthDate ?? null);
+        return age === null ? '—' : formatNumber(age, locale);
+      },
+    },
+    {
+      key: 'education',
+      header: t('screening.columns.education'),
+      render: (s) =>
+        s.applicantEducationLevel == null ? '—' : t(`applicants.education.${s.applicantEducationLevel}`),
     },
     { key: 'status', header: t('screening.columns.status'), sortable: true, render: (s) => <ScreeningStatusBadge status={s.status} /> },
     { key: 'notes', header: t('screening.columns.notes'), align: 'center', render: (s) => formatNumber(s.notes.length, locale) },

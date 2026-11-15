@@ -33,6 +33,10 @@ describe('navigation hubs', () => {
       'applicant.view',
       'interviewStage.manage',
       'evaluationPhase.manage',
+      // «مستندات مطلوبة للتعيين» — its own key, not a second copy of the form's. A hub row opens
+      // for anybody holding ANY tab key, so listing one key twice said nothing; a distinct key is
+      // what makes this tab grantable, and refusable, on its own.
+      'hiringRequirement.manage',
       'announcement.send',
       'notificationRule.view',
     ]);

@@ -70,6 +70,7 @@ describe('the bar', () => {
       'applicant-sources',
       'interview-stages',
       'evaluation-phases',
+      'hiring-requirements',
       'announcements',
       'notification-rules',
     ]);

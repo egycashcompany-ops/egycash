@@ -651,10 +651,17 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   overrides) and saved as its box is left. A value is kept on the record and used by every paper
   that prints it; no template changes. The employee code is shown, never typed — the server drops
   an override of it — because the hire gives exactly the code kept at the first print.
-- **The record** (`hr_candidate_drafts`, one per offer) holds the papers ticked, the typed-in
-  values, the term, the employee number kept, and the prints. Every change is saved as it is made,
-  in sequence with the version each save returns; a stale save is refused (409) and the page reloads
-  from the record.
+- **The record** (`hr_candidate_drafts`, one per offer) holds what HR ticked or unticked, the
+  typed-in values, the term, the employee number kept, and the prints. Every change is saved as it
+  is made, in sequence with the version each save returns; a stale save is refused (409) and the
+  page reloads from the record.
+- **The tiles start as the job ticks them** («مفروض تنور علي اساس الوظيفه اللي خاصه بيه فبينور علي
+  النمازج الخاصه بالوظيفه»). The page sends every paper ticked, but the record keeps only how that
+  differs from the job: the papers ticked beyond the job's (`added`) and those taken off them
+  (`removed`). Every paper HR did not touch follows the job as it now stands, so one «مستندات
+  الوظائف» gives the job later starts ticked for the candidate too. Drafts saved before kept the
+  whole list (`selected`), ticked against papers since changed; the boot migration
+  (`candidate-draft.migration.ts`) gives each the empty choice, so they follow their job again.
 - **The first print** takes the next employee number from the sequence and keeps it for the
   candidate, so the bank letter carries the code the hire gives. A candidate never hired leaves that
   number unused. Every print is counted and audited on the offer (`export`, `candidatePapers`).

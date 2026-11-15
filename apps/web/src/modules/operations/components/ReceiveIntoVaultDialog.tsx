@@ -23,7 +23,10 @@
 //      under its legacy summary line («[1 - 4]», «[6 - 8] - [10 - 11] - 13», the lone ones red). A
 //      barcode scanner types the number and sends Enter: Enter moves to the next box. Round 18b:
 //      the first and the last box hold numbers → the boxes between take the numbers between, in
-//      order («يملى اللى ف النص بالترتيب بينهم»; the rules are `fillSealRange`'s).
+//      order («يملى اللى ف النص بالترتيب بينهم»; the rules are `fillSealRange`'s). Round 21: «مينفعش
+//      يكون فيه رقم للحقائب و الصناديق زى بعض برضو» — a seal is named ONCE in the receipt, bags and
+//      boxes together: every box holding a repeat is red, one notice under the seals says which
+//      numbers and where, and «استلام» waits until they are corrected (`sealRepeats`).
 //
 // «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى»: NO NAMES — the two
 // treasurers (Q2's dual control) are gone, with «يجب أن يستلم كل شحنة شخصان مختلفان»; the receiver
@@ -41,7 +44,7 @@
 // currency, a date under its box, in the shipment form's words; the rest as a toast. One that says
 // this shipment can no longer be received from here (someone received it meanwhile, or it is
 // locked) closes the form over a board that re-reads.
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   MAX_PAGE_SIZE,
   OPERATIONS_VAULT_BAG_SEALS_PER_BAG,
@@ -85,9 +88,13 @@ import {
   receiveRequest,
   sealPartText,
   sealRangeNote,
+  sealRepeatNotice,
+  sealRepeatTitle,
+  sealRepeats,
   sealSummary,
   sealsToSend,
   shipmentPatch,
+  shownSeals,
   typeSeal,
   type ReceiptDraft,
   type ReceiveField,
@@ -167,10 +174,11 @@ const HeldBox = ({
 
 /**
  * The summary line over a list of seals, as legacy wrote it — a run bracketed, a lone seal RED.
- * Written right to left on an Arabic page as legacy's was: «[6 - 8] - [10 - 11] - 13».
+ * Written right to left on an Arabic page as legacy's was: «[6 - 8] - [10 - 11] - 13». A seal typed
+ * twice is listed once here; since Round 21 the repeat is a refusal, said ONCE for the whole
+ * receipt under the seals (`SealRepeatNotice`) — no longer an amber «مكرر» beside each list.
  */
 export const SealSummaryLine = ({ seals }: { seals: readonly string[] }): JSX.Element | null => {
-  const t = useT();
   const summary = sealSummary(seals);
   if (summary.parts.length === 0) return null;
   return (
@@ -196,15 +204,33 @@ export const SealSummaryLine = ({ seals }: { seals: readonly string[] }): JSX.El
           </span>
         </Fragment>
       ))}
-      {summary.duplicates.length > 0 && (
-        <span
-          data-seal-duplicates="true"
-          className="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-800 [font-family:'Cairo',sans-serif] dark:bg-amber-500/15 dark:text-amber-300"
-        >
-          {t('operations.secured.receive.duplicates', { seals: summary.duplicates.join('، ') })}
-        </span>
-      )}
     </span>
+  );
+};
+
+/**
+ * Round 21 — the ONE notice under the seals: which numbers repeat and where («الرقم 1 مكرر — في
+ * الحقائب والصناديق»), and the rule it breaks. Red, as the boxes it explains; announced as it
+ * appears, so a scanner's operator hears it too. `id` is what «استلام» points at for its reason.
+ */
+export const SealRepeatNotice = ({ id, text }: { id: string; text: string }): JSX.Element => {
+  const t = useT();
+  return (
+    <div
+      id={id}
+      role="alert"
+      data-seal-repeat="true"
+      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] dark:border-rose-500/50 dark:bg-rose-500/10"
+    >
+      <Stroke
+        d={[...SHIPMENT_PATH.alert]}
+        className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
+      />
+      <span className="font-bold text-rose-800 dark:text-rose-200">{text}</span>
+      <span className="font-medium text-rose-700/90 dark:text-rose-300/90">
+        {t('operations.secured.receive.sealRepeatRule')}
+      </span>
+    </div>
   );
 };
 
@@ -240,6 +266,7 @@ export const SealBoxes = ({
   list,
   slots,
   perUnit,
+  repeated = [],
   onChange,
 }: {
   kind: 'bag' | 'box';
@@ -249,10 +276,15 @@ export const SealBoxes = ({
   list: SealList;
   slots: number;
   perUnit: number;
+  /**
+   * Round 21 — per box on screen, where else in the receipt its seal is (`sealRepeatTitle`); null
+   * (or nothing) for a box whose seal is its own. A box with a word here is drawn red.
+   */
+  repeated?: readonly (string | null)[];
   onChange: (index: number, value: string) => void;
 }): JSX.Element => {
   const t = useT();
-  const shown = growSeals(list.seals, slots).slice(0, slots);
+  const shown = shownSeals(list, slots);
   const note = sealRangeNote(list, slots);
   return (
     <div data-seal-list={kind} className="space-y-1.5">
@@ -298,6 +330,9 @@ export const SealBoxes = ({
               { unit: Math.floor(index / perUnit) + 1, seal: (index % perUnit) + 1 },
             );
             const filled = list.filled[index] === true;
+            // A repeat is the box's problem whoever wrote it — the range fill's number too: red
+            // wins over the fill's tint, and the title says where else the seal is.
+            const repeat = repeated[index] ?? null;
             return (
               <input
                 // A box is a POSITION (legacy's): its index is its identity.
@@ -316,14 +351,22 @@ export const SealBoxes = ({
                 }}
                 data-seal-input={kind}
                 data-seal-filled={filled ? 'true' : undefined}
+                data-seal-repeat={repeat === null ? undefined : 'true'}
+                aria-invalid={repeat === null ? undefined : true}
                 aria-label={label}
-                title={filled ? `${label} — ${t('operations.secured.receive.sealFilled')}` : label}
+                title={[
+                  label,
+                  ...(filled ? [t('operations.secured.receive.sealFilled')] : []),
+                  ...(repeat === null ? [] : [repeat]),
+                ].join(' — ')}
                 className={cn(
                   'h-9 w-full rounded-lg border px-2 text-center text-[15px] font-semibold shadow-inner transition-colors',
-                  filled
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200'
-                    : 'border-slate-200 bg-slate-50 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white',
-                  'focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
+                  repeat !== null
+                    ? 'border-2 border-rose-500 bg-rose-50 text-rose-800 focus:border-rose-600 focus:ring-rose-500 dark:border-rose-400 dark:bg-rose-500/15 dark:text-rose-100'
+                    : filled
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-800 focus:border-indigo-500 focus:ring-indigo-500 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200'
+                      : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-indigo-500 focus:ring-indigo-500 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white',
+                  'focus:outline-none focus:ring-1',
                   MONO,
                 )}
               />

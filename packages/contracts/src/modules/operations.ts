@@ -2334,12 +2334,34 @@ export const ReceiveIntoVaultShipmentPatchSchema = UpdateOperationsShipmentSchem
 });
 export type ReceiveIntoVaultShipmentPatch = z.infer<typeof ReceiveIntoVaultShipmentPatchSchema>;
 
-/** A list of seal numbers as typed: each trimmed, the blank ones dropped (an empty box is no seal). */
-const sealNumbers = z
-  .array(z.string().trim())
-  .max(500)
-  .default([])
-  .transform((seals) => seals.filter((seal) => seal !== ''));
+/**
+ * A list of seal numbers as typed, each trimmed. The blank ones (an empty box is no seal) are
+ * dropped by `ReceiveIntoVaultSchema` itself, AFTER the repeat check, so a repeat is named at the
+ * index the client sent it at, not at its index once the blanks are gone.
+ */
+const sealNumbers = z.array(z.string().trim()).max(500).default([]);
+
+const withoutBlanks = (seals: readonly string[]): string[] => seals.filter((seal) => seal !== '');
+
+/**
+ * Round 21 — WHAT MAKES TWO SEALS THE SAME SEAL, for the vault receipt's one-seal-once rule (the
+ * owner: «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»). One definition for the contract's
+ * refusal and the receive form's red boxes, so the two can never disagree about a repeat:
+ *
+ *   · A seal of digits only is a WHOLE NUMBER: 0099 and 99 are one seal, and ٩٩ (Arabic-Indic, as
+ *     an Arabic keyboard types it) is that seal too. Compared as text with the leading zeros gone,
+ *     so a barcode longer than a JavaScript number is exact still compares exactly.
+ *   · Anything else (a barcode with a letter in it) is compared exactly as typed, trimmed.
+ *   · A blank is no seal: null.
+ *
+ * Not to be confused with the ATM module's `sealKey` (DS-15), which is that module's own rule.
+ */
+export const vaultSealKey = (seal: string): string | null => {
+  const trimmed = seal.trim();
+  if (trimmed === '') return null;
+  const digits = asciiDigits(trimmed);
+  return /^[0-9]+$/u.test(digits) ? digits.replace(/^0+(?=[0-9])/u, '') : trimmed;
+};
 
 /**
  * The vault's ✓ — `POST /operations/secured/:id/receive` (`operationsVault.receive`): custody taken,
@@ -2357,6 +2379,12 @@ const sealNumbers = z
  *   · SEALS: `bagSeals` / `boxSeals` as typed, each trimmed, blank entries dropped. No length is tied
  *     to the counts — the form draws `bagCount × bagSealsPerBag` boxes for bags and 2 per box, and
  *     what is left empty is simply not a seal. Cartons have none.
+ *   · ONE SEAL, ONCE PER RECEIPT (Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»):
+ *     a seal number appears once across `bagSeals` AND `boxSeals` together — a bag's seal may not be
+ *     a box's, and no seal may be typed twice in its own list. "The same seal" is
+ *     `vaultSealKey`'s (0099 = 99 = ٩٩). A refusal, not a warning: 400 `VALIDATION_FAILED`, the
+ *     issue on the LATER occurrence (`body.boxSeals.1`, as sent — blanks counted), its message
+ *     naming the seal and where it first appeared. Other shipments' seals are not compared.
  *   · «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination
  *     (`OPERATIONS_VAULT_DENOMINATIONS`); a value not in the list, or the same one twice, is a 400;
  *     a count of 0 is accepted and not stored.
@@ -2439,7 +2467,32 @@ export const ReceiveIntoVaultSchema = z
       }
       seen.add(line.value);
     });
-  });
+    // Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: a seal closes ONE package,
+    // so one receipt names it once — bags and boxes read as one list, bags first. The first time a
+    // seal appears is its place; every later one is refused where it stands.
+    const firstAt = new Map<string, string>();
+    for (const list of ['bagSeals', 'boxSeals'] as const) {
+      value[list].forEach((seal, index) => {
+        const key = vaultSealKey(seal);
+        if (key === null) return;
+        const first = firstAt.get(key);
+        if (first === undefined) {
+          firstAt.set(key, `${list}.${index}`);
+          return;
+        }
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [list, index],
+          message: `seal ${JSON.stringify(seal)} is already in this receipt at ${first} — a seal appears once across bagSeals and boxSeals`,
+        });
+      });
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    bagSeals: withoutBlanks(value.bagSeals),
+    boxSeals: withoutBlanks(value.boxSeals),
+  }));
 export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
 /** What a client sends — every field but `version` may be left out. */
 export type ReceiveIntoVaultInput = z.input<typeof ReceiveIntoVaultSchema>;

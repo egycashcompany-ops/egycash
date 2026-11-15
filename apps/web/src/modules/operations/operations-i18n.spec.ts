@@ -316,6 +316,10 @@ const SECURED_KEYS = [
     'print', 'printHint', 'takenBanner', 'shipmentIncomplete', 'errors.notDraft',
     // Round 18b — the first and the last box fill the boxes between them.
     'sealFilled', 'rangeMismatch',
+    // Round 21 — one seal, once per receipt, bags and boxes together.
+    ...PLURAL_FORMS.map((form) => `sealRepeat.${form}`),
+    ...['both', 'bags', 'boxes'].map((where) => `sealRepeatWhere.${where}`),
+    'sealRepeatRule', 'sealRepeatAt', 'sealPlace.bag', 'sealPlace.box', 'sealRepeatRefused',
     ...[
       'title', 'titleDraft', 'department', 'draftNote', 'takenNote', 'item', 'value', 'line',
       'bags', 'sealCount', 'denomination', 'notes', 'receivedBy', 'receivedAt',

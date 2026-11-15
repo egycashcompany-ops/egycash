@@ -11223,6 +11223,23 @@ const en: Record<string, string> = {
   'operations.secured.receive.sealFilled': 'Filled in order between the first and the last box',
   'operations.secured.receive.rangeMismatch':
     'The range {{from}} to {{to}} does not match the number of boxes ({{boxes}}), so the boxes between were not filled.',
+  // Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: one receipt names a seal once,
+  // bags and boxes together — a refusal, said in one notice under the seals.
+  'operations.secured.receive.sealRepeat.one': 'Seal {{seals}} is repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.two': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.few': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.many': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.other': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeatWhere.both': 'in the bags and the boxes',
+  'operations.secured.receive.sealRepeatWhere.bags': 'in the bags',
+  'operations.secured.receive.sealRepeatWhere.boxes': 'in the boxes',
+  'operations.secured.receive.sealRepeatRule':
+    'A seal number may appear only once in a receipt, bags and boxes together.',
+  'operations.secured.receive.sealRepeatAt': 'Repeated — also in {{places}}',
+  'operations.secured.receive.sealPlace.bag': 'bag {{unit}}, seal {{seal}}',
+  'operations.secured.receive.sealPlace.box': 'box {{unit}}, seal {{seal}}',
+  'operations.secured.receive.sealRepeatRefused':
+    'A seal number is repeated in this receipt — each seal may appear only once, bags and boxes together.',
   'operations.secured.receive.receiverNote': 'Received by the signed-in user: {{name}}',
   'operations.secured.receive.print': 'Receipt',
   'operations.secured.receive.printHint': 'Print the vault receipt',
@@ -24882,6 +24899,22 @@ const ar: Record<string, string> = {
   'operations.secured.receive.sealFilled': 'مُلئت بالترتيب بين الخانة الأولى والأخيرة',
   'operations.secured.receive.rangeMismatch':
     'النطاق من {{from}} إلى {{to}} لا يساوي عدد الخانات ({{boxes}})، فلم تُملأ الخانات بينهما.',
+  // الجولة 21 — لا يتكرر رقم الختم في الاستلام الواحد، في الحقائب والصناديق معًا.
+  'operations.secured.receive.sealRepeat.one': 'الرقم {{seals}} مكرر — {{where}}',
+  'operations.secured.receive.sealRepeat.two': 'الرقمان {{seals}} مكرران — {{where}}',
+  'operations.secured.receive.sealRepeat.few': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeat.many': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeat.other': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeatWhere.both': 'في الحقائب والصناديق',
+  'operations.secured.receive.sealRepeatWhere.bags': 'في الحقائب',
+  'operations.secured.receive.sealRepeatWhere.boxes': 'في الصناديق',
+  'operations.secured.receive.sealRepeatRule':
+    'لا يُقبل رقم الختم إلا مرة واحدة في الاستلام، في الحقائب والصناديق معًا.',
+  'operations.secured.receive.sealRepeatAt': 'مكرر — موجود أيضًا في {{places}}',
+  'operations.secured.receive.sealPlace.bag': 'الحقيبة {{unit}}، الختم {{seal}}',
+  'operations.secured.receive.sealPlace.box': 'الصندوق {{unit}}، الختم {{seal}}',
+  'operations.secured.receive.sealRepeatRefused':
+    'رقم ختم مكرر في هذا الاستلام — لا يُقبل رقم الختم إلا مرة واحدة، في الحقائب والصناديق معًا.',
   'operations.secured.receive.receiverNote': 'يُسجَّل المستلم تلقائيًا: {{name}}',
   'operations.secured.receive.print': 'إيصال',
   'operations.secured.receive.printHint': 'طباعة إيصال الاستلام',

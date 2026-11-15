@@ -8885,6 +8885,67 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     expect((await read(shipment.id)).status).toBe('draft');
   });
 
+  // Round 21 — the owner, over his own form with bags 1 … 6 and boxes 1 and 3: «مينفعش يكون فيه رقم
+  // للحقائب و الصناديق زى بعض برضو». One receipt names a seal once, bags and boxes together; the
+  // same number twice is REFUSED (not the amber «مكرر» of before), and nothing of the receipt lands.
+  it('refuses a seal named twice in one receipt — a bag seal that is a box seal — and writes nothing', async () => {
+    const shipment = await book();
+    const owners = {
+      receiptNumber: 'R21-SEALS',
+      bagCount: 3,
+      bagSeals: ['1', '2', '3', '4', '5', '6'],
+      boxCount: 1,
+      boxSeals: ['1', '3'],
+      serialTracked: true,
+      version: shipment.version,
+    };
+    const refused = await receive(shipment.id, owners);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(400);
+    expect(errorCode(refused)).toBe(ErrorCodes.VALIDATION_FAILED);
+    // Said on the LATER of each pair — the boxes — naming the seal and the bag box it repeats.
+    const details = (
+      refused.body as { error: { details: { field: string; code: string; message: string }[] } }
+    ).error.details;
+    expect(details.map((detail) => detail.field)).toEqual(['body.boxSeals.0', 'body.boxSeals.1']);
+    expect(details[0]?.message).toContain('"1"');
+    expect(details[0]?.message).toContain('bagSeals.0');
+    expect(details[1]?.message).toContain('"3"');
+    expect(details[1]?.message).toContain('bagSeals.2');
+
+    // The same seal however it is written, and a seal twice inside one list — all refused.
+    for (const seals of [
+      { bagSeals: ['0099'], boxSeals: ['99'] },
+      { bagSeals: ['١٢'], boxSeals: ['12'] },
+      { bagSeals: ['5', '6', '5'] },
+      { boxSeals: ['8', '08'] },
+    ]) {
+      const res = await receive(shipment.id, { ...seals, version: shipment.version });
+      expect(res.status, JSON.stringify(seals)).toBe(400);
+      expect(errorCode(res)).toBe(ErrorCodes.VALIDATION_FAILED);
+    }
+
+    // NOTHING written: no custody, the shipment still a draft at its version, «سيريال» untouched,
+    // and «السجل» holds no receipt.
+    expect(await custodyOf(shipment.id)).toHaveLength(0);
+    const still = await read(shipment.id);
+    expect(still.status).toBe('draft');
+    expect(still.version).toBe(shipment.version);
+    expect(still.serialTracked).toBe(false);
+    expect(still.receiptNumber).toBeNull();
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).not.toContain('vaultReceived');
+
+    // The same receipt with the boxes' own seals: taken, as typed.
+    const taken = await receive(shipment.id, { ...owners, boxSeals: ['7', '8'] });
+    expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(taken).status).toBe('inVault');
+    const [custody] = await custodyOf(shipment.id);
+    expect(custody?.bagSeals).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(custody?.boxSeals).toEqual(['7', '8']);
+    expect(
+      (await logOf(shipment.id)).entries.filter((e) => e.kind === 'vaultReceived'),
+    ).toHaveLength(1);
+  });
+
   it('applies the vault\'s corrections and the receipt in ONE act — logged as an edit, then the receipt', async () => {
     const shipment = await book();
     const res = await receive(

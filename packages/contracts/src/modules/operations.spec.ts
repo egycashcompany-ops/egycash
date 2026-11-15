@@ -51,6 +51,7 @@ import {
   UndoSecuredPickupSchema,
   UpdateOperationsShipmentSchema,
   isOperationsShipmentLocked,
+  vaultSealKey,
 } from './operations.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -602,6 +603,104 @@ describe('the vault receive form — every field optional, no names', () => {
     expect(ReceiveIntoVaultSchema.parse({ serialTracked: true, version: 0 }).serialTracked).toBe(
       true,
     );
+  });
+});
+
+// Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: within ONE receipt a seal number
+// appears once, across the bags and the boxes together — a refusal, not a warning.
+describe('the vault receipt — one seal, once per receipt', () => {
+  const receipt = (bagSeals: unknown[], boxSeals: unknown[] = []) =>
+    ReceiveIntoVaultSchema.safeParse({ bagSeals, boxSeals, version: 0 });
+  /** Where each refused seal stands, and what its message says. */
+  const refusals = (bagSeals: unknown[], boxSeals: unknown[] = []) => {
+    const result = receipt(bagSeals, boxSeals);
+    return result.success
+      ? []
+      : result.error.issues.map((issue) => ({ path: issue.path, message: issue.message }));
+  };
+
+  it('defines the same seal once: whole numbers for digits (leading zeros, Arabic-Indic), text as typed', () => {
+    expect(vaultSealKey('99')).toBe('99');
+    expect(vaultSealKey('0099')).toBe('99');
+    expect(vaultSealKey(' 0099 ')).toBe('99');
+    expect(vaultSealKey('٩٩')).toBe('99');
+    expect(vaultSealKey('۰۰۹۹')).toBe('99');
+    expect(vaultSealKey('0')).toBe('0');
+    expect(vaultSealKey('000')).toBe('0');
+    // A barcode longer than a JavaScript number is exact still compares exactly.
+    expect(vaultSealKey('000123456789012345678901')).toBe('123456789012345678901');
+    expect(vaultSealKey('123456789012345678901')).not.toBe(vaultSealKey('123456789012345678902'));
+    // Text: trimmed, otherwise exactly as typed — no case folded, no digit folded inside it.
+    expect(vaultSealKey(' AB-12 ')).toBe('AB-12');
+    expect(vaultSealKey('ab-12')).not.toBe(vaultSealKey('AB-12'));
+    expect(vaultSealKey('AB0012')).not.toBe(vaultSealKey('AB12'));
+    // A text seal never reads as a number's key.
+    expect(vaultSealKey('12a')).not.toBe(vaultSealKey('12'));
+    expect(vaultSealKey('')).toBeNull();
+    expect(vaultSealKey('   ')).toBeNull();
+  });
+
+  it('refuses the owner\'s case — a bag seal that is also a box seal — on the box, naming the bag', () => {
+    const issues = refusals(['1', '2', '3', '4', '5', '6'], ['1', '3']);
+    expect(issues).toEqual([
+      { path: ['boxSeals', 0], message: expect.stringContaining('"1"') as string },
+      { path: ['boxSeals', 1], message: expect.stringContaining('"3"') as string },
+    ]);
+    expect(issues[0]?.message).toContain('bagSeals.0');
+    expect(issues[1]?.message).toContain('bagSeals.2');
+  });
+
+  it('reads 0099 and 99 as one seal, and an Arabic-Indic number as its ASCII twin', () => {
+    expect(refusals(['0099'], ['99'])).toEqual([
+      { path: ['boxSeals', 0], message: expect.stringContaining('bagSeals.0') as string },
+    ]);
+    expect(refusals(['١٢'], ['12'])).toEqual([
+      { path: ['boxSeals', 0], message: expect.stringContaining('bagSeals.0') as string },
+    ]);
+    expect(refusals(['۰۷'], ['7'])).toHaveLength(1);
+  });
+
+  it('refuses a seal typed twice inside the bags, or inside the boxes — on the later one', () => {
+    expect(refusals(['5', '6', '5'])).toEqual([
+      { path: ['bagSeals', 2], message: expect.stringContaining('bagSeals.0') as string },
+    ]);
+    expect(refusals([], ['8', '08'])).toEqual([
+      { path: ['boxSeals', 1], message: expect.stringContaining('boxSeals.0') as string },
+    ]);
+    // Three times: refused twice, each later one naming the first.
+    expect(refusals(['4', '4'], ['4']).map((issue) => issue.path)).toEqual([
+      ['bagSeals', 1],
+      ['boxSeals', 0],
+    ]);
+  });
+
+  it('compares a text seal as typed, trimmed', () => {
+    expect(refusals(['AB-1'], [' AB-1 '])).toHaveLength(1);
+    expect(refusals(['AB-1'], ['ab-1']).length).toBe(0);
+    expect(receipt(['AB-1'], ['AB-2']).success).toBe(true);
+  });
+
+  it('ignores the blank boxes — and names a repeat at the index the client sent it', () => {
+    expect(receipt(['', '  ', '1'], ['', '2', '']).success).toBe(true);
+    expect(refusals(['1', '', '  '], ['', '', '1'])).toEqual([
+      { path: ['boxSeals', 2], message: expect.stringContaining('bagSeals.0') as string },
+    ]);
+    // And the blanks are still dropped from what is stored.
+    const parsed = ReceiveIntoVaultSchema.parse({
+      bagSeals: ['', '1', ' '],
+      boxSeals: [' 2 ', ''],
+      version: 0,
+    });
+    expect(parsed.bagSeals).toEqual(['1']);
+    expect(parsed.boxSeals).toEqual(['2']);
+  });
+
+  it('takes distinct seals as they are — bags and boxes, numbers and text', () => {
+    const parsed = receipt(['1', '2', '3', '4', '5', '6'], ['7', '8', 'X-9', '010']);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.boxSeals).toEqual(['7', '8', 'X-9', '010']);
+    // Neighbours are not repeats: 0099 and 0100 are two seals.
+    expect(receipt(['0099'], ['0100']).success).toBe(true);
   });
 });
 

@@ -26,7 +26,7 @@ import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApplicantPicker } from '../../shared/ApplicantPicker';
 import { useApplicant } from '../../applicants/api/applicant-queries';
-import { useApplicantSearch } from '../api/job-offer-queries';
+import { useApplicantSearch, useOfferDefaults } from '../api/job-offer-queries';
 import { OfferTermsForm } from '../components/OfferTermsForm';
 import { useCreateJobOffer, useJobOffer, useReviseJobOffer } from '../api/job-offer-queries';
 
@@ -60,6 +60,8 @@ export const JobOfferFormPage = ({ mode }: { mode: 'create' | 'revise' }): JSX.E
   const [picked, setPicked] = useState<PickedApplicant | null>(null);
   const applicant: PickedApplicant | null =
     named === undefined ? (picked?.id === applicantId ? picked : null) : named;
+  // A28 — the form opens filled in for this candidate. A failed read leaves it as before: empty.
+  const defaults = useOfferDefaults(mode === 'create' ? (applicant?.id ?? '') : '');
 
   const chooseApplicant = (next: PickedApplicant | null): void => {
     setPicked(next);
@@ -158,9 +160,13 @@ export const JobOfferFormPage = ({ mode }: { mode: 'create' | 'revise' }): JSX.E
             </div>
           )}
 
-          {(!isCreate || applicant !== null) && (
+          {isCreate && applicant !== null && defaults.isLoading && <LoadingState />}
+          {(!isCreate || (applicant !== null && !defaults.isLoading)) && (
             <OfferTermsForm
+              // A new candidate is a new form: it starts from THEIR values.
+              key={isCreate ? (applicant?.id ?? '') : 'revise'}
               initial={isCreate ? null : (offer?.terms ?? null)}
+              defaults={isCreate ? (defaults.data ?? null) : null}
               submitLabel={isCreate ? t('offers.create.submit') : t('offers.revise.submit')}
               submitting={isCreate ? create.isPending : revise.isPending}
               onSubmit={isCreate ? submitCreate : submitRevise}

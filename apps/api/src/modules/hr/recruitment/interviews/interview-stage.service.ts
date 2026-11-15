@@ -10,11 +10,16 @@ import { ConflictError } from '../../../../shared/errors';
 import { auditService } from '../../../../platform/audit';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { interviewStageRepository } from './interview-stage.repository';
-import { type InterviewStageDoc } from './interview-stage.model';
+import { InterviewStageModel, type InterviewStageDoc } from './interview-stage.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'interviewStage', entityId: id });
 
-const snapshot = (doc: InterviewStageDoc) => ({ name: doc.name, order: doc.order, active: doc.active });
+const snapshot = (doc: InterviewStageDoc) => ({
+  name: doc.name,
+  order: doc.order,
+  active: doc.active,
+  mode: doc.mode,
+});
 
 class InterviewStageService {
   async create(input: CreateInterviewStage, by: string): Promise<InterviewStageDoc> {
@@ -23,7 +28,13 @@ class InterviewStageService {
     const clash = await interviewStageRepository.findActiveByOrder(input.order);
     if (clash !== null) throw new ConflictError(`An active interview stage at order ${input.order} already exists`);
     const doc = await interviewStageRepository.create(
-      { key: input.key, name: input.name, order: input.order, active: true },
+      {
+        key: input.key,
+        name: input.name,
+        order: input.order,
+        active: true,
+        mode: input.mode ?? (input.order >= 2 ? 'decisionOnly' : 'evaluation'),
+      },
       { by },
     );
     await auditService.record({
@@ -39,8 +50,30 @@ class InterviewStageService {
     const existing = await interviewStageRepository.findByKey(input.key);
     if (existing !== null) return existing;
     return interviewStageRepository.create(
-      { key: input.key, name: input.name, order: input.order, active: true },
+      {
+        key: input.key,
+        name: input.name,
+        order: input.order,
+        active: true,
+        mode: input.mode ?? (input.order >= 2 ? 'decisionOnly' : 'evaluation'),
+      },
       { by: null },
+    );
+  }
+
+  /**
+   * One-time default for stages created before stages had a mode: the first round keeps the full
+   * evaluation, every later round becomes approve/reject only. Touches only stages with NO mode
+   * stored, so an administrator's own choice is never overwritten.
+   */
+  async ensureModes(): Promise<void> {
+    await InterviewStageModel.updateMany(
+      { mode: { $exists: false }, order: { $gte: 2 } },
+      { $set: { mode: 'decisionOnly' } },
+    );
+    await InterviewStageModel.updateMany(
+      { mode: { $exists: false } },
+      { $set: { mode: 'evaluation' } },
     );
   }
 
@@ -76,6 +109,7 @@ class InterviewStageService {
     if (input.name !== undefined) set.name = input.name;
     if (input.order !== undefined) set.order = input.order;
     if (input.active !== undefined) set.active = input.active;
+    if (input.mode !== undefined) set.mode = input.mode;
     const updated = await interviewStageRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),

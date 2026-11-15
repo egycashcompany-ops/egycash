@@ -38,6 +38,9 @@ import {
   getMyDocuments,
   getMyStatus,
   listApplicantDocumentSets,
+  staffPutApplicantDocument,
+  staffRemoveApplicantDocument,
+  staffReplaceApplicantCard,
   listApplicantFolders,
   getApplicantFolder,
   listApplicantDocumentTypes,
@@ -48,7 +51,9 @@ import {
 import {
   ApplicantDocumentParamSchema,
   ApplicantDocumentTypeParamSchema,
+  ApplicantCardSideParamSchema,
   ApplicantParamSchema,
+  StaffDocumentBodySchema,
 } from './applicant-document.validation';
 
 /** Outer multipart cap (first-line defence); the file category's `maxSizeMb` is authoritative. */
@@ -190,6 +195,30 @@ export const buildApplicantDocumentsRouter = (): Router => {
     authorize('applicantDocument.review'),
     validate({ body: ReviewApplicantDocumentSchema, params: ApplicantDocumentParamSchema }),
     asyncHandler(reviewApplicantDocument),
+  );
+  // HR fixing a folder: a clearer copy of a paper, a paper taken out, a clearer card photo.
+  router.post(
+    '/:applicantId/documents/:typeId/file',
+    authenticate,
+    authorize('applicantDocument.review'),
+    multipartSingle(),
+    validate({ body: StaffDocumentBodySchema, params: ApplicantDocumentParamSchema }),
+    asyncHandler(staffPutApplicantDocument),
+  );
+  router.delete(
+    '/:applicantId/documents/:typeId',
+    authenticate,
+    authorize('applicantDocument.delete'),
+    validate({ params: ApplicantDocumentParamSchema }),
+    asyncHandler(staffRemoveApplicantDocument),
+  );
+  router.post(
+    '/:applicantId/card/:side',
+    authenticate,
+    authorize('applicantDocument.review'),
+    multipartSingle(),
+    validate({ params: ApplicantCardSideParamSchema }),
+    asyncHandler(staffReplaceApplicantCard),
   );
 
   return router;

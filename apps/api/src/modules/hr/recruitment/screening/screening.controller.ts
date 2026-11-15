@@ -17,6 +17,7 @@ import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
 import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { screeningService } from './screening.service';
+import { applicantService } from '../applicants';
 import { toScreeningDto } from './screening.mapper';
 import { type ScreeningDoc } from './screening.model';
 
@@ -41,7 +42,18 @@ export const listScreenings = async (req: Request, res: Response): Promise<void>
   const ctx = authContext(req);
   const { query } = validated<never, ListScreeningsQuery>(req);
   const page = await screeningService.list(query, scopeSelector(ctx, 'screening.view'));
-  okPage(res, page, toScreeningDto);
+  // Age and education are queue COLUMNS, read from the applicants in one batch for this page.
+  const facts = await applicantService.candidateFactsSystem(
+    page.items.map((doc) => String(doc.applicantId)),
+  );
+  okPage(res, page, (doc: ScreeningDoc) => {
+    const fact = facts.get(String(doc.applicantId));
+    return {
+      ...toScreeningDto(doc),
+      applicantBirthDate: fact?.birthDate == null ? null : fact.birthDate.toISOString(),
+      applicantEducationLevel: fact?.educationLevel ?? null,
+    };
+  });
 };
 
 export const getScreening = async (req: Request, res: Response): Promise<void> => {

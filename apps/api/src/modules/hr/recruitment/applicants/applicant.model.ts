@@ -169,10 +169,12 @@ export interface ApplicantDoc extends BaseDocFields {
 
 const addressSchema = new Schema<Address>(
   {
-    line1: { type: String, required: true },
+    // Not required: an applicant's address may be partial (only name, phone and National ID
+    // are), and a hired applicant's address is copied here as it stands.
+    line1: { type: String, default: '' },
     line2: { type: String, default: undefined },
-    city: { type: String, required: true },
-    governorate: { type: String, required: true },
+    city: { type: String, default: '' },
+    governorate: { type: String, default: '' },
     postalCode: { type: String, default: undefined },
   },
   { _id: false },

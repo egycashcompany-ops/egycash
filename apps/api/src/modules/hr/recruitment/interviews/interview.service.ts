@@ -23,6 +23,7 @@ import {
   type BulkInterviews,
   type BulkScheduleInterviews,
   type BulkStartInterviews,
+  type QuickDecideInterviews,
   type ScheduleInterview,
   type SkipInterviewer,
   type StartInterview,
@@ -695,6 +696,98 @@ class InterviewService {
       },
       { entityType: 'interview', action: 'schedule', actorUserId: ctx.userId },
     );
+  }
+
+  /**
+   * Approve or reject candidates at a `decisionOnly` stage in one step (one or many, RW17).
+   *
+   * Per candidate: the round is opened if it was still waiting (or begun if only scheduled), the
+   * caller's note is recorded as THEIR evaluation, any other interviewer still pending is marked
+   * skipped («decided directly»), and the round is closed with the outcome — through the same
+   * start / evaluate / skip / decide operations the full flow uses, so the timeline, audit trail
+   * and the move to the next stage are exactly what a full round produces.
+   */
+  async quickDecide(
+    ctx: AuthContext,
+    input: QuickDecideInterviews,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    const stage = await interviewStageRepository.findActiveById(input.stageId);
+    if (stage === null) {
+      throw new ValidationError([
+        { field: 'stageId', code: 'INVALID', message: 'unknown or inactive interview stage' },
+      ]);
+    }
+    if (stage.mode !== 'decisionOnly') {
+      throw new BusinessRuleError('this interview stage is decided through its evaluation');
+    }
+    return runBulk(
+      input.applicantIds,
+      async (applicantId) => {
+        let doc = await interviewRepository.findActiveAtStage(applicantId, stage.order);
+        if (doc === null || doc.status === 'waiting') {
+          doc = await this.start(ctx, { applicantId, stageId: input.stageId, interviewerIds: [] }, scope);
+        } else if (doc.status === 'scheduled') {
+          doc = await this.startScheduled(ctx, String(doc._id), { version: doc.__v }, scope);
+        }
+        const id = String(doc._id);
+        if (doc.status !== 'inProgress' && doc.status !== 'scheduled') {
+          throw new BusinessRuleError('this candidate has already been decided at this stage');
+        }
+        if (!doc.panel.some((p) => String(p.interviewerId) === ctx.userId)) {
+          doc = await this.reassignPanelKeep(ctx, doc, scope);
+        }
+        doc = await this.submitEvaluation(
+          ctx,
+          id,
+          {
+            recommendation: input.outcome === 'passed' ? 'recommend' : 'notRecommend',
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            version: doc.__v,
+          },
+          scope,
+        );
+        for (const p of doc.panel) {
+          if (p.state !== 'pending') continue;
+          doc = await this.skipInterviewer(
+            ctx,
+            id,
+            { interviewerId: String(p.interviewerId), reason: 'decided directly', version: doc.__v },
+            scope,
+          );
+        }
+        await this.decide(
+          ctx,
+          id,
+          {
+            outcome: input.outcome,
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            version: doc.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'interview',
+        action: input.outcome === 'passed' ? 'pass' : 'fail',
+        actorUserId: ctx.userId,
+        reason: input.notes ?? null,
+      },
+    );
+  }
+
+  /** Add the caller to an open round's panel, keeping everyone already on it. */
+  private async reassignPanelKeep(
+    ctx: AuthContext,
+    doc: InterviewDoc,
+    scope: ScopeSelector,
+  ): Promise<InterviewDoc> {
+    const panel = [...doc.panel, newPanelist(ctx.userId)];
+    return interviewRepository.updateById(String(doc._id), { panel }, {
+      by: ctx.userId,
+      version: doc.__v,
+      scope,
+    });
   }
 
   /** Start rounds immediately for a selection of waiting applicants (RW12/RW17). */

@@ -95,9 +95,27 @@ describe('a default is applied only where nothing was decided', () => {
    * protection, so it is asserted by name.
    */
   it('a promotion never overwrites an employee who holds an override', () => {
+    // One helper carries the rule, so a promotion and a transfer that names a job cannot drift apart.
+    const helper = ACTIONS.slice(
+      ACTIONS.indexOf('private followJobSalary('),
+      ACTIONS.indexOf('private async applyTransfer('),
+    );
+    expect(helper).not.toHaveLength(0);
+    expect(helper).toContain("employee.employment.salarySource === 'manual') return;");
+    expect(helper).toContain("employee.employment.salarySource = 'jobDefault'");
     const promotion = ACTIONS.slice(ACTIONS.indexOf("case 'promotion'"), ACTIONS.indexOf("case 'transfer'"));
-    expect(promotion).toContain("employee.employment.salarySource !== 'manual'");
-    expect(promotion).toContain("employee.employment.salarySource = 'jobDefault'");
+    expect(promotion).toContain('this.followJobSalary(employee, title, changes)');
+  });
+
+  /** «تعديل المسمي الوظيفي» on a transfer is the same job change, under the same rule. */
+  it('a transfer that names a job follows the same rule, and states no salary of its own', () => {
+    const transfer = ACTIONS.slice(
+      ACTIONS.indexOf('private async applyTransfer('),
+      ACTIONS.indexOf('// ── Exit'),
+    );
+    expect(transfer).not.toHaveLength(0);
+    expect(transfer).toContain('this.followJobSalary(employee, newTitle, changes)');
+    expect(transfer).not.toContain("salarySource = 'manual'");
   });
 });
 

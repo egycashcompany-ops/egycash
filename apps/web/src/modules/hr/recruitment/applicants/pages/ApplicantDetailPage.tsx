@@ -8,11 +8,8 @@ import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
-import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Field, Input } from '../../../../../shared/ui/form';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../../shared/ui/states/ErrorState';
-import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { EditIcon } from '../../../../../shared/ui/icons';
 import { CopyIdButton } from '../../../../../shared/ui/CopyIdButton';
 import {
@@ -24,9 +21,10 @@ import {
 import { ApplicantStatusBadge } from '../components/ApplicantStatusBadge';
 import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
+import { NationalIdCardPanel } from '../components/NationalIdCardPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
-import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
+import { useApplicant } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 import { RecommendationCard } from '../../shared/RecommendationCard';
@@ -46,10 +44,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
   const { id = '' } = useParams();
   const { data: a, isLoading, isError, error, refetch } = useApplicant(id);
 
-  const verify = useVerifyApplicantIdentity(id);
-  const [verifyOpen, setVerifyOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
-  const [nationalId, setNationalId] = useState('');
 
   if (isLoading) {
     return (
@@ -66,20 +61,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
     );
   }
 
-  const submitVerify = async (): Promise<void> => {
-    try {
-      await verify.mutateAsync({
-        version: a.version,
-        ...(nationalId.trim() === '' ? {} : { nationalId: nationalId.trim() }),
-      });
-      toast.success(t('applicants.verify.done'));
-      setVerifyOpen(false);
-      setNationalId('');
-    } catch {
-      // surfaced globally
-    }
-  };
-
   const gridCls = 'grid grid-cols-2 gap-4 sm:grid-cols-3';
 
   return (
@@ -94,11 +75,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            {a.status === 'new' && can('applicant.verifyIdentity') && a.identityVerification !== 'verified' && (
-              <Button size="sm" variant="secondary" onClick={() => setVerifyOpen(true)}>
-                {t('applicants.actions.verify')}
-              </Button>
-            )}
             {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
             {a.status === 'new' && (
               <Can permission="applicant.returnToStage">
@@ -130,9 +106,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
             {[a.placementLabel.position, a.placementLabel.branch].filter((v) => v !== null).join(' · ')}
           </span>
         )}
-        <span className={a.identityVerification === 'verified' ? 'text-sm text-emerald-600' : 'text-sm text-slate-400'}>
-          {t(`applicants.identity.${a.identityVerification}`)}
-        </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -221,6 +194,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
 
+          <NationalIdCardPanel applicant={a} />
           <AttachmentsPanel applicantId={a.id} canEdit={a.status === 'new' && can('applicant.edit')} />
         </div>
       </div>
@@ -230,22 +204,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
         <CandidateTimeline applicantId={a.id} />
       </div>
 
-      <Dialog
-        open={verifyOpen}
-        onClose={() => setVerifyOpen(false)}
-        title={t('applicants.verify.title')}
-        description={t('applicants.verify.body')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setVerifyOpen(false)}>{t('common.cancel')}</Button>
-            <Button loading={verify.isPending} onClick={() => void submitVerify()}>{t('applicants.actions.verify')}</Button>
-          </>
-        }
-      >
-        <Field label={t('applicants.form.nationalId')} hint={t('applicants.verify.nationalIdHint')}>
-          <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} dir="ltr" inputMode="numeric" />
-        </Field>
-      </Dialog>
       <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
 
     </PageContainer>

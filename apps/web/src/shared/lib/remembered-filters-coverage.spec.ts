@@ -377,6 +377,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/recruitment/recruitment-form/pages/PublicApplyPage.tsx'],
   ['modules/hr/recruitment/recruitment-form/pages/RecruitmentFormPage.tsx'],
   ['modules/hr/recruitment/screening/pages/ScreeningDetailPage.tsx'],
+  ['modules/hr/settings/HiringRequirementsPage.tsx'],
   ['modules/it/mobile/VehicleCheckPage.tsx'],
   ['modules/it/pages/AssetDetailPage.tsx'],
   ['modules/it/pages/AssetScanPage.tsx'],

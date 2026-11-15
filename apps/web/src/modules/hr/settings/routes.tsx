@@ -18,6 +18,7 @@ import { EvaluationPhasesPage } from '../recruitment/evaluations/pages/Evaluatio
 import { ComposeAnnouncementPage } from '../announcements/pages/ComposeAnnouncementPage';
 import { NotificationRulesPage } from '../notification-rules/pages/NotificationRulesPage';
 import { HrSettingsLayout, useSettingsTabs } from './HrSettingsLayout';
+import { HiringRequirementsPage } from './HiringRequirementsPage';
 
 type TabKey = (typeof HR_SETTINGS_HUB.tabs)[number]['key'];
 
@@ -28,6 +29,7 @@ export const SETTINGS_SCREENS: Record<TabKey, ComponentType> = {
   'applicant-sources': ApplicantSourcesPage,
   'interview-stages': InterviewStagesPage,
   'evaluation-phases': EvaluationPhasesPage,
+  'hiring-requirements': HiringRequirementsPage,
   announcements: ComposeAnnouncementPage,
   'notification-rules': NotificationRulesPage,
 };

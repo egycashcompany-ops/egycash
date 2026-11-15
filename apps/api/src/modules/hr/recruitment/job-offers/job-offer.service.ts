@@ -58,6 +58,8 @@ const buildTerms = (t: OfferTermsInput): OfferTerms => ({
   branchId: new Types.ObjectId(t.branchId),
   sectionId: t.sectionId === null || t.sectionId === undefined ? null : new Types.ObjectId(t.sectionId),
   managerId: t.managerId === null || t.managerId === undefined ? null : new Types.ObjectId(t.managerId),
+  // A manager with an account is the manager; a name is kept only when there is none.
+  managerName: t.managerId === null || t.managerId === undefined ? (t.managerName?.trim() || null) : null,
   employmentType: t.employmentType,
   salary: t.salary === null || t.salary === undefined ? null : { amount: t.salary.amount, currency: t.salary.currency },
   allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
@@ -283,6 +285,7 @@ class JobOfferService {
           branchId: String(placement.branchId ?? terms.branchId),
           sectionId: placement.sectionId === null ? null : String(placement.sectionId),
           managerId: terms.managerId === null ? null : String(terms.managerId),
+          managerName: terms.managerName ?? null,
           employmentType: terms.employmentType,
           salary: terms.salary,
           allowances: terms.allowances,

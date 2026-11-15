@@ -10,6 +10,7 @@ export {
   ListAwaitingOfferQuerySchema,
   ListJobOffersQuerySchema,
   BulkJobOffersSchema,
+  OfferDefaultsQuerySchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

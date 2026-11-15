@@ -88,6 +88,12 @@ export const OfferTermsSchema = z
     sectionId: objectId().nullish(),
     /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
     managerId: objectId().nullish(),
+    /**
+     * The reporting manager by name, typed by hand when they have no account on the system («ولو
+     * مش باين مين المدير اقدر اكتبو انا مانيوال»). Shown on the offer; never notified, and never
+     * linked as the employee's manager — that needs `managerId`. Ignored when `managerId` is set.
+     */
+    managerName: z.string().trim().max(150).nullish(),
     employmentType: EmploymentTypeSchema,
     /** Compensation package. OPTIONAL — may be null/omitted. */
     salary: MoneySchema.nullish(),
@@ -210,6 +216,8 @@ export interface OfferTermsDto {
   sectionId: string | null;
   /** null when no reporting manager was set on the offer. */
   managerId: string | null;
+  /** The manager typed by name, when they have no account; null otherwise. */
+  managerName: string | null;
   employmentType: EmploymentType;
   /** null when no salary was set on the offer. */
   salary: { amount: number; currency: string } | null;
@@ -309,6 +317,33 @@ export const ListAwaitingOfferQuerySchema = PaginationQuerySchema.extend({
   search: z.string().max(100).optional(),
 }).strict();
 export type ListAwaitingOfferQuery = z.infer<typeof ListAwaitingOfferQuerySchema>;
+
+/**
+ * «اكتب العرض» opens filled in («عاوزو يجيب المسمي الوظيفي و الاداره و الفرع و المدير المباشر
+ * اوتوماتيك … نوع التوظيف هيبقا by default دوام كامل … الراتب … المسميات الوظيفيه»): the candidate's
+ * placement, their direct manager from the organization chart, full-time, and the job's fixed
+ * salary. Every value stays editable on the form.
+ */
+export const OfferDefaultsQuerySchema = z.object({ applicantId: objectId() }).strict();
+export type OfferDefaultsQuery = z.infer<typeof OfferDefaultsQuerySchema>;
+
+export interface OfferDefaultsDto {
+  /** The candidate's placement; null where it names none. */
+  jobTitleId: string | null;
+  departmentId: string | null;
+  branchId: string | null;
+  sectionId: string | null;
+  /**
+   * The direct manager: the effective manager (acting manager inside their window, else the
+   * manager) of the candidate's section, else their department, else their branch. null: none set.
+   */
+  manager: { id: string; name: { ar: string; en: string } } | null;
+  employmentType: EmploymentType;
+  /** The fixed salary («الراتب الثابت») of the placement's job; null when it has none. */
+  salary: { amount: number; currency: string } | null;
+  /** Every active job's fixed salary — the form follows the job when it is changed. */
+  jobSalaries: { jobTitleId: string; amount: number; currency: string }[];
+}
 
 export const HrOfferEvents = {
   OfferCreated: 'hr.jobOffer.created',

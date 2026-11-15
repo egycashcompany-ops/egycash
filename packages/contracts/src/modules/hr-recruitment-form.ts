@@ -159,12 +159,22 @@ export interface RecruitmentFormDto {
   version: number;
 }
 
-/** The public view: no ids, no links, nothing about the other sources. */
+/** One choice in the public «how did you hear about us» list. */
+export interface PublicApplicantSourceOptionDto {
+  id: string;
+  name: LocalizedString;
+}
+
+/** The public view: no links and no tokens. */
 export interface PublicRecruitmentFormDto {
   title: LocalizedString;
   intro: LocalizedString | null;
   sourceName: LocalizedString;
   fields: RecruitmentFormField[];
+  /** The active applicant sources, for the «how did you hear about us» question. */
+  sources: PublicApplicantSourceOptionDto[];
+  /** The source of the link that was opened — what the question starts on. */
+  linkSourceId: string;
 }
 
 // A field list is ordered — the array IS the order, so reordering is a plain save rather than a
@@ -218,6 +228,42 @@ export const RecruitmentFormSourceParamSchema = z.object({ sourceId: objectId() 
 export const SubmitRecruitmentFormSchema = z
   .object({
     answers: z.record(z.string(), z.union([z.string().max(2000), z.boolean()])),
+    /**
+     * The National-ID card photos uploaded from the page (`POST /hr/public/apply/:token/national-id-card`).
+     * Required by the service: the card is read and must match the number typed before the
+     * application is accepted. Optional here only so the service can answer with a field error.
+     */
+    nationalIdCard: z
+      .object({ frontFileId: objectId(), backFileId: objectId() })
+      .strict()
+      .optional(),
+    /**
+     * «How did you hear about us». A source from the list, or `null` with `other` filled in when the
+     * candidate came some other way. Required by the service; optional here so it answers with a
+     * field error instead of a schema one.
+     */
+    heardFrom: z
+      .object({
+        sourceId: objectId().nullable(),
+        other: z.string().trim().max(200).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Photos of the candidate's papers, uploaded from the page like the card. Filed in the
+     * applicant's document folder for HR to review. The military certificate is required of men;
+     * the licence and qualification are optional.
+     */
+    /** The CV uploaded from the page (`POST …/cv`), filed on the applicant. Optional. */
+    cvFileId: objectId().optional(),
+    documents: z
+      .object({
+        militaryService: objectId().optional(),
+        drivingLicense: objectId().optional(),
+        qualification: objectId().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type SubmitRecruitmentForm = z.infer<typeof SubmitRecruitmentFormSchema>;
@@ -226,6 +272,29 @@ export type SubmitRecruitmentForm = z.infer<typeof SubmitRecruitmentFormSchema>;
 export interface RecruitmentFormSubmissionDto {
   code: string;
 }
+
+/** A card photo uploaded from the public page — the id the submission names it by. */
+export interface PublicNationalIdCardUploadDto {
+  fileId: string;
+}
+
+/** The papers the public page can collect, keyed by their document-type key. */
+export const PUBLIC_APPLY_DOCUMENTS = ['militaryService', 'drivingLicense', 'qualification'] as const;
+export type PublicApplyDocument = (typeof PUBLIC_APPLY_DOCUMENTS)[number];
+
+/** Fields the public submission answers with for the new questions. */
+export const PUBLIC_HEARD_FROM_FIELD = 'heardFrom';
+export const PUBLIC_MILITARY_FIELD = 'militaryService';
+
+/** Field + codes the public submission answers with when the card does not pass. */
+export const PUBLIC_ID_CARD_FIELD = 'nationalIdCard';
+export const PUBLIC_ID_CARD_ERRORS = [
+  'ID_CARD_REQUIRED',
+  'ID_OCR_UNAVAILABLE',
+  'ID_CARD_UNREADABLE',
+  'ID_CARD_MISMATCH',
+] as const;
+export type PublicIdCardError = (typeof PUBLIC_ID_CARD_ERRORS)[number];
 
 export const RecruitmentFormTokenParamSchema = z
   .object({ token: z.string().min(16).max(64) })

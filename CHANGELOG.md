@@ -11,6 +11,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: a transfer can change the job title; the register forms' department, section and job are
+  typed into; the employee list filters by origin.** «فى الإجراءات (نقل) على الموظف إمكانية تعديل
+  المسمي الوظيفي أيضاً» · «عايز الإدارة والمسمي الوظيفي والقسم يكون قابل للبحث فى الأختيارات من خلال
+  Input ميبقاش فقط Selection من Dropdown» · «زود فلتر للموظفين الخارجيين فى شاشة الموظفون».
+  - **Transfer:** the «نقل» dialog gains «المسمى الوظيفي», set to the current job until another is
+    picked. A transfer may now change only the job. The engine takes an optional `jobTitleId` on the
+    transfer action (refused when the title is retired, checked before anything moves), records it in
+    the history, and moves the linked login's job with its placement. No salary is stated on a
+    transfer: pay that follows the job follows the new one, exactly as on a promotion (P-HR-22), and
+    pay set by hand stays. `transfer` joins `SALARY_BEARING_ACTION_TYPES`, so payroll's salary history
+    (PY-8) sees that change and prices the months before it at the old pay, and the history marks it
+    withheld from a reader without the pay key. The overlap warning now sees a transfer meet a
+    promotion on the job title and the salary. The dialog is mounted only while open, so each
+    opening starts from the employee as they are now, with an empty date, note and document (kept
+    mounted, a promotion made in between was sent back undone); a retired title the employee still
+    holds stays on the list by its name.
+  - **Register:** on «تسجيل موظف» and in «موظف خارجي», the department, the section and the job title
+    are boxes to type into, matched on the name the way Arabic is typed (hamza, ta marbuta), never on
+    the id behind it. The job list still puts the branch's own titles first, now said in a hint under
+    the box. The branch stays as it was: read off the code on the register page, a list in the dialog.
+    Picking again the department or job already held throws nothing away (a native list never
+    reported it), and the dialog is tall so the lists are not cut by its body.
+  - **Employees list:** a «مصدر التعيين» filter — التوظيف, تسجيل مباشر or تعيين خارجي, the last being
+    the external employees. It is remembered with the other filters, cleared with them, and hidden in
+    «بانتظار التسوية» like the placement filters. The registry already filtered on `origin`.
+
 - **IT: assets and consumables moved to another branch, several at once.** «هنا /it/consumables وهنا
   /it/assets — عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني، وطبعاً المستهلكات لو مثلاً فى 10 ماوس ..
   فممكن أنقل 5 لفرع تاني وهكذا»; then a held asset «ينتقل مع عهدته», recorded «فوراً», «لا، السجل
@@ -1276,6 +1302,13 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
+  of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح
+  الحروف». A pair on a short list («كس», «زب», «طز», «شخ», «تف») now shows its first letter alone,
+  with or without a space between the letters. One helper (`lib/name-initials.ts`) serves the three
+  places that drew the letters: the badge beside a driver's name on every Fleet board, form and
+  picker, the drivers list, and the driver's profile card. Any other name draws as before.
 
 - **ATM: the maintenance mailbox is read again.** «الـ Automation بتاع الميل واقف بقاله شوية كتير !»
   and «اختبار الاتصال» on /atm/settings answered «تعذّر الاتصال: This operation was aborted». From

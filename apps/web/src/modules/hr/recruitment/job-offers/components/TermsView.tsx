@@ -43,7 +43,9 @@ export const TermsView = ({ terms }: { terms: OfferTermsDto }): JSX.Element => {
         <Row label={t('offers.form.jobTitle')}>{nameOf(jobTitles.data, terms.jobTitleId)}</Row>
         <Row label={t('offers.form.department')}>{nameOf(departments.data, terms.departmentId)}</Row>
         <Row label={t('offers.form.branch')}>{nameOf(branches.data, terms.branchId)}</Row>
-        <Row label={t('offers.form.manager')}>{terms.managerId === null ? '—' : <UserName id={terms.managerId} />}</Row>
+        <Row label={t('offers.form.manager')}>
+          {terms.managerId !== null ? <UserName id={terms.managerId} /> : (terms.managerName ?? '—')}
+        </Row>
         <Row label={t('offers.form.employmentType')}>{t(`offers.employmentType.${terms.employmentType}`)}</Row>
         <Row label={t('offers.form.salary')}>{terms.salary === null ? '—' : formatMoney(terms.salary.amount, terms.salary.currency, locale)}</Row>
         <Row label={t('offers.form.probation')}>{t('offers.terms.months', { n: terms.probationMonths })}</Row>

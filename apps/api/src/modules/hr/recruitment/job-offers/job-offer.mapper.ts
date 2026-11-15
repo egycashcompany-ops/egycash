@@ -14,6 +14,7 @@ const termsDto = (t: OfferTerms): OfferTermsDto => ({
   branchId: String(t.branchId),
   sectionId: t.sectionId == null ? null : String(t.sectionId),
   managerId: t.managerId === null ? null : String(t.managerId),
+  managerName: t.managerName ?? null,
   employmentType: t.employmentType,
   salary: t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency },
   allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),

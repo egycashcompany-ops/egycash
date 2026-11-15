@@ -17,6 +17,7 @@ import { Spinner } from '../../../../shared/ui/Spinner';
 import { useUserSearch } from '../job-offers/api/job-offer-queries';
 import { UserName } from '../job-offers/components/UserName';
 
+/** A chosen user — or, with `id` '', a name typed by hand for somebody with no account. */
 export interface UserRef {
   id: string;
   label: string;
@@ -29,6 +30,7 @@ export const UserPicker = ({
   clearLabel,
   noAccessLabel,
   emptyLabel,
+  typedName,
 }: {
   value: UserRef | null;
   onChange: (next: UserRef | null) => void;
@@ -40,6 +42,12 @@ export const UserPicker = ({
   noAccessLabel: string;
   /** Shown when the search returns nothing. */
   emptyLabel: string;
+  /**
+   * Offer the typed text itself as a NAME — for somebody with no account on the system («ولو مش
+   * باين مين المدير اقدر اكتبو انا مانيوال»). Its words for the row, and for the chip once chosen.
+   * Without it the picker only ever commits a user.
+   */
+  typedName?: { use: (typed: string) => string; chip: string };
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -57,6 +65,11 @@ export const UserPicker = ({
         <span className="text-slate-700 dark:text-slate-200">
           {value.label !== '' ? value.label : <UserName id={value.id} />}
         </span>
+        {value.id === '' && typedName !== undefined && (
+          <span className="text-xs text-slate-400" data-typed-name>
+            {typedName.chip}
+          </span>
+        )}
         <button type="button" onClick={() => onChange(null)} className="ms-1 text-xs text-brand-600 hover:underline">
           {clearLabel}
         </button>
@@ -64,7 +77,7 @@ export const UserPicker = ({
     );
   }
 
-  if (!allowed) {
+  if (!allowed && typedName === undefined) {
     return (
       <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
         {noAccessLabel}
@@ -84,7 +97,7 @@ export const UserPicker = ({
       />
       {open && term.trim().length >= 2 && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
-          {isFetching ? (
+          {!allowed ? null : isFetching ? (
             <div className="flex items-center justify-center py-4">
               <Spinner className="h-4 w-4 text-brand-600" aria-label={t('common.loading')} />
             </div>
@@ -109,6 +122,20 @@ export const UserPicker = ({
                 </li>
               ))}
             </ul>
+          )}
+          {typedName !== undefined && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange({ id: '', label: term.trim() });
+                setTerm('');
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-start text-sm text-brand-700 hover:bg-slate-50 dark:border-slate-700 dark:text-brand-300 dark:hover:bg-slate-700"
+              data-use-typed-name
+            >
+              {typedName.use(term.trim())}
+            </button>
           )}
         </div>
       )}

@@ -9,6 +9,7 @@ const terms = (over: Partial<OfferTerms> = {}): OfferTerms => ({
   branchId: new Types.ObjectId(),
   sectionId: null,
   managerId: new Types.ObjectId(),
+  managerName: null,
   employmentType: 'fullTime',
   salary: { amount: 15000, currency: 'EGP' },
   allowances: [{ name: 'transport', amount: 1000, currency: 'EGP' }],

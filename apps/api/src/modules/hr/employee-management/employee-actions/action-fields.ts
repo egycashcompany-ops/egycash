@@ -34,7 +34,17 @@ export const ACTION_AFFECTED_FIELDS: Record<EmployeeActionType, readonly string[
   promotion: ['employment.jobTitleId', 'employment.salary'],
   // No `code` here: the Employee Code is frozen at hire and a transfer does not rewrite it
   // (ADR-017). `user.placement` is the linked login's org placement following the employee's.
-  transfer: ['branchId', 'departmentId', 'sectionId', 'employment.managerId', 'user.placement'],
+  // A transfer may name the job held in the new placement, and pay that follows the job follows
+  // it (P-HR-22) — so it meets a promotion on the title and a salary change on the salary.
+  transfer: [
+    'branchId',
+    'departmentId',
+    'sectionId',
+    'employment.managerId',
+    'employment.jobTitleId',
+    'employment.salary',
+    'user.placement',
+  ],
   managerChange: ['employment.managerId'],
   salaryChange: ['employment.salary', 'employment.allowances', 'employment.benefits'],
 

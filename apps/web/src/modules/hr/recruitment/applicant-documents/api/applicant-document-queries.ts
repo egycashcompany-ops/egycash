@@ -135,3 +135,25 @@ export const useFileTicket = (fileId: string | null): UseQueryResult<DownloadTic
     enabled: fileId !== null,
     staleTime: 60_000,
   });
+
+/** Every HR edit to a folder: refresh the papers, the folder and anything showing the card. */
+const useFolderEdit = <A,>(fn: (args: A) => Promise<unknown>) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [MODULE, FEATURE] });
+      void queryClient.invalidateQueries({ queryKey: [MODULE, 'applicantFolders'] });
+      void queryClient.invalidateQueries({ queryKey: [MODULE, 'applicants'] });
+    },
+  });
+};
+
+export const useStaffPutDocument = () =>
+  useFolderEdit((a: { applicantId: string; typeId: string; file: File }) => api.staffPutDocument(a.applicantId, a.typeId, a.file));
+
+export const useStaffRemoveDocument = () =>
+  useFolderEdit((a: { applicantId: string; typeId: string }) => api.staffRemoveDocument(a.applicantId, a.typeId));
+
+export const useStaffReplaceCard = () =>
+  useFolderEdit((a: { applicantId: string; side: 'front' | 'back' | 'portrait'; file: File }) => api.staffReplaceCard(a.applicantId, a.side, a.file));

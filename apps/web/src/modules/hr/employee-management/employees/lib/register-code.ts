@@ -4,6 +4,7 @@
 // … وأنا لو أخترت المسمي الوظيفي يختار على طول الإدارة والقسم التابع ليها». Pure, so a node test
 // reaches every rule without rendering the form.
 import { type JobTitlePlacementDto } from '@ecms/contracts';
+import { foldIncludes } from '../../../../../shared/lib/fold';
 
 /** The branch a code names: the one whose code is the code's first three digits. */
 export const branchOfCode = <B extends { code: string }>(
@@ -43,3 +44,17 @@ export const placementForTitle = (
   if (placed === undefined || !departments.some((d) => d.id === placed.departmentId)) return null;
   return { departmentId: placed.departmentId, sectionId: placed.sectionId ?? '' };
 };
+
+/**
+ * Pure: the ids, in order, of the items whose LABEL holds what was typed — every one for a blank box.
+ *
+ * «عايز الإدارة والمسمي الوظيفي والقسم يكون قابل للبحث». The register boxes commit an id and read as
+ * a name, and the shared box, filtering on its own, would match the typed text against the id too:
+ * a «1» typed for a department code would keep nearly every 24-digit hex id on the list. So the
+ * page filters on the label alone and hands the box the answer.
+ */
+export const idsMatching = <T extends { id: string }>(
+  items: readonly T[],
+  label: (item: T) => string,
+  typed: string,
+): string[] => items.filter((item) => foldIncludes(label(item), typed)).map((item) => item.id);

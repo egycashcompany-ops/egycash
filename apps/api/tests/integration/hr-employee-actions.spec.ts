@@ -370,6 +370,59 @@ describe('personnel actions — transfer (F1 propagation)', () => {
     );
   });
 
+  it('changes the job title with the placement, and the linked login follows it', async () => {
+    const emp = await hire();
+    const userId = await activateLogin(emp);
+    const fresh = await reread(emp.id);
+    const otherTitle = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-TRANSFER-1', name: { ar: 'مشرف', en: 'Supervisor' }, jobGrade: 'G6' });
+    expect(otherTitle.status).toBe(201);
+    const otherTitleId = (otherTitle.body as { data: { id: string } }).data.id;
+
+    const res = await action(emp.id, 'employment', {
+      type: 'transfer',
+      branchId: BRANCH2_ID,
+      departmentId: DEPARTMENT2_ID,
+      jobTitleId: otherTitleId,
+      version: fresh.version,
+    });
+    expect(res.status).toBe(201);
+    const after = await reread(emp.id);
+    expect(after.employment.departmentId).toBe(DEPARTMENT2_ID);
+    expect(after.employment.jobTitleId).toBe(otherTitleId);
+    // The new job carries no default salary, and a transfer states none: the pay stays as it was.
+    expect(after.employment.salary).toEqual(fresh.employment.salary);
+
+    const user = await request(app)
+      .get(`/api/v1/platform/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      (user.body as { data: { organization: { jobTitleId: string | null } } }).data.organization.jobTitleId,
+    ).toBe(otherTitleId);
+  });
+
+  it('accepts a transfer that changes only the job title', async () => {
+    const emp = await hire();
+    const title = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-TRANSFER-2', name: { ar: 'منسق', en: 'Coordinator' }, jobGrade: 'G4' });
+    expect(title.status).toBe(201);
+    const titleId = (title.body as { data: { id: string } }).data.id;
+
+    const res = await action(emp.id, 'employment', {
+      type: 'transfer',
+      jobTitleId: titleId,
+      version: emp.version,
+    });
+    expect(res.status).toBe(201);
+    const after = await reread(emp.id);
+    expect(after.employment.jobTitleId).toBe(titleId);
+    expect(after.employment.departmentId).toBe(emp.employment.departmentId);
+  });
+
   it('refuses a transfer whose department does not belong to the target branch', async () => {
     const emp = await hire();
     const res = await action(emp.id, 'employment', {

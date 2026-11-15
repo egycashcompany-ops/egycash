@@ -37,7 +37,12 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 // No `branchService` here on purpose: nothing in the action vocabulary needs a branch's CODE.
 // Actions move people between branches, and the Employee Code does not follow (ADR-017).
-import { departmentService, jobTitleService, sectionService } from '../../../../platform/organization';
+import {
+  departmentService,
+  jobTitleService,
+  sectionService,
+  type JobTitleDoc,
+} from '../../../../platform/organization';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../../platform/files';
 import { userService } from '../../../../platform/users';
 import { jobOfferService } from '../../recruitment/job-offers';
@@ -102,7 +107,8 @@ class EmployeeActionService {
       input.branchId === undefined &&
       input.departmentId === undefined &&
       input.sectionId === undefined &&
-      input.managerId === undefined
+      input.managerId === undefined &&
+      input.jobTitleId === undefined
     ) {
       throw new BusinessRuleError('a transfer must change at least one placement field');
     }
@@ -375,26 +381,16 @@ class EmployeeActionService {
     switch (action.type) {
       case 'promotion': {
         const jobTitleId = String(p['jobTitleId']);
-        const title = await jobTitleService.getById(jobTitleId);
-        if (title.status !== 'active') {
-          throw new BusinessRuleError('the target job title is not active');
-        }
-        changes.push({ field: 'employment.jobTitleId', from: String(employee.employment.jobTitleId), to: jobTitleId });
-        employee.employment.jobTitleId = new Types.ObjectId(jobTitleId);
+        const title = await this.activeJobTitle(jobTitleId);
+        this.applyJobTitle(employee, jobTitleId, changes);
         const salary = p['salary'] as { amount: number; currency: string } | null | undefined;
         if (salary !== undefined) {
           // Stated in the action ⇒ somebody decided it, whatever the job says (D-JOB-4).
           changes.push({ field: 'employment.salary', from: employee.employment.salary, to: salary ?? null });
           employee.employment.salary = salary ?? null;
           employee.employment.salarySource = 'manual';
-        } else if (title.fixedSalary != null && employee.employment.salarySource !== 'manual') {
-          // P-HR-22 — the new job's default reaches only an employee who was still following one.
-          // An override stays untouched, which is D-JOB-4 applied at the moment of promotion
-          // rather than deferred to a re-apply that does not exist yet.
-          const to = { amount: title.fixedSalary.amount, currency: title.fixedSalary.currency };
-          changes.push({ field: 'employment.salary', from: employee.employment.salary, to });
-          employee.employment.salary = to;
-          employee.employment.salarySource = 'jobDefault';
+        } else {
+          this.followJobSalary(employee, title, changes);
         }
         break;
       }
@@ -541,6 +537,35 @@ class EmployeeActionService {
     return changes;
   }
 
+  // ── Job title (promotion, and a transfer that names one) ───────────────────
+
+  /** The job title an action moves the employee into — refused unless it is still offered. */
+  private async activeJobTitle(jobTitleId: string): Promise<JobTitleDoc> {
+    const title = await jobTitleService.getById(jobTitleId);
+    if (title.status !== 'active') {
+      throw new BusinessRuleError('the target job title is not active');
+    }
+    return title;
+  }
+
+  private applyJobTitle(employee: EmployeeEntity, jobTitleId: string, changes: EmployeeActionChange[]): void {
+    changes.push({ field: 'employment.jobTitleId', from: String(employee.employment.jobTitleId), to: jobTitleId });
+    employee.employment.jobTitleId = new Types.ObjectId(jobTitleId);
+  }
+
+  /**
+   * P-HR-22 — the new job's default salary reaches only an employee who was still following one.
+   * An override stays untouched, which is D-JOB-4 applied at the moment the job changes rather than
+   * deferred to a re-apply that does not exist yet.
+   */
+  private followJobSalary(employee: EmployeeEntity, title: JobTitleDoc, changes: EmployeeActionChange[]): void {
+    if (title.fixedSalary == null || employee.employment.salarySource === 'manual') return;
+    const to = { amount: title.fixedSalary.amount, currency: title.fixedSalary.currency };
+    changes.push({ field: 'employment.salary', from: employee.employment.salary, to });
+    employee.employment.salary = to;
+    employee.employment.salarySource = 'jobDefault';
+  }
+
   // ── Transfer (F1 propagation: code prefix, user placement, employee file) ──
 
   private async applyTransfer(
@@ -574,6 +599,14 @@ class EmployeeActionService {
         throw new BusinessRuleError('the section does not belong to the target department');
       }
     }
+    // The job the employee holds in the new placement, when the transfer names a different one.
+    // Checked with the org referents, before anything is written, so a retired title refuses the
+    // whole transfer rather than moving the employee and then failing.
+    const newJobTitleId =
+      p['jobTitleId'] === undefined || String(p['jobTitleId']) === String(employee.employment.jobTitleId)
+        ? null
+        : String(p['jobTitleId']);
+    const newTitle = newJobTitleId === null ? null : await this.activeJobTitle(newJobTitleId);
 
     const branchChanged = newBranchId !== String(employee.branchId);
 
@@ -609,6 +642,13 @@ class EmployeeActionService {
       employee.employment.managerId = managerId === null ? null : new Types.ObjectId(managerId);
     }
 
+    if (newJobTitleId !== null && newTitle !== null) {
+      this.applyJobTitle(employee, newJobTitleId, changes);
+      // The same rule a promotion follows (P-HR-22): pay that follows the job follows the new job;
+      // pay somebody set by hand stays as it was. Nothing on a transfer states a salary.
+      this.followJobSalary(employee, newTitle, changes);
+    }
+
     // F1 propagation — the linked user's placement drives data-scope authorization (ADR-017).
     if (employee.userId !== null) {
       const user = await userService.getById(String(employee.userId));
@@ -619,6 +659,8 @@ class EmployeeActionService {
             branchId: newBranchId,
             departmentId: newDepartmentId,
             sectionId: newSectionId,
+            // The login was provisioned with the employee's job; it follows a job the transfer changed.
+            ...(newJobTitleId === null ? {} : { jobTitleId: newJobTitleId }),
           },
           version: user.__v,
         },

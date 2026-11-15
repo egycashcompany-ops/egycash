@@ -4,7 +4,7 @@
 // accepted offer + Direct Registration (D4).
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EMPLOYEE_STATUSES, type Locale } from '@ecms/contracts';
+import { EMPLOYEE_ORIGINS, EMPLOYEE_STATUSES, type EmployeeOrigin, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -55,6 +55,7 @@ const REMEMBERED_FILTERS = [
   'dept',
   'section',
   'job',
+  'origin',
   'size',
   'sort',
   'view',
@@ -91,6 +92,12 @@ export const EmployeesListPage = (): JSX.Element => {
   const [importOpen, setImportOpen] = useState(false);
   const [cardOf, setCardOf] = useState<EmployeeDto | null>(null);
   const idCard = sp.get('idcard') ?? '';
+  // «زود فلتر للموظفين الخارجيين» — how the person entered the registry, external among them. A
+  // value the vocabulary does not carry (an old link) reads as no filter rather than an empty table.
+  const originRaw = sp.get('origin') ?? '';
+  const origin: EmployeeOrigin | '' = (EMPLOYEE_ORIGINS as readonly string[]).includes(originRaw)
+    ? (originRaw as EmployeeOrigin)
+    : '';
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   // `dept` and `section` hold GROUP keys — a company-wide department, not one branch's copy of it.
@@ -174,6 +181,7 @@ export const EmployeesListPage = (): JSX.Element => {
       ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
       ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
       ...(placement.jobTitleId === '' ? {} : { jobTitleId: placement.jobTitleId }),
+      ...(origin === '' ? {} : { origin }),
       ...(idCard === 'received' ||
       idCard === 'never' ||
       idCard === 'awaiting' ||
@@ -203,6 +211,7 @@ export const EmployeesListPage = (): JSX.Element => {
     status !== '' ||
     view !== 'employed' ||
     hasPlacementFilter(placement) ||
+    origin !== '' ||
     idCard !== '';
   const clearFilters = (): void =>
     patch({
@@ -213,6 +222,7 @@ export const EmployeesListPage = (): JSX.Element => {
       dept: null,
       section: null,
       job: null,
+      origin: null,
       idcard: null,
     });
 
@@ -380,6 +390,19 @@ export const EmployeesListPage = (): JSX.Element => {
                 {jobTitleOptions.map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.name[locale]}
+                  </option>
+                ))}
+              </Select>
+              {/* How the person entered the registry — «تعيين خارجي» is the external employees. */}
+              <Select
+                aria-label={t('employees.columns.origin')}
+                value={origin}
+                onChange={(e) => patch({ origin: e.target.value || null })}
+              >
+                <option value="">{t('employees.filters.anyOrigin')}</option>
+                {EMPLOYEE_ORIGINS.map((o) => (
+                  <option key={o} value={o}>
+                    {t(`employees.origin.${o}`)}
                   </option>
                 ))}
               </Select>

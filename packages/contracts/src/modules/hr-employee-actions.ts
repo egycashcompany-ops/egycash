@@ -127,6 +127,14 @@ const TransferSchema = z
     sectionId: objectId().nullish(),
     /** null clears the manager. Omitted = unchanged. */
     managerId: objectId().nullish(),
+    /**
+     * The job the employee holds in the new placement — «فى الإجراءات (نقل) على الموظف إمكانية
+     * تعديل المسمي الوظيفي أيضاً». Omitted = unchanged. A move into another department is often a
+     * move into another job, and recording it as a transfer plus a promotion would call it a
+     * promotion when nobody was promoted. No salary is stated on a transfer; pay that follows the
+     * job follows the new one, exactly as on a promotion (P-HR-22), and pay set by hand stays.
+     */
+    jobTitleId: objectId().optional(),
     reason: z.string().max(500).optional(),
     ...base,
   })

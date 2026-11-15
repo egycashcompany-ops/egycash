@@ -15,6 +15,11 @@
 // the branch and the counter the way everybody else's is, and the last one issued is stated under
 // the box — the same help the ordinary registration screen gives, for the same reason: so the next
 // code can follow the last.
+//
+// THE DEPARTMENT, THE SECTION AND THE JOB ARE TYPED INTO — «عايز الإدارة والمسمي الوظيفي والقسم يكون
+// قابل للبحث فى الأختيارات من خلال Input ميبقاش فقط Selection من Dropdown». The job catalog runs to
+// well over a hundred titles, and three letters of one find it faster than scrolling. The branch stays
+// a plain list: a handful of sites, and the owner did not name it.
 import { useState } from 'react';
 import {
   EXTERNAL_EMPLOYEE_CODE_PATTERN,
@@ -25,6 +30,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
+import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { ApiError } from '../../../../../shared/lib/api-client';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
@@ -39,6 +45,7 @@ import {
   useLastExternalEmployeeCode,
   useRegisterEmployeeExternal,
 } from '../api/employee-queries';
+import { idsMatching } from '../lib/register-code';
 
 export const ExternalEmployeeDialog = ({
   open,
@@ -62,9 +69,26 @@ export const ExternalEmployeeDialog = ({
   const [jobTitleId, setJobTitleId] = useState('');
 
   const { data: branches = [] } = useBranchOptions();
-  const { data: departments = [] } = useDepartmentOptions(branchId === '' ? undefined : branchId);
-  const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
-  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  const departmentsQuery = useDepartmentOptions(branchId === '' ? undefined : branchId);
+  const sectionsQuery = useSectionOptions(departmentId === '' ? undefined : departmentId);
+  const jobTitlesQuery = useJobTitleReferenceOptions();
+  const departments = departmentsQuery.data ?? [];
+  const sections = sectionsQuery.data ?? [];
+  const jobTitles = jobTitlesQuery.data ?? [];
+  // The boxes commit ids and read as names; «…» while the catalog that names one is still loading.
+  // What is typed is matched against the name alone (`idsMatching`).
+  const [departmentTyped, setDepartmentTyped] = useState('');
+  const [sectionTyped, setSectionTyped] = useState('');
+  const [jobTitleTyped, setJobTitleTyped] = useState('');
+  const departmentLabel = (d: (typeof departments)[number]): string => orgUnitLabel(d, locale);
+  const sectionLabel = (sec: (typeof sections)[number]): string => orgUnitLabel(sec, locale);
+  const jobTitleLabel = (jt: (typeof jobTitles)[number]): string => localized(jt.name, locale);
+  const nameIn =
+    <T extends { id: string }>(items: readonly T[], label: (item: T) => string) =>
+    (id: string): string => {
+      const item = items.find((x) => x.id === id);
+      return item === undefined ? '…' : label(item);
+    };
   // Asked only while the dialog is open: a closed dialog has nothing to hint at.
   const lastCode = useLastExternalEmployeeCode(open);
 
@@ -203,48 +227,45 @@ export const ExternalEmployeeDialog = ({
           required
           hint={branchId === '' ? t('employees.external.pickBranchFirst') : undefined}
         >
-          <Select
+          <Combobox
             id="external-department"
             value={departmentId}
-            onChange={(e) => pickDepartment(e.target.value)}
+            options={idsMatching(departments, departmentLabel, departmentTyped)}
+            optionLabel={nameIn(departments, departmentLabel)}
+            onSearch={setDepartmentTyped}
+            onChange={pickDepartment}
             disabled={branchId === ''}
-          >
-            <option value="">{t('common.select')}</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {orgUnitLabel(d, locale)}
-              </option>
-            ))}
-          </Select>
+            placeholder={t('common.select')}
+            emptyText={t(departmentsQuery.isLoading ? 'common.loading' : 'common.noResults')}
+            clearLabel={t('common.clear')}
+          />
         </Field>
         <Field label={t('employees.actions.transfer.section')} htmlFor="external-section">
-          <Select
+          <Combobox
             id="external-section"
             value={sectionId}
-            onChange={(e) => setSectionId(e.target.value)}
+            options={idsMatching(sections, sectionLabel, sectionTyped)}
+            optionLabel={nameIn(sections, sectionLabel)}
+            onSearch={setSectionTyped}
+            onChange={setSectionId}
             disabled={departmentId === ''}
-          >
-            <option value="">{t('common.select')}</option>
-            {sections.map((s) => (
-              <option key={s.id} value={s.id}>
-                {orgUnitLabel(s, locale)}
-              </option>
-            ))}
-          </Select>
+            placeholder={t('common.select')}
+            emptyText={t(sectionsQuery.isLoading ? 'common.loading' : 'common.noResults')}
+            clearLabel={t('common.clear')}
+          />
         </Field>
         <Field label={t('offers.form.jobTitle')} htmlFor="external-job" required>
-          <Select
+          <Combobox
             id="external-job"
             value={jobTitleId}
-            onChange={(e) => setJobTitleId(e.target.value)}
-          >
-            <option value="">{t('common.select')}</option>
-            {jobTitles.map((j) => (
-              <option key={j.id} value={j.id}>
-                {localized(j.name, locale)}
-              </option>
-            ))}
-          </Select>
+            options={idsMatching(jobTitles, jobTitleLabel, jobTitleTyped)}
+            optionLabel={nameIn(jobTitles, jobTitleLabel)}
+            onSearch={setJobTitleTyped}
+            onChange={setJobTitleId}
+            placeholder={t('common.select')}
+            emptyText={t(jobTitlesQuery.isLoading ? 'common.loading' : 'common.noResults')}
+            clearLabel={t('common.clear')}
+          />
         </Field>
       </div>
     </Dialog>

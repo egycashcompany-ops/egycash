@@ -10,6 +10,10 @@
 // three digits ARE the branch, so the branch is read off the code rather than picked, and the
 // department and section lists narrow to that branch. A job title, once picked, fills in the
 // department and section most of that branch's people with the title sit in.
+//
+// THE DEPARTMENT, THE SECTION AND THE JOB ARE TYPED INTO — «عايز الإدارة والمسمي الوظيفي والقسم يكون
+// قابل للبحث فى الأختيارات من خلال Input ميبقاش فقط Selection من Dropdown». A box filters as it is
+// typed into; the job list keeps the branch's own titles first, as the old list's groups did.
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -28,6 +32,7 @@ import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
+import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
@@ -48,7 +53,12 @@ import {
 } from '../api/employee-queries';
 import { ExternalEmployeeDialog } from '../components/ExternalEmployeeDialog';
 import { SalaryCard } from '../components/SalaryCard';
-import { branchOfCode, orderTitlesForBranch, placementForTitle } from '../lib/register-code';
+import {
+  branchOfCode,
+  idsMatching,
+  orderTitlesForBranch,
+  placementForTitle,
+} from '../lib/register-code';
 
 const MARITAL: MaritalStatus[] = ['single', 'married', 'divorced', 'widowed'];
 const EMPLOYMENT_TYPES: EmploymentType[] = ['fullTime', 'partTime', 'contract', 'temporary'];
@@ -121,13 +131,30 @@ export const DirectRegisterPage = (): JSX.Element => {
     .filter((line): line is string => line !== null)
     .join(' · ');
 
-  const { data: departments = [] } = useDepartmentOptions(branchId === '' ? undefined : branchId);
-  const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
-  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  const departmentsQuery = useDepartmentOptions(branchId === '' ? undefined : branchId);
+  const sectionsQuery = useSectionOptions(departmentId === '' ? undefined : departmentId);
+  const jobTitlesQuery = useJobTitleReferenceOptions();
+  const departments = departmentsQuery.data ?? [];
+  const sections = sectionsQuery.data ?? [];
+  const jobTitles = jobTitlesQuery.data ?? [];
   // Where each job title's people already sit in this branch — job titles belong to no department,
   // so this is read off the employees, and only ever pre-fills what HR may still change.
   const { data: placements = [] } = useJobTitlePlacements(branchId);
   const { here: titlesHere, elsewhere: titlesElsewhere } = orderTitlesForBranch(jobTitles, placements);
+  // The boxes commit ids and read as names; «…» while the catalog that names one is still loading.
+  // What is typed is matched against the name alone (`idsMatching`).
+  const [departmentTyped, setDepartmentTyped] = useState('');
+  const [sectionTyped, setSectionTyped] = useState('');
+  const [jobTitleTyped, setJobTitleTyped] = useState('');
+  const departmentLabel = (d: (typeof departments)[number]): string => orgUnitLabel(d, locale);
+  const sectionLabel = (sec: (typeof sections)[number]): string => orgUnitLabel(sec, locale);
+  const jobTitleLabel = (jt: (typeof jobTitles)[number]): string => localized(jt.name, locale);
+  const nameIn =
+    <T extends { id: string }>(items: readonly T[], label: (item: T) => string) =>
+    (id: string): string => {
+      const item = items.find((x) => x.id === id);
+      return item === undefined ? '…' : label(item);
+    };
   const pickJobTitle = (id: string): void => {
     setJobTitleId(id);
     const placed = placementForTitle(id, placements, departments);
@@ -349,55 +376,56 @@ export const DirectRegisterPage = (): JSX.Element => {
                 </Select>
               </Field>
               <Field label={t('offers.form.department')} required>
-                <Select
+                <Combobox
                   value={departmentId}
+                  options={idsMatching(departments, departmentLabel, departmentTyped)}
+                  optionLabel={nameIn(departments, departmentLabel)}
+                  onSearch={setDepartmentTyped}
                   disabled={branchId === ''}
-                  onChange={(e) => {
-                    setDepartmentId(e.target.value);
+                  onChange={(id) => {
+                    setDepartmentId(id);
                     setSectionId('');
                   }}
-                >
-                  <option value="">{t('common.select')}</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {orgUnitLabel(d, locale)}
-                    </option>
-                  ))}
-                </Select>
+                  placeholder={branchId === '' ? t('employees.register.typeCodeFirst') : t('common.select')}
+                  emptyText={t(departmentsQuery.isLoading ? 'common.loading' : 'common.noResults')}
+                  clearLabel={t('common.clear')}
+                  ariaLabel={t('offers.form.department')}
+                />
               </Field>
               <Field label={t('employees.actions.transfer.section')}>
-                <Select value={sectionId} disabled={departmentId === ''} onChange={(e) => setSectionId(e.target.value)}>
-                  <option value="">{t('employees.actions.transfer.noSection')}</option>
-                  {sections.map((sec) => (
-                    <option key={sec.id} value={sec.id}>
-                      {orgUnitLabel(sec, locale)}
-                    </option>
-                  ))}
-                </Select>
+                {/* Empty is a real answer here — a department-level placement — so it reads as one. */}
+                <Combobox
+                  value={sectionId}
+                  options={idsMatching(sections, sectionLabel, sectionTyped)}
+                  optionLabel={nameIn(sections, sectionLabel)}
+                  onSearch={setSectionTyped}
+                  disabled={departmentId === ''}
+                  onChange={setSectionId}
+                  placeholder={t('employees.actions.transfer.noSection')}
+                  emptyText={t(sectionsQuery.isLoading ? 'common.loading' : 'common.noResults')}
+                  clearLabel={t('common.clear')}
+                  ariaLabel={t('employees.actions.transfer.section')}
+                />
               </Field>
-              <Field label={t('offers.form.jobTitle')} required>
-                <Select value={jobTitleId} disabled={branchId === ''} onChange={(e) => pickJobTitle(e.target.value)}>
-                  <option value="">{branchId === '' ? t('employees.register.typeCodeFirst') : t('common.select')}</option>
-                  {/* The titles this branch already has people in come first, most-held first. */}
-                  {titlesHere.length > 0 && (
-                    <optgroup label={t('employees.register.titlesInBranch')}>
-                      {titlesHere.map((jt) => (
-                        <option key={jt.id} value={jt.id}>
-                          {localized(jt.name, locale)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {titlesElsewhere.length > 0 && (
-                    <optgroup label={titlesHere.length > 0 ? t('employees.register.titlesOther') : t('offers.form.jobTitle')}>
-                      {titlesElsewhere.map((jt) => (
-                        <option key={jt.id} value={jt.id}>
-                          {localized(jt.name, locale)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </Select>
+              {/* The titles this branch already has people in come first, most-held first — the
+                  box has no group headings, so the hint says what the old list's groups did. */}
+              <Field
+                label={t('offers.form.jobTitle')}
+                required
+                hint={titlesHere.length > 0 ? t('employees.register.titlesHereFirst') : undefined}
+              >
+                <Combobox
+                  value={jobTitleId}
+                  options={idsMatching([...titlesHere, ...titlesElsewhere], jobTitleLabel, jobTitleTyped)}
+                  optionLabel={nameIn(jobTitles, jobTitleLabel)}
+                  onSearch={setJobTitleTyped}
+                  disabled={branchId === ''}
+                  onChange={pickJobTitle}
+                  placeholder={branchId === '' ? t('employees.register.typeCodeFirst') : t('common.select')}
+                  emptyText={t(jobTitlesQuery.isLoading ? 'common.loading' : 'common.noResults')}
+                  clearLabel={t('common.clear')}
+                  ariaLabel={t('offers.form.jobTitle')}
+                />
               </Field>
               <Field label={t('offers.form.employmentType')} required>
                 <Select value={employmentType} onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}>

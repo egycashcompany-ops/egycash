@@ -23,9 +23,10 @@ its entry here in the same PR.
     pay set by hand stays. `transfer` joins `SALARY_BEARING_ACTION_TYPES`, so payroll's salary history
     (PY-8) sees that change and prices the months before it at the old pay, and the history marks it
     withheld from a reader without the pay key. The overlap warning now sees a transfer meet a
-    promotion on the job title and the salary. The dialog starts each opening from the employee as
-    they are now (it stays mounted, so a promotion made in between was sent back undone), and a
-    retired title the employee still holds stays on the list by its name.
+    promotion on the job title and the salary. The dialog is mounted only while open, so each
+    opening starts from the employee as they are now, with an empty date, note and document (kept
+    mounted, a promotion made in between was sent back undone); a retired title the employee still
+    holds stays on the list by its name.
   - **Register:** on «تسجيل موظف» and in «موظف خارجي», the department, the section and the job title
     are boxes to type into, matched on the name the way Arabic is typed (hamza, ta marbuta), never on
     the id behind it. The job list still puts the branch's own titles first, now said in a hint under

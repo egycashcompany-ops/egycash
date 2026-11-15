@@ -33,11 +33,10 @@ describe('the transfer dialog names the job held in the new placement', () => {
     expect(TRANSFER).toContain('...(changedJob ? { jobTitleId } : {}),');
   });
 
-  // The menu keeps the dialog mounted: a promotion made in between must not be sent back undone.
-  it('starts every opening again from the employee as they are now', () => {
-    const reset = TRANSFER.slice(TRANSFER.indexOf('if (open !== wasOpen) {'));
-    expect(reset).toContain('setJobTitleId(employee.employment.jobTitleId);');
-    expect(reset).toContain('setBranchId(employee.employment.branchId);');
+  // A promotion made in between must not be sent back undone, nor last opening's note and document.
+  it('starts every opening again from the employee as they are now — mounted only while open', () => {
+    const MENU = readFileSync(join(HERE, 'components/actions/ActionsMenu.tsx'), 'utf8');
+    expect(MENU).toMatch(/\{dialog === 'transfer' && \(\s*<TransferDialog employee=\{employee\} open /);
   });
 
   // The catalog is active titles only; a retired one the employee holds stays theirs on the list.

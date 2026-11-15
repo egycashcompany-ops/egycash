@@ -119,7 +119,12 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       )}
 
       <PromotionDialog employee={employee} open={dialog === 'promotion'} onClose={() => setDialog(null)} />
-      <TransferDialog employee={employee} open={dialog === 'transfer'} onClose={() => setDialog(null)} />
+      {/* Mounted only while open, so every opening starts from the employee as they are NOW — its
+          job title included. Kept mounted, a promotion made in between left the old title in the
+          dialog, and the transfer sent it back as a change, undoing the promotion. */}
+      {dialog === 'transfer' && (
+        <TransferDialog employee={employee} open onClose={() => setDialog(null)} />
+      )}
       <SalaryChangeDialog employee={employee} open={dialog === 'salary'} onClose={() => setDialog(null)} />
       <ManagerChangeDialog employee={employee} open={dialog === 'manager'} onClose={() => setDialog(null)} />
       <SuspendDialog employee={employee} open={dialog === 'suspend'} onClose={() => setDialog(null)} />

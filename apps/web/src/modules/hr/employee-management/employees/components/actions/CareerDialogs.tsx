@@ -110,20 +110,6 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
   // until HR picks another.
   const [jobTitleId, setJobTitleId] = useState(employee.employment.jobTitleId);
   const [reason, setReason] = useState('');
-  // The menu keeps this dialog mounted and only toggles `open`, so each opening starts again from
-  // the employee as they are NOW. Without it, a promotion made in between would leave the old job
-  // here, and the transfer would send it back as a change — undoing the promotion.
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setBranchId(employee.employment.branchId);
-      setDepartmentId(employee.employment.departmentId);
-      setSectionId(employee.employment.sectionId ?? '');
-      setJobTitleId(employee.employment.jobTitleId);
-      setReason('');
-    }
-  }
   const { data: branches = [] } = useBranchOptions();
   const { data: departments = [] } = useDepartmentOptions(branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);

@@ -7,7 +7,8 @@ import { type EmployeeDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Button, EmptyState } from '../../../../shared/ui';
 import { Dialog } from '../../../../shared/ui/Dialog';
-import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
+import { Field, Input, Textarea } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { Can } from '../../../../platform/rbac/Can';
 import { useAdjustLeaveBalance, useLeaveRequests, useLeaveTypes } from '../api/leave-queries';
 import { BalanceCards } from './BalanceCards';
@@ -47,12 +48,12 @@ const AdjustDialog = ({ employeeId, onClose }: { employeeId: string; onClose: ()
     >
       <div className="space-y-3">
         <Field label={t('leave.request.type')}>
-          <Select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
-            <option value="">{t('leave.request.selectType')}</option>
-            {banked.map((x) => (
-              <option key={x.id} value={x.id}>{x.name.ar}</option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={typeId}
+            onChange={setTypeId}
+            options={banked.map((x) => ({ value: x.id, label: x.name.ar }))}
+            placeholder={t('leave.request.selectType')}
+          />
         </Field>
         <Field label={t('leave.adjust.days')}>
           <Input type="number" step="0.5" value={days} onChange={(e) => setDays(e.target.value)} />

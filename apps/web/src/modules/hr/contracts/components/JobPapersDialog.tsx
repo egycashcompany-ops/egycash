@@ -13,7 +13,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Button } from '../../../../shared/ui/Button';
-import { Input, Select } from '../../../../shared/ui';
+import { Input, SearchableSelect } from '../../../../shared/ui';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
 import { columnSearchMatches } from '../../../../shared/lib/column-filter';
@@ -303,16 +303,13 @@ export const JobPapersDialog = ({ open, onClose }: { open: boolean; onClose: () 
                         {!searching && free.length > 0 && (
                           <div className="flex flex-wrap items-center gap-2" data-department-add={id}>
                             <div className="w-full sm:w-72">
-                              <Select
+                              <SearchableSelect
                                 value={adding[id] ?? ''}
-                                onChange={(e) => setAdding((current) => ({ ...current, [id]: e.target.value }))}
-                                aria-label={t('contracts.jobPapers.addJob')}
-                              >
-                                <option value="">{t('contracts.jobPapers.addJob')}</option>
-                                {free.map((job) => (
-                                  <option key={job.jobTitleId} value={job.jobTitleId}>{localized(job.name, locale)}</option>
-                                ))}
-                              </Select>
+                                onChange={(next) => setAdding((current) => ({ ...current, [id]: next }))}
+                                options={free.map((job) => ({ value: job.jobTitleId, label: localized(job.name, locale) }))}
+                                placeholder={t('contracts.jobPapers.addJob')}
+                                ariaLabel={t('contracts.jobPapers.addJob')}
+                              />
                             </div>
                             <Button size="sm" variant="secondary" disabled={(adding[id] ?? '') === ''} onClick={() => addJob(id)}>
                               {t('contracts.jobPapers.add')}

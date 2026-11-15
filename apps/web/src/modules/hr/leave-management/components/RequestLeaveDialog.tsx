@@ -6,7 +6,8 @@ import { useMemo, useState } from 'react';
 import { type LeaveTypeDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Button, Dialog, EmptyState } from '../../../../shared/ui';
-import { Field, Input, Select, Textarea, Checkbox } from '../../../../shared/ui/form';
+import { Field, Input, Textarea, Checkbox } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { useLeaveEligibility, useLeaveTypes, useSubmitLeaveRequest } from '../api/leave-queries';
 
 export const RequestLeaveDialog = ({
@@ -65,14 +66,12 @@ export const RequestLeaveDialog = ({
     <Dialog open={open} onClose={onClose} title={t('leave.request.title')} size="lg">
       <div className="space-y-4">
         <Field label={t('leave.request.type')}>
-          <Select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
-            <option value="">{t('leave.request.selectType')}</option>
-            {activeTypes.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name.ar} ({x.code})
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={typeId}
+            onChange={setTypeId}
+            options={activeTypes.map((x) => ({ value: x.id, label: `${x.name.ar} (${x.code})` }))}
+            placeholder={t('leave.request.selectType')}
+          />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={t('leave.request.startDate')}>

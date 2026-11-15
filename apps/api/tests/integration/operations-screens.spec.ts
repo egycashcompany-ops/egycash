@@ -133,6 +133,8 @@ const SCREEN_REQUESTS: { screen: string; url: string; paginated: boolean }[] = [
   { screen: 'bank report', url: '/operations/reports/banks', paginated: false },
   { screen: 'bank report · from–to', url: '/operations/reports/banks?from=2026-08-01&to=2026-08-31', paginated: false },
   { screen: 'crew board', url: `/operations/crew-board?date=${TODAY}`, paginated: false },
+  // Round 20 — «أنواع التشغيل»: the crew board's type picker and the reference screen's tab.
+  { screen: 'crew board types · catalogs · shift types tab', url: `/operations/shift-types?page=1&pageSize=${String(MAX_PAGE_SIZE)}`, paginated: true },
   { screen: 'crew pool', url: `/operations/crew-board/directory?date=${TODAY}`, paginated: false },
   { screen: 'requirements roster', url: '/operations/crew-board/requirements?page=1&pageSize=25&sortDir=desc', paginated: true },
   { screen: 'crew attendance', url: `/operations/crew-board/attendance?date=${TODAY}`, paginated: false },

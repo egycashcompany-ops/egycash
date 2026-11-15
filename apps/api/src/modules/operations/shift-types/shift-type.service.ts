@@ -80,7 +80,10 @@ const isDuplicateKeyError = (error: unknown): boolean =>
  * The indexes are built first (`createIndexes` — `autoIndex` is off in production), so the unique
  * keys the two rules lean on exist before the first insert.
  */
-export const seedOperationsShiftTypes = async (): Promise<{ inserted: number; skipped: string[] }> => {
+export const seedOperationsShiftTypes = async (): Promise<{
+  inserted: number;
+  skipped: string[];
+}> => {
   await OperationsShiftTypeModel.createIndexes();
   const result = { inserted: 0, skipped: [] as string[] };
   for (const [sortOrder, seed] of LEGACY_SHIFT_TYPES.entries()) {
@@ -107,7 +110,10 @@ export const seedOperationsShiftTypes = async (): Promise<{ inserted: number; sk
     }
   }
   if (result.inserted > 0) {
-    logger.info({ inserted: result.inserted }, 'operations: shift types seeded with the legacy list');
+    logger.info(
+      { inserted: result.inserted },
+      'operations: shift types seeded with the legacy list',
+    );
   }
   return result;
 };

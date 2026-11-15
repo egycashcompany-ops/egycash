@@ -81,9 +81,9 @@ const ALL_DIGITS = /^\d+$/u;
 //     them. A seal with a letter in it is no end: nothing is filled.
 //   · It fills ONLY when the run the ends make is exactly as long as the boxes: |last − first| + 1
 //     equals the number of boxes on screen. A shorter or longer run is not a guess worth writing
-//     — which seal would be missing, or which box would hold two? — so nothing is filled, and a
-//     line under the list's bar says why (`sealRangeNote`). The run may go down as well as up (a
-//     bag scanned from its other end): «بالترتيب بينهم» is the order between the two, either way.
+//     — which seal would be missing, or which box would hold two? — so nothing is filled, and the
+//     list's bar says why, beside its summary line (`sealRangeNote`). The run may go down as well
+//     as up (a bag scanned from its other end): «بالترتيب بينهم» is the order between the two.
 //   · A number is written as the first box writes its own: a first box with leading zeros sets the
 //     width (00098 → 00099 → 00100), one without sets none (10 down to 7 is 9, 8); in its digits.
 //   · It never writes over a box typed by hand — only an EMPTY box, or one it wrote itself that
@@ -206,7 +206,7 @@ export const typeSeal = (list: SealList, slots: number, index: number, value: st
 };
 
 /**
- * The line under a list's bar: said when both ends are numbers whose run is NOT as long as the
+ * The word in a list's bar: said when both ends are numbers whose run is NOT as long as the
  * boxes and a box between them is still empty — the fill had something to do and did not. Once
  * every box between holds a seal typed by hand there is nothing to fill, and the summary line says
  * the gaps («[6 - 8] - [10 - 11] - 13», the owner's own list): a second word would be noise.

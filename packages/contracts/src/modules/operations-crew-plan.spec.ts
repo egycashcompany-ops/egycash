@@ -24,10 +24,12 @@ describe('the shift-type catalog («أنواع التشغيل»)', () => {
   it('takes a name, an optional English name and a colour of the palette', () => {
     const parsed = CreateOperationsShiftTypeSchema.parse({ name: ' يومي ', colour: 'rose' });
     expect(parsed).toEqual({ name: 'يومي', nameEn: null, colour: 'rose' });
-    expect(CreateOperationsShiftTypeSchema.safeParse({ name: 'يومي', colour: '#ff0000' }).success).toBe(
+    expect(
+      CreateOperationsShiftTypeSchema.safeParse({ name: 'يومي', colour: '#ff0000' }).success,
+    ).toBe(false);
+    expect(CreateOperationsShiftTypeSchema.safeParse({ name: '', colour: 'rose' }).success).toBe(
       false,
     );
-    expect(CreateOperationsShiftTypeSchema.safeParse({ name: '', colour: 'rose' }).success).toBe(false);
     // The palette is names the screen maps to its tags, never CSS.
     expect(OPERATIONS_SHIFT_TYPE_COLOURS).toContain('slate');
     expect(OPERATIONS_SHIFT_TYPE_COLOURS.every((c) => /^[a-z]+$/.test(c))).toBe(true);
@@ -35,13 +37,19 @@ describe('the shift-type catalog («أنواع التشغيل»)', () => {
 
   it('edits by version, archives with isActive, and has no delete', () => {
     expect(UpdateOperationsShiftTypeSchema.safeParse({ isActive: false }).success).toBe(false);
-    expect(UpdateOperationsShiftTypeSchema.safeParse({ isActive: false, version: 0 }).success).toBe(true);
-    expect(UpdateOperationsShiftTypeSchema.safeParse({ seedKey: 'x', version: 0 }).success).toBe(false);
+    expect(UpdateOperationsShiftTypeSchema.safeParse({ isActive: false, version: 0 }).success).toBe(
+      true,
+    );
+    expect(UpdateOperationsShiftTypeSchema.safeParse({ seedKey: 'x', version: 0 }).success).toBe(
+      false,
+    );
   });
 
   it('orders by a list of distinct ids, the currencies’ drag exactly', () => {
     expect(OrderOperationsShiftTypesSchema.safeParse({ ids: [oid(1), oid(2)] }).success).toBe(true);
-    expect(OrderOperationsShiftTypesSchema.safeParse({ ids: [oid(1), oid(1)] }).success).toBe(false);
+    expect(OrderOperationsShiftTypesSchema.safeParse({ ids: [oid(1), oid(1)] }).success).toBe(
+      false,
+    );
     expect(OrderOperationsShiftTypesSchema.safeParse({ ids: [] }).success).toBe(false);
   });
 });
@@ -51,7 +59,14 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
     expect(
       plan({ rows: [{ vehicleId: oid(1), shiftTypeId: oid(50), rowColour: 'yellow' }] }).success,
     ).toBe(true);
-    expect(OPERATIONS_CREW_ROW_COLOURS).toEqual(['yellow', 'green', 'blue', 'red', 'purple', 'orange']);
+    expect(OPERATIONS_CREW_ROW_COLOURS).toEqual([
+      'yellow',
+      'green',
+      'blue',
+      'red',
+      'purple',
+      'orange',
+    ]);
     expect(plan({ rows: [{ vehicleId: oid(1), rowColour: 'pink' }] }).success).toBe(false);
     expect(plan({ rows: [{ vehicleId: oid(1), shiftTypeId: 'daily' }] }).success).toBe(false);
   });
@@ -116,10 +131,13 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
   it('caps every slot at two — «من 1 ل 2 قادة» — and asks no minimum', () => {
     expect(CREW_SLOT_CAPACITY).toBe(2);
     expect(
-      plan({ rows: [{ vehicleId: null, specialist2EmployeeIds: [oid(1), oid(2), oid(3)] }] }).success,
+      plan({ rows: [{ vehicleId: null, specialist2EmployeeIds: [oid(1), oid(2), oid(3)] }] })
+        .success,
     ).toBe(false);
     // One captain and no specialist is a row in progress, not a refusal (the board warns ⚠).
-    expect(plan({ rows: [{ vehicleId: oid(1), captainEmployeeIds: [oid(10)] }] }).success).toBe(true);
+    expect(plan({ rows: [{ vehicleId: oid(1), captainEmployeeIds: [oid(10)] }] }).success).toBe(
+      true,
+    );
   });
 
   it('gives a vehicle-less row a van the way the board does: the van’s row plus the old row’s removal', () => {
@@ -150,11 +168,15 @@ describe('the direction is picked from the areas (canonicalOperationsDirection)'
   });
 
   it('never splits an area whose own name holds a separator', () => {
-    expect(canonicalOperationsDirection('شبرا/الخيمه', AREAS)).toEqual({ direction: 'شبرا/الخيمة' });
+    expect(canonicalOperationsDirection('شبرا/الخيمه', AREAS)).toEqual({
+      direction: 'شبرا/الخيمة',
+    });
   });
 
   it('names every part no area answers — equality, never "contains"', () => {
-    expect(canonicalOperationsDirection('طريق السويس', AREAS)).toEqual({ unknown: ['طريق السويس'] });
+    expect(canonicalOperationsDirection('طريق السويس', AREAS)).toEqual({
+      unknown: ['طريق السويس'],
+    });
     expect(canonicalOperationsDirection('المعادي - الهرم', AREAS)).toEqual({ unknown: ['الهرم'] });
     expect(canonicalOperationsDirection('مدينة', AREAS)).toEqual({ unknown: ['مدينة'] });
     expect(canonicalOperationsDirection(' - ', AREAS)).toEqual({ unknown: [' - '] });
@@ -172,9 +194,9 @@ describe('the event and the refusals', () => {
       specialist1EmployeeIds: [],
       specialist2EmployeeIds: [],
     };
-    expect(OperationsCrewAssignmentChangedPayloadV1.safeParse({ ...base, vehicleId: null }).success).toBe(
-      true,
-    );
+    expect(
+      OperationsCrewAssignmentChangedPayloadV1.safeParse({ ...base, vehicleId: null }).success,
+    ).toBe(true);
     expect(
       OperationsCrewAssignmentChangedPayloadV1.safeParse({ ...base, vehicleId: oid(3) }).success,
     ).toBe(true);

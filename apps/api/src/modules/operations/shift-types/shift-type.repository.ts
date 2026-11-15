@@ -11,7 +11,9 @@ class OperationsShiftTypeRepository extends BaseRepository<OperationsShiftTypeDo
    * Every live type matching `filter`, unpaged — the catalog's order is applied in the service.
    * A list of types is a dozen rows, never a growing history.
    */
-  async listAll(filter: FilterQuery<OperationsShiftTypeDoc> = {}): Promise<OperationsShiftTypeDoc[]> {
+  async listAll(
+    filter: FilterQuery<OperationsShiftTypeDoc> = {},
+  ): Promise<OperationsShiftTypeDoc[]> {
     return this.model
       .find({ ...filter, isDeleted: false })
       .lean<OperationsShiftTypeDoc[]>()

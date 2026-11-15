@@ -121,6 +121,20 @@ export const ErrorCodes = {
    * contad_app.js:2255).
    */
   OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
+  /**
+   * 422 — Round 20: a crew-board save NEWLY gave a row a type («النوع») that is not an active type
+   * of the `أنواع التشغيل` catalog (unknown, or archived). A row keeps a type it already holds.
+   * Details: `field` 'shiftTypeId' (`message` the id refused) and `field` 'rows' (`code` 'ROW_INDEX',
+   * `message` the row's index in the save).
+   */
+  OPERATIONS_UNKNOWN_SHIFT_TYPE: 'OPERATIONS_UNKNOWN_SHIFT_TYPE',
+  /**
+   * 422 — Round 20: a crew-board save gave a row a NEW or CHANGED «الاتجاه» that is not the name of
+   * an active operations area («لازم اختار من الاتجاهات اللى موجوده»). A direction the row already
+   * holds stays while it is sent unchanged. Details: one per part refused (`field` 'direction',
+   * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
+   */
+  OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

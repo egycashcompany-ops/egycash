@@ -41,7 +41,7 @@ import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { assertSecuredUnlocked } from '../shipments/secured-lock';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf, slotIds } from '../crew/crew-slots';
 
 const entityRef = (id: string) => ({
@@ -68,8 +68,9 @@ export const resolveCrew = async (
   crewAssignmentId: string,
   captainEmployeeId: string,
   legDate: Date,
-): Promise<{ crew: OperationsCrewAssignmentDoc; operationsDayId: Types.ObjectId }> => {
-  const crew = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
+): Promise<{ crew: OperationsVanCrewDoc; operationsDayId: Types.ObjectId }> => {
+  // A leg rides a VAN: a crew row without one (Round 20) answers 404 like a missing row.
+  const crew = await operationsCrewAssignmentRepository.findVanById(crewAssignmentId);
   if (crew === null) throw new NotFoundError('crew assignment not found');
 
   const day = await operationsDayService.findByDate(legDate);
@@ -337,7 +338,7 @@ class OperationsAssignmentService {
     // The crew — resolved THROUGH the (day, vehicle) rows, never copied onto a shipment.
     const crew: OperationsCaptainRouteDto['crew'] = [];
     for (const crewAssignmentId of crewIds) {
-      const row = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
+      const row = await operationsCrewAssignmentRepository.findVanById(crewAssignmentId);
       if (row === null) continue;
       crew.push({
         crewAssignmentId,

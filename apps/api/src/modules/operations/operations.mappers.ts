@@ -9,6 +9,7 @@ import {
   type OperationsDayDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
+  type OperationsShiftTypeDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReceiptDto,
 } from '@ecms/contracts';
@@ -18,6 +19,7 @@ import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
 import { type OperationsAreaDoc } from './areas/area.model';
+import { type OperationsShiftTypeDoc } from './shift-types/shift-type.model';
 import { type OperationsShipmentDoc } from './shipments/shipment.model';
 import { type VaultCustodyView } from './treasury-boundary';
 
@@ -70,6 +72,18 @@ export const toCurrencyDto = (doc: OperationsCurrencyDoc): OperationsCurrencyDto
   name: doc.name,
   legacyAliases: doc.legacyAliases,
   // `?? null`: a row written before the catalog could be ordered has no such field at all.
+  sortOrder: doc.sortOrder ?? null,
+  isActive: doc.isActive,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toShiftTypeDto = (doc: OperationsShiftTypeDoc): OperationsShiftTypeDto => ({
+  id: String(doc._id),
+  name: doc.name,
+  nameEn: doc.nameEn ?? null,
+  colour: doc.colour,
   sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
   version: doc.__v,

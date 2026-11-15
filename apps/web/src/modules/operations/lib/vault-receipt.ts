@@ -196,12 +196,7 @@ export const fillSealRange = (list: SealList, slots: number): SealList => {
  * A box typed into (by hand or by a scanner): it is the typist's from now on, whatever the fill
  * wrote there. Typed into the first or the last box on screen, the range fill runs again.
  */
-export const typeSeal = (
-  list: SealList,
-  slots: number,
-  index: number,
-  value: string,
-): SealList => {
+export const typeSeal = (list: SealList, slots: number, index: number, value: string): SealList => {
   const seals = growSeals(list.seals, index + 1);
   const filled = padTo(list.filled, seals.length, false);
   seals[index] = value;

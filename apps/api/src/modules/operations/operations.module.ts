@@ -17,6 +17,7 @@ import { buildOperationsBanksRouter } from './banks/bank.routes';
 import { buildOperationsBankBranchesRouter } from './bank-branches/bank-branch.routes';
 import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
 import { buildOperationsAreasRouter } from './areas/area.routes';
+import { buildOperationsShiftTypesRouter } from './shift-types/shift-type.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
@@ -226,7 +227,14 @@ export const operationsModule: ModuleManifest = {
   // `operationsVault.view` (the two screens' readers); `GET /operations/reports/vault` and the old
   // completed-per-bank answer are gone. «إدارات العمليات» gets a screen of its own, on the platform's
   // `setting.edit` — the grant that writes the setting it edits.
-  version: '0.14.0',
+  //
+  // Round 20 — «لوحة التشغيلة» for real — adds NO permission or page, ONE prefix and ONE collection:
+  // «أنواع التشغيل» (`/operations/shift-types`, `operations_shift_types`), the board's «النوع» as
+  // reference data («انا عاوز النوع يكون بيضاف من البيانات المرجعيه»), on the EXISTING catalog grant
+  // for its writes and read by the crew board's own `operationsCrew.view`. The legacy nine are seeded
+  // on boot, once. The crew row gains a type, a colour, and rows WITHOUT A VAN (`ux_day_vehicle`
+  // becomes partial on a present van — rebuilt on boot by the index-drift repair).
+  version: '0.15.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -236,6 +244,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/bank-branches', router: buildOperationsBankBranchesRouter() },
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
     { prefix: '/operations/areas', router: buildOperationsAreasRouter() },
+    { prefix: '/operations/shift-types', router: buildOperationsShiftTypesRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/standing-crew', router: buildOperationsStandingCrewRouter() },
@@ -250,6 +259,7 @@ export const operationsModule: ModuleManifest = {
     'operations_bank_branches',
     'operations_currencies',
     'operations_areas',
+    'operations_shift_types',
     'operations_days',
     'operations_crew_assignments',
     'operations_crew_requirements',

@@ -51,7 +51,8 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { formatNumber } from '../../../shared/lib/format';
 import { HISTORY_TOO_LARGE } from '../lib/shipment-history';
 import { __vaultQueueKey } from '../api/operations-queries';
-import { ReceiveIntoVaultDialog } from '../components/ReceiveIntoVaultDialog';
+import { ReceiveIntoVaultDialog, SealBoxes } from '../components/ReceiveIntoVaultDialog';
+import { NO_SEAL_LIST, typeSeal } from '../lib/vault-receipt';
 import { VaultReceivePage } from './VaultReceivePage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -843,6 +844,120 @@ describe('«استلام محصنة» — the receive form opened from the ✓',
     );
     expect(seals).not.toContain('data-seal-input=');
     expect(seals).toContain(ar('operations.secured.receive.sealsEmpty'));
+  });
+
+  // Round 18b — «خلى الفئات لوحدها كدا فوق رقم الايصال والكلام دا»: the notes of each denomination
+  // on a row of their own, over the receipt number and the packages, as legacy drew them — no
+  // longer a column beside them.
+  it('puts «عدد الورق من كل فئة» on a row of its own, OVER the receipt number and the packages', () => {
+    const html = dialog(VAULT_ONLY);
+    const band = html.slice(
+      html.indexOf('data-receive-band="receipt"'),
+      html.indexOf('data-receive-band="seals"'),
+    );
+    const order = [
+      'data-receive-denominations="true"',
+      ar('operations.secured.receive.receiptNumber'),
+      'data-receive-number="true"',
+      'data-receive-per-bag="2"',
+      'data-receive-count="bags"',
+      'data-receive-count="boxes"',
+      'data-receive-count="cartons"',
+    ].map((mark) => band.indexOf(mark));
+    for (const at of order) expect(at).toBeGreaterThan(-1);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // The row holds the nine boxes, the words and what they come to — and none of the receipt's
+    // own fields beside them.
+    const row = band.slice(order[0], order[1]);
+    expect(row.match(/data-receive-denomination="/g)).toHaveLength(9);
+    expect(row).toContain(ar('operations.secured.receive.denominations'));
+    expect(row).toContain('data-receive-total="none"');
+    expect(row).toContain(ar('operations.secured.receive.shipmentPound'));
+    expect(row).not.toContain('data-receive-count=');
+    expect(row).not.toContain('data-receive-per-bag=');
+    // Nine across from a tablet up — the old side-by-side split of the band is gone.
+    expect(DIALOG).toContain('grid grid-cols-5 gap-1.5 sm:grid-cols-9');
+    expect(DIALOG).not.toContain('xl:grid-cols-[minmax(0,4.5fr)_minmax(0,5.5fr)]');
+  });
+
+  // «والكراتين اقدر اكتب رقم بس ملهاش سيريال ولا الكلام دا رقم عادى».
+  it('takes the cartons as a plain count — no seal box, no serial', () => {
+    const html = dialog(VAULT_ONLY);
+    expect(html).toContain('data-receive-count="cartons"');
+    expect(html.match(/data-seal-list="/g)).toHaveLength(2);
+    expect(html).not.toContain('data-seal-list="carton"');
+    expect(DIALOG).toMatch(/rule="integer"\s+value=\{cartonCount\}/);
+    expect(DIALOG).not.toMatch(/carton\w*Seal|kind="carton"/i);
+  });
+
+  // Round 18b — «عاوز لو دخل اول خانة فى الحقائب او الصناديق و دخل فى الخانة الاخير رقم يملى اللى ف
+  // النص بالترتيب بينهم». The rules are `fillSealRange`'s, pinned in lib/vault-receipt.spec.ts; this
+  // pins that the form runs them — on each list alone, on every box typed, and when the count or
+  // «2×»/«3×» moves the last box — and sends what the boxes show.
+  it('fills the boxes between the first and the last — bags and boxes each on their own', () => {
+    expect(DIALOG).toContain('set((prev) => typeSeal(prev, boxes, index, value));');
+    expect(DIALOG).toContain('onChange={setSeal(setBagSeals, slots.bags)}');
+    expect(DIALOG).toContain('onChange={setSeal(setBoxSeals, slots.boxes)}');
+    expect(DIALOG).toContain(
+      'useEffect(() => setBagSeals((list) => fillSealRange(list, slots.bags)), [slots.bags]);',
+    );
+    expect(DIALOG).toContain(
+      'useEffect(() => setBoxSeals((list) => fillSealRange(list, slots.boxes)), [slots.boxes]);',
+    );
+    // Sent and printed as the boxes show them, the filled ones with the rest.
+    expect(DIALOG).toContain('bagSeals: bagSeals.seals,');
+    expect(DIALOG).toContain('boxSeals: boxSeals.seals,');
+    expect(DIALOG).toContain('bagSeals: sealsToSend(bagSeals.seals, slots.bags),');
+    expect(DIALOG).toContain('boxSeals: sealsToSend(boxSeals.seals, slots.boxes),');
+    // A new receipt starts with no box typed and none filled.
+    expect(DIALOG).toContain('setBagSeals(NO_SEAL_LIST);');
+    expect(DIALOG).toContain('setBoxSeals(NO_SEAL_LIST);');
+  });
+
+  it('tints a box the fill wrote, and says a run that does not fit beside the summary line', () => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(VAULT_ONLY), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const bags = (first: string, last: string): string =>
+      renderToStaticMarkup(
+        <Provider store={store}>
+          <SealBoxes
+            kind="bag"
+            title={ar('operations.secured.receive.bagSeals')}
+            list={typeSeal(typeSeal(NO_SEAL_LIST, 4, 0, first), 4, 3, last)}
+            slots={4}
+            perUnit={2}
+            onChange={() => undefined}
+          />
+        </Provider>,
+      );
+    // 1 … 4 over four boxes: 2 and 3 written by the form, tinted and titled so.
+    const filled = bags('1', '4');
+    expect(filled.match(/data-seal-filled="true"/g)).toHaveLength(2);
+    const inputs = filled.match(/<input[^>]*>/g) ?? [];
+    expect(inputs.filter((tag) => tag.includes('data-seal-filled="true"'))).toEqual([
+      expect.stringContaining('value="2"'),
+      expect.stringContaining('value="3"'),
+    ]);
+    expect(filled).toContain(
+      `title="${ar('operations.secured.receive.bagSealInput', { unit: 1, seal: 2 })} — ${ar('operations.secured.receive.sealFilled')}"`,
+    );
+    expect(filled).not.toContain('data-seal-range');
+    // 1 … 5 over four boxes: nothing filled, and the bar says why — after the summary it explains.
+    const said = bags('1', '5');
+    expect(said).not.toContain('data-seal-filled');
+    expect(said).toContain('data-seal-range="mismatch"');
+    expect(said).toContain(
+      ar('operations.secured.receive.rangeMismatch', { from: '1', to: '5', boxes: 4 }),
+    );
+    const bar = said.slice(0, said.indexOf('<input'));
+    expect(bar.indexOf('data-seal-summary')).toBeGreaterThan(-1);
+    expect(bar.indexOf('data-seal-summary')).toBeLessThan(bar.indexOf('data-seal-range'));
   });
 
   it('shows the captain and the van read only — the crew is set on the crew screens', () => {

@@ -523,6 +523,16 @@ beforeAll(async () => {
   spec1 = await mkEmployee('أخصائي أول');
   spec2 = await mkEmployee('أخصائي ثان');
 
+  // The areas the vans head for — since Round 20 a crew row's «الاتجاه» must name ACTIVE operations
+  // areas («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»); «المعادي - حلوان» names two.
+  for (const name of ['المعادي', 'حلوان', 'الهرم']) {
+    const areaRes = await request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name });
+    expect(areaRes.status, JSON.stringify(areaRes.body)).toBe(201);
+  }
+
   const dayCrews = await planDay(DAY, [
     {
       vehicleId: van1,
@@ -1332,9 +1342,10 @@ describe('«إضافة محصنة» on «استلام الخزينة» — the f
     ]) {
       const res = await request(app).get(url).set('Authorization', `Bearer ${vaultToken}`);
       expect(res.status, url).toBe(200);
-      // …and stay closed to an Operations grant that is neither.
+      // …and stay closed to an Operations grant that is neither — but for the areas, which the crew
+      // board's «الاتجاه» picks from since Round 20, so `operationsCrew.view` reads them too.
       const closed = await request(app).get(url).set('Authorization', `Bearer ${nobodyToken}`);
-      expect(closed.status, url).toBe(403);
+      expect(closed.status, url).toBe(url.includes('/operations/areas') ? 200 : 403);
     }
     // Booking is still `operationsShipment.create`'s.
     const booked = await request(app)

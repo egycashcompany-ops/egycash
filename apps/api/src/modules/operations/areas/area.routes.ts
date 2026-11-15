@@ -5,6 +5,10 @@
 // Round 12 — the list also answers `operationsVault.view`, with the branches': the vault's receive
 // screen opens the secured screen's shipment form («اضافة ل محصنة زى شاشة الشحنات المحصنة
 // بالظبط»), whose area box reads it (bank-branches/bank-branch.routes.ts). Names only.
+//
+// Round 20 — and `operationsCrew.view`: the crew board's «الاتجاه» must be one of these areas («لازم
+// اختار من الاتجاهات اللى موجوده بتاعت البنوك»), so whoever reads the board reads the list it picks
+// from. Names only, still; writes stay the catalog's.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -25,7 +29,7 @@ export const buildOperationsAreasRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorizeAny('operationsShipment.view', 'operationsVault.view'),
+    authorizeAny('operationsShipment.view', 'operationsVault.view', 'operationsCrew.view'),
     validate({ query: ListOperationsReferenceQuerySchema }),
     asyncHandler(listAreas),
   );

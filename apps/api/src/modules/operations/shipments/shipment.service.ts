@@ -77,7 +77,7 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { hasVan, type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { userDisplayNames } from '../user-names';
 import { vaultCustody } from '../treasury-boundary';
@@ -725,8 +725,11 @@ class OperationsShipmentService {
     const crewById = new Map(
       (await operationsCrewAssignmentRepository.findByIdsSystem(crewIds))
         // `findByIdsSystem` resolves soft-deleted rows too, on purpose, for names. A crew row
-        // that was taken off the plan puts nobody on the van, so it shows no crew at all.
+        // that was taken off the plan puts nobody on the van, so it shows no crew at all. And a
+        // leg only ever rides a row ON A VAN (Round 20 — a row without one is refused to a leg),
+        // so `hasVan` drops nothing real; it is what lets the van card read the row as a van's.
         .filter((c) => !c.isDeleted)
+        .filter(hasVan)
         .map((c) => [String(c._id), c]),
     );
     const crewRows = crewIds.flatMap((id) => {
@@ -796,7 +799,7 @@ class OperationsShipmentService {
    * rows.
    */
   async vanCardsOf(
-    crewRows: readonly OperationsCrewAssignmentDoc[],
+    crewRows: readonly OperationsVanCrewDoc[],
     extra: { employeeIds?: readonly string[]; vehicleIds?: readonly string[] } = {},
   ): Promise<{
     crews: OperationsDayBoardVehicleCrewDto[];
@@ -815,7 +818,7 @@ class OperationsShipmentService {
         .filter((d) => !d.isDeleted)
         .map((d) => [String(d._id), d]),
     );
-    const driversOf = (crew: OperationsCrewAssignmentDoc): string[] => {
+    const driversOf = (crew: OperationsVanCrewDoc): string[] => {
       const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
       if (duty === undefined) return [];
       // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and

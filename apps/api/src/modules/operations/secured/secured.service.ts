@@ -60,7 +60,7 @@ import { userDisplayNames } from '../user-names';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { nextSequence } from '../assignments/leg-sequence';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayRepository } from '../days/day.repository';
 import { operationsDayService, utcDay } from '../days/day.service';
@@ -139,7 +139,7 @@ const assertSecured = (shipment: OperationsShipmentDoc): void => {
  * van out today, or reopen a past day's van that has already left. A crew row whose day cannot be
  * found is refused the same way: nobody can say it is today's.
  */
-const assertTodaysVan = async (crew: OperationsCrewAssignmentDoc, now: Date): Promise<void> => {
+const assertTodaysVan = async (crew: OperationsVanCrewDoc, now: Date): Promise<void> => {
   const today = cairoYmd(now);
   const day = await operationsDayRepository.findById(String(crew.operationsDayId));
   const vanDay = day === null ? null : ymdOf(day.date);
@@ -698,7 +698,8 @@ class OperationsSecuredService {
       );
     }
 
-    const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
+    // A van's row (Round 20): a crew row without a van carries no shipment, so it answers 404.
+    const crew = await operationsCrewAssignmentRepository.findVanById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
 
     // The crew row must belong to the shipment's DELIVERY day — the legacy screen only ever
@@ -799,7 +800,8 @@ class OperationsSecuredService {
     by: string,
     now: Date = new Date(),
   ): Promise<{ dispatched: number }> {
-    const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
+    // A van's row (Round 20): a crew row without a van carries no shipment, so it answers 404.
+    const crew = await operationsCrewAssignmentRepository.findVanById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
     await assertTodaysVan(crew, now);
 

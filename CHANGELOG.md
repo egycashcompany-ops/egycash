@@ -490,6 +490,13 @@ its entry here in the same PR.
       nobody is picked: «يُسجَّل المستلم تلقائيًا». A refused branch, bank, currency or date is said
       under its box. After «استلام» the form stays open, locked; «إيصال» prints the receipt on
       the company form (a «مسودة» before «استلام»). The shipment form looks and behaves as before.
+    - Round 18b — «خلى الفئات لوحدها كدا فوق رقم الايصال» and «يملى اللى ف النص بالترتيب بينهم»: the
+      notes of each denomination are a row of their own over the receipt number and the packages;
+      a whole number typed in the FIRST and the LAST box of a seal list (bags, or boxes) fills the
+      empty boxes between in order — only when the run is exactly as long as the boxes (up or
+      down, the first box's leading zeros kept), never over a box typed by hand, again whenever
+      an end or the count changes — and a run that does not fit fills nothing and is said beside
+      the list's summary. Cartons stay a plain count with no seals.
   - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
     القى نظره».
     - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست

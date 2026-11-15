@@ -41,7 +41,7 @@ import { getSelfDirectoryEmployee, type DirectoryEmployee } from '../../../platf
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { slotIds } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -197,7 +197,7 @@ class OperationsMobileService {
     // re-captained out from under an already-assigned shipment.
     const assignments: OperationsMobileDayDto['assignments'] = [];
     const seen = new Set<string>();
-    const describe = (crew: OperationsCrewAssignmentDoc): void => {
+    const describe = (crew: OperationsVanCrewDoc): void => {
       const crewAssignmentId = String(crew._id);
       if (seen.has(crewAssignmentId)) return;
       seen.add(crewAssignmentId);
@@ -216,7 +216,7 @@ class OperationsMobileService {
     for (const crew of crewRows) describe(crew);
     for (const crewAssignmentId of new Set(stops.map((s) => s.crewAssignmentId))) {
       if (seen.has(crewAssignmentId)) continue;
-      const crew = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
+      const crew = await operationsCrewAssignmentRepository.findVanById(crewAssignmentId);
       if (crew !== null) describe(crew);
     }
 

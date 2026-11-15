@@ -12,13 +12,18 @@
 //      between captains' days, which is the crew screens' act (the shipment form's rule), and the
 //      contract's correction carries no crew. «سيريال» is the receipt's own: «بتتعرف عند الاستلام
 //      اذا كان سيريال او لا» — the vault decides it here.
-//   2. THE RECEIPT: «رقم الإيصال», «عدد الحقائب» with its «2×»/«3×», «عدد الصناديق», «عدد الكراتين»,
-//      and «عدد الورق من كل فئة» — a count under each pound denomination, 0.25 … 200, with what they
-//      come to beside the shipment's pound amount, and a gentle word when the two differ.
+//   2. THE RECEIPT: «عدد الورق من كل فئة» on a row of its own, OVER the rest — Round 18b, «خلى الفئات
+//      لوحدها كدا فوق رقم الايصال والكلام دا», as legacy drew it — a count under each pound
+//      denomination, 0.25 … 200, with what they come to beside the shipment's pound amount and a
+//      gentle word when the two differ; then «رقم الإيصال», «عدد الحقائب» with its «2×»/«3×», «عدد
+//      الصناديق», «عدد الكراتين» — the cartons a plain count: «والكراتين اقدر اكتب رقم بس ملهاش سيريال
+//      ولا الكلام دا رقم عادى», no seal box drawn for them.
 //   3. THE SEALS: «باركود الحقائب» (bags × the radio) and «باركود الصناديق» (two per box) — one box
 //      per seal, growing and shrinking with the counts without losing what was typed, each list
 //      under its legacy summary line («[1 - 4]», «[6 - 8] - [10 - 11] - 13», the lone ones red). A
-//      barcode scanner types the number and sends Enter: Enter moves to the next box.
+//      barcode scanner types the number and sends Enter: Enter moves to the next box. Round 18b:
+//      the first and the last box hold numbers → the boxes between take the numbers between, in
+//      order («يملى اللى ف النص بالترتيب بينهم»; the rules are `fillSealRange`'s).
 //
 // «انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى كله اختيارى»: NO NAMES — the two
 // treasurers (Q2's dual control) are gone, with «يجب أن يستلم كل شحنة شخصان مختلفان»; the receiver
@@ -66,22 +71,27 @@ import { SHIPMENT_DATE_PROBLEM_KEY, secondaryBankFor } from '../lib/shipment-for
 import { cairoToday } from '../lib/shipment-history';
 import {
   BOX_SEALS_PER_BOX,
+  NO_SEAL_LIST,
   denominationCheck,
   denominationLabel,
   denominationLines,
   denominationsTotal,
   draftSlots,
+  fillSealRange,
   growSeals,
   parseCount,
   poundAmount,
   receiveRefusal,
   receiveRequest,
   sealPartText,
+  sealRangeNote,
   sealSummary,
   sealsToSend,
   shipmentPatch,
+  typeSeal,
   type ReceiptDraft,
   type ReceiveField,
+  type SealList,
   type ShipmentDraftValues,
 } from '../lib/vault-receipt';
 import { vaultReceiptReport } from '../lib/vault-receipt-print';
@@ -106,7 +116,9 @@ const NO_COUNTS: readonly string[] = OPERATIONS_VAULT_DENOMINATIONS.map(() => ''
 /**
  * A band of the form — legacy's three white blocks, in the dialog's own panels. No heading of its
  * own, as legacy had none: its boxes' labels say what it holds, and the height a heading would take
- * is what keeps the whole form on a laptop screen without a scroll.
+ * is what keeps the whole form on a laptop screen without a scroll. Round 18b's row of notes, alone
+ * over the receipt's fields, is paid for by tighter bands (py-3, 10px between rows): the form still
+ * fits 1440 × 900, its seals filled.
  */
 const Band = ({
   children,
@@ -114,7 +126,7 @@ const Band = ({
 }: { children: ReactNode } & Record<`data-${string}`, string>): JSX.Element => (
   <section
     {...rest}
-    className="space-y-3 rounded-2xl border border-slate-200 bg-white/70 p-4 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
+    className="space-y-2.5 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
   >
     {children}
   </section>
@@ -214,12 +226,18 @@ const toNextSeal = (current: HTMLInputElement): void => {
   }
 };
 
-/** One list of seal boxes — bags or boxes — under its summary line. */
-const SealBoxes = ({
+/**
+ * One list of seal boxes — bags or boxes — under its summary line. A box the range fill wrote
+ * (`list.filled`) is tinted, so what the form wrote is told apart from what was scanned. When the
+ * two ends are numbers whose run does not fit the boxes, the bar says so beside the summary line it
+ * explains — and under the title when the line is too narrow for both — so a wide screen spends no
+ * height on it and the form keeps to 1440 × 900.
+ */
+export const SealBoxes = ({
   kind,
   title,
   hint,
-  seals,
+  list,
   slots,
   perUnit,
   onChange,
@@ -228,16 +246,17 @@ const SealBoxes = ({
   title: string;
   /** A word at the heading's far end — how a scanner moves on, said once. */
   hint?: string;
-  seals: readonly string[];
+  list: SealList;
   slots: number;
   perUnit: number;
   onChange: (index: number, value: string) => void;
 }): JSX.Element => {
   const t = useT();
-  const shown = growSeals(seals, slots).slice(0, slots);
+  const shown = growSeals(list.seals, slots).slice(0, slots);
+  const note = sealRangeNote(list, slots);
   return (
-    <div data-seal-list={kind} className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 pb-1.5 dark:border-[#2b3b6b]/60">
+    <div data-seal-list={kind} className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 pb-1 dark:border-[#2b3b6b]/60">
         <span className="inline-flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
           <Stroke
             d={[...SHIPMENT_PATH.barcode]}
@@ -245,7 +264,20 @@ const SealBoxes = ({
           />
           {title}
         </span>
-        <SealSummaryLine seals={sealsToSend(seals, slots)} />
+        <SealSummaryLine seals={sealsToSend(list.seals, slots)} />
+        {note.kind === 'mismatch' && (
+          <span
+            role="status"
+            data-seal-range="mismatch"
+            className="rounded-md bg-amber-100 px-2 py-0.5 text-[12px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+          >
+            {t('operations.secured.receive.rangeMismatch', {
+              from: note.from,
+              to: note.to,
+              boxes: note.boxes,
+            })}
+          </span>
+        )}
         {hint !== undefined && (
           <span className="ms-auto text-[12px] font-medium text-slate-500 dark:text-slate-400">
             {hint}
@@ -265,6 +297,7 @@ const SealBoxes = ({
                 : 'operations.secured.receive.boxSealInput',
               { unit: Math.floor(index / perUnit) + 1, seal: (index % perUnit) + 1 },
             );
+            const filled = list.filled[index] === true;
             return (
               <input
                 // A box is a POSITION (legacy's): its index is its identity.
@@ -282,11 +315,14 @@ const SealBoxes = ({
                   toNextSeal(e.currentTarget);
                 }}
                 data-seal-input={kind}
+                data-seal-filled={filled ? 'true' : undefined}
                 aria-label={label}
-                title={label}
+                title={filled ? `${label} — ${t('operations.secured.receive.sealFilled')}` : label}
                 className={cn(
-                  'h-10 w-full rounded-lg border px-2 text-center text-[15px] font-semibold shadow-inner transition-colors',
-                  'border-slate-200 bg-slate-50 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white',
+                  'h-9 w-full rounded-lg border px-2 text-center text-[15px] font-semibold shadow-inner transition-colors',
+                  filled
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200'
+                    : 'border-slate-200 bg-slate-50 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white',
                   'focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
                   MONO,
                 )}
@@ -335,8 +371,8 @@ export const ReceiveIntoVaultDialog = ({
   const [boxCount, setBoxCount] = useState('');
   const [cartonCount, setCartonCount] = useState('');
   const [perBag, setPerBag] = useState<OperationsVaultBagSealsPerBag>(2);
-  const [bagSeals, setBagSeals] = useState<string[]>([]);
-  const [boxSeals, setBoxSeals] = useState<string[]>([]);
+  const [bagSeals, setBagSeals] = useState<SealList>(NO_SEAL_LIST);
+  const [boxSeals, setBoxSeals] = useState<SealList>(NO_SEAL_LIST);
   const [counts, setCounts] = useState<readonly string[]>(NO_COUNTS);
   const [serialTracked, setSerialTracked] = useState(false);
   /** Save found a box of the shipment's data emptied. */
@@ -354,8 +390,8 @@ export const ReceiveIntoVaultDialog = ({
     setBoxCount('');
     setCartonCount('');
     setPerBag(2);
-    setBagSeals([]);
-    setBoxSeals([]);
+    setBagSeals(NO_SEAL_LIST);
+    setBoxSeals(NO_SEAL_LIST);
     setCounts(NO_COUNTS);
     // «سيريال» opens on what the shipment says; the vault decides it here.
     setSerialTracked(shipment.serialTracked);
@@ -370,20 +406,21 @@ export const ReceiveIntoVaultDialog = ({
     boxCount,
     cartonCount,
     bagSealsPerBag: perBag,
-    bagSeals,
-    boxSeals,
+    bagSeals: bagSeals.seals,
+    boxSeals: boxSeals.seals,
     denominations: counts,
     serialTracked,
   };
   const slots = draftSlots(receipt);
+  // A box typed into is the typist's; typed into the first or the last box, the range fill runs.
   const setSeal =
-    (set: (update: (prev: string[]) => string[]) => void) =>
+    (set: (update: (prev: SealList) => SealList) => void, boxes: number) =>
     (index: number, value: string): void =>
-      set((prev) => {
-        const next = growSeals(prev, index + 1);
-        next[index] = value;
-        return next;
-      });
+      set((prev) => typeSeal(prev, boxes, index, value));
+  // The count or «2×»/«3×» moves the last box: the fill follows the ends now on screen (the same
+  // list comes back when nothing changes, so this draws nothing more).
+  useEffect(() => setBagSeals((list) => fillSealRange(list, slots.bags)), [slots.bags]);
+  useEffect(() => setBoxSeals((list) => fillSealRange(list, slots.boxes)), [slots.boxes]);
 
   // ── «عدد الورق من كل فئة» against the shipment's pound ─────────────────────────────────────────
   const counted = denominationsTotal(denominationLines(counts));
@@ -494,8 +531,8 @@ export const ReceiveIntoVaultDialog = ({
         cartonCount: taken?.cartonCount ?? parseCount(cartonCount),
         boxCount: taken?.boxCount ?? parseCount(boxCount),
         bagSealsPerBag: taken?.bagSealsPerBag ?? perBag,
-        bagSeals: sealsToSend(bagSeals, slots.bags),
-        boxSeals: sealsToSend(boxSeals, slots.boxes),
+        bagSeals: sealsToSend(bagSeals.seals, slots.bags),
+        boxSeals: sealsToSend(boxSeals.seals, slots.boxes),
         denominations: taken?.denominations ?? denominationLines(counts),
       },
       taken:
@@ -531,7 +568,7 @@ export const ReceiveIntoVaultDialog = ({
   const tileBox = cn(
     MONO,
     '!rounded-xl border text-center font-semibold shadow-inner transition-all',
-    '!px-0.5 !pb-1.5 !pt-4 !text-[14px]',
+    '!px-0.5 !pb-1 !pt-[15px] !text-[14px]',
     'border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white dark:placeholder:text-slate-500',
     'focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',
   );
@@ -621,11 +658,11 @@ export const ReceiveIntoVaultDialog = ({
         )}
 
         {/* After «استلام» everything is locked, as since Round 10 — the form stays for «إيصال». */}
-        <fieldset disabled={locked} className="min-w-0 space-y-4 disabled:opacity-90">
+        <fieldset disabled={locked} className="min-w-0 space-y-3 disabled:opacity-90">
           {/* 1 — THE SHIPMENT'S DATA, editable: «تعدّلها عادي». */}
           <Band data-receive-band="shipment">
-            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3 xl:grid-cols-[minmax(0,2.7fr)_minmax(0,1.3fr)]">
-              <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-2.5 xl:grid-cols-[minmax(0,2.7fr)_minmax(0,1.3fr)]">
+              <div className="grid grid-cols-1 items-start gap-x-4 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-4">
                 <MainBankField
                   draft={draft}
                   starred={false}
@@ -726,10 +763,102 @@ export const ReceiveIntoVaultDialog = ({
             </div>
           </Band>
 
-          {/* 2 — THE RECEIPT: the number, the packages, «عدد الورق من كل فئة». */}
+          {/* 2 — THE RECEIPT: «عدد الورق من كل فئة» on a row of its own, then the number and the
+              packages — «خلى الفئات لوحدها كدا فوق رقم الايصال والكلام دا». */}
           <Band data-receive-band="receipt">
-            <div className="grid grid-cols-1 items-start gap-x-4 gap-y-3 xl:grid-cols-[minmax(0,4.5fr)_minmax(0,5.5fr)]">
-              <div className="grid grid-cols-2 items-start gap-x-3 gap-y-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.75fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            {/* «عدد الورق من كل فئة» — legacy's row of boxes, alone over the receipt's fields as legacy
+                drew it: 0.25 … 200, a count in each, the denomination written inside its box. On a
+                wide screen the words and what the notes come to stand at the row's start, so the
+                row is one box tall and the whole form keeps to a laptop's screen; narrower, they go
+                over the boxes. */}
+            <div
+              data-receive-denominations="true"
+              className="grid grid-cols-1 items-center gap-x-5 gap-y-2 xl:grid-cols-[minmax(0,23rem)_minmax(0,1fr)]"
+            >
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex min-h-[22px] flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold">
+                  <span className="text-[15px] font-bold text-slate-900 dark:text-white">
+                    {t('operations.secured.receive.denominations')}
+                  </span>
+                  {check.state === 'match' && (
+                    <span
+                      data-receive-total-note="match"
+                      title={t('operations.secured.receive.denominationsMatch')}
+                      className="rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
+                    >
+                      {t('operations.secured.receive.denominationsMatched')}
+                    </span>
+                  )}
+                  {check.state === 'mismatch' && (
+                    // Gentle, never a refusal: «كله اختيارى».
+                    <span
+                      data-receive-total-note="mismatch"
+                      title={t('operations.secured.receive.denominationsMismatch', {
+                        difference: formatAmount(Math.abs(check.difference), locale),
+                      })}
+                      className="rounded-md bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+                    >
+                      {t('operations.secured.receive.denominationsDiffer', {
+                        difference: formatAmount(Math.abs(check.difference), locale),
+                      })}
+                    </span>
+                  )}
+                </div>
+                <span
+                  data-receive-total={check.state}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-slate-600 dark:text-slate-300"
+                >
+                  <span>
+                    {t('operations.secured.receive.denominationsTotal')}{' '}
+                    <bdi className={cn('font-black text-slate-900 dark:text-white', MONO)}>
+                      {formatAmount(counted, locale)}
+                    </bdi>
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-600">|</span>
+                  <span>
+                    {t('operations.secured.receive.shipmentPound')}{' '}
+                    <bdi className={cn('font-black text-slate-900 dark:text-white', MONO)}>
+                      {formatAmount(shipmentPound, locale)}
+                    </bdi>
+                  </span>
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-9">
+                {OPERATIONS_VAULT_DENOMINATIONS.map((value, index) => (
+                  <label key={value} className="relative min-w-0">
+                    <span
+                      className={cn(
+                        'pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] font-bold leading-none text-indigo-600 dark:text-indigo-300',
+                        MONO,
+                      )}
+                    >
+                      {denominationLabel(value)}
+                    </span>
+                    <Input
+                      rule="integer"
+                      value={counts[index] ?? ''}
+                      onChange={(e) =>
+                        setCounts((prev) =>
+                          prev.map((count, i) => (i === index ? e.target.value : count)),
+                        )
+                      }
+                      placeholder="0"
+                      aria-label={t('operations.secured.receive.denominationInput', {
+                        value: denominationLabel(value),
+                      })}
+                      tone={tileBox}
+                      data-receive-denomination={denominationLabel(value)}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* The receipt's own fields under the row of notes, in the shipment's four columns above
+                them — the cartons a plain count, with no seal box: «ملهاش سيريال ولا الكلام دا رقم
+                عادى». */}
+            <div className="grid grid-cols-1 gap-x-4 border-t border-slate-200 pt-2.5 xl:grid-cols-[minmax(0,2.7fr)_minmax(0,1.3fr)] dark:border-[#2b3b6b]/60">
+              <div className="grid grid-cols-2 items-start gap-x-4 gap-y-3 sm:grid-cols-4">
                 <DesignField label={t('operations.secured.receive.receiptNumber')}>
                   <Input
                     value={receiptNumber}
@@ -806,87 +935,6 @@ export const ReceiveIntoVaultDialog = ({
                   />
                 </DesignField>
               </div>
-
-              {/* «عدد الورق من كل فئة» — legacy's row of boxes, 0.25 … 200, a count in each; the
-                  denomination is written inside its box, so the row is one box tall. What they
-                  come to is on the heading's line, beside the shipment's pounds. */}
-              <div className="space-y-2" data-receive-denominations="true">
-                <div className="flex min-h-[22px] flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <span className="text-[15px] font-bold text-slate-900 dark:text-white">
-                    {t('operations.secured.receive.denominations')}
-                  </span>
-                  <span
-                    data-receive-total={check.state}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-slate-600 dark:text-slate-300"
-                  >
-                    <span>
-                      {t('operations.secured.receive.denominationsTotal')}{' '}
-                      <bdi className={cn('font-black text-slate-900 dark:text-white', MONO)}>
-                        {formatAmount(counted, locale)}
-                      </bdi>
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">|</span>
-                    <span>
-                      {t('operations.secured.receive.shipmentPound')}{' '}
-                      <bdi className={cn('font-black text-slate-900 dark:text-white', MONO)}>
-                        {formatAmount(shipmentPound, locale)}
-                      </bdi>
-                    </span>
-                    {check.state === 'match' && (
-                      <span
-                        data-receive-total-note="match"
-                        title={t('operations.secured.receive.denominationsMatch')}
-                        className="rounded-md bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
-                      >
-                        {t('operations.secured.receive.denominationsMatched')}
-                      </span>
-                    )}
-                    {check.state === 'mismatch' && (
-                      // Gentle, never a refusal: «كله اختيارى».
-                      <span
-                        data-receive-total-note="mismatch"
-                        title={t('operations.secured.receive.denominationsMismatch', {
-                          difference: formatAmount(Math.abs(check.difference), locale),
-                        })}
-                        className="rounded-md bg-amber-100 px-2 py-0.5 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
-                      >
-                        {t('operations.secured.receive.denominationsDiffer', {
-                          difference: formatAmount(Math.abs(check.difference), locale),
-                        })}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-9">
-                  {OPERATIONS_VAULT_DENOMINATIONS.map((value, index) => (
-                    <label key={value} className="relative min-w-0">
-                      <span
-                        className={cn(
-                          'pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] font-bold leading-none text-indigo-600 dark:text-indigo-300',
-                          MONO,
-                        )}
-                      >
-                        {denominationLabel(value)}
-                      </span>
-                      <Input
-                        rule="integer"
-                        value={counts[index] ?? ''}
-                        onChange={(e) =>
-                          setCounts((prev) =>
-                            prev.map((count, i) => (i === index ? e.target.value : count)),
-                          )
-                        }
-                        placeholder="0"
-                        aria-label={t('operations.secured.receive.denominationInput', {
-                          value: denominationLabel(value),
-                        })}
-                        tone={tileBox}
-                        data-receive-denomination={denominationLabel(value)}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
             </div>
           </Band>
 
@@ -896,18 +944,18 @@ export const ReceiveIntoVaultDialog = ({
               kind="bag"
               hint={t('operations.secured.receive.scanHint')}
               title={t('operations.secured.receive.bagSeals')}
-              seals={bagSeals}
+              list={bagSeals}
               slots={slots.bags}
               perUnit={perBag}
-              onChange={setSeal(setBagSeals)}
+              onChange={setSeal(setBagSeals, slots.bags)}
             />
             <SealBoxes
               kind="box"
               title={t('operations.secured.receive.boxSeals')}
-              seals={boxSeals}
+              list={boxSeals}
               slots={slots.boxes}
               perUnit={BOX_SEALS_PER_BOX}
-              onChange={setSeal(setBoxSeals)}
+              onChange={setSeal(setBoxSeals, slots.boxes)}
             />
           </Band>
         </fieldset>

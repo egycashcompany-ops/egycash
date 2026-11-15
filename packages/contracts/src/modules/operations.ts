@@ -467,6 +467,94 @@ export const UpdateOperationsAreaSchema = z
   .strict();
 export type UpdateOperationsArea = z.infer<typeof UpdateOperationsAreaSchema>;
 
+// ── Shift types «أنواع التشغيل» (Round 20 — the crew board's «النوع») ──────────────────────────
+//
+// The legacy crew board's «النوع» column (يومي، احتياطي، احتياطي سفر، أسوان، إيباج، سفر، شلاتين، محصنة،
+// مسائي) was a fixed list in the template. The owner approved the board with one change to it: «انا
+// عاوز النوع يكون بيضاف من البيانات المرجعيه» — so it is a CATALOG on the reference-data screen, built
+// the way the currencies are (dragged order, archived never deleted, audited, no events), and a
+// crew row points at one by id (`shiftTypeId`). The legacy nine are seeded on boot, once.
+
+/**
+ * The colours a type may wear — a small fixed palette the screen maps to its tag colours, so a
+ * type added on the reference screen still reads as a coloured tag on the board without anybody
+ * picking a hex value. Names, never CSS: the screen owns how each looks in light and dark.
+ */
+export const OPERATIONS_SHIFT_TYPE_COLOURS = [
+  'rose',
+  'orange',
+  'amber',
+  'lime',
+  'emerald',
+  'teal',
+  'sky',
+  'indigo',
+  'violet',
+  'fuchsia',
+  'slate',
+] as const;
+export const OperationsShiftTypeColourSchema = z.enum(OPERATIONS_SHIFT_TYPE_COLOURS);
+export type OperationsShiftTypeColour = z.infer<typeof OperationsShiftTypeColourSchema>;
+
+export interface OperationsShiftTypeDto {
+  id: string;
+  /** The Arabic name the board shows («يومي»). Unique among the live types. */
+  name: string;
+  /** The English name, or null — the areas' rule: optional, the board reads Arabic. */
+  nameEn: string | null;
+  colour: OperationsShiftTypeColour;
+  /**
+   * The type's place in the catalog's ARRANGED order — 0 first — or null while nobody has arranged
+   * the list (`PUT /operations/shift-types/order`, the currencies' drag exactly). THE ORDER THE LIST
+   * ANSWERS IN when no `sortBy` is asked for: `sortOrder` ascending (null after every placed one),
+   * then the Arabic name. The board's type picker and its counts strip follow it.
+   */
+  sortOrder: number | null;
+  /**
+   * An archived type is offered for no new row, and a row that already carries it keeps it: the
+   * save refuses an inactive type only when it is newly chosen (`PlanOperationsCrewRowSchema`).
+   */
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const shiftTypeCore = {
+  name: z.string().trim().min(1).max(60),
+  nameEn: z.string().trim().min(1).max(60).nullable().default(null),
+  colour: OperationsShiftTypeColourSchema,
+  /** Optional, as the currencies': left out on create, a new type joins the END of an arranged list. */
+  sortOrder: z.number().int().min(0).nullable().optional(),
+};
+/** `POST /operations/shift-types` (`operationsCatalog.manage`) → 201. A taken name → 409. */
+export const CreateOperationsShiftTypeSchema = z.object(shiftTypeCore).strict();
+export type CreateOperationsShiftType = z.infer<typeof CreateOperationsShiftTypeSchema>;
+/** `PATCH /operations/shift-types/:id` (`operationsCatalog.manage`). No DELETE: `isActive: false`. */
+export const UpdateOperationsShiftTypeSchema = z
+  .object(shiftTypeCore)
+  .partial()
+  .extend({ isActive: z.boolean().optional(), version: z.number().int().min(0) })
+  .strict();
+export type UpdateOperationsShiftType = z.infer<typeof UpdateOperationsShiftTypeSchema>;
+
+/**
+ * `PUT /operations/shift-types/order` (`operationsCatalog.manage`) → 204 — the dragged order, the
+ * currencies' `PUT /operations/currencies/order` exactly: the ids named first, in the order given,
+ * every type not named after them in its old place; an id that is not a type → 409, nothing
+ * written; versions untouched; audited as one `update` with the field `order` (old → new, names).
+ */
+export const OrderOperationsShiftTypesSchema = z
+  .object({
+    ids: z
+      .array(objectId())
+      .min(1)
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'A type is listed twice' }),
+  })
+  .strict();
+export type OrderOperationsShiftTypes = z.infer<typeof OrderOperationsShiftTypesSchema>;
+
 // ── Cash shipments (OP-2) ───────────────────────────────────────────────────────────────────────
 //
 // The legacy `transactions` document normalized per the approved SPLIT (design §15): this entity
@@ -1618,11 +1706,33 @@ export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
  */
 export const CREW_SLOT_CAPACITY = 2;
 
+/**
+ * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». Six
+ * names, and null for none. A planner's mark, nothing more: no rule reads it.
+ */
+export const OPERATIONS_CREW_ROW_COLOURS = [
+  'yellow',
+  'green',
+  'blue',
+  'red',
+  'purple',
+  'orange',
+] as const;
+export const OperationsCrewRowColourSchema = z.enum(OPERATIONS_CREW_ROW_COLOURS);
+export type OperationsCrewRowColour = z.infer<typeof OperationsCrewRowColourSchema>;
+
 export interface OperationsCrewAssignmentDto {
   id: string;
   operationsDayId: string;
-  vehicleId: string;
-  fleetDutyAssignmentId: string;
+  /**
+   * Null for a row WITHOUT A VAN (Round 20): «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات
+   * برضو». Such a row carries a crew and every field of a van's row, and no Fleet duty row.
+   */
+  vehicleId: string | null;
+  fleetDutyAssignmentId: string | null;
+  /** «النوع» — a type of the `أنواع التشغيل` catalog, or null («اختر»). */
+  shiftTypeId: string | null;
+  rowColour: OperationsCrewRowColour | null;
   /**
    * The slot's occupants, in the order Operations entered them — at most `CREW_SLOT_CAPACITY`.
    *
@@ -1645,6 +1755,38 @@ export interface OperationsCrewAssignmentDto {
   updatedAt: string;
 }
 
+/**
+ * A crew row's own facts, as the board reads them — a van's (`OperationsCrewBoardRowDto.crew`) and
+ * a row without a van (`OperationsCrewBoardDto.vehiclelessRows`) alike.
+ */
+export interface OperationsCrewBoardCrewDto {
+  /**
+   * The crew row's OWN id — the `crewAssignmentId` every downstream act is addressed by, and what
+   * the save names a row without a van by (`PlanOperationsCrewRowSchema.crewAssignmentId`,
+   * `PlanOperationsCrewSchema.removeCrewAssignmentIds`).
+   *
+   * Its absence was a live defect: the vault dispatch screen had no crew id to send, so it sent
+   * `fleetDutyAssignmentId` instead, which is an id from a DIFFERENT collection. Both of that
+   * screen's actions therefore 404'd at
+   * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
+   */
+  id: string;
+  /** Up to `CREW_SLOT_CAPACITY` per slot; `[]` means the slot is empty, never `null`. */
+  captainEmployeeIds: string[];
+  specialist1EmployeeIds: string[];
+  specialist2EmployeeIds: string[];
+  /**
+   * «الاتجاه». Saved since Round 20 as the names of ACTIVE operations areas (see
+   * `canonicalOperationsDirection`); a value saved before that may be any text, and is kept.
+   */
+  direction: string | null;
+  plannedTime: string | null;
+  notes: string | null;
+  /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
+  shiftTypeId: string | null;
+  rowColour: OperationsCrewRowColour | null;
+}
+
 /** One board row: the Fleet duty facts (read-only here, §9.4) joined with the cash-crew facts. */
 export interface OperationsCrewBoardRowDto {
   vehicleId: string;
@@ -1653,32 +1795,40 @@ export interface OperationsCrewBoardRowDto {
   /** Fleet-owned facts, displayed not edited: the legacy tashghela board showed the drivers too. */
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
+  /**
+   * Round 20 — the same two drivers BY NAME ONLY, for the van's hover card («ولما اعمل هوفر على
+   * العربيه يظهر السواقيين اللى عليها»): the round-5 rule, a driver's details are Fleet's. Driver 1
+   * then driver 2, the empty seats left out; a name the directory cannot give is null.
+   */
+  drivers: OperationsDayBoardDriverDto[];
   missionTypeId: string | null;
-  crew: {
-    /**
-     * The crew row's OWN id — the `crewAssignmentId` every downstream act is addressed by.
-     *
-     * Its absence was a live defect: the vault dispatch screen had no crew id to send, so it sent
-     * `fleetDutyAssignmentId` instead, which is an id from a DIFFERENT collection. Both of that
-     * screen's actions therefore 404'd at
-     * `operationsCrewAssignmentRepository.findById` (secured.service.ts:185, :274).
-     */
-    id: string;
-    /** Up to `CREW_SLOT_CAPACITY` per slot; `[]` means the slot is empty, never `null`. */
-    captainEmployeeIds: string[];
-    specialist1EmployeeIds: string[];
-    specialist2EmployeeIds: string[];
-    direction: string | null;
-    plannedTime: string | null;
-    notes: string | null;
-  } | null;
+  crew: OperationsCrewBoardCrewDto | null;
+}
+
+/** Round 20 — a van Fleet's workshop holds on the board's day («صيانة» on the legacy strip). */
+export interface OperationsCrewBoardWorkshopVehicleDto {
+  vehicleId: string;
+  vehicleCode: string;
 }
 
 export interface OperationsCrewBoardDto {
   /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
   date: string;
   day: OperationsDayDto | null;
+  /** The VANS of the day — Fleet's duty rows, each with its crew row or null. Never a row without a van. */
   rows: OperationsCrewBoardRowDto[];
+  /**
+   * Round 20 — the day's crew rows WITHOUT A VAN («إضافة صف بدون سيارة»), in the order they were
+   * added. Apart from `rows` on purpose: every other reader of the day's crews (the van cards, the
+   * distribution, the captain's day) is about vans, and none of them sees these.
+   */
+  vehiclelessRows: OperationsCrewBoardCrewDto[];
+  /**
+   * Round 20 — the vans in a Fleet workshop visit on the day, by code: the day's duty-row vans, the
+   * standing crew's vans and (when configured) the cash-transfer vans, asked of Fleet's own
+   * open-visit seam. A figure on the board («صيانة ٣», the codes on hover), not rows.
+   */
+  workshopVehicles: OperationsCrewBoardWorkshopVehicleDto[];
 }
 
 const crewEmployeeSlots = [
@@ -1700,18 +1850,49 @@ const crewEmployeeSlots = [
 const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
+/**
+ * One row of the save. A VAN's row is upserted by (day, `vehicleId`), as it always was. A row
+ * WITHOUT A VAN (Round 20) has `vehicleId: null`: with no `crewAssignmentId` it is a NEW one, with
+ * one it is that saved row, edited. A van row never carries `crewAssignmentId`.
+ *
+ * Whole rows, as ever: an omitted slot or field CLEARS it — `shiftTypeId` and `rowColour` included.
+ *
+ * WHAT THE SERVER CHECKS BEYOND THE SHAPE (each refused with nothing written):
+ *   · `shiftTypeId`, when NEWLY chosen for the row, must be an ACTIVE type → else 422
+ *     `OPERATIONS_UNKNOWN_SHIFT_TYPE`. A type the row already holds stays, archived or not.
+ *   · `direction`, when NEW or CHANGED, must name ACTIVE operations areas
+ *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
+ *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
+ *     included — stays as written while it is sent unchanged.
+ *   · Up to `CREW_SLOT_CAPACITY` people per slot (here). «من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — the
+ *     MINIMUMS are the board's warning (⚠), never a refusal: legacy enforced none (:2419), and a
+ *     van is planned in steps.
+ */
 export const PlanOperationsCrewRowSchema = z
   .object({
-    vehicleId: objectId(),
+    vehicleId: objectId().nullable(),
+    crewAssignmentId: objectId().optional(),
     captainEmployeeIds: crewSlot(),
     specialist1EmployeeIds: crewSlot(),
     specialist2EmployeeIds: crewSlot(),
     direction: z.string().min(1).nullable().optional(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
+    shiftTypeId: objectId().nullable().optional(),
+    rowColour: OperationsCrewRowColourSchema.nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    // ONE way to say each thing. A van's row is addressed by its van; naming a crew row on it too
+    // would be a second address that could disagree with the first. A row without a van that is
+    // given a van is said as the board does it: its removal plus the van's row, in one save.
+    if (value.vehicleId !== null && value.crewAssignmentId !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['crewAssignmentId'],
+        message: 'a van row is addressed by its vehicle; crewAssignmentId names a row without one',
+      });
+    }
     // Two rules, one pass. Cross-slot: a person cannot be both captain and specialist on the same
     // vehicle (unchanged in meaning from when each slot held one person). Intra-slot: NEW with
     // capacity 2 — the same person cannot be listed twice inside one slot, which was impossible to
@@ -1742,29 +1923,84 @@ export const PlanOperationsCrewRowSchema = z
   });
 export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
 
-/** Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape). */
+/**
+ * Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape) — plus, since
+ * Round 20, the rows without a van: new ones created, saved ones edited by id, and
+ * `removeCrewAssignmentIds` DELETING saved ones (a van's row is never deleted here — the van is
+ * Fleet's roster for the day; the board empties it instead).
+ *
+ * The whole save is ONE end state, judged as one (Q11 included): a row removed here releases its
+ * crew for the rows of the same save. That is how a row without a van is GIVEN a van — the board's
+ * `attachVan` moves its crew and fields onto the van's row and drops it, and the save says exactly
+ * that: the van's row, and the old row's id in `removeCrewAssignmentIds`.
+ *
+ * Refused (400): nothing to save (no row and no removal), a van twice, a row id twice, a row both
+ * edited and removed, a removal listed twice. Refused by the server: a `crewAssignmentId` or a
+ * removal that is not a live row WITHOUT A VAN of this day → 404 (`NOT_FOUND`), or 422 for a van's.
+ */
 export const PlanOperationsCrewSchema = z
   .object({
     date: z.coerce.date(),
-    rows: z.array(PlanOperationsCrewRowSchema).min(1).max(500),
+    rows: z.array(PlanOperationsCrewRowSchema).max(500),
+    removeCrewAssignmentIds: z.array(objectId()).max(500).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    const seenVehicles = new Set<string>();
-    const seenEmployees = new Set<string>();
-    value.rows.forEach((row, index) => {
-      if (seenVehicles.has(row.vehicleId)) {
+    const removals = value.removeCrewAssignmentIds ?? [];
+    if (value.rows.length === 0 && removals.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rows'],
+        message: 'a plan names at least one row or one removal',
+      });
+    }
+    const removed = new Set<string>();
+    removals.forEach((id, index) => {
+      if (removed.has(id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['rows', index, 'vehicleId'],
-          message: 'a vehicle appears twice in one plan',
+          path: ['removeCrewAssignmentIds', index],
+          message: 'a row is removed twice in one plan',
         });
       }
-      seenVehicles.add(row.vehicleId);
-      // Q11 is UNCHANGED in meaning — one person, one vehicle per operating day. Only the
-      // traversal widened: each slot is now a list, so the check flattens it. Three
-      // implementations of this rule exist and must move together — here, the service's
-      // end-state check, and the repository's `takenCrew`.
+      removed.add(id);
+    });
+    const seenVehicles = new Set<string>();
+    const seenRows = new Set<string>();
+    const seenEmployees = new Set<string>();
+    value.rows.forEach((row, index) => {
+      if (row.vehicleId !== null) {
+        if (seenVehicles.has(row.vehicleId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'vehicleId'],
+            message: 'a vehicle appears twice in one plan',
+          });
+        }
+        seenVehicles.add(row.vehicleId);
+      }
+      if (row.crewAssignmentId !== undefined) {
+        if (seenRows.has(row.crewAssignmentId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'crewAssignmentId'],
+            message: 'a row appears twice in one plan',
+          });
+        }
+        if (removed.has(row.crewAssignmentId)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['rows', index, 'crewAssignmentId'],
+            message: 'a row cannot be both edited and removed in one plan',
+          });
+        }
+        seenRows.add(row.crewAssignmentId);
+      }
+      // Q11 is UNCHANGED in meaning — one person, one ROW per operating day. Only the traversal
+      // widened: each slot is now a list, so the check flattens it, and since Round 20 a row
+      // without a van counts like any other («one person, one row»). Three implementations of
+      // this rule exist and must move together — here, the service's end-state check, and the
+      // repository's `takenCrew`.
       for (const slot of crewEmployeeSlots) {
         const employees = row[slot];
         if (employees === undefined) continue;
@@ -1775,7 +2011,7 @@ export const PlanOperationsCrewSchema = z
               path: ['rows', index, slot, position],
               // Q11 — the legacy duplicate-crew check lived only in the browser
               // (tashghela.ejs:1332); the domain enforces it now.
-              message: 'a crew member may hold one vehicle per operating day (Q11)',
+              message: 'a crew member may hold one row per operating day (Q11)',
             });
           }
           seenEmployees.add(employee);
@@ -2821,6 +3057,40 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
   ];
 };
 
+/**
+ * Round 20 — a direction as the crew board SAVES it: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من
+ * الاتجاهات اللى موجوده بتاعت البنوك». Every area it names must be one of `areaNames` (the ACTIVE
+ * operations areas — the names the branches' «المنطقة» uses), compared FOLDED (rule 2), and the
+ * direction is returned in the areas' OWN spelling: one area → its name; several (rule 1's
+ * separators — a direction may still name «المعادي - حلوان», the distribution reads both) → their
+ * names joined by « - », each once. The WHOLE text is tried as one area first, so an area whose
+ * name holds a separator («شبرا/الخيمة») is never split.
+ *
+ * `{ unknown }` lists the parts no area answers, as typed — the save refuses those. Shared by the
+ * server's save and the board's picker, so the two cannot disagree about what is an area.
+ */
+export const canonicalOperationsDirection = (
+  direction: string,
+  areaNames: readonly string[],
+): { direction: string } | { unknown: string[] } => {
+  const byFold = new Map<string, string>();
+  for (const name of areaNames) {
+    const folded = foldOperationsAreaName(name);
+    if (folded !== '' && !byFold.has(folded)) byFold.set(folded, name);
+  }
+  const whole = byFold.get(foldOperationsAreaName(direction));
+  if (whole !== undefined) return { direction: whole };
+  const parts = direction
+    .split(DIRECTION_SEPARATOR)
+    .map((part) => part.trim())
+    .filter((part) => foldOperationsAreaName(part) !== '');
+  const unknown = parts.filter((part) => !byFold.has(foldOperationsAreaName(part)));
+  if (parts.length === 0) return { unknown: [direction] };
+  if (unknown.length > 0) return { unknown };
+  const names = [...new Set(parts.map((part) => byFold.get(foldOperationsAreaName(part)) as string))];
+  return { direction: names.join(' - ') };
+};
+
 /** Does this van's direction name this shipment's area (rules 3-4)? */
 export const operationsDirectionMatchesArea = (
   direction: string | null | undefined,
@@ -3340,7 +3610,10 @@ export const OperationsStandingCrewChangedPayloadV1 = z.object({
 
 export const OperationsCrewAssignmentChangedPayloadV1 = z.object({
   dayId: objectId(),
-  vehicleId: objectId(),
+  /** Round 20 — the crew row itself, so a row without a van can be told from another. */
+  crewAssignmentId: objectId(),
+  /** Null for a row without a van (Round 20). A removed row reports its slots empty. */
+  vehicleId: objectId().nullable(),
   date: z.date(),
   captainEmployeeIds: z.array(objectId()),
   specialist1EmployeeIds: z.array(objectId()),

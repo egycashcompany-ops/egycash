@@ -180,10 +180,7 @@ describe('the range fill — the first and the last box fill the boxes between t
     entries.reduce((list, [index, value]) => typeSeal(list, slots, index, value), from);
   /** A scanner types a box a character at a time, every one an `onChange` of its own. */
   const scanned = (list: SealList, slots: number, index: number, value: string): SealList =>
-    [...value].reduce(
-      (held, _, at) => typeSeal(held, slots, index, value.slice(0, at + 1)),
-      list,
-    );
+    [...value].reduce((held, _, at) => typeSeal(held, slots, index, value.slice(0, at + 1)), list);
   /** The boxes on screen, as the form draws them. */
   const shown = (list: SealList, slots: number): string[] =>
     growSeals(list.seals, slots).slice(0, slots);
@@ -460,10 +457,14 @@ describe('the range fill — the first and the last box fill the boxes between t
     expect(shown(over, 5)).toEqual(['1', '2', '30', '4', '5']);
     expect(marks(over, 5)).toBe('.f.f.');
     // The ends move: the fill's boxes follow them, the typed one stays.
-    const moved = typed(5, [
-      [0, '11'],
-      [4, '15'],
-    ], over);
+    const moved = typed(
+      5,
+      [
+        [0, '11'],
+        [4, '15'],
+      ],
+      over,
+    );
     expect(shown(moved, 5)).toEqual(['11', '12', '30', '14', '15']);
     expect(marks(moved, 5)).toBe('.f.f.');
     // A box emptied by hand stays empty — no number comes back under the caret…

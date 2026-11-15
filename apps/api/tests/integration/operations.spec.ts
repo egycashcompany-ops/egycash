@@ -437,6 +437,17 @@ beforeAll(async () => {
       ],
     });
   expect(rosterRes.status).toBe(200);
+
+  // The areas the crews below head for. Since Round 20 a crew row's «الاتجاه» must name an ACTIVE
+  // operations area («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»), so the directions this file
+  // plans with exist before the first plan. None is a name the areas suite creates itself.
+  for (const name of ['الجيزة', 'القاهرة', 'بنها']) {
+    const areaRes = await request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name });
+    expect(areaRes.status, JSON.stringify(areaRes.body)).toBe(201);
+  }
 }, 240_000);
 
 afterAll(async () => {

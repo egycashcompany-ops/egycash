@@ -135,6 +135,14 @@ export const ErrorCodes = {
    * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
    */
   OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
+  /**
+   * 422 — Round 22: a crew-board save NEWLY put on a row somebody HR has as away on the board's day
+   * («لو القائد غايب ... مقدرش احطه على العربيه و كذلك الاخصائيين») — the member's `availability`
+   * in the pool. Someone already on that row before the save stays. Details: `field` 'employeeId'
+   * (`code` 'ABSENT' or 'ON_LEAVE', `message` the employee's id), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_ABSENT: 'OPERATIONS_CREW_MEMBER_ABSENT',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

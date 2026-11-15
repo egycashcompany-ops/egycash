@@ -455,7 +455,7 @@ describe('parseClock — what an operator types', () => {
 
 // ── The pools ───────────────────────────────────────────────────────────────────────────────────
 
-describe('listPool — free first, the placed after them, search folded, icons AND', () => {
+describe('listPool — free first, the placed after them, the BLUE after the green, search folded, icons AND', () => {
   const members = [
     member('1', { isCaptain: true, hasWeapon: true }, 'أحمد سيد'),
     member(
@@ -470,8 +470,49 @@ describe('listPool — free first, the placed after them, search folded, icons A
 
   it('lists the captains pool with the placed one last, and counts the free', () => {
     const pool = listPool(members, 'captains', rows, { search: '', flags: [] });
-    expect(pool.listed.map((m) => m.employeeId)).toEqual(['2', '3', '1']);
+    // «3» green and free, «2» BLUE and free, «1» on van 1.
+    expect(pool.listed.map((m) => m.employeeId)).toEqual(['3', '2', '1']);
     expect(pool).toMatchObject({ total: 3, free: 2 });
+  });
+
+  // Round 22 — «وعاوز القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر».
+  it('puts the BLUE captains after the green — among the free, and again among the placed', () => {
+    const green = (id: string) => member(id, { isCaptain: true });
+    const blue = (id: string) => member(id, { isCaptain: true, isSpecialist: true });
+    // The server's order, blue and green mixed, two of each kind already on a row.
+    const roster = [blue('b1'), green('g1'), blue('b2'), green('g2'), blue('b3'), green('g3')];
+    roster.push(green('g4'), blue('b4'));
+    const onRows = [van('9', { slots: slots(['b2', 'g3'], ['b4'], ['g1']) })];
+    const pool = listPool(roster, 'captains', onRows, { search: '', flags: [] });
+    const free = ['g2', 'g4', 'b1', 'b3']; // free green, then free blue — the server's order in each
+    const placed = ['g1', 'g3', 'b2', 'b4']; // placed green, then placed blue
+    expect(pool.listed.map((m) => m.employeeId)).toEqual([...free, ...placed]);
+    expect(pool).toMatchObject({ total: 8, free: 4 });
+    // The colours the chips are drawn in follow the same order.
+    expect(pool.listed.map((m) => crewRoleOf(m.requirements)).join(' ')).toBe(
+      'captain captain dual dual captain captain dual dual',
+    );
+  });
+
+  it('keeps the order a search or an icon leaves, and leaves «الأخصائيون» in the server’s order', () => {
+    const roster = [
+      member('b1', { isCaptain: true, isSpecialist: true, hasWeapon: true }, 'محمد طارق'),
+      member('g1', { isCaptain: true, hasWeapon: true }, 'محمد سيد'),
+      member('s2', { isSpecialist: true }, 'محمد علي'),
+      member('s1', { isSpecialist: true, hasWeapon: true }, 'محمد ذكي'),
+      member('s3', null, 'محمد عبده'),
+    ];
+    expect(
+      listPool(roster, 'captains', [], { search: 'محمد', flags: ['hasWeapon'] }).listed.map(
+        (m) => m.employeeId,
+      ),
+    ).toEqual(['g1', 'b1']);
+    expect(
+      listPool(roster, 'specialists', [van('1', { slots: slots([], ['s2']) })], {
+        search: '',
+        flags: [],
+      }).listed.map((m) => m.employeeId),
+    ).toEqual(['s1', 's3', 's2']);
   });
 
   it('finds «أحمد» by «احمد», a code by its digits, and narrows by every icon ticked', () => {

@@ -638,6 +638,15 @@ describe('the vault receipt — one seal, once per receipt', () => {
     expect(vaultSealKey('12a')).not.toBe(vaultSealKey('12'));
     expect(vaultSealKey('')).toBeNull();
     expect(vaultSealKey('   ')).toBeNull();
+    // What cannot be seen is not read: a right-to-left mark (U+200F), a left-to-right mark
+    // (U+200E), a zero-width space (U+200B) or an Arabic letter mark (U+061C) copied in with a
+    // number leaves it the number the clerk sees.
+    expect(vaultSealKey('‏12')).toBe('12');
+    expect(vaultSealKey('12‎')).toBe('12');
+    expect(vaultSealKey('​0012')).toBe('12');
+    expect(vaultSealKey('؜١٢')).toBe('12');
+    expect(vaultSealKey('AB‏-1')).toBe('AB-1');
+    expect(vaultSealKey('‏')).toBeNull();
   });
 
   it('refuses the owner\'s case — a bag seal that is also a box seal — on the box, naming the bag', () => {
@@ -658,6 +667,10 @@ describe('the vault receipt — one seal, once per receipt', () => {
       { path: ['boxSeals', 0], message: expect.stringContaining('bagSeals.0') as string },
     ]);
     expect(refusals(['۰۷'], ['7'])).toHaveLength(1);
+    // A number pasted with an invisible right-to-left mark is still the number on screen.
+    expect(refusals(['12'], ['‏12'])).toEqual([
+      { path: ['boxSeals', 0], message: expect.stringContaining('bagSeals.0') as string },
+    ]);
   });
 
   it('refuses a seal typed twice inside the bags, or inside the boxes — on the later one', () => {

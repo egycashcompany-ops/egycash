@@ -16,6 +16,7 @@ import {
   type ListOperationsCrewRequirementsQuery,
   type OperationsCrewAttendanceDayDto,
   type OperationsCrewAttendanceDto,
+  type OperationsCrewAvailability,
   type OperationsCrewDirectoryDto,
   type OperationsCrewMemberDto,
   type SetOperationsCrewRequirements,
@@ -24,6 +25,7 @@ import { Types } from 'mongoose';
 import { ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import {
+  approvedLeaveEmployeeIds,
   getDirectoryAttendanceDay,
   getDirectoryEmployee,
   listDirectoryEmployeesByDepartment,
@@ -63,6 +65,53 @@ export const attendanceBucket = (
     default:
       return 'unknown';
   }
+};
+
+/**
+ * ROUND 22 — is this member AWAY on the day? «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى
+ * باللون الباهت ومقدرش احطه على العربيه و كذلك الاخصائيين».
+ *
+ * HR's day record answers when HR has one, bucketed exactly as the attendance page counts it, so
+ * the two screens cannot call one person two things. When HR has NOT computed the day — the nightly
+ * sweep computes yesterday, so that is every future day, the board's own tomorrow included — the
+ * only fact HR already holds about it is an approved or active leave, and that answers 'onLeave'.
+ * Nothing else is «away»: a weekend, «incomplete» and no record are null, because an unknown is not
+ * an absence and must never keep somebody off a van.
+ */
+export const crewAvailabilityFrom = (
+  record: { status: AttendanceDayStatus } | undefined,
+  onApprovedLeave: boolean,
+): OperationsCrewAvailability | null => {
+  if (record !== undefined) {
+    const bucket = attendanceBucket(record.status);
+    return bucket === 'absent' || bucket === 'onLeave' ? bucket : null;
+  }
+  return onApprovedLeave ? 'onLeave' : null;
+};
+
+/**
+ * Who of these people is away on the day — only the away ones are keys. ONE attendance read and ONE
+ * leave read for the whole list, both batched through the directory seam, never a read per person.
+ *
+ * The pool (`directory`) and the save (`operationsCrewService.plan`) both ask HERE, so the board can
+ * never show someone placeable whom the save then refuses, or the other way round.
+ */
+export const crewAvailabilityOn = async (
+  employeeIds: readonly string[],
+  day: Date,
+): Promise<Map<string, OperationsCrewAvailability>> => {
+  const ids = [...new Set(employeeIds)];
+  const away = new Map<string, OperationsCrewAvailability>();
+  if (ids.length === 0) return away;
+  const [records, onLeave] = await Promise.all([
+    getDirectoryAttendanceDay(ids, day),
+    approvedLeaveEmployeeIds(ids, day),
+  ]);
+  for (const employeeId of ids) {
+    const availability = crewAvailabilityFrom(records.get(employeeId), onLeave.has(employeeId));
+    if (availability !== null) away.set(employeeId, availability);
+  }
+  return away;
 };
 
 /** Organization scope: who works in Operations is one fact about the company. */
@@ -218,18 +267,22 @@ class OperationsCrewRequirementsService {
     };
 
     const search = query?.search?.trim().toLowerCase() ?? '';
-    const members: OperationsCrewMemberDto[] = [];
-    for (const employee of roster) {
-      // Somebody who has left is not offered, whichever way they were found.
-      if (employee.status === 'exited') continue;
-      if (
-        search !== '' &&
-        !employee.fullNameAr.toLowerCase().includes(search) &&
-        !employee.code.toLowerCase().includes(search)
-      ) {
-        continue;
-      }
+    const offered = roster.filter(
+      (employee) =>
+        // Somebody who has left is not offered, whichever way they were found.
+        employee.status !== 'exited' &&
+        (search === '' ||
+          employee.fullNameAr.toLowerCase().includes(search) ||
+          employee.code.toLowerCase().includes(search)),
+    );
+    // Round 22: who is away that day — read once for everyone offered (`crewAvailabilityOn`).
+    const away = await crewAvailabilityOn(
+      offered.map((employee) => employee.employeeId),
+      day,
+    );
 
+    const members: OperationsCrewMemberDto[] = [];
+    for (const employee of offered) {
       const row = byEmployee.get(employee.employeeId);
       members.push({
         employeeId: employee.employeeId,
@@ -245,6 +298,10 @@ class OperationsCrewRequirementsService {
         // first flag anybody sets creates the row.
         requirements: row === undefined ? null : toRequirementsDto(row),
         assignedVehicleId: taken.get(employee.employeeId) ?? null,
+        // Only the bucket, under the roster's own grant like the name — never HR's punches or the
+        // leave itself. Who sees what is deferred by the owner («موضوع مين يشوف ايه ومين يعمل ايه دا
+        // مش دلوقتي»), so this is the least the board needs to fade a name and refuse a drop.
+        availability: away.get(employee.employeeId) ?? null,
       });
     }
 

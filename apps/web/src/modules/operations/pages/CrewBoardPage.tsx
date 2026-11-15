@@ -172,8 +172,8 @@ const PlainDot = ({ tone }: { tone: string }): JSX.Element => (
 
 /**
  * Somebody the roster no longer names (left since the plan was saved): still shown, never a raw id.
- * Asserted rather than annotated: the roster's DTO grows fields (a job title) this stand-in has no
- * value for, and none of them is read off a seated chip.
+ * Asserted rather than annotated: the roster's DTO grows fields this stand-in has no value for. The
+ * ones the chip's person card reads (Round 22) are here, as «nothing on file» — a dash on the card.
  */
 const unknownMember = (employeeId: string, name: string): OperationsCrewMemberDto =>
   ({
@@ -181,6 +181,9 @@ const unknownMember = (employeeId: string, name: string): OperationsCrewMemberDt
     code: '—',
     fullNameAr: name,
     status: 'unknown',
+    jobTitle: null,
+    phone: null,
+    branchId: null,
     requirements: null,
     assignedVehicleId: null,
   }) as OperationsCrewMemberDto;
@@ -492,6 +495,9 @@ export const CrewBoardPage = (): JSX.Element => {
               selected={selected === employeeId}
               dragging={dragging === employeeId}
               canPlan={canPlan}
+              // The person card's «في التشغيلة» line; and no card or icon tip under a drag.
+              seatedAt={placedAt(employeeId)?.long ?? null}
+              dragActive={dragging !== null}
               outOfRole={
                 outOfRole(role, slot)
                   ? t(

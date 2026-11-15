@@ -553,6 +553,8 @@ const CREW_PLAN_KEYS = [
   ...['captain', 'dual', 'specialist'].map((key) => `operations.crewPlan.role.${key}`),
   ...['captain', 'specialist'].map((key) => `operations.crewPlan.outOfRole.${key}`),
   ...['select', 'remove'].map((key) => `operations.crewPlan.chip.${key}`),
+  // Round 22 — the person card on a chip: where he sits in the draft, or that he sits nowhere.
+  ...['seat', 'unseated'].map((key) => `operations.crewPlan.card.${key}`),
   ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
     (key) => `operations.crewPlan.pools.${key}`,
   ),

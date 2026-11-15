@@ -214,21 +214,33 @@ export const SealSummaryLine = ({ seals }: { seals: readonly string[] }): JSX.El
  */
 export const SealRepeatNotice = ({ id, text }: { id: string; text: string }): JSX.Element => {
   const t = useT();
+  const at = useRef<HTMLDivElement>(null);
+  // It appears under the last seal box, where the form may end below the fold (1440 × 900 with
+  // both lists filled): brought into view once, as it appears — the least scroll that shows it,
+  // never again while it stays, so a scanner's typing is not moved about. A block body on purpose:
+  // a browser whose `scrollIntoView` hands back a value would have React call it as the cleanup.
+  useEffect(() => {
+    at.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
   return (
     <div
+      ref={at}
       id={id}
       role="alert"
       data-seal-repeat="true"
-      className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] dark:border-rose-500/50 dark:bg-rose-500/10"
+      className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] dark:border-rose-500/50 dark:bg-rose-500/10"
     >
+      {/* The triangle stays beside the words at every width; the words wrap on a phone. */}
       <Stroke
         d={[...SHIPMENT_PATH.alert]}
-        className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
+        className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
       />
-      <span className="font-bold text-rose-800 dark:text-rose-200">{text}</span>
-      <span className="font-medium text-rose-700/90 dark:text-rose-300/90">
-        {t('operations.secured.receive.sealRepeatRule')}
-      </span>
+      <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="font-bold text-rose-800 dark:text-rose-200">{text}</span>
+        <span className="font-medium text-rose-700/90 dark:text-rose-300/90">
+          {t('operations.secured.receive.sealRepeatRule')}
+        </span>
+      </p>
     </div>
   );
 };

@@ -473,10 +473,32 @@ export interface PlanPoolQuery {
 
 export const EMPTY_POOL_QUERY: PlanPoolQuery = { search: '', flags: [] };
 
+/** Is this member sent further down his pool's list? `placed`: everybody on a row of the draft. */
+type PoolTail = (member: OperationsCrewMemberDto, placed: ReadonlySet<string>) => boolean;
+
 /**
- * One pool as listed: its members that match, the FREE ones first and those already on a row after
- * them — still listed (dimmed, with where), because «where is he» is a question the pool answers
- * and because dragging one of them is how he is moved. The server's order inside each half.
+ * What sends a member down his pool, the COARSEST first — each tail sorts INSIDE the one before it,
+ * and the server's order is kept inside the last:
+ *   1. already on a row → after the free ones. Still listed (dimmed, with where), because «where is
+ *      he» is a question the pool answers and because dragging one of them is how he is moved;
+ *   2. BLUE → after the green captains: «وعاوز القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر». The
+ *      planner looks for a captain first; a specialist who also leads is the fallback (Round 22).
+ *      Inside each half, so the pool reads free green, free blue, placed green, placed blue. Only
+ *      «القادة» holds blue ones (`planPoolOf`), so «الأخصائيون» keeps its order.
+ * A tail that must fall behind EVERYTHING (somebody away that day) goes at the top of this list.
+ */
+const POOL_TAILS: readonly PoolTail[] = [
+  (member, placed) => placed.has(member.employeeId),
+  (member) => crewRoleOf(member.requirements) === 'dual',
+];
+
+/** The member's place among the tails, as a number: each tail a binary digit, the first the highest. */
+const poolRank = (member: OperationsCrewMemberDto, placed: ReadonlySet<string>): number =>
+  POOL_TAILS.reduce((rank, tail) => rank * 2 + (tail(member, placed) ? 1 : 0), 0);
+
+/**
+ * One pool as listed: its members that match the search and the icons, in `POOL_TAILS`' order —
+ * the server's order inside each tail (the sort is stable).
  */
 export const listPool = (
   members: readonly OperationsCrewMemberDto[],
@@ -491,11 +513,9 @@ export const listPool = (
       (foldIncludes(member.fullNameAr, query.search) || foldIncludes(member.code, query.search)) &&
       query.flags.every((flag) => member.requirements?.[flag] === true),
   );
+  const rank = new Map(matching.map((member) => [member, poolRank(member, placed)]));
   return {
-    listed: [
-      ...matching.filter((member) => !placed.has(member.employeeId)),
-      ...matching.filter((member) => placed.has(member.employeeId)),
-    ],
+    listed: [...matching].sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0)),
     total: mine.length,
     free: mine.filter((member) => !placed.has(member.employeeId)).length,
   };

@@ -655,6 +655,9 @@ describe('one seal, once per receipt — which boxes repeat, and what the form s
     expect(marked(['١٢'], ['12'])).toEqual(['bag 0', 'box 0']);
     expect(marked([' AB-1 '], ['AB-1'])).toEqual(['bag 0', 'box 0']);
     expect(marked(['AB-1'], ['ab-1'])).toEqual([]);
+    // A number pasted with an invisible right-to-left mark is the number the clerk sees.
+    expect(marked(['12'], ['‏12'])).toEqual(['bag 0', 'box 0']);
+    expect(marked(['۰۷'], ['‎7'])).toEqual(['bag 0', 'box 0']);
     // Neighbours are two seals; blanks are none.
     expect(marked(['0099', '', '  '], ['0100', '', ''])).toEqual([]);
     // The seal is named as it was first typed.
@@ -700,12 +703,20 @@ describe('one seal, once per receipt — which boxes repeat, and what the form s
     // Inside one list, and both kinds at once — the seals in both lists said first.
     expect(notice(['5', '6', '5'], [])).toBe('الرقم 5 مكرر — في الحقائب');
     expect(notice([], ['8', '8'])).toBe('الرقم 8 مكرر — في الصناديق');
+    // Joined by the Arabic semicolon: a middle dot beside Arabic words reads as the zero «٠».
     expect(notice(['5', '1', '5'], ['1'])).toBe(
-      'الرقم 1 مكرر — في الحقائب والصناديق · الرقم 5 مكرر — في الحقائب',
+      'الرقم 1 مكرر — في الحقائب والصناديق؛ الرقم 5 مكرر — في الحقائب',
     );
+    expect(notice(['5', '1', '5'], ['1'])).not.toContain('·');
+    // Eleven seals or more take the counted form of «many».
+    const eleven = Array.from({ length: 11 }, (_, index) => String(index + 1));
+    expect(notice(eleven, eleven)).toMatch(/^الأرقام 1 و2 و3 .* و11 مكررة — في الحقائب والصناديق$/u);
     expect(notice(['1', '2'], ['3'])).toBe('');
     expect(sealRepeatNotice(sealRepeats(['1', '2'], ['1', '2']).repeats, en, 'en')).toBe(
       'Seals 1 and 2 are repeated — in the bags and the boxes',
+    );
+    expect(sealRepeatNotice(sealRepeats(['5', '1', '5'], ['1']).repeats, en, 'en')).toBe(
+      'Seal 1 is repeated — in the bags and the boxes; Seal 5 is repeated — in the bags',
     );
   });
 

@@ -502,7 +502,8 @@ its entry here in the same PR.
       boxes read as one list, and a seal typed twice in its own list is the same fault — now a
       refusal, where it was an amber «مكرر». "The same seal" has one definition, in the contract
       (`vaultSealKey`): digits compared as whole numbers (0099 = 99, Arabic-Indic digits counted),
-      anything else as typed, trimmed. `POST /operations/secured/:id/receive` answers 400
+      anything else as typed, trimmed, and an invisible direction mark pasted in with a number
+      ignored (two boxes that both show 12 are one seal). `POST /operations/secured/:id/receive` answers 400
       `VALIDATION_FAILED` on the later occurrence (`body.boxSeals.1`, at the index sent), its
       message naming the seal and where it first appeared, and writes nothing. The form marks
       every box holding a repeat red (a number the range fill wrote included, its title saying
@@ -576,6 +577,16 @@ its entry here in the same PR.
       any of the day's rows. A row without a van counts, though `assignedVehicleId` has no vehicle
       to name for it. The page's «معيَّن» badge reads it, so a person on such a row still shows as
       crewed.
+    - Round 22 — «وعاوز لو القائد غايب يظهر تحت الكل … ومقدرش احطه على العربيه و كذلك الاخصائيين»:
+      each pool member carries `availability` for the requested day — 'absent' or 'onLeave' from
+      HR's day record, else 'onLeave' when HR has no record yet and an approved or active leave
+      covers the day (HR computes a day only once it is over, so for tomorrow leave is the only
+      fact), else null. An unknown is not an absence. It is one attendance read and one leave read
+      for the whole roster, served under `operationsCrew.view` (only the bucket). The save refuses
+      to NEWLY put an away person on a row: 422 `OPERATIONS_CREW_MEMBER_ABSENT`, naming him
+      (`employeeId`, `ABSENT` / `ON_LEAVE`) and the row (`ROW_INDEX`), with nothing written. Someone
+      already on that row stays, so the row's other changes still save; moved to another row, he
+      is refused.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the

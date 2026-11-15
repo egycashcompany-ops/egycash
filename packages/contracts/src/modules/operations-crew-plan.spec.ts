@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CREW_SLOT_CAPACITY,
   CreateOperationsShiftTypeSchema,
+  OPERATIONS_CREW_AVAILABILITIES,
   OPERATIONS_CREW_ROW_COLOURS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   OperationsCrewAssignmentChangedPayloadV1,
@@ -13,6 +14,7 @@ import {
   PlanOperationsCrewSchema,
   UpdateOperationsShiftTypeSchema,
   canonicalOperationsDirection,
+  type OperationsCrewMemberDto,
 } from './operations.js';
 import { ErrorCodes } from '../errors/index.js';
 
@@ -205,5 +207,23 @@ describe('the event and the refusals', () => {
   it('names the two new refusals', () => {
     expect(ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE).toBe('OPERATIONS_UNKNOWN_SHIFT_TYPE');
     expect(ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA).toBe('OPERATIONS_DIRECTION_NOT_AN_AREA');
+  });
+});
+
+describe('Round 22 — who is away on the board’s day («لو القائد غايب ... مقدرش احطه على العربيه»)', () => {
+  it('names two answers only — HR’s absent and on-leave buckets; anything else is not «away»', () => {
+    expect([...OPERATIONS_CREW_AVAILABILITIES]).toEqual(['absent', 'onLeave']);
+    // A pool member says one of them, or null — and a server that predates the field says nothing,
+    // which reads the same as null.
+    const away: OperationsCrewMemberDto['availability'][] = ['absent', 'onLeave', null, undefined];
+    expect(away).toHaveLength(4);
+    // At work is not an answer this field gives: it says who is away, never who is fine.
+    // @ts-expect-error — 'present' is HR's bucket, not an availability
+    const atWork: OperationsCrewMemberDto['availability'] = 'present';
+    expect(OPERATIONS_CREW_AVAILABILITIES).not.toContain(atWork);
+  });
+
+  it('names the refusal of a newly placed member who is away', () => {
+    expect(ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT).toBe('OPERATIONS_CREW_MEMBER_ABSENT');
   });
 });

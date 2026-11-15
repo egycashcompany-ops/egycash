@@ -2,7 +2,8 @@
 // Arabic, as the legacy board had its two columns of names beside the table.
 //
 //   · القادة: green chips, and BLUE ones — the specialists ticked «قائد» too, who may take either a
-//     captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى»);
+//     captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى») — listed AFTER the green
+//     ones («يكونوا فى الاخر», Round 22; the order is `listPool`'s);
 //   · الأخصائيون: red chips.
 //
 // What the colours mean is said once, in the toolbar (`RoleLegend`). Each pool counts its people (and how many are still free), searches by name or code — folded,
@@ -19,12 +20,54 @@ import { NUM } from '../../fleet/components/FuelCardBoard';
 import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
 import { PLAN_FLAGS, type PlanFlag, type PlanPool, type PlanPoolQuery } from '../lib/crew-plan';
 import { CrewPlanChip } from './CrewPlanChip';
-import { FLAG_PATH } from './crew-plan-icons';
+import { FLAG_PATH, useFlagTip } from './crew-plan-icons';
 
 /** The pool's colour along its top, as legacy's green and red columns. */
 const ACCENT: Record<PlanPool, string> = {
   captains: 'border-t-emerald-500 dark:border-t-emerald-600',
   specialists: 'border-t-rose-500 dark:border-t-rose-600',
+};
+
+/**
+ * One icon filter — its name in the tip on hover and on a keyboard focus (Round 22: «يبقى فشكل احسن
+ * من كدا», the browser's `title` before), and in its `aria-label` with its pool's.
+ */
+const PoolFlagFilter = ({
+  flag,
+  on,
+  label,
+  quiet,
+  onToggle,
+}: {
+  flag: PlanFlag;
+  on: boolean;
+  label: string;
+  /** A chip is being dragged: no tip. */
+  quiet: boolean;
+  onToggle: () => void;
+}): JSX.Element => {
+  const tip = useFlagTip(flag, quiet);
+  return (
+    <>
+      <button
+        type="button"
+        data-pool-flag={flag}
+        aria-pressed={on}
+        aria-label={label}
+        {...tip.triggerProps}
+        onClick={onToggle}
+        className={cn(
+          'flex h-6 min-w-0 items-center justify-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
+          on
+            ? 'border-brand-500 bg-brand-500 text-white dark:border-brand-400 dark:bg-brand-500'
+            : 'border-slate-300 bg-white text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-400 dark:hover:text-brand-300',
+        )}
+      >
+        <StrokeIcon d={FLAG_PATH[flag]} className="h-3.5 w-3.5" width={2} />
+      </button>
+      {tip.tip}
+    </>
+  );
 };
 
 export interface PoolChipHandlers {
@@ -143,28 +186,16 @@ export const CrewPlanPool = ({
           role="group"
           aria-label={t('operations.crewPlan.pools.filters')}
         >
-          {PLAN_FLAGS.map((flag) => {
-            const on = query.flags.includes(flag);
-            return (
-              <button
-                key={flag}
-                type="button"
-                data-pool-flag={flag}
-                aria-pressed={on}
-                aria-label={`${t(`operations.crew.flag.${flag}`)} — ${title}`}
-                title={t(`operations.crew.flag.${flag}`)}
-                onClick={() => toggle(flag)}
-                className={cn(
-                  'flex h-6 min-w-0 items-center justify-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
-                  on
-                    ? 'border-brand-500 bg-brand-500 text-white dark:border-brand-400 dark:bg-brand-500'
-                    : 'border-slate-300 bg-white text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-400 dark:hover:text-brand-300',
-                )}
-              >
-                <StrokeIcon d={FLAG_PATH[flag]} className="h-3.5 w-3.5" width={2} />
-              </button>
-            );
-          })}
+          {PLAN_FLAGS.map((flag) => (
+            <PoolFlagFilter
+              key={flag}
+              flag={flag}
+              on={query.flags.includes(flag)}
+              label={`${t(`operations.crew.flag.${flag}`)} — ${title}`}
+              quiet={chips.dragging !== null}
+              onToggle={() => toggle(flag)}
+            />
+          ))}
         </div>
       </header>
 
@@ -201,6 +232,7 @@ export const CrewPlanPool = ({
             dragging={chips.dragging === member.employeeId}
             canPlan={chips.canPlan}
             placedAt={chips.placedAt(member.employeeId)}
+            dragActive={chips.dragging !== null}
             onSelect={() => chips.onSelect(member.employeeId)}
             onDragStart={(event) => chips.onDragStart(member.employeeId, event)}
             onDragEnd={chips.onDragEnd}

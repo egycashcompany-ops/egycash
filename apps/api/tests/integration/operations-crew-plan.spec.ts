@@ -52,6 +52,8 @@ import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-typ
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
 import { migrateCrewAssignmentIndexes } from '../../src/modules/operations/operations.migration';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { AttendanceDayModel } from '../../src/modules/hr/attendance';
+import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -1059,5 +1061,210 @@ describe('the board’s read — drivers by name, and «صيانة»', () => {
     expect(dto.day).toBeNull();
     expect(dto.vehiclelessRows).toEqual([]);
     expect(dto.workshopVehicles.map((van) => van.vehicleCode)).toEqual(['OPS-P4', 'OPS-P6']);
+  });
+});
+
+describe('Round 22 — who is away cannot be put on a row («لو القائد غايب ... مقدرش احطه على العربيه»)', () => {
+  // «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على العربيه و
+  // كذلك الاخصائيين». The pool says who HR has away on the day; the save refuses to NEWLY place them.
+  // The HR facts are written straight into HR's collections — the fixture is the day record and the
+  // approved leave, not HR's screens — on a day of its own, so no case above meets them.
+  const AWAY_DAY = shift(80);
+  const at = (date: string) => new Date(`${date}T00:00:00.000Z`);
+  let absentCap = ''; // HR's record: absent
+  let leaveSpec = ''; // HR's record: on leave
+  let plannedLeave = ''; // no record yet — an APPROVED leave covers the day
+  let incompleteSpec = ''; // HR's record: incomplete — attendance could not decide
+  let freeSpec = ''; // no record, no leave
+  let laterAway = ''; // planned first, recorded absent after
+
+  const dayRecord = (employeeId: string, status: string, date = AWAY_DAY) =>
+    AttendanceDayModel.create({
+      employeeId: new Types.ObjectId(employeeId),
+      workDate: at(date),
+      status,
+      branchId: new Types.ObjectId(branchId),
+      computedAt: new Date(),
+    });
+
+  const pool = async (date = AWAY_DAY, token = adminToken) => {
+    const res = await request(app)
+      .get(`/api/v1/operations/crew-board/directory?date=${date}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const members = data<OperationsCrewDirectoryDto>(res).members;
+    return (employeeId: string) => members.find((m) => m.employeeId === employeeId);
+  };
+
+  beforeAll(async () => {
+    absentCap = await mkEmployee('قائد غائب');
+    leaveSpec = await mkEmployee('أخصائي في إجازة');
+    plannedLeave = await mkEmployee('أخصائي إجازته معتمدة');
+    incompleteSpec = await mkEmployee('أخصائي لم يُحسم يومه');
+    freeSpec = await mkEmployee('أخصائي حاضر');
+    laterAway = await mkEmployee('قائد غاب بعد التخطيط');
+    // A requirements row is what puts them on an unconfigured install's roster.
+    for (const [employeeId, flags] of [
+      [absentCap, { isCaptain: true }],
+      [laterAway, { isCaptain: true }],
+      [leaveSpec, { isSpecialist: true }],
+      [plannedLeave, { isSpecialist: true }],
+      [incompleteSpec, { isSpecialist: true }],
+      [freeSpec, { isSpecialist: true }],
+    ] as const) {
+      const flagged = await request(app)
+        .put(`/api/v1/operations/crew-board/requirements/${employeeId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(flags);
+      expect(flagged.status, JSON.stringify(flagged.body)).toBe(200);
+    }
+    // Van 2 is on the Fleet roster that day, so the refusal is asked of a van too.
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: AWAY_DAY, rows: [{ vehicleId: van2, notes: 'r22' }] });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+
+    await dayRecord(absentCap, 'absent');
+    await dayRecord(leaveSpec, 'onLeave');
+    await dayRecord(incompleteSpec, 'incomplete');
+    // HR computes a day only once it is over, so the one fact HR already holds about a coming day
+    // is an approved leave — written here as HR's approval leaves it, not yet started.
+    await LeaveRequestModel.create({
+      employeeId: new Types.ObjectId(plannedLeave),
+      employeeCode: 'R22-LEAVE',
+      employeeName: 'أخصائي إجازته معتمدة',
+      typeId: new Types.ObjectId(),
+      typeCode: 'ANNUAL',
+      status: 'approved',
+      startDate: at(shift(79)),
+      endDate: at(shift(81)),
+      days: 3,
+    });
+  });
+
+  it('the pool says who is away that day — and an unknown is not away', async () => {
+    // Read under the roster's own grant, like the rest of the member.
+    const member = await pool(AWAY_DAY, crewViewerToken);
+    expect(member(absentCap)?.availability).toBe('absent');
+    expect(member(leaveSpec)?.availability).toBe('onLeave');
+    expect(member(plannedLeave)?.availability).toBe('onLeave');
+    expect(member(incompleteSpec)?.availability).toBeNull();
+    expect(member(freeSpec)?.availability).toBeNull();
+    // A record is ONE day's answer: the day before, the absent captain is nobody's concern.
+    expect((await pool(shift(79)))(absentCap)?.availability).toBeNull();
+    // Only the bucket travels — not HR's record.
+    expect(Object.keys(member(absentCap) ?? {})).not.toContain('attendance');
+  });
+
+  it('refuses to put an absent captain on a row — coded, naming him and the row, nothing written', async () => {
+    const res = await save(
+      {
+        rows: [
+          { vehicleId: van2, specialist1EmployeeIds: [freeSpec] },
+          { vehicleId: null, captainEmployeeIds: [absentCap], notes: 'r22' },
+        ],
+      },
+      AWAY_DAY,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    const error = errorOf(res);
+    expect(error.code).toBe(ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT);
+    expect(error.details).toEqual([
+      { field: 'employeeId', code: 'ABSENT', message: absentCap },
+      { field: 'rows', code: 'ROW_INDEX', message: '1' },
+    ]);
+    // One end state, refused as one: the van's row was not written either.
+    const dto = await board(AWAY_DAY);
+    expect(vanRow(dto, van2)?.crew).toBeNull();
+    expect(dto.vehiclelessRows).toEqual([]);
+  });
+
+  it('refuses a specialist on leave — by HR’s record, or by an approved leave HR has not computed yet', async () => {
+    for (const employeeId of [leaveSpec, plannedLeave]) {
+      const res = await save(
+        { rows: [{ vehicleId: van2, specialist2EmployeeIds: [employeeId] }] },
+        AWAY_DAY,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res)).toMatchObject({
+        code: ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT,
+        details: [
+          { field: 'employeeId', code: 'ON_LEAVE', message: employeeId },
+          { field: 'rows', code: 'ROW_INDEX', message: '0' },
+        ],
+      });
+    }
+    expect(vanRow(await board(AWAY_DAY), van2)?.crew).toBeNull();
+  });
+
+  it('lets an unknown through — «incomplete» and no record at all are not absences', async () => {
+    const res = await saved(
+      {
+        rows: [
+          { vehicleId: null, specialist1EmployeeIds: [incompleteSpec, freeSpec], notes: 'r22 unknown' },
+        ],
+      },
+      AWAY_DAY,
+    );
+    expect(res.vehiclelessRows[0]?.specialist1EmployeeIds).toEqual([incompleteSpec, freeSpec]);
+  });
+
+  it('keeps somebody already on the row — planned before HR recorded the absence — and saves the row’s other changes', async () => {
+    const planned = await saved(
+      { rows: [{ vehicleId: van2, captainEmployeeIds: [laterAway], plannedTime: '07:00' }] },
+      AWAY_DAY,
+    );
+    expect(vanRow(planned, van2)?.crew?.captainEmployeeIds).toEqual([laterAway]);
+    await dayRecord(laterAway, 'absent');
+    expect((await pool())(laterAway)?.availability).toBe('absent');
+
+    // The same row, other changes — he stays and the save passes; within the row is still the row.
+    const edited = await saved(
+      {
+        rows: [
+          {
+            vehicleId: van2,
+            specialist1EmployeeIds: [laterAway],
+            plannedTime: '08:15',
+            rowColour: 'green',
+          },
+        ],
+      },
+      AWAY_DAY,
+    );
+    expect(vanRow(edited, van2)?.crew).toMatchObject({
+      captainEmployeeIds: [],
+      specialist1EmployeeIds: [laterAway],
+      plannedTime: '08:15',
+      rowColour: 'green',
+    });
+
+    // Moved to ANOTHER row, he is being put on it — refused, and the van keeps him.
+    const moved = await save(
+      {
+        rows: [
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: null, captainEmployeeIds: [laterAway] },
+        ],
+      },
+      AWAY_DAY,
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(422);
+    expect(errorOf(moved).details).toContainEqual({ field: 'rows', code: 'ROW_INDEX', message: '1' });
+    expect(vanRow(await board(AWAY_DAY), van2)?.crew?.specialist1EmployeeIds).toEqual([laterAway]);
+
+    // Taken off, he cannot be put back.
+    await saved({ rows: [{ vehicleId: van2, plannedTime: '08:15' }] }, AWAY_DAY);
+    const back = await save(
+      { rows: [{ vehicleId: van2, captainEmployeeIds: [laterAway] }] },
+      AWAY_DAY,
+    );
+    expect(back.status).toBe(422);
+    expect(errorOf(back).details?.[0]).toEqual({
+      field: 'employeeId',
+      code: 'ABSENT',
+      message: laterAway,
+    });
   });
 });

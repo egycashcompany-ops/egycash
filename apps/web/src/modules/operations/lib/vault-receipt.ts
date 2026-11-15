@@ -389,6 +389,12 @@ const listOf = (values: readonly string[], locale: Locale): string =>
   new Intl.ListFormat(locale, { type: 'conjunction' }).format(values);
 
 /**
+ * Between the notice's sentences: the Arabic semicolon «؛», not a middle dot — beside Arabic words a
+ * «·» reads as the Arabic-Indic zero «٠», and this notice is about numbers.
+ */
+const SENTENCES_JOIN: Record<Locale, string> = { ar: '؛ ', en: '; ' };
+
+/**
  * The ONE notice under the seals — a sentence per place, in Arabic's own forms of the count: «الرقم
  * 1 مكرر — في الحقائب والصناديق», «الرقمان 1 و3 مكرران — في الحقائب والصناديق», «الأرقام 4 و5 و6
  * مكررة — في الحقائب». '' when no seal repeats. The very words a refusal from the server is said in.
@@ -408,7 +414,7 @@ export const sealRepeatNotice = (
             where: t(`operations.secured.receive.sealRepeatWhere.${where}`),
           }),
         ];
-  }).join(' · ');
+  }).join(SENTENCES_JOIN[locale]);
 
 /** A box as the form numbers it — the bag (or box) it closes, and which of its seals. */
 export interface SealPlace {

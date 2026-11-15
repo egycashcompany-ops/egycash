@@ -9,13 +9,19 @@
 //   · or PRESS it (mouse, Enter or Space) to pick it up — it rings — then press «ضع هنا» in a slot.
 //     The keyboard's way and the phone's, where a drag does not exist; as «توزيع المحصنات» offers
 //     its «نقل إلى…» beside the drag.
-import { type DragEvent } from 'react';
+//
+// HOVERING IT (Round 22) opens the person's CARD — «ولما اقف على القائد يظهر فى كارد زى السواق فى
+// الحركة» (`CrewPlanMemberCard`): from the NAME with the mouse, from the button with the keyboard. Each
+// requirement icon opens its own small TIP. Both replace the browser's `title` the chip had, and
+// neither ever gets in a drag's way (see those files).
+import { type DragEvent, type ReactNode } from 'react';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { NUM } from '../../fleet/components/FuelCardBoard';
 import { crewRoleOf, flagsOf, type CrewRole } from '../lib/crew-plan';
 import { CREW_DRAG_TYPE } from './CrewMemberCard';
+import { usePlanMemberCard } from './CrewPlanMemberCard';
 import { CrewFlagMarks } from './crew-plan-icons';
 
 export { CREW_DRAG_TYPE };
@@ -52,6 +58,9 @@ export const CrewPlanChip = ({
   dragging,
   canPlan,
   placedAt,
+  seatedAt = null,
+  dragActive = false,
+  attendance = null,
   outOfRole,
   onSelect,
   onRemove,
@@ -73,6 +82,12 @@ export const CrewPlanChip = ({
    * («213 · قائد الطاقم»). The chip is dimmed and says so.
    */
   placedAt?: { short: string; long: string } | null;
+  /** Seated on a row: that row and slot in words («213 · قائد الطاقم») — on the person's card. */
+  seatedAt?: string | null;
+  /** A chip — any — is being dragged on the board: no card and no icon tip opens. */
+  dragActive?: boolean;
+  /** The person card's attendance line on the board's day, when the board knows it (none yet). */
+  attendance?: ReactNode;
   /** Seated outside their role — a quiet mark, never a refusal (see `outOfRole`). */
   outOfRole?: string | null;
   onSelect: () => void;
@@ -86,9 +101,12 @@ export const CrewPlanChip = ({
   const flags = flagsOf(member);
   const where = placedAt ?? null;
   const placed = where !== null;
-  const roleName = t(`operations.crewPlan.role.${role}`);
-  // The whole name and the code on hover; the name on the chip is cut to its column.
-  const title = `${member.fullNameAr} · ${member.code} · ${roleName}${where === null ? '' : ` · ${where.long}`}`;
+  // The whole name, the code, the role and where he sits: the card, on hover (no `title`).
+  const card = usePlanMemberCard(member, {
+    dragActive,
+    seat: where?.long ?? seatedAt,
+    attendance,
+  });
 
   return (
     <div
@@ -115,7 +133,7 @@ export const CrewPlanChip = ({
         disabled={!canPlan}
         aria-pressed={selected}
         aria-label={t('operations.crewPlan.chip.select', { name: member.fullNameAr })}
-        title={title}
+        {...card.buttonProps}
         onClick={onSelect}
         className={cn(
           'flex min-w-0 flex-1 items-center gap-1.5 text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-default',
@@ -123,6 +141,7 @@ export const CrewPlanChip = ({
         )}
       >
         <span
+          {...card.nameProps}
           className={cn(
             'min-w-0 flex-1 truncate font-bold leading-5',
             variant === 'pool' ? 'text-[13px]' : 'text-[12.5px]',
@@ -141,7 +160,7 @@ export const CrewPlanChip = ({
             {where.short}
           </span>
         )}
-        <CrewFlagMarks flags={flags} size={variant === 'pool' ? 'sm' : 'xs'} />
+        <CrewFlagMarks flags={flags} size={variant === 'pool' ? 'sm' : 'xs'} quiet={dragActive} />
       </button>
       {/* The ✕ lies OVER the icons at the chip's end, shown on hover, on focus, and while the chip
           is picked up (a phone has no hover): a slot is narrow, and a ✕ always drawn there took the
@@ -180,6 +199,7 @@ export const CrewPlanChip = ({
           className="absolute -top-1 -start-1 h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white dark:ring-[#111827]"
         />
       )}
+      {card.card}
     </div>
   );
 };

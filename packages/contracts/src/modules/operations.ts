@@ -1535,6 +1535,14 @@ export type ListOperationsCrewRequirementsQuery = z.infer<
   typeof ListOperationsCrewRequirementsQuerySchema
 >;
 
+/**
+ * Round 22 — who is AWAY on the board's day, as HR has it: «وعاوز لو القائد غايب يظهر تحت الكل
+ * بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على العربيه و كذلك الاخصائيين». Two answers only —
+ * HR's `absent` and `onLeave` buckets. Anything else (at work, a weekend, no record) is not «away».
+ */
+export const OPERATIONS_CREW_AVAILABILITIES = ['absent', 'onLeave'] as const;
+export type OperationsCrewAvailability = (typeof OPERATIONS_CREW_AVAILABILITIES)[number];
+
 /** A crew member as the board's pool shows them: who they are, plus their flags. */
 export interface OperationsCrewMemberDto {
   employeeId: string;
@@ -1573,6 +1581,27 @@ export interface OperationsCrewMemberDto {
    * because the SAME rule is enforced server-side as Q11.
    */
   assignedVehicleId: string | null;
+  /**
+   * Round 22 — whether HR has this member AWAY on the requested day: 'absent', 'onLeave', or null.
+   * The board lists an away member last in his pool, faded, and does not let him onto a row; the
+   * save refuses the same (422 `OPERATIONS_CREW_MEMBER_ABSENT`), so the pool and the save cannot
+   * disagree.
+   *
+   * WHERE IT COMES FROM: HR's day record for that day (the directory seam the attendance page
+   * reads), `absent` → 'absent', `onLeave` → 'onLeave'. Where HR has NO record for the day — every
+   * day it has not computed yet, which is normally every future day, the board's tomorrow included
+   * — an approved or active leave covering the day answers 'onLeave'. Null otherwise: at work, a
+   * weekend or holiday, «incomplete», or no record at all. An UNKNOWN IS NOT ABSENT — nobody is
+   * kept off a van because attendance has not answered.
+   *
+   * Only the bucket travels, never HR's punches or the leave itself, and it is served under the
+   * roster's grant (`operationsCrew.view`) like the rest of the member. Who may see what is the
+   * owner's to decide later («موضوع مين يشوف ايه ومين يعمل ايه دا مش دلوقتي»).
+   *
+   * Optional only for a server that predates the field (a deploy in flight) and the board's own
+   * stand-in for somebody the roster no longer names: missing means the same as null.
+   */
+  availability?: OperationsCrewAvailability | null;
 }
 
 export interface OperationsCrewDirectoryDto {
@@ -1609,6 +1638,10 @@ export type OperationsCrewDirectoryQuery = z.infer<typeof OperationsCrewDirector
 //   · it GATES NOTHING. An absent crew member is still fully assignable, exactly as in legacy.
 //     Attendance is an indicator here, on the same footing as the requirement flags (owner
 //     decision, carried since PR 1). Turning it into an eligibility rule would be a new rule.
+//   · ROUND 22 — the owner made that new rule, for the crew BOARD: «لو القائد غايب ... مقدرش احطه
+//     على العربيه و كذلك الاخصائيين». The pool's member carries `availability` and the save refuses
+//     to newly place somebody HR has absent or on leave that day (`OPERATIONS_CREW_MEMBER_ABSENT`).
+//     This page still refuses nothing itself, and an unknown is still not an absence.
 //
 // `attendance: null` means HR has NO answer for that employee and day — not "present". A screen
 // must render the difference, because "unknown" and "fine" are not the same fact.
@@ -1870,6 +1903,9 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
  *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
  *     included — stays as written while it is sent unchanged.
+ *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
+ *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
+ *     row stays, so a planner can still save the row's other changes.
  *   · Up to `CREW_SLOT_CAPACITY` people per slot (here). «من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — the
  *     MINIMUMS are the board's warning (⚠), never a refusal: legacy enforced none (:2419), and a
  *     van is planned in steps.
@@ -2353,11 +2389,15 @@ const withoutBlanks = (seals: readonly string[]): string[] => seals.filter((seal
  *     so a barcode longer than a JavaScript number is exact still compares exactly.
  *   · Anything else (a barcode with a letter in it) is compared exactly as typed, trimmed.
  *   · A blank is no seal: null.
+ *   · What cannot be SEEN is not read: the invisible format marks (Unicode Cf — the right-to-left
+ *     and left-to-right marks a number copied from an Arabic message or sheet carries, zero-width
+ *     spaces) are dropped first. The owner's rule is about what the clerk sees: two boxes that
+ *     both show 12 are the same seal, whatever invisible mark one of them holds.
  *
  * Not to be confused with the ATM module's `sealKey` (DS-15), which is that module's own rule.
  */
 export const vaultSealKey = (seal: string): string | null => {
-  const trimmed = seal.trim();
+  const trimmed = seal.replace(/\p{Cf}/gu, '').trim();
   if (trimmed === '') return null;
   const digits = asciiDigits(trimmed);
   return /^[0-9]+$/u.test(digits) ? digits.replace(/^0+(?=[0-9])/u, '') : trimmed;

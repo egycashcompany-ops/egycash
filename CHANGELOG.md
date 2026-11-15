@@ -502,9 +502,10 @@ its entry here in the same PR.
       الكود ولما اقف على القائد يجيب بياناته زى السواق»: the name, the code small and muted beside
       it (no column of its own), and hovering the name (or Tab to it) opens the member's card in the
       Fleet driver card's look — the whole name, the code, «الوظيفة», the mobile number, the branch,
-      and the flags held as labelled chips. No phone line for a reader the server sends none to. Each flag is the legacy round toggle — green with ✓, grey — a
-      `switch` named for the flag and the member, pressable only with `operationsCrew.plan`; a
-      reader without it is told the screen is view-only.
+      and the flags held as labelled chips. No phone line for a reader the server sends none to.
+      Each flag is the legacy round toggle — green with ✓, grey — a `switch` named for the flag
+      and the member, pressable only with `operationsCrew.plan`; a reader without it is told the
+      screen is view-only.
     - Filters in the columns' order — «والفلاتر تكون ترتبيها زى الجدول والغى السيرش بالكود خليه
       مكان واحد للاسم والكود سوا»: ONE box «الاسم أو الكود» (the name or the code, Arabic letter
       forms and digits folded), «الوظيفة» (the titles on the roster, or «بلا وظيفة مسجَّلة») and

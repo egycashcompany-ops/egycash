@@ -23,6 +23,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { type FleetPersonDto } from '@ecms/contracts';
+import { nameInitials } from '../lib/name-initials';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { foldIncludes } from '../../../shared/lib/fold';
@@ -56,14 +57,11 @@ const AVATAR_TONES = [
 const toneOf = (key: string): string =>
   AVATAR_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % AVATAR_TONES.length]!;
 
-/** «ابراهيم السيد» → «اس»: the first letter of the first two words — «السيد» gives «س». */
-export const driverInitials = (name: string): string =>
-  name
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((word) => (word.startsWith('ال') && word.length > 2 ? word.charAt(2) : word.charAt(0)))
-    .join('');
+/**
+ * «ابراهيم السيد» → «اس»: the first letter of the first two words — «السيد» gives «س». A pair that
+ * reads as a rude word shows its first letter alone (`nameInitials`).
+ */
+export const driverInitials = (name: string): string => nameInitials(name);
 
 export const DriverAvatar = ({
   name,

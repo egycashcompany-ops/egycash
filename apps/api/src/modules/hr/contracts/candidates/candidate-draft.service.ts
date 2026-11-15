@@ -47,7 +47,7 @@ import { renderHiringPackHtml, type HiringPackPart } from '../contracts/contract
 import { resolveContractVariables } from '../contracts/contract-variables';
 import { hiringPackService, oneYearFrom } from '../contracts/hiring-pack.service';
 import { letterheadFor } from '../contracts/letterhead';
-import { isTickedForJob, type JobPaper } from '../job-papers/job-papers.rules';
+import { choiceFor, isTickedForPerson, type JobPaper } from '../job-papers/job-papers.rules';
 import { papersOfPerson } from '../job-papers/person-papers';
 import { CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { candidateDraftRepository } from './candidate-draft.repository';
@@ -110,7 +110,8 @@ class CandidateDraftService {
         draft = await candidateDraftRepository.create(
           {
             offerId: new Types.ObjectId(offerId),
-            selected: null,
+            added: [],
+            removed: [],
             overrides: [],
             startDate,
             endDate: allowsEndDate ? dateOnlyIso(oneYearFrom(start)) : null,
@@ -161,8 +162,8 @@ class CandidateDraftService {
     const { draft } = c;
     const keys = [...new Set(c.papers.flatMap((paper) => paper.template.placeholders))];
     const { values } = await this.valuesFor(c, keys);
-    // Never chosen yet: the candidate's papers ticked, but one only offered unticked.
-    const chosen = draft.selected === null ? null : new Set(draft.selected);
+    // The papers the job ticks, but for what HR ticked or unticked for this candidate.
+    const choice = { added: draft.added, removed: draft.removed };
     return {
       id: String(draft._id),
       offerId: String(draft.offerId),
@@ -180,7 +181,7 @@ class CandidateDraftService {
         group,
         optional,
         placeholders: template.placeholders,
-        selected: chosen === null ? isTickedForJob({ optional }) : chosen.has(template.key),
+        selected: isTickedForPerson({ template, optional }, choice),
       })),
       values: values.map((v) => {
         const entry = CONTRACT_VARIABLE_CATALOG.find((x) => x.key === v.key);
@@ -215,10 +216,8 @@ class CandidateDraftService {
   ): Promise<CandidateDraftDto> {
     const c = await this.context(ctx, offerId, scope, false);
     const set: Partial<CandidateDraftDoc> = {};
-    if (input.selected !== undefined) {
-      const known = new Set(c.papers.map((paper) => paper.template.key));
-      set.selected = input.selected.filter((key) => known.has(key));
-    }
+    // The page sends every paper ticked; what is kept is how that differs from the job's.
+    if (input.selected !== undefined) Object.assign(set, choiceFor(c.papers, input.selected));
     if (input.overrides !== undefined) {
       // A blank value gives the record's own back; only what was typed is kept. The employee code
       // is never typed: it is the one kept at the first print, and the hire gives exactly that.

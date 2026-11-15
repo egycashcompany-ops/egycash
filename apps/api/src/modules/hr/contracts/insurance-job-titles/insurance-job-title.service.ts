@@ -1,14 +1,12 @@
-// A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات», beside «نموذج التقديم»: «انا عاوز انا اللي احط
-// المسميات الوظيفه بتاعتنا و المسميات الوظيفيه بتاعت التامينات و هنزود column … كود المهنه و كله هيتحط
-// manual بس لما تتعمل save خلاص فهي by default لما اجي احط المسمي الوظيفي بتاعنا هيترمي في نموزج 1
-// علي اساس المسمي الوظيفي لدي الالتامينات و كود المهنه».
+// A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات», beside «نموذج التقديم»: «هنحط كل الظائف بتاعتنا ك
+// data اساسيه و جمب كل واحده … زرار صغير كدا اسمو تعديل … مثبت فيه المسمي الوظيفي عندنا و التعديل عمتا
+// هيكون ف مسمي الوظيفي لدي التامينات و كود المهنه بس».
 //
-// A table HR types: the company's job title, its title at the authority, its occupation code.
-// «حفظ» keeps the table as it stands — a row left out is taken off. «نموذج رقم (1)» prints, for a
-// person whose job carries a row's title (folded: «أخصائى» meets «اخصائي»), the row's insurance title
-// (else the job's own) and its occupation code in the code's boxes.
-import { type InsuranceJobTitlesDto, type UpdateInsuranceJobTitles } from '@ecms/contracts';
-import { ValidationError } from '../../../../shared/errors';
+// Every active job of the company is a row; «تعديل» sets the job's title at the authority and its
+// occupation code. What is kept is keyed by the job's name folded (`jobKey`: «أخصائى» meets
+// «اخصائي»), as the first release of the page kept it. «نموذج رقم (1)» prints, for a person whose
+// job carries it, the insurance title (else the job's own) and the occupation code in its boxes.
+import { type InsuranceJobTitlesDto, type UpdateInsuranceJobTitle } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { jobTitleService } from '../../../../platform/organization';
@@ -37,38 +35,32 @@ class InsuranceJobTitleService {
     return insuranceJobTitleRepository.findByNameKey(jobKey(jobName));
   }
 
+  /** Every active job, by name, beside what is kept for it. */
   async list(): Promise<InsuranceJobTitlesDto> {
     const jobs = await jobTitleService.options();
-    const known = new Set(jobs.map((job) => jobKey(job.name.ar)));
-    const rows = await insuranceJobTitleRepository.listAll();
+    const kept = new Map((await insuranceJobTitleRepository.listAll()).map((row) => [row.nameKey, row]));
     return {
-      rows: rows
-        .map((row) => ({
-          id: String(row._id),
-          jobTitle: row.jobTitle,
-          insuranceTitle: row.insuranceTitle,
-          occupationCode: row.occupationCode,
-          matched: known.has(row.nameKey),
-        }))
+      rows: jobs
+        .map((job) => {
+          const row = kept.get(jobKey(job.name.ar));
+          return {
+            jobTitleId: job.id,
+            jobTitle: job.name.ar,
+            insuranceTitle: row?.insuranceTitle ?? '',
+            occupationCode: row?.occupationCode ?? '',
+          };
+        })
         .sort((a, b) => a.jobTitle.localeCompare(b.jobTitle, 'ar')),
-      jobNames: [...new Set(jobs.map((job) => job.name.ar))].sort((a, b) => a.localeCompare(b, 'ar')),
     };
   }
 
-  /** Keep the table as it now stands: rows added, changed, and left out (taken off). */
-  async update(ctx: AuthContext, input: UpdateInsuranceJobTitles): Promise<InsuranceJobTitlesDto> {
-    const wanted = new Map<string, UpdateInsuranceJobTitles['rows'][number]>();
-    for (const [index, row] of input.rows.entries()) {
-      const key = jobKey(row.jobTitle);
-      if (wanted.has(key)) {
-        throw new ValidationError([
-          { field: `body.rows.${index}.jobTitle`, code: 'DUPLICATE', message: `the job title is listed twice: ${row.jobTitle}` },
-        ]);
-      }
-      wanted.set(key, row);
-    }
-
-    const existing = new Map((await insuranceJobTitleRepository.listAll()).map((row) => [row.nameKey, row]));
+  /** «تعديل» on one job: keep its insurance title and occupation code — both empty, keep nothing. */
+  async update(ctx: AuthContext, jobTitleId: string, input: UpdateInsuranceJobTitle): Promise<InsuranceJobTitlesDto> {
+    const job = await jobTitleService.getById(jobTitleId);
+    const nameKey = jobKey(job.name.ar);
+    const set = { jobTitle: job.name.ar, insuranceTitle: input.insuranceTitle.trim(), occupationCode: input.occupationCode.trim() };
+    const empty = set.insuranceTitle === '' && set.occupationCode === '';
+    const current = await insuranceJobTitleRepository.findByNameKey(nameKey);
     const record = async (id: string, before: string, after: string): Promise<void> =>
       auditService.record({
         entityRef: rowRef(id),
@@ -77,21 +69,17 @@ class InsuranceJobTitleService {
         actor: { userId: ctx.userId, ip: null, userAgent: null },
       });
 
-    for (const [nameKey, row] of wanted) {
-      const set = { jobTitle: row.jobTitle.trim(), insuranceTitle: row.insuranceTitle.trim(), occupationCode: row.occupationCode.trim() };
-      const current = existing.get(nameKey) ?? null;
-      if (current === null) {
+    if (current === null) {
+      if (!empty) {
         const made = await insuranceJobTitleRepository.create({ ...set, nameKey }, { by: ctx.userId });
         await record(String(made._id), '', snapshot(set));
-      } else if (snapshot(current) !== snapshot(set)) {
-        await insuranceJobTitleRepository.updateById(String(current._id), set, { by: ctx.userId, version: current.__v });
-        await record(String(current._id), snapshot(current), snapshot(set));
       }
-    }
-    for (const [nameKey, row] of existing) {
-      if (wanted.has(nameKey)) continue;
-      await insuranceJobTitleRepository.softDeleteById(String(row._id), { by: ctx.userId });
-      await record(String(row._id), snapshot(row), '');
+    } else if (empty) {
+      await insuranceJobTitleRepository.softDeleteById(String(current._id), { by: ctx.userId });
+      await record(String(current._id), snapshot(current), '');
+    } else if (snapshot(current) !== snapshot(set)) {
+      await insuranceJobTitleRepository.updateById(String(current._id), set, { by: ctx.userId, version: current.__v });
+      await record(String(current._id), snapshot(current), snapshot(set));
     }
     return this.list();
   }

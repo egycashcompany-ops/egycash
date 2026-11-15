@@ -7,6 +7,8 @@
 //     A treasurer reads at a glance that the bag seals run 1 to 4 with none missing, and that 13 is
 //     on its own. `sealSummary` is that line; `sealSlots` / `growSeals` / `sealsToSend` are the
 //     boxes — growing and shrinking with the counts and the radio, never losing what was typed.
+//     Round 18b: the first and the last box hold numbers → the boxes between take the numbers
+//     between («يملى اللى ف النص بالترتيب بينهم») — `fillSealRange` / `typeSeal` / `sealRangeNote`.
 //   · «عدد الورق من كل فئة»: how many notes of each pound denomination, and what they come to
 //     (`denominationsTotal`) — set beside the shipment's pound amount, a gentle hint when the two
 //     differ (`denominationCheck`), never a refusal: «كله اختيارى».
@@ -64,6 +66,166 @@ export const sealsToSend = (seals: readonly string[], slots: number): string[] =
     .map((seal) => seal.trim())
     .filter((seal) => seal !== '');
 
+/** A seal that is a whole number — digits only, once Arabic-Indic digits are read as digits. */
+const ALL_DIGITS = /^\d+$/u;
+
+// ── The range fill ───────────────────────────────────────────────────────────────────────────────
+//
+// Round 18b — «عاوز لو دخل اول خانة فى الحقائب او الصناديق و دخل فى الخانة الاخير رقم يملى اللى ف
+// النص بالترتيب بينهم»: the FIRST and the LAST box of a list (bags, or boxes — each on its own) hold
+// numbers, and the boxes between take the numbers between, in order. The rules, each pinned in
+// `vault-receipt.spec.ts`:
+//
+//   · The ends are the first and the last box ON SCREEN (`slots`), and both must be whole numbers —
+//     digits only, leading zeros allowed, Arabic-Indic digits counted, as the summary line reads
+//     them. A seal with a letter in it is no end: nothing is filled.
+//   · It fills ONLY when the run the ends make is exactly as long as the boxes: |last − first| + 1
+//     equals the number of boxes on screen. A shorter or longer run is not a guess worth writing
+//     — which seal would be missing, or which box would hold two? — so nothing is filled, and a
+//     line under the list's bar says why (`sealRangeNote`). The run may go down as well as up (a
+//     bag scanned from its other end): «بالترتيب بينهم» is the order between the two, either way.
+//   · A number is written as the first box writes its own: padded with zeros to its width
+//     (00098 → 00099 → 00100), in its digits.
+//   · It never writes over a box typed by hand — only an EMPTY box, or one it wrote itself that
+//     nobody has typed into since (`filled`). A box typed by hand that disagrees stays as typed: the
+//     summary line already says it («1 - [3 - 4] - 7»).
+//   · What it wrote follows the ends: it is written again whenever the first or the last box
+//     changes, or the count / «2×»/«3×» moves the last box — and taken away when the ends no longer
+//     make a run that fits. The boxes it filled always say what the two ends on screen say, never
+//     what they said a moment ago (a scanner types the last box a digit at a time: «4» fits a run
+//     of four, «40» does not).
+
+/**
+ * One list of seal boxes as the form holds it — bags or boxes: every box ever drawn (`growSeals`),
+ * and which of them hold what the range fill wrote rather than what was typed.
+ */
+export interface SealList {
+  seals: readonly string[];
+  /** `filled[i]`: box i holds the range fill's number, and nobody has typed into it since. */
+  filled: readonly boolean[];
+}
+
+/** A list with no box typed yet. */
+export const NO_SEAL_LIST: SealList = { seals: [], filled: [] };
+
+/** What the list's bar says of the range fill. */
+export type SealRangeNote =
+  | { kind: 'none' }
+  /** Both ends are numbers, but their run is not as long as the boxes: nothing was filled. */
+  | { kind: 'mismatch'; from: string; to: string; boxes: number };
+
+const wholeNumber = (seal: string): bigint | null => {
+  const digits = asciiDigits(seal);
+  return ALL_DIGITS.test(digits) ? BigInt(digits) : null;
+};
+
+/** The two ends on screen, when both are whole numbers and not the same one. */
+const rangeEnds = (
+  seals: readonly string[],
+  slots: number,
+): { first: string; last: string; from: bigint; to: bigint; size: bigint } | null => {
+  // Fewer than three boxes have nothing between their ends.
+  if (slots < 3) return null;
+  const first = (seals[0] ?? '').trim();
+  const last = (seals[slots - 1] ?? '').trim();
+  const from = wholeNumber(first);
+  const to = wholeNumber(last);
+  // The same number at both ends is a seal typed twice — the summary line says that, not this.
+  if (from === null || to === null || from === to) return null;
+  return { first, last, from, to, size: (to > from ? to - from : from - to) + 1n };
+};
+
+/** `ascii` (digits) written in the digits `sample` is written in — ١٢٣ for a list typed in ١٢٣. */
+const inDigitsOf = (sample: string, ascii: string): string => {
+  const base = /[۰-۹]/u.test(sample) ? 0x06f0 : /[٠-٩]/u.test(sample) ? 0x0660 : null;
+  return base === null
+    ? ascii
+    : ascii.replace(/\d/gu, (digit) => String.fromCodePoint(base + Number(digit)));
+};
+
+/** The number box `index` takes in the run between the ends — or null when the ends make none. */
+const rangeFill = (seals: readonly string[], slots: number): ((index: number) => string) | null => {
+  const ends = rangeEnds(seals, slots);
+  if (ends === null || ends.size !== BigInt(slots)) return null;
+  const step = ends.to > ends.from ? 1n : -1n;
+  // Only a first box written WITH leading zeros sets a width: 10 counting down writes 9, not 09.
+  const width = /^[0٠۰]/u.test(ends.first) ? ends.first.length : 0;
+  return (index) =>
+    inDigitsOf(ends.first, String(ends.from + step * BigInt(index)).padStart(width, '0'));
+};
+
+/** `values` as long as `length`, padded with `blank`. */
+const padTo = <T>(values: readonly T[], length: number, blank: T): T[] =>
+  values.length >= length
+    ? [...values]
+    : [...values, ...Array.from({ length: length - values.length }, () => blank)];
+
+/**
+ * The range fill, run over the boxes on screen. What it wrote before goes first — it came from the
+ * ends as they were — then, when the ends make a run exactly as long as the boxes, every EMPTY box
+ * between them takes its number. A box typed by hand is never written; a box off screen (hidden by
+ * a lowered count) is left as it is, to be judged again when it is shown. The same list comes back
+ * when nothing changes.
+ */
+export const fillSealRange = (list: SealList, slots: number): SealList => {
+  const seals = growSeals(list.seals, slots);
+  const filled = padTo(list.filled, seals.length, false);
+  for (let index = 0; index < slots; index += 1) {
+    if (filled[index] === true) {
+      seals[index] = '';
+      filled[index] = false;
+    }
+  }
+  const fill = rangeFill(seals, slots);
+  if (fill !== null) {
+    for (let index = 1; index < slots - 1; index += 1) {
+      if ((seals[index] ?? '').trim() === '') {
+        seals[index] = fill(index);
+        filled[index] = true;
+      }
+    }
+  }
+  const same =
+    seals.length === list.seals.length &&
+    seals.every((seal, index) => seal === list.seals[index]) &&
+    filled.every((mark, index) => mark === (list.filled[index] ?? false));
+  return same ? list : { seals, filled };
+};
+
+/**
+ * A box typed into (by hand or by a scanner): it is the typist's from now on, whatever the fill
+ * wrote there. Typed into the first or the last box on screen, the range fill runs again.
+ */
+export const typeSeal = (
+  list: SealList,
+  slots: number,
+  index: number,
+  value: string,
+): SealList => {
+  const seals = growSeals(list.seals, index + 1);
+  const filled = padTo(list.filled, seals.length, false);
+  seals[index] = value;
+  filled[index] = false;
+  const typed = { seals, filled };
+  return index === 0 || index === slots - 1 ? fillSealRange(typed, slots) : typed;
+};
+
+/**
+ * The line under a list's bar: said when both ends are numbers whose run is NOT as long as the
+ * boxes and a box between them is still empty — the fill had something to do and did not. Once
+ * every box between holds a seal typed by hand there is nothing to fill, and the summary line says
+ * the gaps («[6 - 8] - [10 - 11] - 13», the owner's own list): a second word would be noise.
+ */
+export const sealRangeNote = (list: SealList, slots: number): SealRangeNote => {
+  const ends = rangeEnds(list.seals, slots);
+  if (ends === null || ends.size === BigInt(slots)) return { kind: 'none' };
+  // (The last box holds a number, so the held list reaches it: every box between is in it.)
+  const emptyBetween = list.seals.slice(1, slots - 1).some((seal) => seal.trim() === '');
+  return emptyBetween
+    ? { kind: 'mismatch', from: ends.first, to: ends.last, boxes: slots }
+    : { kind: 'none' };
+};
+
 /** One piece of a seal summary. */
 export type SealPart =
   /** Two or more consecutive numbers — «[1 - 4]». */
@@ -78,8 +240,6 @@ export interface SealSummary {
   /** A seal typed twice — a scanner read twice, or a slip — listed once in `parts`, named here. */
   duplicates: string[];
 }
-
-const ALL_DIGITS = /^\d+$/u;
 
 /**
  * The legacy summary line over a list of seals: «[1 - 4]», «1 - [3 - 4] - [6 - 8]», «[6 - 8] -

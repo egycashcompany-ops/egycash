@@ -16,22 +16,27 @@ import { ApiError } from '../../../shared/lib/api-client';
 import {
   BOX_SEALS_PER_BOX,
   MAX_SEALS,
+  NO_SEAL_LIST,
   denominationCheck,
   denominationLabel,
   denominationLines,
   denominationsTotal,
   draftSlots,
+  fillSealRange,
   growSeals,
   parseCount,
   poundAmount,
   receiveRefusal,
   receiveRequest,
+  sealRangeNote,
   sealSlots,
   sealSummary,
   sealSummaryText,
   sealsToSend,
   shipmentPatch,
+  typeSeal,
   type ReceiptDraft,
+  type SealList,
   type ShipmentDraftValues,
 } from './vault-receipt';
 
@@ -163,6 +168,394 @@ describe('the seal boxes — bags × «2×»/«3×», boxes × 2, never losing w
     expect(sealsToSend(held, 0)).toEqual([]);
     // Never a list holding one empty string — the contract drops it, the form does not send it.
     expect(sealsToSend(['', '  '], 2)).toEqual([]);
+  });
+});
+
+// Round 18b — «عاوز لو دخل اول خانة فى الحقائب او الصناديق و دخل فى الخانة الاخير رقم يملى اللى ف
+// النص بالترتيب بينهم»: the first and the last box hold numbers → the boxes between take the numbers
+// between, in order — bags and boxes each on its own list.
+describe('the range fill — the first and the last box fill the boxes between them', () => {
+  /** Boxes typed one after another, each whole — `[index, value]`, as a hand or a paste does. */
+  const typed = (slots: number, entries: [number, string][], from = NO_SEAL_LIST): SealList =>
+    entries.reduce((list, [index, value]) => typeSeal(list, slots, index, value), from);
+  /** A scanner types a box a character at a time, every one an `onChange` of its own. */
+  const scanned = (list: SealList, slots: number, index: number, value: string): SealList =>
+    [...value].reduce(
+      (held, _, at) => typeSeal(held, slots, index, value.slice(0, at + 1)),
+      list,
+    );
+  /** The boxes on screen, as the form draws them. */
+  const shown = (list: SealList, slots: number): string[] =>
+    growSeals(list.seals, slots).slice(0, slots);
+  /** Which boxes on screen hold the fill's number — 'f' — and which what was typed — '.'. */
+  const marks = (list: SealList, slots: number): string =>
+    Array.from({ length: slots }, (_, index) => (list.filled[index] === true ? 'f' : '.')).join('');
+
+  it('fills the owner’s two lists: bags 2 × «2×» from 1 to 4, boxes 3 (six boxes) from 6 to 11', () => {
+    const bags = typed(4, [
+      [0, '1'],
+      [3, '4'],
+    ]);
+    expect(shown(bags, 4)).toEqual(['1', '2', '3', '4']);
+    expect(marks(bags, 4)).toBe('.ff.');
+    expect(sealsToSend(bags.seals, 4)).toEqual(['1', '2', '3', '4']);
+    expect(sealSummaryText(sealSummary(sealsToSend(bags.seals, 4)))).toBe('[1 - 4]');
+    expect(sealRangeNote(bags, 4)).toEqual({ kind: 'none' });
+
+    const boxes = typed(sealSlots(3, BOX_SEALS_PER_BOX), [
+      [0, '6'],
+      [5, '11'],
+    ]);
+    expect(shown(boxes, 6)).toEqual(['6', '7', '8', '9', '10', '11']);
+    expect(marks(boxes, 6)).toBe('.ffff.');
+    expect(sealSummaryText(sealSummary(sealsToSend(boxes.seals, 6)))).toBe('[6 - 11]');
+  });
+
+  it('fills whichever end is typed second — the last box first, then the first', () => {
+    const lastFirst = typed(4, [
+      [3, '4'],
+      [0, '1'],
+    ]);
+    expect(shown(lastFirst, 4)).toEqual(['1', '2', '3', '4']);
+    expect(lastFirst).toEqual(
+      typed(4, [
+        [0, '1'],
+        [3, '4'],
+      ]),
+    );
+  });
+
+  it('fills one box between three (1 bag × «3×»), and has nothing to fill in two', () => {
+    expect(
+      shown(
+        typed(3, [
+          [0, '41'],
+          [2, '43'],
+        ]),
+        3,
+      ),
+    ).toEqual(['41', '42', '43']);
+    // One box × 2: two boxes, nothing between them — and nothing to say, whatever their numbers.
+    const two = typed(2, [
+      [0, '5'],
+      [1, '9'],
+    ]);
+    expect(shown(two, 2)).toEqual(['5', '9']);
+    expect(marks(two, 2)).toBe('..');
+    expect(sealRangeNote(two, 2)).toEqual({ kind: 'none' });
+    expect(sealRangeNote(typed(1, [[0, '5']]), 1)).toEqual({ kind: 'none' });
+    expect(fillSealRange(NO_SEAL_LIST, 0)).toBe(NO_SEAL_LIST);
+  });
+
+  it('fills NOTHING when the run is not as long as the boxes — longer or shorter — and says so', () => {
+    const longer = typed(4, [
+      [0, '1'],
+      [3, '5'],
+    ]);
+    expect(shown(longer, 4)).toEqual(['1', '', '', '5']);
+    expect(marks(longer, 4)).toBe('....');
+    expect(sealRangeNote(longer, 4)).toEqual({ kind: 'mismatch', from: '1', to: '5', boxes: 4 });
+    const shorter = typed(6, [
+      [0, '6'],
+      [5, '9'],
+    ]);
+    expect(shown(shorter, 6)).toEqual(['6', '', '', '', '', '9']);
+    expect(sealRangeNote(shorter, 6)).toEqual({ kind: 'mismatch', from: '6', to: '9', boxes: 6 });
+  });
+
+  it('says nothing of a run that does not fit once every box between is typed by hand', () => {
+    // The owner's own box list, «[6 - 8] - [10 - 11] - 13»: six seals scanned one by one, the ends
+    // 6 and 13 — eight numbers for six boxes, and nothing left to fill. The summary says the gaps.
+    const owner = typed(
+      6,
+      ['6', '8', '7', '10', '11', '13'].map((seal, index): [number, string] => [index, seal]),
+    );
+    expect(shown(owner, 6)).toEqual(['6', '8', '7', '10', '11', '13']);
+    expect(marks(owner, 6)).toBe('......');
+    expect(sealRangeNote(owner, 6)).toEqual({ kind: 'none' });
+    // One box between emptied again: the fill had something to do and did not — said.
+    expect(sealRangeNote(typeSeal(owner, 6, 2, ''), 6)).toEqual({
+      kind: 'mismatch',
+      from: '6',
+      to: '13',
+      boxes: 6,
+    });
+  });
+
+  it('keeps the first box’s leading zeros — 00098 → 00099 → 00100 — padded to its width', () => {
+    expect(
+      shown(
+        typed(3, [
+          [0, '00098'],
+          [2, '00100'],
+        ]),
+        3,
+      ),
+    ).toEqual(['00098', '00099', '00100']);
+    expect(
+      shown(
+        typed(6, [
+          [0, '00098'],
+          [5, '00103'],
+        ]),
+        6,
+      ),
+    ).toEqual(['00098', '00099', '00100', '00101', '00102', '00103']);
+    // The FIRST box's width, whatever the last was typed with.
+    expect(
+      shown(
+        typed(5, [
+          [0, '0098'],
+          [4, '102'],
+        ]),
+        5,
+      ),
+    ).toEqual(['0098', '0099', '0100', '0101', '102']);
+    expect(
+      shown(
+        typed(3, [
+          [0, '98'],
+          [2, '00100'],
+        ]),
+        3,
+      ),
+    ).toEqual(['98', '99', '00100']);
+    // The ends are read trimmed: a stray space is not a digit of the width.
+    expect(
+      shown(
+        typed(3, [
+          [0, ' 007 '],
+          [2, '009'],
+        ]),
+        3,
+      ),
+    ).toEqual([' 007 ', '008', '009']);
+  });
+
+  it('fills a run that goes down as well — a bag scanned from its other end', () => {
+    expect(
+      shown(
+        typed(4, [
+          [0, '10'],
+          [3, '7'],
+        ]),
+        4,
+      ),
+    ).toEqual(['10', '9', '8', '7']);
+    expect(
+      shown(
+        typed(3, [
+          [0, '00100'],
+          [2, '00098'],
+        ]),
+        3,
+      ),
+    ).toEqual(['00100', '00099', '00098']);
+    expect(
+      sealRangeNote(
+        typed(4, [
+          [0, '10'],
+          [3, '6'],
+        ]),
+        4,
+      ),
+    ).toEqual({ kind: 'mismatch', from: '10', to: '6', boxes: 4 });
+  });
+
+  it('counts barcodes longer than a JavaScript number is exact, and writes Arabic-Indic as typed', () => {
+    const base = '9007199254740993';
+    expect(
+      shown(
+        typed(4, [
+          [0, base],
+          [3, '9007199254740996'],
+        ]),
+        4,
+      ),
+    ).toEqual([base, '9007199254740994', '9007199254740995', '9007199254740996']);
+    expect(
+      shown(
+        typed(4, [
+          [0, '١'],
+          [3, '٤'],
+        ]),
+        4,
+      ),
+    ).toEqual(['١', '٢', '٣', '٤']);
+    expect(
+      shown(
+        typed(3, [
+          [0, '۰۹'],
+          [2, '11'],
+        ]),
+        3,
+      ),
+    ).toEqual(['۰۹', '۱۰', '11']);
+  });
+
+  it('fills nothing, and says nothing, unless BOTH ends are whole numbers', () => {
+    for (const [first, last] of [
+      ['E100', 'E103'],
+      ['1', '4A'],
+      ['A1', '4'],
+      ['1.5', '4'],
+      ['-1', '2'],
+      ['1', ''],
+      ['', '4'],
+    ]) {
+      const list = typed(4, [
+        [0, first as string],
+        [3, last as string],
+      ]);
+      expect(shown(list, 4), `${first} … ${last}`).toEqual([first, '', '', last]);
+      expect(marks(list, 4)).toBe('....');
+      expect(sealRangeNote(list, 4)).toEqual({ kind: 'none' });
+    }
+    // The same number at both ends is a seal typed twice: the summary names it, the fill is silent.
+    const twice = typed(4, [
+      [0, '7'],
+      [3, '007'],
+    ]);
+    expect(shown(twice, 4)).toEqual(['7', '', '', '007']);
+    expect(sealRangeNote(twice, 4)).toEqual({ kind: 'none' });
+  });
+
+  it('never writes over a box typed by hand — only the empty ones between', () => {
+    const list = typed(4, [
+      [1, '7'],
+      [0, '1'],
+      [3, '4'],
+    ]);
+    expect(shown(list, 4)).toEqual(['1', '7', '3', '4']);
+    expect(marks(list, 4)).toBe('..f.');
+    // What was typed stays, and the summary line says it.
+    expect(sealSummaryText(sealSummary(sealsToSend(list.seals, 4)))).toBe('1 - [3 - 4] - 7');
+    // A box typed with the very number the fill would write is still the typist's.
+    const same = typed(4, [
+      [2, '3'],
+      [0, '1'],
+      [3, '4'],
+    ]);
+    expect(marks(same, 4)).toBe('.f..');
+  });
+
+  it('hands a filled box to whoever types into it — a scan over it, or the box emptied', () => {
+    const filled = typed(5, [
+      [0, '1'],
+      [4, '5'],
+    ]);
+    expect(marks(filled, 5)).toBe('.fff.');
+    // Typed over (the scanner's Enter selects a box's text, so a scan replaces it).
+    const over = typeSeal(filled, 5, 2, '30');
+    expect(shown(over, 5)).toEqual(['1', '2', '30', '4', '5']);
+    expect(marks(over, 5)).toBe('.f.f.');
+    // The ends move: the fill's boxes follow them, the typed one stays.
+    const moved = typed(5, [
+      [0, '11'],
+      [4, '15'],
+    ], over);
+    expect(shown(moved, 5)).toEqual(['11', '12', '30', '14', '15']);
+    expect(marks(moved, 5)).toBe('.f.f.');
+    // A box emptied by hand stays empty — no number comes back under the caret…
+    const emptied = typeSeal(filled, 5, 1, '');
+    expect(shown(emptied, 5)).toEqual(['1', '', '3', '4', '5']);
+    expect(marks(emptied, 5)).toBe('..ff.');
+    // …until an end is typed again: an empty box between is the fill's to write.
+    expect(shown(typeSeal(emptied, 5, 0, '1'), 5)).toEqual(['1', '2', '3', '4', '5']);
+  });
+
+  it('fills again whenever an end changes — and takes its numbers away when the ends no longer fit', () => {
+    const start = typed(4, [
+      [0, '1'],
+      [3, '4'],
+    ]);
+    // The first box changed: a new run.
+    const next = typeSeal(start, 4, 0, '21');
+    expect(shown(next, 4)).toEqual(['21', '', '', '4']);
+    expect(sealRangeNote(next, 4)).toEqual({ kind: 'mismatch', from: '21', to: '4', boxes: 4 });
+    const again = typeSeal(next, 4, 3, '24');
+    expect(shown(again, 4)).toEqual(['21', '22', '23', '24']);
+    // An end emptied: no run — the fill's numbers go with it.
+    const cleared = typeSeal(again, 4, 3, '');
+    expect(shown(cleared, 4)).toEqual(['21', '', '', '']);
+    expect(marks(cleared, 4)).toBe('....');
+    expect(sealRangeNote(cleared, 4)).toEqual({ kind: 'none' });
+    // A box between typed into fills nothing, and moves nothing.
+    expect(shown(typeSeal(start, 4, 1, '2'), 4)).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('follows a scanner typing the last box a digit at a time — the end it stops on decides', () => {
+    const first = typed(4, [[0, '1']]);
+    // «4» fits a run of four; «40» does not — what «4» filled goes.
+    const four = scanned(first, 4, 3, '4');
+    expect(shown(four, 4)).toEqual(['1', '2', '3', '4']);
+    const forty = scanned(first, 4, 3, '40');
+    expect(shown(forty, 4)).toEqual(['1', '', '', '40']);
+    expect(sealRangeNote(forty, 4)).toEqual({ kind: 'mismatch', from: '1', to: '40', boxes: 4 });
+    // The same ends typed at once or a character at a time come to the same boxes.
+    const zeros = scanned(typed(3, [[0, '00098']]), 3, 2, '00100');
+    expect(zeros).toEqual(
+      typed(3, [
+        [0, '00098'],
+        [2, '00100'],
+      ]),
+    );
+    expect(shown(zeros, 3)).toEqual(['00098', '00099', '00100']);
+  });
+
+  it('follows the count and the radio: the last box moves, and the fill with it', () => {
+    // 2 bags × «2×»: 1 … 4. «3×» draws six boxes — the last is empty now: no run, the fill's 2 and
+    // 3 go, the typed 1 and 4 stay.
+    const atTwo = typed(4, [
+      [0, '1'],
+      [3, '4'],
+    ]);
+    const atThree = fillSealRange(atTwo, 6);
+    expect(shown(atThree, 6)).toEqual(['1', '', '', '4', '', '']);
+    // The new last box scanned: the run 1 … 6, the 4 typed in box 4 kept as typed.
+    const six = typeSeal(atThree, 6, 5, '6');
+    expect(shown(six, 6)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(marks(six, 6)).toBe('.ff.f.');
+    // Lowered again to four boxes: the box at the end now is the fill's 4… no — box 4 was typed.
+    const lowered = fillSealRange(six, 4);
+    expect(shown(lowered, 4)).toEqual(['1', '2', '3', '4']);
+    expect(marks(lowered, 4)).toBe('.ff.');
+  });
+
+  it('empties a filled box a lowered count leaves at the end, and gives the run back when raised', () => {
+    const six = typed(6, [
+      [0, '1'],
+      [5, '6'],
+    ]);
+    expect(marks(six, 6)).toBe('.ffff.');
+    // Four boxes on screen: the one at the end held the fill's 4, from ends no longer shown — it
+    // goes, and with no number at the end, so do 2 and 3.
+    const four = fillSealRange(six, 4);
+    expect(shown(four, 4)).toEqual(['1', '', '', '']);
+    expect(sealsToSend(four.seals, 4)).toEqual(['1']);
+    expect(sealRangeNote(four, 4)).toEqual({ kind: 'none' });
+    // The boxes off screen are not touched: raised again, the run is whole.
+    expect(four.seals.slice(4)).toEqual(['5', '6']);
+    const back = fillSealRange(four, 6);
+    expect(shown(back, 6)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(marks(back, 6)).toBe('.ffff.');
+  });
+
+  it('hands back the very same list when nothing changes — the form re-draws nothing', () => {
+    const list = typed(4, [
+      [0, '1'],
+      [3, '4'],
+    ]);
+    expect(fillSealRange(list, 4)).toBe(list);
+    const mismatch = typed(4, [
+      [0, '1'],
+      [3, '9'],
+    ]);
+    expect(fillSealRange(mismatch, 4)).toBe(mismatch);
+    // Never the caller's own arrays.
+    const moved = typeSeal(list, 4, 1, '8');
+    expect(moved.seals).not.toBe(list.seals);
+    expect(list.seals).toEqual(['1', '2', '3', '4']);
   });
 });
 

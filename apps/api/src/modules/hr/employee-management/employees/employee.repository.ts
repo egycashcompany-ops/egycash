@@ -218,6 +218,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
+   * An external person holds none: their `employeeNumber` is their own code («C2»), not a number.
    */
   async findHoldingNumber(number: number): Promise<{ code: string } | null> {
     const [row] = await this.model

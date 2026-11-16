@@ -127,6 +127,25 @@ export const migrateEmployeeIndexes = async (): Promise<void> => {
   await reconcileDeclaredIndexes(EmployeeModel as unknown as Parameters<typeof reconcileDeclaredIndexes>[0]);
 };
 
+/**
+ * Free the company numbers external people were given.
+ *
+ * Registering an external person used to draw a number from the company's sequence, kept as their
+ * `employeeNumber` behind the code HR typed («C2»). Nobody saw it, but the register screen counts a
+ * number held by anybody as taken, so the company code with that number could not be issued: «لما
+ * بضيف موظف جديد بكود 02002943 … هذا الرقم مسجَّل بالفعل للموظف C2». An external person's number is
+ * now their code; each one registered before is given it, which frees the number drawn.
+ *
+ * Idempotent: only an external record whose number is not its code is touched. Returns how many.
+ */
+export const migrateExternalEmployeeNumbers = async (): Promise<number> => {
+  const result = await EmployeeModel.collection.updateMany(
+    { origin: 'external', $expr: { $ne: ['$employeeNumber', '$code'] } },
+    [{ $set: { employeeNumber: '$code' } }],
+  );
+  return result.modifiedCount;
+};
+
 export const migrateEmployeesToRegistry = async (): Promise<number> => {
   const legacy = (await EmployeeModel.collection
     .find({ origin: { $exists: false } })

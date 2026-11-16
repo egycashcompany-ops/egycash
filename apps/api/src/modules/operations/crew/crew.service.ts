@@ -13,6 +13,10 @@
 //   · Crew is planned only for a vehicle on the Fleet roster for that date — the normalized form
 //     of the legacy car_lock gate (tashghela listed only car_lock'd vehicles, :2255), and the
 //     frozen §9.4 anchor: the crew row references the Fleet duty row by id.
+//     ROUND 24 — the owner reversed it: «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى
+//     مش عليها طاقم واقدر اختار منهم» (production's roster is often empty for the day). Any ACTIVE
+//     car with no crew that day may be given to a row; off the roster it must not be in the
+//     workshop that day, and the row anchors on no duty row. Fleet stays the only writer of Fleet.
 //   · Replacement is upsert-in-place per (day, vehicle), exactly the legacy findOneAndUpdate
 //     upsert; unchanged rows are pure no-ops (no write, no audit, no event).
 //   · APPROVED DECISION 1 (design header): absence/attendance is NOT an eligibility gate here —
@@ -46,6 +50,12 @@
 //     البنوك»: a new or changed direction must name active operations areas, and is stored in their
 //     own spelling. One saved before, legacy free text included, stays while it is sent unchanged.
 //   · The van's drivers by name on the board, and the day's vans in the workshop («صيانة»).
+//
+// ROUND 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: a row without a van takes
+// محصنات on «توزيع المحصنات» like a van. So a row is now GIVEN a van in place («X takes V» —
+// same id, its legs take the van in the same transaction), a row that holds legs is never removed
+// (`OPERATIONS_CREW_ROW_HAS_SHIPMENTS`), and the board offers every car with no crew that day
+// (`freeVehicles`) and lists the vans given off the roster.
 import {
   ErrorCodes,
   OperationsEvents,
@@ -54,7 +64,9 @@ import {
   type OperationsCrewBoardCrewDto,
   type OperationsCrewBoardDto,
   type OperationsCrewBoardRowDto,
-  type OperationsCrewBoardWorkshopVehicleDto,
+  OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
+  type OperationsCrewBoardFreeVehicleDto,
+  type OperationsCrewFreeVehicleGroup,
   type OperationsCrewRowColour,
   type PlanOperationsCrew,
   type PlanOperationsCrewRow,
@@ -76,6 +88,8 @@ import { diffChanges } from '../../../shared/utils/diff';
 // §9.4 (frozen fleet design): OPS reads `fleet_duty_assignments` by date and attaches its work to
 // the row by id. This import IS the boundary, not a breach of it — Fleet stays the only writer.
 import {
+  fleetActiveVehicles,
+  fleetActiveVehiclesByIds,
   fleetDutyAssignmentRepository,
   fleetVehicleRepository,
   fleetVehiclesInWorkshop,
@@ -85,7 +99,9 @@ import { operationsAreaRepository } from '../areas/area.repository';
 import { operationsShiftTypeRepository } from '../shift-types/shift-type.repository';
 import { operationsStandingCrewRepository } from '../standing-crew/standing-crew.repository';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
-import { hasVan, type OperationsCrewAssignmentDoc } from './crew-assignment.model';
+import { hasVan, vehicleIdOf, type OperationsCrewAssignmentDoc } from './crew-assignment.model';
+import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
+import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { crewMembers, slotIds } from './crew-slots';
 import { crewAvailabilityOn } from './crew-requirements.service';
 import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from './crew-roles';
@@ -138,6 +154,17 @@ const tomorrow = (): Date => {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 };
 
+/** The order rows were added in — the board's order for the rows it does not order by roster. */
+const byCreation = (a: OperationsCrewAssignmentDoc, b: OperationsCrewAssignmentDoc): number =>
+  a.createdAt.getTime() - b.createdAt.getTime() || String(a._id).localeCompare(String(b._id));
+
+/** Vehicle codes in code order, numbers in number order («9» before «150»). */
+const byCode = (a: string, b: string): number => a.localeCompare(b, 'ar', { numeric: true });
+
+/** Does this saved row (if any) already hold exactly this van? */
+const hasVanNamed = (row: OperationsCrewAssignmentDoc | undefined, vehicleId: string): boolean =>
+  row !== undefined && hasVan(row) && String(row.vehicleId) === vehicleId;
+
 /** Where a row of the day sits, for a refusal: its van, or that it has none. */
 const placeOf = (row: OperationsCrewAssignmentDoc): string =>
   hasVan(row) ? `vehicle ${String(row.vehicleId)}` : `the row without a vehicle ${String(row._id)}`;
@@ -154,6 +181,12 @@ interface ChangedRow {
   captainEmployeeIds: string[];
   specialist1EmployeeIds: string[];
   specialist2EmployeeIds: string[];
+}
+
+/** Round 24 — a leg that took its row's new van, for the audit after the commit. */
+interface LegVanChange {
+  before: OperationsShipmentAssignmentDoc;
+  after: OperationsShipmentAssignmentDoc;
 }
 
 interface PendingAudit {
@@ -179,6 +212,11 @@ class OperationsCrewService {
    * The tashghela board: the Fleet duty rows for the date joined with the cash-crew rows — and,
    * since Round 20, each van's drivers by name, the day's rows WITHOUT a van, and the vans the
    * workshop holds that day.
+   *
+   * Round 24 — two more things. The vans a crew row holds that the Fleet roster does NOT have that
+   * day are van rows too (after the roster's, in the order they were added; `fleetDutyAssignmentId`
+   * null, no drivers). And `freeVehicles`: every active car with no crew row that day, for the
+   * «بدون سيارة» cell («يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»).
    */
   async board(date: Date | undefined): Promise<OperationsCrewBoardDto> {
     const day = date === undefined ? tomorrow() : utcDay(date);
@@ -186,50 +224,142 @@ class OperationsCrewService {
     const dutyRows = await fleetDutyAssignmentRepository.findForDate(day);
     const crewRows =
       dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id);
-    const crewByVehicle = new Map(
-      crewRows.filter(hasVan).map((row) => [String(row.vehicleId), row]),
+    const vanRows = crewRows.filter(hasVan);
+    const crewByVehicle = new Map(vanRows.map((row) => [String(row.vehicleId), row]));
+    const dutyByVehicle = new Map(dutyRows.map((duty) => [String(duty.vehicleId), duty]));
+    // The vans a crew row holds that the roster does not have today, in the order they were added.
+    const offRoster = vanRows
+      .filter((row) => !dutyByVehicle.has(String(row.vehicleId)))
+      .sort(byCreation);
+
+    const [fleet, standing, cashOperationIds] = await Promise.all([
+      fleetActiveVehicles(),
+      operationsStandingCrewRepository.findAll(),
+      settingsService.resolve<string[]>(
+        OperationsSettingKeys.CashTransferOperationIds,
+        ORG_SUBJECT,
+      ),
+    ]);
+    // An unconfigured setting names NO vehicle here — "no filter" elsewhere means "every vehicle",
+    // which is neither a workshop figure for this board nor a group of the free list.
+    const designated = new Set(
+      cashOperationIds.length === 0
+        ? []
+        : await fleetVehicleRepository.idsWithOperations(cashOperationIds),
     );
+    const standingIds = new Set(standing.map((row) => String(row.vehicleId)));
+    const free = fleet.filter((car) => !crewByVehicle.has(car.vehicleId));
 
     // ONE Fleet read for every van's code, ONE directory read for every driver's name — the van
-    // cards' own shape (shipment.service.ts `vanCardsOf`), rather than a read per row.
-    const vehicleCodes = await fleetVehicleRepository.codesByIds(
-      dutyRows.map((duty) => String(duty.vehicleId)),
-    );
+    // cards' own shape (shipment.service.ts `vanCardsOf`), rather than a read per row. ONE workshop
+    // read for the «صيانة» figure and the free list together.
+    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+      ...dutyRows.map((duty) => String(duty.vehicleId)),
+      ...offRoster.map((row) => String(row.vehicleId)),
+    ]);
     // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
     // `String(undefined)` would name a driver "undefined".
     const driverIdsOf = (duty: (typeof dutyRows)[number]): string[] =>
       [duty.driver1EmployeeId, duty.driver2EmployeeId].filter((id) => id != null).map(String);
     const drivers = await getDirectoryEmployees([...new Set(dutyRows.flatMap(driverIdsOf))]);
+    // «ولما اعمل هوفر على العربيه يظهر السواقيين اللى عليها» — by NAME only, field by field so no
+    // code or phone can ride along: a driver's details are Fleet's (the round-5 rule).
+    const driverNames = (duty: (typeof dutyRows)[number]) =>
+      driverIdsOf(duty).map((employeeId) => ({
+        employeeId,
+        fullNameAr: drivers.get(employeeId)?.fullNameAr ?? null,
+      }));
 
-    const rows: OperationsCrewBoardRowDto[] = dutyRows.map((duty) => {
-      const crew = crewByVehicle.get(String(duty.vehicleId));
-      return {
-        vehicleId: String(duty.vehicleId),
-        vehicleCode: vehicleCodes.get(String(duty.vehicleId)) ?? String(duty.vehicleId),
-        fleetDutyAssignmentId: String(duty._id),
-        driver1EmployeeId:
-          duty.driver1EmployeeId == null ? null : String(duty.driver1EmployeeId),
-        driver2EmployeeId:
-          duty.driver2EmployeeId == null ? null : String(duty.driver2EmployeeId),
-        // «ولما اعمل هوفر على العربيه يظهر السواقيين اللى عليها» — by NAME only, field by field so
-        // no code or phone can ride along: a driver's details are Fleet's (the round-5 rule).
-        drivers: driverIdsOf(duty).map((employeeId) => ({
-          employeeId,
-          fullNameAr: drivers.get(employeeId)?.fullNameAr ?? null,
-        })),
-        missionTypeId: duty.missionTypeId == null ? null : String(duty.missionTypeId),
-        crew: crew === undefined ? null : toCrewDto(crew),
-      };
-    });
+    const workshopCandidates = [
+      ...dutyRows.map((duty) => String(duty.vehicleId)),
+      ...offRoster.map((row) => String(row.vehicleId)),
+      ...standingIds,
+      ...designated,
+    ];
+    const inWorkshop = await fleetVehiclesInWorkshop(
+      [...new Set([...workshopCandidates, ...free.map((car) => car.vehicleId)])],
+      day,
+    );
+
+    const rows: OperationsCrewBoardRowDto[] = [
+      ...dutyRows.map((duty): OperationsCrewBoardRowDto => {
+        const crew = crewByVehicle.get(String(duty.vehicleId));
+        return {
+          vehicleId: String(duty.vehicleId),
+          vehicleCode: vehicleCodes.get(String(duty.vehicleId)) ?? String(duty.vehicleId),
+          fleetDutyAssignmentId: String(duty._id),
+          driver1EmployeeId:
+            duty.driver1EmployeeId == null ? null : String(duty.driver1EmployeeId),
+          driver2EmployeeId:
+            duty.driver2EmployeeId == null ? null : String(duty.driver2EmployeeId),
+          drivers: driverNames(duty),
+          missionTypeId: duty.missionTypeId == null ? null : String(duty.missionTypeId),
+          crew: crew === undefined ? null : toCrewDto(crew),
+        };
+      }),
+      // Round 24 — a van given on this board that the roster does not have: no Fleet facts at all.
+      ...offRoster.map(
+        (row): OperationsCrewBoardRowDto => ({
+          vehicleId: String(row.vehicleId),
+          vehicleCode: vehicleCodes.get(String(row.vehicleId)) ?? String(row.vehicleId),
+          fleetDutyAssignmentId: null,
+          driver1EmployeeId: null,
+          driver2EmployeeId: null,
+          drivers: [],
+          missionTypeId: null,
+          crew: toCrewDto(row),
+        }),
+      ),
+    ];
 
     // The rows without a van, in the order they were added — the board lists them after the vans.
     const vehiclelessRows = crewRows
       .filter((row) => !hasVan(row))
+      .sort(byCreation)
+      .map(toCrewDto);
+
+    // «صيانة» — Operations' own vans only, never the whole fleet (a company-wide workshop count
+    // would be noise on a cash board): the day's vans (roster, and a crew row's off the roster),
+    // the standing crew's vans (the explicit «this is a cash-transfer vehicle» Operations keeps),
+    // and — when the cash-transfer التشغيل is configured — every vehicle Fleet runs as one. Legacy
+    // counted exactly this kind of van: its board read the day's locked vans and set the ones in
+    // maintenance aside (contad_app.js:2255-2263).
+    const inWorkshopToday = [...new Set(workshopCandidates)].filter((id) => inWorkshop.has(id));
+    const workshopCodes = await fleetVehicleRepository.codesByIds(inWorkshopToday);
+    const workshopVehicles = inWorkshopToday
+      .map((vehicleId) => ({ vehicleId, vehicleCode: workshopCodes.get(vehicleId) ?? vehicleId }))
+      .sort((a, b) => byCode(a.vehicleCode, b.vehicleCode));
+
+    // «بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم»: every active car no crew row holds today —
+    // on the roster first, then the cash-transfer operations', then the standing crew's, then the
+    // rest; each group by code, numbers in number order.
+    const groupOf = (vehicleId: string): OperationsCrewFreeVehicleGroup =>
+      dutyByVehicle.has(vehicleId)
+        ? 'roster'
+        : designated.has(vehicleId)
+          ? 'cashTransfer'
+          : standingIds.has(vehicleId)
+            ? 'standing'
+            : 'other';
+    const freeVehicles = free
+      .map((car): OperationsCrewBoardFreeVehicleDto => {
+        const duty = dutyByVehicle.get(car.vehicleId);
+        return {
+          vehicleId: car.vehicleId,
+          vehicleCode: car.vehicleCode,
+          group: groupOf(car.vehicleId),
+          onRoster: duty !== undefined,
+          inWorkshop: inWorkshop.has(car.vehicleId),
+          drivers: duty === undefined ? [] : driverNames(duty),
+        };
+      })
       .sort(
         (a, b) =>
-          a.createdAt.getTime() - b.createdAt.getTime() || String(a._id).localeCompare(String(b._id)),
-      )
-      .map(toCrewDto);
+          OPERATIONS_CREW_FREE_VEHICLE_GROUPS.indexOf(a.group) -
+            OPERATIONS_CREW_FREE_VEHICLE_GROUPS.indexOf(b.group) ||
+          byCode(a.vehicleCode, b.vehicleCode) ||
+          a.vehicleId.localeCompare(b.vehicleId),
+      );
 
     return {
       date: day.toISOString(),
@@ -250,68 +380,39 @@ class OperationsCrewService {
             },
       rows,
       vehiclelessRows,
-      workshopVehicles: await this.workshopVehicles(
-        day,
-        dutyRows.map((duty) => String(duty.vehicleId)),
-      ),
+      workshopVehicles,
+      freeVehicles,
     };
-  }
-
-  /**
-   * «صيانة» — the day's vans in a Fleet workshop visit, asked of Fleet's own seam
-   * (`fleetVehiclesInWorkshop`, the open-visit answer Fleet's roster plans by).
-   *
-   * WHICH VANS ARE ASKED ABOUT — Operations' own, never the whole fleet (a company-wide workshop
-   * count would be noise on a cash board): the day's duty-row vans, the standing crew's vans (the
-   * explicit «this is a cash-transfer vehicle» Operations keeps), and — when the cash-transfer
-   * التشغيل is configured — every vehicle Fleet runs as one. Legacy counted exactly this kind of
-   * van: its board read the day's locked vans and set the ones in maintenance aside
-   * (contad_app.js:2255-2263). An unconfigured setting adds nothing here — "no filter" there means
-   * "every vehicle", which is the noise this list must not be.
-   */
-  private async workshopVehicles(
-    day: Date,
-    dutyVehicleIds: readonly string[],
-  ): Promise<OperationsCrewBoardWorkshopVehicleDto[]> {
-    const [standing, cashOperationIds] = await Promise.all([
-      operationsStandingCrewRepository.findAll(),
-      settingsService.resolve<string[]>(OperationsSettingKeys.CashTransferOperationIds, ORG_SUBJECT),
-    ]);
-    const designated =
-      cashOperationIds.length === 0
-        ? []
-        : await fleetVehicleRepository.idsWithOperations(cashOperationIds);
-    const candidates = [
-      ...new Set([
-        ...dutyVehicleIds,
-        ...standing.map((row) => String(row.vehicleId)),
-        ...designated,
-      ]),
-    ];
-    const inWorkshop = [...(await fleetVehiclesInWorkshop(candidates, day))];
-    const codes = await fleetVehicleRepository.codesByIds(inWorkshop);
-    return inWorkshop
-      .map((vehicleId) => ({ vehicleId, vehicleCode: codes.get(vehicleId) ?? vehicleId }))
-      .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar', { numeric: true }));
   }
 
   async plan(input: PlanOperationsCrew, by: string): Promise<{ changedCount: number }> {
     const day = utcDay(input.date);
     const removals = input.removeCrewAssignmentIds ?? [];
 
-    // §9.4 anchor — every planned VAN must hold a Fleet duty row for the date (the legacy
-    // car_lock gate, normalized). Resolved OUTSIDE the transaction: Fleet owns these rows. A row
-    // without a van has nothing to anchor, by definition.
+    // §9.4 anchor — a planned van on the Fleet roster for the date anchors on that roster row (the
+    // legacy car_lock gate, normalized). Resolved OUTSIDE the transaction: Fleet owns these rows.
+    //
+    // ROUND 24 — the roster is no longer the only door: «مكان بدون سيارة دا لما ادوس عليه يجيب كل
+    // السيارات اللى مش عليها طاقم واقدر اختار منهم». A van the roster does NOT have that day may be
+    // given to a row too — an ACTIVE car, not in the workshop that day (asked of Fleet here, once,
+    // for every such van the save names; judged per row inside, against what the row already
+    // holds). Such a row anchors on nothing (`fleetDutyAssignmentId` null).
     const dutyRows = await fleetDutyAssignmentRepository.findForDate(day);
     const dutyByVehicle = new Map(dutyRows.map((row) => [String(row.vehicleId), row]));
-    for (const row of input.rows) {
-      if (row.vehicleId !== null && !dutyByVehicle.has(row.vehicleId)) {
-        throw new BusinessRuleError(
-          `vehicle ${row.vehicleId} is not on the Fleet roster for this date`,
-          'OPERATIONS_FLEET_DUTY_REQUIRED',
-        );
-      }
-    }
+    const offRosterVans = [
+      ...new Set(
+        input.rows.flatMap((row) =>
+          row.vehicleId !== null && !dutyByVehicle.has(row.vehicleId) ? [row.vehicleId] : [],
+        ),
+      ),
+    ];
+    const [activeVans, vansInWorkshop] =
+      offRosterVans.length === 0
+        ? [new Map<string, string>(), new Set<string>() as ReadonlySet<string>]
+        : await Promise.all([
+            fleetActiveVehiclesByIds(offRosterVans),
+            fleetVehiclesInWorkshop(offRosterVans, day),
+          ]);
 
     // Reference integrity for the normalized employee ids, through the directory seam (the fleet
     // driver-profile precedent): existence and not-exited. Attendance (Round 22) and the role a
@@ -347,30 +448,146 @@ class OperationsCrewService {
       );
       const byId = new Map(existing.map((row) => [String(row._id), row]));
 
-      // A ROW WITHOUT A VAN is addressed by its own id — for an edit and for a removal alike — and
-      // the id must be a live row of THIS day with no van: a van's row is upserted by its van and
-      // emptied, never removed (the van is Fleet's roster for the day, not this board's to drop).
-      const vehiclelessRow = (id: string, field: string): OperationsCrewAssignmentDoc => {
+      // A SAVED ROW addressed by its own id must be a live row of THIS day.
+      const liveRow = (id: string): OperationsCrewAssignmentDoc => {
         const row = byId.get(id);
         if (row === undefined) {
           throw new NotFoundError(`crew row ${id} is not a live row of this day`);
         }
+        return row;
+      };
+      // A row WITHOUT A VAN is addressed by its own id for an edit — a van's row by its van.
+      const vehiclelessRow = (id: string): OperationsCrewAssignmentDoc => {
+        const row = liveRow(id);
         if (hasVan(row)) {
           throw new BusinessRuleError(
-            `crew row ${id} is a van's row — it is addressed by its vehicle and emptied, never removed (${field})`,
+            `crew row ${id} is a van's row — it is addressed by its vehicle (crewAssignmentId)`,
           );
         }
         return row;
       };
-      const removed = removals.map((id) => vehiclelessRow(id, 'removeCrewAssignmentIds'));
-      // The saved row each payload row lands on; undefined for a new one.
-      const currentOf = input.rows.map((row) =>
-        row.vehicleId !== null
-          ? byVehicle.get(row.vehicleId)
-          : row.crewAssignmentId === undefined
-            ? undefined
-            : vehiclelessRow(row.crewAssignmentId, 'crewAssignmentId'),
+      // WHAT MAY BE REMOVED: a row without a van, and (Round 24) a van's row whose van the Fleet
+      // roster does NOT have today — it exists only because this board gave it the van, and
+      // removing it frees the van. A ROSTER van's row is emptied, never removed: the van is Fleet's
+      // roster for the day, not this board's to drop.
+      const removable = (id: string): OperationsCrewAssignmentDoc => {
+        const row = liveRow(id);
+        if (hasVan(row) && dutyByVehicle.has(String(row.vehicleId))) {
+          throw new BusinessRuleError(
+            `crew row ${id} is the row of a van on the Fleet roster — it is emptied, never removed (removeCrewAssignmentIds)`,
+          );
+        }
+        return row;
+      };
+      const removed = removals.map(removable);
+      const removedIds = new Set(removed.map((row) => String(row._id)));
+
+      // ROUND 24 — A ROW THAT HOLDS محصنات IS NOT REMOVED. Its live legs (placed on «توزيع المحصنات»,
+      // delivered or not) ride THIS row: removed, they would point at a row nobody sees — off every
+      // van card, still on a captain's route he may no longer execute. Take them off first, or give
+      // the row a van instead (it keeps its id and its legs). Emptying a row stays allowed, van or
+      // none, exactly as a van's row always was: the legs stay on the row with the captain they name.
+      const legsOn = await operationsShipmentAssignmentRepository.countLiveByCrew(
+        [...removedIds],
+        session,
       );
+      removals.forEach((id, index) => {
+        const count = legsOn.get(id) ?? 0;
+        if (count === 0) return;
+        throw new AppError(
+          ErrorCodes.OPERATIONS_CREW_ROW_HAS_SHIPMENTS,
+          409,
+          `crew row ${id} holds ${String(count)} shipment leg(s) and cannot be removed`,
+          {
+            details: [
+              { field: 'crewAssignmentId', code: 'CREW_ROW', message: id },
+              { field: 'shipments', code: 'COUNT', message: String(count) },
+              { field: 'removeCrewAssignmentIds', code: 'REMOVAL_INDEX', message: String(index) },
+            ],
+          },
+        );
+      });
+
+      // The saved row each payload row lands on; undefined for a new one. A van row with no id is
+      // the live row holding that van — unless that row is removed in this same save, which frees
+      // the van for a NEW row.
+      const currentOf = input.rows.map((row): OperationsCrewAssignmentDoc | undefined => {
+        if (row.crewAssignmentId !== undefined) {
+          if (row.vehicleId === null) return vehiclelessRow(row.crewAssignmentId);
+          // Round 24 — «X takes V», or X's plain edit when it already holds V.
+          const saved = liveRow(row.crewAssignmentId);
+          if (hasVan(saved) && String(saved.vehicleId) !== row.vehicleId) {
+            throw new BusinessRuleError(
+              `crew row ${row.crewAssignmentId} holds another van — a van's row does not change van`,
+            );
+          }
+          return saved;
+        }
+        if (row.vehicleId === null) return undefined;
+        const holder = byVehicle.get(row.vehicleId);
+        return holder === undefined || removedIds.has(String(holder._id)) ? undefined : holder;
+      });
+      // Does this payload row put a van on a row that did not hold it — a new van row, or a saved
+      // row without a van given one? Those, and only those, are asked about the van below.
+      const takesVan = input.rows.map(
+        (row, index) => row.vehicleId !== null && !hasVanNamed(currentOf[index], row.vehicleId),
+      );
+
+      // ROUND 24 — THE VAN, where a row newly takes one. On the roster: anchored on its roster row,
+      // Fleet's decision, as before. Off the roster: an ACTIVE car that the workshop does not hold
+      // that day. Either way, no OTHER live row may hold it at the end of the save (`ux_day_vehicle`
+      // — one van, one row a day); a row removed in this save holds nothing.
+      input.rows.forEach((row, index) => {
+        if (!takesVan[index] || row.vehicleId === null) return;
+        const vehicleId = row.vehicleId;
+        if (!dutyByVehicle.has(vehicleId)) {
+          if (!activeVans.has(vehicleId)) {
+            throw new AppError(
+              ErrorCodes.OPERATIONS_CREW_VEHICLE_NOT_ACTIVE,
+              422,
+              `vehicle ${vehicleId} is not an active vehicle of the fleet`,
+              {
+                details: [
+                  { field: 'vehicleId', code: 'NOT_ACTIVE', message: vehicleId },
+                  rowIndexDetail(index),
+                ],
+              },
+            );
+          }
+          if (vansInWorkshop.has(vehicleId)) {
+            throw new AppError(
+              ErrorCodes.OPERATIONS_CREW_VEHICLE_IN_WORKSHOP,
+              422,
+              `vehicle ${vehicleId} is in the workshop on this day`,
+              {
+                details: [
+                  { field: 'vehicleId', code: 'IN_WORKSHOP', message: vehicleId },
+                  rowIndexDetail(index),
+                ],
+              },
+            );
+          }
+        }
+        const holder = byVehicle.get(vehicleId);
+        if (holder !== undefined && !removedIds.has(String(holder._id))) {
+          throw new AppError(
+            ErrorCodes.OPERATIONS_CREW_VEHICLE_TAKEN,
+            409,
+            `vehicle ${vehicleId} is held by another crew row of this day (${String(holder._id)})`,
+            {
+              details: [
+                { field: 'vehicleId', code: 'TAKEN', message: vehicleId },
+                { field: 'crewAssignmentId', code: 'CREW_ROW', message: String(holder._id) },
+                rowIndexDetail(index),
+              ],
+            },
+          );
+        }
+      });
+      // The seats a row already holds — what the round-22 and round-23 rules let stay unchecked. A
+      // saved row GIVEN A VAN holds none: «a row without a van given a van counts as new seats»,
+      // exactly as when the board moved its crew onto the van's row (Round 20).
+      const seatedOf = currentOf.map((current, index) => (takesVan[index] ? undefined : current));
 
       // Q11, checked against the END STATE of the whole day (the fleet FR-7 shape): a row outside
       // the payload still holding a payload crew member means the plan forgot the releasing row —
@@ -403,7 +620,7 @@ class OperationsCrewService {
       // a row without a van given a van included, is being put on a van, which is what the owner
       // forbids for somebody away. Refused per ROW, so the board marks the row that placed him.
       input.rows.forEach((row, index) => {
-        const current = currentOf[index];
+        const current = seatedOf[index];
         const already = new Set(current === undefined ? [] : crewMembers(current));
         for (const employeeId of rowCrew(row)) {
           const availability = away.get(employeeId);
@@ -435,7 +652,7 @@ class OperationsCrewService {
       // slot of the row, another row, or a row without a van given a van is a new seat, held to
       // the rule. Refused per ROW, so the board rings him on the row that placed him.
       refuseWrongSlots(input.rows, roles, (index, slot) => {
-        const current = currentOf[index];
+        const current = seatedOf[index];
         return current === undefined ? [] : slotIds(current[CREW_SLOT_FIELD[slot]]);
       });
 
@@ -515,9 +732,23 @@ class OperationsCrewService {
 
       const changed: ChangedRow[] = [];
       const audits: PendingAudit[] = [];
+      const legAudits: LegVanChange[] = [];
 
-      // REMOVALS FIRST — a row without a van, deleted (soft: the audit trail and any reader by id
-      // keep it). Its people are free for the rows below; the event reports its slots emptied.
+      // The van a row newly takes, anchored on its roster row when the roster has it — and, since
+      // Round 24, on nothing when it does not.
+      const anchorOf = (
+        vehicleId: string | null,
+      ): { vehicleId: Types.ObjectId | null; fleetDutyAssignmentId: Types.ObjectId | null } =>
+        vehicleId === null
+          ? { vehicleId: null, fleetDutyAssignmentId: null }
+          : {
+              vehicleId: new Types.ObjectId(vehicleId),
+              fleetDutyAssignmentId: dutyByVehicle.get(vehicleId)?._id ?? null,
+            };
+
+      // REMOVALS FIRST — a row without a van, or a van's row off the roster, deleted (soft: the
+      // audit trail and any reader by id keep it). Its people — and its van — are free for the rows
+      // below (`ux_day_vehicle` counts live rows only); the event reports its slots emptied.
       for (const row of removed) {
         await operationsCrewAssignmentRepository.softDeleteById(String(row._id), { by, session });
         audits.push({
@@ -527,7 +758,7 @@ class OperationsCrewService {
         });
         changed.push({
           crewAssignmentId: String(row._id),
-          vehicleId: null,
+          vehicleId: vehicleIdOf(row),
           captainEmployeeIds: [],
           specialist1EmployeeIds: [],
           specialist2EmployeeIds: [],
@@ -563,24 +794,19 @@ class OperationsCrewService {
         let doc: OperationsCrewAssignmentDoc;
         if (current === undefined) {
           // An empty plan for a row that does not exist is nothing — the fleet roster rule, for a
-          // van with no row and for a row without a van added and left blank alike.
+          // roster van with no row and for a row without a van added and left blank alike. A van
+          // OFF the roster is not blank (Round 24): the van is the row's content — the board lists
+          // it only because a row holds it.
           const blank =
             !assigns(row) &&
             next.direction === null &&
             next.plannedTime === null &&
             next.notes === null &&
             next.shiftTypeId === null &&
-            next.rowColour === null;
+            next.rowColour === null &&
+            (row.vehicleId === null || dutyByVehicle.has(row.vehicleId));
           if (blank) continue;
-          let anchor: { vehicleId: Types.ObjectId | null; fleetDutyAssignmentId: Types.ObjectId | null } = {
-            vehicleId: null,
-            fleetDutyAssignmentId: null,
-          };
-          if (row.vehicleId !== null) {
-            const duty = dutyByVehicle.get(row.vehicleId);
-            if (duty === undefined) continue; // unreachable: checked before the transaction
-            anchor = { vehicleId: new Types.ObjectId(row.vehicleId), fleetDutyAssignmentId: duty._id };
-          }
+          const anchor = anchorOf(row.vehicleId);
           doc = await operationsCrewAssignmentRepository.create(
             { operationsDayId: dayDoc._id, ...anchor, ...set },
             { by, session },
@@ -590,6 +816,38 @@ class OperationsCrewService {
             action: 'create',
             changes: diffChanges({}, snapshot(doc)),
           });
+        } else if (takesVan[index] && row.vehicleId !== null) {
+          // ROUND 24 — «X TAKES V»: the SAME crew row is given the van (its id, and so every leg
+          // and screen addressed by it, unchanged), and in the same transaction its live legs take
+          // the van too — a leg copies its row's van (legacy `car_num1/2`), and the captain's app,
+          // the boards and the reports read it there. Each leg's van change is audited on the leg,
+          // so «السجل» of its shipment shows it like any other van change (`crewChanged`).
+          const anchor = anchorOf(row.vehicleId);
+          const before = snapshot(current);
+          doc = await operationsCrewAssignmentRepository.updateById(
+            String(current._id),
+            { ...set, ...anchor },
+            { by, version: current.__v, session },
+          );
+          audits.push({
+            entityId: String(doc._id),
+            action: 'update',
+            changes: diffChanges(
+              { vehicleId: vehicleIdOf(current), ...before },
+              { vehicleId: vehicleIdOf(doc), ...snapshot(doc) },
+            ),
+          });
+          for (const leg of await operationsShipmentAssignmentRepository.findLiveByCrew(
+            String(current._id),
+            session,
+          )) {
+            const moved = await operationsShipmentAssignmentRepository.updateById(
+              String(leg._id),
+              { vehicleId: anchor.vehicleId },
+              { by, version: leg.__v, session },
+            );
+            legAudits.push({ before: leg, after: moved });
+          }
         } else {
           const before = snapshot(current);
           if (JSON.stringify(before) === JSON.stringify(next)) continue;
@@ -606,13 +864,13 @@ class OperationsCrewService {
         }
         changed.push({
           crewAssignmentId: String(doc._id),
-          vehicleId: row.vehicleId,
+          vehicleId: vehicleIdOf(doc),
           captainEmployeeIds: next.captainEmployeeIds,
           specialist1EmployeeIds: next.specialist1EmployeeIds,
           specialist2EmployeeIds: next.specialist2EmployeeIds,
         });
       }
-      return { changed, audits };
+      return { changed, audits, legAudits };
     });
 
     // Audit + events only after the transaction has committed (roster.service.ts:272).
@@ -621,6 +879,27 @@ class OperationsCrewService {
         entityRef: entityRef(audit.entityId),
         action: audit.action,
         changes: audit.changes,
+      });
+    }
+    // Round 24 — each leg that took its row's new van: audited ON THE LEG (the shipment's «السجل»
+    // reads it as a van change) and announced like any other leg assignment, so the boards and the
+    // captain's app refresh.
+    for (const { before, after } of outcome.legAudits) {
+      await auditService.record({
+        entityRef: {
+          moduleId: 'operations',
+          entityType: 'shipmentAssignment',
+          entityId: String(after._id),
+        },
+        action: 'update',
+        changes: diffChanges({ vehicleId: vehicleIdOf(before) }, { vehicleId: vehicleIdOf(after) }),
+      });
+      await emit(OperationsEvents.SecuredLegAssigned, {
+        assignmentId: String(after._id),
+        shipmentId: String(after.shipmentId),
+        leg: after.leg,
+        captainEmployeeId: String(after.captainEmployeeId),
+        vehicleId: vehicleIdOf(after),
       });
     }
     for (const row of outcome.changed) {

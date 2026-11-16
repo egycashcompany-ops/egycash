@@ -861,8 +861,12 @@ export interface OperationsDayBoardBranchDto {
 export interface OperationsDayBoardCrewDto {
   /** The crew row this leg rides — the key into `OperationsDayBoardDto.crews`. */
   crewAssignmentId: string;
-  vehicleId: string;
-  /** Null when Fleet no longer answers for the vehicle — shown as missing, never as blank. */
+  /** Null (Round 24) when the leg rides a crew row WITHOUT A VAN — «بدون سيارة». */
+  vehicleId: string | null;
+  /**
+   * Null when Fleet no longer answers for the vehicle — shown as missing, never as blank — and
+   * (Round 24) when there is no vehicle at all (`vehicleId` null): the screen says «بدون سيارة».
+   */
   vehicleCode: string | null;
   captainEmployeeId: string;
   /** Null when the directory cannot name the employee. */
@@ -901,7 +905,14 @@ export interface OperationsDayBoardDriverDto {
  */
 export interface OperationsDayBoardVehicleCrewDto {
   crewAssignmentId: string;
-  vehicleId: string;
+  /**
+   * Null (Round 24) for a crew row WITHOUT A VAN — «بدون سيارة» on «لوحة التشغيلة», which may now
+   * carry محصنات like a van («عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»). Its
+   * `vehicleCode` and `drivers` are then null and empty; tell such cards apart by
+   * `crewAssignmentId`, never by the van.
+   */
+  vehicleId: string | null;
+  /** Null when Fleet cannot name the van, and always when `vehicleId` is null. */
   vehicleCode: string | null;
   /** By name only — see `OperationsDayBoardDriverDto`. */
   drivers: OperationsDayBoardDriverDto[];
@@ -1868,11 +1879,27 @@ export interface OperationsCrewBoardCrewDto {
   rowColour: OperationsCrewRowColour | null;
 }
 
-/** One board row: the Fleet duty facts (read-only here, §9.4) joined with the cash-crew facts. */
+/**
+ * One board row of a VAN: the Fleet duty facts (read-only here, §9.4) joined with the cash-crew
+ * facts.
+ *
+ * Round 24 — TWO KINDS OF VAN ROW. A van on the Fleet roster of the day («تعيين السيارات») is listed
+ * whether or not a crew row holds it (`crew` null when none), exactly as before. And a van the
+ * roster does NOT have that day is listed too when a crew row holds it — given on this board from
+ * `freeVehicles` («بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم»). Such a row has
+ * `fleetDutyAssignmentId` null, no drivers and no mission type, and — unlike a roster van's row,
+ * which is only ever emptied — it may be REMOVED (`removeCrewAssignmentIds`), freeing the van. If
+ * Fleet rosters that van later the same day, the row reads as a roster van's (its drivers show):
+ * the join is by (vehicle, day), not by the id stored on the crew row.
+ */
 export interface OperationsCrewBoardRowDto {
   vehicleId: string;
   vehicleCode: string;
-  fleetDutyAssignmentId: string;
+  /**
+   * The Fleet roster row of this van and day, or NULL (Round 24) when the roster does not have the
+   * van that day — the row then exists only because a crew row holds the van, and may be removed.
+   */
+  fleetDutyAssignmentId: string | null;
   /** Fleet-owned facts, displayed not edited: the legacy tashghela board showed the drivers too. */
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
@@ -1892,16 +1919,64 @@ export interface OperationsCrewBoardWorkshopVehicleDto {
   vehicleCode: string;
 }
 
+/**
+ * Why a free vehicle sits where it does in `OperationsCrewBoardDto.freeVehicles` — the four groups,
+ * in the order they are listed:
+ *   · `roster`       — on the Fleet roster of the day («تعيين السيارات»), with no crew row yet;
+ *   · `cashTransfer` — a vehicle of the Fleet operations the setting
+ *                      `OperationsSettingKeys.CashTransferOperationIds` names (none when unset);
+ *   · `standing`     — a vehicle of «الطاقم الثابت» (the standing crew);
+ *   · `other`        — every other active vehicle of the fleet.
+ * A vehicle in more than one is listed once, in the first.
+ */
+export const OPERATIONS_CREW_FREE_VEHICLE_GROUPS = [
+  'roster',
+  'cashTransfer',
+  'standing',
+  'other',
+] as const;
+export type OperationsCrewFreeVehicleGroup = (typeof OPERATIONS_CREW_FREE_VEHICLE_GROUPS)[number];
+
+/**
+ * Round 24 — a vehicle with no crew on the board's day: «مكان بدون سيارة دا لما ادوس عليه يجيب كل
+ * السيارات اللى مش عليها طاقم واقدر اختار منهم». What the «بدون سيارة» cell of a row offers.
+ */
+export interface OperationsCrewBoardFreeVehicleDto {
+  vehicleId: string;
+  /** Fleet's code («كود السيارة»). */
+  vehicleCode: string;
+  group: OperationsCrewFreeVehicleGroup;
+  /** On the Fleet roster of the day — `group === 'roster'`. */
+  onRoster: boolean;
+  /**
+   * In a Fleet workshop visit that day (Fleet's open-visit seam, the «صيانة» figure's). Listed so
+   * the screen can say so; the save REFUSES such a van unless the Fleet roster has it that day
+   * (422 `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`).
+   */
+  inWorkshop: boolean;
+  /** Its drivers by name when the roster has it (`onRoster`), else empty — Fleet's round-5 rule. */
+  drivers: OperationsDayBoardDriverDto[];
+}
+
 export interface OperationsCrewBoardDto {
   /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
   date: string;
   day: OperationsDayDto | null;
-  /** The VANS of the day — Fleet's duty rows, each with its crew row or null. Never a row without a van. */
+  /**
+   * The VANS of the day — Fleet's duty rows, each with its crew row or null, in the roster's order;
+   * then (Round 24) the vans the roster does NOT have that day but a crew row holds
+   * (`fleetDutyAssignmentId` null), in the order they were added. Never a row without a van.
+   */
   rows: OperationsCrewBoardRowDto[];
   /**
    * Round 20 — the day's crew rows WITHOUT A VAN («إضافة صف بدون سيارة»), in the order they were
-   * added. Apart from `rows` on purpose: every other reader of the day's crews (the van cards, the
-   * distribution, the captain's day) is about vans, and none of them sees these.
+   * added. Apart from `rows` because they have no van to show.
+   *
+   * Round 24 — such a row is a crew like any other to the screens after the board: «توزيع
+   * المحصنات» lists it and places محصنات on it, «تسليم المحصنات» hands its load over, and its
+   * captain sees his route in the app. A row that holds محصنات (live delivery legs) cannot be
+   * removed (409 `OPERATIONS_CREW_ROW_HAS_SHIPMENTS`); given a van, it keeps its id and its
+   * محصنات follow it (see `PlanOperationsCrewRowSchema`).
    */
   vehiclelessRows: OperationsCrewBoardCrewDto[];
   /**
@@ -1910,6 +1985,17 @@ export interface OperationsCrewBoardDto {
    * open-visit seam. A figure on the board («صيانة ٣», the codes on hover), not rows.
    */
   workshopVehicles: OperationsCrewBoardWorkshopVehicleDto[];
+  /**
+   * Round 24 — «بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم»: EVERY ACTIVE vehicle of the fleet
+   * (Fleet status `active`, not deleted — never one out of service or disposed) that holds NO live
+   * crew row on the day. A roster van with no crew row is in it (and in `rows`, `crew` null); a van
+   * a crew row holds — roster or not — is not.
+   *
+   * Order: the four `group`s in `OPERATIONS_CREW_FREE_VEHICLE_GROUPS` order (on the roster, then the
+   * cash-transfer operations' vehicles, then the standing crew's, then the rest), each by code with
+   * numbers in number order («9» before «150»).
+   */
+  freeVehicles: OperationsCrewBoardFreeVehicleDto[];
 }
 
 const crewEmployeeSlots = [
@@ -1932,9 +2018,33 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
 /**
- * One row of the save. A VAN's row is upserted by (day, `vehicleId`), as it always was. A row
- * WITHOUT A VAN (Round 20) has `vehicleId: null`: with no `crewAssignmentId` it is a NEW one, with
- * one it is that saved row, edited. A van row never carries `crewAssignmentId`.
+ * One row of the save. Four shapes, by its two addresses:
+ *
+ *   `vehicleId` | `crewAssignmentId` | what the row is
+ *   ------------|--------------------|-------------------------------------------------------------
+ *   V           | —                  | THE VAN'S ROW, upserted by (day, V), as it always was: the
+ *               |                    | live crew row holding V that day, or a new one.
+ *   null        | —                  | a NEW row without a van (Round 20).
+ *   null        | X                  | the saved row X, which has no van, edited (Round 20).
+ *   V           | X                  | Round 24 — the saved row X, edited, and holding van V: «X
+ *               |                    | TAKES V» when X has no van (or the same row's plain edit when
+ *               |                    | X already holds V). X keeps its id; its live محصنات (delivery
+ *               |                    | legs) take V in the same transaction («السجل» shows the van
+ *               |                    | change on each). A row holding ANOTHER van cannot change van
+ *               |                    | → 422 `BUSINESS_RULE_VIOLATION`.
+ *
+ * A VAN, NEW TO A ROW (a new van row, or «X takes V»), is either on the Fleet roster of the day —
+ * the row then anchors on that roster row, as before — or (Round 24) NOT on it: then V must be an
+ * ACTIVE Fleet vehicle (else 422 `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`) and not in a Fleet workshop
+ * visit that day (else 422 `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`); the row stores no roster row.
+ * Either way V must hold no OTHER live crew row that day at the end of the save (else 409
+ * `OPERATIONS_CREW_VEHICLE_TAKEN` — remove that row in the same save to free it). A row that
+ * already holds its van is not asked again (it keeps it, workshop or not).
+ *
+ * «X takes V» is a NEW SEAT for everybody on X, exactly as when a row without a van was given a
+ * van by moving its crew onto the van's row: the round-22 absence rule and the round-23 slot rule
+ * judge X's people against an empty row. Its type and direction are X's own and stay unchecked
+ * while unchanged.
  *
  * Whole rows, as ever: an omitted slot or field CLEARS it — `shiftTypeId` and `rowColour` included.
  *
@@ -1970,16 +2080,8 @@ export const PlanOperationsCrewRowSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    // ONE way to say each thing. A van's row is addressed by its van; naming a crew row on it too
-    // would be a second address that could disagree with the first. A row without a van that is
-    // given a van is said as the board does it: its removal plus the van's row, in one save.
-    if (value.vehicleId !== null && value.crewAssignmentId !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['crewAssignmentId'],
-        message: 'a van row is addressed by its vehicle; crewAssignmentId names a row without one',
-      });
-    }
+    // Round 24 lifted the rule that a row carrying a van may not name a crew row: that pair is now
+    // how a SAVED row is given a van and keeps its id (and its محصنات) — see the table above.
     // Two rules, one pass. Cross-slot: a person cannot be both captain and specialist on the same
     // vehicle (unchanged in meaning from when each slot held one person). Intra-slot: NEW with
     // capacity 2 — the same person cannot be listed twice inside one slot, which was impossible to
@@ -2013,17 +2115,28 @@ export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
 /**
  * Upsert per (day, vehicle) — only CHANGED rows are sent (the fleet roster H4 shape) — plus, since
  * Round 20, the rows without a van: new ones created, saved ones edited by id, and
- * `removeCrewAssignmentIds` DELETING saved ones (a van's row is never deleted here — the van is
- * Fleet's roster for the day; the board empties it instead).
+ * `removeCrewAssignmentIds` DELETING saved ones. A ROSTER van's row is never deleted here — the van
+ * is Fleet's roster for the day; the board empties it instead. Round 24: a van row whose van is NOT
+ * on the Fleet roster that day (the board's `fleetDutyAssignmentId` null) IS removed like a row
+ * without a van, which frees the van.
  *
  * The whole save is ONE end state, judged as one (Q11 included): a row removed here releases its
- * crew for the rows of the same save. That is how a row without a van is GIVEN a van — the board's
- * `attachVan` moves its crew and fields onto the van's row and drops it, and the save says exactly
- * that: the van's row, and the old row's id in `removeCrewAssignmentIds`.
+ * crew — and its van — for the rows of the same save.
+ *
+ * GIVING A SAVED ROW WITHOUT A VAN A VAN (Round 24): send the row with BOTH its `crewAssignmentId`
+ * and the van's `vehicleId` (see `PlanOperationsCrewRowSchema`). The row keeps its id and its
+ * محصنات follow it onto the van. The Round-20 way — the van's row with the crew, and the old row's
+ * id in `removeCrewAssignmentIds` — still works for a row that holds no محصنات, and is refused for
+ * one that does (below), because removing it would strand them.
  *
  * Refused (400): nothing to save (no row and no removal), a van twice, a row id twice, a row both
  * edited and removed, a removal listed twice. Refused by the server: a `crewAssignmentId` or a
- * removal that is not a live row WITHOUT A VAN of this day → 404 (`NOT_FOUND`), or 422 for a van's.
+ * removal that is not a live row of this day → 404 (`NOT_FOUND`); a removal of a ROSTER van's row,
+ * or a `crewAssignmentId` with `vehicleId: null` naming a row that has a van → 422
+ * (`BUSINESS_RULE_VIOLATION`); a removal of a row that holds محصنات — live shipment legs, delivered
+ * or not — → 409 `OPERATIONS_CREW_ROW_HAS_SHIPMENTS` (take them off it on «توزيع المحصنات» first, or
+ * give the row a van instead). Emptying a row that holds محصنات is NOT refused — van or not, as a
+ * van's row always was: its legs stay on the row with the captain they name.
  */
 export const PlanOperationsCrewSchema = z
   .object({
@@ -2692,8 +2805,13 @@ export interface OperationsShipmentAssignmentDto {
   operationsDayId: string;
   /** Legacy `leader2` for the delivery leg (`leader1` for pickup). */
   captainEmployeeId: string;
-  /** Legacy `car_num2` for the delivery leg (`car_num1` for pickup). */
-  vehicleId: string;
+  /**
+   * Legacy `car_num2` for the delivery leg (`car_num1` for pickup) — the van of the crew row the
+   * leg rides. NULL (Round 24) for a delivery leg on a crew row WITHOUT A VAN («عاوز لو عربيه من غير
+   * كود عادى تظهر ان اوزع عليها محصنات»): it rides the row, and the row has no van yet. Giving the
+   * row a van on «لوحة التشغيلة» writes the van onto its live legs in the same save.
+   */
+  vehicleId: string | null;
   /** The (day, vehicle) crew row this leg rides — how specialists are resolved, never copied. */
   crewAssignmentId: string;
   /** 1-based execution order within (operating day, captain). Unique per captain-day. */
@@ -2707,6 +2825,9 @@ export interface OperationsShipmentAssignmentDto {
  * Assign the secured delivery leg — the legacy /tash4ela_mohasana bulk save.
  * The captain and vehicle must match a crew assignment on the shipment's delivery day, which is
  * how `day + vehicle + leg → crew` resolves without duplicating the crew onto the shipment.
+ * Round 24: the crew row may be one WITHOUT A VAN — the same delivery leg «توزيع المحصنات» writes,
+ * so both doors accept the same rows. (The daily PICKUP leg — `pickup` on the shipment form,
+ * `AssignShipmentPickupLegSchema` — still takes a van's row only: 404 for a row without a van.)
  */
 export const AssignSecuredDeliveryLegSchema = z
   .object({
@@ -2724,6 +2845,8 @@ export type AssignSecuredDeliveryLeg = z.infer<typeof AssignSecuredDeliveryLegSc
  *
  * Today's vans only: a crew row of any other operating day (Cairo calendar) is refused with 422
  * `OPERATIONS_DISPATCH_NOT_TODAY` before any shipment is looked at — a van leaves on its own day.
+ * Round 24: a crew row WITHOUT A VAN is handed over exactly like a van (404 only when the crew row
+ * does not exist or was removed).
  */
 export const DispatchSecuredShipmentsSchema = z
   .object({
@@ -3008,10 +3131,11 @@ export type OperationsSecuredDistributionQuery = z.infer<
 
 /** A shipment's delivery leg as it stands — on whatever day it is planned. */
 export interface OperationsSecuredDistributionLegDto {
-  /** The crew row (the van of that day) the leg rides. */
+  /** The crew row (the van of that day, or a row without a van — Round 24) the leg rides. */
   crewAssignmentId: string;
   captainEmployeeId: string;
-  vehicleId: string;
+  /** Null (Round 24) when the leg rides a crew row without a van. */
+  vehicleId: string | null;
   /**
    * The captain's progress on it in the app. Anything but `pending` means he has started it: the
    * leg is his now and the save refuses to move or clear it (409
@@ -3079,9 +3203,15 @@ export interface OperationsSecuredDistributionDto {
   /**
    * THE VANS OF THE DAY (the right column): EVERY crew row of the day's crew board (`GET
    * /operations/crew-board?date=`), one card each — van code, captains, both specialists, drivers by
-   * name, `direction`, `plannedTime` — ordered by van code (numbers in number order). A van with no
-   * captain is listed but cannot take a shipment (the save answers `OPERATIONS_CREW_CAPTAIN_MISMATCH`).
-   * Empty when nothing is planned for the day.
+   * name, `direction`, `plannedTime`. A van with no captain is listed but cannot take a shipment
+   * (the save answers `OPERATIONS_CREW_CAPTAIN_MISMATCH`). Empty when nothing is planned for the day.
+   *
+   * Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: a crew row WITHOUT A VAN
+   * («بدون سيارة» on the board) is listed too and takes محصنات exactly like a van — `vehicleId`,
+   * `vehicleCode` null, `drivers` empty; tell it apart by `crewAssignmentId`.
+   *
+   * Order: the vans by van code (numbers in number order; a van Fleet cannot name last), THEN the
+   * rows without a van in the order they were added on the board.
    */
   crews: OperationsDayBoardVehicleCrewDto[];
   /**
@@ -3147,10 +3277,11 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     (null ⇔ no leg);
  *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app
  *     (its `executionStatus` is not `pending`) and the change would move or clear it;
- *   · the van: 404 when the crew row does not exist; 422 `OPERATIONS_CREW_DAY_MISMATCH` when it is a
- *     crew row of another day; 422 `OPERATIONS_CREW_CAPTAIN_MISMATCH` when the captain is not one of
+ *   · the van: 404 when the crew row does not exist (or was removed); 422
+ *     `OPERATIONS_CREW_DAY_MISMATCH` when it is a crew row of another day; 422 `OPERATIONS_CREW_CAPTAIN_MISMATCH` when the captain is not one of
  *     its captains (a van with two captains takes either — the screen sends the one chosen on the
- *     van card, the first by default).
+ *     van card, the first by default). Round 24: a crew row WITHOUT A VAN of the day is a van here
+ *     like any other — same checks, and the leg it gets has `vehicleId` null.
  * Every refusal names the shipment: `details` = [{ field: 'shipmentId', code: 'SHIPMENT', message:
  * <its id> }] (the 404 of a missing crew row and `STALE_DOCUMENT` included), so the screen can mark
  * its card. Then the day itself: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` for a day before today
@@ -3510,7 +3641,8 @@ export interface OperationsRouteStopDto {
   status: OperationsShipmentStatus;
   pickup: OperationsRouteStopLocationDto;
   delivery: OperationsRouteStopLocationDto;
-  vehicleId: string;
+  /** Null (Round 24) on a stop of a crew row without a van. */
+  vehicleId: string | null;
   crewAssignmentId: string;
 }
 
@@ -3521,7 +3653,8 @@ export interface OperationsCaptainRouteDto {
   /** The crew behind the wheel, resolved through (day, vehicle) — never copied onto a shipment. */
   crew: {
     crewAssignmentId: string;
-    vehicleId: string;
+    /** Null (Round 24) for a crew row without a van. */
+    vehicleId: string | null;
     specialist1EmployeeIds: string[];
     specialist2EmployeeIds: string[];
   }[];
@@ -3604,7 +3737,8 @@ export interface OperationsMobileStopDto {
   operationsDayId: string;
   sequence: number;
   leg: OperationsShipmentLeg;
-  vehicleId: string;
+  /** Null (Round 24) on a stop of a crew row without a van — the captain's crew has no van yet. */
+  vehicleId: string | null;
   crewAssignmentId: string;
 
   shipmentType: OperationsShipmentType;
@@ -3658,7 +3792,11 @@ export interface OperationsMobileDayDto {
    */
   assignments: {
     crewAssignmentId: string;
-    vehicleId: string;
+    /**
+     * Null (Round 24) for a crew row WITHOUT A VAN. Since Round 24 such a row is a captaincy like a
+     * van's: «توزيع المحصنات» may give it محصنات, and its captain is a captain that day.
+     */
+    vehicleId: string | null;
     /**
      * BOTH captains on this vehicle, the reader included. A crew may now carry two captains, and a
      * captain who cannot see his co-captain has an incomplete picture of who is in the van with
@@ -3858,7 +3996,8 @@ export const OperationsShipmentAssignmentPayloadV1 = z.object({
   shipmentId: objectId(),
   leg: OperationsShipmentLegSchema,
   captainEmployeeId: objectId(),
-  vehicleId: objectId(),
+  /** Null (Round 24) for a leg on a crew row without a van. */
+  vehicleId: objectId().nullable(),
 });
 
 export const OperationsShipmentReorderedPayloadV1 = z.object({
@@ -3878,7 +4017,8 @@ export const OperationsShipmentExecutionPayloadV1 = z.object({
   shipmentId: objectId(),
   operationsDayId: objectId(),
   captainEmployeeId: objectId(),
-  vehicleId: objectId(),
+  /** Null (Round 24) for a leg on a crew row without a van. */
+  vehicleId: objectId().nullable(),
   leg: OperationsShipmentLegSchema,
   sequence: z.number().int().min(1),
   from: OperationsExecutionStatusSchema,

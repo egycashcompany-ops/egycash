@@ -16,6 +16,7 @@ import {
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
+import { vehicleIdOf } from './crew/crew-assignment.model';
 import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
@@ -152,7 +153,8 @@ export const toShipmentAssignmentDto = (
   leg: doc.leg,
   operationsDayId: String(doc.operationsDayId),
   captainEmployeeId: String(doc.captainEmployeeId),
-  vehicleId: String(doc.vehicleId),
+  // Null for a leg on a crew row without a van (Round 24) — never the string "null".
+  vehicleId: vehicleIdOf(doc),
   crewAssignmentId: String(doc.crewAssignmentId),
   sequence: doc.sequence,
   version: doc.__v,

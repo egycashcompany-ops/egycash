@@ -41,7 +41,7 @@ import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { assertSecuredUnlocked } from '../shipments/secured-lock';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
-import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
+import { vehicleIdOf, type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf, slotIds } from '../crew/crew-slots';
 
 const entityRef = (id: string) => ({
@@ -53,7 +53,7 @@ const entityRef = (id: string) => ({
 const snapshot = (doc: OperationsShipmentAssignmentDoc) => ({
   leg: doc.leg,
   captainEmployeeId: String(doc.captainEmployeeId),
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   crewAssignmentId: String(doc.crewAssignmentId),
   sequence: doc.sequence,
 });
@@ -69,7 +69,9 @@ export const resolveCrew = async (
   captainEmployeeId: string,
   legDate: Date,
 ): Promise<{ crew: OperationsVanCrewDoc; operationsDayId: Types.ObjectId }> => {
-  // A leg rides a VAN: a crew row without one (Round 20) answers 404 like a missing row.
+  // The daily PICKUP leg rides a VAN: a crew row without one (Round 20) answers 404 like a missing
+  // row. Round 24 opened rows without a van to the محصنات' DELIVERY leg only — «توزيع المحصنات»,
+  // the assign dialog and the handover (secured/) — which is what the owner asked for.
   const crew = await operationsCrewAssignmentRepository.findVanById(crewAssignmentId);
   if (crew === null) throw new NotFoundError('crew assignment not found');
 
@@ -165,7 +167,7 @@ class OperationsAssignmentService {
       shipmentId,
       leg: doc.leg,
       captainEmployeeId: String(doc.captainEmployeeId),
-      vehicleId: String(doc.vehicleId),
+      vehicleId: vehicleIdOf(doc),
     });
     return doc;
   }
@@ -330,7 +332,7 @@ class OperationsAssignmentService {
         status: shipment.status,
         pickup: await stopLocation(shipment.originBranchId),
         delivery: await stopLocation(shipment.destinationBranchId),
-        vehicleId: String(row.vehicleId),
+        vehicleId: vehicleIdOf(row),
         crewAssignmentId: String(row.crewAssignmentId),
       });
     }
@@ -338,11 +340,12 @@ class OperationsAssignmentService {
     // The crew — resolved THROUGH the (day, vehicle) rows, never copied onto a shipment.
     const crew: OperationsCaptainRouteDto['crew'] = [];
     for (const crewAssignmentId of crewIds) {
-      const row = await operationsCrewAssignmentRepository.findVanById(crewAssignmentId);
+      // Any live crew row — a delivery leg may ride one without a van (Round 24).
+      const row = await operationsCrewAssignmentRepository.findById(crewAssignmentId);
       if (row === null) continue;
       crew.push({
         crewAssignmentId,
-        vehicleId: String(row.vehicleId),
+        vehicleId: vehicleIdOf(row),
         specialist1EmployeeIds: slotIds(row.specialist1EmployeeIds),
         specialist2EmployeeIds: slotIds(row.specialist2EmployeeIds),
       });

@@ -18,6 +18,15 @@
 // distribution, the captain's day, a leg's crew) reads `OperationsVanCrewDoc` through the
 // repository's van reads and never sees one. And the row gained the legacy board's two other
 // columns, «النوع» (`shiftTypeId`, the `أنواع التشغيل` catalog) and its colour (`rowColour`).
+//
+// ROUND 24 — THE OWNER REVERSED "A ROW WITHOUT A VAN CARRIES NOTHING" for the محصنات: «عاوز لو عربيه
+// من غير كود عادى تظهر ان اوزع عليها محصنات». A row without a van is now a crew like any other to
+// every reader AFTER the board — «توزيع المحصنات» places delivery legs on it, «تسليم المحصنات»
+// hands its load over, its captain sees his route in the app — and the leg it carries has
+// `vehicleId` null. Only the daily PICKUP leg (the shipment form's crew) still takes a van's row
+// (`findVanById`). And the anchor loosened the other way too: «مكان بدون سيارة دا لما ادوس عليه
+// يجيب كل السيارات اللى مش عليها طاقم» — a row may hold a van the Fleet roster does not have that
+// day, with `fleetDutyAssignmentId` null (crew.service.ts `plan`).
 import { Schema, model, type Types } from 'mongoose';
 import { OPERATIONS_CREW_ROW_COLOURS, type OperationsCrewRowColour } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
@@ -26,7 +35,12 @@ export interface OperationsCrewAssignmentDoc extends BaseDocFields {
   operationsDayId: Types.ObjectId;
   /** Null for a row without a van (Round 20). */
   vehicleId: Types.ObjectId | null;
-  /** The Fleet duty row of the same (vehicle, day); null exactly when `vehicleId` is. */
+  /**
+   * The Fleet duty row of the same (vehicle, day) — null when `vehicleId` is, and (Round 24) also
+   * for a van the Fleet roster did not have that day when the row took it. Never the join key for
+   * the van's drivers: read them by (vehicle, day) (shipment.service.ts `vanCardsOf`), so a van the
+   * roster takes in later the same day shows its drivers too.
+   */
   fleetDutyAssignmentId: Types.ObjectId | null;
   /**
    * «النوع» — a row of `operations_shift_types`, or null («اختر»). Optional on the type because rows
@@ -123,15 +137,26 @@ crewAssignmentSchema.index(
   { name: 'ix_day_captains' },
 );
 
-/** A crew row ON A VAN — what every reader about vans (cards, legs, the captain's day) reads. */
+/**
+ * A crew row ON A VAN. Since Round 24 only the board (which lists vans apart from the rows without
+ * one) and the daily pickup leg (`findVanById`) ask for one; `fleetDutyAssignmentId` may still be
+ * null — a van the Fleet roster did not have that day.
+ */
 export type OperationsVanCrewDoc = OperationsCrewAssignmentDoc & {
   vehicleId: Types.ObjectId;
-  fleetDutyAssignmentId: Types.ObjectId;
 };
 
 /** Is this crew row on a van? `!= null`: a `.lean()` row may hand an absent field back as undefined. */
 export const hasVan = (row: OperationsCrewAssignmentDoc): row is OperationsVanCrewDoc =>
   row.vehicleId != null;
+
+/**
+ * A crew row's or a shipment leg's van as an id string, or null when it has none (Round 24). Every
+ * DTO, audit snapshot and event reads the van through this: `String(row.vehicleId)` would print
+ * "null" for a row without a van, and "undefined" for a `.lean()` row missing the field.
+ */
+export const vehicleIdOf = (row: { vehicleId?: Types.ObjectId | null }): string | null =>
+  row.vehicleId == null ? null : String(row.vehicleId);
 
 export const OperationsCrewAssignmentModel = model<OperationsCrewAssignmentDoc>(
   'OperationsCrewAssignment',

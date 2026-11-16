@@ -36,6 +36,7 @@ import {
 import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
 import { operationsSecuredService } from './secured.service';
 import { operationsDistributionService } from './distribution.service';
+import { vehicleIdOf } from '../crew/crew-assignment.model';
 
 type IdParam = { id: string };
 
@@ -258,7 +259,7 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
             : {
                 crewAssignmentId: String(leg.crewAssignmentId),
                 captainEmployeeId: String(leg.captainEmployeeId),
-                vehicleId: String(leg.vehicleId),
+                vehicleId: vehicleIdOf(leg),
                 executionStatus: leg.executionStatus ?? 'pending',
               },
         deliveryLegVersion: leg === undefined ? null : leg.__v,

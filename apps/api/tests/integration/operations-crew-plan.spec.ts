@@ -866,7 +866,7 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     });
   });
 
-  it('is never a van to the readers about vans — the pool, the distribution, a leg, the captain’s day', async () => {
+  it('Round 24 — is a crew to the distribution and the captain’s day; the pool and the daily pickup still want a van', async () => {
     // The pool: cap2 holds no VEHICLE (his row has none); cap1, on van 1, holds van 1. Both get a
     // requirements row, which is what puts them on an unconfigured install's roster.
     for (const employeeId of [cap1, cap2]) {
@@ -893,23 +893,30 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     expect(day.find((m) => m.employeeId === cap2)).toMatchObject({ assignedVehicleId: null, isCrewed: true });
     expect(day.find((m) => m.employeeId === cap1)).toMatchObject({ assignedVehicleId: van1, isCrewed: true });
 
-    // «توزيع المحصنات» lists the day's VANS only.
+    // Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: «توزيع المحصنات» lists
+    // the row without a van too, AFTER the vans, naming no van (never the string "null").
     const distribution = await request(app)
       .get(`/api/v1/operations/secured/distribution?date=${DAY}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(distribution.status, JSON.stringify(distribution.body)).toBe(200);
     const vans = data<OperationsSecuredDistributionDto>(distribution).crews;
-    expect(vans.map((van) => van.crewAssignmentId)).not.toContain(looseA);
-    expect(vans.every((van) => van.vehicleId !== 'null' && van.vehicleCode !== null)).toBe(true);
+    const loose = vans.find((van) => van.crewAssignmentId === looseA);
+    expect(loose).toMatchObject({ vehicleId: null, vehicleCode: null, drivers: [] });
+    expect(loose?.captains.map((p) => p.employeeId)).toEqual([cap2]);
+    expect(vans.at(-1)?.crewAssignmentId).toBe(looseA);
+    expect(vans.every((van) => van.vehicleId !== 'null')).toBe(true);
 
-    // The captain's day: captaincy is "which VEHICLES am I a captain of" — none for cap2.
+    // The captain's day: captaincy is the day's plan, van or none — cap2 is a captain today.
     const dayRow = (await board()).day;
     expect(
-      await operationsCrewAssignmentRepository.findForCaptainDay(dayRow?.id as string, cap2),
-    ).toEqual([]);
+      (await operationsCrewAssignmentRepository.findForCaptainDay(dayRow?.id as string, cap2)).map(
+        (row) => String(row._id),
+      ),
+    ).toEqual([looseA]);
+    // …while the daily PICKUP leg still rides a van's row only.
     expect(await operationsCrewAssignmentRepository.findVanById(looseA)).toBeNull();
 
-    // A leg rides a VAN: booking a shipment onto the row without one answers 404, as for no row.
+    // A daily pickup rides a VAN: booking one onto the row without one answers 404, as for no row.
     const bank = data<OperationsBankDto>(
       await request(app)
         .post('/api/v1/operations/banks')

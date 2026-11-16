@@ -77,7 +77,12 @@ import { operationsShipmentAssignmentRepository } from './shipment-assignment.re
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { crewMembers, slotIds } from '../crew/crew-slots';
-import { hasVan, type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
+import {
+  hasVan,
+  vehicleIdOf,
+  type OperationsCrewAssignmentDoc,
+} from '../crew/crew-assignment.model';
+import { operationsDayRepository } from '../days/day.repository';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { userDisplayNames } from '../user-names';
 import { vaultCustody } from '../treasury-boundary';
@@ -725,11 +730,10 @@ class OperationsShipmentService {
     const crewById = new Map(
       (await operationsCrewAssignmentRepository.findByIdsSystem(crewIds))
         // `findByIdsSystem` resolves soft-deleted rows too, on purpose, for names. A crew row
-        // that was taken off the plan puts nobody on the van, so it shows no crew at all. And a
-        // leg only ever rides a row ON A VAN (Round 20 — a row without one is refused to a leg),
-        // so `hasVan` drops nothing real; it is what lets the van card read the row as a van's.
+        // that was taken off the plan puts nobody on the van, so it shows no crew at all. A row
+        // WITHOUT A VAN stays (Round 24): «توزيع المحصنات» may give it محصنات, and its card is the
+        // row's crew with no van to name.
         .filter((c) => !c.isDeleted)
-        .filter(hasVan)
         .map((c) => [String(c._id), c]),
     );
     const crewRows = crewIds.flatMap((id) => {
@@ -739,9 +743,16 @@ class OperationsShipmentService {
     // The van cards, with the legs' captains and vans named in the SAME reads (one per kind).
     const { crews, people, vehicleCodes } = await this.vanCardsOf(crewRows, {
       employeeIds: crewed.map((a) => String(a.captainEmployeeId)),
-      vehicleIds: crewed.map((a) => String(a.vehicleId)),
+      vehicleIds: crewed.flatMap((a) => {
+        const vehicleId = vehicleIdOf(a);
+        return vehicleId === null ? [] : [vehicleId];
+      }),
     });
 
+    const legVehicleCode = (leg: OperationsShipmentAssignmentDoc): string | null => {
+      const vehicleId = vehicleIdOf(leg);
+      return vehicleId === null ? null : (vehicleCodes.get(vehicleId) ?? null);
+    };
     const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
       // The captain's «تم التسليم» is the leg that reaches the DESTINATION — the pickup leg of a
@@ -772,8 +783,9 @@ class OperationsShipmentService {
             ? null
             : {
                 crewAssignmentId: String(leg.crewAssignmentId),
-                vehicleId: String(leg.vehicleId),
-                vehicleCode: vehicleCodes.get(String(leg.vehicleId)) ?? null,
+                // Null on a leg of a row without a van (Round 24) — «بدون سيارة», never "null".
+                vehicleId: vehicleIdOf(leg),
+                vehicleCode: legVehicleCode(leg),
                 captainEmployeeId: String(leg.captainEmployeeId),
                 captainName: captain?.fullNameAr ?? null,
                 // «لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه» — the facts the Fleet
@@ -797,9 +809,15 @@ class OperationsShipmentService {
    * resolve in the SAME two reads — the board's legs' captains and vans — and the maps come back
    * for the caller to read them from: one directory read and one Fleet read per call, however many
    * rows.
+   *
+   * Round 24 — two new kinds of row. A row WITHOUT A VAN is a card too (no code, no drivers), since
+   * it may carry محصنات. And a van the Fleet roster did not have when the row took it has no
+   * `fleetDutyAssignmentId`: its drivers are read by (vehicle, day) instead — so a van Fleet rosters
+   * later that same day shows its drivers — the same join for a row whose stored roster row Fleet
+   * has since deleted and written again.
    */
   async vanCardsOf(
-    crewRows: readonly OperationsVanCrewDoc[],
+    crewRows: readonly OperationsCrewAssignmentDoc[],
     extra: { employeeIds?: readonly string[]; vehicleIds?: readonly string[] } = {},
   ): Promise<{
     crews: OperationsDayBoardVehicleCrewDto[];
@@ -812,14 +830,49 @@ class OperationsShipmentService {
     const dutyById = new Map(
       (
         await fleetDutyAssignmentRepository.findByIdsSystem(
-          crewRows.map((c) => String(c.fleetDutyAssignmentId)),
+          crewRows.flatMap((c) =>
+            c.fleetDutyAssignmentId == null ? [] : [String(c.fleetDutyAssignmentId)],
+          ),
         )
       )
         .filter((d) => !d.isDeleted)
         .map((d) => [String(d._id), d]),
     );
-    const driversOf = (crew: OperationsVanCrewDoc): string[] => {
-      const duty = dutyById.get(String(crew.fleetDutyAssignmentId));
+    const anchoredDuty = (crew: OperationsCrewAssignmentDoc) =>
+      crew.fleetDutyAssignmentId == null
+        ? undefined
+        : dutyById.get(String(crew.fleetDutyAssignmentId));
+    // The vans whose roster row the id does not find — read by (vehicle, day): one read of the
+    // operating days, then ONE roster read per distinct day (a board is one day; a history range
+    // reads only the days such a van rode).
+    const unanchored = crewRows.filter((c) => hasVan(c) && anchoredDuty(c) === undefined);
+    const dutyByVanDay = new Map<
+      string,
+      Awaited<ReturnType<typeof fleetDutyAssignmentRepository.findForDate>>[number]
+    >();
+    if (unanchored.length > 0) {
+      const days = await operationsDayRepository.findByIdsSystem(
+        unanchored.map((c) => String(c.operationsDayId)),
+      );
+      const dayIdsByDate = new Map<number, { date: Date; dayIds: string[] }>();
+      for (const day of days) {
+        const entry = dayIdsByDate.get(day.date.getTime()) ?? { date: day.date, dayIds: [] };
+        entry.dayIds.push(String(day._id));
+        dayIdsByDate.set(day.date.getTime(), entry);
+      }
+      for (const { date, dayIds } of dayIdsByDate.values()) {
+        for (const duty of await fleetDutyAssignmentRepository.findForDate(date)) {
+          for (const dayId of dayIds) dutyByVanDay.set(`${String(duty.vehicleId)}|${dayId}`, duty);
+        }
+      }
+    }
+    const dutyOf = (crew: OperationsCrewAssignmentDoc) =>
+      anchoredDuty(crew) ??
+      (crew.vehicleId == null
+        ? undefined
+        : dutyByVanDay.get(`${String(crew.vehicleId)}|${String(crew.operationsDayId)}`));
+    const driversOf = (crew: OperationsCrewAssignmentDoc): string[] => {
+      const duty = dutyOf(crew);
       if (duty === undefined) return [];
       // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
       // `String(undefined)` would name a driver "undefined" (Fleet's own `snapshot` guards the same).
@@ -829,7 +882,13 @@ class OperationsShipmentService {
     };
 
     const vehicleCodes = await fleetVehicleRepository.codesByIds([
-      ...new Set([...(extra.vehicleIds ?? []), ...crewRows.map((c) => String(c.vehicleId))]),
+      ...new Set([
+        ...(extra.vehicleIds ?? []),
+        ...crewRows.flatMap((c) => {
+          const vehicleId = vehicleIdOf(c);
+          return vehicleId === null ? [] : [vehicleId];
+        }),
+      ]),
     ]);
     // ONE directory read for everyone named — the caller's extra people, and the drivers, captains
     // and specialists on every van card.
@@ -850,8 +909,9 @@ class OperationsShipmentService {
 
     const crews: OperationsDayBoardVehicleCrewDto[] = crewRows.map((c) => ({
       crewAssignmentId: String(c._id),
-      vehicleId: String(c.vehicleId),
-      vehicleCode: vehicleCodes.get(String(c.vehicleId)) ?? null,
+      // Null for a row without a van (Round 24) — its card names no van, never "null".
+      vehicleId: vehicleIdOf(c),
+      vehicleCode: c.vehicleId == null ? null : (vehicleCodes.get(String(c.vehicleId)) ?? null),
       // The driver by NAME only, built field by field so no code can ride along: a driver's
       // details are Fleet's («ما يظهرش تفاصيل عن السواقين غير للحركة بس»).
       drivers: driversOf(c).map(

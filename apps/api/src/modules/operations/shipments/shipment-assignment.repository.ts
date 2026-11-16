@@ -122,6 +122,45 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .exec();
   }
 
+  /**
+   * Round 24 — every LIVE leg riding one crew row: what follows the row when it is given a van
+   * (crew.service.ts `plan`). Delivered or not — a leg copies its row's van, whatever its state.
+   */
+  async findLiveByCrew(
+    crewAssignmentId: string,
+    session?: ClientSession,
+  ): Promise<OperationsShipmentAssignmentDoc[]> {
+    return this.model
+      .find({ crewAssignmentId: new Types.ObjectId(crewAssignmentId), isDeleted: false })
+      .session(session ?? null)
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Round 24 — how many LIVE legs ride each of these crew rows: a row that holds any is not
+   * removed from the board (crew.service.ts `plan`). Rows holding none are absent from the map.
+   */
+  async countLiveByCrew(
+    crewAssignmentIds: readonly string[],
+    session?: ClientSession,
+  ): Promise<Map<string, number>> {
+    if (crewAssignmentIds.length === 0) return new Map();
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        {
+          $match: {
+            crewAssignmentId: { $in: crewAssignmentIds.map((id) => new Types.ObjectId(id)) },
+            isDeleted: false,
+          },
+        },
+        { $group: { _id: '$crewAssignmentId', count: { $sum: 1 } } },
+      ])
+      .session(session ?? null)
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.count]));
+  }
+
   async findByShipmentAndLeg(
     shipmentId: string,
     leg: OperationsShipmentLeg,

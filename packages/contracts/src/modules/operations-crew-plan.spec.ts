@@ -7,6 +7,7 @@ import {
   CREW_SLOT_CAPACITY,
   CreateOperationsShiftTypeSchema,
   OPERATIONS_CREW_AVAILABILITIES,
+  OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
   OPERATIONS_CREW_ROW_COLOURS,
   OPERATIONS_CREW_SLOTS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
@@ -84,8 +85,49 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
     ).toBe(true);
   });
 
-  it('refuses a crew-row id on a VAN row — a van’s row is addressed by its van', () => {
-    expect(plan({ rows: [{ vehicleId: oid(1), crewAssignmentId: oid(70) }] }).success).toBe(false);
+  it('Round 24 — takes a crew-row id WITH a van: the saved row X takes van V and keeps its id', () => {
+    expect(plan({ rows: [{ vehicleId: oid(1), crewAssignmentId: oid(70) }] }).success).toBe(true);
+    // Still one van per save, and one row per save.
+    expect(
+      plan({
+        rows: [
+          { vehicleId: oid(1), crewAssignmentId: oid(70) },
+          { vehicleId: oid(1), captainEmployeeIds: [oid(10)] },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      plan({
+        rows: [
+          { vehicleId: oid(1), crewAssignmentId: oid(70) },
+          { vehicleId: null, crewAssignmentId: oid(70) },
+        ],
+      }).success,
+    ).toBe(false);
+    // Given a van while the row holding it is removed — one end state, judged by the server.
+    expect(
+      plan({
+        rows: [{ vehicleId: oid(1), crewAssignmentId: oid(70) }],
+        removeCrewAssignmentIds: [oid(71)],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('Round 24 — names the four refusals of a van given to a row, and of a row that holds محصنات', () => {
+    expect(ErrorCodes.OPERATIONS_CREW_VEHICLE_NOT_ACTIVE).toBe(
+      'OPERATIONS_CREW_VEHICLE_NOT_ACTIVE',
+    );
+    expect(ErrorCodes.OPERATIONS_CREW_VEHICLE_IN_WORKSHOP).toBe(
+      'OPERATIONS_CREW_VEHICLE_IN_WORKSHOP',
+    );
+    expect(ErrorCodes.OPERATIONS_CREW_VEHICLE_TAKEN).toBe('OPERATIONS_CREW_VEHICLE_TAKEN');
+    expect(ErrorCodes.OPERATIONS_CREW_ROW_HAS_SHIPMENTS).toBe('OPERATIONS_CREW_ROW_HAS_SHIPMENTS');
+    expect(OPERATIONS_CREW_FREE_VEHICLE_GROUPS).toEqual([
+      'roster',
+      'cashTransfer',
+      'standing',
+      'other',
+    ]);
   });
 
   it('takes removals alone, and refuses a save with nothing in it', () => {

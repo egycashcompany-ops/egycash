@@ -859,6 +859,36 @@ its entry here in the same PR.
         legacy name that is not a palette name, soft-deleted rows included, timestamps off;
         idempotent. Only the crew rows store a row colour (the standing crew has none); the audit
         trail is history and is not rewritten.
+    - Round 24c, the owner on the round-24 screen of «توزيع المحصنات» — «عاوز اصغر المكان اللى فيه
+      المحصنات واكبر المكان اللى فيه المحصنة بالعربيه», and «عاوز احسن شكل الكارد العربيه بالمحصنة يعنى
+      عاوز انقل الاتجاه بعد كود السيارة والوقت واحسن الاسماء بتاعت القادة والاخصائيين»:
+      - THE WIDTHS. From a computer's width the vans take three parts and «بلا سيارة» (the day's
+        محصنات on no van) one — 978 and 326 px at 1440 — never narrower than 17rem, so at 1024 it
+        is a little more than a quarter (`DISTRIBUTION_COLUMNS`). The vans' cards stand as many to a
+        row as fit at 17.5rem or more (`VAN_GRID`): three at 1440, four at 1920, two at 1280 and 1024,
+        one on a phone; it was two at most. On a phone the columns stack with «بلا سيارة» FIRST on
+        «توزيع المحصنات» — the work to do, moved by «نقل إلى…» — and its head folds it away
+        (`aria-expanded`); folded, the column still takes a drop on its head. «تسليم المحصنات» takes
+        the same widths; there «بلا سيارة» is for information, so on a phone it stays after the vans,
+        and folds too. Drag and drop, «نقل إلى…», the proposals by direction and the one-step «تراجع»
+        are as they were.
+      - THE VAN CARD'S HEAD IS ONE LINE: the code (or «بدون سيارة (n)»), the planned time, then the
+        direction — moved up from the band it had under the head. A long direction is cut, whole on
+        hover and to a screen reader. The count of محصنات («محصنتان», each count in its own Arabic
+        form, as since Round 17) stays on the card, first on the line of what the van carries, before
+        the money and the packages: at three cards to a row, a head that held the count as well cut
+        «المعادي» itself to «…الم».
+      - THE CREW, drawn anew: each captain on a green line of his own with the captain's mark («قائد»,
+        the board's green); «أخصائي 1» and «أخصائي 2» side by side as two labelled chips; an empty
+        slot says «غير معيَّن», quietly, in a dashed chip, never «—»; a van with no captain says «بلا قائد
+        — لا تأخذ محصنات» in red where the captain would be. Every name is cut to its chip and opens
+        «لوحة التشغيلة»'s person card (role, code, phone, branch, «في التشغيلة» — here the van and the
+        slot — his attendance on the day, what he holds) once the day's crew directory has him. That
+        list is read only when a card first opens, under `operationsCrew.view` — the grant the
+        specialists on the card already ride (`crewPlanVisible`); no grant was added. Without it, or
+        before the list answers, the card says the whole name, the code and where he sits.
+      - The same card on «تسليم المحصنات», under «تسليم» and «طباعة»; its sheet's head now reads in
+        the card's order — the day, the time, the direction, then the captains and the specialists.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

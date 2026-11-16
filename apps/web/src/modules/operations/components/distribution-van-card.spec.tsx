@@ -74,7 +74,11 @@ const FIGURES: LoadFigures = { count: 3, egp: 1_500_000, usd: 0, othersSum: 0, p
 
 const card = (
   van: OperationsDayBoardVehicleCrewDto,
-  { crewPlanVisible = true, looseNumber = null, locale = 'ar' as Locale } = {},
+  {
+    crewPlanVisible = true,
+    looseNumber = null,
+    locale = 'ar',
+  }: { crewPlanVisible?: boolean; looseNumber?: string | null; locale?: Locale } = {},
 ): string =>
   render(
     <VanCard

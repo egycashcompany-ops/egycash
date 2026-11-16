@@ -883,7 +883,9 @@ export const VanCard = ({
       aria-label={name}
       {...drop?.handlers}
       className={cn(
-        'flex min-w-0 flex-col gap-2 rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
+        // `relative`: the head's screen-reader words (`sr-only`, absolute) stay inside the card — and so
+        // inside the column that scrolls — rather than lengthen the page below it.
+        'relative flex min-w-0 flex-col gap-2 rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
         'border-slate-200 dark:border-[#24305a]',
         drop?.armed === true &&
           !drop.over &&

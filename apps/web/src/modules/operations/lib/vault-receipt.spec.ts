@@ -11,6 +11,7 @@ import {
   OPERATIONS_VAULT_DENOMINATIONS,
   ReceiveIntoVaultSchema,
   type OperationsShipmentDto,
+  type OperationsVaultSealHolderDto,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
@@ -24,21 +25,36 @@ import {
   draftSlots,
   fillSealRange,
   growSeals,
+  holdsFromRefusal,
+  isSealHeldRefusal,
+  mergeHolds,
   parseCount,
   poundAmount,
   receiveRefusal,
   receiveRequest,
+  otherPlaces,
+  sealHeldNotice,
+  sealHeldTitle,
+  sealHolderName,
+  sealHolds,
+  sealNoticeText,
   sealRangeNote,
+  sealRepeatNotice,
+  sealRepeatTitle,
+  sealRepeats,
   sealSlots,
   sealSummary,
   sealSummaryText,
+  sealsToCheck,
   sealsToSend,
   shipmentPatch,
+  shownSeals,
   typeSeal,
   type ReceiptDraft,
   type SealList,
   type ShipmentDraftValues,
 } from './vault-receipt';
+import { translate } from '../../../platform/localization/i18n';
 
 const text = (seals: string[]): string => sealSummaryText(sealSummary(seals));
 const singles = (seals: string[]): string[] =>
@@ -570,6 +586,340 @@ describe('the range fill — the first and the last box fill the boxes between t
   });
 });
 
+// Round 21 — the owner, over his own form with bags 1 … 6 and boxes 1 and 3: «مينفعش يكون فيه رقم
+// للحقائب و الصناديق زى بعض برضو». One receipt names a seal ONCE, the bags and the boxes read as one
+// list; a repeat — across the lists, or inside one («برضو») — is a refusal, said on every box that
+// holds it and in one notice. "The same seal" is the contract's `vaultSealKey`.
+describe('one seal, once per receipt — which boxes repeat, and what the form says', () => {
+  const ar = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+  const en = (key: string, params?: Record<string, string | number>): string =>
+    translate('en', key, params);
+  /** The boxes marked, as [list, index] — what turns red. */
+  const marked = (bags: string[], boxes: string[]): string[] => {
+    const found = sealRepeats(bags, boxes);
+    return [
+      ...found.bags.flatMap((repeat, index) => (repeat === null ? [] : [`bag ${index}`])),
+      ...found.boxes.flatMap((repeat, index) => (repeat === null ? [] : [`box ${index}`])),
+    ];
+  };
+
+  it('finds the owner’s case: 1 and 3 in the bags AND the boxes — four boxes red', () => {
+    const found = sealRepeats(['1', '2', '3', '4', '5', '6'], ['1', '3']);
+    expect(found.repeats).toEqual([
+      {
+        seal: '1',
+        spots: [
+          { list: 'bag', index: 0 },
+          { list: 'box', index: 0 },
+        ],
+        where: 'both',
+      },
+      {
+        seal: '3',
+        spots: [
+          { list: 'bag', index: 2 },
+          { list: 'box', index: 1 },
+        ],
+        where: 'both',
+      },
+    ]);
+    expect(marked(['1', '2', '3', '4', '5', '6'], ['1', '3'])).toEqual([
+      'bag 0',
+      'bag 2',
+      'box 0',
+      'box 1',
+    ]);
+    // One mark per box on screen, in its place.
+    expect(found.bags.map((repeat) => repeat?.seal ?? null)).toEqual([
+      '1',
+      null,
+      '3',
+      null,
+      null,
+      null,
+    ]);
+    expect(found.boxes.map((repeat) => repeat?.seal ?? null)).toEqual(['1', '3']);
+  });
+
+  it('finds a seal twice inside ONE list too — «برضو» — and three times as one repeat', () => {
+    expect(sealRepeats(['5', '6', '5'], []).repeats).toEqual([
+      {
+        seal: '5',
+        spots: [
+          { list: 'bag', index: 0 },
+          { list: 'bag', index: 2 },
+        ],
+        where: 'bags',
+      },
+    ]);
+    expect(sealRepeats([], ['8', '9', '8']).repeats.map((r) => r.where)).toEqual(['boxes']);
+    const thrice = sealRepeats(['4', '4'], ['4']);
+    expect(thrice.repeats).toHaveLength(1);
+    expect(thrice.repeats[0]?.where).toBe('both');
+    expect(marked(['4', '4'], ['4'])).toEqual(['bag 0', 'bag 1', 'box 0']);
+  });
+
+  it('reads a seal as the contract does: 0099 = 99, Arabic-Indic = ASCII, text as typed', () => {
+    expect(marked(['0099'], ['99'])).toEqual(['bag 0', 'box 0']);
+    expect(marked(['١٢'], ['12'])).toEqual(['bag 0', 'box 0']);
+    expect(marked([' AB-1 '], ['AB-1'])).toEqual(['bag 0', 'box 0']);
+    expect(marked(['AB-1'], ['ab-1'])).toEqual([]);
+    // A number pasted with an invisible right-to-left mark is the number the clerk sees.
+    expect(marked(['12'], ['‏12'])).toEqual(['bag 0', 'box 0']);
+    expect(marked(['۰۷'], ['‎7'])).toEqual(['bag 0', 'box 0']);
+    // Neighbours are two seals; blanks are none.
+    expect(marked(['0099', '', '  '], ['0100', '', ''])).toEqual([]);
+    // The seal is named as it was first typed.
+    expect(sealRepeats(['0099'], ['99']).repeats[0]?.seal).toBe('0099');
+  });
+
+  it('finds nothing in distinct seals — the bags and the boxes each their own', () => {
+    const found = sealRepeats(['1', '2', '3', '4', '5', '6'], ['7', '8']);
+    expect(found.repeats).toEqual([]);
+    expect(found.bags.every((repeat) => repeat === null)).toBe(true);
+    expect(found.boxes).toEqual([null, null]);
+  });
+
+  it('reads only the boxes on screen — a box hidden by a lowered count is no seal of the receipt', () => {
+    const bags: SealList = { seals: ['1', '2', '3', '4', '5', '6'], filled: [] };
+    // «3×» → «2×» with one bag: two boxes on screen; the 3 typed in the third is hidden.
+    expect(shownSeals(bags, 2)).toEqual(['1', '2']);
+    expect(marked(shownSeals(bags, 2), ['3'])).toEqual([]);
+    expect(marked(shownSeals(bags, 3), ['3'])).toEqual(['bag 2', 'box 0']);
+    // Empty boxes drawn by a raised count are on screen, and repeat nothing.
+    expect(shownSeals(NO_SEAL_LIST, 2)).toEqual(['', '']);
+  });
+
+  it('marks a number the range fill wrote like one typed — the fill keeps working', () => {
+    // Bags 1 … 6 over six boxes: the fill writes 2 … 5; the boxes' 3 collides with a filled box.
+    const bags = typeSeal(typeSeal(NO_SEAL_LIST, 6, 0, '1'), 6, 5, '6');
+    expect(bags.seals).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(bags.filled[2]).toBe(true);
+    expect(marked(shownSeals(bags, 6), ['3'])).toEqual(['bag 2', 'box 0']);
+  });
+
+  it('says it in ONE notice, in Arabic’s own forms of the count', () => {
+    const notice = (bags: string[], boxes: string[]): string =>
+      sealRepeatNotice(sealRepeats(bags, boxes).repeats, ar, 'ar');
+    expect(notice(['1', '2'], ['1'])).toBe('الرقم 1 مكرر — في الحقائب والصناديق');
+    // The owner's own screen.
+    expect(notice(['1', '2', '3', '4', '5', '6'], ['1', '3'])).toBe(
+      'الرقمان 1 و3 مكرران — في الحقائب والصناديق',
+    );
+    expect(notice(['1', '2', '3'], ['1', '2', '3'])).toBe(
+      'الأرقام 1 و2 و3 مكررة — في الحقائب والصناديق',
+    );
+    // Inside one list, and both kinds at once — the seals in both lists said first.
+    expect(notice(['5', '6', '5'], [])).toBe('الرقم 5 مكرر — في الحقائب');
+    expect(notice([], ['8', '8'])).toBe('الرقم 8 مكرر — في الصناديق');
+    // Joined by the Arabic semicolon: a middle dot beside Arabic words reads as the zero «٠».
+    expect(notice(['5', '1', '5'], ['1'])).toBe(
+      'الرقم 1 مكرر — في الحقائب والصناديق؛ الرقم 5 مكرر — في الحقائب',
+    );
+    expect(notice(['5', '1', '5'], ['1'])).not.toContain('·');
+    // Eleven seals or more take the counted form of «many».
+    const eleven = Array.from({ length: 11 }, (_, index) => String(index + 1));
+    expect(notice(eleven, eleven)).toMatch(/^الأرقام 1 و2 و3 .* و11 مكررة — في الحقائب والصناديق$/u);
+    expect(notice(['1', '2'], ['3'])).toBe('');
+    expect(sealRepeatNotice(sealRepeats(['1', '2'], ['1', '2']).repeats, en, 'en')).toBe(
+      'Seals 1 and 2 are repeated — in the bags and the boxes',
+    );
+    expect(sealRepeatNotice(sealRepeats(['5', '1', '5'], ['1']).repeats, en, 'en')).toBe(
+      'Seal 1 is repeated — in the bags and the boxes; Seal 5 is repeated — in the bags',
+    );
+  });
+
+  it('titles a red box with where else its seal is, numbered as the boxes are labelled', () => {
+    const found = sealRepeats(['1', '2', '3', '4', '5', '6'], ['1', '3']);
+    const three = found.repeats[1];
+    if (three === undefined) throw new Error('no repeat');
+    // Bag box 2 under «2×» is bag 2, seal 1; box 1 is box 1, seal 2.
+    expect(otherPlaces(three, { list: 'bag', index: 2 }, 2)).toEqual([
+      { list: 'box', unit: 1, seal: 2 },
+    ]);
+    expect(otherPlaces(three, { list: 'box', index: 1 }, 2)).toEqual([
+      { list: 'bag', unit: 2, seal: 1 },
+    ]);
+    // Under «3×» the same bag box is bag 1, seal 3.
+    expect(otherPlaces(three, { list: 'box', index: 1 }, 3)).toEqual([
+      { list: 'bag', unit: 1, seal: 3 },
+    ]);
+    expect(sealRepeatTitle(three, { list: 'bag', index: 2 }, 2, ar, 'ar')).toBe(
+      'مكرر — موجود أيضًا في الصندوق 1، الختم 2',
+    );
+    // Three boxes: the other two, listed.
+    const thrice = sealRepeats(['4', '4'], ['4']).repeats[0];
+    if (thrice === undefined) throw new Error('no repeat');
+    expect(sealRepeatTitle(thrice, { list: 'box', index: 0 }, 2, ar, 'ar')).toBe(
+      'مكرر — موجود أيضًا في الحقيبة 1، الختم 1 والحقيبة 1، الختم 2',
+    );
+  });
+});
+
+// Round 21b — the owner, asked whether a seal already recorded on another محصنة should be refused:
+// «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». The server decides; these
+// are the form's rules around its answer — what is asked, which boxes turn red, what the ONE notice
+// says, and how a refused receipt marks the seals its 409 names.
+describe('a seal still in the vault — what is asked, which boxes turn red, what the notice says', () => {
+  const ar = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+  const en = (key: string, params?: Record<string, string | number>): string =>
+    translate('en', key, params);
+  const MISR: OperationsVaultSealHolderDto = {
+    shipmentId: 's-misr',
+    receiptNumber: '1234',
+    mainBankName: 'بنك مصر',
+    originBranchName: 'فرع المعادي',
+    destinationBranchName: 'فرع الدقي',
+    receivedAt: '2026-11-14T08:20:00.000Z',
+  };
+  const AHLY: OperationsVaultSealHolderDto = {
+    shipmentId: 's-ahly',
+    receiptNumber: null,
+    mainBankName: 'الأهلي',
+    originBranchName: 'فرع التحرير',
+    destinationBranchName: 'فرع العتبة',
+    receivedAt: '2026-11-13T09:00:00.000Z',
+  };
+  const answer = (...held: [string, OperationsVaultSealHolderDto][]) => ({
+    held: held.map(([seal, holder]) => ({ seal, holder })),
+  });
+  const refusal = (details: { field: string; code: string; message: string }[]) =>
+    new ApiError(ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT, 'held', 409, details);
+
+  it('asks each seal on screen once, by its key — sorted, blanks skipped, 0099 and ٩٩ one question', () => {
+    expect(sealsToCheck(['7', '', '0099', ' 12 '], ['٩٩', '7', 'AB-1', '  '])).toEqual([
+      '12',
+      '7',
+      '99',
+      'AB-1',
+    ]);
+    // The same question however the boxes are ordered — and none at all for empty boxes.
+    expect(sealsToCheck(['12', '7'], [])).toEqual(sealsToCheck([], ['7', '12']));
+    expect(sealsToCheck(['', ' '], [''])).toEqual([]);
+  });
+
+  it('marks every box holding a seal the vault holds — by key, the bags and the boxes alike', () => {
+    const holds = mergeHolds(answer(['7', MISR]), 1, null);
+    const found = sealHolds(['5', '07', '8'], ['٧', '9'], holds);
+    expect(found.bags.map((hold) => hold?.shipmentId ?? null)).toEqual([null, 's-misr', null]);
+    expect(found.boxes.map((hold) => hold?.shipmentId ?? null)).toEqual(['s-misr', null]);
+    // Each held seal said once, as typed in its first box.
+    expect(found.held).toEqual([{ seal: '07', hold: { shipmentId: 's-misr', holder: MISR } }]);
+    expect(sealHolds(['5', ''], [], holds).held).toEqual([]);
+  });
+
+  it('says it in the ONE notice’s words, a sentence per held محصنة, in Arabic’s forms of the count', () => {
+    const notice = (
+      bags: string[],
+      boxes: string[],
+      holds = mergeHolds(answer(['7', MISR], ['8', MISR], ['9', AHLY]), 1, null),
+    ) => sealHeldNotice(sealHolds(bags, boxes, holds).held, ar, 'ar');
+    expect(notice(['7'], [])).toBe('الرقم 7 موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)');
+    expect(notice(['7', '8'], [])).toBe(
+      'الرقمان 7 و8 موجودان في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)',
+    );
+    // Two محصنات: one sentence each, joined as the notice's sentences are — the Arabic semicolon.
+    expect(notice(['7'], ['9'])).toBe(
+      'الرقم 7 موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)؛ الرقم 9 موجود في الخزينة على محصنة أخرى (الأهلي، من فرع التحرير إلى فرع العتبة)',
+    );
+    const three = mergeHolds(answer(['1', MISR], ['2', MISR], ['3', MISR]), 1, null);
+    expect(notice(['1', '2', '3'], [], three)).toBe(
+      'الأرقام 1 و2 و3 موجودة في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)',
+    );
+    expect(notice(['5'], [])).toBe('');
+    expect(
+      sealHeldNotice(
+        sealHolds(['7', '8'], [], mergeHolds(answer(['7', MISR], ['8', MISR]), 1, null)).held,
+        en,
+        'en',
+      ),
+    ).toBe('Seals 7 and 8 are in the vault on another secured shipment (بنك مصر, receipt 1234)');
+  });
+
+  it('names the held محصنة by its bank and receipt number — or its branches when it has none', () => {
+    expect(sealHolderName(MISR, ar)).toBe('بنك مصر، إيصال 1234');
+    expect(sealHolderName(AHLY, ar)).toBe('الأهلي، من فرع التحرير إلى فرع العتبة');
+    expect(sealHolderName({ ...MISR, receiptNumber: '' }, ar)).toBe(
+      'بنك مصر، من فرع المعادي إلى فرع الدقي',
+    );
+  });
+
+  it('titles a held box with the محصنة and when the vault took it in', () => {
+    expect(
+      sealHeldTitle({ shipmentId: 's-misr', holder: MISR }, ar, (iso) => `«${iso.slice(0, 10)}»`),
+    ).toBe('موجود في الخزينة على المحصنة: بنك مصر، إيصال 1234 — استُلمت «2026-11-14»');
+    expect(sealHeldTitle({ shipmentId: 's-x', holder: null }, ar, () => '')).toBe(
+      'موجود في الخزينة على محصنة أخرى',
+    );
+  });
+
+  it('joins the repeats and the held seals into ONE notice — the repeats first', () => {
+    const repeat = sealRepeatNotice(sealRepeats(['1', '2'], ['1']).repeats, ar, 'ar');
+    const held = sealHeldNotice(
+      sealHolds(['7'], [], mergeHolds(answer(['7', MISR]), 1, null)).held,
+      ar,
+      'ar',
+    );
+    expect(sealNoticeText([repeat, held], 'ar')).toBe(
+      'الرقم 1 مكرر — في الحقائب والصناديق؛ الرقم 7 موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)',
+    );
+    expect(sealNoticeText(['', held], 'ar')).toBe(held);
+    expect(sealNoticeText(['', ''], 'ar')).toBe('');
+  });
+
+  it('reads a refused receipt’s 409 against what was SENT — each seal it names, by key', () => {
+    const error = refusal([
+      { field: 'bagSeals.1', code: 'HELD_IN_VAULT', message: 's-misr' },
+      { field: 'boxSeals.0', code: 'HELD_IN_VAULT', message: 's-ahly' },
+      // Anything else in the details is not a held seal.
+      { field: 'bagSeals.9', code: 'HELD_IN_VAULT', message: 's-none' },
+      { field: 'receiptNumber', code: 'HELD_IN_VAULT', message: 's-none' },
+      { field: 'bagSeals.0', code: 'OTHER', message: 's-none' },
+    ]);
+    expect(isSealHeldRefusal(error)).toBe(true);
+    expect([...holdsFromRefusal(error, { bagSeals: ['5', '0007'], boxSeals: ['9'] })]).toEqual([
+      ['7', 's-misr'],
+      ['9', 's-ahly'],
+    ]);
+    // Any other refusal says nothing is held.
+    const other = new ApiError(ErrorCodes.VALIDATION_FAILED, 'x', 400, []);
+    expect(isSealHeldRefusal(other)).toBe(false);
+    expect(holdsFromRefusal(other, { bagSeals: ['7'] }).size).toBe(0);
+    expect(holdsFromRefusal(new Error('x'), { bagSeals: ['7'] }).size).toBe(0);
+  });
+
+  it('marks what the refusal named at once — and lets the check’s next answer take over', () => {
+    const refused = { at: 100, holds: new Map([['7', 's-misr']]) };
+    // The check had not seen it (stale, or not yet answered): the refusal stands, unnamed…
+    expect([...mergeHolds(answer(), 50, refused)]).toEqual([
+      ['7', { shipmentId: 's-misr', holder: null }],
+    ]);
+    expect([...mergeHolds(undefined, 0, refused)]).toEqual([
+      ['7', { shipmentId: 's-misr', holder: null }],
+    ]);
+    // …named by an answer that knows that محصنة for another seal…
+    expect(mergeHolds(answer(['8', MISR]), 50, refused).get('7')).toEqual({
+      shipmentId: 's-misr',
+      holder: MISR,
+    });
+    // …and once the check has answered SINCE the refusal, the check is what the form says.
+    expect([...mergeHolds(answer(['7', MISR]), 150, refused)]).toEqual([
+      ['7', { shipmentId: 's-misr', holder: MISR }],
+    ]);
+    expect([...mergeHolds(answer(), 150, refused)]).toEqual([]);
+    // A check that could not be asked (null) never wipes what the server said.
+    expect(mergeHolds(null, 150, refused).get('7')).toEqual({ shipmentId: 's-misr', holder: null });
+  });
+
+  it('says a refused receipt under the seals, the form left open to correct it', () => {
+    expect(
+      receiveRefusal(refusal([{ field: 'bagSeals.0', code: 'HELD_IN_VAULT', message: 's-1' }])),
+    ).toEqual({ field: 'seals', key: 'operations.secured.receive.sealHeldRefused', closes: false });
+  });
+});
+
 describe('«عدد الورق من كل فئة» — the notes counted, and what they come to', () => {
   const counts = (filled: Record<string, string>): string[] =>
     OPERATIONS_VAULT_DENOMINATIONS.map((value) => filled[denominationLabel(value)] ?? '');
@@ -876,17 +1226,28 @@ describe('receiveRequest — the body, naming nobody, requiring nothing', () => 
   });
 
   it('is a body the contract accepts — the owner’s receipt with a correction', () => {
-    const body = receiveRequest(
-      { ...DRAFT, bagSealsPerBag: 3 },
-      {
-        notes: 'x',
-        deliveryDate: new Date('2026-05-20'),
-        lines: [{ currencyId: 'a'.repeat(24), amount: 5 }],
-      },
+    const correction = {
+      notes: 'x',
+      deliveryDate: new Date('2026-05-20'),
+      lines: [{ currencyId: 'a'.repeat(24), amount: 5 }],
+    };
+    const wire = (body: unknown): unknown => JSON.parse(JSON.stringify(body));
+    const body = receiveRequest({ ...DRAFT, bagSealsPerBag: 3 }, correction, 4);
+    expect(body.bagSeals).toEqual(['1', '2', '3', '4', '9', '10']);
+    // Round 21 — under «3×» the bags' 10 is on screen, and the boxes hold a 10 as well: «مينفعش يكون
+    // فيه رقم للحقائب و الصناديق زى بعض برضو». The contract refuses the box's 10…
+    const refused = ReceiveIntoVaultSchema.safeParse(wire(body));
+    expect(refused.success).toBe(false);
+    expect(refused.success ? [] : refused.error.issues.map((issue) => issue.path)).toEqual([
+      ['boxSeals', 3],
+    ]);
+    // …and takes the receipt once that box holds its own seal.
+    const corrected = receiveRequest(
+      { ...DRAFT, bagSealsPerBag: 3, boxSeals: ['6', '8', '7', '12', '11', '13'] },
+      correction,
       4,
     );
-    expect(body.bagSeals).toEqual(['1', '2', '3', '4', '9', '10']);
-    expect(ReceiveIntoVaultSchema.safeParse(JSON.parse(JSON.stringify(body))).success).toBe(true);
+    expect(ReceiveIntoVaultSchema.safeParse(wire(corrected)).success).toBe(true);
   });
 });
 
@@ -946,6 +1307,31 @@ describe('receiveRefusal — said under its box where the code allows', () => {
       refused('OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION', 'x', detail('deliveryDate')).field,
     ).toBe('deliveryDate');
     expect(refused('OPERATIONS_SHIPMENT_DATE_IN_PAST').field).toBeNull();
+  });
+
+  // Round 21 — the contract's refusal of a seal named twice: said under the seals, never the
+  // generic «بعض الحقول تحتاج إلى مراجعة».
+  it('says a seal refused as repeated under the seals — on either list, and only that refusal', () => {
+    const invalid = (details: { field: string; code: string; message: string }[]) =>
+      receiveRefusal(new ApiError(ErrorCodes.VALIDATION_FAILED, 'Validation failed', 400, details));
+    const repeat = (field: string) => [
+      { field, code: 'CUSTOM', message: 'seal "1" is already in this receipt at bagSeals.0' },
+    ];
+    expect(invalid(repeat('body.boxSeals.0'))).toEqual({
+      field: 'seals',
+      key: 'operations.secured.receive.sealRepeatRefused',
+      closes: false,
+    });
+    expect(invalid(repeat('body.bagSeals.12')).field).toBe('seals');
+    // Another field's refusal, or a seal of the wrong type, is not a repeat.
+    expect(invalid(repeat('body.denominations.1.value')).field).toBeNull();
+    expect(
+      invalid([{ field: 'body.bagSeals.0', code: 'INVALID_TYPE', message: 'Expected string' }])
+        .field,
+    ).toBeNull();
+    expect(
+      receiveRefusal(new ApiError('OPERATIONS_X', 'x', 422, repeat('body.bagSeals.1'))).field,
+    ).toBeNull();
   });
 
   it('closes the form on a shipment received meanwhile, or locked — and only then', () => {

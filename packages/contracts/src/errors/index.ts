@@ -135,6 +135,24 @@ export const ErrorCodes = {
    * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
    */
   OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
+  /**
+   * 422 — Round 22: a crew-board save NEWLY put on a row somebody HR has as away on the board's day
+   * («لو القائد غايب ... مقدرش احطه على العربيه و كذلك الاخصائيين») — the member's `availability`
+   * in the pool. Someone already on that row before the save stays. Details: `field` 'employeeId'
+   * (`code` 'ABSENT' or 'ON_LEAVE', `message` the employee's id), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_ABSENT: 'OPERATIONS_CREW_MEMBER_ABSENT',
+  /**
+   * 422 — Round 23: a crew-board save, or a standing-crew save, NEWLY put somebody in a slot his
+   * role does not fit (`fitsCrewSlot`): «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+   * اخصائى». A captain-only in a specialist's slot, or a specialist — or somebody with no requirements
+   * row — in the captain's; a captain-specialist fits every slot. Somebody already in that same slot
+   * of that same row before the save stays. Details: `field` 'employeeId' (`code` 'NOT_A_CAPTAIN' or
+   * 'NOT_A_SPECIALIST', `message` the employee's id), then `field` 'rows' (`code` 'ROW_INDEX',
+   * `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_WRONG_SLOT: 'OPERATIONS_CREW_MEMBER_WRONG_SLOT',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */
@@ -200,6 +218,19 @@ export const ErrorCodes = {
    * already dispatched or completed.
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+  /**
+   * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
+   * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
+   * وخرجت واتكرر يبقى عادى» — refused while that محصنة is with us; once it has gone out (released to
+   * its van, dispatched, completed) or its receipt was cancelled, the number may come again. "Held"
+   * is the custody's `state: 'held'` on a receipt not cancelled — what the vault inventory lists;
+   * "the same seal" is `vaultSealKey`'s (0099 = 99 = ٩٩). Nothing is written. One detail per seal
+   * refused: `field` its place in THIS receipt as stored (`bagSeals.<i>` / `boxSeals.<i>`, blank
+   * boxes dropped — the form sends none), `code` 'HELD_IN_VAULT', `message` the id of the held
+   * shipment it is on; `POST /operations/secured/seal-check` names that محصنة (bank, branches,
+   * receipt number) for a screen.
+   */
+  OPERATIONS_SEAL_HELD_IN_VAULT: 'OPERATIONS_SEAL_HELD_IN_VAULT',
 
   // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
   /**

@@ -4,12 +4,29 @@
 // DRAWN, NOT EMOJI. The crew cards before this used emoji (🔫 ✍️ 🪪 ⏳): a water pistol on most
 // phones, a different picture on every system, and no way to colour them for a dark chip. These are
 // stroke drawings in the boards' own icon style (`StrokeIcon`), one per flag, white on the chip's
-// colour, each with its name as `title` (the hover) and `aria-label` (the screen reader).
+// colour, each with its name as `aria-label` (the screen reader) and a TIP (the hover).
+//
+// THE TIP, NOT `title` (Round 22). The owner: «وعاوز لما اقف على سلاح او مزولة وتظهر يبقى فشكل احسن من
+// كدا» — the browser's grey `title` box, late and plain. Each icon (on a chip, and as a pool's
+// filter) now opens a small tip in the cards' own frame, both themes: the icon again, larger, and
+// its name. It rides the Fleet cards' mechanics (`useHoverCard` + `HoverCardLayer`): the same beat
+// before it opens, at once on a keyboard focus (the filters; a chip's icons sit inside the chip's
+// own button, and the person card names them all), one open at a time across every card and tip,
+// closed on leave, Escape and any press. It NEVER gets in a drag's way: drawn in a layer that takes
+// no pointer events, closed by the press that starts a drag, and not opened at all while one is in
+// progress (`quiet` — the board's own «a chip is being dragged»).
 //
 // INDICATORS, NOT GATES: they inform the planner and filter the pools; none stops an assignment.
+import { type ReactNode } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
+import {
+  HOVER_TIP_FRAME,
+  HoverCardLayer,
+  useHoverCard,
+  type HoverCardTriggerProps,
+} from '../../fleet/components/HoverCardLayer';
 import { type PlanFlag } from '../lib/crew-plan';
 
 const ring = (cx: number, cy: number, r: number): string =>
@@ -81,13 +98,15 @@ export const PLAN_ICON = {
 export const CrewFlagMarks = ({
   flags,
   size = 'sm',
+  quiet = false,
   className,
 }: {
   flags: readonly PlanFlag[];
   size?: 'xs' | 'sm';
+  /** A drag is in progress on the board: no tip opens. */
+  quiet?: boolean;
   className?: string;
 }): JSX.Element | null => {
-  const t = useT();
   if (flags.length === 0) return null;
   return (
     <span
@@ -98,24 +117,95 @@ export const CrewFlagMarks = ({
       )}
     >
       {flags.map((flag) => (
-        <span
-          key={flag}
-          role="img"
-          data-flag={flag}
-          title={t(`operations.crew.flag.${flag}`)}
-          aria-label={t(`operations.crew.flag.${flag}`)}
-          className={cn(
-            'inline-flex items-center justify-center',
-            size === 'xs' ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px] rounded bg-white/20',
-          )}
-        >
-          <StrokeIcon
-            d={FLAG_PATH[flag]}
-            className={size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5'}
-            width={2.2}
-          />
-        </span>
+        <FlagMark key={flag} flag={flag} size={size} quiet={quiet} />
       ))}
+    </span>
+  );
+};
+
+/** One icon of a chip, with its tip. Its name stays its `aria-label`; the tip is for the eye. */
+const FlagMark = ({
+  flag,
+  size,
+  quiet,
+}: {
+  flag: PlanFlag;
+  size: 'xs' | 'sm';
+  quiet: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const tip = useFlagTip(flag, quiet);
+  return (
+    <>
+      <span
+        role="img"
+        data-flag={flag}
+        aria-label={t(`operations.crew.flag.${flag}`)}
+        {...tip.triggerProps}
+        className={cn(
+          'inline-flex items-center justify-center',
+          size === 'xs' ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px] rounded bg-white/20',
+        )}
+      >
+        <StrokeIcon
+          d={FLAG_PATH[flag]}
+          className={size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5'}
+          width={2.2}
+        />
+      </span>
+      {tip.tip}
+    </>
+  );
+};
+
+/** What a tip's trigger takes, and the tip itself while open (a portal — where it sits is nothing). */
+export interface FlagTip {
+  triggerProps: HoverCardTriggerProps & { 'data-flag-tip': PlanFlag };
+  tip: ReactNode;
+}
+
+/**
+ * The tip for one requirement icon — spread `triggerProps` on the icon (or the filter button that
+ * draws it) and render `tip` beside it. `quiet`: a drag is in progress — no tip opens, and an open
+ * one is gone.
+ *
+ * Adds no tab stop (`focusable: false`): a chip's icons sit inside the chip's button, and a filter
+ * is a button already — there a keyboard focus opens it, at once. The trigger is NOT described by
+ * the tip (no `aria-describedby`): its `aria-label` already says the same name, and a screen reader
+ * would read it twice.
+ */
+export const useFlagTip = (flag: PlanFlag, quiet: boolean): FlagTip => {
+  const hover = useHoverCard(!quiet, { focusable: false });
+  const props: HoverCardTriggerProps = { ...hover.triggerProps };
+  delete props['aria-describedby'];
+  return {
+    triggerProps: { ...props, 'data-flag-tip': flag },
+    tip: hover.open ? (
+      <HoverCardLayer
+        id={hover.id}
+        anchor={hover.anchor}
+        mark="crew-flag"
+        frame={HOVER_TIP_FRAME}
+        align="center"
+      >
+        <FlagTipBody flag={flag} />
+      </HoverCardLayer>
+    ) : null,
+  };
+};
+
+/** The tip's words: the icon again, in the cards' tinted square, and the flag's name. */
+export const FlagTipBody = ({ flag }: { flag: PlanFlag }): JSX.Element => {
+  const t = useT();
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap" data-flag-tip-body={flag}>
+      <span
+        aria-hidden
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-sky-500/15 text-sky-700 dark:text-sky-300"
+      >
+        <StrokeIcon d={FLAG_PATH[flag]} className="h-3.5 w-3.5" width={2} />
+      </span>
+      {t(`operations.crew.flag.${flag}`)}
     </span>
   );
 };

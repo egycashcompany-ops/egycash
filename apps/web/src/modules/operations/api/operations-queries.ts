@@ -9,7 +9,7 @@
 //     does not change the bank;
 //   · a bank mutation invalidates BOTH — the branch rows carry their bank's operational name, so
 //     renaming a bank changes what every branch row displays.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
@@ -27,6 +27,7 @@ import {
   type OperationsAreaDto,
   type OperationsExecutionResultDto,
   type OperationsShipmentType,
+  type OperationsVaultSealCheckDto,
   type Paginated,
   type OrderOperationsCurrencies,
   type OrderOperationsShiftTypes,
@@ -695,6 +696,63 @@ export const useSecuredDue = (date: string, enabled = true) =>
     queryKey: listKey(MODULE, 'securedDue', { date }),
     queryFn: () => api.listSecuredDue(date),
     enabled: enabled && date !== '',
+  });
+
+/**
+ * Round 21b — the receive form's live check: which of its seals the vault still holds on another
+ * محصنة («لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»).
+ *
+ *   · Keyed by the seals themselves (distinct and sorted — `sealsToCheck`), under the vault's
+ *     subtree: every secured act re-reads it (a receipt taken, a release, a cancelled receipt each
+ *     change what the vault holds), the refused receipt's included — its `onSettled` stales the
+ *     subtree, so a 409 the check had not foreseen is followed by a fresh answer naming the محصنة.
+ *   · A key the form has typed past is a query nobody watches: TanStack aborts it through the
+ *     signal `checkVaultSeals` hands to `fetch`, so only the latest seals are ever answered.
+ *   · ADVICE, NEVER A GATE. A check that fails answers `null` — no mark, no toast, no error state,
+ *     no retry — and «استلام» stays open: the receipt decides on the server either way.
+ *     `keepPreviousData` holds the last answer's marks while the next one is asked.
+ */
+const vaultSealCheckKey = (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+): readonly unknown[] => [...operationsKeys.vault, 'sealCheck', excludeShipmentId, seals];
+
+/** Test seam — pins the key under the vault's subtree. */
+export const __vaultSealCheckKey = vaultSealCheckKey;
+
+/** The check, asked: the vault's answer, or null when it could not be had — never a thrown error. */
+const askVaultSeals = async (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+  signal: AbortSignal,
+): Promise<OperationsVaultSealCheckDto | null> => {
+  try {
+    return await api.checkVaultSeals(
+      { seals: [...seals], ...(excludeShipmentId === null ? {} : { excludeShipmentId }) },
+      { signal },
+    );
+  } catch (error) {
+    // A check the form moved past is TanStack's to cancel; any other failure is "not known".
+    if (signal.aborted) throw error;
+    return null;
+  }
+};
+
+/** Test seam — what a failed or overtaken check answers. */
+export const __askVaultSeals = askVaultSeals;
+
+export const useVaultSealCheck = (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+  enabled: boolean,
+) =>
+  useQuery({
+    queryKey: vaultSealCheckKey(seals, excludeShipmentId),
+    queryFn: ({ signal }) => askVaultSeals(seals, excludeShipmentId, signal),
+    enabled: enabled && seals.length > 0,
+    retry: false,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
   });
 
 export const useVaultInventory = (params: OperationsListParams, enabled = true) =>

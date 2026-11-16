@@ -435,9 +435,16 @@ describe('one layer for both cards', () => {
   it('the same frame for both, in both themes', () => {
     expect(Layer.HOVER_CARD_FRAME).toContain('dark:bg-[#131d35]');
     expect(Layer.HOVER_CARD_FRAME).toContain('w-72');
-    expect(source('components/HoverCardLayer.tsx')).toContain(
-      "className={cn('pointer-events-none fixed z-[110] animate-menu-in', HOVER_CARD_FRAME)}",
+    // The frame is a prop since Round 22 (the operations board's icon tips) — the CARDS' default,
+    // which neither the driver card nor the car card overrides.
+    const layer = source('components/HoverCardLayer.tsx');
+    expect(layer).toContain('frame = HOVER_CARD_FRAME,');
+    expect(layer).toContain(
+      "className={cn('pointer-events-none fixed z-[110] animate-menu-in', frame)}",
     );
+    for (const file of ['components/DriverHoverCard.tsx', 'components/VehicleHoverCard.tsx']) {
+      expect(source(file), file).not.toMatch(/\bframe=/u);
+    }
   });
 });
 

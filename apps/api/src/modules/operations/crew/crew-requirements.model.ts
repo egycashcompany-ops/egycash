@@ -11,8 +11,10 @@
 // an employee is operations crew when Operations says so by giving them a row.
 //
 // AND NONE OF IT GATES ANYTHING (approved decision, carried since PR 1). Only `isCaptain` was ever
-// read by a legacy server query; the rest were pool decoration and browser filters. No crew slot
-// checks any of these flags, exactly as in legacy.
+// read by a legacy server query; the rest were pool decoration and browser filters.
+// ROUND 23 — but for the two ROLE flags: «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+// اخصائى». `isCaptain` and `isSpecialist` decide which crew slot a person may newly take
+// (`crewRoleOf` / `fitsCrewSlot` in the contracts, `crew-roles.ts` here); the other eight gate nothing.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 

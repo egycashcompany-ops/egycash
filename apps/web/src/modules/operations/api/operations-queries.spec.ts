@@ -18,6 +18,7 @@ import {
   __shipmentHistoryKey,
   __shipmentLogKey,
   __vaultQueueKey,
+  __vaultSealCheckKey,
 } from './operations-queries';
 
 /** Seed one cache entry per feature so "did it become stale?" is answerable per feature. */
@@ -588,5 +589,43 @@ describe('a write refused as LOCKED re-reads the boards (Round 10)', () => {
     await reread(undefined, new TypeError('Failed to fetch'));
     await reread({ id: 's-1' }, null);
     expect(invalidate).not.toHaveBeenCalled();
+  });
+});
+
+describe('the receive form’s seal check rides the vault’s subtree (Round 21b)', () => {
+  // «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: what the vault holds moves
+  // with every secured act — a receipt taken, a van sent out, a receipt cancelled — and the refused
+  // receipt re-reads it too, so its 409 is followed by an answer that names the محصنة.
+  const KEY = __vaultSealCheckKey(['21', '7'], 's-1');
+
+  it('keys the check by its seals and the shipment being received, under the vault', () => {
+    expect(KEY.slice(0, 2)).toEqual(__operationsKeys.vault);
+    expect(__vaultSealCheckKey(['7'], 's-1')).not.toEqual(KEY);
+    expect(__vaultSealCheckKey(['21', '7'], 's-2')).not.toEqual(KEY);
+  });
+
+  it('every secured act stales it — the vault’s subtree is in their list', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(KEY, { held: [] });
+    // Exactly what `useSecuredInvalidation` does (the receive — refused or not —, dispatch, cancel).
+    for (const key of [
+      __operationsKeys.securedBacklog,
+      __operationsKeys.securedDue,
+      __operationsKeys.vault,
+      __operationsKeys.vaultReport,
+      __operationsKeys.shipments,
+      __operationsKeys.dayBoard,
+    ]) {
+      await qc.invalidateQueries({ queryKey: key });
+    }
+    expect(isStale(qc, KEY)).toBe(true);
+  });
+
+  it('a reference-data or crew change leaves it alone', async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(KEY, { held: [] });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.banks });
+    await qc.invalidateQueries({ queryKey: __operationsKeys.crewBoard });
+    expect(isStale(qc, KEY)).toBe(false);
   });
 });

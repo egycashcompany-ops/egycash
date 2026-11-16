@@ -6,13 +6,19 @@ import { describe, expect, it } from 'vitest';
 import {
   CREW_SLOT_CAPACITY,
   CreateOperationsShiftTypeSchema,
+  OPERATIONS_CREW_AVAILABILITIES,
   OPERATIONS_CREW_ROW_COLOURS,
+  OPERATIONS_CREW_SLOTS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   OperationsCrewAssignmentChangedPayloadV1,
   OrderOperationsShiftTypesSchema,
   PlanOperationsCrewSchema,
   UpdateOperationsShiftTypeSchema,
   canonicalOperationsDirection,
+  crewRoleOf,
+  fitsCrewSlot,
+  type OperationsCrewMemberDto,
+  type OperationsCrewRole,
 } from './operations.js';
 import { ErrorCodes } from '../errors/index.js';
 
@@ -205,5 +211,52 @@ describe('the event and the refusals', () => {
   it('names the two new refusals', () => {
     expect(ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE).toBe('OPERATIONS_UNKNOWN_SHIFT_TYPE');
     expect(ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA).toBe('OPERATIONS_DIRECTION_NOT_AN_AREA');
+  });
+});
+
+describe('Round 22 — who is away on the board’s day («لو القائد غايب ... مقدرش احطه على العربيه»)', () => {
+  it('names two answers only — HR’s absent and on-leave buckets; anything else is not «away»', () => {
+    expect([...OPERATIONS_CREW_AVAILABILITIES]).toEqual(['absent', 'onLeave']);
+    // A pool member says one of them, or null — and a server that predates the field says nothing,
+    // which reads the same as null.
+    const away: OperationsCrewMemberDto['availability'][] = ['absent', 'onLeave', null, undefined];
+    expect(away).toHaveLength(4);
+    // At work is not an answer this field gives: it says who is away, never who is fine.
+    // @ts-expect-error — 'present' is HR's bucket, not an availability
+    const atWork: OperationsCrewMemberDto['availability'] = 'present';
+    expect(OPERATIONS_CREW_AVAILABILITIES).not.toContain(atWork);
+  });
+
+  it('names the refusal of a newly placed member who is away', () => {
+    expect(ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT).toBe('OPERATIONS_CREW_MEMBER_ABSENT');
+  });
+});
+
+describe('Round 23 — who may take which slot («ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»)', () => {
+  const flags = (isCaptain: boolean, isSpecialist: boolean) => ({ isCaptain, isSpecialist });
+
+  it('reads the role off the two flags — and nobody ticked, or no row at all, is a specialist', () => {
+    expect(crewRoleOf(flags(true, false))).toBe('captain');
+    expect(crewRoleOf(flags(true, true))).toBe('dual');
+    expect(crewRoleOf(flags(false, true))).toBe('specialist');
+    expect(crewRoleOf(flags(false, false))).toBe('specialist');
+    expect(crewRoleOf(null)).toBe('specialist');
+    expect(crewRoleOf(undefined)).toBe('specialist');
+  });
+
+  it('names the three slots in the board’s order', () => {
+    expect([...OPERATIONS_CREW_SLOTS]).toEqual(['captain', 'specialist1', 'specialist2']);
+  });
+
+  it('seats a captain only as captain, a specialist only as specialist, and a captain-specialist anywhere', () => {
+    const fits = (role: OperationsCrewRole): string =>
+      OPERATIONS_CREW_SLOTS.filter((slot) => fitsCrewSlot(role, slot)).join(' ');
+    expect(fits('captain')).toBe('captain');
+    expect(fits('specialist')).toBe('specialist1 specialist2');
+    expect(fits('dual')).toBe('captain specialist1 specialist2');
+  });
+
+  it('names the refusal of somebody newly put in a slot his role does not fit', () => {
+    expect(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT).toBe('OPERATIONS_CREW_MEMBER_WRONG_SLOT');
   });
 });

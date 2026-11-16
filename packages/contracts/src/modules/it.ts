@@ -632,6 +632,193 @@ export interface ItAssetsBranchMoveResultDto {
   moved: ItAssetBranchMoveDto[];
 }
 
+// ── Assets: bulk upload («رفع جماعي») ───────────────────────────────────────
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف
+// ويوضح لو فى تكرار أو تضارب مع بيانات موجوده» (2026-11-16). The sheet is the branches' custody
+// sheet («عهدة الأفرع», reviewed into the 2026-11 go-live): one branch per file, chosen on the
+// screen (the sheet's name «عهدة فرع X» suggests it). Every line is decided against the live
+// register exactly as that go-live decided its own — a device it does not hold is registered in
+// stock, one it holds gets only what it lacks («أكمّل الناقص بس»), one in stock in another branch
+// moves to the chosen one («يتنقل لفرع الملف»), one somebody holds elsewhere stays — and nothing is
+// written until the preview has been seen and confirmed, line by line.
+
+/** A file is one branch's register page, not the whole register. */
+export const IT_ASSET_IMPORT_MAX_ROWS = 500;
+export const IT_ASSET_IMPORT_MAX_MB = 5;
+
+/**
+ * The sheet's header row, column A onward — the branches' custody sheets', word for word. The
+ * accessories take two columns (L and M), the header naming the first only.
+ */
+export const IT_ASSET_IMPORT_COLUMNS = [
+  'النوع',
+  'اسم الصنف',
+  'سيريال (Serial)',
+  'الشركة المُصنعة',
+  'الموديل',
+  'الملصق المطبوع (Tag)',
+  'المعالج',
+  'إجمالي ذاكرة النظام',
+  'نوع النظام',
+  'إجمالي سعة الأقراص الصلبة',
+  'كارت الشاشة',
+  'المشتملات',
+] as const;
+
+/** What a line comes to — one of these, decided against the live register. */
+export const IT_ASSET_IMPORT_DECISIONS = [
+  /** Not on the register: registered in the chosen branch, in stock. */
+  'new',
+  /** On the register in the chosen branch: what it lacks is filled. */
+  'fill',
+  /** On the register in stock in another branch: moved to the chosen one (and filled). */
+  'move',
+  /** On the register in the chosen branch with nothing to fill: left as it is. */
+  'complete',
+  /** On the register, held (or in maintenance) in another branch: not moved; filled if it lacks. */
+  'heldElsewhere',
+  /** On the register where the caller may not write — reported, never touched. */
+  'outOfScope',
+  /** Its serial or tag is an earlier line's: the first line wins. */
+  'duplicateInFile',
+  /** Two devices or more answer to its identifiers: neither is guessed at. */
+  'ambiguous',
+  /** Neither serial nor tag («لو مفيش تاجات فخلاص متضيفهمش»). */
+  'noIdentifier',
+  /** A new line whose «النوع» has no category yet — one is chosen on the screen. */
+  'unknownKind',
+  /** A cell the line cannot be written with (no name, a value too long …) — `message` says which. */
+  'invalid',
+] as const;
+export const ItAssetImportDecisionSchema = z.enum(IT_ASSET_IMPORT_DECISIONS);
+export type ItAssetImportDecision = z.infer<typeof ItAssetImportDecisionSchema>;
+
+/** Doubts that leave a line OFF by default (the reviewer may still tick it). */
+export const IT_ASSET_IMPORT_WARNINGS = [
+  /** A new line one or two characters off a device of the chosen branch the file does not list. */
+  'nearSerial',
+  /** Its only label is a maker's product number (HP's «…AV»), not a serial. */
+  'productNumber',
+] as const;
+export const ItAssetImportWarningSchema = z.enum(IT_ASSET_IMPORT_WARNINGS);
+export type ItAssetImportWarning = z.infer<typeof ItAssetImportWarningSchema>;
+
+/**
+ * The text fields of the upload (multipart, beside the file `file`). Without `apply` it is a
+ * preview: nothing is written. With `apply`, the same file again, the preview's two hashes and the
+ * lines kept — refused if the file or the plan changed since (somebody registered a device in
+ * between): the reviewer confirms what they saw, never something else.
+ */
+export const ItAssetImportFieldsSchema = z
+  .object({
+    /** The branch the file is for; omitted on a first preview, the sheet's name suggests it. */
+    branchId: objectId().optional(),
+    /** JSON `{ "<النوع>": "<categoryId>" }` — the category each kind is filed under. */
+    kindCategories: z.string().max(20_000).optional(),
+    apply: z
+      .string()
+      .optional()
+      .transform((v) => v === 'true'),
+    fileSha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    planHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    /** JSON `number[]` — the sheet rows to write. */
+    rows: z.string().max(10_000).optional(),
+  })
+  .strict()
+  .superRefine((fields, ctx) => {
+    if (!fields.apply) return;
+    for (const path of ['branchId', 'fileSha256', 'planHash', 'rows'] as const) {
+      if (fields[path] === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `${path} is required to apply`,
+        });
+      }
+    }
+  });
+export type ItAssetImportFields = z.infer<typeof ItAssetImportFieldsSchema>;
+
+/** `kindCategories`, once parsed. */
+export const ItAssetImportKindCategoriesSchema = z.record(
+  z.string().trim().min(1).max(100),
+  objectId(),
+);
+/** `rows`, once parsed. */
+export const ItAssetImportRowsSchema = z
+  .array(z.number().int().min(2))
+  .max(IT_ASSET_IMPORT_MAX_ROWS);
+
+/** One line of the preview — what the sheet says and what would happen to it. */
+export interface ItAssetImportRowDto {
+  /** The sheet's row number (the header is row 1). */
+  row: number;
+  kind: string | null;
+  name: string | null;
+  serial: string | null;
+  tag: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  decision: ItAssetImportDecision;
+  warnings: ItAssetImportWarning[];
+  /** The register's device it answers to — only one the caller may see. */
+  asset: { id: string; assetCode: string; branchId: string; status: ItAssetStatus } | null;
+  /** `new`: what it is registered with. */
+  serialNumber: string | null;
+  externalTag: string | null;
+  categoryId: string | null;
+  /** The fields filled (`specs.processor`, `accessories`, `externalTag`, `manufacturer`, `model`). */
+  fills: string[];
+  /** Values the register already has that the sheet disagrees with — kept. */
+  kept: { field: string; register: string; sheet: string }[];
+  /** `move` / `heldElsewhere`: the branch it is registered in. */
+  fromBranchId: string | null;
+  /** `duplicateInFile`: the earlier row that takes the device. */
+  firstRow: number | null;
+  /** `nearSerial`: the device it is close to. */
+  near: { assetCode: string; serialNumber: string } | null;
+  /** `invalid` / `outOfScope` / `ambiguous`: why, in a few words. */
+  message: string | null;
+  /** Whether it can be written at all, and whether it is ticked when the preview opens. */
+  selectable: boolean;
+  selected: boolean;
+}
+
+export interface ItAssetImportPreviewDto {
+  fileSha256: string;
+  /** The plan the rows describe — sent back with `apply` so the write is the plan that was seen. */
+  planHash: string;
+  sheetName: string;
+  /** The branch planned for, and the one the sheet's name points to (null when none matches). */
+  branchId: string;
+  suggestedBranchId: string | null;
+  /** Each «النوع» of the file, the category it is filed under (null until chosen), its lines. */
+  kinds: { kind: string; categoryId: string | null; rows: number }[];
+  rows: ItAssetImportRowDto[];
+  counts: Record<ItAssetImportDecision, number>;
+}
+
+export interface ItAssetImportResultDto {
+  created: number;
+  filled: number;
+  moved: number;
+  /** Lines kept on the screen but written as nothing (complete, or decided otherwise). */
+  unchanged: number;
+  assets: {
+    row: number;
+    assetId: string;
+    assetCode: string;
+    action: 'created' | 'filled' | 'moved';
+  }[];
+}
+
 /**
  * The branches the caller may move assets — and send consumables — to: every active branch their
  * `itAsset.assign` reaches, judged by the server's own rule, so the pickers never offer a branch

@@ -384,6 +384,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/it/mobile/VehicleCheckPage.tsx'],
   ['modules/it/pages/AssetDetailPage.tsx'],
   ['modules/it/pages/AssetScanPage.tsx'],
+  ['modules/it/pages/AssetsImportPage.tsx'],
   ['modules/it/pages/ItEmployeeHistoryPage.tsx'],
   ['modules/it/pages/LicenseDetailPage.tsx'],
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],

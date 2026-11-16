@@ -420,6 +420,26 @@ describe('«كل فرع فى فرعه» — where the sheet says the device is',
     expect(found(decide(fill(2), [repair])).notMoved).toMatchObject({ status: 'underMaintenance' });
   });
 
+  it('moves nothing an active maintenance order holds, when the caller names the orders — still filled', () => {
+    // Opening an order leaves the device in stock: only the order says the technician has it.
+    const ordered = asset({ id: 'asset-ordered', branchId: 'branch-hq' });
+    const row = fill(2, { specs: { processor: 'Intel Core i7' } });
+    const [first] = planBranchCustody([row], [ordered], BRANCHES, {
+      activeMaintenance: new Set(['asset-ordered']),
+    });
+    if (first === undefined) throw new Error('no decision');
+    const decision = found(first);
+    expect(decision.move).toBeNull();
+    expect(decision.notMoved).toEqual({ status: 'inStock', branchId: 'branch-hq' });
+    expect(decision.fill).toEqual({ specs: { processor: 'Intel Core i7' } });
+    // An order on ANOTHER device holds nothing back; and without the set — the go-live — it moves.
+    const other = planBranchCustody([row], [ordered], BRANCHES, {
+      activeMaintenance: new Set(['asset-elsewhere']),
+    })[0];
+    expect(other?.kind === 'found' && other.move?.fromBranchId).toBe('branch-hq');
+    expect(found(decide(row, [ordered])).move?.fromBranchId).toBe('branch-hq');
+  });
+
   it('leaves a planned move alone once the device is already in the sheet’s branch', () => {
     expect(
       decide(move(16), [asset({ serialNumber: 'MP30EPE1', branchId: 'branch-shorouk' })]).kind,

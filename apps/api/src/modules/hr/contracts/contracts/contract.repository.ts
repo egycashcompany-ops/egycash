@@ -15,8 +15,9 @@ class ContractRepository extends BaseRepository<ContractDoc> {
   async listPage(query: ListContractsQuery, scope: ScopeSelector): Promise<Paginated<ContractDoc>> {
     const filter: FilterQuery<ContractDoc> = {};
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
-    if (query.typeId !== undefined) filter.typeId = new Types.ObjectId(query.typeId);
-    if (query.status !== undefined) filter.status = query.status;
+    if (query.typeId !== undefined && query.typeId.length > 0)
+      filter.typeId = { $in: query.typeId.map((id) => new Types.ObjectId(id)) };
+    if (query.status !== undefined && query.status.length > 0) filter.status = { $in: [...query.status] };
     if (query.startFrom !== undefined || query.startTo !== undefined) {
       filter.startDate = {
         ...(query.startFrom === undefined ? {} : { $gte: dateOnly(query.startFrom) }),

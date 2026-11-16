@@ -5,7 +5,7 @@
 // immutability (A4), Workflow-compatible approval (A7) and an e-signature-ready signer
 // model (A5). Consumers integrate through the module's query seam + events only (A22).
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { listQuery, objectId, PaginationQuerySchema } from '../common/index.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 
 // ── Contract types catalog (D4a) ─────────────────────────────────────────────
@@ -481,8 +481,9 @@ export const ListContractsQuerySchema = PaginationQuerySchema.extend({
   /** Free text over contract number, employee name/code, reference number. */
   search: z.string().max(200).optional(),
   employeeId: objectId().optional(),
-  typeId: objectId().optional(),
-  status: ContractStatusSchema.optional(),
+  /** Type and status are LISTS — «هنخلي كل الفلترز multi» — each ORed; one value still parses. */
+  typeId: listQuery(objectId()),
+  status: listQuery(ContractStatusSchema),
   startFrom: isoDate().optional(),
   startTo: isoDate().optional(),
   endFrom: isoDate().optional(),

@@ -749,6 +749,11 @@ class OperationsShipmentService {
       }),
     });
 
+    // Round 24 — a crew WITHOUT A VAN is «بدون سيارة (n)» on every board, numbered as «لوحة
+    // التشغيلة» numbers it: its place among its day's live rows without a van, in the order they
+    // were added — never its place among the crews this set of rows happens to ride.
+    const looseNumbers = await this.looseNumbersOf(crewRows);
+
     const legVehicleCode = (leg: OperationsShipmentAssignmentDoc): string | null => {
       const vehicleId = vehicleIdOf(leg);
       return vehicleId === null ? null : (vehicleCodes.get(vehicleId) ?? null);
@@ -786,6 +791,10 @@ class OperationsShipmentService {
                 // Null on a leg of a row without a van (Round 24) — «بدون سيارة», never "null".
                 vehicleId: vehicleIdOf(leg),
                 vehicleCode: legVehicleCode(leg),
+                looseNumber:
+                  vehicleIdOf(leg) === null
+                    ? (looseNumbers.get(String(leg.crewAssignmentId)) ?? null)
+                    : null,
                 captainEmployeeId: String(leg.captainEmployeeId),
                 captainName: captain?.fullNameAr ?? null,
                 // «لما اقف على القائد يجيب بياناته زى ما عاملين فى الحركه» — the facts the Fleet
@@ -797,6 +806,28 @@ class OperationsShipmentService {
       };
     });
     return { rows, crews };
+  }
+
+  /**
+   * Round 24 — crew row id → its number among its day's live rows WITHOUT A VAN, from 1, in the
+   * order they were added (the board's `vehiclelessRows`). Only the days of the van-less rows given
+   * are read — one read for all of them; a set with none reads nothing.
+   */
+  async looseNumbersOf(
+    crewRows: readonly OperationsCrewAssignmentDoc[],
+  ): Promise<Map<string, number>> {
+    const days = [
+      ...new Set(crewRows.filter((c) => !hasVan(c)).map((c) => String(c.operationsDayId))),
+    ];
+    const numbers = new Map<string, number>();
+    const counted = new Map<string, number>();
+    for (const row of await operationsCrewAssignmentRepository.findWithoutVanForDays(days)) {
+      const day = String(row.operationsDayId);
+      const next = (counted.get(day) ?? 0) + 1;
+      counted.set(day, next);
+      numbers.set(String(row._id), next);
+    }
+    return numbers;
   }
 
   /**

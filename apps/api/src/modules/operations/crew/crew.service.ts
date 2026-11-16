@@ -531,9 +531,14 @@ class OperationsCrewService {
         );
       });
 
-      // The saved row each payload row lands on; undefined for a new one. A van row with no id is
-      // the live row holding that van — unless that row is removed in this same save, which frees
-      // the van for a NEW row.
+      // The saved row each payload row lands on; undefined for a new one. A ROSTER van's row with no
+      // id is the live row holding that van, as it always was (the van's row, upserted by van) —
+      // unless that row is removed in this same save, which frees the van for a NEW row.
+      //
+      // A van OFF the roster with no id is ALWAYS a new row (Round 24, the critic's two-desk case):
+      // such a van has a row only because some desk gave it one, and the board names every saved
+      // row by its id — so a payload that names none believes the van free. If another desk crewed
+      // it since, the van is TAKEN (409, below), never that desk's row silently overwritten.
       const currentOf = input.rows.map((row): OperationsCrewAssignmentDoc | undefined => {
         if (row.crewAssignmentId !== undefined) {
           if (row.vehicleId === null) return vehiclelessRow(row.crewAssignmentId);
@@ -546,7 +551,7 @@ class OperationsCrewService {
           }
           return saved;
         }
-        if (row.vehicleId === null) return undefined;
+        if (row.vehicleId === null || !dutyByVehicle.has(row.vehicleId)) return undefined;
         const holder = byVehicle.get(row.vehicleId);
         return holder === undefined || removedIds.has(String(holder._id)) ? undefined : holder;
       });

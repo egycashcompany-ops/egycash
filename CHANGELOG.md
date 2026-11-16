@@ -669,7 +669,11 @@ its entry here in the same PR.
         `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`) and held by no other row (409
         `OPERATIONS_CREW_VEHICLE_TAKEN`). Such a row stores no roster row and is listed in `rows`
         with `fleetDutyAssignmentId: null`; its drivers are joined by (van, day), so a van Fleet
-        rosters later that day shows them. Unlike a roster van's row, it may be removed.
+        rosters later that day shows them. Unlike a roster van's row, it may be removed. A save
+        row that names such a van WITHOUT a row id is always a NEW row: when a second desk gives
+        a car another desk crewed since its read, it gets 409 `OPERATIONS_CREW_VEHICLE_TAKEN`,
+        and the first desk's row (its crew, and the captain its محصنات name) is never
+        overwritten. A ROSTER van named alone is still that van's row, upserted, as it always was.
       - A saved row without a van is GIVEN a van in place: the row is sent with both
         `crewAssignmentId` and `vehicleId`. It keeps its id, and in the same transaction its live
         legs take the van; each change is audited on the leg («السجل» shows `crewChanged`) and
@@ -760,13 +764,16 @@ its entry here in the same PR.
         - «تراجع» is ONE STEP BACK. It threw away every unsaved change at once; now each press takes
           back the LAST operation only — a drop, a pick, a ✕, a van given, a row added, deleted or
           emptied, a type, colour, time, direction or notes change (a run of typing in one box is
-          one), the standing crew loaded or taken off — however many rows it touched, and the next
+          one, and so is a time set in its panel, hour then minute), the standing crew loaded or
+          taken off — however many rows it touched, and the next
           press the one before, until nothing is left; the button is off then. Its tooltip says
           what it will take back («تراجع عن: نقل … إلى …»); Ctrl+Z (⌘Z) does the same outside a
           text box. A save clears the history; another desk's save rebases every step of it as it
           rebases the draft, and drops a step the other desk made true. «توزيع المحصنات»'s
           «التراجع عن التغييرات» was the same discard-everything button: it is now «تراجع», one
-          move, captain switch or «توزيع تلقائي» a press. «الطاقم الثابت» had none.
+          move, captain switch or «توزيع تلقائي» a press — the day's own proposals by direction are
+          its first step, so the last press takes them back too, as the old button did. «الطاقم
+          الثابت» had none.
         - «بدون سيارة» opens every car with no crew that day (the server's `freeVehicles`, seen
           through the draft): the Fleet roster's blank vans first with their drivers, then the
           cash-transfer operations' cars, the standing crew's and the rest, each by code;
@@ -776,9 +783,11 @@ its entry here in the same PR.
           blank row as before; any other car turns the row into that car's row where it stands. A
           saved row keeps its id either way (the «row X takes van V» save), so the محصنات on it
           follow. The round-22 (away) and round-23 (wrong slot) checks still come first. A van off
-          the roster is marked «إضافية», shows no drivers and can be deleted (which frees it); the
-          server's three refusals of a van and its refusal to delete a row holding محصنات are worded
-          in both languages and marked on the row — the deleted row is put back, as its own step.
+          the roster is marked «إضافية» under its code (beside it, it widened the column and pushed
+          the row's bin out of the frame at 1440), shows no drivers and can be deleted (which frees
+          it); the server's three refusals of a van and its refusal to delete a row holding محصنات
+          are worded in both languages and marked on the row — the deleted row is put back, as its
+          own step, named by its place once it is back («بدون سيارة (n)», never «(0)»).
         - Three filters between «يوم التشغيلة» and «كل الأنواع», in that order: the van (the board's
           codes, and «بدون سيارة»), a person box (a captain's or a specialist's name or code,
           folded as the pools' search) and the direction (each area the board's directions name,

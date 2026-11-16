@@ -868,6 +868,13 @@ export interface OperationsDayBoardCrewDto {
    * (Round 24) when there is no vehicle at all (`vehicleId` null): the screen says «بدون سيارة».
    */
   vehicleCode: string | null;
+  /**
+   * Round 24 — a crew WITHOUT A VAN (`vehicleId` null): its number among its day's live rows
+   * without a van, from 1, in the order they were added — «بدون سيارة (n)» exactly as «لوحة
+   * التشغيلة», «توزيع المحصنات» and «تسليم المحصنات» number it, so two such crews are told apart on
+   * every board, whichever of them carries the legs shown. Null on a van.
+   */
+  looseNumber: number | null;
   captainEmployeeId: string;
   /** Null when the directory cannot name the employee. */
   captainName: string | null;
@@ -2024,8 +2031,12 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  *
  *   `vehicleId` | `crewAssignmentId` | what the row is
  *   ------------|--------------------|-------------------------------------------------------------
- *   V           | —                  | THE VAN'S ROW, upserted by (day, V), as it always was: the
- *               |                    | live crew row holding V that day, or a new one.
+ *   V           | —                  | V ON THE FLEET ROSTER: THE VAN'S ROW, upserted by (day, V), as
+ *               |                    | it always was — the live crew row holding V that day, or a new
+ *               |                    | one. V OFF THE ROSTER (Round 24): always a NEW row — such a
+ *               |                    | van has a row only because some desk gave it one, and a saved
+ *               |                    | row is named by its id; held by a live row → 409
+ *               |                    | `OPERATIONS_CREW_VEHICLE_TAKEN`, never that row overwritten.
  *   null        | —                  | a NEW row without a van (Round 20).
  *   null        | X                  | the saved row X, which has no van, edited (Round 20).
  *   V           | X                  | Round 24 — the saved row X, edited, and holding van V: «X
@@ -2142,7 +2153,8 @@ export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
  * or a `crewAssignmentId` with `vehicleId: null` naming a row that has a van → 422
  * (`BUSINESS_RULE_VIOLATION`); a removal of a row that holds محصنات — live shipment legs, delivered
  * or not — → 409 `OPERATIONS_CREW_ROW_HAS_SHIPMENTS` (take them off it on «توزيع المحصنات» first, or
- * give the row a van instead). Emptying a row that holds محصنات is NOT refused — van or not, as a
+ * give the row a van instead; legs that have LEFT THE VAULT — handed over, delivered — are moved by
+ * no screen, so a row holding such legs stays for the day). Emptying a row that holds محصنات is NOT refused — van or not, as a
  * van's row always was: its legs stay on the row with the captain they name.
  */
 export const PlanOperationsCrewSchema = z

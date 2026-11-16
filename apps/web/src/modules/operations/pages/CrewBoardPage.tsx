@@ -156,6 +156,7 @@ import {
   planRefusal,
   planRowCard,
   rebaseDraft,
+  releaseVan,
   restoreRemovedRow,
   rowMisfits,
   rowPeople,
@@ -202,7 +203,6 @@ import {
 } from '../lib/crew-plan-filter';
 import {
   changedRowKeys,
-  lastStep,
   mergeKeyOf,
   rebaseHistory,
   record,
@@ -210,6 +210,7 @@ import {
   sealHistory,
   startHistory,
   undo,
+  undoableStep,
   type CrewDraft,
   type UndoHistory,
   type UndoWhat,
@@ -769,7 +770,7 @@ export const CrewBoardPage = (): JSX.Element => {
   // «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات فاهم». The button says what it will take back;
   // the rows it changes are brought into view. What was picked up is put down and the lists close —
   // the hand starts afresh — and a save's refusal stays only on a row the press did not touch.
-  const lastOperation = lastStep(history);
+  const lastOperation = undoableStep(history, plan.isPending);
   const undoWords =
     lastOperation === null
       ? null
@@ -925,6 +926,32 @@ export const CrewBoardPage = (): JSX.Element => {
     setRefusal((current) => (current?.key === row.key ? null : current));
     // A pick that merged the row into a roster van's row: that row, in the van's place.
     const landed = choice.vanKey ?? row.key;
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-plan-row="${landed}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    );
+  };
+
+  /**
+   * Round 24 — the van a save refused (out of service, in the workshop, another desk's since the
+   * read), taken off its row in one press (`releaseVan`): «تراجع» takes back only the LAST operation,
+   * which is no longer the van once anything came after it. The row is «بدون سيارة» again — its crew
+   * and its fields kept — and its cell offers the cars free now. One operation «تراجع» can take back.
+   */
+  const dropVan = (row: PlanRow): void => {
+    const after = releaseVan(rows, serverRows, row.key);
+    if (after === rows) return;
+    // A saved row merged into a roster van comes back as its own row; any other keeps its key.
+    const landed =
+      row.key === `van:${row.vehicleId ?? ''}` && row.crewId !== null ? `loose:${row.crewId}` : row.key;
+    const back = after.find((candidate) => candidate.key === landed);
+    const named = back === undefined ? rowName(row) : rowName(back, after);
+    applyRows(
+      { kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } },
+      (current) => releaseVan(current, serverRows, row.key),
+    );
+    setRefusal((current) => (current?.key === row.key ? null : current));
     requestAnimationFrame(() =>
       document
         .querySelector(`[data-plan-row="${landed}"]`)
@@ -1240,8 +1267,11 @@ export const CrewBoardPage = (): JSX.Element => {
               <BoardIcon d={PATH.warn} className="h-4 w-4" />
             </span>
           );
-        // The save refused the van this row was given (Round 24): ringed, and why on hover.
+        // The save refused the van this row was given (Round 24): ringed, and why on hover — and,
+        // when the van was given on this screen, «إزالة السيارة» takes it off in one press.
         const vanRefused = refusedOn(row, 'vehicle');
+        const releasable =
+          vanRefused !== null && canPlan && releaseVan(rows, serverRows, row.key) !== rows;
         return row.vehicleId !== null ? (
           <div
             className={cn(
@@ -1251,23 +1281,41 @@ export const CrewBoardPage = (): JSX.Element => {
             title={vanRefused ?? undefined}
             data-van-refused={vanRefused === null ? undefined : 'true'}
           >
-            <CrewVehicleHoverCode
-              className={cn(NUM, 'cursor-default text-[14px] font-black')}
-              code={row.vehicleCode ?? '…'}
-              vehicleCrew={planRowCard(row, memberOf)}
-            />
-            {/* Round 24 — a van the Fleet roster does not have that day: given here, removable. */}
-            {!row.onRoster && (
-              <span
-                role="img"
-                data-off-roster="true"
-                aria-label={t('operations.crewPlan.offRoster')}
-                title={t('operations.crewPlan.offRosterHint')}
-                className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
-              >
-                {t('operations.crewPlan.offRosterTag')}
-              </span>
-            )}
+            {/* Round 24 — a van the Fleet roster does not have that day (given here, removable):
+                its tag UNDER the code, never beside it — beside it, it widened the column past the
+                frame at 1440 and pushed the row's bin and colour out of sight. */}
+            <span className="flex flex-col items-start gap-0.5" data-van-code-stack="true">
+              <CrewVehicleHoverCode
+                className={cn(NUM, 'cursor-default text-[14px] font-black')}
+                code={row.vehicleCode ?? '…'}
+                vehicleCrew={planRowCard(row, memberOf)}
+              />
+              {!row.onRoster && (
+                <span
+                  role="img"
+                  data-off-roster="true"
+                  aria-label={t('operations.crewPlan.offRoster')}
+                  title={t('operations.crewPlan.offRosterHint')}
+                  className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
+                >
+                  {t('operations.crewPlan.offRosterTag')}
+                </span>
+              )}
+              {releasable && (
+                <button
+                  type="button"
+                  data-van-release={row.key}
+                  title={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
+                  aria-label={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
+                  onClick={() => dropVan(row)}
+                  // «بدون سيارة»'s own shape, in the refusal's colour: two short lines in the column.
+                  className="flex max-w-[3.5rem] flex-col items-center whitespace-normal rounded-md border border-dashed border-rose-400 px-1 py-0.5 text-center text-[10.5px] font-bold leading-[1.15] text-rose-700 transition hover:bg-rose-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:border-rose-500/70 dark:text-rose-300"
+                >
+                  <BoardIcon d={PLAN_ICON.noVan} className="h-3 w-3 shrink-0" />
+                  {t('operations.crewPlan.releaseVanName')}
+                </button>
+              )}
+            </span>
             {warn}
           </div>
         ) : (

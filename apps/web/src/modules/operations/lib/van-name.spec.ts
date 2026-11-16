@@ -24,7 +24,8 @@ import {
   sameDistributionDraft,
   type DistributionRowFacts,
 } from './secured-distribution';
-import { looseCrewNumbers, vanCodeText, vanPhrase } from './van-name';
+import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
+import { looseCrewNumbers, looseNumberOf, vanCodeText, vanPhrase } from './van-name';
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -218,5 +219,61 @@ describe('the day board’s van box offers «بدون سيارة»', () => {
   it('the day’s codes in number order, then «بدون سيارة» when a crew without a van rides a leg', () => {
     expect(vanSuggestions(CREWS, 'بدون سيارة')).toEqual(['249', 'بدون سيارة']);
     expect(vanSuggestions(CREWS.slice(0, 1), 'بدون سيارة')).toEqual(['249']);
+  });
+});
+
+// The critic's round: «صرف الخزينة»'s release dialog titled every crew without a van alike, and the
+// day board printed plain «بدون سيارة» on both crews' rows. The server now numbers each such crew on
+// every board row (`looseNumber` — its place on «لوحة التشغيلة», whichever crews the rows ride).
+describe('a crew without a van is numbered on every board — never two alike', () => {
+  const legCrew = (crewAssignmentId: string, looseNumber: number | null) => ({
+    crewAssignmentId,
+    vehicleId: looseNumber === null ? `v-${crewAssignmentId}` : null,
+    vehicleCode: looseNumber === null ? crewAssignmentId : null,
+    looseNumber,
+    captainEmployeeId: `cap-${crewAssignmentId}`,
+    captainName: `قائد ${crewAssignmentId}`,
+    captainCode: null,
+    captainPhone: null,
+    captainBranchId: null,
+  });
+  const numbered = (n: number): string => vanCodeText(ar, { vehicleId: null, vehicleCode: null }, String(n));
+
+  it('the release carries each load’s number, and names it by it', () => {
+    const loads = dispatchLoads([
+      { crew: legCrew('l1', 1) },
+      { crew: legCrew('l3', 3) },
+      { crew: legCrew('249', null) },
+    ] as never);
+    expect(loads.map((load) => load.looseNumber)).toEqual([1, 3, null]);
+    expect(looseNumberOf(loads[0]!, String)).toBe('1');
+    expect(looseNumberOf(loads[2]!, String)).toBeNull();
+    expect(vanCodeText(ar, loads[1]!, looseNumberOf(loads[1]!, String))).toBe('بدون سيارة (3)');
+    expect(vanPhrase(ar, loads[1]!, looseNumberOf(loads[1]!, String))).toBe('الطاقم بدون سيارة (3)');
+  });
+
+  it('the day board’s van box offers each by its number, and finds that crew’s rows alone', () => {
+    const crews = [legCrew('l2', 2), legCrew('249', null), legCrew('l1', 1), legCrew('l1', 1)];
+    expect(vanSuggestions(crews, 'بدون سيارة', numbered)).toEqual([
+      '249',
+      'بدون سيارة (1)',
+      'بدون سيارة (2)',
+    ]);
+    // Without numbers (an older answer) — one «بدون سيارة», as before.
+    expect(vanSuggestions(CREWS, 'بدون سيارة', numbered)).toEqual(['249', 'بدون سيارة']);
+    expect(matchesVehicleCode('بدون سيارة (٢)', 'بدون سيارة (٢)')).toBe(true);
+    expect(matchesVehicleCode('بدون سيارة (١)', 'بدون سيارة (٢)')).toBe(false);
+    expect(matchesVehicleCode('بدون سيارة (١)', 'بدون سيارة')).toBe(true);
+  });
+
+  it('the day board and the release dialog print the number the server gave', () => {
+    const board = read('../components/ShipmentsBoard.tsx');
+    expect(board).toContain('code={vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText))}');
+    expect(board).toContain(
+      "(row) => (row.crew === null ? '' : vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText))),",
+    );
+    const dialog = read('../components/DispatchSecuredDialog.tsx');
+    expect(dialog.match(/looseNumberOf\(load, numberText\)/g)?.length).toBe(2);
+    expect(dialog).not.toContain("t('operations.secured.dispatch.looseLoad')\n");
   });
 });

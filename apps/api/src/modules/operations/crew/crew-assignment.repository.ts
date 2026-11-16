@@ -30,6 +30,22 @@ class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAs
   }
 
   /**
+   * Round 24 — the live rows WITHOUT A VAN of these operating days, in the order they were added
+   * (the board's order, `createdAt` then id): what a crew is numbered by — «بدون سيارة (n)» — on
+   * every screen after «لوحة التشغيلة».
+   */
+  async findWithoutVanForDays(
+    operationsDayIds: readonly string[],
+  ): Promise<OperationsCrewAssignmentDoc[]> {
+    if (operationsDayIds.length === 0) return [];
+    return this.model
+      .find({ operationsDayId: { $in: operationsDayIds }, vehicleId: null, isDeleted: false })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean<OperationsCrewAssignmentDoc[]>()
+      .exec();
+  }
+
+  /**
    * One live crew row, ON A VAN — what the daily PICKUP leg (the shipment form's crew) is addressed
    * by. A row without a van answers null, exactly as a missing one does.
    *

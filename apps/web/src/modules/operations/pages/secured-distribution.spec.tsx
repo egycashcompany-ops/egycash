@@ -689,6 +689,14 @@ describe('what the screens are built from', () => {
     expect(DIST).not.toContain('useDispatchSecured');
   });
 
+  // Round 24 — «تراجع» is off while «حفظ» is in flight: the save's success starts the history
+  // afresh, so a press in that window would vanish unsaid and the move it named would be saved.
+  it('takes nothing back while the save is in flight — the button, the press and Ctrl+Z alike', () => {
+    expect(DIST).toContain('const lastMove = undoableStep(history, save.isPending);');
+    expect(DIST).toContain('disabled={lastMove === null}');
+    expect(DIST).toContain('if (!canEdit || lastMove === null || undoWords === null) return;');
+  });
+
   // Round 17 — every count of محصنات on the two screens takes its own Arabic form («محصنة واحدة ·
   // محصنتان · 4 محصنات · 11 محصنة»), through the one helper that joins a key and its form.
   it('counts the محصنات in their Arabic forms on both screens', () => {

@@ -2075,4 +2075,57 @@ describe('Round 24 — a row WITHOUT A VAN takes محصنات like a van', () =>
     expect(removed.status).toBe(409);
     expect(errorOf(removed).code).toBe(ErrorCodes.OPERATIONS_CREW_ROW_HAS_SHIPMENTS);
   });
+
+  it('numbers each crew without a van on every board as «لوحة التشغيلة» does — «بدون سيارة (n)», never two alike', async () => {
+    // The day's rows without a van, now (the first one took a van above): A, then B — B alone
+    // carries a محصنة. Its number is its place on the BOARD (2), not among the crews that carry
+    // legs (it is the only one), so «صرف الخزينة», the day board and «توزيع المحصنات» agree.
+    const capB = await mkCaptain('قائد الصف الثاني بلا سيارة');
+    const added = await crewBoard({
+      rows: [
+        { vehicleId: null, notes: 'r24-A' },
+        { vehicleId: null, captainEmployeeIds: [capB], notes: 'r24-B' },
+      ],
+    });
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+    const rows = data<OperationsCrewBoardDto>(added).vehiclelessRows;
+    expect(rows.map((row) => row.notes)).toEqual(['r24-A', 'r24-B']);
+    const crewB = rows[1]?.id as string;
+    const fourth = (await book(LOOSE_DAY, 'الهرم')).id;
+    await intoVault(fourth);
+    const placed = await save(
+      [{ shipmentId: fourth, crewAssignmentId: crewB, captainEmployeeId: capB, version: null }],
+      LOOSE_DAY,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    expect((await viewOf(LOOSE_DAY)).crews.filter((c) => c.vehicleId === null).map((c) => c.crewAssignmentId)).toEqual([
+      rows[0]?.id,
+      crewB,
+    ]);
+
+    const dispatchBoard = await request(app)
+      .get(`/api/v1/operations/secured/dispatch-board?date=${LOOSE_DAY}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(dispatchBoard.status, JSON.stringify(dispatchBoard.body)).toBe(200);
+    const onDispatch = data<OperationsSecuredDispatchBoardDto>(dispatchBoard).shipments;
+    expect(onDispatch.find((s) => s.id === fourth)?.crew).toMatchObject({
+      crewAssignmentId: crewB,
+      vehicleId: null,
+      looseNumber: 2,
+    });
+    // A crew on a van has no number — the first row's legs ride its van now.
+    expect(onDispatch.find((s) => s.id === third)?.crew).toMatchObject({
+      vehicleId: vanG,
+      looseNumber: null,
+    });
+    const dayBoard = await request(app)
+      .get(`/api/v1/operations/shipments/day-board?date=${LOOSE_DAY}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(dayBoard.status, JSON.stringify(dayBoard.body)).toBe(200);
+    expect(
+      data<{ shipments: { id: string; crew: { looseNumber: number | null } | null }[] }>(
+        dayBoard,
+      ).shipments.find((s) => s.id === fourth)?.crew?.looseNumber,
+    ).toBe(2);
+  });
 });

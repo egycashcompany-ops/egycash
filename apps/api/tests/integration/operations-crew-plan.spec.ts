@@ -1911,6 +1911,62 @@ describe('Round 24 — «بدون سيارة» offers every car without a crew, 
     expect(vanRow(freed, van4)).toBeUndefined();
   });
 
+  it('refuses a NEW row given a van off the roster that another desk crewed since — that desk’s row is never overwritten', async () => {
+    // Two desks on one day. Desk A reads the board: OPS-P10 has no crew and «بدون سيارة» offers it.
+    const TWO_DESKS = shift(102);
+    expect((await board(TWO_DESKS)).freeVehicles.map((car) => car.vehicleId)).toContain(otherCar);
+    // Desk B crews OPS-P10 first — a new row, by the van alone.
+    const byB = await saved(
+      { rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap1], notes: 'desk B' }] },
+      TWO_DESKS,
+    );
+    const rowB = vanRow(byB, otherCar)?.crew?.id as string;
+    expect(rowB).toBeDefined();
+    // Desk A, still on its read, saves its new row with OPS-P10: no row id, it knows of none. Off
+    // the roster that is a NEW row, never «the van's row» — refused, naming the row that holds it.
+    const byA = await save(
+      { rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap2], notes: 'desk A' }] },
+      TWO_DESKS,
+    );
+    expect(byA.status, JSON.stringify(byA.body)).toBe(409);
+    expect(errorOf(byA)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_VEHICLE_TAKEN,
+      details: [
+        { field: 'vehicleId', code: 'TAKEN', message: otherCar },
+        { field: 'crewAssignmentId', code: 'CREW_ROW', message: rowB },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    // B's row is exactly as B saved it — the same id, B's captain, B's note.
+    const after = await board(TWO_DESKS);
+    expect(vanRow(after, otherCar)?.crew).toMatchObject({
+      id: rowB,
+      captainEmployeeIds: [cap1],
+      notes: 'desk B',
+    });
+    expect(after.rows).toHaveLength(1);
+    // B's own edits name the row (the board always names a saved row) and go through…
+    const edited = await saved(
+      {
+        rows: [
+          { vehicleId: otherCar, crewAssignmentId: rowB, captainEmployeeIds: [cap1], notes: 'B2' },
+        ],
+      },
+      TWO_DESKS,
+    );
+    expect(vanRow(edited, otherCar)?.crew).toMatchObject({ id: rowB, notes: 'B2' });
+    // …and a new row takes the van once B's row is removed in the same save (off the roster, it may be).
+    const moved = await saved(
+      {
+        rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap2], notes: 'desk A' }],
+        removeCrewAssignmentIds: [rowB],
+      },
+      TWO_DESKS,
+    );
+    expect(vanRow(moved, otherCar)?.crew).toMatchObject({ captainEmployeeIds: [cap2] });
+    expect(vanRow(moved, otherCar)?.crew?.id).not.toBe(rowB);
+  });
+
   it('counts a row GIVEN a van as new seats — the round-23 slot rule judges its people again', async () => {
     // A specialist held in the captain's slot of a row without a van (seated before the rule).
     const created = await saved({ rows: [{ vehicleId: null, notes: 'r24-held' }] }, BARE);

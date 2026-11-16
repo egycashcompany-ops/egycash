@@ -117,11 +117,11 @@ import {
   type DistributionDraft,
 } from '../lib/secured-distribution';
 import {
-  lastStep,
   rebaseHistory,
   record,
   startHistory,
   undo,
+  undoableStep,
   type UndoHistory,
   type UndoWhat,
 } from '../lib/crew-undo';
@@ -298,7 +298,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
   };
 
   // ── «تراجع» — one operation a press (Round 24) ───────────────────────────────────────────────
-  const lastMove = lastStep(history);
+  // Nothing while «حفظ» is in flight: its success starts the history afresh (`undoableStep`).
+  const lastMove = undoableStep(history, save.isPending);
   const undoWords =
     lastMove === null
       ? null

@@ -105,7 +105,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_VEHICLE_TAKEN:
       'The vehicle given to the marked row already has another crew on this day — choose another.',
     OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
-      'A deleted row carries secured shipments — take them off it on «Secured distribution», or give the row a vehicle instead.',
+      'A deleted row carries secured shipments. While they are in the vault, take them off it on «Secured distribution» first; once they have left the vault the row stays — it can be emptied, or given a vehicle.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -178,7 +178,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_VEHICLE_TAKEN:
       'السيارة المعطاة للصف المُعلَّم عليها طاقم آخر في هذا اليوم — اختر سيارة أخرى.',
     OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
-      'على صف محذوف محصنات — أزِلها عنه في «توزيع المحصنات»، أو أعطِ الصف سيارة بدلًا من حذفه.',
+      'على صف محذوف محصنات. ما دامت في الخزينة فأزِلها عنه في «توزيع المحصنات» أولًا؛ وإن كانت قد خرجت من الخزينة فيبقى الصف، ويمكن تفريغه أو إعطاؤه سيارة.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

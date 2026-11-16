@@ -3,22 +3,29 @@
 // What the «بدون سيارة» cell offers (`vehicleChoices` — the server's `freeVehicles` through the
 // draft), what a pick does to the draft (`giveVehicle`), and the body the save then sends — a body
 // `PlanOperationsCrewSchema` itself takes, in each of the shapes the contract names.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   PlanOperationsCrewSchema,
   type OperationsCrewBoardDto,
   type OperationsCrewBoardFreeVehicleDto,
 } from '@ecms/contracts';
+import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import {
   discardRow,
   isRemovableRow,
   looseRowNumber,
+  placeMember,
   planChanges,
   planRefusal,
+  patchRow,
   rebaseDraft,
+  releaseVan,
   restoreRemovedRow,
+  rowPeople,
   takeVehicle,
   toPlan,
   toPlanRows,
@@ -127,6 +134,18 @@ describe('the board reads which vans the roster has (`onRoster`)', () => {
     expect(next.map((row) => row.key)).not.toContain(`van:${id(7)}`);
     expect(planChanges(next, ORIGINAL).removedCrewIds).toEqual([id(17)]);
     expect(planChanges(discardRow(ORIGINAL, `van:${id(1)}`), ORIGINAL).removedCrewIds).toEqual([]);
+  });
+
+  it('its «إضافية» tag sits UNDER the code, never beside it — the column keeps its width at 1440', () => {
+    // Beside the code (and the «short of» mark) it widened the van column from 65px to 95px at
+    // 1440: the table ran 31px past its frame, the row's bin and colour out of sight.
+    const page = readFileSync(
+      fileURLToPath(new URL('../pages/CrewBoardPage.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(page).toMatch(
+      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\}\s*\{releasable && \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\)\}\s*<\/span>\s*\{warn\}/,
+    );
   });
 });
 
@@ -312,5 +331,159 @@ describe('the save refuses the van, or the removal (Round 24)', () => {
     expect(looseRowNumber(back, LOOSE)).toBe(looseKeys.indexOf(LOOSE) + 1);
     expect(looseRowNumber(back, LOOSE)).toBeGreaterThan(0);
     expect(errorMessage(failure, 'ar')).toContain('توزيع المحصنات');
+  });
+
+  it('a row whose محصنات have left the vault: the refusal says it stays, and what can be done with it', () => {
+    // The server counts every live leg — handed over, delivered — and «توزيع المحصنات» moves none
+    // that has left the vault: «take them off» alone is advice nobody could follow for such a row.
+    const failure = new ApiError('OPERATIONS_CREW_ROW_HAS_SHIPMENTS', 'held', 409, []);
+    const board = (locale: 'ar' | 'en') =>
+      translate(locale, 'operations.crewPlan.refused.remove', { count: '3' });
+    for (const said of [errorMessage(failure, 'ar'), board('ar')]) {
+      expect(said).toContain('توزيع المحصنات');
+      expect(said).toContain('في الخزينة');
+      expect(said).toContain('خرجت من الخزينة');
+      expect(said).toContain('يبقى الصف');
+    }
+    for (const said of [errorMessage(failure, 'en'), board('en')]) {
+      expect(said).toContain('Secured distribution');
+      expect(said).toContain('in the vault');
+      expect(said).toContain('left the vault');
+      expect(said).toContain('the row stays');
+    }
+    expect(board('ar')).toContain('3');
+  });
+  it('a deleted row put back leaves its people where the draft has seated them since — one row each (Q11)', () => {
+    // The saved row without a van (id 21) holds captain 62 and specialist 63. Deleted, both go back
+    // to the pools; the planner then drops 62 on van 250 and presses «حفظ», which refuses the
+    // deletion (the row holds محصنات).
+    const deleted = discardRow(ORIGINAL, LOOSE);
+    const moved = placeMember(deleted, `van:${id(2)}`, 'captain', id(62));
+    const back = restoreRemovedRow(moved, ORIGINAL, id(21));
+    // Back in its place — without 62, who stays on 250 where the planner put him; 63, still in the
+    // pool, is back on it.
+    expect(back.map((row) => row.key)).toEqual(ORIGINAL.map((row) => row.key));
+    expect(back.find((row) => row.key === LOOSE)?.slots).toEqual({
+      captain: [],
+      specialist1: [id(63)],
+      specialist2: [],
+    });
+    expect(back.find((row) => row.key === `van:${id(2)}`)?.slots.captain).toEqual([id(62)]);
+    // Nobody on two rows: the next «حفظ» sends 250 with 62 AND the row put back without him, so
+    // the server's Q11 never finds him on a row the save left untouched.
+    const seats = back.flatMap(rowPeople);
+    expect(new Set(seats).size).toBe(seats.length);
+    const body = toPlan('2026-11-17', planChanges(back, ORIGINAL));
+    expect(PlanOperationsCrewSchema.safeParse(body).success).toBe(true);
+    expect(body.removeCrewAssignmentIds).toBeUndefined();
+    expect(body.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ vehicleId: id(2), captainEmployeeIds: [id(62)] }),
+        expect.objectContaining({
+          vehicleId: null,
+          crewAssignmentId: id(21),
+          captainEmployeeIds: [],
+          specialist1EmployeeIds: [id(63)],
+        }),
+      ]),
+    );
+  });
+});
+
+describe('a van the save refused, taken off its row (`releaseVan`, Round 24)', () => {
+  // «تراجع» takes back only the LAST operation: once the planner did anything after giving the van,
+  // it no longer reaches the van. The refused row's cell takes the van off instead, in one press.
+  const pick = (rows: readonly PlanRow[], key: string, code: string) => {
+    const choice = vehicleChoices(rows, ORIGINAL, BOARD.freeVehicles, key, new Set([id(5)])).find(
+      (one) => one.vehicleCode === code,
+    );
+    expect(choice, code).toBeDefined();
+    return giveVehicle(rows, key, choice!);
+  };
+
+  it('a row that took a car where it stands: the same row, in place, without the car — whatever came after', () => {
+    const given = pick(ORIGINAL, LOOSE, 'P9');
+    const later = patchRow(given, LOOSE, { notes: 'بعد السيارة' });
+    const released = releaseVan(later, ORIGINAL, LOOSE);
+    expect(released.map((row) => row.key)).toEqual(ORIGINAL.map((row) => row.key));
+    expect(released.find((row) => row.key === LOOSE)).toMatchObject({
+      vehicleId: null,
+      vehicleCode: null,
+      onRoster: false,
+      drivers: [],
+      crewId: id(21),
+      notes: 'بعد السيارة',
+      slots: { captain: [id(62)], specialist1: [id(63)], specialist2: [] },
+    });
+    // Its cell offers the car again; the save sends only what came after (the notes), van-less.
+    expect(
+      choicesFor(released, LOOSE).map((choice) => choice.vehicleCode),
+    ).toContain('P9');
+    const body = toPlan('2026-11-17', planChanges(released, ORIGINAL));
+    expect(body.rows).toEqual([
+      expect.objectContaining({ vehicleId: null, crewAssignmentId: id(21), notes: 'بعد السيارة' }),
+    ]);
+    // A row added here keeps its people too.
+    const added = placeMember([...ORIGINAL, vehiclelessRow(1)], 'new:1', 'captain', id(64));
+    const back = releaseVan(pick(added, 'new:1', 'P10'), ORIGINAL, 'new:1');
+    expect(back.find((row) => row.key === 'new:1')).toMatchObject({
+      vehicleId: null,
+      slots: { captain: [id(64)], specialist1: [], specialist2: [] },
+    });
+  });
+
+  it('a saved row merged into a roster van: back as its own row in its place, the van’s row blank again', () => {
+    const merged = pick(ORIGINAL, LOOSE, '250');
+    expect(merged.map((row) => row.key)).not.toContain(LOOSE);
+    const later = patchRow(merged, `van:${id(2)}`, { plannedTime: '07:30' });
+    const released = releaseVan(later, ORIGINAL, `van:${id(2)}`);
+    expect(released.map((row) => row.key)).toEqual(ORIGINAL.map((row) => row.key));
+    expect(released.find((row) => row.key === `van:${id(2)}`)).toEqual(
+      ORIGINAL.find((row) => row.key === `van:${id(2)}`),
+    );
+    expect(released.find((row) => row.key === LOOSE)).toMatchObject({
+      vehicleId: null,
+      crewId: id(21),
+      plannedTime: '07:30',
+      slots: { captain: [id(62)], specialist1: [id(63)], specialist2: [] },
+    });
+    expect(planChanges(released, ORIGINAL).changed.map((row) => row.key)).toEqual([LOOSE]);
+  });
+
+  it('nothing to take off — a van the row held at the read, or a row added here merged into a roster van', () => {
+    expect(releaseVan(ORIGINAL, ORIGINAL, `van:${id(1)}`)).toBe(ORIGINAL);
+    expect(releaseVan(ORIGINAL, ORIGINAL, `van:${id(7)}`)).toBe(ORIGINAL);
+    expect(releaseVan(ORIGINAL, ORIGINAL, LOOSE)).toBe(ORIGINAL);
+    const added = placeMember([...ORIGINAL, vehiclelessRow(1)], 'new:1', 'captain', id(64));
+    const merged = pick(added, 'new:1', '250');
+    expect(releaseVan(merged, ORIGINAL, `van:${id(2)}`)).toBe(merged);
+  });
+
+  it('the refusal says what works — the cell’s button, never «تراجع», which may take back something else', () => {
+    for (const reason of ['notActive', 'inWorkshop', 'taken']) {
+      for (const locale of ['ar', 'en'] as const) {
+        const said = translate(locale, `operations.crewPlan.refused.vehicle.${reason}`, {
+          code: 'P9',
+        });
+        expect(said, `${locale} ${reason}`).toContain('P9');
+        expect(said, `${locale} ${reason}`).not.toMatch(/تراجع|undo/i);
+      }
+      expect(
+        translate('ar', `operations.crewPlan.refused.vehicle.${reason}`, { code: 'P9' }),
+      ).toContain(translate('ar', 'operations.crewPlan.releaseVanName'));
+    }
+    const page = readFileSync(
+      fileURLToPath(new URL('../pages/CrewBoardPage.tsx', import.meta.url)),
+      'utf8',
+    );
+    // The button: on the refused row's van cell, one operation «تراجع» can take back.
+    expect(page).toContain('data-van-release={row.key}');
+    expect(page).toContain("{ kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } },");
+    expect(page).toContain('(current) => releaseVan(current, serverRows, row.key),');
+    // Shown only on a refused row whose van was given here, for someone who may plan.
+    expect(page).toContain(
+      'vanRefused !== null && canPlan && releaseVan(rows, serverRows, row.key) !== rows;',
+    );
+    expect(page).toMatch(/\{releasable && \(\s*<button[\s\S]*?onClick=\{\(\) => dropVan\(row\)\}/);
   });
 });

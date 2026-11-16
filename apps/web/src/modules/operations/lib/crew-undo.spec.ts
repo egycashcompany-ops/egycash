@@ -19,6 +19,7 @@ import {
   sealHistory,
   startHistory,
   undo,
+  undoableStep,
   type CrewDraft,
   type UndoHistory,
 } from './crew-undo';
@@ -135,6 +136,16 @@ describe('the history — one press, one operation', () => {
     history = sealHistory(op(history, 'time', at('08:00'), merge));
     expect(history.past).toHaveLength(2);
     expect(undo(history).now.rows[0]?.plannedTime).toBe('07:30');
+  });
+
+  it('takes nothing back while a save is in flight — the read-back would drop the press unsaid', () => {
+    // The save's read-back starts the history afresh from what was SENT; a step taken back in that
+    // window would vanish and the operation it named would be saved anyway.
+    const history = record(startHistory(0), 1, { kind: 'place' }, numbers);
+    expect(undoableStep(history, false)).toBe(lastStep(history));
+    expect(undoableStep(history, false)?.what.kind).toBe('place');
+    expect(undoableStep(history, true)).toBeNull();
+    expect(undoableStep(startHistory(0), false)).toBeNull();
   });
 
   it('keeps the last UNDO_LIMIT operations', () => {
@@ -278,6 +289,13 @@ describe('the page — the owner’s «تراجع»', () => {
     // No «discard everything» left: the draft is never put back to the server's answer by a press.
     expect(page).not.toContain('setRows(serverRows)');
     expect(page).toContain('setHistory(undo);');
+  });
+
+  it('while «حفظ» is in flight the button is off and Ctrl+Z takes nothing back', () => {
+    // One source for both: the button's `disabled`, the press and Ctrl+Z all read `lastOperation`.
+    expect(page).toContain('const lastOperation = undoableStep(history, plan.isPending);');
+    expect(page).toContain('if (!canPlan || lastOperation === null || undoWords === null) return;');
+    expect(page).toContain('undoRef.current();');
   });
 
   it('Ctrl+Z / ⌘Z does the same outside a text box', () => {

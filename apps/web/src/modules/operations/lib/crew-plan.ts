@@ -1094,6 +1094,12 @@ export const looseRowNumber = (rows: readonly PlanRow[], key: string): number | 
  * was, as the server last listed it, so the rest of the save can go and the planner sees which row
  * it was. Before the first row of the answer after it that is still on screen; at the end else.
  * Already on screen (or not in the answer) → the rows as they were.
+ *
+ * WITHOUT the people the draft has seated elsewhere since: deleting the row freed them, and moving
+ * one onto another row before «حفظ» is the ordinary flow. Put back with him, he would sit on two
+ * rows (Q11) — and the next save, sending only the row that took him, would be refused for a clash
+ * on a row it never touched. He stays where the planner put him; the row comes back without him
+ * (so it, too, is sent — emptied of him, which the server allows for a row holding محصنات).
  */
 export const restoreRemovedRow = (
   rows: readonly PlanRow[],
@@ -1101,12 +1107,94 @@ export const restoreRemovedRow = (
   crewId: string,
 ): readonly PlanRow[] => {
   const at = original.findIndex((row) => row.crewId === crewId);
-  const row = original[at];
-  if (row === undefined || rows.some((one) => one.key === row.key || one.crewId === crewId)) {
+  const saved = original[at];
+  if (saved === undefined || rows.some((one) => one.key === saved.key || one.crewId === crewId)) {
     return rows;
   }
+  const seatedNow = new Set(rows.flatMap(rowPeople));
+  const row = rowPeople(saved)
+    .filter((employeeId) => seatedNow.has(employeeId))
+    .reduce(without, saved);
+  return insertInPlace(rows, original, row);
+};
+
+/**
+ * A row of the server's answer that is not on screen, put back where the answer had it: before the
+ * first row after it in the answer that is still on screen; at the end else.
+ */
+const insertInPlace = (
+  rows: readonly PlanRow[],
+  original: readonly PlanRow[],
+  row: PlanRow,
+): readonly PlanRow[] => {
+  const at = original.findIndex((one) => one.key === row.key);
   const onScreen = new Set(rows.map((one) => one.key));
   const next = original.slice(at + 1).find((one) => onScreen.has(one.key));
   const index = next === undefined ? rows.length : rows.findIndex((one) => one.key === next.key);
   return [...rows.slice(0, index), row, ...rows.slice(index)];
 };
+
+/**
+ * Round 24 — a van GIVEN on this screen taken off its row again: the row back to «بدون سيارة» with
+ * everything else it holds now, so another car can be picked from its cell. For the van a save
+ * refused (out of service, in the workshop, another desk's since the read): «تراجع» takes back only
+ * the LAST operation, which is no longer the van once the planner did anything after giving it.
+ *
+ *   · a row that took a car where it stands (`takeVehicle` — its key is not the van's): the same
+ *     row, in place, without the car;
+ *   · a SAVED row without a van merged into a blank roster van (`attachVan`, «X takes V»): X back as
+ *     its own row, where the answer had it, with what the van's row holds now — and the van's row
+ *     blank again, with the facts the answer gave it.
+ *
+ * Anything else — a van the row already held at the read, or a row added here and merged into a
+ * roster van (saved by the van alone, never refused for it) — the rows as they were, the same array.
+ */
+export const releaseVan = (
+  rows: readonly PlanRow[],
+  original: readonly PlanRow[],
+  key: string,
+): readonly PlanRow[] => {
+  const row = rows.find((candidate) => candidate.key === key);
+  if (row === undefined || row.vehicleId === null) return rows;
+  const vanKey = `van:${row.vehicleId}`;
+  if (row.key !== vanKey) {
+    return rows.map((candidate) =>
+      candidate.key === key
+        ? { ...candidate, vehicleId: null, vehicleCode: null, onRoster: false, drivers: [] }
+        : candidate,
+    );
+  }
+  const looseKey = row.crewId === null ? null : `loose:${row.crewId}`;
+  const van = original.find((candidate) => candidate.key === vanKey);
+  const loose = original.find((candidate) => candidate.key === looseKey);
+  if (van === undefined || loose === undefined || rows.some((one) => one.key === looseKey)) {
+    return rows;
+  }
+  const content = crewContent(row);
+  const emptied = rows.map((candidate) =>
+    candidate.key === vanKey ? { ...van, ...crewContent(null) } : candidate,
+  );
+  return insertInPlace(emptied, original, { ...loose, ...content });
+};
+
+/** A row's crew and own fields — what moves with the crew when its van changes. */
+const crewContent = (
+  row: PlanRow | null,
+): Pick<PlanRow, 'slots' | 'direction' | 'plannedTime' | 'shiftTypeId' | 'rowColour' | 'notes'> =>
+  row === null
+    ? {
+        slots: { captain: [], specialist1: [], specialist2: [] },
+        direction: null,
+        plannedTime: null,
+        shiftTypeId: null,
+        rowColour: null,
+        notes: null,
+      }
+    : {
+        slots: row.slots,
+        direction: row.direction,
+        plannedTime: row.plannedTime,
+        shiftTypeId: row.shiftTypeId,
+        rowColour: row.rowColour,
+        notes: row.notes,
+      };

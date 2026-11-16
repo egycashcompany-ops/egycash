@@ -102,6 +102,15 @@ export const mergeKeyOf = (kind: string, rowKey: string): string | undefined =>
 export const lastStep = <S>(history: UndoHistory<S>): UndoStep<S> | null =>
   history.past[history.past.length - 1] ?? null;
 
+/**
+ * What «تراجع» (and Ctrl+Z) would take back NOW: the last operation — or null with nothing to take
+ * back, and null WHILE A SAVE IS IN FLIGHT. The save's read-back starts the history afresh from what
+ * was sent, so a step taken back in that window would vanish unsaid and the operation it named would
+ * be saved anyway; the button is off until the save settles, as «حفظ» is.
+ */
+export const undoableStep = <S>(history: UndoHistory<S>, saving: boolean): UndoStep<S> | null =>
+  saving ? null : lastStep(history);
+
 /** One press of «تراجع»: the last operation taken back. Nothing to take back → as it was. */
 export const undo = <S>(history: UndoHistory<S>): UndoHistory<S> => {
   const last = lastStep(history);

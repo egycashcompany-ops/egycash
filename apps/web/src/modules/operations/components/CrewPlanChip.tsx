@@ -207,7 +207,8 @@ export const CrewPlanChip = ({
         dragging && 'opacity-30',
         selected &&
           'ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-amber-300 dark:ring-offset-[#0b1226]',
-        refused && 'ring-4 ring-rose-500/50',
+        // Solid (Round 24b): a half-clear rose ring vanished on a row drawn in rose.
+        refused && 'ring-4 ring-rose-600 dark:ring-rose-400',
       )}
     >
       <button

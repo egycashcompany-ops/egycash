@@ -45,6 +45,8 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { fold } from '../../../shared/lib/fold';
+import { formatNumber } from '../../../shared/lib/format';
+import { useAppSelector } from '../../../store';
 import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect';
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
 import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
@@ -779,36 +781,15 @@ export const RowColourPicker = ({
     anchor.current?.querySelector('button')?.focus({ preventScroll: true });
     if (next !== value) onChange(next);
   };
-  const colourName = (colour: CrewRowColour): string =>
-    t(`operations.catalogs.shiftType.colours.${colour}`);
   const shown = value ?? typeColour;
   const name =
     value !== null
-      ? colourName(value)
+      ? t(`operations.catalogs.shiftType.colours.${value}`)
       : typeColour !== null
-        ? t('operations.crewPlan.colour.autoOf', { colour: colourName(typeColour) })
+        ? t('operations.crewPlan.colour.autoOf', {
+            colour: t(`operations.catalogs.shiftType.colours.${typeColour}`),
+          })
         : t('operations.crewPlan.colour.none');
-  const swatchWords = ({ colour, outside }: RowColourChoice): string => {
-    if (outside) return t('operations.crewPlan.colour.outside', { colour: colourName(colour) });
-    const types = wornBy(colour);
-    return types.length === 0
-      ? t('operations.crewPlan.colour.unworn', { colour: colourName(colour) })
-      : t('operations.crewPlan.colour.wornBy', { colour: colourName(colour), types: types.join('، ') });
-  };
-  const palette = choices.filter((choice) => !choice.outside).length;
-  /** The swatches' grid: ←/→ along a line in the reading direction, ↑/↓ a line, Home / End. */
-  const walkGrid = (event: KeyboardEvent<HTMLElement>): void => {
-    const buttons = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-colour]'),
-    );
-    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    if (at < 0) return;
-    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
-    const next = gridStep(event.key, at, buttons.length, COLOUR_COLUMNS, rtl);
-    if (next === null) return;
-    event.preventDefault();
-    buttons[next]?.focus();
-  };
   return (
     <div ref={anchor} className="inline-block" data-colour-picker={rowKey}>
       <button
@@ -827,6 +808,7 @@ export const RowColourPicker = ({
         ) : (
           <span
             aria-hidden
+            data-colour-shown={shown}
             className={cn(
               'h-4 w-4 rounded-full',
               SHIFT_TYPE_TONE[shown].dot,
@@ -848,74 +830,13 @@ export const RowColourPicker = ({
         data-colour-panel={rowKey}
         className="p-2.5"
       >
-        <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
-          {t('operations.crewPlan.colour.palette', { count: palette })}
-        </p>
-        {choices.length === 0 ? (
-          <p className="mb-1 text-[12px] font-bold text-slate-500 dark:text-slate-400">
-            {t('operations.crewPlan.colour.empty')}
-          </p>
-        ) : (
-          <div className="grid grid-cols-6 gap-1.5" onKeyDown={walkGrid}>
-            {choices.map((choice) => {
-              const { colour, outside } = choice;
-              const on = colour === value;
-              const automatic = value === null && colour === typeColour;
-              return (
-                <button
-                  key={`${colour}${outside ? ':outside' : ''}`}
-                  type="button"
-                  data-colour={colour}
-                  data-colour-outside={outside ? 'true' : undefined}
-                  data-colour-type={automatic ? 'true' : undefined}
-                  aria-pressed={on}
-                  aria-label={swatchWords(choice)}
-                  title={swatchWords(choice)}
-                  onClick={() => pick(colour)}
-                  className={cn(
-                    'h-7 w-7 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111827]',
-                    SHIFT_TYPE_TONE[colour].dot,
-                    on &&
-                      'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-[#111827]',
-                    // The type's own colour while nobody picked one here — dashed, as on the button.
-                    automatic &&
-                      'outline-dashed outline-2 outline-offset-2 outline-slate-500 dark:outline-slate-300',
-                    outside && 'border-2 border-dashed border-white dark:border-slate-900',
-                  )}
-                />
-              );
-            })}
-          </div>
-        )}
-        <button
-          type="button"
-          data-colour="type"
-          aria-pressed={value === null}
-          title={t('operations.crewPlan.colour.autoHint')}
-          onClick={() => pick(null)}
-          className={cn(
-            OPTION,
-            'mt-2 justify-center border border-dashed border-slate-300 text-[12.5px] text-slate-600 dark:border-slate-600 dark:text-slate-300',
-            value === null && 'border-solid border-brand-400 bg-brand-500/10',
-          )}
-        >
-          {typeColour === null ? (
-            <span
-              aria-hidden
-              className="h-3 w-3 shrink-0 rounded-full border border-dashed border-slate-400"
-            />
-          ) : (
-            <ShiftTypeDot colour={typeColour} size="sm" />
-          )}
-          <span className="min-w-0 truncate">
-            {t('operations.crewPlan.colour.auto')}
-            {typeColour === null && (
-              <span className="ms-1 font-semibold text-slate-400 dark:text-slate-500">
-                ({t('operations.crewPlan.colour.noType')})
-              </span>
-            )}
-          </span>
-        </button>
+        <RowColourSwatches
+          value={value}
+          typeColour={typeColour}
+          choices={choices}
+          wornBy={wornBy}
+          onPick={pick}
+        />
       </FloatingPanel>
     </div>
   );
@@ -923,6 +844,126 @@ export const RowColourPicker = ({
 
 /** The swatches a line of the «اللون» list holds. */
 const COLOUR_COLUMNS = 6;
+
+/**
+ * The «اللون» list itself: the palette shown (each swatch naming the types that wear it), the row's
+ * own colour after it when outside it, and «لون النوع». Pressed: the colour picked on the row; dashed:
+ * the type's, while nothing is picked.
+ */
+export const RowColourSwatches = ({
+  value,
+  typeColour,
+  choices,
+  wornBy,
+  onPick,
+}: {
+  value: CrewRowColour | null;
+  typeColour: CrewRowColour | null;
+  choices: readonly RowColourChoice[];
+  wornBy: (colour: CrewRowColour) => readonly string[];
+  onPick: (next: CrewRowColour | null) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const colourName = (colour: CrewRowColour): string =>
+    t(`operations.catalogs.shiftType.colours.${colour}`);
+  const swatchWords = ({ colour, outside }: RowColourChoice): string => {
+    if (outside) return t('operations.crewPlan.colour.outside', { colour: colourName(colour) });
+    const types = wornBy(colour);
+    return types.length === 0
+      ? t('operations.crewPlan.colour.unworn', { colour: colourName(colour) })
+      : t('operations.crewPlan.colour.wornBy', {
+          colour: colourName(colour),
+          types: types.join('، '),
+        });
+  };
+  const palette = choices.filter((choice) => !choice.outside).length;
+  /** The swatches' grid: ←/→ along a line in the reading direction, ↑/↓ a line, Home / End. */
+  const walkGrid = (event: KeyboardEvent<HTMLElement>): void => {
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-colour]'),
+    );
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+    const next = gridStep(event.key, at, buttons.length, COLOUR_COLUMNS, rtl);
+    if (next === null) return;
+    event.preventDefault();
+    buttons[next]?.focus();
+  };
+  return (
+    <>
+      <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
+        {t('operations.crewPlan.colour.palette', { count: formatNumber(palette, locale) })}
+      </p>
+      {choices.length === 0 ? (
+        <p className="mb-1 text-[12px] font-bold text-slate-500 dark:text-slate-400">
+          {t('operations.crewPlan.colour.empty')}
+        </p>
+      ) : (
+        <div className="grid grid-cols-6 gap-1.5" data-colour-grid="true" onKeyDown={walkGrid}>
+          {choices.map((choice) => {
+            const { colour, outside } = choice;
+            const on = colour === value;
+            const automatic = value === null && colour === typeColour;
+            return (
+              <button
+                key={`${colour}${outside ? ':outside' : ''}`}
+                type="button"
+                data-colour={colour}
+                data-colour-outside={outside ? 'true' : undefined}
+                data-colour-type={automatic ? 'true' : undefined}
+                aria-pressed={on}
+                aria-label={swatchWords(choice)}
+                title={swatchWords(choice)}
+                onClick={() => onPick(colour)}
+                className={cn(
+                  'h-7 w-7 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111827]',
+                  SHIFT_TYPE_TONE[colour].dot,
+                  on &&
+                    'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-[#111827]',
+                  // The type's own colour while nobody picked one here — dashed, as on the button.
+                  automatic &&
+                    'outline-dashed outline-2 outline-offset-2 outline-slate-500 dark:outline-slate-300',
+                  outside && 'border-2 border-dashed border-white dark:border-slate-900',
+                )}
+              />
+            );
+          })}
+        </div>
+      )}
+      <button
+        type="button"
+        data-colour="type"
+        aria-pressed={value === null}
+        title={t('operations.crewPlan.colour.autoHint')}
+        onClick={() => onPick(null)}
+        className={cn(
+          OPTION,
+          'mt-2 justify-center border border-dashed border-slate-300 text-[12.5px] text-slate-600 dark:border-slate-600 dark:text-slate-300',
+          value === null && 'border-solid border-brand-400 bg-brand-500/10',
+        )}
+      >
+        {typeColour === null ? (
+          <span
+            aria-hidden
+            className="h-3 w-3 shrink-0 rounded-full border border-dashed border-slate-400"
+          />
+        ) : (
+          <ShiftTypeDot colour={typeColour} size="sm" />
+        )}
+        <span className="min-w-0 truncate">
+          {t('operations.crewPlan.colour.auto')}
+          {typeColour === null && (
+            <span className="ms-1 font-semibold text-slate-400 dark:text-slate-500">
+              ({t('operations.crewPlan.colour.noType')})
+            </span>
+          )}
+        </span>
+      </button>
+    </>
+  );
+};
 
 // ── A vehicle-less row's van ─────────────────────────────────────────────────────────────────────
 

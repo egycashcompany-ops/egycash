@@ -11499,7 +11499,7 @@ const en: Record<string, string> = {
     'The row takes its type’s colour by itself; a colour picked here overrides it',
   'operations.crewPlan.colour.noType': 'the row has no type',
   'operations.crewPlan.colour.palette': 'The types’ colours ({{count}})',
-  'operations.crewPlan.colour.wornBy': '{{colour}} — {{types}}',
+  'operations.crewPlan.colour.wornBy': '{{colour}} — worn by {{types}}',
   'operations.crewPlan.colour.unworn': '{{colour}} — no type wears it',
   'operations.crewPlan.colour.outside': '{{colour}} — not among the palette shown now',
   'operations.crewPlan.colour.empty': 'No active shift types — no colours to offer',
@@ -11508,7 +11508,7 @@ const en: Record<string, string> = {
   'operations.crewPlan.typeColours.subtitle':
     'A colour for each type, from the palette ({{count}}) — two types may share one',
   'operations.crewPlan.typeColours.type': 'Type',
-  'operations.crewPlan.typeColours.pick': '{{type}}: {{colour}}',
+  'operations.crewPlan.typeColours.pick': '{{type}} in {{colour}}',
   'operations.crewPlan.typeColours.readOnly':
     'View only — the colours are changed by whoever keeps the reference data',
   'operations.crewPlan.typeColours.overflow':
@@ -25664,7 +25664,7 @@ const ar: Record<string, string> = {
     'يأخذ الصف لون نوعه تلقائيًا، واللون المختار هنا يحل محله',
   'operations.crewPlan.colour.noType': 'لا نوع للصف',
   'operations.crewPlan.colour.palette': 'ألوان الأنواع ({{count}})',
-  'operations.crewPlan.colour.wornBy': '{{colour}} — {{types}}',
+  'operations.crewPlan.colour.wornBy': '{{colour}} — يحمله: {{types}}',
   'operations.crewPlan.colour.unworn': '{{colour}} — لا يحمله أي نوع',
   'operations.crewPlan.colour.outside': '{{colour}} — ليس من ألوان اللوحة المعروضة الآن',
   'operations.crewPlan.colour.empty': 'لا توجد أنواع تشغيل نشطة، فلا ألوان لعرضها',
@@ -25673,7 +25673,7 @@ const ar: Record<string, string> = {
   'operations.crewPlan.typeColours.subtitle':
     'لكل نوع لون من ألوان اللوحة ({{count}})، ويجوز أن يشترك نوعان في لون واحد',
   'operations.crewPlan.typeColours.type': 'النوع',
-  'operations.crewPlan.typeColours.pick': '{{type}}: {{colour}}',
+  'operations.crewPlan.typeColours.pick': '{{type}} باللون {{colour}}',
   'operations.crewPlan.typeColours.readOnly':
     'للعرض فقط — تُغيَّر الألوان بصلاحية إدارة البيانات المرجعية',
   'operations.crewPlan.typeColours.overflow':

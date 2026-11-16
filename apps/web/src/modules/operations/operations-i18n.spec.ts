@@ -24,7 +24,7 @@ import { translate } from '../../platform/localization/i18n';
 import { PLURAL_FORMS, pluralKey } from '../../shared/lib/plural';
 import { OPERATIONS_CATALOG_KINDS } from './pages/CatalogsPage';
 import { CREW_SLOTS } from './lib/crew-board';
-import { CREW_ROW_COLOURS, PLAN_FLAGS, PLAN_POOLS } from './lib/crew-plan';
+import { PLAN_FLAGS, PLAN_POOLS } from './lib/crew-plan';
 import { REQUIREMENT_FLAGS } from './lib/requirements';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -794,7 +794,43 @@ const CREW_PLAN_KEYS = [
     (key) => `operations.crewPlan.type.${key}`,
   ),
   ...['type', 'direction'].map((key) => `operations.crewPlan.refused.${key}`),
-  ...[...CREW_ROW_COLOURS, 'open', 'none'].map((key) => `operations.crewPlan.colour.${key}`),
+  // Round 24b — the row's colour is the types' palette (named by `SHIFT_TYPE_KEYS`'s colours) over
+  // its type's own: «لون النوع», each swatch naming the types that wear it, and the card «ألوان الأنواع».
+  ...[
+    'open',
+    'none',
+    'auto',
+    'autoOf',
+    'autoHint',
+    'noType',
+    'palette',
+    'wornBy',
+    'unworn',
+    'outside',
+    'empty',
+  ].map((key) => `operations.crewPlan.colour.${key}`),
+  ...[
+    'open',
+    'title',
+    'subtitle',
+    'type',
+    'pick',
+    'readOnly',
+    'overflow',
+    'outside',
+    'outsideHint',
+    'empty',
+    'saved',
+    'stale',
+  ].map((key) => `operations.crewPlan.typeColours.${key}`),
+  // Round 24 — «تراجع», one operation a press: the button's words, and each operation's (Round 24b:
+  // a colour picked, and a row given back its type's).
+  ...['title', 'none', 'done'].map((key) => `operations.crewPlan.undo.${key}`),
+  ...[
+    ...['place', 'free', 'direction', 'time', 'type', 'colour', 'colourAuto', 'notes'],
+    ...['addRow', 'removeRow', 'clearRow', 'giveVan', 'dropVan', 'standingLoad', 'standingClear'],
+    'restoreRow',
+  ].map((key) => `operations.crewPlan.undo.kind.${key}`),
   ...['empty', 'unknown', 'clear'].map((key) => `operations.crewPlan.direction.${key}`),
   ...['open', 'hours', 'minutes', 'clear'].map((key) => `operations.crewPlan.time.${key}`),
   ...['clear', 'remove'].map((key) => `operations.crewPlan.row.${key}`),

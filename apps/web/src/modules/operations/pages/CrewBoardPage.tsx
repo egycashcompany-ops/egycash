@@ -248,6 +248,11 @@ const PLAN_TABLE = cn(
   '[&_td_button[data-cell-control]]:!h-auto [&_td_button[data-cell-control]]:!w-auto',
   '[&_td_button[data-cell-control][data-cell-box]]:!h-8 [&_td_button[data-cell-control][data-cell-box]]:!w-full',
   '[&_tbody_td]:!px-1 [&_thead_th]:!px-1.5 [&_tbody_td]:!py-1.5 [&_tbody_td]:align-top',
+  // Round 24b — on a row drawn in its colour, a marked chip (picked up, refused, away that day, in a
+  // seat not his role's) stands on a halo of the page's own colour: an amber ring or dashed outline
+  // on an amber row, a rose one on a rose row, would otherwise melt into the tint.
+  '[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#fff]',
+  'dark:[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#0b1226]',
 );
 
 /** The bar's lists in the boards' colours (`DARK_FILTER_BAR`'s), on the day's bar. */
@@ -1312,7 +1317,9 @@ export const CrewBoardPage = (): JSX.Element => {
           <div
             className={cn(
               'flex min-h-[2.25rem] items-center gap-1 px-0.5',
-              vanRefused !== null && 'rounded-md ring-2 ring-rose-500/70 dark:ring-rose-400/70',
+              // Solid, on a white hair (Round 24b): it must read on a row drawn in rose too.
+              vanRefused !== null &&
+                'rounded-md ring-2 ring-rose-600 ring-offset-1 ring-offset-white dark:ring-rose-400 dark:ring-offset-[#0b1226]',
             )}
             title={vanRefused ?? undefined}
             data-van-refused={vanRefused === null ? undefined : 'true'}

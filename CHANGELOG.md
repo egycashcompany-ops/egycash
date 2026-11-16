@@ -816,6 +816,49 @@ its entry here in the same PR.
           «السيارة» cell and «صرف من الخزينة»'s loads number it by the server's `looseNumber`
           («بدون سيارة (n)», «الطاقم بدون سيارة (n)»), so two such crews are never one name; the
           van box offers each by that name and matches it as one phrase.
+    - Round 24b, the owner — «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع وعاوز فوق
+      خالص جمب الطاقم الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل نوع لون من الالوان وعاوز
+      اللون فى الجدول يكون متشبع اكتر من كدا»; asked how a row takes its colour, «تلقائي ويتغيّر
+      يدوي»; asked whether two types may share one, «أيوه عادي»:
+      - ONE PALETTE for the types and the rows: `OPERATIONS_SHIFT_TYPE_COLOURS` is twenty ordered
+        names. Round 20's eleven stay first (a saved type keeps its colour by name), re-ordered so
+        the first nine are the nine the boot seeds (rose, emerald, indigo, amber, violet, teal,
+        orange, fuchsia, slate), then lime and sky, then nine new ones (crimson, navy, forest, gold,
+        plum, brown, cyan, pink, olive). The board SHOWS its first N, N the live types (all twenty
+        past twenty, said in the card). The type's form on «أنواع التشغيل» offers the same: N
+        swatches (N + 1 for a new type), and an edited type's own colour after them when outside.
+      - «ألوان الأنواع» at the top of «لوحة التشغيلة», right after «الطاقم الثابت»: a card laid out
+        as a table — a row per type in the board's order (its strip's), a column per swatch shown.
+        A press gives that type that colour through the existing `PATCH
+        /operations/shift-types/:id` under `operationsCatalog.manage` (no new grant); two types may
+        share a colour. Each press saves at once; the answer is written into the cached types and
+        both the types and the crew board are re-read, so the board recolours at once. Without the
+        grant the table is shown read only, and says why. A type whose colour is off the palette
+        shown is marked «خارج اللوحة». A phone gets Fleet's bottom sheet, the swatches wrapping
+        under each type. It is a catalog save: «تراجع» never takes it back.
+      - A row's colour is its own `rowColour` (picked by hand) ?? its type's ?? none. «اللون» offers
+        exactly the swatches shown, each naming the types that wear it, plus «لون النوع» (null —
+        back to automatic). A row's own colour that is no longer among them still colours it and is
+        offered at the end, pressed. The cell shows the colour the row is drawn in, dashed when it
+        is the type's. A colour picked is one «تراجع» step, said with the colour («تلوين الصف 150
+        باللون كحلي»; «إعادة الصف 150 إلى لون نوعه»).
+      - Saturation: a coloured row's cells take the colour itself at 30% (35% in dark; Round 20
+        drew a 100-level wash, about 15%, and 14% in dark), with a 5px solid bar of the colour at
+        the row's start edge. The text stays legible: 8.4:1 or better in light, 6.6:1 or better in
+        dark. Marks stay visible on top: a marked chip (picked up, refused, away, wrong slot) on a
+        coloured row stands on a halo of the page's colour, and the refused chip and the refused
+        van ring are solid.
+      - The row colour's names are the palette's. `OperationsCrewRowColourSchema` takes a palette
+        name, or one of Round 20's six MAPPED onto it (yellow→amber, green→emerald, blue→sky,
+        red→rose, purple→violet, orange→orange), so an old client never meets a 400; the parsed
+        value, and every answer, is a palette name. The crew row's model accepts both spellings
+        (what the collection may hold); every reader goes through `canonicalCrewRowColour`, so a
+        row not yet migrated reads in the palette's name, and the same colour in either spelling
+        is a no-op save. The boot migrates the stored names (`migrateCrewRowColoursToPalette` in
+        `operations.migration.ts`, after the two crew migrations): five `updateMany`s, one per
+        legacy name that is not a palette name, soft-deleted rows included, timestamps off;
+        idempotent. Only the crew rows store a row colour (the standing crew has none); the audit
+        trail is history and is not rewritten.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

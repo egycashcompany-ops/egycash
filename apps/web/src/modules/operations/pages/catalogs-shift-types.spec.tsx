@@ -182,19 +182,29 @@ describe('the «أنواع التشغيل» tab without the catalog grant', () =
   });
 });
 
-describe('the type’s form — the contract’s palette, each colour named', () => {
-  const html = renderToStaticMarkup(
-    <Provider store={store(['operationsCatalog.manage'])}>
-      <QueryClientProvider client={new QueryClient()}>
-        <ShiftTypeDialog open shiftType={null} types={SERVER_ORDER} onClose={() => undefined} />
-      </QueryClientProvider>
-    </Provider>,
-  );
+describe('the type’s form — the board’s palette (Round 24b), each colour named', () => {
+  const formHtml = (shiftType: OperationsShiftTypeDto | null): string =>
+    renderToStaticMarkup(
+      <Provider store={store(['operationsCatalog.manage'])}>
+        <QueryClientProvider client={new QueryClient()}>
+          <ShiftTypeDialog
+            open
+            shiftType={shiftType}
+            types={SERVER_ORDER}
+            onClose={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  const swatchesOf = (html: string): (string | undefined)[] =>
+    [...html.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1]);
+  const html = formHtml(null);
 
-  it('offers every colour of the palette as a named swatch, and draws the type as it will read', () => {
-    const swatches = [...html.matchAll(/role="radio" data-colour="([a-z]+)"/g)].map((m) => m[1]);
-    expect(swatches).toEqual([...OPERATIONS_SHIFT_TYPE_COLOURS]);
-    for (const colour of OPERATIONS_SHIFT_TYPE_COLOURS) {
+  it('offers a NEW type the palette for the live types and itself — each a named swatch — and draws the type as it will read', () => {
+    // Three live types (one archived): a new one makes four — «يكون نفس عدد النوع».
+    const swatches = swatchesOf(html);
+    expect(swatches).toEqual(OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 4));
+    for (const colour of OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 4)) {
       expect(html).toContain(
         `aria-label="${ar(`operations.catalogs.shiftType.colours.${colour}`)}"`,
       );
@@ -204,9 +214,22 @@ describe('the type’s form — the contract’s palette, each colour named', ()
     expect(html).toContain(ar('operations.catalogs.shiftType.nameEn'));
   });
 
-  it('starts a new type on the first colour no ACTIVE type wears — an archived one’s is free', () => {
-    // rose, teal and violet are worn; indigo is worn by «أسوان», archived.
-    expect(freeShiftTypeColour(SERVER_ORDER)).toBe('orange');
+  it('offers an EDITED type the live types’ palette, and its own colour after it when outside it', () => {
+    // «احتياطي» wears teal — the sixth colour, outside the three shown: kept, at the end.
+    expect(swatchesOf(formHtml(SERVER_ORDER[1] as OperationsShiftTypeDto))).toEqual([
+      ...OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 3),
+      'teal',
+    ]);
+    // «يومي» wears rose, among them: nothing added.
+    expect(swatchesOf(formHtml(SERVER_ORDER[0] as OperationsShiftTypeDto))).toEqual(
+      OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 3),
+    );
+  });
+
+  it('starts a new type on the first shown colour no ACTIVE type wears — an archived one’s is free', () => {
+    // rose, teal and violet are worn; indigo is worn by «أسوان», archived. Shown: rose, emerald,
+    // indigo, amber.
+    expect(freeShiftTypeColour(SERVER_ORDER)).toBe('emerald');
     expect(
       freeShiftTypeColour(OPERATIONS_SHIFT_TYPE_COLOURS.map((c, i) => shiftType(c, c, c, i))),
     ).toBe('rose');

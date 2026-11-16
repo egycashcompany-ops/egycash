@@ -13,7 +13,6 @@
 //     break history. `isActive` is the honest replacement.
 import { Suspense, lazy, useEffect, useState, type FormEvent } from 'react';
 import {
-  OPERATIONS_SHIFT_TYPE_COLOURS,
   type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
@@ -48,6 +47,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { ApiError } from '../../../shared/lib/api-client';
 import { useAppSelector } from '../../../store';
 import { SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
+import { freeColourFor, liveTypes, shownPalette } from '../lib/type-colours';
 import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
   useCreateOperationsArea,
@@ -713,14 +713,28 @@ export const AreaDialog = ({
 };
 
 /**
- * The first colour of the palette no ACTIVE type wears yet — a new type starts told apart from the
- * others on the board's strip, and the planner can still pick any colour. All taken: the first.
+ * The first colour of the palette SHOWN to a new type no ACTIVE type wears yet — a new type starts
+ * told apart from the others on the board's strip, and the planner can still pick any of the shown
+ * colours. All worn: the palette's first (`freeColourFor`, Round 24b).
  */
 export const freeShiftTypeColour = (
   types: readonly OperationsShiftTypeDto[],
-): OperationsShiftTypeColour => {
-  const worn = new Set(types.filter((type) => type.isActive).map((type) => type.colour));
-  return OPERATIONS_SHIFT_TYPE_COLOURS.find((colour) => !worn.has(colour)) ?? 'rose';
+): OperationsShiftTypeColour => freeColourFor(types);
+
+/**
+ * The swatches the type's form offers — Round 24b, «عاوز pallett الالوان يكون على عدد الالوان يكون نفس
+ * عدد النوع»: the board's palette, as many colours as there are live types — counting the one being
+ * added — and the type's own colour at the end when it is not among them (kept, and shown as its).
+ */
+export const shiftTypeFormPalette = (
+  types: readonly OperationsShiftTypeDto[],
+  shiftType: OperationsShiftTypeDto | null,
+): OperationsShiftTypeColour[] => {
+  const live = liveTypes(types).length;
+  const palette = shownPalette(shiftType === null ? live + 1 : live);
+  return shiftType !== null && !palette.includes(shiftType.colour)
+    ? [...palette, shiftType.colour]
+    : palette;
 };
 
 /**
@@ -737,7 +751,7 @@ export const ShiftTypeDialog = ({
 }: {
   open: boolean;
   shiftType: OperationsShiftTypeDto | null;
-  /** The catalog — for a new type's first free colour. */
+  /** The catalog — the palette it shows (one swatch a live type) and a new type's free colour. */
   types: readonly OperationsShiftTypeDto[];
   onClose: () => void;
 }): JSX.Element => {
@@ -840,7 +854,7 @@ export const ShiftTypeDialog = ({
               className="flex flex-wrap gap-2"
               data-shift-type-palette="true"
             >
-              {OPERATIONS_SHIFT_TYPE_COLOURS.map((option) => {
+              {shiftTypeFormPalette(types, shiftType).map((option) => {
                 const label = t(`operations.catalogs.shiftType.colours.${option}`);
                 return (
                   <button

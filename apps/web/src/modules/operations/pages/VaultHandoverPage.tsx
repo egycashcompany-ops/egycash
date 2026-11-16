@@ -49,6 +49,7 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
+import { useMinWidth } from '../../atm/lib/useMinWidth';
 import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { DesignCancel, DesignDialog, DesignSave } from '../../fleet/components/DesignDialog';
 import { BoardIcon, PATH } from '../../fleet/components/FuelCardBoard';
@@ -65,11 +66,13 @@ import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsB
 import {
   CardMark,
   DAY_BAR,
+  DISTRIBUTION_COLUMNS,
   DayBox,
   DistributionColumn,
   EmptyLoad,
   MoneyLine,
   ShipmentCard,
+  VAN_GRID,
   VanCard,
   dayText,
 } from '../components/SecuredDistributionParts';
@@ -90,6 +93,8 @@ import {
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 import { vanLoadSheet } from '../lib/van-load-sheet';
+import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
+import { PLAN_ICON } from '../components/crew-plan-icons';
 
 export const VaultHandoverPage = (): JSX.Element => {
   const t = useT();
@@ -122,6 +127,9 @@ export const VaultHandoverPage = (): JSX.Element => {
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
   const [confirming, setConfirming] = useState<string | null>(null);
+  // Round 24c — below a computer's width the column of محصنات on no van folds.
+  const wide = useMinWidth(1024);
+  const [unplacedOpen, setUnplacedOpen] = useState(true);
   const sending = useRef(false);
 
   const setDay = (value: string): void => {
@@ -141,6 +149,15 @@ export const VaultHandoverPage = (): JSX.Element => {
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
   const confirmVan =
     confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
+  // Round 24 — a crew without a van hands its load over like a van: «بدون سيارة (n)» on its card, on
+  // the sheet and in every sentence (`lib/van-name.ts`), numbered as the board numbers it.
+  const looseNumbers = looseCrewNumbers(vans);
+  const looseNumberOf = (crewAssignmentId: string): string | null => {
+    const number = looseNumbers.get(crewAssignmentId);
+    return number === undefined ? null : formatNumber(number, locale);
+  };
+  const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
+    vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
 
   const print = (
     van: OperationsDayBoardVehicleCrewDto,
@@ -152,6 +169,7 @@ export const VaultHandoverPage = (): JSX.Element => {
           t,
           day,
           van,
+          looseNumber: looseNumberOf(van.crewAssignmentId),
           crewPlanVisible: data?.crewPlanVisible ?? false,
           rows: load,
           bankNameOf,
@@ -181,14 +199,14 @@ export const VaultHandoverPage = (): JSX.Element => {
       toast.success(
         t(pluralKey('operations.handover.done', locale, body.shipmentIds.length), {
           count: formatNumber(body.shipmentIds.length, locale),
-          code: van.vehicleCode ?? '…',
+          van: vanName(van),
         }),
       );
       setConfirming(null);
     } catch (error) {
       toast.error(
         t('operations.handover.failed', {
-          code: van.vehicleCode ?? '…',
+          van: vanName(van),
           reason: errorMessage(error, locale),
         }),
       );
@@ -239,6 +257,142 @@ export const VaultHandoverPage = (): JSX.Element => {
       />
     );
   };
+
+  // The vans — three quarters of a wide screen, as on «توزيع المحصنات» (Round 24c).
+  const vansColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.vans')}
+      count={vans.length}
+      icon={PATH.truck}
+      data-handover-column="vans"
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : vans.length === 0 ? (
+        <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
+      ) : (
+        <div className={VAN_GRID}>
+          {columns.vans.map(({ van, rows: load }) => {
+            const ready = handoverShipments(load, van.crewAssignmentId);
+            const held = notYetInVault(load, van.crewAssignmentId);
+            const block = handoverBlock(day, today, ready.length);
+            return (
+              <VanCard
+                key={van.crewAssignmentId}
+                van={van}
+                looseNumber={looseNumberOf(van.crewAssignmentId)}
+                crewPlanVisible={data.crewPlanVisible}
+                day={day}
+                figures={loadFigures(load, currencyOf, packagingOf)}
+                actions={
+                  <>
+                    {canHandOver && (
+                      <button
+                        type="button"
+                        data-handover-open={van.crewAssignmentId}
+                        data-handover-block={block ?? undefined}
+                        aria-haspopup="dialog"
+                        disabled={block !== null}
+                        title={
+                          block === 'notToday'
+                            ? t('operations.handover.notToday')
+                            : block === 'nothing'
+                              ? t('operations.handover.nothing')
+                              : undefined
+                        }
+                        onClick={() => setConfirming(van.crewAssignmentId)}
+                        className={cn(
+                          block === null ? ADD_BUTTON : BRAND_BUTTON,
+                          'disabled:cursor-not-allowed disabled:opacity-50',
+                        )}
+                      >
+                        <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
+                        {t('operations.handover.handover', {
+                          count: formatNumber(ready.length, locale),
+                        })}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-handover-print={van.crewAssignmentId}
+                      onClick={() => print(van, load)}
+                      className={BRAND_BUTTON}
+                    >
+                      <BoardIcon d={[...PATH.pdf]} className="h-3.5 w-3.5" />
+                      {t('operations.handover.print')}
+                    </button>
+                  </>
+                }
+                footer={
+                  held.length > 0 ? (
+                    <p
+                      data-handover-held={held.length}
+                      className="flex items-start gap-1.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
+                    >
+                      <BoardIcon
+                        d={[...SHIPMENT_PATH.info]}
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                      />
+                      {t(pluralKey('operations.handover.heldNote', locale, held.length), {
+                        count: formatNumber(held.length, locale),
+                      })}
+                    </p>
+                  ) : undefined
+                }
+              >
+                {load.length === 0 ? (
+                  <EmptyLoad>
+                    {t(
+                      hasNoVan(van)
+                        ? 'operations.distribution.emptyCrew'
+                        : 'operations.distribution.emptyVan',
+                    )}
+                  </EmptyLoad>
+                ) : (
+                  load.map((row) => card(row, van))
+                )}
+              </VanCard>
+            );
+          })}
+        </div>
+      )}
+    </DistributionColumn>
+  );
+
+  // The day's محصنات on no van, for information — a quarter of a wide screen; on a phone it stays
+  // after the vans (the vault's work is the vans) and folds (Round 24c).
+  const unplacedColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.unplaced')}
+      count={columns.unplaced.length}
+      icon={SHIPMENT_PATH.shipment}
+      data-handover-column="unplaced"
+      {...(wide
+        ? {}
+        : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
+      extra={
+        <span className="ms-auto text-[11px] font-bold text-slate-500 dark:text-slate-400">
+          {t('operations.handover.unplacedHint')}
+        </span>
+      }
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : columns.unplaced.length === 0 ? (
+        <EmptyLoad>
+          {rows.length === 0
+            ? t('operations.distribution.empty')
+            : t('operations.distribution.allPlaced')}
+        </EmptyLoad>
+      ) : (
+        <div className="grid gap-2">{columns.unplaced.map((row) => card(row))}</div>
+      )}
+    </DistributionColumn>
+  );
 
   const confirmLoad =
     confirmVan === undefined ? [] : handoverShipments(rows, confirmVan.crewAssignmentId);
@@ -320,127 +474,9 @@ export const VaultHandoverPage = (): JSX.Element => {
         ) : failed ? (
           <ErrorState error={board.error} onRetry={() => void board.refetch()} />
         ) : (
-          <div
-            className="grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-            data-handover-columns="true"
-          >
-            <DistributionColumn
-              title={t('operations.distribution.vans')}
-              count={vans.length}
-              icon={PATH.truck}
-              data-handover-column="vans"
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : vans.length === 0 ? (
-                <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
-              ) : (
-                <div className="grid items-start gap-3 xl:grid-cols-2">
-                  {columns.vans.map(({ van, rows: load }) => {
-                    const ready = handoverShipments(load, van.crewAssignmentId);
-                    const held = notYetInVault(load, van.crewAssignmentId);
-                    const block = handoverBlock(day, today, ready.length);
-                    return (
-                      <VanCard
-                        key={van.crewAssignmentId}
-                        van={van}
-                        crewPlanVisible={data.crewPlanVisible}
-                        figures={loadFigures(load, currencyOf, packagingOf)}
-                        actions={
-                          <>
-                            {canHandOver && (
-                              <button
-                                type="button"
-                                data-handover-open={van.crewAssignmentId}
-                                data-handover-block={block ?? undefined}
-                                aria-haspopup="dialog"
-                                disabled={block !== null}
-                                title={
-                                  block === 'notToday'
-                                    ? t('operations.handover.notToday')
-                                    : block === 'nothing'
-                                      ? t('operations.handover.nothing')
-                                      : undefined
-                                }
-                                onClick={() => setConfirming(van.crewAssignmentId)}
-                                className={cn(
-                                  block === null ? ADD_BUTTON : BRAND_BUTTON,
-                                  'disabled:cursor-not-allowed disabled:opacity-50',
-                                )}
-                              >
-                                <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
-                                {t('operations.handover.handover', {
-                                  count: formatNumber(ready.length, locale),
-                                })}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              data-handover-print={van.crewAssignmentId}
-                              onClick={() => print(van, load)}
-                              className={BRAND_BUTTON}
-                            >
-                              <BoardIcon d={[...PATH.pdf]} className="h-3.5 w-3.5" />
-                              {t('operations.handover.print')}
-                            </button>
-                          </>
-                        }
-                        footer={
-                          held.length > 0 ? (
-                            <p
-                              data-handover-held={held.length}
-                              className="flex items-start gap-1.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
-                            >
-                              <BoardIcon
-                                d={[...SHIPMENT_PATH.info]}
-                                className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                              />
-                              {t(pluralKey('operations.handover.heldNote', locale, held.length), {
-                                count: formatNumber(held.length, locale),
-                              })}
-                            </p>
-                          ) : undefined
-                        }
-                      >
-                        {load.length === 0 ? (
-                          <EmptyLoad>{t('operations.distribution.emptyVan')}</EmptyLoad>
-                        ) : (
-                          load.map((row) => card(row, van))
-                        )}
-                      </VanCard>
-                    );
-                  })}
-                </div>
-              )}
-            </DistributionColumn>
-
-            <DistributionColumn
-              title={t('operations.distribution.unplaced')}
-              count={columns.unplaced.length}
-              icon={SHIPMENT_PATH.shipment}
-              data-handover-column="unplaced"
-              extra={
-                <span className="ms-auto text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                  {t('operations.handover.unplacedHint')}
-                </span>
-              }
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : columns.unplaced.length === 0 ? (
-                <EmptyLoad>
-                  {rows.length === 0
-                    ? t('operations.distribution.empty')
-                    : t('operations.distribution.allPlaced')}
-                </EmptyLoad>
-              ) : (
-                <div className="grid gap-2">{columns.unplaced.map((row) => card(row))}</div>
-              )}
-            </DistributionColumn>
+          <div className={DISTRIBUTION_COLUMNS} data-handover-columns="true">
+            {vansColumn}
+            {unplacedColumn}
           </div>
         )}
       </div>
@@ -450,13 +486,13 @@ export const VaultHandoverPage = (): JSX.Element => {
         <DesignDialog
           open
           onClose={() => setConfirming(null)}
-          title={t('operations.handover.confirmTitle', { code: confirmVan.vehicleCode ?? '…' })}
+          title={t('operations.handover.confirmTitle', { van: vanName(confirmVan) })}
           subtitle={
             confirmVan.captains.length === 0
               ? undefined
               : confirmVan.captains.map(personName).join(' · ')
           }
-          icon={PATH.truck}
+          icon={hasNoVan(confirmVan) ? [...PLAN_ICON.noVan] : PATH.truck}
           width="2xl"
           wrapTitle
           panelProps={{ 'data-handover-confirm': confirmVan.crewAssignmentId }}
@@ -489,7 +525,7 @@ export const VaultHandoverPage = (): JSX.Element => {
             <span>
               {t('operations.handover.confirmBody', {
                 count: formatNumber(confirmLoad.length, locale),
-                code: confirmVan.vehicleCode ?? '…',
+                van: vanName(confirmVan),
                 // The day it leaves on, named before the click — it can only be today.
                 day: dayText(day),
               })}

@@ -38,7 +38,11 @@ describe('sanitizeTemplateHtml', () => {
     expect(sanitizeTemplateHtml('<p class="l2 t16">نص</p>')).toBe('<p class="l2 t16">نص</p>');
     expect(sanitizeTemplateHtml('<p class="" onclick="x">نص</p>')).toBe('<p>نص</p>');
     expect(allowedClasses('band foot "><script>')).toBe('band foot');
-    expect(allowedClasses('none at all')).toBeNull();
+    expect(allowedClasses('none of them')).toBeNull();
+    // «نموذج رقم (1)» on his scanned pages: the page and each value's place.
+    expect(sanitizeTemplateHtml('<div class="scan f1p1"><span class="at f1-nid x">١</span></div>')).toBe(
+      '<div class="scan f1p1"><span class="at f1-nid">١</span></div>',
+    );
   });
 });
 

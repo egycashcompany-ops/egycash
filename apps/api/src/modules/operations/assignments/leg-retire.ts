@@ -20,6 +20,7 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
+import { vehicleIdOf } from '../crew/crew-assignment.model';
 
 /**
  * Has the captain started this leg in the app? Then it is his: nobody else takes it off his van.
@@ -74,7 +75,8 @@ export const recordLegRetired = async (leg: OperationsShipmentAssignmentDoc): Pr
     action: 'delete',
     changes: [
       { field: 'captainEmployeeId', old: String(leg.captainEmployeeId), new: null },
-      { field: 'vehicleId', old: String(leg.vehicleId), new: null },
+      // A leg of a row without a van had none (Round 24): old null, never the string "null".
+      { field: 'vehicleId', old: vehicleIdOf(leg), new: null },
       { field: 'crewAssignmentId', old: String(leg.crewAssignmentId), new: null },
     ],
   });
@@ -83,6 +85,6 @@ export const recordLegRetired = async (leg: OperationsShipmentAssignmentDoc): Pr
     shipmentId: String(leg.shipmentId),
     leg: leg.leg,
     captainEmployeeId: String(leg.captainEmployeeId),
-    vehicleId: String(leg.vehicleId),
+    vehicleId: vehicleIdOf(leg),
   });
 };

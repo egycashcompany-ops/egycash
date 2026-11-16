@@ -26,6 +26,7 @@ import {
   moveToVan,
   nextCaptain,
   notYetInVault,
+  openingDistributionHistory,
   personName,
   placeShipment,
   placementOf,
@@ -33,6 +34,7 @@ import {
   readDistributionDate,
   refusedShipmentId,
   reschedulesOnSave,
+  sameDistributionDraft,
   samePlacement,
   savedPlacement,
   takesShipments,
@@ -40,6 +42,7 @@ import {
   type DistributionDraft,
   type DistributionRowFacts,
 } from './secured-distribution';
+import { lastStep, record, undo } from './crew-undo';
 
 const TODAY = '2026-11-12';
 
@@ -599,5 +602,42 @@ describe('a van’s figures', () => {
       boxes: 1,
     });
     expect(loadFigures([], (id) => currencies.get(id)).count).toBe(0);
+  });
+});
+
+// Round 24 — «تراجع» one step at a time. The old «التراجع عن التغييرات» took the day's proposals
+// back with everything else; the proposals are therefore the history's FIRST operation, never a
+// floor the presses cannot get under.
+describe('«تراجع» on the distribution — the day’s proposals are its first operation', () => {
+  const s = row('s', { directionCrewAssignmentIds: ['van-104'] });
+  const t = row('t');
+
+  it('opens on the proposals, which the LAST press takes back — nothing left placed but the read', () => {
+    const opening = openingDistributionHistory([s, t], VANS, true);
+    expect(opening.now.get('s')?.crewAssignmentId).toBe('van-104');
+    expect(lastStep(opening)?.what.kind).toBe('auto');
+    // A move by hand on top: one press takes back the move only, the next the proposals.
+    const moved = record(
+      opening,
+      moveToVan(opening.now, t, V3),
+      { kind: 'move' },
+      {
+        same: sameDistributionDraft,
+      },
+    );
+    expect(moved.past).toHaveLength(2);
+    const once = undo(moved);
+    expect(once.now.has('t')).toBe(false);
+    expect(once.now.get('s')?.proposed).toBe(true);
+    const twice = undo(once);
+    expect(twice.now.size).toBe(0);
+    expect(lastStep(twice)).toBeNull();
+  });
+
+  it('nothing proposed, or nobody who may save — nothing to take back', () => {
+    expect(lastStep(openingDistributionHistory([t], VANS, true))).toBeNull();
+    const reader = openingDistributionHistory([s], VANS, false);
+    expect(reader.now.size).toBe(0);
+    expect(lastStep(reader)).toBeNull();
   });
 });

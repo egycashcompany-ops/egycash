@@ -1077,7 +1077,7 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     const dto = data<OperationsCrewBoardDto>(res);
     const ids = dto.rows.map((r) => r.vehicleId).sort();
     expect(ids).toEqual([vehicleAId, vehicleBId].sort());
-    expect(dto.rows.every((r) => r.fleetDutyAssignmentId.length === 24)).toBe(true);
+    expect(dto.rows.every((r) => (r.fleetDutyAssignmentId ?? '').length === 24)).toBe(true);
     expect(dto.day).toBeNull(); // no plan saved yet — the day row does not exist yet
   });
 
@@ -1155,12 +1155,26 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     );
   });
 
-  it('§9.4 — refuses planning crew for a vehicle that is not on the Fleet roster', async () => {
-    const res = await savePlan([
-      { vehicleId: offRosterVehicleId, captainEmployeeIds: [specialist2Id] },
-    ]);
-    expect(res.status).toBe(422);
-    expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_FLEET_DUTY_REQUIRED);
+  it('Round 24 — plans a van the Fleet roster does not have, lists it as a van row, and removes it', async () => {
+    // «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم» — the
+    // roster is no longer the only door (it answered OPERATIONS_FLEET_DUTY_REQUIRED before).
+    const lone = await mkCaptain();
+    const res = await savePlan([{ vehicleId: offRosterVehicleId, captainEmployeeIds: [lone] }]);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const row = data<OperationsCrewBoardDto>(res).rows.find(
+      (r) => r.vehicleId === offRosterVehicleId,
+    );
+    expect(row).toMatchObject({ fleetDutyAssignmentId: null, drivers: [], missionTypeId: null });
+    expect(row?.crew?.captainEmployeeIds).toEqual([lone]);
+    // Off the roster, it is removed like a row without a van — and its van is free again.
+    const removed = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: PLAN_DATE, rows: [], removeCrewAssignmentIds: [row?.crew?.id] });
+    expect(removed.status, JSON.stringify(removed.body)).toBe(200);
+    const after = data<OperationsCrewBoardDto>(removed);
+    expect(after.rows.map((r) => r.vehicleId)).not.toContain(offRosterVehicleId);
+    expect(after.freeVehicles.map((v) => v.vehicleId)).toContain(offRosterVehicleId);
   });
 
   it('refuses an unknown employee reference', async () => {

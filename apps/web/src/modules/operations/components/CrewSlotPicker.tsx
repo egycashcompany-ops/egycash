@@ -84,7 +84,10 @@ interface Spot {
   bottom?: number;
 }
 
-const usePickerSpot = (anchor: RefObject<HTMLElement | null>, enabled: boolean): Spot | null => {
+export const usePickerSpot = (
+  anchor: RefObject<HTMLElement | null>,
+  enabled: boolean,
+): Spot | null => {
   const [spot, setSpot] = useState<Spot | null>(null);
   useLayoutEffect(() => {
     if (!enabled) return undefined;

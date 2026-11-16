@@ -157,6 +157,7 @@ const queueRow = (
     crewAssignmentId: 'ca-1',
     vehicleId: 'v-1',
     vehicleCode: '150',
+    looseNumber: null,
     captainEmployeeId: 'e-9',
     captainName: 'محمود حسن',
     captainCode: null,

@@ -42,6 +42,7 @@ const CREW: OperationsDayBoardCrewDto = {
   crewAssignmentId: CREW_ROW,
   vehicleId: '64b1f0eeeeeeeeeeeeeeee01',
   vehicleCode: '120',
+  looseNumber: null,
   captainEmployeeId: CAPTAIN,
   captainName: 'محمد عبد الله السيد',
   captainCode: '1042',

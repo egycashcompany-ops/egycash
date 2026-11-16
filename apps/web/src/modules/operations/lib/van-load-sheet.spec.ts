@@ -33,6 +33,7 @@ const shipment = (
   }) as OperationsSecuredDistributionRowDto;
 
 const VAN: VanLoadSheetInput['van'] = {
+  vehicleId: 'v-104',
   vehicleCode: '104',
   captains: [
     { employeeId: 'c2', code: null, fullNameAr: 'شادي محمد أحمد' },
@@ -75,7 +76,14 @@ describe('the van’s load sheet (provisional)', () => {
   const sheet = vanLoadSheet(input());
 
   it('is titled by the van, under Operations — the vault', () => {
-    expect(sheet.title).toBe(ar('operations.handover.sheet.title', { code: '104' }));
+    expect(sheet.title).toBe(ar('operations.handover.sheet.title', { van: 'السيارة 104' }));
+    expect(sheet.title).toBe('كشف تحميل السيارة 104');
+    // Round 24 — a crew without a van: titled after the crew, never «السيارة null».
+    const loose = vanLoadSheet(
+      input({ van: { ...VAN, vehicleId: null, vehicleCode: null }, looseNumber: '2' }),
+    );
+    expect(loose.title).toBe('كشف تحميل الطاقم بدون سيارة (2)');
+    expect(loose.title).not.toMatch(/null|undefined|…/);
     expect(sheet.department).toBe(ar('operations.handover.sheet.department'));
     expect(sheet.orientation).toBe('landscape');
     expect(sheet.signatories).toBeUndefined();
@@ -89,6 +97,18 @@ describe('the van’s load sheet (provisional)', () => {
     expect(sheet.subtitle).not.toContain(ar('operations.crew.slot.specialist2'));
     expect(sheet.subtitle).toContain(`${ar('operations.crew.direction')}: مدينة نصر`);
     expect(sheet.subtitle).toContain('09:00');
+  });
+
+  it('puts the time and the direction right after the day, before the crew — the card’s head line (Round 24c)', () => {
+    const at = (part: string): number => sheet.subtitle.indexOf(part);
+    const time = at(`${ar('operations.crew.plannedTime')}: 09:00`);
+    const direction = at(`${ar('operations.crew.direction')}: مدينة نصر`);
+    const captains = at('شادي محمد أحمد');
+    expect(at('2026-11-12')).toBeGreaterThan(-1);
+    expect(time).toBeGreaterThan(at('2026-11-12'));
+    expect(direction).toBeGreaterThan(time);
+    expect(captains).toBeGreaterThan(direction);
+    expect(at(ar('operations.crew.slot.specialist1'))).toBeGreaterThan(captains);
   });
 
   it('leaves the specialists out for a reader the crew plan is hidden from (rather than «—»)', () => {
@@ -158,7 +178,7 @@ describe('the van’s load sheet (provisional)', () => {
 
   it('goes out on the company’s report form — no script of its own', () => {
     const html = buildFleetReportHtml(sheet);
-    expect(html).toContain(ar('operations.handover.sheet.title', { code: '104' }));
+    expect(html).toContain(ar('operations.handover.sheet.title', { van: 'السيارة 104' }));
     expect(html).toContain('عباس العقاد');
     expect(html).not.toContain('<script');
     expect(html).toContain('size: A4 landscape');

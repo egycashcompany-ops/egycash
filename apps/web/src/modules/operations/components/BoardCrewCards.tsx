@@ -133,7 +133,13 @@ export const CaptainCardBody = ({
         )}
         {/* The van of THIS shipment's leg — the board may be any day, so not «today's car». */}
         <Fact label={t('operations.board.vehicle')}>
-          {crew.vehicleCode === null ? <Missing /> : <Figure>{crew.vehicleCode}</Figure>}
+          {crew.vehicleId === null ? (
+            t('operations.crewPlan.noVehicle')
+          ) : crew.vehicleCode === null ? (
+            <Missing />
+          ) : (
+            <Figure>{crew.vehicleCode}</Figure>
+          )}
         </Fact>
         <Fact label={t('fleet.drivers.columns.branch')}>
           {branch === null || branch === 'loading' ? (
@@ -248,7 +254,13 @@ export const VehicleCrewCardBody = ({
           </p>
         }
       >
-        {crew.vehicleCode === null ? <Missing /> : <Figure>{crew.vehicleCode}</Figure>}
+        {crew.vehicleId === null ? (
+          t('operations.crewPlan.noVehicle')
+        ) : crew.vehicleCode === null ? (
+          <Missing />
+        ) : (
+          <Figure>{crew.vehicleCode}</Figure>
+        )}
       </CardHead>
       <dl className={HOVER_CARD_FACTS}>
         <Fact label={t('operations.board.card.drivers')}>

@@ -26,6 +26,11 @@ export const PAPER_CLASSES: readonly string[] = [
   // «نموذج رقم (1)»: digit boxes and their widths, small boxed tables, the section heading on a
   // line, his own head and emblem (no company letterhead, no frame), the second page.
   'cells', 'c1', 'c2', 'c3', 'c4', 'c8', 'c9', 'c14', 'mini', 'divider', 'ownhead', 'nosi', 'newpage',
+  // …printed on his own scanned pages (`scan`, one class a page), each value at its place (`at`).
+  'scan', 'f1p1', 'f1p2', 'at',
+  'f1-cat', 'f1-co', 'f1-ins', 'f1-nid', 'f1-name', 'f1-nat', 'f1-qual', 'f1-occ1', 'f1-occ2', 'f1-title',
+  'f1-day', 'f1-month', 'f1-year', 'f1-wage', 'f1-qirsh', 'f1-street', 'f1-phone', 'f1-email',
+  'f1-tday', 'f1-tmonth', 'f1-tyear', 'f2-co', 'f2-name',
 ];
 const PAPER_CLASS_SET = new Set(PAPER_CLASSES);
 

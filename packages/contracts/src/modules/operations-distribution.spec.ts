@@ -227,6 +227,16 @@ describe('the distribution read and save', () => {
         vehicleId: oid(4),
       }).success,
     ).toBe(true);
+    // Round 24 — a leg on a crew row without a van has no van to name.
+    expect(
+      OperationsShipmentAssignmentPayloadV1.safeParse({
+        assignmentId: oid(1),
+        shipmentId: oid(2),
+        leg: 'delivery',
+        captainEmployeeId: oid(3),
+        vehicleId: null,
+      }).success,
+    ).toBe(true);
   });
 });
 

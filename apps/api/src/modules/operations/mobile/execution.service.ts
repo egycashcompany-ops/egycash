@@ -43,6 +43,7 @@ import {
 } from '../../../shared/errors';
 import { ErrorCodes } from '@ecms/contracts';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { vehicleIdOf } from '../crew/crew-assignment.model';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
@@ -231,7 +232,8 @@ class OperationsExecutionService {
       shipmentId: String(outcome.shipmentId),
       operationsDayId: String(outcome.operationsDayId),
       captainEmployeeId,
-      vehicleId: String(outcome.vehicleId),
+      // Null for a stop of a crew row without a van (Round 24).
+      vehicleId: vehicleIdOf(outcome),
       leg: outcome.leg,
       sequence: outcome.sequence,
       from,

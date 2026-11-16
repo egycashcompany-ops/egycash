@@ -356,8 +356,11 @@ describe('«توزيع المحصنات» — the desk', () => {
     expect(v104).toContain('data-van-code="104"');
     expect(v104).toContain('08:30');
     expect(v104).toContain('data-van-direction="مدينة نصر"');
-    expect(v104).toContain('شادي محمد أحمد · كريم سمير علي');
-    expect(v104).toContain(ar('operations.distribution.captains'));
+    // Round 24c — each captain on a line of his own, the group named «القادة».
+    expect(v104).toMatch(
+      /data-van-captain="c2"[\s\S]*شادي محمد أحمد[\s\S]*data-van-captain="c3"[\s\S]*كريم سمير علي/,
+    );
+    expect(v104).toContain(`aria-label="${ar('operations.distribution.captains')}"`);
     expect(v104).toContain('أخصائي أول 104');
     expect(v104).toContain('أخصائي ثان 104');
     // A van with no captain is listed, and says it takes nothing.
@@ -658,7 +661,11 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
   });
 
   it('the confirmation names the day it hands over on', () => {
-    const body = ar('operations.handover.confirmBody', { count: '1', code: '101', day: TODAY });
+    const body = ar('operations.handover.confirmBody', {
+      count: '1',
+      van: 'السيارة 101',
+      day: TODAY,
+    });
     expect(body).toContain(TODAY);
     expect(translate('en', 'operations.handover.confirmBody', { day: TODAY })).toContain(TODAY);
   });
@@ -683,6 +690,14 @@ describe('what the screens are built from', () => {
     // Never the one-shipment assign (the old dialog's) — a distribution is all or nothing.
     expect(DIST).not.toContain('useAssignSecuredDelivery');
     expect(DIST).not.toContain('useDispatchSecured');
+  });
+
+  // Round 24 — «تراجع» is off while «حفظ» is in flight: the save's success starts the history
+  // afresh, so a press in that window would vanish unsaid and the move it named would be saved.
+  it('takes nothing back while the save is in flight — the button, the press and Ctrl+Z alike', () => {
+    expect(DIST).toContain('const lastMove = undoableStep(history, save.isPending);');
+    expect(DIST).toContain('disabled={lastMove === null}');
+    expect(DIST).toContain('if (!canEdit || lastMove === null || undoWords === null) return;');
   });
 
   // Round 17 — every count of محصنات on the two screens takes its own Arabic form («محصنة واحدة ·
@@ -739,5 +754,121 @@ describe('what the screens are built from', () => {
     expect(custody.slice(0, custody.indexOf('\n  ],'))).toContain(
       "['operations', 'dayBoard', 'securedDistribution']",
     );
+  });
+});
+
+// Round 24c — the owner on the round-24 screen: «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه
+// المحصنة بالعربيه … عاوز انقل الاتجاه بعد كود السيارة والوقت واحسن الاسماء بتاعت القادة والاخصائيين».
+describe('Round 24c — the widths, and the van card', () => {
+  const LOOSE = van('loose', [person('c9', 'مصطفى إبراهيم حسين')], 'حلوان', {
+    crewAssignmentId: 'cr-loose-1',
+    vehicleId: null,
+    vehicleCode: null,
+    specialist1: [],
+    specialist2: [person('s9', 'حسام الدين علي')],
+    plannedTime: '11:00',
+  });
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: DESK,
+    data: answer({ crews: [...VANS, LOOSE] }),
+  });
+  const vault = render({
+    path: '/operations/vault/handover',
+    permissions: [...VAULT, 'operationsCrew.view'],
+    data: answer({ crews: [...VANS, LOOSE] }),
+  });
+
+  it('gives the vans three quarters of a wide screen and the shipments on no van one', () => {
+    for (const html of [desk, vault]) {
+      expect(html).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
+      // As many van cards to a row as fit — not two at most.
+      expect(html).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
+      expect(html).not.toContain('xl:grid-cols-2');
+    }
+  });
+
+  it('puts code · time · direction on ONE line, the count after it — no band of its own for the direction', () => {
+    const card = vanOf(desk, 'cr-101');
+    const head = card.slice(card.indexOf('data-van-head="true"'), card.indexOf('</header>'));
+    const code = head.indexOf('data-van-code="101"');
+    const time = head.indexOf('data-van-time="08:30"');
+    const direction = head.indexOf('data-van-direction="المعادي - حلوان"');
+    expect(code).toBeGreaterThan(-1);
+    expect(time).toBeGreaterThan(code);
+    expect(direction).toBeGreaterThan(time);
+    // The whole direction on hover; the line cuts it.
+    expect(head).toContain(`title="${ar('operations.crew.direction')}: المعادي - حلوان"`);
+    expect(head).toMatch(/class="min-w-0 truncate">المعادي - حلوان</);
+    // The count stays — first on the line of what the van carries, so the head keeps its room.
+    expect(head).not.toContain('data-van-count');
+    expect(card).toMatch(/data-van-figures="cr-101"><div[^>]*><span data-van-count="2"/);
+  });
+
+  it('marks the captain and labels the specialists; an empty slot says «غير معيَّن», never «—»', () => {
+    const loose = vanOf(desk, 'cr-loose-1');
+    expect(loose).toContain('data-no-van="true"');
+    expect(loose).toContain(ar('operations.crewPlan.looseRow', { n: formatNumber(1, 'ar') }));
+    expect(loose).toMatch(
+      /data-van-head="true"[\s\S]*data-van-time="11:00"[\s\S]*data-van-direction="حلوان"/,
+    );
+    expect(loose).toMatch(
+      new RegExp(
+        `data-van-captain="c9"[\\s\\S]*data-captain-mark="true"[\\s\\S]*${ar('operations.crewPlan.role.captain')}[\\s\\S]*مصطفى إبراهيم حسين`,
+      ),
+    );
+    expect(loose).toMatch(
+      new RegExp(
+        `data-van-slot="specialist1" data-van-slot-count="0"[\\s\\S]*${ar('operations.distribution.slotEmpty')}`,
+      ),
+    );
+    expect(ar('operations.distribution.slotEmpty')).toBe('غير معيَّن');
+    expect(loose).toMatch(
+      /data-van-slot="specialist2" data-van-slot-count="1"[\s\S]*حسام الدين علي/,
+    );
+    const crew = loose.slice(loose.indexOf('data-van-crew='), loose.indexOf('data-van-figures='));
+    expect(crew).not.toContain('>—<');
+  });
+
+  it('cuts each name to its chip and opens the person card on it — a keyboard reaches it too', () => {
+    const card = vanOf(desk, 'cr-104');
+    for (const id of ['c2', 'c3', 's1-104', 's2-104']) {
+      expect(card).toMatch(
+        new RegExp(`data-van-person="${id}" class="min-w-0 truncate[^"]*" tabindex="0"`),
+      );
+    }
+    expect(PARTS).toContain('<PlanMemberCardBody');
+    expect(PARTS).toContain('useOperationsCrewDirectory(day, mayReadDirectory)');
+  });
+
+  it('says «بلا قائد» where the captain would be, in red', () => {
+    const card = vanOf(desk, 'cr-130');
+    expect(card).toMatch(
+      new RegExp(`data-van-captain="none"[\\s\\S]*${ar('operations.distribution.noCaptain')}`),
+    );
+  });
+
+  it('is the same card on «تسليم المحصنات», under «تسليم» and «طباعة»', () => {
+    const card = vanOf(vault, 'cr-loose-1');
+    expect(card).toContain('data-handover-print="cr-loose-1"');
+    expect(card.indexOf('data-handover-print')).toBeLessThan(card.indexOf('data-van-head="true"'));
+    expect(card).toContain('data-van-captain="c9"');
+    expect(card).toContain(ar('operations.distribution.slotEmpty'));
+  });
+
+  it('on a phone puts the shipments on no van FIRST on the desk, in a column that folds', () => {
+    expect(DIST).toContain('const wide = useMinWidth(1024);');
+    expect(DIST).toMatch(
+      /wide \? \(\s*<>\s*\{vansColumn\}\s*\{unplacedColumn\}\s*<\/>\s*\) : \(\s*<>\s*\{unplacedColumn\}\s*\{vansColumn\}/,
+    );
+    expect(DIST).toContain(
+      'collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) }',
+    );
+    expect(HANDOVER).toContain(
+      'collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) }',
+    );
+    // Folded, the column still takes a drop — on its head.
+    expect(DIST).toContain('dropHandlers: dropTarget(UNPLACED_KEY, (row) => move(row, null))');
+    expect(PARTS).toContain('aria-expanded={open}');
   });
 });

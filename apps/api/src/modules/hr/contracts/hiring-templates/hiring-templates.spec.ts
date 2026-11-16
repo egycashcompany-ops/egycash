@@ -3,6 +3,7 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { renderContractHtml, renderFormHtml } from '../contracts/contract-render';
+import { FORM_ONE_PAGE_1_PNG, FORM_ONE_PAGE_2_PNG } from '../contracts/form-one-scan';
 import { type ContractVariableValue } from '../contracts/contract.model';
 import { CATALOG_KEYS, CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { HIRING_PAPERS, optionalForJob, type HiringPaper } from './hiring-papers';
@@ -262,32 +263,66 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
     expect(placeholders).toEqual(expect.arrayContaining(['job.insuranceTitle', 'job.occupationCode1', 'job.occupationCode2']));
     expect(placeholders).not.toContain('job.title');
     expect(FORM.sections.body).toContain(
-      '<b>كـود المهنة:</b> <span class="cells c3">{{job.occupationCode1}}</span> / <span class="cells c3">{{job.occupationCode2}}</span>',
+      '<span class="at f1-occ1"><span class="cells c3">{{job.occupationCode1}}</span></span>' +
+        '<span class="at f1-occ2"><span class="cells c3">{{job.occupationCode2}}</span></span>',
     );
-    // A newer revision: the boot rewrites the row it wrote with the new field.
-    expect(FORM.revision).toBe(2);
+    // A newer revision: the boot rewrites the row it wrote with his own pages.
+    expect(FORM.revision).toBe(3);
   });
 
   it('writes each digit in its own box, left to right, and leaves the rest of a row empty', () => {
     const boxes = (count: number, chars: string) =>
       `<span class="cells c${count}">${[...chars.padEnd(count, ' ')].map((c) => `<i>${c === ' ' ? '&nbsp;' : c}</i>`).join('')}</span>`;
-    expect(html).toContain(boxes(14, '29501011234567'));
-    expect(html).toContain(`${boxes(2, '05')} / ${boxes(2, '11')} / ${boxes(4, '2026')}`);
-    expect(html).toContain(boxes(9, '')); // the insurance number the record does not hold
-    expect(html).toContain(boxes(1, '✓')); // «عاملين لدى الغير»
+    expect(html).toContain(`<span class="at f1-nid">${boxes(14, '29501011234567')}</span>`);
+    expect(html).toContain(`<span class="at f1-day">${boxes(2, '05')}</span>`);
+    expect(html).toContain(`<span class="at f1-month">${boxes(2, '11')}</span>`);
+    expect(html).toContain(`<span class="at f1-year">${boxes(4, '2026')}</span>`);
+    expect(html).toContain(`<span class="at f1-ins">${boxes(9, '')}</span>`); // the insurance number the record does not hold
+    expect(html).toContain('<span class="at f1-cat">✓</span>'); // «عاملين لدى الغير»
   });
 
   it('registers the basic wage at 2720 pounds — «رقم 2720 دا يبقا الاجر الاساسي»', () => {
+    // The pounds in the last four of the five boxes, the piasters in their two.
     expect(FORM.sections.body).toContain(
-      '<b>*أجر أساسي:</b> <table class="mini" dir="ltr"><tbody><tr><td colspan="5">جنيـــه</td><td colspan="2">قرش</td></tr>' +
-        '<tr><td>&nbsp;</td><td>2</td><td>7</td><td>2</td><td>0</td><td>0</td><td>0</td></tr>',
+      '<span class="at f1-wage"><span class="cells c4">2720</span></span><span class="at f1-qirsh"><span class="cells c2">00</span></span>',
     );
   });
 
-  it('wears its own head and emblem: no company letterhead, no frame', () => {
+  /**
+   * «انا عاوز النموزج بردو شبه منا بعتو بظبط مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك
+   * بظبط». His two pages as he sent them, and nothing of the form written again: what the paper
+   * itself holds is the values and where they go — no word of the form's own.
+   */
+  it('prints on his own two pages as he sent them, and writes nothing of the form again', () => {
     expect(html).not.toContain('data:image/png;base64,LOGO');
-    expect(html).toContain('<section class="doc doc-form doc-bare">');
-    expect(html).toContain('p.nosi { height: 20mm');
-    expect(html).toContain('<p class="newpage">'); // and its second page overleaf
+    expect(html).toContain('<section class="doc doc-form doc-scan">');
+    expect(html).toContain('<div class="scan f1p1">');
+    expect(html).toContain('<div class="scan f1p2">');
+    expect(html).toContain('@page scan { margin: 0;');
+    expect(html).toContain(FORM_ONE_PAGE_1_PNG.slice(0, 120));
+    expect(html).toContain(FORM_ONE_PAGE_2_PNG.slice(0, 120));
+    const own = FORM.sections.body
+      .replace(/\{\{[a-zA-Z0-9.]+\}\}/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, '');
+    expect(own).toBe('✓272000');
+    expect(FORM.sections.header).toBe('');
+    // As the boot writes it: every page and place survives the template's sanitizing.
+    expect(preparedSections(FORM).sections.body).toBe(FORM.sections.body);
+    expect(preparedSections(FORM).placeholders).toEqual(
+      expect.arrayContaining(['contract.currentDay', 'contract.currentMonth', 'contract.currentYear']),
+    );
+  });
+
+  it('keeps the scan as he sent it: 1700 × 2800 pixels a page, the whole Legal page at 200 dpi', () => {
+    for (const page of [FORM_ONE_PAGE_1_PNG, FORM_ONE_PAGE_2_PNG]) {
+      const png = Buffer.from(page.slice('data:image/png;base64,'.length), 'base64');
+      expect(png.subarray(1, 4).toString()).toBe('PNG');
+      expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1700, 2800]);
+    }
+  });
+
+  it('writes nothing where the record is empty — the form\'s own dots are the blank', () => {
+    expect(html).toContain('.form-doc .scan .blank { display: none; }');
   });
 });

@@ -72,8 +72,8 @@ export const resolveRowColour = (
       : { colour: null, source: null };
 
 /**
- * The types that wear a colour — every one (two may share), in the catalog's order. The live ones,
- * plus an archived one only when asked for (`also`: the types the board still shows).
+ * The live types that wear a colour — every one (two may share), in the catalog's order. What a
+ * swatch's tooltip names.
  */
 export const colourWearers = (
   types: readonly OperationsShiftTypeDto[],
@@ -113,4 +113,38 @@ export const freeColourFor = (types: readonly OperationsShiftTypeDto[]): Palette
   const worn = new Set(liveTypes(types).map((type) => type.colour));
   const palette = shownPalette(liveTypes(types).length + 1);
   return palette.find((colour) => !worn.has(colour)) ?? PALETTE[0] ?? 'rose';
+};
+
+/**
+ * The arrows in a grid of swatches — where the focus goes from `at` of `count`, `columns` a row:
+ * along a line by ←/→ (the reading direction: in Arabic ← is the NEXT swatch), across lines by ↑/↓;
+ * Home and End to the ends. Wraps at the ends. Null for a key that does not move it.
+ */
+export const gridStep = (
+  key: string,
+  at: number,
+  count: number,
+  columns: number,
+  rtl: boolean,
+): number | null => {
+  if (count <= 0) return null;
+  const wrap = (to: number): number => ((to % count) + count) % count;
+  const forward = rtl ? 'ArrowLeft' : 'ArrowRight';
+  const back = rtl ? 'ArrowRight' : 'ArrowLeft';
+  switch (key) {
+    case forward:
+      return wrap(at + 1);
+    case back:
+      return wrap(at - 1);
+    case 'ArrowDown':
+      return wrap(at + Math.max(1, columns));
+    case 'ArrowUp':
+      return wrap(at - Math.max(1, columns));
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+    default:
+      return null;
+  }
 };

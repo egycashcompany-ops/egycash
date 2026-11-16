@@ -68,7 +68,7 @@ const slots = (captain: string[], specialist1: string[] = [], specialist2: strin
 const LOOSE = row('loose:c1', {
   plannedTime: '05:10',
   shiftTypeId: 't-secured',
-  rowColour: 'yellow',
+  rowColour: 'amber',
 });
 const VAN = row('van:249');
 

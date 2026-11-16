@@ -14,7 +14,8 @@
 //     والملاحظات كله تحت بعض مفيش حاجه داخلة وحاجه خارجه»: the same height, border, corners and
 //     padding, filling its column, the type's colour a dot at the box's start where the time's clock
 //     sits — so the column's boxes stand one under the other, none narrower, none sticking out;
-//   · the row's COLOUR — «زرار يبقى فى كذا لون اقدر الون به الصف»: six swatches and «بدون لون»;
+//   · the row's COLOUR — «زرار يبقى فى كذا لون اقدر الون به الصف»; since Round 24b the types' palette
+//     (as many swatches as there are types) over the type's own colour, and «لون النوع»;
 //   · a vehicle-less row's «اختيار سيارة» — since Round 24 only its button: the list of every car
 //     with no crew that day is the page's (`CrewVehiclePicker`).
 //
@@ -46,14 +47,10 @@ import { cn } from '../../../shared/lib/cn';
 import { fold } from '../../../shared/lib/fold';
 import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect';
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
-import {
-  CREW_ROW_COLOURS,
-  parseClock,
-  shiftTypeChoices,
-  type CrewRowColour,
-} from '../lib/crew-plan';
+import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
+import { gridStep, type RowColourChoice } from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
-import { ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
+import { SHIFT_TYPE_TONE, ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
 
 // ── The looks ────────────────────────────────────────────────────────────────────────────────────
 
@@ -71,29 +68,6 @@ export const REFUSED_BOX =
 /** A value the box keeps but the catalog no longer offers (legacy text, an archived type). */
 const KEPT_BOX =
   '[&&]:border-amber-400 [&&]:text-amber-800 dark:[&&]:border-amber-500/70 dark:[&&]:text-amber-200';
-
-/**
- * The row's tint, by its colour — on the CELLS, not the row: the boards' table paints a hovered row
- * itself (`DARK_TABLE`), which would wash a row's colour out exactly while the pointer is on it.
- */
-export const ROW_TINT: Record<CrewRowColour, string> = {
-  yellow: '[&>td]:!bg-yellow-100 dark:[&>td]:!bg-yellow-400/[0.14]',
-  green: '[&>td]:!bg-emerald-100 dark:[&>td]:!bg-emerald-400/[0.14]',
-  blue: '[&>td]:!bg-sky-100 dark:[&>td]:!bg-sky-400/[0.14]',
-  red: '[&>td]:!bg-rose-100 dark:[&>td]:!bg-rose-400/[0.14]',
-  purple: '[&>td]:!bg-violet-100 dark:[&>td]:!bg-violet-400/[0.16]',
-  orange: '[&>td]:!bg-orange-100 dark:[&>td]:!bg-orange-400/[0.14]',
-};
-
-/** The swatch a colour is picked by. */
-export const SWATCH: Record<CrewRowColour, string> = {
-  yellow: 'bg-yellow-400',
-  green: 'bg-emerald-500',
-  blue: 'bg-sky-500',
-  red: 'bg-rose-500',
-  purple: 'bg-violet-500',
-  orange: 'bg-orange-500',
-};
 
 const PANEL =
   'z-[70] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl shadow-slate-900/15 animate-menu-in dark:border-slate-700 dark:bg-[#111827] dark:shadow-black/60';
@@ -764,14 +738,35 @@ export const ShiftTypePicker = ({
 
 // ── The row's colour ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The «اللون» cell — Round 24b, «تلقائي ويتغيّر يدوي»: a row wears its TYPE's colour by itself, and a
+ * colour picked here overrides it. The list offers exactly the palette shown on the board — as many
+ * swatches as there are live types (`rowColourChoices`), each naming the types that wear it — and
+ * «لون النوع», which takes the override off. The row's own colour, when it is no longer among those
+ * swatches (a type archived since), is still offered at the end, pressed, «outside the palette».
+ *
+ * The button shows the colour the row is drawn in: the override solid; the type's in a dashed ring
+ * («automatic»); none, the drop. The keyboard walks the swatches by the arrows (a grid, in the
+ * reading direction), Enter picks, Escape closes.
+ */
 export const RowColourPicker = ({
   rowKey,
   value,
+  typeColour,
+  choices,
+  wornBy,
   disabled,
   onChange,
 }: {
   rowKey: string;
+  /** The colour picked by hand on the row, or null — «لون النوع». */
   value: CrewRowColour | null;
+  /** The row's type's colour, or null (no type yet). */
+  typeColour: CrewRowColour | null;
+  /** What the list offers (`rowColourChoices`). */
+  choices: readonly RowColourChoice[];
+  /** The live types wearing a colour, by name — a swatch's tooltip. */
+  wornBy: (colour: CrewRowColour) => readonly string[];
   disabled: boolean;
   onChange: (next: CrewRowColour | null) => void;
 }): JSX.Element => {
@@ -784,10 +779,36 @@ export const RowColourPicker = ({
     anchor.current?.querySelector('button')?.focus({ preventScroll: true });
     if (next !== value) onChange(next);
   };
+  const colourName = (colour: CrewRowColour): string =>
+    t(`operations.catalogs.shiftType.colours.${colour}`);
+  const shown = value ?? typeColour;
   const name =
-    value === null
-      ? t('operations.crewPlan.colour.none')
-      : t(`operations.crewPlan.colour.${value}`);
+    value !== null
+      ? colourName(value)
+      : typeColour !== null
+        ? t('operations.crewPlan.colour.autoOf', { colour: colourName(typeColour) })
+        : t('operations.crewPlan.colour.none');
+  const swatchWords = ({ colour, outside }: RowColourChoice): string => {
+    if (outside) return t('operations.crewPlan.colour.outside', { colour: colourName(colour) });
+    const types = wornBy(colour);
+    return types.length === 0
+      ? t('operations.crewPlan.colour.unworn', { colour: colourName(colour) })
+      : t('operations.crewPlan.colour.wornBy', { colour: colourName(colour), types: types.join('، ') });
+  };
+  const palette = choices.filter((choice) => !choice.outside).length;
+  /** The swatches' grid: ←/→ along a line in the reading direction, ↑/↓ a line, Home / End. */
+  const walkGrid = (event: KeyboardEvent<HTMLElement>): void => {
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-colour]'),
+    );
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+    const next = gridStep(event.key, at, buttons.length, COLOUR_COLUMNS, rtl);
+    if (next === null) return;
+    event.preventDefault();
+    buttons[next]?.focus();
+  };
   return (
     <div ref={anchor} className="inline-block" data-colour-picker={rowKey}>
       <button
@@ -796,18 +817,23 @@ export const RowColourPicker = ({
         aria-expanded={open}
         aria-label={`${t('operations.crewPlan.colour.open')}: ${name}`}
         title={`${t('operations.crewPlan.colour.open')}: ${name}`}
+        data-colour-source={value !== null ? 'row' : typeColour !== null ? 'type' : 'none'}
         disabled={disabled}
         onClick={() => setOpen((now) => !now)}
         className="flex items-center justify-center rounded-lg border border-slate-200 bg-white transition hover:border-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-50 dark:border-slate-700 dark:bg-[#0a1233]"
       >
-        {value === null ? (
+        {shown === null ? (
           <BoardIcon d={PLAN_ICON.drop} className="h-4 w-4 text-slate-400" />
         ) : (
           <span
             aria-hidden
             className={cn(
-              'h-4 w-4 rounded-full ring-2 ring-white/80 dark:ring-slate-900',
-              SWATCH[value],
+              'h-4 w-4 rounded-full',
+              SHIFT_TYPE_TONE[shown].dot,
+              value !== null
+                ? 'ring-2 ring-white/80 dark:ring-slate-900'
+                : // The type's colour, by itself: a dashed ring says nobody picked it here.
+                  'outline-dashed outline-2 outline-offset-1 outline-slate-500 dark:outline-slate-300',
             )}
           />
         )}
@@ -816,50 +842,87 @@ export const RowColourPicker = ({
         anchor={anchor}
         open={open}
         onClose={() => setOpen(false)}
-        width={212}
+        width={236}
         role="dialog"
         aria-label={t('operations.crewPlan.colour.open')}
         data-colour-panel={rowKey}
         className="p-2.5"
       >
         <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
-          {t('operations.crewPlan.colour.open')}
+          {t('operations.crewPlan.colour.palette', { count: palette })}
         </p>
-        <div className="grid grid-cols-6 gap-1.5" onKeyDown={walk}>
-          {CREW_ROW_COLOURS.map((colour) => (
-            <button
-              key={colour}
-              type="button"
-              data-colour={colour}
-              aria-pressed={colour === value}
-              aria-label={t(`operations.crewPlan.colour.${colour}`)}
-              title={t(`operations.crewPlan.colour.${colour}`)}
-              onClick={() => pick(colour)}
-              className={cn(
-                'h-7 w-7 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111827]',
-                SWATCH[colour],
-                colour === value &&
-                  'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-[#111827]',
-              )}
-            />
-          ))}
-        </div>
+        {choices.length === 0 ? (
+          <p className="mb-1 text-[12px] font-bold text-slate-500 dark:text-slate-400">
+            {t('operations.crewPlan.colour.empty')}
+          </p>
+        ) : (
+          <div className="grid grid-cols-6 gap-1.5" onKeyDown={walkGrid}>
+            {choices.map((choice) => {
+              const { colour, outside } = choice;
+              const on = colour === value;
+              const automatic = value === null && colour === typeColour;
+              return (
+                <button
+                  key={`${colour}${outside ? ':outside' : ''}`}
+                  type="button"
+                  data-colour={colour}
+                  data-colour-outside={outside ? 'true' : undefined}
+                  data-colour-type={automatic ? 'true' : undefined}
+                  aria-pressed={on}
+                  aria-label={swatchWords(choice)}
+                  title={swatchWords(choice)}
+                  onClick={() => pick(colour)}
+                  className={cn(
+                    'h-7 w-7 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#111827]',
+                    SHIFT_TYPE_TONE[colour].dot,
+                    on &&
+                      'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-[#111827]',
+                    // The type's own colour while nobody picked one here — dashed, as on the button.
+                    automatic &&
+                      'outline-dashed outline-2 outline-offset-2 outline-slate-500 dark:outline-slate-300',
+                    outside && 'border-2 border-dashed border-white dark:border-slate-900',
+                  )}
+                />
+              );
+            })}
+          </div>
+        )}
         <button
           type="button"
-          data-colour="none"
+          data-colour="type"
           aria-pressed={value === null}
+          title={t('operations.crewPlan.colour.autoHint')}
           onClick={() => pick(null)}
           className={cn(
             OPTION,
             'mt-2 justify-center border border-dashed border-slate-300 text-[12.5px] text-slate-600 dark:border-slate-600 dark:text-slate-300',
+            value === null && 'border-solid border-brand-400 bg-brand-500/10',
           )}
         >
-          {t('operations.crewPlan.colour.none')}
+          {typeColour === null ? (
+            <span
+              aria-hidden
+              className="h-3 w-3 shrink-0 rounded-full border border-dashed border-slate-400"
+            />
+          ) : (
+            <ShiftTypeDot colour={typeColour} size="sm" />
+          )}
+          <span className="min-w-0 truncate">
+            {t('operations.crewPlan.colour.auto')}
+            {typeColour === null && (
+              <span className="ms-1 font-semibold text-slate-400 dark:text-slate-500">
+                ({t('operations.crewPlan.colour.noType')})
+              </span>
+            )}
+          </span>
         </button>
       </FloatingPanel>
     </div>
   );
 };
+
+/** The swatches a line of the «اللون» list holds. */
+const COLOUR_COLUMNS = 6;
 
 // ── A vehicle-less row's van ─────────────────────────────────────────────────────────────────────
 

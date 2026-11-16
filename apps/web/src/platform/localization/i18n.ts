@@ -11518,6 +11518,8 @@ const en: Record<string, string> = {
     'This type’s colour is not among the colours shown now — pick one of them',
   'operations.crewPlan.typeColours.empty': 'No shift types yet',
   'operations.crewPlan.typeColours.saved': '{{type}} is now {{colour}}',
+  'operations.crewPlan.typeColours.stale':
+    'This type was changed elsewhere a moment ago — its colours were read again; pick once more',
   'operations.crewPlan.row.clear': 'Empty the row',
   'operations.crewPlan.row.remove': 'Delete the row',
   'operations.crewPlan.short.captain': 'No captain yet',
@@ -25681,6 +25683,8 @@ const ar: Record<string, string> = {
     'لون هذا النوع ليس من الألوان المعروضة الآن، فاختر له لونًا منها',
   'operations.crewPlan.typeColours.empty': 'لا توجد أنواع تشغيل بعد',
   'operations.crewPlan.typeColours.saved': 'أصبح لون {{type}}: {{colour}}',
+  'operations.crewPlan.typeColours.stale':
+    'عُدِّل هذا النوع من مكان آخر قبل لحظات، وأُعيدت قراءة ألوانه؛ فاختر مرة أخرى',
   'operations.crewPlan.row.clear': 'تفريغ الصف',
   'operations.crewPlan.row.remove': 'حذف الصف',
   'operations.crewPlan.short.captain': 'لا يوجد قائد بعد',

@@ -115,7 +115,6 @@ import { CrewPlanChip, RoleLegend } from '../components/CrewPlanChip';
 import {
   CELL_BOX,
   DirectionPicker,
-  ROW_TINT,
   RowColourPicker,
   ShiftTypePicker,
   TimePicker,
@@ -129,7 +128,8 @@ import { PLAN_ICON } from '../components/crew-plan-icons';
 import { DAY_BAR, DayBox } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
-import { ShiftTypeDot, shiftTypeName } from '../components/shift-type-look';
+import { ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
+import { TypeColoursCard } from '../components/TypeColoursCard';
 import {
   CREW_SLOTS,
   EMPTY_POOL_QUERY,
@@ -168,6 +168,7 @@ import {
   vehiclelessRow,
   wrongSlotOf,
   type CrewRole,
+  type CrewRowColour,
   type CrewSlot,
   type PlanRefusal,
   type PlanPool,
@@ -216,6 +217,14 @@ import {
   type UndoWhat,
 } from '../lib/crew-undo';
 import { giveVehicle, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
+import {
+  colourWearers,
+  paletteFor,
+  resolveRowColour,
+  rowColourChoices,
+  typeColourOf,
+  type PaletteColour,
+} from '../lib/type-colours';
 import { saveReportWorkbook } from '../lib/report-export';
 
 /** `?date=` empty means TOMORROW, resolved by the server — the legacy planning default. */
@@ -303,6 +312,8 @@ export const CrewBoardPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   const date = resolveCrewDate(sp.get('date'));
   const canPlan = can('operationsCrew.plan');
+  // Round 24b — «ألوان الأنواع» writes the catalog, under the catalog's own grant (no new one).
+  const canColourTypes = can('operationsCatalog.manage');
 
   const board = useOperationsCrewBoard(date);
   const day = date ?? (board.data?.date ?? '').slice(0, 10);
@@ -401,6 +412,19 @@ export const CrewBoardPage = (): JSX.Element => {
     const type = shiftTypes.find((candidate) => candidate.id === shiftTypeId);
     return type === undefined ? '—' : shiftTypeName(type, locale);
   };
+
+  // ── The colours (Round 24b) ──────────────────────────────────────────────────────────────────
+  // «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع»: ONE palette, the types', of as
+  // many swatches as there are live types (`lib/type-colours.ts`). A row is drawn in the colour
+  // picked by hand on it, else its type's — «تلقائي ويتغيّر يدوي».
+  const palette = useMemo(() => paletteFor(shiftTypes), [shiftTypes]);
+  const colourName = (colour: PaletteColour): string =>
+    t(`operations.catalogs.shiftType.colours.${colour}`);
+  const wornBy = (colour: PaletteColour): string[] =>
+    colourWearers(shiftTypes, colour).map((type) => shiftTypeName(type, locale));
+  const colourOfRow = (row: PlanRow) =>
+    resolveRowColour(row.rowColour, typeColourOf(shiftTypes, row.shiftTypeId));
+  const [typeColoursOpen, setTypeColoursOpen] = useState(false);
 
   const directions = useMemo(
     () => [...(areaNames.data ?? [])].sort((a, b) => a.localeCompare(b, 'ar')),
@@ -760,6 +784,17 @@ export const CrewBoardPage = (): JSX.Element => {
     // The refused box is changed: what it said no longer describes it.
     setRefusal((current) => (current?.key === key ? null : current));
   };
+  /**
+   * The row's colour picked by hand — or (null) taken off, back to its type's. ONE operation for
+   * «تراجع», said with the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه».
+   */
+  const recolour = (key: string, rowColour: CrewRowColour | null): void =>
+    applyRows(
+      rowColour === null
+        ? { kind: 'colourAuto', vars: { row: nameOfRow(key) } }
+        : { kind: 'colour', vars: { row: nameOfRow(key), colour: colourName(rowColour) } },
+      (current) => patchRow(current, key, { rowColour }),
+    );
 
   const selectChip = (employeeId: string): void => {
     setPicker(null);
@@ -1425,8 +1460,11 @@ export const CrewBoardPage = (): JSX.Element => {
             <RowColourPicker
               rowKey={row.key}
               value={row.rowColour}
+              typeColour={typeColourOf(shiftTypes, row.shiftTypeId)}
+              choices={rowColourChoices(palette, row.rowColour)}
+              wornBy={wornBy}
               disabled={!canPlan}
-              onChange={(rowColour) => patch(row.key, { rowColour })}
+              onChange={(rowColour) => recolour(row.key, rowColour)}
             />
             {canPlan && (
               <button
@@ -1551,6 +1589,20 @@ export const CrewBoardPage = (): JSX.Element => {
                 {t('operations.crewPlan.standing')}
               </button>
             )}
+            {/* Round 24b — «فوق خالص جمب الطاقم الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل
+                نوع لون من الالوان». For whoever reads the board; read only without the catalog's
+                grant. */}
+            <button
+              type="button"
+              data-type-colours-open="true"
+              aria-haspopup="dialog"
+              aria-expanded={typeColoursOpen}
+              onClick={() => setTypeColoursOpen(true)}
+              className={BRAND_BUTTON}
+            >
+              <BoardIcon d={PLAN_ICON.palette} className="h-3.5 w-3.5" />
+              {t('operations.crewPlan.typeColours.open')}
+            </button>
             {canPlan && (
               <button
                 type="button"
@@ -1874,16 +1926,23 @@ export const CrewBoardPage = (): JSX.Element => {
                     ? t('operations.crew.noVehicles')
                     : t('operations.crewPlan.noneOfType')
                 }
-                rowClassName={(row) =>
-                  row.rowColour === null ? undefined : ROW_TINT[row.rowColour]
-                }
-                rowProps={(row) =>
-                  ({
-                    'data-plan-row': row.key,
-                    ...(row.rowColour === null ? {} : { 'data-row-colour': row.rowColour }),
-                    ...(refusal?.key === row.key ? { 'data-row-refused': refusal.field } : {}),
-                  }) as HTMLAttributes<HTMLTableRowElement>
-                }
+                // The row in its colour (Round 24b): its own, else its type's — a deep tint and a
+                // solid bar at its start edge («عاوز اللون فى الجدول يكون متشبع اكتر من كدا»).
+                rowClassName={(row) => {
+                  const { colour } = colourOfRow(row);
+                  return colour === null ? undefined : rowTint(colour);
+                }}
+                rowProps={(row) => {
+                  const { colour, source } = colourOfRow(row);
+                  const marks: Record<string, string> = { 'data-plan-row': row.key };
+                  // Where its colour comes from: picked on the row, or its type's.
+                  if (colour !== null) {
+                    marks['data-row-colour'] = colour;
+                    marks['data-row-colour-source'] = source ?? 'type';
+                  }
+                  if (refusal?.key === row.key) marks['data-row-refused'] = refusal.field;
+                  return marks as HTMLAttributes<HTMLTableRowElement>;
+                }}
                 stickyHead
                 minColumnWidth={4}
               />
@@ -1938,6 +1997,16 @@ export const CrewBoardPage = (): JSX.Element => {
           onClose={closeVanPicker}
         />
       )}
+
+      {/* «ألوان الأنواع» (Round 24b) — a catalog save per press, never a step of the draft. */}
+      <TypeColoursCard
+        open={typeColoursOpen}
+        onClose={() => setTypeColoursOpen(false)}
+        types={shiftTypes}
+        listed={strip.chips.map(({ type }) => type)}
+        canEdit={canColourTypes}
+        sheet={phone}
+      />
 
       {/* «تغييرات غير محفوظة» — another day, a link in the menu, a reload. */}
       <DesignDialog

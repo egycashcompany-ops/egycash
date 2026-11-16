@@ -27,6 +27,8 @@ import {
   type OperationsAreaDto,
   type OperationsExecutionResultDto,
   type OperationsShipmentType,
+  type OperationsShiftTypeColour,
+  type OperationsShiftTypeDto,
   type OperationsVaultSealCheckDto,
   type Paginated,
   type OrderOperationsCurrencies,
@@ -1122,6 +1124,50 @@ export const useUpdateOperationsShiftType = () => {
       api.updateOperationsShiftType(id, body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes });
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * Round 24b — «ألوان الأنواع» on «لوحة التشغيلة»: one type given one colour of the palette, through
+ * the catalog's own update (`PATCH /operations/shift-types/:id`, `operationsCatalog.manage`) — the
+ * version the card read, nothing else. A CATALOG save, not a board operation: nothing of the board's
+ * draft (nor its «تراجع») is touched.
+ *
+ * The board draws a row from the type's colour it reads in the catalog (`lib/type-colours.ts`), so
+ * the answer is written straight into every cached list of types — the board recolours the moment
+ * the server says yes — and then both are re-read: the types, and the crew board (its rows carry no
+ * colour of a type, so its re-read is one the cache answers unchanged; it is invalidated so no screen
+ * keeps a board read under the old catalog). The card words its own refusals (a stale version: 409).
+ */
+export const useRecolourOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      type,
+      colour,
+    }: {
+      type: Pick<OperationsShiftTypeDto, 'id' | 'version'>;
+      colour: OperationsShiftTypeColour;
+    }) => api.updateOperationsShiftType(type.id, { colour, version: type.version }),
+    onSuccess: (updated) => {
+      qc.setQueriesData<Paginated<OperationsShiftTypeDto>>(
+        { queryKey: operationsKeys.shiftTypes },
+        (list) =>
+          list === undefined || !Array.isArray(list.items)
+            ? list
+            : {
+                ...list,
+                items: list.items.map((item) => (item.id === updated.id ? updated : item)),
+              },
+      );
+    },
+    onSettled: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes }),
+        qc.invalidateQueries({ queryKey: operationsKeys.crewBoard }),
+      ]);
     },
     onError: formOwnsTheError,
   });

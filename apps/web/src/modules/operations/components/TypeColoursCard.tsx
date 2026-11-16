@@ -3,8 +3,9 @@
 // THE OWNER: «وعاوز فوق خالص جمب الطاقم الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل نوع لون من
 // الالوان». A TABLE: a row per type, in the board's type order (its strip's: the active types in the
 // catalog's order, and an archived one while a row of the day still holds it); a column per swatch
-// of the palette SHOWN — as many as there are live types (`paletteFor`), all twenty past twenty, said
-// so. A press on a swatch gives that type that colour; two types may share one («أيوه عادي»).
+// of the palette SHOWN — as many as there are live types, every colour a live type wears among them
+// (`paletteFor`), all twenty past twenty, said so. A press on a swatch gives that type that colour;
+// two types may share one («أيوه عادي»).
 //
 // A CATALOG SAVE, NOT A BOARD STEP. Each press is the catalog's own update
 // (`useRecolourOperationsShiftType` — `PATCH /operations/shift-types/:id` under
@@ -12,9 +13,10 @@
 // once, the board recolours at once, and «تراجع» on the board never sees it. Without that grant the
 // table is shown, read only, and says why.
 //
-// A type whose colour is not among the swatches shown (the palette shrank when a type was archived,
-// or it was given a colour before Round 24b) is marked «خارج اللوحة»: its row has no pressed swatch,
-// and any press brings it back onto the palette.
+// A live type's colour is always among the swatches shown (`paletteFor` keeps every colour a live
+// type wears). An ARCHIVED type the card lists (a row of the day still holds it) may wear one that is
+// not: it is marked «خارج اللوحة», its row has no pressed swatch, and any press brings it back onto
+// the palette.
 //
 // A COMPUTER gets the board's dialog with the table; a PHONE gets Fleet's bottom sheet, each type a
 // block of its own with its swatches wrapping under its name — no table wider than the screen.

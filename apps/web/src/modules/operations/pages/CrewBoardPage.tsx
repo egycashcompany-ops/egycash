@@ -135,7 +135,7 @@ import { PLAN_ICON } from '../components/crew-plan-icons';
 import { DAY_BAR, DayBox } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
-import { ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
+import { ON_TINT, ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
 import { TypeColoursCard } from '../components/TypeColoursCard';
 import {
   CREW_SLOTS,
@@ -1126,6 +1126,8 @@ export const CrewBoardPage = (): JSX.Element => {
     // Its list, «+ اختيار»: on a slot with room, whenever nothing is picked up (then it is «ضع هنا»).
     const offerList = canPlan && selected === null && people.length < CREW_SLOT_CAPACITY;
     const listOpen = picker?.key === row.key && picker.slot === slot;
+    // A row drawn in a colour: its empty slot's «+ اختيار» stands on the page's colour (`ON_TINT`).
+    const tinted = colourOfRow(row).colour !== null;
     const chooseWord = t(
       `operations.crewPlan.picker.choose.${slot === 'captain' ? 'captain' : 'specialist'}`,
     );
@@ -1228,8 +1230,16 @@ export const CrewBoardPage = (): JSX.Element => {
             aria-label={`${chooseWord} — ${slotWord} — ${rowName(row)}`}
             onClick={(event) => openPicker(row.key, slot, event.currentTarget)}
             className={cn(
-              'flex min-h-[2rem] flex-1 items-center justify-center gap-1 rounded-md text-[11.5px] font-bold text-slate-400 transition hover:bg-brand-500/10 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:text-slate-500 dark:hover:text-brand-200',
-              listOpen && 'bg-brand-500/15 text-brand-700 dark:text-brand-200',
+              'flex min-h-[2rem] flex-1 items-center justify-center gap-1 rounded-md text-[11.5px] font-bold transition hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 dark:hover:text-brand-200',
+              // On a row drawn in a colour, the page's own colour under the words (`ON_TINT`).
+              listOpen
+                ? cn(
+                    'text-brand-700 dark:text-brand-200',
+                    tinted ? 'bg-brand-50 dark:bg-[#16203a]' : 'bg-brand-500/15',
+                  )
+                : tinted
+                  ? ON_TINT.pick.tinted
+                  : ON_TINT.pick.plain,
               dragging !== null && 'invisible',
             )}
           >
@@ -1310,7 +1320,12 @@ export const CrewBoardPage = (): JSX.Element => {
               data-crew-short="true"
               aria-label={short}
               title={short}
-              className="inline-flex text-amber-500 dark:text-amber-400"
+              // On a row drawn in a colour, a disc of the page's own colour (`ON_TINT`): it is the
+              // board's only sign of a short crew, and amber on a rose or amber row vanished.
+              className={cn(
+                'inline-flex',
+                colourOfRow(row).colour !== null ? ON_TINT.short.tinted : ON_TINT.short.plain,
+              )}
             >
               <BoardIcon d={PATH.warn} className="h-4 w-4" />
             </span>

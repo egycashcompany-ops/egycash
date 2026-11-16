@@ -142,6 +142,31 @@ export const SHIFT_TYPE_TONE: Record<
 export const ROW_BAR =
   'ltr:[&>td:first-child]:[box-shadow:inset_5px_0_0_0_var(--row-bar)] rtl:[&>td:first-child]:[box-shadow:inset_-5px_0_0_0_var(--row-bar)]';
 
+/**
+ * The marks drawn straight on a row's cells, legible on every tint (Round 24b — a typed row is tinted
+ * by itself now, so most rows are): on a coloured row each stands on the page's own colour, opaque,
+ * as a marked chip does (its halo), so the tint under it never decides its contrast.
+ *   · `short` — «ينقصها…», the crew short of its minimum: the board's ONLY sign of it (the server
+ *     never refuses a short crew). amber-600 — 3.2:1 on white, a graphic's 3:1 — where amber-500 was
+ *     2.2:1 on white and 1.4:1 on a rose row; amber-400 in dark. On a coloured row a disc of the
+ *     page's colour, with a hair of it around;
+ *   · `pick` — an empty slot's «+ اختيار …»: quiet slate-400 on a plain row, as since Round 22; on a
+ *     coloured row the page's colour under slate-600 (7.6:1; slate-400 fell to 1.7:1 on a rose row,
+ *     1.5:1 on a navy one), slate-300 in dark.
+ * The spec measures every one against the twenty tints (`type-colours.spec.tsx`).
+ */
+export const ON_TINT = {
+  short: {
+    plain: 'text-amber-600 dark:text-amber-400',
+    tinted:
+      'rounded-full bg-white text-amber-600 shadow-[0_0_0_2px_#fff] dark:bg-[#0b1226] dark:text-amber-400 dark:shadow-[0_0_0_2px_#0b1226]',
+  },
+  pick: {
+    plain: 'text-slate-400 hover:bg-brand-500/10 dark:text-slate-500',
+    tinted: 'bg-white text-slate-600 hover:bg-brand-50 dark:bg-[#0b1226] dark:text-slate-300 dark:hover:bg-[#16203a]',
+  },
+} as const;
+
 /** A crew row drawn in a palette colour: its tint, and the bar at its start. */
 export const rowTint = (colour: OperationsShiftTypeColour): string =>
   cn(SHIFT_TYPE_TONE[colour].row, ROW_BAR);

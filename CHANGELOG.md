@@ -849,7 +849,7 @@ its entry here in the same PR.
         coloured row stands on a halo of the page's colour, and the refused chip and the refused
         van ring are solid.
       - The row colour's names are the palette's. `OperationsCrewRowColourSchema` takes a palette
-        name, or one of Round 20's six MAPPED onto it (yellow→amber, green→emerald, blue→sky,
+        name, or one of Round 20's six MAPPED onto it (yellow→gold, green→emerald, blue→sky,
         red→rose, purple→violet, orange→orange), so an old client never meets a 400; the parsed
         value, and every answer, is a palette name. The crew row's model accepts both spellings
         (what the collection may hold); every reader goes through `canonicalCrewRowColour`, so a

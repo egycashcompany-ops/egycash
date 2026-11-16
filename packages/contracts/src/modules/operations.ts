@@ -1842,12 +1842,14 @@ export const OPERATIONS_CREW_ROW_COLOURS = OPERATIONS_SHIFT_TYPE_COLOURS;
 export type OperationsCrewRowColour = OperationsShiftTypeColour;
 
 /**
- * Round 20's six row colours → the palette's names, each the nearest of the palette's colours to
- * how Round 20 drew it (`yellow` was drawn amber-ish, `green` emerald, `blue` sky, `red` rose,
- * `purple` violet). `orange` is a palette name too and maps to itself.
+ * Round 20's six row colours → the palette's names, each the palette's colour Round 20 drew it in:
+ * its swatch was the palette's dot exactly — `yellow` bg-yellow-400 (the palette's `gold`, NOT
+ * `amber`, an orange-brown amber-600 that would have read as one with `orange`), `green`
+ * emerald-500, `blue` sky-500, `red` rose-500, `purple` violet-500. `orange` is a palette name too
+ * and maps to itself.
  */
 export const OPERATIONS_LEGACY_CREW_ROW_COLOURS = {
-  yellow: 'amber',
+  yellow: 'gold',
   green: 'emerald',
   blue: 'sky',
   red: 'rose',

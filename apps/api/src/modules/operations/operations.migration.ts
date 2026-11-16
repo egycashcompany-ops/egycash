@@ -177,7 +177,7 @@ export const migrateCrewAssignmentIndexes = async (): Promise<void> => {
  * Round 24b — ONE PALETTE: «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع». A crew row's
  * colour is now a name of the types' palette (`OPERATIONS_CREW_ROW_COLOURS`), and Round 20's six
  * names are legacy. This rewrites the stored ones to the palette's (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`
- * — yellow→amber, green→emerald, blue→sky, red→rose, purple→violet; orange is a palette name and
+ * — yellow→gold, green→emerald, blue→sky, red→rose, purple→violet; orange is a palette name and
  * stays), under the rules the slots' migration set above:
  *
  *   1. NOTHING ELSE IS TOUCHED. One field, one value for another, on exactly the rows that hold a

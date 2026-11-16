@@ -779,7 +779,7 @@ describe('the crew row’s type and colour', () => {
 
   it('Round 24b — a row still holding a Round-20 name reads in the palette’s, and the boot migrates it once, history and timestamps untouched', async () => {
     const res = await saved(
-      { rows: [{ vehicleId: null, rowColour: 'gold', notes: 'r24b-migrate' }] },
+      { rows: [{ vehicleId: null, rowColour: 'navy', notes: 'r24b-migrate' }] },
       COLOUR_DAY,
     );
     const id = res.vehiclelessRows.find((row) => row.notes === 'r24b-migrate')?.id as string;
@@ -813,13 +813,14 @@ describe('the crew row’s type and colour', () => {
       .insertedId;
     const before = await OperationsCrewAssignmentModel.collection.findOne({ _id });
 
-    // Read BEFORE the migration: the palette's name already — the board never shows «yellow».
-    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('amber');
+    // Read BEFORE the migration: the palette's name already — the board never shows «yellow». It is
+    // the palette's GOLD, the colour Round 20 drew yellow in (bg-yellow-400), not amber.
+    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('gold');
 
     const first = await migrateCrewRowColoursToPalette();
     expect(first.rowsUpdated).toBe(2);
     const after = await OperationsCrewAssignmentModel.collection.findOne({ _id });
-    expect(after?.rowColour).toBe('amber');
+    expect(after?.rowColour).toBe('gold');
     // A spelling changed, not the crew: `updatedAt` and the version stay.
     expect(after?.updatedAt).toEqual(before?.updatedAt);
     expect(after?.__v).toEqual(before?.__v);

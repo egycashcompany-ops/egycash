@@ -247,7 +247,7 @@ describe('toPlanRows — the board as the server sends it', () => {
         ...board,
         rows: [{ ...board.rows[0], crew: { ...board.rows[0]?.crew, rowColour } }],
       } as unknown as OperationsCrewBoardDto)[0]?.rowColour;
-    expect(older('yellow')).toBe('amber');
+    expect(older('yellow')).toBe('gold');
     expect(older('green')).toBe('emerald');
     expect(older('blue')).toBe('sky');
     expect(older('red')).toBe('rose');

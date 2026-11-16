@@ -745,7 +745,8 @@ export const ShiftTypePicker = ({
  * colour picked here overrides it. The list offers exactly the palette shown on the board — as many
  * swatches as there are live types (`rowColourChoices`), each naming the types that wear it — and
  * «لون النوع», which takes the override off. The row's own colour, when it is no longer among those
- * swatches (a type archived since), is still offered at the end, pressed, «outside the palette».
+ * swatches (the type that wore it archived or recoloured), is still offered at the end, pressed,
+ * «outside the palette».
  *
  * The button shows the colour the row is drawn in: the override solid; the type's in a dashed ring
  * («automatic»); none, the drop. The keyboard walks the swatches by the arrows (a grid, in the

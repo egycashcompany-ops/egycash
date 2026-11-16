@@ -21,7 +21,6 @@ import {
   paletteOverflow,
   resolveRowColour,
   rowColourChoices,
-  shownPalette,
   typeColourOf,
 } from './type-colours';
 
@@ -55,40 +54,82 @@ const SEEDED = [
 ];
 
 describe('the palette shown — as many swatches as live types', () => {
-  it('is the palette’s first N, in its order', () => {
+  it('is every colour a live type wears, then the first unworn ones up to N, in the palette’s order', () => {
     expect(PALETTE).toBe(OPERATIONS_SHIFT_TYPE_COLOURS);
-    expect(shownPalette(0)).toEqual([]);
-    expect(shownPalette(1)).toEqual(['rose']);
-    expect(shownPalette(3)).toEqual(['rose', 'emerald', 'indigo']);
-    expect(shownPalette(9)).toEqual(OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 9));
-  });
-
-  it('never more than the palette holds, never less than none', () => {
-    expect(shownPalette(20)).toHaveLength(20);
-    expect(shownPalette(27)).toEqual([...OPERATIONS_SHIFT_TYPE_COLOURS]);
-    expect(shownPalette(-2)).toEqual([]);
-    expect(shownPalette(2.7)).toEqual(['rose', 'emerald']);
-  });
-
-  it('counts the LIVE types only — an archived one is no swatch', () => {
-    expect(liveTypes(SEEDED)).toHaveLength(8);
-    expect(paletteFor(SEEDED)).toEqual(OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 8));
     expect(paletteFor([])).toEqual([]);
+    expect(paletteFor([type('a', 'rose')])).toEqual(['rose']);
+    // Worn late in the list: shown, in the palette's order — never «the first N».
+    expect(paletteFor([type('a', 'olive'), type('b', 'navy')])).toEqual(['navy', 'olive']);
+    // Two share rose: room for one unworn swatch, the palette's first (emerald).
+    expect(paletteFor([type('a', 'rose'), type('b', 'slate'), type('c', 'rose')])).toEqual([
+      'rose',
+      'emerald',
+      'slate',
+    ]);
+  });
+
+  it('counts the LIVE types only — an archived one is no swatch, and its colour no wearer', () => {
+    expect(liveTypes(SEEDED)).toHaveLength(8);
+    // «مسائي» (violet) archived: the eight colours the eight live types wear — violet gone.
+    expect(paletteFor(SEEDED)).toEqual([
+      'rose',
+      'emerald',
+      'indigo',
+      'amber',
+      'teal',
+      'orange',
+      'fuchsia',
+      'slate',
+    ]);
+    expect(paletteFor([type('gone', 'navy', false)])).toEqual([]);
   });
 
   it('a fresh catalog of the nine seeded types finds every colour among the nine swatches', () => {
     const fresh = SEEDED.map((seeded) => ({ ...seeded, isActive: true }));
     const palette = paletteFor(fresh);
-    expect(palette).toHaveLength(9);
+    expect(palette).toEqual(OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 9));
     for (const seeded of fresh) expect(inPalette(palette, seeded.colour), seeded.id).toBe(true);
+  });
+
+  it('archiving ANY seeded type never pushes a live type off the palette, nor shows the archived one’s colour', () => {
+    const fresh = SEEDED.map((seeded) => ({ ...seeded, isActive: true }));
+    for (const archived of fresh) {
+      const catalog = fresh.map((t) => (t.id === archived.id ? { ...t, isActive: false } : t));
+      const palette = paletteFor(catalog);
+      expect(palette, archived.id).toHaveLength(8);
+      for (const live of liveTypes(catalog)) {
+        expect(inPalette(palette, live.colour), `${archived.id} → ${live.id}`).toBe(true);
+      }
+      expect(inPalette(palette, archived.colour), archived.id).toBe(false);
+    }
+  });
+
+  it('a form adding a type counts it: N + 1, the extra one the first colour nobody wears', () => {
+    expect(paletteFor(SEEDED, 1)).toEqual([
+      'rose',
+      'emerald',
+      'indigo',
+      'amber',
+      'violet',
+      'teal',
+      'orange',
+      'fuchsia',
+      'slate',
+    ]);
+    expect(paletteFor([], 1)).toEqual(['rose']);
+    expect(paletteFor([type('a', 'olive')], 2.7)).toEqual(['rose', 'emerald', 'olive']);
+    expect(paletteFor([type('a', 'olive')], -3)).toEqual(['olive']);
   });
 
   it('says when there are more live types than colours — the whole palette is shown then', () => {
     const many = Array.from({ length: 21 }, (_, i) => type(`t${i}`, 'rose'));
     expect(paletteOverflow(many)).toBe(true);
-    expect(paletteFor(many)).toHaveLength(20);
+    expect(paletteFor(many)).toEqual([...OPERATIONS_SHIFT_TYPE_COLOURS]);
+    expect(paletteFor(many, 1)).toHaveLength(20);
     expect(paletteOverflow(many.slice(0, 20))).toBe(false);
     expect(paletteOverflow([...many.slice(0, 20), type('gone', 'rose', false)])).toBe(false);
+    const all = OPERATIONS_SHIFT_TYPE_COLOURS.map((colour, i) => type(`t${i}`, colour));
+    expect(paletteFor(all)).toEqual([...OPERATIONS_SHIFT_TYPE_COLOURS]);
   });
 });
 
@@ -110,7 +151,7 @@ describe('a row’s colour — «تلقائي ويتغيّر يدوي»', () => 
   });
 
   it('offers exactly the palette shown — and the row’s own colour after it when outside it', () => {
-    const palette = shownPalette(3);
+    const palette = paletteFor([type('a', 'rose'), type('b', 'emerald'), type('c', 'indigo')]);
     expect(rowColourChoices(palette, null)).toEqual([
       { colour: 'rose', outside: false },
       { colour: 'emerald', outside: false },
@@ -147,7 +188,9 @@ describe('two types, one colour — «أيوه عادي»', () => {
 });
 
 describe('Round 20’s six row colours, read as the palette’s', () => {
-  it('maps each onto its nearest palette colour, and reads anything unknown as none', () => {
+  it('maps each onto the palette colour Round 20 drew it in, and reads anything unknown as none', () => {
+    // Round 20 drew yellow bg-yellow-400 — the palette's gold, not amber (amber-600, orange-brown).
+    expect(canonicalCrewRowColour('yellow')).toBe('gold');
     for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
       expect(canonicalCrewRowColour(legacy), legacy).toBe(palette);
       expect(PALETTE, legacy).toContain(palette);

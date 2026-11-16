@@ -85,8 +85,10 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
       expect(parsed.success, legacy).toBe(true);
       expect(parsed.data?.rows[0]?.rowColour, legacy).toBe(palette);
     }
+    // Each the palette's colour Round 20 DREW it in — yellow was bg-yellow-400, the palette's gold
+    // (amber is amber-600, an orange-brown beside orange).
     expect(OPERATIONS_LEGACY_CREW_ROW_COLOURS).toEqual({
-      yellow: 'amber',
+      yellow: 'gold',
       green: 'emerald',
       blue: 'sky',
       red: 'rose',
@@ -356,7 +358,7 @@ describe('Round 24b — the one palette and the legacy row colours', () => {
 
   it('reads a stored colour as the palette’s name: as it is, mapped, or none', () => {
     expect(canonicalCrewRowColour('navy')).toBe('navy');
-    expect(canonicalCrewRowColour('yellow')).toBe('amber');
+    expect(canonicalCrewRowColour('yellow')).toBe('gold');
     expect(canonicalCrewRowColour('purple')).toBe('violet');
     expect(canonicalCrewRowColour('orange')).toBe('orange');
     expect(canonicalCrewRowColour('magenta')).toBeNull();

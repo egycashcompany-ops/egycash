@@ -14,11 +14,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import colors from 'tailwindcss/colors';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   type Locale,
   type OperationsShiftTypeDto,
@@ -27,10 +29,10 @@ import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { record, startHistory, undo, sameCrewDraft, type CrewDraft } from '../lib/crew-undo';
 import { patchRow, type PlanRow } from '../lib/crew-plan';
-import { rowColourChoices, shownPalette } from '../lib/type-colours';
+import { paletteFor, rowColourChoices } from '../lib/type-colours';
 import { RowColourPicker, RowColourSwatches } from './CrewPlanControls';
 import { TypeColoursCard } from './TypeColoursCard';
-import { ROW_BAR, SHIFT_TYPE_TONE, rowTint } from './shift-type-look';
+import { ON_TINT, ROW_BAR, SHIFT_TYPE_TONE, rowTint } from './shift-type-look';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -60,7 +62,11 @@ const type = (
   updatedAt: '2026-01-01T00:00:00.000Z',
 });
 
-/** Four live types — «سفر» shares rose with «يومي»; «محصنة» wears slate, off a palette of four. */
+/**
+ * Four live types — «سفر» shares rose with «يومي»; «محصنة» wears slate, the palette's NINTH colour; «مسائي»
+ * (violet) archived. Shown: the three colours worn, and the first unworn one — rose, emerald, indigo,
+ * slate.
+ */
 const TYPES = [
   type('t-daily', 'يومي', 'rose'),
   type('t-reserve', 'احتياطي', 'emerald'),
@@ -69,6 +75,7 @@ const TYPES = [
   type('t-evening', 'مسائي', 'violet', false),
 ];
 const LIVE = TYPES.filter((t) => t.isActive);
+const SHOWN = ['rose', 'emerald', 'indigo', 'slate'] as const;
 
 const render = (node: JSX.Element, locale: Locale = 'ar'): string => {
   const store = configureStore({
@@ -122,9 +129,9 @@ describe('«ألوان الأنواع» — a table: a row per type, a column pe
     expect(html).toContain('data-type-colours-table="true"');
   });
 
-  it('has as many swatch columns as live types — the palette’s first four, in its order', () => {
+  it('has as many swatch columns as live types — every colour worn, then the first unworn, in the palette’s order', () => {
     const heads = [...html.matchAll(/data-swatch-head="([a-z]+)"/g)].map((m) => m[1]);
-    expect(heads).toEqual(OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 4));
+    expect(heads).toEqual([...SHOWN]);
     for (const colour of heads) expect(html).toContain(colourAr(colour as string));
   });
 
@@ -135,7 +142,7 @@ describe('«ألوان الأنواع» — a table: a row per type, a column pe
       { colour: 'rose', on: true },
       { colour: 'emerald', on: false },
       { colour: 'indigo', on: false },
-      { colour: 'amber', on: false },
+      { colour: 'slate', on: false },
     ]);
     // «أيوه عادي»: «سفر» shares rose — pressed on its own row as on «يومي»'s.
     expect(rowSwatches(html, 't-travel').find((s) => s.on)?.colour).toBe('rose');
@@ -151,12 +158,44 @@ describe('«ألوان الأنواع» — a table: a row per type, a column pe
     expect(html).toContain(ar('operations.crewPlan.colour.unworn', { colour: colourAr('indigo') }));
   });
 
-  it('marks a type whose colour is off the palette shown — no swatch pressed on its row', () => {
-    expect(rowSwatches(html, 't-secured').some((s) => s.on)).toBe(false);
-    const at = html.indexOf('data-type-row="t-secured"');
-    expect(html.indexOf('data-type-outside="true"', at)).toBeGreaterThan(at);
-    expect(html.split('data-type-outside="true"')).toHaveLength(2);
-    expect(html).toContain(ar('operations.crewPlan.typeColours.outside'));
+  it('never puts a LIVE type off the palette — «محصنة»’s slate, the ninth colour, is shown and pressed', () => {
+    expect(rowSwatches(html, 't-secured').find((s) => s.on)?.colour).toBe('slate');
+    expect(html).not.toContain('data-type-outside="true"');
+  });
+
+  it('marks an ARCHIVED type it lists whose colour is off the palette — no swatch pressed on its row', () => {
+    const withArchived = card({ listed: [...LIVE, TYPES[4] as OperationsShiftTypeDto] });
+    expect(rowSwatches(withArchived, 't-evening').some((s) => s.on)).toBe(false);
+    const at = withArchived.indexOf('data-type-row="t-evening"');
+    expect(withArchived.indexOf('data-type-outside="true"', at)).toBeGreaterThan(at);
+    expect(withArchived.split('data-type-outside="true"')).toHaveLength(2);
+    expect(withArchived).toContain(ar('operations.crewPlan.typeColours.outside'));
+  });
+
+  it('archiving a seeded type early in the list keeps every live type’s colour on the card', () => {
+    // The nine the boot seeds, «يومي» (rose, the first colour) archived: eight swatches, the eight
+    // colours worn — slate («محصنة») among them, rose not.
+    const seeded = (
+      [
+        ['daily', 'rose'],
+        ['reserve', 'teal'],
+        ['reserveTravel', 'fuchsia'],
+        ['aswan', 'indigo'],
+        ['ebag', 'emerald'],
+        ['travel', 'orange'],
+        ['shalateen', 'amber'],
+        ['secured', 'slate'],
+        ['evening', 'violet'],
+      ] as const
+    ).map(([id, colour]) => type(id, id, colour, id !== 'daily'));
+    const live = seeded.filter((t) => t.isActive);
+    const html8 = card({ types: seeded, listed: live });
+    const heads = [...html8.matchAll(/data-swatch-head="([a-z]+)"/g)].map((m) => m[1]);
+    expect(heads).toHaveLength(8);
+    expect(heads).toContain('slate');
+    expect(heads).not.toContain('rose');
+    expect(html8).not.toContain('data-type-outside="true"');
+    for (const t of live) expect(rowSwatches(html8, t.id).find((s) => s.on)?.colour, t.id).toBe(t.colour);
   });
 
   it('names an archived type it lists as archived (a row of the day still holds it)', () => {
@@ -214,7 +253,7 @@ describe('on a phone — Fleet’s bottom sheet, the swatches wrapping under eac
       { colour: 'rose', on: false },
       { colour: 'emerald', on: true },
       { colour: 'indigo', on: false },
-      { colour: 'amber', on: false },
+      { colour: 'slate', on: false },
     ]);
     expect(html).toContain('h-9 w-9');
   });
@@ -228,7 +267,7 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
       <RowColourSwatches
         value={value}
         typeColour={typeColour}
-        choices={rowColourChoices(shownPalette(LIVE.length), value)}
+        choices={rowColourChoices(paletteFor(TYPES), value)}
         wornBy={wornBy}
         onPick={() => undefined}
       />,
@@ -241,10 +280,7 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
 
   it('offers exactly the swatches shown, then «لون النوع» — nothing from Round 20’s six', () => {
     const html = list(null, 'rose');
-    expect(swatches(html).map((s) => s.colour)).toEqual([
-      ...OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 4),
-      'type',
-    ]);
+    expect(swatches(html).map((s) => s.colour)).toEqual([...SHOWN, 'type']);
     expect(html).toContain(ar('operations.crewPlan.colour.palette', { count: '٤' }));
     for (const legacy of ['yellow', 'green', 'blue', 'red', 'purple']) {
       expect(html).not.toContain(`data-colour="${legacy}"`);
@@ -269,11 +305,7 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
   it('a colour picked when the palette was larger: still offered, at the end, pressed and so named', () => {
     const html = list('navy', 'rose');
     const all = swatches(html);
-    expect(all.map((s) => s.colour)).toEqual([
-      ...OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 4),
-      'navy',
-      'type',
-    ]);
+    expect(all.map((s) => s.colour)).toEqual([...SHOWN, 'navy', 'type']);
     const navy = all.find((s) => s.colour === 'navy')?.tag ?? '';
     expect(navy).toContain('aria-pressed="true"');
     expect(navy).toContain('data-colour-outside="true"');
@@ -295,7 +327,7 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
           rowKey="van:v-1"
           value={value}
           typeColour={typeColour}
-          choices={rowColourChoices(shownPalette(4), value)}
+          choices={rowColourChoices(paletteFor(TYPES), value)}
           wornBy={wornBy}
           disabled={false}
           onChange={() => undefined}
@@ -329,6 +361,121 @@ describe('the row drawn in its colour — deeper than Round 20, a bar at its sta
     expect(ROW_BAR).toContain('ltr:[&>td:first-child]:[box-shadow:inset_5px_0_0_0_var(--row-bar)]');
     expect(rowTint('navy')).toContain(ROW_BAR);
     expect(rowTint('navy')).toContain(SHIFT_TYPE_TONE.navy.row);
+  });
+});
+
+describe('Round 20’s six row colours land on the palette colour Round 20 drew them in', () => {
+  it('the palette colour each legacy name maps to has Round 20’s own swatch as its dot', () => {
+    // Round 20's `SWATCH` (CrewPlanControls.tsx before Round 24b), verbatim.
+    const ROUND_20_SWATCH: Record<string, string> = {
+      yellow: 'bg-yellow-400',
+      green: 'bg-emerald-500',
+      blue: 'bg-sky-500',
+      red: 'bg-rose-500',
+      purple: 'bg-violet-500',
+      orange: 'bg-orange-500',
+    };
+    for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      expect(SHIFT_TYPE_TONE[palette].dot.split(' ')[0], legacy).toBe(ROUND_20_SWATCH[legacy]);
+    }
+  });
+});
+
+describe('every mark on a coloured row stays legible — measured against the twenty tints', () => {
+  // WCAG 2 contrast, from Tailwind's own colours: a tint is the colour at its alpha over the cell's
+  // ground (white; in dark, the board's #0b1226 and the table's #111827, the worse of the two).
+  type Rgb = [number, number, number];
+  const hex = (value: string): Rgb =>
+    [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16)) as Rgb;
+  const channel = (c: number): number => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = ([r, g, b]: Rgb): number =>
+    0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  const contrast = (a: Rgb, b: Rgb): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const over = (fg: Rgb, alpha: number, ground: Rgb): Rgb =>
+    fg.map((c, i) => c * alpha + (ground[i] as number) * (1 - alpha)) as Rgb;
+  const palette = colors as unknown as Record<string, Record<string, string>>;
+  const tw = (name: string, shade: string): Rgb => hex(palette[name]?.[shade] as string);
+  const WHITE = hex('#ffffff');
+  const DARK_GROUNDS = [hex('#0b1226'), hex('#111827')];
+
+  /** The colour a utility of `kind` paints in a class list, light or dark — opaque only. */
+  const paint = (classes: string, kind: 'text' | 'bg', dark: boolean): Rgb => {
+    const own = classes
+      .split(/\s+/)
+      .filter((c) => (dark ? c.startsWith('dark:') : !c.includes(':')))
+      .map((c) => c.replace(/^dark:/, ''))
+      .filter((c) => c.startsWith(`${kind}-`));
+    expect(own, `${kind} in «${classes}» (${dark ? 'dark' : 'light'})`).toHaveLength(1);
+    const value = (own[0] as string).slice(kind.length + 1);
+    expect(value, 'opaque').not.toContain('/');
+    if (value === 'white') return WHITE;
+    const arbitrary = /^\[(#[0-9a-f]{6})\]$/.exec(value);
+    if (arbitrary !== null) return hex(arbitrary[1] as string);
+    const [name, shade] = value.split('-') as [string, string];
+    return tw(name, shade);
+  };
+
+  /** Every tint, light over white and dark over each dark ground. */
+  const tints = OPERATIONS_SHIFT_TYPE_COLOURS.map((colour) => {
+    const row = SHIFT_TYPE_TONE[colour].row;
+    const light = /^\[&>td\]:!bg-([a-z]+)-(\d+)\/(\d+)/.exec(row);
+    const dark = /dark:\[&>td\]:!bg-([a-z]+)-(\d+)\/(\d+)/.exec(row);
+    expect(light, colour).not.toBeNull();
+    expect(dark, colour).not.toBeNull();
+    const [, ln, ls, la] = light as RegExpExecArray;
+    const [, dn, ds, da] = dark as RegExpExecArray;
+    return {
+      colour,
+      light: over(tw(ln as string, ls as string), Number(la) / 100, WHITE),
+      dark: DARK_GROUNDS.map((ground) =>
+        over(tw(dn as string, ds as string), Number(da) / 100, ground),
+      ),
+    };
+  });
+
+  it('the row’s words: slate-800 on every light tint, slate-200 on every dark one — 4.5:1 or better', () => {
+    for (const tint of tints) {
+      expect(contrast(tw('slate', '800'), tint.light), tint.colour).toBeGreaterThanOrEqual(4.5);
+      for (const ground of tint.dark) {
+        expect(contrast(tw('slate', '200'), ground), tint.colour).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('the short-crew ⚠ stands on an opaque disc of the page’s colour on a coloured row — 3:1 or better', () => {
+    const { tinted, plain } = ON_TINT.short;
+    expect(contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false))).toBeGreaterThanOrEqual(3);
+    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(3);
+    // On a plain row, on the cell's own ground.
+    expect(contrast(paint(plain, 'text', false), WHITE)).toBeGreaterThanOrEqual(3);
+    for (const ground of DARK_GROUNDS) {
+      expect(contrast(paint(plain, 'text', true), ground)).toBeGreaterThanOrEqual(3);
+    }
+    // amber-500 straight on the tints — what it was — fell to 1.2–1.8:1.
+    const worst = Math.min(...tints.map((tint) => contrast(tw('amber', '500'), tint.light)));
+    expect(worst).toBeLessThan(3);
+  });
+
+  it('an empty slot’s «+ اختيار» stands on the page’s colour on a coloured row — 4.5:1 or better', () => {
+    const { tinted } = ON_TINT.pick;
+    expect(contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('the board puts both on whatever row is drawn in a colour — its own or its type’s', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toMatch(
+      /colourOfRow\(row\)\.colour !== null \? ON_TINT\.short\.tinted : ON_TINT\.short\.plain/,
+    );
+    expect(page).toContain('const tinted = colourOfRow(row).colour !== null;');
+    expect(page).toMatch(/tinted\s*\?\s*ON_TINT\.pick\.tinted\s*:\s*ON_TINT\.pick\.plain/);
+    expect(page).not.toContain("'inline-flex text-amber-500");
   });
 });
 

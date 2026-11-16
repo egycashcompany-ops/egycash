@@ -75,6 +75,13 @@
 //     narrow the table only: hidden rows keep their changes and «حفظ» saves them all. The chips
 //     count the whole day; «المعروض N من M» says what the filters leave.
 //
+// ROUND 24b — «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع وعاوز فوق خالص جمب الطاقم
+// الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل نوع لون من الالوان وعاوز اللون فى الجدول يكون
+// متشبع اكتر من كدا»: ONE palette, the types', of as many swatches as live types (`lib/type-colours.ts`);
+// «ألوان الأنواع» beside «الطاقم الثابت» opens the table that colours the types (a catalog save, never
+// a step of «تراجع»); a row is drawn in the colour picked on it, else its type's («تلقائي ويتغيّر
+// يدوي»), a deep tint with a solid bar at its start edge.
+//
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
 // planned a day ahead (the legacy default).
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';

@@ -90,6 +90,7 @@ import {
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 import { vanLoadSheet } from '../lib/van-load-sheet';
+import { looseCrewNumbers, vanPhrase } from '../lib/van-name';
 
 export const VaultHandoverPage = (): JSX.Element => {
   const t = useT();
@@ -141,6 +142,15 @@ export const VaultHandoverPage = (): JSX.Element => {
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
   const confirmVan =
     confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
+  // Round 24 — a crew without a van hands its load over like a van: «بدون سيارة (n)» on its card, on
+  // the sheet and in every sentence (`lib/van-name.ts`), numbered as the board numbers it.
+  const looseNumbers = looseCrewNumbers(vans);
+  const looseNumberOf = (crewAssignmentId: string): string | null => {
+    const number = looseNumbers.get(crewAssignmentId);
+    return number === undefined ? null : formatNumber(number, locale);
+  };
+  const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
+    vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
 
   const print = (
     van: OperationsDayBoardVehicleCrewDto,
@@ -152,6 +162,7 @@ export const VaultHandoverPage = (): JSX.Element => {
           t,
           day,
           van,
+          looseNumber: looseNumberOf(van.crewAssignmentId),
           crewPlanVisible: data?.crewPlanVisible ?? false,
           rows: load,
           bankNameOf,
@@ -181,14 +192,14 @@ export const VaultHandoverPage = (): JSX.Element => {
       toast.success(
         t(pluralKey('operations.handover.done', locale, body.shipmentIds.length), {
           count: formatNumber(body.shipmentIds.length, locale),
-          code: van.vehicleCode ?? '…',
+          van: vanName(van),
         }),
       );
       setConfirming(null);
     } catch (error) {
       toast.error(
         t('operations.handover.failed', {
-          code: van.vehicleCode ?? '…',
+          van: vanName(van),
           reason: errorMessage(error, locale),
         }),
       );
@@ -346,6 +357,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                       <VanCard
                         key={van.crewAssignmentId}
                         van={van}
+                        looseNumber={looseNumberOf(van.crewAssignmentId)}
                         crewPlanVisible={data.crewPlanVisible}
                         figures={loadFigures(load, currencyOf, packagingOf)}
                         actions={
@@ -450,7 +462,7 @@ export const VaultHandoverPage = (): JSX.Element => {
         <DesignDialog
           open
           onClose={() => setConfirming(null)}
-          title={t('operations.handover.confirmTitle', { code: confirmVan.vehicleCode ?? '…' })}
+          title={t('operations.handover.confirmTitle', { van: vanName(confirmVan) })}
           subtitle={
             confirmVan.captains.length === 0
               ? undefined
@@ -489,7 +501,7 @@ export const VaultHandoverPage = (): JSX.Element => {
             <span>
               {t('operations.handover.confirmBody', {
                 count: formatNumber(confirmLoad.length, locale),
-                code: confirmVan.vehicleCode ?? '…',
+                van: vanName(confirmVan),
                 // The day it leaves on, named before the click — it can only be today.
                 day: dayText(day),
               })}

@@ -15,7 +15,8 @@
 //     padding, filling its column, the type's colour a dot at the box's start where the time's clock
 //     sits — so the column's boxes stand one under the other, none narrower, none sticking out;
 //   · the row's COLOUR — «زرار يبقى فى كذا لون اقدر الون به الصف»: six swatches and «بدون لون»;
-//   · a vehicle-less row's «اختيار سيارة» — the day's vans nobody has planned on.
+//   · a vehicle-less row's «اختيار سيارة» — since Round 24 only its button: the list of every car
+//     with no crew that day is the page's (`CrewVehiclePicker`).
 //
 // WHY THEIR LISTS FLOAT. They live in a table that scrolls; a list drawn inside a cell is cut by
 // the table's edge on the last rows. Each list is drawn over the page (a portal, fixed), placed by
@@ -50,7 +51,6 @@ import {
   parseClock,
   shiftTypeChoices,
   type CrewRowColour,
-  type PlanRow,
 } from '../lib/crew-plan';
 import { PLAN_ICON } from './crew-plan-icons';
 import { ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
@@ -845,78 +845,50 @@ export const RowColourPicker = ({
 
 // ── A vehicle-less row's van ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The «بدون سيارة» cell of a row without a van — the button that opens the cars it may take. Round
+ * 24: the list is the page's (`CrewVehiclePicker` — every car with no crew that day, the phone's
+ * bottom sheet included), as a slot's list is; this is only what opens it.
+ */
 export const VanPicker = ({
   rowKey,
-  vans,
+  open,
   disabled,
-  onPick,
+  refused,
+  onOpen,
 }: {
   rowKey: string;
-  /** The day's vans nobody has planned anything on (`vansFree`). */
-  vans: readonly PlanRow[];
+  /** Its list is open now. */
+  open: boolean;
   disabled: boolean;
-  onPick: (vanKey: string) => void;
+  /** What the last save said about the van given to this row, or null. */
+  refused?: string | null;
+  onOpen: (from: HTMLElement) => void;
 }): JSX.Element => {
   const t = useT();
-  const anchor = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  useFocusOnOpen(open, `[data-van-list="${rowKey}"]`);
   return (
-    <div ref={anchor} className="inline-block" data-van-picker={rowKey}>
+    <div className="inline-block" data-van-picker={rowKey}>
       {/* The row's «بدون سيارة» IS the button that gives it one — one element in a narrow column,
           where a label and a button beside it widened the whole table. */}
       <button
         type="button"
         data-cell-control="van"
-        aria-haspopup="listbox"
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t('operations.crewPlan.noVehicle')} — ${t('operations.crewPlan.pickVehicle')}`}
-        title={t('operations.crewPlan.pickVehicle')}
+        title={refused ?? t('operations.crewPlan.pickVehicle')}
         disabled={disabled}
-        onClick={() => setOpen((now) => !now)}
+        onClick={(event) => onOpen(event.currentTarget)}
         // Two short lines in the van column's width: «بدون / سيارة» beside a three-digit code.
-        className="flex max-w-[3.5rem] flex-col items-center whitespace-normal rounded-md border border-dashed border-slate-300 px-1 py-0.5 text-center text-[11px] font-bold leading-[1.15] text-slate-600 transition hover:border-brand-400 hover:bg-brand-500/10 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:cursor-default disabled:hover:border-slate-300 disabled:hover:bg-transparent dark:border-slate-600 dark:text-slate-300 dark:hover:text-brand-200"
+        className={cn(
+          'flex max-w-[3.5rem] flex-col items-center whitespace-normal rounded-md border border-dashed border-slate-300 px-1 py-0.5 text-center text-[11px] font-bold leading-[1.15] text-slate-600 transition hover:border-brand-400 hover:bg-brand-500/10 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:cursor-default disabled:hover:border-slate-300 disabled:hover:bg-transparent dark:border-slate-600 dark:text-slate-300 dark:hover:text-brand-200',
+          open && 'border-brand-400 bg-brand-500/15 text-brand-700 dark:text-brand-200',
+          refused != null && REFUSED_BOX,
+        )}
       >
         <BoardIcon d={PLAN_ICON.noVan} className="h-3 w-3 shrink-0" />
         {t('operations.crewPlan.noVehicle')}
       </button>
-      <FloatingPanel
-        anchor={anchor}
-        open={open}
-        onClose={() => setOpen(false)}
-        width={220}
-        role="listbox"
-        aria-label={t('operations.crewPlan.pickVehicleTitle')}
-        data-van-list={rowKey}
-        onKeyDown={walk}
-      >
-        <p className="px-2.5 pb-1 pt-0.5 text-[11px] font-black text-slate-500 dark:text-slate-400">
-          {t('operations.crewPlan.pickVehicleTitle')}
-        </p>
-        {vans.length === 0 ? (
-          <p className="px-2.5 py-2 text-[12.5px] font-semibold text-slate-500 dark:text-slate-400">
-            {t('operations.crewPlan.noEmptyVehicle')}
-          </p>
-        ) : (
-          <div className="grid grid-cols-3 gap-1">
-            {vans.map((van) => (
-              <button
-                key={van.key}
-                type="button"
-                role="option"
-                aria-selected={false}
-                onClick={() => {
-                  setOpen(false);
-                  onPick(van.key);
-                }}
-                className={cn(OPTION, NUM, 'justify-center px-1')}
-              >
-                {van.vehicleCode}
-              </button>
-            ))}
-          </div>
-        )}
-      </FloatingPanel>
     </div>
   );
 };

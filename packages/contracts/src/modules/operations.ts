@@ -1988,7 +1988,9 @@ export interface OperationsCrewBoardDto {
   /**
    * Round 24 — «بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم»: EVERY ACTIVE vehicle of the fleet
    * (Fleet status `active`, not deleted — never one out of service or disposed) that holds NO live
-   * crew row on the day. A roster van with no crew row is in it (and in `rows`, `crew` null); a van
+   * crew row on the day. A roster van with no crew row is in it (and in `rows`, `crew` null), and so
+   * is a roster van whose crew row was emptied to NOTHING (no people, no direction, time, notes,
+   * type or colour) and carries no shipment leg — on the board that van has no crew. Any other van
    * a crew row holds — roster or not — is not.
    *
    * Order: the four `group`s in `OPERATIONS_CREW_FREE_VEHICLE_GROUPS` order (on the roster, then the
@@ -2038,8 +2040,13 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * ACTIVE Fleet vehicle (else 422 `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`) and not in a Fleet workshop
  * visit that day (else 422 `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`); the row stores no roster row.
  * Either way V must hold no OTHER live crew row that day at the end of the save (else 409
- * `OPERATIONS_CREW_VEHICLE_TAKEN` — remove that row in the same save to free it). A row that
- * already holds its van is not asked again (it keeps it, workshop or not).
+ * `OPERATIONS_CREW_VEHICLE_TAKEN` — remove that row in the same save to free it) — except a ROSTER
+ * van's row emptied to nothing that carries no leg (see `OperationsCrewBoardDto.freeVehicles`): that
+ * one is released (deleted) in the same save, and the row taking the van takes its place. A row
+ * that already holds its van is not asked again (it keeps it, workshop or not).
+ *
+ * A NEW van row off the roster with nothing else on it IS saved: the van is its content (a roster
+ * van's blank row is still nothing, as before).
  *
  * «X takes V» is a NEW SEAT for everybody on X, exactly as when a row without a van was given a
  * van by moving its crew onto the van's row: the round-22 absence rule and the round-23 slot rule

@@ -105,6 +105,7 @@ const van = (code: string, over: Partial<PlanRow> = {}): PlanRow => ({
   key: `van:v-${code}`,
   vehicleId: `v-${code}`,
   vehicleCode: code,
+  onRoster: true,
   crewId: null,
   drivers: [],
   slots: { captain: [], specialist1: [], specialist2: [] },
@@ -202,6 +203,7 @@ describe('toPlanRows — the board as the server sends it', () => {
       crew({ id: 'c-loose2', specialist1EmployeeIds: ['y'] }),
     ],
     workshopVehicles: [{ vehicleId: 'v-310', vehicleCode: '310' }],
+    freeVehicles: [],
   };
 
   it('reads the type, the colour, the drivers, then the rows without a van in their order', () => {
@@ -850,13 +852,18 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
     },
   ];
 
-  it('gives a saved row without a van a van: the van’s row, and the old row removed — one save', () => {
+  it('Round 24 — gives a saved row without a van a van IN PLACE: «row X takes van V», nothing removed', () => {
+    // The Round-20 way (X removed, the van's row written) is refused for a row holding محصنات, and
+    // would strand them: X keeps its id on the van's row, and the save names both.
     const next = attachVan(original, `loose:${loose}`, `van:${vanB}`);
+    expect(next.map((row) => row.key)).toEqual([`van:${vanA}`, `van:${vanB}`]);
+    expect(next[1]).toMatchObject({ crewId: loose, vehicleId: vanB });
     const body = toPlan('2026-11-16', planChanges(next, original));
-    expect(body.removeCrewAssignmentIds).toEqual([loose]);
+    expect(body).not.toHaveProperty('removeCrewAssignmentIds');
     expect(body.rows).toEqual([
       {
         vehicleId: vanB,
+        crewAssignmentId: loose,
         captainEmployeeIds: [captain],
         specialist1EmployeeIds: [specialist],
         specialist2EmployeeIds: [],
@@ -879,12 +886,12 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
     const body = toPlan('2026-11-16', planChanges(next, original));
     expect(body).not.toHaveProperty('removeCrewAssignmentIds');
     expect(body.rows.map((row) => [row.vehicleId, row.crewAssignmentId])).toEqual([
-      [vanA, undefined],
+      [vanA, id(10)],
       [null, loose],
       [null, undefined],
     ]);
-    // A van's row never carries a crew id — the schema refuses a second address for it.
-    expect(body.rows[0]).not.toHaveProperty('crewAssignmentId');
+    // Round 24 — a SAVED van row is named by its id too (a plain edit of the row holding the van);
+    // a van with no saved crew row yet is still upserted by its van alone.
     const parsed = PlanOperationsCrewSchema.safeParse(body);
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
   });

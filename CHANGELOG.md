@@ -645,6 +645,39 @@ its entry here in the same PR.
       (`crewRoleOf`, `fitsCrewSlot`) are in the contracts, one definition for the server and the
       board. This replaces the Round-20 default the owner never asked for: a specialist in a
       captain's slot was marked, not refused.
+    - Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات و مكان بدون سيارة دا لما
+      ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»:
+      - A row WITHOUT A VAN takes محصنات like a van. Round 20's «a row without a van carries
+        nothing» is reversed for the محصنات: «توزيع المحصنات» lists such rows after the vans (in the
+        order they were added, `vehicleId` and `vehicleCode` null, no drivers), proposes onto them
+        by direction, and places on them with the same checks. «صرف الخزينة»'s assign dialog takes
+        them too, «تسليم المحصنات» hands their load over, and their captain gets his route in the app
+        and may act on it. The captaincy anchor now reads any crew row of the day; identity still
+        comes from the token alone. A shipment leg's `vehicleId` is nullable. Every DTO, audit
+        snapshot and event that carries a leg's or a crew card's van now says `null`, never the
+        text "null" (`OperationsShipmentAssignmentPayloadV1` and `…ExecutionPayloadV1` too). The
+        daily PICKUP leg still takes a van's row only.
+      - `freeVehicles` on the crew board (`GET /operations/crew-board` and the save's answer): every
+        ACTIVE Fleet car (status `active`, not deleted) with no crew that day. A roster van whose row
+        was emptied to nothing and holds no leg counts as having none. Each car carries
+        `group`, `onRoster`, `inWorkshop` and its drivers by name when the roster has it. The order
+        is the roster, then the cash-transfer operations' cars, then the standing crew's, then the
+        rest, each group by code with numbers in number order. Read through `fleet-boundary.ts`.
+      - A van the Fleet roster does not have that day may be given to a row (it answered
+        `OPERATIONS_FLEET_DUTY_REQUIRED` before; that code is no longer sent). It must be active
+        (422 `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`), out of the workshop that day (422
+        `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`) and held by no other row (409
+        `OPERATIONS_CREW_VEHICLE_TAKEN`). Such a row stores no roster row and is listed in `rows`
+        with `fleetDutyAssignmentId: null`; its drivers are joined by (van, day), so a van Fleet
+        rosters later that day shows them. Unlike a roster van's row, it may be removed.
+      - A saved row without a van is GIVEN a van in place: the row is sent with both
+        `crewAssignmentId` and `vehicleId`. It keeps its id, and in the same transaction its live
+        legs take the van; each change is audited on the leg («السجل» shows `crewChanged`) and
+        announced. Its people count as new seats for the absence and slot rules. A roster van's
+        emptied row is released for it.
+      - A row that holds محصنات (live legs, delivered or not) is never removed: 409
+        `OPERATIONS_CREW_ROW_HAS_SHIPMENTS`, naming the row and the count. Emptying it stays allowed,
+        as it always was for a van's row.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the

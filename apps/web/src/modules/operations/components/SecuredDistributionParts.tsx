@@ -38,6 +38,8 @@ import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import { Input } from '../../../shared/ui/form';
 import { type LoadFigures, type Packaging, personName } from '../lib/secured-distribution';
 import { ltrIsolate } from '../lib/shipment-log';
+import { hasNoVan, vanCodeText, vanPhrase } from '../lib/van-name';
+import { PLAN_ICON } from './crew-plan-icons';
 import { SecuredStageBadge } from './ShipmentBadges';
 import { SHIPMENT_PATH } from './shipment-icons';
 
@@ -484,9 +486,14 @@ const CrewLine = ({ label, value }: { label: string; value: ReactNode }): JSX.El
  * captain(s) and both specialists, what it carries (how many, how much), then its load. The card is
  * the drop target (`drop`); while a shipment is dragged every van that can take one shows it, and
  * the one under the pointer lights up.
+ *
+ * Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: a crew row WITHOUT A VAN is
+ * a card like any other — «بدون سيارة (n)» where the code goes (`looseNumber`, the board's own
+ * numbering), the no-van mark for the truck, everything else a van's.
  */
 export const VanCard = ({
   van,
+  looseNumber = null,
   crewPlanVisible,
   figures,
   actions,
@@ -495,6 +502,8 @@ export const VanCard = ({
   footer,
 }: {
   van: OperationsDayBoardVehicleCrewDto;
+  /** A crew without a van: its number among the day's («بدون سيارة (n)»), as the page writes it. */
+  looseNumber?: string | null;
   crewPlanVisible: boolean;
   figures: LoadFigures;
   /** Above the van — the vault's «تسليم» and «طباعة». */
@@ -516,12 +525,14 @@ export const VanCard = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const noCaptain = van.captains.length === 0;
+  const noVan = hasNoVan(van);
   return (
     <article
       data-distribution-van={van.crewAssignmentId}
+      data-no-van={noVan ? 'true' : undefined}
       data-drop-over={drop?.over === true ? 'true' : undefined}
       data-drop-armed={drop?.armed === true ? 'true' : undefined}
-      aria-label={t('operations.distribution.vanLabel', { code: van.vehicleCode ?? '…' })}
+      aria-label={vanPhrase(t, van, looseNumber)}
       {...drop?.handlers}
       className={cn(
         'flex min-w-0 flex-col gap-2.5 rounded-xl border bg-white p-3 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
@@ -540,15 +551,25 @@ export const VanCard = ({
         </div>
       )}
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          <BoardIcon d={[...PATH.truck]} className="h-5 w-5" />
+        <span
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+            noVan
+              ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
+              : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+          )}
+        >
+          <BoardIcon d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]} className="h-5 w-5" />
         </span>
         <span
-          dir="ltr"
+          dir={noVan ? undefined : 'ltr'}
           data-van-code={van.vehicleCode ?? ''}
-          className={cn('text-lg font-black text-slate-900 dark:text-white', NUM)}
+          className={cn(
+            'font-black text-slate-900 dark:text-white',
+            noVan ? 'text-base' : cn('text-lg', NUM),
+          )}
         >
-          {van.vehicleCode ?? '…'}
+          {vanCodeText(t, van, looseNumber)}
         </span>
         {van.plannedTime !== null && van.plannedTime !== '' && (
           <span

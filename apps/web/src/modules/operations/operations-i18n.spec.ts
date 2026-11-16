@@ -737,11 +737,15 @@ describe('a counted محصنة reads in its Arabic form', () => {
   });
 
   it('agrees in the sentence around it — the dual’s verb and pronoun, the genitive after «تسليم»', () => {
-    expect(ar('operations.handover.done', 2, { code: '101' })).toBe(
-      'سُلّمت محصنتان للسيارة 101 وغادرتا الخزينة.',
+    expect(ar('operations.handover.done', 2, { van: 'السيارة 101' })).toBe(
+      'سُلّمت محصنتان إلى السيارة 101 وغادرتا الخزينة.',
     );
-    expect(ar('operations.handover.done', 4, { code: '101' })).toBe(
-      'سُلّمت 4 محصنات للسيارة 101 وغادرت الخزينة.',
+    expect(ar('operations.handover.done', 4, { van: 'السيارة 101' })).toBe(
+      'سُلّمت 4 محصنات إلى السيارة 101 وغادرت الخزينة.',
+    );
+    // Round 24 — a crew without a van reads as a crew, never as a van called «بدون سيارة».
+    expect(ar('operations.handover.done', 1, { van: 'الطاقم بدون سيارة (1)' })).toBe(
+      'سُلّمت محصنة واحدة إلى الطاقم بدون سيارة (1) وغادرت الخزينة.',
     );
     expect(ar('operations.handover.confirm', 2)).toBe('تسليم محصنتين');
     expect(ar('operations.handover.confirm', 1)).toBe('تسليم محصنة واحدة');

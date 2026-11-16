@@ -137,6 +137,25 @@ export const isProposed = (
 ): boolean => draft.get(row.id)?.proposed === true;
 
 /**
+ * The same draft — the same shipments, each in the same place, with the same captain, version and
+ * mark. What «تراجع» (Round 24, one step back) compares, so a move that changed nothing (a shipment
+ * dropped back where it is) is no operation to take back.
+ */
+export const sameDistributionDraft = (a: DistributionDraft, b: DistributionDraft): boolean =>
+  a === b ||
+  (a.size === b.size &&
+    [...a].every(([id, one]) => {
+      const other = b.get(id);
+      return (
+        other !== undefined &&
+        other.crewAssignmentId === one.crewAssignmentId &&
+        other.captainEmployeeId === one.captainEmployeeId &&
+        other.version === one.version &&
+        other.proposed === one.proposed
+      );
+    }));
+
+/**
  * The draft with one shipment put somewhere — a van and its captain, or `UNPLACED` («إزالة», or
  * dragged back to the left). Moved back to where the read has it, it leaves the draft: nothing to
  * save for it. A started leg does not move (`isStartedLeg`): the draft comes back as it was.

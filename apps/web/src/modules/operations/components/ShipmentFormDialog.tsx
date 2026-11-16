@@ -167,7 +167,7 @@ export const ShipmentFormDialog = ({
     const twice =
       crewOptions.filter((o) => o.captainEmployeeId === option.captainEmployeeId).length > 1;
     const name = captainName(option.captainEmployeeId);
-    return twice ? `${name} — ${option.vehicleCode}` : name;
+    return twice ? `${name} — ${option.vehicleCode ?? '…'}` : name;
   };
   const vehicles = vehiclesOf(crewOptions);
 
@@ -410,10 +410,12 @@ export const ShipmentFormDialog = ({
                     <DesignField label={t('operations.shipment.form.vehicle')}>
                       <div className={carBoxClass(false)}>
                         <Combobox
-                          value={chosenCrew?.vehicleId ?? ''}
-                          options={vehicles.map((vehicle) => vehicle.vehicleId)}
-                          optionLabel={(id) =>
-                            vehicles.find((vehicle) => vehicle.vehicleId === id)?.vehicleCode ?? id
+                          // The PICKUP leg rides a van's row only (no row without a van is offered
+                          // here), so a row's `vanKey` is its van's id.
+                          value={chosenCrew?.vanKey ?? ''}
+                          options={vehicles.map((vehicle) => vehicle.vanKey)}
+                          optionLabel={(key) =>
+                            vehicles.find((vehicle) => vehicle.vanKey === key)?.vehicleCode ?? key
                           }
                           onChange={(vehicleId) =>
                             setCrewKey(

@@ -96,6 +96,16 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // newly put in a slot his role does not fit. The board names him on the marked row.
     OPERATIONS_CREW_MEMBER_WRONG_SLOT:
       'Somebody is in a slot that is not their role’s — a captain in a specialist’s slot, or a specialist in the captain’s.',
+    // Round 24 — «مكان بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»: a row was
+    // given a vehicle the save cannot take, or a row holding محصنات was deleted.
+    OPERATIONS_CREW_VEHICLE_NOT_ACTIVE:
+      'The vehicle given to the marked row is not in service in Fleet — choose another.',
+    OPERATIONS_CREW_VEHICLE_IN_WORKSHOP:
+      'The vehicle given to the marked row is in the workshop on this day — choose another.',
+    OPERATIONS_CREW_VEHICLE_TAKEN:
+      'The vehicle given to the marked row already has another crew on this day — choose another.',
+    OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
+      'A deleted row carries secured shipments — take them off it on «Secured distribution», or give the row a vehicle instead.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -161,6 +171,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
     OPERATIONS_CREW_MEMBER_WRONG_SLOT:
       'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
+    OPERATIONS_CREW_VEHICLE_NOT_ACTIVE:
+      'السيارة المعطاة للصف المُعلَّم ليست في الخدمة في الأسطول — اختر سيارة أخرى.',
+    OPERATIONS_CREW_VEHICLE_IN_WORKSHOP:
+      'السيارة المعطاة للصف المُعلَّم في الصيانة في هذا اليوم — اختر سيارة أخرى.',
+    OPERATIONS_CREW_VEHICLE_TAKEN:
+      'السيارة المعطاة للصف المُعلَّم عليها طاقم آخر في هذا اليوم — اختر سيارة أخرى.',
+    OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
+      'على صف محذوف محصنات — أزِلها عنه في «توزيع المحصنات»، أو أعطِ الصف سيارة بدلًا من حذفه.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

@@ -87,14 +87,26 @@ const knownColour = (value: string | null): CrewRowColour | null =>
 /** One row of the plan, as the board edits it. */
 export interface PlanRow {
   /**
-   * The row's own key: `van:<vehicleId>` for a van, `loose:<crew id>` for a saved vehicle-less row,
-   * `new:<n>` for one added on screen. Stable across edits — the table keys on it.
+   * The row's own key: `van:<vehicleId>` for a van as the server listed it, `loose:<crew id>` for a
+   * saved vehicle-less row, `new:<n>` for one added on screen. Stable across edits — the table keys
+   * on it — so a row given a van that is not a blank row of the board (Round 24) keeps its key.
    */
   key: string;
   /** Null — «بدون سيارة». */
   vehicleId: string | null;
   vehicleCode: string | null;
-  /** The saved crew row's id: null for a van not crewed yet and for a row added on screen. */
+  /**
+   * Round 24 — the van is on the Fleet roster of the day («تعيين السيارات»), so its row is only ever
+   * EMPTIED here (the roster is Fleet's). False for a van the roster does not have that day — given
+   * on this board from `freeVehicles` — whose row is REMOVED like a row without a van, freeing the
+   * van; and false for a row without a van.
+   */
+  onRoster: boolean;
+  /**
+   * The SAVED crew row this row is: null for a van not crewed yet and for a row added on screen.
+   * Round 24: a saved row without a van given a blank roster van keeps its own id here (the van's
+   * row it merges into takes it) — the save then says «row X takes van V», and its محصنات follow.
+   */
   crewId: string | null;
   /** Fleet's two drivers, by name only — Fleet's facts, shown on the van's card, never edited. */
   drivers: OperationsDayBoardDriverDto[];
@@ -147,6 +159,7 @@ export const toPlanRows = (board: OperationsCrewBoardDto | undefined): PlanRow[]
           key: `van:${row.vehicleId}`,
           vehicleId: row.vehicleId,
           vehicleCode: row.vehicleCode,
+          onRoster: row.fleetDutyAssignmentId !== null,
           crewId: row.crew?.id ?? null,
           drivers: row.drivers,
           ...crewFields(row.crew),
@@ -155,6 +168,7 @@ export const toPlanRows = (board: OperationsCrewBoardDto | undefined): PlanRow[]
           key: `loose:${crew.id}`,
           vehicleId: null,
           vehicleCode: null,
+          onRoster: false,
           crewId: crew.id,
           drivers: [],
           ...crewFields(crew),
@@ -252,6 +266,7 @@ export const vehiclelessRow = (sequence: number): PlanRow => ({
   key: `new:${sequence}`,
   vehicleId: null,
   vehicleCode: null,
+  onRoster: false,
   crewId: null,
   drivers: [],
   slots: { captain: [], specialist1: [], specialist2: [] },
@@ -272,13 +287,22 @@ export const isBlankRow = (row: PlanRow): boolean =>
   row.notes === null;
 
 /**
- * The row's bin. A vehicle-less row goes; a VAN row is emptied instead — the van is Fleet's roster
- * for the day, not something this board can take off it. Either way its crew goes back to the pools.
+ * May the row's bin DELETE it (rather than empty it)? A row without a van, and (Round 24) a row
+ * whose van is NOT on the Fleet roster that day — the van is then the row's own, and deleting the
+ * row frees it. A roster van's row is Fleet's for the day: emptied, never deleted.
+ */
+export const isRemovableRow = (row: Pick<PlanRow, 'vehicleId' | 'onRoster'>): boolean =>
+  row.vehicleId === null || !row.onRoster;
+
+/**
+ * The row's bin. A removable row goes (`isRemovableRow`); a ROSTER van's row is emptied instead —
+ * the van is Fleet's roster for the day, not something this board can take off it. Either way its
+ * crew goes back to the pools.
  */
 export const discardRow = (rows: readonly PlanRow[], key: string): PlanRow[] =>
   rows.flatMap((row) => {
     if (row.key !== key) return [row];
-    if (row.vehicleId === null) return [];
+    if (isRemovableRow(row)) return [];
     return [
       {
         ...row,
@@ -292,14 +316,20 @@ export const discardRow = (rows: readonly PlanRow[], key: string): PlanRow[] =>
     ];
   });
 
-/** The vans a vehicle-less row may take: the day's vans nobody has planned anything on. */
+/** The ROSTER vans a vehicle-less row may merge into: the day's roster vans nobody planned on. */
 export const vansFree = (rows: readonly PlanRow[]): PlanRow[] =>
-  rows.filter((row) => row.vehicleId !== null && isBlankRow(row));
+  rows.filter((row) => row.vehicleId !== null && row.onRoster && isBlankRow(row));
 
 /**
- * Give a vehicle-less row a van («optionally pick a van later»). The van's row takes everything
- * the vehicle-less row holds and the vehicle-less row goes — one crew, now on a van. Only a BLANK
- * van (`vansFree`): a van somebody has planned on is not overwritten by a pick from a list.
+ * Give a vehicle-less row a ROSTER van that is a blank row of the board («optionally pick a van
+ * later»). The van's row takes everything the vehicle-less row holds and the vehicle-less row goes —
+ * one crew, now on a van, in the van's place. Only a BLANK van: a van somebody has planned on is not
+ * overwritten by a pick from a list.
+ *
+ * Round 24 — a SAVED row without a van keeps its id (`crewId`) on the van's row: the save sends «row
+ * X takes van V» (`toPlan`), so X keeps its محصنات — the Round-20 way (X deleted, the van's row
+ * written) is refused for a row that holds some, and would have stranded them. A row added on screen
+ * has no id: the van's row keeps its own, as before.
  */
 export const attachVan = (
   rows: readonly PlanRow[],
@@ -316,6 +346,7 @@ export const attachVan = (
     return [
       {
         ...van,
+        crewId: loose.crewId ?? van.crewId,
         slots: loose.slots,
         direction: loose.direction,
         plannedTime: loose.plannedTime,
@@ -325,6 +356,43 @@ export const attachVan = (
       },
     ];
   });
+};
+
+/** A vehicle as a row takes it (`OperationsCrewBoardFreeVehicleDto`'s facts the row keeps). */
+export interface TakenVehicle {
+  vehicleId: string;
+  vehicleCode: string;
+  onRoster: boolean;
+  drivers: OperationsDayBoardDriverDto[];
+}
+
+/**
+ * Round 24 — «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»:
+ * a vehicle-less row takes a vehicle that is NOT a row of the board (one the Fleet roster does not
+ * have that day, from `freeVehicles`). The row stays where it is, under its own key, and becomes
+ * that van's row: a row added on screen is saved as a new van row, a saved one as «row X takes van
+ * V» (its محصنات follow). Refused — the rows as they were, the same array — when the row has a van
+ * already, or another row of the draft holds the vehicle.
+ */
+export const takeVehicle = (
+  rows: readonly PlanRow[],
+  key: string,
+  vehicle: TakenVehicle,
+): readonly PlanRow[] => {
+  const row = rows.find((candidate) => candidate.key === key);
+  if (row === undefined || row.vehicleId !== null) return rows;
+  if (rows.some((other) => other.vehicleId === vehicle.vehicleId)) return rows;
+  return rows.map((candidate) =>
+    candidate.key === key
+      ? {
+          ...candidate,
+          vehicleId: vehicle.vehicleId,
+          vehicleCode: vehicle.vehicleCode,
+          onRoster: vehicle.onRoster,
+          drivers: vehicle.drivers,
+        }
+      : candidate,
+  );
 };
 
 /**
@@ -716,7 +784,7 @@ export const planRowCard = (
   };
   return {
     crewAssignmentId: row.crewId ?? row.key,
-    vehicleId: row.vehicleId ?? '',
+    vehicleId: row.vehicleId,
     vehicleCode: row.vehicleCode,
     drivers: row.drivers,
     captains: row.slots.captain.map(person),
@@ -732,8 +800,10 @@ export const planRowCard = (
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((id, index) => id === b[index]);
 
-const sameRow = (a: PlanRow, b: PlanRow): boolean =>
+/** The same row as the save sees it — its van, its saved row, its crew and its own fields. */
+export const sameRow = (a: PlanRow, b: PlanRow): boolean =>
   a.vehicleId === b.vehicleId &&
+  a.crewId === b.crewId &&
   CREW_SLOTS.every((slot) => sameList(a.slots[slot], b.slots[slot])) &&
   a.direction === b.direction &&
   a.plannedTime === b.plannedTime &&
@@ -742,22 +812,29 @@ const sameRow = (a: PlanRow, b: PlanRow): boolean =>
   a.notes === b.notes;
 
 /**
- * What «حفظ» sends: the rows that differ from the server's, and the SAVED vehicle-less rows no
- * longer on screen (deleted, or given a van). A new vehicle-less row left blank is nothing to save.
+ * What «حفظ» sends: the rows that differ from the server's, and the SAVED removable rows (a row
+ * without a van; since Round 24 a van the roster does not have) whose crew row no row on screen is
+ * any more — deleted, or (Round 20, a row added on screen) merged into a van's row. A new row left
+ * blank is nothing to save — unless it holds a van (Round 24): a van off the roster is its content.
+ *
+ * By the saved crew row's id, not by the key: a saved row without a van given a roster van moves
+ * onto the van's row with its id (`attachVan`) — still on screen, so not deleted. A ROSTER van's
+ * crew row is never sent here (the server refuses it): one whose van another row took is released
+ * by the server in the same save.
  */
 export const planChanges = (
   next: readonly PlanRow[],
   original: readonly PlanRow[],
 ): { changed: PlanRow[]; removedCrewIds: string[] } => {
   const before = new Map(original.map((row) => [row.key, row]));
-  const kept = new Set(next.map((row) => row.key));
+  const held = new Set(next.flatMap((row) => (row.crewId === null ? [] : [row.crewId])));
   return {
     changed: next.filter((row) => {
       const was = before.get(row.key);
-      return was === undefined ? !isBlankRow(row) : !sameRow(row, was);
+      return was === undefined ? !isBlankRow(row) || row.vehicleId !== null : !sameRow(row, was);
     }),
     removedCrewIds: original
-      .filter((row) => row.vehicleId === null && row.crewId !== null && !kept.has(row.key))
+      .filter((row) => isRemovableRow(row) && row.crewId !== null && !held.has(row.crewId))
       .map((row) => row.crewId as string),
   };
 };
@@ -802,20 +879,36 @@ export const rebaseDraft = (
       if (!before.has(row.key)) out.push(row);
       continue;
     }
-    out.push(
-      touched(local)
-        ? { ...local, vehicleCode: row.vehicleCode, drivers: row.drivers, crewId: row.crewId }
-        : row,
-    );
+    out.push(touched(local) ? refreshFacts(local, before.get(local.key), row) : row);
   }
   const answered = new Set(next.map((row) => row.key));
   return [...out, ...draft.filter((row) => !answered.has(row.key) && touched(row))];
 };
 
 /**
+ * A row the planner changed, under a new answer: the server's facts about it refreshed — the van's
+ * code, its drivers, whether the roster has it, its saved crew's id — but only facts about what the
+ * row still IS. A row given another van here keeps that van's facts (Round 24: the answer still
+ * lists it without one); a row that took another saved crew row's id (`attachVan`) keeps that id.
+ */
+const refreshFacts = (local: PlanRow, was: PlanRow | undefined, answer: PlanRow): PlanRow => {
+  const sameVan = local.vehicleId === answer.vehicleId;
+  const ownCrew = was === undefined || local.crewId === was.crewId;
+  return {
+    ...local,
+    ...(sameVan
+      ? { vehicleCode: answer.vehicleCode, drivers: answer.drivers, onRoster: answer.onRoster }
+      : {}),
+    crewId: ownCrew ? answer.crewId : local.crewId,
+  };
+};
+
+/**
  * What «حفظ» sends (`PlanOperationsCrewSchema`). Whole rows, as the server takes them: a field
- * left null is cleared. A saved row without a van is named by its `crewAssignmentId`; a new one,
- * and a van's row, by nothing but their place (`vehicleId`, or null).
+ * left null is cleared. A SAVED row is named by its `crewAssignmentId` — with its van, or without
+ * one — and a new one by nothing but its place (`vehicleId`, or null). Round 24: a saved row with a
+ * van it did not hold is «row X takes van V» (its محصنات follow it); one that holds it, a plain
+ * edit — the server takes both, so a saved row is always named («always sending it is safe»).
  */
 export const toPlan = (
   day: string,
@@ -824,7 +917,7 @@ export const toPlan = (
   date: new Date(`${day}T00:00:00.000Z`),
   rows: changes.changed.map((row) => ({
     vehicleId: row.vehicleId,
-    ...(row.vehicleId === null && row.crewId !== null ? { crewAssignmentId: row.crewId } : {}),
+    ...(row.crewId !== null ? { crewAssignmentId: row.crewId } : {}),
     captainEmployeeIds: row.slots.captain,
     specialist1EmployeeIds: row.slots.specialist1,
     specialist2EmployeeIds: row.slots.specialist2,
@@ -854,9 +947,14 @@ export const isCrewClash = (failure: unknown): boolean =>
 /**
  * The refusals a save can name a row in, and what on it each one is about: its type box, its
  * direction box, or one PERSON on it — `crew` (Round 22, somebody away that day newly put on it) or
- * `slot` (Round 23, somebody newly put in a slot his role does not fit).
+ * `slot` (Round 23, somebody newly put in a slot his role does not fit) — or (Round 24) its VAN
+ * (`vehicle`: not in service, in the workshop, or another row's) or its REMOVAL (`remove`: a deleted
+ * row that holds محصنات — the page puts it back, marked).
  */
-export type PlanRefusalField = 'type' | 'direction' | 'crew' | 'slot';
+export type PlanRefusalField = 'type' | 'direction' | 'crew' | 'slot' | 'vehicle' | 'remove';
+
+/** Why the save refused the van a row was given (Round 24). */
+export type VehicleRefusal = 'notActive' | 'inWorkshop' | 'taken';
 
 /** Why the save refused a person: away that day (`crew`), or in a slot not his (`slot`). */
 export type PersonRefusal = CrewAway | WrongSlot;
@@ -869,7 +967,18 @@ export interface PlanRefusal {
   parts: string[];
   /** `crew` / `slot`: who, and why he may not go there. */
   person?: { employeeId: string; reason: PersonRefusal };
+  /** `vehicle`: which van, and why the row may not take it. */
+  vehicle?: { vehicleId: string; reason: VehicleRefusal };
+  /** `remove`: the deleted row's saved id, and how many محصنات it holds. */
+  removed?: { crewId: string; shipments: number };
 }
+
+/** The server's three refusals of a van given to a row — `ErrorCodes`' Round-24 codes. */
+const VEHICLE_CODE: Record<string, VehicleRefusal> = {
+  OPERATIONS_CREW_VEHICLE_NOT_ACTIVE: 'notActive',
+  OPERATIONS_CREW_VEHICLE_IN_WORKSHOP: 'inWorkshop',
+  OPERATIONS_CREW_VEHICLE_TAKEN: 'taken',
+};
 
 /**
  * The server's words for why somebody may not go there — `OPERATIONS_CREW_MEMBER_ABSENT`'s detail
@@ -880,6 +989,8 @@ const PERSON_CODE: Record<PlanRefusalField, Record<string, PersonRefusal>> = {
   direction: {},
   crew: { ABSENT: 'absent', ON_LEAVE: 'onLeave' },
   slot: { NOT_A_CAPTAIN: 'notCaptain', NOT_A_SPECIALIST: 'notSpecialist' },
+  vehicle: {},
+  remove: {},
 };
 
 /**
@@ -895,6 +1006,11 @@ const PERSON_CODE: Record<PlanRefusalField, Record<string, PersonRefusal>> = {
  * Round 23 — `OPERATIONS_CREW_MEMBER_WRONG_SLOT` the same way ('NOT_A_CAPTAIN'/'NOT_A_SPECIALIST'):
  * somebody whose flags another desk changed on «متطلبات الطاقم» after this board read them, newly
  * put in a slot that no longer fits him.
+ *
+ * Round 24 — a van given from «بدون سيارة» refused (`…_VEHICLE_NOT_ACTIVE`, `…_IN_WORKSHOP`,
+ * `…_TAKEN`: Fleet took it out of service, sent it to the workshop, or another desk crewed it since
+ * the board was read) is marked on the row's van; and `OPERATIONS_CREW_ROW_HAS_SHIPMENTS` — a
+ * deleted row that holds محصنات — names the row by its saved id (`removed`), not by an index.
  */
 export const planRefusal = (
   failure:
@@ -903,21 +1019,46 @@ export const planRefusal = (
     | undefined,
   sent: readonly PlanRow[],
 ): PlanRefusal | null => {
-  const field: PlanRefusalField | null =
-    failure?.code === 'OPERATIONS_UNKNOWN_SHIFT_TYPE'
-      ? 'type'
-      : failure?.code === 'OPERATIONS_DIRECTION_NOT_AN_AREA'
-        ? 'direction'
-        : failure?.code === 'OPERATIONS_CREW_MEMBER_ABSENT'
-          ? 'crew'
-          : failure?.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
-            ? 'slot'
-            : null;
-  if (field === null) return null;
   const details = failure?.details ?? [];
+  // Round 24 — a removal refused: the row is not on screen (it was deleted there), so it is named
+  // by its saved id; the page puts it back and marks it.
+  if (failure?.code === 'OPERATIONS_CREW_ROW_HAS_SHIPMENTS') {
+    const crewId = details.find((detail) => detail.code === 'CREW_ROW')?.message;
+    if (crewId === undefined) return null;
+    const count = Number(details.find((detail) => detail.code === 'COUNT')?.message ?? 0);
+    return {
+      key: '',
+      field: 'remove',
+      parts: [],
+      removed: { crewId, shipments: Number.isFinite(count) ? count : 0 },
+    };
+  }
+  const vehicleReason = failure?.code === undefined ? undefined : VEHICLE_CODE[failure.code];
+  const field: PlanRefusalField | null =
+    vehicleReason !== undefined
+      ? 'vehicle'
+      : failure?.code === 'OPERATIONS_UNKNOWN_SHIFT_TYPE'
+        ? 'type'
+        : failure?.code === 'OPERATIONS_DIRECTION_NOT_AN_AREA'
+          ? 'direction'
+          : failure?.code === 'OPERATIONS_CREW_MEMBER_ABSENT'
+            ? 'crew'
+            : failure?.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
+              ? 'slot'
+              : null;
+  if (field === null) return null;
   const index = details.find((detail) => detail.code === 'ROW_INDEX')?.message;
   const row = index === undefined ? undefined : sent[Number(index)];
   if (row === undefined) return null;
+  if (field === 'vehicle' && vehicleReason !== undefined) {
+    const named = details.find((detail) => detail.field === 'vehicleId')?.message;
+    return {
+      key: row.key,
+      field,
+      parts: [],
+      vehicle: { vehicleId: named ?? row.vehicleId ?? '', reason: vehicleReason },
+    };
+  }
   if (field === 'crew' || field === 'slot') {
     const named = details.find((detail) => detail.field === 'employeeId');
     const reason = named === undefined ? undefined : PERSON_CODE[field][named.code];
@@ -935,4 +1076,26 @@ export const planRefusal = (
         ? details.filter((detail) => detail.code === 'NOT_AN_AREA').map((detail) => detail.message)
         : [],
   };
+};
+
+/**
+ * Round 24 — a deleted row the save refused to delete (it holds محصنات): back on screen where it
+ * was, as the server last listed it, so the rest of the save can go and the planner sees which row
+ * it was. Before the first row of the answer after it that is still on screen; at the end else.
+ * Already on screen (or not in the answer) → the rows as they were.
+ */
+export const restoreRemovedRow = (
+  rows: readonly PlanRow[],
+  original: readonly PlanRow[],
+  crewId: string,
+): readonly PlanRow[] => {
+  const at = original.findIndex((row) => row.crewId === crewId);
+  const row = original[at];
+  if (row === undefined || rows.some((one) => one.key === row.key || one.crewId === crewId)) {
+    return rows;
+  }
+  const onScreen = new Set(rows.map((one) => one.key));
+  const next = original.slice(at + 1).find((one) => onScreen.has(one.key));
+  const index = next === undefined ? rows.length : rows.findIndex((one) => one.key === next.key);
+  return [...rows.slice(0, index), row, ...rows.slice(index)];
 };

@@ -177,7 +177,8 @@ export const ErrorCodes = {
   /**
    * 409 — Round 24: a saved row was given a van («X takes V») that ANOTHER live crew row of the day
    * still holds at the end of the save (one van, one row a day — `ux_day_vehicle`). Remove that row
-   * in the same save to free the van. Details: `field` 'vehicleId' (`code` 'TAKEN', `message` the
+   * in the same save to free the van. (A ROSTER van's row emptied to nothing, with no shipment leg,
+   * does not hold it: it is released in the same save.) Details: `field` 'vehicleId' (`code` 'TAKEN', `message` the
    * vehicle's id), `field` 'crewAssignmentId' (`code` 'CREW_ROW', `message` the id of the row that
    * holds it), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index in the save).
    */

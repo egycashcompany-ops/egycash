@@ -30,10 +30,18 @@
 //     its card before the click («سيُنقل يوم تسليمها إلى …»), and in «السجل» after;
 //   · Leaving with unsaved moves asks first — another day, a link, closing the tab.
 //
+// ROUND 24:
+//   · A CREW WITHOUT A VAN — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: the read
+//     lists the day's crew rows without a van after the vans; each is a card like a van's, «بدون
+//     سيارة (n)» where the code goes (`lib/van-name.ts`), and takes drops, «نقل إلى…» and proposals;
+//   · «تراجع» is ONE STEP BACK, as on «لوحة التشغيلة» («وعاوز تراجع دا يتراجع عن اخر عمليه مش كل
+//     العمليات»): a move, a captain switched, «توزيع تلقائي» — each press takes back the last one
+//     (`lib/crew-undo.ts`). The day's own proposals are where the history starts, not an operation.
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
-import { useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -102,10 +110,21 @@ import {
   readDistributionDate,
   refusedShipmentId,
   reschedulesOnSave,
+  sameDistributionDraft,
   takesShipments,
   withoutShipment,
   type DistributionDraft,
 } from '../lib/secured-distribution';
+import {
+  lastStep,
+  rebaseHistory,
+  record,
+  startHistory,
+  undo,
+  type UndoHistory,
+  type UndoWhat,
+} from '../lib/crew-undo';
+import { looseCrewNumbers, vanPhrase } from '../lib/van-name';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 
@@ -141,8 +160,20 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const day = data?.date.slice(0, 10) ?? date ?? today;
   const minDay = data?.today.slice(0, 10) ?? today;
 
-  // The person's work between the read and «حفظ».
-  const [draft, setDraft] = useState<DistributionDraft>(EMPTY_DRAFT);
+  // The person's work between the read and «حفظ» — with its history, so «تراجع» takes back one
+  // operation a press (Round 24).
+  const [history, setHistory] = useState<UndoHistory<DistributionDraft>>(() =>
+    startHistory(EMPTY_DRAFT),
+  );
+  const draft = history.now;
+  /** ONE operation on the draft; one that changed nothing is not recorded. */
+  const applyDraft = (
+    what: UndoWhat,
+    change: (current: DistributionDraft) => DistributionDraft,
+  ): void =>
+    setHistory((current) =>
+      record(current, change(current.now), what, { same: sameDistributionDraft }),
+    );
   // The day whose first read has been proposed on — proposals are made once per day, not on every
   // re-read (a proposal the person took off must not come back by itself under their hand).
   const [seeded, setSeeded] = useState<string | null>(null);
@@ -158,7 +189,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
   if (data !== undefined && seeded !== data.date.slice(0, 10)) {
     setSeeded(data.date.slice(0, 10));
     setRefused(null);
-    setDraft(canEdit ? proposeByDirection(data.shipments, data.crews, EMPTY_DRAFT) : EMPTY_DRAFT);
+    setHistory(
+      startHistory(
+        canEdit ? proposeByDirection(data.shipments, data.crews, EMPTY_DRAFT) : EMPTY_DRAFT,
+      ),
+    );
   }
 
   const changes = distributionChanges(rows, draft);
@@ -172,7 +207,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
       if (value === '' || value <= minDay) next.delete('date');
       else next.set('date', value);
       setSp(next);
-      setDraft(EMPTY_DRAFT);
+      setHistory(startHistory(EMPTY_DRAFT));
       setSeeded(null);
       setRefused(null);
     });
@@ -186,6 +221,14 @@ export const SecuredDistributionPage = (): JSX.Element => {
 
   const columns = distributionColumns(rows, vans, draft);
   const vanById = new Map(vans.map((van) => [van.crewAssignmentId, van]));
+  // Round 24 — the crews without a van, numbered as the board numbers them («بدون سيارة (n)»).
+  const looseNumbers = looseCrewNumbers(vans);
+  const looseNumberOf = (crewAssignmentId: string): string | null => {
+    const number = looseNumbers.get(crewAssignmentId);
+    return number === undefined ? null : formatNumber(number, locale);
+  };
+  const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
+    vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
   const proposedCount = changes.filter((change) => draft.get(change.shipmentId)?.proposed).length;
 
   const rowById = new Map(rows.map((row) => [row.id, row]));
@@ -196,8 +239,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
     van: OperationsDayBoardVehicleCrewDto | null,
   ): void => {
     if (!canEdit) return;
-    setDraft((current) =>
-      van === null ? placeShipment(current, row, UNPLACED) : moveToVan(current, row, van),
+    applyDraft(
+      van === null ? { kind: 'unplace' } : { kind: 'move', vars: { van: vanName(van) } },
+      (current) =>
+        van === null ? placeShipment(current, row, UNPLACED) : moveToVan(current, row, van),
     );
     if (refused?.id === row.id) setRefused(null);
   };
@@ -205,7 +250,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const autoDistribute = (): void => {
     const next = proposeByDirection(rows, vans, draft);
     const added = [...next.keys()].filter((id) => !draft.has(id)).length;
-    setDraft(next);
+    applyDraft({ kind: 'auto' }, () => next);
     if (added === 0) toast.info(t('operations.distribution.autoNone'));
     else
       toast.success(
@@ -223,7 +268,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
       // Resolves once the screens it moves have been read again (the hook's `onSettled`), so the
       // cards land where the server put them without a flicker back.
       const result = await save.mutateAsync(body);
-      setDraft(EMPTY_DRAFT);
+      // Saved: nothing is left to take back.
+      setHistory(startHistory(EMPTY_DRAFT));
       setRefused(null);
       toast.success(
         result.rescheduled > 0
@@ -239,7 +285,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       const reason = errorMessage(error, locale);
       const id = refusedShipmentId(error);
       if (id !== null) {
-        setDraft((current) => withoutShipment(current, id));
+        // The refused move leaves the draft — and every step of its history: «تراجع» never brings
+        // back a move the server has just refused.
+        setHistory((current) =>
+          rebaseHistory(current, (state) => withoutShipment(state, id), sameDistributionDraft),
+        );
         setRefused({ id, reason });
       }
       toast.error(t('operations.distribution.refused', { reason }));
@@ -247,6 +297,46 @@ export const SecuredDistributionPage = (): JSX.Element => {
       saving.current = false;
     }
   };
+
+  // ── «تراجع» — one operation a press (Round 24) ───────────────────────────────────────────────
+  const lastMove = lastStep(history);
+  const undoWords =
+    lastMove === null
+      ? null
+      : t(`operations.distribution.undo.kind.${lastMove.what.kind}`, { ...lastMove.what.vars });
+  const undoTitle =
+    undoWords === null
+      ? t('operations.crewPlan.undo.none')
+      : t('operations.crewPlan.undo.title', { what: undoWords });
+  const undoLast = (): void => {
+    if (!canEdit || lastMove === null || undoWords === null) return;
+    setHistory(undo);
+    setRefused(null);
+    toast.info(t('operations.crewPlan.undo.done', { what: undoWords }));
+  };
+  // Ctrl+Z (⌘Z) — the same press, outside a text box.
+  const undoRef = useRef(undoLast);
+  useEffect(() => {
+    undoRef.current = undoLast;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+      if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      undoRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Drag and drop ──────────────────────────────────────────────────────────────────────────────
 
@@ -293,7 +383,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
     const at = placementOf(row, draft).crewAssignmentId;
     const choices: MoveChoice[] = vans.map((van) => ({
       key: van.crewAssignmentId,
-      label: t('operations.distribution.vanLabel', { code: van.vehicleCode ?? '…' }),
+      label: vanName(van),
       sub: [van.captains.map(personName).join(' · '), van.direction ?? '']
         .filter((part) => part !== '')
         .join(' — '),
@@ -400,7 +490,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                     name: personName(other),
                   })}
                   onClick={() =>
-                    setDraft((current) =>
+                    applyDraft({ kind: 'captain', vars: { name: personName(other) } }, (current) =>
                       placeShipment(current, row, {
                         crewAssignmentId: van.crewAssignmentId,
                         captainEmployeeId: other.employeeId,
@@ -502,14 +592,16 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3.5 w-3.5 rtl:-scale-x-100" />
                 {t('operations.distribution.auto')}
               </button>
+              {/* «تراجع» — the LAST operation only (Round 24); its tooltip says which. */}
               <button
                 type="button"
                 data-distribution-discard="true"
-                disabled={!dirty}
-                onClick={() => {
-                  setDraft(EMPTY_DRAFT);
-                  setRefused(null);
-                }}
+                data-distribution-undo={String(history.past.length)}
+                disabled={lastMove === null}
+                title={undoTitle}
+                aria-label={undoTitle}
+                aria-keyshortcuts="Control+Z Meta+Z"
+                onClick={undoLast}
                 className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
               >
                 <BoardIcon d={[...SHIPMENT_PATH.undo]} className="h-3.5 w-3.5" />
@@ -591,6 +683,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                     <VanCard
                       key={van.crewAssignmentId}
                       van={van}
+                      looseNumber={looseNumberOf(van.crewAssignmentId)}
                       crewPlanVisible={data.crewPlanVisible}
                       figures={loadFigures(load, currencyOf, packagingOf)}
                       {...(canEdit

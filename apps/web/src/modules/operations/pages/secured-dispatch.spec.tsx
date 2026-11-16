@@ -483,6 +483,7 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
   ],
   vehiclelessRows: [],
   workshopVehicles: [],
+  freeVehicles: [],
 });
 const directory = (date: string): OperationsCrewDirectoryDto => ({
   date: `${date}T00:00:00.000Z`,

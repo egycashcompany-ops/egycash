@@ -56,6 +56,25 @@
 // its id, and the saved ones deleted. A refusal that names a row (a type archived on another desk
 // since it was picked, a direction that is not an area) is said AND marked on that row's box.
 //
+// ROUND 24 — after the owner's next look:
+//   · «تراجع» IS ONE STEP BACK — «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات فاهم». It threw away
+//     every unsaved change at once; now each press takes back the LAST operation only — a drop, a
+//     pick, a ✕, a van given, a row added, deleted or emptied, a type, colour, time, direction or
+//     notes change, the standing crew loaded or taken off — and the next press the one before, until
+//     nothing is left (`lib/crew-undo.ts`). Ctrl+Z (⌘Z) does the same outside a text box; the
+//     button's tooltip says what it will take back. A save clears the history; another desk's save
+//     rebases it with the draft;
+//   · «بدون سيارة» OFFERS EVERY CAR WITH NO CREW — «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات
+//     اللى مش عليها طاقم واقدر اختار منهم»: the server's `freeVehicles` through the draft
+//     (`lib/crew-vehicles.ts`), in a list like a slot's (`CrewVehiclePicker`). A roster van merges
+//     the row into its blank row, as before; any other car turns the row into that car's row, which —
+//     off the roster — can be deleted again. A SAVED row keeps its id on its new van, so the محصنات
+//     «توزيع المحصنات» placed on it follow it;
+//   · THREE MORE FILTERS between the day and the type — «انه يقدر يفلتر ب كود عربيه و كمان ادخل اسم
+//     قائد او اخصائى او الكود بتاع اى حد فيهم وكمان افلتر ب الاتجاه» (`lib/crew-plan-filter.ts`). They
+//     narrow the table only: hidden rows keep their changes and «حفظ» saves them all. The chips
+//     count the whole day; «المعروض N من M» says what the filters leave.
+//
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
 // planned a day ahead (the legacy default).
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
@@ -70,6 +89,8 @@ import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { pluralKey } from '../../../shared/lib/plural';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { CloseIcon } from '../../../shared/ui/icons';
+import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -79,7 +100,7 @@ import { useUnsavedGuard } from '../../atm/lib/useUnsavedGuard';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../fleet/components/board-scroll';
 import { pickOne } from '../../fleet/components/dark-filter-bar';
 import { DesignCancel, DesignDialog, DesignSave } from '../../fleet/components/DesignDialog';
-import { FilterWithIcon } from '../../fleet/components/FilterWithIcon';
+import { FILTER_ICON, FilterWithIcon } from '../../fleet/components/FilterWithIcon';
 import { BoardIcon, NUM, PATH } from '../../fleet/components/FuelCardBoard';
 import {
   useActiveOperationsAreaNames,
@@ -103,6 +124,7 @@ import {
 import { CrewPlanPool } from '../components/CrewPlanPools';
 import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { CrewSlotPicker } from '../components/CrewSlotPicker';
+import { CrewVehiclePicker } from '../components/CrewVehiclePicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
 import { DAY_BAR, DayBox } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
@@ -114,7 +136,6 @@ import {
   NO_SHIFT_TYPE,
   PLAN_POOLS,
   SHIFT_TYPE_LIST,
-  attachVan,
   awayOf,
   changeCount,
   clearStandingFromPlan,
@@ -124,6 +145,7 @@ import {
   freeMember,
   isBlankRow,
   isCrewClash,
+  isRemovableRow,
   listPool,
   loadStandingIntoPlan,
   matchesShiftType,
@@ -133,6 +155,7 @@ import {
   planRefusal,
   planRowCard,
   rebaseDraft,
+  restoreRemovedRow,
   rowMisfits,
   rowPeople,
   seatOf,
@@ -140,7 +163,6 @@ import {
   standingForDay,
   toPlan,
   toPlanRows,
-  vansFree,
   vehiclelessRow,
   wrongSlotOf,
   type CrewRole,
@@ -167,6 +189,30 @@ import {
   type RefusedDrop,
 } from '../lib/crew-drag';
 import { crewPlanSheet } from '../lib/crew-plan-export';
+import {
+  EMPTY_ROW_FILTER,
+  NO_DIRECTION,
+  NO_VAN,
+  directionFilterOptions,
+  isRowFiltering,
+  matchesRowFilter,
+  vanFilterOptions,
+  type PlanRowFilter,
+} from '../lib/crew-plan-filter';
+import {
+  changedRowKeys,
+  lastStep,
+  rebaseHistory,
+  record,
+  sameCrewDraft,
+  sealHistory,
+  startHistory,
+  undo,
+  type CrewDraft,
+  type UndoHistory,
+  type UndoWhat,
+} from '../lib/crew-undo';
+import { giveVehicle, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
 import { saveReportWorkbook } from '../lib/report-export';
 
 /** `?date=` empty means TOMORROW, resolved by the server — the legacy planning default. */
@@ -278,23 +324,59 @@ export const CrewBoardPage = (): JSX.Element => {
   // `usePlanOperationsCrew` refetches before it settles). Any other new answer — another desk's
   // save, a reconnect — is REBASED under the planner's unsaved work (`rebaseDraft`, Round 22): Round
   // 20 replaced the draft there, and a name just dropped went back to its pool on its own.
-  const [rows, setRows] = useState<readonly PlanRow[]>([]);
+  //
+  // Round 24 — THE DRAFT KEEPS ITS HISTORY (`lib/crew-undo.ts`): the rows and the standing crew's
+  // toggle on screen, and before each operation the draft as it was, so «تراجع» takes back ONE
+  // operation a press. Every change to the draft goes through `apply` — one entry per operation, the
+  // rows it touched however many. A new day and the save's own read-back start it afresh; another
+  // desk's save rebases every entry the way it rebases the draft (`rebaseHistory`).
+  const [history, setHistory] = useState<UndoHistory<CrewDraft>>(() =>
+    startHistory({ rows: [], standingKeys: null }),
+  );
+  const rows = history.now.rows;
+  const standingKeys = history.now.standingKeys;
   const [seen, setSeen] = useState<{ rows: readonly PlanRow[]; day: string | null } | null>(null);
-  const [standingKeys, setStandingKeys] = useState<string[] | null>(null);
   /** The last save's refusal, on the row and the box it names — until that box is changed. */
   const [refusal, setRefusal] = useState<(PlanRefusal & { message: string }) | null>(null);
   const answeredDay = board.data?.date ?? null;
   if (seen === null || seen.rows !== serverRows) {
     setSeen({ rows: serverRows, day: answeredDay });
     if (seen !== null && seen.day !== null && seen.day === answeredDay && !plan.isPending) {
-      setRows(rebaseDraft(rows, seen.rows, serverRows));
+      const base = seen.rows;
+      setHistory((current) =>
+        rebaseHistory(
+          current,
+          (state) => ({ ...state, rows: rebaseDraft(state.rows, base, serverRows) }),
+          sameCrewDraft,
+        ),
+      );
     } else {
-      setRows(serverRows);
-      setStandingKeys(null);
+      setHistory(startHistory({ rows: serverRows, standingKeys: null }));
       setRefusal(null);
     }
   }
   const sequence = useRef(0);
+
+  /**
+   * ONE operation on the draft: the change, and what «تراجع» will say it takes back. Nothing
+   * changed (a refused drop, a type picked again) records nothing. `merge` makes a run of keys in
+   * one box one operation (the notes), until the box is left (`sealHistory`).
+   */
+  const apply = (what: UndoWhat, change: (draft: CrewDraft) => CrewDraft, merge?: string): void =>
+    setHistory((current) =>
+      record(
+        current,
+        change(current.now),
+        what,
+        merge === undefined ? { same: sameCrewDraft } : { same: sameCrewDraft, merge },
+      ),
+    );
+  /** An operation on the rows alone. */
+  const applyRows = (
+    what: UndoWhat,
+    change: (current: readonly PlanRow[]) => readonly PlanRow[],
+    merge?: string,
+  ): void => apply(what, (draft) => ({ ...draft, rows: change(draft.rows) }), merge);
 
   const changes = planChanges(rows, serverRows);
   const pending = changeCount(changes);
@@ -328,7 +410,19 @@ export const CrewBoardPage = (): JSX.Element => {
     captains: EMPTY_POOL_QUERY,
     specialists: EMPTY_POOL_QUERY,
   });
-  const shown = rows.filter((row) => matchesShiftType(row, typeFilter));
+  // Round 24 — the van, the person and the direction, AND-ed with the type. View only: a hidden row
+  // keeps its changes, and «حفظ» saves them all. The chips below count the WHOLE DAY.
+  const [rowFilter, setRowFilter] = useState<PlanRowFilter>(EMPTY_ROW_FILTER);
+  const filtering = isRowFiltering(rowFilter) || typeFilter !== '';
+  const shown = rows.filter(
+    (row) =>
+      matchesShiftType(row, typeFilter) &&
+      matchesRowFilter(row, rowFilter, { memberOf, areaNames: directions }),
+  );
+  const clearFilters = (): void => {
+    setTypeFilter('');
+    setRowFilter(EMPTY_ROW_FILTER);
+  };
   const strip = shiftTypeStrip(shiftTypes, rows);
   const looseNumber = new Map(
     rows.filter((row) => row.vehicleId === null).map((row, index) => [row.key, index + 1]),
@@ -427,6 +521,7 @@ export const CrewBoardPage = (): JSX.Element => {
     pickerAnchor.current = from.closest<HTMLElement>('[data-slot-zone]') ?? from;
     pickerTrigger.current = from;
     setSelected(null);
+    setVanPicker(null);
     setPicker({ key, slot });
   };
   const closePicker = (back: boolean): void => {
@@ -437,6 +532,40 @@ export const CrewBoardPage = (): JSX.Element => {
       if (from?.isConnected === true) from.focus({ preventScroll: true });
     });
   };
+  // ── A row's «بدون سيارة» list (Round 24) ────────────────────────────────────────────────────
+  // «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش عليها طاقم»: ONE list for the board,
+  // opened on the row whose cell was pressed — every car with no crew that day (`vehicleChoices`).
+  const [vanPicker, setVanPicker] = useState<string | null>(null);
+  const vanAnchor = useRef<HTMLElement | null>(null);
+  const vanTrigger = useRef<HTMLElement | null>(null);
+  const openVanPicker = (key: string, from: HTMLElement): void => {
+    if (vanPicker === key) {
+      setVanPicker(null);
+      return;
+    }
+    vanAnchor.current = from.closest<HTMLElement>('[data-van-picker]') ?? from;
+    vanTrigger.current = from;
+    setSelected(null);
+    setPicker(null);
+    setVanPicker(key);
+  };
+  const closeVanPicker = (back: boolean): void => {
+    setVanPicker(null);
+    if (!back) return;
+    requestAnimationFrame(() => {
+      const from = vanTrigger.current;
+      if (from?.isConnected === true) from.focus({ preventScroll: true });
+    });
+  };
+  // The row was given a van meanwhile (another desk, «تراجع»), or went: nothing left to offer.
+  if (vanPicker !== null && !rows.some((row) => row.key === vanPicker && row.vehicleId === null)) {
+    setVanPicker(null);
+  }
+  const workshopIds = useMemo(
+    () => new Set((board.data?.workshopVehicles ?? []).map((van) => van.vehicleId)),
+    [board.data],
+  );
+
   /** A slot has room for one more — the only slot that offers its list. */
   const hasRoom = (key: string, slot: CrewSlot): boolean => {
     const row = rows.find((candidate) => candidate.key === key);
@@ -580,18 +709,50 @@ export const CrewBoardPage = (): JSX.Element => {
   /** The last save named this person (somebody away): moving him answers it. */
   const settleRefusedPerson = (employeeId: string): void =>
     setRefusal((current) => (current?.person?.employeeId === employeeId ? null : current));
+  const nameOfRow = (key: string): string => {
+    const row = rows.find((candidate) => candidate.key === key);
+    return row === undefined ? '—' : rowName(row);
+  };
   const place = (key: string, slot: CrewSlot, employeeId: string): void => {
-    setRows((current) => placeMember(current, key, slot, employeeId));
+    applyRows(
+      {
+        kind: 'place',
+        vars: {
+          name: shownMember(employeeId).fullNameAr,
+          where: `${nameOfRow(key)} · ${t(`operations.crewPlan.columns.${slot}`)}`,
+        },
+      },
+      (current) => placeMember(current, key, slot, employeeId),
+    );
     setSelected(null);
     settleRefusedPerson(employeeId);
   };
   const free = (employeeId: string): void => {
-    setRows((current) => freeMember(current, employeeId));
+    applyRows({ kind: 'free', vars: { name: shownMember(employeeId).fullNameAr } }, (current) =>
+      freeMember(current, employeeId),
+    );
     setSelected(null);
     settleRefusedPerson(employeeId);
   };
+  /** Which operation a change of a row's own fields is — the tooltip's word for it. */
+  const patchKind = (fields: Parameters<typeof patchRow>[2]): string =>
+    'direction' in fields
+      ? 'direction'
+      : 'plannedTime' in fields
+        ? 'time'
+        : 'shiftTypeId' in fields
+          ? 'type'
+          : 'rowColour' in fields
+            ? 'colour'
+            : 'notes';
   const patch = (key: string, fields: Parameters<typeof patchRow>[2]): void => {
-    setRows((current) => patchRow(current, key, fields));
+    const kind = patchKind(fields);
+    applyRows(
+      { kind, vars: { row: nameOfRow(key) } },
+      (current) => patchRow(current, key, fields),
+      // A run of keys in the notes box is ONE operation, until the box is left.
+      kind === 'notes' ? `notes:${key}` : undefined,
+    );
     // The refused box is changed: what it said no longer describes it.
     setRefusal((current) => (current?.key === key ? null : current));
   };
@@ -601,12 +762,68 @@ export const CrewBoardPage = (): JSX.Element => {
     setSelected((current) => (current === employeeId ? null : employeeId));
   };
 
+  // ── «تراجع» — one operation a press (Round 24) ─────────────────────────────────────────────
+  // «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات فاهم». The button says what it will take back;
+  // the rows it changes are brought into view. What was picked up is put down and the lists close —
+  // the hand starts afresh — and a save's refusal stays only on a row the press did not touch.
+  const lastOperation = lastStep(history);
+  const undoWords =
+    lastOperation === null
+      ? null
+      : t(`operations.crewPlan.undo.kind.${lastOperation.what.kind}`, {
+          ...lastOperation.what.vars,
+        });
+  const undoLast = (): void => {
+    if (!canPlan || lastOperation === null || undoWords === null) return;
+    const touched = changedRowKeys(rows, lastOperation.before.rows);
+    setHistory(undo);
+    setSelected(null);
+    setPicker(null);
+    setVanPicker(null);
+    setRefusal((current) => (current !== null && touched.includes(current.key) ? null : current));
+    toast.info(t('operations.crewPlan.undo.done', { what: undoWords }));
+    const first = touched.find((key) => lastOperation.before.rows.some((row) => row.key === key));
+    if (first !== undefined) {
+      requestAnimationFrame(() =>
+        document
+          .querySelector(`[data-plan-row="${first}"]`)
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+      );
+    }
+  };
+  // Ctrl+Z (⌘Z on a Mac) — the same press, outside a text box (a box keeps its own undo).
+  const undoRef = useRef(undoLast);
+  const leaveOpenRef = useRef(false);
+  useEffect(() => {
+    undoRef.current = undoLast;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+      if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+      ) {
+        return;
+      }
+      if (leaveOpenRef.current) return;
+      event.preventDefault();
+      undoRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   // ── The acts ─────────────────────────────────────────────────────────────────────────────────
   const addRow = (): void => {
     sequence.current += 1;
     const row = vehiclelessRow(sequence.current);
-    setRows((current) => [...current, row]);
-    setTypeFilter('');
+    applyRows({ kind: 'addRow' }, (current) => [...current, row]);
+    // A new row has no van, no person and no direction yet: every filter would hide it.
+    clearFilters();
     // Brought into view: on a board of fifty vans the new row is otherwise below the fold.
     requestAnimationFrame(() =>
       document
@@ -634,14 +851,16 @@ export const CrewBoardPage = (): JSX.Element => {
    */
   const toggleStanding = (): void => {
     if (standingKeys !== null) {
-      setRows((current) => clearStandingFromPlan(current, standingKeys));
-      setStandingKeys(null);
+      apply({ kind: 'standingClear' }, (draft) => ({
+        rows: clearStandingFromPlan(draft.rows, draft.standingKeys ?? []),
+        standingKeys: null,
+      }));
       return;
     }
     const day = standingForDay(standingSources, memberOf);
     const load = loadStandingIntoPlan(rows, day.sources);
-    setRows(load.rows);
-    setStandingKeys(load.filledKeys);
+    // One operation, however many vans it filled: one press of «تراجع» takes the whole load back.
+    apply({ kind: 'standingLoad' }, () => ({ rows: load.rows, standingKeys: load.filledKeys }));
     if (load.unavailable > 0) {
       toast.error(t('operations.crew.standing.unavailable', { count: load.unavailable }));
     }
@@ -666,12 +885,13 @@ export const CrewBoardPage = (): JSX.Element => {
   };
 
   /**
-   * A row without a van is given one. Not while somebody on it is away that day: the van would put
+   * A row without a van is given one — a roster van's blank row it merges into, or (Round 24) any
+   * other car with no crew that day, which it takes where it stands. Not while somebody on it is away that day: the van would put
    * him on a van, which the save refuses (Round 22) — said now, by name, rather than at «حفظ». Nor
    * while somebody on it holds a seat his role does not fit (Round 23): on the van's row that seat
    * is a new one, which the save refuses too.
    */
-  const giveVan = (row: PlanRow, vanKey: string): void => {
+  const giveVan = (row: PlanRow, choice: VehicleChoice): void => {
     const away = rowPeople(row).filter((employeeId) => awayOf(memberOf(employeeId)) !== null);
     if (away.length > 0) {
       toast.error(
@@ -695,7 +915,18 @@ export const CrewBoardPage = (): JSX.Element => {
       );
       return;
     }
-    setRows((current) => attachVan(current, row.key, vanKey));
+    applyRows(
+      { kind: 'giveVan', vars: { code: choice.vehicleCode, row: rowName(row) } },
+      (current) => giveVehicle(current, row.key, choice),
+    );
+    setRefusal((current) => (current?.key === row.key ? null : current));
+    // A pick that merged the row into a roster van's row: that row, in the van's place.
+    const landed = choice.vanKey ?? row.key;
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-plan-row="${landed}"]`)
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    );
   };
 
   const exportExcel = (): void =>
@@ -711,12 +942,35 @@ export const CrewBoardPage = (): JSX.Element => {
     setRefusal(null);
     try {
       await plan.mutateAsync(toPlan(day, changes));
+      // Saved: nothing is left to take back (the read-back has started the draft afresh already).
+      setHistory((current) => startHistory(current.now));
       toast.success(t('operations.crewPlan.saved', { count: formatNumber(pending, locale) }));
     } catch (failure) {
       // A refusal that names a row is said in its own words AND marked on that row's box, brought
       // into view — on a board of fifty vans «a direction is not an area» alone leaves the planner
       // hunting for it. Anything else (a Q11 clash, a row deleted on another desk) is said only.
-      const placed = failure instanceof ApiError ? planRefusal(failure, sent) : null;
+      const named = failure instanceof ApiError ? planRefusal(failure, sent) : null;
+      // Round 24 — a deleted row that holds محصنات: put back where it was, and marked — its own
+      // operation, so «تراجع» deletes it again if that is what the planner wants.
+      const restored =
+        named?.field === 'remove' && named.removed !== undefined
+          ? serverRows.find((row) => row.crewId === named.removed?.crewId)
+          : undefined;
+      if (named?.field === 'remove' && restored !== undefined && named.removed !== undefined) {
+        const crewId = named.removed.crewId;
+        applyRows({ kind: 'restoreRow', vars: { row: rowName(restored) } }, (current) =>
+          restoreRemovedRow(current, serverRows, crewId),
+        );
+      }
+      const placed =
+        named?.field === 'remove'
+          ? restored === undefined
+            ? null
+            : { ...named, key: restored.key }
+          : named;
+      // A van refused (taken, in the workshop, out of service since the board was read): read the
+      // board again, so the cars its «بدون سيارة» offers are the ones free NOW.
+      if (placed?.field === 'vehicle') void board.refetch();
       if (placed === null) {
         // The board owns its errors (`usePlanOperationsCrew`'s `onError`), so this toast is the
         // only one: the plan's sentence for a Q11 clash, the failure's own words otherwise.
@@ -728,19 +982,37 @@ export const CrewBoardPage = (): JSX.Element => {
       // Somebody away that day (Round 22), or in a slot not his role's (Round 23): who, by name —
       // his chip on that row is ringed too.
       const aboutPerson = placed.field === 'crew' || placed.field === 'slot';
+      const vehicleCode = (vehicleId: string): string =>
+        rows.find((row) => row.vehicleId === vehicleId)?.vehicleCode ??
+        board.data?.freeVehicles.find((van) => van.vehicleId === vehicleId)?.vehicleCode ??
+        '—';
       const message =
         placed.field === 'direction'
           ? t('operations.crewPlan.refused.direction', { parts: placed.parts.join('، ') })
-          : aboutPerson
-            ? placed.person === undefined
-              ? t(`operations.crewPlan.refused.${placed.field}`)
-              : t(`operations.crewPlan.refused.${placed.person.reason}`, {
-                  name: shownMember(placed.person.employeeId).fullNameAr,
+          : placed.field === 'vehicle' && placed.vehicle !== undefined
+            ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
+                code: vehicleCode(placed.vehicle.vehicleId),
+              })
+            : placed.field === 'remove'
+              ? t('operations.crewPlan.refused.remove', {
+                  count: formatNumber(placed.removed?.shipments ?? 0, locale),
                 })
-            : t('operations.crewPlan.refused.type');
+              : aboutPerson
+                ? placed.person === undefined
+                  ? t(`operations.crewPlan.refused.${placed.field}`)
+                  : t(`operations.crewPlan.refused.${placed.person.reason}`, {
+                      name: shownMember(placed.person.employeeId).fullNameAr,
+                    })
+                : t('operations.crewPlan.refused.type');
       setRefusal({ ...placed, message });
-      toast.error(errorMessage(failure, locale), aboutPerson ? message : undefined);
-      if (!shown.some((row) => row.key === placed.key)) setTypeFilter('');
+      toast.error(
+        errorMessage(failure, locale),
+        aboutPerson || placed.field === 'vehicle' || placed.field === 'remove'
+          ? message
+          : undefined,
+      );
+      // A filter hiding the row it names would hide the answer: the filters go.
+      if (!shown.some((row) => row.key === placed.key)) clearFilters();
       requestAnimationFrame(() =>
         document
           .querySelector(`[data-plan-row="${placed.key}"]`)
@@ -749,6 +1021,9 @@ export const CrewBoardPage = (): JSX.Element => {
     }
   };
 
+  useEffect(() => {
+    leaveOpenRef.current = guard.leaveOpen;
+  });
   const setDay = (value: string): void =>
     guard.confirmLeave(() => {
       const next = new URLSearchParams(sp);
@@ -924,7 +1199,6 @@ export const CrewBoardPage = (): JSX.Element => {
   };
 
   // ── The table ────────────────────────────────────────────────────────────────────────────────
-  const freeVans = vansFree(rows);
   /** What the last save said about this row's box, or null. */
   const refusedOn = (row: PlanRow, field: PlanRefusal['field']): string | null =>
     refusal !== null && refusal.key === row.key && refusal.field === field ? refusal.message : null;
@@ -961,22 +1235,44 @@ export const CrewBoardPage = (): JSX.Element => {
               <BoardIcon d={PATH.warn} className="h-4 w-4" />
             </span>
           );
+        // The save refused the van this row was given (Round 24): ringed, and why on hover.
+        const vanRefused = refusedOn(row, 'vehicle');
         return row.vehicleId !== null ? (
-          <div className="flex min-h-[2.25rem] items-center gap-1 px-0.5">
+          <div
+            className={cn(
+              'flex min-h-[2.25rem] items-center gap-1 px-0.5',
+              vanRefused !== null && 'rounded-md ring-2 ring-rose-500/70 dark:ring-rose-400/70',
+            )}
+            title={vanRefused ?? undefined}
+            data-van-refused={vanRefused === null ? undefined : 'true'}
+          >
             <CrewVehicleHoverCode
               className={cn(NUM, 'cursor-default text-[14px] font-black')}
               code={row.vehicleCode ?? '…'}
               vehicleCrew={planRowCard(row, memberOf)}
             />
+            {/* Round 24 — a van the Fleet roster does not have that day: given here, removable. */}
+            {!row.onRoster && (
+              <span
+                role="img"
+                data-off-roster="true"
+                aria-label={t('operations.crewPlan.offRoster')}
+                title={t('operations.crewPlan.offRosterHint')}
+                className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
+              >
+                {t('operations.crewPlan.offRosterTag')}
+              </span>
+            )}
             {warn}
           </div>
         ) : (
           <div className="flex min-h-[2.25rem] items-center gap-1" data-vehicleless="true">
             <VanPicker
               rowKey={row.key}
-              vans={freeVans}
+              open={vanPicker === row.key}
               disabled={!canPlan}
-              onPick={(vanKey) => giveVan(row, vanKey)}
+              refused={vanRefused}
+              onOpen={(from) => openVanPicker(row.key, from)}
             />
             {warn}
           </div>
@@ -1047,6 +1343,8 @@ export const CrewBoardPage = (): JSX.Element => {
           disabled={!canPlan}
           value={row.notes ?? ''}
           onChange={(event) => patch(row.key, { notes: event.target.value })}
+          // Leaving the box ends the typing: the next key in it is a new operation for «تراجع».
+          onBlur={() => setHistory(sealHistory)}
           // 16px under the sample's below 1440: the type's names («احتياطي سفر») took them, in a
           // table with nothing to spare there.
           className={cn(CELL_BOX, 'w-[4.5rem] min-[1440px]:w-[6.5rem] min-[1750px]:w-[10rem]')}
@@ -1057,7 +1355,9 @@ export const CrewBoardPage = (): JSX.Element => {
       key: 'actions',
       header: t('operations.crewPlan.columns.actions'),
       render: (row) => {
-        const loose = row.vehicleId === null;
+        // A row without a van — and (Round 24) a van off the roster — is deleted; a roster van's
+        // row is emptied.
+        const loose = isRemovableRow(row);
         const label = t(loose ? 'operations.crewPlan.row.remove' : 'operations.crewPlan.row.clear');
         return (
           // On the boxes' line: as tall as a box, the swatch and the bin centred in it — never
@@ -1077,7 +1377,10 @@ export const CrewBoardPage = (): JSX.Element => {
                 title={label}
                 disabled={!loose && isBlankRow(row)}
                 onClick={() => {
-                  setRows((current) => discardRow(current, row.key));
+                  applyRows(
+                    { kind: loose ? 'removeRow' : 'clearRow', vars: { row: rowName(row) } },
+                    (current) => discardRow(current, row.key),
+                  );
                   setRefusal((current) => (current?.key === row.key ? null : current));
                 }}
                 className="flex items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-600 transition hover:border-rose-400 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:bg-[#0a1233] dark:text-rose-400 dark:hover:bg-rose-500/10"
@@ -1214,16 +1517,24 @@ export const CrewBoardPage = (): JSX.Element => {
               Excel
             </button>
             {canPlan && (
+              // «تراجع» — the LAST operation only (Round 24); its tooltip says which.
               <button
                 type="button"
                 data-crew-plan-discard="true"
-                disabled={!dirty}
-                onClick={() => {
-                  setRows(serverRows);
-                  setStandingKeys(null);
-                  setSelected(null);
-                  setRefusal(null);
-                }}
+                data-crew-plan-undo={String(history.past.length)}
+                disabled={lastOperation === null}
+                title={
+                  undoWords === null
+                    ? t('operations.crewPlan.undo.none')
+                    : t('operations.crewPlan.undo.title', { what: undoWords })
+                }
+                aria-label={
+                  undoWords === null
+                    ? t('operations.crewPlan.undo.none')
+                    : t('operations.crewPlan.undo.title', { what: undoWords })
+                }
+                aria-keyshortcuts="Control+Z Meta+Z"
+                onClick={undoLast}
                 className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
               >
                 <BoardIcon d={SHIPMENT_PATH.undo} className="h-3.5 w-3.5" />
@@ -1255,9 +1566,68 @@ export const CrewBoardPage = (): JSX.Element => {
           </span>
         </div>
 
-        {/* The day, the type, and the strip counting the rows by type. */}
+        {/* The day, the van, the person, the direction (Round 24), the type, and the strip counting
+            the rows by type. */}
         <div className={PLAN_BAR} data-crew-plan-bar="true">
           <DayBox label={t('operations.crewPlan.day')} value={day} min="" onChange={setDay} />
+          {/* «يفلتر ب كود عربيه»: the board's vans by code, and «بدون سيارة». */}
+          <FilterWithIcon
+            icon={FILTER_ICON.car}
+            tone="text-emerald-600 dark:text-emerald-400"
+            className="w-full shrink-0 sm:w-36"
+          >
+            <MultiSelect
+              clearable
+              fullWidth
+              density="tight"
+              showSelectedValues
+              label={t('operations.crewPlan.filter.van')}
+              options={[
+                { value: NO_VAN, label: t('operations.crewPlan.noVehicle') },
+                ...vanFilterOptions(rows),
+              ]}
+              value={[...rowFilter.vans]}
+              onChange={(next) => setRowFilter((current) => ({ ...current, vans: next }))}
+            />
+          </FilterWithIcon>
+          {/* «ادخل اسم قائد او اخصائى او الكود بتاع اى حد فيهم». */}
+          <FilterWithIcon
+            icon={FILTER_ICON.person}
+            tone="text-sky-600 dark:text-sky-400"
+            className="w-full shrink-0 sm:w-48"
+          >
+            <Input
+              type="search"
+              density="tight"
+              data-filter-person="true"
+              aria-label={t('operations.crewPlan.filter.person')}
+              placeholder={t('operations.crewPlan.filter.person')}
+              value={rowFilter.person}
+              onChange={(event) =>
+                setRowFilter((current) => ({ ...current, person: event.target.value }))
+              }
+            />
+          </FilterWithIcon>
+          {/* «وكمان افلتر ب الاتجاه»: the areas the board's directions name, and «بدون اتجاه». */}
+          <FilterWithIcon
+            icon={SHIPMENT_PATH.route}
+            tone="text-indigo-600 dark:text-indigo-300"
+            className="w-full shrink-0 sm:w-40"
+          >
+            <MultiSelect
+              clearable
+              fullWidth
+              density="tight"
+              showSelectedValues
+              label={t('operations.crewPlan.filter.direction')}
+              options={[
+                ...directionFilterOptions(rows, directions),
+                { value: NO_DIRECTION, label: t('operations.crewPlan.filter.noDirection') },
+              ]}
+              value={[...rowFilter.directions]}
+              onChange={(next) => setRowFilter((current) => ({ ...current, directions: next }))}
+            />
+          </FilterWithIcon>
           <FilterWithIcon
             icon={PLAN_ICON.tag}
             tone="text-slate-600 dark:text-slate-300"
@@ -1282,9 +1652,40 @@ export const CrewBoardPage = (): JSX.Element => {
               }
             />
           </FilterWithIcon>
+          {/* What the filters leave, beside the chips that count the WHOLE day — and one press
+              to show every row again. */}
+          {filtering && (
+            <span className="flex shrink-0 items-center gap-1.5" data-crew-plan-filtered="true">
+              <span
+                className={cn(
+                  COUNT_CHIP,
+                  'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-100',
+                )}
+                data-shown-count={String(shown.length)}
+              >
+                {t('operations.crewPlan.filter.shown', {
+                  shown: formatNumber(shown.length, locale),
+                  total: formatNumber(rows.length, locale),
+                })}
+              </span>
+              <button
+                type="button"
+                data-crew-plan-clear-filters="true"
+                onClick={clearFilters}
+                className={cn(
+                  COUNT_CHIP,
+                  'border-slate-200 bg-white text-slate-700 hover:border-rose-300 hover:text-rose-700 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-200 dark:hover:text-rose-300',
+                )}
+              >
+                <CloseIcon className="h-3 w-3" />
+                {t('operations.crewPlan.filter.clear')}
+              </button>
+            </span>
+          )}
           <div
             role="group"
             aria-label={t('operations.crewPlan.counts')}
+            title={t('operations.crewPlan.countsHint')}
             className="flex w-full min-w-0 flex-wrap items-center gap-1 lg:w-auto lg:flex-1 min-[1360px]:gap-0.5 min-[1440px]:gap-1"
             data-type-counts="true"
           >
@@ -1449,6 +1850,31 @@ export const CrewBoardPage = (): JSX.Element => {
           seatLabel={(employeeId) => placedAt(employeeId)?.long ?? null}
           onPick={pickInto}
           onClose={closePicker}
+        />
+      )}
+
+      {/* A row's «بدون سيارة» list (Round 24) — every car with no crew that day. */}
+      {vanPicker !== null && (
+        <CrewVehiclePicker
+          key={vanPicker}
+          rowKey={vanPicker}
+          rowName={nameOfRow(vanPicker)}
+          anchor={vanAnchor}
+          trigger={vanTrigger}
+          sheet={phone}
+          choices={vehicleChoices(
+            rows,
+            serverRows,
+            board.data?.freeVehicles ?? [],
+            vanPicker,
+            workshopIds,
+          )}
+          onPick={(choice) => {
+            const row = rows.find((candidate) => candidate.key === vanPicker);
+            closeVanPicker(false);
+            if (row !== undefined) giveVan(row, choice);
+          }}
+          onClose={closeVanPicker}
         />
       )}
 

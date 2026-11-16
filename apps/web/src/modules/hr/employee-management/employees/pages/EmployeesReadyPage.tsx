@@ -7,7 +7,7 @@
 // get HR to the right offer — on «عقد جديد», where the papers print and the hire follows (A28).
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type JobOfferDto, type Locale } from '@ecms/contracts';
+import { joinNameList, splitNameList, type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -58,7 +58,8 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const filters: EmployeesReadyFiltersState = {
     search: sp.get('q') ?? '',
     branchId: readList(sp, 'branch'),
-    department: readList(sp, 'department'),
+    // Group keys can be a unit's own name, which may hold a comma: a name list, commas escaped.
+    department: splitNameList(sp.get('department') ?? ''),
     job: readList(sp, 'job'),
     acceptedFrom: sp.get('af') ?? '',
     acceptedTo: sp.get('at') ?? '',
@@ -82,7 +83,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
       {
         q: nf.search || null,
         branch: writeList(nf.branchId),
-        department: writeList(nf.department),
+        department: nf.department.length === 0 ? null : joinNameList(nf.department),
         job: writeList(nf.job),
         af: nf.acceptedFrom || null,
         at: nf.acceptedTo || null,

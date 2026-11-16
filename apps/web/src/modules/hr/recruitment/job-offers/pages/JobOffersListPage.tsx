@@ -8,7 +8,7 @@
 // «كتابة العرض» on their row; the offer written, the row carries on as «مسودة», «مُرسَل», ….
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type JobOfferDto, type Locale } from '@ecms/contracts';
+import { joinNameList, splitNameList, type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -61,7 +61,8 @@ export const JobOffersListPage = (): JSX.Element => {
     status: readList(sp, 'status') as OfferFiltersState['status'],
     active: sp.get('active') === 'true',
     branch: readList(sp, 'branch'),
-    department: readList(sp, 'department'),
+    // Group keys can be a unit's own name, which may hold a comma: a name list, commas escaped.
+    department: splitNameList(sp.get('department') ?? ''),
     job: readList(sp, 'job'),
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -93,7 +94,7 @@ export const JobOffersListPage = (): JSX.Element => {
       status: writeList(nf.status),
       active: nf.active ? 'true' : null,
       branch: writeList(nf.branch),
-      department: writeList(nf.department),
+      department: nf.department.length === 0 ? null : joinNameList(nf.department),
       job: writeList(nf.job),
     });
   const changeSort = (by: string): void => {

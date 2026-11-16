@@ -482,6 +482,16 @@ describe('employees — creation from the accepted offer snapshot', () => {
     // One value is still one value.
     expect(await codes({ status: emp.status })).toContain(emp.code);
   });
+
+  /** Several company departments expand to every branch copy of each — past the default cap of 50. */
+  it('takes the branch copies of several departments at once', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => `64b1f0cccccccccccccc${String(i).padStart(4, '0')}`).join(',');
+    const res = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ departmentId: many, sectionId: many, pageSize: 5 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
 });
 
 describe('platform identity (ADR-017) — branch code, global sequence, login account', () => {

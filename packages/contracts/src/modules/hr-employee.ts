@@ -624,8 +624,12 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * eight ids — the screen folds them to one name and sends all eight. A single id still parses as
    * a one-item list, so every existing caller is unchanged.
    */
-  departmentId: listQuery(objectId()),
-  sectionId: listQuery(objectId()),
+  //
+  // Several picks of a company department expand to EVERY branch copy of each (eight per department
+  // here), so the cap is the job offers' own 500, not the default 50 — seven departments picked
+  // company-wide would otherwise be refused.
+  departmentId: listQuery(objectId(), 500),
+  sectionId: listQuery(objectId(), 500),
   /**
    * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
    * eventually needs: a caller whose question is «people holding ANY of these titles» would

@@ -5,6 +5,8 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  joinNameList,
+  splitNameList,
   EMPLOYEE_ID_CARD_FILTERS,
   EMPLOYEE_ORIGINS,
   EMPLOYEE_STATUSES,
@@ -123,8 +125,10 @@ export const EmployeesListPage = (): JSX.Element => {
   // `dept` and `section` hold GROUP keys — a company-wide department, not one branch's copy of it.
   const placement: PlacementSelection = {
     branchIds: readList(sp, 'branch'),
-    departmentKeys: readList(sp, 'dept'),
-    sectionKeys: readList(sp, 'section'),
+    // A GROUP key can be a unit's own name (`groupKeyOf`), and a name may hold a comma — so these two
+    // travel as a name list, commas escaped, rather than a plain comma list.
+    departmentKeys: splitNameList(sp.get('dept') ?? ''),
+    sectionKeys: splitNameList(sp.get('section') ?? ''),
     jobTitleIds: readList(sp, 'job'),
   };
   const viewRaw = sp.get('view');
@@ -263,8 +267,8 @@ export const EmployeesListPage = (): JSX.Element => {
     const next = prunePlacement({ ...placement, ...part }, departmentOptions, sectionOptions);
     patch({
       branch: writeList(next.branchIds),
-      dept: writeList(next.departmentKeys),
-      section: writeList(next.sectionKeys),
+      dept: next.departmentKeys.length === 0 ? null : joinNameList(next.departmentKeys),
+      section: next.sectionKeys.length === 0 ? null : joinNameList(next.sectionKeys),
       job: writeList(next.jobTitleIds),
     });
   };

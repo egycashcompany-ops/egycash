@@ -19,6 +19,7 @@ import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { SearchInput } from '../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { Field, Input } from '../../../../shared/ui/form';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -191,11 +192,16 @@ export const TrainingRecordsPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <SearchInput
-          value={search}
-          onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
-          placeholder={t('training.record.searchPlaceholder')}
-        />
+        {/* As wide as its hint («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»): a row lets the box size
+            to its words rather than stretch across the page. */}
+        <div className="flex">
+          <SearchInput
+            value={search}
+            onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
+            placeholder={t('training.record.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
+          />
+        </div>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

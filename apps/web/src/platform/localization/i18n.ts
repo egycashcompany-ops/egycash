@@ -11554,12 +11554,12 @@ const en: Record<string, string> = {
     'Given on this board — not on the vehicle roster of this day. Deleting its row frees the vehicle.',
   'operations.crewPlan.offRosterTag': 'Added',
   'operations.crewPlan.refused.vehicle.notActive':
-    'Vehicle {{code}} is no longer in service in Fleet — press «Take the vehicle off» in its cell, then choose another.',
+    'Vehicle {{code}} is no longer in service in Fleet — press «Remove» under its code, then choose another.',
   'operations.crewPlan.refused.vehicle.inWorkshop':
-    'Vehicle {{code}} is in the workshop on this day — press «Take the vehicle off» in its cell, then choose another.',
+    'Vehicle {{code}} is in the workshop on this day — press «Remove» under its code, then choose another.',
   'operations.crewPlan.refused.vehicle.taken':
-    'Vehicle {{code}} already has another crew on this day — press «Take the vehicle off» in its cell, then choose another.',
-  'operations.crewPlan.releaseVanName': 'Take the vehicle off',
+    'Vehicle {{code}} already has another crew on this day — press «Remove» under its code, then choose another.',
+  'operations.crewPlan.releaseVanName': 'Remove',
   'operations.crewPlan.releaseVan': 'Take vehicle {{code}} off this row, to choose another',
   'operations.crewPlan.refused.remove':
     'This row carries secured shipments ({{count}}), so it was put back. While they are in the vault, take them off it on «Secured distribution», then delete it; once they have left the vault the row stays — it can be emptied, or given a vehicle.',
@@ -11724,8 +11724,8 @@ const en: Record<string, string> = {
   'operations.secured.dispatch.loadCount': '{{count}} shipment(s)',
   'operations.secured.dispatch.vehicleLoad': 'Vehicle {{vehicle}}',
   'operations.secured.dispatch.loadFailed': 'Vehicle {{vehicle}} was not released: {{reason}}',
-  'operations.secured.dispatch.looseLoad': 'Crew with no vehicle',
-  'operations.secured.dispatch.looseLoadFailed': 'The crew with no vehicle was not released: {{reason}}',
+  'operations.secured.dispatch.looseLoadFailed':
+    'The load of {{crew}} was not released: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'Dispatch selected ({{count}})',
   'operations.secured.dispatch.selectRow': 'Select {{caption}} for dispatch',
   // Round 16 — «لوحة تحكم» on «محصنات الخزينة», over the board's own rows.
@@ -25675,12 +25675,12 @@ const ar: Record<string, string> = {
     'أُعطيت من هذه اللوحة وليست على تعيين السيارات لهذا اليوم — حذف صفها يعيد السيارة متاحة.',
   'operations.crewPlan.offRosterTag': 'إضافية',
   'operations.crewPlan.refused.vehicle.notActive':
-    'السيارة {{code}} لم تعد في الخدمة في الأسطول — اضغط «إزالة السيارة» في خانتها، ثم اختر سيارة أخرى.',
+    'السيارة {{code}} لم تعد في الخدمة في الأسطول — اضغط «إزالة» تحت كودها، ثم اختر سيارة أخرى.',
   'operations.crewPlan.refused.vehicle.inWorkshop':
-    'السيارة {{code}} في الصيانة في هذا اليوم — اضغط «إزالة السيارة» في خانتها، ثم اختر سيارة أخرى.',
+    'السيارة {{code}} في الصيانة في هذا اليوم — اضغط «إزالة» تحت كودها، ثم اختر سيارة أخرى.',
   'operations.crewPlan.refused.vehicle.taken':
-    'السيارة {{code}} عليها طاقم آخر في هذا اليوم — اضغط «إزالة السيارة» في خانتها، ثم اختر سيارة أخرى.',
-  'operations.crewPlan.releaseVanName': 'إزالة السيارة',
+    'السيارة {{code}} عليها طاقم آخر في هذا اليوم — اضغط «إزالة» تحت كودها، ثم اختر سيارة أخرى.',
+  'operations.crewPlan.releaseVanName': 'إزالة',
   'operations.crewPlan.releaseVan': 'إزالة السيارة {{code}} عن هذا الصف لاختيار سيارة أخرى',
   'operations.crewPlan.refused.remove':
     'على هذا الصف محصنات ({{count}}) فأُعيد إلى اللوحة. ما دامت في الخزينة فأزِلها عنه في «توزيع المحصنات» ثم احذفه؛ وإن كانت قد خرجت من الخزينة فيبقى الصف، ويمكن تفريغه أو إعطاؤه سيارة.',
@@ -25836,8 +25836,7 @@ const ar: Record<string, string> = {
   'operations.secured.dispatch.loadCount': '{{count}} شحنة',
   'operations.secured.dispatch.vehicleLoad': 'المركبة {{vehicle}}',
   'operations.secured.dispatch.loadFailed': 'لم تُصرف المركبة {{vehicle}}: {{reason}}',
-  'operations.secured.dispatch.looseLoad': 'طاقم بدون سيارة',
-  'operations.secured.dispatch.looseLoadFailed': 'لم يُصرف ما على الطاقم بدون سيارة: {{reason}}',
+  'operations.secured.dispatch.looseLoadFailed': 'لم يُصرف ما على {{crew}}: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'صرف المحدد ({{count}})',
   'operations.secured.dispatch.selectRow': 'تحديد {{caption}} للصرف',
   // الجولة 16 — «لوحة تحكم» في «محصنات الخزينة»، على صفوف الشاشة نفسها.

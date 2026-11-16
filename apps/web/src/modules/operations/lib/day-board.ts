@@ -16,7 +16,7 @@ import {
   type OperationsShipmentStatus,
   type OperationsShipmentType,
 } from '@ecms/contracts';
-import { fold } from '../../../shared/lib/fold';
+import { fold, foldIncludes } from '../../../shared/lib/fold';
 import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
 
 /**
@@ -295,12 +295,13 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
   cellTextOf: (shipment: T, side: BoardBranchSide) => string,
   captainNameOf: (shipment: T) => string = () => '',
   vehicleCodeOf: (shipment: T) => string = () => '',
+  noVan = '',
 ): T[] =>
   shipments.filter(
     (shipment) =>
       // A row with no van yet ("book now, crew later") has no code to match: it drops out of a van
       // filter rather than matching every code. A box holding no code narrows nothing.
-      matchesVehicleCode(vehicleCodeOf(shipment), filters.vehicle) &&
+      matchesBoardVan(vehicleCodeOf(shipment), filters.vehicle, noVan) &&
       matches(bankNameOf(shipment.mainBankId), filters.bank) &&
       matches(cellTextOf(shipment, 'origin'), filters.origin) &&
       matches(cellTextOf(shipment, 'destination'), filters.destination) &&
@@ -676,14 +677,33 @@ export const branchCellText = (
 };
 
 /**
+ * The «السيارة» box against what a row's cell prints. A van code as every vehicle-code box in the
+ * application matches it (`matchesVehicleCode`: Arabic-Indic digits folded, «150 - 151» naming
+ * both). Round 24 — a crew without a van's name, «بدون سيارة (n)» (`noVan` is the screen's
+ * «بدون سيارة»), is ONE name: a box that holds it is matched as a phrase, never split into words —
+ * split, «بدون» alone would answer every crew without a van, and choosing «(2)» from the list would
+ * find «(1)»'s rows too. With no `noVan`, exactly the van-code rule.
+ */
+export const matchesBoardVan = (cellText: string, term: string, noVan = ''): boolean =>
+  noVan !== '' && foldIncludes(term, noVan)
+    ? foldIncludes(cellText, term.trim())
+    : matchesVehicleCode(cellText, term);
+
+/**
  * Round 24 — what the day board's van box offers as it is typed in: the day's van codes in number
- * order, then «بدون سيارة» (`noVan`, the screen's words) when a crew without a van carries a leg —
- * the text that leg's «السيارة» cell prints, so choosing it finds exactly those rows. A van Fleet
- * cannot name is not offered (there is nothing to type for it).
+ * order, then each crew without a van that carries a leg by the text its «السيارة» cell prints —
+ * «بدون سيارة (n)» (`numbered`) by the number the server gave it (`looseNumber`), in number order,
+ * so choosing one finds exactly that crew's rows; plain «بدون سيارة» (`noVan`) for one the answer
+ * numbers not. A van Fleet cannot name is not offered (there is nothing to type for it).
  */
 export const vanSuggestions = (
-  crews: readonly { vehicleId: string | null; vehicleCode: string | null }[],
+  crews: readonly {
+    vehicleId: string | null;
+    vehicleCode: string | null;
+    looseNumber?: number | null;
+  }[],
   noVan: string,
+  numbered?: (n: number) => string,
 ): string[] => {
   const codes = [
     ...new Set(
@@ -692,5 +712,22 @@ export const vanSuggestions = (
       ),
     ),
   ].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
-  return crews.some((crew) => crew.vehicleId === null) ? [...codes, noVan] : codes;
+  const vanless = crews.filter((crew) => crew.vehicleId === null);
+  const numbers = [
+    ...new Set(
+      vanless.flatMap((crew) =>
+        numbered !== undefined && crew.looseNumber !== undefined && crew.looseNumber !== null
+          ? [crew.looseNumber]
+          : [],
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  const plain = vanless.some(
+    (crew) => numbered === undefined || crew.looseNumber === undefined || crew.looseNumber === null,
+  );
+  return [
+    ...codes,
+    ...(numbered === undefined ? [] : numbers.map(numbered)),
+    ...(plain ? [noVan] : []),
+  ];
 };

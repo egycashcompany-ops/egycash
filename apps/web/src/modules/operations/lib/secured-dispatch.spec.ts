@@ -27,6 +27,7 @@ const crew = (crewAssignmentId: string, captainEmployeeId: string, captainName: 
   crewAssignmentId,
   vehicleId: `v-${crewAssignmentId}`,
   vehicleCode: crewAssignmentId === 'ca-1' ? '150' : '210',
+  looseNumber: null,
   captainEmployeeId,
   captainName,
   captainCode: null,

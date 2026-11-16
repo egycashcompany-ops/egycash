@@ -2098,10 +2098,11 @@ describe('Round 24 — a row WITHOUT A VAN takes محصنات like a van', () =>
       LOOSE_DAY,
     );
     expect(placed.status, JSON.stringify(placed.body)).toBe(200);
-    expect((await viewOf(LOOSE_DAY)).crews.filter((c) => c.vehicleId === null).map((c) => c.crewAssignmentId)).toEqual([
-      rows[0]?.id,
-      crewB,
-    ]);
+    expect(
+      (await viewOf(LOOSE_DAY)).crews
+        .filter((c) => c.vehicleId === null)
+        .map((c) => c.crewAssignmentId),
+    ).toEqual([rows[0]?.id, crewB]);
 
     const dispatchBoard = await request(app)
       .get(`/api/v1/operations/secured/dispatch-board?date=${LOOSE_DAY}`)

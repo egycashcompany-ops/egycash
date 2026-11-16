@@ -944,12 +944,13 @@ export const CrewBoardPage = (): JSX.Element => {
     if (after === rows) return;
     // A saved row merged into a roster van comes back as its own row; any other keeps its key.
     const landed =
-      row.key === `van:${row.vehicleId ?? ''}` && row.crewId !== null ? `loose:${row.crewId}` : row.key;
+      row.key === `van:${row.vehicleId ?? ''}` && row.crewId !== null
+        ? `loose:${row.crewId}`
+        : row.key;
     const back = after.find((candidate) => candidate.key === landed);
     const named = back === undefined ? rowName(row) : rowName(back, after);
-    applyRows(
-      { kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } },
-      (current) => releaseVan(current, serverRows, row.key),
+    applyRows({ kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } }, (current) =>
+      releaseVan(current, serverRows, row.key),
     );
     setRefusal((current) => (current?.key === row.key ? null : current));
     requestAnimationFrame(() =>
@@ -1290,30 +1291,33 @@ export const CrewBoardPage = (): JSX.Element => {
                 code={row.vehicleCode ?? '…'}
                 vehicleCrew={planRowCard(row, memberOf)}
               />
-              {!row.onRoster && (
-                <span
-                  role="img"
-                  data-off-roster="true"
-                  aria-label={t('operations.crewPlan.offRoster')}
-                  title={t('operations.crewPlan.offRosterHint')}
-                  className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
-                >
-                  {t('operations.crewPlan.offRosterTag')}
-                </span>
-              )}
-              {releasable && (
+              {/* A refused van given here: «إزالة» takes the tag's line (one short line, the
+                  column keeps its width) — what the planner can do now matters more than that the
+                  van is off the roster. */}
+              {releasable ? (
                 <button
                   type="button"
                   data-van-release={row.key}
                   title={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
                   aria-label={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
                   onClick={() => dropVan(row)}
-                  // «بدون سيارة»'s own shape, in the refusal's colour: two short lines in the column.
-                  className="flex max-w-[3.5rem] flex-col items-center whitespace-normal rounded-md border border-dashed border-rose-400 px-1 py-0.5 text-center text-[10.5px] font-bold leading-[1.15] text-rose-700 transition hover:bg-rose-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:border-rose-500/70 dark:text-rose-300"
+                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded border border-rose-400 bg-rose-500/10 px-0.5 text-[9.5px] font-black leading-none text-rose-700 transition hover:bg-rose-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:border-rose-500/70 dark:text-rose-300"
                 >
-                  <BoardIcon d={PLAN_ICON.noVan} className="h-3 w-3 shrink-0" />
+                  <BoardIcon d={PLAN_ICON.noVan} className="h-2.5 w-2.5 shrink-0" />
                   {t('operations.crewPlan.releaseVanName')}
                 </button>
+              ) : (
+                !row.onRoster && (
+                  <span
+                    role="img"
+                    data-off-roster="true"
+                    aria-label={t('operations.crewPlan.offRoster')}
+                    title={t('operations.crewPlan.offRosterHint')}
+                    className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
+                  >
+                    {t('operations.crewPlan.offRosterTag')}
+                  </span>
+                )
               )}
             </span>
             {warn}

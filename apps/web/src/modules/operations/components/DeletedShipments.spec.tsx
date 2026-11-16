@@ -134,6 +134,7 @@ const deletedRow = (
     crewAssignmentId: 'cr-207',
     vehicleId: 'v-207',
     vehicleCode: '207',
+    looseNumber: null,
     captainEmployeeId: 'c1',
     captainName: 'محمود حسن عبد الله',
     captainCode: 'BR100',

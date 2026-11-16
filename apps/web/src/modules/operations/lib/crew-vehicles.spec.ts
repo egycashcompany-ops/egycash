@@ -144,7 +144,7 @@ describe('the board reads which vans the roster has (`onRoster`)', () => {
       'utf8',
     );
     expect(page).toMatch(
-      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\}\s*\{releasable && \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\)\}\s*<\/span>\s*\{warn\}/,
+      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?\{releasable \? \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\) : \(\s*!row\.onRoster && \([\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\s*\)\}\s*<\/span>\s*\{warn\}/,
     );
   });
 });
@@ -416,9 +416,7 @@ describe('a van the save refused, taken off its row (`releaseVan`, Round 24)', (
       slots: { captain: [id(62)], specialist1: [id(63)], specialist2: [] },
     });
     // Its cell offers the car again; the save sends only what came after (the notes), van-less.
-    expect(
-      choicesFor(released, LOOSE).map((choice) => choice.vehicleCode),
-    ).toContain('P9');
+    expect(choicesFor(released, LOOSE).map((choice) => choice.vehicleCode)).toContain('P9');
     const body = toPlan('2026-11-17', planChanges(released, ORIGINAL));
     expect(body.rows).toEqual([
       expect.objectContaining({ vehicleId: null, crewAssignmentId: id(21), notes: 'بعد السيارة' }),
@@ -478,12 +476,13 @@ describe('a van the save refused, taken off its row (`releaseVan`, Round 24)', (
     );
     // The button: on the refused row's van cell, one operation «تراجع» can take back.
     expect(page).toContain('data-van-release={row.key}');
-    expect(page).toContain("{ kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } },");
-    expect(page).toContain('(current) => releaseVan(current, serverRows, row.key),');
+    expect(page).toMatch(
+      /applyRows\(\{ kind: 'dropVan', vars: \{ code: row\.vehicleCode \?\? '', row: named \} \}, \(current\) =>\s*releaseVan\(current, serverRows, row\.key\),/,
+    );
     // Shown only on a refused row whose van was given here, for someone who may plan.
     expect(page).toContain(
       'vanRefused !== null && canPlan && releaseVan(rows, serverRows, row.key) !== rows;',
     );
-    expect(page).toMatch(/\{releasable && \(\s*<button[\s\S]*?onClick=\{\(\) => dropVan\(row\)\}/);
+    expect(page).toMatch(/\{releasable \? \(\s*<button[\s\S]*?onClick=\{\(\) => dropVan\(row\)\}/);
   });
 });

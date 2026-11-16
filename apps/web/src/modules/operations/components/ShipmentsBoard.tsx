@@ -147,7 +147,7 @@ import {
   type HistoryRange,
 } from '../lib/shipment-history';
 import { shipmentCaption } from '../lib/shipment-log';
-import { vanCodeText } from '../lib/van-name';
+import { looseNumberOf, vanCodeText } from '../lib/van-name';
 import {
   DeliveryStatusBadge,
   SecuredStageBadge,
@@ -566,6 +566,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
+  // Round 24 — a crew without a van's number (`looseNumber`), in the reader's digits.
+  const numberText = (n: number): string => formatNumber(n, locale);
 
   const banks = useOperationsBanks({
     page: 1,
@@ -623,8 +625,11 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
     bankNameOf,
     (row, side) => branchCellText(row, side, bankNameOf),
     (row) => row.crew?.captainName ?? '',
-    // Round 24 — a leg on a crew without a van reads «بدون سيارة», so the van box finds it so.
-    (row) => (row.crew === null ? '' : vanCodeText(t, row.crew)),
+    // Round 24 — a leg on a crew without a van reads «بدون سيارة (n)», numbered as «لوحة التشغيلة»
+    // numbers it, so the van box finds it — and that crew's rows alone — so.
+    (row) =>
+      row.crew === null ? '' : vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText)),
+    t('operations.crewPlan.noVehicle'),
   );
 
   // The figures: over the rows SHOWN — the filtered ones, every page of them — per currency, in
@@ -792,7 +797,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         ) : (
           <CrewVehicleHoverCode
             className={FIGURE}
-            code={vanCodeText(t, row.crew)}
+            code={vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText))}
             vehicleCrew={crewOf.get(row.crew.crewAssignmentId)}
           />
         ),
@@ -1319,7 +1324,11 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
                 onChange={(e) => setFilter({ vehicle: e.target.value })}
               />
               <datalist id="day-board-van-codes" data-van-suggestions="true">
-                {vanSuggestions(crews, t('operations.crewPlan.noVehicle')).map((code) => (
+                {vanSuggestions(
+                  shipments.flatMap((row) => (row.crew === null ? [] : [row.crew])),
+                  t('operations.crewPlan.noVehicle'),
+                  (n) => t('operations.crewPlan.looseRow', { n: numberText(n) }),
+                ).map((code) => (
                   <option key={code} value={code} />
                 ))}
               </datalist>

@@ -682,6 +682,10 @@ its entry here in the same PR.
       - A row that holds محصنات (live legs, delivered or not) is never removed: 409
         `OPERATIONS_CREW_ROW_HAS_SHIPMENTS`, naming the row and the count. Emptying it stays allowed,
         as it always was for a van's row.
+      - Every board row's crew (`OperationsDayBoardCrewDto` — the day board, the history, the
+        vault's screens, «صرف الخزينة») carries `looseNumber`: for a crew without a van, its place
+        among its day's rows without a van, in the order they were added, exactly as «لوحة
+        التشغيلة» and «توزيع المحصنات» number it; null on a van. One read for all the days shown.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the
@@ -787,7 +791,16 @@ its entry here in the same PR.
           the row's bin out of the frame at 1440), shows no drivers and can be deleted (which frees
           it); the server's three refusals of a van and its refusal to delete a row holding محصنات
           are worded in both languages and marked on the row — the deleted row is put back, as its
-          own step, named by its place once it is back («بدون سيارة (n)», never «(0)»).
+          own step, named by its place once it is back («بدون سيارة (n)», never «(0)»), and without
+          anybody the planner seated elsewhere since (he stays where he was put, so the next save
+          is not refused for a clash on a row it never touched). A refused van is taken off its
+          row by «إزالة السيارة» in its cell — one step — since «تراجع» reaches only the last
+          operation; the refusal says so instead of «تراجع عن تعيينها». A row whose محصنات have
+          left the vault is told it stays (it can be emptied or given a van), not to take them off
+          on «توزيع المحصنات», which moves none of those.
+        - «تراجع» and Ctrl+Z take nothing back while «حفظ» is in flight, on the board and on «توزيع
+          المحصنات»: the save's read-back starts the history afresh, so a press then was dropped
+          unsaid and the operation it named saved anyway.
         - Three filters between «يوم التشغيلة» and «كل الأنواع», in that order: the van (the board's
           codes, and «بدون سيارة»), a person box (a captain's or a specialist's name or code,
           folded as the pools' search) and the direction (each area the board's directions name,
@@ -799,8 +812,10 @@ its entry here in the same PR.
           they take drops, «نقل إلى…» and proposals, count among the vans and are handed over and
           printed under the crew's name («الطاقم بدون سيارة (n)»). «صرف الخزينة»'s assign dialog
           offers each as its own choice. The day board, the vault's screens, the deleted list and
-          the hover cards print «بدون سيارة» where a van's code goes, never "null"; the day board's
-          van box offers it.
+          the hover cards print «بدون سيارة» where a van's code goes, never "null". The day board's
+          «السيارة» cell and «صرف من الخزينة»'s loads number it by the server's `looseNumber`
+          («بدون سيارة (n)», «الطاقم بدون سيارة (n)»), so two such crews are never one name; the
+          van box offers each by that name and matches it as one phrase.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

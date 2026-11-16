@@ -104,6 +104,7 @@ const crew = {
   crewAssignmentId: 'ca-1',
   vehicleId: 'v-150',
   vehicleCode: '150',
+  looseNumber: null,
   captainEmployeeId: 'e-1',
   captainName: 'محمود حسن',
   captainCode: null,

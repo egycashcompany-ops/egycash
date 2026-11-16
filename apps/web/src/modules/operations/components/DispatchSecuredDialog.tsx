@@ -19,7 +19,7 @@ import {
   type OperationsSecuredDispatchRowDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { hasNoVan, vanCodeText } from '../lib/van-name';
+import { hasNoVan, looseNumberOf, vanCodeText, vanPhrase } from '../lib/van-name';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
@@ -67,6 +67,9 @@ export const DispatchSecuredDialog = ({
   const loads = dispatchLoads(rows);
   const count = loads.reduce((sum, load) => sum + load.rows.length, 0);
   const busy = waiting || dispatch.isPending;
+  // Round 24 — a crew without a van's number on «لوحة التشغيلة» (`looseNumber`), in the reader's
+  // digits: two such crews in one release are «الطاقم بدون سيارة (1)» and «(2)», never one name twice.
+  const numberText = (n: number): string => formatNumber(n, locale);
 
   const bankNameOf = (id: string): string =>
     banks.data?.items.find((bank) => bank.id === id)?.opsName ?? '';
@@ -90,6 +93,7 @@ export const DispatchSecuredDialog = ({
             // Round 24 — a crew without a van is said as a crew, never «المركبة بدون سيارة».
             hasNoVan(load)
               ? t('operations.secured.dispatch.looseLoadFailed', {
+                  crew: vanPhrase(t, load, looseNumberOf(load, numberText)),
                   reason: errorMessage(error, locale),
                 })
               : t('operations.secured.dispatch.loadFailed', {
@@ -161,7 +165,7 @@ export const DispatchSecuredDialog = ({
                 className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
               />
               {hasNoVan(load)
-                ? t('operations.secured.dispatch.looseLoad')
+                ? vanPhrase(t, load, looseNumberOf(load, numberText))
                 : t('operations.secured.dispatch.vehicleLoad', {
                     vehicle: vanCodeText(t, load),
                   })}

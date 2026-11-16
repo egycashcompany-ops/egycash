@@ -12,7 +12,7 @@ import {
 } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 import { lastStep, record, startHistory, undo } from './crew-undo';
-import { vanSuggestions } from './day-board';
+import { matchesBoardVan, vanSuggestions } from './day-board';
 import { chooseVehicle, dispatchCrewOptions, vehiclesOf } from './dispatch-crew';
 import { dispatchLoads } from './secured-dispatch';
 import {
@@ -237,7 +237,8 @@ describe('a crew without a van is numbered on every board — never two alike', 
     captainPhone: null,
     captainBranchId: null,
   });
-  const numbered = (n: number): string => vanCodeText(ar, { vehicleId: null, vehicleCode: null }, String(n));
+  const numbered = (n: number): string =>
+    vanCodeText(ar, { vehicleId: null, vehicleCode: null }, String(n));
 
   it('the release carries each load’s number, and names it by it', () => {
     const loads = dispatchLoads([
@@ -249,7 +250,9 @@ describe('a crew without a van is numbered on every board — never two alike', 
     expect(looseNumberOf(loads[0]!, String)).toBe('1');
     expect(looseNumberOf(loads[2]!, String)).toBeNull();
     expect(vanCodeText(ar, loads[1]!, looseNumberOf(loads[1]!, String))).toBe('بدون سيارة (3)');
-    expect(vanPhrase(ar, loads[1]!, looseNumberOf(loads[1]!, String))).toBe('الطاقم بدون سيارة (3)');
+    expect(vanPhrase(ar, loads[1]!, looseNumberOf(loads[1]!, String))).toBe(
+      'الطاقم بدون سيارة (3)',
+    );
   });
 
   it('the day board’s van box offers each by its number, and finds that crew’s rows alone', () => {
@@ -261,19 +264,38 @@ describe('a crew without a van is numbered on every board — never two alike', 
     ]);
     // Without numbers (an older answer) — one «بدون سيارة», as before.
     expect(vanSuggestions(CREWS, 'بدون سيارة', numbered)).toEqual(['249', 'بدون سيارة']);
-    expect(matchesVehicleCode('بدون سيارة (٢)', 'بدون سيارة (٢)')).toBe(true);
-    expect(matchesVehicleCode('بدون سيارة (١)', 'بدون سيارة (٢)')).toBe(false);
-    expect(matchesVehicleCode('بدون سيارة (١)', 'بدون سيارة')).toBe(true);
+    // Chosen from the list, «بدون سيارة (2)» is ONE name — matched as a phrase, never split into
+    // words (split, «بدون» alone would find every crew without a van).
+    const noVan = 'بدون سيارة';
+    expect(matchesBoardVan('بدون سيارة (٢)', 'بدون سيارة (٢)', noVan)).toBe(true);
+    expect(matchesBoardVan('بدون سيارة (١)', 'بدون سيارة (٢)', noVan)).toBe(false);
+    expect(matchesBoardVan('بدون سيارة (١)', 'بدون سيارة (2)', noVan)).toBe(false);
+    expect(matchesBoardVan('بدون سيارة (٢)', 'بدون سيارة (2)', noVan)).toBe(true);
+    expect(matchesBoardVan('249', 'بدون سيارة (٢)', noVan)).toBe(false);
+    // «بدون سيارة» alone, or a word of it being typed, still finds every crew without a van; a van
+    // code is matched as every vehicle-code box matches it («249 - 250» names both).
+    expect(matchesBoardVan('بدون سيارة (١)', 'بدون سيارة', noVan)).toBe(true);
+    expect(matchesBoardVan('بدون سيارة (١)', 'بدون', noVan)).toBe(true);
+    expect(matchesBoardVan('250', '249 - 250', noVan)).toBe(true);
+    expect(matchesBoardVan('251', '249 - 250', noVan)).toBe(false);
+    expect(matchesBoardVan('249', '', noVan)).toBe(true);
+    // Exactly the plain van-code rule when there is nothing of «بدون سيارة» in the box.
+    expect(matchesBoardVan('250', '٢٥٠', noVan)).toBe(matchesVehicleCode('250', '٢٥٠'));
   });
 
   it('the day board and the release dialog print the number the server gave', () => {
     const board = read('../components/ShipmentsBoard.tsx');
     expect(board).toContain('code={vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText))}');
-    expect(board).toContain(
-      "(row) => (row.crew === null ? '' : vanCodeText(t, row.crew, looseNumberOf(row.crew, numberText))),",
+    // The van box matches the very text the cell prints, a crew's numbered name as one phrase.
+    expect(board).toMatch(/numberText\)\),\s*t\('operations\.crewPlan\.noVehicle'\),\s*\);/);
+    expect(board).toMatch(
+      /\(row\) =>\s*row\.crew === null \? '' : vanCodeText\(t, row\.crew, looseNumberOf\(row\.crew, numberText\)\),/,
     );
     const dialog = read('../components/DispatchSecuredDialog.tsx');
-    expect(dialog.match(/looseNumberOf\(load, numberText\)/g)?.length).toBe(2);
-    expect(dialog).not.toContain("t('operations.secured.dispatch.looseLoad')\n");
+    // The load's head and its refusal both name the crew by its number.
+    expect(dialog.match(/vanPhrase\(t, load, looseNumberOf\(load, numberText\)\)/g)?.length).toBe(
+      2,
+    );
+    expect(dialog).not.toContain("t('operations.secured.dispatch.looseLoad')");
   });
 });

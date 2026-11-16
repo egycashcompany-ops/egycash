@@ -2154,8 +2154,9 @@ export type PlanOperationsCrewRow = z.infer<typeof PlanOperationsCrewRowSchema>;
  * (`BUSINESS_RULE_VIOLATION`); a removal of a row that holds محصنات — live shipment legs, delivered
  * or not — → 409 `OPERATIONS_CREW_ROW_HAS_SHIPMENTS` (take them off it on «توزيع المحصنات» first, or
  * give the row a van instead; legs that have LEFT THE VAULT — handed over, delivered — are moved by
- * no screen, so a row holding such legs stays for the day). Emptying a row that holds محصنات is NOT refused — van or not, as a
- * van's row always was: its legs stay on the row with the captain they name.
+ * no screen, so a row holding such legs stays for the day). Emptying a row that holds محصنات is
+ * NOT refused — van or not, as a van's row always was: its legs stay on the row with the captain
+ * they name.
  */
 export const PlanOperationsCrewSchema = z
   .object({

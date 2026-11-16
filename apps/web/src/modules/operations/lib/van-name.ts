@@ -39,6 +39,17 @@ export const looseCrewNumbers = (
 };
 
 /**
+ * The number the server gave a leg's crew without a van (`looseNumber` — its place on «لوحة
+ * التشغيلة», whichever crews a board's rows ride), in the reader's digits (`format`), for
+ * `vanCodeText` and `vanPhrase` — or null on a van, and on an answer that carries none.
+ */
+export const looseNumberOf = (
+  crew: { looseNumber?: number | null },
+  format: (n: number) => string,
+): string | null =>
+  crew.looseNumber === undefined || crew.looseNumber === null ? null : format(crew.looseNumber);
+
+/**
  * Where a code is printed (a cell, a card's head): the van's code; «…» when Fleet cannot name an
  * existing van; «بدون سيارة» — «بدون سيارة (n)» when numbered — for a crew without one.
  */

@@ -112,6 +112,8 @@ export interface DispatchLoad<T> {
   /** Null (Round 24) for a crew row without a van — the dialog says «بدون سيارة». */
   vehicleId: string | null;
   vehicleCode: string | null;
+  /** A crew without a van's number on «لوحة التشغيلة» (the server's `looseNumber`), or null. */
+  looseNumber: number | null;
   /** The captains its legs were assigned to — one, or both of a two-captain vehicle. */
   captainNames: string[];
   rows: T[];
@@ -136,6 +138,7 @@ export const dispatchLoads = <T extends Pick<OperationsSecuredDispatchRowDto, 'c
       crewAssignmentId: key,
       vehicleId: row.crew.vehicleId,
       vehicleCode: row.crew.vehicleCode,
+      looseNumber: row.crew.looseNumber ?? null,
       captainNames: [],
       rows: [],
     };

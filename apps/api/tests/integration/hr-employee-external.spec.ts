@@ -4,10 +4,11 @@
 //
 // The claims worth a running server, because each is about several things agreeing at once:
 //
-//   1. FOUR FIELDS IN, A WHOLE IDENTITY OUT. A name, a branch, a department and a job title are
-//      enough, and the server composes the code itself — the branch's own prefix plus the next
-//      number on the same global counter every other employee draws from (ADR-017). Only a real
-//      sequence and a real branch can show that.
+//   1. FIVE FIELDS IN, A WHOLE IDENTITY OUT. A code, a name, a branch, a department and a job title
+//      are enough. The code is the one HR typed, and it is the person's number too: nothing is
+//      drawn from the global counter the company's employees are numbered from (ADR-017), so no
+//      company code is held by somebody who is not on the company's books. Only a real counter and
+//      the register screen's own check can show that.
 //   2. AND NOTHING ELSE IS INVENTED. No national ID, no salary, no login. A registration that
 //      quietly filled any of them in would be writing down facts about somebody the company never
 //      employed, and the fields are checked on the stored record, not on the request.
@@ -30,6 +31,12 @@ import { userService } from '../../src/platform/users';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import {
+  employeeRepository,
+  migrateExternalEmployeeNumbers,
+} from '../../src/modules/hr/employee-management/employees';
+import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 
 const PASSWORD = 'Str0ng#Pass!';
 const EXTERNAL = '/api/v1/hr/employees/external';
@@ -219,19 +226,17 @@ describe('POST /hr/employees/external', () => {
   });
 
   /**
-   * The code is a NAME, not an issued employee code: it is not composed from the branch and it is
-   * not the employee number wearing a prefix. The number is still drawn — every employee has one —
-   * and the two simply do not match, which is the difference this test exists to hold.
+   * The code is a NAME, not an issued employee code: it is not composed from the branch, and no
+   * company number stands behind it — the person's number is the code itself.
    */
-  it('does not compose the code from the branch, and does not tie it to the number', async () => {
+  it('does not compose the code from the branch, and draws no number behind it', async () => {
     const employee = data<EmployeeDto>(
       await registerExternal(registrarToken, { ...wellFormed('خارجي بكود حروف'), code: 'ABC123' }),
     );
 
     expect(employee.code).toBe('ABC123');
     expect(employee.code.startsWith(BRANCH_CODE)).toBe(false);
-    expect(employee.employeeNumber).toMatch(/^\d{4,}$/);
-    expect(employee.code).not.toContain(employee.employeeNumber);
+    expect(employee.employeeNumber).toBe('ABC123');
   });
 
   /** «ملهمش كود عندنا ولا بيانات» — so nothing but what was asked for may end up on the record. */
@@ -247,14 +252,65 @@ describe('POST /hr/employees/external', () => {
     expect(employee).not.toHaveProperty('provisionedLogin');
   });
 
-  /** The NUMBER still comes from the one global counter, even though the code no longer does. */
-  it('draws each one from the global employee counter', async () => {
-    const first = data<EmployeeDto>(await registerExternal(registrarToken, wellFormed('خارجي أول')));
-    const second = data<EmployeeDto>(
-      await registerExternal(registrarToken, wellFormed('خارجي ثان')),
-    );
+  /**
+   * «آخر كود مسجَّل … 2942 وسجلت بعده موظف بكود C2 لما بضيف موظف جديد بكود 02002943 … هذا الرقم
+   * مسجَّل بالفعل للموظف C2 … المفروض لا يحجز هذه الأكواد». Registering external people takes
+   * nothing from the company's counter: the next number it hands out is the one it would have
+   * handed out anyway, and the register screen still reports it free.
+   */
+  it('takes no number from the company counter, so the next company code stays free', async () => {
+    const reserved = Number(await nextEmployeeNumber());
 
-    expect(Number(second.employeeNumber)).toBe(Number(first.employeeNumber) + 1);
+    await registerExternal(registrarToken, wellFormed('خارجي أول'));
+    await registerExternal(registrarToken, wellFormed('خارجي ثان'));
+
+    expect(Number(await nextEmployeeNumber())).toBe(reserved + 1);
+    // Drawn before, the two would have held the next two numbers — this one among them.
+    const next = `${BRANCH_CODE}${String(reserved + 2).padStart(4, '0')}`;
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${next}`);
+    expect(check.status, JSON.stringify(check.body)).toBe(200);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+  });
+
+  /**
+   * Nor does the code: an external code is a name, and «EXT7751» read as `<prefix><number>` would
+   * hold 7751. The company code with that number is still free, on the check and on registering.
+   */
+  it('lets an external code that ends in digits hold no company number', async () => {
+    const res = await registerExternal(registrarToken, {
+      ...wellFormed('خارجي بكود أرقام'),
+      code: 'EXT7751',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7751`);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+  });
+
+  /**
+   * The ones registered before the fix: each drew a company number nobody saw. The register check
+   * no longer counts it, but the number still named them: a device punch for 7743 — the person
+   * later hired as 0017743 — would have found the external person. At boot the number is given
+   * back: the record's number becomes its code.
+   */
+  it('gives back, once, a company number an external person drew before', async () => {
+    const registered = data<EmployeeDto>(
+      await registerExternal(registrarToken, { ...wellFormed('خارجي قديم'), code: 'C2' }),
+    );
+    // As the record was written before: the code typed, a company number drawn behind it.
+    await EmployeeModel.collection.updateOne({ code: 'C2' }, { $set: { employeeNumber: '7743' } });
+    expect((await employeeRepository.findByEmployeeNumberSystem('7743'))?.code).toBe('C2');
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7743`);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+
+    expect(await migrateExternalEmployeeNumbers()).toBe(1);
+    expect(await migrateExternalEmployeeNumbers()).toBe(0);
+
+    expect(await employeeRepository.findByEmployeeNumberSystem('7743')).toBeNull();
+    const read = await request(app)
+      .get(`/api/v1/hr/employees/${registered.id}`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(data<EmployeeDto>(read).employeeNumber).toBe('C2');
   });
 
   /** The point of the whole thing: IT hands custody to an employee, so they must read back as one. */

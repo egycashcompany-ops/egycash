@@ -221,18 +221,18 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
    *
-   * An EXTERNAL person's code is a name, not a branch and a number (EXTERNAL_EMPLOYEE_CODE_PATTERN),
-   * so no number is read out of it: `EX-2900` holds no employee number 2900. Their permanent
-   * `employeeNumber` is a real one from the same counter, and is still matched.
+   * An external person holds NO company number — «المفروض لا يحجز هذه الأكواد». Their code is a name,
+   * not `<prefix><number>` (EXTERNAL_EMPLOYEE_CODE_PATTERN), so `EX-2900` holds no number 2900; and
+   * their `employeeNumber` is their code, not one drawn from the counter. So they are left out here
+   * altogether. Their exact code stays theirs (`ux_code`).
    */
   async findHoldingNumber(number: number): Promise<{ code: string } | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
+        { $match: { origin: { $ne: 'external' } } },
         {
           $addFields: {
-            _codeNumber: {
-              $cond: [{ $eq: ['$origin', 'external'] }, null, codeNumberExpression('code')],
-            },
+            _codeNumber: codeNumberExpression('code'),
             _issuedNumber: {
               $convert: { input: '$employeeNumber', to: 'long', onError: null, onNull: null },
             },

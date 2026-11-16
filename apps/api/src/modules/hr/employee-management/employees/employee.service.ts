@@ -867,11 +867,12 @@ class EmployeeService {
 
     const registeredAt = employment.startDate;
     const doc = await unitOfWork(async (session) => {
-      // The number is still drawn — every employee has one, and the registry counts people — but
-      // the CODE is the one HR typed. For an external person the two are not related, which is the
-      // whole difference between a name the company gives somebody and an issued employee code.
-      const employeeNumber = await nextEmployeeNumber(session);
+      // No company number is drawn: the person's number IS the code HR typed. A number drawn from
+      // the company's sequence was never shown, yet it held the company's code with that number
+      // («02002943 … مسجَّل بالفعل للموظف C2») — a company code taken by somebody who is not on the
+      // company's books. `migrateExternalEmployeeNumbers` frees the numbers drawn before this.
       const code = input.code;
+      const employeeNumber = code;
       const entryEvent: EmployeeStatusEvent = {
         from: null,
         to: 'active',

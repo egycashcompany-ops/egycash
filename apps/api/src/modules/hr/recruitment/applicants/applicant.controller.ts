@@ -20,6 +20,8 @@ import {
   type UpdateApplicant,
   type UpdateApplicantSource,
   type WithdrawApplicant,
+  type PurgeApplicant,
+  type ApplicantPurgeReportDto,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
@@ -28,6 +30,7 @@ import { NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
 import { buildWorkflowState, withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { applicantService } from './applicant.service';
+import { executeApplicantPurge, planApplicantPurge } from './applicant-purge';
 import { applicantSourceService } from './applicant-source.service';
 import { toApplicantDto, toApplicantSourceDto } from './applicant.mapper';
 import { extractNationalIdFields } from './national-id-ocr';
@@ -273,4 +276,32 @@ export const updateApplicantSource = async (req: Request, res: Response): Promis
   const { body, params } = validated<UpdateApplicantSource, never, IdParam>(req);
   const doc = await applicantSourceService.update(params.id, body, ctx.userId);
   ok(res, toApplicantSourceDto(doc));
+};
+
+/**
+ * «مسح نهائي» — erase one candidate from the recruitment cycle, permanently.
+ *
+ * The typed code is checked HERE, against the candidate the id names, before anything is planned.
+ * `planApplicantPurge` refuses separately on a candidate who was hired, and on any recruitment
+ * collection nobody has classified — so a run that reaches the delete is one somebody decided.
+ */
+export const purgeApplicant = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<PurgeApplicant, never, IdParam>(req);
+  const plan = await planApplicantPurge(params.id);
+  if (plan.applicant.code !== body.confirmCode.trim()) {
+    throw new ValidationError(
+      [{ field: 'confirmCode', code: 'MISMATCH', message: 'the typed code is not this applicant’s' }],
+      'the typed code is not this applicant’s',
+    );
+  }
+  const result = await executeApplicantPurge(ctx, plan);
+  const report: ApplicantPurgeReportDto = {
+    code: plan.applicant.code,
+    fullNameAr: plan.applicant.fullNameAr,
+    rowsDeleted: result.rowsDeleted,
+    filesRemoved: result.filesRemoved,
+    fileFailures: result.fileFailures,
+  };
+  ok(res, report);
 };

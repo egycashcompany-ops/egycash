@@ -22,7 +22,6 @@ import {
   SettingKeys,
   type ApplicantDto,
   type EvaluationDto,
-  type EvaluationPhaseDto,
   type InterviewDto,
   type RecruitmentTimelineEntryDto,
   type ScreeningDto,

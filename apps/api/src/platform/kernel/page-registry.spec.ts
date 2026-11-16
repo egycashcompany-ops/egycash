@@ -43,9 +43,14 @@ describe('the assembled page registry', () => {
   // page or it can be granted to nobody deliberately, and a page needs a key or
   // `validatePageRegistry` refuses it as `empty-page`. Borrowing `recruitmentForm.manage` would
   // have moved no number here and left the role matrix describing the wrong screen.
-  it('declares 86 pages over 319 permissions', () => {
+  // «مسح نهائي» adds ONE key and no page: `employee.purge` is the authority to erase a person
+  // from the system, which is a power over the employees screen rather than a screen of its own.
+  // Break-glass, and deliberately implied by nothing — holding every other employee key grants
+  // hiring, paying, transferring and dismissing; none of them grants making somebody never have
+  // been.
+  it('declares 86 pages over 320 permissions', () => {
     expect(pages).toHaveLength(86);
-    expect(permissions).toHaveLength(319);
+    expect(permissions).toHaveLength(320);
   });
 
   /**
@@ -131,11 +136,13 @@ describe('the assembled page registry', () => {
    * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
    * dashboard, so the unassigned count does not move.
    */
-  it('assigns 290 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 291 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
-    expect(assigned).toHaveLength(290);
+    // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
+    // and the unassigned count below does not move.
+    expect(assigned).toHaveLength(291);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

@@ -21,6 +21,8 @@ import {
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
+  type PurgeEmployee,
+  type EmployeePurgeReportDto,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
@@ -31,6 +33,7 @@ import { employeeService } from './employee.service';
 import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
 import { employeeIdCardService } from './employee-id-card.service';
+import { executeEmployeePurge, planEmployeePurge } from './employee-purge';
 
 type IdParam = { id: string };
 
@@ -188,6 +191,36 @@ export const changeEmployeeCode = async (req: Request, res: Response): Promise<v
   );
   const meta: ChangeEmployeeCodeMeta = { loginUsernameChanged };
   ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)), meta);
+};
+
+/**
+ * «مسح نهائي» — erase one employee from the system, permanently.
+ *
+ * The typed code is checked HERE against the employee the id names, before anything is planned.
+ * `planEmployeePurge` refuses on an unclassified collection or an unclassified name field, so a
+ * run that reaches `executeEmployeePurge` is one somebody has decided every part of.
+ */
+export const purgeEmployee = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<PurgeEmployee, never, IdParam>(req);
+  const plan = await planEmployeePurge(params.id);
+  if (plan.employee.code !== body.confirmCode.trim()) {
+    throw new ValidationError(
+      [{ field: 'confirmCode', code: 'MISMATCH', message: 'the typed code is not this employee’s' }],
+      'the typed code is not this employee’s',
+    );
+  }
+  const result = await executeEmployeePurge(ctx, plan);
+  const report: EmployeePurgeReportDto = {
+    code: plan.employee.code,
+    fullNameAr: plan.employee.fullNameAr,
+    rowsDeleted: result.rowsDeleted,
+    namesScrubbed: result.namesScrubbed,
+    filesRemoved: result.filesRemoved,
+    fileFailures: result.fileFailures,
+    keptCollections: plan.keptCollections,
+  };
+  ok(res, report);
 };
 
 /** Replace the officer / armed-security profile — an audited update, not a personnel action. */

@@ -2908,6 +2908,17 @@ const en: Record<string, string> = {
   'employees.roster.addedExitedHint': 'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
   'employees.roster.refusedTitle': 'Asked for, but not done',
   'employees.changeCode.title': 'Change employee code',
+  'employees.purge.title': 'Permanently delete',
+  'employees.purge.description':
+    '{{name}} — code {{code}}. This removes them from the system entirely. There is no undo.',
+  'employees.purge.goes':
+    'Goes: the employee record, their account and sign-in, their files, and everything filed on them — attendance, leave, payslips, contracts, loans, custody and training.',
+  'employees.purge.stays':
+    'Stays: gold receipts, traffic violations, accidents, fuel receipts, ATM maintenance and the consumables ledger. These are records about money, the law and stock rather than about a person, so they are kept — with the name on them rewritten to «deleted employee».',
+  'employees.purge.confirmLabel': 'Type the employee code {{code}} to confirm',
+  'employees.purge.mismatch': 'That is not this employee’s code',
+  'employees.purge.submit': 'Permanently delete',
+  'employees.purge.done': '{{name}} was permanently deleted — {{rows}} records removed, {{names}} names rewritten.',
   'employees.changeCode.current': 'Current code',
   'employees.changeCode.new': 'New code',
   'employees.changeCode.reason': 'Reason for the change',
@@ -17074,6 +17085,17 @@ const ar: Record<string, string> = {
   'employees.roster.refusedTitle':
     'مطلوب في الملف ولن يُنفَّذ',
   'employees.changeCode.title': 'تغيير كود الموظف',
+  'employees.purge.title': 'مسح نهائي',
+  'employees.purge.description':
+    '{{name}} — كود {{code}}. يُزيله هذا من النظام بالكامل، ولا رجعة فيه.',
+  'employees.purge.goes':
+    'يُحذف: سجل الموظف، وحسابه وتسجيل دخوله، وملفاته، وكل ما حُفظ عليه — الحضور والإجازات وقسائم الراتب والعقود والسلف والعهد والتدريب.',
+  'employees.purge.stays':
+    'يبقى: إيصالات الذهب والمخالفات المرورية والحوادث وإيصالات الوقود وصيانة الصرافات ودفتر المستهلكات. هذه سجلات عن المال والقانون والمخزون لا عن الشخص، فتُحفظ — ويُستبدل الاسم المكتوب عليها بـ«موظف محذوف».',
+  'employees.purge.confirmLabel': 'اكتب كود الموظف {{code}} للتأكيد',
+  'employees.purge.mismatch': 'هذا ليس كود هذا الموظف',
+  'employees.purge.submit': 'مسح نهائي',
+  'employees.purge.done': 'تم المسح النهائي لـ{{name}} — حُذف {{rows}} سجلاً، وأُعيدت كتابة {{names}} اسماً.',
   'employees.changeCode.current': 'الكود الحالي',
   'employees.changeCode.new': 'الكود الجديد',
   'employees.changeCode.reason': 'سبب التغيير',

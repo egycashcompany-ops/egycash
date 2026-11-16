@@ -20,6 +20,7 @@ import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Badge, SearchInput } from '../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { Field, Input, Textarea } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useCreateTrainingCourse, useTrainingCourses, useUpdateTrainingCourse } from '../api/training-queries';
@@ -227,11 +228,16 @@ export const TrainingCoursesPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <SearchInput
-          value={search}
-          onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
-          placeholder={t('training.course.searchPlaceholder')}
-        />
+        {/* As wide as its hint («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»): a row lets the box size
+            to its words rather than stretch across the page. */}
+        <div className="flex">
+          <SearchInput
+            value={search}
+            onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
+            placeholder={t('training.course.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
+          />
+        </div>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

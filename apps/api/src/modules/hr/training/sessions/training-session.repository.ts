@@ -66,7 +66,7 @@ class TrainingSessionRepository extends BaseRepository<TrainingSessionDoc> {
     scope: ScopeSelector,
   ): Promise<Paginated<TrainingSessionDoc>> {
     const clauses: FilterQuery<TrainingSessionDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: f.status } });
     if (f.courseId !== undefined) clauses.push({ courseId: new Types.ObjectId(f.courseId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     // A session OVERLAPS the window rather than starting inside it: a two-day course that began

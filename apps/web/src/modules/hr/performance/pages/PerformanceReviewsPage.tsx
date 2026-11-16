@@ -11,7 +11,13 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { type EmployeeDto, type Locale, type PerformanceReviewDto } from '@ecms/contracts';
+import {
+  PERFORMANCE_REVIEW_STATUSES,
+  type EmployeeDto,
+  type Locale,
+  type PerformanceReviewDto,
+  type PerformanceReviewStatus,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
@@ -21,7 +27,11 @@ import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { SearchInput } from '../../../../shared/ui';
 import { StatusBadge, type Tone } from '../../../../shared/ui/Badge';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { buildQuery, getPage } from '../../../../shared/lib/api-client';
@@ -174,12 +184,15 @@ export const PerformanceReviewsPage = (): JSX.Element => {
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const search = sp.get('q') ?? '';
-  const status = sp.get('status') ?? '';
+  // «هنخلي كل الفلترز multi»: several statuses, ORed; a value the vocabulary lacks (an old link) is dropped.
+  const statuses = readList(sp, 'status').filter((s): s is PerformanceReviewStatus =>
+    (PERFORMANCE_REVIEW_STATUSES as readonly string[]).includes(s),
+  );
   const params = {
     page,
     pageSize: DEFAULT_PAGE_SIZE,
     ...(search === '' ? {} : { search }),
-    ...(status === '' ? {} : { status }),
+    ...(statuses.length === 0 ? {} : { status: statuses.join(',') }),
   };
   const { data, isLoading, isError, error, refetch } = usePerformanceReviews(params);
 
@@ -288,26 +301,28 @@ export const PerformanceReviewsPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-64 flex-1">
-            <SearchInput
-              value={search}
-              onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
-              placeholder={t('performance.review.searchPlaceholder')}
-            />
-          </div>
-          <Select
-            value={status}
-            onChange={(e) => patch({ status: e.target.value, page: null })}
-            aria-label={t('common.status')}
-          >
-            <option value="">{t('common.all')}</option>
-            <option value="draft">{t('performance.review.status.draft')}</option>
-            <option value="submitted">{t('performance.review.status.submitted')}</option>
-            <option value="finalized">{t('performance.review.status.finalized')}</option>
-            <option value="excused">{t('performance.review.status.excused')}</option>
-          </Select>
-        </div>
+        {/* The shared filter bar: the search as wide as its hint, the status as its name, several
+            picks («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
+        <FilterBar
+          onClear={() => patch({ q: null, status: null, page: null })}
+          hasActiveFilters={search !== '' || statuses.length > 0}
+        >
+          <SearchInput
+            value={search}
+            onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
+            placeholder={t('performance.review.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
+          />
+          <MultiSelect
+            label={t('common.status')}
+            value={statuses}
+            onChange={(next) => patch({ status: writeList(next), page: null })}
+            options={PERFORMANCE_REVIEW_STATUSES.map((s) => ({
+              value: s,
+              label: t(`performance.review.status.${s}`),
+            }))}
+          />
+        </FilterBar>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

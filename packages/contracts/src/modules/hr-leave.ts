@@ -5,7 +5,7 @@
 // balance row is a rebuildable cache and the atomic reservation gate (R1).
 import { z } from 'zod';
 import { type ApprovalTrailDto } from '../platform/approvals.js';
-import { objectId } from '../common/index.js';
+import { listQuery, objectId } from '../common/index.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 
 // ── Leave Types (the policy catalog, §2 of the frozen design) ───────────────
@@ -292,8 +292,9 @@ export const ListLeaveRequestsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
-    status: LeaveRequestStatusSchema.optional(),
-    typeId: objectId().optional(),
+    /** Status and type are LISTS — «هنخلي كل الفلترز multi» — each ORed; one value still parses. */
+    status: listQuery(LeaveRequestStatusSchema),
+    typeId: listQuery(objectId()),
     employeeId: objectId().optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),

@@ -7,7 +7,7 @@
 // and every other monetary rule belong to Payroll (D4/D5), which reads frozen daily rows through
 // the §15.1 feed contract and never re-derives attendance from punches (D10).
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import { listQuery, objectId, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
 // Provenance is one vocabulary across HR, declared where employment lives (P-HR-22, D-JOB-4).
 // One direction only: employment knows nothing about attendance.
 import { type JobValueSource } from './hr-employee.js';
@@ -310,9 +310,13 @@ export const ListAttendanceDaysQuerySchema = PaginationQuerySchema.extend({
   from: z.coerce.date(),
   to: z.coerce.date(),
   employeeId: objectId().optional(),
-  branchId: objectId().optional(),
-  /** Day rows carry no section; the server resolves the section's employees (AT-6 daily sheet). */
-  sectionId: objectId().optional(),
+  /** The daily sheet's branches — a LIST («هنخلي كل الفلترز multi»), ORed; one value still parses. */
+  branchId: listQuery(objectId()),
+  /**
+   * Day rows carry no section; the server resolves the sections' employees (AT-6 daily sheet). A
+   * list too, ORed, like the branches.
+   */
+  sectionId: listQuery(objectId()),
   status: AttendanceDayStatusSchema.optional(),
 }).strict();
 export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySchema>;
@@ -327,8 +331,9 @@ export const ExportAttendanceQuerySchema = z
     from: z.coerce.date(),
     to: z.coerce.date(),
     employeeId: objectId().optional(),
-    branchId: objectId().optional(),
-    sectionId: objectId().optional(),
+    /** The daily sheet's own filters, so the file is the sheet: several branches and sections, ORed. */
+    branchId: listQuery(objectId()),
+    sectionId: listQuery(objectId()),
     status: AttendanceDayStatusSchema.optional(),
   })
   .strict()
@@ -452,7 +457,8 @@ export type CancelAttendanceRegularization = z.infer<
 >;
 
 export const ListAttendanceRegularizationsQuerySchema = PaginationQuerySchema.extend({
-  status: AttendanceRegularizationStatusSchema.optional(),
+  /** The statuses asked about, ORed — «هنخلي كل الفلترز multi». One value still parses. */
+  status: listQuery(AttendanceRegularizationStatusSchema),
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),

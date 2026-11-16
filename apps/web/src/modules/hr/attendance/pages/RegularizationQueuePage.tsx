@@ -8,7 +8,9 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { EmptyState, Pagination } from '../../../../shared/ui';
-import { Field, Select } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { RegularizationsTable } from '../components/RegularizationsTable';
 import { usePendingRegularizations, useRegularizations } from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
@@ -54,14 +56,16 @@ export const RegularizationQueuePage = (): JSX.Element => {
   };
 
   const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
-  const status = sp.get('status') ?? '';
-  const setStatus = (value: string): void => patch({ status: value });
+  // «هنخلي كل الفلترز multi»: several statuses, ORed; a value the vocabulary lacks (an old link) is dropped.
+  const statuses = readList(sp, 'status').filter((s): s is AttendanceRegularizationStatus =>
+    (STATUSES as readonly string[]).includes(s),
+  );
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
 
   const pending = usePendingRegularizations();
   const all = useRegularizations(
-    { page, pageSize: 25, ...(status === '' ? {} : { status }) },
+    { page, pageSize: 25, ...(statuses.length === 0 ? {} : { status: statuses }) },
     tab === 'all' && can('attendance.decideRegularization'),
   );
   /**
@@ -148,25 +152,15 @@ export const RegularizationQueuePage = (): JSX.Element => {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="max-w-xs">
-            <Field label={t('attendance.reg.status')}>
-              <Select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('attendance.reg.status')}
-              >
-                <option value="">{t('attendance.queue.allStatuses')}</option>
-                {STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`attendance.regStatus.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+          {/* The shared filter bar: the status as wide as its name, several picks at once. */}
+          <FilterBar onClear={() => patch({ status: null })} hasActiveFilters={statuses.length > 0}>
+            <MultiSelect
+              label={t('attendance.reg.status')}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+              options={STATUSES.map((value) => ({ value, label: t(`attendance.regStatus.${value}`) }))}
+            />
+          </FilterBar>
           <RegularizationsTable
             rows={all.data?.items ?? []}
             loading={all.isLoading}

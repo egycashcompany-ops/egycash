@@ -26,6 +26,7 @@ import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -103,6 +104,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <PurgeApplicantAction applicantId={ev.applicantId} applicantCode={ev.applicantCode} applicantName={ev.applicantName} />
             <MoveToOfferButton applicantId={ev.applicantId} />
             <EvaluationStatusBadge status={ev.status} />
           </div>

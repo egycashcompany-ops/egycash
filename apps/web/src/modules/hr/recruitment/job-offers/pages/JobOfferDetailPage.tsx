@@ -27,6 +27,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useJobOffer } from '../api/job-offer-queries';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
 
@@ -74,6 +75,7 @@ export const JobOfferDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <PurgeApplicantAction applicantId={o.applicantId} applicantCode={o.applicantCode} applicantName={o.applicantName} />
             {canRevise && (
               <Can permission="jobOffer.edit">
                 <Button size="sm" variant="ghost" onClick={() => navigate('edit')}>{t('offers.actions.revise')}</Button>

@@ -28,6 +28,8 @@ import {
   type UpdateApplicant,
   type WithdrawApplicant,
   type WorkflowEnvelopeDto,
+  type PurgeApplicant,
+  type ApplicantPurgeReportDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -69,6 +71,19 @@ export const moveApplicantToOffer = (id: string, body: MoveApplicantToOffer): Ap
 
 export const restoreApplicant = (id: string, body: RestoreApplicant): ApplicantEnvelope =>
   postWorkflow<ApplicantDto>(`/hr/applicants/${id}/restore`, body);
+
+/**
+ * «مسح نهائي» — erase the candidate from the recruitment cycle, permanently.
+ *
+ * NOT a workflow call, unlike everything around it: there is no envelope to come back to, because
+ * the candidate whose state it would describe no longer exists. The code is typed back in the
+ * body and the server refuses unless it matches, so an id alone cannot erase somebody.
+ */
+export const purgeApplicant = (
+  id: string,
+  body: PurgeApplicant,
+): Promise<ApplicantPurgeReportDto> =>
+  del<ApplicantPurgeReportDto>(`/hr/applicants/${id}/purge`, body);
 
 /** RW2 — reassign Position and/or Branch (audited, reason mandatory). */
 export const reassignApplicant = (id: string, body: ReassignPlacement): ApplicantEnvelope =>

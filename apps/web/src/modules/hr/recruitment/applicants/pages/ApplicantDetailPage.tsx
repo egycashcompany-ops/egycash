@@ -28,6 +28,7 @@ import { useApplicant } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 import { RecommendationCard } from '../../shared/RecommendationCard';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
 
 const Info = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -75,6 +76,7 @@ export const ApplicantDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <PurgeApplicantAction applicantId={a.id} applicantCode={a.code} applicantName={a.fullNameAr} />
             {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
             {a.status === 'new' && (
               <Can permission="applicant.returnToStage">

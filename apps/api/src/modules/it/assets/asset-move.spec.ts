@@ -178,7 +178,11 @@ describe('where a move may go — the branches `itAsset.assign` reaches, as the 
     }) as never;
 
   it('organization-wide: every active branch, in the order given', () => {
-    expect(moveTargetBranchIds(caller('organization'), BRANCHES)).toEqual([HERE, THERE, ELSEWHERE]);
+    expect(moveTargetBranchIds(caller('organization'), 'itAsset.assign', BRANCHES)).toEqual([
+      HERE,
+      THERE,
+      ELSEWHERE,
+    ]);
   });
 
   it('branch-scoped: their own branch — even when their OTHER grants reach further', () => {
@@ -187,19 +191,25 @@ describe('where a move may go — the branches `itAsset.assign` reaches, as the 
       reach: { branchIds: [HERE, THERE, ELSEWHERE], departments: [] },
       keyReach: { 'itAsset.view': { branchIds: [HERE, THERE, ELSEWHERE], departments: [] } },
     };
-    expect(moveTargetBranchIds(caller('branch'), BRANCHES)).toEqual([HERE]);
-    expect(moveTargetBranchIds(caller('branch', wider), BRANCHES)).toEqual([HERE]);
+    expect(moveTargetBranchIds(caller('branch'), 'itAsset.assign', BRANCHES)).toEqual([HERE]);
+    expect(moveTargetBranchIds(caller('branch', wider), 'itAsset.assign', BRANCHES)).toEqual([
+      HERE,
+    ]);
   });
 
   it('branch-scoped over several branches: exactly the ones this key reaches', () => {
     const reach = { branchIds: [HERE, ELSEWHERE], departments: [] };
     expect(
-      moveTargetBranchIds(caller('branch', { keyReach: { 'itAsset.assign': reach } }), BRANCHES),
+      moveTargetBranchIds(
+        caller('branch', { keyReach: { 'itAsset.assign': reach } }),
+        'itAsset.assign',
+        BRANCHES,
+      ),
     ).toEqual([HERE, ELSEWHERE]);
   });
 
   it('department-scoped: none — a department is never a whole branch, and the move would refuse it', () => {
-    expect(moveTargetBranchIds(caller('department'), BRANCHES)).toEqual([]);
+    expect(moveTargetBranchIds(caller('department'), 'itAsset.assign', BRANCHES)).toEqual([]);
     const departments = [
       { id: DEPARTMENT, branchId: HERE },
       { id: 'd2', branchId: THERE },
@@ -207,21 +217,51 @@ describe('where a move may go — the branches `itAsset.assign` reaches, as the 
     expect(
       moveTargetBranchIds(
         caller('department', { keyReach: { 'itAsset.assign': { branchIds: [], departments } } }),
+        'itAsset.assign',
         BRANCHES,
       ),
     ).toEqual([]);
   });
 
   it('nobody without the grant, or holding it only over their own records or section', () => {
-    expect(moveTargetBranchIds(caller('own'), BRANCHES)).toEqual([]);
-    expect(moveTargetBranchIds(caller('section'), BRANCHES)).toEqual([]);
+    expect(moveTargetBranchIds(caller('own'), 'itAsset.assign', BRANCHES)).toEqual([]);
+    expect(moveTargetBranchIds(caller('section'), 'itAsset.assign', BRANCHES)).toEqual([]);
     const without = { permissions: { 'itAsset.view': 'organization' } };
-    expect(moveTargetBranchIds(caller('organization', without), BRANCHES)).toEqual([]);
+    expect(
+      moveTargetBranchIds(caller('organization', without), 'itAsset.assign', BRANCHES),
+    ).toEqual([]);
   });
 
   it('never an inactive branch — not even the caller’s own', () => {
     const closedHome = { branchId: CLOSED };
-    expect(moveTargetBranchIds(caller('organization'), BRANCHES)).not.toContain(CLOSED);
-    expect(moveTargetBranchIds(caller('branch', closedHome), BRANCHES)).toEqual([]);
+    expect(moveTargetBranchIds(caller('organization'), 'itAsset.assign', BRANCHES)).not.toContain(
+      CLOSED,
+    );
+    expect(moveTargetBranchIds(caller('branch', closedHome), 'itAsset.assign', BRANCHES)).toEqual(
+      [],
+    );
+  });
+
+  it('asks the grant it is given — where the bulk upload registers is `itAsset.create`’s reach, not the move’s', () => {
+    // Moves anywhere, registers at home: the upload's branches are home alone, the move's every one.
+    const registrar = caller('organization', {
+      permissions: { 'itAsset.assign': 'organization', 'itAsset.create': 'branch' },
+    });
+    expect(moveTargetBranchIds(registrar, 'itAsset.create', BRANCHES)).toEqual([HERE]);
+    expect(moveTargetBranchIds(registrar, 'itAsset.assign', BRANCHES)).toEqual([
+      HERE,
+      THERE,
+      ELSEWHERE,
+    ]);
+    // Without the registration grant: nowhere — and never a closed branch with it.
+    expect(moveTargetBranchIds(caller('organization'), 'itAsset.create', BRANCHES)).toEqual([]);
+    const everywhere = caller('organization', {
+      permissions: { 'itAsset.create': 'organization' },
+    });
+    expect(moveTargetBranchIds(everywhere, 'itAsset.create', BRANCHES)).toEqual([
+      HERE,
+      THERE,
+      ELSEWHERE,
+    ]);
   });
 });

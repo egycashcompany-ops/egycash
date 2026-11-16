@@ -243,12 +243,13 @@ export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
  * typed one. Letting a letter into that shape would make both meaningless — `Number('EX01')` is
  * `NaN` — and would do it to all 2,699 real codes, not just to external people.
  *
- * So an external code is just a NAME, unique among employees and nothing more. The person still
- * draws an `employeeNumber` from the same counter (every employee has one); their code simply is
- * not composed from it. Nothing reads a branch or a number out of an external code, and nothing
- * should: `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * So an external code is just a NAME, unique among employees and nothing more. The person draws
+ * NO number from the company's counter: their `employeeNumber` is the code itself. A drawn number
+ * was never shown, yet it held the company code with that number — «02002943 … مسجَّل بالفعل
+ * للموظف C2». Nothing reads a branch or a number out of an external code, and nothing should:
+ * `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
  * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
- * registration screen shows nor holds employee number 2900. Their permanent `employeeNumber` does.
+ * registration screen shows nor holds employee number 2900.
  */
 export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
 
@@ -608,10 +609,14 @@ export const EMPLOYEE_ID_CARD_FILTERS = ['received', 'never', 'awaiting', 'recei
 export type EmployeeIdCardFilter = (typeof EMPLOYEE_ID_CARD_FILTERS)[number];
 
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
-  status: EmployeeStatusSchema.optional(),
+  /**
+   * Status, origin and the ID card are LISTS too — «هنخلي كل الفلترز multi». The picks of one are
+   * ORed. A single value still parses as a one-item list, so every existing caller is unchanged.
+   */
+  status: listQuery(EmployeeStatusSchema),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
   employed: z.coerce.boolean().optional(),
-  origin: EmployeeOriginSchema.optional(),
+  origin: listQuery(EmployeeOriginSchema),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),
@@ -620,8 +625,12 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * eight ids — the screen folds them to one name and sends all eight. A single id still parses as
    * a one-item list, so every existing caller is unchanged.
    */
-  departmentId: listQuery(objectId()),
-  sectionId: listQuery(objectId()),
+  //
+  // Several picks of a company department expand to EVERY branch copy of each (eight per department
+  // here), so the cap is the job offers' own 500, not the default 50 — seven departments picked
+  // company-wide would otherwise be refused.
+  departmentId: listQuery(objectId(), 500),
+  sectionId: listQuery(objectId(), 500),
   /**
    * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
    * eventually needs: a caller whose question is «people holding ANY of these titles» would
@@ -649,8 +658,8 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
-  /** The company ID card: printed at least once, or never. */
-  idCard: z.enum(EMPLOYEE_ID_CARD_FILTERS).optional(),
+  /** The company ID card's states asked about, ORed (`EMPLOYEE_ID_CARD_FILTERS`). */
+  idCard: listQuery(z.enum(EMPLOYEE_ID_CARD_FILTERS)),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 

@@ -161,6 +161,196 @@ grant reaches. While the list is on its way the picker waits; when none is left 
 the move cannot be sent. A held asset dated before its custody began is left to the server's
 `beforeCustody`.
 
+**The bulk upload («رفع جماعي», §17 2026-11-16):** one branch's sheet at a time, in the shape of
+the branches' custody sheets, is read, decided line by line against the register and PREVIEWED;
+nothing is written until the reviewer confirms the lines they kept. The file has no branch column:
+the branch is chosen on the screen, and a sheet named «عهدة فرع X» suggests the branch whose name
+matches X (the go-live's branch-name folding, `matchBranches` / `foldName`) — only among the
+active branches the caller's `itAsset.create` reaches, and only when exactly one answers — which
+the picker then shows.
+
+- **The sheet** — one `.xlsx` of at most `IT_ASSET_IMPORT_MAX_MB` (5 MB) and
+  `IT_ASSET_IMPORT_MAX_ROWS` (500) data rows. **The workbook is never inflated whole**
+  (`workbook.xlsx.load` built every sheet in memory before the 500-line cap applied: a 765 KB
+  file of 30 000 rows took 175 MB of heap, a crafted zip far more). It is read as the fuel-card
+  reconciliation reads its sheets, through `shared/xlsx/one-sheet-zip.ts`, in two steps:
+  - **Unpacked under caps, before a line of it is read.** The zip's entry count is checked before
+    anything opens it (more than 500 entries, or any ZIP64 marker, refused —
+    [SEC-13](atm-settlements-phase1.md)); then five parts are inflated, each under its own cap
+    (`ASSET_IMPORT_SHEET_LIMITS`: the workbook part and its relationships 1 MB each, the styles
+    and the shared strings 4 MB each, ONE sheet 6 MB — 501 lines at every column's own limit are
+    about 2.5 MB, a real page a few hundred KB), within 20 seconds for the whole read. A sheet
+    whose XML inflates past its cap is refused right there, as larger than one branch's sheet,
+    before any of it is parsed: a register export of 30 000 lines is refused that way (its sheet
+    passes 6 MB long before its last line — 20 000 short lines are already 5.8 MB), not by the
+    500-line rule.
+  - **Parsed as it streams, and stopped one line past 500.** Within the caps the five parts are
+    re-zipped in memory for ExcelJS's STREAMING reader and handed to it in 64 KB slices
+    (`readSlices`, views of the buffer, each cut on a character boundary — below), never as one
+    buffer. Handed whole, the zip was one
+    chunk, unzipper passed the sheet on as one chunk, and the XML parser turned ALL of it into
+    events before the first row came out — so «stop past 500» bounded nothing: a 600 KB file of
+    20 000 short lines (a 5.8 MB sheet, under its cap) took +283 MB of memory, more than the
+    `xlsx.load` it replaced. In slices the sheet reaches the parser a slice or two at a time, is
+    parsed as it arrives, and the read stops at the 501st line having parsed about that far and
+    the few slices queued behind it: the same file takes +50 to +93 MB (the parse +13 MB of it,
+    the rest the sheet unpacked and re-zipped under its cap), a real 500-line page +17 to +20 MB
+    (the process's peak memory over the read, measured 2026-11-16). That sheet, past 500 lines
+    but within its cap, is then refused by the 500-line rule.
+  - **No cut splits a character.** ExcelJS's XML parser decodes every piece it is handed on its
+    own, unzipper hands the shared strings and the sheet on in pieces that end where the slices
+    end, and the re-zipped parts are stored, their bytes as typed — so a cut that fell inside a
+    two-byte Arabic letter read as two «�», written to the register (8 of 17 realistic pages of
+    100 to 500 lines, 2026-11-16). Each cut therefore moves forward past the UTF-8 continuation
+    bytes after it — at most three, a character being at most four bytes: exact inside the XML,
+    harmless in the zip's binary headers, and a slice at most three bytes longer. A piece decoded
+    on its own also loses a U+FEFF it starts with — the decoder takes it for a byte-order mark,
+    and a cell's «معالج», U+FEFF, «إنتل» read «معالجإنتل» — so a cut also moves past the U+FEFF
+    right after it: they end a slice, never start one, and past those three bytes a slice holds
+    nothing else.
+    And the text is the text typed — what `xlsx.load` reads, or, where `xlsx.load` is wrong, what
+    Excel shows. Excel's `_xHHHH_` escapes are decoded in every text cell, shared or inline,
+    before it is trimmed: a carriage return Excel stores as `_x000D_` had reached the register
+    («كيبورد_x000D_ ماوس»), and `_x005F_` is an escaped «_», so a typed «_x0041_» stays «_x0041_».
+    An inline cell written as runs (`<is><r><t>…</t></r>…</is>` — ExcelJS's own streaming writer
+    puts rich text so), of which the streaming reader kept only the last, is joined into one text
+    before the reader meets it, each run's escapes its own and a phonetic guide left out. A cell
+    merged down a block — «النوع» written once beside a run of screens — is every one of those
+    lines' value, as Excel shows it and `xlsx.load` reads it (the streaming reader gives it to the
+    block's first row only): the sheet's `<mergeCells>` are read from its tail and a merged value
+    filled DOWN its column, never across (one accessory merged over L and M stays one), the
+    header's own merge left alone, a cell's own value kept. The memory is as above.
+  - **Past a cap** — a part, the entry count or the 20 seconds — **422** with
+    `{ field: 'file', code: 'SHEET_TOO_LARGE', message: <the part | 'entries' | 'time'> }` and
+    the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its
+    own (at most 500 lines)»; the screen says «الملف أكبر من ورقة فرع واحد — ارفع ورقة العهدة
+    وحدها (حتى 500 سطر)». It is NOT the upload's own cap — multer's 5 MB, `TOO_LARGE`, «حجم الملف
+    أكبر من 5 ميجابايت»: a 1 MB file whose sheet unpacks past one branch's page is not larger than
+    5 MB, and saying so would send the reader to shrink the wrong thing.
+
+  Nothing touches the disk. Its first visible worksheet — found from the workbook part, a
+  `hidden` or `veryHidden` tab skipped — is read; row 1 must be
+  `IT_ASSET_IMPORT_COLUMNS`, A to L — «النوع»، «اسم الصنف»، «سيريال (Serial)»، «الشركة المُصنعة»،
+  «الموديل»، «الملصق المطبوع (Tag)»، «المعالج»، «إجمالي ذاكرة النظام»، «نوع النظام»، «إجمالي سعة
+  الأقراص الصلبة»، «كارت الشاشة»، «المشتملات» — compared folded (trimmed, spaces collapsed, the
+  Latin parts without case), else **422** naming the first header missing or out of place. The
+  accessories are L and the unlabelled M; G to K are the specifications table's processor, memory,
+  system type, storage and display adapter. Blank rows are skipped; a number is read as its digits
+  (a long serial never becomes 1.2e+15), rich text and a formula's result as their text, every cell
+  trimmed, an empty one null. The screen's «تحميل النموذج» is exactly that header row.
+- **The rules are the branches' custody go-live's** (§17 2026-11-10), decided by ITS planner
+  (`planBranchCustody`, generalised to take the sheet's lines — every one a `new` line of the
+  chosen branch with its sheet row; the go-live decides exactly as before) against the WHOLE live
+  register: every non-deleted asset of every branch, a serial being unique across it. A line is
+  found by its serial and its tag against every device's serial number AND printed tag, without
+  case — an October all-in-one's «MP…» serial also under its barcode's «S». Each line comes to one
+  decision (`IT_ASSET_IMPORT_DECISIONS`):
+  - `new` — found nowhere: registered in the chosen branch, in stock, under its tag as its serial
+    number when it has one (a Dell's service tag IS its serial), else its serial, and the other
+    label as its printed tag (`externalTag`); with its name, its kind's category, make, model (a
+    leading copy of the make dropped: «Dell OptiPlex 7090» by Dell is «OptiPlex 7090»),
+    specifications and accessories, and the notes «من ملف «<the file's name>» — رفع جماعي». No
+    history entry, as no registration has one (FR-5's window stays open).
+  - `fill` — found in the chosen branch: it gets only what it has no value for («أكمّل الناقص بس»):
+    specification rows, accessories, printed tag, make, model. A value already on the register is
+    kept, and shown beside the sheet's where they differ (`kept`). `complete` — nothing to fill:
+    left as it is.
+  - `move` — found in stock in another branch: moved to the chosen one («يتنقل لفرع الملف»), its
+    `location` cleared (a place in the branch it left), and filled. `heldElsewhere` — held, under
+    maintenance or disposed in another branch: NOT moved, shown as a conflict, still filled when it
+    lacks something. **A device an active maintenance order holds (open or in progress) is never
+    moved either**: opening an order leaves it `inStock`, but the technician has it, and every
+    other change of branch refuses it (the register's move, custody's own guard) — so it too is
+    `heldElsewhere`, its `message` saying an open maintenance order holds it. The orders are asked
+    of the devices the plan would move (`itMaintenanceOrderRepository.activeAssetIds`), in the
+    apply's own transaction too, and the plan made again holding those back; the go-live's planner
+    takes them as an optional input, and the go-live, which passes none, decides as before. One
+    decision, but the screen words it from the device's `status` (when the caller sees it), since
+    «متسلَّم» says somebody holds it — only an `assigned` device is «متسلَّم في فرع X — لا يُنقل»;
+    kept by maintenance, `underMaintenance` or `inStock` under an open order —
+    «في الصيانة في فرع X — لا يُنقل»; `disposed` — «مستبعَد في فرع X»; a line naming no device
+    reads the neutral «في فرع X — لا يُنقل», and the count chip, which counts them all,
+    «في فرع آخر — لا يُنقل».
+  - `duplicateInFile` — a second line for a device an earlier line already took: the first wins
+    (`firstRow`). `ambiguous` — two devices or more answer to it, and neither is guessed at.
+    `noIdentifier` — neither serial nor tag («لو مفيش تاجات فخلاص متضيفهمش»).
+  - `unknownKind` — a new line whose «النوع» has no category yet. `invalid` — no «النوع» (a device
+    is filed by it), no name, or a value longer than its column's limit (the asset's own: a name
+    200, a serial, tag, make or model 120, a specification row or an accessory 200; the kind 100),
+    `message` naming the column. Decided BEFORE planning, as `noIdentifier` is: such a line takes
+    no part in it, so it never claims a serial or a tag that a later, valid line for the same
+    device would then find taken — that line is decided on its own (`new`, `fill` …), not
+    `duplicateInFile`.
+- **Categories** — each distinct «النوع» is filed under the category the screen gives it
+  (`kindCategories`: an active asset category, else **422**), else one matched automatically: the
+  live categories' Arabic and English names, folded, and the go-live's kinds (`كمبيوتر مكتبي`،
+  `شاشة`، `طابعة`، `هاتف IP`، `لابتوب`; a name containing «neo 50a» is an all-in-one). With neither,
+  its new lines are `unknownKind` until one is chosen. The preview lists each kind with its
+  category and its line count.
+- **Warnings** (`IT_ASSET_IMPORT_WARNINGS`, on `new` lines only — the two doubts the go-live's
+  review held back until the owner read the label): `nearSerial` — within two edits of the serial
+  of a device of the chosen branch and the same category that no line of the file names (the
+  device named when the caller may see it); `productNumber` — no serial, and the tag is HP's
+  product number (`/^[A-Z0-9]{5}AV$/`). Such a line can be ticked, but opens unticked.
+- **Scope** — the register is read whole, but a device answers only within the caller's grants.
+  Only one `itAsset.view` does not reach is hidden: `outOfScope`, with nothing of it shown (no
+  code, no branch, no values). One the caller may see but not write is named: a fill needs the
+  device within `itAsset.edit`'s scope, a move within `itAsset.assign`'s AND the chosen branch
+  within that grant's reach (`keyReachesBranch`) — otherwise the line is `outOfScope` too, with
+  its device (code, branch, what it lacks, the values kept) and a `message` naming each right
+  missing (`itAsset.edit` does not reach the asset; `itAsset.assign` does not reach the asset, or
+  the branch chosen). `complete` needs nothing beyond seeing it. The chosen branch must be active
+  and reached by `itAsset.create` (**403**) — the screen offers no other: the server names them,
+  `GET /it/assets/import/branches` (§12); with none chosen and none suggested the preview asks for
+  one (**422**).
+- **What can be ticked** — `new`, `fill`, `move`, and `heldElsewhere` when it has something to
+  fill; never `complete`, `outOfScope`, `duplicateInFile`, `ambiguous`, `noIdentifier`,
+  `unknownKind` or `invalid`. A line opens ticked when it can be and carries no warning;
+  «تحديد الكل/إلغاء» acts on the lines IN VIEW (the pressed count chip's, or all of them): it
+  ticks every one there that can be ticked — one with a warning included, since asking for all is
+  asking for it — or, when they are all ticked already, clears them; lines out of view keep their
+  ticks.
+- **The write is the preview that was seen.** The preview answers `fileSha256` (the bytes'
+  sha256) and `planHash` (a sha256 of every line's row, decision, device, fields to fill, branch it
+  comes from, serial number, printed tag, category and whether it can be ticked, with the branch).
+  «تأكيد (n)» sends the same file with both and the rows kept; the server reads and plans again
+  against the live register and refuses, writing nothing, when the file or the plan differs
+  (**409** — the register changed since the preview: the screen says so and previews again) or
+  when a row asked for is not a line of the file or cannot be ticked (**422**). Then it writes
+  ONLY those rows, in ONE transaction, through the go-live's own write path — one function both
+  use, not a second copy: each device written only as it was read in that transaction (its
+  version; a move, still in stock with nobody holding it), so a save in between rolls the whole
+  upload back; the new assets' codes one reserved block; a fill's `updated` and a move's
+  `transferred` history entries (the two branches, no employee) with the caller as their actor
+  and notes naming the file. The audit rows and the events follow the commit (§10).
+
+The screen, `/it/assets/import`, is reached by «رفع جماعي» on the register's toolbar (for
+`itAsset.create`). First the template, the file, the branch and «معاينة» — a first preview may go
+without a branch, and the one the sheet's name suggests is then shown. The branch select lists
+the branches the SERVER says the caller's `itAsset.create` reaches —
+`GET /it/assets/import/branches`, filtered from the branch options as the move dialogs filter
+theirs (`branchMoveTargets`) — never `me`'s branches, which are the reach of all the account's
+grants; while the list is on its way it waits (and «معاينة» with it), and when there is none it
+says so. Once a preview is on the screen, choosing another branch previews the same file for it,
+and «من اسم الورقة» previews it again with NO branch, so the server suggests one again (or asks for
+one) — the select never rests on a branch the plan on screen is not for; step 2 names the branch
+the plan is for in words («المعاينة لفرع X»), and «تأكيد» writes to that one. While a preview or a
+write is on its way the file cannot be taken off the picker (the shared `FileUpload`'s ✕ obeys
+`disabled`, as its drop zone does), so the answer of a write that happened is never lost. The
+preview: the counts per decision (each filters the table); the kinds, each with its lines and a
+category (changing one, or the branch, previews the same file again); and the lines — the tick,
+the sheet's row, kind, name, serial, tag, the decision in words («جديد»، «تكملة بيانات»، «نقل من
+فرع X»، «موجود ومكتمل»، «متسلَّم في فرع X — لا يُنقل» (or, as the device's status says,
+«في الصيانة في فرع X — لا يُنقل» or «مستبعَد في فرع X» — above)، «خارج صلاحيتك»، «مكرر — الصف N»،
+«يطابق أكثر من جهاز»، «بلا سيريال ولا ملصق»، «نوع بلا فئة»، «غير صالح»), the warnings
+(«قريب من جهاز مسجَّل: CODE — راجع الملصق»، «الملصق رقم منتج وليس سيريالًا»), the fields to fill
+(«يُكمَّل: …», only on a line a tick writes — `new`, `fill`, `move`, `heldElsewhere` that can be
+ticked — never on an `outOfScope` one, whose device may lack them but gets nothing), the values
+kept (the register's beside the sheet's), the server's `message` on an `invalid`, `outOfScope` or
+`ambiguous` line (the column, the right missing, how many devices answer), and the matched
+device's code, linking to it.
+«تأكيد (n)» then says what was created, filled and moved, each linking to its asset.
+
 **QR (D2):** the QR payload is the plain `assetCode` — not a URL (URLs bind labels to a
 deployment host; codes survive redeployment and re-domaining). The web scan surface
 (`/it/assets/scan`) resolves a scanned/typed code via `GET /it/assets/by-code/:code`. Server
@@ -528,6 +718,7 @@ for its dashboard (2026-11-10; §9.2).
 ### 4.1 Asset registration
 Create → sequence allocates `AST-…` → `registered` event → status `inStock`. Edit is a plain
 audited update (+ `updated`/`warrantyUpdated` events when custody-relevant fields change).
+Several at once, from one branch's sheet, through the bulk upload's preview (§2.2, «رفع جماعي»).
 
 ### 4.2 Labels
 Select assets → server renders QR PNGs (existing `qrcode` dep) → platform PDF service lays out
@@ -729,6 +920,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 |---|---|---|
 | `/it` (home/dashboards) | any `it*` view permission | — |
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only), `.assign` («نقل إلى فرع», several at once — the custody grant, as the move of a held asset IS a transfer; no key was added, §17 2026-11-11 — and only to a branch that grant reaches: the picker lists no other — the server names them, `GET /it/assets/move-targets`, under the same grant — and the move answers 403 to one) |
+| `/it/assets/import` («رفع جماعي», the register's toolbar) | `itAsset.create` | `itAsset.create` (preview the sheet; register its new lines, in a branch that is active and that grant reaches — 403 otherwise; the branch picker lists no other — the server names them, `GET /it/assets/import/branches`, under the same grant) · `.edit` within its scope (fill what a device the register holds lacks) · `.assign` within its scope AND reaching the chosen branch (move a device in stock in another branch to it — the move's own test, §2.2) — a line whose device the caller may see but not write as it needs is `outOfScope`, the device named and the right missing said; only a device `itAsset.view` does not reach is hidden (`outOfScope` with nothing of it shown). No key was added (§17, 2026-11-16) |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itAsset.view` | `itAsset.create`, `.edit` (edit, suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment), `.viewNationalId` — the asset grants: granting «الأصول» now covers the lines too, and no key or page was added (§17, 2026-10-20) |
 | `/it/consumables` (+ `/movements`) | `itAsset.view` | `itAsset.create` (add an item), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee, take back from one, file the memo's signed copy, transfer stock to another branch's store that grant reaches — §17, 2026-11-11) — the asset grants again: no key or page was added (§17, 2026-10-28) |
@@ -837,6 +1029,14 @@ transfer made, and a `transfer` row on the item it reached (the counters before�
 `transferId`, and the other store's branch and item) — each `transfer` row then refreshing its
 own store's screens, so BOTH stores read again.
 
+The bulk upload (§2.2, §17 2026-11-16) writes, after its commit and with the caller as the actor,
+through the go-live's own write path: a `create` row per new asset (its code, serial number and
+status), an `update` row per filled device (each field filled, old→new), and a `transfer` row per
+moved device (`branchId` old→new, and `location` old→null when it had one) — every row naming the
+upload as its `source`, as the go-live's rows name their run. The realtime refresh of the register
+follows the audit rows; `it.asset.registered`, `.updated` and `.transferred` (no employee) follow
+them. A preview writes nothing, audit included.
+
 ## 11. Dashboards & reports (derived queries — no new collections)
 
 **Asset dashboard:** counts by status/category/branch · assets held by exited employees (§9.1) ·
@@ -863,7 +1063,7 @@ cars ([design §11](it-vehicle-checks-design.md)).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move and the consumables' transfer both apply — in the branch options' order; what both pickers offer, §2.2, §2.11; registered before `/:id`) · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
+| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move and the consumables' transfer both apply — in the branch options' order; what both pickers offer, §2.2, §2.11; registered before `/:id`) · `GET /import/branches` (under `itAsset.create`; → `ItMoveTargetsDto { branchIds }`, the move-targets' contract: every active branch `itAsset.create` reaches, by the same function asked of that grant (`moveTargetBranchIds(ctx, permissionKey, branches)`, the move passing `itAsset.assign`) — where the bulk upload may register, so its branch picker offers nothing the upload answers 403; in the branch options' order; registered before `/:id`, §2.2) · `POST /import` («رفع جماعي», under `itAsset.create`; registered before `/:id`; multipart, held in memory: `file` — one `.xlsx`, ≤ `IT_ASSET_IMPORT_MAX_MB` (5 MB), ≤ `IT_ASSET_IMPORT_MAX_ROWS` (500) lines, its workbook never inflated whole (one sheet, each part under its inflated cap — a sheet past it refused before any of it is read — then parsed as it streams, handed to the reader in 64 KB slices cut on character boundaries (the parser decodes each piece on its own: a cut inside an Arabic letter read as «�»), and stopped one line past the 500th — §2.2) — and the text fields of `ItAssetImportFieldsSchema`: `branchId?` (omitted on a first preview: the sheet's name suggests it), `kindCategories?` (JSON `{ "<النوع>": "<categoryId>" }`), `apply`, and with it `fileSha256`, `planHash` and `rows` (JSON, the sheet rows kept); without `apply` 200 → `ItAssetImportPreviewDto` (`fileSha256`, `planHash`, `sheetName`, `branchId`, `suggestedBranchId`, `kinds`, `rows` of `ItAssetImportRowDto` — decision, warnings, the device, fills, kept values, `selectable`/`selected` — and `counts` per decision), nothing written; with it 201 → `ItAssetImportResultDto` (created / filled / moved / unchanged, and each asset written: row, id, code, action); 400 a malformed field · 403 a branch inactive or out of `itAsset.create`'s reach · 409 the file or the plan is not the preview's («preview again») · 422 not an `.xlsx`, over the caps (the file past 5 MB — multer's `TOO_LARGE`; more than 500 lines; more than 500 zip entries or a ZIP64 marker, a part past its inflated cap, or the read past its 20 seconds — `SHEET_TOO_LARGE`, its `message` the part, `entries` or `time`, the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its own (at most 500 lines)»), a header missing or out of place, no branch chosen or suggested, a category that is not an active asset category, a row not in the file or not selectable — §2.2; nothing is written on any refusal) · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
 | `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
 | `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
@@ -1492,3 +1692,68 @@ starts only on an explicit owner GO.
     after the commit, as custody's transfer now is too (FR-3, §4.3); `it.asset.transferred` per
     asset (§8.1). §3, §4.3, FR-3, §6, §7, §10 and §12 amended, and
     [ADR-021](../03-decisions/ADR-021-it-asset-custody-and-history.md) (its 2026-11-11 amendment).
+- **The asset register's bulk upload** (2026-11-16) — owner request: «في الأصول عايز زرار Bulk
+  Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف ويوضح لو فى تكرار أو تضارب
+  مع بيانات موجوده وهكذا». His two answers: the branch is CHOSEN ON THE SCREEN — the file has no
+  branch column, as the custody sheets have none — and a sheet named «عهدة فرع X» suggests X when
+  it matches a branch; a device the register holds in another branch «يتنقل لفرع الملف» — moved to
+  the chosen branch when in stock, while one somebody holds stays and is shown as a conflict — and
+  the reviewer may untick any move.
+  - **The go-live's rules, not a copy of them** (§2.2): the sheet is the shape of the branches'
+    custody sheets (§17 2026-11-10), and each line is decided by THAT step's planner,
+    `planBranchCustody` — its input types generalised so the upload passes the sheet's lines, every
+    one a new line of the chosen branch with its sheet row; the go-live decides exactly as before,
+    its specs unchanged — against the whole live register: found by serial and tag against every
+    device's serial number and printed tag, without case and with the all-in-ones' «S» twin; found →
+    only what is empty is filled («أكمّل الناقص بس»), a differing value kept and shown; in stock in
+    another branch → moved, its location cleared; held, under maintenance or disposed elsewhere →
+    not moved, still filled — and so is one in stock that an active maintenance order holds (the
+    planner's optional `activeMaintenance`, which the go-live does not pass); not found → registered
+    in stock, the tag its serial number (a Dell's
+    service tag is its serial) and the other label its printed tag; a second line for one device →
+    a duplicate, the first wins. What the go-live's review left for the owner to read becomes a
+    warning that leaves a new line unticked: a serial within two edits of the serial of an
+    unlisted device of the chosen branch and the same category (`nearSerial`), and HP's product
+    number as the only label (`productNumber`).
+  - **Written by the go-live's own write path**, extracted into one function both use — the
+    version-conditional write, the move that clears the location, the `updated` / `transferred`
+    history entries, the new codes as one reserved block, the audit rows and events after the
+    commit. The go-live writes as nobody; the upload as its caller, on the history entries and the
+    audit rows, the notes naming the file («من ملف «…» — رفع جماعي»).
+  - **The write is the preview that was seen**: the preview's file hash and plan hash come back with
+    «تأكيد (n)»; the server plans again in the write's transaction and refuses (409) when either
+    differs, and (422) a row that is not a line of the file or cannot be ticked.
+  - **No new grant** (§7): `itAsset.create` for the screen and the new lines (the chosen branch
+    active and within its reach, 403 otherwise — and the picker lists only those, as the server
+    names them); a fill within `itAsset.edit`'s scope, a move within `itAsset.assign`'s with the
+    chosen branch in its reach — else the line is `outOfScope`, its device named and the right
+    missing said; only a device `itAsset.view` does not reach is `outOfScope` with nothing of it
+    shown.
+  - **What the review held to** (the same day, before release): a device under an active
+    maintenance order is never moved (`heldElsewhere`; every other change of branch already refused
+    it); the workbook is never inflated whole — one sheet under caps, streamed, stopped one line
+    past 500 (the fuel-card reader's way, SEC-13; a 30 000-row file had taken 175 MB of heap); a
+    line with no «النوع» or name, or a value past its limit, is `invalid` BEFORE planning, so it
+    never takes a device from a later line; the picker's branches come from the server
+    (`GET /it/assets/import/branches`); «من اسم الورقة» after a preview plans again, and step 2
+    names the branch the plan is for; the file cannot be removed while a write is on its way;
+    «يُكمَّل» only where a tick writes; «تحديد الكل/إلغاء» on the lines in view.
+  - **And its second round** (the same day): the streaming read did not stream — the reduced zip
+    went to ExcelJS as ONE chunk, and its XML parser turned the whole sheet into events before the
+    first row, so a 600 KB file of 20 000 short lines (a 5.8 MB sheet, under its cap) took +283 MB,
+    more than the `xlsx.load` it replaced. It is handed over in 64 KB slices cut on character
+    boundaries now, parsed as they arrive and stopped one line past 500: the same file +50 to
+    +93 MB, a 500-line page +17 to 20 MB,
+    the sheet's 6 MB cap kept. A sheet whose XML inflates past that cap is refused before any of it
+    is read — a 30 000-line register export is refused so, not by the 500-line rule — and the
+    reader's own caps (a part, the entry count, the 20 seconds) answer `SHEET_TOO_LARGE` with
+    their own sentence («الملف أكبر من ورقة فرع واحد — ارفع ورقة العهدة وحدها (حتى 500 سطر)»), no
+    longer multer's `TOO_LARGE`, which the screen words «larger than 5 MB» even for a 1 MB file.
+    And a device under maintenance, or in stock under an open maintenance order, is
+    «في الصيانة في فرع X — لا يُنقل» — nobody holds it, so not «متسلَّم»; a disposed one
+    «مستبعَد في فرع X».
+  - `POST /it/assets/import`, `GET /it/assets/import/branches` (§12) and `/it/assets/import`
+    («رفع جماعي» on the register's toolbar: the template, the file, the branch, the preview with its
+    counts, kinds and lines, «تأكيد (n)»). §2.2, §4.1, §7, §10 and §12 amended. Contracts:
+    `IT_ASSET_IMPORT_*`, `ItAssetImportFieldsSchema`, `ItAssetImportRowDto`,
+    `ItAssetImportPreviewDto`, `ItAssetImportResultDto`; `ItMoveTargetsDto` reused for the branches.

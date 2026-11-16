@@ -11,6 +11,107 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: every filter takes several picks, and every filter is as wide as its words.** «هنخلي كل الفلترز
+  multi زي checkbox كدا اقدر اختار اكتر من حاجه … و عاوين نظبط ال size بتاع الفلتر»; «العرض بتاع الفلتر و
+  اللي جوه الفلتر يكون مظبوط ع كلام بظبط».
+  - Each list filter is a `MultiSelect` with no fixed width: as wide as its name, and its count once
+    picked; long lists are typed into from seven options, as before. Search boxes are as wide as their
+    hint (`field-sizing: content`, Chromium; elsewhere the input's default). Modes stay one answer.
+  - «الموظفين»: site, department, section, job, status, origin and ID card (was: fixed-width boxes and
+    native lists as wide as their longest option — «كل المواقع» wide, «كل الأقسام» narrow). The view
+    switch is as wide as the view shown. «الأكثر استلامًا أولًا» left the ID-card filter: ordering by
+    cards received is the column's own sort. Server: `status`, `origin`, `idCard` are lists;
+    `departmentId`/`sectionId` take up to 500 ids (every branch copy of several departments).
+    Department/section picks travel as a name list, so a unit named with a comma survives the URL.
+  - «ملفات الموظفين»: status. «التقييمات»: status (server list; the phase tabs still send one).
+    «طلبات التوظيف»: status and priority (server lists) in the shared filter bar. «مصادر المتقدمين»:
+    type and status — and «غير نشط» now returns the inactive sources (`active=false` was coerced to true).
+  - The other recruitment bars were already multi; their search boxes and the applicant / interviewer
+    pickers now fit their hint text.
+  - The rest of HR, each bar in the shared `FilterBar`: «العقود» status and type; «كل الطلبات» (leave)
+    status and type; «الكشف اليومي» branch and section (the date stays one day; the CSV takes the same
+    lists); «طلبات التسوية» status; «التسويات» status and kind (the month stays one); «بنود الرواتب» type
+    and status; «سلف وقروض الموظفين» status and type; «جلسات التدريب» status; «تقييمات الأداء» status.
+    Each is a server list now (`listQuery`, `$in`); the training and performance statuses were a union
+    that answered a comma list with 400. Worklist tabs and the nominations' pending/all view stay one
+    answer (the view as wide as its words). Search boxes on the courses, records, cycles, medical and
+    insurance pages fit their hint.
+  - `common.status` («الحالة») is in the dictionary: twelve labels and column headers printed the raw
+    key.
+
+- **HR: «عروض العمل» shows the branch, department and job; «جاهزون للتعيين» filters and shows the
+  department and job.** «هنحط الاداره و الوظيفه و الفرع في الجزء اللي تحت … و في جاهزون للتعيين هنزود
+  الفلتر بتاع الاداره و الوظيفه و بردو هنزودهها تحت جمب العرض و تاريخ القبول».
+  - «عروض العمل»: columns «الفرع» «الإدارة» «الوظيفة» after «المتقدِّم», read from the accepted terms,
+    else the written terms, else — for «جاهز لعرض العمل» — the placement the record was queued with
+    (`offerPlacement`), and named from the lists that keep retired branches and departments. The
+    salary, which met «تاريخ الإنشاء» across one gutter (money reads from its end, the date from its
+    start), is now the last data column, beside the row's action.
+  - «جاهزون للتعيين»: «الإدارة» and «الوظيفة» filters, chosen as on «عروض العمل» (a department stands
+    for every branch copy of it), remembered with the others; the server already filtered the accepted
+    terms by them. Columns «الإدارة» «الوظيفة» after «العرض».
+  - «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: on both screens every filter is as wide as its own
+    words, the search box as its hint (`field-sizing: content`, Chromium; elsewhere the input's default),
+    and every table cell and header stays on one line — a screen narrower than the row scrolls sideways
+    instead of wrapping.
+
+- **IT: the asset register's bulk upload, previewed before anything is written.** «في الأصول عايز
+  زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف ويوضح لو فى
+  تكرار أو تضارب مع بيانات موجوده وهكذا»; then the branch is chosen on the screen, and a device in
+  another branch «يتنقل لفرع الملف».
+  - On `/it/assets`, «رفع جماعي» opens `/it/assets/import`: «تحميل النموذج» (the branches' custody
+    sheet's header row, A to L, and nothing else), the file (`.xlsx`, up to 5 MB and 500 lines), the
+    branch, and «معاينة». The file has no branch column; a sheet named «عهدة فرع X» suggests X. The
+    branch list is the branches the server says the account's `itAsset.create` reaches
+    (`GET /it/assets/import/branches`), so none is offered that the upload would refuse; choosing
+    «من اسم الورقة» after a preview previews again without a branch, and the preview names the
+    branch it is for. The file cannot be removed while a write is on its way.
+  - The workbook is never inflated whole: only its first visible sheet and the four parts it needs,
+    each under a cap, after the zip's entry count is checked (SEC-13). A sheet whose XML unpacks
+    past its cap is refused as larger than one branch's sheet before any of it is read — a
+    30 000-line register export is refused that way, not by the 500-line rule — in words of its
+    own: «الملف أكبر من ورقة فرع واحد — ارفع ورقة العهدة وحدها (حتى 500 سطر)» (`SHEET_TOO_LARGE`),
+    not the file's «حجم الملف أكبر من 5 ميجابايت» (`TOO_LARGE`), which a 1 MB file is not. Within
+    the cap the sheet is parsed as it streams, handed to the reader in 64 KB slices, and reading
+    stops one line past the 500th: a 20 000-line sheet just under the cap takes +50 to +93 MB of
+    memory, where handed over whole it took +283 MB.
+  - The preview decides every line against the whole register by the branches' custody go-live's
+    own rules: a device found nowhere is new, in stock in the chosen branch (its tag its serial
+    number, the other label its printed tag); one found gets only what it lacks («أكمّل الناقص بس»),
+    a value already typed kept and shown beside the sheet's; one in stock in another branch moves to
+    the chosen one and leaves its location behind; one held, under maintenance or disposed elsewhere
+    stays, shown as a conflict, and is still filled — and so does one an open maintenance order
+    holds, though it is in stock. The conflict says why: «متسلَّم في فرع X — لا يُنقل» when
+    somebody holds it, «في الصيانة في فرع X — لا يُنقل» when maintenance keeps it (under
+    maintenance, or in stock under an open order), «مستبعَد في فرع X» when disposed. A second line
+    for the same device, a line two devices answer to, one with neither serial nor tag and a kind
+    with no category are shown and cannot be ticked; so is an invalid line — no «النوع», no name,
+    or a value past its limit — decided before anything is matched, so it never takes a device from
+    a later line for the same one. A device the account's `itAsset.view` does not reach is «خارج
+    صلاحيتك» and shown with nothing of it; one it may see but not fill (`itAsset.edit`) or move
+    (`itAsset.assign`, reaching the branch) is «خارج صلاحيتك» too, the device named and the right
+    missing said.
+  - Counts per decision (each filters the table), each «النوع» with its lines and a category
+    (matched automatically where it can be; changing one, or the branch, previews again), and each
+    line with its tick, decision, warnings, the fields to fill (only where a tick writes them), the
+    values kept and the matched asset's code. A new line one or two characters off an unlisted
+    device of the branch, or whose only label is HP's product number, opens unticked; any move can
+    be unticked; «تحديد الكل/إلغاء» acts on the lines in view (the count chip pressed, or all).
+  - «تأكيد (n)» writes only the ticked lines, all in one transaction or none: the new assets (one
+    block of codes, «من ملف «…» — رفع جماعي» in their notes), the fills and the moves, with history
+    entries naming the file and the account as their actor. If the register changed since the
+    preview, nothing is written and the preview runs again. Then: what was created, filled and
+    moved, each linking to its asset.
+  - No new grant: the screen and new lines ride `itAsset.create` (in an active branch it reaches);
+    a fill needs `itAsset.edit`, a move `itAsset.assign` reaching the branch. API:
+    `POST /it/assets/import` (multipart `file` with `branchId`, `kindCategories`, `apply`,
+    `fileSha256`, `planHash`, `rows`; 200 the preview, 201 the result; 403 a branch out of reach,
+    409 the register changed since the preview, 422 a sheet or row refused) and
+    `GET /it/assets/import/branches` (`itAsset.create`; the branches it reaches, as
+    `ItMoveTargetsDto`). The go-live's planner takes the sheet's lines and its write path is shared,
+    the go-live unchanged
+    ([IT design §2.2, §7, §10, §12](docs/12-planning/it-module-design.md)).
+
 - **HR: a transfer can change the job title; the register forms' department, section and job are
   typed into; the employee list filters by origin.** «فى الإجراءات (نقل) على الموظف إمكانية تعديل
   المسمي الوظيفي أيضاً» · «عايز الإدارة والمسمي الوظيفي والقسم يكون قابل للبحث فى الأختيارات من خلال
@@ -1344,6 +1445,18 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **HR: an external person no longer holds a company employee number.** The last company code was
+  …2942. After an external person «C2» was registered, a new employee typed as 02002943 was refused:
+  «هذا الرقم مسجَّل بالفعل للموظف C2». The owner: «المفروض لا يحجز هذه الأكواد». Registering an
+  external person drew the next number from the company's counter and kept it behind the typed
+  code. Nobody saw that number, but the register screen counts a number held by anybody as taken.
+  An external person now draws nothing: their number is their code. At start-up, every external
+  person registered before is given their code as their number, which frees the numbers they drew
+  (`migrateExternalEmployeeNumbers`, idempotent), so an attendance punch for 2943 no longer finds
+  C2. The register check leaves external people out altogether, their code and their number alike.
+  The exact code stays theirs. The counter is not wound back. Its gaps are harmless, because HR
+  types each new code and the counter follows it.
 
 - **HR: an external employee's code can be changed to one with letters.** «لما باجي أغير كود الموظف
   (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». «تغيير كود الموظف» held

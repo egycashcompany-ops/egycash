@@ -34,7 +34,10 @@ import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Badge, Button, DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Input } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney, localized } from '../../../../shared/lib/format';
 import { useAdjustments, useDecideAdjustmentFromQueue } from '../api/payroll-queries';
@@ -52,6 +55,10 @@ const PAGE_SIZE = 25;
 
 const TABS = ['queue', 'all'] as const;
 type Tab = (typeof TABS)[number];
+
+/** The picks of a list param that the vocabulary carries — an old link's stray value is dropped. */
+const known = <T extends string>(picked: readonly string[], vocabulary: readonly T[]): T[] =>
+  picked.filter((v): v is T => (vocabulary as readonly string[]).includes(v));
 
 const STATUS_TONE = {
   draft: 'neutral',
@@ -82,10 +89,9 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
   };
   const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
   const [distributing, setDistributing] = useState(false);
-  const status = sp.get('status') ?? '';
-  const setStatus = (value: string): void => patch({ status: value });
-  const kind = sp.get('kind') ?? '';
-  const setKind = (value: string): void => patch({ kind: value });
+  // «هنخلي كل الفلترز multi»: several statuses and kinds, each ORed — one comma list each.
+  const statuses = known(readList(sp, 'status'), PAYROLL_ADJUSTMENT_STATUSES);
+  const kinds = known(readList(sp, 'kind'), PAYROLL_ADJUSTMENT_KINDS);
   const period = sp.get('period') ?? '';
   const setPeriod = (value: string): void => patch({ period: value });
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -106,8 +112,8 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
       pageSize: PAGE_SIZE,
       sortBy: 'period',
       sortDir: 'desc',
-      ...(status === '' ? {} : { status }),
-      ...(kind === '' ? {} : { kind }),
+      ...(statuses.length === 0 ? {} : { status: statuses }),
+      ...(kinds.length === 0 ? {} : { kind: kinds }),
       ...(period === '' ? {} : { period }),
     },
     tab === 'all',
@@ -232,10 +238,9 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
             role="tab"
             type="button"
             aria-selected={tab === key}
-            onClick={() => {
-              setTab(key);
-              setPage(1);
-            }}
+            // One write: `setTab` already drops the page. A second write here rebuilt the URL from
+            // the same pre-click params and put the old tab back — «الكل» could not be opened.
+            onClick={() => setTab(key)}
             className={`rounded-t-lg px-4 py-2 text-sm ${
               tab === key
                 ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
@@ -249,53 +254,43 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
 
       <div className="space-y-4">
         {tab === 'all' && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label={t('common.status')}>
-              <Select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('common.status')}
-              >
-                <option value="">{t('payroll.adjustments.allStatuses')}</option>
-                {PAYROLL_ADJUSTMENT_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`payroll.adjustments.status.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t('payroll.adjustments.kind')}>
-              <Select
-                value={kind}
-                onChange={(e) => {
-                  setKind(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('payroll.adjustments.kind')}
-              >
-                <option value="">{t('payroll.adjustments.allKinds')}</option>
-                {PAYROLL_ADJUSTMENT_KINDS.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`payroll.adjustments.kind.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t('payroll.adjustments.period')}>
+          // The shared filter bar: each filter as wide as its name, several picks each («العرض بتاع
+          // الفلتر … يكون مظبوط ع كلام بظبط»). The month stays one month.
+          <FilterBar
+            onClear={() => patch({ status: null, kind: null, period: null })}
+            hasActiveFilters={statuses.length > 0 || kinds.length > 0 || period !== ''}
+          >
+            <MultiSelect
+              label={t('common.status')}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+              options={PAYROLL_ADJUSTMENT_STATUSES.map((value) => ({
+                value,
+                label: t(`payroll.adjustments.status.${value}`),
+              }))}
+            />
+            <MultiSelect
+              label={t('payroll.adjustments.kind')}
+              value={kinds}
+              onChange={(next) => patch({ kind: writeList(next) })}
+              options={PAYROLL_ADJUSTMENT_KINDS.map((value) => ({
+                value,
+                label: t(`payroll.adjustments.kind.${value}`),
+              }))}
+            />
+            <label className="flex items-center gap-1.5 text-sm text-slate-500">
+              <span className="hidden whitespace-nowrap sm:inline">{t('payroll.adjustments.period')}</span>
+              {/* One write: `setPeriod` already drops the page (a second write erased the month). */}
               <Input
                 type="month"
                 value={period}
-                onChange={(e) => {
-                  setPeriod(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setPeriod(e.target.value)}
                 aria-label={t('payroll.adjustments.period')}
+                dir="ltr"
+                className="w-auto"
               />
-            </Field>
-          </div>
+            </label>
+          </FilterBar>
         )}
 
         <DataTable

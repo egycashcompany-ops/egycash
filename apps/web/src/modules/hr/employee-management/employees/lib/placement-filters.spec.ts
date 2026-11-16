@@ -45,10 +45,10 @@ const SECTIONS = [
 ];
 
 const at = (over: Partial<Parameters<typeof prunePlacement>[0]> = {}) => ({
-  branchId: '',
-  departmentKey: '',
-  sectionKey: '',
-  jobTitleId: '',
+  branchIds: [] as string[],
+  departmentKeys: [] as string[],
+  sectionKeys: [] as string[],
+  jobTitleIds: [] as string[],
   ...over,
 });
 
@@ -59,29 +59,29 @@ const OPERATIONS = groupKeyOf(SECTIONS[0] as OrgUnitOptionDto);
 describe('one department, not one per branch', () => {
   /** THE FOLD. Three records, two names, two choices. */
   it('offers «الأمن» once though it exists in two sites', () => {
-    const groups = departmentGroupsIn(DEPARTMENTS, '');
+    const groups = departmentGroupsIn(DEPARTMENTS, []);
     expect(groups.map((g) => g.name.ar)).toEqual(['الأمن', 'الحركة']);
   });
 
   it('makes that one choice stand for every branch copy', () => {
-    expect(departmentIdsFor(DEPARTMENTS, at({ departmentKey: SECURITY }))).toEqual(['sec-a', 'sec-b']);
+    expect(departmentIdsFor(DEPARTMENTS, at({ departmentKeys: [SECURITY] }))).toEqual(['sec-a', 'sec-b']);
   });
 
   it('narrows the choice to the one copy in a chosen site', () => {
-    expect(departmentIdsFor(DEPARTMENTS, at({ branchId: BRANCH_B, departmentKey: SECURITY }))).toEqual([
+    expect(departmentIdsFor(DEPARTMENTS, at({ branchIds: [BRANCH_B], departmentKeys: [SECURITY] }))).toEqual([
       'sec-b',
     ]);
   });
 
   it('offers only the departments the chosen site actually has', () => {
-    expect(departmentGroupsIn(DEPARTMENTS, BRANCH_B).map((g) => g.name.ar)).toEqual(['الأمن']);
+    expect(departmentGroupsIn(DEPARTMENTS, [BRANCH_B]).map((g) => g.name.ar)).toEqual(['الأمن']);
   });
 
   /** A unit never linked to the catalog is still recognisably «الأمن» — folded by its name. */
   it('folds an unlinked copy in with its namesakes by name', () => {
     const withUnlinked = [...DEPARTMENTS, unit('sec-c', 'branch-c', 'الأمن', null)];
     // Unlinked keys by name, linked by catalog — two groups, because they cannot be proven the same.
-    const groups = departmentGroupsIn(withUnlinked, '');
+    const groups = departmentGroupsIn(withUnlinked, []);
     expect(groups.filter((g) => g.name.ar === 'الأمن')).toHaveLength(2);
     expect(groupKeyOf(unit('x', null, 'الأمن', null))).toBe('name:الأمن');
   });
@@ -93,20 +93,20 @@ describe('one department, not one per branch', () => {
 
 describe('sections, folded the same way', () => {
   it('offers «التشغيل» once across a company-wide department', () => {
-    const groups = sectionGroupsIn(SECTIONS, DEPARTMENTS, at({ departmentKey: SECURITY }));
+    const groups = sectionGroupsIn(SECTIONS, DEPARTMENTS, at({ departmentKeys: [SECURITY] }));
     expect(groups.map((g) => g.name.ar)).toEqual(['التشغيل']);
     expect(groups[0]?.ids).toEqual(['ops-sec-a', 'ops-sec-b']);
   });
 
   it('narrows to the chosen site’s copy when both site and department are chosen', () => {
     expect(
-      sectionIdsFor(SECTIONS, DEPARTMENTS, at({ branchId: BRANCH_A, departmentKey: SECURITY, sectionKey: OPERATIONS })),
+      sectionIdsFor(SECTIONS, DEPARTMENTS, at({ branchIds: [BRANCH_A], departmentKeys: [SECURITY], sectionKeys: [OPERATIONS] })),
     ).toEqual(['ops-sec-a']);
   });
 
   /** A site narrows sections even with no department chosen — not every section in the company. */
   it('offers the sections of every department in a chosen site', () => {
-    const groups = sectionGroupsIn(SECTIONS, DEPARTMENTS, at({ branchId: BRANCH_A }));
+    const groups = sectionGroupsIn(SECTIONS, DEPARTMENTS, at({ branchIds: [BRANCH_A] }));
     expect(groups.map((g) => g.name.ar)).toEqual(['التشغيل', 'الصيانة']);
     expect(groups.find((g) => g.name.ar === 'التشغيل')?.ids).toEqual(['ops-sec-a', 'ops-mov-a']);
   });
@@ -121,12 +121,12 @@ describe('what has to be dropped when the reader changes their mind', () => {
   it('drops a department the newly chosen site does not have, and a section only it had', () => {
     const maintenance = groupKeyOf(SECTIONS[3] as OrgUnitOptionDto);
     const next = prunePlacement(
-      at({ branchId: BRANCH_B, departmentKey: MOVEMENT, sectionKey: maintenance }),
+      at({ branchIds: [BRANCH_B], departmentKeys: [MOVEMENT], sectionKeys: [maintenance] }),
       DEPARTMENTS,
       SECTIONS,
     );
-    expect(next.departmentKey).toBe('');
-    expect(next.sectionKey).toBe('');
+    expect(next.departmentKeys).toEqual([]);
+    expect(next.sectionKeys).toEqual([]);
   });
 
   /**
@@ -136,43 +136,43 @@ describe('what has to be dropped when the reader changes their mind', () => {
    */
   it('keeps a section that still exists in the new scope under another department', () => {
     const next = prunePlacement(
-      at({ branchId: BRANCH_B, departmentKey: MOVEMENT, sectionKey: OPERATIONS }),
+      at({ branchIds: [BRANCH_B], departmentKeys: [MOVEMENT], sectionKeys: [OPERATIONS] }),
       DEPARTMENTS,
       SECTIONS,
     );
-    expect(next.departmentKey).toBe('');
-    expect(next.sectionKey).toBe(OPERATIONS);
+    expect(next.departmentKeys).toEqual([]);
+    expect(next.sectionKeys).toEqual([OPERATIONS]);
   });
 
   it('keeps a department the new site does have, and its section', () => {
     const next = prunePlacement(
-      at({ branchId: BRANCH_B, departmentKey: SECURITY, sectionKey: OPERATIONS }),
+      at({ branchIds: [BRANCH_B], departmentKeys: [SECURITY], sectionKeys: [OPERATIONS] }),
       DEPARTMENTS,
       SECTIONS,
     );
-    expect(next.departmentKey).toBe(SECURITY);
-    expect(next.sectionKey).toBe(OPERATIONS);
+    expect(next.departmentKeys).toEqual([SECURITY]);
+    expect(next.sectionKeys).toEqual([OPERATIONS]);
   });
 
   it('drops only the section when the department changes to one without it', () => {
     const maintenance = groupKeyOf(SECTIONS[3] as OrgUnitOptionDto);
     const next = prunePlacement(
-      at({ departmentKey: SECURITY, sectionKey: maintenance }),
+      at({ departmentKeys: [SECURITY], sectionKeys: [maintenance] }),
       DEPARTMENTS,
       SECTIONS,
     );
-    expect(next.departmentKey).toBe(SECURITY);
-    expect(next.sectionKey).toBe('');
+    expect(next.departmentKeys).toEqual([SECURITY]);
+    expect(next.sectionKeys).toEqual([]);
   });
 
   /** The job title hangs under nothing, so nothing the reader picks above it can invalidate it. */
   it('never touches the job title', () => {
     const next = prunePlacement(
-      at({ branchId: BRANCH_B, departmentKey: MOVEMENT, jobTitleId: 'job-1' }),
+      at({ branchIds: [BRANCH_B], departmentKeys: [MOVEMENT], jobTitleIds: ['job-1'] }),
       DEPARTMENTS,
       SECTIONS,
     );
-    expect(next.jobTitleId).toBe('job-1');
+    expect(next.jobTitleIds).toEqual(['job-1']);
   });
 });
 
@@ -181,10 +181,41 @@ describe('whether the bar shows a reset', () => {
     expect(hasPlacementFilter(at())).toBe(false);
   });
 
-  it.each([['branchId'], ['departmentKey'], ['sectionKey'], ['jobTitleId']] as const)(
-    'says something is narrowed when %s is chosen',
+  it.each([['branchIds'], ['departmentKeys'], ['sectionKeys'], ['jobTitleIds']] as const)(
+    'says something is narrowed when %s has a pick',
     (key) => {
-      expect(hasPlacementFilter(at({ [key]: 'x' }))).toBe(true);
+      expect(hasPlacementFilter(at({ [key]: ['x'] }))).toBe(true);
     },
   );
+});
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه».
+describe('several picks in one filter', () => {
+  it('ORs the picks of one filter: two departments stand for every copy of both', () => {
+    expect(departmentIdsFor(DEPARTMENTS, at({ departmentKeys: [SECURITY, MOVEMENT] })).sort()).toEqual(
+      ['mov-a', 'sec-a', 'sec-b'],
+    );
+  });
+
+  it('offers the departments of every chosen site, still once each', () => {
+    expect(departmentGroupsIn(DEPARTMENTS, [BRANCH_A, BRANCH_B]).map((g) => g.name.ar)).toEqual([
+      'الأمن',
+      'الحركة',
+    ]);
+  });
+
+  it('narrows the department picks to the chosen sites\' copies', () => {
+    expect(
+      departmentIdsFor(DEPARTMENTS, at({ branchIds: [BRANCH_B], departmentKeys: [SECURITY, MOVEMENT] })),
+    ).toEqual(['sec-b']);
+  });
+
+  it('drops only the picks that no longer belong, and keeps the rest', () => {
+    const next = prunePlacement(
+      at({ branchIds: [BRANCH_B], departmentKeys: [SECURITY, MOVEMENT] }),
+      DEPARTMENTS,
+      SECTIONS,
+    );
+    expect(next.departmentKeys).toEqual([SECURITY]);
+  });
 });

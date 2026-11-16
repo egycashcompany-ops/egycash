@@ -19,7 +19,7 @@
 // exactly this call site. Nothing averages the goals into it, nothing suggests it, and nothing
 // defaults it.
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
+import { listQuery, objectId, PaginationQuerySchema, type LocalizedString } from '../common/index.js';
 
 /**
  * Where one review stands (§4).
@@ -40,9 +40,11 @@ export const ListPerformanceReviewsQuerySchema = PaginationQuerySchema.extend({
   cycleId: objectId().optional(),
   employeeId: objectId().optional(),
   evaluatorId: objectId().optional(),
-  status: z
-    .union([PerformanceReviewStatusSchema, z.array(PerformanceReviewStatusSchema)])
-    .optional(),
+  /**
+   * A LIST — the reviews screen's filter takes several («هنخلي كل الفلترز multi»), ORed, as one
+   * comma list; one value still parses. (A union of one value or an array answered 400 to a comma.)
+   */
+  status: listQuery(PerformanceReviewStatusSchema),
   branchId: objectId().optional(),
   departmentId: objectId().optional(),
   search: z.string().max(100).optional(),

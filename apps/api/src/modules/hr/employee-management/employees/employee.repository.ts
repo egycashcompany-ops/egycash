@@ -15,9 +15,10 @@ import {
 } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
-  status?: string | undefined;
+  /** Lists, ORed within each — «هنخلي كل الفلترز multi». */
+  status?: readonly string[] | undefined;
   employed?: boolean | undefined;
-  origin?: string | undefined;
+  origin?: readonly string[] | undefined;
   applicantId?: string | undefined;
   jobOfferId?: string | undefined;
   branchId?: readonly string[] | undefined;
@@ -31,8 +32,8 @@ export interface EmployeeListFilter {
   governorate?: string | undefined;
   address?: string | undefined;
   phone?: string | undefined;
-  /** The company ID card: printed at least once, or never. */
-  idCard?: 'received' | 'never' | 'awaiting' | 'receipt' | undefined;
+  /** The company ID card's states asked about, ORed. */
+  idCard?: readonly ('received' | 'never' | 'awaiting' | 'receipt')[] | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -220,18 +221,18 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
    *
-   * An EXTERNAL person's code is a name, not a branch and a number (EXTERNAL_EMPLOYEE_CODE_PATTERN),
-   * so no number is read out of it: `EX-2900` holds no employee number 2900. Their permanent
-   * `employeeNumber` is a real one from the same counter, and is still matched.
+   * An external person holds NO company number — «المفروض لا يحجز هذه الأكواد». Their code is a name,
+   * not `<prefix><number>` (EXTERNAL_EMPLOYEE_CODE_PATTERN), so `EX-2900` holds no number 2900; and
+   * their `employeeNumber` is their code, not one drawn from the counter. So they are left out here
+   * altogether. Their exact code stays theirs (`ux_code`).
    */
   async findHoldingNumber(number: number): Promise<{ code: string } | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
+        { $match: { origin: { $ne: 'external' } } },
         {
           $addFields: {
-            _codeNumber: {
-              $cond: [{ $eq: ['$origin', 'external'] }, null, codeNumberExpression('code')],
-            },
+            _codeNumber: codeNumberExpression('code'),
             _issuedNumber: {
               $convert: { input: '$employeeNumber', to: 'long', onError: null, onNull: null },
             },
@@ -314,11 +315,15 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return rows.map((r) => String(r._id));
   }
 
-  /** Ids of a section's employees — the daily sheet's section filter (day rows carry no section). */
-  async listIdsBySectionSystem(sectionId: string): Promise<string[]> {
-    if (!Types.ObjectId.isValid(sectionId)) return [];
+  /**
+   * Ids of the employees of the given sections (any of them) — the daily sheet's section filter,
+   * which takes several (day rows carry no section).
+   */
+  async listIdsBySectionSystem(sectionIds: readonly string[]): Promise<string[]> {
+    const valid = sectionIds.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
     const rows = await this.model
-      .find({ sectionId: new Types.ObjectId(sectionId), isDeleted: false })
+      .find({ sectionId: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
       .select({ _id: 1 })
       .lean()
       .exec();
@@ -613,10 +618,10 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
 
   private buildFilter(f: EmployeeListFilter): FilterQuery<EmployeeDoc> {
     const clauses: FilterQuery<EmployeeDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: [...f.status] } });
     if (f.employed !== undefined)
       clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });
-    if (f.origin !== undefined) clauses.push({ origin: f.origin });
+    if (f.origin !== undefined && f.origin.length > 0) clauses.push({ origin: { $in: [...f.origin] } });
     if (f.applicantId !== undefined)
       clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.jobOfferId !== undefined) clauses.push({ jobOfferId: new Types.ObjectId(f.jobOfferId) });
@@ -670,23 +675,19 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         ],
       } as FilterQuery<EmployeeDoc>);
     }
-    // A card counts once HR confirms it was received — printing alone never does (see
-    // `employee-id-card.ts`). Never received is the counter absent as well as zero.
-    if (f.idCard === 'received') clauses.push({ 'idCard.receivedCount': { $gte: 1 } });
-    if (f.idCard === 'never') clauses.push({ 'idCard.receivedCount': { $not: { $gte: 1 } } });
-    // Waiting for its handover, split by whose turn it is: HR's (print the receipt) or the
-    // employee's (sign it and take the card).
-    if (f.idCard === 'awaiting') {
-      clauses.push({
-        'idCard.awaitingHandover': true,
-        'idCard.receiptPrintedAt': { $exists: false },
-      });
-    }
-    if (f.idCard === 'receipt') {
-      clauses.push({
-        'idCard.awaitingHandover': true,
-        'idCard.receiptPrintedAt': { $exists: true },
-      });
+    // The ID card states asked about, ORed. A card counts once HR confirms it was received —
+    // printing alone never does (see `employee-id-card.ts`). Never received is the counter absent as
+    // well as zero. Waiting for its handover is split by whose turn it is: HR's (print the receipt)
+    // or the employee's (sign it and take the card).
+    if (f.idCard !== undefined && f.idCard.length > 0) {
+      const states: Record<NonNullable<EmployeeListFilter['idCard']>[number], FilterQuery<EmployeeDoc>> = {
+        received: { 'idCard.receivedCount': { $gte: 1 } },
+        never: { 'idCard.receivedCount': { $not: { $gte: 1 } } },
+        awaiting: { 'idCard.awaitingHandover': true, 'idCard.receiptPrintedAt': { $exists: false } },
+        receipt: { 'idCard.awaitingHandover': true, 'idCard.receiptPrintedAt': { $exists: true } },
+      };
+      const asked = [...new Set(f.idCard)].map((state) => states[state]);
+      clauses.push(asked.length === 1 ? (asked[0] as FilterQuery<EmployeeDoc>) : { $or: asked });
     }
     if (f.phone !== undefined && f.phone.trim() !== '') {
       // The PRIMARY number only — the one every screen displays. Including the secondary would

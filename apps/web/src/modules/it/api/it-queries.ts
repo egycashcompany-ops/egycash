@@ -413,6 +413,58 @@ export const useMoveItAssetsToBranch = () => {
   });
 };
 
+// ── «رفع جماعي» — the register's bulk upload ────────────────────────────────
+// Both declare `onError`, which keeps the global toast (the server's English sentence) away: the
+// upload screen words every refusal itself, and a 409 is not even a failure there — it reads the
+// preview again.
+const reportedByScreen = (): void => undefined;
+
+/**
+ * The branches the upload may register in, as the server judges the caller's `itAsset.create`
+ * (`GET /it/assets/import/branches`). Asked only on the upload's page, which rides that grant.
+ * Its own subtree, like «نقل إلى فرع»'s: no asset write changes a grant's reach.
+ */
+export const useItAssetImportBranches = () =>
+  useQuery({
+    queryKey: listKey(MODULE, 'assetImportBranches'),
+    queryFn: api.assetImportBranches,
+  });
+
+/** The preview writes nothing, so it invalidates nothing. */
+export const usePreviewItAssetImport = () =>
+  useMutation({
+    mutationFn: ({
+      file,
+      request,
+    }: {
+      file: File;
+      request: Parameters<typeof api.previewAssetImport>[1];
+    }) => api.previewAssetImport(file, request),
+    onError: reportedByScreen,
+  });
+
+/**
+ * The apply registers, fills and moves assets and writes their history — so the register (its
+ * dashboard and every asset's cached detail inside it) and the history go, as a move's do.
+ */
+export const useApplyItAssetImport = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      file,
+      request,
+    }: {
+      file: File;
+      request: Parameters<typeof api.applyAssetImport>[1];
+    }) => api.applyAssetImport(file, request),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+    onError: reportedByScreen,
+  });
+};
+
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 
 /** A stored receipt — what «طباعة الإيصال» prints again, and what the signed copy hangs off. */

@@ -71,7 +71,8 @@ export const useRemoveShiftAssignment = () => {
 
 // ── AT-6 ────────────────────────────────────────────────────────────────────
 
-type Params = Record<string, string | number>;
+/** A list filter (the daily sheet's branches and sections, the queue's statuses) is an array. */
+type Params = Record<string, string | number | readonly string[]>;
 
 /** The daily sheet and the employee month read the same scoped endpoint, different filters. */
 export const useAttendanceDays = (params: Params, enabled = true) =>

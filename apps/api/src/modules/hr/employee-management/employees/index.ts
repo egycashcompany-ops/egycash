@@ -19,6 +19,7 @@ export {
 export {
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
+  migrateExternalEmployeeNumbers,
   personalFromApplicant,
 } from './employee.migration';
 export {

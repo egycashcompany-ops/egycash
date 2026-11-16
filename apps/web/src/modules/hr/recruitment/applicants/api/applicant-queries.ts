@@ -18,6 +18,7 @@ import {
   type StageRef,
   type UpdateApplicant,
   type WithdrawApplicant,
+  type PurgeApplicant,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import {
@@ -90,6 +91,26 @@ export const useRestoreApplicant = (id: string) =>
 /** RW2 — reassignment moves the candidate; the envelope carries where they landed. */
 export const useReassignApplicant = (id: string) =>
   useWorkflowMutation(FEATURE, (body: ReassignPlacement) => api.reassignApplicant(id, body));
+
+/**
+ * The permanent delete. NOT a workflow mutation: there is no envelope to seed a cache with,
+ * because the candidate whose state it would carry is gone.
+ *
+ * The detail entry is REMOVED rather than replaced — leaving it would serve a profile the server
+ * now 404s on — and every recruitment list is invalidated, because the candidate sat on an unknown
+ * number of them: applicants, screening, both interview queues, evaluations, offers.
+ */
+export const usePurgeApplicant = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PurgeApplicant) => api.purgeApplicant(id, body),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
+      void qc.invalidateQueries({ queryKey: [MODULE] });
+    },
+    onError: () => undefined,
+  });
+};
 
 /**
  * An ordinary audited edit, not a workflow act (I4): it answers with the applicant alone, so it

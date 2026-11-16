@@ -10,7 +10,7 @@
 // one chronological history of a candidate; the file exposes it as `recruitmentTimeline`, read
 // at request time, and keeps no second copy that could drift from it.
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { listQuery, objectId, PaginationQuerySchema } from '../common/index.js';
 import { type RecruitmentTimelineEntryDto } from './hr-recruitment-workflow.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
@@ -59,7 +59,8 @@ export const RemoveEmployeeFileDocumentSchema = z
 export type RemoveEmployeeFileDocument = z.infer<typeof RemoveEmployeeFileDocumentSchema>;
 
 export const ListEmployeeFilesQuerySchema = PaginationQuerySchema.extend({
-  status: EmployeeFileStatusSchema.optional(),
+  /** The statuses asked about, ORed — «هنخلي كل الفلترز multi». One value still parses. */
+  status: listQuery(EmployeeFileStatusSchema),
   employeeId: objectId().optional(),
   applicantId: objectId().optional(),
   branchId: objectId().optional(),

@@ -12,8 +12,10 @@ import { PageContainer, PageHeader } from '../../../../platform/layout/PageConta
 import { Can, useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Button, EmptyState, Pagination } from '../../../../shared/ui';
-import { Field, Input } from '../../../../shared/ui/form';
-import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
+import { Input } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
 import { DaysTable } from '../components/DaysTable';
@@ -47,10 +49,9 @@ export const DailySheetPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
 
-  const branchId = sp.get('branch') ?? '';
-  const setBranchId = (value: string): void => patch({ branch: value });
-  const sectionId = sp.get('section') ?? '';
-  const setSectionId = (value: string): void => patch({ section: value });
+  // «هنخلي كل الفلترز multi»: several branches and several sections, each ORed, as comma lists.
+  const branchIds = readList(sp, 'branch');
+  const sectionIds = readList(sp, 'section');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
@@ -69,10 +70,11 @@ export const DailySheetPage = (): JSX.Element => {
       to: date,
       page,
       pageSize: 50,
-      ...(branchId === '' ? {} : { branchId }),
-      ...(sectionId === '' ? {} : { sectionId }),
+      ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
+      ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
     }),
-    [date, branchId, sectionId, page],
+    // Keyed by the lists' text: a fresh array each render is not a new filter.
+    [date, branchIds.join(','), sectionIds.join(','), page],
   );
   const days = useAttendanceDays(filters, date !== '');
 
@@ -82,8 +84,8 @@ export const DailySheetPage = (): JSX.Element => {
     downloadAttendanceExport({
       from: date,
       to: date,
-      ...(branchId === '' ? {} : { branchId }),
-      ...(sectionId === '' ? {} : { sectionId }),
+      ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
+      ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
     })
       .catch((error: unknown) => {
         setExportError(error instanceof Error ? error.message : String(error));
@@ -105,42 +107,40 @@ export const DailySheetPage = (): JSX.Element => {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Field label={t('attendance.daily.date')}>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setPage(1);
-            }}
-            aria-label={t('attendance.daily.date')}
-          />
-        </Field>
-        <Field label={t('attendance.daily.branch')}>
-          <SearchableSelect
-            value={branchId}
-            onChange={(next) => {
-              setBranchId(next);
-              setPage(1);
-            }}
+      {/* The shared filter bar: the date stays one day; each list is as wide as its name and takes
+          several picks («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
+      <div className="mb-4">
+        <FilterBar
+          onClear={() => patch({ branch: null, section: null })}
+          hasActiveFilters={branchIds.length > 0 || sectionIds.length > 0}
+        >
+          <label className="flex items-center gap-1.5 text-sm text-slate-500">
+            <span className="hidden whitespace-nowrap sm:inline">{t('attendance.daily.date')}</span>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setPage(1);
+              }}
+              aria-label={t('attendance.daily.date')}
+              dir="ltr"
+              className="w-auto"
+            />
+          </label>
+          <MultiSelect
+            label={t('attendance.daily.branch')}
+            value={branchIds}
+            onChange={(next) => patch({ branch: writeList(next) })}
             options={(branches.data ?? []).map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
-            placeholder={t('attendance.daily.allBranches')}
-            ariaLabel={t('attendance.daily.branch')}
           />
-        </Field>
-        <Field label={t('attendance.daily.section')}>
-          <SearchableSelect
-            value={sectionId}
-            onChange={(next) => {
-              setSectionId(next);
-              setPage(1);
-            }}
+          <MultiSelect
+            label={t('attendance.daily.section')}
+            value={sectionIds}
+            onChange={(next) => patch({ section: writeList(next) })}
             options={(sections.data ?? []).map((s) => ({ value: s.id, label: orgUnitLabel(s, locale) }))}
-            placeholder={t('attendance.daily.allSections')}
-            ariaLabel={t('attendance.daily.section')}
           />
-        </Field>
+        </FilterBar>
       </div>
 
       {exportError !== null && (

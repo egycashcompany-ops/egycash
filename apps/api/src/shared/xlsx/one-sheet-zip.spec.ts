@@ -11,6 +11,8 @@ import {
   startTags,
   type OneSheetZipErrors,
   type OneSheetZipLimits,
+  MERGED_RANGES_MAX,
+  readMergedRanges,
 } from './one-sheet-zip';
 
 class Refused extends Error {
@@ -43,7 +45,7 @@ const sheetXml = (marker: string): string =>
 
 /** A workbook of named tabs (in tab order), each at the path given, sheets BEFORE anything else. */
 const workbook = async (
-  tabs: { name: string; path: string }[],
+  tabs: { name: string; path: string; state?: string }[],
   options: { sharedStrings?: string; styles?: boolean; date1904?: boolean } = {},
 ): Promise<Buffer> => {
   const zip = new JSZip();
@@ -56,7 +58,9 @@ const workbook = async (
     `<workbook>${options.date1904 === true ? '<workbookPr date1904="1"/>' : ''}<sheets>${tabs
       .map(
         (tab, i) =>
-          `<sheet name="${tab.name}" sheetId="${String(i + 1)}" r:id="rId${String(i + 1)}"/>`,
+          `<sheet name="${tab.name}" sheetId="${String(i + 1)}"${
+            tab.state === undefined ? '' : ` state="${tab.state}"`
+          } r:id="rId${String(i + 1)}"/>`,
       )
       .join('')}</sheets></workbook>`,
   );
@@ -115,6 +119,49 @@ describe('which sheet is kept', () => {
       'xl/worksheets/sheet1.xml',
     ]);
     expect(kept['xl/worksheets/sheet1.xml']).toContain('Balances');
+    expect(reduced.sheetName).toBe('Balances');
+  });
+
+  it("'firstVisible' passes over hidden and very hidden tabs, and names the tab it keeps", async () => {
+    const tabs = [
+      { name: 'ملاحظات', path: 'xl/worksheets/sheet1.xml', state: 'hidden' },
+      { name: 'Lists', path: 'xl/worksheets/sheet2.xml', state: 'veryHidden' },
+      { name: 'عهدة فرع طنطا', path: 'xl/worksheets/sheet3.xml', state: 'visible' },
+      { name: 'Later', path: 'xl/worksheets/sheet4.xml' },
+    ];
+    const reduced = await reduceToOneSheet(
+      await workbook(tabs),
+      'firstVisible',
+      LIMITS,
+      later(),
+      ERRORS,
+    );
+    const kept = await entries(reduced.buffer);
+    expect(Object.keys(kept).at(-1)).toBe('xl/worksheets/sheet3.xml');
+    expect(Object.keys(kept)).not.toContain('xl/worksheets/sheet1.xml');
+    expect(reduced.sheetName).toBe('عهدة فرع طنطا');
+    // A tab with no state at all is visible; a workbook whose every tab is hidden has none.
+    const plain = await reduceToOneSheet(
+      await workbook(tabs.slice(3)),
+      'firstVisible',
+      LIMITS,
+      later(),
+      ERRORS,
+    );
+    expect(plain.sheetName).toBe('Later');
+    expect(
+      (
+        await refusedBy(
+          reduceToOneSheet(
+            await workbook(tabs.slice(0, 2)),
+            'firstVisible',
+            LIMITS,
+            later(),
+            ERRORS,
+          ),
+        )
+      ).kind,
+    ).toBe('missingSheet');
   });
 
   it('a name keeps that tab, wherever it stands', async () => {
@@ -196,6 +243,42 @@ describe('shared strings and flags', () => {
       ERRORS,
     );
     expect(dated.date1904).toBe(true);
+  });
+});
+
+describe('inline runs, joined when asked', () => {
+  /** A one-tab workbook whose sheet is `xml`. */
+  const withSheet = async (xml: string): Promise<Buffer> => {
+    const zip = await JSZip.loadAsync(await workbook(TWO_TABS.slice(0, 1)));
+    zip.file('xl/worksheets/sheet1.xml', xml);
+    return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  };
+  const RUNS =
+    '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><r><t>A</t></r><r><rPr><b/></rPr><t>B</t></r></is></c></row></sheetData></worksheet>';
+
+  it('joins the kept sheet’s inline runs for the IT upload; the fuel sheets’ is kept as it came', async () => {
+    const upload = await withSheet(RUNS);
+    const join = await reduceToOneSheet(upload, 'first', LIMITS, later(), ERRORS, {
+      joinInlineRuns: true,
+    });
+    expect((await entries(join.buffer))['xl/worksheets/sheet1.xml']).toBe(
+      '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t xml:space="preserve">AB</t></is></c></row></sheetData></worksheet>',
+    );
+    const asItCame = await reduceToOneSheet(upload, 'first', LIMITS, later(), ERRORS);
+    expect((await entries(asItCame.buffer))['xl/worksheets/sheet1.xml']).toBe(RUNS);
+  });
+
+  it('holds a joined sheet to the sheet’s cap — only tiny crafted runs grow', async () => {
+    const tiny = `<worksheet><sheetData>${'<is><t/><t/></is>'.repeat(100)}</sheetData></worksheet>`;
+    const upload = await withSheet(tiny);
+    const limits = { ...LIMITS, sheetBytes: tiny.length + 10 };
+    // Within its cap as it came…
+    await reduceToOneSheet(upload, 'first', limits, later(), ERRORS);
+    // …and past it joined.
+    const refused = await refusedBy(
+      reduceToOneSheet(upload, 'first', limits, later(), ERRORS, { joinInlineRuns: true }),
+    );
+    expect([refused.kind, refused.what]).toEqual(['tooLarge', 'xl/worksheets/sheet1.xml']);
   });
 });
 
@@ -313,5 +396,47 @@ describe('the linear scans', () => {
       '<x:sheet a="1"/>',
       '<sheet b="2">',
     ]);
+  });
+});
+
+describe('merged ranges — read from the sheet\u2019s tail, only when asked', () => {
+  const sheetXml = (merges: string): Buffer =>
+    Buffer.from(
+      '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="x"><sheetData>' +
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>mergeCells? no — text</t></is></c></row>' +
+        `</sheetData>${merges}</worksheet>`,
+      'utf8',
+    );
+
+  it('lists each range of <mergeCells>, a namespace prefix allowed', () => {
+    expect(
+      readMergedRanges(
+        sheetXml(
+          '<mergeCells count="2"><mergeCell ref="A2:A4"/><mergeCell ref="L1:M1"/></mergeCells>',
+        ),
+      ),
+    ).toEqual(['A2:A4', 'L1:M1']);
+    expect(
+      readMergedRanges(sheetXml("<x:mergeCells><x:mergeCell ref='B3:B9'/></x:mergeCells>")),
+    ).toEqual(['B3:B9']);
+  });
+
+  it('none when the sheet merges nothing, and a ref that is no range is left out', () => {
+    expect(readMergedRanges(sheetXml(''))).toEqual([]);
+    expect(
+      readMergedRanges(
+        sheetXml('<mergeCells><mergeCell ref="A2"/><mergeCell ref="A:A"/></mergeCells>'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('stops at MERGED_RANGES_MAX', () => {
+    const many = Array.from(
+      { length: MERGED_RANGES_MAX + 3 },
+      (_, i) => `<mergeCell ref="A${String(i + 2)}:A${String(i + 3)}"/>`,
+    ).join('');
+    expect(readMergedRanges(sheetXml(`<mergeCells>${many}</mergeCells>`))).toHaveLength(
+      MERGED_RANGES_MAX,
+    );
   });
 });

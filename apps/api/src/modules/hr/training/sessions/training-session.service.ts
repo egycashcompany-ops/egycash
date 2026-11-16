@@ -52,14 +52,10 @@ class TrainingSessionService {
     query: ListTrainingSessionsQuery,
     scope: ScopeSelector,
   ): Promise<Paginated<TrainingSessionDoc>> {
-    const status = query.status === undefined
-      ? undefined
-      : Array.isArray(query.status)
-        ? query.status
-        : [query.status];
     return trainingSessionRepository.listFiltered(
       {
-        status,
+        // Already a list — one value or several, the contract's `listQuery` reads both.
+        status: query.status,
         courseId: query.courseId,
         branchId: query.branchId,
         from: query.from,

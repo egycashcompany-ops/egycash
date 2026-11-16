@@ -495,6 +495,9 @@ describe('the editing window closes at acceptance (RW3)', () => {
     expect(revised.revisionNumber).toBe(offer.revisionNumber + 1);
     expect(revised.terms?.branchId).toBe(BRANCH_B);
     expect(revised.terms?.jobTitleId).toBe(TITLE_B);
+    // The department mirrored from the applicant follows too — what «عروض العمل»'s «الإدارة» column
+    // reads while an offer has no terms, and what its department filter matches.
+    expect(revised.departmentId).toBe(DEPT_B);
     // The prior package is kept, not overwritten.
     expect(revised.revisions.length).toBe(1);
 

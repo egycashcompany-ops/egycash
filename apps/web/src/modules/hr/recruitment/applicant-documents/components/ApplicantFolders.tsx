@@ -27,6 +27,7 @@ import {
   SearchInput,
   useTableSelection,
 } from '../../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { CheckIcon, TrashIcon, UserIcon } from '../../../../../shared/ui/icons';
 import {
@@ -255,16 +256,16 @@ export const ApplicantFolders = (): JSX.Element => {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-[200px] flex-1">
-          <SearchInput
-            value={search}
-            onChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
-            placeholder={t('hr.applicantFolders.searchPlaceholder')}
-          />
-        </div>
+        {/* As wide as its hint («العرض بتاع الفلتر … مظبوط ع كلام بظبط»). */}
+        <SearchInput
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder={t('hr.applicantFolders.searchPlaceholder')}
+          className={SEARCH_FITS_TEXT}
+        />
         {mayDelete && folders.length > 0 && (
           <Button
             variant={selecting ? 'secondary' : 'ghost'}

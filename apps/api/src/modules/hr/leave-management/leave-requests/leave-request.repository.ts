@@ -156,8 +156,9 @@ class LeaveRequestRepository extends BaseRepository<LeaveRequestDoc> {
 
   private buildFilter(q: ListLeaveRequestsQuery): FilterQuery<LeaveRequestDoc> {
     const clauses: FilterQuery<LeaveRequestDoc>[] = [];
-    if (q.status !== undefined) clauses.push({ status: q.status });
-    if (q.typeId !== undefined) clauses.push({ typeId: new Types.ObjectId(q.typeId) });
+    if (q.status !== undefined && q.status.length > 0) clauses.push({ status: { $in: [...q.status] } });
+    if (q.typeId !== undefined && q.typeId.length > 0)
+      clauses.push({ typeId: { $in: q.typeId.map((id) => new Types.ObjectId(id)) } });
     if (q.employeeId !== undefined) clauses.push({ employeeId: new Types.ObjectId(q.employeeId) });
     if (q.from !== undefined) clauses.push({ endDate: { $gte: q.from } });
     if (q.to !== undefined) clauses.push({ startDate: { $lte: q.to } });

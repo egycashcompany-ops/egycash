@@ -660,3 +660,25 @@ describe('permissions', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the queue's status and priority
+// take several values, one comma list each, ORed.
+describe('the queue filters take several', () => {
+  it('lists by several statuses and several priorities at once', async () => {
+    const draft = await raise(1, { priority: 'urgent' });
+    const submitted = await submit(await raise(1, { priority: 'low' }));
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/job-requisitions')
+        .query({ pageSize: 100, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<JobRequisitionDto[]>(res).map((r) => r.id);
+    };
+
+    expect(await ids({ status: 'draft,pendingManager' })).toEqual(expect.arrayContaining([draft.id, submitted.id]));
+    expect(await ids({ status: 'draft' })).not.toContain(submitted.id);
+    expect(await ids({ priority: 'urgent,low' })).toEqual(expect.arrayContaining([draft.id, submitted.id]));
+    expect(await ids({ priority: 'urgent' })).not.toContain(submitted.id);
+  });
+});

@@ -11,6 +11,50 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: every filter takes several picks, and every filter is as wide as its words.** «هنخلي كل الفلترز
+  multi زي checkbox كدا اقدر اختار اكتر من حاجه … و عاوين نظبط ال size بتاع الفلتر»; «العرض بتاع الفلتر و
+  اللي جوه الفلتر يكون مظبوط ع كلام بظبط».
+  - Each list filter is a `MultiSelect` with no fixed width: as wide as its name, and its count once
+    picked; long lists are typed into from seven options, as before. Search boxes are as wide as their
+    hint (`field-sizing: content`, Chromium; elsewhere the input's default). Modes stay one answer.
+  - «الموظفين»: site, department, section, job, status, origin and ID card (was: fixed-width boxes and
+    native lists as wide as their longest option — «كل المواقع» wide, «كل الأقسام» narrow). The view
+    switch is as wide as the view shown. «الأكثر استلامًا أولًا» left the ID-card filter: ordering by
+    cards received is the column's own sort. Server: `status`, `origin`, `idCard` are lists;
+    `departmentId`/`sectionId` take up to 500 ids (every branch copy of several departments).
+    Department/section picks travel as a name list, so a unit named with a comma survives the URL.
+  - «ملفات الموظفين»: status. «التقييمات»: status (server list; the phase tabs still send one).
+    «طلبات التوظيف»: status and priority (server lists) in the shared filter bar. «مصادر المتقدمين»:
+    type and status — and «غير نشط» now returns the inactive sources (`active=false` was coerced to true).
+  - The other recruitment bars were already multi; their search boxes and the applicant / interviewer
+    pickers now fit their hint text.
+  - The rest of HR, each bar in the shared `FilterBar`: «العقود» status and type; «كل الطلبات» (leave)
+    status and type; «الكشف اليومي» branch and section (the date stays one day; the CSV takes the same
+    lists); «طلبات التسوية» status; «التسويات» status and kind (the month stays one); «بنود الرواتب» type
+    and status; «سلف وقروض الموظفين» status and type; «جلسات التدريب» status; «تقييمات الأداء» status.
+    Each is a server list now (`listQuery`, `$in`); the training and performance statuses were a union
+    that answered a comma list with 400. Worklist tabs and the nominations' pending/all view stay one
+    answer (the view as wide as its words). Search boxes on the courses, records, cycles, medical and
+    insurance pages fit their hint.
+  - `common.status` («الحالة») is in the dictionary: twelve labels and column headers printed the raw
+    key.
+
+- **HR: «عروض العمل» shows the branch, department and job; «جاهزون للتعيين» filters and shows the
+  department and job.** «هنحط الاداره و الوظيفه و الفرع في الجزء اللي تحت … و في جاهزون للتعيين هنزود
+  الفلتر بتاع الاداره و الوظيفه و بردو هنزودهها تحت جمب العرض و تاريخ القبول».
+  - «عروض العمل»: columns «الفرع» «الإدارة» «الوظيفة» after «المتقدِّم», read from the accepted terms,
+    else the written terms, else — for «جاهز لعرض العمل» — the placement the record was queued with
+    (`offerPlacement`), and named from the lists that keep retired branches and departments. The
+    salary, which met «تاريخ الإنشاء» across one gutter (money reads from its end, the date from its
+    start), is now the last data column, beside the row's action.
+  - «جاهزون للتعيين»: «الإدارة» and «الوظيفة» filters, chosen as on «عروض العمل» (a department stands
+    for every branch copy of it), remembered with the others; the server already filtered the accepted
+    terms by them. Columns «الإدارة» «الوظيفة» after «العرض».
+  - «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: on both screens every filter is as wide as its own
+    words, the search box as its hint (`field-sizing: content`, Chromium; elsewhere the input's default),
+    and every table cell and header stays on one line — a screen narrower than the row scrolls sideways
+    instead of wrapping.
+
 - **IT: the asset register's bulk upload, previewed before anything is written.** «في الأصول عايز
   زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف ويوضح لو فى
   تكرار أو تضارب مع بيانات موجوده وهكذا»; then the branch is chosen on the screen, and a device in

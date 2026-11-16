@@ -56,6 +56,9 @@ export const departmentChoices = (
     .sort((a, b) => a.name.ar.localeCompare(b.name.ar, 'ar'));
 };
 
+/** An id no department has: a department filter whose branch copies are not known yet. */
+export const NO_MATCH = '000000000000000000000000';
+
 /** The branch copies the chosen departments stand for — in the chosen branches, when any are. */
 export const departmentIdsOf = (
   keys: readonly string[],
@@ -68,6 +71,13 @@ export const departmentIdsOf = (
     .filter((unit) => branches.length === 0 || (unit.parentId !== null && branches.includes(unit.parentId)))
     .map((unit) => unit.id);
 };
+
+/**
+ * A search box as wide as its words — its hint, then what is typed — on one line. Full width on a
+ * phone, where the bar stacks. Where the browser has no `field-sizing`, the box keeps the input's
+ * own default width.
+ */
+export const SEARCH_FITS_TEXT = 'w-full sm:w-auto [&_input]:[field-sizing:content]';
 
 export const OfferFilters = ({
   value,
@@ -84,13 +94,14 @@ export const OfferFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(EMPTY_OFFER_FILTERS)} hasActiveFilters={isActive(value)}>
-      <div className="w-full sm:w-72">
-        <SearchInput
-          value={value.search}
-          onChange={(v) => set({ search: v })}
-          placeholder={t('offers.filters.search')}
-        />
-      </div>
+      {/* «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: the box is as wide as its hint, then as what
+          is typed (`field-sizing: content`); every filter beside it is as wide as its own words. */}
+      <SearchInput
+        value={value.search}
+        onChange={(v) => set({ search: v })}
+        placeholder={t('offers.filters.search')}
+        className={SEARCH_FITS_TEXT}
+      />
       <MultiSelect
         label={t('offers.filters.status')}
         value={value.status}

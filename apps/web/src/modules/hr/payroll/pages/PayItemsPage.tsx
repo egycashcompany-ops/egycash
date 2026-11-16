@@ -31,6 +31,10 @@ import { Badge, Button, DataTable, EmptyState, Pagination, type Column } from '.
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
@@ -46,6 +50,13 @@ const REMEMBERED_FILTERS = [
 
 const PAGE_SIZE = 25;
 
+/** An item is live or archived — the two states the catalog's status filter offers. */
+const PAY_ITEM_STATUSES = ['active', 'archived'] as const;
+
+/** The picks of a list param that the vocabulary carries — an old link's stray value is dropped. */
+const known = <T extends string>(picked: readonly string[], vocabulary: readonly T[]): T[] =>
+  picked.filter((v): v is T => (vocabulary as readonly string[]).includes(v));
+
 export const PayItemsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -55,8 +66,9 @@ export const PayItemsPage = (): JSX.Element => {
   const [adding, setAdding] = useState(false);
 
   const search = sp.get('q') ?? '';
-  const kind = sp.get('kind') ?? '';
-  const status = sp.get('status') ?? '';
+  // «هنخلي كل الفلترز multi»: several kinds and statuses, each ORed — one comma list each.
+  const kinds = known(readList(sp, 'kind'), PAY_ITEM_KINDS);
+  const statuses = known(readList(sp, 'status'), PAY_ITEM_STATUSES);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
 
   const params = useMemo(
@@ -66,10 +78,10 @@ export const PayItemsPage = (): JSX.Element => {
       sortBy: 'sortOrder',
       sortDir: 'asc',
       ...(search === '' ? {} : { search }),
-      ...(kind === '' ? {} : { kind }),
-      ...(status === '' ? {} : { status }),
+      ...(kinds.length === 0 ? {} : { kind: kinds }),
+      ...(statuses.length === 0 ? {} : { status: statuses }),
     }),
-    [page, search, kind, status],
+    [page, search, kinds.join(','), statuses.join(',')],
   );
   const items = usePayItems(params);
   const update = useUpdatePayItem();
@@ -167,34 +179,38 @@ export const PayItemsPage = (): JSX.Element => {
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <SearchInput
-          className="w-full sm:w-64"
-          value={search}
-          onChange={(value) => patchParams({ q: value })}
-          placeholder={t('payroll.payItems.search')}
-        />
-        <Select
-          value={kind}
-          onChange={(e) => patchParams({ kind: e.target.value })}
-          aria-label={t('payroll.payItems.kind')}
+      {/* The shared filter bar: the search as wide as its hint, each filter as its name, several
+          picks each («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
+      <div className="mb-4">
+        <FilterBar
+          onClear={() => patchParams({ q: null, kind: null, status: null })}
+          hasActiveFilters={search !== '' || kinds.length > 0 || statuses.length > 0}
         >
-          <option value="">{t('payroll.payItems.allKinds')}</option>
-          {PAY_ITEM_KINDS.map((value) => (
-            <option key={value} value={value}>
-              {t(`payroll.payItems.kind.${value}`)}
-            </option>
-          ))}
-        </Select>
-        <Select
-          value={status}
-          onChange={(e) => patchParams({ status: e.target.value })}
-          aria-label={t('payroll.payItems.status')}
-        >
-          <option value="">{t('payroll.payItems.allStatuses')}</option>
-          <option value="active">{t('payroll.payItems.status.active')}</option>
-          <option value="archived">{t('payroll.payItems.status.archived')}</option>
-        </Select>
+          <SearchInput
+            className={SEARCH_FITS_TEXT}
+            value={search}
+            onChange={(value) => patchParams({ q: value })}
+            placeholder={t('payroll.payItems.search')}
+          />
+          <MultiSelect
+            label={t('payroll.payItems.kind')}
+            value={kinds}
+            onChange={(next) => patchParams({ kind: writeList(next) })}
+            options={PAY_ITEM_KINDS.map((value) => ({
+              value,
+              label: t(`payroll.payItems.kind.${value}`),
+            }))}
+          />
+          <MultiSelect
+            label={t('payroll.payItems.status')}
+            value={statuses}
+            onChange={(next) => patchParams({ status: writeList(next) })}
+            options={PAY_ITEM_STATUSES.map((value) => ({
+              value,
+              label: t(`payroll.payItems.status.${value}`),
+            }))}
+          />
+        </FilterBar>
       </div>
 
       <DataTable

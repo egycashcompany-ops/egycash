@@ -25,7 +25,11 @@ import { Can } from '../../../../../platform/rbac/Can';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
-import { Button, Card, CardBody, DataTable, Dialog, EmptyState } from '../../../../../shared/ui';
+import { Button, DataTable, Dialog, EmptyState } from '../../../../../shared/ui';
+import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { SearchInput } from '../../../../../shared/ui/SearchInput';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { get } from '../../../../../shared/lib/api-client';
 import { formatDate, localized } from '../../../../../shared/lib/format';
@@ -45,15 +49,16 @@ const orgOptions = (path: string): Promise<OrgUnitOptionDto[]> =>
 export const JobRequisitionsListPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [status, setStatus] = useState<JobRequisitionStatus | ''>('');
-  const [priority, setPriority] = useState<JobRequisitionPriority | ''>('');
+  // «هنخلي كل الفلترز multi»: several statuses and priorities, each ORed.
+  const [statuses, setStatuses] = useState<JobRequisitionStatus[]>([]);
+  const [priorities, setPriorities] = useState<JobRequisitionPriority[]>([]);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<RequisitionDraft | null>(null);
 
   const rows = useJobRequisitions({
     pageSize: MAX_PAGE_SIZE,
-    ...(status === '' ? {} : { status }),
-    ...(priority === '' ? {} : { priority }),
+    ...(statuses.length === 0 ? {} : { status: statuses }),
+    ...(priorities.length === 0 ? {} : { priority: priorities }),
     ...(search.trim() === '' ? {} : { search: search.trim() }),
   });
   const departments = useQuery({
@@ -79,8 +84,6 @@ export const JobRequisitionsListPage = (): JSX.Element => {
     }
   };
 
-  const field = 'rounded-lg border border-slate-200 px-3 py-2 text-sm';
-
   return (
     <PageContainer>
       <PageHeader
@@ -92,40 +95,41 @@ export const JobRequisitionsListPage = (): JSX.Element => {
         }
       />
 
-      <Card>
-        <CardBody className="flex flex-wrap gap-3">
-          <input
-            className={field}
-            placeholder={t('hr.requisitions.filters.search')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select
-            className={field}
-            value={status}
-            onChange={(e) => setStatus(e.target.value as JobRequisitionStatus | '')}
-          >
-            <option value="">{t('hr.requisitions.filters.allStatuses')}</option>
-            {JOB_REQUISITION_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {t(`hr.requisitions.status.${value}`)}
-              </option>
-            ))}
-          </select>
-          <select
-            className={field}
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as JobRequisitionPriority | '')}
-          >
-            <option value="">{t('hr.requisitions.filters.allPriorities')}</option>
-            {JOB_REQUISITION_PRIORITIES.map((value) => (
-              <option key={value} value={value}>
-                {t(`hr.requisitions.priority.${value}`)}
-              </option>
-            ))}
-          </select>
-        </CardBody>
-      </Card>
+      {/* The shared filter bar the other HR queues use: the search as wide as its hint, each filter
+          as its name, several picks each («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
+      <FilterBar
+        onClear={() => {
+          setSearch('');
+          setStatuses([]);
+          setPriorities([]);
+        }}
+        hasActiveFilters={search.trim() !== '' || statuses.length > 0 || priorities.length > 0}
+      >
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder={t('hr.requisitions.filters.search')}
+          className={SEARCH_FITS_TEXT}
+        />
+        <MultiSelect
+          label={t('hr.requisitions.columns.status')}
+          value={statuses}
+          onChange={(next) => setStatuses(next as JobRequisitionStatus[])}
+          options={JOB_REQUISITION_STATUSES.map((value) => ({
+            value,
+            label: t(`hr.requisitions.status.${value}`),
+          }))}
+        />
+        <MultiSelect
+          label={t('hr.requisitions.columns.priority')}
+          value={priorities}
+          onChange={(next) => setPriorities(next as JobRequisitionPriority[])}
+          options={JOB_REQUISITION_PRIORITIES.map((value) => ({
+            value,
+            label: t(`hr.requisitions.priority.${value}`),
+          }))}
+        />
+      </FilterBar>
 
       <DataTable<JobRequisitionDto>
         rows={rows.data?.items ?? []}

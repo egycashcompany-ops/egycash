@@ -3,13 +3,13 @@
 // On-behalf filing lives on the employee profile's Leave tab, where the subject is known.
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { LEAVE_REQUEST_STATUSES } from '@ecms/contracts';
+import { LEAVE_REQUEST_STATUSES, type LeaveRequestStatus } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { EmptyState, FilterBar, Pagination } from '../../../../shared/ui';
-import { Select } from '../../../../shared/ui/form';
-import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { useLeaveRequests, useLeaveTypes, useUnreconciledLeave } from '../api/leave-queries';
 import { RequestsTable } from '../components/RequestsTable';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
@@ -30,8 +30,12 @@ export const AllRequestsPage = (): JSX.Element => {
   const { data: types } = useLeaveTypes();
   const { data: unreconciled } = useUnreconciledLeave(can('leave.approve'));
 
-  const status = sp.get('status') ?? '';
-  const typeId = sp.get('type') ?? '';
+  // «هنخلي كل الفلترز multi»: several statuses and several types, each ORed; a status the vocabulary
+  // lacks (an old link) is dropped.
+  const statuses = readList(sp, 'status').filter((s): s is LeaveRequestStatus =>
+    (LEAVE_REQUEST_STATUSES as readonly string[]).includes(s),
+  );
+  const typeIds = readList(sp, 'type');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
 
   const patch = (updates: Record<string, string | null>): void => {
@@ -48,8 +52,8 @@ export const AllRequestsPage = (): JSX.Element => {
     () => ({
       page,
       pageSize: DEFAULT_PAGE_SIZE,
-      ...(status === '' ? {} : { status }),
-      ...(typeId === '' ? {} : { typeId }),
+      ...(statuses.length === 0 ? {} : { status: statuses }),
+      ...(typeIds.length === 0 ? {} : { typeId: typeIds }),
     }),
     [sp.toString()],
   );
@@ -79,22 +83,23 @@ export const AllRequestsPage = (): JSX.Element => {
           </ul>
         </div>
       )}
-      <FilterBar>
-        <Select value={status} onChange={(e) => patch({ status: e.target.value })} className="w-44">
-          <option value="">{t('leave.filters.allStatuses')}</option>
-          {LEAVE_REQUEST_STATUSES.map((s) => (
-            <option key={s} value={s}>{t(`leave.status.${s}`)}</option>
-          ))}
-        </Select>
-        <div className="w-44">
-          <SearchableSelect
-            value={typeId}
-            onChange={(type) => patch({ type })}
-            options={(types ?? []).map((x) => ({ value: x.id, label: x.name.ar }))}
-            placeholder={t('leave.filters.allTypes')}
-            ariaLabel={t('leave.filters.allTypes')}
-          />
-        </div>
+      {/* «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: each filter as wide as its name, several picks each. */}
+      <FilterBar
+        onClear={() => patch({ status: null, type: null })}
+        hasActiveFilters={statuses.length > 0 || typeIds.length > 0}
+      >
+        <MultiSelect
+          label={t('leave.columns.status')}
+          value={statuses}
+          onChange={(next) => patch({ status: writeList(next) })}
+          options={LEAVE_REQUEST_STATUSES.map((s) => ({ value: s, label: t(`leave.status.${s}`) }))}
+        />
+        <MultiSelect
+          label={t('leave.columns.type')}
+          value={typeIds}
+          onChange={(next) => patch({ type: writeList(next) })}
+          options={(types ?? []).map((x) => ({ value: x.id, label: x.name.ar }))}
+        />
       </FilterBar>
       <RequestsTable
         rows={data?.items ?? []}

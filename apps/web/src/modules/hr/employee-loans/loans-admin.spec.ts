@@ -161,8 +161,6 @@ describe('both locales can say it', () => {
     'loans.admin.empty.toDisburse',
     'loans.admin.empty.all',
     'loans.employee',
-    'loans.allStatuses',
-    'loans.allTypes',
   ];
 
   it('resolves in Arabic and English', () => {

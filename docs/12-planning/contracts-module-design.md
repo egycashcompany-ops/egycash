@@ -590,6 +590,13 @@ which forms depends on the job.
   form, then the instructions and the declarations overleaf) is the fourteenth paper — every job,
   printed right after the contract (`egycash.hiring.insurance-form-1`, print order 5). His copy is a
   Legal-size scan; it prints on A4, tighter, in the same order.
+- **On his own pages (revision 3, 2026-11-16).** «انا عاوز النموزج بردو شبه منا بعتو بظبط مفهوش اي
+  تعديل خالص … بس الشكل اللي ادتولك بظبط». The form is no longer drawn again: its two pages ARE his
+  scan (`contracts/form-one-scan.ts`, 1700 × 2800 pixels each, four greys), on the margin-less page
+  `scan`, standing on the A4 page's full height. The values below are written on them, each at its
+  place (`at` and one class per place, measured on the scan in its pixels and set in millimetres).
+  An empty value writes nothing. «تحريراً في» takes today's day, month and year
+  (`contract.currentDay` / `currentMonth` / `currentYear`) between the form's strokes.
 - **Filled.** With the contract and the bank letter, the one form filled from the record: the
   category (عاملين لدى الغير, ticked), the company's name (twice), the employee's insurance number,
   national ID, name, nationality, qualification and job, the start date in its day / month / year

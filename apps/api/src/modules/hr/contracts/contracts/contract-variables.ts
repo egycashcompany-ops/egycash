@@ -155,6 +155,14 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
       return formatTemplateDate(cairoToday(), input.language);
     case 'contract.currentDayName':
       return dayNameOf(cairoToday(), input.language);
+    case 'contract.currentDay':
+    case 'contract.currentMonth':
+    case 'contract.currentYear': {
+      // The signing-office calendar, as `contract.currentDate`, in its three parts.
+      const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOnlyIso(cairoToday()));
+      if (match === null) return '';
+      return key === 'contract.currentYear' ? (match[1] ?? '') : key === 'contract.currentMonth' ? (match[2] ?? '') : (match[3] ?? '');
+    }
     case 'employee.phone':
       return employee.personal.contact.primaryPhone;
     case 'employee.birthDate':

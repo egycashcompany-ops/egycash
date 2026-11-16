@@ -18,9 +18,12 @@
 import {
   ErrorCodes,
   type ContractOverride,
+  type EmployeeBulkPersonDto,
   type EmployeePapersDto,
   type HiringPackContractNote,
   type HiringPackDto,
+  type RenderEmployeeBulk,
+  type RenderEmployeeBulkDto,
 } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
@@ -226,6 +229,103 @@ class HiringPackService {
     keys?: readonly string[],
   ): Promise<HiringPackDto> {
     const employee = await employeeService.getById(employeeId, scope);
+    const { parts, documents, contract } = await this.assemble(ctx, employee, scope, keys);
+    const language = parts[0]?.template.language ?? 'ar';
+    const html = renderHiringPackHtml(parts, language, await letterheadFor(language));
+    await this.recordPrint(ctx, employeeId, documents);
+    return {
+      html,
+      contract:
+        contract.doc === null
+          ? null
+          : { id: String(contract.doc._id), code: contract.doc.code, created: contract.created },
+      contractNote: contract.note,
+      documents,
+    };
+  }
+
+  /**
+   * A28 — «المعينون»'s «طباعة لكل المحدد»: each ticked employee with their papers, as their own
+   * «طباعة العقد والمستندات» tab lists them. An employee who cannot be printed for (out of the
+   * caller's reach, gone) is listed with why, not dropped.
+   */
+  async bulkOpen(employeeIds: readonly string[], scope: ScopeSelector): Promise<EmployeeBulkPersonDto[]> {
+    const out: EmployeeBulkPersonDto[] = [];
+    for (const employeeId of new Set(employeeIds)) {
+      try {
+        const employee = await employeeService.getById(employeeId, scope);
+        const job = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+        out.push({
+          employeeId,
+          employeeName: employee.personal.fullNameAr,
+          employeeCode: employee.code,
+          jobTitle: job === null ? null : { ar: job.name.ar, en: job.name.en },
+          papers: (await this.papersFor(employeeId, scope)).papers,
+          error: null,
+        });
+      } catch (error) {
+        if (!(error instanceof AppError) || error.httpStatus >= 500) throw error;
+        out.push({ employeeId, employeeName: '', employeeCode: null, jobTitle: null, papers: [], error: error.message });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Print the papers chosen for each employee as ONE document: each in turn, with those of the
+   * papers chosen for them that are their own — a paper not theirs is never printed for them — in
+   * print order, their contract made first if they hold none (as their tab makes it). Each print is
+   * audited on the employee's own record. An employee with nothing to print, or who cannot be
+   * printed for, is reported and skipped; the others print.
+   */
+  async bulkRender(ctx: AuthContext, input: RenderEmployeeBulk, scope: ScopeSelector): Promise<RenderEmployeeBulkDto> {
+    // Each employee's own choice; one listed twice prints what both lines chose, once.
+    const chosen = new Map<string, Set<string>>();
+    for (const person of input.people) {
+      const keys = chosen.get(person.employeeId) ?? new Set<string>();
+      for (const key of person.keys) keys.add(key);
+      chosen.set(person.employeeId, keys);
+    }
+    const parts: HiringPackPart[] = [];
+    const results: RenderEmployeeBulkDto['results'] = [];
+    for (const [employeeId, wanted] of chosen) {
+      try {
+        const employee = await employeeService.getById(employeeId, scope);
+        const own = (await this.papersFor(employeeId, scope)).papers.map((paper) => paper.key);
+        const keys = own.filter((key) => wanted.has(key));
+        if (keys.length === 0) {
+          results.push({ employeeId, printed: 0, error: 'none of the chosen papers is one of this employee\'s papers' });
+          continue;
+        }
+        const assembled = await this.assemble(ctx, employee, scope, keys);
+        if (assembled.parts.length === 0) {
+          results.push({ employeeId, printed: 0, error: assembled.contract.note ?? 'nothing could be printed' });
+          continue;
+        }
+        parts.push(...assembled.parts);
+        await this.recordPrint(ctx, employeeId, assembled.documents);
+        results.push({ employeeId, printed: assembled.documents.length, error: null });
+      } catch (error) {
+        if (!(error instanceof AppError) || error.httpStatus >= 500) throw error;
+        results.push({ employeeId, printed: 0, error: error.message });
+      }
+    }
+    const html = parts.length === 0 ? '' : renderHiringPackHtml(parts, 'ar', await letterheadFor('ar'));
+    return { html, results };
+  }
+
+  /** The employee's papers to print, in order — their contract (made if need be), then the forms. */
+  private async assemble(
+    ctx: AuthContext,
+    employee: EmployeeDoc,
+    scope: ScopeSelector,
+    keys?: readonly string[],
+  ): Promise<{
+    parts: HiringPackPart[];
+    documents: HiringPackDto['documents'];
+    contract: { doc: ContractDoc | null; created: boolean; note: HiringPackContractNote | null };
+  }> {
+    const employeeId = String(employee._id);
     const mine = await this.papersOfEmployee(employee);
     const wanted = keys === undefined ? null : new Set(keys);
     const contracts = mine.filter((paper) => paper.group === 'contract').map((paper) => paper.template);
@@ -270,8 +370,15 @@ class HiringPackService {
       documents.push({ key: form.key, name: form.name, kind: 'form' });
     }
 
-    const language = parts[0]?.template.language ?? 'ar';
-    const html = renderHiringPackHtml(parts, language, await letterheadFor(language));
+    return { parts, documents, contract };
+  }
+
+  /** A print, on the employee's own record: which papers, by whom. */
+  private async recordPrint(
+    ctx: AuthContext,
+    employeeId: string,
+    documents: HiringPackDto['documents'],
+  ): Promise<void> {
     await auditService.record({
       entityRef: { moduleId: 'hr', entityType: 'employee', entityId: employeeId },
       action: 'export',
@@ -281,15 +388,6 @@ class HiringPackService {
       ],
       actor: { userId: ctx.userId, ip: null, userAgent: null },
     });
-    return {
-      html,
-      contract:
-        contract.doc === null
-          ? null
-          : { id: String(contract.doc._id), code: contract.doc.code, created: contract.created },
-      contractNote: contract.note,
-      documents,
-    };
   }
 }
 

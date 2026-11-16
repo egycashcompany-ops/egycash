@@ -195,17 +195,11 @@ const applicantPermissions = declarePermissions(
       action: 'moveToOffer',
       name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' },
     },
-    // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
-    // superseded and the target re-opens on a new attempt.
     // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
     // explicit grant: an `applicant.edit` holder can correct data, not move a candidate.
     {
       action: 'reassign',
       name: { en: 'Reassign applicant position or branch', ar: 'إعادة تعيين وظيفة أو فرع المتقدم' },
-    },
-    {
-      action: 'returnToStage',
-      name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
     },
     {
       /**
@@ -223,6 +217,41 @@ const applicantPermissions = declarePermissions(
        */
       action: 'purge',
       name: { en: 'Permanently delete an applicant', ar: 'مسح نهائي للمتقدم' },
+      breakGlass: true,
+    },
+  ],
+  'hr.applicants',
+);
+
+/**
+ * «إرجاع إلى مرحلة سابقة» — send a candidate back to an earlier stage (RW13).
+ *
+ * ITS OWN RESOURCE, AND A NEW KEY. It used to be `applicant.returnToStage`, sitting among the
+ * ordinary applicant authorities, and it was offered as a button on the candidate's own page beside
+ * «تعديل» — which is how it came to be pressed. It is not an ordinary authority: it supersedes every
+ * record made after the target stage, re-opens that stage on a fresh attempt, and withdraws a live
+ * offer on the way. Everything it retires stays readable, so nothing is lost; but the pipeline the
+ * rest of the system reasons about is rewound, and a recruiter correcting a typo has no business
+ * next to it.
+ *
+ * A NEW KEY rather than a rename, deliberately: retiring the old one means whatever roles hold it
+ * today stop holding this, so the capability starts from nobody rather than from whoever happened
+ * to be granted the old name. The button is gone from every screen, the route still works, and the
+ * mechanism waits behind a key an administrator has to hand out on purpose.
+ *
+ * Break-glass for the same reason `applicant.purge` is: the act is not undoable by another act of
+ * the same kind. Note that the Super Admin role holds every registered key by design — the boot
+ * registry sync keeps it equal to the catalog — so «no role holds it» means no role BELOW that one.
+ */
+const applicantReturnPermissions = declarePermissions(
+  'hr',
+  'applicantReturn',
+  { en: 'return to an earlier stage', ar: 'الإرجاع لمرحلة سابقة' },
+  [],
+  [
+    {
+      action: 'execute',
+      name: { en: 'Return a candidate to an earlier stage', ar: 'إرجاع المتقدم لمرحلة سابقة' },
       breakGlass: true,
     },
   ],
@@ -1266,6 +1295,7 @@ export const hrPermissions: PermissionDef[] = [
   ...contractTypePermissions,
   ...insuranceJobTitlePermissions,
   ...applicantPermissions,
+  ...applicantReturnPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
   ...hiringRequirementPermissions,

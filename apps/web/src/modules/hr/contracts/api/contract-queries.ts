@@ -13,6 +13,7 @@ import {
   type DecideContractApproval,
   type PreviewContract,
   type RenderCandidateBulk,
+  type RenderEmployeeBulk,
   type UpdateJobPapers,
   type UpdateInsuranceJobTitle,
   type RenderCandidatePapers,
@@ -201,6 +202,18 @@ export const useBulkRenderCandidates = () => {
   return useMutation({
     mutationFn: (body: RenderCandidateBulk) => api.bulkRenderCandidates(body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts', 'candidate'] }),
+  });
+};
+
+/** «المعينون» — each ticked employee with their job's papers, as their own tab lists them. */
+export const useBulkOpenEmployees = () => useMutation({ mutationFn: (employeeIds: string[]) => api.bulkOpenEmployees(employeeIds) });
+
+/** Print the chosen papers for every ticked employee; a contract made for one shows on their page. */
+export const useBulkRenderEmployees = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderEmployeeBulk) => api.bulkRenderEmployees(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts'] }),
   });
 };
 

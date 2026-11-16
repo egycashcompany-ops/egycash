@@ -14,6 +14,14 @@
 //      than failing the business operation that produced them, on the explicit promise that
 //      reconciliation would rebuild them. This is that promise being kept.
 //
+// WHAT IS DELIBERATELY NOT REBUILT, so the next reader does not assume it is: the entries about the
+// candidate's FILE — a paper handed in, swapped, ruled on or taken off, an ID-card photograph
+// replaced, an attachment added or removed, the portal account opened. They are written with
+// `recordSafe` too, with keys derived from the paper and its version rather than from the clock, so
+// a rebuild WOULD be idempotent — but half of them (a removal) have no surviving aggregate to be
+// rebuilt from, and a repair that could only restore the additions would leave a history that reads
+// as if nothing was ever taken off the file. Better one honest gap than a misleading repair.
+//
 // Rebuilding is safe because both halves are keyed, not timed. ① replays through the same
 // projection the dispatcher uses, which derives its `sourceKey` from the event's own id. ② derives
 // its `sourceKey` from facts on the applicant document — never the clock, never a random value —

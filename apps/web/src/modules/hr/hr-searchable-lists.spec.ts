@@ -54,7 +54,7 @@ describe('HR lists are typed into', () => {
       'recruitment/applicants/components/BulkReassignDialog.tsx',
       'recruitment/applicants/components/ApplicantForm.tsx',
       'recruitment/job-offers/components/OfferTermsForm.tsx',
-      'contracts/components/JobPapersDialog.tsx',
+      'contracts/components/JobPapersPanel.tsx',
       'contracts/pages/ContractCreatePage.tsx',
       'leave-management/components/RequestLeaveDialog.tsx',
       'leave-management/components/EmployeeLeaveTab.tsx',

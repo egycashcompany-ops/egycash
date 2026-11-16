@@ -1,6 +1,13 @@
 // Applicant details: identity/contact/preferences/history read-out, attachments, and the
 // verify-identity + withdraw actions (permission-gated). Edits open the form route.
-import { useState, type ReactNode } from 'react';
+//
+// «إرجاع إلى مرحلة سابقة» IS NOT HERE ANY MORE, and that is the point. It used to sit in this
+// header beside «تعديل», one button away from an ordinary correction, and it is not an ordinary
+// act: it supersedes every record made after the stage it returns to, re-opens that stage on a
+// fresh attempt, and withdraws a live offer on the way. The mechanism is intact and the route
+// still serves it — behind `applicantReturn.execute`, a break-glass key granted to nobody — but no
+// screen offers it. See `hr.module.ts` for the key and why it is a new one.
+import { type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -23,7 +30,6 @@ import { ReferenceChip } from '../components/RefPickers';
 import { AttachmentsPanel } from '../components/AttachmentsPanel';
 import { NationalIdCardPanel } from '../components/NationalIdCardPanel';
 import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActions';
-import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
@@ -44,8 +50,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams();
   const { data: a, isLoading, isError, error, refetch } = useApplicant(id);
-
-  const [returnOpen, setReturnOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -77,14 +81,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
         actions={
           <div className="flex items-center gap-2">
             <PurgeApplicantAction applicantId={a.id} applicantCode={a.code} applicantName={a.fullNameAr} />
-            {/* RW13 — send the candidate back to an earlier stage; supersedes, never deletes. */}
-            {a.status === 'new' && (
-              <Can permission="applicant.returnToStage">
-                <Button size="sm" variant="secondary" onClick={() => setReturnOpen(true)}>
-                  {t('applicants.returnToStage.title')}
-                </Button>
-              </Can>
-            )}
             <ApplicantLifecycleActions applicantId={a.id} applicant={a} />
             {a.status === 'new' && (
               <Can permission="applicant.edit">
@@ -205,8 +201,6 @@ export const ApplicantDetailPage = (): JSX.Element => {
       <div className="mt-6">
         <CandidateTimeline applicantId={a.id} />
       </div>
-
-      <ReturnToStageDialog applicant={a} open={returnOpen} onClose={() => setReturnOpen(false)} />
 
     </PageContainer>
   );

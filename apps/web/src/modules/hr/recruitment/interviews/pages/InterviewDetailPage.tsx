@@ -41,6 +41,7 @@ import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
+import { useStageAuthority } from '../../shared/useStageAuthority';
 import {
   useInterview,
   useInterviewStages,
@@ -68,6 +69,9 @@ export const InterviewDetailPage = (): JSX.Element => {
   const startScheduled = useStartScheduledInterview(id);
   const startNow = useStartInterview();
   const { data: candidate } = useApplicant(iv?.applicantId ?? '');
+  // May this round still move the candidate? Above the guards below — a hook runs on every render
+  // or on none.
+  const authority = useStageAuthority(iv?.applicantId ?? '');
 
   const [reassignOpen, setReassignOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -93,12 +97,19 @@ export const InterviewDetailPage = (): JSX.Element => {
   const decisionOnly = (stage?.mode ?? (iv.stageOrder >= 2 ? 'decisionOnly' : 'evaluation')) === 'decisionOnly';
   // The second interview has no page: it is decided on its card in the stage's board.
   if (decisionOnly) return <Navigate to={`/interviews/stage/${iv.stageId}`} replace />;
-  const isLive = iv.status === 'scheduled' || iv.status === 'inProgress';
-  const open = isLive || iv.status === 'waiting';
+  // Past this round, it is history: the decision, the notes, the panel and the papers stay on the
+  // page and nothing on it moves. Reversing a round the candidate has already been judged past
+  // would strand every decision taken on the back of it — that is what a return to an earlier
+  // stage is for, and the server refuses it here either way.
+  const readOnly = authority.isPassed(iv.id);
+  // A correction is still possible while nothing has been built on the outcome (D7).
+  const correctable = authority.isCorrectable(iv.id);
+  const isLive = !readOnly && (iv.status === 'scheduled' || iv.status === 'inProgress');
+  const open = isLive || (!readOnly && iv.status === 'waiting');
   const mine = me === null ? null : (iv.panel.find((p) => p.interviewerId === me.id) ?? null);
   const canEvaluate = isLive && mine !== null && can('interview.evaluate');
   const canDecide = can('interview.decide');
-  const startable = iv.status === 'waiting' || iv.status === 'scheduled';
+  const startable = !readOnly && (iv.status === 'waiting' || iv.status === 'scheduled');
 
   // Starting only starts. The evaluation is on the page, filled in when the interview is over.
   const start = async (): Promise<void> => {
@@ -140,16 +151,18 @@ export const InterviewDetailPage = (): JSX.Element => {
             {iv.decision.notes}
           </p>
         )}
-        <Can permission="interview.decide">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="mt-3"
-            onClick={() => setEditOutcome(iv.outcome === 'passed' ? 'failed' : 'passed')}
-          >
-            {t('interviews.actions.editDecision')}
-          </Button>
-        </Can>
+        {correctable ? (
+          <Can permission="interview.decide">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-3"
+              onClick={() => setEditOutcome(iv.outcome === 'passed' ? 'failed' : 'passed')}
+            >
+              {t('interviews.actions.editDecision')}
+            </Button>
+          </Can>
+        ) : null}
       </div>
     );
 
@@ -177,7 +190,14 @@ export const InterviewDetailPage = (): JSX.Element => {
                 <Button size="sm" variant="ghost" onClick={() => setCancelOpen(true)}>{t('interviews.actions.cancel')}</Button>
               </Can>
             )}
-            <MoveToOfferButton applicantId={iv.applicantId} />
+            {/* Starting the offer is still HR's call wherever the candidate stands — but not from a
+                stage they have left, which is where it used to offer to skip them forward. */}
+            {readOnly ? null : <MoveToOfferButton applicantId={iv.applicantId} />}
+            {readOnly ? (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t('recruitment.stage.readOnly')}
+              </span>
+            ) : null}
             <ApplicantLifecycleActions applicantId={iv.applicantId} showWithdrawnHint />
           </div>
         }

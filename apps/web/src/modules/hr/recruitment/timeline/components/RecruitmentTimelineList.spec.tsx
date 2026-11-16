@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { configureStore } from '@reduxjs/toolkit';
 import {
   RECRUITMENT_TIMELINE_TYPES,
@@ -33,6 +34,10 @@ const entry = (
   at: '2026-08-03T09:00:00.000Z',
   actorUserId: null,
   actorName: '',
+  // An act with nobody behind it — a queue row opened by a decision, an offer expired by the
+  // sweep. The renderer must say so rather than leaving the «who» line blank, which is what every
+  // entry used to do.
+  actorKind: 'system',
   type,
   stage: null,
   fromStatus: null,
@@ -53,10 +58,16 @@ const render = (entries: RecruitmentTimelineEntryDto[], locale: Locale): string 
     reducer: { locale: localeSlice.reducer },
     preloadedState: { locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) } },
   });
+  // The actor's name is resolved from the shared directory cache (`ActorById`), the same way every
+  // other stream in the product renders WHO — so the renderer needs a query client. Nothing is
+  // fetched here: `renderToStaticMarkup` runs no effects, and an unresolved actor renders nothing.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderToStaticMarkup(
-    <Provider store={store}>
-      <RecruitmentTimelineList entries={entries} />
-    </Provider>,
+    <QueryClientProvider client={qc}>
+      <Provider store={store}>
+        <RecruitmentTimelineList entries={entries} />
+      </Provider>
+    </QueryClientProvider>,
   );
 };
 
@@ -100,6 +111,105 @@ describe('RecruitmentTimelineList — every event type, with and without metadat
   it('ignores a first attempt and a non-numeric attempt rather than mislabelling them', () => {
     expect(render([entry('interviewScheduled', { attempt: 1 })], 'en')).not.toContain('Attempt');
     expect(render([entry('interviewScheduled', { attempt: 'two' })], 'en')).not.toContain('Attempt');
+  });
+
+  it('names the actor on every entry — never a blank «who» line', () => {
+    // The bug: the actor was drawn from `actorName`, which no recruitment writer ever set, so
+    // every projected entry rendered without one. A system act must say «النظام», the candidate's
+    // own act must say «المتقدّم», and neither may be silent.
+    expect(render([entry('screeningOpened', {})], 'en')).toContain('System');
+    expect(render([entry('screeningOpened', {})], 'ar')).toContain('النظام');
+    const byCandidate = { ...entry('documentUploaded', {}), actorKind: 'candidate' as const };
+    expect(render([byCandidate], 'en')).toContain('The applicant');
+    expect(render([byCandidate], 'ar')).toContain('المتقدِّم');
+  });
+
+  it('names WHICH round or phase, so two phases opened in one minute are not one event twice', () => {
+    // «فُتح التقييم» twice at the same minute was the security check and the medical check, which
+    // open together — drawn without the one word that told them apart.
+    const security = {
+      ...entry('evaluationOpened', {}),
+      eventId: 'evt-sec',
+      stage: {
+        kind: 'evaluation' as const,
+        refId: '64b1f0aaaaaaaaaaaaaaaa11',
+        key: 'evaluation:64b1f0aaaaaaaaaaaaaaaa11',
+        name: { ar: 'الفحص الأمني', en: 'Security check' },
+      },
+    };
+    const medical = {
+      ...entry('evaluationOpened', {}),
+      eventId: 'evt-med',
+      stage: {
+        kind: 'evaluation' as const,
+        refId: '64b1f0aaaaaaaaaaaaaaaa12',
+        key: 'evaluation:64b1f0aaaaaaaaaaaaaaaa12',
+        name: { ar: 'الفحص الطبي', en: 'Medical check' },
+      },
+    };
+    const html = render([security, medical], 'ar');
+    expect(html).toContain('الفحص الأمني');
+    expect(html).toContain('الفحص الطبي');
+  });
+
+  it('shows a decision’s result and its reason, not just that a decision happened', () => {
+    const decided = {
+      ...entry('interviewCompleted', { outcome: 'failed' }),
+      reason: 'لم يجتز الاختبار الفني',
+    };
+    const html = render([decided], 'ar');
+    expect(html).toContain('النتيجة');
+    expect(html).toContain('غير ناجح');
+    expect(html).toContain('لم يجتز الاختبار الفني');
+  });
+
+  it('shows a CORRECTION as a correction — the decision that was there and the one that replaced it', () => {
+    // A flipped screening used to read exactly like a first decision: the renderer showed the new
+    // status and nothing else, so «رُفض» appeared twice in a history and neither line said which
+    // was the correction.
+    const flipped = {
+      ...entry('screeningDecided', {}),
+      fromStatus: 'accepted',
+      toStatus: 'rejected',
+      reason: 'ظهرت مخالفة فى الفحص الأمني',
+      actorKind: 'user' as const,
+      actorUserId: '64b1f0aaaaaaaaaaaaaaaa99',
+    };
+    const html = render([flipped], 'ar');
+    expect(html).toContain('مقبول');
+    expect(html).toContain('مرفوض');
+    expect(html).toContain('ظهرت مخالفة فى الفحص الأمني');
+  });
+
+  it('does not invent a correction when a status did not change', () => {
+    const first = { ...entry('screeningDecided', {}), fromStatus: 'waiting', toStatus: 'accepted' };
+    expect(render([first], 'en')).toContain('Accepted');
+    const same = { ...entry('interviewCompleted', {}), fromStatus: 'completed', toStatus: 'completed' };
+    expect(render([same], 'en')).toContain('Completed');
+  });
+
+  it('shows a change as a change — the old value and the new one', () => {
+    const html = render(
+      [entry('branchChanged', { from: 'فرع المعادي', to: 'فرع مدينة نصر' })],
+      'ar',
+    );
+    expect(html).toContain('فرع المعادي');
+    expect(html).toContain('فرع مدينة نصر');
+  });
+
+  it('names the paper a file event is about', () => {
+    const html = render(
+      [
+        entry('documentReviewed', {
+          documentKey: 'birthCertificate',
+          documentName: { ar: 'شهادة الميلاد', en: 'Birth certificate' },
+          outcome: 'accepted',
+        }),
+      ],
+      'ar',
+    );
+    expect(html).toContain('شهادة الميلاد');
+    expect(html).toContain('مقبول');
   });
 
   it('renders entries whose metadata carries unrelated keys', () => {

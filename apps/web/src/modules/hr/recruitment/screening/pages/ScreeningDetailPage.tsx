@@ -32,6 +32,7 @@ import { ApplicantFolderDialog } from '../../applicant-documents/components/Appl
 import { useApplicantFolder } from '../../applicant-documents/api/applicant-document-queries';
 import { FolderIcon } from '../../../../../shared/ui/icons';
 import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
+import { useStageAuthority } from '../../shared/useStageAuthority';
 
 export const ScreeningDetailPage = (): JSX.Element => {
   const t = useT();
@@ -42,6 +43,10 @@ export const ScreeningDetailPage = (): JSX.Element => {
   // The candidate carries the placement and its history; the screening record carries neither.
   // Above the guards, like every other hook on this page.
   const { data: candidate } = useApplicant(s?.applicantId ?? '');
+
+  // May this screen still move the candidate? One question, answered by the server (I10) — above
+  // the guards below, like every other hook on this page.
+  const authority = useStageAuthority(s?.applicantId ?? '');
 
   const addNote = useAddScreeningNote(id);
   // The candidate's folder — the same one the Applicant documents page opens, where HR can swap a
@@ -77,6 +82,14 @@ export const ScreeningDetailPage = (): JSX.Element => {
   }
 
   const isPending = s.status === 'waiting';
+  // The candidate has moved on: the screening keeps its decision, its notes and its files, and
+  // offers nothing that would move them back. `بدء المقابلة` goes with the rest — the round it
+  // would open is the interview's own business, and the interview page carries that button.
+  const readOnly = authority.isPassed(s.id);
+  // …but a decision stays correctable while nothing has been built on it (D7): the round the
+  // acceptance opened is still untouched. The server applies the same rule, so this button and
+  // that refusal cannot drift.
+  const correctable = !isPending && authority.isCorrectable(s.id);
 
   const submitNote = async (): Promise<void> => {
     if (note.trim() === '') return;
@@ -127,7 +140,24 @@ export const ScreeningDetailPage = (): JSX.Element => {
               applicantCode={s.applicantCode}
               applicantName={s.applicantName}
             />
-          {isPending ? (
+          {readOnly ? (
+            <>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t('recruitment.stage.readOnly')}
+              </span>
+              {correctable && (
+                <Can permission="screening.decide">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditDecide(s.status === 'accepted' ? 'rejected' : 'accepted')}
+                  >
+                    {t('screening.actions.editDecision')}
+                  </Button>
+                </Can>
+              )}
+            </>
+          ) : isPending ? (
             <Can permission="screening.decide">
               <Button size="sm" variant="secondary" onClick={() => setDecide('accepted')}>{t('screening.actions.accept')}</Button>
               <Button size="sm" variant="danger" onClick={() => setDecide('rejected')}>{t('screening.actions.reject')}</Button>

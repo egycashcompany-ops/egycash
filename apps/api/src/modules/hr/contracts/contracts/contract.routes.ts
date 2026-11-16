@@ -12,6 +12,10 @@ import {
   CreateContractSchema,
   DecideContractApprovalSchema,
   CandidateBulkSchema,
+  EmployeeBulkSchema,
+  RenderEmployeeBulkSchema,
+  type EmployeeBulk,
+  type RenderEmployeeBulk,
   UpdateJobPapersSchema,
   type UpdateJobPapers,
   UpdateInsuranceJobTitleSchema,
@@ -203,6 +207,19 @@ const bulkRenderCandidates = async (req: Request, res: Response): Promise<void> 
   ok(res, await candidateDraftService.bulkRender(ctx, body, scopeSelector(ctx, 'contract.print')));
 };
 
+// A28 — «المعينون»: the same «طباعة لكل المحدد», for people already employed.
+const bulkOpenEmployees = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<EmployeeBulk>(req);
+  ok(res, await hiringPackService.bulkOpen(body.employeeIds, scopeSelector(ctx, 'contract.print')));
+};
+
+const bulkRenderEmployees = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RenderEmployeeBulk>(req);
+  ok(res, await hiringPackService.bulkRender(ctx, body, scopeSelector(ctx, 'contract.print')));
+};
+
 const hireCandidate = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<HireCandidate, never, OfferParam>(req);
@@ -320,6 +337,10 @@ export const buildContractsRouter = (): Router => {
     asyncHandler(bulkOpenCandidates));
   router.post('/candidates/bulk/render', ...guard('contract.print'), validate({ body: RenderCandidateBulkSchema }),
     asyncHandler(bulkRenderCandidates));
+  router.post('/employees/bulk/open', ...guard('contract.print'), validate({ body: EmployeeBulkSchema }),
+    asyncHandler(bulkOpenEmployees));
+  router.post('/employees/bulk/render', ...guard('contract.print'), validate({ body: RenderEmployeeBulkSchema }),
+    asyncHandler(bulkRenderEmployees));
   router.post('/candidates/:offerId/open', ...guard('contract.print'), validate({ params: OfferParamSchema }),
     asyncHandler(openCandidate));
   router.patch('/candidates/:offerId', ...guard('contract.print'),

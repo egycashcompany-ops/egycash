@@ -15,6 +15,7 @@ import {
   type LocalizedString,
   type RecruitmentStageKind,
   type RecruitmentTimelineType,
+  type TimelineActorKind,
   type TimelineCorrelationType,
 } from '@ecms/contracts';
 import { logger } from '../../../../infrastructure/logging/logger';
@@ -40,6 +41,8 @@ export interface RecordTimelineInput {
   correlation: { type: TimelineCorrelationType; id?: string };
   actorUserId?: string | null;
   actorName?: string;
+  /** Staff by default; `system` for an automatic act, `candidate` for the portal. */
+  actorKind?: TimelineActorKind;
   at?: Date;
   stage?: { kind: RecruitmentStageKind; refId?: string | null; name?: LocalizedString | null };
   fromStatus?: string | null;
@@ -97,6 +100,8 @@ class RecruitmentTimelineService {
         at,
         actorUserId: toObjectId(input.actorUserId),
         actorName: input.actorName ?? '',
+        actorKind:
+          input.actorKind ?? ((input.actorUserId ?? null) === null ? 'system' : 'user'),
         type: input.type,
         correlationType: input.correlation.type,
         // The episode is the subject: its own id when there is one, a generated id otherwise.
@@ -187,6 +192,57 @@ class RecruitmentTimelineService {
       note: input.note,
       branchId: input.branchId,
       discriminator: correlationId,
+    });
+  }
+
+  /**
+   * What happened to the candidate's FILE — a paper handed in, swapped, ruled on or taken off, an
+   * ID-card photograph replaced, an attachment added or removed, the portal account opened.
+   *
+   * ONE METHOD rather than seven call sites each assembling an entry, for the reason I5 gives: one
+   * history, one writer. The shape of a file event is always the same — a subject (the slot's key,
+   * the attachment's title), who did it, and whether that was staff or the candidate themselves —
+   * and a second place assembling it is a second place that can forget the actor.
+   *
+   * `recordSafe`, deliberately: a history write must never fail an upload. The `discriminator` is
+   * derived from the paper and its version, never from the clock, so the entry is idempotent and a
+   * retry writes nothing twice (I5).
+   */
+  async recordFileEvent(input: {
+    applicantId: string;
+    applicantCode: string;
+    branchId: Types.ObjectId | null;
+    actorUserId: string | null;
+    /** `candidate` for the portal's own paths, `user` for staff, `system` for an automatic act. */
+    actorKind: TimelineActorKind;
+    type: RecruitmentTimelineType;
+    /** The paper or attachment this is about. */
+    subject: { key: string; name?: LocalizedString | null };
+    /** What the act said — a review outcome, a note, the version it replaced. */
+    note?: string | null;
+    discriminator: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<RecruitmentTimelineDoc | null> {
+    return this.recordSafe({
+      applicantId: input.applicantId,
+      applicantCode: input.applicantCode,
+      type: input.type,
+      // The paper's slot is the episode (I9): handing it in, replacing it and ruling on it are one
+      // story about one document, and they group under its key rather than under the candidate.
+      correlation: { type: 'document', id: `doc:${input.subject.key}` },
+      actorUserId: input.actorUserId,
+      actorKind: input.actorKind,
+      entity: { type: 'applicant', id: input.applicantId },
+      branchId: input.branchId,
+      note: input.note ?? null,
+      discriminator: input.discriminator,
+      metadata: {
+        documentKey: input.subject.key,
+        ...(input.subject.name === undefined || input.subject.name === null
+          ? {}
+          : { documentName: input.subject.name }),
+        ...(input.metadata ?? {}),
+      },
     });
   }
 

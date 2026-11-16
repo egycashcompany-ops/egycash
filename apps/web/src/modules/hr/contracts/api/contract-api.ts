@@ -4,6 +4,9 @@
 import {
   type AddContractAttachment,
   type CandidateBulkPersonDto,
+  type EmployeeBulkPersonDto,
+  type RenderEmployeeBulk,
+  type RenderEmployeeBulkDto,
   type CandidateDraftDto,
   type HireCandidateDto,
   type JobPapersDto,
@@ -122,6 +125,11 @@ export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPer
   post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
 export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
   post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
+/** «المعينون» — the same «طباعة لكل المحدد», for people already employed. */
+export const bulkOpenEmployees = (employeeIds: string[]): Promise<EmployeeBulkPersonDto[]> =>
+  post<EmployeeBulkPersonDto[]>('/hr/contracts/employees/bulk/open', { employeeIds });
+export const bulkRenderEmployees = (body: RenderEmployeeBulk): Promise<RenderEmployeeBulkDto> =>
+  post<RenderEmployeeBulkDto>('/hr/contracts/employees/bulk/render', body);
 export const getInsuranceJobTitles = (): Promise<InsuranceJobTitlesDto> =>
   get<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles');
 export const saveInsuranceJobTitle = (jobTitleId: string, body: UpdateInsuranceJobTitle): Promise<InsuranceJobTitlesDto> =>

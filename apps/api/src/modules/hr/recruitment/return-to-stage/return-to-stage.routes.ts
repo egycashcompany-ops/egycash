@@ -18,14 +18,14 @@ export const buildReturnToStageRouter = (): Router => {
   router.get(
     '/:id/return-to-stage/preview',
     authenticate,
-    authorize('applicant.returnToStage'),
+    authorize('applicantReturn.execute'),
     validate({ query: ReturnToStagePreviewQuerySchema, params: ReturnToStageParamSchema }),
     asyncHandler(previewReturnToStage),
   );
   router.post(
     '/:id/return-to-stage',
     authenticate,
-    authorize('applicant.returnToStage'),
+    authorize('applicantReturn.execute'),
     validate({ body: ReturnToStageSchema, params: ReturnToStageParamSchema }),
     asyncHandler(returnApplicantToStage),
   );

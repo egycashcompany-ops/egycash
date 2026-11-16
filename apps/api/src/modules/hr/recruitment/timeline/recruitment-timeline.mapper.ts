@@ -45,6 +45,9 @@ export const timelineEntryDto = (doc: RecruitmentTimelineDoc): RecruitmentTimeli
   at: doc.at.toISOString(),
   actorUserId: doc.actorUserId === null ? null : String(doc.actorUserId),
   actorName: doc.actorName,
+  // Unset on every entry written before the field existed, and derivable for all of them: a
+  // workflow fact with no actor was the system's, and one with an actor was a person's.
+  actorKind: doc.actorKind ?? (doc.actorUserId === null ? 'system' : 'user'),
   type: doc.type,
   stage: stageDto(doc),
   fromStatus: doc.fromStatus,

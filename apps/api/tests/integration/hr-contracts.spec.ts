@@ -20,8 +20,10 @@ import {
   type ContractTemplateDto,
   type ContractTypeDto,
   type EmployeeDto,
+  type EmployeeBulkPersonDto,
   type EmployeePapersDto,
   type HiringPackDto,
+  type RenderEmployeeBulkDto,
   type JobPapersDto,
   type InsuranceJobTitlesDto,
 } from '@ecms/contracts';
@@ -1148,6 +1150,57 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
         .set('Authorization', `Bearer ${adminToken}`)
     ).body.data as EmployeePapersDto;
     expect(after.contract).toMatchObject({ code: withContract.contract?.code, status: 'active', endDate: '2027-11-14' });
+  });
+
+  /**
+   * «المعينون» (A28) — «كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان لو هطبع لناس كتير فنفس
+   * الوقت». Each ticked employee with their own papers, as their tab lists them; ONE document; a paper
+   * not theirs never printed for them; one who cannot be printed for reported, the others printed.
+   */
+  it('prints for several employees at once — each their own papers, in one document (A28)', async () => {
+    const first = await employeeIn(jobId);
+    const second = await employeeIn(jobId);
+    const nobody = new Types.ObjectId().toHexString();
+
+    const opened = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/open')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeIds: [first.id, second.id, nobody] });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const people = opened.body.data as EmployeeBulkPersonDto[];
+    expect(people.map((p) => p.employeeId)).toEqual([first.id, second.id, nobody]);
+    expect(people[0]).toMatchObject({ employeeName: 'موظف المستندات', employeeCode: first.code, error: null });
+    expect(people[0]?.jobTitle).toEqual({ ar: 'قائد طاقم', en: 'Crew leader' });
+    expect(people[0]?.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract' });
+    expect(people[0]?.papers.map((p) => p.key)).toContain(jobForm.key);
+    expect(people[0]?.papers.map((p) => p.key)).not.toContain(otherJobForm.key);
+    expect(people[2]).toMatchObject({ employeeId: nobody, papers: [] });
+    expect(people[2]?.error).not.toBeNull();
+
+    const printed = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/render')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        people: [
+          // Another job's paper asked for too: never printed for this employee.
+          { employeeId: first.id, keys: [jobForm.key, otherJobForm.key] },
+          { employeeId: second.id, keys: [otherJobForm.key] },
+        ],
+      });
+    expect(printed.status, JSON.stringify(printed.body)).toBe(200);
+    const out = printed.body.data as RenderEmployeeBulkDto;
+    expect(out.results[0]).toEqual({ employeeId: first.id, printed: 1, error: null });
+    expect(out.results[1]).toMatchObject({ employeeId: second.id, printed: 0 });
+    expect(out.results[1]?.error).not.toBeNull();
+    expect(out.html.match(/class="form-doc"/g)).toHaveLength(1);
+    expect(out.html).toContain('إقرار موظف المستندات');
+  });
+
+  it('refuses the employees\' bulk print to a reader who may not print', async () => {
+    const res = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/open')
+      .send({ employeeIds: [new Types.ObjectId().toHexString()] });
+    expect(res.status).toBe(401);
   });
 
   it('publishes a form without a contract type, but not one printed for no job at all', async () => {

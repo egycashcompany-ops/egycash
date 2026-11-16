@@ -83,7 +83,6 @@ export const EmployeesReadyFilters = ({
         className={SEARCH_FITS_TEXT}
       />
 
-      <BranchFilterSelect value={value.branchId} onChange={(branchId) => set({ branchId })} />
       <MultiSelect
         label={t('offers.filters.department')}
         value={value.department}
@@ -98,6 +97,7 @@ export const EmployeesReadyFilters = ({
           .sort((a, b) => a.name.ar.localeCompare(b.name.ar, 'ar'))
           .map((j) => ({ value: j.id, label: localized(j.name, locale) }))}
       />
+      <BranchFilterSelect value={value.branchId} onChange={(branchId) => set({ branchId })} />
 
       <label className="flex items-center gap-1.5 text-sm text-slate-500">
         <span className="hidden whitespace-nowrap sm:inline">{t('employeesReady.filters.from')}</span>

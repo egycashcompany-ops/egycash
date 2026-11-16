@@ -96,13 +96,27 @@ describe('where an offer places the person', () => {
   const terms = { branchId: 'b-terms', departmentId: 'd-terms', jobTitleId: 'j-terms' };
   const placement = { branchId: 'b-queue', departmentId: 'd-queue', jobTitleId: 'j-queue', sectionId: null };
   const row = (over: Record<string, unknown>) =>
-    ({ acceptedSnapshot: null, terms: null, placement, ...over }) as unknown as Parameters<typeof offerPlacement>[0];
+    ({ acceptedSnapshot: null, terms: null, placement, branchId: null, departmentId: null, ...over }) as unknown as Parameters<
+      typeof offerPlacement
+    >[0];
 
   it('reads the accepted terms, else the written terms, else the placement it was queued with', () => {
     const accepted = { terms: { branchId: 'b-acc', departmentId: 'd-acc', jobTitleId: 'j-acc' } };
     expect(offerPlacement(row({ acceptedSnapshot: accepted, terms })).jobTitleId).toBe('j-acc');
     expect(offerPlacement(row({ terms })).departmentId).toBe('d-terms');
     expect(offerPlacement(row({})).branchId).toBe('b-queue');
+  });
+
+  /**
+   * A candidate reassigned while «جاهز لعرض العمل»: the filter matches the branch and department
+   * mirrored from the applicant (they follow the reassignment), so the row shows those — not the
+   * snapshot taken when it was queued. The job filter reads the snapshot, so the job does too.
+   */
+  it('shows a waiting row where the candidate is now, as the filter matches it', () => {
+    const moved = offerPlacement(row({ branchId: 'b-now', departmentId: 'd-now' }));
+    expect(moved).toEqual({ branchId: 'b-now', departmentId: 'd-now', jobTitleId: 'j-queue' });
+    // Written terms win over the mirror.
+    expect(offerPlacement(row({ terms, branchId: 'b-now' })).branchId).toBe('b-terms');
   });
 
   it('names a unit, and says what it is when it cannot', () => {
@@ -112,32 +126,34 @@ describe('where an offer places the person', () => {
     expect(placementName(list, null, 'ar')).toBe('—');
     expect(placementName(undefined, 'd1', 'ar')).toBe('…');
     expect(placementName(list, '64a1f0c2e4b0a1b2c3d4e5f6', 'ar')).toBe('#d4e5f6');
+    // A retired job title the queued placement captured by name reads as that name.
+    expect(placementName(list, '64a1f0c2e4b0a1b2c3d4e5f6', 'ar', 'سائق نقل')).toBe('سائق نقل');
   });
 });
 
 describe('«عروض العمل» — the table', () => {
-  const order = (keys: string[]): number[] => keys.map((k) => PAGE.indexOf(`key: '${k}'`));
+  const at = (k: string): number => PAGE.indexOf(`key: '${k}'`);
 
   it('shows the branch, department and job after the applicant, under the filters\' own names', () => {
-    const [applicant, branch, department, job, status] = order(['applicant', 'branch', 'department', 'job', 'status']);
-    expect(applicant).toBeLessThan(branch);
-    expect(branch).toBeLessThan(department);
-    expect(department).toBeLessThan(job);
-    expect(job).toBeLessThan(status);
+    expect(at('applicant')).toBeGreaterThan(-1);
+    expect(at('applicant')).toBeLessThan(at('branch'));
+    expect(at('branch')).toBeLessThan(at('department'));
+    expect(at('department')).toBeLessThan(at('job'));
+    expect(at('job')).toBeLessThan(at('status'));
     expect(PAGE).toContain("header: t('recruitment.filters.branch')");
     expect(PAGE).toContain("header: t('offers.filters.department')");
     expect(PAGE).toContain("header: t('offers.filters.job')");
   });
 
   it('keeps the salary off the created date: last of the data, beside the row\'s action', () => {
-    const [created, salary, write] = order(['createdAt', 'salary', 'write']);
-    expect(created).toBeLessThan(salary);
-    expect(salary).toBeLessThan(write);
+    expect(at('createdAt')).toBeGreaterThan(-1);
+    expect(at('createdAt')).toBeLessThan(at('salary'));
+    expect(at('salary')).toBeLessThan(at('write'));
   });
 
   it('keeps every cell and header on one line', () => {
     expect(PAGE).toContain("className: c.className ?? 'whitespace-nowrap'");
-    expect(PAGE).toContain("headerClassName: 'whitespace-nowrap'");
+    expect(PAGE).toContain("headerClassName: c.headerClassName ?? 'whitespace-nowrap'");
     expect(PAGE).toContain('columns={oneLineColumns}');
   });
 

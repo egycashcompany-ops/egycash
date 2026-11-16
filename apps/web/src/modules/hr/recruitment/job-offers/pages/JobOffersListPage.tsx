@@ -203,7 +203,7 @@ export const JobOffersListPage = (): JSX.Element => {
   const oneLineColumns = columns.map((c) => ({
     ...c,
     className: c.className ?? 'whitespace-nowrap',
-    headerClassName: 'whitespace-nowrap',
+    headerClassName: c.headerClassName ?? 'whitespace-nowrap',
   }));
 
   return (

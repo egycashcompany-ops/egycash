@@ -776,7 +776,18 @@ describe('«حوادث الفترة» — the table (the old tab 10, re-homed)',
     const a1 = accidentRow(list, 'a1');
     const statement = slice(a1, 'data-acc-statement', 'a1', '</p>');
     expect(unescape(statement)).toContain(`title="${LIST.rows[0]?.statement ?? ''}"`);
-    expect(classOf(a1, 'data-acc-statement')).toContain('truncate');
+    const classes = classOf(a1, 'data-acc-statement').split(/\s+/u);
+    // One line from 1536 px (the approved table) …
+    expect(classes).toContain('truncate');
+    // … and below it a wrapped statement a touch screen can read without hovering: up to three
+    // lines in the phone / tablet block, two in the narrower 1280–1535 table.
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        'max-2xl:whitespace-normal',
+        'max-xl:line-clamp-3',
+        'xl:max-2xl:line-clamp-2',
+      ]),
+    );
     expect(accidentRow(list, 'a4')).not.toContain('data-acc-statement');
   });
 
@@ -789,7 +800,7 @@ describe('«حوادث الفترة» — the table (the old tab 10, re-homed)',
   it('puts the driver card only on a culprit who is one of ours; the text as written otherwise', () => {
     expect(accidentRow(list, 'a1')).toContain('data-culprit="driver"');
     expect(accidentRow(list, 'a2')).toContain('data-culprit="text"');
-    expect(text(accidentRow(list, 'a4'))).toContain(ar('fleet.dash.licences.noCulprit'));
+    expect(text(accidentRow(list, 'a4'))).toContain(ar('fleet.dash.accidents.noCulprit'));
   });
 
   it('writes the state and the remaining as of now, a negative one red with «−»', () => {
@@ -805,7 +816,7 @@ describe('«حوادث الفترة» — the table (the old tab 10, re-homed)',
     expect(text(list)).toContain(ar('fleet.dash.accidents.more', { count: 2 }));
     expect(hrefOf(list, 'accidentList.more')).toBe(`/fleet/accidents?${DATES}`);
     expect(hrefOf(list, 'accidentList.all')).toBe(`/fleet/accidents?${DATES}`);
-    expect(text(list)).toContain(ar('fleet.dash.licences.accidentsLog'));
+    expect(text(list)).toContain(ar('fleet.dash.accidents.register'));
     const all = block(tab({ page: { ...PAGE, accidentList: { ...LIST, more: 0 } } }), 'list');
     expect(hrefs(all, 'accidentList.more')).toEqual([]);
     expect(hrefOf(all, 'accidentList.all')).toBe(`/fleet/accidents?${DATES}`);

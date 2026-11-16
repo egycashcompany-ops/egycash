@@ -186,6 +186,7 @@ const everyLink = (): DashLink[] => {
       P.km(),
       P.carKm('133', 'km.top'),
       P.carKmDay('154', '2026-10-11', 'km.invalidList.row'),
+      P.kmDay('2026-10-11', 'km.invalidList.row'),
       P.vehiclesByCodes(['305', '318'], 'km.noDistance'),
       P.vehicle('v1', 'km.vehicle'),
       P.visits(),
@@ -738,6 +739,18 @@ describe('the links of «العدادات والكيلومترات» and «ال�
       to: '/fleet/odometer?vehicleCodes=154&from=2026-10-11&to=2026-10-11',
       metric: 'km.invalidList.row',
     });
+    // A car deleted since: the register finds no deleted car by code, so that ONE day under the
+    // set's branches (types, operations) and without any code.
+    expect(P.kmDay('2026-10-11', 'km.invalidList.row')).toEqual({
+      to: '/fleet/odometer?from=2026-10-11&to=2026-10-11&branch=b1,b2',
+      metric: 'km.invalidList.row',
+    });
+    const coded = periodLinks({
+      range: RANGE,
+      vehicleScope: { ...MINE_SET, typeIds: ['t1'], vehicleCodes: ['154'] },
+    });
+    expect(coded.kmDay('2026-10-11', 'km.invalidList.row').to).not.toContain('vehicleCodes');
+    expect(coded.kmDay('2026-10-11', 'km.invalidList.row').to).toContain('type=t1');
     expect(P.vehiclesByCodes(['305', '318'], 'km.noDistance')).toEqual({
       to: '/fleet/vehicles?vehicleCodes=305,318',
       metric: 'km.noDistance',

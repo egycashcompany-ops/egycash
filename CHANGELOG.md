@@ -1694,56 +1694,62 @@ its entry here in the same PR.
 
 ### Changed
 
-- **«لوحة تحكم الحركة» at `/fleet`: «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» are rebuilt
-  as approved, in place of the old «الكيلومترات» + «ترتيب السيارات» and «الحوادث».** «جهز العدادات
-  والحوادث عشان نعملهم بى ار» — «اعمل المقترح وورينى سامبل» — «الوان البارات مش متنسقة مع الويب» —
-  «اعمل اللى انت بتفضله» — «ودى موافق عليها». The bar now has nine tabs: نظرة عامة · الحركة اليوم ·
-  توزيع السيارات · الصيانة والورش · العدادات والكيلومترات · الحوادث ومطالبات التأمين · أرقام الفترة ·
-  ملخصات · التراخيص. Both new tabs keep their keys (`?tab=km`, `?tab=accidents`, bookmarks and the
-  overview's accidents line open the new bodies); `ranking` is retired and an old `?tab=ranking` opens
-  «العدادات والكيلومترات», which now holds the top 5 and bottom 5. Neither pill carries a count (the
-  approved bar has none), so the old count of the period's accidents is gone. Both are panels of R1 and
-  R2 together, like «الصيانة والورش»: each part shows its own read's loading and error, «تحديث» reads
-  both, and the page's period bar stands at the top of «العدادات والكيلومترات» and between the two
-  bands of «الحوادث ومطالبات التأمين». «العدادات والكيلومترات»: «إجمالي الكيلومترات» (confirmed
-  through the last closed day, with the daily average), «متوسط لكل سيارة» (readings for X of Y active
-  cars; the cars held in the workshop all period, and those that joined after it, named only when
-  there are some), «سيارات بلا مسافة في الفترة» (of them, those never read), «قراءات تحتاج مراجعة»
-  and, as of now, «بلا قراءة عداد منذ N أيام» with its longest gap; «الكيلومترات يومًا بيوم» across
-  the page (Fridays dimmed by the calendar, each day's weekday on the axis, the average at the
-  line's end, the multi-day distances and — only when there are some — the km of cars not in the
-  registry as lines under it); «أعلى 5» | «أقل 5» with one bar measured against the top car, each
-  car's make, «في الورشة منذ …» and the cars that cannot be ranked with their reason; «استثناءات
-  قراءات العدادات» — «بلا قراءة حديثة» and «لم تُقرأ أبدًا» (as of now) and «قراءات تحتاج مراجعة»
-  (the period's), at most 3 rows each with «و N أخرى في القائمة الكاملة» or an end line; and, only
-  when the figures cover one branch, «الكيلومترات حسب النوع». «مراجعة القراءات» and the review group's
-  «عرض الكل» open the period's odometer register (no screen filters negative readings), each review
-  row's «فتح» that car on that one day; the top-5 foot reads «قراءات الفترة في سجل العدادات» (no
-  screen ranks cars by km). «الحوادث ومطالبات التأمين»: «الآن» — «ملفات حوادث مفتوحة» (all dates,
-  with what remains on them) and one amber «إخطارات تأمين مفتوحة» card (missing an attachment, the
-  licence images and the cheque image), then «إخطارات ينقصها مرفق» across the page (at most 6, the
-  oldest notice first, the car and its make or «بلا سيارة», the insurer by the form, the number, the
-  day, the missing attachments; «فتح» opens the notices by car, number and day, none for a notice with
-  none of the three; «و N أخرى» beyond 6, unlinked); «خلال الفترة» — «حوادث الفترة» by accident day
-  (still open of them), «مبالغ ملفات حوادث الفترة» as they stand now (collected, company cost, paid,
-  remaining — the register's words and order, each opening the register; the transfers in and out as
-  one unlinked line; the formula under it), and the period's accidents table, open and closed (date
-  only, the statement on one line, the culprit, status, what remains as of now; «عرض الباقي (N) في
-  السجل» only when there are more; the undated files noted in the company view). A reader of the
-  notices alone sees the tab with the notices part only; a reader of the accidents alone sees it
-  without them. Tables become stacked blocks on a phone, with no sideways scroll. All bars and columns
-  on both tabs are in the site colour; status colours stay. The notices now follow the car's branch:
-  under a branch (or «كل فروعي») only the notices of those branches' cars count and list, a notice with
-  no car counts in the company view alone, the overview's «إخطارات ينقصها مرفق» line drops its «الشركة
-  كلها» tag and its links carry the branch, and `GET /fleet/notices` and `/fleet/notices/summary` take
-  `typeIds` / `operationIds` / `branchIds` (the notices screen reads, shows and remembers «النوع»,
-  «التشغيل» and «الفرع»). «الحركة اليوم»: a car deleted from the registry while it is the oldest in
-  the workshop no longer links to its file. New read fields: R1 `noReading.staleCount` /
-  `neverReadCount` / `staleRows` / `neverReadRows` and `notices.rows`; R2 `km.coverage.active` /
-  `inWorkshop` / `joinedAfter`, `km.noDistance`, `km.invalidList`, the makes on `km.top5` /
-  `bottom5`, `accidents.totals`, and `statement` / `typeName` on the accident rows (fields are only
-  added). «أرقام الفترة»، «ملخصات» and «التراخيص» are unchanged and show the same figures as the new
-  tabs where they share them. No new permission key. No migration; data unchanged.
+- **«لوحة تحكم الحركة» at `/fleet`: «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» are
+  rebuilt as approved, in place of the old «الكيلومترات» + «ترتيب السيارات» and «الحوادث».** «جهز
+  العدادات والحوادث عشان نعملهم بى ار» — «اعمل المقترح وورينى سامبل» — «الوان البارات مش متنسقة مع
+  الويب» — «اعمل اللى انت بتفضله» — «ودى موافق عليها». The bar now has nine tabs: نظرة عامة · الحركة
+  اليوم · توزيع السيارات · الصيانة والورش · العدادات والكيلومترات · الحوادث ومطالبات التأمين · أرقام
+  الفترة · ملخصات · التراخيص. Both new tabs keep their keys (`?tab=km`, `?tab=accidents`, bookmarks
+  and the overview's accidents line open the new bodies); `ranking` is retired and an old
+  `?tab=ranking` opens «العدادات والكيلومترات», which now holds the top 5 and bottom 5. Neither pill
+  carries a count (the approved bar has none), so the old count of the period's accidents is gone.
+  Both are panels of R1 and R2 together, like «الصيانة والورش»: each part shows its own read's
+  loading and error, «تحديث» reads both, and the page's period bar stands at the top of «العدادات
+  والكيلومترات» and between the two bands of «الحوادث ومطالبات التأمين». «العدادات والكيلومترات»:
+  «إجمالي الكيلومترات» (confirmed through the last closed day, with the daily average), «متوسط لكل
+  سيارة» (readings for X of Y active cars; the cars held in the workshop all period, and those that
+  joined after it, named only when there are some), «سيارات بلا مسافة في الفترة» (of them, those
+  never read), «قراءات تحتاج مراجعة» and, as of now, «بلا قراءة عداد منذ N أيام» with its longest
+  gap; «الكيلومترات يومًا بيوم» across the page (Fridays dimmed by the calendar, each day's weekday
+  on the axis, the average at the line's end, the multi-day distances and — only when there are some
+  — the km of cars not in the registry as lines under it); «أعلى 5» | «أقل 5» with one bar measured
+  against the top car, each car's make, «في الورشة منذ …» and the cars that cannot be ranked with
+  their reason; «استثناءات قراءات العدادات» — «بلا قراءة حديثة» and «لم تُقرأ أبدًا» (as of now) and
+  «قراءات تحتاج مراجعة» (the period's), at most 3 rows each with «و N أخرى» («في القائمة الكاملة»
+  when «عرض الكل» opens it) or an end line; and, only when the figures cover one branch,
+  «الكيلومترات حسب النوع». «مراجعة القراءات» and the review group's «عرض الكل» open the period's
+  odometer register (no screen filters negative readings), each review row's «فتح» that car on that
+  one day (a car deleted from the registry since keeps its row, with no link to its file, and its
+  «فتح» opens that day without the code — the register's code filter finds live cars only); the
+  top-5 foot reads «قراءات الفترة في سجل العدادات» (no screen ranks cars by km). «الحوادث ومطالبات
+  التأمين»: «الآن» — «ملفات حوادث مفتوحة» (all dates, with what remains on them) and one amber
+  «إخطارات تأمين مفتوحة» card (missing an attachment, the licence images and the cheque image), then
+  «إخطارات ينقصها مرفق» across the page (at most 6, the oldest notice first, the car and its make or
+  «بلا سيارة», the insurer by the form, the number, the day, the missing attachments; «فتح» opens
+  the notices by car, number (matched as the screen's search matches it, so a number held inside
+  another is listed too) and day, none for a notice with none of the three; «و N أخرى» beyond 6,
+  unlinked); «خلال الفترة» — «حوادث الفترة» by accident day (still open of them), «مبالغ ملفات حوادث
+  الفترة» as they stand now (collected, company cost, paid, remaining — the register's words and
+  order, each opening the register; the transfers in and out as one unlinked line; the formula under
+  it), and the period's accidents table, open and closed (date only, the statement on one line from
+  1536 px and wrapped below it, the culprit, status, what remains as of now; «عرض الباقي (N) في
+  السجل» only when there are more; the undated files noted in the company view with no filter). A
+  reader of the notices alone sees the tab with the notices part only; a reader of the accidents
+  alone sees it without them. Tables become stacked blocks on a phone, with no sideways scroll, and
+  the day chart opens there on its latest days. All bars and columns on both tabs are in the site
+  colour; status colours stay. The notices now follow the car's branch: under a branch (or «كل
+  فروعي») only the notices of those branches' cars count and list, a notice with no car counts in
+  the company view alone, the overview's «إخطارات ينقصها مرفق» line drops its «الشركة كلها» tag and
+  its links carry the branch, and `GET /fleet/notices` and `/fleet/notices/summary` take `typeIds` /
+  `operationIds` / `branchIds` (the notices screen reads and remembers «النوع», «التشغيل» and
+  «الفرع», and shows them while a link or a remembered value narrows the list). «الحركة اليوم»: a
+  car deleted from the registry while it is the oldest in the workshop no longer links to its file.
+  New read fields: R1 `noReading.staleCount` / `neverReadCount` / `staleRows` / `neverReadRows` and
+  `notices.rows`; R2 `km.coverage.active` / `inWorkshop` / `joinedAfter`, `km.noDistance`,
+  `km.invalidList`, the makes on `km.top5` / `bottom5`, `accidents.totals`, and `statement` /
+  `typeName` on the accident rows (fields are only added). «أرقام الفترة»، «ملخصات» and «التراخيص»
+  are unchanged and show the same figures as the new tabs where they share them. No new permission
+  key. No migration; data unchanged.
 
 - **«لوحة تحكم الحركة» at `/fleet`: «توزيع السيارات» and «الصيانة والورش» are rebuilt as approved,
   in place of the old «توزيع السيارات» and «الصيانة».** «جهز توزيع السيارات و الصيانة والورش عشان

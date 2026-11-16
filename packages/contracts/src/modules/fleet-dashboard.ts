@@ -1191,6 +1191,13 @@ export interface FleetDashboardInvalidReadingDto {
   vehicleId: string | null;
   /** The car's code, else the row's own (old-book) code. */
   code: string;
+  /**
+   * The registry car was DELETED since (soft delete; its readings stay and are listed). Its file is
+   * no longer served and the register's code filter finds live cars only, so the web gives such a
+   * row no car link and its «فتح» opens that ONE day without the code (the row is among them).
+   * `false` for an old-book row with no registry car.
+   */
+  deleted: boolean;
   /** The make; `null` for an old-book code. */
   typeName: LocalizedString | null;
   /** The row's day, 'YYYY-MM-DD'. */

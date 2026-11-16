@@ -776,7 +776,7 @@ const MoneyCard = ({
 const Culprit = ({ row }: { row: FleetDashboardPeriodAccidentRowDto }): JSX.Element => {
   const t = useT();
   const people = useEmployeeRecords(row.culpritEmployeeIds);
-  const text = row.culprit ?? t('fleet.dash.licences.noCulprit');
+  const text = row.culprit ?? t('fleet.dash.accidents.noCulprit');
   if (row.culpritEmployeeIds.length === 0) return <span data-culprit="text">{text}</span>;
   return (
     <DriverHoverText
@@ -811,10 +811,13 @@ const AccidentRow = ({
         {row.statement === '' ? (
           <span className={MUTED}>—</span>
         ) : (
+          // One line, the whole text on hover, from 1536 px (as approved). Below it no pointer
+          // may hover (a phone) or the column is narrow (1280–1535): the line wraps — up to three
+          // lines while the row is a block, two in the table — so the statement stays readable.
           <p
             data-acc-statement={row.accidentId}
             title={row.statement}
-            className="truncate text-slate-700 dark:text-slate-200"
+            className="truncate text-slate-700 max-2xl:whitespace-normal max-xl:line-clamp-3 xl:max-2xl:line-clamp-2 dark:text-slate-200"
           >
             {row.statement}
           </p>
@@ -932,7 +935,7 @@ const AccidentTable = ({
           </FootLink>
         )}
         <FootLink link={links.accidents('accidentList.all')}>
-          {t('fleet.dash.licences.accidentsLog')}
+          {t('fleet.dash.accidents.register')}
         </FootLink>
       </BlockFoot>
     </Card>

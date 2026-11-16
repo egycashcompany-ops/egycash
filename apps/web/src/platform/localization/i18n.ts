@@ -7167,6 +7167,7 @@ const en: Record<string, string> = {
     'A reading lower than the one before it; its distance is not in the total.',
   'fleet.dash.km.exceptions.review.fromTo': 'From {{from}} to {{to}}',
   'fleet.dash.km.exceptions.more': 'And {{count}} more {{noun}} in the full list',
+  'fleet.dash.km.exceptions.moreNoList': 'And {{count}} more {{noun}}',
   'fleet.dash.km.exceptions.all': 'Show all ({{count}})',
   'fleet.dash.km.exceptions.end.stale': 'No other vehicle without a recent reading.',
   'fleet.dash.km.exceptions.end.staleBranch':
@@ -7308,6 +7309,8 @@ const en: Record<string, string> = {
   'fleet.dash.accidents.periodSub':
     "The chosen period's accidents by accident day, and the money on their files.",
   'fleet.dash.accidents.openRow': 'Open',
+  'fleet.dash.accidents.register': 'Accidents log',
+  'fleet.dash.accidents.noCulprit': 'Not stated',
   'fleet.dash.accidents.files.title': 'Open accident files',
   'fleet.dash.accidents.files.tag': 'All dates',
   'fleet.dash.accidents.files.remaining': 'Outstanding on them',
@@ -21431,6 +21434,7 @@ const ar: Record<string, string> = {
   'fleet.dash.km.exceptions.review.note': 'قراءة أقل من السابقة لها؛ مسافتها لا تدخل الإجمالي.',
   'fleet.dash.km.exceptions.review.fromTo': 'من {{from}} إلى {{to}}',
   'fleet.dash.km.exceptions.more': 'و{{count}} {{noun}} أخرى في القائمة الكاملة',
+  'fleet.dash.km.exceptions.moreNoList': 'و{{count}} {{noun}} أخرى',
   'fleet.dash.km.exceptions.all': 'عرض الكل ({{count}})',
   'fleet.dash.km.exceptions.end.stale': 'لا توجد سيارات أخرى بلا قراءة حديثة.',
   'fleet.dash.km.exceptions.end.staleBranch': 'لا توجد سيارات أخرى من الفرع بلا قراءة حديثة.',
@@ -21564,6 +21568,8 @@ const ar: Record<string, string> = {
   'fleet.dash.accidents.period.all': 'عرض حوادث الفترة',
   'fleet.dash.accidents.periodSub': 'حوادث الفترة المختارة حسب يوم الحادث، ومبالغ ملفاتها.',
   'fleet.dash.accidents.openRow': 'فتح',
+  'fleet.dash.accidents.register': 'سجل الحوادث',
+  'fleet.dash.accidents.noCulprit': 'غير محدد',
   'fleet.dash.accidents.files.title': 'ملفات حوادث مفتوحة',
   'fleet.dash.accidents.files.tag': 'كل التواريخ',
   'fleet.dash.accidents.files.remaining': 'المتبقي عليها',

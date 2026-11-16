@@ -15,6 +15,9 @@
 //
 // Rendered through the real page over seeded caches (`renderDashboard`): R1 under its key, R2 under
 // the key the address bar's filters make.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type QueryClient } from '@tanstack/react-query';
 import {
@@ -109,6 +112,7 @@ const KM: Km = {
     {
       vehicleId: 'v305',
       code: '305',
+      deleted: false,
       typeName: ATEGO,
       date: '2026-10-11',
       from: 143_905,
@@ -118,6 +122,7 @@ const KM: Km = {
     {
       vehicleId: 'v214',
       code: '214',
+      deleted: false,
       typeName: SPRINTER,
       date: '2026-10-20',
       from: 186_420,
@@ -127,6 +132,7 @@ const KM: Km = {
     {
       vehicleId: null,
       code: 'B-77',
+      deleted: false,
       typeName: null,
       date: '2026-10-25',
       from: 201_330,
@@ -327,6 +333,23 @@ describe('«العدادات والكيلومترات» — the heading, the per
 // ── 2 · The five cards ────────────────────────────────────────────────────────────────────────
 
 describe('the five cards — every figure a server field', () => {
+  it('lays the five out two to a row under 1280 px with the fifth (R1) taking its row whole', () => {
+    const grid = classesOf(DEFAULT, 'data-km-kpis')[0] ?? '';
+    expect(grid.split(/\s+/u)).toEqual(
+      expect.arrayContaining(['md:grid-cols-2', 'xl:grid-cols-6', 'min-[1800px]:grid-cols-5']),
+    );
+    const span = (id: string): string[] =>
+      (
+        /class="([^"]*)"/u.exec(
+          DEFAULT.slice(DEFAULT.lastIndexOf('<', DEFAULT.indexOf(`data-km-kpi="${id}"`))),
+        )?.[1] ?? ''
+      ).split(/\s+/u);
+    expect(span('stale')).toContain('md:max-xl:col-span-2');
+    for (const id of ['total', 'perCar', 'noDistance', 'review']) {
+      expect(span(id), id).not.toContain('md:max-xl:col-span-2');
+    }
+  });
+
   it('«إجمالي الكيلومترات»: the total over the period, confirmed through, the average a day', () => {
     const card = kpi(DEFAULT, 'total');
     expect(text(card)).toContain(ar('fleet.dash.km.total.title'));
@@ -616,6 +639,19 @@ describe('«الكيلومترات يومًا بيوم» — the R-15 drawing, i
     expect(column(year, '2026-02')).toContain('data-km-part="empty"');
     expect(column(year, '2026-11')).toContain('data-km-part="open"');
   });
+
+  it('opens a phone’s scrolled plot on its latest days (the ltr group’s right end), not its oldest', () => {
+    const scroller = slice(chart, 'data-km-scroller', 'true', 'data-km-column=');
+    expect(scroller).toMatch(/class="[^"]*max-sm:overflow-x-auto/u);
+    // The days run left to right inside a dir=ltr group: the end is the newest day.
+    expect(chart.slice(0, chart.indexOf('data-km-scroller'))).toMatch(/dir="ltr"/u);
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'components/fleet-dashboard/km-chart.tsx'),
+      'utf8',
+    );
+    expect(src).toContain('ref={scrollRef}');
+    expect(src).toContain('if (el !== null) el.scrollLeft = el.scrollWidth;');
+  });
 });
 
 // ── 4 · The ranking pair (the old tab 8's pins, re-homed) ────────────────────────────────────
@@ -795,6 +831,78 @@ describe('«استثناءات قراءات العدادات» — three groups,
     expect(links(never)).toEqual([]);
   });
 
+  it('names the rest without «في القائمة الكاملة» when no «عرض الكل» opens a list', () => {
+    // Over 50 stale cars: no link carries them all (the codes cap), so no «عرض الكل».
+    const stale = Array.from({ length: 51 }, (_, i) => ({
+      vehicleId: `v${400 + i}`,
+      code: String(400 + i),
+      lastDate: '2026-10-20',
+    }));
+    const many = exception(
+      block(
+        tab({ now: { ...NOW, noReading: { ...NO_READING, stale, staleCount: 51 } } }),
+        'exceptions',
+      ),
+      'stale',
+    );
+    expect(many).toContain('data-km-group-end="more"');
+    expect(text(many)).toMatch(/و ?48 \S+ أخرى/u);
+    expect(text(many)).not.toContain('في القائمة الكاملة');
+    expect(hrefs(many, 'noReading.all')).toEqual([]);
+    // A reader without the registry: «لم تُقرأ أبدًا» has no list to open either.
+    const never = exception(
+      block(
+        tab(
+          {
+            now: {
+              ...NOW,
+              noReading: {
+                ...NO_READING,
+                neverRead: [
+                  ...NO_READING.neverRead,
+                  { vehicleId: 'v340', code: '340' },
+                  { vehicleId: 'v341', code: '341' },
+                  { vehicleId: 'v342', code: '342' },
+                ],
+                neverReadCount: 5,
+              },
+            },
+          },
+          ALL_KEYS.filter((k) => k !== 'fleetVehicle.view'),
+        ),
+        'exceptions',
+      ),
+      'never',
+    );
+    expect(text(never)).toMatch(/و ?2 سيارات أخرى/u);
+    expect(text(never)).not.toContain('في القائمة الكاملة');
+    expect(never).not.toContain('data-metric="noReading.neverRead"');
+    // With the registry, the same five keep the full-list wording and «عرض الكل».
+    const listed = exception(
+      block(
+        tab({
+          now: {
+            ...NOW,
+            noReading: {
+              ...NO_READING,
+              neverRead: [
+                ...NO_READING.neverRead,
+                { vehicleId: 'v340', code: '340' },
+                { vehicleId: 'v341', code: '341' },
+                { vehicleId: 'v342', code: '342' },
+              ],
+              neverReadCount: 5,
+            },
+          },
+        }),
+        'exceptions',
+      ),
+      'never',
+    );
+    expect(text(listed)).toMatch(/و ?2 سيارات أخرى في القائمة الكاملة/u);
+    expect(text(listed)).toContain('عرض الكل (5)');
+  });
+
   it('«قراءات تحتاج مراجعة»: from → to, the day, the negative km in rose, «فتح» on that ONE day', () => {
     const review = exception(card, 'review');
     expect(text(review)).toContain('من 143,905 إلى 134,950');
@@ -814,6 +922,24 @@ describe('«استثناءات قراءات العدادات» — three groups,
     // `invalidRows` (4) less the three rows: one more reading.
     expect(text(review)).toMatch(/و ?1 قراءة أخرى في القائمة الكاملة/u);
     expect(hrefOf(review, 'km.invalidList.all')).toBe(`/fleet/odometer?${DATES}`);
+  });
+
+  it('a car deleted since keeps its review row, with no link to its file; «فتح» opens that day', () => {
+    const [first, ...rest] = KM.invalidList;
+    if (first === undefined) throw new Error('no review row');
+    const html = tab({
+      page: { ...PAGE, km: { ...KM, invalidList: [{ ...first, deleted: true }, ...rest] } },
+    });
+    const review = exception(block(html, 'exceptions'), 'review');
+    expect(review).toContain('data-km-row="305"');
+    expect(hrefs(review, 'km.invalidList.vehicle')).toEqual(['/fleet/vehicles/v214']);
+    expect(review).not.toContain('/fleet/vehicles/v305');
+    // The register's code filter finds live cars only: that ONE day without the code.
+    expect(hrefs(review, 'km.invalidList.row')).toEqual([
+      '/fleet/odometer?from=2026-10-11&to=2026-10-11',
+      '/fleet/odometer?vehicleCodes=214&from=2026-10-20&to=2026-10-20',
+      '/fleet/odometer?vehicleCodes=B-77&from=2026-10-25&to=2026-10-25',
+    ]);
   });
 
   it('ends a short group on its statement, and an empty one on its own line', () => {

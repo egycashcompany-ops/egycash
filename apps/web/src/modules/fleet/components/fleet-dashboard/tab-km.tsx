@@ -170,6 +170,8 @@ const periodRead = (
 /** Under 1800 px the five cards sit three over two (of six columns); from 1800 px in one row. */
 const THIRD = 'xl:col-span-2 min-[1800px]:!col-span-1';
 const HALF = 'xl:col-span-3 min-[1800px]:!col-span-1';
+/** The R1 card, the fifth: two to a row under 1280 px leave it alone, so it takes that row whole. */
+const NOW_HALF = `${HALF} md:max-xl:col-span-2`;
 /** The four R2 cards' place when R2 has no figures to show (its error stands for them). */
 const R2_SPAN = 'md:col-span-2 xl:col-span-6 min-[1800px]:!col-span-4';
 
@@ -447,7 +449,7 @@ const StaleKpi = ({
       data-km-kpi="stale"
       tone="amber"
       icon={I.clock}
-      className={HALF}
+      className={NOW_HALF}
       title={w('stale.title', { count: count(nr.days), noun: noun('day', nr.days) })}
       tag={<NowChip />}
       figure={
@@ -526,12 +528,12 @@ const Kpis = ({
   let nowCard: ReactNode = null;
   if (r1.state === 'loading') {
     nowCard = (
-      <div data-dash-loading="true" data-km-loading="stale" className={HALF}>
+      <div data-dash-loading="true" data-km-loading="stale" className={NOW_HALF}>
         <Skeleton className="h-[218px] rounded-2xl" />
       </div>
     );
   } else if (r1.state === 'error' || r1.state === 'failed') {
-    nowCard = <SectionError section="noReading" onRetry={props.onRetry} className={HALF} />;
+    nowCard = <SectionError section="noReading" onRetry={props.onRetry} className={NOW_HALF} />;
   } else if (r1.now !== null && r1.links !== null) {
     nowCard = <StaleKpi now={r1.now} links={r1.links} can={can} />;
   }
@@ -843,8 +845,11 @@ const Group = ({
   end: string;
   /** The line of a group with nothing in it. */
   empty: string;
-  /** «و3 سيارات أخرى في القائمة الكاملة» — what «عرض الكل» adds. */
-  more: (n: number) => ReactNode;
+  /**
+   * «و3 سيارات أخرى في القائمة الكاملة» — what «عرض الكل» adds; with no «عرض الكل» (`listed` false)
+   * the line names the rest without pointing at a list the reader cannot open.
+   */
+  more: (n: number, listed: boolean) => ReactNode;
   /** «عرض الكل (N)»'s screen; `null` = no list shows exactly the group (the line is left out). */
   all: DashLink | null;
   section: 'noReading' | 'km';
@@ -905,7 +910,7 @@ const Group = ({
             ? line(
                 'more',
                 <Icon d={I.layers} className="h-4 w-4 shrink-0 text-slate-400" />,
-                more(total - FLEET_DASHBOARD_EXCEPTION_ROWS),
+                more(total - FLEET_DASHBOARD_EXCEPTION_ROWS, all !== null),
               )
             : line(total === 0 ? 'empty' : 'end', tick, total === 0 ? empty : end)}
           {all !== null && total > 0 && (
@@ -953,9 +958,9 @@ const Exceptions = ({
       <N>{count(n)}</N> {word}
     </span>
   );
-  const more = (n: number, word: string): ReactNode => (
+  const more = (n: number, word: string, listed: boolean): ReactNode => (
     <Phrase
-      text={w('exceptions.more')}
+      text={w(listed ? 'exceptions.more' : 'exceptions.moreNoList')}
       parts={{ count: <N className={cn('font-bold', STRONG)}>{count(n)}</N>, noun: word }}
     />
   );
@@ -1008,7 +1013,8 @@ const Exceptions = ({
       <CarCell
         code={row.code}
         typeName={row.typeName}
-        link={record(row.vehicleId, 'km.invalidList.vehicle')}
+        // A car deleted since has no file to open; its «فتح» below opens that day without its code.
+        link={row.deleted ? null : record(row.vehicleId, 'km.invalidList.vehicle')}
       />
       <div className="ms-auto flex items-center gap-3">
         <div className="flex flex-col items-end gap-0.5 text-[13px]">
@@ -1043,7 +1049,10 @@ const Exceptions = ({
         {open(
           periodLink === null
             ? null
-            : periodLink.carKmDay(row.code, row.date, 'km.invalidList.row'),
+            : row.deleted
+              ? // The register's code filter finds live cars only: that day, the row among them.
+                periodLink.kmDay(row.date, 'km.invalidList.row')
+              : periodLink.carKmDay(row.code, row.date, 'km.invalidList.row'),
         )}
       </div>
     </li>
@@ -1072,7 +1081,7 @@ const Exceptions = ({
         rows={staleRows}
         end={w(branch ? 'exceptions.end.staleBranch' : 'exceptions.end.stale')}
         empty={w('stale.allRead')}
-        more={(n) => more(n, noun('car', n))}
+        more={(n, listed) => more(n, noun('car', n), listed)}
         all={
           nowLink === null || nr === null
             ? null
@@ -1098,7 +1107,7 @@ const Exceptions = ({
         rows={neverRows}
         end={w(branch ? 'exceptions.end.neverBranch' : 'exceptions.end.never')}
         empty={w('exceptions.none.never')}
-        more={(n) => more(n, noun('car', n))}
+        more={(n, listed) => more(n, noun('car', n), listed)}
         all={
           nowLink === null || nr === null || !can('fleetVehicle.view')
             ? null
@@ -1124,7 +1133,7 @@ const Exceptions = ({
         rows={reviewRows}
         end={w(branch ? 'exceptions.end.reviewBranch' : 'exceptions.end.review')}
         empty={w('exceptions.none.review')}
-        more={(n) => more(n, readings(n))}
+        more={(n, listed) => more(n, readings(n), listed)}
         all={periodLink === null ? null : periodLink.km('km.invalidList.all')}
         section="km"
         onRetry={props.period.onRetry}

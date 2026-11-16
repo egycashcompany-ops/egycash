@@ -18,7 +18,7 @@
 // readout above the drawing names the column the pointer or the keyboard is on. The foot lines (what
 // is confirmed, what is still open, the spans, the stale cars, the old book's km) are `KmChartNotes`,
 // drawn in the block's ruled foot. Nothing is counted here: every figure is the server's.
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ymdToUtcDate,
@@ -158,6 +158,13 @@ export const KmDayChart = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const model = kmChart(km, data.range, data.today);
   const [picked, setPicked] = useState<number | null>(null);
+  // On a phone the plot is wider than its card: it opens on the latest days — the right end, the
+  // group being dir=ltr — where the readout's day and today are, as the custody charts do.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el !== null) el.scrollLeft = el.scrollWidth;
+  }, [model.columns.length]);
   const daily = model.granularity === 'day';
   const metric = daily ? 'km.day' : 'km.month';
   const linkOf = (column: KmColumn) =>
@@ -294,7 +301,11 @@ export const KmDayChart = ({
             </span>
           ))}
         </div>
-        <div className="min-w-0 flex-1 max-sm:overflow-x-auto max-sm:overscroll-x-contain">
+        <div
+          ref={scrollRef}
+          data-km-scroller="true"
+          className="min-w-0 flex-1 max-sm:overflow-x-auto max-sm:overscroll-x-contain"
+        >
           <div className="max-sm:min-w-[var(--km-plot)]" style={scroller}>
             <div className={cn('relative', PLOT_H)}>
               {model.ticks.map((tick) => (

@@ -780,11 +780,15 @@ describe('/fleet/notices reads the vehicle set — the car’s type, operation a
     expect(registry).toContain(ar('fleet.vehicles.filters.short.operation'));
   });
 
-  it('remembers the set with its other filters, and reads it in its own source', () => {
+  it('remembers the set with its other filters, reads it in its own source, and clears it with the bar', () => {
     for (const param of ['type', 'operation', 'branch']) {
       expect(remembered('NoticesPage.tsx'), `remembers ${param}`).toContain(param);
       expect(readsInSource('NoticesPage.tsx', param), `reads ${param}`).toBe(true);
     }
+    // «إعادة الضبط» drops the set too: a remembered branch never outlives it.
+    expect(source('NoticesPage.tsx').replace(/\s+/gu, ' ')).toMatch(
+      /onClear=\{\(\) => patch\(\{[^}]*\.\.\.CLEAR_VEHICLE_SET,/u,
+    );
   });
 });
 

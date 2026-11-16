@@ -129,6 +129,7 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       {
         vehicleId: 'v154',
         code: '154',
+        deleted: false,
         typeName: ATEGO,
         date: '2026-10-11',
         from: 143_905,
@@ -138,6 +139,7 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       {
         vehicleId: 'v207',
         code: '207',
+        deleted: false,
         typeName: SPRINTER,
         date: '2026-10-20',
         from: 186_420,

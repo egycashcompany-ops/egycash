@@ -1598,6 +1598,7 @@ describe('R2 parity — the company view of October', () => {
       {
         vehicleId: v3.id,
         code: v3.code,
+        deleted: false,
         typeName: expect.objectContaining({ ar: 'ميكروباص' }) as unknown,
         date: '2026-10-15',
         from: 90,

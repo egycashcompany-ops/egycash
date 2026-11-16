@@ -562,6 +562,7 @@ describe('kmBreakdown — «العدادات والكيلومترات»: no dist
       {
         vehicleId: neg.id,
         code: neg.code,
+        deleted: false,
         typeName: expect.objectContaining({ ar: 'مصفحة العداد' }) as unknown,
         date: '2026-10-06',
         from: 9_000,
@@ -759,5 +760,52 @@ describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قر
     expect((await get(URL, {}, maintenanceOnly)).status).toBe(200);
     expect((await get(URL, {}, strangerToken)).status).toBe(403);
     expect((await request(app).get(`/api/v1${URL}`)).status).toBe(401);
+  });
+});
+
+describe('kmBreakdown — a car deleted after its row to review (no dead link)', () => {
+  // Last in the file and in August, so the October world above is untouched.
+  const AUGUST = { from: '2026-08-01', to: '2026-08-31' };
+  const ctx = { today: '2026-11-03', staleDays: 3, byType: false, setNarrows: false };
+
+  it('keeps the row, flags the car deleted (its file is 404); its day lists it, its code does not', async () => {
+    const late = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
+    await FleetOdometerLogModel.create([
+      bookRow({
+        vehicleId: new Types.ObjectId(late.id),
+        date: day('2026-08-12'),
+        outReading: 5_000,
+        inReading: 4_960,
+        km: -40,
+      }),
+    ]);
+    const del = await request(app)
+      .delete(`/api/v1/fleet/vehicles/${late.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect([200, 204]).toContain(del.status);
+
+    const km = await fleetOdometerService.kmBreakdown(AUGUST, ctx);
+    expect(km.invalidList).toEqual([
+      {
+        vehicleId: late.id,
+        code: late.code,
+        deleted: true,
+        typeName: expect.objectContaining({ ar: 'مصفحة العداد' }) as unknown,
+        date: '2026-08-12',
+        from: 5_000,
+        to: 4_960,
+        km: -40,
+      },
+    ]);
+    // The web gives this row no car link: the car's file is no longer served.
+    expect((await get(`/fleet/vehicles/${late.id}`)).status).toBe(404);
+    // The register's code filter finds live cars only — so the web's «فتح» for this row opens
+    // that ONE day without the code (`kmDay`), under the set's types, which reach deleted cars.
+    const byCode = await listed({ vehicleCodes: late.code, from: '2026-08-12', to: '2026-08-12' });
+    expect(byCode).toEqual([]);
+    const theDay = await listed({ typeIds: [T1], from: '2026-08-12', to: '2026-08-12' });
+    expect(theDay.filter((r) => r.vehicleId === late.id).map((r) => [r.outReading, r.km])).toEqual([
+      [5_000, -40],
+    ]);
   });
 });

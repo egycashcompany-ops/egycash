@@ -338,6 +338,10 @@ class FleetNoticeService {
    * missing both twice. Same `noticeFilter`, same `withCodes(ctx)` as `summary`, so a reader who may
    * not open a registry licence is counted as the screen shows it to them; `status` is always
    * `open` (the alert is about notices still to be completed), whatever else the query narrows.
+   *
+   * No production caller since the dashboard reads `dashboardDigest` (which shares `missingAny`):
+   * kept as the union rule on its own, the oracle the digest's parity spec and
+   * notice-missing-any.spec.ts check it against.
    */
   async missingAnyCount(query: FleetNoticesSummaryQuery, ctx?: AuthContext): Promise<number> {
     const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);

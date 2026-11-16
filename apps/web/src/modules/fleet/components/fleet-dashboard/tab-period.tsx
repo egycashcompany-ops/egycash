@@ -56,7 +56,7 @@ export interface PeriodBodyProps {
 }
 
 /** The server could not compute this section (it is also `null`). */
-export const sectionFailed = (
+const sectionFailed = (
   data: FleetDashboardPeriodDto,
   section: FleetDashboardPeriodSection,
 ): boolean => (data.unavailable as readonly string[]).includes(section);

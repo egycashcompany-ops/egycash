@@ -501,6 +501,8 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
       return {
         vehicleId: row.vehicleId,
         code: car?.code ?? row.vehicleCode ?? '—',
+        // A car deleted since keeps its rows here (they are still to review) but has no file.
+        deleted: car?.isDeleted === true,
         typeName: makeOf(car),
         date: row.date,
         from,

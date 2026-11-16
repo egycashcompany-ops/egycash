@@ -326,6 +326,7 @@ const built = (): Anchor[] => {
       P.accidents('accidents.open', 'open'),
       P.carKm('133', 'km.top'),
       P.carKmDay('133', '2026-10-11', 'km.invalidList.row'),
+      P.kmDay('2026-10-11', 'km.invalidList.row'),
       P.vehiclesByCodes(['133', '141'], 'km.noDistance'),
     );
   }

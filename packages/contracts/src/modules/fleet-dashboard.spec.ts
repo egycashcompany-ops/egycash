@@ -1096,6 +1096,7 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
         {
           vehicleId: ID_A,
           code: '150',
+          deleted: false,
           typeName: name,
           date: '2026-11-02',
           from: 84210,
@@ -1106,6 +1107,7 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
           // An old-book code with no registry car.
           vehicleId: null,
           code: '9001',
+          deleted: false,
           typeName: null,
           date: '2026-11-05',
           from: 1200,
@@ -1141,6 +1143,8 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
     for (const row of km.invalidList) {
       expect(row.km, row.code).toBeLessThan(0);
       expect(row.to, row.code).toBe(row.from + row.km);
+      // Only a registry car can have been deleted since.
+      if (row.vehicleId === null) expect(row.deleted, row.code).toBe(false);
     }
     // The oldest day first.
     expect(km.invalidList.map((row) => row.date)).toEqual(

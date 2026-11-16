@@ -498,6 +498,17 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
     carKmDay: (code: string, day: string, metric: string): DashLink =>
       at('odometer', { vehicleCodes: [code], from: day, to: day }, metric),
     /**
+     * «فتح» on a review row whose car was DELETED since: the register's code filter finds live cars
+     * only, so that ONE day under the period's types, operations and branches (which do reach a
+     * deleted car's history, D10) and without the codes — the row is among them.
+     */
+    kmDay: (day: string, metric: string): DashLink =>
+      at(
+        'odometer',
+        { from: day, to: day, type: set.type, operation: set.operation, branch: set.branch },
+        metric,
+      ),
+    /**
      * «سيارات بلا مسافة في الفترة» (and «منها N لم تُقرأ أبدًا»): those cars on the vehicles list, by
      * the codes the server sent — `null` when there are none or more than the screens' cap (the
      * server sends `[]` then), so the figure stands plain.

@@ -434,6 +434,7 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
       {
         vehicleId: '209',
         code: '209',
+        deleted: false,
         typeName: { ar: 'مصفحة', en: 'Armoured' },
         date: '2026-10-15',
         from: 4000,
@@ -570,6 +571,7 @@ describe('«العدادات والكيلومترات» · coverage parts, the c
       {
         vehicleId: null,
         code: 'كوستر',
+        deleted: false,
         typeName: null,
         date: '2026-10-02',
         from: 300,
@@ -579,6 +581,7 @@ describe('«العدادات والكيلومترات» · coverage parts, the c
       {
         vehicleId: '403',
         code: '403',
+        deleted: false,
         typeName: { ar: 'مصفحة', en: 'Armoured' },
         date: '2026-10-05',
         from: 1200,
@@ -588,6 +591,7 @@ describe('«العدادات والكيلومترات» · coverage parts, the c
       {
         vehicleId: '401',
         code: '401',
+        deleted: false,
         typeName: { ar: 'مصفحة', en: 'Armoured' },
         date: '2026-10-20',
         from: 7000,
@@ -602,6 +606,23 @@ describe('«العدادات والكيلومترات» · coverage parts, the c
       vehicles: fleet(car('404', { typeId: 'T9' })),
     });
     expect(nameless.invalidList[0]?.typeName).toBeNull();
+  });
+
+  it('a car deleted since keeps its readings to review, flagged deleted (it has no file any more)', () => {
+    const out = breakdown({
+      rows: [row('405', '2026-10-03', 900, -40), row('406', '2026-10-04', 500, -10)],
+      vehicles: fleet(car('405', { isDeleted: true }), car('406')),
+    });
+    expect(out.invalidRows).toBe(2);
+    expect(out.invalidList.map(({ code, deleted }) => ({ code, deleted }))).toEqual([
+      { code: '405', deleted: true },
+      { code: '406', deleted: false },
+    ]);
+    // Still named by its registry code and make.
+    expect(out.invalidList[0]).toMatchObject({
+      vehicleId: '405',
+      typeName: { ar: 'مصفحة', en: 'Armoured' },
+    });
   });
 
   it('a ranked car whose make has no name carries none', () => {

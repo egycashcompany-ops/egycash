@@ -1,15 +1,18 @@
 // The two pools of «لوحة التشغيلة» — القادة and الأخصائيون — at the board's END: on the left in
 // Arabic, as the legacy board had its two columns of names beside the table.
 //
-//   · القادة: green chips, and BLUE ones — the specialists ticked «قائد» too, who may take either a
-//     captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى»);
-//   · الأخصائيون: red chips.
+//   · القادة: green chips, and BLUE ones — the specialists ticked «قائد» too, the ONLY ones who may
+//     take either a captain's or a specialist's slot («اقدر اوظفهم ك قائد او اخصائى»; since Round 23
+//     nobody else may cross: «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى») —
+//     listed AFTER the green ones, in the free part and the placed part alike («لو قائد واخصائى يبقى
+//     فى القايمة بتاعت القائد بس يكونوا فى الاخر»; the order is `listPool`'s);
+//   · الأخصائيون: red chips — never a blue one.
 //
 // What the colours mean is said once, in the toolbar (`RoleLegend`). Each pool counts its people (and how many are still free), searches by name or code — folded,
 // so «احمد» finds «أحمد» — and filters by the requirement icons (AND, as legacy's buttons). Somebody
 // already on a row stays LISTED, after the free ones, dimmed, with where they sit: the pool answers
 // «where is he», and dragging him from here moves him. Dropping a chip back onto either pool frees it.
-import { type DragEvent, type HTMLAttributes, type ReactNode } from 'react';
+import { type DragEvent, type ReactNode } from 'react';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
@@ -19,12 +22,54 @@ import { NUM } from '../../fleet/components/FuelCardBoard';
 import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
 import { PLAN_FLAGS, type PlanFlag, type PlanPool, type PlanPoolQuery } from '../lib/crew-plan';
 import { CrewPlanChip } from './CrewPlanChip';
-import { FLAG_PATH } from './crew-plan-icons';
+import { FLAG_PATH, useFlagTip } from './crew-plan-icons';
 
 /** The pool's colour along its top, as legacy's green and red columns. */
 const ACCENT: Record<PlanPool, string> = {
   captains: 'border-t-emerald-500 dark:border-t-emerald-600',
   specialists: 'border-t-rose-500 dark:border-t-rose-600',
+};
+
+/**
+ * One icon filter — its name in the tip on hover and on a keyboard focus (Round 22: «يبقى فشكل احسن
+ * من كدا», the browser's `title` before), and in its `aria-label` with its pool's.
+ */
+const PoolFlagFilter = ({
+  flag,
+  on,
+  label,
+  quiet,
+  onToggle,
+}: {
+  flag: PlanFlag;
+  on: boolean;
+  label: string;
+  /** A chip is being dragged: no tip. */
+  quiet: boolean;
+  onToggle: () => void;
+}): JSX.Element => {
+  const tip = useFlagTip(flag, quiet);
+  return (
+    <>
+      <button
+        type="button"
+        data-pool-flag={flag}
+        aria-pressed={on}
+        aria-label={label}
+        {...tip.triggerProps}
+        onClick={onToggle}
+        className={cn(
+          'flex h-6 min-w-0 items-center justify-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
+          on
+            ? 'border-brand-500 bg-brand-500 text-white dark:border-brand-400 dark:bg-brand-500'
+            : 'border-slate-300 bg-white text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-400 dark:hover:text-brand-300',
+        )}
+      >
+        <StrokeIcon d={FLAG_PATH[flag]} className="h-3.5 w-3.5" width={2} />
+      </button>
+      {tip.tip}
+    </>
+  );
 };
 
 export interface PoolChipHandlers {
@@ -60,14 +105,14 @@ export const CrewPlanPool = ({
   query: PlanPoolQuery;
   onQueryChange: (next: PlanPoolQuery) => void;
   chips: PoolChipHandlers;
-  /** The pool is where a chip comes off the board — by drag, or by the button below. */
+  /**
+   * The pool is where a chip comes off the board — by drag, or by the button below. It only LIGHTS:
+   * the board's frame takes every drop and finds the pool from `data-plan-pool` (Round 22), so the
+   * whole pool, its header included, is the target.
+   */
   drop: {
     armed: boolean;
     over: boolean;
-    handlers: Pick<
-      HTMLAttributes<HTMLElement>,
-      'onDragOver' | 'onDragEnter' | 'onDragLeave' | 'onDrop'
-    >;
   };
   /** A seated chip is picked up: the keyboard's way to send it back. */
   returnSelected: ReactNode;
@@ -143,33 +188,20 @@ export const CrewPlanPool = ({
           role="group"
           aria-label={t('operations.crewPlan.pools.filters')}
         >
-          {PLAN_FLAGS.map((flag) => {
-            const on = query.flags.includes(flag);
-            return (
-              <button
-                key={flag}
-                type="button"
-                data-pool-flag={flag}
-                aria-pressed={on}
-                aria-label={`${t(`operations.crew.flag.${flag}`)} — ${title}`}
-                title={t(`operations.crew.flag.${flag}`)}
-                onClick={() => toggle(flag)}
-                className={cn(
-                  'flex h-6 min-w-0 items-center justify-center rounded-md border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
-                  on
-                    ? 'border-brand-500 bg-brand-500 text-white dark:border-brand-400 dark:bg-brand-500'
-                    : 'border-slate-300 bg-white text-slate-500 hover:border-brand-400 hover:text-brand-600 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-400 dark:hover:text-brand-300',
-                )}
-              >
-                <StrokeIcon d={FLAG_PATH[flag]} className="h-3.5 w-3.5" width={2} />
-              </button>
-            );
-          })}
+          {PLAN_FLAGS.map((flag) => (
+            <PoolFlagFilter
+              key={flag}
+              flag={flag}
+              on={query.flags.includes(flag)}
+              label={`${t(`operations.crew.flag.${flag}`)} — ${title}`}
+              quiet={chips.dragging !== null}
+              onToggle={() => toggle(flag)}
+            />
+          ))}
         </div>
       </header>
 
       <div
-        {...drop.handlers}
         data-pool-drop={pool}
         data-drop-over={drop.over ? 'true' : undefined}
         className={cn(
@@ -201,6 +233,7 @@ export const CrewPlanPool = ({
             dragging={chips.dragging === member.employeeId}
             canPlan={chips.canPlan}
             placedAt={chips.placedAt(member.employeeId)}
+            dragActive={chips.dragging !== null}
             onSelect={() => chips.onSelect(member.employeeId)}
             onDragStart={(event) => chips.onDragStart(member.employeeId, event)}
             onDragEnd={chips.onDragEnd}

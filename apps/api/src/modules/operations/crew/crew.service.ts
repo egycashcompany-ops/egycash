@@ -17,11 +17,18 @@
 //     upsert; unchanged rows are pure no-ops (no write, no audit, no event).
 //   · APPROVED DECISION 1 (design header): absence/attendance is NOT an eligibility gate here —
 //     no availability seam is consulted, unlike the fleet roster's FR-6. Deliberate.
+//     ROUND 22 — the owner reversed it for a NEW placement: «لو القائد غايب ... مقدرش احطه على
+//     العربيه و كذلك الاخصائيين». Somebody HR has absent or on leave on the day may not be newly
+//     put on a row (`OPERATIONS_CREW_MEMBER_ABSENT`); somebody already on it stays (see `plan`).
 //   · APPROVED DECISION 2: requirements flags (leader/selah/…) gate NOTHING server-side — they
-//     were pool decoration and browser filters in legacy (discovery §9). No role check on any
-//     slot. Employees are validated to EXIST (and not be exited) through the platform directory
-//     seam — reference integrity for the normalized ids, the fleet driver-profile precedent —
-//     nothing more.
+//     were pool decoration and browser filters in legacy (discovery §9). Employees are validated to
+//     EXIST (and not be exited) through the platform directory seam — reference integrity for the
+//     normalized ids, the fleet driver-profile precedent.
+//     ROUND 23 — the owner reversed it for the two ROLE flags: «ممنوع ان اعين قائد مكان اخصائى
+//     والعكس الا فى حالة انه قائد اخصائى». Somebody NEWLY put in a slot must fit it — «قائد الطاقم» a
+//     captain or a captain-specialist, «أخصائي 1/2» a specialist or a captain-specialist
+//     (`OPERATIONS_CREW_MEMBER_WRONG_SLOT`, `crew-roles.ts`); somebody already in that slot stays.
+//     Weapon, signature, licence and the rest still gate nothing.
 //   · The day row is ensured on plan (get-or-create): legacy has no day entity, so demanding an
 //     explicit create-day step before planning would invent ceremony. No day-status gate on
 //     planning — legacy planning is lockless; execution slices gate on OPEN, not this one.
@@ -80,6 +87,8 @@ import { operationsStandingCrewRepository } from '../standing-crew/standing-crew
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
 import { hasVan, type OperationsCrewAssignmentDoc } from './crew-assignment.model';
 import { crewMembers, slotIds } from './crew-slots';
+import { crewAvailabilityOn } from './crew-requirements.service';
+import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from './crew-roles';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
@@ -305,9 +314,10 @@ class OperationsCrewService {
     }
 
     // Reference integrity for the normalized employee ids, through the directory seam (the fleet
-    // driver-profile precedent). Existence and not-exited ONLY — no role, department, flag or
-    // attendance check, per the approved parity decisions.
-    for (const employeeId of new Set(input.rows.flatMap(rowCrew))) {
+    // driver-profile precedent): existence and not-exited. Attendance (Round 22) and the role a
+    // slot takes (Round 23) are asked separately, below; no department or other flag is checked.
+    const people = [...new Set(input.rows.flatMap(rowCrew))];
+    for (const employeeId of people) {
       const employee = await getDirectoryEmployee(employeeId);
       if (employee === null) {
         throw new ValidationError([
@@ -318,6 +328,15 @@ class OperationsCrewService {
         throw new ConflictError(`employee ${employeeId} has exited and cannot be assigned`);
       }
     }
+
+    // Round 22: who of the save's people HR has away on the day — the pool's own answer
+    // (`crewAvailabilityOn`), read once and outside the transaction: HR owns these facts.
+    // Round 23: what each of them IS — captain, specialist, or both — in ONE read of «متطلبات
+    // الطاقم» for all of them, never one per person.
+    const [away, roles] = await Promise.all([
+      crewAvailabilityOn(people, day),
+      crewRolesOf(people),
+    ]);
 
     const dayDoc = await operationsDayService.ensureForDate(day, by);
 
@@ -375,6 +394,50 @@ class OperationsCrewService {
           }
         }
       }
+
+      // ROUND 22 — «لو القائد غايب ... مقدرش احطه على العربيه و كذلك الاخصائيين»: nobody HR has away
+      // that day (absent, or on leave) is NEWLY put on a row. Somebody ALREADY on that row before
+      // this save passes unchecked — planned before HR recorded the absence — exactly as a row keeps
+      // a type it already holds, so the planner can still save the row's other changes and take the
+      // person off when he chooses. "That row" is the row itself: a person moved from another row,
+      // a row without a van given a van included, is being put on a van, which is what the owner
+      // forbids for somebody away. Refused per ROW, so the board marks the row that placed him.
+      input.rows.forEach((row, index) => {
+        const current = currentOf[index];
+        const already = new Set(current === undefined ? [] : crewMembers(current));
+        for (const employeeId of rowCrew(row)) {
+          const availability = away.get(employeeId);
+          if (availability === undefined || already.has(employeeId)) continue;
+          throw new AppError(
+            ErrorCodes.OPERATIONS_CREW_MEMBER_ABSENT,
+            422,
+            `employee ${employeeId} is ${availability === 'absent' ? 'absent' : 'on leave'} on this day and cannot be put on a crew row`,
+            {
+              details: [
+                {
+                  field: 'employeeId',
+                  code: availability === 'absent' ? 'ABSENT' : 'ON_LEAVE',
+                  message: employeeId,
+                },
+                rowIndexDetail(index),
+              ],
+            },
+          );
+        }
+      });
+
+      // ROUND 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: nobody is
+      // NEWLY put in a slot his role does not fit (`refuseWrongSlots`). Somebody ALREADY in that SAME
+      // slot of that SAME row before this save passes unchecked — seated before this rule, or
+      // before «متطلبات الطاقم» changed his flags — as an archived type stays on the row that holds
+      // it and a person marked absent after he was planned keeps his seat: the planner can still
+      // save the row's other changes, and the board marks the seat until he is taken out. Another
+      // slot of the row, another row, or a row without a van given a van is a new seat, held to
+      // the rule. Refused per ROW, so the board rings him on the row that placed him.
+      refuseWrongSlots(input.rows, roles, (index, slot) => {
+        const current = currentOf[index];
+        return current === undefined ? [] : slotIds(current[CREW_SLOT_FIELD[slot]]);
+      });
 
       // WHAT A ROW MAY KEEP WITHOUT A CHECK — its own saved type and direction, or those of a row
       // removed in the same save (a row without a van given a van carries them onto the van's

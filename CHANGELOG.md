@@ -523,10 +523,42 @@ its entry here in the same PR.
       down, the first box's leading zeros kept), never over a box typed by hand, again whenever
       an end or the count changes — and a run that does not fit fills nothing and is said beside
       the list's summary. Cartons stay a plain count with no seals.
+    - Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو» (said over the form with bags
+      1 … 6 and boxes 1 and 3): within ONE receipt a seal number appears once, the bags and the
+      boxes read as one list, and a seal typed twice in its own list is the same fault — now a
+      refusal, where it was an amber «مكرر». "The same seal" has one definition, in the contract
+      (`vaultSealKey`): digits compared as whole numbers (0099 = 99, Arabic-Indic digits counted),
+      anything else as typed, trimmed, and an invisible direction mark pasted in with a number
+      ignored (two boxes that both show 12 are one seal). `POST /operations/secured/:id/receive` answers 400
+      `VALIDATION_FAILED` on the later occurrence (`body.boxSeals.1`, at the index sent), its
+      message naming the seal and where it first appeared, and writes nothing. The form marks
+      every box holding a repeat red (a number the range fill wrote included, its title saying
+      where else the seal is), says it once under the seals — «الرقمان 1 و3 مكرران — في الحقائب
+      والصناديق» — and holds «استلام» until it is corrected; a refusal of it from the server is
+      said there in the same words. Cartons have no seals; other shipments' seals are not compared.
+    - Round 21b — asked whether a seal already recorded on another محصنة should be refused, the
+      owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». A receipt is
+      refused while any of its seals (bags or boxes, by `vaultSealKey`) is a seal of ANOTHER محصنة
+      the vault still holds — its custody `held`, the receipt not cancelled, the vault inventory's
+      own set; one that came in and went out again (released to its van, dispatched, completed) or
+      whose receipt was cancelled may repeat. `POST /operations/secured/:id/receive` answers 409
+      `OPERATIONS_SEAL_HELD_IN_VAULT`, one detail per seal (`bagSeals.1` as stored, the held
+      shipment's id), and writes nothing — the vault's corrections of the shipment included; the
+      held seals are read once, in the receipt's own transaction. `POST
+      /operations/secured/seal-check` (`operationsVault.receive`) answers which of a list of seals
+      the vault holds and on which محصنة (bank, branches, receipt number). The form asks it once
+      the typing pauses — stale checks cancelled — marks a held seal's boxes red like a repeat
+      («موجود في الخزينة على المحصنة: …»), says it in the same one notice under the seals («الرقم 7
+      موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)») and holds «استلام»; a 409 marks the
+      seals it names, and a check that fails holds nothing — the receipt decides. Two treasurers
+      receiving the same seal in the same instant can both be taken (documented in the service):
+      closing it would serialise every receipt on a lock document, for a mistyped number twice in
+      one transaction's time — both receipts are kept, and the first to take it answers for it.
   - «كشف طاقم العمليات» after the legacy screen: «عاوز احسن الui بتاع الشاشة دى دا كان القديم برضو
     القى نظره».
-    - The Operations boards' look: the title in the toolbar with the hint («هذه مؤشرات وليست
-      شروطًا …») a line under it, the figures over the rows shown («الأفراد», «القادة»,
+    - The Operations boards' look: the title in the toolbar with the hint a line under it (since
+      Round 23 it says that «قائد» and «أخصائي» decide the crew board's slot and the other flags
+      are indicators, not conditions), the figures over the rows shown («الأفراد», «القادة»,
       «الأخصائيون»), the one-row dark filter bar, the dark table, the boards' pager past 50 rows.
       The «not configured» notice stays, as a slim line ending on «إدارات العمليات».
     - Columns الاسم | الوظيفة, then all ten flags, «قائد» and «أخصائي» first and the legacy order
@@ -590,6 +622,29 @@ its entry here in the same PR.
       any of the day's rows. A row without a van counts, though `assignedVehicleId` has no vehicle
       to name for it. The page's «معيَّن» badge reads it, so a person on such a row still shows as
       crewed.
+    - Round 22 — «وعاوز لو القائد غايب يظهر تحت الكل … ومقدرش احطه على العربيه و كذلك الاخصائيين»:
+      each pool member carries `availability` for the requested day — 'absent' or 'onLeave' from
+      HR's day record, else 'onLeave' when HR has no record yet and an approved or active leave
+      covers the day (HR computes a day only once it is over, so for tomorrow leave is the only
+      fact), else null. An unknown is not an absence. It is one attendance read and one leave read
+      for the whole roster, served under `operationsCrew.view` (only the bucket). The save refuses
+      to NEWLY put an away person on a row: 422 `OPERATIONS_CREW_MEMBER_ABSENT`, naming him
+      (`employeeId`, `ABSENT` / `ON_LEAVE`) and the row (`ROW_INDEX`), with nothing written. Someone
+      already on that row stays, so the row's other changes still save; moved to another row, he
+      is refused.
+    - Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: the save refuses
+      to NEWLY put somebody in a slot his role does not fit — a captain-only in «أخصائي 1/2», or a
+      specialist (also anybody ticked neither, or with no requirements row) in «قائد الطاقم»; a
+      captain-specialist fits every slot. 422 `OPERATIONS_CREW_MEMBER_WRONG_SLOT`, naming him
+      (`employeeId`, `NOT_A_CAPTAIN` / `NOT_A_SPECIALIST`) and the row (`ROW_INDEX`), with nothing
+      written. The roles come from «متطلبات الطاقم» in one read for all the save's people. Somebody
+      already in that same slot of that same row stays (seated before the rule, or before his flags
+      changed), so the row's other changes still save; another slot or another row is a new seat.
+      The standing crew's save holds to the same rule. «قائد» and «أخصائي» are the only requirement
+      flags that decide anything; what they make a person and which slot that fits
+      (`crewRoleOf`, `fitsCrewSlot`) are in the contracts, one definition for the server and the
+      board. This replaces the Round-20 default the owner never asked for: a specialist in a
+      captain's slot was marked, not refused.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the
@@ -610,6 +665,60 @@ its entry here in the same PR.
         whole list dragged into order (the arrows for a keyboard), a form with the palette's
         eleven swatches and the type drawn as the board draws it, and archive or restore in one
         click.
+      - Round 22, the owner on the live board — «مش راضى يخلينى احط ولا قادة ولا اخصائيين على
+        العربيه … بسحب الاسم بالماوس وبيرجع تانى اكنى متحطش»:
+        - A — the drop no longer hangs on what the browser shows of a drag: the whole board takes
+          the drag, the drop decides (on a slot that slot, anywhere on a row the slot the role
+          takes, the vehicle's cell included), a full slot is said in words, nothing re-draws in
+          `dragstart`, and another desk's save is rebased under an unsaved draft, not over it.
+        - B — «القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر»: the blue ones after the green.
+        - C, D — «لما اقف على سلاح او مزولة … يبقى فشكل احسن» and «لما اقف على القائد يظهر فى كارد زى
+          السواق فى الحركة»: a tip in the cards' frame on every requirement icon, and the Fleet
+          driver card's look on every name, with the role, where he sits and his attendance.
+        - E — «وعاوز مكان عند العربيه زى الحركة كدا لما ادوس عليه يجيب قايمة الناس اللى اختار
+          منهم»: an empty slot says «+ اختيار قائد» / «+ اختيار أخصائي» and a half-full one has a «+»
+          beside its ✕; either opens the people to pick from, as Fleet's «+ اختيار سائق» does —
+          the people the slot takes (only those since Round 23, below), a search by name or code,
+          free first, then who sits elsewhere (picking him moves him), with the role's colour, the
+          code, the icons and «متاح N». A pick runs the drop's own rule. The keyboard works it throughout (arrows,
+          Enter, Escape); a phone gets Fleet's bottom sheet. Picking a name first, then «ضع هنا»,
+          stays.
+        - F — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على
+          العربيه و كذلك الاخصائيين»: somebody HR has absent or on leave that day is listed last in
+          his pool, pale, «غائب» / «إجازة» on him, and cannot be dragged, picked up or picked (the
+          list shows him last, closed, with why); every slot refuses him in red with the reason,
+          and «متاح N» leaves him out. The standing crew leaves him off and names him; a row
+          holding him is given no van. Seated before HR recorded it, he is ringed and marked,
+          stays until taken off, and the save passes; the server's
+          `OPERATIONS_CREW_MEMBER_ABSENT` rings his chip on the row it names and says his name.
+          The pool is read for the board's own day — on the default board (tomorrow) too, where the
+          roster asked without a date would have answered for today.
+      - Round 23, the owner — «فى مشكلتين الاولى ان قولتلك لو قائد واخصائى يبقى فى القايمة بتاعت القائد
+        بس يكونوا فى الاخر دلوقتي فى الاول والتانية ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة
+        انه قائد اخصائى»:
+        - The first: a captain-specialist (blue) is listed in «القادة» only, after every green
+          captain — in its free part and its placed part — and never in «الأخصائيون»; the same in
+          every slot's list and in the standing crew's «قادة الأطقم». He saw them first because
+          production still runs Round 20; Round 22's B, which put them last, ships in this PR.
+        - The second: a captain goes only in «قائد الطاقم», a specialist only in «أخصائي 1/2», a
+          captain-specialist anywhere. A drop aimed at a slot not his is refused in words — «لا يُعيَّن
+          قائد في خانة أخصائي» / «لا يُعيَّن أخصائي في خانة القائد», then whom that slot takes — and
+          the slot shows red with «للقادة فقط» / «للأخصائيين فقط» while he hovers; a drop on the row
+          routes him only into slots he fits. A slot's list offers only who fits it: «قائد الطاقم»
+          the captains, then the captain-specialists; «أخصائي 1/2» the specialists, then the
+          captain-specialists. They are folded in, last in each part, not given a tab: a tab hides
+          the fallback, and a free captain-specialist should come before people who would have to
+          be moved off another van. The tab to the other pool is gone (it held only people the slot
+          refuses); a strip says who is offered and «متاح N». «اختر ثم ضع هنا» lights only the slots
+          he fits.
+        - Somebody seated so before the rule keeps the seat, ringed in dashed amber with «ليس
+          قائدًا» / «ليس أخصائيًا» and the reason, until the planner takes him out; a row holding him
+          is given no van. «الطاقم الثابت» leaves such a seat empty on the day and names whom it
+          left off, as it does somebody away. The standing crew's editor refuses the same drops,
+          and a captain moving with his crew leaves behind a companion the slot no longer fits. The
+          server's `OPERATIONS_CREW_MEMBER_WRONG_SLOT` is worded in both languages and rings the
+          chip on the row it names. «كشف طاقم العمليات» no longer tells the operator that anybody
+          may take any slot: its hint says which slot each role takes.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
@@ -1235,6 +1344,22 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **HR: an external employee's code can be changed to one with letters.** «لما باجي أغير كود الموظف
+  (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». «تغيير كود الموظف» held
+  every employee to the company's digits, so an external person's code, registered with letters,
+  could not be corrected to another with letters. The rule is now the person's own
+  (`employeeCodePatternFor`): an external employee's new code takes Latin letters, digits and a hyphen,
+  2 to 20 characters, exactly as their registration does, and the dialog says that shape and opens a
+  full keyboard for them. Everybody else's code stays 3 branch digits then at least 4 of number; the
+  boundary admits either shape, and the service refuses the wrong one for the person with a 400.
+  - The dialog's own «هذا الكود مستخدم لموظف آخر» never showed: it waited for a `CONFLICT` code the
+    server does not send (a taken code is `DUPLICATE`), so the English server sentence appeared
+    instead. A code another ACCOUNT signs in with — refused whole so the employee is not left signing
+    in under somebody else's name — now carries a `username` detail and has its own message.
+  - No employee number is read out of an external code any more: `EX-2900` no longer holds number
+    2900 against an ordinary employee's code at registration or in the code check, and an all-digit
+    external code no longer counts as «آخر كود». Their permanent employee number still does.
 
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح

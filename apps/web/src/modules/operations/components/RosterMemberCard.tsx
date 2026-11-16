@@ -18,6 +18,7 @@
 // phone». The roster itself is read under that grant, so today everyone who can open this screen
 // gets the line; the guard stays so the card never shows a phone line the server sent nothing for,
 // should the roster ever be read under another grant.
+import { type ReactNode } from 'react';
 import { type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -37,6 +38,110 @@ import { CardHead, Figure, PersonIcon, useBranchName } from './BoardCrewCards';
 const CHECK = 'M5 13l4 4L19 7';
 
 /**
+ * The person's own facts — the Fleet driver card's: the code, «الوظيفة», the mobile number (only for
+ * a reader the server sends it to) and the branch, named from the shared list. Lines of a
+ * `HOVER_CARD_FACTS` grid, so a card adds its own lines after them. Shared with the person card on
+ * «لوحة التشغيلة» (`CrewPlanMemberCard`, Round 22): one person card for Operations, two screens.
+ */
+export const CrewPersonFacts = ({
+  member,
+  mayReadCrew,
+}: {
+  member: OperationsCrewMemberDto;
+  mayReadCrew: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const branch = useBranchName(member.branchId);
+  return (
+    <>
+      <Fact label={t('fleet.drivers.columns.employeeCode')}>
+        <Figure>{member.code}</Figure>
+      </Fact>
+      <Fact label={t('operations.crew.requirements.jobTitle')}>
+        {member.jobTitle === null ? (
+          <Missing />
+        ) : (
+          member.jobTitle.name[locale] || member.jobTitle.name.ar
+        )}
+      </Fact>
+      {mayReadCrew && (
+        <Fact label={t('fleet.drivers.columns.phone')}>
+          {member.phone === null ? <Missing /> : <Figure>{member.phone}</Figure>}
+        </Fact>
+      )}
+      <Fact label={t('fleet.drivers.columns.branch')}>
+        {branch === null || branch === 'loading' ? (
+          <Missing loading={branch === 'loading'} />
+        ) : (
+          branch
+        )}
+      </Fact>
+    </>
+  );
+};
+
+/**
+ * «يحمل» — what they hold, under a rule and across the card's whole width: four chips squeezed into
+ * the value column stood one per line.
+ */
+export const CardHeld = ({ children }: { children: ReactNode }): JSX.Element => {
+  const t = useT();
+  return (
+    <dl className="mt-2.5 border-t border-slate-200 pt-2 text-[13px] leading-snug dark:border-[#2b3b6b]">
+      <dt className="font-semibold text-slate-500 dark:text-slate-400">
+        {t('operations.crew.requirements.holds')}
+      </dt>
+      <dd className="mt-1.5">{children}</dd>
+    </dl>
+  );
+};
+
+/** «لا يحمل شيئًا مسجلًا» — a row with every flag off, or no row yet: either way nothing on file. */
+export const CarriesNothing = (): JSX.Element => {
+  const t = useT();
+  return (
+    <span className="font-semibold text-slate-500 dark:text-slate-400">
+      {t('operations.crew.flag.carriesNothing')}
+    </span>
+  );
+};
+
+/**
+ * One flag held, as a chip that says its name in words after a small mark — the card is a tooltip,
+ * so an icon alone would have nothing to hover for its name.
+ */
+export const HeldChip = ({
+  mark,
+  children,
+}: {
+  mark: ReactNode;
+  children: ReactNode;
+}): JSX.Element => (
+  <span
+    className={cn(
+      'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold leading-4',
+      'bg-emerald-500/15 text-emerald-800 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-200',
+    )}
+  >
+    {mark}
+    {children}
+  </span>
+);
+
+/** The ✓ in its green circle — the roster's mark for a flag held. */
+const HeldCheck = (): JSX.Element => (
+  <span
+    aria-hidden
+    className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+  >
+    <svg viewBox="0 0 24 24" className="h-2 w-2" fill="none" stroke="currentColor" strokeWidth={4}>
+      <path d={CHECK} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  </span>
+);
+
+/**
  * What the member card says, from the roster's own row. Exported for the specs. `mayReadCrew`: the
  * reader holds `operationsCrew.view` — without it the server sends no phone, and the card has no
  * phone line.
@@ -49,82 +154,27 @@ export const RosterMemberCardBody = ({
   mayReadCrew: boolean;
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const branch = useBranchName(member.branchId);
   const held = heldFlags(member);
   return (
     <div data-roster-card="true">
       {/* The WHOLE name, wrapped — the table's column may cut it to two lines. */}
       <CardHead icon={<PersonIcon />}>{member.fullNameAr}</CardHead>
       <dl className={HOVER_CARD_FACTS}>
-        <Fact label={t('fleet.drivers.columns.employeeCode')}>
-          <Figure>{member.code}</Figure>
-        </Fact>
-        <Fact label={t('operations.crew.requirements.jobTitle')}>
-          {member.jobTitle === null ? (
-            <Missing />
-          ) : (
-            member.jobTitle.name[locale] || member.jobTitle.name.ar
-          )}
-        </Fact>
-        {mayReadCrew && (
-          <Fact label={t('fleet.drivers.columns.phone')}>
-            {member.phone === null ? <Missing /> : <Figure>{member.phone}</Figure>}
-          </Fact>
+        <CrewPersonFacts member={member} mayReadCrew={mayReadCrew} />
+      </dl>
+      <CardHeld>
+        {held.length === 0 ? (
+          <CarriesNothing />
+        ) : (
+          <span className="flex flex-wrap gap-1" data-roster-card-held={held.join(' ')}>
+            {held.map((flag) => (
+              <HeldChip key={flag} mark={<HeldCheck />}>
+                {t(`operations.crew.flag.${flag}`)}
+              </HeldChip>
+            ))}
+          </span>
         )}
-        <Fact label={t('fleet.drivers.columns.branch')}>
-          {branch === null || branch === 'loading' ? (
-            <Missing loading={branch === 'loading'} />
-          ) : (
-            branch
-          )}
-        </Fact>
-      </dl>
-      {/* What they hold, under a rule and across the card's whole width: four chips squeezed into
-        the value column stood one per line. */}
-      <dl className="mt-2.5 border-t border-slate-200 pt-2 text-[13px] leading-snug dark:border-[#2b3b6b]">
-        <dt className="font-semibold text-slate-500 dark:text-slate-400">
-          {t('operations.crew.requirements.holds')}
-        </dt>
-        <dd className="mt-1.5">
-          {held.length === 0 ? (
-            // Nothing saved — a row with every flag off, or no row yet: either way nothing on file.
-            <span className="font-semibold text-slate-500 dark:text-slate-400">
-              {t('operations.crew.flag.carriesNothing')}
-            </span>
-          ) : (
-            <span className="flex flex-wrap gap-1" data-roster-card-held={held.join(' ')}>
-              {held.map((flag) => (
-                // A chip that says its flag in words: the card is a tooltip, so an icon alone would
-                // have nothing to hover for its name.
-                <span
-                  key={flag}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold leading-4',
-                    'bg-emerald-500/15 text-emerald-800 ring-1 ring-inset ring-emerald-500/25 dark:text-emerald-200',
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-2 w-2"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={4}
-                    >
-                      <path d={CHECK} strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                  {t(`operations.crew.flag.${flag}`)}
-                </span>
-              ))}
-            </span>
-          )}
-        </dd>
-      </dl>
+      </CardHeld>
     </div>
   );
 };

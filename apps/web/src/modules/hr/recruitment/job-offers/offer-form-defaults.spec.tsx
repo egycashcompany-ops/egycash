@@ -56,7 +56,7 @@ describe('«اكتب العرض» starts from the candidate', () => {
   });
 
   it('types into the job — and the salary follows it until somebody types the salary', () => {
-    expect(FORM).toContain('<Combobox');
+    expect(FORM).toContain('<SearchableSelect');
     expect(FORM).toContain('onChange={chooseJob}');
     expect(FORM).toMatch(/const chooseJob = [\s\S]*?if \(salaryTyped\) return;[\s\S]*?salaryOfJob\(jobSalaries, next\)/);
     expect(FORM).toContain('setSalaryTyped(true)');

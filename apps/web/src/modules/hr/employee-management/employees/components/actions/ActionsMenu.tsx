@@ -18,6 +18,7 @@ import {
 } from './LifecycleDialogs';
 import { ExitDialog, RehireDialog } from './ExitRehireDialogs';
 import { ChangeCodeDialog } from './ChangeCodeDialog';
+import { PurgeEmployeeDialog } from './PurgeEmployeeDialog';
 
 type DialogKind =
   | 'promotion'
@@ -31,6 +32,7 @@ type DialogKind =
   | 'probationFail'
   | 'exit'
   | 'rehire'
+  | 'purge'
   | 'changeCode';
 
 interface Item {
@@ -53,6 +55,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   const rehire = can('employee.rehire');
   const override = can('employee.rehireOverride');
   const changeCode = can('employee.changeCode');
+  const purge = can('employee.purge');
   const s = employee.status;
   const employed = s !== 'exited';
   const inProbation =
@@ -90,6 +93,9 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   // Any status, exited included: a code is corrected because it is wrong, and a wrong code on a
   // leaver is still wrong on their contract and on the next roster file.
   if (changeCode) items.push({ kind: 'changeCode', label: t('employees.changeCode.title') });
+  // LAST, and alone. Every entry above changes what the employee IS; this one ends there having
+  // been one. Break-glass, so for almost every reader this list simply does not grow.
+  if (purge) items.push({ kind: 'purge', label: t('employees.purge.title'), danger: true });
 
   if (items.length === 0) return null;
 
@@ -135,6 +141,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       <ExitDialog employee={employee} open={dialog === 'exit'} onClose={() => setDialog(null)} />
       <RehireDialog employee={employee} open={dialog === 'rehire'} onClose={() => setDialog(null)} />
       <ChangeCodeDialog employee={employee} open={dialog === 'changeCode'} onClose={() => setDialog(null)} />
+      <PurgeEmployeeDialog employee={employee} open={dialog === 'purge'} onClose={() => setDialog(null)} />
     </div>
   );
 };

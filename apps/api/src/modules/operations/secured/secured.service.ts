@@ -10,6 +10,7 @@
 //                                            the yellow, and today's green (Rounds 8, 13)
 //   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — whether or not
 //                                            somebody recorded the pickup (Round 13 lifted Round 10's rule)
+//                         checkSeals()       …which of its seals the vault still holds (Round 21b)
 //   cancel the receipt  → cancelReceipt()    inVault → draft, custody voided — the special grant (Round 10)
 //   «صرف الخزينة»        → dispatchBoard()    every shipment in the vault, optional delivery day (Round 10)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
@@ -38,10 +39,12 @@ import {
   ymdOf,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
+  type CheckVaultSeals,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
   type Paginated,
   type ReceiveIntoVault,
+  vaultSealKey,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import {
@@ -55,10 +58,12 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
-import { vaultCustody, type VaultCustodyView } from '../treasury-boundary';
+import { vaultCustody, type VaultCustodyView, type VaultHeldSeal } from '../treasury-boundary';
 import { userDisplayNames } from '../user-names';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { nextSequence } from '../assignments/leg-sequence';
+import { operationsBankRepository } from '../banks/bank.repository';
+import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
 import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
@@ -173,6 +178,102 @@ const pickupChanges = (from: SecuredPickup | null, to: SecuredPickup | null) => 
   { field: 'pickedUpBy', old: from?.by ?? null, new: to?.by ?? null },
   { field: 'pickedUpAt', old: from?.at?.toISOString() ?? null, new: to?.at?.toISOString() ?? null },
 ];
+
+/**
+ * Round 21b — the held محصنة a seal is on, as a treasurer tells it apart: the vault's receipt number
+ * and when it was taken in, the main bank and the two branches. What `POST /seal-check` answers and
+ * what the 409 of a receipt names.
+ */
+export interface VaultSealHolderView {
+  shipmentId: string;
+  receiptNumber: string | null;
+  mainBankName: string;
+  originBranchName: string;
+  destinationBranchName: string;
+  receivedAt: Date;
+}
+
+/**
+ * The holders of a set of held shipments, in four reads whatever their number: the custody (the
+ * receipt number and day, through the port), the shipments, their banks, their branches. Every id
+ * asked for is answered — a name that cannot be found reads '' rather than dropping the holder, so a
+ * held seal is never left unsaid because its محصنة's bank was renamed or archived.
+ */
+const sealHolders = async (
+  shipmentIds: readonly string[],
+): Promise<Map<string, VaultSealHolderView>> => {
+  const ids = [...new Set(shipmentIds)];
+  if (ids.length === 0) return new Map();
+  const [custody, shipments] = await Promise.all([
+    vaultCustody().findMany(ids),
+    operationsShipmentRepository.findByIdsSystem(ids),
+  ]);
+  const [banks, branches] = await Promise.all([
+    operationsBankRepository.findByIdsSystem(shipments.map((doc) => String(doc.mainBankId))),
+    operationsBankBranchRepository.findByIdsSystem(
+      shipments.flatMap((doc) => [String(doc.originBranchId), String(doc.destinationBranchId)]),
+    ),
+  ]);
+  const bankName = new Map(banks.map((bank) => [String(bank._id), bank.opsName] as const));
+  const branchName = new Map(branches.map((branch) => [String(branch._id), branch.name] as const));
+  const shipmentOf = new Map(shipments.map((doc) => [String(doc._id), doc] as const));
+  return new Map(
+    ids.map((id) => {
+      const doc = shipmentOf.get(id);
+      const held = custody.get(id);
+      return [
+        id,
+        {
+          shipmentId: id,
+          receiptNumber: held?.receiptNumber ?? doc?.receiptNumber ?? null,
+          mainBankName: doc === undefined ? '' : (bankName.get(String(doc.mainBankId)) ?? ''),
+          originBranchName:
+            doc === undefined ? '' : (branchName.get(String(doc.originBranchId)) ?? ''),
+          destinationBranchName:
+            doc === undefined ? '' : (branchName.get(String(doc.destinationBranchId)) ?? ''),
+          receivedAt: held?.receivedAt ?? new Date(0),
+        },
+      ] as const;
+    }),
+  );
+};
+
+/**
+ * 409 `OPERATIONS_SEAL_HELD_IN_VAULT` for the receipt's seals the vault still holds on another
+ * محصنة — one detail per seal (its place in THIS receipt as stored, and the held shipment's id), and
+ * a message that names each محصنة the way the vault screens do, for whoever reads a log line.
+ * `held` indexes the receipt's bags then its boxes, as one list (`bagCount` long for the bags).
+ */
+const sealsHeldError = async (
+  held: readonly VaultHeldSeal[],
+  bagCount: number,
+): Promise<AppError> => {
+  const holders = await sealHolders(held.map((h) => h.shipmentId));
+  const placeOf = (index: number): string =>
+    index < bagCount ? `bagSeals.${String(index)}` : `boxSeals.${String(index - bagCount)}`;
+  const said = held.map((h) => {
+    const holder = holders.get(h.shipmentId);
+    const named = [
+      holder?.mainBankName,
+      holder?.receiptNumber == null ? null : `receipt ${holder.receiptNumber}`,
+    ]
+      .filter((part) => part != null && part !== '')
+      .join(', ');
+    return `seal ${JSON.stringify(h.seal)} (${placeOf(h.index)}) is in the vault on shipment ${h.shipmentId}${named === '' ? '' : ` (${named})`}`;
+  });
+  return new AppError(
+    ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT,
+    409,
+    `${said.join('; ')} — a seal still held in the vault cannot be received on another shipment`,
+    {
+      details: held.map((h) => ({
+        field: placeOf(h.index),
+        code: 'HELD_IN_VAULT',
+        message: h.shipmentId,
+      })),
+    },
+  );
+};
 
 class OperationsSecuredService {
   /**
@@ -528,6 +629,26 @@ class OperationsSecuredService {
     // version), so the writes now commit or roll back together — since Round 18 with the vault's
     // corrections of the shipment first among them.
     const { custody, edited, updated } = await unitOfWork(async (session) => {
+      // ROUND 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal
+      // the vault STILL HOLDS on another محصنة refuses the receipt; one that came in and went out
+      // again (released to its van) or whose receipt was cancelled may come again. Asked first, in
+      // this transaction's snapshot, so a refusal writes nothing — not even the vault's corrections
+      // of the shipment, which come next. One read of the held seals (the port's `heldSeals`).
+      //
+      // THE RACE, and why it is left open: two treasurers pressing «استلام» on two محصنات carrying
+      // the same seal in the same instant each read the vault before the other commits, so both can
+      // be taken. Closing it would mean a lock document every receipt writes (the fleet fund's
+      // `lockFund`) — a new collection serialising every receipt for an event that needs two clerks
+      // to type the same wrong number within one transaction of each other. A seal is a physical
+      // object on one package: the clash this rule catches is a mistyped or misread number, which
+      // the form flags while it is typed (`/seal-check`) as soon as the first receipt is in. And if
+      // the instant does come, nothing is lost: both receipts are kept, and every later check and
+      // receipt names the محصنة that took the seal first.
+      const held = await vaultCustody().heldSeals([...input.bagSeals, ...input.boxSeals], {
+        excludeShipmentId: shipmentId,
+        session,
+      });
+      if (held.length > 0) throw await sealsHeldError(held, input.bagSeals.length);
       const corrected =
         edit === null
           ? null
@@ -584,6 +705,34 @@ class OperationsSecuredService {
     });
     const names = await userDisplayNames([by]);
     return { shipment: updated, receipt: custody, receivedByName: names.get(by) ?? null };
+  }
+
+  /**
+   * Round 21b — `POST /operations/secured/seal-check`: which of these seals the vault still holds on
+   * another محصنة, and on which — the receive form asks as seals are typed («لو موجوده عندنا لا ك
+   * محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»). The receipt's own read (`heldSeals`), outside
+   * any transaction: advice for the form, never the decision — the receipt asks again when it is
+   * taken. Each held seal once (by `vaultSealKey`), at its first spelling, in the order sent.
+   */
+  async checkSeals(
+    input: CheckVaultSeals,
+  ): Promise<{ seal: string; holder: VaultSealHolderView }[]> {
+    const found = await vaultCustody().heldSeals(
+      input.seals,
+      input.excludeShipmentId === undefined ? {} : { excludeShipmentId: input.excludeShipmentId },
+    );
+    const said = new Set<string>();
+    const once = found.filter((h) => {
+      const key = vaultSealKey(h.seal) ?? h.seal;
+      if (said.has(key)) return false;
+      said.add(key);
+      return true;
+    });
+    const holders = await sealHolders(once.map((h) => h.shipmentId));
+    return once.flatMap((h) => {
+      const holder = holders.get(h.shipmentId);
+      return holder === undefined ? [] : [{ seal: h.seal, holder }];
+    });
   }
 
   /**

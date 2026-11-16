@@ -36,6 +36,7 @@ export {
   type SelectProps,
 } from './form';
 export { Combobox } from './Combobox';
+export { SearchableSelect, valuesMatching, type SearchableOption } from './SearchableSelect';
 export { LoadingState } from './states/LoadingState';
 export { EmptyState } from './states/EmptyState';
 export { ErrorState } from './states/ErrorState';

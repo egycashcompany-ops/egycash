@@ -2908,6 +2908,17 @@ const en: Record<string, string> = {
   'employees.roster.addedExitedHint': 'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
   'employees.roster.refusedTitle': 'Asked for, but not done',
   'employees.changeCode.title': 'Change employee code',
+  'employees.purge.title': 'Permanently delete',
+  'employees.purge.description':
+    '{{name}} — code {{code}}. This removes them from the system entirely. There is no undo.',
+  'employees.purge.goes':
+    'Goes: the employee record, their account and sign-in, their files, and everything filed on them — attendance, leave, payslips, contracts, loans, custody and training.',
+  'employees.purge.stays':
+    'Stays: gold receipts, traffic violations, accidents, fuel receipts, ATM maintenance and the consumables ledger. These are records about money, the law and stock rather than about a person, so they are kept — with the name on them rewritten to «deleted employee».',
+  'employees.purge.confirmLabel': 'Type the employee code {{code}} to confirm',
+  'employees.purge.mismatch': 'That is not this employee’s code',
+  'employees.purge.submit': 'Permanently delete',
+  'employees.purge.done': '{{name}} was permanently deleted — {{rows}} records removed, {{names}} names rewritten.',
   'employees.changeCode.current': 'Current code',
   'employees.changeCode.new': 'New code',
   'employees.changeCode.reason': 'Reason for the change',
@@ -2916,6 +2927,8 @@ const en: Record<string, string> = {
   'employees.changeCode.shape': 'A code is digits only: 3 for the branch, then at least 4 for the employee number — e.g. 0100004.',
   'employees.changeCode.same': 'That is already this employee’s code.',
   'employees.changeCode.taken': 'This code is already used by another employee.',
+  'employees.changeCode.loginTaken':
+    'Another account already signs in with this code, so it cannot become this employee\'s login. Choose another code.',
   'employees.changeCode.reasonRequired': 'Write why the code is being changed.',
   'employees.changeCode.note':
     'Contracts and documents already issued keep the code they were made with. The next employee file uploaded must carry the new code.',
@@ -11256,8 +11269,10 @@ const en: Record<string, string> = {
   'operations.crew.requirements.title': 'Operations crew roster',
   'operations.crew.requirements.subtitle':
     'Who counts as operations crew, and what each of them carries.',
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: the two role
+  // flags now decide the crew board's slot; the line that said nothing here gates a slot was wrong.
   'operations.crew.requirements.notAGate':
-    'These are indicators, not conditions. Anyone on the roster can be assigned to any slot, whatever is ticked here.',
+    '«Captain» and «Specialist» alone decide the slot on the crew board: a captain takes «Crew captain», a specialist (or somebody ticked neither) a specialist’s slot, and somebody ticked both any slot. The other flags are indicators, not conditions.',
   'operations.crew.requirements.employee': 'Employee',
   'operations.crew.requirements.saveFailed': 'Could not save the change.',
   'operations.crew.requirements.unconfigured':
@@ -11339,12 +11354,78 @@ const en: Record<string, string> = {
   'operations.crewPlan.fileStem': 'crew-board',
   'operations.crewPlan.day': 'Operating day',
   'operations.crewPlan.hint':
-    'Drag a name onto a slot, or press it and then «Place here». Drag it back onto a list to free it.',
+    'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot. Drag it back onto a list to free it.',
   'operations.crewPlan.viewOnly': 'You can view the plan; planning needs the crew-planning permission.',
   'operations.crewPlan.picked': '{{name}} is picked up — choose a slot, or press Esc',
   'operations.crewPlan.cancelPick': 'Cancel',
   'operations.crewPlan.placeHere': 'Place here',
   'operations.crewPlan.slotFull': 'Slot full',
+  // Round 22 — a refused drop is said, never only a name that springs back.
+  'operations.crewPlan.drop.full': '«{{slot}}» on row {{row}} is full',
+  'operations.crewPlan.drop.captainFull': '«{{slot}}» on row {{row}} is full',
+  'operations.crewPlan.drop.specialistsFull': 'Both specialist slots on row {{row}} are full',
+  'operations.crewPlan.drop.rowFull': 'Every slot on row {{row}} is full',
+  'operations.crewPlan.drop.takeOff': 'Take somebody off first, then drop the name again.',
+  // Round 22 E — a slot's list: «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم».
+  'operations.crewPlan.picker.choose.captain': 'Choose a captain',
+  'operations.crewPlan.picker.choose.specialist': 'Choose a specialist',
+  'operations.crewPlan.picker.add': 'Add another to «{{slot}}» — row {{row}}',
+  'operations.crewPlan.picker.title': 'Choose for «{{slot}}»',
+  'operations.crewPlan.picker.row': 'Row {{row}}',
+  // Round 23 — a slot's list offers only who fits it, the captain-specialists at the end.
+  'operations.crewPlan.picker.offers': 'Offered here:',
+  'operations.crewPlan.picker.then': 'then',
+  'operations.crewPlan.picker.dualsLast': '(at the end)',
+  'operations.crewPlan.picker.free': 'Free',
+  'operations.crewPlan.picker.section.free': 'Free',
+  'operations.crewPlan.picker.section.seated': 'On the board — picking moves them here',
+  'operations.crewPlan.picker.section.away': 'Absent or on leave — cannot go on a row',
+  // Round 22 F — away on the board's day, as attendance records it.
+  'operations.crewPlan.away.absent': 'Absent',
+  'operations.crewPlan.away.onLeave': 'On leave',
+  'operations.crewPlan.away.day.absent': 'Absent on this day',
+  'operations.crewPlan.away.day.onLeave': 'On leave on this day',
+  'operations.crewPlan.away.why.absent': 'absent on this day — cannot be put on a row',
+  'operations.crewPlan.away.why.onLeave': 'on leave on this day — cannot be put on a row',
+  'operations.crewPlan.drop.absent': '{{name}} is absent on this day',
+  'operations.crewPlan.drop.onLeave': '{{name}} is on leave on this day',
+  'operations.crewPlan.drop.awayWhy':
+    'Nobody absent or on leave goes on a row — as attendance records this day.',
+  'operations.crewPlan.refused.absent': '{{name}} is absent on this day — take them off this row.',
+  'operations.crewPlan.refused.onLeave':
+    '{{name}} is on leave on this day — take them off this row.',
+  'operations.crewPlan.refused.crew': 'Somebody on this row is absent or on leave on this day.',
+  'operations.crewPlan.standingAway': 'Left off the standing crew — absent or on leave',
+  'operations.crewPlan.vanAway': 'No vehicle for a row with somebody absent or on leave',
+  'operations.crewPlan.vanAwayWho': '{{names}} — take them off the row first.',
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى».
+  'operations.crewPlan.drop.notCaptain': 'A specialist does not go in the captain’s slot',
+  'operations.crewPlan.drop.notSpecialist': 'A captain does not go in a specialist’s slot',
+  'operations.crewPlan.drop.notCaptainWhy':
+    '{{name}} is not ticked «Captain». «Crew captain» takes a captain, or somebody who is both captain and specialist.',
+  'operations.crewPlan.drop.notSpecialistWhy':
+    '{{name}} is a captain only. The specialists’ slots take a specialist, or somebody who is both captain and specialist.',
+  'operations.crewPlan.wrongSlot.over.notCaptain': 'Captains only',
+  'operations.crewPlan.wrongSlot.over.notSpecialist': 'Specialists only',
+  'operations.crewPlan.wrongSlot.badge.notCaptain': 'Not a captain',
+  'operations.crewPlan.wrongSlot.badge.notSpecialist': 'Not a specialist',
+  'operations.crewPlan.wrongSlot.held.notCaptain':
+    'Not ticked «Captain» — kept in this slot from before the rule. Take them out, or move them to a specialist’s slot.',
+  'operations.crewPlan.wrongSlot.held.notSpecialist':
+    'A captain only — kept in this slot from before the rule. Take them out, or move them to the captain’s slot.',
+  'operations.crewPlan.refused.notCaptain':
+    '{{name}} is not a captain — take them out of the captain’s slot on this row.',
+  'operations.crewPlan.refused.notSpecialist':
+    '{{name}} is a captain only — take them out of the specialist’s slot on this row.',
+  'operations.crewPlan.refused.slot': 'Somebody on this row is in a slot that is not their role’s.',
+  'operations.crewPlan.standingWrongSlot':
+    'Left off the standing crew — in a slot that is not their role’s',
+  'operations.crewPlan.vanWrongSlot':
+    'No vehicle for a row with somebody in a slot that is not their role’s',
+  'operations.crewPlan.vanWrongSlotWho':
+    '{{names}} — take them out, or move them to a slot that fits, first.',
+  'operations.crewPlan.card.attendance': 'Attendance',
+  'operations.crewPlan.card.attendanceNone': 'No absence or leave on record',
   'operations.crewPlan.standing': 'Standing crew',
   'operations.crewPlan.addRow': 'Add a row without a vehicle',
   'operations.crewPlan.discard': 'Undo changes',
@@ -11409,10 +11490,10 @@ const en: Record<string, string> = {
   'operations.crewPlan.role.captain': 'Captain',
   'operations.crewPlan.role.dual': 'Specialist who leads',
   'operations.crewPlan.role.specialist': 'Specialist',
-  'operations.crewPlan.outOfRole.captain': 'Not ticked «Captain» on the crew roster',
-  'operations.crewPlan.outOfRole.specialist': 'Ticked as a captain only on the crew roster',
   'operations.crewPlan.chip.select': 'Pick up {{name}} to move',
   'operations.crewPlan.chip.remove': 'Take {{name}} off the slot',
+  'operations.crewPlan.card.seat': 'On the board',
+  'operations.crewPlan.card.unseated': 'Not assigned today',
   'operations.crewPlan.pools.captains': 'Captains',
   'operations.crewPlan.pools.specialists': 'Specialists',
   'operations.crewPlan.pools.free': '{{count}} free',
@@ -11499,6 +11580,41 @@ const en: Record<string, string> = {
   'operations.secured.receive.sealFilled': 'Filled in order between the first and the last box',
   'operations.secured.receive.rangeMismatch':
     'The range {{from}} to {{to}} does not match the number of boxes ({{boxes}}), so the boxes between were not filled.',
+  // Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: one receipt names a seal once,
+  // bags and boxes together — a refusal, said in one notice under the seals.
+  'operations.secured.receive.sealRepeat.one': 'Seal {{seals}} is repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.two': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.few': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.many': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeat.other': 'Seals {{seals}} are repeated — {{where}}',
+  'operations.secured.receive.sealRepeatWhere.both': 'in the bags and the boxes',
+  'operations.secured.receive.sealRepeatWhere.bags': 'in the bags',
+  'operations.secured.receive.sealRepeatWhere.boxes': 'in the boxes',
+  'operations.secured.receive.sealRepeatRule':
+    'A seal number may appear only once in a receipt, bags and boxes together.',
+  'operations.secured.receive.sealRepeatAt': 'Repeated — also in {{places}}',
+  'operations.secured.receive.sealPlace.bag': 'bag {{unit}}, seal {{seal}}',
+  'operations.secured.receive.sealPlace.box': 'box {{unit}}, seal {{seal}}',
+  'operations.secured.receive.sealRepeatRefused':
+    'A seal number is repeated in this receipt; correct it and try again.',
+  // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal still in
+  // the vault on another محصنة refuses the receipt — said in the same one notice under the seals.
+  'operations.secured.receive.sealHeld.one': 'Seal {{seals}} is in the vault on {{holder}}',
+  'operations.secured.receive.sealHeld.two': 'Seals {{seals}} are in the vault on {{holder}}',
+  'operations.secured.receive.sealHeld.few': 'Seals {{seals}} are in the vault on {{holder}}',
+  'operations.secured.receive.sealHeld.many': 'Seals {{seals}} are in the vault on {{holder}}',
+  'operations.secured.receive.sealHeld.other': 'Seals {{seals}} are in the vault on {{holder}}',
+  'operations.secured.receive.sealHolder': 'another secured shipment ({{name}})',
+  'operations.secured.receive.sealHolderOther': 'another secured shipment',
+  'operations.secured.receive.sealHolderReceipt': '{{bank}}, receipt {{receipt}}',
+  'operations.secured.receive.sealHolderRoute': '{{bank}}, {{from}} to {{to}}',
+  'operations.secured.receive.sealHeldAt':
+    'In the vault on the secured shipment: {{name}} — received {{at}}',
+  'operations.secured.receive.sealHeldAtOther': 'In the vault on another secured shipment',
+  'operations.secured.receive.sealHeldRule':
+    'A seal still in the vault on another secured shipment cannot be received; it may come again once that shipment has left the vault.',
+  'operations.secured.receive.sealHeldRefused':
+    'A seal is still in the vault on another secured shipment; correct it and try again.',
   'operations.secured.receive.receiverNote': 'Received by the signed-in user: {{name}}',
   'operations.secured.receive.print': 'Receipt',
   'operations.secured.receive.printHint': 'Print the vault receipt',
@@ -17074,6 +17190,17 @@ const ar: Record<string, string> = {
   'employees.roster.refusedTitle':
     'مطلوب في الملف ولن يُنفَّذ',
   'employees.changeCode.title': 'تغيير كود الموظف',
+  'employees.purge.title': 'مسح نهائي',
+  'employees.purge.description':
+    '{{name}} — كود {{code}}. يُزيله هذا من النظام بالكامل، ولا رجعة فيه.',
+  'employees.purge.goes':
+    'يُحذف: سجل الموظف، وحسابه وتسجيل دخوله، وملفاته، وكل ما حُفظ عليه — الحضور والإجازات وقسائم الراتب والعقود والسلف والعهد والتدريب.',
+  'employees.purge.stays':
+    'يبقى: إيصالات الذهب والمخالفات المرورية والحوادث وإيصالات الوقود وصيانة الصرافات ودفتر المستهلكات. هذه سجلات عن المال والقانون والمخزون لا عن الشخص، فتُحفظ — ويُستبدل الاسم المكتوب عليها بـ«موظف محذوف».',
+  'employees.purge.confirmLabel': 'اكتب كود الموظف {{code}} للتأكيد',
+  'employees.purge.mismatch': 'هذا ليس كود هذا الموظف',
+  'employees.purge.submit': 'مسح نهائي',
+  'employees.purge.done': 'تم المسح النهائي لـ{{name}} — حُذف {{rows}} سجلاً، وأُعيدت كتابة {{names}} اسماً.',
   'employees.changeCode.current': 'الكود الحالي',
   'employees.changeCode.new': 'الكود الجديد',
   'employees.changeCode.reason': 'سبب التغيير',
@@ -17082,6 +17209,8 @@ const ar: Record<string, string> = {
   'employees.changeCode.shape': 'الكود أرقام فقط: 3 أرقام للفرع، ثم 4 أرقام على الأقل لرقم الموظف، مثل 0100004.',
   'employees.changeCode.same': 'هذا هو كود الموظف الحالي.',
   'employees.changeCode.taken': 'هذا الكود مستخدم لموظف آخر.',
+  'employees.changeCode.loginTaken':
+    'يسجّل حساب آخر الدخول بهذا الكود، فلا يمكن أن يصبح اسم دخول هذا الموظف. اختر كودًا آخر.',
   'employees.changeCode.reasonRequired': 'اكتب سبب تغيير الكود.',
   'employees.changeCode.note':
     'تحتفظ العقود والمستندات الصادرة من قبل بالكود الذي صدرت به. ويجب أن يحمل ملف الموظفين الذي يُرفع بعد ذلك الكود الجديد.',
@@ -25217,7 +25346,7 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.title': 'كشف طاقم العمليات',
   'operations.crew.requirements.subtitle': 'من يُعدّ من طاقم العمليات، وما الذي يحمله كل منهم.',
   'operations.crew.requirements.notAGate':
-    'هذه مؤشرات وليست شروطًا. أي فرد في الكشف يمكن تعيينه في أي خانة مهما كان المُعلَّم هنا.',
+    '«قائد» و«أخصائي» وحدهما يحددان الخانة في لوحة التشغيلة: القائد لخانة «قائد الطاقم»، والأخصائي (ومن لم يُعلَّم بأيهما) لخانتي الأخصائيين، ومن عُلِّم بالاثنين لأي خانة. أما بقية العلامات فمؤشرات وليست شروطًا.',
   'operations.crew.requirements.employee': 'الموظف',
   'operations.crew.requirements.saveFailed': 'تعذّر حفظ التغيير.',
   'operations.crew.requirements.unconfigured':
@@ -25294,12 +25423,73 @@ const ar: Record<string, string> = {
   'operations.crewPlan.fileStem': 'لوحة-التشغيلة',
   'operations.crewPlan.day': 'يوم التشغيلة',
   'operations.crewPlan.hint':
-    'اسحب الاسم إلى الخانة، أو اضغط عليه ثم على «ضع هنا». أعِده إلى القائمة لإخلائه.',
+    'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة. أعِده إلى القائمة لإخلائه.',
   'operations.crewPlan.viewOnly': 'يمكنك الاطلاع على التشغيلة؛ أما التوزيع فيحتاج صلاحية تخطيط الطاقم.',
   'operations.crewPlan.picked': 'تم اختيار {{name}} — اختر الخانة، أو اضغط Esc للإلغاء',
   'operations.crewPlan.cancelPick': 'إلغاء',
   'operations.crewPlan.placeHere': 'ضع هنا',
   'operations.crewPlan.slotFull': 'الخانة ممتلئة',
+  // Round 22 — الإفلات المرفوض يُقال سببه، ولا يكتفي الاسم بالعودة إلى مكانه.
+  'operations.crewPlan.drop.full': '«{{slot}}» في صف {{row}} ممتلئة',
+  'operations.crewPlan.drop.captainFull': '«{{slot}}» في صف {{row}} ممتلئة',
+  'operations.crewPlan.drop.specialistsFull': 'خانتا الأخصائيين في صف {{row}} ممتلئتان',
+  'operations.crewPlan.drop.rowFull': 'جميع خانات صف {{row}} ممتلئة',
+  'operations.crewPlan.drop.takeOff': 'أخرِج أحدًا أولًا، ثم أفلِت الاسم من جديد.',
+  // Round 22 E — قائمة الخانة: «لما ادوس عليه يجيب قايمة الناس اللى اختار منهم».
+  'operations.crewPlan.picker.choose.captain': 'اختيار قائد',
+  'operations.crewPlan.picker.choose.specialist': 'اختيار أخصائي',
+  'operations.crewPlan.picker.add': 'إضافة آخر إلى «{{slot}}» — صف {{row}}',
+  'operations.crewPlan.picker.title': 'الاختيار لخانة «{{slot}}»',
+  'operations.crewPlan.picker.row': 'صف {{row}}',
+  // Round 23 — قائمة الخانة لا تعرض إلا من تناسبه الخانة، ومن هو قائد وأخصائي معًا في آخرها.
+  'operations.crewPlan.picker.offers': 'تُعرض هنا:',
+  'operations.crewPlan.picker.then': 'ثم',
+  'operations.crewPlan.picker.dualsLast': '(في الآخر)',
+  'operations.crewPlan.picker.free': 'متاح',
+  'operations.crewPlan.picker.section.free': 'متاحون',
+  'operations.crewPlan.picker.section.seated': 'في التشغيلة — اختياره ينقله إلى هنا',
+  'operations.crewPlan.picker.section.away': 'غائبون أو في إجازة — لا يوضعون على صف',
+  // Round 22 F — الغائب ومن في إجازة في يوم التشغيلة، كما يسجّلهما الحضور.
+  'operations.crewPlan.away.absent': 'غائب',
+  'operations.crewPlan.away.onLeave': 'إجازة',
+  'operations.crewPlan.away.day.absent': 'غائب في هذا اليوم',
+  'operations.crewPlan.away.day.onLeave': 'في إجازة في هذا اليوم',
+  'operations.crewPlan.away.why.absent': 'غائب في هذا اليوم — لا يوضع على صف',
+  'operations.crewPlan.away.why.onLeave': 'في إجازة في هذا اليوم — لا يوضع على صف',
+  'operations.crewPlan.drop.absent': '{{name}} غائب في هذا اليوم',
+  'operations.crewPlan.drop.onLeave': '{{name}} في إجازة في هذا اليوم',
+  'operations.crewPlan.drop.awayWhy':
+    'لا يوضع على صف من هو غائب أو في إجازة — كما يسجّله الحضور لهذا اليوم.',
+  'operations.crewPlan.refused.absent': '{{name}} غائب في هذا اليوم — أخرِجه من هذا الصف.',
+  'operations.crewPlan.refused.onLeave': '{{name}} في إجازة في هذا اليوم — أخرِجه من هذا الصف.',
+  'operations.crewPlan.refused.crew': 'على هذا الصف من هو غائب أو في إجازة في هذا اليوم.',
+  'operations.crewPlan.standingAway': 'لم يُوضع من الطاقم الثابت غائب ولا من في إجازة',
+  'operations.crewPlan.vanAway': 'لا تُعطى سيارة لصف عليه غائب أو من في إجازة',
+  'operations.crewPlan.vanAwayWho': '{{names}} — أخرِجه من الصف أولًا.',
+  // Round 23 — لا يُعيَّن قائد في خانة أخصائي ولا أخصائي في خانة القائد، إلا من هو قائد وأخصائي معًا.
+  'operations.crewPlan.drop.notCaptain': 'لا يُعيَّن أخصائي في خانة القائد',
+  'operations.crewPlan.drop.notSpecialist': 'لا يُعيَّن قائد في خانة أخصائي',
+  'operations.crewPlan.drop.notCaptainWhy':
+    '{{name}} غير مُعلَّم «قائد». خانة «قائد الطاقم» للقائد، أو لمن هو قائد وأخصائي معًا.',
+  'operations.crewPlan.drop.notSpecialistWhy':
+    '{{name}} قائد فقط. خانتا الأخصائيين للأخصائي، أو لمن هو قائد وأخصائي معًا.',
+  'operations.crewPlan.wrongSlot.over.notCaptain': 'للقادة فقط',
+  'operations.crewPlan.wrongSlot.over.notSpecialist': 'للأخصائيين فقط',
+  'operations.crewPlan.wrongSlot.badge.notCaptain': 'ليس قائدًا',
+  'operations.crewPlan.wrongSlot.badge.notSpecialist': 'ليس أخصائيًا',
+  'operations.crewPlan.wrongSlot.held.notCaptain':
+    'غير مُعلَّم «قائد» — بقي في هذه الخانة من قبل هذه القاعدة. أخرِجه، أو انقله إلى خانة أخصائي.',
+  'operations.crewPlan.wrongSlot.held.notSpecialist':
+    'قائد فقط — بقي في هذه الخانة من قبل هذه القاعدة. أخرِجه، أو انقله إلى خانة القائد.',
+  'operations.crewPlan.refused.notCaptain': '{{name}} ليس قائدًا — أخرِجه من خانة القائد في هذا الصف.',
+  'operations.crewPlan.refused.notSpecialist':
+    '{{name}} قائد فقط — أخرِجه من خانة الأخصائي في هذا الصف.',
+  'operations.crewPlan.refused.slot': 'على هذا الصف من يجلس في خانة لا تناسبه.',
+  'operations.crewPlan.standingWrongSlot': 'لم يُوضع من الطاقم الثابت من كانت خانته لا تناسبه',
+  'operations.crewPlan.vanWrongSlot': 'لا تُعطى سيارة لصف عليه من يجلس في خانة لا تناسبه',
+  'operations.crewPlan.vanWrongSlotWho': '{{names}} — أخرِجه أو انقله إلى خانة تناسبه أولًا.',
+  'operations.crewPlan.card.attendance': 'الحضور',
+  'operations.crewPlan.card.attendanceNone': 'لم يُسجَّل غياب ولا إجازة',
   'operations.crewPlan.standing': 'الطاقم الثابت',
   'operations.crewPlan.addRow': 'إضافة صف بدون سيارة',
   'operations.crewPlan.discard': 'تراجع',
@@ -25362,10 +25552,10 @@ const ar: Record<string, string> = {
   'operations.crewPlan.role.captain': 'قائد',
   'operations.crewPlan.role.dual': 'أخصائي يعمل قائدًا',
   'operations.crewPlan.role.specialist': 'أخصائي',
-  'operations.crewPlan.outOfRole.captain': 'غير مُعلَّم «قائد» في كشف الطاقم',
-  'operations.crewPlan.outOfRole.specialist': 'مُعلَّم «قائد» فقط في كشف الطاقم',
   'operations.crewPlan.chip.select': 'اختيار {{name}} لنقله',
   'operations.crewPlan.chip.remove': 'إخراج {{name}} من الخانة',
+  'operations.crewPlan.card.seat': 'في التشغيلة',
+  'operations.crewPlan.card.unseated': 'غير معيَّن اليوم',
   'operations.crewPlan.pools.captains': 'القادة',
   'operations.crewPlan.pools.specialists': 'الأخصائيون',
   'operations.crewPlan.pools.free': 'متاح {{count}}',
@@ -25447,6 +25637,39 @@ const ar: Record<string, string> = {
   'operations.secured.receive.sealFilled': 'مُلئت بالترتيب بين الخانة الأولى والأخيرة',
   'operations.secured.receive.rangeMismatch':
     'النطاق من {{from}} إلى {{to}} لا يساوي عدد الخانات ({{boxes}})، فلم تُملأ الخانات بينهما.',
+  // الجولة 21 — لا يتكرر رقم الختم في الاستلام الواحد، في الحقائب والصناديق معًا.
+  'operations.secured.receive.sealRepeat.one': 'الرقم {{seals}} مكرر — {{where}}',
+  'operations.secured.receive.sealRepeat.two': 'الرقمان {{seals}} مكرران — {{where}}',
+  'operations.secured.receive.sealRepeat.few': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeat.many': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeat.other': 'الأرقام {{seals}} مكررة — {{where}}',
+  'operations.secured.receive.sealRepeatWhere.both': 'في الحقائب والصناديق',
+  'operations.secured.receive.sealRepeatWhere.bags': 'في الحقائب',
+  'operations.secured.receive.sealRepeatWhere.boxes': 'في الصناديق',
+  'operations.secured.receive.sealRepeatRule':
+    'لا يُقبل رقم الختم إلا مرة واحدة في الاستلام، في الحقائب والصناديق معًا.',
+  'operations.secured.receive.sealRepeatAt': 'مكرر — موجود أيضًا في {{places}}',
+  'operations.secured.receive.sealPlace.bag': 'الحقيبة {{unit}}، الختم {{seal}}',
+  'operations.secured.receive.sealPlace.box': 'الصندوق {{unit}}، الختم {{seal}}',
+  'operations.secured.receive.sealRepeatRefused':
+    'رقم ختم مكرر في هذا الاستلام؛ صحّحه ثم أعد المحاولة.',
+  // الجولة 21ب — لا يُستلم ختم ما زال في الخزينة على محصنة أخرى، ويُقال في الإشعار الواحد نفسه.
+  'operations.secured.receive.sealHeld.one': 'الرقم {{seals}} موجود في الخزينة على {{holder}}',
+  'operations.secured.receive.sealHeld.two': 'الرقمان {{seals}} موجودان في الخزينة على {{holder}}',
+  'operations.secured.receive.sealHeld.few': 'الأرقام {{seals}} موجودة في الخزينة على {{holder}}',
+  'operations.secured.receive.sealHeld.many': 'الأرقام {{seals}} موجودة في الخزينة على {{holder}}',
+  'operations.secured.receive.sealHeld.other': 'الأرقام {{seals}} موجودة في الخزينة على {{holder}}',
+  'operations.secured.receive.sealHolder': 'محصنة أخرى ({{name}})',
+  'operations.secured.receive.sealHolderOther': 'محصنة أخرى',
+  'operations.secured.receive.sealHolderReceipt': '{{bank}}، إيصال {{receipt}}',
+  'operations.secured.receive.sealHolderRoute': '{{bank}}، من {{from}} إلى {{to}}',
+  'operations.secured.receive.sealHeldAt':
+    'موجود في الخزينة على المحصنة: {{name}} — استُلمت {{at}}',
+  'operations.secured.receive.sealHeldAtOther': 'موجود في الخزينة على محصنة أخرى',
+  'operations.secured.receive.sealHeldRule':
+    'لا يُستلم رقم ختم ما زال في الخزينة على محصنة أخرى، ويُقبل بعد خروجها منها.',
+  'operations.secured.receive.sealHeldRefused':
+    'رقم ختم ما زال في الخزينة على محصنة أخرى؛ صحّحه ثم أعد المحاولة.',
   'operations.secured.receive.receiverNote': 'يُسجَّل المستلم تلقائيًا: {{name}}',
   'operations.secured.receive.print': 'إيصال',
   'operations.secured.receive.printHint': 'طباعة إيصال الاستلام',

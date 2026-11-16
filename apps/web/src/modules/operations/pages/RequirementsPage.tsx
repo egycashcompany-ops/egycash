@@ -5,9 +5,13 @@
 // pool decoration and browser filters, and four of them were never read at all (quirk Q25).
 //
 // TWO THINGS THIS SCREEN IS NOT:
-//   1. It is not an eligibility editor. Nothing here gates an assignment — the crew board will
-//      accept an employee with every box unticked, and one with no row at all. That is the
-//      approved decision, and the integration tests assert it rather than trusting this comment.
+//   1. It is not an eligibility editor — but for the two ROLE flags. Weapon, signature, licence
+//      and the rest gate no assignment (the approved decision). «قائد» and «أخصائي» do since
+//      Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: they decide
+//      which crew-board slot a person may newly take (`fitsCrewSlot` in the contracts). Somebody
+//      with every box unticked, or with no row at all, is a specialist there: a specialist's slot
+//      takes him, the captain's refuses him. The hint under the title says so, and the integration
+//      tests assert it rather than trusting this comment.
 //   2. It is not an HR screen. The row belongs to Operations; the person belongs to HR. Adding
 //      someone here says "this person is operations crew", it does not edit their employee record.
 //
@@ -342,8 +346,9 @@ export const RequirementsPage = (): JSX.Element => {
                 <h1 className="text-base font-black leading-6 text-slate-900 sm:text-lg dark:text-white">
                   {t('operations.crew.requirements.title')}
                 </h1>
-                {/* Said once, plainly, on the screen an operator might otherwise read as a gate —
-                  a line under the title now rather than a card of its own. */}
+                {/* Said once, plainly, what these ticks decide: the slot on the crew board, by
+                  «قائد» and «أخصائي» alone (Round 23); the rest decide nothing — a line under the
+                  title rather than a card of its own. */}
                 <p
                   className="flex max-w-[34rem] items-start gap-1 text-[11px] font-semibold leading-4 text-slate-500 dark:text-slate-400"
                   data-requirements-hint="true"

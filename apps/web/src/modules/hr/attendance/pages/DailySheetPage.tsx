@@ -12,7 +12,8 @@ import { PageContainer, PageHeader } from '../../../../platform/layout/PageConta
 import { Can, useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Button, EmptyState, Pagination } from '../../../../shared/ui';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
 import { DaysTable } from '../components/DaysTable';
@@ -117,38 +118,28 @@ export const DailySheetPage = (): JSX.Element => {
           />
         </Field>
         <Field label={t('attendance.daily.branch')}>
-          <Select
+          <SearchableSelect
             value={branchId}
-            onChange={(e) => {
-              setBranchId(e.target.value);
+            onChange={(next) => {
+              setBranchId(next);
               setPage(1);
             }}
-            aria-label={t('attendance.daily.branch')}
-          >
-            <option value="">{t('attendance.daily.allBranches')}</option>
-            {(branches.data ?? []).map((b) => (
-              <option key={b.id} value={b.id}>
-                {localized(b.name, locale)}
-              </option>
-            ))}
-          </Select>
+            options={(branches.data ?? []).map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+            placeholder={t('attendance.daily.allBranches')}
+            ariaLabel={t('attendance.daily.branch')}
+          />
         </Field>
         <Field label={t('attendance.daily.section')}>
-          <Select
+          <SearchableSelect
             value={sectionId}
-            onChange={(e) => {
-              setSectionId(e.target.value);
+            onChange={(next) => {
+              setSectionId(next);
               setPage(1);
             }}
-            aria-label={t('attendance.daily.section')}
-          >
-            <option value="">{t('attendance.daily.allSections')}</option>
-            {(sections.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {orgUnitLabel(s, locale)}
-              </option>
-            ))}
-          </Select>
+            options={(sections.data ?? []).map((s) => ({ value: s.id, label: orgUnitLabel(s, locale) }))}
+            placeholder={t('attendance.daily.allSections')}
+            ariaLabel={t('attendance.daily.section')}
+          />
         </Field>
       </div>
 

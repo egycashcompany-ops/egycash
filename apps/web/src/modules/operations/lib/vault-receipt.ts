@@ -12,6 +12,10 @@
 //   · «عدد الورق من كل فئة»: how many notes of each pound denomination, and what they come to
 //     (`denominationsTotal`) — set beside the shipment's pound amount, a gentle hint when the two
 //     differ (`denominationCheck`), never a refusal: «كله اختيارى».
+//     Round 21: «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو» — one receipt names a seal ONCE,
+//     bags and boxes together (`sealRepeats`, by the contract's own `vaultSealKey`).
+//     Round 21b: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى» — nor a seal
+//     the vault still holds on another محصنة (`sealsToCheck` / `mergeHolds` / `sealHolds`).
 //   · THE SHIPMENT'S DATA, corrected in the same form («تعدّلها عادي»): only what CHANGED goes in
 //     the request's `shipment` (`shipmentPatch`) — a field the vault did not touch is not sent, so
 //     «السجل» shows exactly the vault's corrections and nothing it merely looked at.
@@ -25,10 +29,15 @@ import {
   type OperationsShipmentDto,
   type OperationsVaultBagSealsPerBag,
   type OperationsVaultDenominationCountDto,
+  type OperationsVaultSealCheckDto,
+  type OperationsVaultSealHolderDto,
+  type Locale,
   type ReceiveIntoVaultInput,
   type ReceiveIntoVaultShipmentPatch,
+  vaultSealKey,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
+import { pluralKey } from '../../../shared/lib/plural';
 import { shipmentSaveErrorKey } from './shipment-form';
 
 // ── The seals ────────────────────────────────────────────────────────────────────────────────────
@@ -253,11 +262,13 @@ export const sealSummary = (seals: readonly string[]): SealSummary => {
   const texts: string[] = [];
   const duplicates: string[] = [];
   for (const raw of seals) {
+    // "The same seal" is the contract's (`vaultSealKey`), so this line and the receipt's refusal
+    // of a repeat read a seal alike: a number's key is its digits, a text's is itself.
+    const key = vaultSealKey(raw);
+    if (key === null) continue;
     const seal = raw.trim();
-    if (seal === '') continue;
-    const digits = asciiDigits(seal);
-    if (ALL_DIGITS.test(digits)) {
-      const value = BigInt(digits);
+    if (ALL_DIGITS.test(key)) {
+      const value = BigInt(key);
       if (numbers.has(value)) duplicates.push(seal);
       else numbers.set(value, seal);
     } else if (texts.includes(seal)) {
@@ -291,6 +302,354 @@ export const sealPartText = (part: SealPart): string =>
 /** The whole line, as legacy wrote it — the parts joined with « - ». '' for no seals. */
 export const sealSummaryText = (summary: SealSummary): string =>
   summary.parts.map(sealPartText).join(' - ');
+
+// ── One seal, once per receipt ───────────────────────────────────────────────────────────────────
+//
+// Round 21 — the owner, over his own form with bags 1 … 6 and boxes 1 and 3: «مينفعش يكون فيه رقم
+// للحقائب و الصناديق زى بعض برضو». A seal closes ONE package, so one receipt names it ONCE, the bags
+// and the boxes read as one list; «برضو» — as with a number typed twice in one list, which until then
+// was only an amber «مكرر» beside its summary line. Now both are a refusal, not a warning: the
+// contract refuses the receipt (`ReceiveIntoVaultSchema`), and the form says it before it is sent —
+// every box holding a repeated seal red, one notice under the seals, «استلام» held. "The same seal"
+// is the contract's own `vaultSealKey` (0099 = 99 = ٩٩; a text seal as typed), so the form and the
+// server cannot disagree about a repeat. Cartons have no seals. Another محصنة's seals are Round
+// 21b's question, not this one's: refused only while the vault still holds that محصنة (below).
+
+/** Which list of seal boxes — the bags', or the boxes'. */
+export type SealListKind = 'bag' | 'box';
+
+/** One box on screen: its list, and its position in it. */
+export interface SealSpot {
+  list: SealListKind;
+  index: number;
+}
+
+/** Where a repeated seal stands: in both lists, or more than once in one of them. */
+export type SealRepeatWhere = 'both' | 'bags' | 'boxes';
+
+export interface SealRepeat {
+  /** The seal as typed (trimmed) in the first box that holds it. */
+  seal: string;
+  /** Every box holding it — the bags' first, then the boxes', each in order. */
+  spots: SealSpot[];
+  where: SealRepeatWhere;
+}
+
+export interface SealRepeats {
+  /** Each repeated seal once, in the order the form reads them: the bags first, then the boxes. */
+  repeats: SealRepeat[];
+  /** Per box on screen, the repeat it is part of — null for a box whose seal is its own. */
+  bags: (SealRepeat | null)[];
+  boxes: (SealRepeat | null)[];
+}
+
+/** The boxes on screen of one list — what `SealBoxes` draws, empty ones included. */
+export const shownSeals = (list: SealList, slots: number): string[] =>
+  growSeals(list.seals, slots).slice(0, slots);
+
+/**
+ * The seals named more than once across the two lists ON SCREEN (`shownSeals` — a box hidden by a
+ * lowered count is no seal of this receipt), and which boxes hold them. Blanks are no seal.
+ */
+export const sealRepeats = (bags: readonly string[], boxes: readonly string[]): SealRepeats => {
+  const byKey = new Map<string, { seal: string; spots: SealSpot[] }>();
+  const read = (list: SealListKind, seals: readonly string[]): void =>
+    seals.forEach((raw, index) => {
+      const key = vaultSealKey(raw);
+      if (key === null) return;
+      const held = byKey.get(key);
+      if (held === undefined) byKey.set(key, { seal: raw.trim(), spots: [{ list, index }] });
+      else held.spots.push({ list, index });
+    });
+  read('bag', bags);
+  read('box', boxes);
+  const repeats: SealRepeat[] = [];
+  const marks: Record<SealListKind, (SealRepeat | null)[]> = {
+    bag: bags.map(() => null),
+    box: boxes.map(() => null),
+  };
+  for (const { seal, spots } of byKey.values()) {
+    if (spots.length < 2) continue;
+    const inBags = spots.some((spot) => spot.list === 'bag');
+    const inBoxes = spots.some((spot) => spot.list === 'box');
+    const repeat: SealRepeat = {
+      seal,
+      spots,
+      where: inBags && inBoxes ? 'both' : inBags ? 'bags' : 'boxes',
+    };
+    repeats.push(repeat);
+    for (const spot of spots) marks[spot.list][spot.index] = repeat;
+  }
+  return { repeats, bags: marks.bag, boxes: marks.box };
+};
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/** The notice says a seal in both lists first — the owner's own case — then one list's repeats. */
+const WHERE_ORDER: readonly SealRepeatWhere[] = ['both', 'bags', 'boxes'];
+
+/** «1 و3», «1 and 3» — the locale's own way of listing. */
+const listOf = (values: readonly string[], locale: Locale): string =>
+  new Intl.ListFormat(locale, { type: 'conjunction' }).format(values);
+
+/**
+ * Between the notice's sentences: the Arabic semicolon «؛», not a middle dot — beside Arabic words a
+ * «·» reads as the Arabic-Indic zero «٠», and this notice is about numbers.
+ */
+const SENTENCES_JOIN: Record<Locale, string> = { ar: '؛ ', en: '; ' };
+
+/**
+ * The ONE notice under the seals — a sentence per place, in Arabic's own forms of the count: «الرقم
+ * 1 مكرر — في الحقائب والصناديق», «الرقمان 1 و3 مكرران — في الحقائب والصناديق», «الأرقام 4 و5 و6
+ * مكررة — في الحقائب». '' when no seal repeats. The very words a refusal from the server is said in.
+ */
+export const sealRepeatNotice = (
+  repeats: readonly SealRepeat[],
+  t: Translate,
+  locale: Locale,
+): string =>
+  WHERE_ORDER.flatMap((where) => {
+    const seals = repeats.filter((repeat) => repeat.where === where).map((repeat) => repeat.seal);
+    return seals.length === 0
+      ? []
+      : [
+          t(pluralKey('operations.secured.receive.sealRepeat', locale, seals.length), {
+            seals: listOf(seals, locale),
+            where: t(`operations.secured.receive.sealRepeatWhere.${where}`),
+          }),
+        ];
+  }).join(SENTENCES_JOIN[locale]);
+
+/** A box as the form numbers it — the bag (or box) it closes, and which of its seals. */
+export interface SealPlace {
+  list: SealListKind;
+  unit: number;
+  seal: number;
+}
+
+/**
+ * The OTHER boxes holding the seal a box holds — where else it is, numbered as the boxes' own
+ * labels number them (bags by «2×»/«3×», boxes by two).
+ */
+export const otherPlaces = (repeat: SealRepeat, self: SealSpot, perBag: number): SealPlace[] =>
+  repeat.spots
+    .filter((spot) => spot.list !== self.list || spot.index !== self.index)
+    .map((spot) => {
+      const per = spot.list === 'bag' ? perBag : BOX_SEALS_PER_BOX;
+      return {
+        list: spot.list,
+        unit: Math.floor(spot.index / per) + 1,
+        seal: (spot.index % per) + 1,
+      };
+    });
+
+/** What a red box's title says: «مكرر — موجود أيضًا في الصندوق 1، الختم 1». */
+export const sealRepeatTitle = (
+  repeat: SealRepeat,
+  self: SealSpot,
+  perBag: number,
+  t: Translate,
+  locale: Locale,
+): string =>
+  t('operations.secured.receive.sealRepeatAt', {
+    places: listOf(
+      otherPlaces(repeat, self, perBag).map((place) =>
+        t(`operations.secured.receive.sealPlace.${place.list}`, {
+          unit: place.unit,
+          seal: place.seal,
+        }),
+      ),
+      locale,
+    ),
+  });
+
+// ── A seal still in the vault ────────────────────────────────────────────────────────────────────
+//
+// Round 21b — the owner, asked whether a seal already recorded on another محصنة should be refused:
+// «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». Refused while that محصنة is
+// still in the vault; once it has gone out again, or its receipt was cancelled, the number may come
+// back. The server decides it (409 `OPERATIONS_SEAL_HELD_IN_VAULT`) and answers the form's question
+// as seals are typed (`POST /operations/secured/seal-check`); the form marks a held seal's boxes red
+// like a repeat, says it in the same ONE notice under the seals, and holds «استلام» — by the same
+// `vaultSealKey`. A check that could not be asked marks nothing and holds nothing: the save decides.
+
+/**
+ * The seals on screen to ask the vault about: each once, by its `vaultSealKey` (0099 and 99 are one
+ * question), sorted — so the question is the same however the boxes are ordered, and a box edited
+ * back to what it held asks nothing new. The KEY is what is sent: the server reads it as the seal it
+ * stands for (the key of a key is itself). Blanks are no seal.
+ */
+export const sealsToCheck = (bags: readonly string[], boxes: readonly string[]): string[] =>
+  [
+    ...new Set(
+      [...bags, ...boxes].flatMap((raw) => {
+        const key = vaultSealKey(raw);
+        return key === null ? [] : [key];
+      }),
+    ),
+  ].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+/** Where a seal on screen is held: the محصنة, as the check named it. */
+export interface SealHold {
+  shipmentId: string;
+  /** Null while only the receipt's refusal has said it — until the check answers with the name. */
+  holder: OperationsVaultSealHolderDto | null;
+}
+
+/** What a refused receipt said is held: per seal key, the held shipment's id — and when it said it. */
+export interface HeldRefusal {
+  at: number;
+  holds: ReadonlyMap<string, string>;
+}
+
+/**
+ * Round 21b — the receipt refused for a seal the vault still holds: 409 `OPERATIONS_SEAL_HELD_IN_VAULT`,
+ * one detail per seal (`bagSeals.3` — its place in what was SENT — and the held shipment's id).
+ */
+export const isSealHeldRefusal = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT;
+
+const HELD_FIELD = /^(bagSeals|boxSeals)\.(\d+)$/u;
+
+/**
+ * The seals a refused receipt says are held, by key, read against the body that was sent: the
+ * server names each by its place in the lists it stored, and the form sends them as stored
+ * (`sealsToSend` — trimmed, no blanks), so that place is the sent list's own index.
+ */
+export const holdsFromRefusal = (
+  error: unknown,
+  sent: { bagSeals?: readonly string[] | undefined; boxSeals?: readonly string[] | undefined },
+): Map<string, string> => {
+  const holds = new Map<string, string>();
+  if (!(error instanceof ApiError) || !isSealHeldRefusal(error)) return holds;
+  for (const detail of error.details ?? []) {
+    const place = HELD_FIELD.exec(detail.field ?? '');
+    if (detail.code !== 'HELD_IN_VAULT' || place === null) continue;
+    const list = place[1] === 'bagSeals' ? sent.bagSeals : sent.boxSeals;
+    const key = vaultSealKey(list?.[Number(place[2])] ?? '');
+    if (key !== null && !holds.has(key)) holds.set(key, detail.message);
+  }
+  return holds;
+};
+
+/**
+ * What the form says is held, by seal key: the check's answer — and a refused receipt's, until the
+ * check has answered SINCE it. The server is the authority when the check was stale: the refusal
+ * marks its seals at once, named as soon as the check (which the refusal re-reads) names their
+ * محصنة. A check that could not be asked (`null`) leaves the refusal standing.
+ */
+export const mergeHolds = (
+  answer: OperationsVaultSealCheckDto | null | undefined,
+  answeredAt: number,
+  refusal: HeldRefusal | null,
+): Map<string, SealHold> => {
+  const holds = new Map<string, SealHold>();
+  const holders = new Map<string, OperationsVaultSealHolderDto>();
+  for (const { seal, holder } of answer?.held ?? []) {
+    const key = vaultSealKey(seal);
+    holders.set(holder.shipmentId, holder);
+    if (key !== null && !holds.has(key)) holds.set(key, { shipmentId: holder.shipmentId, holder });
+  }
+  if (refusal !== null && (answer == null || answeredAt <= refusal.at)) {
+    for (const [key, shipmentId] of refusal.holds) {
+      if (!holds.has(key)) holds.set(key, { shipmentId, holder: holders.get(shipmentId) ?? null });
+    }
+  }
+  return holds;
+};
+
+export interface SealHolds {
+  /** Each held seal on screen once — the bags' first, then the boxes', as typed in its first box. */
+  held: { seal: string; hold: SealHold }[];
+  /** Per box on screen, where its seal is held — null for a box whose seal is free. */
+  bags: (SealHold | null)[];
+  boxes: (SealHold | null)[];
+}
+
+/** Which boxes on screen hold a seal the vault still holds on another محصنة. Blanks are no seal. */
+export const sealHolds = (
+  bags: readonly string[],
+  boxes: readonly string[],
+  holds: ReadonlyMap<string, SealHold>,
+): SealHolds => {
+  const held: SealHolds['held'] = [];
+  const said = new Set<string>();
+  const mark = (seals: readonly string[]): (SealHold | null)[] =>
+    seals.map((raw) => {
+      const key = vaultSealKey(raw);
+      const hold = key === null ? undefined : holds.get(key);
+      if (key === null || hold === undefined) return null;
+      if (!said.has(key)) {
+        said.add(key);
+        held.push({ seal: raw.trim(), hold });
+      }
+      return hold;
+    });
+  const bagMarks = mark(bags);
+  return { held, bags: bagMarks, boxes: mark(boxes) };
+};
+
+/**
+ * The held محصنة as a treasurer tells it apart: its bank and the vault's receipt number —
+ * «بنك مصر، إيصال 1234» — or, when the vault typed no number, its bank and its two branches.
+ */
+export const sealHolderName = (holder: OperationsVaultSealHolderDto, t: Translate): string =>
+  holder.receiptNumber !== null && holder.receiptNumber !== ''
+    ? t('operations.secured.receive.sealHolderReceipt', {
+        bank: holder.mainBankName,
+        receipt: holder.receiptNumber,
+      })
+    : t('operations.secured.receive.sealHolderRoute', {
+        bank: holder.mainBankName,
+        from: holder.originBranchName,
+        to: holder.destinationBranchName,
+      });
+
+/**
+ * The held seals' part of the ONE notice under the seals — a sentence per held محصنة, in Arabic's
+ * own forms of the count: «الرقم 7 موجود في الخزينة على محصنة أخرى (بنك مصر، إيصال 1234)», «الرقمان 7
+ * و8 موجودان في الخزينة على محصنة أخرى (…)». A seal only a refusal has named reads «على محصنة أخرى»
+ * until the check names it. '' when no seal on screen is held.
+ */
+export const sealHeldNotice = (held: SealHolds['held'], t: Translate, locale: Locale): string => {
+  const byHolder = new Map<string, { hold: SealHold; seals: string[] }>();
+  for (const { seal, hold } of held) {
+    const group = byHolder.get(hold.shipmentId);
+    if (group === undefined) byHolder.set(hold.shipmentId, { hold, seals: [seal] });
+    else group.seals.push(seal);
+  }
+  return [...byHolder.values()]
+    .map(({ hold, seals }) =>
+      t(pluralKey('operations.secured.receive.sealHeld', locale, seals.length), {
+        seals: listOf(seals, locale),
+        holder:
+          hold.holder === null
+            ? t('operations.secured.receive.sealHolderOther')
+            : t('operations.secured.receive.sealHolder', { name: sealHolderName(hold.holder, t) }),
+      }),
+    )
+    .join(SENTENCES_JOIN[locale]);
+};
+
+/** A held box's title: «موجود في الخزينة على المحصنة: بنك مصر، إيصال 1234 — استُلمت 15/11 10:20». */
+export const sealHeldTitle = (
+  hold: SealHold,
+  t: Translate,
+  when: (iso: string) => string,
+): string =>
+  hold.holder === null
+    ? t('operations.secured.receive.sealHeldAtOther')
+    : t('operations.secured.receive.sealHeldAt', {
+        name: sealHolderName(hold.holder, t),
+        at: when(hold.holder.receivedAt),
+      });
+
+/**
+ * The ONE notice's words: the repeats' sentences first (Round 21), then the held seals' (Round 21b),
+ * joined as one notice's sentences are. '' when there is nothing to say.
+ */
+export const sealNoticeText = (parts: readonly string[], locale: Locale): string =>
+  parts.filter((part) => part !== '').join(SENTENCES_JOIN[locale]);
 
 // ── Counts and «عدد الورق من كل فئة» ────────────────────────────────────────────────────────────
 
@@ -504,9 +863,31 @@ export const receiveRequest = (
 
 // ── A refused receipt, said where it belongs ────────────────────────────────────────────────────
 
-/** The boxes of the top of the form a refusal can name. */
+/**
+ * The boxes of the form a refusal can name: the top's — and, since Round 21, `seals`, the seals
+ * band, for a seal the server refused as named twice in the receipt.
+ */
 export type ReceiveField =
-  'mainBank' | 'toBank' | 'origin' | 'destination' | 'lines' | 'collectionDate' | 'deliveryDate';
+  | 'mainBank'
+  | 'toBank'
+  | 'origin'
+  | 'destination'
+  | 'lines'
+  | 'collectionDate'
+  | 'deliveryDate'
+  | 'seals';
+
+/**
+ * Round 21 — the contract's refusal of a seal named twice in one receipt: a 400 whose detail is a
+ * `custom` issue on a seal of either list (`body.bagSeals.3`). The form only ever sends strings,
+ * within the ceiling, so on these two fields that refusal is the only one it can meet.
+ */
+const SEAL_REPEAT_FIELD = /^body\.(bagSeals|boxSeals)\.\d+$/u;
+const isSealRepeat = (error: ApiError): boolean =>
+  error.code === ErrorCodes.VALIDATION_FAILED &&
+  (error.details ?? []).some(
+    (detail) => detail.code === 'CUSTOM' && SEAL_REPEAT_FIELD.test(detail.field ?? ''),
+  );
 
 export interface ReceiveRefusal {
   /** The box it is said under, when the code says which; null → a toast. */
@@ -547,6 +928,8 @@ const receiveKey = (error: unknown): string | null => {
  *   · a branch of another bank → the TO branch; an unknown or stopped branch → the side the
  *     server's message names; an unknown or stopped bank → the main bank, or the TO bank;
  *   · an unknown or stopped currency → the money lines;
+ *   · a seal named twice in the receipt (Round 21) → the seals band;
+ *   · a seal the vault still holds on another محصنة (Round 21b) → the seals band;
  *   · a date refused (`MIN_DATE`) → the date box its detail names; a delivery day moved off a van
  *     whose captain has started → the delivery date;
  *   · anything else — stale, locked, received by someone else, no connection — a toast.
@@ -557,6 +940,17 @@ export const receiveRefusal = (error: unknown): ReceiveRefusal => {
   }
   const own = RECEIVE_ERRORS[error.code];
   if (own !== undefined) return { field: null, key: own, closes: true };
+  // A repeated seal is said under the seals, in the words the form says it in before sending
+  // (`sealRepeatNotice`) — never «بعض الحقول تحتاج إلى مراجعة».
+  if (isSealRepeat(error)) {
+    return { field: 'seals', key: 'operations.secured.receive.sealRepeatRefused', closes: false };
+  }
+  // Round 21b — a seal the vault still holds on another محصنة: under the seals too, its boxes marked
+  // from the refusal itself (`holdsFromRefusal`) — the server is the authority when the check was
+  // stale. Nothing typed is lost: the form stays open for the seal to be corrected.
+  if (isSealHeldRefusal(error)) {
+    return { field: 'seals', key: 'operations.secured.receive.sealHeldRefused', closes: false };
+  }
   const key = receiveKey(error);
   const closes = error.code === ErrorCodes.OPERATIONS_SECURED_LOCKED;
   const said = (field: ReceiveField): ReceiveRefusal => ({ field, key, closes: false });

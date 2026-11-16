@@ -20,12 +20,15 @@ import {
 import { translate } from '../../../platform/localization/i18n';
 import {
   CREW_LIMITS,
+  CREW_SLOTS,
   PLAN_FLAGS,
   attachVan,
+  awayOf,
   changeCount,
   clearStandingFromPlan,
   crewRoleOf,
   crewShortfall,
+  fitsCrewSlot,
   discardRow,
   flagsOf,
   freeMember,
@@ -36,7 +39,6 @@ import {
   NO_SHIFT_TYPE,
   SHIFT_TYPE_LIST,
   matchesShiftType,
-  outOfRole,
   parseClock,
   patchRow,
   placeMember,
@@ -44,16 +46,20 @@ import {
   planPoolOf,
   planRefusal,
   planRowCard,
+  rowMisfits,
   seatOf,
   shiftTypeChoices,
   shiftTypeStrip,
   slotRefusal,
+  standingForDay,
   toPlan,
   toPlanRows,
   vansFree,
   vehiclelessRow,
+  wrongSlotOf,
   type PlanRow,
 } from './crew-plan';
+import * as contracts from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { activeAreaNames } from '../api/operations-queries';
 import { crewPlanSheet } from './crew-plan-export';
@@ -245,13 +251,48 @@ describe('crewRoleOf — green, BLUE, red', () => {
     expect(crewRoleOf(null)).toBe('specialist');
   });
 
-  it('puts the blue in القادة, and marks — never refuses — a seat outside the role', () => {
+  it('puts the blue in القادة — only there — and the red, and nobody ticked, in الأخصائيون', () => {
     expect(planPoolOf(member('1', { isCaptain: true, isSpecialist: true }))).toBe('captains');
     expect(planPoolOf(member('2', { isSpecialist: true }))).toBe('specialists');
-    expect(outOfRole('specialist', 'captain')).toBe(true);
-    expect(outOfRole('captain', 'specialist1')).toBe(true);
-    expect(outOfRole('dual', 'captain')).toBe(false);
-    expect(outOfRole('dual', 'specialist2')).toBe(false);
+    expect(planPoolOf(member('3', {}))).toBe('specialists');
+    expect(planPoolOf(member('4', null))).toBe('specialists');
+  });
+
+  // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى».
+  it('is the contracts’ own role, so the board and the save cannot disagree', () => {
+    expect(crewRoleOf).toBe(contracts.crewRoleOf);
+    expect(fitsCrewSlot).toBe(contracts.fitsCrewSlot);
+    expect([...CREW_SLOTS]).toEqual([...contracts.OPERATIONS_CREW_SLOTS]);
+  });
+
+  it('says why a slot will not take a role — a refusal now, in the save’s own two words', () => {
+    expect(wrongSlotOf('specialist', 'captain')).toBe('notCaptain');
+    expect(wrongSlotOf('captain', 'specialist1')).toBe('notSpecialist');
+    expect(wrongSlotOf('captain', 'specialist2')).toBe('notSpecialist');
+    expect(wrongSlotOf('captain', 'captain')).toBeNull();
+    expect(wrongSlotOf('specialist', 'specialist2')).toBeNull();
+    for (const slot of CREW_SLOTS) expect(wrongSlotOf('dual', slot)).toBeNull();
+  });
+
+  it('finds the seats held outside their role on a row — by who, where and why', () => {
+    const roles: Record<string, 'captain' | 'dual' | 'specialist'> = {
+      c: 'captain',
+      d: 'dual',
+      s: 'specialist',
+    };
+    const row = van('1', { slots: slots(['c', 's'], ['d', 'c2'], ['s2']) });
+    expect(rowMisfits(row, (employeeId) => roles[employeeId.slice(0, 1)] ?? 'specialist')).toEqual([
+      { employeeId: 's', slot: 'captain', why: 'notCaptain' },
+      { employeeId: 'c2', slot: 'specialist1', why: 'notSpecialist' },
+    ]);
+    expect(
+      rowMisfits(
+        van('2', { slots: slots(['c'], ['d'], ['s']) }),
+        (id) => roles[id] ?? 'specialist',
+      ),
+    ).toEqual([]);
+    // Somebody whose role the board cannot read (off the roster) is not judged: the save is.
+    expect(rowMisfits(van('3', { slots: slots(['gone']) }), () => null)).toEqual([]);
   });
 
   it('lists the requirement icons in the requirements screen order', () => {
@@ -455,7 +496,7 @@ describe('parseClock — what an operator types', () => {
 
 // ── The pools ───────────────────────────────────────────────────────────────────────────────────
 
-describe('listPool — free first, the placed after them, search folded, icons AND', () => {
+describe('listPool — free first, the placed after them, the BLUE after the green, search folded, icons AND', () => {
   const members = [
     member('1', { isCaptain: true, hasWeapon: true }, 'أحمد سيد'),
     member(
@@ -470,8 +511,121 @@ describe('listPool — free first, the placed after them, search folded, icons A
 
   it('lists the captains pool with the placed one last, and counts the free', () => {
     const pool = listPool(members, 'captains', rows, { search: '', flags: [] });
-    expect(pool.listed.map((m) => m.employeeId)).toEqual(['2', '3', '1']);
+    // «3» green and free, «2» BLUE and free, «1» on van 1.
+    expect(pool.listed.map((m) => m.employeeId)).toEqual(['3', '2', '1']);
     expect(pool).toMatchObject({ total: 3, free: 2 });
+  });
+
+  // Round 22 — «وعاوز القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر».
+  it('puts the BLUE captains after the green — among the free, and again among the placed', () => {
+    const green = (id: string) => member(id, { isCaptain: true });
+    const blue = (id: string) => member(id, { isCaptain: true, isSpecialist: true });
+    // The server's order, blue and green mixed, two of each kind already on a row.
+    const roster = [blue('b1'), green('g1'), blue('b2'), green('g2'), blue('b3'), green('g3')];
+    roster.push(green('g4'), blue('b4'));
+    const onRows = [van('9', { slots: slots(['b2', 'g3'], ['b4'], ['g1']) })];
+    const pool = listPool(roster, 'captains', onRows, { search: '', flags: [] });
+    const free = ['g2', 'g4', 'b1', 'b3']; // free green, then free blue — the server's order in each
+    const placed = ['g1', 'g3', 'b2', 'b4']; // placed green, then placed blue
+    expect(pool.listed.map((m) => m.employeeId)).toEqual([...free, ...placed]);
+    expect(pool).toMatchObject({ total: 8, free: 4 });
+    // The colours the chips are drawn in follow the same order.
+    expect(pool.listed.map((m) => crewRoleOf(m.requirements)).join(' ')).toBe(
+      'captain captain dual dual captain captain dual dual',
+    );
+  });
+
+  // Round 23 — «لو قائد واخصائى يبقى فى القايمة بتاعت القائد بس يكونوا فى الاخر».
+  it('lists a captain-specialist in «القادة» ONLY, at its end — and never among «الأخصائيون»', () => {
+    const blue = (id: string) => member(id, { isCaptain: true, isSpecialist: true });
+    const roster = [
+      blue('b1'),
+      member('s1', { isSpecialist: true }),
+      member('g1', { isCaptain: true }),
+      blue('b2'),
+      member('s2', null),
+      member('g2', { isCaptain: true }),
+    ];
+    expect(
+      listPool(roster, 'captains', [], { search: '', flags: [] }).listed.map((m) => m.employeeId),
+    ).toEqual(['g1', 'g2', 'b1', 'b2']);
+    const specialists = listPool(roster, 'specialists', [], { search: '', flags: [] });
+    expect(specialists.listed.map((m) => m.employeeId)).toEqual(['s1', 's2']);
+    expect(specialists.total).toBe(2);
+    expect(specialists.listed.some((m) => crewRoleOf(m.requirements) === 'dual')).toBe(false);
+  });
+
+  it('keeps the order a search or an icon leaves, and leaves «الأخصائيون» in the server’s order', () => {
+    const roster = [
+      member('b1', { isCaptain: true, isSpecialist: true, hasWeapon: true }, 'محمد طارق'),
+      member('g1', { isCaptain: true, hasWeapon: true }, 'محمد سيد'),
+      member('s2', { isSpecialist: true }, 'محمد علي'),
+      member('s1', { isSpecialist: true, hasWeapon: true }, 'محمد ذكي'),
+      member('s3', null, 'محمد عبده'),
+    ];
+    expect(
+      listPool(roster, 'captains', [], { search: 'محمد', flags: ['hasWeapon'] }).listed.map(
+        (m) => m.employeeId,
+      ),
+    ).toEqual(['g1', 'b1']);
+    expect(
+      listPool(roster, 'specialists', [van('1', { slots: slots([], ['s2']) })], {
+        search: '',
+        flags: [],
+      }).listed.map((m) => m.employeeId),
+    ).toEqual(['s1', 's3', 's2']);
+  });
+
+  // Round 22 F — «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون الباهت … و كذلك الاخصائيين».
+  it('sends somebody AWAY that day to the very end — after the placed ones — and out of «متاح»', () => {
+    const away = (m: OperationsCrewMemberDto, availability: 'absent' | 'onLeave') =>
+      ({ ...m, availability }) as OperationsCrewMemberDto;
+    const green = (id: string) => member(id, { isCaptain: true });
+    const blue = (id: string) => member(id, { isCaptain: true, isSpecialist: true });
+    // The server's order, mixed: away ones first in it, one of them already on a row.
+    const roster = [
+      away(green('ga'), 'absent'),
+      blue('b1'),
+      away(blue('ba'), 'onLeave'),
+      green('g1'),
+      away(green('gp'), 'onLeave'),
+      green('g2'),
+      blue('b2'),
+    ];
+    const onRows = [van('7', { slots: slots(['gp', 'g2'], ['b2']) })];
+    const pool = listPool(roster, 'captains', onRows, { search: '', flags: [] });
+    // Free green, free blue | placed green, placed blue | away: free green, free blue, placed green.
+    expect(pool.listed.map((m) => m.employeeId)).toEqual([
+      'g1',
+      'b1',
+      'g2',
+      'b2',
+      'ga',
+      'ba',
+      'gp',
+    ]);
+    // «متاح N» is who can be put on a row now: none of the placed, none of the away.
+    expect(pool).toMatchObject({ total: 7, free: 2 });
+    // «و كذلك الاخصائيين» — the same tail in «الأخصائيون», the server's order kept inside it.
+    const reds = [
+      away(member('s1', { isSpecialist: true }), 'absent'),
+      member('s2', { isSpecialist: true }),
+      member('s3', null),
+    ];
+    expect(
+      listPool(reds, 'specialists', [], { search: '', flags: [] }).listed.map((m) => m.employeeId),
+    ).toEqual(['s2', 's3', 's1']);
+  });
+
+  it('reads away only from HR’s two answers — an unknown, or a server without the field, is not away', () => {
+    const base = member('1', { isCaptain: true });
+    expect(awayOf({ ...base, availability: 'absent' })).toBe('absent');
+    expect(awayOf({ ...base, availability: 'onLeave' })).toBe('onLeave');
+    expect(awayOf({ ...base, availability: null })).toBeNull();
+    expect(awayOf(base)).toBeNull();
+    expect(awayOf(undefined)).toBeNull();
+    // A word a newer server may add is not read as «away» before this screen knows it.
+    expect(awayOf({ ...base, availability: 'sick' as never })).toBeNull();
   });
 
   it('finds «أحمد» by «احمد», a code by its digits, and narrows by every icon ticked', () => {
@@ -527,6 +681,95 @@ describe('the standing crew on this board', () => {
     expect(load.filledKeys).toEqual(['van:v-1']);
     expect(load.unavailable).toBe(1);
     expect(clearStandingFromPlan(load.rows, load.filledKeys)[0]?.slots).toEqual(slots([]));
+  });
+
+  // Round 22 F and Round 23 — what the day may take of the standing crew, before it is loaded.
+  it('leaves off somebody away that day, and somebody whose standing seat is not his role’s — named, not loaded', () => {
+    const away = (m: OperationsCrewMemberDto) =>
+      ({ ...m, availability: 'absent' }) as OperationsCrewMemberDto;
+    const roster = new Map(
+      [
+        member('cap', { isCaptain: true }),
+        member('blue', { isCaptain: true, isSpecialist: true }),
+        member('red', { isSpecialist: true }),
+        member('capInSpec', { isCaptain: true }),
+        member('redInCap', { isSpecialist: true }),
+        away(member('gone', { isCaptain: true })),
+      ].map((m) => [m.employeeId, m]),
+    );
+    const day = standingForDay(
+      [
+        {
+          vehicleId: 'v-1',
+          captainEmployeeIds: ['cap', 'redInCap'],
+          specialist1EmployeeIds: ['blue', 'capInSpec'],
+          specialist2EmployeeIds: ['red'],
+        },
+        {
+          vehicleId: 'v-2',
+          captainEmployeeIds: ['gone', 'nobody'],
+          specialist1EmployeeIds: ['nobody2'],
+          specialist2EmployeeIds: [],
+        },
+      ],
+      (employeeId) => roster.get(employeeId),
+    );
+    expect(day.sources).toEqual([
+      {
+        vehicleId: 'v-1',
+        captainEmployeeIds: ['cap'],
+        specialist1EmployeeIds: ['blue'],
+        specialist2EmployeeIds: ['red'],
+      },
+      // Somebody the roster no longer names: his requirements cannot be read here, so he is not
+      // judged here — loaded as before, and the save (which reads them) decides.
+      {
+        vehicleId: 'v-2',
+        captainEmployeeIds: ['nobody'],
+        specialist1EmployeeIds: ['nobody2'],
+        specialist2EmployeeIds: [],
+      },
+    ]);
+    expect(day.away).toEqual(['gone']);
+    expect(day.wrongSlot).toEqual([
+      { employeeId: 'redInCap', slot: 'captain' },
+      { employeeId: 'capInSpec', slot: 'specialist1' },
+    ]);
+    // Loaded, the van gets exactly what is left — nobody the save would refuse.
+    const load = loadStandingIntoPlan([van('1'), van('2')], day.sources);
+    expect(load.rows[0]?.slots).toEqual(slots(['cap'], ['blue'], ['red']));
+    for (const row of load.rows) {
+      expect(
+        rowMisfits(row, (id) => {
+          const known = roster.get(id);
+          return known === undefined ? null : crewRoleOf(known.requirements);
+        }),
+      ).toEqual([]);
+    }
+  });
+
+  it('the page loads through it, and says each kind left off in its own notice', () => {
+    const page = readFileSync(
+      fileURLToPath(new URL('../pages/CrewBoardPage.tsx', import.meta.url)),
+      'utf8',
+    );
+    const toggle = page.slice(
+      page.indexOf('const toggleStanding ='),
+      page.indexOf('const giveVan ='),
+    );
+    expect(toggle).toContain('standingForDay(standingSources, memberOf)');
+    expect(toggle).toContain('loadStandingIntoPlan(rows, day.sources)');
+    expect(toggle).toContain("t('operations.crewPlan.standingAway')");
+    expect(toggle).toContain("t('operations.crewPlan.standingWrongSlot')");
+    expect(translate('ar', 'operations.crewPlan.standingWrongSlot')).toContain('الطاقم الثابت');
+    // A row holding such a seat is given no van: on the van's row it would be a new seat.
+    const giveVan = page.slice(
+      page.indexOf('const giveVan ='),
+      page.indexOf('const exportExcel ='),
+    );
+    expect(giveVan).toContain('rowMisfits(row, (employeeId) =>');
+    expect(giveVan).toContain('byId.has(employeeId) ? roleOf(employeeId) : null');
+    expect(giveVan).toContain("t('operations.crewPlan.vanWrongSlot')");
   });
 });
 
@@ -687,6 +930,79 @@ describe('planRefusal — the refused save, on the row it names', () => {
         sent,
       ),
     ).toEqual({ key: 'van:v-1', field: 'type', parts: [] });
+  });
+
+  // Round 22 F — `OPERATIONS_CREW_MEMBER_ABSENT`: the server names the person and the row.
+  it('places somebody away that day on his row, by name and why — absent, or on leave', () => {
+    const rows = [van('1'), van('2', { slots: slots(['e-9'], ['e-7']) })];
+    const refused = (code: string, employeeId: string, index: string) =>
+      planRefusal(
+        {
+          code: 'OPERATIONS_CREW_MEMBER_ABSENT',
+          details: [
+            { field: 'employeeId', code, message: employeeId },
+            { field: 'rows', code: 'ROW_INDEX', message: index },
+          ],
+        },
+        rows,
+      );
+    expect(refused('ABSENT', 'e-7', '1')).toEqual({
+      key: 'van:v-2',
+      field: 'crew',
+      parts: [],
+      person: { employeeId: 'e-7', reason: 'absent' },
+    });
+    expect(refused('ON_LEAVE', 'e-9', '1')?.person).toEqual({
+      employeeId: 'e-9',
+      reason: 'onLeave',
+    });
+    // A person the row does not hold, or a reason this screen does not know: the row, unnamed.
+    expect(refused('ABSENT', 'e-1', '1')).toEqual({ key: 'van:v-2', field: 'crew', parts: [] });
+    expect(refused('SICK', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'crew', parts: [] });
+    expect(refused('ABSENT', 'e-7', '5')).toBeNull();
+  });
+
+  // Round 23 — `OPERATIONS_CREW_MEMBER_WRONG_SLOT`: the same shape — who, and which way.
+  it('places somebody in a slot not his role’s on his row — not a captain, or a captain only', () => {
+    const rows = [van('1'), van('2', { slots: slots(['e-9'], ['e-7']) })];
+    const refused = (code: string, employeeId: string, index: string) =>
+      planRefusal(
+        {
+          code: 'OPERATIONS_CREW_MEMBER_WRONG_SLOT',
+          details: [
+            { field: 'employeeId', code, message: employeeId },
+            { field: 'rows', code: 'ROW_INDEX', message: index },
+          ],
+        },
+        rows,
+      );
+    expect(refused('NOT_A_CAPTAIN', 'e-9', '1')).toEqual({
+      key: 'van:v-2',
+      field: 'slot',
+      parts: [],
+      person: { employeeId: 'e-9', reason: 'notCaptain' },
+    });
+    expect(refused('NOT_A_SPECIALIST', 'e-7', '1')?.person).toEqual({
+      employeeId: 'e-7',
+      reason: 'notSpecialist',
+    });
+    // The away codes are not this refusal's, nor somebody the row does not hold: the row, unnamed.
+    expect(refused('ABSENT', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'slot', parts: [] });
+    expect(refused('NOT_A_CAPTAIN', 'e-1', '1')).toEqual({
+      key: 'van:v-2',
+      field: 'slot',
+      parts: [],
+    });
+    expect(refused('NOT_A_CAPTAIN', 'e-9', '4')).toBeNull();
+    // Said by name, in both languages; the server's code has words of its own.
+    for (const locale of ['ar', 'en'] as const) {
+      for (const why of ['notCaptain', 'notSpecialist']) {
+        expect(translate(locale, `operations.crewPlan.refused.${why}`, { name: 'N' })).toContain(
+          'N',
+        );
+      }
+      expect(translate(locale, 'operations.crewPlan.refused.slot')).not.toContain('operations.');
+    }
   });
 
   it('places nothing it cannot name — another refusal, or an index off the save', () => {

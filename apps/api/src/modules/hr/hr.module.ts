@@ -568,6 +568,24 @@ const employeePermissions = declarePermissions(
         ar: 'تغيير حالة الموظف (مسار قديم)',
       },
     },
+    {
+      /**
+       * «مسح نهائي» — the person leaves the system, everywhere, with no undo.
+       *
+       * BREAK-GLASS, and the only hard delete of a person the product has. Everything else that
+       * ends an employment is a STATE: terminated, resigned. This is for the record that should
+       * never have existed — somebody entered twice, a test row, a wrong person — and it takes
+       * their pay and contract history with them, which is exactly why it is not `employee.delete`
+       * sitting quietly beside `edit`.
+       *
+       * It is deliberately NOT implied by any other key. Holding every other employee authority
+       * grants the power to hire, pay, transfer and dismiss; none of them grants the power to make
+       * somebody never have been.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an employee', ar: 'مسح نهائي للموظف' },
+      breakGlass: true,
+    },
   ],
   'hr.employees',
 );

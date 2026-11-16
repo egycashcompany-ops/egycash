@@ -2917,7 +2917,7 @@ const en: Record<string, string> = {
   'employees.changeCode.same': 'That is already this employee’s code.',
   'employees.changeCode.taken': 'This code is already used by another employee.',
   'employees.changeCode.loginTaken':
-    'Another account already signs in with this code, so the employee could not sign in with it. Choose another code.',
+    'Another account already signs in with this code, so it cannot become this employee\'s login. Choose another code.',
   'employees.changeCode.reasonRequired': 'Write why the code is being changed.',
   'employees.changeCode.note':
     'Contracts and documents already issued keep the code they were made with. The next employee file uploaded must carry the new code.',

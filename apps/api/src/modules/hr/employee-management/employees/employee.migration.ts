@@ -131,10 +131,11 @@ export const migrateEmployeeIndexes = async (): Promise<void> => {
  * Free the company numbers external people were given.
  *
  * Registering an external person used to draw a number from the company's sequence, kept as their
- * `employeeNumber` behind the code HR typed («C2»). Nobody saw it, but the register screen counts a
- * number held by anybody as taken, so the company code with that number could not be issued: «لما
- * بضيف موظف جديد بكود 02002943 … هذا الرقم مسجَّل بالفعل للموظف C2». An external person's number is
- * now their code; each one registered before is given it, which frees the number drawn.
+ * `employeeNumber` behind the code HR typed («C2»). Nobody saw it, but it held the company code with
+ * that number: «لما بضيف موظف جديد بكود 02002943 … هذا الرقم مسجَّل بالفعل للموظف C2». The register
+ * check now leaves external people out (`findHoldingNumber`), yet the number still names them: a
+ * device punch for 2943 (`findByEmployeeNumberSystem`) would find C2, not the person hired as
+ * 02002943. An external person's number is now their code; each one registered before is given it.
  *
  * Idempotent: only an external record whose number is not its code is touched. Returns how many.
  */

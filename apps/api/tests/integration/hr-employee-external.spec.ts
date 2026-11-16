@@ -32,7 +32,10 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
-import { migrateExternalEmployeeNumbers } from '../../src/modules/hr/employee-management/employees';
+import {
+  employeeRepository,
+  migrateExternalEmployeeNumbers,
+} from '../../src/modules/hr/employee-management/employees';
 import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -285,26 +288,25 @@ describe('POST /hr/employees/external', () => {
   });
 
   /**
-   * The ones registered before the fix: each drew a company number nobody saw. At boot the number
-   * is given back — the record's number becomes its code — and the company code with it is free.
+   * The ones registered before the fix: each drew a company number nobody saw. The register check
+   * no longer counts it, but the number still named them: a device punch for 7743 — the person
+   * later hired as 0017743 — would have found the external person. At boot the number is given
+   * back: the record's number becomes its code.
    */
-  it('frees, once, a company number an external person drew before', async () => {
+  it('gives back, once, a company number an external person drew before', async () => {
     const registered = data<EmployeeDto>(
       await registerExternal(registrarToken, { ...wellFormed('خارجي قديم'), code: 'C2' }),
     );
     // As the record was written before: the code typed, a company number drawn behind it.
-    await EmployeeModel.collection.updateOne(
-      { code: 'C2' },
-      { $set: { employeeNumber: '7743' } },
-    );
-    const held = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7743`);
-    expect(data<{ takenBy: string | null }>(held).takenBy).toBe('C2');
+    await EmployeeModel.collection.updateOne({ code: 'C2' }, { $set: { employeeNumber: '7743' } });
+    expect((await employeeRepository.findByEmployeeNumberSystem('7743'))?.code).toBe('C2');
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7743`);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
 
     expect(await migrateExternalEmployeeNumbers()).toBe(1);
     expect(await migrateExternalEmployeeNumbers()).toBe(0);
 
-    const freed = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7743`);
-    expect(data<{ takenBy: string | null }>(freed).takenBy).toBeNull();
+    expect(await employeeRepository.findByEmployeeNumberSystem('7743')).toBeNull();
     const read = await request(app)
       .get(`/api/v1/hr/employees/${registered.id}`)
       .set('Authorization', `Bearer ${viewerToken}`);

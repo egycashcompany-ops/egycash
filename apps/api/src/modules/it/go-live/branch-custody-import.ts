@@ -31,7 +31,6 @@ import {
   INVENTORY_BRANCHES,
   INVENTORY_CATEGORY_KEYS,
   matchCategories,
-  type InventoryBranch,
   type InventoryCategoryKey,
   type LiveCategory,
 } from './inventory-import';
@@ -190,6 +189,46 @@ export type CustodySkipRow = z.infer<typeof CustodySkipRowSchema>;
 /** A line something is done for — every line the review did not leave out. */
 export type CustodyLiveRow = Exclude<CustodyRow, CustodySkipRow>;
 
+/**
+ * A line as the planner reads it: only what a decision reads, so a row may carry more and is handed
+ * back exactly as it was given — the go-live's reviewed rows above, or the asset register's bulk
+ * upload («رفع جماعي», `assets/asset-import-plan.ts`), whose every line is a `new` one of the
+ * branch chosen on the screen, built from the owner's sheet. «بنفس شكل عهدة الأفرع» — the same
+ * sheets, so the same rules: generalised here rather than copied there. `branch` is whatever key
+ * the caller's `branchIds` maps to a live branch — one of the inventory's names for the go-live, a
+ * branch id for the upload.
+ */
+interface PlannedLineBase {
+  branch: string;
+  serial: string | null;
+  tag: string | null;
+}
+interface PlannedAdditions {
+  specs: CustodySpecs;
+  accessories: readonly string[];
+}
+export interface PlannedSkipLine extends PlannedLineBase {
+  action: 'skip';
+  reason: string;
+}
+export interface PlannedFoundLine extends PlannedLineBase, PlannedAdditions {
+  action: 'fill' | 'move';
+  registerSerial: string;
+}
+export interface PlannedNewLine extends PlannedLineBase, PlannedAdditions {
+  action: 'new';
+  manufacturer: string | null;
+  model: string | null;
+}
+export type PlannedLine = PlannedSkipLine | PlannedFoundLine | PlannedNewLine;
+
+/** The lines of a plan the review left out, the ones something is done for, the new ones… */
+type SkipLineOf<R extends PlannedLine> = Extract<R, { action: 'skip' }>;
+type LiveLineOf<R extends PlannedLine> = Exclude<R, { action: 'skip' }>;
+type NewLineOf<R extends PlannedLine> = Extract<R, { action: 'new' }>;
+/** …and the ones the review found on the register. */
+type FoundLineOf<R extends PlannedLine> = Extract<R, { action: 'fill' | 'move' }>;
+
 /** Two spellings of one serial or tag — the register compares them without case. */
 const sameIdentifier = (a: string, b: string): boolean =>
   a.trim().toUpperCase() === b.trim().toUpperCase();
@@ -319,15 +358,16 @@ export interface KeptCustodyValue {
   sheet: string;
 }
 
-export type CustodyDecision =
-  | { kind: 'skipped'; row: CustodySkipRow; reason: CustodySkipRow['reason'] }
+/** What became of a line — of the go-live's rows unless another kind of line is planned. */
+export type CustodyDecision<R extends PlannedLine = CustodyRow> =
+  | { kind: 'skipped'; row: SkipLineOf<R>; reason: SkipLineOf<R>['reason'] }
   /** Two devices or more answer to the line's identifiers: neither is guessed at. */
-  | { kind: 'ambiguous'; row: CustodyLiveRow; assetCodes: string[] }
+  | { kind: 'ambiguous'; row: LiveLineOf<R>; assetCodes: string[] }
   /** A line the review found on the register that is no longer there — nothing is registered. */
-  | { kind: 'notFound'; row: CustodyFillRow | CustodyMoveRow }
+  | { kind: 'notFound'; row: FoundLineOf<R> }
   | {
       kind: 'create';
-      row: CustodyNewRow;
+      row: NewLineOf<R>;
       serialNumber: string;
       externalTag: string | null;
       branchId: string;
@@ -335,13 +375,13 @@ export type CustodyDecision =
   /** A second line for a device an earlier line already took — the first wins. */
   | {
       kind: 'duplicateTarget';
-      row: CustodyLiveRow;
+      row: LiveLineOf<R>;
       asset: CustodyAsset | null;
-      first: CustodyLiveRow;
+      first: LiveLineOf<R>;
     }
   | {
       kind: 'found';
-      row: CustodyLiveRow;
+      row: LiveLineOf<R>;
       asset: CustodyAsset;
       fill: CustodyFill;
       /** The fields `fill` fills, in the order the history names them. */
@@ -353,7 +393,10 @@ export type CustodyDecision =
        * which the move clears; null when it had none.
        */
       move: { fromBranchId: string; toBranchId: string; location: string | null } | null;
-      /** Held, under maintenance or disposed elsewhere: custody moves it, never this step. */
+      /**
+       * Held, under maintenance (its status, or an active order the caller named) or disposed
+       * elsewhere: custody moves it, never this step.
+       */
       notMoved: { status: string; branchId: string } | null;
       /** A `new` line the register holds since the review: treated as found, and said so. */
       alreadyRegistered: boolean;
@@ -361,7 +404,7 @@ export type CustodyDecision =
   /** Found, in its branch, with nothing to fill — left exactly as it is. */
   | {
       kind: 'complete';
-      row: CustodyLiveRow;
+      row: LiveLineOf<R>;
       asset: CustodyAsset;
       kept: KeptCustodyValue[];
       alreadyRegistered: boolean;
@@ -407,12 +450,37 @@ const BARCODE_S_SERIAL = /^MP[0-9A-Z]{6}$/u;
  * device somebody holds stays where its custody put it, its place with it, reported. No device: a
  * `new` line is registered; a line the review found on the register is reported, never
  * registered — it carries no name or category.
+ *
+ * Any line the planner reads (`PlannedLine`): the go-live's rows by default, the bulk upload's
+ * lines with a branch id for their `branch`.
+ *
+ * `activeMaintenance` (optional) — the devices an ACTIVE maintenance order holds. Opening an order
+ * leaves a device in stock, so its status alone would let it move; every other change of branch
+ * refuses it (custody's `assertNoActiveMaintenance`, the move's `assetMoveRefusal`): the technician
+ * has it. Such a device is never moved — `notMoved`, still filled. The bulk upload passes it; the
+ * go-live, which never did, decides exactly as it always has without it.
  */
-export const planBranchCustody = (
-  rows: readonly CustodyRow[],
+export const planBranchCustody = <R extends PlannedLine = CustodyRow>(
+  rows: readonly R[],
   register: readonly CustodyAsset[],
-  branchIds: ReadonlyMap<InventoryBranch, string>,
-): CustodyDecision[] => {
+  branchIds: ReadonlyMap<R['branch'], string>,
+  options: { activeMaintenance?: ReadonlySet<string> } = {},
+): CustodyDecision<R>[] =>
+  // The planner never builds a line: every decision carries one of `rows` exactly as it was given,
+  // so its lines are the caller's own type.
+  planLines(
+    rows,
+    register,
+    branchIds,
+    options.activeMaintenance ?? new Set(),
+  ) as CustodyDecision<R>[];
+
+const planLines = (
+  rows: readonly PlannedLine[],
+  register: readonly CustodyAsset[],
+  branchIds: ReadonlyMap<string, string>,
+  activeMaintenance: ReadonlySet<string>,
+): CustodyDecision<PlannedLine>[] => {
   const key = (id: string): string => id.trim().toUpperCase();
   const byIdentifier = new Map<string, CustodyAsset[]>();
   const bySerialNumber = new Map<string, CustodyAsset[]>();
@@ -439,10 +507,10 @@ export const planBranchCustody = (
     if (row.action === 'skip') continue;
     for (const id of new Set(identifiersOf(row).map(key))) named.set(id, (named.get(id) ?? 0) + 1);
   }
-  const targeted = new Map<string, CustodyLiveRow>();
-  const registering = new Map<string, CustodyLiveRow>();
+  const targeted = new Map<string, LiveLineOf<PlannedLine>>();
+  const registering = new Map<string, LiveLineOf<PlannedLine>>();
 
-  return rows.map((row): CustodyDecision => {
+  return rows.map((row): CustodyDecision<PlannedLine> => {
     if (row.action === 'skip') return { kind: 'skipped', row, reason: row.reason };
     const toBranchId = branchIds.get(row.branch);
     if (toBranchId === undefined) throw new Error(`no live branch for ${row.branch}`);
@@ -526,7 +594,11 @@ export const planBranchCustody = (
     let move: FoundCustodyDecision['move'] = null;
     let notMoved: { status: string; branchId: string } | null = null;
     if (asset.branchId !== toBranchId) {
-      if (asset.status === 'inStock' && asset.currentAssignmentId === null) {
+      if (
+        asset.status === 'inStock' &&
+        asset.currentAssignmentId === null &&
+        !activeMaintenance.has(asset.id)
+      ) {
         // Its place names somewhere inside the branch it leaves, so it does not travel with it. A
         // device that stays — held elsewhere, or already in its branch — keeps its own.
         const location = typed(asset.location) ? asset.location : null;
@@ -545,7 +617,10 @@ export const planBranchCustody = (
   });
 };
 
-export type FoundCustodyDecision = Extract<CustodyDecision, { kind: 'found' }>;
+export type FoundCustodyDecision<R extends PlannedLine = CustodyRow> = Extract<
+  CustodyDecision<R>,
+  { kind: 'found' }
+>;
 
 /**
  * Whether a decision writes the device it found: only when there is a field to fill or a move.
@@ -554,7 +629,9 @@ export type FoundCustodyDecision = Extract<CustodyDecision, { kind: 'found' }>;
  * away and its version up, for no change. It is the production case — the head office's held
  * devices on a branch's sheet — so it is a rule of its own, not the writer's aside.
  */
-export const writesAsset = (decision: CustodyDecision): decision is FoundCustodyDecision =>
+export const writesAsset = <R extends PlannedLine = CustodyRow>(
+  decision: CustodyDecision<R>,
+): decision is FoundCustodyDecision<R> =>
   decision.kind === 'found' && (decision.fields.length > 0 || decision.move !== null);
 
 /** The values a field holds — on the register's device, or after the fill. */
@@ -642,24 +719,37 @@ export const custodySource = (row: Pick<CustodyRow, 'sheet'>): string =>
 export const newAssetNotes = (row: Pick<CustodyNewRow, 'sheet' | 'note'>): string =>
   row.note === null ? custodySource(row) : `${custodySource(row)}\n${row.note}`;
 
+/**
+ * «أُضيفت <source>: المعالج، المشتملات» — what a fill filled, and from where; the go-live's file
+ * and the bulk upload's each name their own source.
+ */
+export const filledHistoryNote = (source: string, fields: readonly CustodyField[]): string =>
+  `أُضيفت ${source}: ${fields.map((field) => CUSTODY_FIELD_LABELS[field]).join('، ')}`;
+
 /** «أُضيفت من ملف «عهدة فرع طنطا» — نوفمبر 2026: المعالج، المشتملات» — what this step filled. */
 export const updatedHistoryNote = (
   row: Pick<CustodyRow, 'sheet'>,
   fields: readonly CustodyField[],
-): string =>
-  `أُضيفت ${custodySource(row)}: ${fields.map((field) => CUSTODY_FIELD_LABELS[field]).join('، ')}`;
+): string => filledHistoryNote(custodySource(row), fields);
 
 /**
- * «نُقل إلى فرع الشروق حسب ملف «عهدة فرع الشروق» — نوفمبر 2026» — and, when the device had a place
- * in the branch it left, that the place was cleared: «… — وأُزيل الموقع السابق «مخزن IT»».
+ * «نُقل إلى فرع <branch> حسب <basis>» — and, when the device had a place in the branch it left,
+ * that the place was cleared: «… — وأُزيل الموقع السابق «مخزن IT»».
  */
+export const movedHistoryNote = (
+  branch: string,
+  basis: string,
+  location: string | null,
+): string => {
+  const moved = `نُقل إلى فرع ${branch} حسب ${basis}`;
+  return location === null ? moved : `${moved} — وأُزيل الموقع السابق «${location}»`;
+};
+
+/** «نُقل إلى فرع الشروق حسب ملف «عهدة فرع الشروق» — نوفمبر 2026» (+ the place cleared). */
 export const transferredHistoryNote = (
   row: Pick<CustodyRow, 'sheet' | 'branch'>,
   location: string | null,
-): string => {
-  const moved = `نُقل إلى فرع ${row.branch} حسب ملف «${row.sheet}» — ${SENT}`;
-  return location === null ? moved : `${moved} — وأُزيل الموقع السابق «${location}»`;
-};
+): string => movedHistoryNote(row.branch, `ملف «${row.sheet}» — ${SENT}`, location);
 
 /** Where a line is in the owner's sheets — what every entry of the report starts with. */
 export interface CustodyLine {

@@ -55,6 +55,8 @@ import {
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetImportPreviewDto,
+  type ItAssetImportResultDto,
   type ItAssetNamesDto,
   type ItAssetsBranchMoveResultDto,
   type ItMoveTargetsDto,
@@ -121,6 +123,11 @@ import {
   type QueryParams,
 } from '../../../shared/lib/api-client';
 import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
+import {
+  assetImportFields,
+  type AssetImportApply,
+  type AssetImportRequest,
+} from '../lib/asset-import';
 
 export type ItListParams = QueryParams;
 
@@ -269,6 +276,45 @@ export const moveAssetsToBranch = (
  */
 export const moveTargets = (): Promise<ItMoveTargetsDto> =>
   get<ItMoveTargetsDto>('/it/assets/move-targets');
+
+// ── «رفع جماعي» — the register's bulk upload ────────────────────────────────
+// «ويكون فى Preview الأول للى هيتضاف»: ONE endpoint, posted twice with the SAME `File` — without
+// `apply` it is the preview (nothing written); with it, the lines kept and the preview's two
+// hashes, refused (409) when the file or the plan changed since, so what is written is what was
+// seen. Nothing is held on the server in between.
+
+const assetImportForm = (file: File, request: AssetImportRequest): FormData => {
+  const form = new FormData();
+  // The text fields before the file part, so the server holds them when the file arrives.
+  for (const [name, value] of assetImportFields(request)) form.append(name, value);
+  form.append('file', file);
+  return form;
+};
+
+/** Read the sheet and plan every line against the register — writes nothing. */
+export const previewAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply'>,
+): Promise<ItAssetImportPreviewDto> =>
+  upload<ItAssetImportPreviewDto>('/it/assets/import', assetImportForm(file, request));
+
+/**
+ * The branches the upload may register in: the active branches the caller's `itAsset.create`
+ * reaches, as the server judges it (the upload answers 403 for any other) — `me` carries the reach
+ * of all the account's grants, not of this one key.
+ */
+export const assetImportBranches = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/assets/import/branches');
+
+/** Write the lines kept — only if the file and the plan are still the ones previewed. */
+export const applyAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply' | 'branchId'> & {
+    branchId: string;
+    apply: AssetImportApply;
+  },
+): Promise<ItAssetImportResultDto> =>
+  upload<ItAssetImportResultDto>('/it/assets/import', assetImportForm(file, request));
 
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 // Printed BEFORE the hand-over (`preview` writes nothing), recorded WITH it (`handOver` opens the

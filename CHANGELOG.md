@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: «عروض العمل» shows the branch, department and job; «جاهزون للتعيين» filters and shows the
+  department and job.** «هنحط الاداره و الوظيفه و الفرع في الجزء اللي تحت … و في جاهزون للتعيين هنزود
+  الفلتر بتاع الاداره و الوظيفه و بردو هنزودهها تحت جمب العرض و تاريخ القبول».
+  - «عروض العمل»: columns «الفرع» «الإدارة» «الوظيفة» after «المتقدِّم», read from the accepted terms,
+    else the written terms, else — for «جاهز لعرض العمل» — the placement the record was queued with
+    (`offerPlacement`), and named from the lists that keep retired branches and departments. The
+    salary, which met «تاريخ الإنشاء» across one gutter (money reads from its end, the date from its
+    start), is now the last data column, beside the row's action.
+  - «جاهزون للتعيين»: «الإدارة» and «الوظيفة» filters, chosen as on «عروض العمل» (a department stands
+    for every branch copy of it), remembered with the others; the server already filtered the accepted
+    terms by them. Columns «الإدارة» «الوظيفة» after «العرض».
+  - «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: on both screens every filter is as wide as its own
+    words, the search box as its hint (`field-sizing: content`, Chromium; elsewhere the input's default),
+    and every table cell and header stays on one line — a screen narrower than the row scrolls sideways
+    instead of wrapping.
+
 - **HR: a transfer can change the job title; the register forms' department, section and job are
   typed into; the employee list filters by origin.** «فى الإجراءات (نقل) على الموظف إمكانية تعديل
   المسمي الوظيفي أيضاً» · «عايز الإدارة والمسمي الوظيفي والقسم يكون قابل للبحث فى الأختيارات من خلال

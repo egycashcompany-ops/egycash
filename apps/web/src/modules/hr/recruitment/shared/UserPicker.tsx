@@ -31,6 +31,7 @@ export const UserPicker = ({
   noAccessLabel,
   emptyLabel,
   typedName,
+  className = 'w-full sm:w-72',
 }: {
   value: UserRef | null;
   onChange: (next: UserRef | null) => void;
@@ -42,6 +43,8 @@ export const UserPicker = ({
   noAccessLabel: string;
   /** Shown when the search returns nothing. */
   emptyLabel: string;
+  /** The box's width: a form's fixed one by default; a filter bar passes its fit-to-text class. */
+  className?: string;
   /**
    * Offer the typed text itself as a NAME — for somebody with no account on the system («ولو مش
    * باين مين المدير اقدر اكتبو انا مانيوال»). Its words for the row, and for the chip once chosen.
@@ -86,7 +89,7 @@ export const UserPicker = ({
   }
 
   return (
-    <div className="relative w-full sm:w-72" ref={ref}>
+    <div className={`relative ${className}`} ref={ref}>
       <SearchInput
         value={term}
         onChange={(v) => {

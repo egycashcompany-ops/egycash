@@ -16,6 +16,7 @@
 import { type ComponentType, type SVGProps, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  APPLICANT_SOURCE_KINDS,
   type ApplicantSourceDto,
   type ApplicantSourceKind,
   type Locale,
@@ -31,7 +32,9 @@ import { Pagination } from '../../../../../shared/ui/Pagination';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { StatStrip, type StatStripItem } from '../../../../../shared/ui/StatStrip';
 import { RowActions } from '../../../../../shared/ui/RowActions';
-import { Select } from '../../../../../shared/ui/form';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { Button } from '../../../../../shared/ui/Button';
 import { Badge, StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { EmptyState } from '../../../../../shared/ui/states/EmptyState';
@@ -62,6 +65,9 @@ import { SourceDialog, type Editing } from '../components/SourceDialog';
 import { SourceIcon } from '../components/SourceIcon';
 import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** The kinds in the order this screen has always listed them. */
+const KIND_ORDER: readonly ApplicantSourceKind[] = ['publicForm', 'integration', 'manual'];
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -100,8 +106,11 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   const [editing, setEditing] = useState<Editing | null>(null);
 
   const search = sp.get('q') ?? '';
-  const kind = sp.get('kind') ?? '';
-  const status = sp.get('status') ?? '';
+  // «هنخلي كل الفلترز multi»: several kinds and statuses, ORed; a stray value from an old link is dropped.
+  const kinds = readList(sp, 'kind').filter((k): k is ApplicantSourceKind =>
+    (APPLICANT_SOURCE_KINDS as readonly string[]).includes(k),
+  );
+  const statuses = readList(sp, 'status').filter((s) => s === 'active' || s === 'inactive');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'key:asc').split(':');
@@ -126,7 +135,9 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   // lives on the intake-form document, not on the source. Either one puts the screen in the
   // whole-catalog mode described below.
   const clientFiltering = term !== '' || publishedOnly;
-  const activeFilter = status === '' ? undefined : status === 'active';
+  // Both picked, or neither, is every source; one of the two is that one.
+  const activeFilter = statuses.length === 1 ? statuses[0] === 'active' : undefined;
+  const kind = kinds.length === 0 ? undefined : kinds;
 
   // Filtering and paging are the SERVER's, through the query parameters the endpoint already
   // documents. The one exception is the text search, which the endpoint has no parameter for.
@@ -138,8 +149,8 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   // one page, hiding matches that live on another.
   const sources = useApplicantSources(
     clientFiltering
-      ? { pageSize: 100, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) }
-      : { page, pageSize, sortBy: sort.by, sortDir: sort.dir, kind, ...(activeFilter === undefined ? {} : { active: activeFilter }) },
+      ? { pageSize: 100, sortBy: sort.by, sortDir: sort.dir, ...(kind === undefined ? {} : { kind }), ...(activeFilter === undefined ? {} : { active: activeFilter }) }
+      : { page, pageSize, sortBy: sort.by, sortDir: sort.dir, ...(kind === undefined ? {} : { kind }), ...(activeFilter === undefined ? {} : { active: activeFilter }) },
   );
   // The links live on the intake form; this page joins them to their sources by id rather than
   // asking for a second copy of the same data.
@@ -176,7 +187,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       }
     : (sources.data?.meta ?? { page, pageSize, totalItems: 0, totalPages: 1 });
   const rows = clientFiltering ? matched.slice((page - 1) * pageSize, page * pageSize) : matched;
-  const hasFilters = search !== '' || kind !== '' || status !== '' || publishedOnly;
+  const hasFilters = search !== '' || kinds.length > 0 || statuses.length > 0 || publishedOnly;
 
   const toggleActive = (source: ApplicantSourceDto): void => {
     update.mutate(
@@ -319,7 +330,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       key: 'total',
       label: t('sources.stat.total'),
       icon: GridIcon,
-      active: status === '' && kind === '' && !publishedOnly,
+      active: statuses.length === 0 && kinds.length === 0 && !publishedOnly,
       loading: counts.isLoading,
       onClick: () => patch({ status: null, kind: null, published: null }),
       ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.total, locale) }),
@@ -328,7 +339,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
       key: 'active',
       label: t('sources.stat.active'),
       icon: CheckIcon,
-      active: status === 'active',
+      active: statuses.length === 1 && statuses[0] === 'active',
       loading: counts.isLoading,
       onClick: () => patch({ status: 'active' }),
       ...(counts.data === undefined ? {} : { value: formatNumber(counts.data.active, locale) }),
@@ -381,7 +392,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         onClear={() => setSp(new URLSearchParams())}
         search={
           <SearchInput
-            className="w-full sm:w-64"
+            className={SEARCH_FITS_TEXT}
             value={search}
             onChange={(v) => patch({ q: v || null })}
             placeholder={t('sources.searchPlaceholder')}
@@ -389,17 +400,22 @@ export const ApplicantSourcesPage = (): JSX.Element => {
         }
         filters={
           <>
-            <Select className="w-44" value={kind} onChange={(e) => patch({ kind: e.target.value || null })}>
-              <option value="">{t('sources.filter.allKinds')}</option>
-              <option value="publicForm">{t('sources.kind.publicForm')}</option>
-              <option value="integration">{t('sources.kind.integration')}</option>
-              <option value="manual">{t('sources.kind.manual')}</option>
-            </Select>
-            <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
-              <option value="">{t('sources.filter.allStatuses')}</option>
-              <option value="active">{t('sources.active')}</option>
-              <option value="inactive">{t('sources.inactive')}</option>
-            </Select>
+            {/* Several picks each, as wide as their names («العرض بتاع الفلتر … مظبوط ع كلام بظبط»). */}
+            <MultiSelect
+              label={t('sources.kind')}
+              value={kinds}
+              onChange={(next) => patch({ kind: writeList(next) })}
+              options={KIND_ORDER.map((k) => ({ value: k, label: t(`sources.kind.${k}`) }))}
+            />
+            <MultiSelect
+              label={t('sources.status')}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+              options={[
+                { value: 'active', label: t('sources.active') },
+                { value: 'inactive', label: t('sources.inactive') },
+              ]}
+            />
           </>
         }
         pagination={

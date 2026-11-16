@@ -75,7 +75,7 @@ class ApplicantSourceService {
   async list(query: ListApplicantSourcesQuery): Promise<Paginated<ApplicantSourceDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.active !== undefined) filter.active = query.active;
-    if (query.kind !== undefined) filter.kind = query.kind;
+    if (query.kind !== undefined) filter.kind = { $in: query.kind };
     return applicantSourceRepository.list({
       filter,
       page: query.page,

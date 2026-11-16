@@ -8,20 +8,32 @@
 // It reads through the engine's stage BINDINGS rather than the stage services, for the same reason
 // the engine does: the stage features import the workflow folder, so importing them back would
 // close a cycle. A binding is a model plus its name — enough to find the live row.
-import { Types, type Model } from 'mongoose';
+//
+// The live rows come from `stage-frontier.ts` in ONE pass, which also answers which of them the
+// candidate has moved PAST. The two questions are different — "what happens next?" must pick one
+// row, "is this stage still live?" must not — and answering both from the same read is what keeps
+// a stage page from having to derive either one for itself.
+import { Types } from 'mongoose';
 import {
-  type LocalizedString,
   type PlacementDto,
   type PlacementLabelDto,
   type RecruitmentStageKind,
+  type StageRecordStateDto,
   type StageRefDto,
   type WorkflowStateDto,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
 import { availableActions } from './workflow-actions';
-import { stageBindingsInOrder } from './workflow-engine';
 import { emptyPlacement, emptyPlacementLabel, type StageDocFields } from './stage-fields';
-import { type StageObject, type WorkflowStatus } from './workflow-transitions';
+import {
+  currentOf,
+  isCorrectable,
+  isPassed,
+  liveStageRows,
+  STAGE_KIND,
+  type LiveStageRow,
+} from './stage-frontier';
+import { type WorkflowStatus } from './workflow-transitions';
 
 /** What the state builder needs off the applicant — the seam keeps this feature out of Applicants. */
 export interface WorkflowApplicant {
@@ -30,6 +42,8 @@ export interface WorkflowApplicant {
   status: string;
   placement: StageDocFields['placementSnapshot'];
   placementLabel: StageDocFields['placementSnapshotLabel'];
+  /** Set once HR has explicitly moved the candidate to the Job Offer stage (I11). */
+  movedToOfferAt?: Date | null;
 }
 
 type ApplicantReader = (applicantId: string) => Promise<WorkflowApplicant | null>;
@@ -50,31 +64,6 @@ export const resetWorkflowApplicantReader = (): void => {
   readApplicant = async () => null;
 };
 
-/** A live stage row, as far as this module cares. */
-interface LiveRow extends StageDocFields {
-  _id: Types.ObjectId;
-  status: string;
-  stageName?: LocalizedString;
-  phaseName?: LocalizedString;
-  stageOrder?: number;
-  phaseOrder?: number;
-}
-
-const STAGE_KIND: Record<StageObject, RecruitmentStageKind> = {
-  screening: 'screening',
-  interview: 'interview',
-  evaluation: 'evaluation',
-  offer: 'jobOffer',
-};
-
-/** The statuses that mean "this stage still has work on it" — where the candidate actually stands. */
-const OPEN: Record<StageObject, readonly string[]> = {
-  screening: ['waiting'],
-  interview: ['waiting', 'scheduled', 'inProgress'],
-  evaluation: ['waiting'],
-  offer: ['waiting', 'draft', 'sent'],
-};
-
 const placementDto = (p: StageDocFields['placementSnapshot']): PlacementDto => ({
   jobTitleId: p.jobTitleId === null ? null : String(p.jobTitleId),
   departmentId: p.departmentId === null ? null : String(p.departmentId),
@@ -88,42 +77,12 @@ const labelDto = (l: StageDocFields['placementSnapshotLabel']): PlacementLabelDt
   department: l.department,
 });
 
-const stageRef = (object: StageObject, row: LiveRow): StageRefDto => {
-  const kind = STAGE_KIND[object];
-  const refId =
-    object === 'interview'
-      ? String((row as unknown as { stageId: Types.ObjectId }).stageId)
-      : object === 'evaluation'
-        ? String((row as unknown as { phaseId: Types.ObjectId }).phaseId)
-        : null;
-  return {
-    kind,
-    refId,
-    key: refId === null ? kind : `${kind}:${refId}`,
-    name: row.stageName ?? row.phaseName ?? null,
-  };
-};
-
-/**
- * Where the candidate stands: the FURTHEST stage that still has open work, scanning the pipeline in
- * business order. A candidate with an open offer is at the offer even though their screening row
- * also exists — the later stage is the truthful answer to "what happens next?".
- */
-const currentStage = async (
-  applicantId: string,
-): Promise<{ object: StageObject; row: LiveRow } | null> => {
-  const oid = new Types.ObjectId(applicantId);
-  let found: { object: StageObject; row: LiveRow } | null = null;
-  for (const binding of stageBindingsInOrder()) {
-    const row = await (binding.model as unknown as Model<LiveRow>)
-      .findOne({ applicantId: oid, supersededAt: null, isDeleted: false, status: { $in: OPEN[binding.object] } })
-      .sort({ attempt: -1 })
-      .lean<LiveRow>()
-      .exec();
-    if (row !== null) found = { object: binding.object, row };
-  }
-  return found;
-};
+const stageRef = (row: LiveStageRow): StageRefDto => ({
+  kind: STAGE_KIND[row.object],
+  refId: row.refId,
+  key: row.key,
+  name: row.name,
+});
 
 /**
  * Just the stage KIND, for a reader that must not learn anything else.
@@ -136,9 +95,11 @@ const currentStage = async (
  *
  * Widen this by adding another NARROW reader, never by returning more from this one.
  */
-export const currentStageKind = async (applicantId: string): Promise<RecruitmentStageKind | null> => {
+export const currentStageKind = async (
+  applicantId: string,
+): Promise<RecruitmentStageKind | null> => {
   if (!Types.ObjectId.isValid(applicantId)) return null;
-  const live = await currentStage(applicantId);
+  const live = currentOf(await liveStageRows(applicantId));
   // Through the same `StageObject` → kind map the recruiter-facing reader uses, so the two can
   // never disagree about what an internal object is called.
   return live === null ? null : STAGE_KIND[live.object];
@@ -157,39 +118,82 @@ export const buildWorkflowState = async (
   const applicant = await readApplicant(applicantId);
   if (applicant === null) return null;
 
+  const rows = await liveStageRows(applicantId);
   // A candidate who has left the pipeline (hired, rejected, withdrawn) stands nowhere: their rows
   // all carry terminal statuses, which is exactly how they left every queue (I10/I14).
-  const live = await currentStage(applicantId);
+  const live = currentOf(rows);
+  const stageRecords: StageRecordStateDto[] = rows.map((row) => ({
+    recordId: row.recordId,
+    key: row.key,
+    status: row.status,
+    attempt: row.attempt,
+    passed: isPassed(rows, row.rank),
+    correctable: isCorrectable(rows, row.rank),
+  }));
+
+  // Moving to the Job Offer stage is HR's explicit call (I11) and belongs with the other two
+  // non-transition moves below rather than in any stage's rulebook.
+  //
+  // IT IS DELIBERATELY NOT CONDITIONED ON THE CHECKS. The offer runs ALONGSIDE them: HR starts it
+  // when they decide to, and clearing the last check moves the candidate by itself
+  // (`moveToOfferOnceCleared`, «اي حد يخلص كشف الطبي يظهر … ك جاهزون لعرض العمل»). Requiring every
+  // check first would have removed the first of those two paths — which the product's own hiring
+  // fixtures take, eight suites' worth. What was wrong was WHERE the button appeared: on a stage
+  // the candidate had left. That is a question about the page, and the pages answer it from
+  // `stageRecords` now.
+  const held = (permission: string): boolean => ctx.permissions[permission] !== undefined;
+  const alreadyMoved = (applicant.movedToOfferAt ?? null) !== null;
+  const moveToOfferReason = !held('applicant.moveToOffer')
+    ? 'requires applicant.moveToOffer'
+    : applicant.status !== 'new'
+      ? `the candidate is ${applicant.status}`
+      : alreadyMoved
+        ? 'already in the Job Offer stage'
+        : null;
 
   return {
     applicantId: String(applicant._id),
     applicantCode: applicant.code,
     applicantStatus: applicant.status,
-    stage: live === null ? null : stageRef(live.object, live.row),
-    status: live === null ? null : live.row.status,
-    attempt: live === null ? 1 : live.row.attempt,
+    stage: live === null ? null : stageRef(live),
+    status: live === null ? null : live.status,
+    attempt: live === null ? 1 : live.attempt,
     placement: placementDto(applicant.placement ?? emptyPlacement()),
     placementLabel: labelDto(applicant.placementLabel ?? emptyPlacementLabel()),
-    availableActions:
-      live === null
-        ? availableActions('applicant', applicant.status as WorkflowStatus, ctx.permissions)
-        : availableActions(live.object, live.row.status as WorkflowStatus, ctx.permissions, [
-            // Not stage transitions, but the two other things a candidate screen offers (RW2/RW13).
+    stageRecords,
+    availableActions: availableActions(
+      live === null ? 'applicant' : live.object,
+      (live === null ? applicant.status : live.status) as WorkflowStatus,
+      ctx.permissions,
+      // THE EXTRAS ARE FOR AN ACTIVE CANDIDATE ONLY. A hired, rejected or withdrawn candidate is
+      // not reassigned, not moved to an offer and not sent back a stage — offering any of those
+      // would be offering to act on somebody who has left the pipeline (I14). This used to be
+      // expressed as "only when a stage is open", which got the departed candidate right by
+      // accident and the ACTIVE one wrong: once every check is decided nothing is open, and that
+      // is precisely the moment `moveToOffer` matters.
+      applicant.status !== 'new'
+        ? []
+        : [
+            // Not stage transitions, but the three other things a candidate screen offers (RW2/RW13/I11).
             {
               key: 'reassign',
               permission: 'applicant.reassign',
-              enabled: ctx.permissions['applicant.reassign'] !== undefined,
-              reason: ctx.permissions['applicant.reassign'] === undefined ? 'requires applicant.reassign' : null,
+              enabled: held('applicant.reassign'),
+              reason: held('applicant.reassign') ? null : 'requires applicant.reassign',
+            },
+            {
+              key: 'moveToOffer',
+              permission: 'applicant.moveToOffer',
+              enabled: moveToOfferReason === null,
+              reason: moveToOfferReason,
             },
             {
               key: 'returnToStage',
-              permission: 'applicant.returnToStage',
-              enabled: ctx.permissions['applicant.returnToStage'] !== undefined,
-              reason:
-                ctx.permissions['applicant.returnToStage'] === undefined
-                  ? 'requires applicant.returnToStage'
-                  : null,
+              permission: 'applicantReturn.execute',
+              enabled: held('applicantReturn.execute'),
+              reason: held('applicantReturn.execute') ? null : 'requires applicantReturn.execute',
             },
-          ]),
+          ],
+    ),
   };
 };

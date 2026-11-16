@@ -20,7 +20,9 @@
 //      further than that, and no other sheet is inflated at all);
 //   2. those five are re-zipped in memory, worksheet LAST (an empty shared-strings table stands in
 //      when the workbook has none), so the reader has the shared strings before it meets the sheet
-//      and parses the sheet straight from the stream.
+//      and parses the sheet straight from the stream — the sheet's inline rich text first joined
+//      into one text when the caller asks (`joinInlineRuns`: the streaming reader would read a
+//      cell of runs as its last run alone), still under the sheet's cap.
 //
 // JSZip is CommonJS and loaded with `await import` at the point of use — never at module scope,
 // where it would sit in the API's boot path (check-bundle-require.mjs) — and it is `external` in
@@ -29,6 +31,7 @@
 import path from 'node:path';
 // Type-only: erased at build, so JSZip itself is still loaded only by the `await import` below.
 import type { JSZipObject } from 'jszip';
+import { joinInlineRuns } from './inline-runs';
 
 /** Inflated-size caps per zip entry, in bytes. */
 export interface OneSheetZipLimits {
@@ -52,14 +55,63 @@ export interface OneSheetZipErrors {
   missingSheet(): Error;
 }
 
-/** Which worksheet: the one the workbook names so, or the first tab. */
-export type OneSheetPick = { name: string } | 'first';
+/**
+ * Which worksheet: the one the workbook names so, the first tab, or the first tab a person sees —
+ * one whose `state` is neither `hidden` nor `veryHidden` (the IT assets bulk upload's: a hidden
+ * tab is nobody's register page).
+ */
+export type OneSheetPick = { name: string } | 'first' | 'firstVisible';
+
+export interface OneSheetZipOptions {
+  /**
+   * Join each inline string's runs into one text (`inline-runs.ts`) — what the IT assets bulk
+   * upload reads; the fuel sheets' reader reads the sheet as it came.
+   */
+  joinInlineRuns?: boolean;
+  /**
+   * Return the sheet's merged ranges (`readMergedRanges`) — the streaming reader gives a merged
+   * cell's value to its first cell only, and the IT assets bulk upload fills a merged «النوع» down
+   * its column itself; the fuel sheets' reader asks for none.
+   */
+  readMerges?: boolean;
+}
+
+/** At most this many merged ranges are read from a sheet — far more than a branch's page has. */
+export const MERGED_RANGES_MAX = 5_000;
+
+/**
+ * A sheet's merged ranges («A2:A4»), as its `<mergeCells>` lists them — the part comes after the
+ * sheet's data, so only the tail from it on is decoded, never the sheet whole. A namespace prefix
+ * is allowed; a ref that is no plain range (a single cell, a whole column) is left out; past
+ * `MERGED_RANGES_MAX` the rest are left out too (the reader then shows those lines as they are).
+ */
+export const readMergedRanges = (sheet: Buffer): string[] => {
+  const at = sheet.indexOf('mergeCells');
+  if (at < 0) return [];
+  const tail = sheet.subarray(at).toString('utf8');
+  const ranges: string[] = [];
+  const ref =
+    /<(?:[A-Za-z_][\w.-]*:)?mergeCell\b[^>]*?\bref\s*=\s*["']([A-Z]{1,3}[0-9]{1,7}:[A-Z]{1,3}[0-9]{1,7})["']/gu;
+  for (const match of tail.matchAll(ref)) {
+    if (ranges.length === MERGED_RANGES_MAX) break;
+    const range = match[1];
+    if (range !== undefined) ranges.push(range);
+  }
+  return ranges;
+};
 
 export interface ReducedOneSheetWorkbook {
   /** rels, workbook, styles, shared strings, then the one sheet — nothing else, STORE only. */
   buffer: Buffer;
   /** Excel's 1904 date system flag (`<workbookPr date1904="1">`). */
   date1904: boolean;
+  /**
+   * The tab's name as the workbook part gives it — the streaming reader knows a sheet only as
+   * «Sheet<n>».
+   */
+  sheetName: string;
+  /** The sheet's merged ranges when asked (`readMerges`); empty otherwise. */
+  merges: string[];
 }
 
 const WORKBOOK_PATH = 'xl/workbook.xml';
@@ -253,17 +305,29 @@ export const beforeDeadline = (deadline: number, errors: OneSheetZipErrors): voi
   if (Date.now() > deadline) throw errors.tooLarge('time');
 };
 
-/** The zip path of the worksheet picked, through its relationship id. */
-const pickedSheetPath = (
+/** A tab's `state` that keeps it out of sight. */
+const HIDDEN_STATES: ReadonlySet<string> = new Set(['hidden', 'veryHidden']);
+
+/** Whether a `<sheet>` of the workbook part is the one picked. */
+const isPicked = (attrs: ReadonlyMap<string, string>, pick: OneSheetPick): boolean => {
+  if (pick === 'first') return true;
+  if (pick === 'firstVisible') return !HIDDEN_STATES.has(attrs.get('state') ?? 'visible');
+  return attrs.get('name') === pick.name;
+};
+
+/** The zip path of the worksheet picked, through its relationship id — and its tab's name. */
+const pickedSheet = (
   workbookXml: string,
   relsXml: string,
   pick: OneSheetPick,
-): string | null => {
+): { path: string; name: string } | null => {
   let relationshipId: string | null = null;
+  let sheetName = '';
   for (const tag of startTags(workbookXml, 'sheet')) {
     const attrs = attributes(tag);
-    if (pick !== 'first' && attrs.get('name') !== pick.name) continue;
+    if (!isPicked(attrs, pick)) continue;
     for (const [name, value] of attrs) if (/(^|:)id$/.test(name)) relationshipId = value;
+    sheetName = attrs.get('name') ?? '';
     break;
   }
   if (relationshipId === null) return null;
@@ -272,9 +336,12 @@ const pickedSheetPath = (
     if (attrs.get('Id') !== relationshipId) continue;
     const target = attrs.get('Target');
     if (target === undefined || target === '') return null;
-    return target.startsWith('/')
-      ? path.posix.normalize(target.slice(1))
-      : path.posix.normalize(`xl/${target}`);
+    return {
+      path: target.startsWith('/')
+        ? path.posix.normalize(target.slice(1))
+        : path.posix.normalize(`xl/${target}`),
+      name: sheetName,
+    };
   }
   return null;
 };
@@ -282,7 +349,7 @@ const pickedSheetPath = (
 /**
  * Check the entry count, open the upload in memory, inflate exactly five entries under their caps,
  * and re-zip them in the order the streaming reader needs. `'first'` takes the workbook's first
- * tab.
+ * tab, `'firstVisible'` its first tab that is not hidden.
  */
 export const reduceToOneSheet = async (
   upload: Buffer,
@@ -290,6 +357,7 @@ export const reduceToOneSheet = async (
   limits: OneSheetZipLimits,
   deadline: number,
   errors: OneSheetZipErrors,
+  options: OneSheetZipOptions = {},
 ): Promise<ReducedOneSheetWorkbook> => {
   checkZipEntryCount(upload, errors);
   const { default: JSZip } = await import('jszip');
@@ -318,10 +386,11 @@ export const reduceToOneSheet = async (
   beforeDeadline(deadline, errors);
 
   const workbookText = workbookXml.toString('utf8');
-  const sheetPath = pickedSheetPath(workbookText, relsXml.toString('utf8'), pick);
+  const picked = pickedSheet(workbookText, relsXml.toString('utf8'), pick);
   beforeDeadline(deadline, errors);
-  const sheetFile = sheetPath === null ? null : entry(sheetPath);
-  if (sheetPath === null || sheetFile === null) throw errors.missingSheet();
+  const sheetFile = picked === null ? null : entry(picked.path);
+  if (picked === null || sheetFile === null) throw errors.missingSheet();
+  const sheetPath = picked.path;
 
   const stylesFile = entry(STYLES_PATH);
   const styles =
@@ -339,7 +408,13 @@ export const reduceToOneSheet = async (
           deadline,
           errors,
         );
-  const sheet = await inflateCapped(sheetFile, limits.sheetBytes, sheetPath, deadline, errors);
+  const inflated = await inflateCapped(sheetFile, limits.sheetBytes, sheetPath, deadline, errors);
+  beforeDeadline(deadline, errors);
+  // Joined runs are never longer than the runs on a real sheet (a run's own markup outweighs the
+  // one `<t xml:space="preserve">` they share); only a sheet crafted of tiny ones grows — and is
+  // held to the same cap.
+  const sheet = options.joinInlineRuns === true ? joinInlineRuns(inflated) : inflated;
+  if (sheet.length > limits.sheetBytes) throw errors.tooLarge(sheetPath);
   beforeDeadline(deadline, errors);
 
   // JSZip writes entries in insertion order, so the sheet arrives after the shared strings. The
@@ -363,5 +438,6 @@ export const reduceToOneSheet = async (
       ([name, value]) => /(^|:)date1904$/.test(name) && (value === '1' || value === 'true'),
     ),
   );
-  return { buffer, date1904 };
+  const merges = options.readMerges === true ? readMergedRanges(sheet) : [];
+  return { buffer, date1904, sheetName: picked.name, merges };
 };

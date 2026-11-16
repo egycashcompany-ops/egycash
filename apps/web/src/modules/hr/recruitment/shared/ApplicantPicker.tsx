@@ -65,7 +65,7 @@ export const ApplicantPicker = ({
         placeholder={placeholder}
       />
       {open && term.trim().length >= 2 && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+        <div className="absolute z-20 mt-1 w-full min-w-[18rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
           {isFetching ? (
             <div className="flex items-center justify-center py-4">
               <Spinner className="h-4 w-4 text-brand-600" />

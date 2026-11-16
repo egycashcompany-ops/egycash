@@ -48,9 +48,12 @@ const buildFilter = async (
     isDeleted: false,
   };
   if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
-  if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+  // The daily sheet's filters, several branches and sections each, ORed — as the list reads them.
+  if (query.branchId !== undefined && query.branchId.length > 0) {
+    filter.branchId = { $in: query.branchId.map((id) => new Types.ObjectId(id)) };
+  }
   if (query.status !== undefined) filter.status = query.status;
-  if (query.sectionId !== undefined) {
+  if (query.sectionId !== undefined && query.sectionId.length > 0) {
     const ids = await employeeRepository.listIdsBySectionSystem(query.sectionId);
     filter.employeeId =
       query.employeeId !== undefined && !ids.includes(query.employeeId)
@@ -70,11 +73,11 @@ const buildFilter = async (
         : own._id;
   } else {
     // Every other scope narrows to the branches the grant reaches (a department or section grant
-    // to its branch): the same rule the day-record list applies, from the same selector.
-    Object.assign(
-      filter,
-      orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true }) ?? {},
-    );
+    // to its branch): the same rule the day-record list applies, from the same selector — and ANDed
+    // with the picks, as the list ANDs them. Merged into the same object, the grant's `branchId`
+    // overwrote the branches picked, and the file held every branch the grant reaches.
+    const reach = orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true });
+    if (reach != null) return { $and: [filter, reach] } as FilterQuery<AttendanceDayDoc>;
   }
   return filter;
 };

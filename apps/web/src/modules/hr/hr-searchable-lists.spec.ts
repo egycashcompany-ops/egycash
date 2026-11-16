@@ -46,7 +46,6 @@ describe('HR lists are typed into', () => {
 
   it('types into the lists the owner works through', () => {
     const typed = [
-      'employee-management/employees/pages/EmployeesListPage.tsx',
       'employee-management/employees/components/actions/CareerDialogs.tsx',
       'employee-management/employees/components/actions/ExitRehireDialogs.tsx',
       'employee-management/employees/components/ExternalEmployeeDialog.tsx',
@@ -57,11 +56,8 @@ describe('HR lists are typed into', () => {
       'recruitment/job-offers/components/OfferTermsForm.tsx',
       'contracts/components/JobPapersDialog.tsx',
       'contracts/pages/ContractCreatePage.tsx',
-      'contracts/pages/ContractsListPage.tsx',
       'leave-management/components/RequestLeaveDialog.tsx',
       'leave-management/components/EmployeeLeaveTab.tsx',
-      'leave-management/pages/AllRequestsPage.tsx',
-      'attendance/pages/DailySheetPage.tsx',
       'attendance/pages/AssignmentsPage.tsx',
       'training/pages/TrainingSessionsPage.tsx',
       'training/components/NominateDialog.tsx',
@@ -69,6 +65,22 @@ describe('HR lists are typed into', () => {
     ];
     for (const file of typed) {
       expect(HR.find((s) => s.file === file)?.src, file).toContain('<SearchableSelect');
+    }
+  });
+
+  // «هنخلي كل الفلترز multi زي checkbox»: a FILTER bar's long lists are ticks to pick several from
+  // (`MultiSelect`), typed into from seven options exactly as a single list is — the next test.
+  it('types into the filter bars\' lists, several picks at a time', () => {
+    const filterBars = [
+      'employee-management/employees/pages/EmployeesListPage.tsx',
+      'contracts/pages/ContractsListPage.tsx',
+      'leave-management/pages/AllRequestsPage.tsx',
+      'attendance/pages/DailySheetPage.tsx',
+    ];
+    for (const file of filterBars) {
+      const src = HR.find((s) => s.file === file)?.src;
+      expect(src, file).toContain('<MultiSelect');
+      expect(src, file).not.toContain('<SearchableSelect');
     }
   });
 

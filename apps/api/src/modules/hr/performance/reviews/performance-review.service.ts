@@ -77,18 +77,13 @@ class PerformanceReviewService {
     query: ListPerformanceReviewsQuery,
     scope: ScopeSelector,
   ): Promise<Paginated<PerformanceReviewDoc>> {
-    const status =
-      query.status === undefined
-        ? undefined
-        : Array.isArray(query.status)
-          ? query.status
-          : [query.status];
     return performanceReviewRepository.listFiltered(
       {
         cycleId: query.cycleId,
         employeeId: query.employeeId,
         evaluatorId: query.evaluatorId,
-        status,
+        // Already a list — one value or several, the contract's `listQuery` reads both.
+        status: query.status,
         branchId: query.branchId,
         departmentId: query.departmentId,
         search: query.search,

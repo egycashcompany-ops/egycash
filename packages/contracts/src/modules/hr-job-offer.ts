@@ -257,7 +257,14 @@ export interface JobOfferDto extends AttemptMarkerDto {
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** The applicant's branch, mirrored onto the offer and kept in step with a reassignment. */
   branchId: string | null;
+  /**
+   * The applicant's department, mirrored beside `branchId`. While the offer is `waiting` (no terms
+   * yet) the list's «الإدارة» shows this — the department the filter matches and «اكتب العرض»
+   * writes for — rather than the snapshot taken when the record was queued.
+   */
+  departmentId: string | null;
   status: OfferStatus;
   /** The placement in force when the offer record was materialized; immutable (RW4). */
   placement: PlacementDto;

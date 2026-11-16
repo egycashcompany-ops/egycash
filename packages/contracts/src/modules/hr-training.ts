@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import {
   objectId,
+  listQuery,
   LocalizedStringSchema,
   PaginationQuerySchema,
   type LocalizedString,
@@ -191,7 +192,11 @@ export const TransitionTrainingSessionSchema = z
 export type TransitionTrainingSession = z.infer<typeof TransitionTrainingSessionSchema>;
 
 export const ListTrainingSessionsQuerySchema = PaginationQuerySchema.extend({
-  status: z.union([TrainingSessionStatusSchema, z.array(TrainingSessionStatusSchema)]).optional(),
+  /**
+   * A LIST — the sessions screen's filter takes several («هنخلي كل الفلترز multi»), ORed, as one
+   * comma list; one value still parses. (A union of one value or an array answered 400 to a comma.)
+   */
+  status: listQuery(TrainingSessionStatusSchema),
   courseId: objectId().optional(),
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),

@@ -88,6 +88,12 @@ describe('every endpoint the IT client calls exists on the API', () => {
         // …and where it (and «تحويل إلى فرع») may go: the branches the custody grant reaches, as
         // only the server can judge them.
         'get /move-targets',
+        // «رفع جماعي» (2026-11-16): one multipart endpoint, previewed then applied — a literal path,
+        // never under '/:id'.
+        'post /import',
+        // …and the branches it may register in: the ones the create grant reaches, as only the
+        // server can judge them.
+        'get /import/branches',
       ]),
     );
     // …and the client calls exactly those.
@@ -116,6 +122,27 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect(CLIENT).toContain('`/it/assets/${id}/assignments');
     expect(CLIENT).toContain("post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch'");
     expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/assets/move-targets')");
+  });
+
+  // «رفع جماعي»: the preview and the apply are the SAME multipart post — the file in `file`, the
+  // fields beside it — registered before every '/:id' route, on the grant «تسجيل أصل» rides.
+  it('assets: the bulk upload — one multipart post, before the id matcher, on the create grant', () => {
+    const route = /router\.post\(\s*'\/import'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(route, 'post /import is not declared').not.toBe('');
+    expect(route).toContain("authorize('itAsset.create')");
+    const firstIdRoute = ASSET_ROUTES.search(/router\.(?:get|post|patch|delete)\(\s*'\/:id/);
+    expect(ASSET_ROUTES.search(/router\.post\(\s*'\/import'/)).toBeLessThan(firstIdRoute);
+    expect(CLIENT).toContain("upload<ItAssetImportPreviewDto>('/it/assets/import'");
+    expect(CLIENT).toContain("upload<ItAssetImportResultDto>('/it/assets/import'");
+    expect(CLIENT).toContain("form.append('file', file)");
+    // The branch select's list: the move dialogs' shape, judged on the create grant, and a
+    // literal segment ahead of the id matcher like every other.
+    const branches =
+      /router\.get\(\s*'\/import\/branches'[\s\S]*?\);/.exec(ASSET_ROUTES)?.[0] ?? '';
+    expect(branches, 'get /import/branches is not declared').not.toBe('');
+    expect(branches).toContain("authorize('itAsset.create')");
+    expect(ASSET_ROUTES.search(/router\.get\(\s*'\/import\/branches'/)).toBeLessThan(firstIdRoute);
+    expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/assets/import/branches')");
   });
 
   it('mounts the cross-asset custody register', () => {

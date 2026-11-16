@@ -574,3 +574,26 @@ describe('confinement — the candidate reaches their own file and nothing else 
     expect(res.status).toBe(403);
   });
 });
+
+// «هنخلي كل الفلترز multi»: sources filter by several kinds; and «غير نشط» asks for the inactive ones —
+// `active=false` used to be coerced to true and answered with the active sources.
+describe('the sources list filters', () => {
+  const list = (query: Record<string, string>) =>
+    request(app).get('/api/v1/hr/applicant-sources').query({ pageSize: 100, ...query }).set('Authorization', `Bearer ${adminToken}`);
+
+  it('takes several kinds at once', async () => {
+    const res = await list({ kind: 'manual,publicForm' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const kinds = data<{ kind: string }[]>(res).map((s) => s.kind);
+    expect(kinds.length).toBeGreaterThan(0);
+    for (const kind of kinds) expect(['manual', 'publicForm']).toContain(kind);
+  });
+
+  it('answers «inactive» with inactive sources only', async () => {
+    const inactive = await list({ active: 'false' });
+    expect(inactive.status).toBe(200);
+    expect(data<{ active: boolean }[]>(inactive).every((s) => !s.active)).toBe(true);
+    const active = await list({ active: 'true' });
+    expect(data<{ active: boolean }[]>(active).every((s) => s.active)).toBe(true);
+  });
+});

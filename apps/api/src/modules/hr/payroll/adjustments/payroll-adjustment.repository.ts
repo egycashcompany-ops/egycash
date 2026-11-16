@@ -124,8 +124,8 @@ class PayrollAdjustmentRepository extends BaseRepository<PayrollAdjustmentDoc> {
       filter: {
         employeeId: new Types.ObjectId(employeeId),
         ...(query.period === undefined ? {} : { period: query.period }),
-        ...(query.kind === undefined ? {} : { kind: query.kind }),
-        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.kind === undefined ? {} : { kind: { $in: query.kind } }),
+        ...(query.status === undefined ? {} : { status: { $in: query.status } }),
       } as never,
     });
   }
@@ -147,8 +147,8 @@ class PayrollAdjustmentRepository extends BaseRepository<PayrollAdjustmentDoc> {
           ? {}
           : { employeeId: new Types.ObjectId(query.employeeId) }),
         ...(query.period === undefined ? {} : { period: query.period }),
-        ...(query.kind === undefined ? {} : { kind: query.kind }),
-        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.kind === undefined ? {} : { kind: { $in: query.kind } }),
+        ...(query.status === undefined ? {} : { status: { $in: query.status } }),
       } as never,
     });
   }

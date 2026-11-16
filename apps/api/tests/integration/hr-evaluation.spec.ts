@@ -966,3 +966,18 @@ describe('evaluations — queue filters (search, branch)', () => {
     expect((res.body as { data: unknown[] }).data).toHaveLength(0);
   });
 });
+
+// «هنخلي كل الفلترز multi»: the queue's status takes several values; a tab's one value still parses.
+describe('the evaluations queue filters by several statuses', () => {
+  it('answers each status asked about, and only those', async () => {
+    const list = (status: string) =>
+      request(app).get('/api/v1/hr/evaluations').query({ status, pageSize: 100 }).set('Authorization', `Bearer ${adminToken}`);
+    const both = await list('approved,rejected');
+    expect(both.status, JSON.stringify(both.body)).toBe(200);
+    for (const row of (both.body as { data: { status: string }[] }).data) {
+      expect(['approved', 'rejected']).toContain(row.status);
+    }
+    expect((await list('waiting')).status).toBe(200);
+    expect((await list('waiting,nonsense')).status).toBe(400);
+  });
+});

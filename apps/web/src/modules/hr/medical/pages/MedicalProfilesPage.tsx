@@ -18,6 +18,7 @@ import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { SearchInput } from '../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { Badge } from '../../../../shared/ui/Badge';
 import { useMedicalProfiles } from '../api/medical-queries';
 import { MedicalProfileDialog } from '../components/MedicalProfileDialog';
@@ -114,12 +115,17 @@ export const MedicalProfilesPage = (): JSX.Element => {
 
       <div className="space-y-4">
         {/* Search is by PERSON. The placeholder says so, because a box that silently refused to
-            match a condition would read as a bug rather than as a decision. */}
-        <SearchInput
-          value={search}
-          onChange={(value) => patchParams({ q: value === '' ? null : value, page: null })}
-          placeholder={t('medical.profile.searchPlaceholder')}
-        />
+            match a condition would read as a bug rather than as a decision. The box is as wide as
+            that hint («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»): a row lets it size to its words
+            rather than stretch across the page. */}
+        <div className="flex">
+          <SearchInput
+            value={search}
+            onChange={(value) => patchParams({ q: value === '' ? null : value, page: null })}
+            placeholder={t('medical.profile.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
+          />
+        </div>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

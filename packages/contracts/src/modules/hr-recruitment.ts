@@ -15,6 +15,7 @@ import {
   objectId,
   type Address,
   type LocalizedString,
+  booleanQuery,
   listQuery,
 } from '../common/index.js';
 import {
@@ -153,8 +154,13 @@ export const UpdateApplicantSourceSchema = z
 export type UpdateApplicantSource = z.infer<typeof UpdateApplicantSourceSchema>;
 
 export const ListApplicantSourcesQuerySchema = PaginationQuerySchema.extend({
-  active: z.coerce.boolean().optional(),
-  kind: ApplicantSourceKindSchema.optional(),
+  /**
+   * `booleanQuery`, not `z.coerce.boolean`: the screen sends the text «false» for «غير نشط», which a
+   * coercion reads as true — the inactive filter answered with the active sources.
+   */
+  active: booleanQuery().optional(),
+  /** The kinds asked about, ORed — «هنخلي كل الفلترز multi». One value still parses. */
+  kind: listQuery(ApplicantSourceKindSchema),
 }).strict();
 export type ListApplicantSourcesQuery = z.infer<typeof ListApplicantSourcesQuerySchema>;
 

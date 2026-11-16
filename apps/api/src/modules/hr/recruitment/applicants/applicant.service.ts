@@ -92,13 +92,16 @@ interface ApplicantLifecycleDoc extends BaseDocFields {
 registerWorkflowApplicantReader(async (applicantId) => {
   if (!Types.ObjectId.isValid(applicantId)) return null;
   const doc = await ApplicantModel.findOne({ _id: new Types.ObjectId(applicantId), isDeleted: false })
-    .select('code status placement placementLabel')
+    // `movedToOfferAt` is the record of HR having taken the move-to-offer decision (I11), which is
+    // what tells the envelope whether offering is still something to do or already done.
+    .select('code status placement placementLabel movedToOfferAt')
     .lean<{
       _id: Types.ObjectId;
       code: string;
       status: string;
       placement: ApplicantDoc['placement'];
       placementLabel: ApplicantDoc['placementLabel'];
+      movedToOfferAt: Date | null;
     }>()
     .exec();
   return doc === null
@@ -109,6 +112,7 @@ registerWorkflowApplicantReader(async (applicantId) => {
         status: doc.status,
         placement: doc.placement,
         placementLabel: doc.placementLabel,
+        movedToOfferAt: doc.movedToOfferAt ?? null,
       };
 });
 
@@ -1227,6 +1231,20 @@ class ApplicantService {
       binary,
     );
     await applicantRepository.adjustAttachmentCount(id, 1);
+    // I5 — an attachment put on the file is something that happened TO this person, so it belongs
+    // on their history and not only in the files list and the audit trail.
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId: id,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'attachmentAdded',
+      subject: { key: meta.title },
+      ...(meta.notes === undefined || meta.notes.trim() === '' ? {} : { note: meta.notes.trim() }),
+      discriminator: `attachment:${String(file._id)}:added`,
+      metadata: { fileId: String(file._id), fileName: file.originalName },
+    });
     return { fileId: String(file._id) };
   }
 
@@ -1245,9 +1263,22 @@ class ApplicantService {
     fileId: string,
     scope: ScopeSelector,
   ): Promise<void> {
-    await applicantRepository.getById(id, scope);
+    const applicant = await applicantRepository.getById(id, scope);
+    // Read the file's name BEFORE it goes, or the history can only say that something was removed.
+    const going = await fileService.getById(fileId, scope, ctx).catch(() => null);
     await fileService.softDelete(ctx, fileId, scope);
     await applicantRepository.adjustAttachmentCount(id, -1);
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId: id,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'attachmentRemoved',
+      subject: { key: going?.displayName ?? going?.originalName ?? fileId },
+      discriminator: `attachment:${fileId}:removed`,
+      metadata: { fileId },
+    });
   }
 
   /**

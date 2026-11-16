@@ -457,6 +457,41 @@ describe('employees — creation from the accepted offer snapshot', () => {
     expect(found.status).toBe(200);
     expect((found.body as { data: EmployeeDto[] }).data.map((e) => e.code)).toContain(emp.code);
   });
+
+  // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: status, origin and the ID card
+  // take several values — one comma list each, ORed — as the placement filters already did.
+  it('filters by several statuses, origins and ID card states at once', async () => {
+    const applicant = await offerReadyApplicant();
+    const offer = await acceptedOffer(applicant.id);
+    const emp = (await createEmployee(offer.id)).body.data as EmployeeDto;
+    const codes = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/employees')
+        .query({ search: emp.code, pageSize: 20, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body as { data: EmployeeDto[] }).data.map((e) => e.code);
+    };
+
+    expect(await codes({ status: `exited,${emp.status}` })).toContain(emp.code);
+    expect(await codes({ status: 'exited,suspended' })).not.toContain(emp.code);
+    expect(await codes({ origin: 'external,recruitment' })).toContain(emp.code);
+    expect(await codes({ origin: 'external,direct' })).not.toContain(emp.code);
+    expect(await codes({ idCard: 'received,never' })).toContain(emp.code);
+    expect(await codes({ idCard: 'received,awaiting' })).not.toContain(emp.code);
+    // One value is still one value.
+    expect(await codes({ status: emp.status })).toContain(emp.code);
+  });
+
+  /** Several company departments expand to every branch copy of each — past the default cap of 50. */
+  it('takes the branch copies of several departments at once', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => `64b1f0cccccccccccccc${String(i).padStart(4, '0')}`).join(',');
+    const res = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ departmentId: many, sectionId: many, pageSize: 5 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
 });
 
 describe('platform identity (ADR-017) — branch code, global sequence, login account', () => {

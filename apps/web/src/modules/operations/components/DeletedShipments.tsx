@@ -18,6 +18,7 @@ import {
   type OperationsShipmentType,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { vanCodeText } from '../lib/van-name';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
@@ -174,7 +175,7 @@ const DeletedShipmentCard = ({
 
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-[6rem_minmax(0,12rem)_minmax(0,1fr)]">
         <Fact label={t('operations.board.vehicle')}>
-          <span className={NUM}>{row.crew?.vehicleCode ?? '—'}</span>
+          <span className={NUM}>{row.crew === null ? '—' : vanCodeText(t, row.crew)}</span>
         </Fact>
         <Fact label={t('operations.board.captain')}>{row.crew?.captainName ?? '—'}</Fact>
         <Fact label={t('operations.shipment.form.amount')} className="col-span-2 sm:col-span-1">

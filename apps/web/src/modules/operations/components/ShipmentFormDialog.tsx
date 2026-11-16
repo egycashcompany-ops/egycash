@@ -363,7 +363,10 @@ export const ShipmentFormDialog = ({
                   {row?.crew != null
                     ? t('operations.shipment.form.crewHeld', {
                         captain: row.crew.captainName ?? '—',
-                        vehicle: row.crew.vehicleCode ?? '—',
+                        vehicle:
+                          row.crew.vehicleId === null
+                            ? t('operations.crewPlan.noVehicle')
+                            : (row.crew.vehicleCode ?? '—'),
                       })
                     : // «No crew yet» is said plainly only of a daily row, whose one leg the row
                       // reports. A secured row reports the leg it is ON — the pickup on its way to the

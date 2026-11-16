@@ -109,6 +109,8 @@ export const tickedForDispatch = <
 /** One vehicle's load in a release: ONE call, addressed to its crew row. */
 export interface DispatchLoad<T> {
   crewAssignmentId: string;
+  /** Null (Round 24) for a crew row without a van — the dialog says «بدون سيارة». */
+  vehicleId: string | null;
   vehicleCode: string | null;
   /** The captains its legs were assigned to — one, or both of a two-captain vehicle. */
   captainNames: string[];
@@ -132,6 +134,7 @@ export const dispatchLoads = <T extends Pick<OperationsSecuredDispatchRowDto, 'c
     const key = row.crew.crewAssignmentId;
     const load = loads.get(key) ?? {
       crewAssignmentId: key,
+      vehicleId: row.crew.vehicleId,
       vehicleCode: row.crew.vehicleCode,
       captainNames: [],
       rows: [],

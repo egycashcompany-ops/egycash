@@ -19,6 +19,7 @@ import {
   type OperationsSecuredDispatchRowDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { vanCodeText } from '../lib/van-name';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
@@ -87,7 +88,7 @@ export const DispatchSecuredDialog = ({
         } catch (error) {
           toast.error(
             t('operations.secured.dispatch.loadFailed', {
-              vehicle: load.vehicleCode ?? '…',
+              vehicle: vanCodeText(t, load),
               reason: errorMessage(error, locale),
             }),
           );
@@ -155,7 +156,7 @@ export const DispatchSecuredDialog = ({
                 className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
               />
               {t('operations.secured.dispatch.vehicleLoad', {
-                vehicle: load.vehicleCode ?? '…',
+                vehicle: vanCodeText(t, load),
               })}
             </span>
             {load.captainNames.length > 0 && (

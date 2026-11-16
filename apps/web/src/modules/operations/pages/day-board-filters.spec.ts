@@ -200,7 +200,9 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
     expect(BAR).toContain('value={filters.vehicle}');
     expect(BAR).toContain('setFilter({ vehicle: e.target.value })');
     // The rows are filtered by the van of the row's leg.
-    expect(BOARD).toContain("(row) => row.crew?.vehicleCode ?? ''");
+    // Round 24 — a leg on a crew without a van reads (and is found as) «بدون سيارة».
+    expect(BOARD).toContain("(row) => (row.crew === null ? '' : vanCodeText(t, row.crew))");
+    expect(BAR).toContain("vanSuggestions(crews, t('operations.crewPlan.noVehicle'))");
   });
 });
 

@@ -674,3 +674,23 @@ export const branchCellText = (
   const cell = branchCell(row, side, bankNameOf);
   return [cell.bank, cell.branch].filter((line) => line !== null && line !== '').join('\n');
 };
+
+/**
+ * Round 24 — what the day board's van box offers as it is typed in: the day's van codes in number
+ * order, then «بدون سيارة» (`noVan`, the screen's words) when a crew without a van carries a leg —
+ * the text that leg's «السيارة» cell prints, so choosing it finds exactly those rows. A van Fleet
+ * cannot name is not offered (there is nothing to type for it).
+ */
+export const vanSuggestions = (
+  crews: readonly { vehicleId: string | null; vehicleCode: string | null }[],
+  noVan: string,
+): string[] => {
+  const codes = [
+    ...new Set(
+      crews.flatMap((crew) =>
+        crew.vehicleId !== null && crew.vehicleCode !== null ? [crew.vehicleCode] : [],
+      ),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
+  return crews.some((crew) => crew.vehicleId === null) ? [...codes, noVan] : codes;
+};

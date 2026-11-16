@@ -1442,6 +1442,34 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR: an external person no longer holds a company employee number.** The last company code was
+  …2942. After an external person «C2» was registered, a new employee typed as 02002943 was refused:
+  «هذا الرقم مسجَّل بالفعل للموظف C2». The owner: «المفروض لا يحجز هذه الأكواد». Registering an
+  external person drew the next number from the company's counter and kept it behind the typed
+  code. Nobody saw that number, but the register screen counts a number held by anybody as taken.
+  An external person now draws nothing: their number is their code. At start-up, every external
+  person registered before is given their code as their number, which frees the numbers they drew
+  (`migrateExternalEmployeeNumbers`, idempotent), so an attendance punch for 2943 no longer finds
+  C2. The register check leaves external people out altogether, their code and their number alike.
+  The exact code stays theirs. The counter is not wound back. Its gaps are harmless, because HR
+  types each new code and the counter follows it.
+
+- **HR: an external employee's code can be changed to one with letters.** «لما باجي أغير كود الموظف
+  (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». «تغيير كود الموظف» held
+  every employee to the company's digits, so an external person's code, registered with letters,
+  could not be corrected to another with letters. The rule is now the person's own
+  (`employeeCodePatternFor`): an external employee's new code takes Latin letters, digits and a hyphen,
+  2 to 20 characters, exactly as their registration does, and the dialog says that shape and opens a
+  full keyboard for them. Everybody else's code stays 3 branch digits then at least 4 of number; the
+  boundary admits either shape, and the service refuses the wrong one for the person with a 400.
+  - The dialog's own «هذا الكود مستخدم لموظف آخر» never showed: it waited for a `CONFLICT` code the
+    server does not send (a taken code is `DUPLICATE`), so the English server sentence appeared
+    instead. A code another ACCOUNT signs in with — refused whole so the employee is not left signing
+    in under somebody else's name — now carries a `username` detail and has its own message.
+  - No employee number is read out of an external code any more: `EX-2900` no longer holds number
+    2900 against an ordinary employee's code at registration or in the code check, and an all-digit
+    external code no longer counts as «آخر كود». Their permanent employee number still does.
+
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح
   الحروف». A pair on a short list («كس», «زب», «طز», «شخ», «تف») now shows its first letter alone,

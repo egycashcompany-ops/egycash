@@ -207,6 +207,24 @@ const applicantPermissions = declarePermissions(
       action: 'returnToStage',
       name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
     },
+    {
+      /**
+       * «مسح نهائي» — the candidate leaves the recruitment cycle entirely, with no undo.
+       *
+       * ITS OWN KEY, beside `applicant.delete` rather than inside it, and the distance between
+       * them is the point: `delete` sets `isDeleted` and the candidate can be brought back, which
+       * is what HR means by removing somebody from a list. This erases the record, the screening,
+       * both interview rounds, the evaluations, the offer, the portal login and the photographs of
+       * their ID card. One of those is reversible and one is not.
+       *
+       * Break-glass, and implied by nothing: holding every other applicant authority moves a
+       * candidate through the pipeline and off it. None of them makes the candidate never have
+       * applied.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an applicant', ar: 'مسح نهائي للمتقدم' },
+      breakGlass: true,
+    },
   ],
   'hr.applicants',
 );

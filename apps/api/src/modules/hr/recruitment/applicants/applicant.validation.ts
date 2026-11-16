@@ -8,6 +8,7 @@ export {
   WithdrawApplicantSchema,
   MoveApplicantToOfferSchema,
   RestoreApplicantSchema,
+  PurgeApplicantSchema,
   ListApplicantsQuerySchema,
   ExportApplicantsQuerySchema,
   BulkApplicantsSchema,

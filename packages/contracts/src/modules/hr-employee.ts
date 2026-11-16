@@ -243,11 +243,13 @@ export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
  * typed one. Letting a letter into that shape would make both meaningless — `Number('EX01')` is
  * `NaN` — and would do it to all 2,699 real codes, not just to external people.
  *
- * So an external code is just a NAME, unique among employees and nothing more. The person still
- * draws an `employeeNumber` from the same counter (every employee has one); their code simply is
- * not composed from it. Nothing reads a branch or a number out of an external code, and nothing
- * should: `findHighestNumberedCode` already matches digits only, so these never reach the hint the
- * ordinary registration screen shows.
+ * So an external code is just a NAME, unique among employees and nothing more. The person draws
+ * NO number from the company's counter: their `employeeNumber` is the code itself. A drawn number
+ * was never shown, yet it held the company code with that number — «02002943 … مسجَّل بالفعل
+ * للموظف C2». Nothing reads a branch or a number out of an external code, and nothing should:
+ * `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
+ * registration screen shows nor holds employee number 2900.
  */
 export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
 
@@ -264,9 +266,26 @@ export const employeeCodeSerial = (code: string): number => Number(code.slice(3)
 /** A code with its branch hidden, the way the register screen states the last one: `xxx2862`. */
 export const maskEmployeeCodeBranch = (code: string): string => `xxx${code.slice(3)}`;
 
+/**
+ * The code an employee may be given by hand: the company's digits for everybody, and an external
+ * person's own name for an external person — «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح
+ * بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+ *
+ * Pure, so the change dialog and the service apply the same rule. The boundary below admits either
+ * shape because it cannot see whose code it is; the service, which can, holds each person to theirs.
+ */
+export const employeeCodePatternFor = (origin: EmployeeOrigin): RegExp =>
+  origin === 'external' ? EXTERNAL_EMPLOYEE_CODE_PATTERN : EMPLOYEE_CODE_PATTERN;
+
 export const ChangeEmployeeCodeSchema = z
   .object({
-    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
+    code: z
+      .string()
+      .trim()
+      .refine(
+        (code) => EMPLOYEE_CODE_PATTERN.test(code) || EXTERNAL_EMPLOYEE_CODE_PATTERN.test(code),
+        { message: 'an employee code is digits, or an external code of letters, digits and a hyphen' },
+      ),
     reason: z.string().trim().min(3).max(500),
     version: z.number().int().min(0),
   })

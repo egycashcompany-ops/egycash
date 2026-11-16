@@ -1085,6 +1085,17 @@ const en: Record<string, string> = {
 
   // Applicants — withdraw / restore / verify
   'applicants.withdraw.title': 'Withdraw applicant',
+  'applicants.purge.title': 'Permanently delete',
+  'applicants.purge.description':
+    '{{name}} — code {{code}}. This removes the candidate from the recruitment cycle entirely. There is no undo.',
+  'applicants.purge.goes':
+    'Goes: the candidate, their screening, both interview rounds, their evaluations, the job offer, their place in any evaluation batch, their timeline, their portal login, and every file including the photographs of their ID card.',
+  'applicants.purge.hired':
+    'A candidate who was hired cannot be deleted here — they are an employee now, and the offer that records the hiring stays with them. Permanently delete the employee instead.',
+  'applicants.purge.confirmLabel': 'Type the applicant code {{code}} to confirm',
+  'applicants.purge.mismatch': 'That is not this applicant’s code',
+  'applicants.purge.submit': 'Permanently delete',
+  'applicants.purge.done': '{{name}} was permanently deleted — {{rows}} records removed.',
   'applicants.withdraw.bulkBody': 'Withdraw {{count}} selected applicant(s).',
   'applicants.withdraw.reason': 'Reason',
   'applicants.withdraw.done': 'Applicant withdrawn',
@@ -2927,6 +2938,8 @@ const en: Record<string, string> = {
   'employees.changeCode.shape': 'A code is digits only: 3 for the branch, then at least 4 for the employee number — e.g. 0100004.',
   'employees.changeCode.same': 'That is already this employee’s code.',
   'employees.changeCode.taken': 'This code is already used by another employee.',
+  'employees.changeCode.loginTaken':
+    'Another account already signs in with this code, so it cannot become this employee\'s login. Choose another code.',
   'employees.changeCode.reasonRequired': 'Write why the code is being changed.',
   'employees.changeCode.note':
     'Contracts and documents already issued keep the code they were made with. The next employee file uploaded must carry the new code.',
@@ -15444,6 +15457,17 @@ const ar: Record<string, string> = {
 
   // Applicants — withdraw / restore / verify
   'applicants.withdraw.title': 'سحب المتقدِّم',
+  'applicants.purge.title': 'مسح نهائي',
+  'applicants.purge.description':
+    '{{name}} — كود {{code}}. يُزيل هذا المتقدِّم من دورة التوظيف بالكامل، ولا رجعة فيه.',
+  'applicants.purge.goes':
+    'يُحذف: المتقدِّم، وفرزه، وجولتا المقابلة، وتقييماته، وعرض العمل، وموضعه في أي دفعة تقييم، ومساره الزمني، وحساب البوابة، وكل الملفات بما فيها صور بطاقته الشخصية.',
+  'applicants.purge.hired':
+    'المتقدِّم الذي تم تعيينه لا يُحذف من هنا — فقد صار موظفاً، والعرض الذي يوثّق تعيينه يبقى معه. امسح الموظف نهائياً بدلاً من ذلك.',
+  'applicants.purge.confirmLabel': 'اكتب كود المتقدِّم {{code}} للتأكيد',
+  'applicants.purge.mismatch': 'هذا ليس كود هذا المتقدِّم',
+  'applicants.purge.submit': 'مسح نهائي',
+  'applicants.purge.done': 'تم المسح النهائي لـ{{name}} — حُذف {{rows}} سجلاً.',
   'applicants.withdraw.bulkBody': 'سحب {{count}} متقدِّم محدد.',
   'applicants.withdraw.reason': 'السبب',
   'applicants.withdraw.done': 'تم سحب المتقدِّم',
@@ -17267,6 +17291,8 @@ const ar: Record<string, string> = {
   'employees.changeCode.shape': 'الكود أرقام فقط: 3 أرقام للفرع، ثم 4 أرقام على الأقل لرقم الموظف، مثل 0100004.',
   'employees.changeCode.same': 'هذا هو كود الموظف الحالي.',
   'employees.changeCode.taken': 'هذا الكود مستخدم لموظف آخر.',
+  'employees.changeCode.loginTaken':
+    'يسجّل حساب آخر الدخول بهذا الكود، فلا يمكن أن يصبح اسم دخول هذا الموظف. اختر كودًا آخر.',
   'employees.changeCode.reasonRequired': 'اكتب سبب تغيير الكود.',
   'employees.changeCode.note':
     'تحتفظ العقود والمستندات الصادرة من قبل بالكود الذي صدرت به. ويجب أن يحمل ملف الموظفين الذي يُرفع بعد ذلك الكود الجديد.',

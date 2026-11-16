@@ -40,6 +40,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
 import {
   useInterview,
   useInterviewStages,
@@ -165,6 +166,7 @@ export const InterviewDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-1.5">
+            <PurgeApplicantAction applicantId={iv.applicantId} applicantCode={iv.applicantCode} applicantName={iv.applicantName} />
             {isLive && !decisionOnly && (
               <Can permission="interview.edit">
                                 <Button size="sm" variant="ghost" onClick={() => setReassignOpen(true)}>{t('interviews.actions.reassign')}</Button>

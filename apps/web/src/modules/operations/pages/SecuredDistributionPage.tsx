@@ -103,6 +103,7 @@ import {
   loadFigures,
   moveToVan,
   nextCaptain,
+  openingDistributionHistory,
   personName,
   placeShipment,
   placementOf,
@@ -124,7 +125,7 @@ import {
   type UndoHistory,
   type UndoWhat,
 } from '../lib/crew-undo';
-import { looseCrewNumbers, vanPhrase } from '../lib/van-name';
+import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 
@@ -189,11 +190,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
   if (data !== undefined && seeded !== data.date.slice(0, 10)) {
     setSeeded(data.date.slice(0, 10));
     setRefused(null);
-    setHistory(
-      startHistory(
-        canEdit ? proposeByDirection(data.shipments, data.crews, EMPTY_DRAFT) : EMPTY_DRAFT,
-      ),
-    );
+    // The proposals are the history's first operation (`openingDistributionHistory`): «تراجع» can
+    // take them back too, the last press of it.
+    setHistory(openingDistributionHistory(data.shipments, data.crews, canEdit));
   }
 
   const changes = distributionChanges(rows, draft);
@@ -701,7 +700,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
                           {takesShipments(van)
                             ? canEdit
                               ? t('operations.distribution.dropHere')
-                              : t('operations.distribution.emptyVan')
+                              : t(
+                                  hasNoVan(van)
+                                    ? 'operations.distribution.emptyCrew'
+                                    : 'operations.distribution.emptyVan',
+                                )
                             : t('operations.distribution.noCaptain')}
                         </EmptyLoad>
                       ) : (

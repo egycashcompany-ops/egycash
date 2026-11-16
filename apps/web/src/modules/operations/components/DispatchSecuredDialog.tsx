@@ -19,7 +19,7 @@ import {
   type OperationsSecuredDispatchRowDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { vanCodeText } from '../lib/van-name';
+import { hasNoVan, vanCodeText } from '../lib/van-name';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatAmount, formatNumber } from '../../../shared/lib/format';
@@ -87,10 +87,15 @@ export const DispatchSecuredDialog = ({
           out.push(...ids);
         } catch (error) {
           toast.error(
-            t('operations.secured.dispatch.loadFailed', {
-              vehicle: vanCodeText(t, load),
-              reason: errorMessage(error, locale),
-            }),
+            // Round 24 — a crew without a van is said as a crew, never «المركبة بدون سيارة».
+            hasNoVan(load)
+              ? t('operations.secured.dispatch.looseLoadFailed', {
+                  reason: errorMessage(error, locale),
+                })
+              : t('operations.secured.dispatch.loadFailed', {
+                  vehicle: vanCodeText(t, load),
+                  reason: errorMessage(error, locale),
+                }),
           );
         }
       }
@@ -155,9 +160,11 @@ export const DispatchSecuredDialog = ({
                 d={PATH.truck}
                 className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
               />
-              {t('operations.secured.dispatch.vehicleLoad', {
-                vehicle: vanCodeText(t, load),
-              })}
+              {hasNoVan(load)
+                ? t('operations.secured.dispatch.looseLoad')
+                : t('operations.secured.dispatch.vehicleLoad', {
+                    vehicle: vanCodeText(t, load),
+                  })}
             </span>
             {load.captainNames.length > 0 && (
               <span className="flex items-center gap-1.5 text-sm font-bold text-slate-600 dark:text-slate-300">

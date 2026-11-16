@@ -54,7 +54,8 @@ export const vanCodeText = (t: Translate, crew: CrewVan, number?: string | null)
  * a van read as a crew, not as a van called «بدون سيارة».
  */
 export const vanPhrase = (t: Translate, crew: CrewVan, number?: string | null): string => {
-  if (!hasNoVan(crew)) return t('operations.distribution.vanLabel', { code: crew.vehicleCode ?? '…' });
+  if (!hasNoVan(crew))
+    return t('operations.distribution.vanLabel', { code: crew.vehicleCode ?? '…' });
   return number === undefined || number === null
     ? t('operations.distribution.looseCrew')
     : t('operations.distribution.looseLabel', { n: number });

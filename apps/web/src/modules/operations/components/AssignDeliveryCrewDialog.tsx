@@ -120,7 +120,9 @@ export const AssignDeliveryCrewDialog = ({
   if (target === null || row === null || day === null) return null;
 
   /** A van's code; a row without a van «بدون سيارة (n)» (Round 24), «…» for a van Fleet cannot name. */
-  const vehicleName = (option: Pick<DispatchCrewOption, 'vehicleId' | 'vehicleCode' | 'looseNumber'>): string =>
+  const vehicleName = (
+    option: Pick<DispatchCrewOption, 'vehicleId' | 'vehicleCode' | 'looseNumber'>,
+  ): string =>
     vanCodeText(
       t,
       option,
@@ -223,10 +225,15 @@ export const AssignDeliveryCrewDialog = ({
           data-assign-delivery-held="true"
           className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200"
         >
-          {t('operations.secured.dispatch.assignHeld', {
-            captain: row.crew.captainName ?? '—',
-            vehicle: row.crew.vehicleId === null ? t('operations.crewPlan.noVehicle') : (row.crew.vehicleCode ?? '—'),
-          })}
+          {/* Round 24 — a crew without a van: «… — بدون سيارة», never «المركبة بدون سيارة». */}
+          {row.crew.vehicleId === null
+            ? t('operations.secured.dispatch.assignHeldLoose', {
+                captain: row.crew.captainName ?? '—',
+              })
+            : t('operations.secured.dispatch.assignHeld', {
+                captain: row.crew.captainName ?? '—',
+                vehicle: row.crew.vehicleCode ?? '—',
+              })}
         </p>
       )}
 

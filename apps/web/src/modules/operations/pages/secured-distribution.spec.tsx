@@ -658,7 +658,11 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
   });
 
   it('the confirmation names the day it hands over on', () => {
-    const body = ar('operations.handover.confirmBody', { count: '1', van: 'السيارة 101', day: TODAY });
+    const body = ar('operations.handover.confirmBody', {
+      count: '1',
+      van: 'السيارة 101',
+      day: TODAY,
+    });
     expect(body).toContain(TODAY);
     expect(translate('en', 'operations.handover.confirmBody', { day: TODAY })).toContain(TODAY);
   });

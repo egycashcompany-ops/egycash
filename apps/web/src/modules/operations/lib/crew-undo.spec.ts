@@ -12,6 +12,7 @@ import {
   UNDO_LIMIT,
   changedRowKeys,
   lastStep,
+  mergeKeyOf,
   rebaseHistory,
   record,
   sameCrewDraft,
@@ -111,6 +112,29 @@ describe('the history — one press, one operation', () => {
     let back = record(startHistory('q'), 'qa', { kind: 'notes' }, { same, merge: 'n' });
     back = record(back, 'q', { kind: 'notes' }, { same, merge: 'n' });
     expect(back.past).toHaveLength(0);
+  });
+
+  it('the time panel’s hour and minute are ONE operation — until the panel closes', () => {
+    expect(mergeKeyOf('notes', 'van:v-1')).toBe('notes:van:v-1');
+    expect(mergeKeyOf('time', 'van:v-1')).toBe('time:van:v-1');
+    for (const kind of ['type', 'colour', 'direction', 'place', 'giveVan']) {
+      expect(mergeKeyOf(kind, 'van:v-1')).toBeUndefined();
+    }
+    const at =
+      (plannedTime: string) =>
+      (rows: readonly PlanRow[]): readonly PlanRow[] =>
+        patchRow(rows, 'van:v-259', { plannedTime });
+    const merge = mergeKeyOf('time', 'van:v-259');
+    // 15:00 → the hour 07 picked (the minute kept: 07:00) → the minute :30 picked, the panel closes.
+    let history = op(board([van('259', { plannedTime: '15:00' })]), 'time', at('07:00'), merge);
+    history = sealHistory(op(history, 'time', at('07:30'), merge));
+    expect(history.past).toHaveLength(1);
+    // One press: 15:00 again — never 07:00, a time nobody chose.
+    expect(undo(history).now.rows[0]?.plannedTime).toBe('15:00');
+    // The same box changed again after the panel closed is an operation of its own.
+    history = sealHistory(op(history, 'time', at('08:00'), merge));
+    expect(history.past).toHaveLength(2);
+    expect(undo(history).now.rows[0]?.plannedTime).toBe('07:30');
   });
 
   it('keeps the last UNDO_LIMIT operations', () => {
@@ -262,10 +286,16 @@ describe('the page — the owner’s «تراجع»', () => {
     expect(page).toContain('aria-keyshortcuts="Control+Z Meta+Z"');
   });
 
-  it('a save clears the history; the notes box seals its typing on leaving', () => {
+  it('a save clears the history; the notes box seals its typing on leaving, the time its panel on closing', () => {
     expect(page).toContain('setHistory((current) => startHistory(current.now));');
     expect(page).toContain('onBlur={() => setHistory(sealHistory)}');
-    expect(page).toContain("kind === 'notes' ? `notes:${key}` : undefined");
+    // The notes' keys and the time panel's hour + minute merge (`mergeKeyOf`) until sealed.
+    expect(page).toContain('mergeKeyOf(kind, key),');
+    expect(page).toContain('onSettle={() => setHistory(sealHistory)}');
+    const controls = read('../components/CrewPlanControls.tsx');
+    // The panel closing — a minute, «مسح», Escape, outside — settles; so does a typed time taken.
+    expect(controls).toContain('if (wasOpen.current && !open) settle.current?.();');
+    expect(controls).toMatch(/if \(parsed !== undefined\) set\(parsed\);\s*setTyped\(null\);\s*onSettle\?\.\(\);/);
   });
 
   it('every operation kind is said, in formal Arabic and in English', () => {

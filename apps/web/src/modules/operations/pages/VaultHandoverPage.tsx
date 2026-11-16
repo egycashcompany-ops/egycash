@@ -90,7 +90,8 @@ import {
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 import { vanLoadSheet } from '../lib/van-load-sheet';
-import { looseCrewNumbers, vanPhrase } from '../lib/van-name';
+import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
+import { PLAN_ICON } from '../components/crew-plan-icons';
 
 export const VaultHandoverPage = (): JSX.Element => {
   const t = useT();
@@ -417,7 +418,13 @@ export const VaultHandoverPage = (): JSX.Element => {
                         }
                       >
                         {load.length === 0 ? (
-                          <EmptyLoad>{t('operations.distribution.emptyVan')}</EmptyLoad>
+                          <EmptyLoad>
+                            {t(
+                              hasNoVan(van)
+                                ? 'operations.distribution.emptyCrew'
+                                : 'operations.distribution.emptyVan',
+                            )}
+                          </EmptyLoad>
                         ) : (
                           load.map((row) => card(row, van))
                         )}
@@ -468,7 +475,7 @@ export const VaultHandoverPage = (): JSX.Element => {
               ? undefined
               : confirmVan.captains.map(personName).join(' · ')
           }
-          icon={PATH.truck}
+          icon={hasNoVan(confirmVan) ? [...PLAN_ICON.noVan] : PATH.truck}
           width="2xl"
           wrapTitle
           panelProps={{ 'data-handover-confirm': confirmVan.crewAssignmentId }}

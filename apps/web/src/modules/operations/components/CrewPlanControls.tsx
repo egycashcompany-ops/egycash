@@ -435,12 +435,19 @@ export const TimePicker = ({
   value,
   disabled,
   onChange,
+  onSettle,
 }: {
   rowKey: string;
   /** «HH:MM», or null. */
   value: string | null;
   disabled: boolean;
   onChange: (next: string | null) => void;
+  /**
+   * The time is settled — the panel closed, or a typed time was taken. Round 24: the panel's hour
+   * and its minute are two clicks but ONE change of the time, and «تراجع» takes them back together;
+   * the page merges the clicks into one operation until it is told here.
+   */
+  onSettle?: () => void;
 }): JSX.Element => {
   const t = useT();
   const box = useRef<HTMLDivElement>(null);
@@ -449,6 +456,16 @@ export const TimePicker = ({
   const [hour, minute] = (value ?? '').split(':');
   const label = t('operations.crewPlan.columns.time');
   useFocusOnOpen(open, `[data-time-panel="${rowKey}"]`);
+  // The panel closing — by a minute, «مسح», Escape, a click outside or the clock again — settles it.
+  const settle = useRef(onSettle);
+  useEffect(() => {
+    settle.current = onSettle;
+  });
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) settle.current?.();
+    wasOpen.current = open;
+  }, [open]);
 
   const set = (next: string | null): void => {
     if (next !== value) onChange(next);
@@ -474,6 +491,7 @@ export const TimePicker = ({
           // Something that is not a time is dropped, and the box shows the time it had.
           if (parsed !== undefined) set(parsed);
           setTyped(null);
+          onSettle?.();
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') (event.target as HTMLInputElement).blur();

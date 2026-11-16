@@ -752,6 +752,46 @@ its entry here in the same PR.
           server's `OPERATIONS_CREW_MEMBER_WRONG_SLOT` is worded in both languages and rings the
           chip on the row it names. «كشف طاقم العمليات» no longer tells the operator that anybody
           may take any slot: its hint says which slot each role takes.
+      - Round 24, the owner — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات و مكان بدون
+        سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم وعاوز ف الفلاتر ازود
+        بين يوم التشغيلة وكل الانوع انه يقدر يفلتر ب كود عربيه و كمان ادخل اسم قائد او اخصائى او الكود
+        بتاع اى حد فيهم وكمان افلتر ب الاتجاه», then «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات
+        فاهم»:
+        - «تراجع» is ONE STEP BACK. It threw away every unsaved change at once; now each press takes
+          back the LAST operation only — a drop, a pick, a ✕, a van given, a row added, deleted or
+          emptied, a type, colour, time, direction or notes change (a run of typing in one box is
+          one), the standing crew loaded or taken off — however many rows it touched, and the next
+          press the one before, until nothing is left; the button is off then. Its tooltip says
+          what it will take back («تراجع عن: نقل … إلى …»); Ctrl+Z (⌘Z) does the same outside a
+          text box. A save clears the history; another desk's save rebases every step of it as it
+          rebases the draft, and drops a step the other desk made true. «توزيع المحصنات»'s
+          «التراجع عن التغييرات» was the same discard-everything button: it is now «تراجع», one
+          move, captain switch or «توزيع تلقائي» a press. «الطاقم الثابت» had none.
+        - «بدون سيارة» opens every car with no crew that day (the server's `freeVehicles`, seen
+          through the draft): the Fleet roster's blank vans first with their drivers, then the
+          cash-transfer operations' cars, the standing crew's and the rest, each by code;
+          searchable by code or driver; a car in the workshop is listed «في الصيانة» and, off the
+          roster, cannot be picked; a car another row of the draft took is not offered. A computer
+          gets a list under the cell, a phone the bottom sheet. A roster van merges the row into its
+          blank row as before; any other car turns the row into that car's row where it stands. A
+          saved row keeps its id either way (the «row X takes van V» save), so the محصنات on it
+          follow. The round-22 (away) and round-23 (wrong slot) checks still come first. A van off
+          the roster is marked «إضافية», shows no drivers and can be deleted (which frees it); the
+          server's three refusals of a van and its refusal to delete a row holding محصنات are worded
+          in both languages and marked on the row — the deleted row is put back, as its own step.
+        - Three filters between «يوم التشغيلة» and «كل الأنواع», in that order: the van (the board's
+          codes, and «بدون سيارة»), a person box (a captain's or a specialist's name or code,
+          folded as the pools' search) and the direction (each area the board's directions name,
+          and «بدون اتجاه»). AND-ed with the type; view only — hidden rows keep their changes and
+          «حفظ» saves them all. The type chips count the whole day; «المعروض N من M» says what the
+          filters leave, beside «مسح التصفية».
+        - Rows without a van on the screens after the board: «توزيع المحصنات» and «تسليم المحصنات»
+          draw them as cards after the vans, «بدون سيارة (n)» numbered as the board numbers them;
+          they take drops, «نقل إلى…» and proposals, count among the vans and are handed over and
+          printed under the crew's name («الطاقم بدون سيارة (n)»). «صرف الخزينة»'s assign dialog
+          offers each as its own choice. The day board, the vault's screens, the deleted list and
+          the hover cards print «بدون سيارة» where a van's code goes, never "null"; the day board's
+          van box offers it.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

@@ -202,6 +202,7 @@ import {
 import {
   changedRowKeys,
   lastStep,
+  mergeKeyOf,
   rebaseHistory,
   record,
   sameCrewDraft,
@@ -750,8 +751,9 @@ export const CrewBoardPage = (): JSX.Element => {
     applyRows(
       { kind, vars: { row: nameOfRow(key) } },
       (current) => patchRow(current, key, fields),
-      // A run of keys in the notes box is ONE operation, until the box is left.
-      kind === 'notes' ? `notes:${key}` : undefined,
+      // A run of keys in the notes box is ONE operation, until the box is left; the time panel's
+      // hour and minute are one, until the panel closes (`mergeKeyOf`).
+      mergeKeyOf(kind, key),
     );
     // The refused box is changed: what it said no longer describes it.
     setRefusal((current) => (current?.key === key ? null : current));
@@ -1309,6 +1311,8 @@ export const CrewBoardPage = (): JSX.Element => {
           value={row.plannedTime}
           disabled={!canPlan}
           onChange={(plannedTime) => patch(row.key, { plannedTime })}
+          // The panel closed (or a typed time was taken): the next change of it is a new operation.
+          onSettle={() => setHistory(sealHistory)}
         />
       ),
     },
@@ -1594,14 +1598,14 @@ export const CrewBoardPage = (): JSX.Element => {
           <FilterWithIcon
             icon={FILTER_ICON.person}
             tone="text-sky-600 dark:text-sky-400"
-            className="w-full shrink-0 sm:w-48"
+            className="w-full shrink-0 sm:w-56"
           >
             <Input
               type="search"
               density="tight"
               data-filter-person="true"
               aria-label={t('operations.crewPlan.filter.person')}
-              placeholder={t('operations.crewPlan.filter.person')}
+              placeholder={t('operations.crewPlan.filter.personHint')}
               value={rowFilter.person}
               onChange={(event) =>
                 setRowFilter((current) => ({ ...current, person: event.target.value }))
@@ -1686,7 +1690,9 @@ export const CrewBoardPage = (): JSX.Element => {
             role="group"
             aria-label={t('operations.crewPlan.counts')}
             title={t('operations.crewPlan.countsHint')}
-            className="flex w-full min-w-0 flex-wrap items-center gap-1 lg:w-auto lg:flex-1 min-[1360px]:gap-0.5 min-[1440px]:gap-1"
+            // Round 24 — on a line of its own under the five filters until 1900: beside them it was
+            // squeezed into three lines of chips at 1440, and the table lost their height.
+            className="flex w-full min-w-0 flex-wrap items-center gap-1 min-[1360px]:gap-0.5 min-[1440px]:gap-1 min-[1900px]:w-auto min-[1900px]:flex-1"
             data-type-counts="true"
           >
             {countChip(

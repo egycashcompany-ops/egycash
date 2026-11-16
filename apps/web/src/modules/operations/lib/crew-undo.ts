@@ -88,6 +88,16 @@ export const record = <S>(
   return { now: next, past: past.length > UNDO_LIMIT ? past.slice(-UNDO_LIMIT) : past };
 };
 
+/**
+ * Which changes of a row's own fields come in more than one event yet are ONE operation — merged
+ * under this key until the page seals the history. The notes: a key at a time, until the box is
+ * left. The time: the panel's hour, then its minute — two clicks, one time — until the panel closes
+ * (a press of «تراجع» after 07:30 picked must not leave 07 with the old minute, a time nobody chose).
+ * Everything else (a type, a colour, a direction picked from its list) is one event: no key.
+ */
+export const mergeKeyOf = (kind: string, rowKey: string): string | undefined =>
+  kind === 'notes' || kind === 'time' ? `${kind}:${rowKey}` : undefined;
+
 /** The operation one press would take back, or null — the button is then off. */
 export const lastStep = <S>(history: UndoHistory<S>): UndoStep<S> | null =>
   history.past[history.past.length - 1] ?? null;

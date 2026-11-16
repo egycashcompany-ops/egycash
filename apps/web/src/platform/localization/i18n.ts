@@ -11091,6 +11091,7 @@ const en: Record<string, string> = {
   'operations.distribution.noVans': 'No vans are planned for this day — plan them on the crew board.',
   'operations.distribution.dropHere': 'Drag shipments here',
   'operations.distribution.emptyVan': 'Nothing on this van',
+  'operations.distribution.emptyCrew': 'Nothing on this crew',
   'operations.distribution.empty': 'No secured shipments are due on this day',
   'operations.distribution.allPlaced': 'Every shipment of the day is on a van',
   'operations.distribution.dropBack': 'Drop here to take it off its van',
@@ -11541,20 +11542,27 @@ const en: Record<string, string> = {
   'operations.crewPlan.vehicles.search': 'Search by vehicle code or driver',
   'operations.crewPlan.vehicles.noMatch': 'No vehicle matches the search',
   'operations.crewPlan.vehicles.inWorkshop': 'In the workshop',
-  'operations.crewPlan.vehicles.workshopRefused': 'Vehicle {{code}} is in the workshop on this day — it cannot take a crew',
+  'operations.crewPlan.vehicles.workshopRefused':
+    'Vehicle {{code}} is in the workshop on this day — it cannot take a crew',
   'operations.crewPlan.vehicles.group.roster': 'On the vehicle roster of the day',
   'operations.crewPlan.vehicles.group.cashTransfer': 'Cash-transfer vehicles',
   'operations.crewPlan.vehicles.group.standing': 'Standing-crew vehicles',
   'operations.crewPlan.vehicles.group.other': 'Other vehicles',
   'operations.crewPlan.offRoster': 'Not on the vehicle roster of this day',
-  'operations.crewPlan.offRosterHint': 'Given on this board — not on the vehicle roster of this day. Deleting its row frees the vehicle.',
+  'operations.crewPlan.offRosterHint':
+    'Given on this board — not on the vehicle roster of this day. Deleting its row frees the vehicle.',
   'operations.crewPlan.offRosterTag': 'Added',
-  'operations.crewPlan.refused.vehicle.notActive': 'Vehicle {{code}} is no longer in service in Fleet — undo giving it, then choose another.',
-  'operations.crewPlan.refused.vehicle.inWorkshop': 'Vehicle {{code}} is in the workshop on this day — undo giving it, then choose another.',
-  'operations.crewPlan.refused.vehicle.taken': 'Vehicle {{code}} already has another crew on this day — undo giving it, then choose another.',
-  'operations.crewPlan.refused.remove': 'This row carries secured shipments ({{count}}), so it was put back — take them off it on «Secured distribution», or give it a vehicle.',
+  'operations.crewPlan.refused.vehicle.notActive':
+    'Vehicle {{code}} is no longer in service in Fleet — undo giving it, then choose another.',
+  'operations.crewPlan.refused.vehicle.inWorkshop':
+    'Vehicle {{code}} is in the workshop on this day — undo giving it, then choose another.',
+  'operations.crewPlan.refused.vehicle.taken':
+    'Vehicle {{code}} already has another crew on this day — undo giving it, then choose another.',
+  'operations.crewPlan.refused.remove':
+    'This row carries secured shipments ({{count}}), so it was put back — take them off it on «Secured distribution», or give it a vehicle.',
   'operations.crewPlan.filter.van': 'Vehicle code',
   'operations.crewPlan.filter.person': 'Captain or specialist — name or code',
+  'operations.crewPlan.filter.personHint': 'Name or code of a captain or specialist',
   'operations.crewPlan.filter.direction': 'Direction',
   'operations.crewPlan.filter.noDirection': 'No direction',
   'operations.crewPlan.filter.shown': 'Showing {{shown}} of {{total}}',
@@ -11703,6 +11711,7 @@ const en: Record<string, string> = {
   'operations.secured.dispatch.assignDay':
     'The crew is chosen from those planned for the delivery day, {{date}}.',
   'operations.secured.dispatch.assignHeld': 'Assigned now: {{captain}} — vehicle {{vehicle}}',
+  'operations.secured.dispatch.assignHeldLoose': 'Assigned now: {{captain}} — no vehicle',
   'operations.secured.dispatch.assignNoAccess':
     'The crews cannot be listed: choosing one needs permission to view the operations crew.',
   'operations.secured.dispatch.back': 'Back',
@@ -11712,6 +11721,8 @@ const en: Record<string, string> = {
   'operations.secured.dispatch.loadCount': '{{count}} shipment(s)',
   'operations.secured.dispatch.vehicleLoad': 'Vehicle {{vehicle}}',
   'operations.secured.dispatch.loadFailed': 'Vehicle {{vehicle}} was not released: {{reason}}',
+  'operations.secured.dispatch.looseLoad': 'Crew with no vehicle',
+  'operations.secured.dispatch.looseLoadFailed': 'The crew with no vehicle was not released: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'Dispatch selected ({{count}})',
   'operations.secured.dispatch.selectRow': 'Select {{caption}} for dispatch',
   // Round 16 — «لوحة تحكم» on «محصنات الخزينة», over the board's own rows.
@@ -25216,6 +25227,7 @@ const ar: Record<string, string> = {
   'operations.distribution.noVans': 'لا توجد سيارات مخططة لهذا اليوم — تُخطط السيارات في لوحة التشغيلة.',
   'operations.distribution.dropHere': 'اسحب المحصنات إلى هنا',
   'operations.distribution.emptyVan': 'لا توجد محصنات على هذه السيارة',
+  'operations.distribution.emptyCrew': 'لا توجد محصنات على هذا الطاقم',
   'operations.distribution.empty': 'لا توجد محصنات مستحقة التسليم في هذا اليوم',
   'operations.distribution.allPlaced': 'كل محصنات اليوم على سيارات',
   'operations.distribution.dropBack': 'أفلتها هنا لإزالتها من سيارتها',
@@ -25648,20 +25660,27 @@ const ar: Record<string, string> = {
   'operations.crewPlan.vehicles.search': 'بحث بكود السيارة أو اسم السائق',
   'operations.crewPlan.vehicles.noMatch': 'لا توجد سيارة تطابق البحث',
   'operations.crewPlan.vehicles.inWorkshop': 'في الصيانة',
-  'operations.crewPlan.vehicles.workshopRefused': 'السيارة {{code}} في الصيانة في هذا اليوم — لا يُوزَّع عليها طاقم',
+  'operations.crewPlan.vehicles.workshopRefused':
+    'السيارة {{code}} في الصيانة في هذا اليوم — لا يُوزَّع عليها طاقم',
   'operations.crewPlan.vehicles.group.roster': 'على تعيين السيارات لهذا اليوم',
   'operations.crewPlan.vehicles.group.cashTransfer': 'سيارات نقل الأموال',
   'operations.crewPlan.vehicles.group.standing': 'سيارات الطاقم الثابت',
   'operations.crewPlan.vehicles.group.other': 'باقي السيارات',
   'operations.crewPlan.offRoster': 'ليست على تعيين السيارات لهذا اليوم',
-  'operations.crewPlan.offRosterHint': 'أُعطيت من هذه اللوحة وليست على تعيين السيارات لهذا اليوم — حذف صفها يعيد السيارة متاحة.',
+  'operations.crewPlan.offRosterHint':
+    'أُعطيت من هذه اللوحة وليست على تعيين السيارات لهذا اليوم — حذف صفها يعيد السيارة متاحة.',
   'operations.crewPlan.offRosterTag': 'إضافية',
-  'operations.crewPlan.refused.vehicle.notActive': 'السيارة {{code}} لم تعد في الخدمة في الأسطول — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
-  'operations.crewPlan.refused.vehicle.inWorkshop': 'السيارة {{code}} في الصيانة في هذا اليوم — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
-  'operations.crewPlan.refused.vehicle.taken': 'السيارة {{code}} عليها طاقم آخر في هذا اليوم — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
-  'operations.crewPlan.refused.remove': 'على هذا الصف محصنات ({{count}}) فأُعيد إلى اللوحة — أزِلها عنه في «توزيع المحصنات»، أو أعطِه سيارة.',
+  'operations.crewPlan.refused.vehicle.notActive':
+    'السيارة {{code}} لم تعد في الخدمة في الأسطول — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
+  'operations.crewPlan.refused.vehicle.inWorkshop':
+    'السيارة {{code}} في الصيانة في هذا اليوم — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
+  'operations.crewPlan.refused.vehicle.taken':
+    'السيارة {{code}} عليها طاقم آخر في هذا اليوم — تراجع عن تعيينها، ثم اختر سيارة أخرى.',
+  'operations.crewPlan.refused.remove':
+    'على هذا الصف محصنات ({{count}}) فأُعيد إلى اللوحة — أزِلها عنه في «توزيع المحصنات»، أو أعطِه سيارة.',
   'operations.crewPlan.filter.van': 'كود السيارة',
   'operations.crewPlan.filter.person': 'قائد أو أخصائي — الاسم أو الكود',
+  'operations.crewPlan.filter.personHint': 'اسم أو كود قائد أو أخصائي',
   'operations.crewPlan.filter.direction': 'الاتجاه',
   'operations.crewPlan.filter.noDirection': 'بدون اتجاه',
   'operations.crewPlan.filter.shown': 'المعروض {{shown}} من {{total}}',
@@ -25801,6 +25820,7 @@ const ar: Record<string, string> = {
   'operations.secured.dispatch.reassignAction': 'تغيير طاقم التسليم',
   'operations.secured.dispatch.assignDay': 'يُختار الطاقم من أطقم يوم التسليم {{date}}.',
   'operations.secured.dispatch.assignHeld': 'المعيَّن الآن: {{captain}} — المركبة {{vehicle}}',
+  'operations.secured.dispatch.assignHeldLoose': 'المعيَّن الآن: {{captain}} — بدون سيارة',
   'operations.secured.dispatch.assignNoAccess':
     'تعذّر عرض الأطقم: يتطلب اختيار الطاقم صلاحية عرض طاقم التشغيل.',
   'operations.secured.dispatch.back': 'رجوع',
@@ -25810,6 +25830,8 @@ const ar: Record<string, string> = {
   'operations.secured.dispatch.loadCount': '{{count}} شحنة',
   'operations.secured.dispatch.vehicleLoad': 'المركبة {{vehicle}}',
   'operations.secured.dispatch.loadFailed': 'لم تُصرف المركبة {{vehicle}}: {{reason}}',
+  'operations.secured.dispatch.looseLoad': 'طاقم بدون سيارة',
+  'operations.secured.dispatch.looseLoadFailed': 'لم يُصرف ما على الطاقم بدون سيارة: {{reason}}',
   'operations.secured.dispatch.releaseSelected': 'صرف المحدد ({{count}})',
   'operations.secured.dispatch.selectRow': 'تحديد {{caption}} للصرف',
   // الجولة 16 — «لوحة تحكم» في «محصنات الخزينة»، على صفوف الشاشة نفسها.

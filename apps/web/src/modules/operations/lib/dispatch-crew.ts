@@ -71,7 +71,6 @@ export const findDispatchOption = (
   key: string,
 ): DispatchCrewOption | undefined => options.find((option) => option.key === key);
 
-
 // ── Choosing a crew by CAPTAIN, with the vehicle following ───────────────────────────────────────
 //
 // "أعين الشحنة لقائد وتلقائي يختار السيارة اللى القائد عليها اليوم دا وممكن أغير العربية عادي" —

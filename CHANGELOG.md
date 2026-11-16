@@ -1236,6 +1236,16 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR: an external person no longer holds a company employee number.** The last company code was
+  …2942. After an external person «C2» was registered, a new employee typed as 02002943 was refused:
+  «هذا الرقم مسجَّل بالفعل للموظف C2». The owner: «المفروض لا يحجز هذه الأكواد». Registering an
+  external person drew the next number from the company's counter and kept it behind the typed
+  code. Nobody saw that number, but the register screen counts a number held by anybody as taken.
+  An external person now draws nothing: their number is their code. At start-up, every external
+  person registered before is given their code as their number, which frees the numbers they drew
+  (`migrateExternalEmployeeNumbers`, idempotent). The counter is not wound back. Its gaps are
+  harmless, because HR types each new code and the counter follows it.
+
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح
   الحروف». A pair on a short list («كس», «زب», «طز», «شخ», «تف») now shows its first letter alone,

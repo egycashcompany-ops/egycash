@@ -4,7 +4,15 @@
 // accepted offer + Direct Registration (D4).
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EMPLOYEE_ORIGINS, EMPLOYEE_STATUSES, type EmployeeOrigin, type Locale } from '@ecms/contracts';
+import {
+  EMPLOYEE_ID_CARD_FILTERS,
+  EMPLOYEE_ORIGINS,
+  EMPLOYEE_STATUSES,
+  type EmployeeIdCardFilter,
+  type EmployeeOrigin,
+  type EmployeeStatus,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -16,7 +24,9 @@ import { Button } from '../../../../../shared/ui/Button';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
-import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { SEARCH_FITS_TEXT } from '../../../recruitment/job-offers/components/OfferFilters';
 import { PlusIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
 import { IdCardDialog } from '../id-card/IdCardDialog';
@@ -45,8 +55,18 @@ import {
 import { type EmployeeListParams } from '../api/employee-api';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
-/** «الأكثر استلامًا أولًا»: the ID card column sorted by cards received, most first. */
-const MOST_RECEIVED_SORT = 'idCard.receivedCount:desc';
+/** The ID card states, in the order the filter offers them. */
+const ID_CARD_ORDER: readonly EmployeeIdCardFilter[] = ['received', 'awaiting', 'receipt', 'never'];
+const ID_CARD_LABEL: Record<EmployeeIdCardFilter, string> = {
+  received: 'employees.filters.idCardReceived',
+  awaiting: 'employees.filters.idCardAwaiting',
+  receipt: 'employees.filters.idCardWaitingEmployee',
+  never: 'employees.filters.idCardNever',
+};
+
+/** The picks of a list param that the vocabulary carries — an old link's stray value is dropped. */
+const known = <T extends string>(picked: readonly string[], vocabulary: readonly T[]): T[] =>
+  picked.filter((v): v is T => (vocabulary as readonly string[]).includes(v));
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -92,21 +112,20 @@ export const EmployeesListPage = (): JSX.Element => {
   const canSettle = can('employee.viewCompensation');
   const [importOpen, setImportOpen] = useState(false);
   const [cardOf, setCardOf] = useState<EmployeeDto | null>(null);
-  const idCard = sp.get('idcard') ?? '';
-  // «زود فلتر للموظفين الخارجيين» — how the person entered the registry, external among them. A
-  // value the vocabulary does not carry (an old link) reads as no filter rather than an empty table.
-  const originRaw = sp.get('origin') ?? '';
-  const origin: EmployeeOrigin | '' = (EMPLOYEE_ORIGINS as readonly string[]).includes(originRaw)
-    ? (originRaw as EmployeeOrigin)
-    : '';
+  // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: every filter is a comma list
+  // in the URL, its picks ORed. A value the vocabulary does not carry (an old link) is dropped
+  // rather than emptying the table.
+  const idCards = known(readList(sp, 'idcard'), EMPLOYEE_ID_CARD_FILTERS);
+  // «زود فلتر للموظفين الخارجيين» — how the person entered the registry, external among them.
+  const origins = known(readList(sp, 'origin'), EMPLOYEE_ORIGINS);
   const search = sp.get('q') ?? '';
-  const status = sp.get('status') ?? '';
+  const statuses = known(readList(sp, 'status'), EMPLOYEE_STATUSES);
   // `dept` and `section` hold GROUP keys — a company-wide department, not one branch's copy of it.
   const placement: PlacementSelection = {
-    branchId: sp.get('branch') ?? '',
-    departmentKey: sp.get('dept') ?? '',
-    sectionKey: sp.get('section') ?? '',
-    jobTitleId: sp.get('job') ?? '',
+    branchIds: readList(sp, 'branch'),
+    departmentKeys: readList(sp, 'dept'),
+    sectionKeys: readList(sp, 'section'),
+    jobTitleIds: readList(sp, 'job'),
   };
   const viewRaw = sp.get('view');
   // A caller without the compensation key falls back to the default view rather than seeing an
@@ -148,19 +167,16 @@ export const EmployeesListPage = (): JSX.Element => {
 
   // The ids a chosen group stands for, narrowed to the chosen site. Memoised so the query key does
   // not change on every render — the list would refetch for nothing.
+  const branchKey = placement.branchIds.join(',');
+  const departmentKey = placement.departmentKeys.join(',');
+  const sectionKey = placement.sectionKeys.join(',');
   const departmentIds = useMemo(
     () => departmentIdsFor(departmentOptions, placement),
-    [departmentOptions, placement.branchId, placement.departmentKey],
+    [departmentOptions, branchKey, departmentKey],
   );
   const sectionIds = useMemo(
     () => sectionIdsFor(sectionOptions, departmentOptions, placement),
-    [
-      sectionOptions,
-      departmentOptions,
-      placement.branchId,
-      placement.departmentKey,
-      placement.sectionKey,
-    ],
+    [sectionOptions, departmentOptions, branchKey, departmentKey, sectionKey],
   );
 
   const params = useMemo<EmployeeListParams>(
@@ -172,23 +188,18 @@ export const EmployeesListPage = (): JSX.Element => {
       search,
       // The view filter: employed (default) / exited / all — status narrows within the view.
       ...(view === 'employed' ? { employed: true } : view === 'exited' ? { employed: false } : {}),
-      ...(status === '' ? {} : { status }),
+      ...(statuses.length === 0 ? {} : { status: statuses }),
       // The registry already filters on all four (`ListEmployeesQuery`), so narrowing is one query,
       // not a client-side pass over a page — the count under the bar stays the server's own.
       //
       // A department is one record per branch, so «الأمن» company-wide is every branch copy of it:
-      // the chosen group is expanded to its ids here, narrowed to the chosen site when there is one.
-      ...(placement.branchId === '' ? {} : { branchId: placement.branchId }),
+      // the chosen groups are expanded to their ids here, narrowed to the chosen sites when any are.
+      ...(placement.branchIds.length === 0 ? {} : { branchId: placement.branchIds }),
       ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
       ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
-      ...(placement.jobTitleId === '' ? {} : { jobTitleId: placement.jobTitleId }),
-      ...(origin === '' ? {} : { origin }),
-      ...(idCard === 'received' ||
-      idCard === 'never' ||
-      idCard === 'awaiting' ||
-      idCard === 'receipt'
-        ? { idCard }
-        : {}),
+      ...(placement.jobTitleIds.length === 0 ? {} : { jobTitleId: placement.jobTitleIds }),
+      ...(origins.length === 0 ? {} : { origin: origins }),
+      ...(idCards.length === 0 ? {} : { idCard: idCards }),
     }),
     [paramsKey, departmentIds, sectionIds],
   );
@@ -209,11 +220,11 @@ export const EmployeesListPage = (): JSX.Element => {
   // filter to them, it is the screen. Clearing puts every remembered parameter back to that.
   const hasActiveFilters =
     search !== '' ||
-    status !== '' ||
+    statuses.length > 0 ||
     view !== 'employed' ||
     hasPlacementFilter(placement) ||
-    origin !== '' ||
-    idCard !== '';
+    origins.length > 0 ||
+    idCards.length > 0;
   const clearFilters = (): void =>
     patch({
       q: null,
@@ -233,12 +244,12 @@ export const EmployeesListPage = (): JSX.Element => {
   // titles offers 142 of them.
 
   const departments = useMemo(
-    () => departmentGroupsIn(departmentOptions, placement.branchId),
-    [departmentOptions, placement.branchId],
+    () => departmentGroupsIn(departmentOptions, placement.branchIds),
+    [departmentOptions, branchKey],
   );
   const sections = useMemo(
     () => sectionGroupsIn(sectionOptions, departmentOptions, placement),
-    [sectionOptions, departmentOptions, placement.branchId, placement.departmentKey],
+    [sectionOptions, departmentOptions, branchKey, departmentKey],
   );
 
   /**
@@ -251,10 +262,10 @@ export const EmployeesListPage = (): JSX.Element => {
   const setPlacement = (part: Partial<PlacementSelection>): void => {
     const next = prunePlacement({ ...placement, ...part }, departmentOptions, sectionOptions);
     patch({
-      branch: next.branchId || null,
-      dept: next.departmentKey || null,
-      section: next.sectionKey || null,
-      job: next.jobTitleId || null,
+      branch: writeList(next.branchIds),
+      dept: writeList(next.departmentKeys),
+      section: writeList(next.sectionKeys),
+      job: writeList(next.jobTitleIds),
     });
   };
 
@@ -308,16 +319,22 @@ export const EmployeesListPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters} trailing={rowCount}>
+          {/* «العرض بتاع الفلتر و اللي جوه الفلتر يكون مظبوط ع كلام بظبط»: every control below is as
+              wide as its own words — the search as its hint, the view as the view shown, each
+              filter as its name (and the count once picked) — and none of them wraps. */}
           <SearchInput
             value={search}
             onChange={(v) => patch({ q: v || null })}
             placeholder={t('employees.list.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
           />
+          {/* A VIEW, not a filter: it changes what the screen is — one answer at a time. */}
           <Select
             value={view}
             onChange={(e) =>
               patch({ view: e.target.value === 'employed' ? null : e.target.value, status: null })
             }
+            className="[field-sizing:content]"
           >
             <option value="employed">{t('employees.view.employed')}</option>
             <option value="exited">{t('employees.view.exited')}</option>
@@ -326,16 +343,14 @@ export const EmployeesListPage = (): JSX.Element => {
             {canSettle && <option value="toSettle">{t('employees.view.toSettle')}</option>}
           </Select>
           {view !== 'exited' && view !== 'toSettle' && (
-            <Select value={status} onChange={(e) => patch({ status: e.target.value || null })}>
-              <option value="">{t('employees.filters.anyStatus')}</option>
-              {EMPLOYEE_STATUSES.filter((s) => (view === 'employed' ? s !== 'exited' : true)).map(
-                (s) => (
-                  <option key={s} value={s}>
-                    {t(`employees.status.${s}`)}
-                  </option>
-                ),
+            <MultiSelect
+              label={t('employees.filters.status')}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+              options={EMPLOYEE_STATUSES.filter((s) => (view === 'employed' ? s !== 'exited' : true)).map(
+                (s: EmployeeStatus) => ({ value: s, label: t(`employees.status.${s}`) }),
               )}
-            </Select>
+            />
           )}
           {/*
             Placement, in the order the columns read: site → department → section, then job title.
@@ -346,78 +361,48 @@ export const EmployeesListPage = (): JSX.Element => {
           */}
           {view !== 'toSettle' && (
             <>
-              <div className="w-full sm:w-44">
-                <SearchableSelect
-                  ariaLabel={t('employees.columns.branch')}
-                  value={placement.branchId}
-                  onChange={(branchId) => setPlacement({ branchId })}
-                  options={branchOptions.map((b) => ({ value: b.id, label: b.name[locale] }))}
-                  placeholder={t('employees.filters.anyBranch')}
-                />
-              </div>
-              <div className="w-full sm:w-44">
-                <SearchableSelect
-                  ariaLabel={t('employees.columns.department')}
-                  value={placement.departmentKey}
-                  onChange={(departmentKey) => setPlacement({ departmentKey })}
-                  options={departments.map((d) => ({ value: d.key, label: d.name[locale] }))}
-                  placeholder={t('employees.filters.anyDepartment')}
-                />
-              </div>
-              <div className="w-full sm:w-44">
-                <SearchableSelect
-                  ariaLabel={t('employees.columns.section')}
-                  value={placement.sectionKey}
-                  onChange={(sectionKey) => setPlacement({ sectionKey })}
-                  options={sections.map((sec) => ({ value: sec.key, label: sec.name[locale] }))}
-                  placeholder={t('employees.filters.anySection')}
-                />
-              </div>
-              <div className="w-full sm:w-48">
-                <SearchableSelect
-                  ariaLabel={t('employees.columns.jobTitle')}
-                  value={placement.jobTitleId}
-                  onChange={(jobTitleId) => setPlacement({ jobTitleId })}
-                  options={jobTitleOptions.map((j) => ({ value: j.id, label: j.name[locale] }))}
-                  placeholder={t('employees.filters.anyJobTitle')}
-                />
-              </div>
+              <MultiSelect
+                label={t('employees.columns.branch')}
+                value={placement.branchIds}
+                onChange={(branchIds) => setPlacement({ branchIds })}
+                options={branchOptions.map((b) => ({ value: b.id, label: b.name[locale] }))}
+              />
+              <MultiSelect
+                label={t('employees.columns.department')}
+                value={placement.departmentKeys}
+                onChange={(departmentKeys) => setPlacement({ departmentKeys })}
+                options={departments.map((d) => ({ value: d.key, label: d.name[locale] }))}
+              />
+              <MultiSelect
+                label={t('employees.columns.section')}
+                value={placement.sectionKeys}
+                onChange={(sectionKeys) => setPlacement({ sectionKeys })}
+                options={sections.map((sec) => ({ value: sec.key, label: sec.name[locale] }))}
+              />
+              <MultiSelect
+                label={t('employees.columns.jobTitle')}
+                value={placement.jobTitleIds}
+                onChange={(jobTitleIds) => setPlacement({ jobTitleIds })}
+                options={jobTitleOptions.map((j) => ({ value: j.id, label: j.name[locale] }))}
+              />
               {/* How the person entered the registry — «تعيين خارجي» is the external employees. */}
-              <Select
-                aria-label={t('employees.columns.origin')}
-                value={origin}
-                onChange={(e) => patch({ origin: e.target.value || null })}
-              >
-                <option value="">{t('employees.filters.anyOrigin')}</option>
-                {EMPLOYEE_ORIGINS.map((o) => (
-                  <option key={o} value={o}>
-                    {t(`employees.origin.${o}`)}
-                  </option>
-                ))}
-              </Select>
-              {/* The company ID card: received, waiting for its handover, never received, or the most received first. */}
-              <Select
-                aria-label={t('employees.columns.idCard')}
-                value={
-                  idCard === 'received' && sort.by === 'idCard.receivedCount' ? 'most' : idCard
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === 'most') patch({ idcard: 'received', sort: MOST_RECEIVED_SORT });
-                  else
-                    patch({
-                      idcard: v || null,
-                      ...(sort.by === 'idCard.receivedCount' ? { sort: null } : {}),
-                    });
-                }}
-              >
-                <option value="">{t('employees.filters.anyIdCard')}</option>
-                <option value="received">{t('employees.filters.idCardReceived')}</option>
-                <option value="awaiting">{t('employees.filters.idCardAwaiting')}</option>
-                <option value="receipt">{t('employees.filters.idCardWaitingEmployee')}</option>
-                <option value="never">{t('employees.filters.idCardNever')}</option>
-                <option value="most">{t('employees.filters.idCardMost')}</option>
-              </Select>
+              <MultiSelect
+                label={t('employees.columns.origin')}
+                value={origins}
+                onChange={(next) => patch({ origin: writeList(next) })}
+                options={EMPLOYEE_ORIGINS.map((o: EmployeeOrigin) => ({
+                  value: o,
+                  label: t(`employees.origin.${o}`),
+                }))}
+              />
+              {/* The company ID card: received, waiting for its handover, never received. Ordering
+                  by the cards received is the column's own sort, not a filter. */}
+              <MultiSelect
+                label={t('employees.columns.idCard')}
+                value={idCards}
+                onChange={(next) => patch({ idcard: writeList(next) })}
+                options={ID_CARD_ORDER.map((c) => ({ value: c, label: t(ID_CARD_LABEL[c]) }))}
+              />
             </>
           )}
         </FilterBar>

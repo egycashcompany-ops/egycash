@@ -8,38 +8,45 @@
 // the organization. So options are FOLDED here: every branch copy of a catalog entry becomes one
 // choice, and choosing it means every copy at once (or the one copy in the chosen site).
 //
-// Pure, and separate from the page, because the interesting behaviour is the CASCADE: choosing a
-// site narrows the departments, choosing a department narrows the sections, and a selection that no
-// longer belongs under its new parent has to go rather than quietly filtering the list to nothing.
+// Pure, and separate from the page, because the interesting behaviour is the CASCADE: choosing
+// sites narrows the departments, choosing departments narrows the sections, and a pick that no
+// longer belongs under its new parents has to go rather than quietly filtering the list to nothing.
+//
+// EVERY FILTER TAKES SEVERAL — «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه». Each
+// of the four is a list; an empty list means "not narrowed by this one", and the picks of one
+// filter are ORed (any of these sites), the four filters ANDed, as the registry query reads them.
 // The three lists are fetched once each and narrowed here, instead of one permission-gated request
 // per selection.
 import { type OrgUnitOptionDto } from '@ecms/contracts';
 
 /**
- * The four placement filters, `''` meaning "not narrowed by this one".
+ * The four placement filters, each a list — `[]` meaning "not narrowed by this one".
  *
- * `departmentKey` and `sectionKey` are GROUP keys, not ids — see `groupKeyOf`. The ids a query
- * needs come from `departmentIdsFor` / `sectionIdsFor`, which expand a key to the branch copies
+ * `departmentKeys` and `sectionKeys` are GROUP keys, not ids — see `groupKeyOf`. The ids a query
+ * needs come from `departmentIdsFor` / `sectionIdsFor`, which expand the keys to the branch copies
  * currently in scope.
  */
 export interface PlacementSelection {
-  branchId: string;
-  departmentKey: string;
-  sectionKey: string;
-  jobTitleId: string;
+  branchIds: string[];
+  departmentKeys: string[];
+  sectionKeys: string[];
+  jobTitleIds: string[];
 }
 
 export const EMPTY_PLACEMENT: PlacementSelection = {
-  branchId: '',
-  departmentKey: '',
-  sectionKey: '',
-  jobTitleId: '',
+  branchIds: [],
+  departmentKeys: [],
+  sectionKeys: [],
+  jobTitleIds: [],
 };
 
 export const hasPlacementFilter = (sel: PlacementSelection): boolean =>
-  sel.branchId !== '' || sel.departmentKey !== '' || sel.sectionKey !== '' || sel.jobTitleId !== '';
+  sel.branchIds.length > 0 ||
+  sel.departmentKeys.length > 0 ||
+  sel.sectionKeys.length > 0 ||
+  sel.jobTitleIds.length > 0;
 
-/** One choice in a dropdown: a catalog entry, standing for every branch copy of it in scope. */
+/** One choice in a list: a catalog entry, standing for every branch copy of it in scope. */
 export interface UnitGroup {
   key: string;
   name: OrgUnitOptionDto['name'];
@@ -69,56 +76,59 @@ const fold = (units: readonly OrgUnitOptionDto[]): UnitGroup[] => {
   return [...groups.values()].sort((a, b) => a.name.ar.localeCompare(b.name.ar, 'ar'));
 };
 
-/** Branch copies of departments in the chosen site — all of them when no site is chosen. */
+/** Branch copies of departments in the chosen sites — all of them when no site is chosen. */
 const departmentUnitsIn = (
   departments: readonly OrgUnitOptionDto[],
-  branchId: string,
+  branchIds: readonly string[],
 ): OrgUnitOptionDto[] =>
-  branchId === '' ? [...departments] : departments.filter((d) => d.parentId === branchId);
+  branchIds.length === 0
+    ? [...departments]
+    : departments.filter((d) => d.parentId !== null && branchIds.includes(d.parentId));
 
-/** Department choices for the chosen site: one per catalog entry, not one per branch copy. */
+/** Department choices for the chosen sites: one per catalog entry, not one per branch copy. */
 export const departmentGroupsIn = (
   departments: readonly OrgUnitOptionDto[],
-  branchId: string,
-): UnitGroup[] => fold(departmentUnitsIn(departments, branchId));
+  branchIds: readonly string[],
+): UnitGroup[] => fold(departmentUnitsIn(departments, branchIds));
 
 /** The department ids a query should carry for the current selection — empty when unnarrowed. */
 export const departmentIdsFor = (
   departments: readonly OrgUnitOptionDto[],
-  sel: Pick<PlacementSelection, 'branchId' | 'departmentKey'>,
+  sel: Pick<PlacementSelection, 'branchIds' | 'departmentKeys'>,
 ): string[] =>
-  sel.departmentKey === ''
+  sel.departmentKeys.length === 0
     ? []
-    : (departmentGroupsIn(departments, sel.branchId).find((g) => g.key === sel.departmentKey)?.ids ??
-      []);
+    : departmentGroupsIn(departments, sel.branchIds)
+        .filter((g) => sel.departmentKeys.includes(g.key))
+        .flatMap((g) => g.ids);
 
 /**
  * Sections available under the current narrowing.
  *
- * A chosen department decides it outright — every branch copy of it. With only a site chosen, the
- * sections of every department in that site are offered: the reader narrowed to a place, not to a
- * department, and offering every section in the company would put units from other sites in the
+ * Chosen departments decide it outright — every branch copy of them. With only sites chosen, the
+ * sections of every department in those sites are offered: the reader narrowed to places, not to
+ * departments, and offering every section in the company would put units from other sites in the
  * list.
  */
 const sectionUnitsIn = (
   sections: readonly OrgUnitOptionDto[],
   departments: readonly OrgUnitOptionDto[],
-  sel: Pick<PlacementSelection, 'branchId' | 'departmentKey'>,
+  sel: Pick<PlacementSelection, 'branchIds' | 'departmentKeys'>,
 ): OrgUnitOptionDto[] => {
   const departmentIds = departmentIdsFor(departments, sel);
   if (departmentIds.length > 0) {
     const under = new Set(departmentIds);
     return sections.filter((s) => s.parentId !== null && under.has(s.parentId));
   }
-  if (sel.branchId === '') return [...sections];
-  const inBranch = new Set(departmentUnitsIn(departments, sel.branchId).map((d) => d.id));
-  return sections.filter((s) => s.parentId !== null && inBranch.has(s.parentId));
+  if (sel.branchIds.length === 0) return [...sections];
+  const inBranches = new Set(departmentUnitsIn(departments, sel.branchIds).map((d) => d.id));
+  return sections.filter((s) => s.parentId !== null && inBranches.has(s.parentId));
 };
 
 export const sectionGroupsIn = (
   sections: readonly OrgUnitOptionDto[],
   departments: readonly OrgUnitOptionDto[],
-  sel: Pick<PlacementSelection, 'branchId' | 'departmentKey'>,
+  sel: Pick<PlacementSelection, 'branchIds' | 'departmentKeys'>,
 ): UnitGroup[] => fold(sectionUnitsIn(sections, departments, sel));
 
 export const sectionIdsFor = (
@@ -126,12 +136,14 @@ export const sectionIdsFor = (
   departments: readonly OrgUnitOptionDto[],
   sel: PlacementSelection,
 ): string[] =>
-  sel.sectionKey === ''
+  sel.sectionKeys.length === 0
     ? []
-    : (sectionGroupsIn(sections, departments, sel).find((g) => g.key === sel.sectionKey)?.ids ?? []);
+    : sectionGroupsIn(sections, departments, sel)
+        .filter((g) => sel.sectionKeys.includes(g.key))
+        .flatMap((g) => g.ids);
 
 /**
- * The selection after a change, with anything that no longer belongs under its parent dropped.
+ * The selection after a change, with every pick that no longer belongs under its parents dropped.
  *
  * Called ONLY from a change handler, never on render: the option lists arrive asynchronously, and
  * pruning against a list that has not loaded yet would erase a perfectly good selection restored
@@ -142,16 +154,10 @@ export const prunePlacement = (
   departments: readonly OrgUnitOptionDto[],
   sections: readonly OrgUnitOptionDto[],
 ): PlacementSelection => {
-  const departmentKey = departmentGroupsIn(departments, sel.branchId).some(
-    (g) => g.key === sel.departmentKey,
-  )
-    ? sel.departmentKey
-    : '';
-  const narrowed = { branchId: sel.branchId, departmentKey };
-  const sectionKey = sectionGroupsIn(sections, departments, narrowed).some(
-    (g) => g.key === sel.sectionKey,
-  )
-    ? sel.sectionKey
-    : '';
-  return { ...sel, departmentKey, sectionKey };
+  const departmentsHere = new Set(departmentGroupsIn(departments, sel.branchIds).map((g) => g.key));
+  const departmentKeys = sel.departmentKeys.filter((key) => departmentsHere.has(key));
+  const narrowed = { branchIds: sel.branchIds, departmentKeys };
+  const sectionsHere = new Set(sectionGroupsIn(sections, departments, narrowed).map((g) => g.key));
+  const sectionKeys = sel.sectionKeys.filter((key) => sectionsHere.has(key));
+  return { ...sel, departmentKeys, sectionKeys };
 };

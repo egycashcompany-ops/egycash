@@ -608,10 +608,14 @@ export const EMPLOYEE_ID_CARD_FILTERS = ['received', 'never', 'awaiting', 'recei
 export type EmployeeIdCardFilter = (typeof EMPLOYEE_ID_CARD_FILTERS)[number];
 
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
-  status: EmployeeStatusSchema.optional(),
+  /**
+   * Status, origin and the ID card are LISTS too — «هنخلي كل الفلترز multi». The picks of one are
+   * ORed. A single value still parses as a one-item list, so every existing caller is unchanged.
+   */
+  status: listQuery(EmployeeStatusSchema),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
   employed: z.coerce.boolean().optional(),
-  origin: EmployeeOriginSchema.optional(),
+  origin: listQuery(EmployeeOriginSchema),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),
@@ -649,8 +653,8 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
-  /** The company ID card: printed at least once, or never. */
-  idCard: z.enum(EMPLOYEE_ID_CARD_FILTERS).optional(),
+  /** The company ID card's states asked about, ORed (`EMPLOYEE_ID_CARD_FILTERS`). */
+  idCard: listQuery(z.enum(EMPLOYEE_ID_CARD_FILTERS)),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 

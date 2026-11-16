@@ -16,12 +16,13 @@ import {
   type UpdatePayItem,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../../shared/lib/query-keys';
+import { type QueryParams } from '../../../../shared/lib/api-client';
 import * as api from './payroll-api';
 
 const MODULE = 'hr';
 const FEATURE = 'payItems';
 
-export const usePayItems = (params: Record<string, string | number>) =>
+export const usePayItems = (params: QueryParams) =>
   useQuery({
     queryKey: listKey(MODULE, FEATURE, params),
     queryFn: () => api.listPayItems(params),
@@ -299,7 +300,7 @@ export const useCancelAdjustment = (employeeId: string) =>
 // invalidates BOTH — the queue the approver is looking at and the profile tab they are not.
 const ORG_ADJUSTMENTS = 'payrollAdjustmentsAll';
 
-export const useAdjustments = (params: Record<string, string | number>, enabled = true) =>
+export const useAdjustments = (params: QueryParams, enabled = true) =>
   useQuery({
     queryKey: [MODULE, ORG_ADJUSTMENTS, params],
     queryFn: () => api.listAdjustments(params),

@@ -108,8 +108,8 @@ class PayItemService {
 
   async list(query: ListPayItemsQuery, scope: ScopeSelector): Promise<Paginated<PayItemDoc>> {
     const filter: Record<string, unknown> = {};
-    if (query.kind !== undefined) filter.kind = query.kind;
-    if (query.status !== undefined) filter.status = query.status;
+    if (query.kind !== undefined) filter.kind = { $in: query.kind };
+    if (query.status !== undefined) filter.status = { $in: query.status };
     if (query.search !== undefined) {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ 'name.ar': pattern }, { 'name.en': pattern }, { code: pattern }];

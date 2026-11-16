@@ -11,7 +11,12 @@
 // with no consumer would be a claim about legislation that this system has not been given. When
 // those rules arrive they arrive with their own phase.
 import { z } from 'zod';
-import { LocalizedStringSchema, PaginationQuerySchema, objectId } from '../common/index.js';
+import {
+  LocalizedStringSchema,
+  PaginationQuerySchema,
+  listQuery,
+  objectId,
+} from '../common/index.js';
 import { ExpressionNodeSchema } from '../expression/index.js';
 import { MoneyAmountSchema, MoneyCurrencySchema } from './hr-payroll-money.js';
 
@@ -157,8 +162,9 @@ export const UpdatePayItemSchema = z
 export type UpdatePayItem = z.infer<typeof UpdatePayItemSchema>;
 
 export const ListPayItemsQuerySchema = PaginationQuerySchema.extend({
-  kind: PayItemKindSchema.optional(),
-  status: z.enum(['active', 'archived']).optional(),
+  /** Kind and status are LISTS — «هنخلي كل الفلترز multi» — each ORed; one value still parses. */
+  kind: listQuery(PayItemKindSchema),
+  status: listQuery(z.enum(['active', 'archived'])),
   search: z.string().max(200).optional(),
 }).strict();
 export type ListPayItemsQuery = z.infer<typeof ListPayItemsQuerySchema>;
@@ -1250,8 +1256,12 @@ export interface BulkCreatePayrollAdjustmentsResultDto {
 
 export const ListPayrollAdjustmentsQuerySchema = PaginationQuerySchema.extend({
   period: adjustmentPeriod.optional(),
-  kind: PayrollAdjustmentKindSchema.optional(),
-  status: PayrollAdjustmentStatusSchema.optional(),
+  /**
+   * Kind and status are LISTS — «هنخلي كل الفلترز multi» — each ORed. The queue tab still sends
+   * its one status, which parses as a list of one.
+   */
+  kind: listQuery(PayrollAdjustmentKindSchema),
+  status: listQuery(PayrollAdjustmentStatusSchema),
   employeeId: objectId().optional(),
 }).strict();
 export type ListPayrollAdjustmentsQuery = z.infer<typeof ListPayrollAdjustmentsQuerySchema>;

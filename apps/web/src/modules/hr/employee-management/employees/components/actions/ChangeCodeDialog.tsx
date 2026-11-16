@@ -7,8 +7,12 @@
 // The two things a person needs to know before pressing save are written in the dialog, not left
 // to be discovered: old contracts and documents keep the code they were made under, and the next
 // roster upload must carry the new code — the import names people by code.
+//
+// AN EXTERNAL PERSON'S CODE MAY CARRY LETTERS — «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح
+// بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». The same shape their registration allows, and
+// only for them: everybody else's code stays the company's digits.
 import { useEffect, useState } from 'react';
-import { EMPLOYEE_CODE_PATTERN, type EmployeeDto, type Locale } from '@ecms/contracts';
+import { employeeCodePatternFor, type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../../store';
 import { Dialog } from '../../../../../../shared/ui/Dialog';
@@ -44,8 +48,9 @@ export const ChangeCodeDialog = ({ employee, open, onClose }: Props): JSX.Elemen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const external = employee.origin === 'external';
   const next = code.trim();
-  const shapeOk = EMPLOYEE_CODE_PATTERN.test(next);
+  const shapeOk = employeeCodePatternFor(employee.origin).test(next);
   const same = next === employee.code;
   const reasonOk = reason.trim().length >= 3;
 
@@ -54,7 +59,7 @@ export const ChangeCodeDialog = ({ employee, open, onClose }: Props): JSX.Elemen
     : next === ''
       ? t('employees.changeCode.required')
       : !shapeOk
-        ? t('employees.changeCode.shape')
+        ? t(external ? 'employees.external.codeShape' : 'employees.changeCode.shape')
         : same
           ? t('employees.changeCode.same')
           : undefined;
@@ -111,9 +116,9 @@ export const ChangeCodeDialog = ({ employee, open, onClose }: Props): JSX.Elemen
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            inputMode="numeric"
+            {...(external ? {} : { inputMode: 'numeric' as const })}
             dir="ltr"
-            maxLength={12}
+            maxLength={external ? 20 : 12}
             autoFocus
           />
         </Field>

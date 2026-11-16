@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { Locale } from '@ecms/contracts';
+import { employeeCodePatternFor, type Locale } from '@ecms/contracts';
 import { translate } from '../../../../platform/localization/i18n';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -22,8 +22,25 @@ describe('changing an employee code by hand', () => {
     expect(MENU).toContain("if (changeCode) items.push({ kind: 'changeCode'");
   });
 
-  it('checks the company\'s code shape before sending, with the same pattern the server uses', () => {
-    expect(DIALOG).toContain('EMPLOYEE_CODE_PATTERN.test(next)');
+  it('checks the code\'s shape before sending, with the same rule the server uses', () => {
+    expect(DIALOG).toContain('employeeCodePatternFor(employee.origin).test(next)');
+  });
+
+  // «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+  it('lets an external person\'s code carry letters, and nobody else\'s', () => {
+    expect(employeeCodePatternFor('external').test('C5')).toBe(true);
+    expect(employeeCodePatternFor('external').test('EX-01')).toBe(true);
+    expect(employeeCodePatternFor('external').test('0100004')).toBe(true);
+    expect(employeeCodePatternFor('external').test('C')).toBe(false);
+    expect(employeeCodePatternFor('external').test('ك5')).toBe(false);
+    for (const origin of ['recruitment', 'direct'] as const) {
+      expect(employeeCodePatternFor(origin).test('C5'), origin).toBe(false);
+      expect(employeeCodePatternFor(origin).test('0100004'), origin).toBe(true);
+    }
+    // The box says the external shape, and opens a full keyboard, only for an external person.
+    expect(DIALOG).toContain("t(external ? 'employees.external.codeShape' : 'employees.changeCode.shape')");
+    expect(DIALOG).toContain("{...(external ? {} : { inputMode: 'numeric' as const })}");
+    expect(DIALOG).toContain('maxLength={external ? 20 : 12}');
   });
 
   /** The global «conflicts with the current state» says nothing about codes. */

@@ -33,6 +33,7 @@ import {
   type EmployeeLoginProvisionDto,
   type JobValueSource,
   employeeCodeBranchPrefix,
+  employeeCodePatternFor,
   employeeCodeSerial,
   type EmployeeCodeCheckDto,
   type JobTitlePlacementDto,
@@ -1233,6 +1234,20 @@ class EmployeeService {
   ): Promise<{ doc: EmployeeDoc; loginUsernameChanged: boolean }> {
     const before = await employeeRepository.getById(id, scope);
     const code = input.code.trim();
+    // Each person is held to their own shape: an external person's code may carry letters, and
+    // nobody else's may — the company's code is a branch and a number, read back out of it.
+    if (!employeeCodePatternFor(before.origin).test(code)) {
+      throw new ValidationError([
+        {
+          field: 'code',
+          code: 'INVALID_FORMAT',
+          message:
+            before.origin === 'external'
+              ? 'an external code is letters, digits and a hyphen, 2 to 20 characters'
+              : 'an employee code is 3 branch digits then at least 4 digits of number',
+        },
+      ]);
+    }
     if (code === before.code)
       throw new BusinessRuleError('the new code is the same as the current one');
 

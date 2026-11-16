@@ -1236,6 +1236,15 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR: an external employee's code can be changed to one with letters.** «لما باجي أغير كود الموظف
+  (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». «تغيير كود الموظف» held
+  every employee to the company's digits, so an external person's code, registered with letters,
+  could not be corrected to another with letters. The rule is now the person's own
+  (`employeeCodePatternFor`): an external employee's new code takes Latin letters, digits and a hyphen,
+  2 to 20 characters, exactly as their registration does, and the dialog says that shape and opens a
+  full keyboard for them. Everybody else's code stays 3 branch digits then at least 4 of number; the
+  boundary admits either shape, and the service refuses the wrong one for the person with a 400.
+
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح
   الحروف». A pair on a short list («كس», «زب», «طز», «شخ», «تف») now shows its first letter alone,

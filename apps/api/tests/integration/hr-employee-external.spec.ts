@@ -270,6 +270,21 @@ describe('POST /hr/employees/external', () => {
   });
 
   /**
+   * Nor does the code: an external code is a name, and «EXT7751» read as `<prefix><number>` would
+   * hold 7751. The company code with that number is still free, on the check and on registering.
+   */
+  it('lets an external code that ends in digits hold no company number', async () => {
+    const res = await registerExternal(registrarToken, {
+      ...wellFormed('خارجي بكود أرقام'),
+      code: 'EXT7751',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}7751`);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+  });
+
+  /**
    * The ones registered before the fix: each drew a company number nobody saw. At boot the number
    * is given back — the record's number becomes its code — and the company code with it is free.
    */

@@ -1243,8 +1243,10 @@ its entry here in the same PR.
   code. Nobody saw that number, but the register screen counts a number held by anybody as taken.
   An external person now draws nothing: their number is their code. At start-up, every external
   person registered before is given their code as their number, which frees the numbers they drew
-  (`migrateExternalEmployeeNumbers`, idempotent). The counter is not wound back. Its gaps are
-  harmless, because HR types each new code and the counter follows it.
+  (`migrateExternalEmployeeNumbers`, idempotent). The register check also leaves external people
+  out: an external code is a name, yet read as `<prefix><number>` «EXT2943» held 2943. The exact
+  code stays theirs. The counter is not wound back. Its gaps are harmless, because HR types each new
+  code and the counter follows it.
 
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح

@@ -8,6 +8,7 @@
 //   /it                    any IT grant (the page itself decides what to show)  ITW-1
 //   /it/assets             itAsset.view                                          ITW-1
 //   /it/assets/scan        itAsset.view                                          ITW-1
+//   /it/assets/import      itAsset.create (the bulk upload, «رفع جماعي»)          2026-11-16
 //   /it/assets/:id         itAsset.view                                          ITW-1
 //   /it/catalogs           itCatalog.manage                                      ITW-1
 //   /it/vendors            itVendor.view                                         ITW-1
@@ -46,6 +47,7 @@ import { ItHomePage } from './pages/ItHomePage';
 import { AssetsListPage } from './pages/AssetsListPage';
 import { AssetDetailPage } from './pages/AssetDetailPage';
 import { AssetScanPage } from './pages/AssetScanPage';
+import { AssetsImportPage } from './pages/AssetsImportPage';
 import { ItCatalogsPage } from './pages/ItCatalogsPage';
 import { VendorsPage } from './pages/VendorsPage';
 import { CustodyPage } from './pages/CustodyPage';
@@ -86,6 +88,16 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <AssetScanPage />
+            </RequirePermission>
+          }
+        />
+        {/* «رفع جماعي» registers assets, so it rides the grant the form's «تسجيل أصل» rides — and,
+            like `scan`, it is declared before ':id', which would take «import» for an id. */}
+        <Route
+          path="assets/import"
+          element={
+            <RequirePermission permission="itAsset.create">
+              <AssetsImportPage />
             </RequirePermission>
           }
         />

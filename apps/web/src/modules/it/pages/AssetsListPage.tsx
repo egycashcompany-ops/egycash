@@ -25,6 +25,10 @@
 // the table go to ONE branch in one step, «نقل إلى فرع (n)» in the selection's bar, under the
 // custody grant (`itAsset.assign`) the transfer already rides. The dialog lists what moves and what
 // stays, and why (`components/AssetBranchMoveDialog.tsx`).
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول» (2026-11-16):
+// «رفع جماعي» beside «تسجيل أصل», on the same grant — a branch's custody sheet, previewed line by
+// line on its own page (`/it/assets/import`) before anything is written.
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
@@ -49,6 +53,7 @@ import {
   PlusIcon,
   QrIcon,
   TrashIcon,
+  UploadIcon,
 } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
@@ -384,6 +389,15 @@ export const AssetsListPage = (): JSX.Element => {
               <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
             )}
             <Can permission="itAsset.create">
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<UploadIcon className="h-4 w-4" />}
+                onClick={() => navigate('/it/assets/import')}
+                data-asset-import
+              >
+                {t('it.assets.import.action')}
+              </Button>
               <Button
                 size="sm"
                 leftIcon={<PlusIcon className="h-4 w-4" />}

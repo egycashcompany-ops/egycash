@@ -772,6 +772,7 @@ class ItAssetCustodyService {
     return {
       branchIds: moveTargetBranchIds(
         ctx,
+        'itAsset.assign',
         branches.map((branch) => ({ id: String(branch._id), status: branch.status })),
       ),
     };

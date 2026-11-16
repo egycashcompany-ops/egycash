@@ -33,6 +33,8 @@ describe('IT routes', () => {
         'assets',
         'assets/:id',
         'assets/scan',
+        // «رفع جماعي» (2026-11-16) — the bulk upload, previewed before it writes.
+        'assets/import',
         'catalogs',
         'custody',
         'employees',
@@ -134,6 +136,17 @@ describe('IT routes', () => {
 
   it('resolves the literal scan segment before the :id matcher', () => {
     expect(ROUTES.indexOf('path="assets/scan"')).toBeLessThan(ROUTES.indexOf('path="assets/:id"'));
+  });
+
+  // «رفع جماعي» registers assets: it rides the create grant «تسجيل أصل» rides, not the view grant
+  // the register itself is read on — and «import» must never be read as an asset id.
+  it('puts the bulk upload before the :id matcher, on the create grant', () => {
+    const at = ROUTES.indexOf('path="assets/import"');
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(ROUTES.indexOf('path="assets/:id"'));
+    expect(ROUTES.slice(at, ROUTES.indexOf('</RequirePermission>', at))).toContain(
+      '<RequirePermission permission="itAsset.create">',
+    );
   });
 
   it('uses only permissions the IT module actually declares', () => {

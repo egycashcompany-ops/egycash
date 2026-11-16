@@ -120,10 +120,11 @@ export interface MoveTargetCandidate {
 }
 
 /**
- * The branches the caller may move assets — and send consumables — to, in the order given: every
- * ACTIVE branch their `itAsset.assign` reaches as a whole, by the very test both actions apply
- * (`keyReachesBranch`) — so a picker built from it never offers a branch the move would answer
- * with 403, nor one it would refuse as inactive.
+ * The branches one grant lets the caller act in, in the order given: every ACTIVE branch
+ * `permissionKey` reaches as a whole, by the very test the action applies (`keyReachesBranch`) —
+ * so a picker built from it never offers a branch the action would answer with 403, nor one it
+ * would refuse as inactive. `itAsset.assign` for where assets move — and consumables are sent —
+ * to; `itAsset.create` for where the assets bulk upload («رفع جماعي») may register.
  *
  * Why the server says it: the account's `branchIds` are the reach of ALL its grants, so a client
  * judging by them offered branches this one grant does not reach — a `department`-scoped grant
@@ -131,10 +132,11 @@ export interface MoveTargetCandidate {
  */
 export const moveTargetBranchIds = (
   ctx: AuthContext,
+  permissionKey: string,
   branches: readonly MoveTargetCandidate[],
 ): string[] =>
   branches
     .filter(
-      (branch) => branch.status === 'active' && keyReachesBranch(ctx, 'itAsset.assign', branch.id),
+      (branch) => branch.status === 'active' && keyReachesBranch(ctx, permissionKey, branch.id),
     )
     .map((branch) => branch.id);

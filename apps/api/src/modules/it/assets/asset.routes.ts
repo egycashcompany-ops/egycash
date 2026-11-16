@@ -32,6 +32,11 @@ import {
   updateItAsset,
 } from './asset.controller';
 import {
+  assetWorkbookUpload,
+  importItAssets,
+  listItAssetImportBranches,
+} from './asset-import.controller';
+import {
   assignItAsset,
   disposeItAsset,
   listItAssetAssignments,
@@ -97,6 +102,27 @@ export const buildItAssetsRouter = (): Router => {
     authenticate,
     authorize('itAsset.assign'),
     asyncHandler(listItMoveTargets),
+  );
+  // «رفع جماعي» — «عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول»: the
+  // branches' custody sheet, previewed (200) and then applied (201), under the registration grant.
+  // A line that fills or moves a device the register holds needs `itAsset.edit` / `itAsset.assign`
+  // over it as well — the service reports it out of reach otherwise. The workbook is held in
+  // memory. Before '/:id' like every literal segment here.
+  router.post(
+    '/import',
+    authenticate,
+    authorize('itAsset.create'),
+    assetWorkbookUpload(),
+    asyncHandler(importItAssets),
+  );
+  // Where that upload may register — the active branches `itAsset.create` reaches as the server
+  // judges it (the move-targets' answer, asked of the registration grant), so the screen's branch
+  // picker offers nothing the upload would refuse. Before '/:id' like every literal segment here.
+  router.get(
+    '/import/branches',
+    authenticate,
+    authorize('itAsset.create'),
+    asyncHandler(listItAssetImportBranches),
   );
   router.get(
     '/:id',

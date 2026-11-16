@@ -63,7 +63,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import { ItEvents } from '@ecms/contracts';
 import { isTest } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
@@ -71,7 +71,7 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { branchRepository } from '../../../platform/organization';
-import { ItAssetModel, type ItAssetDoc } from '../assets/asset.model';
+import { ItAssetModel, type ItAssetDoc, type ItAssetSpecsSub } from '../assets/asset.model';
 import { ItAssetEventModel } from '../assets/asset-event.model';
 import { ASSET_SEQUENCE_KEY, formatAssetCode } from '../assets/asset-number';
 import { ItCatalogItemModel } from '../catalog-items/catalog-item.model';
@@ -92,6 +92,7 @@ import {
   writesAsset,
   type BranchCustodyFile,
   type BranchCustodyReport,
+  type CustodyAsset,
   type CustodySet,
   type FoundCustodyDecision,
 } from './branch-custody-import';
@@ -136,8 +137,17 @@ export type BranchCustodyOutcome =
   | { status: 'refused'; reason: string }
   | ({ status: 'done' } & BranchCustodyReport);
 
+// ── The write path — this step's, and the asset register's bulk upload's ─────────────────────
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع» (2026-11-16): the upload decides
+// the same sheets by the same planner and writes what it decided through THESE functions, not a
+// second copy of them — the version-conditional write, the move that clears the place, the history
+// entries, the codes reserved in one block, then the audit rows and the events after the commit.
+// What differs is who writes (`CustodyActor`: nobody for a deploy, the caller for an upload), the
+// words each history entry says, and the `source` the audit rows name.
+
 /** What is read of a device on the register. */
-type RegisterRow = Pick<
+export type CustodyRegisterRow = Pick<
   ItAssetDoc,
   | '_id'
   | 'assetCode'
@@ -155,13 +165,283 @@ type RegisterRow = Pick<
 > & { __v?: number };
 
 /** The version the decision was taken against — absent only on a row no write ever touched. */
-const versionOf = (row: RegisterRow): { __v: number } | { __v: { $exists: false } } =>
+const versionOf = (row: CustodyRegisterRow): { __v: number } | { __v: { $exists: false } } =>
   typeof row.__v === 'number' ? { __v: row.__v } : { __v: { $exists: false } };
 
-type Written = {
-  row: RegisterRow;
-  decision: FoundCustodyDecision;
-  set: CustodySet;
+/**
+ * The register as it stands — read inside the caller's transaction, with the versions the writes
+ * are conditional on. Every live device, whatever its branch: a serial is unique across the whole
+ * register, so a line is matched against all of it, by its serial AND its printed tag. With no
+ * session (an upload's preview, which writes nothing) it is the register as committed.
+ */
+export const readCustodyRegister = (session: ClientSession | null): Promise<CustodyRegisterRow[]> =>
+  ItAssetModel.find({ isDeleted: false })
+    .select({
+      assetCode: 1,
+      serialNumber: 1,
+      externalTag: 1,
+      branchId: 1,
+      status: 1,
+      currentAssignmentId: 1,
+      categoryId: 1,
+      specs: 1,
+      accessories: 1,
+      manufacturer: 1,
+      model: 1,
+      location: 1,
+      __v: 1,
+    })
+    .session(session)
+    .lean<CustodyRegisterRow[]>()
+    .exec();
+
+/** A device of the register as the planner reads it. */
+export const custodyAssetOf = (row: CustodyRegisterRow): CustodyAsset => ({
+  id: String(row._id),
+  assetCode: row.assetCode,
+  serialNumber: row.serialNumber ?? null,
+  externalTag: row.externalTag ?? null,
+  branchId: String(row.branchId),
+  status: row.status,
+  currentAssignmentId: row.currentAssignmentId == null ? null : String(row.currentAssignmentId),
+  specs: row.specs ?? null,
+  accessories: row.accessories ?? [],
+  manufacturer: row.manufacturer ?? null,
+  model: row.model ?? null,
+  location: row.location ?? null,
+});
+
+/** Who writes: nobody for the go-live — a deploy is nobody's hand — and the caller for an upload. */
+export interface CustodyActor {
+  userId: string;
+  /** As the history shows it, the way custody's own entries name their actor. */
+  name: string;
+}
+
+/** A device the plan writes — something to fill or a move (`writesAsset`) — and its history's words. */
+export interface CustodyUpdate {
+  decision: Pick<FoundCustodyDecision, 'asset' | 'fill' | 'fields' | 'move'>;
+  /** The `updated` entry's notes — written only when `decision.fields` names something. */
+  updatedNote: string;
+  /** The `transferred` entry's notes — written only when `decision.move` is set. */
+  transferredNote: string;
+}
+
+/** A device the plan registers, with everything it is filed with. */
+export interface CustodyNewAsset {
+  name: string;
+  categoryId: Types.ObjectId;
+  serialNumber: string;
+  externalTag: string | null;
+  branchId: string;
+  manufacturer: string | null;
+  model: string | null;
+  specs: ItAssetSpecsSub | null;
+  accessories: string[];
+  notes: string;
+}
+
+export interface CustodyWritten {
+  updates: { row: CustodyRegisterRow; update: CustodyUpdate; set: CustodySet }[];
+  /** The new assets, in the order they were given — their codes one reserved block. */
+  assets: ItAssetDoc[];
+}
+
+/**
+ * Write a plan inside the caller's transaction. Each device only exactly as it was read (`register`,
+ * read in the SAME transaction) — and, to move it, still in stock with nobody holding it. Anything
+ * else means somebody saved it or handed it over meanwhile: `changed` names the error that rolls
+ * the whole transaction back. A move clears the device's place in the branch it leaves, in the
+ * same write; nothing else ever touches its location. A device filled AND moved gets both entries.
+ * No history entry for a new asset, like every registration (FR-5's window stays open).
+ */
+export const writeCustody = async (
+  plan: {
+    register: ReadonlyMap<string, CustodyRegisterRow>;
+    updates: readonly CustodyUpdate[];
+    creates: readonly CustodyNewAsset[];
+    at: Date;
+    actor: CustodyActor | null;
+    changed: (assetCode: string) => Error;
+  },
+  session: ClientSession,
+): Promise<CustodyWritten> => {
+  const by = plan.actor === null ? null : new Types.ObjectId(plan.actor.userId);
+  // The go-live's rows carry no stamp at all, as they always have; an upload's carry its caller.
+  const stamp = by === null ? {} : { createdBy: by, updatedBy: by };
+
+  const updates: CustodyWritten['updates'] = [];
+  for (const update of plan.updates) {
+    const row = plan.register.get(update.decision.asset.id);
+    if (row === undefined) continue;
+    const set = custodySet(update.decision.asset, update.decision.fill);
+    const move = update.decision.move;
+    const result = await ItAssetModel.updateOne(
+      {
+        _id: row._id,
+        isDeleted: false,
+        ...versionOf(row),
+        ...(move === null ? {} : { status: 'inStock', currentAssignmentId: null }),
+      },
+      {
+        $set: {
+          ...set,
+          ...(move === null
+            ? {}
+            : { branchId: new Types.ObjectId(move.toBranchId), location: null }),
+          updatedBy: by,
+        },
+        $inc: { __v: 1 },
+      },
+      { session },
+    ).exec();
+    if (result.matchedCount !== 1) throw plan.changed(row.assetCode);
+    updates.push({ row, update, set });
+  }
+
+  const actor = { actorUserId: by, actorName: plan.actor?.name ?? '' };
+  const events = updates.flatMap(({ row, update: { decision, updatedNote, transferredNote } }) => [
+    ...(decision.fields.length === 0
+      ? []
+      : [
+          {
+            subjectId: row._id,
+            type: 'updated',
+            at: plan.at,
+            ...actor,
+            metadata: { fields: decision.fields },
+            notes: updatedNote,
+            ...stamp,
+          },
+        ]),
+    ...(decision.move === null
+      ? []
+      : [
+          {
+            subjectId: row._id,
+            type: 'transferred',
+            at: plan.at,
+            ...actor,
+            metadata: {
+              fromBranchId: decision.move.fromBranchId,
+              toBranchId: decision.move.toBranchId,
+            },
+            notes: transferredNote,
+            ...stamp,
+          },
+        ]),
+  ]);
+  if (events.length > 0) await ItAssetEventModel.insertMany(events, { session });
+
+  // The new devices, in the order given. Their codes are taken inside the transaction: a rollback
+  // gives every one of them back.
+  const firstCode =
+    plan.creates.length === 0
+      ? 0
+      : await reserveSequenceBlock(ASSET_SEQUENCE_KEY, plan.creates.length, session);
+  const assets = plan.creates.map(
+    (create, index) =>
+      ({
+        _id: new Types.ObjectId(),
+        assetCode: formatAssetCode(firstCode + index),
+        name: create.name,
+        description: null,
+        categoryId: create.categoryId,
+        status: 'inStock',
+        serialNumber: create.serialNumber,
+        model: create.model,
+        manufacturer: create.manufacturer,
+        externalTag: create.externalTag,
+        branchId: new Types.ObjectId(create.branchId),
+        location: null,
+        purchase: null,
+        warranty: null,
+        currentAssignmentId: null,
+        disposal: null,
+        notes: create.notes,
+        specs: create.specs,
+        accessories: [...create.accessories],
+        ...stamp,
+      }) as unknown as ItAssetDoc,
+  );
+  if (assets.length > 0) await ItAssetModel.insertMany(assets, { session });
+  return { updates, assets };
+};
+
+/**
+ * After the commit, as every registration, edit and transfer: the audit trail — and through it the
+ * realtime refresh of anybody looking at the register — and the platform's events. `source` is
+ * what each audit row says the change came from. The actor is the request's, when there is one.
+ */
+export const recordCustodyWritten = async (
+  written: CustodyWritten,
+  source: string,
+): Promise<void> => {
+  for (const asset of written.assets) {
+    await auditService.record({
+      entityRef: { moduleId: 'it', entityType: 'asset', entityId: String(asset._id) },
+      action: 'create',
+      changes: [
+        { field: 'assetCode', old: null, new: asset.assetCode },
+        { field: 'serialNumber', old: null, new: asset.serialNumber },
+        { field: 'status', old: null, new: asset.status },
+        { field: 'source', old: null, new: source },
+      ],
+    });
+    await emit(ItEvents.AssetRegistered, {
+      assetId: String(asset._id),
+      assetCode: asset.assetCode,
+      categoryId: String(asset.categoryId),
+    });
+  }
+  for (const {
+    row,
+    update: { decision },
+    set,
+  } of written.updates) {
+    const entityRef = { moduleId: 'it', entityType: 'asset', entityId: String(row._id) };
+    if (decision.fields.length > 0) {
+      await auditService.record({
+        entityRef,
+        action: 'update',
+        changes: [
+          ...decision.fields.map((field) => ({
+            field,
+            old: custodyValueOf(decision.asset, field),
+            new: custodyValueOf(set, field),
+          })),
+          { field: 'source', old: null, new: source },
+        ],
+      });
+      await emit(ItEvents.AssetUpdated, {
+        assetId: String(row._id),
+        assetCode: row.assetCode,
+        categoryId: String(row.categoryId),
+      });
+    }
+    if (decision.move !== null) {
+      await auditService.record({
+        entityRef,
+        action: 'transfer',
+        changes: [
+          { field: 'branchId', old: decision.move.fromBranchId, new: decision.move.toBranchId },
+          // The place it had in the branch it left — cleared with the move.
+          ...(decision.move.location === null
+            ? []
+            : [{ field: 'location', old: decision.move.location, new: null }]),
+          { field: 'source', old: null, new: source },
+        ],
+      });
+      await emit(ItEvents.AssetTransferred, {
+        assetId: String(row._id),
+        assetCode: row.assetCode,
+        fromEmployeeId: null,
+        toEmployeeId: null,
+        fromBranchId: decision.move.fromBranchId,
+        toBranchId: decision.move.toBranchId,
+      });
+    }
+  }
 };
 
 /**
@@ -244,229 +524,74 @@ export const importItBranchCustody = async (
     }
 
     // The register as it stands — read inside the transaction, with the versions the writes below
-    // are conditional on. Every live device, by its serial AND its printed tag.
-    const registered = await ItAssetModel.find({ isDeleted: false })
-      .select({
-        assetCode: 1,
-        serialNumber: 1,
-        externalTag: 1,
-        branchId: 1,
-        status: 1,
-        currentAssignmentId: 1,
-        categoryId: 1,
-        specs: 1,
-        accessories: 1,
-        manufacturer: 1,
-        model: 1,
-        location: 1,
-        __v: 1,
-      })
-      .session(session)
-      .lean<RegisterRow[]>()
-      .exec();
-    const byId = new Map(registered.map((row) => [String(row._id), row]));
-    const decisions = planBranchCustody(
-      file.devices,
-      registered.map((row) => ({
-        id: String(row._id),
-        assetCode: row.assetCode,
-        serialNumber: row.serialNumber ?? null,
-        externalTag: row.externalTag ?? null,
-        branchId: String(row.branchId),
-        status: row.status,
-        currentAssignmentId:
-          row.currentAssignmentId == null ? null : String(row.currentAssignmentId),
-        specs: row.specs ?? null,
-        accessories: row.accessories ?? [],
-        manufacturer: row.manufacturer ?? null,
-        model: row.model ?? null,
-        location: row.location ?? null,
-      })),
-      branchIds,
+    // are conditional on (`readCustodyRegister`).
+    const registered = await readCustodyRegister(session);
+    const decisions = planBranchCustody(file.devices, registered.map(custodyAssetOf), branchIds);
+
+    const written = await writeCustody(
+      {
+        register: new Map(registered.map((row) => [String(row._id), row])),
+        // Only a device with something to fill or a move is written: a held device in another
+        // branch with nothing it lacks is only reported (`writesAsset`).
+        updates: decisions.flatMap((decision) =>
+          writesAsset(decision)
+            ? [
+                {
+                  decision,
+                  updatedNote: updatedHistoryNote(decision.row, decision.fields),
+                  transferredNote:
+                    decision.move === null
+                      ? ''
+                      : transferredHistoryNote(decision.row, decision.move.location),
+                },
+              ]
+            : [],
+        ),
+        // The new devices, in the file's order.
+        creates: decisions.flatMap((decision) =>
+          decision.kind === 'create'
+            ? [
+                {
+                  name: decision.row.name,
+                  categoryId: categoryIds.get(decision.row.category) as Types.ObjectId,
+                  serialNumber: decision.serialNumber,
+                  externalTag: decision.externalTag,
+                  branchId: decision.branchId,
+                  manufacturer: decision.row.manufacturer,
+                  model: decision.row.model,
+                  specs: newAssetSpecs(decision.row.specs),
+                  accessories: [...decision.row.accessories],
+                  notes: newAssetNotes(decision.row),
+                },
+              ]
+            : [],
+        ),
+        at,
+        // The go-live is nobody's hand: no actor on the history, none on the rows.
+        actor: null,
+        // The whole run rolls back and the next boot decides again.
+        changed: (assetCode) =>
+          new Error(
+            `asset ${assetCode} changed while the branches' custody was being added — nothing was written; the next boot decides again`,
+          ),
+      },
+      session,
     );
-
-    const written: Written[] = [];
-    for (const decision of decisions) {
-      // Only a device with something to fill or a move is written: a held device in another
-      // branch with nothing it lacks is only reported (`writesAsset`).
-      if (!writesAsset(decision)) continue;
-      const row = byId.get(decision.asset.id);
-      if (row === undefined) continue;
-      const set = custodySet(decision.asset, decision.fill);
-      const move = decision.move;
-      // Only the device exactly as read above — and, to move it, still in stock with nobody
-      // holding it. Anything else means somebody saved it or handed it over while this ran: the
-      // whole run rolls back and the next boot decides again. A move clears the device's place
-      // in the branch it leaves, in the same write; nothing else ever touches its location.
-      const result = await ItAssetModel.updateOne(
-        {
-          _id: row._id,
-          isDeleted: false,
-          ...versionOf(row),
-          ...(move === null ? {} : { status: 'inStock', currentAssignmentId: null }),
-        },
-        {
-          $set: {
-            ...set,
-            ...(move === null
-              ? {}
-              : { branchId: new Types.ObjectId(move.toBranchId), location: null }),
-            updatedBy: null,
-          },
-          $inc: { __v: 1 },
-        },
-        { session },
-      ).exec();
-      if (result.matchedCount !== 1) {
-        throw new Error(
-          `asset ${row.assetCode} changed while the branches' custody was being added — nothing was written; the next boot decides again`,
-        );
-      }
-      written.push({ row, decision, set });
-    }
-
-    // The history's own write: the go-live is nobody's hand, so no actor. A device filled AND
-    // moved gets both entries.
-    const events = written.flatMap(({ row, decision }) => [
-      ...(decision.fields.length === 0
-        ? []
-        : [
-            {
-              subjectId: row._id,
-              type: 'updated',
-              at,
-              actorUserId: null,
-              actorName: '',
-              metadata: { fields: decision.fields },
-              notes: updatedHistoryNote(decision.row, decision.fields),
-            },
-          ]),
-      ...(decision.move === null
-        ? []
-        : [
-            {
-              subjectId: row._id,
-              type: 'transferred',
-              at,
-              actorUserId: null,
-              actorName: '',
-              metadata: {
-                fromBranchId: decision.move.fromBranchId,
-                toBranchId: decision.move.toBranchId,
-              },
-              notes: transferredHistoryNote(decision.row, decision.move.location),
-            },
-          ]),
-    ]);
-    if (events.length > 0) await ItAssetEventModel.insertMany(events, { session });
-
-    // The new devices, in the file's order. Their codes are taken inside the transaction: a
-    // rollback gives every one of them back.
-    const creates = decisions.flatMap((decision) => (decision.kind === 'create' ? [decision] : []));
-    const firstCode =
-      creates.length === 0
-        ? 0
-        : await reserveSequenceBlock(ASSET_SEQUENCE_KEY, creates.length, session);
-    const assets = creates.map(
-      ({ row, serialNumber, externalTag, branchId }, index) =>
-        ({
-          _id: new Types.ObjectId(),
-          assetCode: formatAssetCode(firstCode + index),
-          name: row.name,
-          description: null,
-          categoryId: categoryIds.get(row.category) as Types.ObjectId,
-          status: 'inStock',
-          serialNumber,
-          model: row.model,
-          manufacturer: row.manufacturer,
-          externalTag,
-          branchId: new Types.ObjectId(branchId),
-          location: null,
-          purchase: null,
-          warranty: null,
-          currentAssignmentId: null,
-          disposal: null,
-          notes: newAssetNotes(row),
-          specs: newAssetSpecs(row.specs),
-          accessories: [...row.accessories],
-        }) as unknown as ItAssetDoc,
-    );
-    if (assets.length > 0) await ItAssetModel.insertMany(assets, { session });
 
     const outcome = reportBranchCustody(
       decisions,
-      assets.map((asset) => asset.assetCode),
+      written.assets.map((asset) => asset.assetCode),
       (id) => branchNames.get(id) ?? id,
     );
     await recordItGoLiveRun(IT_BRANCH_CUSTODY_MARK, { ...outcome }, session);
-    return { kind: 'done' as const, outcome, written, assets };
+    return { kind: 'done' as const, outcome, written };
   });
 
   if (run.kind === 'alreadyDone') return { status: 'alreadyDone' };
 
   // After the commit, as every registration, edit and transfer: the audit trail — and through it
   // the realtime refresh of anybody looking at the register — and the platform's events.
-  for (const asset of run.assets) {
-    await auditService.record({
-      entityRef: { moduleId: 'it', entityType: 'asset', entityId: String(asset._id) },
-      action: 'create',
-      changes: [
-        { field: 'assetCode', old: null, new: asset.assetCode },
-        { field: 'serialNumber', old: null, new: asset.serialNumber },
-        { field: 'status', old: null, new: asset.status },
-        { field: 'source', old: null, new: IT_BRANCH_CUSTODY_MARK },
-      ],
-    });
-    await emit(ItEvents.AssetRegistered, {
-      assetId: String(asset._id),
-      assetCode: asset.assetCode,
-      categoryId: String(asset.categoryId),
-    });
-  }
-  for (const { row, decision, set } of run.written) {
-    const entityRef = { moduleId: 'it', entityType: 'asset', entityId: String(row._id) };
-    if (decision.fields.length > 0) {
-      await auditService.record({
-        entityRef,
-        action: 'update',
-        changes: [
-          ...decision.fields.map((field) => ({
-            field,
-            old: custodyValueOf(decision.asset, field),
-            new: custodyValueOf(set, field),
-          })),
-          { field: 'source', old: null, new: IT_BRANCH_CUSTODY_MARK },
-        ],
-      });
-      await emit(ItEvents.AssetUpdated, {
-        assetId: String(row._id),
-        assetCode: row.assetCode,
-        categoryId: String(row.categoryId),
-      });
-    }
-    if (decision.move !== null) {
-      await auditService.record({
-        entityRef,
-        action: 'transfer',
-        changes: [
-          { field: 'branchId', old: decision.move.fromBranchId, new: decision.move.toBranchId },
-          // The place it had in the branch it left — cleared with the move.
-          ...(decision.move.location === null
-            ? []
-            : [{ field: 'location', old: decision.move.location, new: null }]),
-          { field: 'source', old: null, new: IT_BRANCH_CUSTODY_MARK },
-        ],
-      });
-      await emit(ItEvents.AssetTransferred, {
-        assetId: String(row._id),
-        assetCode: row.assetCode,
-        fromEmployeeId: null,
-        toEmployeeId: null,
-        fromBranchId: decision.move.fromBranchId,
-        toBranchId: decision.move.toBranchId,
-      });
-    }
-  }
+  await recordCustodyWritten(run.written, IT_BRANCH_CUSTODY_MARK);
   return { status: 'done', ...run.outcome };
 };
 

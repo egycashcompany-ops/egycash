@@ -68,6 +68,22 @@ export const carriesShipment = (event: DragEvent): boolean =>
   Array.from(event.dataTransfer.types).includes(SHIPMENT_DRAG_TYPE);
 
 /**
+ * The two columns (Round 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة
+ * بالعربيه»): on a wide screen the vans take three parts and the محصنات on no van one — about 1/4 —
+ * never narrower than its cards read (17.5rem); between the computer's first width and a wide one
+ * two parts to one, as before, where a quarter would squeeze the cards; stacked on a phone.
+ */
+export const DISTRIBUTION_COLUMNS =
+  'grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,3fr)_minmax(17.5rem,1fr)]';
+
+/**
+ * The vans' cards: as many to a row as fit at 18rem or more — three at 1440, four on a 1920 screen,
+ * two at 1024, one on a phone (`min(100%, …)`: a card never wider than its column).
+ */
+export const VAN_GRID =
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] items-start gap-3';
+
+/**
  * The day's bar — the boards' filter surface (`DARK_FILTER_BAR`'s box and input colours) holding the
  * day, and what the screen has to say about it. Not the boards' one-row layout: it holds one box,
  * not nine that share a row.
@@ -924,10 +940,7 @@ export const VanCard = ({
                 : 'bg-indigo-50 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-200',
             )}
           >
-            <BoardIcon
-              d={[...SHIPMENT_PATH.route]}
-              className="h-3 w-3 shrink-0 rtl:-scale-x-100"
-            />
+            <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
             <span className="sr-only">{t('operations.crew.direction')}: </span>
             <span className="min-w-0 truncate">{directionText}</span>
           </span>

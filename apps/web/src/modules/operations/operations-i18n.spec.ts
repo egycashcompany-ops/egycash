@@ -655,6 +655,7 @@ const DISTRIBUTION_KEYS = [
     'reschedules',
     'save',
     'shipments',
+    'slotEmpty',
     'started',
     'startedHint',
     'switchCaptain',

@@ -11042,6 +11042,8 @@ const en: Record<string, string> = {
   'operations.distribution.noDirection': 'No direction',
   'operations.distribution.captains': 'Captains',
   'operations.distribution.noCaptain': 'No captain — takes no shipments',
+  // Round 24c — an empty specialist slot on the van card, said quietly instead of «—».
+  'operations.distribution.slotEmpty': 'Not assigned',
   'operations.distribution.noArea': 'No area',
   'operations.distribution.overdue': 'Overdue',
   'operations.distribution.overdueHint': 'In the vault past its delivery day ({{day}})',
@@ -25230,6 +25232,8 @@ const ar: Record<string, string> = {
   'operations.distribution.noDirection': 'بلا اتجاه',
   'operations.distribution.captains': 'القادة',
   'operations.distribution.noCaptain': 'بلا قائد — لا تأخذ محصنات',
+  // Round 24c — an empty specialist slot on the van card, said quietly instead of «—».
+  'operations.distribution.slotEmpty': 'غير معيَّن',
   'operations.distribution.noArea': 'بلا منطقة',
   'operations.distribution.overdue': 'متأخرة',
   'operations.distribution.overdueHint': 'في الخزينة وقد فات يوم تسليمها ({{day}})',

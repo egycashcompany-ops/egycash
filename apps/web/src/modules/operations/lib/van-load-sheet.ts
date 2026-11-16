@@ -83,8 +83,16 @@ export const vanLoadSheet = ({
   amount,
   count,
 }: VanLoadSheetInput): FleetReport => {
+  // Round 24c — the card's own order: the day, then the van's time and direction (the head line of
+  // its card — «انقل الاتجاه بعد كود السيارة والوقت»), then who rides it.
   const subtitle = [
     t('operations.handover.sheet.day', { day }),
+    van.plannedTime === null || van.plannedTime === ''
+      ? null
+      : `${t('operations.crew.plannedTime')}: ${van.plannedTime}`,
+    van.direction === null || van.direction.trim() === ''
+      ? null
+      : `${t('operations.crew.direction')}: ${van.direction}`,
     van.captains.length === 0
       ? null
       : t('operations.handover.sheet.captains', { names: joinNames(van.captains) }),
@@ -94,12 +102,6 @@ export const vanLoadSheet = ({
     crewPlanVisible && van.specialist2.length > 0
       ? `${t('operations.crew.slot.specialist2')}: ${joinNames(van.specialist2)}`
       : null,
-    van.direction === null || van.direction.trim() === ''
-      ? null
-      : `${t('operations.crew.direction')}: ${van.direction}`,
-    van.plannedTime === null || van.plannedTime === ''
-      ? null
-      : `${t('operations.crew.plannedTime')}: ${van.plannedTime}`,
   ]
     .filter((part): part is string => part !== null)
     .join(' · ');

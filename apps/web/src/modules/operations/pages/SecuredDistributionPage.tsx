@@ -38,6 +38,12 @@
 //     العمليات»): a move, a captain switched, «توزيع تلقائي» — each press takes back the last one
 //     (`lib/crew-undo.ts`). The day's own proposals are where the history starts, not an operation.
 //
+// ROUND 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة بالعربيه»: the vans
+// take about three quarters of a wide screen, three cards to a row at 1440 (`DISTRIBUTION_COLUMNS`,
+// `VAN_GRID`), the محصنات on no van a quarter. On a phone the columns stack with the محصنات on no van
+// FIRST, in a column that folds — the work to do, moved by «نقل إلى…» — and the vans under it. The
+// van card's head is one line and its crew is drawn anew (`VanCard`).
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
@@ -62,6 +68,7 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
+import { useMinWidth } from '../../atm/lib/useMinWidth';
 import { useUnsavedGuard } from '../../atm/lib/useUnsavedGuard';
 import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { DesignCancel, DesignDialog, DesignSave } from '../../fleet/components/DesignDialog';
@@ -78,12 +85,14 @@ import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsB
 import {
   CardMark,
   DAY_BAR,
+  DISTRIBUTION_COLUMNS,
   DayBox,
   DistributionColumn,
   EmptyLoad,
   MoveMenu,
   SHIPMENT_DRAG_TYPE,
   ShipmentCard,
+  VAN_GRID,
   VanCard,
   carriesShipment,
   dayText,
@@ -182,6 +191,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const saving = useRef(false);
+  // Round 24c — a computer's width (Tailwind's `lg`) puts the vans first; a phone the محصنات on no
+  // van, in a column that folds.
+  const wide = useMinWidth(1024);
+  const [unplacedOpen, setUnplacedOpen] = useState(true);
 
   // A day's FIRST read: its proposals, made while rendering (React's «state from the previous
   // render» pattern) rather than in an effect, so the screen never shows the day un-proposed for a
@@ -548,6 +561,116 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const loaded = data !== undefined;
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
+  // RIGHT (first in RTL): the vans — three quarters of a wide screen (Round 24c).
+  const vansColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.vans')}
+      count={vans.length}
+      icon={PATH.truck}
+      data-distribution-column="vans"
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : vans.length === 0 ? (
+        <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
+      ) : (
+        <div className={VAN_GRID}>
+          {columns.vans.map(({ van, rows: load }) => (
+            <VanCard
+              key={van.crewAssignmentId}
+              van={van}
+              looseNumber={looseNumberOf(van.crewAssignmentId)}
+              crewPlanVisible={data.crewPlanVisible}
+              day={day}
+              figures={loadFigures(load, currencyOf, packagingOf)}
+              {...(canEdit
+                ? {
+                    drop: {
+                      armed: accepts(van.crewAssignmentId),
+                      over: over === van.crewAssignmentId,
+                      handlers: dropTarget(van.crewAssignmentId, (row) => move(row, van)),
+                    },
+                  }
+                : {})}
+            >
+              {load.length === 0 ? (
+                <EmptyLoad>
+                  {takesShipments(van)
+                    ? canEdit
+                      ? t('operations.distribution.dropHere')
+                      : t(
+                          hasNoVan(van)
+                            ? 'operations.distribution.emptyCrew'
+                            : 'operations.distribution.emptyVan',
+                        )
+                    : t('operations.distribution.noCaptain')}
+                </EmptyLoad>
+              ) : (
+                load.map(card)
+              )}
+            </VanCard>
+          ))}
+        </div>
+      )}
+    </DistributionColumn>
+  );
+
+  // LEFT: the shipments on no van — and where one is dragged to come off its van. A quarter of a
+  // wide screen; on a phone, above the vans and foldable (Round 24c).
+  const unplacedColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.unplaced')}
+      count={columns.unplaced.length}
+      icon={SHIPMENT_PATH.shipment}
+      data-distribution-column="unplaced"
+      {...(wide
+        ? {}
+        : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
+      className={cn(
+        canEdit &&
+          accepts(UNPLACED_KEY) &&
+          !wide &&
+          !unplacedOpen &&
+          'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
+      )}
+      {...(canEdit ? { dropHandlers: dropTarget(UNPLACED_KEY, (row) => move(row, null)) } : {})}
+      bodyProps={{
+        'data-drop-over': over === UNPLACED_KEY ? 'true' : undefined,
+        className: cn(
+          'rounded-b-2xl transition-colors',
+          canEdit &&
+            accepts(UNPLACED_KEY) &&
+            'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
+          over === UNPLACED_KEY &&
+            'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
+        ),
+      }}
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : columns.unplaced.length === 0 ? (
+        <EmptyLoad>
+          {rows.length === 0
+            ? t('operations.distribution.empty')
+            : t('operations.distribution.allPlaced')}
+        </EmptyLoad>
+      ) : (
+        <div className="grid gap-2">
+          {dragging !== null && accepts(UNPLACED_KEY) && (
+            <p className="text-center text-xs font-bold text-brand-600 dark:text-brand-300">
+              {t('operations.distribution.dropBack')}
+            </p>
+          )}
+          {columns.unplaced.map(card)}
+        </div>
+      )}
+    </DistributionColumn>
+  );
+
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-distribution-page="true">
@@ -660,103 +783,20 @@ export const SecuredDistributionPage = (): JSX.Element => {
         ) : failed ? (
           <ErrorState error={board.error} onRetry={() => void board.refetch()} />
         ) : (
-          <div
-            className="grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-            data-distribution-columns="true"
-          >
-            {/* RIGHT (first in RTL): the vans. */}
-            <DistributionColumn
-              title={t('operations.distribution.vans')}
-              count={vans.length}
-              icon={PATH.truck}
-              data-distribution-column="vans"
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : vans.length === 0 ? (
-                <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
-              ) : (
-                <div className="grid items-start gap-3 xl:grid-cols-2">
-                  {columns.vans.map(({ van, rows: load }) => (
-                    <VanCard
-                      key={van.crewAssignmentId}
-                      van={van}
-                      looseNumber={looseNumberOf(van.crewAssignmentId)}
-                      crewPlanVisible={data.crewPlanVisible}
-                      figures={loadFigures(load, currencyOf, packagingOf)}
-                      {...(canEdit
-                        ? {
-                            drop: {
-                              armed: accepts(van.crewAssignmentId),
-                              over: over === van.crewAssignmentId,
-                              handlers: dropTarget(van.crewAssignmentId, (row) => move(row, van)),
-                            },
-                          }
-                        : {})}
-                    >
-                      {load.length === 0 ? (
-                        <EmptyLoad>
-                          {takesShipments(van)
-                            ? canEdit
-                              ? t('operations.distribution.dropHere')
-                              : t(
-                                  hasNoVan(van)
-                                    ? 'operations.distribution.emptyCrew'
-                                    : 'operations.distribution.emptyVan',
-                                )
-                            : t('operations.distribution.noCaptain')}
-                        </EmptyLoad>
-                      ) : (
-                        load.map(card)
-                      )}
-                    </VanCard>
-                  ))}
-                </div>
-              )}
-            </DistributionColumn>
-
-            {/* LEFT: the shipments on no van — and where one is dragged to come off its van. */}
-            <DistributionColumn
-              title={t('operations.distribution.unplaced')}
-              count={columns.unplaced.length}
-              icon={SHIPMENT_PATH.shipment}
-              data-distribution-column="unplaced"
-              bodyProps={{
-                'data-drop-over': over === UNPLACED_KEY ? 'true' : undefined,
-                className: cn(
-                  'rounded-b-2xl transition-colors',
-                  canEdit &&
-                    accepts(UNPLACED_KEY) &&
-                    'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
-                  over === UNPLACED_KEY &&
-                    'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
-                ),
-                ...(canEdit ? dropTarget(UNPLACED_KEY, (row) => move(row, null)) : {}),
-              }}
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : columns.unplaced.length === 0 ? (
-                <EmptyLoad>
-                  {rows.length === 0
-                    ? t('operations.distribution.empty')
-                    : t('operations.distribution.allPlaced')}
-                </EmptyLoad>
-              ) : (
-                <div className="grid gap-2">
-                  {dragging !== null && accepts(UNPLACED_KEY) && (
-                    <p className="text-center text-xs font-bold text-brand-600 dark:text-brand-300">
-                      {t('operations.distribution.dropBack')}
-                    </p>
-                  )}
-                  {columns.unplaced.map(card)}
-                </div>
-              )}
-            </DistributionColumn>
+          <div className={DISTRIBUTION_COLUMNS} data-distribution-columns="true">
+            {/* A computer: the vans first — the RIGHT, in RTL. A phone: the محصنات on no van
+                first, foldable — they are the work to do, and «نقل إلى…» on each is how they move. */}
+            {wide ? (
+              <>
+                {vansColumn}
+                {unplacedColumn}
+              </>
+            ) : (
+              <>
+                {unplacedColumn}
+                {vansColumn}
+              </>
+            )}
           </div>
         )}
       </div>

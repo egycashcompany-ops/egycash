@@ -99,6 +99,18 @@ describe('the van’s load sheet (provisional)', () => {
     expect(sheet.subtitle).toContain('09:00');
   });
 
+  it('puts the time and the direction right after the day, before the crew — the card’s head line (Round 24c)', () => {
+    const at = (part: string): number => sheet.subtitle.indexOf(part);
+    const time = at(`${ar('operations.crew.plannedTime')}: 09:00`);
+    const direction = at(`${ar('operations.crew.direction')}: مدينة نصر`);
+    const captains = at('شادي محمد أحمد');
+    expect(at('2026-11-12')).toBeGreaterThan(-1);
+    expect(time).toBeGreaterThan(at('2026-11-12'));
+    expect(direction).toBeGreaterThan(time);
+    expect(captains).toBeGreaterThan(direction);
+    expect(at(ar('operations.crew.slot.specialist1'))).toBeGreaterThan(captains);
+  });
+
   it('leaves the specialists out for a reader the crew plan is hidden from (rather than «—»)', () => {
     const hidden = vanLoadSheet(input({ crewPlanVisible: false }));
     expect(hidden.subtitle).not.toContain(ar('operations.crew.slot.specialist1'));

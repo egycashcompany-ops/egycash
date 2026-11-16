@@ -15,8 +15,13 @@
 //     trusted. Checked here against the END STATE of the whole standing crew, exactly as the daily
 //     board checks Q11 against the end state of the whole day.
 //   · Employees are validated to EXIST and not be exited, through the platform directory seam —
-//     reference integrity for the normalized ids, and nothing more. NO attendance gate and NO
-//     requirement-flag gate, unchanged from every other crew surface (approved decisions 1 and 2).
+//     reference integrity for the normalized ids. NO attendance gate: this row has no day, and
+//     absence is a fact about one day (the day's board leaves an away person off when it loads it).
+//   · ROUND 23 — the day's SLOT rule, for the reason this whole list exists: «ممنوع ان اعين قائد
+//     مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». A person NEWLY put in a slot must fit it
+//     (`OPERATIONS_CREW_MEMBER_WRONG_SLOT`, `crew/crew-roles.ts`) — or the standing crew would seed
+//     a day with seats the day refuses. Somebody already in that slot of that vehicle's row stays.
+//     The other requirement flags still gate nothing (approved decision 2).
 //   · A vehicle must exist in the Fleet registry — but NOT be on a duty roster. Being rostered is
 //     a per-DAY fact and this row has no day; demanding it would make the permanent crew of a
 //     vehicle un-editable on any day Fleet had not yet rostered it.
@@ -45,6 +50,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { settingsService } from '../../../platform/settings';
 import { fleetVehicleRepository } from '../fleet-boundary';
 import { slotIds } from '../crew/crew-slots';
+import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from '../crew/crew-roles';
 import { operationsStandingCrewRepository } from './standing-crew.repository';
 import { type OperationsStandingCrewDoc } from './standing-crew.model';
 
@@ -212,9 +218,10 @@ class OperationsStandingCrewService {
       }
     }
 
-    // Employee reference integrity through the directory seam. Existence and not-exited ONLY — no
-    // role, department, flag or attendance check, per the approved parity decisions.
-    for (const employeeId of new Set(input.rows.flatMap(rowCrew))) {
+    // Employee reference integrity through the directory seam: existence and not-exited. No
+    // department, attendance or other flag check; the role a slot takes is asked below (Round 23).
+    const people = [...new Set(input.rows.flatMap(rowCrew))];
+    for (const employeeId of people) {
       const employee = await getDirectoryEmployee(employeeId);
       if (employee === null) {
         throw new ValidationError([
@@ -226,9 +233,22 @@ class OperationsStandingCrewService {
       }
     }
 
+    // Round 23: what each of them IS — captain, specialist, or both — in ONE read of the
+    // requirements for all of them.
+    const roles = await crewRolesOf(people);
+
     const outcome = await unitOfWork(async (session) => {
       const existing = await operationsStandingCrewRepository.findAll(session);
       const byVehicle = new Map(existing.map((row) => [String(row.vehicleId), row]));
+
+      // ROUND 23 — the day's slot rule: nobody NEWLY in a slot his role does not fit. Somebody
+      // ALREADY in that SAME slot of that SAME vehicle's standing row passes unchecked — written
+      // before this rule, or before «متطلبات الطاقم» changed his flags — so the row's other changes
+      // still save; the day's board will not load him into that seat (it skips him and says so).
+      refuseWrongSlots(input.rows, roles, (index, slot) => {
+        const current = byVehicle.get(input.rows[index]?.vehicleId ?? '');
+        return current === undefined ? [] : slotIds(current[CREW_SLOT_FIELD[slot]]);
+      });
 
       // One person, one vehicle — checked against the END STATE of the whole standing crew (the
       // daily board's Q11 shape). A row outside the payload still holding a payload crew member

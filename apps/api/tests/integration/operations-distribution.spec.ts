@@ -221,6 +221,21 @@ const mkEmployee = async (fullNameAr: string): Promise<string> => {
   return data<{ id: string }>(res).id;
 };
 
+/**
+ * A CAPTAIN — ticked «قائد» on «متطلبات الطاقم», through that screen's own route. Round 23: «ممنوع
+ * ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى» — the captain's slot takes a captain
+ * only, and nobody ticked is a specialist; every captain this file seats is made one.
+ */
+const mkCaptain = async (fullNameAr: string): Promise<string> => {
+  const employeeId = await mkEmployee(fullNameAr);
+  const res = await request(app)
+    .put(`/api/v1/operations/crew-board/requirements/${employeeId}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ isCaptain: true });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return employeeId;
+};
+
 const mkVehicle = async (code: string): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/fleet/vehicles')
@@ -517,9 +532,9 @@ beforeAll(async () => {
   van3 = await mkVehicle('OPS-D3');
   van1 = await mkVehicle('OPS-D1');
   van2 = await mkVehicle('OPS-D2');
-  capA = await mkEmployee('قائد أول');
-  capB = await mkEmployee('قائد ثان');
-  capC = await mkEmployee('قائد ثالث');
+  capA = await mkCaptain('قائد أول');
+  capB = await mkCaptain('قائد ثان');
+  capC = await mkCaptain('قائد ثالث');
   spec1 = await mkEmployee('أخصائي أول');
   spec2 = await mkEmployee('أخصائي ثان');
 
@@ -1411,7 +1426,7 @@ describe('an edit that moves a placed محصنة’s delivery day takes it off i
   beforeAll(async () => {
     const { employeeRepository } =
       await import('../../src/modules/hr/employee-management/employees/employee.repository');
-    capD = await mkEmployee('قائد رابع');
+    capD = await mkCaptain('قائد رابع');
     // His own login, linked to his employee record — the route is read through the app, as him.
     const role = await rbacService.createRole(
       {

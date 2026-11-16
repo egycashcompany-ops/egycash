@@ -72,7 +72,8 @@ export interface VaultReceiptInput {
  * receipt, as `receivedById` is null on every older one.
  *
  * What stays out remains out: seal barcodes are the treasury's own record and no Operations screen
- * or report reads them, so they are not exposed here.
+ * or report reads them, so they are not exposed here. Round 21b's `heldSeals` keeps it so: it
+ * answers only about seals the caller already typed, never with a held custody's own list.
  */
 export interface VaultCustodyView {
   id: string;
@@ -102,6 +103,20 @@ export interface VaultCustodyView {
   cancelledAt: Date | null;
 }
 
+/**
+ * Round 21b — one of the caller's seals that the treasury HOLDS now, on another shipment's custody.
+ * The port hands back only seals the caller already gave it, and where each is held: the seals of
+ * the custody themselves stay behind the port, as on every other read.
+ */
+export interface VaultHeldSeal {
+  /** The caller's seal, as given. */
+  seal: string;
+  /** Its position in the caller's list. */
+  index: number;
+  /** The shipment whose held custody carries the same seal. */
+  shipmentId: string;
+}
+
 export interface VaultCustodyProvider {
   /**
    * Take a shipment into custody, received by `by` — the signed-in user (Round 18). Rejects a
@@ -123,6 +138,18 @@ export interface VaultCustodyProvider {
   findMany(shipmentIds: string[]): Promise<Map<string, VaultCustodyView>>;
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
+  /**
+   * Round 21b — which of `seals` are seals of a custody the treasury HOLDS now: «لو موجوده عندنا
+   * لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». The same set `listHeld` lists — a custody
+   * released to its van, or a cancelled receipt, holds nothing — and the same seal by the contract's
+   * `vaultSealKey`. `excludeShipmentId` leaves one shipment's custody out; blank seals are skipped.
+   * Joins the caller's transaction when given a session, so a receipt decides on the snapshot it
+   * writes in. In the caller's order; a seal given twice is answered at each place.
+   */
+  heldSeals(
+    seals: readonly string[],
+    options?: { excludeShipmentId?: string; session?: unknown },
+  ): Promise<VaultHeldSeal[]>;
   /**
    * Every custody the treasury TOOK in the half-open window [from, toExclusive) — held or since
    * released — newest received first. A CANCELLED receipt is not one: the treasury took nothing

@@ -411,6 +411,56 @@ describe('the code HR types', () => {
   });
 });
 
+/**
+ * «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+ * The hand change holds each person to their own shape: an external person's is the one their
+ * registration allows; everybody else's stays the company's digits (hr-employee.spec refuses
+ * `ABC123` for a hired employee).
+ */
+describe('changing an external person\'s code by hand', () => {
+  const changeCode = (employee: EmployeeDto, code: string) =>
+    request(app)
+      .patch(`/api/v1/hr/employees/${employee.id}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, reason: 'تصحيح الكود', version: employee.version });
+
+  it('takes letters, as the registration did — a change of case included', async () => {
+    const employee = data<EmployeeDto>(
+      await registerExternal(registrarToken, { ...wellFormed('خارجي يتغير كوده'), code: 'cx5' }),
+    );
+
+    const res = await changeCode(employee, 'CX5');
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<EmployeeDto>(res).code).toBe('CX5');
+  });
+
+  /**
+   * An external code is a name, not a branch and a number: `EX-8899` holds no employee number 8899,
+   * so an ordinary employee may still be given it — by hand or at registration.
+   */
+  it('reads no employee number out of an external code', async () => {
+    const employee = data<EmployeeDto>(
+      await registerExternal(registrarToken, wellFormed('خارجي بكود فيه رقم')),
+    );
+    expect((await changeCode(employee, 'EX-8899')).status).toBe(200);
+
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}8899`);
+
+    expect(check.status, JSON.stringify(check.body)).toBe(200);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+  });
+
+  it('refuses what the registration would refuse', async () => {
+    const employee = data<EmployeeDto>(
+      await registerExternal(registrarToken, wellFormed('خارجي بكود قصير')),
+    );
+
+    expect((await changeCode(employee, 'C')).status).toBe(400);
+    expect((await changeCode(employee, 'EX 01')).status).toBe(400);
+  });
+});
+
 describe('GET /hr/employees/external/last-code', () => {
   /** «عرفنى تحته كدا أخر كود كام للموظفين الخارجيين دول» — the one registered last, not the largest. */
   it('answers with the code of the external person registered most recently', async () => {

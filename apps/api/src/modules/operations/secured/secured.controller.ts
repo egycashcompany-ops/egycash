@@ -4,6 +4,7 @@ import {
   ymdOf,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
+  type CheckVaultSeals,
   type ConfirmSecuredPickup,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
@@ -19,6 +20,7 @@ import {
   type OperationsVaultQueueDto,
   type OperationsVaultQueueQuery,
   type OperationsVaultReceiveResultDto,
+  type OperationsVaultSealCheckDto,
   type ReceiveIntoVault,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
@@ -29,6 +31,7 @@ import {
   toShipmentDto,
   toVaultInventoryRowDto,
   toVaultReceiptDto,
+  toVaultSealHolderDto,
 } from '../operations.mappers';
 import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
 import { operationsSecuredService } from './secured.service';
@@ -184,6 +187,15 @@ export const receiveIntoVault = async (req: Request, res: Response): Promise<voi
   ok<OperationsVaultReceiveResultDto>(res, {
     ...toShipmentDto(shipment),
     receipt: toVaultReceiptDto(receipt, { id: userId, name: receivedByName }),
+  });
+};
+
+/** Round 21b — which of the receipt's seals the vault still holds on another محصنة, and on which. */
+export const checkVaultSeals = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<CheckVaultSeals>(req);
+  const held = await operationsSecuredService.checkSeals(body);
+  ok<OperationsVaultSealCheckDto>(res, {
+    held: held.map(({ seal, holder }) => ({ seal, holder: toVaultSealHolderDto(holder) })),
   });
 };
 

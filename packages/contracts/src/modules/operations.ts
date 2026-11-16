@@ -1458,6 +1458,9 @@ export interface OperationsVaultHeldReportDto {
 //   1. Requirements gate NOTHING server-side. They are metadata, visual indicators and filters.
 //      No slot on the crew board checks them; an employee missing a weapon or a signature can be
 //      assigned exactly as in legacy. (Owner decision, carried since PR 1.)
+//      ROUND 23 — the owner reversed it for the two role flags, and only those: «ممنوع ان اعين قائد
+//      مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». «قائد» and «أخصائي» now decide which SLOT a
+//      person may newly take (`crewRoleOf`, `fitsCrewSlot`); the other eight still gate nothing.
 //   2. The record is OPERATIONS-OWNED, not a set of extra columns on the HR employee. Legacy wrote
 //      them onto `employees` because it had one database and no module boundary; ECMS does. HR
 //      owns the person, Operations owns "what this person is to Operations", and the two meet
@@ -1535,6 +1538,14 @@ export type ListOperationsCrewRequirementsQuery = z.infer<
   typeof ListOperationsCrewRequirementsQuerySchema
 >;
 
+/**
+ * Round 22 — who is AWAY on the board's day, as HR has it: «وعاوز لو القائد غايب يظهر تحت الكل
+ * بقى فى الاخر يبقى باللون الباهت ومقدرش احطه على العربيه و كذلك الاخصائيين». Two answers only —
+ * HR's `absent` and `onLeave` buckets. Anything else (at work, a weekend, no record) is not «away».
+ */
+export const OPERATIONS_CREW_AVAILABILITIES = ['absent', 'onLeave'] as const;
+export type OperationsCrewAvailability = (typeof OPERATIONS_CREW_AVAILABILITIES)[number];
+
 /** A crew member as the board's pool shows them: who they are, plus their flags. */
 export interface OperationsCrewMemberDto {
   employeeId: string;
@@ -1573,6 +1584,27 @@ export interface OperationsCrewMemberDto {
    * because the SAME rule is enforced server-side as Q11.
    */
   assignedVehicleId: string | null;
+  /**
+   * Round 22 — whether HR has this member AWAY on the requested day: 'absent', 'onLeave', or null.
+   * The board lists an away member last in his pool, faded, and does not let him onto a row; the
+   * save refuses the same (422 `OPERATIONS_CREW_MEMBER_ABSENT`), so the pool and the save cannot
+   * disagree.
+   *
+   * WHERE IT COMES FROM: HR's day record for that day (the directory seam the attendance page
+   * reads), `absent` → 'absent', `onLeave` → 'onLeave'. Where HR has NO record for the day — every
+   * day it has not computed yet, which is normally every future day, the board's tomorrow included
+   * — an approved or active leave covering the day answers 'onLeave'. Null otherwise: at work, a
+   * weekend or holiday, «incomplete», or no record at all. An UNKNOWN IS NOT ABSENT — nobody is
+   * kept off a van because attendance has not answered.
+   *
+   * Only the bucket travels, never HR's punches or the leave itself, and it is served under the
+   * roster's grant (`operationsCrew.view`) like the rest of the member. Who may see what is the
+   * owner's to decide later («موضوع مين يشوف ايه ومين يعمل ايه دا مش دلوقتي»).
+   *
+   * Optional only for a server that predates the field (a deploy in flight) and the board's own
+   * stand-in for somebody the roster no longer names: missing means the same as null.
+   */
+  availability?: OperationsCrewAvailability | null;
 }
 
 export interface OperationsCrewDirectoryDto {
@@ -1609,6 +1641,10 @@ export type OperationsCrewDirectoryQuery = z.infer<typeof OperationsCrewDirector
 //   · it GATES NOTHING. An absent crew member is still fully assignable, exactly as in legacy.
 //     Attendance is an indicator here, on the same footing as the requirement flags (owner
 //     decision, carried since PR 1). Turning it into an eligibility rule would be a new rule.
+//   · ROUND 22 — the owner made that new rule, for the crew BOARD: «لو القائد غايب ... مقدرش احطه
+//     على العربيه و كذلك الاخصائيين». The pool's member carries `availability` and the save refuses
+//     to newly place somebody HR has absent or on leave that day (`OPERATIONS_CREW_MEMBER_ABSENT`).
+//     This page still refuses nothing itself, and an unknown is still not an absence.
 //
 // `attendance: null` means HR has NO answer for that employee and day — not "present". A screen
 // must render the difference, because "unknown" and "fine" are not the same fact.
@@ -1711,6 +1747,45 @@ export type GetOperationsDayQuery = z.infer<typeof GetOperationsDayQuerySchema>;
  * things (a captain is not an interchangeable head-count). Only each slot's arity moved.
  */
 export const CREW_SLOT_CAPACITY = 2;
+
+/**
+ * The three slots of a crew row, by name — the board's columns «قائد الطاقم» | «أخصائي 1» |
+ * «أخصائي 2», and the save's `captainEmployeeIds` / `specialist1EmployeeIds` / `specialist2EmployeeIds`.
+ */
+export const OPERATIONS_CREW_SLOTS = ['captain', 'specialist1', 'specialist2'] as const;
+export type OperationsCrewSlot = (typeof OPERATIONS_CREW_SLOTS)[number];
+
+/**
+ * What the requirements («متطلبات الطاقم») make somebody on a crew — ONE definition, so the board
+ * that colours and offers him and the server that refuses him cannot disagree (Round 23):
+ *
+ *   · `captain`    — «قائد» ticked and «أخصائي» not (green on the board);
+ *   · `dual`       — BOTH ticked (blue): «قائد اخصائى», the one kind the owner lets sit anywhere —
+ *                    «اقدر اوظفهم ك قائد او اخصائى»;
+ *   · `specialist` — everybody else: «أخصائي» alone, NEITHER ticked, or NO requirements row at all
+ *                    (red) — the answer legacy gave an employee nobody had ticked.
+ */
+export type OperationsCrewRole = 'captain' | 'dual' | 'specialist';
+
+export const crewRoleOf = (
+  requirements: { isCaptain: boolean; isSpecialist: boolean } | null | undefined,
+): OperationsCrewRole =>
+  requirements?.isCaptain === true
+    ? requirements.isSpecialist === true
+      ? 'dual'
+      : 'captain'
+    : 'specialist';
+
+/**
+ * May somebody of this role take this slot? Round 23, the owner: «ممنوع ان اعين قائد مكان اخصائى
+ * والعكس الا فى حالة انه قائد اخصائى» — forbidden to put a captain in a specialist's slot, or a
+ * specialist in the captain's, EXCEPT a captain-specialist, who fits every slot:
+ *   · «قائد الطاقم» ← a captain, or a dual;
+ *   · «أخصائي 1» / «أخصائي 2» ← a specialist, or a dual.
+ * It replaces the Round-20 «a specialist in a captain's slot is marked, not refused».
+ */
+export const fitsCrewSlot = (role: OperationsCrewRole, slot: OperationsCrewSlot): boolean =>
+  role === 'dual' || (slot === 'captain' ? role === 'captain' : role === 'specialist');
 
 /**
  * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». Six
@@ -1870,6 +1945,12 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
  *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
  *     included — stays as written while it is sent unchanged.
+ *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
+ *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
+ *     row stays, so a planner can still save the row's other changes.
+ *   · Round 23 — a person NEWLY put in a slot must fit it (`fitsCrewSlot`: «قائد الطاقم» a captain
+ *     or a dual, «أخصائي 1/2» a specialist or a dual) → else 422 `OPERATIONS_CREW_MEMBER_WRONG_SLOT`.
+ *     Somebody already in that same slot of that same row stays.
  *   · Up to `CREW_SLOT_CAPACITY` people per slot (here). «من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — the
  *     MINIMUMS are the board's warning (⚠), never a refusal: legacy enforced none (:2419), and a
  *     van is planned in steps.
@@ -2133,6 +2214,12 @@ export interface OperationsStandingCrewBoardDto {
 const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
+/**
+ * One vehicle's standing crew. Beyond the shape, the server holds it to the day's own slot rule
+ * (Round 23): a person NEWLY put in a slot must fit it (`fitsCrewSlot`) → else 422
+ * `OPERATIONS_CREW_MEMBER_WRONG_SLOT`; somebody already in that slot of that vehicle's row stays.
+ * The day is seeded from this row, so a seat the day would refuse must not be written here either.
+ */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
     vehicleId: objectId(),
@@ -2334,12 +2421,38 @@ export const ReceiveIntoVaultShipmentPatchSchema = UpdateOperationsShipmentSchem
 });
 export type ReceiveIntoVaultShipmentPatch = z.infer<typeof ReceiveIntoVaultShipmentPatchSchema>;
 
-/** A list of seal numbers as typed: each trimmed, the blank ones dropped (an empty box is no seal). */
-const sealNumbers = z
-  .array(z.string().trim())
-  .max(500)
-  .default([])
-  .transform((seals) => seals.filter((seal) => seal !== ''));
+/**
+ * A list of seal numbers as typed, each trimmed. The blank ones (an empty box is no seal) are
+ * dropped by `ReceiveIntoVaultSchema` itself, AFTER the repeat check, so a repeat is named at the
+ * index the client sent it at, not at its index once the blanks are gone.
+ */
+const sealNumbers = z.array(z.string().trim()).max(500).default([]);
+
+const withoutBlanks = (seals: readonly string[]): string[] => seals.filter((seal) => seal !== '');
+
+/**
+ * Round 21 — WHAT MAKES TWO SEALS THE SAME SEAL, for the vault receipt's one-seal-once rule (the
+ * owner: «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»). One definition for the contract's
+ * refusal and the receive form's red boxes, so the two can never disagree about a repeat:
+ *
+ *   · A seal of digits only is a WHOLE NUMBER: 0099 and 99 are one seal, and ٩٩ (Arabic-Indic, as
+ *     an Arabic keyboard types it) is that seal too. Compared as text with the leading zeros gone,
+ *     so a barcode longer than a JavaScript number is exact still compares exactly.
+ *   · Anything else (a barcode with a letter in it) is compared exactly as typed, trimmed.
+ *   · A blank is no seal: null.
+ *   · What cannot be SEEN is not read: the invisible format marks (Unicode Cf — the right-to-left
+ *     and left-to-right marks a number copied from an Arabic message or sheet carries, zero-width
+ *     spaces) are dropped first. The owner's rule is about what the clerk sees: two boxes that
+ *     both show 12 are the same seal, whatever invisible mark one of them holds.
+ *
+ * Not to be confused with the ATM module's `sealKey` (DS-15), which is that module's own rule.
+ */
+export const vaultSealKey = (seal: string): string | null => {
+  const trimmed = seal.replace(/\p{Cf}/gu, '').trim();
+  if (trimmed === '') return null;
+  const digits = asciiDigits(trimmed);
+  return /^[0-9]+$/u.test(digits) ? digits.replace(/^0+(?=[0-9])/u, '') : trimmed;
+};
 
 /**
  * The vault's ✓ — `POST /operations/secured/:id/receive` (`operationsVault.receive`): custody taken,
@@ -2357,6 +2470,18 @@ const sealNumbers = z
  *   · SEALS: `bagSeals` / `boxSeals` as typed, each trimmed, blank entries dropped. No length is tied
  *     to the counts — the form draws `bagCount × bagSealsPerBag` boxes for bags and 2 per box, and
  *     what is left empty is simply not a seal. Cartons have none.
+ *   · ONE SEAL, ONCE PER RECEIPT (Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»):
+ *     a seal number appears once across `bagSeals` AND `boxSeals` together — a bag's seal may not be
+ *     a box's, and no seal may be typed twice in its own list. "The same seal" is
+ *     `vaultSealKey`'s (0099 = 99 = ٩٩). A refusal, not a warning: 400 `VALIDATION_FAILED`, the
+ *     issue on the LATER occurrence (`body.boxSeals.1`, as sent — blanks counted), its message
+ *     naming the seal and where it first appeared.
+ *   · NOR A SEAL STILL IN THE VAULT (Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
+ *     وخرجت واتكرر يبقى عادى»): a seal of ANOTHER محصنة the vault holds now (its custody `held`, the
+ *     receipt not cancelled) refuses the receipt — 409 `OPERATIONS_SEAL_HELD_IN_VAULT`, nothing
+ *     written. A seal of one that came in and went out again (released, dispatched, completed), or
+ *     whose receipt was cancelled, may repeat. Same `vaultSealKey`. The form asks as seals are
+ *     typed: `POST /operations/secured/seal-check` (`CheckVaultSealsSchema`).
  *   · «عدد الورق من كل فئة»: `denominations`, the notes counted of each pound denomination
  *     (`OPERATIONS_VAULT_DENOMINATIONS`); a value not in the list, or the same one twice, is a 400;
  *     a count of 0 is accepted and not stored.
@@ -2439,10 +2564,91 @@ export const ReceiveIntoVaultSchema = z
       }
       seen.add(line.value);
     });
-  });
+    // Round 21 — «مينفعش يكون فيه رقم للحقائب و الصناديق زى بعض برضو»: a seal closes ONE package,
+    // so one receipt names it once — bags and boxes read as one list, bags first. The first time a
+    // seal appears is its place; every later one is refused where it stands.
+    const firstAt = new Map<string, string>();
+    for (const list of ['bagSeals', 'boxSeals'] as const) {
+      value[list].forEach((seal, index) => {
+        const key = vaultSealKey(seal);
+        if (key === null) return;
+        const first = firstAt.get(key);
+        if (first === undefined) {
+          firstAt.set(key, `${list}.${index}`);
+          return;
+        }
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [list, index],
+          message: `seal ${JSON.stringify(seal)} is already in this receipt at ${first} — a seal appears once across bagSeals and boxSeals`,
+        });
+      });
+    }
+  })
+  .transform((value) => ({
+    ...value,
+    bagSeals: withoutBlanks(value.bagSeals),
+    boxSeals: withoutBlanks(value.boxSeals),
+  }));
 export type ReceiveIntoVault = z.infer<typeof ReceiveIntoVaultSchema>;
 /** What a client sends — every field but `version` may be left out. */
 export type ReceiveIntoVaultInput = z.input<typeof ReceiveIntoVaultSchema>;
+
+/** One seal check asks about at most two lists' worth of seals — the receipt's own ceiling. */
+export const OPERATIONS_VAULT_SEAL_CHECK_MAX = 1000;
+
+/**
+ * Round 21b — WHICH OF THESE SEALS IS STILL IN THE VAULT? `POST /operations/secured/seal-check`,
+ * on the receive's own grant (`operationsVault.receive`). The owner, asked whether a seal already
+ * recorded on another محصنة should be refused: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت
+ * واتكرر يبقى عادى». The receive form asks as seals are typed or scanned, and marks the ones the vault
+ * holds now before «استلام» is pressed.
+ *
+ *   · "Still in the vault" is the receipt's own rule: a custody `held` (not released to a van) on a
+ *     receipt not cancelled — exactly what the vault inventory lists. "The same seal" is
+ *     `vaultSealKey`'s (0099 = 99 = ٩٩; a seal with a letter in it as typed).
+ *   · `seals`: bags and boxes in one list, each trimmed; a blank one is no seal and is skipped.
+ *   · `excludeShipmentId`: the shipment being received — its own custody, should it hold one, is
+ *     not "another محصنة".
+ *   · A POST although it writes nothing: a list of a receipt's seals belongs in a body, out of URLs
+ *     and access logs, as the receipt itself carries them.
+ *
+ * Answers 200 `OperationsVaultSealCheckDto`. ADVICE ONLY: the receipt decides, in its own
+ * transaction, with 409 `OPERATIONS_SEAL_HELD_IN_VAULT` — a check made a moment before another
+ * receipt was taken can be stale.
+ */
+export const CheckVaultSealsSchema = z
+  .object({
+    seals: z.array(z.string().trim()).max(OPERATIONS_VAULT_SEAL_CHECK_MAX),
+    excludeShipmentId: objectId().optional(),
+  })
+  .strict();
+export type CheckVaultSeals = z.infer<typeof CheckVaultSealsSchema>;
+
+/** The held محصنة a seal is on — what tells it apart to a treasurer, as the vault screens name it. */
+export interface OperationsVaultSealHolderDto {
+  shipmentId: string;
+  /** That receipt's «رقم الإيصال»; null when the vault typed none. */
+  receiptNumber: string | null;
+  /** The main bank's operational name (`opsName`). */
+  mainBankName: string;
+  originBranchName: string;
+  destinationBranchName: string;
+  /** When the vault took it in — ISO instant. */
+  receivedAt: string;
+}
+
+/** A seal the check was asked about that the vault holds now. */
+export interface OperationsVaultHeldSealDto {
+  /** The seal as sent, trimmed — its first spelling when the same seal was sent more than once. */
+  seal: string;
+  holder: OperationsVaultSealHolderDto;
+}
+
+export interface OperationsVaultSealCheckDto {
+  /** Each seal sent that the vault holds now, once, in the order sent; empty when none is. */
+  held: OperationsVaultHeldSealDto[];
+}
 
 /**
  * Round 18 — the receipt the vault's ✓ just took, as the Treasury port hands it back: what the

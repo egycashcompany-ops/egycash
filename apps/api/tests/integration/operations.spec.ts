@@ -47,6 +47,7 @@ import {
   type OperationsStandingCrewBoardDto,
   type OperationsVaultInventoryRowDto,
   type OperationsVaultReceiveResultDto,
+  type OperationsVaultSealCheckDto,
   type PageMeta,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -232,6 +233,29 @@ const mkEmployee = async (
     });
   expect(res.status).toBe(201);
   return (res.body as { data: { id: string } }).data.id;
+};
+
+/**
+ * A CAPTAIN — an employee ticked «قائد» on «متطلبات الطاقم», through that screen's own route.
+ * Round 23, the owner: «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى» — the
+ * captain's slot takes a captain (or a captain-specialist) only, and nobody ticked is a specialist.
+ * So everybody this file seats in a captain's slot is made one; `both` ticks «أخصائي» too, for the
+ * people a case also seats as a specialist (a captain-specialist fits every slot).
+ */
+const tickCaptain = async (employeeId: string, both = false): Promise<void> => {
+  const res = await request(app)
+    .put(`/api/v1/operations/crew-board/requirements/${employeeId}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ isCaptain: true, isSpecialist: both });
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+};
+const mkCaptain = async (
+  seat: Parameters<typeof mkEmployee>[0] = {},
+  both = false,
+): Promise<string> => {
+  const employeeId = await mkEmployee(seat);
+  await tickCaptain(employeeId, both);
+  return employeeId;
 };
 
 let shipmentCounter = 0;
@@ -420,7 +444,7 @@ beforeAll(async () => {
   vehicleBId = await mkVehicle(2);
   offRosterVehicleId = await mkVehicle(3);
 
-  captainId = await mkEmployee();
+  captainId = await mkCaptain();
   specialist1Id = await mkEmployee();
   specialist2Id = await mkEmployee();
 
@@ -1105,8 +1129,12 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
   });
 
   it('empty specialists are allowed — legacy enforces no minimum crew (:2419)', async () => {
-    const res = await savePlan([{ vehicleId: vehicleBId, captainEmployeeIds: [specialist1Id] }]);
+    // A captain of his own: `captainId` is on vehicle A, and the specialists are not captains.
+    const lone = await mkCaptain();
+    const res = await savePlan([{ vehicleId: vehicleBId, captainEmployeeIds: [lone] }]);
     expect(res.status).toBe(200);
+    // Released again: the cases below plan vehicle B from empty.
+    expect((await savePlan([{ vehicleId: vehicleBId }])).status).toBe(200);
   });
 
   it('Q11 — refuses stealing a crew member without the releasing row, allows the move shape', async () => {
@@ -1157,7 +1185,7 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     let extraSpecialist2Id: string;
 
     beforeAll(async () => {
-      coCaptainId = await mkEmployee();
+      coCaptainId = await mkCaptain();
       extraSpecialist1Id = await mkEmployee();
       extraSpecialist2Id = await mkEmployee();
     });
@@ -1393,7 +1421,7 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
     };
 
     beforeAll(async () => {
-      bookCaptainId = await mkEmployee();
+      bookCaptainId = await mkCaptain();
       expect(
         (
           await request(app)
@@ -1536,8 +1564,8 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
   let crewViewerToken: string;
 
   beforeAll(async () => {
-    standingCaptainId = await mkEmployee();
-    standingCoCaptainId = await mkEmployee();
+    standingCaptainId = await mkCaptain();
+    standingCoCaptainId = await mkCaptain();
     standingSpecialistId = await mkEmployee();
     standingSpecialist1bId = await mkEmployee();
     standingSpecialist2aId = await mkEmployee();
@@ -1709,7 +1737,7 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     // end-state check DEMANDS that vehicle's row in the payload before its crew can be released,
     // so a blanket rejection made the crew permanently unmovable and the vehicle unremovable.
     const retiredVehicleId = await mkVehicle(9);
-    const stranded = await mkEmployee();
+    const stranded = await mkCaptain();
     expect(
       (await save([{ vehicleId: retiredVehicleId, captainEmployeeIds: [stranded] }])).status,
     ).toBe(200);
@@ -1828,6 +1856,81 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
     expect((await save([{ vehicleId: vehicleAId }], crewViewerToken)).status).toBe(403);
     expect((await drop(vehicleAId, crewViewerToken)).status).toBe(403);
   });
+
+  it('Round 23 — the day’s slot rule: a captain’s slot takes a captain, a specialist’s a specialist, a captain-specialist either', async () => {
+    // «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى». The day is seeded from this
+    // row, so a seat the day would refuse is refused here too — with the day's own code.
+    const onlyCaptain = await mkCaptain();
+    const rowless = await mkEmployee(); // no requirements row: a specialist
+    const both = await mkCaptain({}, true);
+    const reflagged = await mkCaptain({}, true);
+    const errorOf = (res: request.Response) =>
+      (res.body as { error: { code: string; details?: unknown[] } }).error;
+
+    const asSpecialist = await save([
+      { vehicleId: vehicleBId, specialist1EmployeeIds: [onlyCaptain] },
+    ]);
+    expect(asSpecialist.status, JSON.stringify(asSpecialist.body)).toBe(422);
+    expect(errorOf(asSpecialist)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT,
+      details: [
+        { field: 'employeeId', code: 'NOT_A_SPECIALIST', message: onlyCaptain },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    const asCaptain = await save([{ vehicleId: vehicleBId, captainEmployeeIds: [rowless] }]);
+    expect(asCaptain.status).toBe(422);
+    expect(errorOf(asCaptain).details?.[0]).toEqual({
+      field: 'employeeId',
+      code: 'NOT_A_CAPTAIN',
+      message: rowless,
+    });
+    // Nothing was written: vehicle B is still not in the standing crew.
+    expect(
+      data<OperationsStandingCrewBoardDto>(await standing()).rows.map((r) => r.vehicleId),
+    ).not.toContain(vehicleBId);
+
+    // A captain-specialist in the captain's slot and another in a specialist's, beside the others.
+    const crew = await save([
+      {
+        vehicleId: vehicleBId,
+        captainEmployeeIds: [onlyCaptain, both],
+        specialist1EmployeeIds: [rowless],
+        specialist2EmployeeIds: [reflagged],
+      },
+    ]);
+    expect(crew.status, JSON.stringify(crew.body)).toBe(200);
+
+    // His flags change to a captain only: the seat he HOLDS stays, and the row's other changes save.
+    await tickCaptain(reflagged, false);
+    const kept = await save([
+      {
+        vehicleId: vehicleBId,
+        captainEmployeeIds: [onlyCaptain, both],
+        specialist1EmployeeIds: [rowless],
+        specialist2EmployeeIds: [reflagged],
+        plannedTime: '06:30',
+      },
+    ]);
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    // Moved to the other specialist's slot, he takes a new seat — refused.
+    const moved = await save([
+      {
+        vehicleId: vehicleBId,
+        captainEmployeeIds: [onlyCaptain, both],
+        specialist1EmployeeIds: [reflagged],
+        specialist2EmployeeIds: [rowless],
+      },
+    ]);
+    expect(moved.status).toBe(422);
+    expect(errorOf(moved).details?.[0]).toEqual({
+      field: 'employeeId',
+      code: 'NOT_A_SPECIALIST',
+      message: reflagged,
+    });
+
+    await drop(vehicleBId);
+  });
 });
 
 describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () => {
@@ -1858,7 +1961,9 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
         receiptNumber: `R-${shipment.id.slice(-6)}`,
         bagCount: 3,
         boxCount: 1,
-        bagSeals: ['S-1', 'S-2', 'S-3'],
+        // Each shipment its own seals: since Round 21b a seal another محصنة still holds in the vault
+        // refuses the receipt («لو موجوده عندنا لا ك محصنة يبقى مينفعش»).
+        bagSeals: ['S-1', 'S-2', 'S-3'].map((seal) => `${seal}-${shipment.id.slice(-6)}`),
         version: shipment.version,
         ...overrides,
       });
@@ -2272,8 +2377,8 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     };
 
     beforeAll(async () => {
-      handoverCaptainA = await mkEmployee();
-      handoverCaptainB = await mkEmployee();
+      handoverCaptainA = await mkCaptain();
+      handoverCaptainB = await mkCaptain();
 
       const roster = await request(app)
         .post('/api/v1/fleet/roster')
@@ -2666,7 +2771,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
       return [await login(email), userId];
     };
 
-    otherCaptainId = await mkEmployee();
+    otherCaptainId = await mkCaptain();
     [captainUserToken, captainUserId] = await link('captain-a@ecms.local', captainId);
     [otherCaptainToken] = await link('captain-b@ecms.local', otherCaptainId);
 
@@ -3045,8 +3150,8 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
       return login(email);
     };
 
-    execCaptainId = await mkEmployee();
-    rivalCaptainId = await mkEmployee();
+    execCaptainId = await mkCaptain();
+    rivalCaptainId = await mkCaptain();
     const benchEmployeeId = await mkEmployee();
     execToken = await link('exec-captain@ecms.local', execCaptainId);
     rivalToken = await link('exec-rival@ecms.local', rivalCaptainId);
@@ -3803,7 +3908,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
 
     // SECURED, collected the day before by van B under its own captain.
     const PICKUP_DATE = shift(219);
-    const pickupCaptainId = await mkEmployee();
+    const pickupCaptainId = await mkCaptain();
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -4039,6 +4144,8 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   // On a day of its own, so taking rows away here cannot touch the cases above.
   it('a crew or duty row taken off the plan leaves the van card empty — never the board', async () => {
     const GONE_DATE = shift(227);
+    // Van B's captain — a captain of his own (Round 23: the captain's slot takes a captain).
+    const vanBCaptainId = await mkCaptain();
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -4057,7 +4164,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
         date: GONE_DATE,
         rows: [
           { vehicleId: vehicleAId, captainEmployeeIds: [captainId] },
-          { vehicleId: vehicleBId, captainEmployeeIds: [specialist2Id] },
+          { vehicleId: vehicleBId, captainEmployeeIds: [vanBCaptainId] },
         ],
       });
     expect(plan.status, JSON.stringify(plan.body)).toBe(200);
@@ -4075,7 +4182,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     expect(onA.status, JSON.stringify(onA.body)).toBe(201);
     const onB = await mkShipment({
       collectionDate: GONE_DATE,
-      pickup: { crewAssignmentId: crewBId, captainEmployeeId: specialist2Id },
+      pickup: { crewAssignmentId: crewBId, captainEmployeeId: vanBCaptainId },
     });
     expect(onB.status, JSON.stringify(onB.body)).toBe(201);
 
@@ -4107,14 +4214,14 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
     expect(rowOf(data<OperationsShipmentDto>(onB).id)).toMatchObject({
       crewAssignmentId: crewBId,
       vehicleId: vehicleBId,
-      captainEmployeeId: specialist2Id,
+      captainEmployeeId: vanBCaptainId,
     });
 
     // Van A's crew row is gone, so it has no card. Van B keeps its card with its captain, but its
     // duty row is gone, so nobody drives it.
     expect(view.crews.map((c) => c.crewAssignmentId)).toEqual([crewBId]);
     expect(view.crews[0]?.drivers).toEqual([]);
-    expect(view.crews[0]?.captains.map((p) => p.employeeId)).toEqual([specialist2Id]);
+    expect(view.crews[0]?.captains.map((p) => p.employeeId)).toEqual([vanBCaptainId]);
   });
 
   // «لو تم التسليم من القائد من برا الحالة هتكون تم التسليم بس الصف لونه اصفر ولما ادوس انا على صح
@@ -4137,7 +4244,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
       },
       adminId,
     );
-    const deliveringCaptainId = await mkEmployee();
+    const deliveringCaptainId = await mkCaptain();
     const userId = await mkUser('board-captain@ecms.local');
     await rbacService.ensureAssignment(userId, String(role._id), 'organization');
     const employee = await employeeRepository.getById(deliveringCaptainId);
@@ -4961,6 +5068,9 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
   // only ONE of them (`leader`) was ever read by a server query. The approved decision carried
   // since PR 1 is that requirements gate NOTHING — so the tests below prove both halves: the flags
   // round-trip as data, AND an employee missing every one of them can still be crewed.
+  // ROUND 23 — but for the two ROLE flags, which now decide the SLOT: «ممنوع ان اعين قائد مكان
+  // اخصائى والعكس الا فى حالة انه قائد اخصائى». Nobody ticked is a specialist, so he takes a
+  // specialist's slot and is refused the captain's (`operations-crew-plan.spec.ts` has the rest).
   const ROSTER_DATE = shift(240);
   let memberA = '';
   let memberB = '';
@@ -5110,7 +5220,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     expect(other.members.find((m) => m.employeeId === memberA)?.assignedVehicleId).toBeNull();
   });
 
-  it('APPROVED DECISION: requirements gate NOTHING — a flagless employee is still assignable', async () => {
+  it('requirements gate nothing but the SLOT — a flagless employee is a specialist (Round 23)', async () => {
     const flagless = await mkEmployee();
     expect((await setRequirements(flagless, {})).status).toBe(200);
 
@@ -5119,29 +5229,42 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ date: shift(242), rows: [{ vehicleId: vehicleAId, notes: 'flagless seed' }] });
     expect(roster.status).toBe(200);
+    const plan = (rows: Record<string, unknown>[]) =>
+      request(app)
+        .post('/api/v1/operations/crew-board')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ date: shift(242), rows });
 
-    // No weapon, no signature, no licence, not even marked a captain — and the captain slot takes
-    // them anyway, exactly as legacy did. This is the decision, asserted.
-    const plan = await request(app)
-      .post('/api/v1/operations/crew-board')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: shift(242), rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [flagless] }] });
-    expect(plan.status).toBe(200);
+    // No weapon, no signature, no licence — and a specialist's slot takes him: those flags still
+    // gate nothing. But nobody ticked «قائد» is no captain, and the captain's slot refuses him.
+    expect(
+      (await plan([{ vehicleId: vehicleAId, specialist1EmployeeIds: [flagless] }])).status,
+    ).toBe(200);
+    const asCaptain = await plan([{ vehicleId: vehicleAId, captainEmployeeIds: [flagless] }]);
+    expect(asCaptain.status).toBe(422);
+    expect(errorCode(asCaptain)).toBe(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT);
   });
 
-  it('an employee with NO roster row at all can still be crewed', async () => {
+  it('an employee with NO roster row at all can still be crewed — as a specialist', async () => {
     // Membership is for the pool and the requirement screen; it is not an eligibility gate either.
+    // With no row he has no «قائد»: a specialist, as legacy read an employee nobody had ticked.
     const stranger = await mkEmployee();
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ date: shift(243), rows: [{ vehicleId: vehicleAId, notes: 'stranger seed' }] });
     expect(roster.status).toBe(200);
-    const plan = await request(app)
-      .post('/api/v1/operations/crew-board')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: shift(243), rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [stranger] }] });
-    expect(plan.status).toBe(200);
+    const plan = (rows: Record<string, unknown>[]) =>
+      request(app)
+        .post('/api/v1/operations/crew-board')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ date: shift(243), rows });
+    expect(
+      (await plan([{ vehicleId: vehicleAId, specialist2EmployeeIds: [stranger] }])).status,
+    ).toBe(200);
+    const asCaptain = await plan([{ vehicleId: vehicleAId, captainEmployeeIds: [stranger] }]);
+    expect(asCaptain.status).toBe(422);
+    expect(errorCode(asCaptain)).toBe(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT);
   });
 
   it('refuses an unknown employee, and one who has exited', async () => {
@@ -5280,7 +5403,7 @@ describe('operations reports — legacy /ops_report (B5)', () => {
     expect(branchRes.status).toBe(201);
     reportBranch = data<OperationsBankBranchDto>(branchRes);
 
-    reportCaptain = await mkEmployee();
+    reportCaptain = await mkCaptain();
     // The §9.4 anchor: Operations may only crew a vehicle Fleet has rostered for the date.
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
@@ -7206,6 +7329,8 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
     return login(email);
   };
   const crewFor = async (date: string, captainEmployeeId: string): Promise<string> => {
+    // Round 23: the captain's slot takes a captain — he is ticked «قائد» first.
+    await tickCaptain(captainEmployeeId);
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -7266,7 +7391,8 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
       .send({
         receiptNumber: `R10-${id.slice(-6)}`,
         bagCount: 2,
-        bagSeals: ['R10-S1', 'R10-S2'],
+        // Each shipment its own seals — a seal another محصنة still holds is refused (Round 21b).
+        bagSeals: ['R10-S1', 'R10-S2'].map((seal) => `${seal}-${id.slice(-6)}`),
         version: (await read(id)).version,
       });
   const cancel = async (
@@ -8799,7 +8925,9 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
       // 2 bags × 3 = 6 boxes on the form; two left empty, one only spaces, the rest padded.
       bagSeals: [' 101 ', '102', '', '104', '   ', '106'],
       boxCount: 3,
-      boxSeals: ['6', '7', '8', '10', '11', '13'],
+      // Legacy's summary shape («[6 - 8] - [10 - 11] - 13») two hundred on: this محصنة stays in the
+      // vault, and Round 21's case below takes 1 … 8 (Round 21b — a held seal is not received again).
+      boxSeals: ['206', '207', '208', '210', '211', '213'],
       cartonCount: 1,
       denominations: [
         { value: 200, count: 15 },
@@ -8828,7 +8956,7 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     });
     const [custody] = await custodyOf(shipment.id);
     expect(custody?.bagSeals).toEqual(['101', '102', '104', '106']);
-    expect(custody?.boxSeals).toEqual(['6', '7', '8', '10', '11', '13']);
+    expect(custody?.boxSeals).toEqual(['206', '207', '208', '210', '211', '213']);
     expect(custody?.bagSealsPerBag).toBe(3);
 
     expect(await inventoryRow(shipment.id)).toMatchObject({
@@ -8883,6 +9011,67 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     }
     expect(await custodyOf(shipment.id)).toHaveLength(0);
     expect((await read(shipment.id)).status).toBe('draft');
+  });
+
+  // Round 21 — the owner, over his own form with bags 1 … 6 and boxes 1 and 3: «مينفعش يكون فيه رقم
+  // للحقائب و الصناديق زى بعض برضو». One receipt names a seal once, bags and boxes together; the
+  // same number twice is REFUSED (not the amber «مكرر» of before), and nothing of the receipt lands.
+  it('refuses a seal named twice in one receipt — a bag seal that is a box seal — and writes nothing', async () => {
+    const shipment = await book();
+    const owners = {
+      receiptNumber: 'R21-SEALS',
+      bagCount: 3,
+      bagSeals: ['1', '2', '3', '4', '5', '6'],
+      boxCount: 1,
+      boxSeals: ['1', '3'],
+      serialTracked: true,
+      version: shipment.version,
+    };
+    const refused = await receive(shipment.id, owners);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(400);
+    expect(errorCode(refused)).toBe(ErrorCodes.VALIDATION_FAILED);
+    // Said on the LATER of each pair — the boxes — naming the seal and the bag box it repeats.
+    const details = (
+      refused.body as { error: { details: { field: string; code: string; message: string }[] } }
+    ).error.details;
+    expect(details.map((detail) => detail.field)).toEqual(['body.boxSeals.0', 'body.boxSeals.1']);
+    expect(details[0]?.message).toContain('"1"');
+    expect(details[0]?.message).toContain('bagSeals.0');
+    expect(details[1]?.message).toContain('"3"');
+    expect(details[1]?.message).toContain('bagSeals.2');
+
+    // The same seal however it is written, and a seal twice inside one list — all refused.
+    for (const seals of [
+      { bagSeals: ['0099'], boxSeals: ['99'] },
+      { bagSeals: ['١٢'], boxSeals: ['12'] },
+      { bagSeals: ['5', '6', '5'] },
+      { boxSeals: ['8', '08'] },
+    ]) {
+      const res = await receive(shipment.id, { ...seals, version: shipment.version });
+      expect(res.status, JSON.stringify(seals)).toBe(400);
+      expect(errorCode(res)).toBe(ErrorCodes.VALIDATION_FAILED);
+    }
+
+    // NOTHING written: no custody, the shipment still a draft at its version, «سيريال» untouched,
+    // and «السجل» holds no receipt.
+    expect(await custodyOf(shipment.id)).toHaveLength(0);
+    const still = await read(shipment.id);
+    expect(still.status).toBe('draft');
+    expect(still.version).toBe(shipment.version);
+    expect(still.serialTracked).toBe(false);
+    expect(still.receiptNumber).toBeNull();
+    expect((await logOf(shipment.id)).entries.map((e) => e.kind)).not.toContain('vaultReceived');
+
+    // The same receipt with the boxes' own seals: taken, as typed.
+    const taken = await receive(shipment.id, { ...owners, boxSeals: ['7', '8'] });
+    expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(taken).status).toBe('inVault');
+    const [custody] = await custodyOf(shipment.id);
+    expect(custody?.bagSeals).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(custody?.boxSeals).toEqual(['7', '8']);
+    expect(
+      (await logOf(shipment.id)).entries.filter((e) => e.kind === 'vaultReceived'),
+    ).toHaveLength(1);
   });
 
   it('applies the vault\'s corrections and the receipt in ONE act — logged as an edit, then the receipt', async () => {
@@ -9176,5 +9365,315 @@ describe('Round 18 — «إستلام محصنة»: every field optional, no nam
     expect(voided?.denominations).toEqual([{ value: 100, count: 3 }]);
     const kinds = (await logOf(shipment.id)).entries.map((e) => e.kind);
     expect(kinds).toEqual(['created', 'vaultReceived', 'receiptCancelled']);
+  });
+});
+
+// Round 21b — the owner, asked whether a seal already recorded on another محصنة should be refused:
+// «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». A seal the vault STILL HOLDS
+// on another محصنة refuses the receipt (409, nothing written); one whose محصنة came in and went out
+// again — or whose receipt was cancelled — may come again. Every seal here is this suite's own: the
+// suites above leave their receipts in the vault, holding 1 … 13, 101 … 106 and the rest.
+describe('Round 21b — a seal still in the vault is not received on another محصنة', () => {
+  const R21B_DAY = shift(390);
+  const R21B_OUT = shift(391);
+
+  let outCrewId = '';
+  let receiver = ''; // operationsVault.receive and nothing else
+  let vaultViewer = ''; // operationsVault.view — the vault's screens, never the receive
+
+  const tokenWith = async (email: string, permissionKeys: string[]): Promise<string> => {
+    const role = await rbacService.createRole(
+      { name: { en: `R21b ${email}`, ar: `دور ${email}` }, permissionKeys },
+      adminId,
+    );
+    const userId = await mkUser(email);
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    return login(email);
+  };
+  const book = async (): Promise<OperationsShipmentDto> => {
+    const res = await mkShipment({
+      shipmentType: 'secured',
+      collectionDate: R21B_DAY,
+      deliveryDate: R21B_OUT,
+      notes: 'كما حُجزت',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<OperationsShipmentDto>(res);
+  };
+  const read = async (id: string): Promise<OperationsShipmentDto> =>
+    data<OperationsShipmentDto>(
+      await request(app)
+        .get(`/api/v1/operations/shipments/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const receive = async (
+    id: string,
+    body: Record<string, unknown>,
+    token = adminToken,
+  ): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/receive`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ version: (await read(id)).version, ...body });
+  /** Booked and received with these seals — the محصنة that then holds them. */
+  const held = async (seals: Record<string, unknown>): Promise<OperationsShipmentDto> => {
+    const shipment = await book();
+    const res = await receive(shipment.id, seals);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return shipment;
+  };
+  const check = (body: unknown, token: string | null = adminToken): request.Test => {
+    const call = request(app)
+      .post('/api/v1/operations/secured/seal-check')
+      .send(body as object);
+    return token === null ? call : call.set('Authorization', `Bearer ${token}`);
+  };
+  const heldSeals = async (body: unknown): Promise<OperationsVaultSealCheckDto['held']> => {
+    const res = await check(body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsVaultSealCheckDto>(res).held;
+  };
+  const cancel = async (id: string): Promise<request.Response> =>
+    request(app)
+      .post(`/api/v1/operations/secured/${id}/cancel-receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'استلام بالخطأ', version: (await read(id)).version });
+  const custodyOf = async (shipmentId: string) => {
+    const { OperationsVaultCustodyModel } = await import(
+      '../../src/modules/operations/vault/vault-custody.model'
+    );
+    return OperationsVaultCustodyModel.find({ shipmentId }).lean().exec();
+  };
+  const logKinds = async (id: string): Promise<string[]> => {
+    const res = await request(app)
+      .get(`/api/v1/operations/shipments/${id}/log`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<OperationsShipmentLogDto>(res).entries.map((e) => e.kind);
+  };
+  const details = (res: request.Response) =>
+    (res.body as { error: { details: { field: string; code: string; message: string }[] } }).error
+      .details;
+
+  beforeAll(async () => {
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: R21B_OUT, rows: [{ vehicleId: vehicleAId, notes: 'round 21b seed' }] });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    const plan = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: R21B_OUT, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+    expect(plan.status, JSON.stringify(plan.body)).toBe(200);
+    outCrewId =
+      data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
+      '';
+    expect(outCrewId).not.toBe('');
+    receiver = await tokenWith('ops-r21b-receive@ecms.local', ['operationsVault.receive']);
+    vaultViewer = await tokenWith('ops-r21b-view@ecms.local', ['operationsVault.view']);
+  });
+
+  it('refuses a seal another محصنة still holds — 409 naming the seal, its place and the محصنة — and writes nothing', async () => {
+    const first = await held({
+      receiptNumber: 'R21B-A',
+      bagCount: 1,
+      bagSeals: ['21001', '21002'],
+      boxCount: 1,
+      boxSeals: ['21003', '21004'],
+    });
+    const second = await book();
+    const refused = await receive(second.id, {
+      receiptNumber: 'R21B-B',
+      bagCount: 1,
+      bagSeals: ['21900', '21002'],
+      boxCount: 1,
+      boxSeals: ['21004', '21901'],
+      serialTracked: true,
+      // The vault's corrections of the shipment ride the same act — and fall with it.
+      shipment: { notes: 'صحّحته الخزينة' },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(errorCode(refused)).toBe(ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT);
+    // One detail per seal refused: where it is in THIS receipt, and which held محصنة has it.
+    expect(details(refused)).toEqual([
+      { field: 'bagSeals.1', code: 'HELD_IN_VAULT', message: first.id },
+      { field: 'boxSeals.0', code: 'HELD_IN_VAULT', message: first.id },
+    ]);
+    const message = (refused.body as { error: { message: string } }).error.message;
+    expect(message).toContain('"21002"');
+    expect(message).toContain('"21004"');
+    expect(message).toContain('R21B-A');
+    expect(message).toContain(bankA.opsName);
+
+    // NOTHING written: no custody, the shipment a draft at the version it was read at, its notes
+    // and «سيريال» as booked, and «السجل» with neither an edit nor a receipt.
+    expect(await custodyOf(second.id)).toHaveLength(0);
+    const still = await read(second.id);
+    expect(still).toMatchObject({
+      status: 'draft',
+      version: second.version,
+      notes: 'كما حُجزت',
+      serialTracked: false,
+      receiptNumber: null,
+    });
+    expect(await logKinds(second.id)).toEqual(['created']);
+    // The first محصنة is untouched by the refusal — still held, its seals its own.
+    const [kept] = await custodyOf(first.id);
+    expect(kept).toMatchObject({ state: 'held', isDeleted: false });
+
+    // The same receipt with seals of its own: taken.
+    const taken = await receive(second.id, {
+      receiptNumber: 'R21B-B',
+      bagCount: 1,
+      bagSeals: ['21900', '21902'],
+      boxCount: 1,
+      boxSeals: ['21903', '21901'],
+    });
+    expect(taken.status, JSON.stringify(taken.body)).toBe(200);
+    expect(data<OperationsVaultReceiveResultDto>(taken).status).toBe('inVault');
+  });
+
+  it('reads the same seal as the receipt does — 0099 held is 99 here, and ٩٩ too; text exactly as typed', async () => {
+    const first = await held({ bagCount: 1, bagSeals: ['0021099', 'R21B-X'] });
+    for (const seals of [
+      { boxSeals: ['21099'] },
+      { bagSeals: ['٢١٠٩٩'] },
+      { bagSeals: ['۰۲۱۰۹۹'] },
+      { boxSeals: [' R21B-X '] },
+    ]) {
+      const other = await book();
+      const res = await receive(other.id, seals);
+      expect(res.status, JSON.stringify(seals)).toBe(409);
+      expect(errorCode(res)).toBe(ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT);
+      expect(details(res)[0]?.message).toBe(first.id);
+      expect(await custodyOf(other.id)).toHaveLength(0);
+    }
+    // A neighbour is another seal, and a text seal is compared as typed (no case folded).
+    const neighbour = await book();
+    expect((await receive(neighbour.id, { bagSeals: ['21100', 'r21b-x'] })).status).toBe(200);
+  });
+
+  it('lets a seal come again once its محصنة has gone OUT of the vault — «ولو دخلت وخرجت واتكرر يبقى عادى»', async () => {
+    const gone = await held({ bagCount: 1, bagSeals: ['21201', '21202'] });
+    const assigned = await request(app)
+      .post(`/api/v1/operations/secured/${gone.id}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId: outCrewId, captainEmployeeId: captainId, version: 0 });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+    // Still in the vault: refused.
+    const early = await book();
+    expect((await receive(early.id, { bagSeals: ['21201'] })).status).toBe(409);
+    // Handed to its van: released — the vault no longer holds it.
+    const out = await dispatchOn(R21B_OUT, { crewAssignmentId: outCrewId, shipmentIds: [gone.id] });
+    expect(out.status, JSON.stringify(out.body)).toBe(200);
+    const [released] = await custodyOf(gone.id);
+    expect(released?.state).toBe('released');
+    expect(await heldSeals({ seals: ['21201', '21202'] })).toEqual([]);
+    const again = await receive(early.id, { bagSeals: ['21201'], boxSeals: ['21202'] });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    // …and once it is delivered and closed, the same.
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${gone.id}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await read(gone.id)).version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    // The seals are now held by the محصنة that took them again — that one is what refuses.
+    const third = await book();
+    const refused = await receive(third.id, { bagSeals: ['21202'] });
+    expect(refused.status).toBe(409);
+    expect(details(refused)[0]?.message).toBe(early.id);
+  });
+
+  it('frees the seals of a cancelled receipt — and refuses them back to the محصنة whose receipt it was, once another holds them', async () => {
+    const first = await held({ bagCount: 1, bagSeals: ['21301', '21302'] });
+    const second = await book();
+    expect((await receive(second.id, { bagSeals: ['21301'] })).status).toBe(409);
+    const cancelled = await cancel(first.id);
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    expect(await heldSeals({ seals: ['21301', '21302'] })).toEqual([]);
+    expect((await receive(second.id, { bagSeals: ['21301'] })).status).toBe(200);
+    // The first محصنة, back in draft, is received afresh — but 21301 is the second one's now.
+    const back = await receive(first.id, { bagSeals: ['21301', '21302'] });
+    expect(back.status).toBe(409);
+    expect(details(back)).toEqual([
+      { field: 'bagSeals.0', code: 'HELD_IN_VAULT', message: second.id },
+    ]);
+    expect((await receive(first.id, { bagSeals: ['21302'] })).status).toBe(200);
+  });
+
+  it('answers the check — which seals are held, once each, and on which محصنة — leaving the one being received out', async () => {
+    const first = await held({
+      receiptNumber: 'R21B-CHK',
+      bagCount: 1,
+      bagSeals: ['21401'],
+      boxCount: 1,
+      boxSeals: ['21402'],
+    });
+    const found = await heldSeals({
+      seals: ['21401', '', '  ', '021402', '21499', '21401', '٢١٤٠١'],
+    });
+    const holder = {
+      shipmentId: first.id,
+      receiptNumber: 'R21B-CHK',
+      mainBankName: bankA.opsName,
+      originBranchName: branchA1.name,
+      destinationBranchName: branchA1.name,
+      receivedAt: expect.any(String) as string,
+    };
+    // Each held seal once, at its first spelling, in the order sent; blanks and free seals unsaid.
+    expect(found).toEqual([
+      { seal: '21401', holder },
+      { seal: '021402', holder },
+    ]);
+    expect(Date.now() - new Date(found[0]?.holder.receivedAt ?? 0).getTime()).toBeLessThan(60_000);
+    // The shipment being received is not "another محصنة".
+    expect(await heldSeals({ seals: ['21401'], excludeShipmentId: first.id })).toEqual([]);
+    expect(await heldSeals({ seals: [] })).toEqual([]);
+    // The check is advice: it writes nothing, and the receipt asks again itself.
+    expect(await custodyOf(first.id)).toHaveLength(1);
+  });
+
+  it('is the receive’s own grant — 401 signed out, 403 without operationsVault.receive, 400 on a bad body', async () => {
+    expect((await check({ seals: ['1'] }, null)).status).toBe(401);
+    const viewer = await check({ seals: ['1'] }, vaultViewer);
+    expect(viewer.status).toBe(403);
+    expect((await check({ seals: ['1'] }, viewerToken)).status).toBe(403);
+    expect((await check({ seals: ['21499'] }, receiver)).status).toBe(200);
+    for (const body of [
+      {},
+      { seals: '21401' },
+      { seals: [21401] },
+      { seals: [], excludeShipmentId: 'not-an-id' },
+      { seals: [], version: 0 },
+    ]) {
+      const res = await check(body, receiver);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(errorCode(res)).toBe(ErrorCodes.VALIDATION_FAILED);
+    }
+  });
+
+  // «لو موجوده عندنا لا ك محصنة»: the محصنة being received is never "another" one. Its cancelled
+  // receipt holds nothing, so it comes back into the vault with every one of its own seals; and a
+  // محصنة the vault holds cannot be deleted from under its seals (the Round 10 lock), so a held
+  // seal is always on a live shipment.
+  it('takes a محصنة back with ALL its own seals after its receipt was cancelled — and a held one cannot be deleted from under them', async () => {
+    const seals = { bagCount: 1, bagSeals: ['21501', '21502'], boxCount: 1, boxSeals: ['021503'] };
+    const own = await held(seals);
+    const deleted = await request(app)
+      .delete(`/api/v1/operations/shipments/${own.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleted.status).toBe(409);
+    expect(errorCode(deleted)).toBe(ErrorCodes.OPERATIONS_SECURED_LOCKED);
+    expect((await heldSeals({ seals: ['21503'] }))[0]?.holder.shipmentId).toBe(own.id);
+
+    expect((await cancel(own.id)).status).toBe(200);
+    const again = await receive(own.id, { ...seals, boxSeals: ['21503'] });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    // Held again — by itself: left out when it is the one asking, named to anyone else.
+    expect(await heldSeals({ seals: ['21501', '21503'], excludeShipmentId: own.id })).toEqual([]);
+    expect(
+      (await heldSeals({ seals: ['21501', '21503'] })).map((h) => h.holder.shipmentId),
+    ).toEqual([own.id, own.id]);
   });
 });

@@ -37,11 +37,14 @@ import {
   MAX_PAGE_SIZE,
   OPERATIONS_CREW_ROW_COLOURS,
   asciiDigits,
+  crewRoleOf,
+  fitsCrewSlot,
   type ApiErrorDetail,
+  type OperationsCrewAvailability,
   type OperationsCrewBoardCrewDto,
   type OperationsCrewBoardDto,
   type OperationsCrewMemberDto,
-  type OperationsCrewRequirementsDto,
+  type OperationsCrewRole,
   type OperationsCrewRowColour,
   type OperationsDayBoardDriverDto,
   type OperationsDayBoardPersonDto,
@@ -413,34 +416,57 @@ export const parseClock = (typed: string): string | null | undefined => {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 };
 
-// ── The pools ───────────────────────────────────────────────────────────────────────────────────────
+// ── The roles, and the slots they take ─────────────────────────────────────────────────────────────
 
 /**
- * What the requirements make somebody on this board — and so their chip's colour:
+ * What the requirements make somebody on this board — and so their chip's colour, their pool, and
+ * (Round 23) the slots they may take. ONE definition, the contracts' (`crewRoleOf`), so the board
+ * and the save cannot disagree:
  *
- *   · `captain`    — «قائد» ticked and «أخصائي» not: green, in القادة;
- *   · `dual`       — BOTH ticked: BLUE, in القادة. «اللى فى خانة القادة بس لونهم ازرق وفى الاخر دول
- *                    اخصائيين … اقدر اوظفهم ك قائد او اخصائى» — a specialist who also leads, and the
- *                    one kind the owner named as fit for either seat;
- *   · `specialist` — everybody else (no «قائد», or no requirements row at all): red, in الأخصائيون —
- *                    the same answer legacy gave an employee nobody had ticked.
+ *   · `captain`    — «قائد» ticked and «أخصائي» not: green, in القادة, the captain's slot only;
+ *   · `dual`       — BOTH ticked: BLUE, in القادة (at its end) and never in الأخصائيون. «اللى فى خانة
+ *                    القادة بس لونهم ازرق وفى الاخر دول اخصائيين … اقدر اوظفهم ك قائد او اخصائى» — the one
+ *                    kind fit for every slot;
+ *   · `specialist` — everybody else (no «قائد», or no requirements row at all): red, in الأخصائيون,
+ *                    the specialists' slots only — the answer legacy gave an employee nobody ticked.
  */
-export type CrewRole = 'captain' | 'dual' | 'specialist';
-
-export const crewRoleOf = (requirements: OperationsCrewRequirementsDto | null): CrewRole =>
-  requirements?.isCaptain === true
-    ? requirements.isSpecialist
-      ? 'dual'
-      : 'captain'
-    : 'specialist';
+export type CrewRole = OperationsCrewRole;
+export { crewRoleOf, fitsCrewSlot };
 
 /**
- * Sitting outside one's role: a specialist in the captain's slot, or a captain-only in a
- * specialist's. MARKED, NOT REFUSED — requirements gate nothing (the approved decision every crew
- * screen carries); the chip says so quietly and the planner decides.
+ * Why a slot will not take somebody of this role, in the save's own two words (its `NOT_A_CAPTAIN`
+ * and `NOT_A_SPECIALIST`), or null when it fits. Round 23 — the owner: «ممنوع ان اعين قائد مكان
+ * اخصائى والعكس الا فى حالة انه قائد اخصائى». A REFUSAL, every way a person is put in a slot (the
+ * drop, the slot's list, «اختر ثم ضع هنا», the standing crew's load): the Round-20 board only marked
+ * such a seat, and the owner never asked for that.
+ *
+ * Somebody already sitting in such a seat — put there before the rule, or before his flags changed
+ * on «متطلبات الطاقم» — keeps it, marked, until the planner takes him out: the server lets a held
+ * seat stay, as it does an archived type or a person marked absent after he was planned.
  */
-export const outOfRole = (role: CrewRole, slot: CrewSlot): boolean =>
-  slot === 'captain' ? role === 'specialist' : role === 'captain';
+export type WrongSlot = 'notCaptain' | 'notSpecialist';
+
+export const wrongSlotOf = (role: CrewRole, slot: CrewSlot): WrongSlot | null =>
+  fitsCrewSlot(role, slot) ? null : slot === 'captain' ? 'notCaptain' : 'notSpecialist';
+
+/**
+ * The people on a row who sit in a slot their role does not fit — held seats, by who and where.
+ * `roleOf` answers null for somebody whose role the board cannot read (the roster no longer names
+ * him): he is not judged here — the save, which reads his requirements, is.
+ */
+export const rowMisfits = (
+  row: PlanRow,
+  roleOf: (employeeId: string) => CrewRole | null,
+): { employeeId: string; slot: CrewSlot; why: WrongSlot }[] =>
+  CREW_SLOTS.flatMap((slot) =>
+    row.slots[slot].flatMap((employeeId) => {
+      const role = roleOf(employeeId);
+      const why = role === null ? null : wrongSlotOf(role, slot);
+      return why === null ? [] : [{ employeeId, slot, why }];
+    }),
+  );
+
+// ── The pools ───────────────────────────────────────────────────────────────────────────────────────
 
 export const PLAN_POOLS = ['captains', 'specialists'] as const;
 export type PlanPool = (typeof PLAN_POOLS)[number];
@@ -474,9 +500,77 @@ export interface PlanPoolQuery {
 export const EMPTY_POOL_QUERY: PlanPoolQuery = { search: '', flags: [] };
 
 /**
- * One pool as listed: its members that match, the FREE ones first and those already on a row after
- * them — still listed (dimmed, with where), because «where is he» is a question the pool answers
- * and because dragging one of them is how he is moved. The server's order inside each half.
+ * Away on the board's day, as HR has it (Round 22): 'absent', 'onLeave', or null — at work, a
+ * weekend, no record yet, or a server from before the field. AN UNKNOWN IS NOT AN ABSENCE: only the
+ * two answers HR gives keep anybody off a row («لو القائد غايب … مقدرش احطه على العربيه»).
+ */
+export type CrewAway = OperationsCrewAvailability;
+
+export const awayOf = (member: OperationsCrewMemberDto | undefined): CrewAway | null =>
+  member?.availability === 'absent' || member?.availability === 'onLeave'
+    ? member.availability
+    : null;
+
+/** Is this member sent further down his pool's list? `placed`: everybody on a row of the draft. */
+type PoolTail = (member: OperationsCrewMemberDto, placed: ReadonlySet<string>) => boolean;
+
+/**
+ * What sends a member down his pool, the COARSEST first — each tail sorts INSIDE the one before it,
+ * and the server's order is kept inside the last:
+ *   1. AWAY that day → after EVERYBODY: «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى باللون
+ *      الباهت … و كذلك الاخصائيين» (Round 22). Still listed — the planner looking for him learns why
+ *      he cannot be put on a row instead of thinking he left the roster — faded, and not movable;
+ *   2. already on a row → after the free ones. Still listed (dimmed, with where), because «where is
+ *      he» is a question the pool answers and because dragging one of them is how he is moved;
+ *   3. BLUE → after the green captains: «وعاوز القادة اللى فى نفس الوقت اخصائيين يكونوا فى الاخر». The
+ *      planner looks for a captain first; a specialist who also leads is the fallback (Round 22).
+ *      Inside each half, so the pool reads free green, free blue, placed green, placed blue, then the
+ *      away ones in that same order. Only «القادة» holds blue ones (`planPoolOf`), so «الأخصائيون»
+ *      keeps the server's order inside each tail.
+ */
+const POOL_TAILS: readonly PoolTail[] = [
+  (member) => awayOf(member) !== null,
+  (member, placed) => placed.has(member.employeeId),
+  (member) => crewRoleOf(member.requirements) === 'dual',
+];
+
+/** The member's place among the tails, as a number: each tail a binary digit, the first the highest. */
+const poolRank = (member: OperationsCrewMemberDto, placed: ReadonlySet<string>): number =>
+  POOL_TAILS.reduce((rank, tail) => rank * 2 + (tail(member, placed) ? 1 : 0), 0);
+
+/**
+ * People in the board's listing order (`POOL_TAILS`), the server's order kept inside each tail (the
+ * sort is stable) — the pools' order, and the slot list's (Round 23: a specialist's slot lists the
+ * specialists, then the captain-specialists at the end, by the same tails).
+ */
+export const inListOrder = (
+  members: readonly OperationsCrewMemberDto[],
+  rows: readonly PlanRow[],
+): OperationsCrewMemberDto[] => {
+  const placed = new Set(rows.flatMap(rowPeople));
+  const rank = new Map(members.map((member) => [member, poolRank(member, placed)]));
+  return [...members].sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0));
+};
+
+/** Who can be put on a row now — on none yet, and not away: «متاح N». */
+export const countFree = (
+  members: readonly OperationsCrewMemberDto[],
+  rows: readonly PlanRow[],
+): number => {
+  const placed = new Set(rows.flatMap(rowPeople));
+  return members.filter((member) => !placed.has(member.employeeId) && awayOf(member) === null)
+    .length;
+};
+
+/** The pools' search: the name or the code (folded), and the icons (AND). */
+export const matchesPoolQuery = (member: OperationsCrewMemberDto, query: PlanPoolQuery): boolean =>
+  (foldIncludes(member.fullNameAr, query.search) || foldIncludes(member.code, query.search)) &&
+  query.flags.every((flag) => member.requirements?.[flag] === true);
+
+/**
+ * One pool as listed: its members that match the search and the icons, in `POOL_TAILS`' order —
+ * the server's order inside each tail (the sort is stable). `free` — «متاح N» — counts who can be
+ * put on a row now: on none yet, and not away.
  */
 export const listPool = (
   members: readonly OperationsCrewMemberDto[],
@@ -484,24 +578,68 @@ export const listPool = (
   rows: readonly PlanRow[],
   query: PlanPoolQuery,
 ): { listed: OperationsCrewMemberDto[]; total: number; free: number } => {
-  const placed = new Set(rows.flatMap(rowPeople));
   const mine = members.filter((member) => planPoolOf(member) === pool);
-  const matching = mine.filter(
-    (member) =>
-      (foldIncludes(member.fullNameAr, query.search) || foldIncludes(member.code, query.search)) &&
-      query.flags.every((flag) => member.requirements?.[flag] === true),
-  );
   return {
-    listed: [
-      ...matching.filter((member) => !placed.has(member.employeeId)),
-      ...matching.filter((member) => placed.has(member.employeeId)),
-    ],
+    listed: inListOrder(
+      mine.filter((member) => matchesPoolQuery(member, query)),
+      rows,
+    ),
     total: mine.length,
-    free: mine.filter((member) => !placed.has(member.employeeId)).length,
+    free: countFree(mine, rows),
   };
 };
 
 // ── The standing crew (الطاقم الثابت) ──────────────────────────────────────────────────────────────
+
+/**
+ * The standing crew AS THIS DAY MAY TAKE IT, before it is loaded: each van's people less two kinds,
+ * named so the load notice can say whom it left off —
+ *   · `away` — HR has him absent or on leave that day (Round 22): no row takes him;
+ *   · `wrongSlot` — his slot of the standing crew is one his role does not fit (Round 23 — «ممنوع
+ *     ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»): written there before the rule, or
+ *     before his flags changed. Loaded, he would take a new seat the save refuses.
+ * Each is counted as not loaded, like an absent one; the seat stays empty for the planner to fill.
+ */
+export const standingForDay = (
+  standing: readonly StandingCrewSource[],
+  memberOf: (employeeId: string) => OperationsCrewMemberDto | undefined,
+): {
+  sources: StandingCrewSource[];
+  away: string[];
+  wrongSlot: { employeeId: string; slot: CrewSlot }[];
+} => {
+  const away = new Set<string>();
+  const wrongSlot: { employeeId: string; slot: CrewSlot }[] = [];
+  const field = {
+    captain: 'captainEmployeeIds',
+    specialist1: 'specialist1EmployeeIds',
+    specialist2: 'specialist2EmployeeIds',
+  } as const;
+  const sources = standing.map((source) => {
+    const keep = (slot: CrewSlot): string[] =>
+      source[field[slot]].filter((employeeId) => {
+        const member = memberOf(employeeId);
+        if (awayOf(member) !== null) {
+          away.add(employeeId);
+          return false;
+        }
+        // Somebody the roster no longer names: his requirements cannot be read here, so he is not
+        // judged here either — loaded as before, and the save (which reads them) decides.
+        if (member !== undefined && !fitsCrewSlot(crewRoleOf(member.requirements), slot)) {
+          wrongSlot.push({ employeeId, slot });
+          return false;
+        }
+        return true;
+      });
+    return {
+      vehicleId: source.vehicleId,
+      captainEmployeeIds: keep('captain'),
+      specialist1EmployeeIds: keep('specialist1'),
+      specialist2EmployeeIds: keep('specialist2'),
+    };
+  });
+  return { sources, away: [...away], wrongSlot };
+};
 
 /**
  * The toggle's load, on this board's rows — by `loadStandingCrew` itself, so its two rules (only an
@@ -628,6 +766,53 @@ export const changeCount = (changes: ReturnType<typeof planChanges>): number =>
   changes.changed.length + changes.removedCrewIds.length;
 
 /**
+ * A NEW answer from the server under an unsaved draft — another desk saved a row of the same day,
+ * the realtime topic or a reconnect refetched — WITHOUT losing what the planner did here. Round 20
+ * replaced the draft with the answer: a name just dropped went back to its pool on its own, «بيرجع
+ * تانى اكنى متحطش» in the owner's words, with «حفظ» greyed out (Round 22).
+ *
+ * Row by row, against the answer the draft was made from (`base`):
+ *   · a row the planner did not touch takes the new answer — the other desk's change shows;
+ *   · a row he changed keeps his version, with the server's facts about it refreshed (the van's
+ *     code, its drivers, its saved crew's id);
+ *   · a row he took off (a row without a van deleted, or given a van) stays off;
+ *   · a row new on the server (another desk's row without a van, a van Fleet added) is added;
+ *   · his own rows not on the server — a row added here, a changed row the server no longer has —
+ *     stay, at the end: the save then says what became of them.
+ * Untouched everywhere → the answer itself, so nothing reads as changed. Somebody both desks seated
+ * on two rows is left for the save to refuse (Q11), never resolved here by editing a row the planner
+ * did not touch.
+ */
+export const rebaseDraft = (
+  draft: readonly PlanRow[],
+  base: readonly PlanRow[],
+  next: readonly PlanRow[],
+): readonly PlanRow[] => {
+  const before = new Map(base.map((row) => [row.key, row]));
+  const mine = new Map(draft.map((row) => [row.key, row]));
+  const touched = (row: PlanRow): boolean => {
+    const was = before.get(row.key);
+    return was === undefined || !sameRow(row, was);
+  };
+  if (!draft.some(touched) && base.every((row) => mine.has(row.key))) return next;
+  const out: PlanRow[] = [];
+  for (const row of next) {
+    const local = mine.get(row.key);
+    if (local === undefined) {
+      if (!before.has(row.key)) out.push(row);
+      continue;
+    }
+    out.push(
+      touched(local)
+        ? { ...local, vehicleCode: row.vehicleCode, drivers: row.drivers, crewId: row.crewId }
+        : row,
+    );
+  }
+  const answered = new Set(next.map((row) => row.key));
+  return [...out, ...draft.filter((row) => !answered.has(row.key) && touched(row))];
+};
+
+/**
  * What «حفظ» sends (`PlanOperationsCrewSchema`). Whole rows, as the server takes them: a field
  * left null is cleared. A saved row without a van is named by its `crewAssignmentId`; a new one,
  * and a van's row, by nothing but their place (`vehicleId`, or null).
@@ -666,22 +851,50 @@ export const toPlan = (
 export const isCrewClash = (failure: unknown): boolean =>
   failure instanceof ApiError && failure.status === 409 && failure.code === 'DUPLICATE';
 
-/** The two refusals a save can name a row in, and the cell each one is about. */
-export type PlanRefusalField = 'type' | 'direction';
+/**
+ * The refusals a save can name a row in, and what on it each one is about: its type box, its
+ * direction box, or one PERSON on it — `crew` (Round 22, somebody away that day newly put on it) or
+ * `slot` (Round 23, somebody newly put in a slot his role does not fit).
+ */
+export type PlanRefusalField = 'type' | 'direction' | 'crew' | 'slot';
+
+/** Why the save refused a person: away that day (`crew`), or in a slot not his (`slot`). */
+export type PersonRefusal = CrewAway | WrongSlot;
 
 export interface PlanRefusal {
   /** The row's key on screen. */
   key: string;
   field: PlanRefusalField;
-  /** The direction's parts no area answers, as they were typed — [] for a type. */
+  /** The direction's parts no area answers, as they were typed — [] for anything else. */
   parts: string[];
+  /** `crew` / `slot`: who, and why he may not go there. */
+  person?: { employeeId: string; reason: PersonRefusal };
 }
+
+/**
+ * The server's words for why somebody may not go there — `OPERATIONS_CREW_MEMBER_ABSENT`'s detail
+ * codes, and `OPERATIONS_CREW_MEMBER_WRONG_SLOT`'s.
+ */
+const PERSON_CODE: Record<PlanRefusalField, Record<string, PersonRefusal>> = {
+  type: {},
+  direction: {},
+  crew: { ABSENT: 'absent', ON_LEAVE: 'onLeave' },
+  slot: { NOT_A_CAPTAIN: 'notCaptain', NOT_A_SPECIALIST: 'notSpecialist' },
+};
 
 /**
  * A refused save → the row it names, so the board marks THAT row's cell rather than leaving the
  * planner to find it among fifty. The server names the row by its place in the save's `rows`
  * (`ROW_INDEX`) — the order `toPlan` sent `changed` in. Null for any other refusal (a Q11 clash, a
  * row deleted on another desk): those are said, not placed.
+ *
+ * Round 22 — `OPERATIONS_CREW_MEMBER_ABSENT`: somebody away that day put on a row on another desk's
+ * screen, or before HR recorded it here. The detail names him (`employeeId`, 'ABSENT'/'ON_LEAVE'):
+ * the board rings his chip on that row and says his name.
+ *
+ * Round 23 — `OPERATIONS_CREW_MEMBER_WRONG_SLOT` the same way ('NOT_A_CAPTAIN'/'NOT_A_SPECIALIST'):
+ * somebody whose flags another desk changed on «متطلبات الطاقم» after this board read them, newly
+ * put in a slot that no longer fits him.
  */
 export const planRefusal = (
   failure:
@@ -695,12 +908,25 @@ export const planRefusal = (
       ? 'type'
       : failure?.code === 'OPERATIONS_DIRECTION_NOT_AN_AREA'
         ? 'direction'
-        : null;
+        : failure?.code === 'OPERATIONS_CREW_MEMBER_ABSENT'
+          ? 'crew'
+          : failure?.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
+            ? 'slot'
+            : null;
   if (field === null) return null;
   const details = failure?.details ?? [];
   const index = details.find((detail) => detail.code === 'ROW_INDEX')?.message;
   const row = index === undefined ? undefined : sent[Number(index)];
   if (row === undefined) return null;
+  if (field === 'crew' || field === 'slot') {
+    const named = details.find((detail) => detail.field === 'employeeId');
+    const reason = named === undefined ? undefined : PERSON_CODE[field][named.code];
+    // Somebody the server names who is not on the row it names: placed on the row, said, unringed.
+    if (named === undefined || reason === undefined || !rowPeople(row).includes(named.message)) {
+      return { key: row.key, field, parts: [] };
+    }
+    return { key: row.key, field, parts: [], person: { employeeId: named.message, reason } };
+  }
   return {
     key: row.key,
     field,

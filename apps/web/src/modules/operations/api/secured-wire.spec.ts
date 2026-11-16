@@ -10,10 +10,15 @@
 //   · «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر» (Round 11): the vault roll-up asks for
 //     its period — `from` and `to` on the request, as the captain report's — at
 //     `/reports/banks` since Round 14, when it became «تقرير البنوك».
+//   · «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى» (Round 21b): the receive
+//     form's seal check POSTs the seals in its body, with the signal that lets a stale one be
+//     stopped, and a check that fails answers "not known" — never an error the form must handle.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { del, get, post } from '../../../shared/lib/api-client';
+import { api, del, get, post } from '../../../shared/lib/api-client';
+import { __askVaultSeals } from './operations-queries';
 import {
   cancelVaultReceipt,
+  checkVaultSeals,
   confirmSecuredPickup,
   getBankReport,
   getSecuredDispatchBoard,
@@ -28,6 +33,7 @@ vi.mock('../../../shared/lib/api-client', async () => {
     get: vi.fn(async () => ({})),
     post: vi.fn(async () => ({})),
     del: vi.fn(async () => ({})),
+    api: vi.fn(async () => ({ held: [] })),
   };
 });
 
@@ -35,6 +41,7 @@ beforeEach(() => {
   vi.mocked(get).mockClear();
   vi.mocked(post).mockClear();
   vi.mocked(del).mockClear();
+  vi.mocked(api).mockClear();
 });
 
 describe('the desk’s pickup ✓ and its undo', () => {
@@ -81,5 +88,43 @@ describe('«تقرير البنوك» — the period of vault receipts (was «ت
   it('carries `from` and `to` on the request, both days inclusive, at the screen’s own name', async () => {
     await getBankReport({ from: '2026-11-01', to: '2026-11-30' });
     expect(get).toHaveBeenCalledWith('/operations/reports/banks?from=2026-11-01&to=2026-11-30');
+  });
+});
+
+describe('the receive form’s seal check (Round 21b)', () => {
+  it('POSTs the seals and the shipment being received in the body — with the signal', async () => {
+    const signal = new AbortController().signal;
+    await checkVaultSeals({ seals: ['7', '21'], excludeShipmentId: 's-4' }, { signal });
+    expect(api).toHaveBeenCalledWith('/operations/secured/seal-check', {
+      method: 'POST',
+      body: JSON.stringify({ seals: ['7', '21'], excludeShipmentId: 's-4' }),
+      signal,
+    });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('asks without a signal when none is given — and sends no shipment when there is none', async () => {
+    await checkVaultSeals({ seals: ['7'] });
+    expect(api).toHaveBeenCalledWith('/operations/secured/seal-check', {
+      method: 'POST',
+      body: JSON.stringify({ seals: ['7'] }),
+    });
+    await __askVaultSeals(['7'], null, new AbortController().signal);
+    expect(vi.mocked(api).mock.calls[1]?.[1]?.body).toBe(JSON.stringify({ seals: ['7'] }));
+  });
+
+  it('answers what the vault said, or null when it could not be asked — never a thrown error', async () => {
+    const answer = { held: [] };
+    vi.mocked(api).mockResolvedValueOnce(answer);
+    expect(await __askVaultSeals(['7'], 's-1', new AbortController().signal)).toBe(answer);
+    vi.mocked(api).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    expect(await __askVaultSeals(['7'], 's-1', new AbortController().signal)).toBeNull();
+  });
+
+  it('lets an overtaken check fail as TanStack cancelled it — no answer for seals no longer typed', async () => {
+    const asked = new AbortController();
+    asked.abort();
+    vi.mocked(api).mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+    await expect(__askVaultSeals(['7'], 's-1', asked.signal)).rejects.toThrow('aborted');
   });
 });

@@ -230,6 +230,21 @@ export const HOVER_CARD_FRAME =
   "w-72 max-w-[calc(100vw-16px)] rounded-xl border border-slate-200 bg-white p-3 text-start text-slate-900 shadow-2xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-white [font-family:'Cairo',sans-serif]";
 
 /**
+ * A TIP's frame: the cards' fill, border and shadow in both themes, sized to its words — the name of
+ * an icon, said in a box that reads as the app's own rather than the browser's grey `title`.
+ */
+export const HOVER_TIP_FRAME =
+  "w-max max-w-[16rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-start text-[12.5px] font-bold leading-5 text-slate-800 shadow-xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-slate-100 [font-family:'Cairo',sans-serif]";
+
+/**
+ * The point under a tip (`align="center"`), at its icon: a small square turned on its corner, in the
+ * tip's fill with the border on its two outer sides — so a tip over a column of chips says WHICH
+ * icon it names, not the chip it happens to lie on.
+ */
+const TIP_POINT =
+  'pointer-events-none absolute h-2 w-2 -translate-x-1/2 rotate-45 border-slate-200 bg-white dark:border-[#2b3b6b] dark:bg-[#131d35]';
+
+/**
  * Where the card is drawn: ABOVE its trigger, below it when there is no room above; its start edge
  * on the trigger's start edge, kept on the screen. Measured before it is painted, and again as the
  * page scrolls or the card's own lines land.
@@ -246,19 +261,36 @@ export const HoverCardLayer = ({
   id,
   anchor,
   mark,
+  frame = HOVER_CARD_FRAME,
+  align = 'start',
   children,
 }: {
   id: string;
   anchor: RefObject<HTMLElement | null>;
   /**
    * `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), and `roster` the
-   * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics.
+   * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics. On «لوحة التشغيلة»
+   * (Round 22): `crew-plan` the person card on a name, `crew-flag` the small tip that names a
+   * requirement icon (`crew-plan-icons`).
    */
-  mark: 'driver' | 'vehicle' | 'captain' | 'crew' | 'roster';
+  mark: 'driver' | 'vehicle' | 'captain' | 'crew' | 'roster' | 'crew-plan' | 'crew-flag';
+  /**
+   * The look. Every card keeps the cards' frame; a TIP — a word or two for an icon — takes
+   * `HOVER_TIP_FRAME`, on the same mechanics.
+   */
+  frame?: string;
+  /** `start` hangs a card off its trigger's start edge; `center` sets a tip over its icon's middle. */
+  align?: 'start' | 'center';
   children: ReactNode;
 }): JSX.Element | null => {
   const panel = useRef<HTMLDivElement>(null);
-  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  /** Where it is drawn, which side of its trigger, and (a tip) where its point meets the trigger. */
+  const [at, setAt] = useState<{
+    top: number;
+    left: number;
+    side: 'above' | 'below';
+    point: number;
+  } | null>(null);
   useBrowserLayoutEffect(() => {
     const clips = anchor.current === null ? [] : clippingBoxes(anchor.current);
     const place = (): void => {
@@ -284,16 +316,26 @@ export const HoverCardLayer = ({
       }
       const width = box.offsetWidth;
       const height = box.offsetHeight;
-      const gap = 6;
-      const top =
-        rect.top - gap - height >= 8
-          ? rect.top - gap - height
-          : Math.min(rect.bottom + gap, window.innerHeight - height - 8);
+      // A tip leaves room for its point.
+      const gap = align === 'center' ? 9 : 6;
+      const above = rect.top - gap - height >= 8;
+      const top = above
+        ? rect.top - gap - height
+        : Math.min(rect.bottom + gap, window.innerHeight - height - 8);
       const rtl = getComputedStyle(box).direction === 'rtl';
-      const start = rtl ? rect.right - width : rect.left;
+      const start =
+        align === 'center'
+          ? rect.left + rect.width / 2 - width / 2
+          : rtl
+            ? rect.right - width
+            : rect.left;
+      const left = Math.min(window.innerWidth - width - 8, Math.max(8, start));
       setAt({
         top: Math.max(8, top),
-        left: Math.min(window.innerWidth - width - 8, Math.max(8, start)),
+        left,
+        side: above ? 'above' : 'below',
+        // Kept off the rounded corners when the tip is pushed in from the screen's edge.
+        point: Math.min(width - 10, Math.max(10, rect.left + rect.width / 2 - left)),
       });
     };
     place();
@@ -306,7 +348,7 @@ export const HoverCardLayer = ({
       window.removeEventListener('resize', place);
       watch?.disconnect();
     };
-  }, [anchor]);
+  }, [anchor, align]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
@@ -314,11 +356,27 @@ export const HoverCardLayer = ({
       id={id}
       role="tooltip"
       {...{ [`data-${mark}-hover-card`]: 'true' }}
+      data-side={at?.side}
       // Unseen until it has its place, so it never flashes at the corner of the screen.
-      style={at === null ? { top: 0, left: 0, visibility: 'hidden' } : at}
-      className={cn('pointer-events-none fixed z-[110] animate-menu-in', HOVER_CARD_FRAME)}
+      style={
+        at === null ? { top: 0, left: 0, visibility: 'hidden' } : { top: at.top, left: at.left }
+      }
+      className={cn('pointer-events-none fixed z-[110] animate-menu-in', frame)}
     >
       {children}
+      {align === 'center' && at !== null && (
+        <span
+          aria-hidden
+          data-tip-point="true"
+          style={{ left: at.point }}
+          className={cn(
+            TIP_POINT,
+            at.side === 'above'
+              ? '-bottom-[5px] border-b border-r'
+              : '-top-[5px] border-l border-t',
+          )}
+        />
+      )}
     </div>,
     document.body,
   );

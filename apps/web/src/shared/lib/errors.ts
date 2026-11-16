@@ -53,6 +53,11 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
     OPERATIONS_SECURED_NOT_IN_VAULT:
       'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
+    // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal the
+    // vault still holds on another محصنة. The receive form marks the seal and names that محصنة
+    // itself; these are the same refusal wherever else it surfaces.
+    OPERATIONS_SEAL_HELD_IN_VAULT:
+      'A seal in this receipt is still in the vault on another secured shipment — it can be received again only once that shipment has left the vault.',
     // «صرف الخزينة» (Round 10): a delivery crew is planned on the shipment's own delivery day, and a
     // release takes the shipments a vehicle was assigned. The screen offers only what fits; these
     // reach a reader whose crew plan or list changed under the open dialog.
@@ -84,6 +89,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A row was given a shift type that is no longer active on the reference screen — choose another type on the marked row.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
       'A direction is not one of the areas on the reference screen — choose it from the list on the marked row.',
+    // Round 22 — «لو القائد غايب … مقدرش احطه على العربيه»: somebody attendance has absent or on
+    // leave that day was put on a row. The board names him on the marked row (`planRefusal`).
+    OPERATIONS_CREW_MEMBER_ABSENT: 'Somebody on a row is absent or on leave on this day.',
+    // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: somebody was
+    // newly put in a slot his role does not fit. The board names him on the marked row.
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'Somebody is in a slot that is not their role’s — a captain in a specialist’s slot, or a specialist in the captain’s.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     RATE_LIMITED: 'Too many requests — please slow down.',
@@ -126,6 +138,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
+    OPERATIONS_SEAL_HELD_IN_VAULT:
+      'أحد أختام هذا الاستلام ما زال في الخزينة على محصنة أخرى، ولا يُستلم مجددًا إلا بعد خروجها منها.',
     OPERATIONS_CREW_DAY_MISMATCH:
       'هذا الطاقم ليس مخططًا في يوم تسليم هذه الشحنة — اختر أحد أطقم ذلك اليوم.',
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
@@ -144,6 +158,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'أُعطي أحد الصفوف نوعًا لم يعد مفعّلًا في البيانات المرجعية — اختر نوعًا آخر في الصف المُعلَّم.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
       'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — اختره من القائمة في الصف المُعلَّم.',
+    OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',

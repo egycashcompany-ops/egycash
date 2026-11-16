@@ -37,8 +37,10 @@ import {
   type UpdateEmployeePersonal,
   type UpdateUser,
   type UserDto,
+  type PurgeEmployee,
+  type EmployeePurgeReportDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, patchWithMeta, post, upload,
+import { buildQuery, del, get, getPage, patch, patchWithMeta, post, upload,
   type DataWithMeta,
   type QueryParams,
 } from '../../../../../shared/lib/api-client';
@@ -114,6 +116,19 @@ export const changeEmployeeCode = (
   body: ChangeEmployeeCode,
 ): Promise<DataWithMeta<EmployeeDto, ChangeEmployeeCodeMeta>> =>
   patchWithMeta<EmployeeDto, ChangeEmployeeCodeMeta>(`/hr/employees/${id}/code`, body);
+
+/**
+ * «مسح نهائي» — erase the employee from the system, permanently.
+ *
+ * The code is typed back in the body: the server refuses unless it matches this employee's own,
+ * so an id alone cannot erase somebody. There is no undo and no soft state afterwards — the
+ * caller should leave the profile, because it will not be there.
+ */
+export const purgeEmployee = (
+  id: string,
+  body: PurgeEmployee,
+): Promise<EmployeePurgeReportDto> =>
+  del<EmployeePurgeReportDto>(`/hr/employees/${id}/purge`, body);
 
 /** The officer / armed-security profile — replaced whole, same as the insurance file. */
 export const updateEmployeeOfficer = (

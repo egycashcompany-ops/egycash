@@ -7,7 +7,7 @@
 // `secured/secured.service.ts`, which drives this port. Keeping the port that dumb is what makes
 // swapping in a real Treasury module a registration change rather than a rewrite.
 import { Types, type ClientSession } from 'mongoose';
-import { OPERATIONS_VAULT_DENOMINATIONS, OperationsEvents } from '@ecms/contracts';
+import { OPERATIONS_VAULT_DENOMINATIONS, OperationsEvents, vaultSealKey } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -17,6 +17,7 @@ import {
   type VaultCustodyProvider,
   type VaultCustodyView,
   type VaultDenominationCount,
+  type VaultHeldSeal,
   type VaultReceiptInput,
 } from '../treasury-boundary';
 import { operationsVaultCustodyRepository } from './vault-custody.repository';
@@ -288,6 +289,39 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
       sortableFields: ['receivedAt', 'createdAt'],
     });
     return { items: found.items.map(toCustodyView), total: found.meta.totalItems };
+  }
+
+  /**
+   * Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». ONE read of
+   * the seals the treasury holds now (`findHeldSeals` — held, not cancelled), keyed by the contract's
+   * `vaultSealKey`, then the caller's seals looked up in memory. A seal of a custody released to its
+   * van, or of a cancelled receipt, is in no held row, so it is free to come again.
+   */
+  async heldSeals(
+    seals: readonly string[],
+    options: { excludeShipmentId?: string; session?: unknown } = {},
+  ): Promise<VaultHeldSeal[]> {
+    const asked = seals.flatMap((seal, index) => {
+      const key = vaultSealKey(seal);
+      return key === null ? [] : [{ seal, index, key }];
+    });
+    if (asked.length === 0) return [];
+    const rows = await operationsVaultCustodyRepository.findHeldSeals(
+      options.excludeShipmentId,
+      options.session as ClientSession | undefined,
+    );
+    const holderOf = new Map<string, string>();
+    for (const row of rows) {
+      for (const seal of [...row.bagSeals, ...row.boxSeals]) {
+        const key = vaultSealKey(seal);
+        // The first receipt to take a seal answers for it (rows come oldest received first).
+        if (key !== null && !holderOf.has(key)) holderOf.set(key, String(row.shipmentId));
+      }
+    }
+    return asked.flatMap(({ seal, index, key }) => {
+      const shipmentId = holderOf.get(key);
+      return shipmentId === undefined ? [] : [{ seal, index, shipmentId }];
+    });
   }
 
   async receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]> {

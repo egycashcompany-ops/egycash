@@ -247,8 +247,9 @@ export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
  * NO number from the company's counter: their `employeeNumber` is the code itself. A drawn number
  * was never shown, yet it held the company code with that number — «02002943 … مسجَّل بالفعل
  * للموظف C2». Nothing reads a branch or a number out of an external code, and nothing should:
- * `findHighestNumberedCode` already matches digits only, so these never reach the hint the
- * ordinary registration screen shows.
+ * `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
+ * registration screen shows nor holds employee number 2900.
  */
 export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
 
@@ -265,9 +266,26 @@ export const employeeCodeSerial = (code: string): number => Number(code.slice(3)
 /** A code with its branch hidden, the way the register screen states the last one: `xxx2862`. */
 export const maskEmployeeCodeBranch = (code: string): string => `xxx${code.slice(3)}`;
 
+/**
+ * The code an employee may be given by hand: the company's digits for everybody, and an external
+ * person's own name for an external person — «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح
+ * بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+ *
+ * Pure, so the change dialog and the service apply the same rule. The boundary below admits either
+ * shape because it cannot see whose code it is; the service, which can, holds each person to theirs.
+ */
+export const employeeCodePatternFor = (origin: EmployeeOrigin): RegExp =>
+  origin === 'external' ? EXTERNAL_EMPLOYEE_CODE_PATTERN : EMPLOYEE_CODE_PATTERN;
+
 export const ChangeEmployeeCodeSchema = z
   .object({
-    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
+    code: z
+      .string()
+      .trim()
+      .refine(
+        (code) => EMPLOYEE_CODE_PATTERN.test(code) || EXTERNAL_EMPLOYEE_CODE_PATTERN.test(code),
+        { message: 'an employee code is digits, or an external code of letters, digits and a hyphen' },
+      ),
     reason: z.string().trim().min(3).max(500),
     version: z.number().int().min(0),
   })
@@ -277,6 +295,38 @@ export type ChangeEmployeeCode = z.infer<typeof ChangeEmployeeCodeSchema>;
 /** Said back after a change: whether the employee's sign-in name followed the code. */
 export interface ChangeEmployeeCodeMeta {
   loginUsernameChanged: boolean;
+}
+
+/**
+ * «مسح نهائي» — permanently delete one employee.
+ *
+ * THE CODE IS TYPED BACK, and that is the whole body. A permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH person it was for: the server
+ * refuses unless `confirmCode` matches the employee's own code. An id alone — copied from a URL,
+ * left over in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeEmployeeSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeEmployee = z.infer<typeof PurgeEmployeeSchema>;
+
+/**
+ * What the erasure took, said back so it can be read once and never again.
+ *
+ * `namesScrubbed` and `keptCollections` are the half people do not expect: a gold receipt, a
+ * traffic violation and the consumables ledger are records in their own right and are NOT deleted
+ * with the person — their copy of the name is rewritten instead.
+ */
+export interface EmployeePurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  namesScrubbed: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+  /** Collections left standing on purpose, with the person's name rewritten on them. */
+  keptCollections: string[];
 }
 
 export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({

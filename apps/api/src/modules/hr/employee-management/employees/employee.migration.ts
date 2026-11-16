@@ -137,11 +137,17 @@ export const migrateEmployeeIndexes = async (): Promise<void> => {
  * device punch for 2943 (`findByEmployeeNumberSystem`) would find C2, not the person hired as
  * 02002943. An external person's number is now their code; each one registered before is given it.
  *
- * Idempotent: only an external record whose number is not its code is touched. Returns how many.
+ * Only a number in the counter's shape (digits) that is not the code is touched: that is a drawn
+ * one. A code changed by hand later leaves the person's number at the code they were registered
+ * with, which is no company number, and that is left alone. Idempotent; returns how many.
  */
 export const migrateExternalEmployeeNumbers = async (): Promise<number> => {
   const result = await EmployeeModel.collection.updateMany(
-    { origin: 'external', $expr: { $ne: ['$employeeNumber', '$code'] } },
+    {
+      origin: 'external',
+      employeeNumber: { $regex: '^[0-9]+$' },
+      $expr: { $ne: ['$employeeNumber', '$code'] },
+    },
     [{ $set: { employeeNumber: '$code' } }],
   );
   return result.modifiedCount;

@@ -173,7 +173,9 @@ export const registerHrDirectorySeams = (): void => {
   // B5 adds the ATTENDANCE-DAY lookup. Read-only and batch: the Operations crew board shows a
   // day's attendance beside the roster, and attendance is NOT an eligibility gate there (legacy
   // never queried absence for the cash-transfer department at all — discovery §10.2), so this
-  // seam deliberately answers a question and grants nothing.
+  // seam deliberately answers a question and grants nothing. (Round 22: the owner made absence a
+  // rule on the crew board — that rule is Operations', asked of this answer; the seam still
+  // decides nothing.)
   registerAttendanceDayLookup(async (employeeIds, date) => {
     const rows = await AttendanceDayModel.find({
       employeeId: { $in: employeeIds },

@@ -840,6 +840,53 @@ export interface RenderCandidateBulkDto {
 }
 
 /**
+ * A28 — «المعينون» on «جاهزون للتعيين»: «هتجبلي كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان
+ * لو هطبع لناس كتير فنفس الوقت». The same «طباعة لكل المحدد» as for candidates, for people already
+ * employed: each on a line of their own with their job's papers (their contract first), ONE document.
+ */
+export const EMPLOYEE_BULK_MAX = CANDIDATE_BULK_MAX;
+
+export const EmployeeBulkSchema = z
+  .object({ employeeIds: z.array(objectId()).min(1).max(EMPLOYEE_BULK_MAX) })
+  .strict();
+export type EmployeeBulk = z.infer<typeof EmployeeBulkSchema>;
+
+export interface EmployeeBulkPersonDto {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** The employee's papers, in print order — as their «طباعة العقد والمستندات» tab lists them. */
+  papers: JobPaperDto[];
+  /** Why the employee cannot be printed for (out of the caller's reach…), else null. */
+  error: string | null;
+}
+
+export const RenderEmployeeBulkSchema = z
+  .object({
+    /** Each employee with the papers chosen for them — of their own job's papers. */
+    people: z
+      .array(
+        z
+          .object({
+            employeeId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(EMPLOYEE_BULK_MAX),
+  })
+  .strict();
+export type RenderEmployeeBulk = z.infer<typeof RenderEmployeeBulkSchema>;
+
+export interface RenderEmployeeBulkDto {
+  html: string;
+  /** Per employee: printed (and how many papers), or why not. */
+  results: { employeeId: string; printed: number; error: string | null }[];
+}
+
+/**
  * A28 — «مستندات الوظائف» on «جاهزون للتعيين», by department and job — «علي حسب الاداره و الوظيفه»:
  * every department, the jobs in it, and beside each job every paper — ticked, what a person of that
  * job in that department prints. What is ticked here is what «عقد جديد», «طباعة لكل المحدد» and the

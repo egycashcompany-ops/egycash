@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { type CandidateBulkPersonDto, type Locale } from '@ecms/contracts';
+import { type Locale } from '@ecms/contracts';
+import { type BulkPerson } from './components/BulkPrintDialog';
 import { translate } from '../../../platform/localization/i18n';
-import { printRequest, startingChoice } from './components/BulkPrintDialog';
+import { candidatePerson, employeePerson, employeePrintRequest, printRequest, startingChoice } from './components/BulkPrintDialog';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -20,7 +21,7 @@ const person = (
   offerId: string,
   keys: [string, 'contract' | 'everyJob' | 'thisJob'][],
   optional: readonly string[] = [],
-): CandidateBulkPersonDto => ({
+): BulkPerson => candidatePerson({
   offerId,
   applicantName: offerId,
   offerCode: null,
@@ -81,26 +82,28 @@ describe('«جاهزون للتعيين»', () => {
 
   it('opens the popup with the ticked people, and clears them once printed', () => {
     expect(READY).toContain('<BulkPrintDialog');
-    expect(READY).toContain('offerIds={selection.ids}');
+    expect(READY).toContain('ids={selection.ids}');
+    expect(READY).toContain('source="candidates"');
     expect(READY).toContain('onPrinted={selection.clear}');
   });
 });
 
 describe('the popup', () => {
   it('gives each person a line with their own paper tiles, with all / none per line and for everyone', () => {
-    expect(DIALOG).toContain('data-bulk-person={person.offerId}');
+    expect(DIALOG).toContain('data-bulk-person={person.id}');
     expect(DIALOG).toContain('{person.papers.map((paper) => (');
     expect(DIALOG).toContain('<PaperTile');
-    expect(DIALOG).toContain('onToggle={(on) => toggle(person.offerId, paper.key, on)}');
+    expect(DIALOG).toContain('onToggle={(on) => toggle(person.id, paper.key, on)}');
     expect(DIALOG).toContain("t('contracts.candidate.selectAll')");
     expect(DIALOG).toContain("t('contracts.bulk.everyoneAll')");
     expect(DIALOG).toContain('setChosen(startingChoice(loaded))');
-    expect(DIALOG).toContain('render.mutateAsync(request)');
+    expect(DIALOG).toContain('renderCandidates.mutateAsync(printRequest(people, chosen))');
   });
 
   it('prints on «تأكيد الطباعة», the tab opened on the click itself', () => {
     expect(DIALOG).toContain("t('contracts.bulk.confirm')");
-    expect(DIALOG.indexOf('openPrintWindow(')).toBeLessThan(DIALOG.indexOf('render.mutateAsync('));
+    expect(DIALOG.indexOf('openPrintWindow(')).toBeLessThan(DIALOG.indexOf('renderEmployees.mutateAsync('));
+    expect(DIALOG.indexOf('openPrintWindow(')).toBeLessThan(DIALOG.indexOf('renderCandidates.mutateAsync('));
     expect(translate('ar', 'contracts.bulk.confirm')).toBe('تأكيد الطباعة');
   });
 
@@ -109,5 +112,35 @@ describe('the popup', () => {
     for (const locale of ['ar', 'en'] as Locale[]) {
       for (const key of used) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
     }
+  });
+});
+
+/**
+ * «المعينون» — the same popup for people already employed: «هتجبلي كل اللي موجودين من موظفين فالشركه
+ * و بردو checkbox عشان لو هطبع لناس كتير فنفس الوقت».
+ */
+describe('«المعينون»', () => {
+  const employee = employeePerson({
+    employeeId: 'e1',
+    employeeName: 'أحمد محمود',
+    employeeCode: '0102951',
+    jobTitle: { ar: 'سائق', en: 'Driver' },
+    papers: [
+      { key: 'contract', name: { ar: 'عقد', en: 'Contract' }, kind: 'contract', group: 'contract', optional: false },
+      { key: 'sheet', name: { ar: 'استمارة', en: 'Sheet' }, kind: 'form', group: 'everyJob', optional: false },
+    ],
+    error: null,
+  });
+
+  it('lines an employee up by their employee id, their code shown, and prints by employee', () => {
+    expect(employee).toMatchObject({ id: 'e1', name: 'أحمد محمود', code: '0102951' });
+    const chosen = new Map([['e1', new Set(['sheet'])]]);
+    expect(employeePrintRequest([employee], chosen)).toEqual({ people: [{ employeeId: 'e1', keys: ['sheet'] }] });
+  });
+
+  it('opens and prints through the employees\' own calls when the source is employees', () => {
+    expect(DIALOG).toContain("source: 'candidates' | 'employees'");
+    expect(DIALOG).toContain('openEmployees.mutateAsync(ids).then((rows) => rows.map(employeePerson))');
+    expect(DIALOG).toContain('renderEmployees.mutateAsync(employeePrintRequest(people, chosen))');
   });
 });

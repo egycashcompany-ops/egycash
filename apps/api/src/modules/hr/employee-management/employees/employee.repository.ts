@@ -17,7 +17,7 @@ import {
 export interface EmployeeListFilter {
   status?: string | undefined;
   employed?: boolean | undefined;
-  origin?: string | undefined;
+  origin?: readonly string[] | undefined;
   applicantId?: string | undefined;
   jobOfferId?: string | undefined;
   branchId?: readonly string[] | undefined;
@@ -616,7 +616,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.employed !== undefined)
       clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });
-    if (f.origin !== undefined) clauses.push({ origin: f.origin });
+    if (f.origin !== undefined) clauses.push({ origin: { $in: [...f.origin] } });
     if (f.applicantId !== undefined)
       clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.jobOfferId !== undefined) clauses.push({ jobOfferId: new Types.ObjectId(f.jobOfferId) });

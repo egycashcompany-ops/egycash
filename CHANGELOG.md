@@ -11,6 +11,20 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
+  toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي
+  الاعدادت فال hr»; «ملهاش دعوه باللي فالجدول». The bar sits above the ready-to-hire table, which is
+  unchanged; each section opens under it at its own address, and pressing it again goes back to the
+  table.
+  - **«مستندات الوظائف»** is the same editor that opened as a popup from the table's header, now a
+    section with «حفظ» and «تراجع عن التغييرات» kept in view at its foot.
+  - **«المعينون»** lists everybody employed now, not external people and not those whose service
+    ended, with search by code or name and branch, department and job ticks. Ticked people print
+    through the same «طباعة لكل المحدد» popup as candidates: each on a line of their own with their
+    job's papers, one document. A row's «طباعة العقد والمستندات» opens the employee's own tab.
+  - The server takes `POST /hr/contracts/employees/bulk/open` and `…/render` (`contract.print`, at
+    most 50 people). The employee list's `origin` filter takes a list.
+
 - **IT: the asset register's bulk upload, previewed before anything is written.** «في الأصول عايز
   زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف ويوضح لو فى
   تكرار أو تضارب مع بيانات موجوده وهكذا»; then the branch is chosen on the screen, and a device in

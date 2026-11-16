@@ -612,7 +612,11 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   status: EmployeeStatusSchema.optional(),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
   employed: z.coerce.boolean().optional(),
-  origin: EmployeeOriginSchema.optional(),
+  /**
+   * How the person entered the registry — a LIST, like `branchId`: «المعينون» asks for everybody
+   * the company hired (`recruitment,direct`), leaving the external people out. One value still parses.
+   */
+  origin: listQuery(EmployeeOriginSchema, 3),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),

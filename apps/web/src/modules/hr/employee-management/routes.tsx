@@ -12,6 +12,9 @@ import { EmployeeProfilePage } from './employees/pages/EmployeeProfilePage';
 import { MyProfilePage } from './employees/pages/MyProfilePage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
 import { EmployeesReadyPage } from './employees/pages/EmployeesReadyPage';
+import { ReadyHubLayout } from './employees/pages/ReadyHubLayout';
+import { ReadyJobPapersPage } from './employees/pages/ReadyJobPapersPage';
+import { HiredEmployeesPage } from './employees/pages/HiredEmployeesPage';
 import { DirectRegisterPage } from './employees/pages/DirectRegisterPage';
 
 export default function EmployeeManagementRoutes(): JSX.Element {
@@ -44,15 +47,36 @@ export default function EmployeeManagementRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
-          {/* A6/RW15 — accepted offers not yet converted into an Employee. */}
+          {/*
+            A6/RW15 — accepted offers not yet converted into an Employee; above them (A28) the bar
+            with «مستندات الوظائف» and «المعينون», each a section of its own address.
+          */}
           <Route
             path="ready"
             element={
               <RequirePermission permission="employee.create">
-                <EmployeesReadyPage />
+                <ReadyHubLayout />
               </RequirePermission>
             }
-          />
+          >
+            <Route index element={<EmployeesReadyPage />} />
+            <Route
+              path="job-papers"
+              element={
+                <RequirePermission permission="contractTemplate.manage">
+                  <ReadyJobPapersPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="hired"
+              element={
+                <RequirePermission permission="contract.print">
+                  <HiredEmployeesPage />
+                </RequirePermission>
+              }
+            />
+          </Route>
           <Route
             path="register"
             element={

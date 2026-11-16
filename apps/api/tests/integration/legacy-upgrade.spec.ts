@@ -37,8 +37,12 @@ import { ApplicantSourceModel } from '../../src/modules/hr/recruitment/applicant
 import { LeaveTypeModel } from '../../src/modules/hr/leave-management/leave-types/leave-type.model';
 import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
 import { ScreeningModel } from '../../src/modules/hr/recruitment/screening/screening.model';
+import { InterviewModel } from '../../src/modules/hr/recruitment/interviews/interview.model';
 import { RecruitmentTimelineModel } from '../../src/modules/hr/recruitment/timeline/recruitment-timeline.model';
-import { migrateRecruitmentLegacy } from '../../src/modules/hr/recruitment/recruitment.migration';
+import {
+  backfillTimelineStageIdentity,
+  migrateRecruitmentLegacy,
+} from '../../src/modules/hr/recruitment/recruitment.migration';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { Types } from 'mongoose';
@@ -445,6 +449,180 @@ describe('administrator customizations survive the boot sync', () => {
     expect(await applicationCategoryRepository.count({})).toBe(before);
     const employeesAfter = await applicationRepository.findOne({ route: '/employees' });
     expect(employeesAfter?.icon).toBe(iconBefore);
+  });
+});
+
+describe('naming the stage on timeline entries written before the projection recorded it', () => {
+  // Every entry on every existing database has `stageKind: null`, which is why the timeline could
+  // not say «المقابلة الأولى» or «الفحص الأمني» and why two phases opening together read as one
+  // event written twice. The backfill reads the identity back off the stage row the entry already
+  // names in `entityId` — it infers nothing and it guesses nothing.
+  //
+  // WHAT HAS TO HOLD, because this writes to an APPEND-ONLY collection (I9): it adds the identity
+  // the entry always had, it never touches `eventId` or `sourceKey`, it deletes nothing, it
+  // duplicates nothing, and the second run changes nothing at all.
+  //
+  // The fixtures are built HERE rather than borrowed from what earlier cases left behind: a test
+  // about a migration must state the shape it migrates, and must not pass or fail on suite order.
+  let roundStageId = '';
+
+  const seedLegacyHistory = async (): Promise<void> => {
+    await RecruitmentTimelineModel.deleteMany({ sourceKey: /^legacy:/ }).exec();
+    // A candidate of this block's own, not one borrowed from another case: the backfill reads the
+    // STAGE rows an entry points at and never the applicant, so an id and a code are the whole of
+    // what the fixture owes it.
+    const applicant = { _id: new Types.ObjectId(), code: 'APP-LEGACY-0001' };
+
+    const screening = await ScreeningModel.create({
+      applicantId: applicant._id,
+      applicantCode: applicant.code,
+      applicantName: 'ث',
+      branchId: null,
+      departmentId: null,
+      status: 'accepted',
+      attempt: 1,
+      notes: [],
+      placementSnapshot: { jobTitleId: null, departmentId: null, branchId: null, sectionId: null },
+      placementSnapshotLabel: { position: null, branch: null, department: null },
+    });
+    const round = await InterviewModel.create({
+      applicantId: applicant._id,
+      applicantCode: applicant.code,
+      applicantName: 'ث',
+      branchId: null,
+      departmentId: null,
+      stageId: new Types.ObjectId(),
+      stageKey: 'firstInterview',
+      stageOrder: 1,
+      stageName: { ar: 'المقابلة الأولى', en: 'First Interview' },
+      status: 'completed',
+      outcome: 'passed',
+      attempt: 1,
+      panel: [],
+      placementSnapshot: { jobTitleId: null, departmentId: null, branchId: null, sectionId: null },
+      placementSnapshotLabel: { position: null, branch: null, department: null },
+    });
+    roundStageId = String(round.stageId);
+
+    // Three entries in the shape an older release left: each names its record, none knows which
+    // round or phase that record was. The third is about the candidate and must be left alone.
+    const common = {
+      applicantId: applicant._id,
+      applicantCode: applicant.code,
+      at: new Date('2026-01-01T00:00:00.000Z'),
+      stageKind: null,
+      stageRefId: null,
+      stageName: null,
+      metadata: {},
+    };
+    await RecruitmentTimelineModel.create([
+      {
+        ...common,
+        eventId: 'evt_legacy_screening',
+        type: 'screeningDecided',
+        correlationType: 'screening',
+        correlationId: String(screening._id),
+        entityType: 'screening',
+        entityId: screening._id,
+        sourceKey: 'legacy:screening:entry',
+      },
+      {
+        ...common,
+        eventId: 'evt_legacy_round',
+        type: 'interviewCompleted',
+        correlationType: 'interview',
+        correlationId: String(round._id),
+        entityType: 'interview',
+        entityId: round._id,
+        sourceKey: 'legacy:round:entry',
+      },
+      {
+        ...common,
+        eventId: 'evt_legacy_applied',
+        type: 'applied',
+        correlationType: 'applicant',
+        correlationId: String(applicant._id),
+        entityType: 'applicant',
+        entityId: applicant._id,
+        sourceKey: 'legacy:applied:entry',
+      },
+    ]);
+  };
+
+  /** Not merely the values — the documents, so `updatedAt` catches a needless write. */
+  const fingerprint = async (): Promise<unknown[]> => {
+    const docs = await RecruitmentTimelineModel.find(
+      { sourceKey: /^legacy:/ },
+      { eventId: 1, sourceKey: 1, stageKind: 1, stageRefId: 1, stageName: 1, updatedAt: 1 },
+    )
+      .sort({ eventId: 1 })
+      .lean<
+        {
+          eventId: string;
+          sourceKey: string;
+          stageKind: string | null;
+          stageRefId: Types.ObjectId | null;
+          stageName: { ar: string } | null;
+          updatedAt: Date;
+        }[]
+      >()
+      .exec();
+    return docs.map((d) => ({
+      eventId: d.eventId,
+      sourceKey: d.sourceKey,
+      stageKind: d.stageKind,
+      stageRefId: d.stageRefId === null ? null : String(d.stageRefId),
+      stageName: d.stageName?.ar ?? null,
+      updatedAt: d.updatedAt.toISOString(),
+    }));
+  };
+
+  it('names each entry from the record it already points at, and leaves the rest alone', async () => {
+    await seedLegacyHistory();
+    const before = await fingerprint();
+    expect(before.length).toBe(3);
+
+    await backfillTimelineStageIdentity();
+
+    const after = await fingerprint();
+    expect(after.length, 'the backfill must not add or remove an entry').toBe(3);
+    expect(
+      after.map((r) => (r as { eventId: string }).eventId),
+      'identities are immutable (I9)',
+    ).toEqual(['evt_legacy_applied', 'evt_legacy_round', 'evt_legacy_screening']);
+    expect(
+      after.map((r) => (r as { sourceKey: string }).sourceKey),
+      'idempotency keys are immutable (I5)',
+    ).toEqual(['legacy:applied:entry', 'legacy:round:entry', 'legacy:screening:entry']);
+
+    const byId = new Map(after.map((r) => [(r as { eventId: string }).eventId, r as Record<string, unknown>]));
+    // The round is named, from its own row — this is what the timeline could not say before.
+    expect(byId.get('evt_legacy_round')?.['stageKind']).toBe('interview');
+    expect(byId.get('evt_legacy_round')?.['stageName']).toBe('المقابلة الأولى');
+    expect(byId.get('evt_legacy_round')?.['stageRefId']).toBe(roundStageId);
+    // The screening gets its kind; it has no round of its own to be named after.
+    expect(byId.get('evt_legacy_screening')?.['stageKind']).toBe('screening');
+    expect(byId.get('evt_legacy_screening')?.['stageName']).toBeNull();
+    // An entry about the CANDIDATE is not about a stage, and is untouched.
+    expect(byId.get('evt_legacy_applied')?.['stageKind']).toBeNull();
+  });
+
+  it('changes nothing at all on the second run', async () => {
+    await seedLegacyHistory();
+    await backfillTimelineStageIdentity();
+    const first = await fingerprint();
+
+    await backfillTimelineStageIdentity();
+
+    expect(await fingerprint()).toEqual(first);
+  });
+
+  it('is idempotent through the whole boot migration too, not just on its own', async () => {
+    await seedLegacyHistory();
+    await migrateRecruitmentLegacy();
+    const first = await fingerprint();
+    await migrateRecruitmentLegacy();
+    expect(await fingerprint()).toEqual(first);
   });
 });
 

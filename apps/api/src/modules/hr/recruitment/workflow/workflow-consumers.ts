@@ -5,9 +5,14 @@
 // committed, so a consumer failing leaves the event queued for retry rather than corrupting the
 // pipeline.
 import { Types } from 'mongoose';
-import { type RecruitmentTimelineType } from '@ecms/contracts';
+import {
+  RECRUITMENT_STAGE_KINDS,
+  type LocalizedString,
+  type RecruitmentStageKind,
+  type RecruitmentTimelineType,
+} from '@ecms/contracts';
 import { auditService } from '../../../../platform/audit';
-import { recruitmentTimelineService } from '../timeline';
+import { recruitmentTimelineService, type RecordTimelineInput } from '../timeline';
 import { onWorkflowEvent } from './workflow-dispatcher';
 import { WorkflowEvents, type WorkflowEventName } from './workflow-events';
 import { stageEnteredType, timelineTypeForEvent } from './workflow-timeline-map';
@@ -25,9 +30,42 @@ const correlationTypeOf = (event: WorkflowEventDoc): 'applicant' | 'screening' |
   return event.object;
 };
 
+/**
+ * WHICH round or phase the event was about, read off the payload the engine stamped.
+ *
+ * This is what the projection used to drop, and dropping it is what made the candidate's history
+ * unreadable: every round projected the same «بدأت المقابلة», every phase the same «فُتح التقييم»,
+ * so the security check and the medical check opening in the same minute looked like one event
+ * written twice. The engine carries the identity on every stage event (`stageIdentityOf`), so the
+ * entry can name the round — and `reconcileRecruitmentTimeline` rebuilds through this same
+ * function, which means a repaired entry is named too.
+ */
+const stageOf = (event: WorkflowEventDoc): RecordTimelineInput['stage'] => {
+  if (event.object === 'applicant') return undefined;
+  const payload = event.payload as {
+    stageKind?: unknown;
+    stageRefId?: unknown;
+    stageName?: unknown;
+  };
+  const kind = payload.stageKind;
+  if (typeof kind !== 'string' || !RECRUITMENT_STAGE_KINDS.includes(kind as RecruitmentStageKind)) {
+    return undefined;
+  }
+  return {
+    kind: kind as RecruitmentStageKind,
+    refId: typeof payload.stageRefId === 'string' ? payload.stageRefId : null,
+    name:
+      typeof payload.stageName === 'object' && payload.stageName !== null
+        ? (payload.stageName as LocalizedString)
+        : null,
+  };
+};
+
 /** The timeline projection (I5/I15) — idempotent on the event's own id. */
 export const projectToTimeline = async (event: WorkflowEventDoc): Promise<void> => {
+  const stage = stageOf(event);
   await recruitmentTimelineService.record({
+    ...(stage === undefined ? {} : { stage }),
     // The entry IS the event, as far as identity goes (I6): it takes the event's id, so the action
     // that published the event can echo the entry back without knowing when the projection ran.
     eventId: event.eventId,

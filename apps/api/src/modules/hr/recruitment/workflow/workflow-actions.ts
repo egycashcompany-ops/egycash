@@ -58,7 +58,7 @@ const ACTION_PERMISSIONS: Record<WorkflowObject, Record<string, string>> = {
     // entry, for the same reason, as `close` on screening and evaluation above.
     close: 'applicant.edit',
     // Set by a return-to-stage, never chosen directly.
-    supersede: 'applicant.returnToStage',
+    supersede: 'applicantReturn.execute',
     // The scheduled sweep expires an offer; no human action exists for it.
     expire: 'jobOffer.send',
   },

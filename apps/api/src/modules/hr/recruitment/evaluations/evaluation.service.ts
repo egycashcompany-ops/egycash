@@ -24,7 +24,14 @@ import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService, resolvePlacement } from '../applicants';
 import { interviewService } from '../interviews';
 import { recruitmentTimelineService } from '../timeline';
-import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
+import {
+  assertStageCorrectable,
+  assertStageNotPassed,
+  recruitmentWorkflowEngine,
+  registerStageBinding,
+  runBulk,
+  type StageBinding,
+} from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
@@ -215,6 +222,16 @@ class EvaluationService {
    */
   async decide(ctx: AuthContext, id: string, input: DecideEvaluation, scope: ScopeSelector): Promise<EvaluationDoc> {
     const before = await evaluationRepository.getById(id, scope);
+    // ONE ENDPOINT, TWO ACTS. A `waiting` phase is being decided for the first time, and the rule
+    // is that the candidate must still be at it. A decided phase is being CORRECTED, and the rule
+    // is that nothing may have been built on the decision yet. Phases are parallel by design, so
+    // the security check and the medical check are each judged on their own either way.
+    const applicantId = String(before.applicantId);
+    if (before.status === 'waiting') {
+      await assertStageNotPassed(applicantId, 'evaluation', before.phaseOrder, 'evaluation');
+    } else {
+      await assertStageCorrectable(applicantId, 'evaluation', before.phaseOrder, 'evaluation');
+    }
     const now = new Date();
     // The engine owns the status change and publishes the event (I13/I15). The re-decision is
     // recorded ONCE, by the timeline projection over that event — this aggregate keeps the

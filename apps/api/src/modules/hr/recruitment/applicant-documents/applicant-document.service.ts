@@ -29,6 +29,10 @@ import {
 } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
 import { applicantService } from '../applicants';
+// I5 — what happens to a candidate's FILE belongs on the candidate's history, not only in the
+// audit trail: the audit answers «who touched this record», the timeline answers «what happened to
+// this person», and HR reading a file wants the second one.
+import { recruitmentTimelineService } from '../timeline';
 import { type ApplicantDoc } from '../applicants/applicant.model';
 import {
   isComplete,
@@ -273,6 +277,18 @@ class ApplicantDocumentService {
         applicantCode: applicant.code,
         typeKey: target.facts.key,
       });
+      // The candidate's own act, through the portal — `submit` has no other caller.
+      await recruitmentTimelineService.recordFileEvent({
+        applicantId,
+        applicantCode: applicant.code,
+        branchId: applicant.branchId,
+        actorUserId: ctx.userId,
+        actorKind: 'candidate',
+        type: 'documentUploaded',
+        subject: { key: target.facts.key, name: target.name },
+        discriminator: `${target.facts.key}:v${String(file.fileVersion)}`,
+        metadata: { fileName: file.originalName, fileVersion: file.fileVersion },
+      });
       return this.toDto(added, asked);
     }
 
@@ -309,6 +325,21 @@ class ApplicantDocumentService {
       applicantId,
       applicantCode: applicant.code,
       typeKey: target.facts.key,
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'candidate',
+      type: 'documentReplaced',
+      subject: { key: target.facts.key, name: target.name },
+      discriminator: `${target.facts.key}:v${String(file.fileVersion)}`,
+      metadata: {
+        fileName: file.originalName,
+        fromVersion: existing.fileVersion,
+        toVersion: file.fileVersion,
+      },
     });
     return this.toDto(replaced, asked);
   }
@@ -348,6 +379,18 @@ class ApplicantDocumentService {
       applicantId,
       applicantCode: applicant.code,
       typeKey: slot?.typeKey ?? '',
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'documentReviewed',
+      subject: { key: slot?.typeKey ?? typeId, name: slot?.typeName ?? null },
+      note: note === '' ? null : note,
+      discriminator: `${slot?.typeKey ?? typeId}:${input.outcome}:v${String(slot?.fileVersion ?? 0)}`,
+      metadata: { outcome: input.outcome, fileVersion: slot?.fileVersion ?? null },
     });
     const dto = this.toDto(reviewed, asked);
     if (dto.complete && dto.pendingReview === 0) {
@@ -400,6 +443,9 @@ class ApplicantDocumentService {
     };
 
     let result: ApplicantDocumentSetDoc | null;
+    // Hoisted out of the branches so the history entry below can name the version that was filed,
+    // whichever way it got there.
+    let filed: { name: string; version: number };
     if (existing === null) {
       const file = await fileService.upload(
         filing,
@@ -428,6 +474,7 @@ class ApplicantDocumentService {
         ...verdict,
       });
       if (result === null) throw new ConflictError('this document was just uploaded — reload and replace it');
+      filed = { name: file.originalName, version: file.fileVersion };
     } else {
       const file = await fileService.replace(filing, String(existing.fileId), binary);
       result = await applicantDocumentRepository.staffSetDocument(applicantId, typeId, {
@@ -439,11 +486,28 @@ class ApplicantDocumentService {
         ...verdict,
       });
       if (result === null) throw new ConflictError('this document changed while you were uploading — reload it');
+      filed = { name: file.originalName, version: file.fileVersion };
     }
     await auditService.record({
       entityRef: entityRef(applicantId),
       action: existing === null ? 'create' : 'update',
       changes: [{ field: 'documentByHr', old: existing === null ? null : existing.typeKey, new: target.facts.key }],
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: existing === null ? 'documentUploaded' : 'documentReplaced',
+      subject: { key: target.facts.key, name: target.name },
+      discriminator: `${target.facts.key}:hr:v${String(filed.version)}`,
+      metadata: {
+        fileName: filed.name,
+        toVersion: filed.version,
+        ...(existing === null ? {} : { fromVersion: existing.fileVersion }),
+        byStaff: true,
+      },
     });
     return this.toDto(result, asked);
   }
@@ -463,6 +527,17 @@ class ApplicantDocumentService {
       entityRef: entityRef(applicantId),
       action: 'delete',
       changes: [{ field: 'document', old: existing.typeKey, new: null }],
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'documentRemoved',
+      subject: { key: existing.typeKey, name: existing.typeName },
+      discriminator: `${existing.typeKey}:removed:v${String(existing.fileVersion)}`,
+      metadata: { fileVersion: existing.fileVersion },
     });
     return this.toDto(result, asked);
   }
@@ -504,6 +579,17 @@ class ApplicantDocumentService {
       entityRef: { moduleId: 'hr', entityType: 'applicant', entityId: applicantId },
       action: 'update',
       changes: [{ field: 'nationalIdCardByHr', old: null, new: side }],
+    });
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: ctx.userId,
+      actorKind: 'user',
+      type: 'idCardReplaced',
+      subject: { key: nationalIdCardTag(side) },
+      discriminator: `${nationalIdCardTag(side)}:v${String(file.fileVersion)}`,
+      metadata: { side, fileVersion: file.fileVersion },
     });
     return { fileId: String(file._id) };
   }

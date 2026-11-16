@@ -7,6 +7,14 @@
 //
 // The stage list comes from the aggregated counters endpoint, which already omits every stage the
 // caller may not see (RW15), so the picker can never offer a stage the return would be refused for.
+//
+// NO SCREEN MOUNTS THIS TODAY, ON PURPOSE. It used to sit in the candidate's own page header, one
+// button away from «تعديل», and that proximity is how it came to be pressed by people correcting a
+// typo. The mechanism and its route are intact, now behind `applicantReturn.execute` — a
+// break-glass key granted to no role — so the capability waits for an administrator to hand it out
+// rather than for someone to notice the button. This file is kept, rather than deleted, so that
+// granting the key is all it takes: mount it from the candidate page inside
+// `<Can permission="applicantReturn.execute">` and the screen is back.
 import { useState } from 'react';
 import {
   type ApplicantDto,

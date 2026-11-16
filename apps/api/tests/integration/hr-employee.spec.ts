@@ -541,8 +541,12 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
         .send(body);
     const newCode = `099${emp.employeeNumber}`;
 
-    // Held by another record — `ux_code` is unique across every state.
-    expect((await change({ code: other.code, reason: 'تصحيح', version: emp.version })).status).toBe(409);
+    // Held by another record — `ux_code` is unique across every state. DUPLICATE is the code the
+    // dialog reads, and no `username` detail: it is a CODE another employee holds.
+    const held = await change({ code: other.code, reason: 'تصحيح', version: emp.version });
+    expect(held.status).toBe(409);
+    expect((held.body as { error: { code: string; details?: unknown } }).error.code).toBe('DUPLICATE');
+    expect((held.body as { error: { details?: unknown } }).error.details ?? []).toEqual([]);
     // The code the employee already has.
     expect((await change({ code: emp.code, reason: 'تصحيح', version: emp.version })).status).toBe(422);
     // Not the company's shape, and no reason.
@@ -560,6 +564,41 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
       .get(`/api/v1/platform/users/${String(emp.userId)}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect((account.body.data as { username: string | null }).username).toBe(newCode);
+  });
+
+  /**
+   * A code no employee holds can still be an ACCOUNT's sign-in name. The change is refused whole —
+   * the employee would otherwise sign in under a name somebody else has — and says that it is the
+   * sign-in name, so the dialog does not tell HR another employee holds the code.
+   */
+  it('refuses a code another account signs in with, and says it is the sign-in name', async () => {
+    const emp = await hire();
+    const signIn = `099${emp.employeeNumber}`;
+    await userService.create(
+      {
+        email: `holder-${emp.employeeNumber}@ecms.local`,
+        firstName: { ar: 'م', en: 'T' },
+        lastName: { ar: 'م', en: 'T' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+      { username: signIn },
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/hr/employees/${emp.id}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: signIn, reason: 'تصحيح', version: emp.version });
+
+    expect(res.status).toBe(409);
+    const error = (res.body as { error: { code: string; details?: { field?: string }[] } }).error;
+    expect(error.code).toBe('DUPLICATE');
+    expect(error.details?.map((d) => d.field)).toEqual(['username']);
+    const after = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EmployeeDto).code).toBe(emp.code);
   });
 
   /**

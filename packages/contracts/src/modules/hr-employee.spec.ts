@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChangeEmployeeCodeSchema,
+  employeeCodePatternFor,
   ChangeEmployeeStatusSchema,
   CreateEmployeeLoginSchema,
   EMPLOYEE_STATUS_TRANSITIONS,
@@ -131,10 +132,34 @@ describe('ChangeEmployeeCodeSchema — changing a code by hand (ADR-017, amended
     expect(ok(' 0100004 ')).toBe(true);
   });
 
-  it('refuses anything the roster import would refuse the next time the file is uploaded', () => {
-    expect(ok('010004')).toBe(false);
-    expect(ok('BR-0100004')).toBe(false);
-    expect(ok('0100004A')).toBe(false);
+  /**
+   * The boundary cannot see whose code it is, so it admits either shape and refuses only what is
+   * neither; the person's own shape is held by `employeeCodePatternFor`, in the service and the dialog.
+   */
+  it('refuses at the boundary what is neither the company\'s shape nor an external one', () => {
+    expect(ok('C')).toBe(false);
+    expect(ok('EX 01')).toBe(false);
+    expect(ok('ك5')).toBe(false);
+    expect(ok('A'.repeat(21))).toBe(false);
+  });
+
+  it('holds everybody but an external person to what the roster import would accept', () => {
+    for (const origin of ['recruitment', 'direct'] as const) {
+      const fits = (code: string): boolean => employeeCodePatternFor(origin).test(code);
+      expect(fits('0100004'), origin).toBe(true);
+      expect(fits('010004'), origin).toBe(false);
+      expect(fits('BR-0100004'), origin).toBe(false);
+      expect(fits('0100004A'), origin).toBe(false);
+    }
+  });
+
+  // «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+  it('lets an external person\'s code carry letters, as their registration does', () => {
+    const fits = (code: string): boolean => employeeCodePatternFor('external').test(code);
+    expect(ok('C5')).toBe(true);
+    expect(fits('C5')).toBe(true);
+    expect(fits('0100004A')).toBe(true);
+    expect(fits('C')).toBe(false);
   });
 
   it('requires a reason — a code is changed by somebody deciding to, and the record says why', () => {

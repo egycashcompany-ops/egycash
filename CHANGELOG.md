@@ -28,6 +28,16 @@ its entry here in the same PR.
     type and status — and «غير نشط» now returns the inactive sources (`active=false` was coerced to true).
   - The other recruitment bars were already multi; their search boxes and the applicant / interviewer
     pickers now fit their hint text.
+  - The rest of HR, each bar in the shared `FilterBar`: «العقود» status and type; «كل الطلبات» (leave)
+    status and type; «الكشف اليومي» branch and section (the date stays one day; the CSV takes the same
+    lists); «طلبات التسوية» status; «التسويات» status and kind (the month stays one); «بنود الرواتب» type
+    and status; «سلف وقروض الموظفين» status and type; «جلسات التدريب» status; «تقييمات الأداء» status.
+    Each is a server list now (`listQuery`, `$in`); the training and performance statuses were a union
+    that answered a comma list with 400. Worklist tabs and the nominations' pending/all view stay one
+    answer (the view as wide as its words). Search boxes on the courses, records, cycles, medical and
+    insurance pages fit their hint.
+  - `common.status` («الحالة») is in the dictionary: twelve labels and column headers printed the raw
+    key.
 
 - **HR: «عروض العمل» shows the branch, department and job; «جاهزون للتعيين» filters and shows the
   department and job.** «هنحط الاداره و الوظيفه و الفرع في الجزء اللي تحت … و في جاهزون للتعيين هنزود

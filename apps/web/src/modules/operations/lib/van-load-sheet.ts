@@ -20,6 +20,7 @@ import {
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
 import { boardFigures } from './day-board';
 import { loadFigures, personName, type Packaging } from './secured-distribution';
+import { vanPhrase } from './van-name';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -29,8 +30,19 @@ export interface VanLoadSheetInput {
   day: string;
   van: Pick<
     OperationsDayBoardVehicleCrewDto,
-    'vehicleCode' | 'captains' | 'specialist1' | 'specialist2' | 'direction' | 'plannedTime'
+    | 'vehicleId'
+    | 'vehicleCode'
+    | 'captains'
+    | 'specialist1'
+    | 'specialist2'
+    | 'direction'
+    | 'plannedTime'
   >;
+  /**
+   * Round 24 — a crew WITHOUT A VAN (`vehicleId` null): its number among the day's («بدون سيارة
+   * (n)»), as the screen writes it. The sheet is then titled after the crew, never «السيارة …».
+   */
+  looseNumber?: string | null;
   /**
    * Whether the reader may read the crew plan (`crewPlanVisible`): without it the server sends no
    * specialist, and the sheet leaves their lines out rather than print «—» for someone who rides.
@@ -62,6 +74,7 @@ export const vanLoadSheet = ({
   t,
   day,
   van,
+  looseNumber = null,
   crewPlanVisible,
   rows,
   bankNameOf,
@@ -70,9 +83,16 @@ export const vanLoadSheet = ({
   amount,
   count,
 }: VanLoadSheetInput): FleetReport => {
-  const code = van.vehicleCode ?? '…';
+  // Round 24c — the card's own order: the day, then the van's time and direction (the head line of
+  // its card — «انقل الاتجاه بعد كود السيارة والوقت»), then who rides it.
   const subtitle = [
     t('operations.handover.sheet.day', { day }),
+    van.plannedTime === null || van.plannedTime === ''
+      ? null
+      : `${t('operations.crew.plannedTime')}: ${van.plannedTime}`,
+    van.direction === null || van.direction.trim() === ''
+      ? null
+      : `${t('operations.crew.direction')}: ${van.direction}`,
     van.captains.length === 0
       ? null
       : t('operations.handover.sheet.captains', { names: joinNames(van.captains) }),
@@ -82,12 +102,6 @@ export const vanLoadSheet = ({
     crewPlanVisible && van.specialist2.length > 0
       ? `${t('operations.crew.slot.specialist2')}: ${joinNames(van.specialist2)}`
       : null,
-    van.direction === null || van.direction.trim() === ''
-      ? null
-      : `${t('operations.crew.direction')}: ${van.direction}`,
-    van.plannedTime === null || van.plannedTime === ''
-      ? null
-      : `${t('operations.crew.plannedTime')}: ${van.plannedTime}`,
   ]
     .filter((part): part is string => part !== null)
     .join(' · ');
@@ -108,7 +122,7 @@ export const vanLoadSheet = ({
   }
 
   return {
-    title: t('operations.handover.sheet.title', { code }),
+    title: t('operations.handover.sheet.title', { van: vanPhrase(t, van, looseNumber) }),
     department: t('operations.handover.sheet.department'),
     subtitle,
     header: [

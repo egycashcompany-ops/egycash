@@ -595,7 +595,8 @@ describe('F — away that day, drawn', () => {
     const van = page.slice(page.indexOf('const giveVan ='), page.indexOf('const exportExcel ='));
     expect(van).toContain("t('operations.crewPlan.vanAway')");
     expect(van).toContain('return;');
-    expect(page).toContain('onPick={(vanKey) => giveVan(row, vanKey)}');
+    // Round 24 — the van comes from the board's «بدون سيارة» list (every car with no crew).
+    expect(page).toContain('if (row !== undefined) giveVan(row, choice);');
   });
 
   it('reads the pool for the board’s own day — never «no day», which the server answers for today', () => {

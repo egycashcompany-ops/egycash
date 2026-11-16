@@ -31,6 +31,7 @@ import {
   type OperationsShipmentDto,
   type SecuredDistributionChange,
 } from '@ecms/contracts';
+import { record, startHistory, type UndoHistory } from './crew-undo';
 import { boardFigures } from './day-board';
 
 /** The fields of a distribution row these rules read — the specs build rows with no more. */
@@ -135,6 +136,25 @@ export const isProposed = (
   row: Pick<DistributionRowFacts, 'id'>,
   draft: DistributionDraft,
 ): boolean => draft.get(row.id)?.proposed === true;
+
+/**
+ * The same draft — the same shipments, each in the same place, with the same captain, version and
+ * mark. What «تراجع» (Round 24, one step back) compares, so a move that changed nothing (a shipment
+ * dropped back where it is) is no operation to take back.
+ */
+export const sameDistributionDraft = (a: DistributionDraft, b: DistributionDraft): boolean =>
+  a === b ||
+  (a.size === b.size &&
+    [...a].every(([id, one]) => {
+      const other = b.get(id);
+      return (
+        other !== undefined &&
+        other.crewAssignmentId === one.crewAssignmentId &&
+        other.captainEmployeeId === one.captainEmployeeId &&
+        other.version === one.version &&
+        other.proposed === one.proposed
+      );
+    }));
 
 /**
  * The draft with one shipment put somewhere — a van and its captain, or `UNPLACED` («إزالة», or
@@ -256,6 +276,29 @@ export const proposeByDirection = <R extends DistributionRowFacts>(
     });
   }
   return next;
+};
+
+/**
+ * Round 24 — the history a day's FIRST read starts «تراجع» with. The proposals by direction are the
+ * screen's own «توزيع تلقائي», done for the person: ONE operation, the first one — so the last press
+ * of «تراجع» takes them back too, as the old «التراجع عن التغييرات» did, and leaves on the cards only
+ * what the server holds. Nothing proposed (or nobody who may save) → nothing to take back.
+ */
+export const openingDistributionHistory = <R extends DistributionRowFacts>(
+  rows: readonly R[],
+  vans: readonly Pick<DistributionVan, 'crewAssignmentId' | 'captains'>[],
+  canEdit: boolean,
+): UndoHistory<DistributionDraft> => {
+  const start = startHistory(EMPTY_DRAFT);
+  if (!canEdit) return start;
+  return record(
+    start,
+    proposeByDirection(rows, vans, EMPTY_DRAFT),
+    { kind: 'auto' },
+    {
+      same: sameDistributionDraft,
+    },
+  );
 };
 
 /**

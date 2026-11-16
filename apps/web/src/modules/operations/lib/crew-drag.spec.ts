@@ -47,6 +47,7 @@ const row = (key: string, over: Partial<PlanRow> = {}): PlanRow => ({
   key,
   vehicleId: key.startsWith('van:') ? key.slice(4) : null,
   vehicleCode: key.startsWith('van:') ? key.slice(4) : null,
+  onRoster: key.startsWith('van:'),
   crewId: key.startsWith('loose:') ? key.slice(6) : null,
   drivers: [],
   slots: { captain: [], specialist1: [], specialist2: [] },
@@ -67,7 +68,7 @@ const slots = (captain: string[], specialist1: string[] = [], specialist2: strin
 const LOOSE = row('loose:c1', {
   plannedTime: '05:10',
   shiftTypeId: 't-secured',
-  rowColour: 'yellow',
+  rowColour: 'amber',
 });
 const VAN = row('van:249');
 
@@ -408,7 +409,10 @@ describe('another desk saves under an unsaved drop (candidate 5)', () => {
     expect(page).toContain(
       'if (seen !== null && seen.day !== null && seen.day === answeredDay && !plan.isPending) {',
     );
-    expect(page).toContain('setRows(rebaseDraft(rows, seen.rows, serverRows));');
+    // Round 24 — the draft and its «تراجع» history, rebased the same way (`rebaseHistory`).
+    expect(page).toContain(
+      '(state) => ({ ...state, rows: rebaseDraft(state.rows, base, serverRows) }),',
+    );
   });
 });
 

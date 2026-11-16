@@ -8,18 +8,15 @@ import {
 } from './crew-assignment.model';
 import { crewMembers } from './crew-slots';
 
-/** A row ON A VAN — `$type`, the same test `ux_day_vehicle`'s partial filter makes. */
-const ON_A_VAN = { vehicleId: { $type: 'objectId' } } as const;
-
 class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAssignmentDoc> {
   constructor() {
     super(OperationsCrewAssignmentModel, {}); // organization-wide board, like the fleet roster
   }
 
   /**
-   * EVERY live crew row of the day — the vans' and, since Round 20, the rows without a van. Only
-   * the crew board and its save read this: it is the day's whole plan, which Q11 is judged over.
-   * A reader about VANS reads `findVansForDay`.
+   * EVERY live crew row of the day — the vans' and, since Round 20, the rows without a van. The
+   * crew board and its save read it (the day's whole plan, which Q11 is judged over), and since
+   * Round 24 «توزيع المحصنات» too: a row without a van takes محصنات like a van.
    */
   async findForDay(
     operationsDayId: Types.ObjectId | string,
@@ -32,26 +29,49 @@ class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAs
       .exec();
   }
 
-  /** The day's crew rows ON A VAN — the van cards, the distribution: never a row without a van. */
-  async findVansForDay(
-    operationsDayId: Types.ObjectId | string,
-    session?: ClientSession,
-  ): Promise<OperationsVanCrewDoc[]> {
+  /**
+   * Round 24 — the live rows WITHOUT A VAN of these operating days, in the order they were added
+   * (the board's order, `createdAt` then id): what a crew is numbered by — «بدون سيارة (n)» — on
+   * every screen after «لوحة التشغيلة».
+   */
+  async findWithoutVanForDays(
+    operationsDayIds: readonly string[],
+  ): Promise<OperationsCrewAssignmentDoc[]> {
+    if (operationsDayIds.length === 0) return [];
     return this.model
-      .find({ operationsDayId, isDeleted: false, ...ON_A_VAN })
-      .session(session ?? null)
-      .lean<OperationsVanCrewDoc[]>()
+      .find({ operationsDayId: { $in: operationsDayIds }, vehicleId: null, isDeleted: false })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean<OperationsCrewAssignmentDoc[]>()
       .exec();
   }
 
   /**
-   * One crew row, ON A VAN — what a shipment leg, a dispatch or the captain's stop is addressed
-   * by. A row without a van answers null, exactly as a missing one does: it has no van to carry a
-   * stop, so to every act that needs a van it is not a crew at all (Round 20).
+   * One live crew row, ON A VAN — what the daily PICKUP leg (the shipment form's crew) is addressed
+   * by. A row without a van answers null, exactly as a missing one does.
+   *
+   * Round 24 narrowed this to that one act. The delivery leg («توزيع المحصنات», the assign dialog),
+   * the handover and the captain's route read any live row (`findById`): «عاوز لو عربيه من غير كود
+   * عادى تظهر ان اوزع عليها محصنات» — the owner asked it of the محصنات, not of the daily pickup.
    */
   async findVanById(id: string): Promise<OperationsVanCrewDoc | null> {
     const row = await this.findById(id);
     return row !== null && hasVan(row) ? row : null;
+  }
+
+  /**
+   * The live crew row of the day holding this van, if any — «one van, one row a day»
+   * (`ux_day_vehicle`). Read inside the save's transaction (Round 24).
+   */
+  async findForDayAndVehicle(
+    operationsDayId: Types.ObjectId | string,
+    vehicleId: string,
+    session?: ClientSession,
+  ): Promise<OperationsCrewAssignmentDoc | null> {
+    return this.model
+      .findOne({ operationsDayId, vehicleId, isDeleted: false })
+      .session(session ?? null)
+      .lean<OperationsCrewAssignmentDoc>()
+      .exec();
   }
 
   /**
@@ -72,24 +92,26 @@ class OperationsCrewAssignmentRepository extends BaseRepository<OperationsCrewAs
    * co-captain is identical to the answer for the other. Anything else would have invented a
    * seniority rule the business never stated.
    *
-   * VANS ONLY (Round 20). A captain on a row WITHOUT a van has no van to drive a stop in — no leg
-   * can be given to such a row — so on that day he is not a captain of anything the app can show.
-   * The question this answers was always "which VEHICLES", and a row with none is not an answer.
+   * ANY ROW, VAN OR NONE (Round 24). Round 20 answered vans only — a row without a van could carry
+   * no leg, so its captain was a captain of nothing the app could show. The owner reversed that for
+   * the محصنات («عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»): «توزيع المحصنات» may
+   * now give such a row its stops, and its captain must get his route exactly like a van's — so he
+   * is a captain that day, stops or none yet, as a van's captain always was. Identity is untouched:
+   * the employee still comes from the token, and this still answers from the day's plan alone.
    */
   async findForCaptainDay(
     operationsDayId: Types.ObjectId | string,
     captainEmployeeId: string,
     session?: ClientSession,
-  ): Promise<OperationsVanCrewDoc[]> {
+  ): Promise<OperationsCrewAssignmentDoc[]> {
     return this.model
       .find({
         operationsDayId,
         captainEmployeeIds: captainEmployeeId,
         isDeleted: false,
-        ...ON_A_VAN,
       })
       .session(session ?? null)
-      .lean<OperationsVanCrewDoc[]>()
+      .lean<OperationsCrewAssignmentDoc[]>()
       .exec();
   }
 

@@ -200,7 +200,14 @@ describe('«ارتب الفلاتر على حسب عواميد الجدول» �
     expect(BAR).toContain('value={filters.vehicle}');
     expect(BAR).toContain('setFilter({ vehicle: e.target.value })');
     // The rows are filtered by the van of the row's leg.
-    expect(BOARD).toContain("(row) => row.crew?.vehicleCode ?? ''");
+    // Round 24 — a leg on a crew without a van reads (and is found as) «بدون سيارة (n)», by the
+    // number the server gave its crew; the box offers each such crew by that name.
+    expect(BOARD).toMatch(
+      /\(row\) =>\s*row\.crew === null \? '' : vanCodeText\(t, row\.crew, looseNumberOf\(row\.crew, numberText\)\),\s*t\('operations\.crewPlan\.noVehicle'\),/,
+    );
+    expect(BAR).toMatch(
+      /vanSuggestions\(\s*shipments\.flatMap\(\(row\) => \(row\.crew === null \? \[\] : \[row\.crew\]\)\),\s*t\('operations\.crewPlan\.noVehicle'\),\s*\(n\) => t\('operations\.crewPlan\.looseRow', \{ n: numberText\(n\) \}\),/,
+    );
   });
 });
 

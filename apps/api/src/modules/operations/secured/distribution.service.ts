@@ -5,7 +5,8 @@
 // بتاع العربيه تتحط تلقائى ولما يحفظ». And for the vault: «نفس الشاشة هنعمل زيها للخزنة هيكون فوق كل
 // عربيه تسليم وطباعه».
 //
-//   view()  the day's vans (every crew row of the day's crew board) and its محصنات — due on the day
+//   view()  the day's vans (every crew row of the day's crew board — since Round 24 the rows WITHOUT
+//           A VAN too: «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات») and its محصنات — due on the day
 //           and not out yet, plus the OVERDUE ones still in the vault — each with its delivery leg
 //           as it stands and the vans its area's direction points at. One read for both screens:
 //           Operations distributes from it, the vault hands each van over from it.
@@ -55,7 +56,11 @@ import {
   retireLeg,
 } from '../assignments/leg-retire';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { type OperationsVanCrewDoc } from '../crew/crew-assignment.model';
+import {
+  hasVan,
+  vehicleIdOf,
+  type OperationsCrewAssignmentDoc,
+} from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -88,7 +93,8 @@ const assignmentRef = (id: string) => ({
 const legSnapshot = (doc: OperationsShipmentAssignmentDoc) => ({
   leg: doc.leg,
   captainEmployeeId: String(doc.captainEmployeeId),
-  vehicleId: String(doc.vehicleId),
+  // Null on a row without a van (Round 24): «السجل» prints no van rather than "null".
+  vehicleId: vehicleIdOf(doc),
   crewAssignmentId: String(doc.crewAssignmentId),
   operationsDayId: String(doc.operationsDayId),
 });
@@ -138,7 +144,10 @@ const byVanCode = (
 export interface DistributionView extends DayBoardView {
   day: Date;
   today: Date;
-  /** Every van (crew row) of the day, as van cards, in van-code order. */
+  /**
+   * Every crew row of the day, as van cards: the vans in van-code order, then (Round 24) the rows
+   * without a van in the order they were added.
+   */
   vans: OperationsDayBoardVehicleCrewDto[];
   /** shipment id → when the vault took it in. */
   receivedAt: Map<string, Date>;
@@ -159,7 +168,7 @@ type Plan =
       kind: 'place';
       shipment: OperationsShipmentDoc;
       leg: OperationsShipmentAssignmentDoc | null;
-      crew: OperationsVanCrewDoc;
+      crew: OperationsCrewAssignmentDoc;
       captainEmployeeId: string;
       /** The leg already rides this van with this captain on this day — only the date moves. */
       legUnchanged: boolean;
@@ -202,7 +211,9 @@ class OperationsDistributionService {
    * date — the overdue first, the vault must see them first — then oldest booked.
    *
    * THE VANS: every crew row of the day, whether or not anything rides it yet — the van IS where a
-   * shipment is dropped. Van cards built by the same code as the boards' (`vanCardsOf`).
+   * shipment is dropped. Van cards built by the same code as the boards' (`vanCardsOf`). Since
+   * Round 24 a row WITHOUT A VAN is one of them («عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها
+   * محصنات»): after the vans, in the order the board added them, its card naming no van.
    */
   async view(date: Date | undefined, now: Date = new Date()): Promise<DistributionView> {
     const { day, today } = this.resolveDay(date, now);
@@ -222,16 +233,28 @@ class OperationsDistributionService {
     const ids = docs.map((d) => String(d._id));
 
     const dayDoc = await operationsDayService.findByDate(day);
+    // EVERY crew row of the day — the vans, and (Round 24) the rows without a van, which the owner
+    // now loads like a van. The rows without one keep the board's order: the order they were added.
     const crewRows =
-      // The day's VANS — a crew row without a van (Round 20) has nothing to load a محصنة into.
-      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findVansForDay(dayDoc._id);
+      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id);
+    const vanless = crewRows
+      .filter((row) => !hasVan(row))
+      .sort(
+        (a, b) =>
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          String(a._id).localeCompare(String(b._id)),
+      );
     const [board, { crews }, custody, legs] = await Promise.all([
       operationsShipmentService.boardView(docs),
-      operationsShipmentService.vanCardsOf(crewRows),
+      operationsShipmentService.vanCardsOf([...crewRows.filter(hasVan), ...vanless]),
       vaultCustody().findMany(ids),
       operationsShipmentAssignmentRepository.findByShipments(ids),
     ]);
-    const vans = [...crews].sort(byVanCode);
+    const vans = [
+      ...crews.filter((card) => card.vehicleId !== null).sort(byVanCode),
+      // `vanCardsOf` keeps the order given, so these stay in the order they were added.
+      ...crews.filter((card) => card.vehicleId === null),
+    ];
 
     return {
       ...board,
@@ -339,8 +362,9 @@ class OperationsDistributionService {
         continue;
       }
 
-      // A van's row: a crew row without a van (Round 20) has no van to place a shipment on.
-      const crew = await operationsCrewAssignmentRepository.findVanById(change.crewAssignmentId);
+      // Any live crew row — a van's, or (Round 24) one without a van: «عاوز لو عربيه من غير كود
+      // عادى تظهر ان اوزع عليها محصنات». The same checks below hold for both.
+      const crew = await operationsCrewAssignmentRepository.findById(change.crewAssignmentId);
       if (crew === null) {
         throw refused(ErrorCodes.NOT_FOUND, 404, id, 'crew assignment not found');
       }
@@ -411,7 +435,9 @@ class OperationsDistributionService {
         const operationsDayId = plan.crew.operationsDayId;
         const set = {
           captainEmployeeId: new Types.ObjectId(plan.captainEmployeeId),
-          vehicleId: plan.crew.vehicleId,
+          // The row's van — null for a row without one (Round 24); given a van later on the board,
+          // the row writes it onto this leg (crew.service.ts `plan`).
+          vehicleId: plan.crew.vehicleId ?? null,
           crewAssignmentId: plan.crew._id,
           operationsDayId,
         };
@@ -506,7 +532,7 @@ class OperationsDistributionService {
         shipmentId: String(after.shipmentId),
         leg: after.leg,
         captainEmployeeId: String(after.captainEmployeeId),
-        vehicleId: String(after.vehicleId),
+        vehicleId: vehicleIdOf(after),
       });
     }
     return { date: day, changed: changedShipments.size, rescheduled };

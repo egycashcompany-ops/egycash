@@ -58,6 +58,7 @@ import {
   type OperationsVaultReceiptDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { vanCodeText } from '../lib/van-name';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatAmount, formatBusinessDateTime, fullName } from '../../../shared/lib/format';
@@ -771,7 +772,10 @@ export const ReceiveIntoVaultDialog = ({
           amount: line.amount,
         })),
         captain: shipment?.crew?.captainName ?? '',
-        vehicle: shipment?.crew?.vehicleCode ?? '',
+        vehicle:
+          shipment?.crew === null || shipment?.crew === undefined
+            ? ''
+            : vanCodeText(t, shipment.crew),
         collectionDate: draft.collectionDate,
         deliveryDate: draft.deliveryDate,
         notes: draft.notes.trim(),
@@ -933,7 +937,7 @@ export const ReceiveIntoVaultDialog = ({
                 />
                 <HeldBox
                   label={t('operations.shipment.form.vehicle')}
-                  value={crew?.vehicleCode ?? ''}
+                  value={crew === null || crew === undefined ? '' : vanCodeText(t, crew)}
                   hint={crewHint}
                   mono
                   data-receive-vehicle="true"

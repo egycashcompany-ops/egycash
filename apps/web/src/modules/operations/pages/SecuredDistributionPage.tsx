@@ -30,10 +30,24 @@
 //     its card before the click («سيُنقل يوم تسليمها إلى …»), and in «السجل» after;
 //   · Leaving with unsaved moves asks first — another day, a link, closing the tab.
 //
+// ROUND 24:
+//   · A CREW WITHOUT A VAN — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: the read
+//     lists the day's crew rows without a van after the vans; each is a card like a van's, «بدون
+//     سيارة (n)» where the code goes (`lib/van-name.ts`), and takes drops, «نقل إلى…» and proposals;
+//   · «تراجع» is ONE STEP BACK, as on «لوحة التشغيلة» («وعاوز تراجع دا يتراجع عن اخر عمليه مش كل
+//     العمليات»): a move, a captain switched, «توزيع تلقائي» — each press takes back the last one
+//     (`lib/crew-undo.ts`). The day's own proposals are where the history starts, not an operation.
+//
+// ROUND 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة بالعربيه»: the vans
+// take about three quarters of a wide screen, three cards to a row at 1440 (`DISTRIBUTION_COLUMNS`,
+// `VAN_GRID`), the محصنات on no van a quarter. On a phone the columns stack with the محصنات on no van
+// FIRST, in a column that folds — the work to do, moved by «نقل إلى…» — and the vans under it. The
+// van card's head is one line and its crew is drawn anew (`VanCard`).
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
-import { useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -54,6 +68,7 @@ import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
+import { useMinWidth } from '../../atm/lib/useMinWidth';
 import { useUnsavedGuard } from '../../atm/lib/useUnsavedGuard';
 import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { DesignCancel, DesignDialog, DesignSave } from '../../fleet/components/DesignDialog';
@@ -70,12 +85,14 @@ import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsB
 import {
   CardMark,
   DAY_BAR,
+  DISTRIBUTION_COLUMNS,
   DayBox,
   DistributionColumn,
   EmptyLoad,
   MoveMenu,
   SHIPMENT_DRAG_TYPE,
   ShipmentCard,
+  VAN_GRID,
   VanCard,
   carriesShipment,
   dayText,
@@ -95,6 +112,7 @@ import {
   loadFigures,
   moveToVan,
   nextCaptain,
+  openingDistributionHistory,
   personName,
   placeShipment,
   placementOf,
@@ -102,10 +120,21 @@ import {
   readDistributionDate,
   refusedShipmentId,
   reschedulesOnSave,
+  sameDistributionDraft,
   takesShipments,
   withoutShipment,
   type DistributionDraft,
 } from '../lib/secured-distribution';
+import {
+  rebaseHistory,
+  record,
+  startHistory,
+  undo,
+  undoableStep,
+  type UndoHistory,
+  type UndoWhat,
+} from '../lib/crew-undo';
+import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 
@@ -141,8 +170,20 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const day = data?.date.slice(0, 10) ?? date ?? today;
   const minDay = data?.today.slice(0, 10) ?? today;
 
-  // The person's work between the read and «حفظ».
-  const [draft, setDraft] = useState<DistributionDraft>(EMPTY_DRAFT);
+  // The person's work between the read and «حفظ» — with its history, so «تراجع» takes back one
+  // operation a press (Round 24).
+  const [history, setHistory] = useState<UndoHistory<DistributionDraft>>(() =>
+    startHistory(EMPTY_DRAFT),
+  );
+  const draft = history.now;
+  /** ONE operation on the draft; one that changed nothing is not recorded. */
+  const applyDraft = (
+    what: UndoWhat,
+    change: (current: DistributionDraft) => DistributionDraft,
+  ): void =>
+    setHistory((current) =>
+      record(current, change(current.now), what, { same: sameDistributionDraft }),
+    );
   // The day whose first read has been proposed on — proposals are made once per day, not on every
   // re-read (a proposal the person took off must not come back by itself under their hand).
   const [seeded, setSeeded] = useState<string | null>(null);
@@ -150,6 +191,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const saving = useRef(false);
+  // Round 24c — a computer's width (Tailwind's `lg`) puts the vans first; a phone the محصنات on no
+  // van, in a column that folds.
+  const wide = useMinWidth(1024);
+  const [unplacedOpen, setUnplacedOpen] = useState(true);
 
   // A day's FIRST read: its proposals, made while rendering (React's «state from the previous
   // render» pattern) rather than in an effect, so the screen never shows the day un-proposed for a
@@ -158,7 +203,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
   if (data !== undefined && seeded !== data.date.slice(0, 10)) {
     setSeeded(data.date.slice(0, 10));
     setRefused(null);
-    setDraft(canEdit ? proposeByDirection(data.shipments, data.crews, EMPTY_DRAFT) : EMPTY_DRAFT);
+    // The proposals are the history's first operation (`openingDistributionHistory`): «تراجع» can
+    // take them back too, the last press of it.
+    setHistory(openingDistributionHistory(data.shipments, data.crews, canEdit));
   }
 
   const changes = distributionChanges(rows, draft);
@@ -172,7 +219,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
       if (value === '' || value <= minDay) next.delete('date');
       else next.set('date', value);
       setSp(next);
-      setDraft(EMPTY_DRAFT);
+      setHistory(startHistory(EMPTY_DRAFT));
       setSeeded(null);
       setRefused(null);
     });
@@ -186,6 +233,14 @@ export const SecuredDistributionPage = (): JSX.Element => {
 
   const columns = distributionColumns(rows, vans, draft);
   const vanById = new Map(vans.map((van) => [van.crewAssignmentId, van]));
+  // Round 24 — the crews without a van, numbered as the board numbers them («بدون سيارة (n)»).
+  const looseNumbers = looseCrewNumbers(vans);
+  const looseNumberOf = (crewAssignmentId: string): string | null => {
+    const number = looseNumbers.get(crewAssignmentId);
+    return number === undefined ? null : formatNumber(number, locale);
+  };
+  const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
+    vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
   const proposedCount = changes.filter((change) => draft.get(change.shipmentId)?.proposed).length;
 
   const rowById = new Map(rows.map((row) => [row.id, row]));
@@ -196,8 +251,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
     van: OperationsDayBoardVehicleCrewDto | null,
   ): void => {
     if (!canEdit) return;
-    setDraft((current) =>
-      van === null ? placeShipment(current, row, UNPLACED) : moveToVan(current, row, van),
+    applyDraft(
+      van === null ? { kind: 'unplace' } : { kind: 'move', vars: { van: vanName(van) } },
+      (current) =>
+        van === null ? placeShipment(current, row, UNPLACED) : moveToVan(current, row, van),
     );
     if (refused?.id === row.id) setRefused(null);
   };
@@ -205,7 +262,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const autoDistribute = (): void => {
     const next = proposeByDirection(rows, vans, draft);
     const added = [...next.keys()].filter((id) => !draft.has(id)).length;
-    setDraft(next);
+    applyDraft({ kind: 'auto' }, () => next);
     if (added === 0) toast.info(t('operations.distribution.autoNone'));
     else
       toast.success(
@@ -223,7 +280,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
       // Resolves once the screens it moves have been read again (the hook's `onSettled`), so the
       // cards land where the server put them without a flicker back.
       const result = await save.mutateAsync(body);
-      setDraft(EMPTY_DRAFT);
+      // Saved: nothing is left to take back.
+      setHistory(startHistory(EMPTY_DRAFT));
       setRefused(null);
       toast.success(
         result.rescheduled > 0
@@ -239,7 +297,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       const reason = errorMessage(error, locale);
       const id = refusedShipmentId(error);
       if (id !== null) {
-        setDraft((current) => withoutShipment(current, id));
+        // The refused move leaves the draft — and every step of its history: «تراجع» never brings
+        // back a move the server has just refused.
+        setHistory((current) =>
+          rebaseHistory(current, (state) => withoutShipment(state, id), sameDistributionDraft),
+        );
         setRefused({ id, reason });
       }
       toast.error(t('operations.distribution.refused', { reason }));
@@ -247,6 +309,47 @@ export const SecuredDistributionPage = (): JSX.Element => {
       saving.current = false;
     }
   };
+
+  // ── «تراجع» — one operation a press (Round 24) ───────────────────────────────────────────────
+  // Nothing while «حفظ» is in flight: its success starts the history afresh (`undoableStep`).
+  const lastMove = undoableStep(history, save.isPending);
+  const undoWords =
+    lastMove === null
+      ? null
+      : t(`operations.distribution.undo.kind.${lastMove.what.kind}`, { ...lastMove.what.vars });
+  const undoTitle =
+    undoWords === null
+      ? t('operations.crewPlan.undo.none')
+      : t('operations.crewPlan.undo.title', { what: undoWords });
+  const undoLast = (): void => {
+    if (!canEdit || lastMove === null || undoWords === null) return;
+    setHistory(undo);
+    setRefused(null);
+    toast.info(t('operations.crewPlan.undo.done', { what: undoWords }));
+  };
+  // Ctrl+Z (⌘Z) — the same press, outside a text box.
+  const undoRef = useRef(undoLast);
+  useEffect(() => {
+    undoRef.current = undoLast;
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+      if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      undoRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Drag and drop ──────────────────────────────────────────────────────────────────────────────
 
@@ -293,7 +396,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
     const at = placementOf(row, draft).crewAssignmentId;
     const choices: MoveChoice[] = vans.map((van) => ({
       key: van.crewAssignmentId,
-      label: t('operations.distribution.vanLabel', { code: van.vehicleCode ?? '…' }),
+      label: vanName(van),
       sub: [van.captains.map(personName).join(' · '), van.direction ?? '']
         .filter((part) => part !== '')
         .join(' — '),
@@ -400,7 +503,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                     name: personName(other),
                   })}
                   onClick={() =>
-                    setDraft((current) =>
+                    applyDraft({ kind: 'captain', vars: { name: personName(other) } }, (current) =>
                       placeShipment(current, row, {
                         crewAssignmentId: van.crewAssignmentId,
                         captainEmployeeId: other.employeeId,
@@ -458,6 +561,116 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const loaded = data !== undefined;
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
+  // RIGHT (first in RTL): the vans — three quarters of a wide screen (Round 24c).
+  const vansColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.vans')}
+      count={vans.length}
+      icon={PATH.truck}
+      data-distribution-column="vans"
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : vans.length === 0 ? (
+        <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
+      ) : (
+        <div className={VAN_GRID}>
+          {columns.vans.map(({ van, rows: load }) => (
+            <VanCard
+              key={van.crewAssignmentId}
+              van={van}
+              looseNumber={looseNumberOf(van.crewAssignmentId)}
+              crewPlanVisible={data.crewPlanVisible}
+              day={day}
+              figures={loadFigures(load, currencyOf, packagingOf)}
+              {...(canEdit
+                ? {
+                    drop: {
+                      armed: accepts(van.crewAssignmentId),
+                      over: over === van.crewAssignmentId,
+                      handlers: dropTarget(van.crewAssignmentId, (row) => move(row, van)),
+                    },
+                  }
+                : {})}
+            >
+              {load.length === 0 ? (
+                <EmptyLoad>
+                  {takesShipments(van)
+                    ? canEdit
+                      ? t('operations.distribution.dropHere')
+                      : t(
+                          hasNoVan(van)
+                            ? 'operations.distribution.emptyCrew'
+                            : 'operations.distribution.emptyVan',
+                        )
+                    : t('operations.distribution.noCaptain')}
+                </EmptyLoad>
+              ) : (
+                load.map(card)
+              )}
+            </VanCard>
+          ))}
+        </div>
+      )}
+    </DistributionColumn>
+  );
+
+  // LEFT: the shipments on no van — and where one is dragged to come off its van. A quarter of a
+  // wide screen; on a phone, above the vans and foldable (Round 24c).
+  const unplacedColumn = (
+    <DistributionColumn
+      title={t('operations.distribution.unplaced')}
+      count={columns.unplaced.length}
+      icon={SHIPMENT_PATH.shipment}
+      data-distribution-column="unplaced"
+      {...(wide
+        ? {}
+        : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
+      className={cn(
+        canEdit &&
+          accepts(UNPLACED_KEY) &&
+          !wide &&
+          !unplacedOpen &&
+          'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
+      )}
+      {...(canEdit ? { dropHandlers: dropTarget(UNPLACED_KEY, (row) => move(row, null)) } : {})}
+      bodyProps={{
+        'data-drop-over': over === UNPLACED_KEY ? 'true' : undefined,
+        className: cn(
+          'rounded-b-2xl transition-colors',
+          canEdit &&
+            accepts(UNPLACED_KEY) &&
+            'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
+          over === UNPLACED_KEY &&
+            'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
+        ),
+      }}
+    >
+      {!loaded ? (
+        <div className="flex justify-center py-10">
+          <Spinner className="h-6 w-6 text-brand-500" />
+        </div>
+      ) : columns.unplaced.length === 0 ? (
+        <EmptyLoad>
+          {rows.length === 0
+            ? t('operations.distribution.empty')
+            : t('operations.distribution.allPlaced')}
+        </EmptyLoad>
+      ) : (
+        <div className="grid gap-2">
+          {dragging !== null && accepts(UNPLACED_KEY) && (
+            <p className="text-center text-xs font-bold text-brand-600 dark:text-brand-300">
+              {t('operations.distribution.dropBack')}
+            </p>
+          )}
+          {columns.unplaced.map(card)}
+        </div>
+      )}
+    </DistributionColumn>
+  );
+
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-distribution-page="true">
@@ -502,14 +715,16 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3.5 w-3.5 rtl:-scale-x-100" />
                 {t('operations.distribution.auto')}
               </button>
+              {/* «تراجع» — the LAST operation only (Round 24); its tooltip says which. */}
               <button
                 type="button"
                 data-distribution-discard="true"
-                disabled={!dirty}
-                onClick={() => {
-                  setDraft(EMPTY_DRAFT);
-                  setRefused(null);
-                }}
+                data-distribution-undo={String(history.past.length)}
+                disabled={lastMove === null}
+                title={undoTitle}
+                aria-label={undoTitle}
+                aria-keyshortcuts="Control+Z Meta+Z"
+                onClick={undoLast}
                 className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
               >
                 <BoardIcon d={[...SHIPMENT_PATH.undo]} className="h-3.5 w-3.5" />
@@ -568,98 +783,20 @@ export const SecuredDistributionPage = (): JSX.Element => {
         ) : failed ? (
           <ErrorState error={board.error} onRetry={() => void board.refetch()} />
         ) : (
-          <div
-            className="grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
-            data-distribution-columns="true"
-          >
-            {/* RIGHT (first in RTL): the vans. */}
-            <DistributionColumn
-              title={t('operations.distribution.vans')}
-              count={vans.length}
-              icon={PATH.truck}
-              data-distribution-column="vans"
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : vans.length === 0 ? (
-                <EmptyLoad>{t('operations.distribution.noVans')}</EmptyLoad>
-              ) : (
-                <div className="grid items-start gap-3 xl:grid-cols-2">
-                  {columns.vans.map(({ van, rows: load }) => (
-                    <VanCard
-                      key={van.crewAssignmentId}
-                      van={van}
-                      crewPlanVisible={data.crewPlanVisible}
-                      figures={loadFigures(load, currencyOf, packagingOf)}
-                      {...(canEdit
-                        ? {
-                            drop: {
-                              armed: accepts(van.crewAssignmentId),
-                              over: over === van.crewAssignmentId,
-                              handlers: dropTarget(van.crewAssignmentId, (row) => move(row, van)),
-                            },
-                          }
-                        : {})}
-                    >
-                      {load.length === 0 ? (
-                        <EmptyLoad>
-                          {takesShipments(van)
-                            ? canEdit
-                              ? t('operations.distribution.dropHere')
-                              : t('operations.distribution.emptyVan')
-                            : t('operations.distribution.noCaptain')}
-                        </EmptyLoad>
-                      ) : (
-                        load.map(card)
-                      )}
-                    </VanCard>
-                  ))}
-                </div>
-              )}
-            </DistributionColumn>
-
-            {/* LEFT: the shipments on no van — and where one is dragged to come off its van. */}
-            <DistributionColumn
-              title={t('operations.distribution.unplaced')}
-              count={columns.unplaced.length}
-              icon={SHIPMENT_PATH.shipment}
-              data-distribution-column="unplaced"
-              bodyProps={{
-                'data-drop-over': over === UNPLACED_KEY ? 'true' : undefined,
-                className: cn(
-                  'rounded-b-2xl transition-colors',
-                  canEdit &&
-                    accepts(UNPLACED_KEY) &&
-                    'outline-dashed outline-2 -outline-offset-4 outline-brand-300 dark:outline-brand-500/50',
-                  over === UNPLACED_KEY &&
-                    'bg-brand-50 outline-brand-500 dark:bg-brand-500/10 dark:outline-brand-400',
-                ),
-                ...(canEdit ? dropTarget(UNPLACED_KEY, (row) => move(row, null)) : {}),
-              }}
-            >
-              {!loaded ? (
-                <div className="flex justify-center py-10">
-                  <Spinner className="h-6 w-6 text-brand-500" />
-                </div>
-              ) : columns.unplaced.length === 0 ? (
-                <EmptyLoad>
-                  {rows.length === 0
-                    ? t('operations.distribution.empty')
-                    : t('operations.distribution.allPlaced')}
-                </EmptyLoad>
-              ) : (
-                <div className="grid gap-2">
-                  {dragging !== null && accepts(UNPLACED_KEY) && (
-                    <p className="text-center text-xs font-bold text-brand-600 dark:text-brand-300">
-                      {t('operations.distribution.dropBack')}
-                    </p>
-                  )}
-                  {columns.unplaced.map(card)}
-                </div>
-              )}
-            </DistributionColumn>
+          <div className={DISTRIBUTION_COLUMNS} data-distribution-columns="true">
+            {/* A computer: the vans first — the RIGHT, in RTL. A phone: the محصنات on no van
+                first, foldable — they are the work to do, and «نقل إلى…» on each is how they move. */}
+            {wide ? (
+              <>
+                {vansColumn}
+                {unplacedColumn}
+              </>
+            ) : (
+              <>
+                {unplacedColumn}
+                {vansColumn}
+              </>
+            )}
           </div>
         )}
       </div>

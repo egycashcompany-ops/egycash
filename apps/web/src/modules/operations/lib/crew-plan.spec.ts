@@ -105,6 +105,7 @@ const van = (code: string, over: Partial<PlanRow> = {}): PlanRow => ({
   key: `van:v-${code}`,
   vehicleId: `v-${code}`,
   vehicleCode: code,
+  onRoster: true,
   crewId: null,
   drivers: [],
   slots: { captain: [], specialist1: [], specialist2: [] },
@@ -183,7 +184,7 @@ describe('toPlanRows — the board as the server sends it', () => {
           direction: 'مدينة نصر',
           plannedTime: '07:30',
           shiftTypeId: 't-secured',
-          rowColour: 'yellow',
+          rowColour: 'navy',
         }),
       },
       {
@@ -202,6 +203,7 @@ describe('toPlanRows — the board as the server sends it', () => {
       crew({ id: 'c-loose2', specialist1EmployeeIds: ['y'] }),
     ],
     workshopVehicles: [{ vehicleId: 'v-310', vehicleCode: '310' }],
+    freeVehicles: [],
   };
 
   it('reads the type, the colour, the drivers, then the rows without a van in their order', () => {
@@ -215,7 +217,7 @@ describe('toPlanRows — the board as the server sends it', () => {
     expect(rows[0]).toMatchObject({
       crewId: 'c-213',
       shiftTypeId: 't-secured',
-      rowColour: 'yellow',
+      rowColour: 'navy',
       drivers: [{ employeeId: 'd1', fullNameAr: 'سائق' }],
       slots: slots(['a'], ['b'], []),
     });
@@ -234,9 +236,24 @@ describe('toPlanRows — the board as the server sends it', () => {
     // A newer server's colour is never turned into a class name: the row is simply untinted.
     const newer = {
       ...board,
-      rows: [{ ...board.rows[0], crew: { ...board.rows[0]?.crew, rowColour: 'pink' } }],
+      rows: [{ ...board.rows[0], crew: { ...board.rows[0]?.crew, rowColour: 'magenta' } }],
     } as unknown as OperationsCrewBoardDto;
     expect(toPlanRows(newer)[0]).toMatchObject({ rowColour: null, shiftTypeId: 't-secured' });
+  });
+
+  it('Round 24b — reads Round 20’s six names (an older server, a row not migrated) as the palette’s', () => {
+    const older = (rowColour: string) =>
+      toPlanRows({
+        ...board,
+        rows: [{ ...board.rows[0], crew: { ...board.rows[0]?.crew, rowColour } }],
+      } as unknown as OperationsCrewBoardDto)[0]?.rowColour;
+    expect(older('yellow')).toBe('gold');
+    expect(older('green')).toBe('emerald');
+    expect(older('blue')).toBe('sky');
+    expect(older('red')).toBe('rose');
+    expect(older('purple')).toBe('violet');
+    expect(older('orange')).toBe('orange');
+    expect(older('pink')).toBe('pink');
   });
 });
 
@@ -382,14 +399,14 @@ describe('the row: its fields, its bin, a row without a van', () => {
     const next = patchRow([van('1', { notes: 'x' })], 'van:v-1', {
       notes: '   ',
       shiftTypeId: 't-daily',
-      rowColour: 'red',
+      rowColour: 'rose',
     });
-    expect(next[0]).toMatchObject({ notes: null, shiftTypeId: 't-daily', rowColour: 'red' });
+    expect(next[0]).toMatchObject({ notes: null, shiftTypeId: 't-daily', rowColour: 'rose' });
   });
 
   it('the bin deletes a vehicle-less row but only EMPTIES a van row', () => {
     const rows = [
-      van('1', { slots: slots(['a']), direction: 'x', rowColour: 'red' }),
+      van('1', { slots: slots(['a']), direction: 'x', rowColour: 'rose' }),
       vehiclelessRow(1),
     ];
     const emptied = discardRow(rows, 'van:v-1');
@@ -786,12 +803,12 @@ describe('planChanges + toPlan — the save body', () => {
     expect(changeCount(planChanges(original, original))).toBe(0);
     const blankAdded = [...original, vehiclelessRow(1)];
     expect(changeCount(planChanges(blankAdded, original))).toBe(0);
-    const coloured = patchRow(original, 'van:v-1', { rowColour: 'green' });
+    const coloured = patchRow(original, 'van:v-1', { rowColour: 'emerald' });
     expect(planChanges(coloured, original).changed.map((row) => row.key)).toEqual(['van:v-1']);
   });
 
   it('carries the type, the colour and the vehicle-less rows — and the saved one deleted', () => {
-    let next = patchRow(original, 'van:v-1', { rowColour: 'blue' });
+    let next = patchRow(original, 'van:v-1', { rowColour: 'sky' });
     next = discardRow(next, 'loose:c-l');
     next = [...next, { ...vehiclelessRow(2), slots: slots(['z']), shiftTypeId: 't-secured' }];
     const body = toPlan('2026-11-16', planChanges(next, original));
@@ -802,7 +819,7 @@ describe('planChanges + toPlan — the save body', () => {
         vehicleId: 'v-1',
         captainEmployeeIds: ['a'],
         shiftTypeId: 't-daily',
-        rowColour: 'blue',
+        rowColour: 'sky',
       }),
       expect.objectContaining({
         vehicleId: null,
@@ -846,17 +863,22 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
       slots: slots([captain as string], [specialist as string]),
       direction: 'المعادي',
       shiftTypeId: type ?? null,
-      rowColour: 'green',
+      rowColour: 'emerald',
     },
   ];
 
-  it('gives a saved row without a van a van: the van’s row, and the old row removed — one save', () => {
+  it('Round 24 — gives a saved row without a van a van IN PLACE: «row X takes van V», nothing removed', () => {
+    // The Round-20 way (X removed, the van's row written) is refused for a row holding محصنات, and
+    // would strand them: X keeps its id on the van's row, and the save names both.
     const next = attachVan(original, `loose:${loose}`, `van:${vanB}`);
+    expect(next.map((row) => row.key)).toEqual([`van:${vanA}`, `van:${vanB}`]);
+    expect(next[1]).toMatchObject({ crewId: loose, vehicleId: vanB });
     const body = toPlan('2026-11-16', planChanges(next, original));
-    expect(body.removeCrewAssignmentIds).toEqual([loose]);
+    expect(body).not.toHaveProperty('removeCrewAssignmentIds');
     expect(body.rows).toEqual([
       {
         vehicleId: vanB,
+        crewAssignmentId: loose,
         captainEmployeeIds: [captain],
         specialist1EmployeeIds: [specialist],
         specialist2EmployeeIds: [],
@@ -864,7 +886,7 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
         plannedTime: null,
         notes: null,
         shiftTypeId: type,
-        rowColour: 'green',
+        rowColour: 'emerald',
       },
     ]);
     const parsed = PlanOperationsCrewSchema.safeParse(body);
@@ -879,12 +901,12 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
     const body = toPlan('2026-11-16', planChanges(next, original));
     expect(body).not.toHaveProperty('removeCrewAssignmentIds');
     expect(body.rows.map((row) => [row.vehicleId, row.crewAssignmentId])).toEqual([
-      [vanA, undefined],
+      [vanA, id(10)],
       [null, loose],
       [null, undefined],
     ]);
-    // A van's row never carries a crew id — the schema refuses a second address for it.
-    expect(body.rows[0]).not.toHaveProperty('crewAssignmentId');
+    // Round 24 — a SAVED van row is named by its id too (a plain edit of the row holding the van);
+    // a van with no saved crew row yet is still upserted by its van alone.
     const parsed = PlanOperationsCrewSchema.safeParse(body);
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
   });

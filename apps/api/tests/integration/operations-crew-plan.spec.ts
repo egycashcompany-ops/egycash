@@ -21,7 +21,9 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OperationsEvents,
+  OperationsSettingKeys,
   SettingKeys,
   platformPermissions,
   type FleetVehicleDto,
@@ -50,9 +52,13 @@ import { OperationsCrewAssignmentModel } from '../../src/modules/operations/crew
 import { operationsCrewAssignmentRepository } from '../../src/modules/operations/crew/crew-assignment.repository';
 import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-types/shift-type.model';
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
-import { migrateCrewAssignmentIndexes } from '../../src/modules/operations/operations.migration';
+import {
+  migrateCrewAssignmentIndexes,
+  migrateCrewRowColoursToPalette,
+} from '../../src/modules/operations/operations.migration';
 import { operationsCrewRequirementsRepository } from '../../src/modules/operations/crew/crew-requirements.repository';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
 import { AttendanceDayModel } from '../../src/modules/hr/attendance';
 import { LeaveRequestModel } from '../../src/modules/hr/leave-management/leave-requests/leave-request.model';
 import { type AuthContext } from '../../src/shared/types';
@@ -554,6 +560,54 @@ describe('«أنواع التشغيل» — the shift-type catalog («النوع
       expect((await call.set('Authorization', `Bearer ${crewViewerToken}`)).status).toBe(403);
     }
   });
+
+  it('Round 24b — «ألوان الأنواع»: a type takes any of the twenty, two may share one, a row-only name is no type colour', async () => {
+    const daily = await typeNamed('يومي');
+    const travel = await typeNamed('سفر');
+    const patchType = (id: string, body: Record<string, unknown>): request.Test =>
+      request(app)
+        .patch(`/api/v1/operations/shift-types/${id}`)
+        .set('Authorization', `Bearer ${catalogToken}`)
+        .send(body);
+
+    // A name new in Round 24b, through the existing update and its existing grant.
+    const navy = await patchType(daily.id, { colour: 'navy', version: daily.version });
+    expect(navy.status, JSON.stringify(navy.body)).toBe(200);
+    const navyDto = data<OperationsShiftTypeDto>(navy);
+    expect(navyDto).toMatchObject({ colour: 'navy', version: daily.version + 1 });
+
+    // «ينفع نوعين ياخدوا نفس اللون؟» → «أيوه عادي».
+    const shared = await patchType(travel.id, { colour: 'navy', version: travel.version });
+    expect(shared.status, JSON.stringify(shared.body)).toBe(200);
+    expect(
+      (await types())
+        .filter((type) => type.colour === 'navy')
+        .map((type) => type.name)
+        .sort(),
+    ).toEqual(['سفر', 'يومي'].sort());
+
+    // Round 20's ROW names were never type colours, and are not now: only the row maps them.
+    expect((await patchType(daily.id, { colour: 'yellow', version: navyDto.version })).status).toBe(
+      400,
+    );
+    // The card sends the version it read: a stale one is refused, nothing written.
+    const stale = await patchType(daily.id, { colour: 'olive', version: daily.version });
+    expect(stale.status).toBe(409);
+    expect((await typeNamed('يومي')).colour).toBe('navy');
+
+    // Put back for the board cases below.
+    expect((await patchType(daily.id, { colour: 'rose', version: navyDto.version })).status).toBe(
+      200,
+    );
+    expect(
+      (
+        await patchType(travel.id, {
+          colour: 'orange',
+          version: data<OperationsShiftTypeDto>(shared).version,
+        })
+      ).status,
+    ).toBe(200);
+  });
 });
 
 describe('the crew row’s type and colour', () => {
@@ -567,12 +621,12 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'yellow',
+          rowColour: 'amber',
         },
       ],
     });
     expect(first.changedCount).toBe(1);
-    expect(vanRow(first, van1)?.crew).toMatchObject({ shiftTypeId: daily.id, rowColour: 'yellow' });
+    expect(vanRow(first, van1)?.crew).toMatchObject({ shiftTypeId: daily.id, rowColour: 'amber' });
 
     const recoloured = await saved({
       rows: [
@@ -582,12 +636,12 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
     expect(recoloured.changedCount).toBe(1);
-    expect(vanRow(recoloured, van1)?.crew?.rowColour).toBe('green');
+    expect(vanRow(recoloured, van1)?.crew?.rowColour).toBe('emerald');
 
     const again = await saved({
       rows: [
@@ -597,7 +651,7 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
@@ -605,8 +659,8 @@ describe('the crew row’s type and colour', () => {
   });
 
   it('a row with a colour or a type and nothing else is still a row', async () => {
-    const res = await saved({ rows: [{ vehicleId: van2, rowColour: 'blue' }] });
-    expect(vanRow(res, van2)?.crew).toMatchObject({ rowColour: 'blue', shiftTypeId: null });
+    const res = await saved({ rows: [{ vehicleId: van2, rowColour: 'sky' }] });
+    expect(vanRow(res, van2)?.crew).toMatchObject({ rowColour: 'sky', shiftTypeId: null });
   });
 
   it('refuses a type nobody has, and an ARCHIVED type newly chosen — OPERATIONS_UNKNOWN_SHIFT_TYPE', async () => {
@@ -625,14 +679,14 @@ describe('the crew row’s type and colour', () => {
     expect(errorOf(archived).code).toBe(ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE);
     // Nothing written: van 2 is as it was.
     expect(vanRow(await board(), van2)?.crew).toMatchObject({
-      rowColour: 'blue',
+      rowColour: 'sky',
       shiftTypeId: null,
     });
   });
 
   it('keeps a type the row already holds when it is archived afterwards', async () => {
     const reserve = await typeNamed('احتياطي');
-    await saved({ rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue' }] });
+    await saved({ rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky' }] });
     const off = await request(app)
       .patch(`/api/v1/operations/shift-types/${reserve.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -640,21 +694,21 @@ describe('the crew row’s type and colour', () => {
     expect(off.status).toBe(200);
     // The row is saved again with a note — its archived type rides along untouched.
     const res = await saved({
-      rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' }],
+      rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky', notes: 'ملاحظة' }],
     });
     expect(vanRow(res, van2)?.crew).toMatchObject({ shiftTypeId: reserve.id, notes: 'ملاحظة' });
     // …while ANOTHER row newly picking the same archived type is refused, and the refusal names
     // THAT row (index 1), not the one keeping it — the board marks the row it names.
     const picked = await save({
       rows: [
-        { vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' },
+        { vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky', notes: 'ملاحظة' },
         {
           vehicleId: van1,
           captainEmployeeIds: [cap1],
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: reserve.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
@@ -668,6 +722,129 @@ describe('the crew row’s type and colour', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: true, version: data<OperationsShiftTypeDto>(off).version });
     expect(back.status).toBe(200);
+  });
+
+  // Round 24b — «تلقائي ويتغيّر يدوي»: `rowColour` is the colour picked by hand over the type's, in the
+  // types' palette. Its own day, and its rows deleted at the end, so no case above or below meets
+  // them (the index cases rebuild `ux_day_vehicle` in its old shape, where two rows without a van
+  // on one day collide).
+  const COLOUR_DAY = shift(110);
+  const looseById = (dto: OperationsCrewBoardDto, id: string | undefined) =>
+    dto.vehiclelessRows.find((row) => row.id === id);
+
+  it('Round 24b — takes the palette’s names and Round 20’s six (mapped), answers in the palette’s, and either spelling of the same colour is a no-op', async () => {
+    const first = await saved(
+      { rows: [{ vehicleId: null, rowColour: 'purple', notes: 'r24b' }] },
+      COLOUR_DAY,
+    );
+    const id = first.vehiclelessRows.find((row) => row.notes === 'r24b')?.id;
+    expect(looseById(first, id)?.rowColour).toBe('violet');
+    // Stored in the palette's name too: no service writes a legacy one.
+    expect((await OperationsCrewAssignmentModel.findById(id).lean().exec())?.rowColour).toBe(
+      'violet',
+    );
+    const resend = (rowColour: unknown) =>
+      save(
+        { rows: [{ vehicleId: null, crewAssignmentId: id, rowColour, notes: 'r24b' }] },
+        COLOUR_DAY,
+      );
+
+    // The same colour, as the palette names it and as Round 20 did: nothing changed.
+    for (const same of ['violet', 'purple']) {
+      const again = await resend(same);
+      expect(again.status, same).toBe(200);
+      expect(data<{ changedCount: number }>(again).changedCount, same).toBe(0);
+    }
+    // An old client sending any of Round 20's six never meets a 400; each lands on its palette name.
+    for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      const res = await resend(legacy);
+      expect(res.status, legacy).toBe(200);
+      expect(looseById(data<OperationsCrewBoardDto>(res), id)?.rowColour, legacy).toBe(palette);
+    }
+    // The nine names new in Round 24b, as they are.
+    for (const colour of ['crimson', 'navy', 'forest', 'gold', 'plum', 'brown', 'cyan', 'pink']) {
+      const res = await resend(colour);
+      expect(res.status, colour).toBe(200);
+      expect(looseById(data<OperationsCrewBoardDto>(res), id)?.rowColour, colour).toBe(colour);
+    }
+    // Anything else is refused, nothing written.
+    const bad = await resend('magenta');
+    expect(bad.status).toBe(400);
+    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('pink');
+    // null is «لون النوع»: the hand-picked colour is taken off, and the row wears its type's.
+    const auto = await resend(null);
+    expect(auto.status).toBe(200);
+    expect(looseById(data<OperationsCrewBoardDto>(auto), id)?.rowColour).toBeNull();
+  });
+
+  it('Round 24b — a row still holding a Round-20 name reads in the palette’s, and the boot migrates it once, history and timestamps untouched', async () => {
+    const res = await saved(
+      { rows: [{ vehicleId: null, rowColour: 'navy', notes: 'r24b-migrate' }] },
+      COLOUR_DAY,
+    );
+    const id = res.vehiclelessRows.find((row) => row.notes === 'r24b-migrate')?.id as string;
+    const _id = new Types.ObjectId(id);
+    // Round 20 wrote these names; written straight into the collection, as a database built before
+    // Round 24b holds them.
+    await OperationsCrewAssignmentModel.collection.updateOne(
+      { _id },
+      { $set: { rowColour: 'yellow' } },
+    );
+    const raw = (rowColour: string, isDeleted: boolean) => ({
+      operationsDayId: new Types.ObjectId(),
+      vehicleId: null,
+      fleetDutyAssignmentId: null,
+      shiftTypeId: null,
+      rowColour,
+      captainEmployeeIds: [],
+      specialist1EmployeeIds: [],
+      specialist2EmployeeIds: [],
+      direction: null,
+      plannedTime: null,
+      notes: null,
+      isDeleted,
+      createdAt: new Date('2026-01-02T03:04:05.000Z'),
+      updatedAt: new Date('2026-01-02T03:04:05.000Z'),
+      __v: 0,
+    });
+    const gone = (await OperationsCrewAssignmentModel.collection.insertOne(raw('red', true)))
+      .insertedId;
+    const orange = (await OperationsCrewAssignmentModel.collection.insertOne(raw('orange', false)))
+      .insertedId;
+    const before = await OperationsCrewAssignmentModel.collection.findOne({ _id });
+
+    // Read BEFORE the migration: the palette's name already — the board never shows «yellow». It is
+    // the palette's GOLD, the colour Round 20 drew yellow in (bg-yellow-400), not amber.
+    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('gold');
+
+    const first = await migrateCrewRowColoursToPalette();
+    expect(first.rowsUpdated).toBe(2);
+    const after = await OperationsCrewAssignmentModel.collection.findOne({ _id });
+    expect(after?.rowColour).toBe('gold');
+    // A spelling changed, not the crew: `updatedAt` and the version stay.
+    expect(after?.updatedAt).toEqual(before?.updatedAt);
+    expect(after?.__v).toEqual(before?.__v);
+    // A soft-deleted row is history the readers still reach: migrated too, still deleted.
+    expect(await OperationsCrewAssignmentModel.collection.findOne({ _id: gone })).toMatchObject({
+      rowColour: 'rose',
+      isDeleted: true,
+    });
+    // orange is a palette name: left as it is.
+    expect(
+      (await OperationsCrewAssignmentModel.collection.findOne({ _id: orange }))?.rowColour,
+    ).toBe('orange');
+    // No legacy name is left anywhere.
+    expect(
+      await OperationsCrewAssignmentModel.collection.countDocuments({
+        rowColour: { $in: ['yellow', 'green', 'blue', 'red', 'purple'] },
+      }),
+    ).toBe(0);
+
+    // Idempotent: the next boot (or the worker booting beside the api) writes nothing.
+    expect(await migrateCrewRowColoursToPalette()).toEqual({ rowsUpdated: 0 });
+    await OperationsCrewAssignmentModel.collection.deleteMany({
+      $or: [{ _id: { $in: [gone, orange] } }, { notes: { $in: ['r24b', 'r24b-migrate'] } }],
+    });
   });
 });
 
@@ -793,13 +970,13 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
           vehicleId: null,
           crewAssignmentId: looseB,
           specialist2EmployeeIds: [spec3],
-          rowColour: 'red',
+          rowColour: 'rose',
         },
       ],
     });
     expect(res.changedCount).toBe(1);
     expect(res.vehiclelessRows.find((row) => row.id === looseB)).toMatchObject({
-      rowColour: 'red',
+      rowColour: 'rose',
     });
   });
 
@@ -850,7 +1027,7 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     // And back, for the cases below.
     await saved({
       rows: [
-        { vehicleId: van2, rowColour: 'blue' },
+        { vehicleId: van2, rowColour: 'sky' },
         {
           vehicleId: null,
           crewAssignmentId: looseA,
@@ -866,7 +1043,7 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     });
   });
 
-  it('is never a van to the readers about vans — the pool, the distribution, a leg, the captain’s day', async () => {
+  it('Round 24 — is a crew to the distribution and the captain’s day; the pool and the daily pickup still want a van', async () => {
     // The pool: cap2 holds no VEHICLE (his row has none); cap1, on van 1, holds van 1. Both get a
     // requirements row, which is what puts them on an unconfigured install's roster.
     for (const employeeId of [cap1, cap2]) {
@@ -893,23 +1070,32 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     expect(day.find((m) => m.employeeId === cap2)).toMatchObject({ assignedVehicleId: null, isCrewed: true });
     expect(day.find((m) => m.employeeId === cap1)).toMatchObject({ assignedVehicleId: van1, isCrewed: true });
 
-    // «توزيع المحصنات» lists the day's VANS only.
+    // Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: «توزيع المحصنات» lists
+    // the row without a van too, AFTER the vans, naming no van (never the string "null").
     const distribution = await request(app)
       .get(`/api/v1/operations/secured/distribution?date=${DAY}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(distribution.status, JSON.stringify(distribution.body)).toBe(200);
     const vans = data<OperationsSecuredDistributionDto>(distribution).crews;
-    expect(vans.map((van) => van.crewAssignmentId)).not.toContain(looseA);
-    expect(vans.every((van) => van.vehicleId !== 'null' && van.vehicleCode !== null)).toBe(true);
+    const loose = vans.find((van) => van.crewAssignmentId === looseA);
+    expect(loose).toMatchObject({ vehicleId: null, vehicleCode: null, drivers: [] });
+    expect(loose?.captains.map((p) => p.employeeId)).toEqual([cap2]);
+    // …after every van: the cards with a van first, then the rows without one.
+    const firstLoose = vans.findIndex((van) => van.vehicleId === null);
+    expect(vans.slice(firstLoose).every((van) => van.vehicleId === null)).toBe(true);
+    expect(vans.every((van) => van.vehicleId !== 'null')).toBe(true);
 
-    // The captain's day: captaincy is "which VEHICLES am I a captain of" — none for cap2.
+    // The captain's day: captaincy is the day's plan, van or none — cap2 is a captain today.
     const dayRow = (await board()).day;
     expect(
-      await operationsCrewAssignmentRepository.findForCaptainDay(dayRow?.id as string, cap2),
-    ).toEqual([]);
+      (await operationsCrewAssignmentRepository.findForCaptainDay(dayRow?.id as string, cap2)).map(
+        (row) => String(row._id),
+      ),
+    ).toEqual([looseA]);
+    // …while the daily PICKUP leg still rides a van's row only.
     expect(await operationsCrewAssignmentRepository.findVanById(looseA)).toBeNull();
 
-    // A leg rides a VAN: booking a shipment onto the row without one answers 404, as for no row.
+    // A daily pickup rides a VAN: booking one onto the row without one answers 404, as for no row.
     const bank = data<OperationsBankDto>(
       await request(app)
         .post('/api/v1/operations/banks')
@@ -1249,7 +1435,7 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
             vehicleId: van2,
             specialist1EmployeeIds: [laterAway],
             plannedTime: '08:15',
-            rowColour: 'green',
+            rowColour: 'emerald',
           },
         ],
       },
@@ -1259,14 +1445,14 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
       captainEmployeeIds: [],
       specialist1EmployeeIds: [laterAway],
       plannedTime: '08:15',
-      rowColour: 'green',
+      rowColour: 'emerald',
     });
 
     // Moved to ANOTHER row, he is being put on it — refused, and the van keeps him.
     const moved = await save(
       {
         rows: [
-          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'emerald' },
           { vehicleId: null, captainEmployeeIds: [laterAway] },
         ],
       },
@@ -1453,7 +1639,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
             vehicleId: van2,
             specialist1EmployeeIds: [reflagged],
             plannedTime: '08:15',
-            rowColour: 'green',
+            rowColour: 'emerald',
           },
         ],
       },
@@ -1462,7 +1648,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
     expect(vanRow(edited, van2)?.crew).toMatchObject({
       specialist1EmployeeIds: [reflagged],
       plannedTime: '08:15',
-      rowColour: 'green',
+      rowColour: 'emerald',
     });
 
     // Moved to the other specialist's slot of the SAME row — a new seat, refused; the row stays.
@@ -1482,7 +1668,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
     const elsewhere = await save(
       {
         rows: [
-          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'emerald' },
           { vehicleId: van3, specialist1EmployeeIds: [reflagged] },
         ],
       },
@@ -1588,5 +1774,420 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
       read.mockRestore();
     }
     await saved({ rows: [{ vehicleId: van2 }, { vehicleId: van3 }] }, ROLE_DAY);
+  });
+});
+
+// ── Round 24 ────────────────────────────────────────────────────────────────────────────────────
+//
+// «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات و مكان بدون سيارة دا لما ادوس عليه يجيب
+// كل السيارات اللى مش عليها طاقم واقدر اختار منهم». The board side: `freeVehicles` (every active car
+// with no crew that day), a van the roster does not have saved and listed, a saved row GIVEN a van
+// in place, and the refusals. The محصنات side (legs following the row, a row holding محصنات not
+// removed) is pinned in operations-distribution.spec.ts, where the shipments are.
+describe('Round 24 — «بدون سيارة» offers every car without a crew, and a row takes any of them', () => {
+  /** No Fleet roster at all — production's usual day. */
+  const BARE = shift(100);
+  /** A roster of van 1 (two drivers) and van 2. */
+  const ROSTERED = shift(101);
+  let cashCar = ''; // OPS-P9 — a vehicle of the cash-transfer operation (the setting)
+  let otherCar = ''; // OPS-P10 — nobody's: no roster, no standing crew, no operation
+  let parkedCar = ''; // OPS-P7 — out of service
+  let goneCar = ''; // OPS-P8 — deleted
+  let specialistOnly = ''; // ticked nothing — a specialist, never a captain
+
+  const orgCtx = (): AuthContext => ({
+    userId: adminId,
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  });
+  const setCashOperations = (value: string[]) =>
+    settingsService.set(orgCtx(), {
+      key: OperationsSettingKeys.CashTransferOperationIds,
+      scope: 'organization',
+      value,
+    });
+  const free = (dto: OperationsCrewBoardDto) =>
+    dto.freeVehicles.map((car) => [car.vehicleCode, car.group]);
+
+  beforeAll(async () => {
+    cashCar = await mkVehicle('OPS-P9');
+    otherCar = await mkVehicle('OPS-P10');
+    parkedCar = await mkVehicle('OPS-P7');
+    goneCar = await mkVehicle('OPS-P8');
+    await FleetVehicleModel.collection.updateOne(
+      { _id: new Types.ObjectId(parkedCar) },
+      { $set: { status: 'outOfService' } },
+    );
+    await FleetVehicleModel.collection.updateOne(
+      { _id: new Types.ObjectId(goneCar) },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    );
+    // «نقل أموال» — the Fleet operation the setting names; OPS-P9 runs it.
+    const operation = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'operation', name: { ar: 'نقل أموال الجولة 24', en: 'Cash transfer R24' } });
+    expect(operation.status, JSON.stringify(operation.body)).toBe(201);
+    const operationId = data<{ id: string }>(operation).id;
+    await FleetVehicleModel.collection.updateOne(
+      { _id: new Types.ObjectId(cashCar) },
+      { $set: { operationId: new Types.ObjectId(operationId) } },
+    );
+    await setCashOperations([operationId]);
+
+    const roster = await request(app)
+      .post('/api/v1/fleet/roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: ROSTERED,
+        rows: [
+          { vehicleId: van1, driver1EmployeeId: drv1, driver2EmployeeId: drv2, notes: 'r24' },
+          { vehicleId: van2, notes: 'r24' },
+        ],
+      });
+    expect(roster.status, JSON.stringify(roster.body)).toBe(200);
+    specialistOnly = await mkEmployee('أخصائي الجولة الرابعة والعشرين');
+  });
+
+  afterAll(async () => {
+    await setCashOperations([]);
+  });
+
+  it('lists EVERY active car with no crew — the cash-transfer ones, the standing crew’s, then the rest', async () => {
+    const dto = await board(BARE);
+    // No roster, no crew row: nothing on the roster, the setting's car first, the standing crew's
+    // next, everything else after — each by code, numbers in number order («P9» before «P10»).
+    // Never one out of service (P7) or deleted (P8).
+    expect(free(dto)).toEqual([
+      ['OPS-P9', 'cashTransfer'],
+      ['OPS-P4', 'standing'],
+      ['OPS-P6', 'standing'],
+      ['OPS-P1', 'other'],
+      ['OPS-P2', 'other'],
+      ['OPS-P3', 'other'],
+      ['OPS-P5', 'other'],
+      ['OPS-P10', 'other'],
+    ]);
+    const byCar = new Map(dto.freeVehicles.map((car) => [car.vehicleId, car]));
+    // The workshop that day says so — the save refuses those (below), the list still shows them.
+    expect(byCar.get(van4)).toMatchObject({ onRoster: false, inWorkshop: true, drivers: [] });
+    expect(byCar.get(van5)?.inWorkshop).toBe(true);
+    expect(byCar.get(otherCar)).toMatchObject({ onRoster: false, inWorkshop: false });
+    expect(dto.rows).toEqual([]);
+  });
+
+  it('puts the roster’s vans first, with their drivers by name — and leaves out a van a row holds', async () => {
+    const dto = await board(ROSTERED);
+    expect(free(dto).slice(0, 3)).toEqual([
+      ['OPS-P1', 'roster'],
+      ['OPS-P2', 'roster'],
+      ['OPS-P9', 'cashTransfer'],
+    ]);
+    expect(dto.freeVehicles[0]).toMatchObject({
+      vehicleId: van1,
+      onRoster: true,
+      drivers: [
+        { employeeId: drv1, fullNameAr: 'سائق التشغيلة الأول' },
+        { employeeId: drv2, fullNameAr: 'سائق التشغيلة الثاني' },
+      ],
+    });
+    const planned = await saved({ rows: [{ vehicleId: van1, captainEmployeeIds: [cap1] }] }, ROSTERED);
+    expect(planned.freeVehicles.map((car) => car.vehicleId)).not.toContain(van1);
+    // Emptied to NOTHING (no people, no field) and holding no leg, a roster van has no crew again.
+    const emptied = await saved({ rows: [{ vehicleId: van1 }] }, ROSTERED);
+    expect(vanRow(emptied, van1)?.crew).not.toBeNull();
+    expect(emptied.freeVehicles[0]).toMatchObject({ vehicleId: van1, group: 'roster' });
+  });
+
+  it('saves a van the roster does NOT have, and lists it as a van row with no roster row', async () => {
+    const res = await saved({ rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap1] }] }, BARE);
+    expect(res.changedCount).toBe(1);
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0]).toMatchObject({
+      vehicleId: otherCar,
+      vehicleCode: 'OPS-P10',
+      fleetDutyAssignmentId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      drivers: [],
+      missionTypeId: null,
+    });
+    expect(res.rows[0]?.crew?.captainEmployeeIds).toEqual([cap1]);
+    expect(res.freeVehicles.map((car) => car.vehicleId)).not.toContain(otherCar);
+    const stored = await OperationsCrewAssignmentModel.findById(res.rows[0]?.crew?.id).lean().exec();
+    expect(stored).toMatchObject({ fleetDutyAssignmentId: null });
+    expect(String(stored?.vehicleId)).toBe(otherCar);
+    // The pool names the van he holds, roster or not.
+    const pool = await request(app)
+      .get(`/api/v1/operations/crew-board/directory?date=${BARE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      data<OperationsCrewDirectoryDto>(pool).members.find((m) => m.employeeId === cap1)
+        ?.assignedVehicleId,
+    ).toBe(otherCar);
+    // A van picked with nothing else on it is still a row — the van IS its content.
+    const bare = await saved({ rows: [{ vehicleId: cashCar }] }, BARE);
+    expect(vanRow(bare, cashCar)?.fleetDutyAssignmentId).toBeNull();
+    await saved({ rows: [], removeCrewAssignmentIds: [vanRow(bare, cashCar)?.crew?.id] }, BARE);
+  });
+
+  it('GIVES a saved row without a van a van IN PLACE — the same row, its id kept', async () => {
+    const created = await saved(
+      { rows: [{ vehicleId: null, captainEmployeeIds: [cap2], specialist1EmployeeIds: [spec2] }] },
+      BARE,
+    );
+    const looseId = created.vehiclelessRows[0]?.id as string;
+    const given = await saved(
+      {
+        rows: [
+          {
+            vehicleId: cashCar,
+            crewAssignmentId: looseId,
+            captainEmployeeIds: [cap2],
+            specialist1EmployeeIds: [spec2],
+          },
+        ],
+      },
+      BARE,
+    );
+    expect(given.changedCount).toBe(1);
+    expect(given.vehiclelessRows).toEqual([]);
+    expect(vanRow(given, cashCar)).toMatchObject({ fleetDutyAssignmentId: null, vehicleCode: 'OPS-P9' });
+    expect(vanRow(given, cashCar)?.crew).toMatchObject({
+      id: looseId,
+      captainEmployeeIds: [cap2],
+      specialist1EmployeeIds: [spec2],
+    });
+    const stored = await OperationsCrewAssignmentModel.findById(looseId).lean().exec();
+    expect(stored?.isDeleted).toBe(false);
+    expect(String(stored?.vehicleId)).toBe(cashCar);
+    // Announced with its van now.
+    await waitFor(() =>
+      seenEvents.some(
+        (e) =>
+          e.name === OperationsEvents.CrewAssignmentChanged &&
+          (e.payload as { crewAssignmentId: string; vehicleId: string | null }).crewAssignmentId ===
+            looseId &&
+          (e.payload as { vehicleId: string | null }).vehicleId === cashCar,
+      ),
+    );
+    // Sent again with the same van, it is that row's plain edit; another van is refused.
+    const edited = await saved(
+      { rows: [{ vehicleId: cashCar, crewAssignmentId: looseId, captainEmployeeIds: [cap2] }] },
+      BARE,
+    );
+    expect(vanRow(edited, cashCar)?.crew?.specialist1EmployeeIds).toEqual([]);
+    const swap = await save(
+      { rows: [{ vehicleId: otherCar, crewAssignmentId: looseId, captainEmployeeIds: [cap2] }] },
+      BARE,
+    );
+    expect(swap.status).toBe(422);
+    expect(errorOf(swap).code).toBe(ErrorCodes.BUSINESS_RULE_VIOLATION);
+  });
+
+  it('gives a roster van whose row was emptied — that empty row released, the roster row anchored', async () => {
+    const created = await saved(
+      { rows: [{ vehicleId: null, captainEmployeeIds: [cap3], notes: 'r24-roster' }] },
+      ROSTERED,
+    );
+    const looseId = created.vehiclelessRows[0]?.id as string;
+    const emptyRowId = vanRow(created, van1)?.crew?.id as string; // emptied in the case above
+    expect(emptyRowId).toBeDefined();
+    const given = await saved(
+      {
+        rows: [
+          { vehicleId: van1, crewAssignmentId: looseId, captainEmployeeIds: [cap3], notes: 'r24-roster' },
+        ],
+      },
+      ROSTERED,
+    );
+    expect(vanRow(given, van1)?.crew?.id).toBe(looseId);
+    expect(vanRow(given, van1)?.drivers).toHaveLength(2);
+    const stored = await OperationsCrewAssignmentModel.findById(looseId).lean().exec();
+    expect(String(stored?.fleetDutyAssignmentId)).toBe(vanRow(given, van1)?.fleetDutyAssignmentId);
+    expect((await OperationsCrewAssignmentModel.findById(emptyRowId).lean().exec())?.isDeleted).toBe(
+      true,
+    );
+    // A roster van whose row holds somebody is TAKEN.
+    const other = await saved({ rows: [{ vehicleId: null, captainEmployeeIds: [cap2] }] }, ROSTERED);
+    const otherId = other.vehiclelessRows[0]?.id as string;
+    const taken = await save(
+      { rows: [{ vehicleId: van1, crewAssignmentId: otherId, captainEmployeeIds: [cap2] }] },
+      ROSTERED,
+    );
+    expect(taken.status, JSON.stringify(taken.body)).toBe(409);
+    expect(errorOf(taken)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_VEHICLE_TAKEN,
+      details: [
+        { field: 'vehicleId', code: 'TAKEN', message: van1 },
+        { field: 'crewAssignmentId', code: 'CREW_ROW', message: looseId },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    // A ROSTER van's row is still only emptied, never removed.
+    expect((await save({ rows: [], removeCrewAssignmentIds: [looseId] }, ROSTERED)).status).toBe(422);
+  });
+
+  it('refuses a van in the workshop, one out of service or deleted, and one another row holds', async () => {
+    const before = await board(BARE);
+    const workshop = await save({ rows: [{ vehicleId: van4, captainEmployeeIds: [cap3] }] }, BARE);
+    expect(workshop.status, JSON.stringify(workshop.body)).toBe(422);
+    expect(errorOf(workshop)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_VEHICLE_IN_WORKSHOP,
+      details: [
+        { field: 'vehicleId', code: 'IN_WORKSHOP', message: van4 },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    for (const car of [parkedCar, goneCar, new Types.ObjectId().toString()]) {
+      const res = await save({ rows: [{ vehicleId: car, captainEmployeeIds: [cap3] }] }, BARE);
+      expect(res.status, car).toBe(422);
+      expect(errorOf(res)).toMatchObject({
+        code: ErrorCodes.OPERATIONS_CREW_VEHICLE_NOT_ACTIVE,
+        details: [
+          { field: 'vehicleId', code: 'NOT_ACTIVE', message: car },
+          { field: 'rows', code: 'ROW_INDEX', message: '0' },
+        ],
+      });
+    }
+    // OPS-P10 is held (the case above): a row given it is refused, naming the row that holds it…
+    const holderId = vanRow(before, otherCar)?.crew?.id as string;
+    const loose = await saved({ rows: [{ vehicleId: null, captainEmployeeIds: [cap3] }] }, BARE);
+    const looseId = loose.vehiclelessRows[0]?.id as string;
+    const taken = await save(
+      { rows: [{ vehicleId: otherCar, crewAssignmentId: looseId, captainEmployeeIds: [cap3] }] },
+      BARE,
+    );
+    expect(taken.status).toBe(409);
+    expect(errorOf(taken).details?.[1]).toEqual({
+      field: 'crewAssignmentId',
+      code: 'CREW_ROW',
+      message: holderId,
+    });
+    // …and taken, once that row is removed in the same save (off the roster, it may be).
+    const freed = await saved(
+      {
+        rows: [{ vehicleId: otherCar, crewAssignmentId: looseId, captainEmployeeIds: [cap3] }],
+        removeCrewAssignmentIds: [holderId],
+      },
+      BARE,
+    );
+    expect(vanRow(freed, otherCar)?.crew?.id).toBe(looseId);
+    expect((await OperationsCrewAssignmentModel.findById(holderId).lean().exec())?.isDeleted).toBe(
+      true,
+    );
+    // Nothing of the refused saves was written.
+    expect(vanRow(freed, van4)).toBeUndefined();
+  });
+
+  it('refuses a NEW row given a van off the roster that another desk crewed since — that desk’s row is never overwritten', async () => {
+    // Two desks on one day. Desk A reads the board: OPS-P10 has no crew and «بدون سيارة» offers it.
+    const TWO_DESKS = shift(102);
+    expect((await board(TWO_DESKS)).freeVehicles.map((car) => car.vehicleId)).toContain(otherCar);
+    // Desk B crews OPS-P10 first — a new row, by the van alone.
+    const byB = await saved(
+      { rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap1], notes: 'desk B' }] },
+      TWO_DESKS,
+    );
+    const rowB = vanRow(byB, otherCar)?.crew?.id as string;
+    expect(rowB).toBeDefined();
+    // Desk A, still on its read, saves its new row with OPS-P10: no row id, it knows of none. Off
+    // the roster that is a NEW row, never «the van's row» — refused, naming the row that holds it.
+    const byA = await save(
+      { rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap2], notes: 'desk A' }] },
+      TWO_DESKS,
+    );
+    expect(byA.status, JSON.stringify(byA.body)).toBe(409);
+    expect(errorOf(byA)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_VEHICLE_TAKEN,
+      details: [
+        { field: 'vehicleId', code: 'TAKEN', message: otherCar },
+        { field: 'crewAssignmentId', code: 'CREW_ROW', message: rowB },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    // B's row is exactly as B saved it — the same id, B's captain, B's note.
+    const after = await board(TWO_DESKS);
+    expect(vanRow(after, otherCar)?.crew).toMatchObject({
+      id: rowB,
+      captainEmployeeIds: [cap1],
+      notes: 'desk B',
+    });
+    expect(after.rows).toHaveLength(1);
+    // B's own edits name the row (the board always names a saved row) and go through…
+    const edited = await saved(
+      {
+        rows: [
+          { vehicleId: otherCar, crewAssignmentId: rowB, captainEmployeeIds: [cap1], notes: 'B2' },
+        ],
+      },
+      TWO_DESKS,
+    );
+    expect(vanRow(edited, otherCar)?.crew).toMatchObject({ id: rowB, notes: 'B2' });
+    // …and a new row takes the van once B's row is removed in the same save (off the roster, it may be).
+    const moved = await saved(
+      {
+        rows: [{ vehicleId: otherCar, captainEmployeeIds: [cap2], notes: 'desk A' }],
+        removeCrewAssignmentIds: [rowB],
+      },
+      TWO_DESKS,
+    );
+    expect(vanRow(moved, otherCar)?.crew).toMatchObject({ captainEmployeeIds: [cap2] });
+    expect(vanRow(moved, otherCar)?.crew?.id).not.toBe(rowB);
+  });
+
+  it('counts a row GIVEN a van as new seats — the round-23 slot rule judges its people again', async () => {
+    // A specialist held in the captain's slot of a row without a van (seated before the rule).
+    const created = await saved({ rows: [{ vehicleId: null, notes: 'r24-held' }] }, BARE);
+    const heldId = created.vehiclelessRows.find((row) => row.notes === 'r24-held')?.id as string;
+    await OperationsCrewAssignmentModel.updateOne(
+      { _id: heldId },
+      { $set: { captainEmployeeIds: [new Types.ObjectId(specialistOnly)] } },
+    ).exec();
+    // Its own edits keep the held seat…
+    const edited = await save(
+      {
+        rows: [
+          {
+            vehicleId: null,
+            crewAssignmentId: heldId,
+            captainEmployeeIds: [specialistOnly],
+            notes: 'r24-held',
+            rowColour: 'sky',
+          },
+        ],
+      },
+      BARE,
+    );
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    // …given a van, he is put on it anew, and refused.
+    const onDay = await save(
+      {
+        rows: [
+          {
+            vehicleId: van3,
+            crewAssignmentId: heldId,
+            captainEmployeeIds: [specialistOnly],
+            notes: 'r24-held',
+          },
+        ],
+      },
+      BARE,
+    );
+    expect(onDay.status, JSON.stringify(onDay.body)).toBe(422);
+    expect(errorOf(onDay)).toMatchObject({
+      code: ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT,
+      details: [
+        { field: 'employeeId', code: 'NOT_A_CAPTAIN', message: specialistOnly },
+        { field: 'rows', code: 'ROW_INDEX', message: '0' },
+      ],
+    });
+    expect((await board(BARE)).vehiclelessRows.map((row) => row.id)).toContain(heldId);
   });
 });

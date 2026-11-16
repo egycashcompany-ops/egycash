@@ -119,6 +119,11 @@ export const ErrorCodes = {
    * §9.4 anchor: crew is planned only for a vehicle on the Fleet roster for that date — the
    * normalized form of the legacy car_lock gate (tashghela listed only car_lock'd vehicles,
    * contad_app.js:2255).
+   *
+   * NO LONGER ANSWERED since Round 24: «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش
+   * عليها طاقم واقدر اختار منهم» — a crew row may take ANY active vehicle with no crew that day,
+   * on the roster or not (refusals: `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`, `…_IN_WORKSHOP`,
+   * `…_TAKEN`). Kept so a client built before still reads it.
    */
   OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
   /**
@@ -153,6 +158,40 @@ export const ErrorCodes = {
    * `message` the row's index in the save).
    */
   OPERATIONS_CREW_MEMBER_WRONG_SLOT: 'OPERATIONS_CREW_MEMBER_WRONG_SLOT',
+  /**
+   * 422 — Round 24: a crew-board save gave a row a van the Fleet roster does not have that day, and
+   * Fleet does not hold it as an ACTIVE vehicle (unknown, deleted, out of service or disposed). A
+   * row that already holds its van is not asked again. Details: `field` 'vehicleId' (`code`
+   * 'NOT_ACTIVE', `message` the vehicle's id), then `field` 'rows' (`code` 'ROW_INDEX', `message` the
+   * row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_NOT_ACTIVE: 'OPERATIONS_CREW_VEHICLE_NOT_ACTIVE',
+  /**
+   * 422 — Round 24: a crew-board save gave a row a van the Fleet roster does not have that day, and
+   * Fleet's workshop holds it that day (an open visit — the board's «صيانة»). A roster van is
+   * Fleet's decision and is not asked; a row that already holds its van keeps it. Details: `field`
+   * 'vehicleId' (`code` 'IN_WORKSHOP', `message` the vehicle's id), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_IN_WORKSHOP: 'OPERATIONS_CREW_VEHICLE_IN_WORKSHOP',
+  /**
+   * 409 — Round 24: a saved row was given a van («X takes V») that ANOTHER live crew row of the day
+   * still holds at the end of the save (one van, one row a day — `ux_day_vehicle`). Remove that row
+   * in the same save to free the van. (A ROSTER van's row emptied to nothing, with no shipment leg,
+   * does not hold it: it is released in the same save.) Details: `field` 'vehicleId' (`code` 'TAKEN', `message` the
+   * vehicle's id), `field` 'crewAssignmentId' (`code` 'CREW_ROW', `message` the id of the row that
+   * holds it), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_TAKEN: 'OPERATIONS_CREW_VEHICLE_TAKEN',
+  /**
+   * 409 — Round 24: a crew-board save would REMOVE a row that holds محصنات — live shipment legs
+   * (placed on it on «توزيع المحصنات», delivered or not): removing it would strand them on a row
+   * nobody sees. Take them off on «توزيع المحصنات», or give the row a van instead (it keeps its id
+   * and its legs). Details: `field` 'crewAssignmentId' (`code` 'CREW_ROW', `message` the row's id),
+   * `field` 'shipments' (`code` 'COUNT', `message` how many legs it holds), then `field`
+   * 'removeCrewAssignmentIds' (`code` 'REMOVAL_INDEX', `message` the removal's index in the save).
+   */
+  OPERATIONS_CREW_ROW_HAS_SHIPMENTS: 'OPERATIONS_CREW_ROW_HAS_SHIPMENTS',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

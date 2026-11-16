@@ -760,6 +760,47 @@ its entry here in the same PR.
       (`crewRoleOf`, `fitsCrewSlot`) are in the contracts, one definition for the server and the
       board. This replaces the Round-20 default the owner never asked for: a specialist in a
       captain's slot was marked, not refused.
+    - Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات و مكان بدون سيارة دا لما
+      ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»:
+      - A row WITHOUT A VAN takes محصنات like a van. Round 20's «a row without a van carries
+        nothing» is reversed for the محصنات: «توزيع المحصنات» lists such rows after the vans (in the
+        order they were added, `vehicleId` and `vehicleCode` null, no drivers), proposes onto them
+        by direction, and places on them with the same checks. «صرف الخزينة»'s assign dialog takes
+        them too, «تسليم المحصنات» hands their load over, and their captain gets his route in the app
+        and may act on it. The captaincy anchor now reads any crew row of the day; identity still
+        comes from the token alone. A shipment leg's `vehicleId` is nullable. Every DTO, audit
+        snapshot and event that carries a leg's or a crew card's van now says `null`, never the
+        text "null" (`OperationsShipmentAssignmentPayloadV1` and `…ExecutionPayloadV1` too). The
+        daily PICKUP leg still takes a van's row only.
+      - `freeVehicles` on the crew board (`GET /operations/crew-board` and the save's answer): every
+        ACTIVE Fleet car (status `active`, not deleted) with no crew that day. A roster van whose row
+        was emptied to nothing and holds no leg counts as having none. Each car carries
+        `group`, `onRoster`, `inWorkshop` and its drivers by name when the roster has it. The order
+        is the roster, then the cash-transfer operations' cars, then the standing crew's, then the
+        rest, each group by code with numbers in number order. Read through `fleet-boundary.ts`.
+      - A van the Fleet roster does not have that day may be given to a row (it answered
+        `OPERATIONS_FLEET_DUTY_REQUIRED` before; that code is no longer sent). It must be active
+        (422 `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`), out of the workshop that day (422
+        `OPERATIONS_CREW_VEHICLE_IN_WORKSHOP`) and held by no other row (409
+        `OPERATIONS_CREW_VEHICLE_TAKEN`). Such a row stores no roster row and is listed in `rows`
+        with `fleetDutyAssignmentId: null`; its drivers are joined by (van, day), so a van Fleet
+        rosters later that day shows them. Unlike a roster van's row, it may be removed. A save
+        row that names such a van WITHOUT a row id is always a NEW row: when a second desk gives
+        a car another desk crewed since its read, it gets 409 `OPERATIONS_CREW_VEHICLE_TAKEN`,
+        and the first desk's row (its crew, and the captain its محصنات name) is never
+        overwritten. A ROSTER van named alone is still that van's row, upserted, as it always was.
+      - A saved row without a van is GIVEN a van in place: the row is sent with both
+        `crewAssignmentId` and `vehicleId`. It keeps its id, and in the same transaction its live
+        legs take the van; each change is audited on the leg («السجل» shows `crewChanged`) and
+        announced. Its people count as new seats for the absence and slot rules. A roster van's
+        emptied row is released for it.
+      - A row that holds محصنات (live legs, delivered or not) is never removed: 409
+        `OPERATIONS_CREW_ROW_HAS_SHIPMENTS`, naming the row and the count. Emptying it stays allowed,
+        as it always was for a van's row.
+      - Every board row's crew (`OperationsDayBoardCrewDto` — the day board, the history, the
+        vault's screens, «صرف الخزينة») carries `looseNumber`: for a crew without a van, its place
+        among its day's rows without a van, in the order they were added, exactly as «لوحة
+        التشغيلة» and «توزيع المحصنات» number it; null on a van. One read for all the days shown.
     - The screen (web): `/operations/crew-board` is the approved sample on this contract. The
       table, its boxes, the two pools (green and blue captains, red specialists, the requirement
       icons), drag and drop with «ضع هنا» for a keyboard or a phone, «الطاقم الثابت», Excel, the
@@ -834,6 +875,152 @@ its entry here in the same PR.
           server's `OPERATIONS_CREW_MEMBER_WRONG_SLOT` is worded in both languages and rings the
           chip on the row it names. «كشف طاقم العمليات» no longer tells the operator that anybody
           may take any slot: its hint says which slot each role takes.
+      - Round 24, the owner — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات و مكان بدون
+        سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم وعاوز ف الفلاتر ازود
+        بين يوم التشغيلة وكل الانوع انه يقدر يفلتر ب كود عربيه و كمان ادخل اسم قائد او اخصائى او الكود
+        بتاع اى حد فيهم وكمان افلتر ب الاتجاه», then «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات
+        فاهم»:
+        - «تراجع» is ONE STEP BACK. It threw away every unsaved change at once; now each press takes
+          back the LAST operation only — a drop, a pick, a ✕, a van given, a row added, deleted or
+          emptied, a type, colour, time, direction or notes change (a run of typing in one box is
+          one, and so is a time set in its panel, hour then minute), the standing crew loaded or
+          taken off — however many rows it touched, and the next
+          press the one before, until nothing is left; the button is off then. Its tooltip says
+          what it will take back («تراجع عن: نقل … إلى …»); Ctrl+Z (⌘Z) does the same outside a
+          text box. A save clears the history; another desk's save rebases every step of it as it
+          rebases the draft, and drops a step the other desk made true. «توزيع المحصنات»'s
+          «التراجع عن التغييرات» was the same discard-everything button: it is now «تراجع», one
+          move, captain switch or «توزيع تلقائي» a press — the day's own proposals by direction are
+          its first step, so the last press takes them back too, as the old button did. «الطاقم
+          الثابت» had none.
+        - «بدون سيارة» opens every car with no crew that day (the server's `freeVehicles`, seen
+          through the draft): the Fleet roster's blank vans first with their drivers, then the
+          cash-transfer operations' cars, the standing crew's and the rest, each by code;
+          searchable by code or driver; a car in the workshop is listed «في الصيانة» and, off the
+          roster, cannot be picked; a car another row of the draft took is not offered. A computer
+          gets a list under the cell, a phone the bottom sheet. A roster van merges the row into its
+          blank row as before; any other car turns the row into that car's row where it stands. A
+          saved row keeps its id either way (the «row X takes van V» save), so the محصنات on it
+          follow. The round-22 (away) and round-23 (wrong slot) checks still come first. A van off
+          the roster is marked «إضافية» under its code (beside it, it widened the column and pushed
+          the row's bin out of the frame at 1440), shows no drivers and can be deleted (which frees
+          it); the server's three refusals of a van and its refusal to delete a row holding محصنات
+          are worded in both languages and marked on the row — the deleted row is put back, as its
+          own step, named by its place once it is back («بدون سيارة (n)», never «(0)»), and without
+          anybody the planner seated elsewhere since (he stays where he was put, so the next save
+          is not refused for a clash on a row it never touched). A refused van is taken off its
+          row by «إزالة السيارة» in its cell — one step — since «تراجع» reaches only the last
+          operation; the refusal says so instead of «تراجع عن تعيينها». A row whose محصنات have
+          left the vault is told it stays (it can be emptied or given a van), not to take them off
+          on «توزيع المحصنات», which moves none of those.
+        - «تراجع» and Ctrl+Z take nothing back while «حفظ» is in flight, on the board and on «توزيع
+          المحصنات»: the save's read-back starts the history afresh, so a press then was dropped
+          unsaid and the operation it named saved anyway.
+        - Three filters between «يوم التشغيلة» and «كل الأنواع», in that order: the van (the board's
+          codes, and «بدون سيارة»), a person box (a captain's or a specialist's name or code,
+          folded as the pools' search) and the direction (each area the board's directions name,
+          and «بدون اتجاه»). AND-ed with the type; view only — hidden rows keep their changes and
+          «حفظ» saves them all. The type chips count the whole day; «المعروض N من M» says what the
+          filters leave, beside «مسح التصفية».
+        - Rows without a van on the screens after the board: «توزيع المحصنات» and «تسليم المحصنات»
+          draw them as cards after the vans, «بدون سيارة (n)» numbered as the board numbers them;
+          they take drops, «نقل إلى…» and proposals, count among the vans and are handed over and
+          printed under the crew's name («الطاقم بدون سيارة (n)»). «صرف الخزينة»'s assign dialog
+          offers each as its own choice. The day board, the vault's screens, the deleted list and
+          the hover cards print «بدون سيارة» where a van's code goes, never "null". The day board's
+          «السيارة» cell and «صرف من الخزينة»'s loads number it by the server's `looseNumber`
+          («بدون سيارة (n)», «الطاقم بدون سيارة (n)»), so two such crews are never one name; the
+          van box offers each by that name and matches it as one phrase.
+    - Round 24b, the owner — «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع وعاوز فوق
+      خالص جمب الطاقم الثابت لما ادوس عليها يفتح كارد زى جدول اقدر ادى كل نوع لون من الالوان وعاوز
+      اللون فى الجدول يكون متشبع اكتر من كدا»; asked how a row takes its colour, «تلقائي ويتغيّر
+      يدوي»; asked whether two types may share one, «أيوه عادي»:
+      - ONE PALETTE for the types and the rows: `OPERATIONS_SHIFT_TYPE_COLOURS` is twenty ordered
+        names. Round 20's eleven stay first (a saved type keeps its colour by name), re-ordered so
+        the first nine are the nine the boot seeds (rose, emerald, indigo, amber, violet, teal,
+        orange, fuchsia, slate), then lime and sky, then nine new ones (crimson, navy, forest, gold,
+        plum, brown, cyan, pink, olive). The board SHOWS N of them, N the live types: every colour
+        a live type wears, then the first ones nobody wears until there are N, in the palette's
+        order (`paletteFor`) — so archiving a type never pushes a live type's colour off the
+        palette, nor shows the archived one's (all twenty past twenty, said in the card). The type's
+        form on «أنواع التشغيل» offers the same: N swatches (N + 1 for a new type, the extra one the
+        first nobody wears), and an archived type's own colour after them when outside. Each colour
+        has a name of its own in both languages: cyan is «سماوي فاتح» and pink «وردي فاتح», where
+        «تركوازي» and «زهري» read as teal's «فيروزي» and rose's «وردي».
+      - «ألوان الأنواع» at the top of «لوحة التشغيلة», right after «الطاقم الثابت»: a card laid out
+        as a table — a row per type in the board's order (its strip's), a column per swatch shown.
+        A press gives that type that colour through the existing `PATCH
+        /operations/shift-types/:id` under `operationsCatalog.manage` (no new grant); two types may
+        share a colour. Each press saves at once; the answer is written into the cached types and
+        both the types and the crew board are re-read, so the board recolours at once. Without the
+        grant the table is shown read only, and says why. A live type is never off the palette; an
+        archived type it lists (a row of the day holds it) whose colour is off it is marked «خارج
+        اللوحة». Opened, it reads the types again; a press on the colour a type already shows reads
+        them again rather than doing nothing, and says «عُدِّل هذا النوع من مكان آخر…» when another
+        desk had moved it (no save is sent: it would change only the version). Until the types
+        answer, the card and a row's «اللون» say they are loading, or that the read failed with
+        «إعادة المحاولة» — never «لا توجد أنواع تشغيل». A phone gets Fleet's bottom sheet, the
+        swatches wrapping under each type. It is a catalog save: «تراجع» never takes it back.
+      - A row's colour is its own `rowColour` (picked by hand) ?? its type's ?? none. «اللون» offers
+        exactly the swatches shown, each naming the types that wear it, plus «لون النوع» (null —
+        back to automatic). A row's own colour that is no longer among them still colours it and is
+        offered at the end, pressed. The cell shows the colour the row is drawn in, dashed when it
+        is the type's. A colour picked is one «تراجع» step, said with the colour («تلوين الصف 150
+        باللون كحلي»; «إعادة الصف 150 إلى لون نوعه»).
+      - Saturation: a coloured row's cells take the colour itself at 30% (35% in dark; Round 20
+        drew a 100-level wash, about 15%, and 14% in dark), with a 5px solid bar of the colour at
+        the row's start edge. The text stays legible: 8.4:1 or better in light, 6.6:1 or better in
+        dark. Marks stay visible on top: a marked chip (picked up, refused, away, wrong slot) on a
+        coloured row stands on a halo of the page's colour, and the refused chip and the refused
+        van ring are solid. The marks drawn straight on the cells stand on the page's colour too
+        (`ON_TINT`): the short-crew ⚠, the board's only sign of a crew below its minimum, is
+        amber-600 on a disc of it (3.2:1; amber-500 on a rose row was 1.4:1, on a navy one 1.3:1),
+        and an empty slot's «+ اختيار» slate-600 on it (7.6:1; slate-400 was 1.5–2.1:1 on the
+        tints). The spec measures the words and both marks against all twenty tints, light and
+        dark.
+      - The row colour's names are the palette's. `OperationsCrewRowColourSchema` takes a palette
+        name, or one of Round 20's six MAPPED onto the palette colour Round 20 drew it in — its
+        swatch was that colour's dot exactly (yellow→gold, bg-yellow-400, not the orange-brown
+        amber; green→emerald, blue→sky, red→rose, purple→violet, orange→orange) — so a yellow row
+        stays yellow and an old client never meets a 400; the parsed
+        value, and every answer, is a palette name. The crew row's model accepts both spellings
+        (what the collection may hold); every reader goes through `canonicalCrewRowColour`, so a
+        row not yet migrated reads in the palette's name, and the same colour in either spelling
+        is a no-op save. The boot migrates the stored names (`migrateCrewRowColoursToPalette` in
+        `operations.migration.ts`, after the two crew migrations): five `updateMany`s, one per
+        legacy name that is not a palette name, soft-deleted rows included, timestamps off;
+        idempotent. Only the crew rows store a row colour (the standing crew has none); the audit
+        trail is history and is not rewritten.
+    - Round 24c, the owner on the round-24 screen of «توزيع المحصنات» — «عاوز اصغر المكان اللى فيه
+      المحصنات واكبر المكان اللى فيه المحصنة بالعربيه», and «عاوز احسن شكل الكارد العربيه بالمحصنة يعنى
+      عاوز انقل الاتجاه بعد كود السيارة والوقت واحسن الاسماء بتاعت القادة والاخصائيين»:
+      - THE WIDTHS. From a computer's width the vans take three parts and «بلا سيارة» (the day's
+        محصنات on no van) one — 978 and 326 px at 1440 — never narrower than 17rem, so at 1024 it
+        is a little more than a quarter (`DISTRIBUTION_COLUMNS`). The vans' cards stand as many to a
+        row as fit at 17.5rem or more (`VAN_GRID`): three at 1440, four at 1920, two at 1280 and 1024,
+        one on a phone; it was two at most. On a phone the columns stack with «بلا سيارة» FIRST on
+        «توزيع المحصنات» — the work to do, moved by «نقل إلى…» — and its head folds it away
+        (`aria-expanded`); folded, the column still takes a drop on its head. «تسليم المحصنات» takes
+        the same widths; there «بلا سيارة» is for information, so on a phone it stays after the vans,
+        and folds too. Drag and drop, «نقل إلى…», the proposals by direction and the one-step «تراجع»
+        are as they were.
+      - THE VAN CARD'S HEAD IS ONE LINE: the code (or «بدون سيارة (n)»), the planned time, then the
+        direction — moved up from the band it had under the head. A long direction is cut, whole on
+        hover and to a screen reader. The count of محصنات («محصنتان», each count in its own Arabic
+        form, as since Round 17) stays on the card, first on the line of what the van carries, before
+        the money and the packages: at three cards to a row, a head that held the count as well cut
+        «المعادي» itself to «…الم».
+      - THE CREW, drawn anew: each captain on a green line of his own with the captain's mark («قائد»,
+        the board's green); «أخصائي 1» and «أخصائي 2» side by side as two labelled chips; an empty
+        slot says «غير معيَّن», quietly, in a dashed chip, never «—»; a van with no captain says «بلا قائد
+        — لا تأخذ محصنات» in red where the captain would be. Every name is cut to its chip and opens
+        «لوحة التشغيلة»'s person card (role, code, phone, branch, «في التشغيلة» — here the van and the
+        slot — his attendance on the day, what he holds) once the day's crew directory has him. That
+        list is read only when a card first opens, under `operationsCrew.view` — the grant the
+        specialists on the card already ride (`crewPlanVisible`); no grant was added. Without it, or
+        before the list answers, the card says the whole name, the code and where he sits.
+      - The same card on «تسليم المحصنات», under «تسليم» and «طباعة»; its sheet's head now reads in
+        the card's order — the day, the time, the direction, then the captains and the specialists.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

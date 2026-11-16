@@ -43,7 +43,10 @@ import {
   type Column,
 } from '../../../../shared/ui';
 import { Dialog } from '../../../../shared/ui/Dialog';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../../shared/lib/format';
 import {
@@ -69,6 +72,10 @@ const TAB_STATUS: Record<Tab, string> = {
   toDisburse: 'approved',
   all: '',
 };
+
+/** The picks of a list param that the vocabulary carries — an old link's stray value is dropped. */
+const known = <T extends string>(picked: readonly string[], vocabulary: readonly T[]): T[] =>
+  picked.filter((v): v is T => (vocabulary as readonly string[]).includes(v));
 
 const STATUS_TONE = {
   draft: 'neutral',
@@ -108,10 +115,9 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
   };
 
   const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
-  const status = sp.get('status') ?? '';
-  const setStatus = (value: string): void => patch({ status: value });
-  const type = sp.get('type') ?? '';
-  const setType = (value: string): void => patch({ type: value });
+  // «هنخلي كل الفلترز multi»: several statuses and types, each ORed — one comma list each.
+  const statuses = known(readList(sp, 'status'), EMPLOYEE_LOAN_STATUSES);
+  const types = known(readList(sp, 'type'), EMPLOYEE_LOAN_TYPES);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [disbursing, setDisbursing] = useState<EmployeeLoanDto | null>(null);
@@ -126,8 +132,8 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
     sortDir: 'desc',
     ...(tab === 'all'
       ? {
-          ...(status === '' ? {} : { status }),
-          ...(type === '' ? {} : { type }),
+          ...(statuses.length === 0 ? {} : { status: statuses }),
+          ...(types.length === 0 ? {} : { type: types }),
         }
       : { status: TAB_STATUS[tab] }),
   });
@@ -272,42 +278,31 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
 
       <div className="space-y-4">
         {tab === 'all' && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('common.status')}>
-              <Select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('common.status')}
-              >
-                <option value="">{t('loans.allStatuses')}</option>
-                {EMPLOYEE_LOAN_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`loans.status.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t('loans.type')}>
-              <Select
-                value={type}
-                onChange={(e) => {
-                  setType(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('loans.type')}
-              >
-                <option value="">{t('loans.allTypes')}</option>
-                {EMPLOYEE_LOAN_TYPES.map((value) => (
-                  <option key={value} value={value}>
-                    {t(`loans.type.${value}`)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+          // The shared filter bar: each filter as wide as its name, several picks each («العرض بتاع
+          // الفلتر … يكون مظبوط ع كلام بظبط»).
+          <FilterBar
+            onClear={() => patch({ status: null, type: null })}
+            hasActiveFilters={statuses.length > 0 || types.length > 0}
+          >
+            <MultiSelect
+              label={t('common.status')}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+              options={EMPLOYEE_LOAN_STATUSES.map((value) => ({
+                value,
+                label: t(`loans.status.${value}`),
+              }))}
+            />
+            <MultiSelect
+              label={t('loans.type')}
+              value={types}
+              onChange={(next) => patch({ type: writeList(next) })}
+              options={EMPLOYEE_LOAN_TYPES.map((value) => ({
+                value,
+                label: t(`loans.type.${value}`),
+              }))}
+            />
+          </FilterBar>
         )}
 
         <DataTable
